@@ -43,8 +43,8 @@ TKINTER_AVAILABLE = False # forcing to false for cross-platform compatibility
 import secrets
 from typing import Dict, List, Any, Optional, Union
 from functools import wraps
-from cryptography.fernet import Fernet
-import urllib.request 
+import sg_auth
+import urllib.request
 import secrets
 from typing import Dict, List, Any, Optional, Union # Added for type hinting in new tools
 try:
@@ -2182,7 +2182,7 @@ def init_db(conn=None):
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,         -- Reversibly encrypted password
+                password TEXT NOT NULL,         -- Argon2id hash (sg_auth); never reversible
                 full_name TEXT NOT NULL,
                 email TEXT,                     -- Communication email
                 phone_number TEXT,              -- Optional contact
@@ -3089,6 +3089,12 @@ def initialize_gallery():
             full_sync_database(conn)
             check_and_update_workflow_hashes(conn)
             backfill_audio_durations(conn)
+            migration_report = sg_auth.migrate_legacy_passwords(conn, ENCRYPTION_KEY_FILE)
+            if migration_report['migrated'] or migration_report['failed']:
+                print(f"{Colors.BLUE}INFO: Password migration - "
+                      f"{migration_report['migrated']} migrated, "
+                      f"{migration_report['failed']} failed (unusable, needs admin reset), "
+                      f"key file deleted: {migration_report['key_deleted']}{Colors.RESET}")
             ensure_admin_user(conn)
             
             # Pre-generate clean files for Exhibition Mode (safe cross-platform call)
@@ -3160,49 +3166,10 @@ def get_filter_options_from_db(conn, scope, folder_path=None, recursive=False):
         
     return sorted(list(extensions)), sorted(list(prefixes)), prefix_limit_reached
     
-# --- ENCRYPTION & USER SECURITY ---
-cipher_suite = None
-
-def load_or_create_encryption_key():
-    """
-    Loads the system encryption key if it exists. 
-    Generates a new one only if we are in a management-enabled mode.
-    """
-    # 1. If the key file exists, ALWAYS load it so we can decrypt existing passwords
-    if os.path.exists(ENCRYPTION_KEY_FILE):
-        try:
-            with open(ENCRYPTION_KEY_FILE, 'rb') as f:
-                return f.read()
-        except Exception as e:
-            print(f"ERROR loading encryption key: {e}")
-            return None
-
-    # 2. If it doesn't exist, create it ONLY if we are in a mode that allows user management
-    # (Exhibition Mode OR Force Login OR Standard Local Admin)
-    # Since we added User Manager to index.html, we basically always want a key if missing.
-    new_key = Fernet.generate_key()
-    try:
-        os.makedirs(os.path.dirname(ENCRYPTION_KEY_FILE), exist_ok=True)
-        with open(ENCRYPTION_KEY_FILE, 'wb') as f:
-            f.write(new_key)
-        print(f"{Colors.GREEN}SECURITY: Encryption key created for system users.{Colors.RESET}")
-        return new_key
-    except Exception as e:
-        print(f"{Colors.RED}ERROR generating new key: {e}{Colors.RESET}")
-        return None
-        
-_key = load_or_create_encryption_key()
-if _key:
-    cipher_suite = Fernet(_key)
-
-def encrypt_password(password: str) -> str:
-    if not cipher_suite or not password: return password
-    return cipher_suite.encrypt(password.encode()).decode()
-
-def decrypt_password(encrypted_password: str) -> str:
-    if not cipher_suite or not encrypted_password: return encrypted_password
-    try: return cipher_suite.decrypt(encrypted_password.encode()).decode()
-    except Exception: return "[Decryption Error]"
+# --- USER SECURITY ---
+# Passwords are one-way hashed by sg_auth (Argon2id); there is no decrypt
+# path. ENCRYPTION_KEY_FILE (defined above) is retained only as the path to
+# the legacy Fernet key consumed by sg_auth.migrate_legacy_passwords().
 
 def ensure_admin_user(conn):
     """Checks for admin user and applies password from startup config."""
@@ -3210,18 +3177,23 @@ def ensure_admin_user(conn):
     if not (IS_EXHIBITION_MODE or FORCE_LOGIN) or ADMIN_CONFIG_MISSING:
         return
 
-    enc_pass = encrypt_password(ADMIN_PASS_INPUT)
-    admin = conn.execute("SELECT 1 FROM users WHERE username = 'admin'").fetchone()
-    
+    admin = conn.execute("SELECT password FROM users WHERE username = 'admin'").fetchone()
+
     if not admin:
         conn.execute("""
             INSERT INTO users (username, password, full_name, role, is_active)
             VALUES ('admin', ?, 'System Administrator', 'ADMIN', 1)
-        """, (enc_pass,))
+        """, (sg_auth.hash_password(ADMIN_PASS_INPUT),))
         print(f"{Colors.GREEN}USER SETUP: Admin account initialized.{Colors.RESET}")
     else:
-        conn.execute("UPDATE users SET password = ? WHERE username = 'admin'", (enc_pass,))
-        print(f"{Colors.CYAN}USER SETUP: Admin password verified/updated.{Colors.RESET}")
+        # Avoid rewriting the hash on every boot when the password hasn't changed.
+        valid, _ = sg_auth.verify_password(admin['password'], ADMIN_PASS_INPUT)
+        if valid:
+            print(f"{Colors.CYAN}USER SETUP: Admin password verified.{Colors.RESET}")
+        else:
+            conn.execute("UPDATE users SET password = ? WHERE username = 'admin'",
+                         (sg_auth.hash_password(ADMIN_PASS_INPUT),))
+            print(f"{Colors.CYAN}USER SETUP: Admin password updated.{Colors.RESET}")
     conn.commit()
 
 def is_file_accessible(file_id):
@@ -3387,9 +3359,12 @@ def exhibition_login():
             if username == 'admin' and ADMIN_PASS_INPUT:
                 is_valid = secrets.compare_digest(password, ADMIN_PASS_INPUT)
             else:
-                stored_password = decrypt_password(user['password'])
-                is_valid = secrets.compare_digest(password, stored_password) if stored_password else False
-                
+                is_valid, needs_rehash = sg_auth.verify_password(user['password'], password)
+                if is_valid and needs_rehash:
+                    conn.execute("UPDATE users SET password = ? WHERE user_id = ?",
+                                 (sg_auth.hash_password(password), user['user_id']))
+                    conn.commit()
+
             if is_valid:
                 try:
                     import time
@@ -3430,27 +3405,30 @@ def admin_manage_users():
             users = []
             for r in rows:
                 d = dict(r)
-                d['plain_password'] = decrypt_password(d['password'])
+                d.pop('password', None)
                 users.append(d)
             return jsonify({'status': 'success', 'users': users})
 
         data = request.json
         
         # --- SECURITY CHECK: Enforce 8-char minimum for all users ---
+        # Passwords can never be displayed back (one-way hashes), so an edit
+        # (PUT) may omit the password to keep the current one unchanged.
         if request.method in ['POST', 'PUT']:
             password_input = data.get('password', '').strip()
-            if len(password_input) < 8:
+            password_optional = (request.method == 'PUT' and not password_input)
+            if not password_optional and len(password_input) < 8:
                 return jsonify({'status': 'error', 'message': 'Password must be at least 8 characters long.'}), 400
-        
+
         if request.method == 'POST':
             # CREATE
-            enc_pass = encrypt_password(data['password'])
+            hashed_pass = sg_auth.hash_password(data['password'])
             try:
                 conn.execute("""
                     INSERT INTO users (username, password, full_name, role, email, phone_number, expiry_date, is_active)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (data['username'], enc_pass, data['full_name'], data['role'], 
-                      data.get('email'), data.get('phone_number'), 
+                """, (data['username'], hashed_pass, data['full_name'], data['role'],
+                      data.get('email'), data.get('phone_number'),
                       data.get('expiry_date'), data.get('is_active', 1)))
                 conn.commit()
                 return jsonify({'status': 'success'})
@@ -3458,18 +3436,27 @@ def admin_manage_users():
                 return jsonify({'status': 'error', 'message': str(e)}), 400
 
         if request.method == 'PUT':
-            # EDIT
+            # EDIT (empty password = keep the currently stored hash)
             user_id = data.get('user_id')
-            enc_pass = encrypt_password(data['password'])
-            
-            conn.execute("""
-                UPDATE users SET 
-                    username=?, password=?, full_name=?, role=?, email=?, 
-                    phone_number=?, expiry_date=?, is_active=?
-                WHERE user_id=? AND username != 'admin'
-            """, (data['username'], enc_pass, data['full_name'], data['role'], 
-                  data.get('email'), data.get('phone_number'), 
-                  data.get('expiry_date'), data.get('is_active'), user_id))
+            if password_input:
+                conn.execute("""
+                    UPDATE users SET
+                        username=?, password=?, full_name=?, role=?, email=?,
+                        phone_number=?, expiry_date=?, is_active=?
+                    WHERE user_id=? AND username != 'admin'
+                """, (data['username'], sg_auth.hash_password(password_input),
+                      data['full_name'], data['role'],
+                      data.get('email'), data.get('phone_number'),
+                      data.get('expiry_date'), data.get('is_active'), user_id))
+            else:
+                conn.execute("""
+                    UPDATE users SET
+                        username=?, full_name=?, role=?, email=?,
+                        phone_number=?, expiry_date=?, is_active=?
+                    WHERE user_id=? AND username != 'admin'
+                """, (data['username'], data['full_name'], data['role'],
+                      data.get('email'), data.get('phone_number'),
+                      data.get('expiry_date'), data.get('is_active'), user_id))
             conn.commit()
             return jsonify({'status': 'success'})
         

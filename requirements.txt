@@ -11,3 +11,4 @@ itsdangerous
 blinker
 cryptography
 waitress
+argon2-cffi

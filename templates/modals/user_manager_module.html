@@ -375,7 +375,7 @@
                         <span style="font-size:0.65rem; background:rgba(0,123,255,0.15); color:#89CFF0; padding:2px 6px; border-radius:4px; font-weight:bold;">${u.role}</span>
                     </div>
                     <div style="font-size:0.85rem; color:#888;">
-                        👤 @${u.username} • 🔑 <span style="font-family:monospace; color:#ccc;">${u.plain_password}</span>
+                        👤 @${u.username}
                         <div style="margin-top:4px; font-size:0.75rem; color:var(--text-muted);">
                             🕒 Last Login: ${u.last_login ? new Date(u.last_login * 1000).toLocaleString() : '<span style="color:var(--favorite-color);">Never</span>'}
                         </div>
@@ -411,7 +411,10 @@
 
         document.getElementById('um-edit-id-val').value = u.user_id;
         document.getElementById('um-f-user').value = u.username;
-        document.getElementById('um-f-pass').value = u.plain_password;
+        // Passwords are stored as one-way hashes and can never be shown back.
+        // Leave the field empty; an empty password on save means "unchanged".
+        document.getElementById('um-f-pass').value = "";
+        document.getElementById('um-f-pass').placeholder = "Leave empty to keep current password";
         document.getElementById('um-f-name').value = u.full_name;
         document.getElementById('um-f-mail').value = u.email || '';
         document.getElementById('um-f-role').value = u.role;
@@ -455,8 +458,9 @@
         const btn = document.getElementById('um-btn-save-act');
         const id = document.getElementById('um-edit-id-val').value;
 
-        // 1. Mandatory Fields Check
-        if(!user || !pass || !name) {
+        // 1. Mandatory Fields Check (password is optional when editing:
+        //    empty means "keep the current password")
+        if(!user || !name || (!pass && !id)) {
             await umSmartAlert("Missing Data", "Username, Password and Full Name are mandatory.");
             return;
         }
@@ -467,8 +471,8 @@
             return;
         }
 
-        // 3. Security Check: Password Length
-        if (pass.length < 8) {
+        // 3. Security Check: Password Length (only when a password is being set)
+        if (pass && pass.length < 8) {
             await umSmartAlert("Weak Password", "Security requirement: Password must be at least 8 characters long.");
             return;
         }
@@ -565,7 +569,7 @@
         
         const warningMsg = "\n\n⚠️ NOTE FOR ADMIN: If you are exposing the server over the internet (e.g., via Ngrok, Cloudflare, or a custom domain), please make sure to manually replace the URL above with your actual public address before sending this invitation.";
         
-        document.getElementById('um-invite-area').value = `Hello ${u.full_name}!\n\nAccess credentials for SmartGallery:\n🌐 URL: ${url}\n👤 User: ${u.username}\n🔑 Pass: ${u.plain_password}${warningMsg}`;
+        document.getElementById('um-invite-area').value = `Hello ${u.full_name}!\n\nAccess credentials for SmartGallery:\n🌐 URL: ${url}\n👤 User: ${u.username}\n🔑 Pass: <fill in the password you set for this user>${warningMsg}`;
         document.getElementById('um-invite-overlay').style.display = 'flex';
     }
     function umCloseInvite() { document.getElementById('um-invite-overlay').style.display='none'; }
