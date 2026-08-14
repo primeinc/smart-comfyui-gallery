@@ -54,3 +54,14 @@ buildkitd.toml
 compose-test.yaml
 SmartGallery
 temp
+
+# AI DAM (WI-31): provisioned model weights and derived caches — never commit
+.AImodels/
+.ai_cache/
+*.gguf
+*.onnx
+*.npz
+.sqlite_cache/
+.thumbnails_cache/
+.omniquery/
+benchmarks/results/
