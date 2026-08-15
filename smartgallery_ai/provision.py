@@ -32,6 +32,7 @@ import importlib
 import importlib.metadata
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,17 +42,119 @@ from typing import Callable, Optional
 
 # torch wheel selection: an NVIDIA GPU (detected via nvidia-smi on PATH)
 # gets CUDA-capable wheels — PyPI's Linux torch bundles CUDA, Windows CUDA
-# builds live only on the cu-index. Without a GPU the CPU index avoids the
+# builds live only on a cu-index. Without a GPU the CPU index avoids the
 # multi-GB CUDA payload. macOS torch on PyPI is already CPU/MPS.
 # AI_DAM_DEVICE=cpu forces the CPU wheel regardless of hardware.
+#
+# The cu-index must match the GPU GENERATION: cu126 wheels carry no
+# kernels for Blackwell-and-newer cards (compute capability >= 10) — the
+# install "succeeds" and then every kernel launch dies with
+# cudaErrorNoKernelImageForDevice. AI_DAM_CUDA_INDEX overrides the choice.
 _TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
-_TORCH_CUDA_WINDOWS_INDEX = "https://download.pytorch.org/whl/cu126"
+_TORCH_CUDA_INDEX_DEFAULT = "https://download.pytorch.org/whl/cu126"
+# Blackwell-and-newer (sm_120+) kernel builds of current torch, newest
+# first with the minimum driver-side CUDA version each requires (torch's
+# own unsupported-GPU warning names exactly these three for 2.13).
+_TORCH_CUDA_BLACKWELL_CHOICES = (
+    (13.2, "https://download.pytorch.org/whl/cu132"),
+    (13.0, "https://download.pytorch.org/whl/cu130"),
+    (12.9, "https://download.pytorch.org/whl/cu129"),
+)
+_TORCH_CUDA_INDEX_BLACKWELL_FALLBACK = "https://download.pytorch.org/whl/cu130"
 
 
 def cuda_hardware_present() -> bool:
     """Whether an NVIDIA driver is installed (nvidia-smi on PATH) — the
     pre-torch signal for choosing CUDA-capable wheels."""
     return shutil.which("nvidia-smi") is not None
+
+
+_compute_cap_cache: list = []  # memoized [value-or-None]; nvidia-smi costs ~100ms
+_driver_cuda_cache: list = []  # memoized [value-or-None]
+
+
+def _cuda_compute_capability():
+    """Highest GPU compute capability nvidia-smi reports (e.g. 12.0 for a
+    Blackwell consumer card), or None when undetectable. Memoized."""
+    if _compute_cap_cache:
+        return _compute_cap_cache[0]
+    cap = None
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10)
+        caps = [float(line.strip()) for line in proc.stdout.splitlines()
+                if line.strip()]
+        cap = max(caps) if caps else None
+    except Exception:  # noqa: BLE001 - detection is best-effort
+        cap = None
+    _compute_cap_cache.append(cap)
+    return cap
+
+
+def _driver_cuda_version():
+    """The maximum CUDA version the installed driver supports ("CUDA
+    Version" in nvidia-smi's header), or None when undetectable. Memoized."""
+    if _driver_cuda_cache:
+        return _driver_cuda_cache[0]
+    value = None
+    try:
+        proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True,
+                              timeout=10)
+        match = re.search(r"CUDA Version:\s*([\d.]+)", proc.stdout or "")
+        if match:
+            value = float(match.group(1))
+    except Exception:  # noqa: BLE001 - detection is best-effort
+        value = None
+    _driver_cuda_cache.append(value)
+    return value
+
+
+def torch_cuda_index() -> str:
+    """The CUDA wheel index matching this machine's GPU generation and
+    driver: pre-Blackwell cards keep cu126; Blackwell-and-newer (compute
+    capability >= 10) get the newest sm_120 build the driver can run.
+    AI_DAM_CUDA_INDEX overrides for hardware this table doesn't know.
+    (Mixed rigs pair the newest card's index — it still carries kernels
+    for every generation back to Turing.)"""
+    override = os.environ.get("AI_DAM_CUDA_INDEX", "").strip()
+    if override:
+        return override
+    cap = _cuda_compute_capability()
+    if cap is None or cap < 10.0:
+        return _TORCH_CUDA_INDEX_DEFAULT
+    driver_cuda = _driver_cuda_version()
+    if driver_cuda is not None:
+        for minimum, index in _TORCH_CUDA_BLACKWELL_CHOICES:
+            if driver_cuda >= minimum:
+                return index
+    return _TORCH_CUDA_INDEX_BLACKWELL_FALLBACK
+
+
+def cuda_summary():
+    """One-shot GPU inventory for boot logging and /status: name, driver,
+    compute capability, and the wheel index this machine would use — or
+    None when no NVIDIA driver is present."""
+    if not cuda_hardware_present():
+        return None
+    name = driver = None
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version",
+             "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10)
+        first = next((ln for ln in proc.stdout.splitlines() if ln.strip()), "")
+        if "," in first:
+            name, driver = [part.strip() for part in first.split(",", 1)]
+    except Exception:  # noqa: BLE001 - inventory is best-effort
+        pass
+    return {
+        "gpu": name,
+        "driver": driver,
+        "driver_cuda": _driver_cuda_version(),
+        "compute_capability": _cuda_compute_capability(),
+        "torch_index": torch_cuda_index(),
+    }
 
 
 @dataclass(frozen=True)
@@ -321,11 +424,14 @@ def _default_pip_uninstaller(packages: list) -> None:
 
 
 def torch_cuda_reinstall_needed() -> bool:
-    """Whether the installed torch is a CPU-index build on a machine whose
-    hardware calls for CUDA wheels. The static installers (uv/pip) pin the
-    CPU index because package resolution cannot see GPUs; only the running
-    app can, so it swaps the pair at startup. Metadata-only -- never
-    imports torch. AI_DAM_DEVICE=cpu opts out."""
+    """Whether the installed torch build cannot use this machine's GPU:
+    a CPU-index build on CUDA hardware, or (Windows) a CUDA build from
+    the WRONG generation's index — wrong-generation kernels install fine
+    and then fail at launch with cudaErrorNoKernelImageForDevice. The
+    static installers pin an index blind because package resolution
+    cannot see GPUs; only the running app can, so it swaps the pair at
+    startup. Metadata-only -- never imports torch. AI_DAM_DEVICE=cpu
+    opts out."""
     if sys.platform == "darwin" or not cuda_hardware_present():
         return False
     if os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu":
@@ -334,7 +440,13 @@ def torch_cuda_reinstall_needed() -> bool:
         version = importlib.metadata.version("torch")
     except importlib.metadata.PackageNotFoundError:
         return False
-    return "+cpu" in version
+    if "+cpu" in version:
+        return True
+    if sys.platform == "win32" and "+cu" in version:
+        installed_tag = version.split("+", 1)[1]
+        expected_tag = torch_cuda_index().rstrip("/").rsplit("/", 1)[-1]
+        return installed_tag != expected_tag
+    return False
 
 
 def _pip_args_for(requirement: str) -> list:
@@ -351,7 +463,7 @@ def _pip_args_for(requirement: str) -> list:
     force_cpu = os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu"
     if not force_cpu and cuda_hardware_present():
         if sys.platform == "win32":
-            return [requirement, "--index-url", _TORCH_CUDA_WINDOWS_INDEX]
+            return [requirement, "--index-url", torch_cuda_index()]
         return [requirement]  # PyPI Linux wheels bundle CUDA
     return [requirement, "--index-url", _TORCH_CPU_INDEX]
 

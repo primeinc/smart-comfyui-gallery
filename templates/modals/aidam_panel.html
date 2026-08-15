@@ -426,6 +426,15 @@
         html += aidamStageBar('Reviews', ix.reviews_scanned || 0, ix.visual_files_total || 0, 'reviews_scanned', now);
         html += '</div>';
 
+        const gpu = status.gpu;
+        if (gpu) {
+            html += `<span class="aidam-section-title">GPU</span>
+                <div style="color:#ddd; font-size:0.85rem;">🎮 ${escapeAidamHtml(gpu.gpu || 'unknown NVIDIA device')}
+                &middot; driver ${escapeAidamHtml(gpu.driver || '?')} (CUDA ${escapeAidamHtml(gpu.driver_cuda || '?')})
+                &middot; compute ${escapeAidamHtml(gpu.compute_capability || '?')}
+                &middot; wheels ${escapeAidamHtml(String(gpu.torch_index || '').split('/').pop() || '?')}</div>`;
+        }
+
         html += '<span class="aidam-section-title">Backends</span><div style="display:flex; flex-wrap:wrap; gap:8px;">';
         Object.keys(backends).sort().forEach(key => {
             const up = backends[key];

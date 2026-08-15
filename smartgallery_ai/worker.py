@@ -333,6 +333,22 @@ class AIWorker:
             pkg_logger.addHandler(handler)
             pkg_logger.setLevel(logging.INFO)
         self._stop_event.clear()
+        # Boot GPU inventory: what the machine has and which wheels it
+        # gets, before any provisioning/backends run. Silence = no GPU.
+        try:
+            gpu = provisioning.cuda_summary()
+        except Exception:  # noqa: BLE001 - inventory is best-effort
+            gpu = None
+        if gpu is not None:
+            _logger.info(
+                "[AI] GPU: %s (driver %s, CUDA %s, compute capability %s) "
+                "-> torch wheels %s",
+                gpu.get("gpu") or "unknown NVIDIA device",
+                gpu.get("driver") or "?", gpu.get("driver_cuda") or "?",
+                gpu.get("compute_capability"),
+                (gpu.get("torch_index") or "").rsplit("/", 1)[-1] or "?")
+        else:
+            _logger.info("[AI] no NVIDIA GPU detected — CPU wheels/devices")
         self._maybe_start_auto_provision()
         self._thread = threading.Thread(target=self._run_loop, name="AIWorker", daemon=True)
         self._thread.start()

@@ -380,8 +380,10 @@ def test_pip_args_steer_torch_by_hardware(monkeypatch, requirement):
     assert P._pip_args_for(requirement) == [requirement]
 
     monkeypatch.setattr(P.sys, "platform", "win32")
+    monkeypatch.setattr(P, "torch_cuda_index",
+                        lambda: "https://download.pytorch.org/whl/cuTEST")
     assert P._pip_args_for(requirement) == [
-        requirement, "--index-url", P._TORCH_CUDA_WINDOWS_INDEX]
+        requirement, "--index-url", "https://download.pytorch.org/whl/cuTEST"]
 
     monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
     assert P._pip_args_for(requirement) == [
@@ -879,3 +881,63 @@ def test_pip_runner_raises_when_every_fallback_fails(monkeypatch):
     monkeypatch.setattr(P.shutil, "which", lambda name: None)
     with pytest.raises(P.ProvisionError, match="No module named pip"):
         P._default_pip_runner(["timm"])
+
+
+# --- CUDA wheel index by GPU generation ----------------------------------------
+
+
+def test_torch_cuda_index_picks_by_compute_cap_and_driver(monkeypatch):
+    """Pre-Blackwell cards keep cu126; Blackwell (cc >= 10) gets the
+    newest sm_120 build the driver supports; unknown driver falls back to
+    cu130; AI_DAM_CUDA_INDEX overrides everything."""
+    monkeypatch.delenv("AI_DAM_CUDA_INDEX", raising=False)
+
+    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 8.9)
+    assert P.torch_cuda_index().endswith("/cu126")
+    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: None)
+    assert P.torch_cuda_index().endswith("/cu126")
+
+    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
+    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.5)
+    assert P.torch_cuda_index().endswith("/cu132")
+    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.0)
+    assert P.torch_cuda_index().endswith("/cu130")
+    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 12.9)
+    assert P.torch_cuda_index().endswith("/cu129")
+    monkeypatch.setattr(P, "_driver_cuda_version", lambda: None)
+    assert P.torch_cuda_index().endswith("/cu130")
+
+    monkeypatch.setenv("AI_DAM_CUDA_INDEX", "https://example.test/whl/custom")
+    assert P.torch_cuda_index() == "https://example.test/whl/custom"
+
+
+def test_reinstall_needed_for_wrong_generation_cuda_build(monkeypatch):
+    """A CUDA build from the wrong generation's index (kernels missing for
+    this GPU: cudaErrorNoKernelImageForDevice) counts as swap-needed on
+    Windows; the matching build does not; Linux CUDA builds are left
+    alone (they came from PyPI or the user's own choice)."""
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P.sys, "platform", "win32")
+    monkeypatch.setattr(P, "torch_cuda_index",
+                        lambda: "https://download.pytorch.org/whl/cu130")
+
+    monkeypatch.setattr(P.importlib.metadata, "version",
+                        lambda name: "2.13.0+cu126")
+    assert P.torch_cuda_reinstall_needed() is True
+
+    monkeypatch.setattr(P.importlib.metadata, "version",
+                        lambda name: "2.13.0+cu130")
+    assert P.torch_cuda_reinstall_needed() is False
+
+    monkeypatch.setattr(P.sys, "platform", "linux")
+    monkeypatch.setattr(P.importlib.metadata, "version",
+                        lambda name: "2.13.0+cu126")
+    assert P.torch_cuda_reinstall_needed() is False
+
+
+def test_cuda_summary_absent_without_nvidia_driver(monkeypatch):
+    """No nvidia-smi on PATH -> no GPU inventory (the boot log then says
+    'no NVIDIA GPU detected')."""
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
+    assert P.cuda_summary() is None

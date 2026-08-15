@@ -33,6 +33,7 @@ from smartgallery_ai import (
     SPACE_VISUAL,
 )
 from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, vectors
+from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
     _MTIME_EPSILON,
     _has_column,
@@ -390,10 +391,15 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             else {"running": False, "stats": {}, "provisioning": {},
                   "priority_queued": 0, "recent_errors": []}
         )
+        try:
+            gpu = provisioning.cuda_summary()
+        except Exception:  # noqa: BLE001 - inventory is best-effort
+            gpu = None
         return jsonify({
             "enabled": config.enabled,
             "backends": backends,
             "devices": _backend_devices(),
+            "gpu": gpu,
             "counts": counts,
             "indexing": indexing,
             "worker": worker_info,
