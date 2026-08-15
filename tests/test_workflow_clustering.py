@@ -509,6 +509,30 @@ def test_backfill_hashes_and_prompts_real_swarm_file(sg, tmp_path):
         assert row['hash_failed'] == 0
 
 
+def test_backfill_process_pool_path_end_to_end(sg, tmp_path, monkeypatch):
+    """Regression for the GIL freeze: large runs must hash in worker
+    PROCESSES (in-process threads starved the web server). Force the process
+    path at size 1 and prove the pickling/spawn/result plumbing works with
+    the real hasher."""
+    # Arrange
+    monkeypatch.setattr(sg, '_BACKFILL_PROCESS_THRESHOLD', 1)
+    path = _make_swarm_png(tmp_path, "proc_swarm.png", "a comet over the sea", "modelProc")
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'procsw', path=path, has_workflow=0)
+
+        # Act
+        updated = sg.backfill_unhashed_workflows(conn)
+
+        # Assert: hashed by a spawned worker process.
+        assert updated >= 1
+        row = conn.execute(
+            "SELECT workflow_hash, prompt_hash, models_hash, workflow_prompt FROM files WHERE id = ?",
+            (_PREFIX + 'procsw',),
+        ).fetchone()
+        assert row['workflow_hash'] and row['prompt_hash'] and row['models_hash']
+        assert row['workflow_prompt'] == "a comet over the sea"
+
+
 def test_backfill_does_not_reselect_partially_hashed_rows(sg, tmp_path, monkeypatch):
     """A file that yielded only a prompt hash is complete, not pending —
     selecting on workflow_hash alone would re-scan it on every request."""

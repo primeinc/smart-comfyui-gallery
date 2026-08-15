@@ -10730,6 +10730,30 @@ def clear_synthetic_prompt_hashes(conn):
     return len(synthetic)
 
 
+def _backfill_hash_worker(item):
+    """Hash one file for backfill_unhashed_workflows. Module-level so
+    ProcessPoolExecutor can pickle it (Windows spawn)."""
+    fid, fpath, had_prompt = item
+    wf_h, pr_h, md_h = compute_workflow_hashes(fpath)
+    # Rows indexed before foreign-metadata support have no searchable
+    # prompt; the file is already open here, so fill it in one pass.
+    prompt_text = ''
+    if not had_prompt:
+        parsed = metaparse.parse_file(fpath)
+        if parsed and parsed.positive:
+            prompt_text = parsed.positive
+    return (wf_h, pr_h, md_h, prompt_text, fid)
+
+
+# Runs at or above this size hash in worker PROCESSES. The hashing is mostly
+# pure-Python parsing, so a large thread pool of it inside the web process
+# monopolizes the GIL and starves the request threads (observed live: the
+# site froze during the 42k-file migration despite the "background" thread).
+# Small incremental runs stay on threads: no spawn cost, and in-process
+# monkeypatching keeps working for tests.
+_BACKFILL_PROCESS_THRESHOLD = 64
+
+
 def backfill_unhashed_workflows(conn=None, force_all=False):
     """
     Auto-migrates existing files in DB with real-time console progress.
@@ -10786,41 +10810,43 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         _CLUSTER_BACKFILL_STATE['done'] = 0
         print(f"{Colors.BLUE}INFO: [Clustering] Starting hash indexing for {total_unhashed} files...{Colors.RESET}", flush=True)
 
-        def _work(item):
-            fid, fpath, had_prompt = item
-            wf_h, pr_h, md_h = compute_workflow_hashes(fpath)
-            # Rows indexed before foreign-metadata support have no searchable
-            # prompt; the file is already open here, so fill it in one pass.
-            prompt_text = ''
-            if not had_prompt:
-                parsed = metaparse.parse_file(fpath)
-                if parsed and parsed.positive:
-                    prompt_text = parsed.positive
-            return (wf_h, pr_h, md_h, prompt_text, fid)
-
         results = []
         failed_ids = []
         completed = 0
         last_reported_pct = -1
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
-            futures = {executor.submit(_work, item): item[0] for item in unhashed}
-            for future in concurrent.futures.as_completed(futures):
-                completed += 1
-                try:
-                    res = future.result()
-                    if res and (res[0] or res[1] or res[2]):
-                        results.append(res)
-                    else:
+        executor_cls = (
+            concurrent.futures.ProcessPoolExecutor
+            if total_unhashed >= _BACKFILL_PROCESS_THRESHOLD
+            else concurrent.futures.ThreadPoolExecutor
+        )
+        try:
+            with executor_cls(max_workers=MAX_PARALLEL_WORKERS) as executor:
+                futures = {executor.submit(_backfill_hash_worker, item): item[0] for item in unhashed}
+                for future in concurrent.futures.as_completed(futures):
+                    completed += 1
+                    try:
+                        res = future.result()
+                        if res and (res[0] or res[1] or res[2]):
+                            results.append(res)
+                        else:
+                            failed_ids.append((futures[future],))
+                    except concurrent.futures.process.BrokenProcessPool:
+                        raise
+                    except Exception:
                         failed_ids.append((futures[future],))
-                except Exception:
-                    failed_ids.append((futures[future],))
 
-                _CLUSTER_BACKFILL_STATE['done'] = completed
-                pct = int((completed / total_unhashed) * 100)
-                if pct % 5 == 0 and pct != last_reported_pct:
-                    last_reported_pct = pct
-                    print(f"\r   [Clustering Progress] Indexed {completed}/{total_unhashed} files ({pct}%)...", end="", flush=True)
+                    _CLUSTER_BACKFILL_STATE['done'] = completed
+                    pct = int((completed / total_unhashed) * 100)
+                    if pct % 5 == 0 and pct != last_reported_pct:
+                        last_reported_pct = pct
+                        print(f"\r   [Clustering Progress] Indexed {completed}/{total_unhashed} files ({pct}%)...", end="", flush=True)
+        except concurrent.futures.process.BrokenProcessPool:
+            # A crashed worker pool must not mass-mark the uncollected rows as
+            # failed: write what was collected, leave the rest pending so the
+            # next trigger resumes them.
+            print(f"\n{Colors.YELLOW}WARN: [Clustering] Worker pool died mid-run; "
+                  f"{len(results)} results kept, the rest stay pending.{Colors.RESET}", flush=True)
 
         batch_size = 500
         if results:
