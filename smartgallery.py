@@ -3384,30 +3384,40 @@ def exhibition_login():
     # Standard User Login Logic
     with get_db_connection() as conn:
         user = conn.execute("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,)).fetchone()
+        is_valid = False
         if user:
             if username == 'admin' and ADMIN_PASS_INPUT:
-                is_valid = secrets.compare_digest(password, ADMIN_PASS_INPUT)
+                # Total constant-time compare: never raises on non-ASCII or
+                # non-string (JSON int/list) password input, so a crafted
+                # request can't 500 this path and a non-ASCII admin passphrase
+                # still authenticates.
+                is_valid = sg_auth.constant_time_equals(password, ADMIN_PASS_INPUT)
             else:
                 is_valid, needs_rehash = sg_auth.verify_password(user['password'], password)
                 if is_valid and needs_rehash:
                     conn.execute("UPDATE users SET password = ? WHERE user_id = ?",
                                  (sg_auth.hash_password(password), user['user_id']))
                     conn.commit()
+        else:
+            # No active user row: still perform one Argon2id verification
+            # against a decoy so login latency does not reveal whether the
+            # username exists (account-enumeration mitigation).
+            sg_auth.dummy_verify()
 
-            if is_valid:
-                try:
-                    import time
-                    conn.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (time.time(), user['user_id']))
-                    conn.commit()
-                except Exception as e:
-                    print(f"Login timestamp update error: {e}")
-                
-                session.permanent = False
-                session['user_id'] = str(user['user_id'])
-                session['username'] = user['username']
-                session['role'] = user['role']
-                session['full_name'] = user['full_name']
-                return jsonify({'status': 'success', 'role': user['role']})
+        if user and is_valid:
+            try:
+                import time
+                conn.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (time.time(), user['user_id']))
+                conn.commit()
+            except Exception as e:
+                print(f"Login timestamp update error: {e}")
+
+            session.permanent = False
+            session['user_id'] = str(user['user_id'])
+            session['username'] = user['username']
+            session['role'] = user['role']
+            session['full_name'] = user['full_name']
+            return jsonify({'status': 'success', 'role': user['role']})
     
     return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
 

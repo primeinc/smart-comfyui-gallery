@@ -9,6 +9,8 @@ import tempfile
 import pytest
 from cryptography.fernet import Fernet
 
+import secrets
+
 import sg_auth
 
 USERS_DDL = """
@@ -254,3 +256,84 @@ def test_admin_users_endpoint_never_leaks_password_fields(smartgallery_app):
     for user in body["users"]:
         assert "password" not in user
         assert "plain_password" not in user
+
+
+# --- Adversarial-review confirmed fixes (WI-31) ---
+
+def test_constant_time_equals_is_total_and_never_raises():
+    # secrets.compare_digest raises on these; our wrapper must not.
+    assert sg_auth.constant_time_equals("Motörhead1", "Motörhead1") is True
+    assert sg_auth.constant_time_equals("café", "cafe") is False
+    assert sg_auth.constant_time_equals([1, 2], "x") is False
+    assert sg_auth.constant_time_equals(12345, "12345") is True
+    assert sg_auth.constant_time_equals(None, "x") is False
+    assert sg_auth.constant_time_equals("abc", "abc") is True
+
+
+def test_admin_login_non_ascii_password_does_not_500(smartgallery_app):
+    sg = smartgallery_app
+    # Force the admin/compare_digest branch and a non-ASCII admin secret.
+    orig_pass, orig_force = sg.ADMIN_PASS_INPUT, sg.FORCE_LOGIN
+    sg.ADMIN_PASS_INPUT = "Motörhead1"
+    sg.FORCE_LOGIN = True
+    try:
+        with sg.get_db_connection() as conn:
+            conn.execute("DELETE FROM users WHERE username = 'admin'")
+            conn.execute(
+                "INSERT INTO users (username, password, full_name, role, is_active) "
+                "VALUES ('admin', ?, 'Admin', 'ADMIN', 1)",
+                (sg_auth.hash_password("unused-hash"),),
+            )
+            conn.commit()
+        client = sg.app.test_client()
+        # Correct non-ASCII admin password authenticates (no 500, no lockout).
+        ok = client.post("/galleryout/login",
+                         json={"username": "admin", "password": "Motörhead1"})
+        assert ok.status_code == 200
+        assert ok.get_json()["status"] == "success"
+        # A crafted non-string password must not 500 the endpoint.
+        crafted = client.post("/galleryout/login",
+                              json={"username": "admin", "password": [1, 2, 3]})
+        assert crafted.status_code == 401
+    finally:
+        sg.ADMIN_PASS_INPUT, sg.FORCE_LOGIN = orig_pass, orig_force
+        with sg.get_db_connection() as conn:
+            conn.execute("DELETE FROM users WHERE username = 'admin'")
+            conn.commit()
+
+
+def test_login_unknown_user_performs_decoy_verify(monkeypatch, smartgallery_app):
+    # The user-not-found path must run a verification so timing does not
+    # reveal whether a username exists.
+    calls = {"n": 0}
+    real = sg_auth.dummy_verify
+
+    def counting_dummy():
+        calls["n"] += 1
+        return real()
+
+    monkeypatch.setattr(sg_auth, "dummy_verify", counting_dummy)
+    client = smartgallery_app.app.test_client()
+    resp = client.post("/galleryout/login",
+                       json={"username": "definitely_no_such_user_xyz", "password": "whatever"})
+    assert resp.status_code == 401
+    assert calls["n"] == 1
+
+
+def test_migration_gate_is_case_sensitive_glob(smartgallery_app, tmp_path):
+    # A lowercase 'gaaaa...' value is NOT a real Fernet ciphertext and must
+    # not, via a case-insensitive gate, cause the key file to be retained.
+    import sqlite3
+    db = tmp_path / "m.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE users (user_id INTEGER PRIMARY KEY, password TEXT)")
+    conn.execute("INSERT INTO users (password) VALUES ('gaaaaNOTaToken')")
+    conn.commit()
+    key_file = tmp_path / "system.key"
+    from cryptography.fernet import Fernet
+    key_file.write_bytes(Fernet.generate_key())
+    report = sg_auth.migrate_legacy_passwords(conn, str(key_file))
+    # The lowercase value is not legacy ciphertext, and the GLOB gate agrees:
+    # no legacy remains, so the key file is deleted.
+    assert report["key_deleted"] is True
+    assert not key_file.exists()

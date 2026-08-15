@@ -8,6 +8,7 @@
 # general-purpose "decrypt this password" API.
 
 import os
+import secrets
 import sqlite3
 
 from argon2 import PasswordHasher
@@ -67,6 +68,38 @@ def verify_password(stored: str, candidate: str) -> tuple[bool, bool]:
         needs_rehash = False
 
     return True, needs_rehash
+
+
+def constant_time_equals(a, b) -> bool:
+    """Total, constant-time equality for two secrets that may be any type.
+
+    Unlike secrets.compare_digest on str, this never raises: str operands
+    containing non-ASCII characters, and non-str JSON operands (int/list),
+    are handled by normalizing to UTF-8 bytes first. Returns False for any
+    input that cannot be meaningfully compared.
+    """
+    try:
+        ab = a if isinstance(a, bytes) else str(a).encode("utf-8")
+        bb = b if isinstance(b, bytes) else str(b).encode("utf-8")
+    except Exception:
+        return False
+    return secrets.compare_digest(ab, bb)
+
+
+# A fixed decoy hash so authentication can perform an Argon2id verification
+# even when no user row is found, keeping login timing independent of whether
+# a username exists (mitigates account enumeration via response latency).
+_DECOY_HASH = ph.hash("sg_auth_decoy_password_do_not_use")
+
+
+def dummy_verify() -> None:
+    """Run one Argon2id verification against a throwaway hash and discard the
+    result. Call on the user-not-found path so it costs the same as a real
+    verify. Never raises."""
+    try:
+        ph.verify(_DECOY_HASH, "x")
+    except Exception:
+        pass
 
 
 def _decrypt_legacy(ciphertext: str, key: bytes) -> str | None:
@@ -131,8 +164,11 @@ def migrate_legacy_passwords(conn: sqlite3.Connection, key_file_path: str) -> di
 
     conn.commit()
 
+    # GLOB (case-sensitive) so this completeness gate matches
+    # is_legacy_ciphertext()'s case-sensitive startswith exactly; a
+    # case-insensitive LIKE could disagree and wrongly retain the key file.
     remaining = conn.execute(
-        "SELECT 1 FROM users WHERE password LIKE 'gAAAA%' LIMIT 1"
+        "SELECT 1 FROM users WHERE password GLOB 'gAAAA*' LIMIT 1"
     ).fetchone()
     if remaining is None and os.path.exists(key_file_path):
         try:
