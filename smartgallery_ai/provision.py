@@ -270,11 +270,24 @@ def _pip_args_for(requirement: str) -> list:
     return ["torch", "--index-url", _TORCH_CPU_INDEX]
 
 
+def _module_installed(probe: str) -> bool:
+    """Whether `probe` resolves to a real installed package. A bare
+    directory on sys.path (e.g. in the working directory) materializes as
+    a namespace package with no origin — that must count as MISSING, or a
+    stray folder silently suppresses the runtime install and the backend
+    fails later with a confusing error."""
+    try:
+        spec = importlib.util.find_spec(probe)
+    except (ImportError, ValueError):
+        return False
+    return spec is not None and spec.origin is not None
+
+
 def runtime_missing(group: Group) -> list:
     """The group's runtime requirements whose probe modules cannot be
     imported right now, as (probe_module, pip_requirement) pairs."""
     return [(probe, req) for probe, req in group.runtime
-            if importlib.util.find_spec(probe) is None]
+            if not _module_installed(probe)]
 
 
 def ensure_runtime(group: Group, log: Callable[[str], None] = print,
@@ -297,7 +310,7 @@ def _ensure_hub(needed: bool, log: Callable[[str], None],
                 pip_runner: Optional[Callable[[list], None]]) -> None:
     """Bootstrap huggingface_hub (the downloader itself) when any Hugging
     Face artifact is about to be fetched and the hub is not importable."""
-    if not needed or importlib.util.find_spec("huggingface_hub") is not None:
+    if not needed or _module_installed("huggingface_hub"):
         return
     log("  + runtime huggingface_hub (downloader)")
     (pip_runner or _default_pip_runner)(["huggingface_hub"])
@@ -350,6 +363,10 @@ def provision(
      'item': <requirement or dest>, ...} with 'bytes_done'/'bytes_total'
     on byte events (direct-URL downloads only; Hugging Face transfers
     report start/done)."""
+    if not models_dir:
+        raise ProvisionError(
+            "models_dir is required (an empty value would scatter weight "
+            "files relative to the working directory)")
     dl = {
         "url": _download_url,
         "hf_file": _download_hf_file,

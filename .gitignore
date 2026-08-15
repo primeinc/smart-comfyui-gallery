@@ -58,6 +58,12 @@ temp
 
 # AI DAM (WI-31): provisioned model weights and derived caches — never commit
 .AImodels/
+# Stray runtime-named dirs at repo root shadow imports as namespace packages
+/open_clip/
+/torch/
+/transformers/
+/timm/
+/mobile_sam/
 .ai_cache/
 *.gguf
 *.onnx

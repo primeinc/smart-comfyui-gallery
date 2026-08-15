@@ -188,8 +188,9 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="auto", segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(tmp_path, auto_provision=True, semantic_backend="none",
+               visual_backend="none", face_backend="auto",
+               segmenter_backend="none", critic_backend="none")
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     calls = []
@@ -203,15 +204,17 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
     worker._backend_cache["face"] = None  # a cached miss that must be dropped
     worker._backend_failed_at["face"] = 1e18
 
-    worker.start()
-    try:
-        assert _wait_until(lambda: worker.provision_state["state"] == "done")
-        assert calls == [(cfg.models_dir, ["faces"])]
-        assert "face" not in worker._backend_cache  # miss dropped -> re-probe
-        assert worker._backend_failed_at == {}
-        assert _wait_until(lambda: worker.stats["cycles"] > 0)  # never blocked
-    finally:
-        worker.stop(timeout=2.0)
+    # Drive the provisioning path directly (no cycle loop): the loop would
+    # legitimately re-probe and re-cache a miss after the clear, racing the
+    # assertions below. Loop liveness during provisioning is pinned by
+    # test_worker_auto_provision_failure_degrades_and_worker_survives.
+    worker._maybe_start_auto_provision()
+    assert worker._provision_thread is not None
+    worker._provision_thread.join(timeout=5.0)
+    assert worker.provision_state["state"] == "done"
+    assert calls == [(cfg.models_dir, ["faces"])]
+    assert "face" not in worker._backend_cache  # miss dropped -> re-probe
+    assert worker._backend_failed_at == {}
 
 
 def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, monkeypatch):
@@ -221,8 +224,9 @@ def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, mo
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="auto", segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(tmp_path, auto_provision=True, semantic_backend="none",
+               visual_backend="none", face_backend="auto",
+               segmenter_backend="none", critic_backend="none")
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     def refuse(*a, **k):
@@ -384,8 +388,11 @@ def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
     """provision() makes the group loadable end to end: missing runtime
     packages install first, then weights download."""
     events = []
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: None if name in ("torch", "transformers") else object())
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        P.importlib.util, "find_spec",
+        lambda name: None if name in ("torch", "transformers")
+        else SimpleNamespace(origin="stub.py"))
 
     def runner(args):
         events.append(("pip", tuple(args)))
@@ -435,8 +442,11 @@ def test_provision_groups_for_includes_runtime_missing_groups(tmp_path, monkeypa
 
 def test_format_plan_lists_runtime_rows(tmp_path, monkeypatch):
     """The plan shows runtime requirements with present/MISSING state."""
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: None if name == "open_clip" else object())
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        P.importlib.util, "find_spec",
+        lambda name: None if name == "open_clip"
+        else SimpleNamespace(origin="stub.py"))
     plan = P.format_plan(str(tmp_path), ["semantic"])
     assert "present  runtime torch" in plan
     assert "MISSING  runtime open_clip_torch" in plan
@@ -501,8 +511,11 @@ def test_copy_with_progress_reports_running_totals():
 def test_provision_emits_structured_progress_events(tmp_path, monkeypatch):
     """provision() narrates its work: runtime install start/done, then
     artifact start/done, in execution order."""
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: None if name == "transformers" else object())
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        P.importlib.util, "find_spec",
+        lambda name: None if name == "transformers"
+        else SimpleNamespace(origin="stub.py"))
     events = []
     P.provision(str(tmp_path), ["visual"], log=lambda m: None,
                 downloaders=_fake_downloaders({}),
@@ -572,3 +585,38 @@ def test_worker_start_makes_info_logging_visible(tmp_path):
         worker.stop(timeout=2.0)
         root.handlers, pkg.handlers = saved_root, saved_pkg
         pkg.setLevel(saved_level)
+
+
+def test_namespace_package_shadow_counts_as_missing():
+    """A bare directory on sys.path materializes as a namespace package
+    (spec.origin is None); the runtime probe must treat that as NOT
+    installed, or a stray folder suppresses the install and the backend
+    fails later."""
+    from types import SimpleNamespace
+
+    group = next(g for g in P.GROUPS if g.name == "semantic")
+    real = P.importlib.util.find_spec
+
+    def shadowed(name):
+        if name == "open_clip":
+            return SimpleNamespace(origin=None, submodule_search_locations=["/repo/open_clip"])
+        return real(name)
+
+    import unittest.mock as mock
+    with mock.patch.object(P.importlib.util, "find_spec", shadowed):
+        assert ("open_clip", "open_clip_torch") in P.runtime_missing(group)
+
+
+def test_explicitly_constructed_config_never_auto_provisions(tmp_path):
+    """AIConfig() is inert: auto_provision defaults False on the dataclass
+    (from_env flips it on), so tests and embedders constructing configs by
+    hand can never reach the network by accident."""
+    assert AIConfig().auto_provision is False
+    assert AIConfig(enabled=True).auto_provision is False
+
+
+def test_provision_refuses_empty_models_dir():
+    """An empty models_dir would scatter weights relative to the working
+    directory; provision() refuses it outright."""
+    with pytest.raises(P.ProvisionError, match="models_dir is required"):
+        P.provision("", ["faces"], log=lambda m: None)

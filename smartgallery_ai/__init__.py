@@ -54,11 +54,14 @@ class AIConfig:
     critic_backend: str = "auto"
     segmenter_backend: str = "auto"
 
-    # True: the background worker downloads missing model weights once,
-    # asynchronously, on startup (the request path never downloads; network
-    # failure degrades to backends-unavailable). False: strict no-egress —
-    # weights only ever arrive via `python -m smartgallery_ai provision`.
-    auto_provision: bool = True
+    # True: the background worker installs missing runtime packages and
+    # downloads missing model weights once, asynchronously, on startup
+    # (the request path never downloads; network failure degrades to
+    # backends-unavailable). False: strict no-egress. Like `enabled`, the
+    # dataclass default is the INERT value so explicitly constructed
+    # configs (tests) never touch the network; `from_env` flips it on
+    # unless AI_DAM_AUTO_PROVISION=false (opt-out).
+    auto_provision: bool = False
 
     # Tunables (documented in docs/AI_MODELS.md; override via env)
     near_dup_max_distance: int = 8      # max Hamming distance on phash64
