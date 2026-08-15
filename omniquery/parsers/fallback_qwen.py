@@ -21,7 +21,6 @@ file exists -- it never triggers the load.
 
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import time
