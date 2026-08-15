@@ -21,6 +21,7 @@ import logging
 import os
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 from collections import deque
@@ -147,7 +148,13 @@ class _ClickConsoleHandler(logging.Handler):
     """Readable console logging with what the app already ships: click
     (a core dependency) styles a dim HH:MM:SS timestamp and colors
     warnings yellow / errors red, handles Windows consoles, and strips
-    color automatically when output is redirected to a file."""
+    color automatically when output is redirected to a file.
+
+    Windows console handles can go invalid mid-run (observed live:
+    click's _winconsole raising 'Windows error: 6' from the worker
+    thread); the first such failure permanently drops this handler to a
+    plain stderr write instead of spewing a handleError traceback for
+    every subsequent line."""
 
     _LEVEL_COLORS = {
         logging.WARNING: "yellow",
@@ -155,19 +162,30 @@ class _ClickConsoleHandler(logging.Handler):
         logging.CRITICAL: "red",
     }
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._plain = False
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            import click
-            stamp = click.style(
-                time.strftime("%H:%M:%S", time.localtime(record.created)),
-                dim=True)
             message = record.getMessage()
-            color = self._LEVEL_COLORS.get(record.levelno)
-            if color:
-                message = click.style(message, fg=color)
-            click.echo(f"{stamp} {message}")
-        except Exception:  # noqa: BLE001 - logging must never crash the app
+        except Exception:  # noqa: BLE001 - malformed record; report once
             self.handleError(record)
+            return
+        stamp = time.strftime("%H:%M:%S", time.localtime(record.created))
+        if not self._plain:
+            try:
+                import click
+                color = self._LEVEL_COLORS.get(record.levelno)
+                styled = click.style(message, fg=color) if color else message
+                click.echo(f"{click.style(stamp, dim=True)} {styled}")
+                return
+            except Exception:  # noqa: BLE001 - broken console; fall to plain
+                self._plain = True
+        try:
+            sys.stderr.write(f"{stamp} {message}\n")
+        except Exception:  # noqa: BLE001 - logging must never crash the app
+            pass
 
 
 def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
@@ -388,6 +406,10 @@ class AIWorker:
         if not pkg_logger.handlers and not logging.getLogger().handlers:
             pkg_logger.addHandler(_ClickConsoleHandler())
             pkg_logger.setLevel(logging.INFO)
+            # If something configures the root logger LATER (a library
+            # calling basicConfig), propagation would print every line
+            # twice (observed live). We own this logger's console output.
+            pkg_logger.propagate = False
         self._stop_event.clear()
         ref = app_git_ref()
         if ref:

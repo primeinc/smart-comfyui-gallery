@@ -238,10 +238,25 @@ class QwenVlCritic(CriticBackend):
             f"+decomposed-v1")
 
         try:
+            import llama_cpp
             from llama_cpp import Llama
             from llama_cpp.llama_chat_format import Qwen25VLChatHandler
         except Exception as exc:  # noqa: BLE001
             raise BackendUnavailable(f"qwen-vl critic unavailable: {exc}") from exc
+
+        # llama.cpp logs its internals -- including FULL PROMPTS and
+        # per-image encode timings -- to the console via its native log
+        # callback, ignoring verbose=False on newer multimodal builds
+        # (observed live). Install a no-op callback, keeping a reference
+        # on self so ctypes never garbage-collects it mid-call.
+        # AI_DAM_LLAMA_VERBOSE=1 keeps the native logs for debugging.
+        if not os.environ.get("AI_DAM_LLAMA_VERBOSE"):
+            try:
+                self._llama_log_cb = llama_cpp.llama_log_callback(
+                    lambda level, text, user_data: None)
+                llama_cpp.llama_log_set(self._llama_log_cb, None)
+            except Exception:  # noqa: BLE001 - silencing is best-effort
+                pass
         # Full GPU offload by default when the llama.cpp build has CUDA
         # support; a CPU-only build ignores every GPU knob, so this is safe
         # everywhere. AI_DAM_DEVICE=cpu forces 0 layers; =cuda:N pins the

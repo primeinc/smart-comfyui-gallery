@@ -542,3 +542,28 @@ def test_llama_cuda_pin_and_tensor_split_and_partial_layers(tmp_path, monkeypatc
     assert recorded["main_gpu"] == 1
     assert recorded["tensor_split"] == [0.6, 0.4]
     assert recorded["n_gpu_layers"] == 20
+
+
+def test_llama_native_logging_is_silenced_unless_opted_in(tmp_path, monkeypatch):
+    """The ctor installs a no-op llama.cpp log callback (native logs leak
+    full prompts to the console) and keeps a reference on self;
+    AI_DAM_LLAMA_VERBOSE opts back into the native logs."""
+    _touch_qwen_weights(tmp_path)
+    monkeypatch.delenv("AI_DAM_LLAMA_VERBOSE", raising=False)
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    recorded: dict = {}
+    _install_fake_llama(monkeypatch, recorded)
+
+    fake = sys.modules["llama_cpp"]
+    log_sets = []
+    fake.llama_log_callback = lambda fn: ("cb", fn)
+    fake.llama_log_set = lambda cb, user: log_sets.append(cb)
+
+    critic = QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert len(log_sets) == 1
+    assert critic._llama_log_cb is log_sets[0]
+
+    monkeypatch.setenv("AI_DAM_LLAMA_VERBOSE", "1")
+    log_sets.clear()
+    QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert log_sets == []

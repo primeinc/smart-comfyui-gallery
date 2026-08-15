@@ -985,3 +985,62 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
     assert summary["gpus"][1]["vram_used"] == "15020 MiB"
     assert summary["driver"] == "591.86"
     assert summary["torch_index"].endswith("/cu130")
+
+
+def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, capsys):
+    """A broken Windows console handle (click raising OSError) permanently
+    drops the handler to plain stderr writes: the line still lands, no
+    handleError traceback, and click is not retried per line."""
+    import logging
+
+    import click
+
+    from smartgallery_ai.worker import _ClickConsoleHandler
+
+    attempts = []
+
+    def broken_echo(*args, **kwargs):
+        attempts.append(1)
+        raise OSError("Windows error: 6")
+
+    monkeypatch.setattr(click, "echo", broken_echo)
+    handler = _ClickConsoleHandler()
+
+    def rec(msg):
+        return logging.LogRecord(
+            name="smartgallery_ai.worker", level=logging.INFO, pathname=__file__,
+            lineno=1, msg=msg, args=(), exc_info=None)
+
+    handler.emit(rec("[AIWorker] line one"))
+    handler.emit(rec("[AIWorker] line two"))
+
+    err = capsys.readouterr().err
+    assert "[AIWorker] line one" in err and "[AIWorker] line two" in err
+    assert "Traceback" not in err
+    assert attempts == [1]  # click tried once, then permanently plain
+
+
+def test_worker_start_disables_propagation_to_a_late_root_logger(tmp_path):
+    """After start() attaches its own console handler, a root logger
+    configured LATER must not double-print every line (propagate off)."""
+    import logging
+
+    _make_db(str(tmp_path / "g.sqlite"))
+    cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="none",
+               visual_backend="none", face_backend="none",
+               segmenter_backend="none", critic_backend="none")
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
+
+    root = logging.getLogger()
+    pkg = logging.getLogger("smartgallery_ai")
+    saved_root, saved_pkg = root.handlers[:], pkg.handlers[:]
+    saved_level, saved_prop = pkg.level, pkg.propagate
+    root.handlers, pkg.handlers = [], []
+    try:
+        worker.start()
+        assert pkg.propagate is False
+    finally:
+        worker.stop(timeout=2.0)
+        root.handlers, pkg.handlers = saved_root, saved_pkg
+        pkg.setLevel(saved_level)
+        pkg.propagate = saved_prop
