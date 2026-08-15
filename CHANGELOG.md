@@ -28,6 +28,7 @@ The gallery now identifies and parses embedded generation metadata from every ma
 * **Prompt basis:** hash of the parsed positive prompt — identical prompts now cluster across ComfyUI, SwarmUI, A1111, and the rest.
 * **Architecture basis:** for graph-less images, the pipeline identity is checkpoint model + LoRA set.
 * The hash backfill, the in-request trigger, all clustering filters, and the Details-panel cluster badges are de-gated from `has_workflow`; the startup backfill migrates existing rows (one-time, console progress) and fills the searchable prompt field for previously indexed foreign images in the same pass.
+* **`CLUSTER_FOREIGN_ARCH` option** picks the architecture identity for graph-less images: `model` (default — checkpoint + LoRA set, broad clusters) or `pipeline` (parameter-set shape plus every model/LoRA/VAE-valued parameter — SwarmUI forwards generation to backends like ComfyUI, so its parameter set shapes the workflow it generates; seeds/steps/CFG/prompts stay ignored, matching the ComfyUI graph-hash policy). Changing the value re-hashes affected images automatically on the next startup.
 
 ---
 

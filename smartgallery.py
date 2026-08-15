@@ -331,6 +331,18 @@ ENABLE_AI_SEARCH = os.environ.get('ENABLE_AI_SEARCH', 'false').lower() == 'true'
 GENERATE_WAVEFORMS = os.environ.get('GENERATE_WAVEFORMS', 'false').lower() == 'true'
 COMFYUI_SERVER_URL = os.environ.get('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
 
+# Cluster-architecture identity for images without an embedded ComfyUI graph.
+# SwarmUI and friends forward generation to backends like ComfyUI, so their
+# parameter set describes the workflow they generated:
+#   model    -> checkpoint model + LoRA set
+#   pipeline -> parameter-set shape plus every model/LoRA/VAE-valued
+#               parameter, ignoring seeds, steps, CFG, and prompts — the
+#               same policy the ComfyUI graph hash applies
+# Changing this re-hashes affected files automatically on the next startup.
+CLUSTER_FOREIGN_ARCH = os.environ.get('CLUSTER_FOREIGN_ARCH', 'model').strip().lower()
+if CLUSTER_FOREIGN_ARCH not in ('model', 'pipeline'):
+    CLUSTER_FOREIGN_ARCH = 'model'
+
 # ============================================================================
 # END OF USER CONFIGURATION
 # ============================================================================
@@ -10353,25 +10365,59 @@ def upload_collection_note():
 # --- SMART WORKFLOW FILES SEARCH, SUGGESTIONS & CLUSTERING HASHES ---
 import difflib
 
+# Per-image knobs that never define pipeline identity; mirrors the ComfyUI
+# graph hash's policy of ignoring seeds, steps, CFG, prompts, and ephemeral
+# widget values. Keys containing "time" (generation_time, prep_time) are
+# excluded by pattern.
+_FOREIGN_EPHEMERAL_KEYS = {
+    'seed', 'variationseed', 'variationseedstrength', 'steps', 'cfg',
+    'cfgscale', 'images', 'batchsize', 'denoise', 'clip_skip', 'size',
+    'model_hash', 'version', 'swarm_version', 'date', 'original_prompt',
+}
+_FOREIGN_MODEL_KEY_RE = re.compile(r'model|lora|vae|refiner|controlnet', re.I)
+
+
 def _foreign_cluster_hashes(parsed):
     """Cluster identities for images whose metadata names a non-ComfyUI tool
-    (SwarmUI, A1111/Forge, Fooocus, ...). There is no node graph to hash, so
-    the architecture analog is the generation pipeline identity: checkpoint
-    model + LoRA set. The prompt hash uses the same normalization as the
-    ComfyUI path so identical prompts cluster across tools."""
+    (SwarmUI, A1111/Forge, Fooocus, ...). There is no node graph to hash;
+    CLUSTER_FOREIGN_ARCH picks the architecture analog:
+      model    -> checkpoint model + LoRA set
+      pipeline -> which parameters are present (SwarmUI's parameter set shapes
+                  the ComfyUI workflow it generates) + model-valued parameters
+    The prompt hash uses the same normalization as the ComfyUI path so
+    identical prompts cluster across tools."""
     if parsed is None:
         return '', ''
     prompt_hash = ''
     if parsed.positive:
         prompt_hash = hashlib.md5(parsed.positive.strip().lower().encode('utf-8')).hexdigest()
-    model = str(parsed.params.get('model') or '').strip().lower()
-    if not model:
-        return '', prompt_hash
     loras = {m.group(1).strip().lower() for m in re.finditer(r'<lora:([^:>]+)', parsed.positive or '')}
     for key in ('loras', 'used_loras', 'lora_hashes', 'Lora hashes', 'used models'):
         value = parsed.extra.get(key)
         if value:
             loras.add(str(value).strip().lower())
+
+    if CLUSTER_FOREIGN_ARCH == 'pipeline':
+        keys = []
+        model_values = set()
+        for key, value in {**parsed.extra, **parsed.params}.items():
+            k = str(key).strip().lower()
+            if k in _FOREIGN_EPHEMERAL_KEYS or 'time' in k:
+                continue
+            keys.append(k)
+            if _FOREIGN_MODEL_KEY_RE.search(k):
+                model_values.add(str(value).strip().lower())
+        if not keys and not loras:
+            return '', prompt_hash
+        identity = json.dumps(
+            {'keys': sorted(keys), 'models': sorted(model_values), 'loras': sorted(loras)},
+            sort_keys=True,
+        )
+        return hashlib.md5(identity.encode('utf-8')).hexdigest(), prompt_hash
+
+    model = str(parsed.params.get('model') or '').strip().lower()
+    if not model:
+        return '', prompt_hash
     identity = json.dumps({'model': model, 'loras': sorted(loras)}, sort_keys=True)
     return hashlib.md5(identity.encode('utf-8')).hexdigest(), prompt_hash
 
@@ -10743,9 +10789,29 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
 
 def check_and_update_workflow_hashes(conn):
     """
-    Tests a few existing hashes against the current algorithm. 
+    Tests a few existing hashes against the current algorithm.
     If the algorithm was updated, it forces a complete recalculation of all hashes.
+    Also re-hashes foreign (graph-less) images when the configured
+    CLUSTER_FOREIGN_ARCH identity mode differs from the one their hashes
+    were computed under.
     """
+    stored = conn.execute(
+        "SELECT value FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'"
+    ).fetchone()
+    stored_mode = stored[0] if stored else 'model'
+    if stored_mode != CLUSTER_FOREIGN_ARCH:
+        print(f"{Colors.YELLOW}INFO: Foreign architecture identity mode changed "
+              f"({stored_mode} -> {CLUSTER_FOREIGN_ARCH}). Re-indexing non-ComfyUI images...{Colors.RESET}")
+        conn.execute(
+            "UPDATE files SET workflow_hash = '', prompt_hash = '', hash_failed = 0 "
+            "WHERE has_workflow = 0 AND type IN ('image', 'animated_image')"
+        )
+    conn.execute(
+        "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('foreign_arch_identity_mode', ?, ?)",
+        (CLUSTER_FOREIGN_ARCH, time.time()),
+    )
+    conn.commit()
+
     sample = conn.execute("SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3").fetchall()
     
     needs_update = False

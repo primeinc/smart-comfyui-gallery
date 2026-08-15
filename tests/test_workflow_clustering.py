@@ -256,6 +256,17 @@ def _make_swarm_png(tmp_path, name, prompt, model):
     return str(path).replace('\\', '/')
 
 
+def _make_swarm_png_params(tmp_path, name, params):
+    import json
+    from PIL import Image
+    from PIL.PngImagePlugin import PngInfo
+    info = PngInfo()
+    info.add_text("parameters", json.dumps({"sui_image_params": params}))
+    path = tmp_path / name
+    Image.new("RGB", (8, 8), (30, 60, 90)).save(path, pnginfo=info)
+    return str(path).replace('\\', '/')
+
+
 def test_compute_hashes_swarmui_file_without_graph(sg, tmp_path):
     # Arrange: two SwarmUI files, same prompt, different models.
     p1 = _make_swarm_png(tmp_path, "s1.png", "a red fox", "modelA")
@@ -270,6 +281,74 @@ def test_compute_hashes_swarmui_file_without_graph(sg, tmp_path):
     assert wf1 and pr1
     assert pr1 == pr2
     assert wf1 != wf2
+
+
+_PIPE_BASE = {
+    "prompt": "a fox", "model": "modelP", "seed": 1, "steps": 20,
+    "cfgscale": 7.0, "width": 64, "height": 64,
+}
+
+
+def test_pipeline_identity_follows_param_shape(sg, tmp_path, monkeypatch):
+    """CLUSTER_FOREIGN_ARCH=pipeline: SwarmUI's parameter set shapes the
+    ComfyUI workflow it generates, so parameter presence is architecture
+    while seeds/steps/CFG are not."""
+    # Arrange
+    monkeypatch.setattr(sg, 'CLUSTER_FOREIGN_ARCH', 'pipeline')
+    p1 = _make_swarm_png_params(tmp_path, "p1.png", dict(_PIPE_BASE))
+    p2 = _make_swarm_png_params(tmp_path, "p2.png", dict(_PIPE_BASE, seed=999, steps=50, cfgscale=3.5))
+    p3 = _make_swarm_png_params(tmp_path, "p3.png", dict(_PIPE_BASE, refinermodel="refinerX"))
+
+    # Act
+    wf1, _ = sg.compute_workflow_hashes(p1)
+    wf2, _ = sg.compute_workflow_hashes(p2)
+    wf3, _ = sg.compute_workflow_hashes(p3)
+
+    # Assert
+    assert wf1 and wf1 == wf2  # per-image knobs are not architecture
+    assert wf1 != wf3          # an extra pipeline stage is
+
+
+def test_model_identity_ignores_param_shape(sg, tmp_path):
+    # Arrange: default mode — same checkpoint means same architecture even
+    # when one image adds a refiner parameter.
+    p1 = _make_swarm_png_params(tmp_path, "m1.png", dict(_PIPE_BASE))
+    p3 = _make_swarm_png_params(tmp_path, "m3.png", dict(_PIPE_BASE, refinermodel="refinerX"))
+
+    # Act / Assert
+    assert sg.compute_workflow_hashes(p1)[0] == sg.compute_workflow_hashes(p3)[0]
+
+
+def test_mode_change_resets_foreign_hashes_once(sg, monkeypatch):
+    # Arrange: one hashed foreign row, one hashed ComfyUI row; stored mode 'model'.
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'modef', has_workflow=0, workflow_hash='oldF', prompt_hash='oldP')
+        _insert_file(conn, 'modec', has_workflow=1, workflow_hash='comfyH', prompt_hash='comfyP')
+        conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('foreign_arch_identity_mode', 'model', 0)")
+        conn.commit()
+        monkeypatch.setattr(sg, 'CLUSTER_FOREIGN_ARCH', 'pipeline')
+        monkeypatch.setattr(sg, 'backfill_unhashed_workflows', lambda conn=None, force_all=False: 0)
+
+        # Act: mode differs from stored -> foreign hashes reset, mode recorded.
+        sg.check_and_update_workflow_hashes(conn)
+
+        # Assert
+        foreign = conn.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (_PREFIX + 'modef',)).fetchone()
+        comfy = conn.execute("SELECT workflow_hash FROM files WHERE id = ?", (_PREFIX + 'modec',)).fetchone()
+        stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'").fetchone()[0]
+        assert (foreign['workflow_hash'], foreign['prompt_hash']) == ('', '')
+        assert comfy['workflow_hash'] == 'comfyH'
+        assert stored == 'pipeline'
+
+        # Act again with the mode unchanged: no reset.
+        conn.execute("UPDATE files SET workflow_hash = 'newF' WHERE id = ?", (_PREFIX + 'modef',))
+        conn.commit()
+        sg.check_and_update_workflow_hashes(conn)
+
+        # Assert + restore the stored mode for the shared session DB.
+        assert conn.execute("SELECT workflow_hash FROM files WHERE id = ?", (_PREFIX + 'modef',)).fetchone()[0] == 'newF'
+        conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('foreign_arch_identity_mode', 'model', 0)")
+        conn.commit()
 
 
 def test_global_clustering_includes_foreign_files_and_bases_differ(sg):
