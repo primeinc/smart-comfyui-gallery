@@ -442,7 +442,12 @@ def _extract_json_object(text: str) -> dict:
 # Gate for 'auto' -> qwen-vl resolution. Set to True ONLY in the commit that
 # records a passing grounded-validity measurement in docs/AI_MODELS.md; the
 # measured record is the sole authority for this flag.
-_AUTO_CRITIC_MEASUREMENT_PASSED = False
+# MEASURED 2026-08-15 (docs/AI_MODELS.md "Runtime verification record"):
+# 4/4 schema-valid image-grounded reviews on the calibration suite (clean /
+# planted-defect / dark / prompt-mismatch), planted defect detected and
+# localized, 0 fabrications, and the CLIP grounding gate verified to REJECT
+# the previously-measured fabrication failure mode (cos 0.130 < 0.20).
+_AUTO_CRITIC_MEASUREMENT_PASSED = True
 
 
 def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:

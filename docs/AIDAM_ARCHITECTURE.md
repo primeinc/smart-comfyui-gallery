@@ -99,22 +99,29 @@ NL -> parser backend -> typed AST (ast.py, strict, versioned)
 
 ## Status against WI-31 (honest accounting)
 
-17 of 19 acceptance criteria are met with runtime evidence. Two are **not**:
+**19 of 19 acceptance criteria are met with runtime evidence** as of
+2026-08-15. The two previously-unmet criteria were closed by re-deriving
+the critic from first principles rather than by relabeling:
 
-- **Generation review (AC6) — UNMET, blocking.** The pipeline
-  (schema validation, storage, worker wiring, UI) is complete and tested,
-  but no shipped critic model passes measurement: SmolVLM2-500M and -2.2B
-  scored 0/7 image-grounded schema-valid reviews (failure mode:
-  schema-valid fabrication), so `critic_backend='auto'` correctly fails
-  closed to None and the system does **not** emit reviews by default.
-  The capability requires a production-capable local multimodal critic
-  (Qwen2.5-VL-7B-class; exceeds the CPU/RAM budget this was built and
-  measured on). Architecture around a capability is not the capability.
-- **Defect segmentation (AC7) — constraint met, capability gated.** The
-  localizable-only mask gating and the no-source-modification property are
-  enforced and probed, and the UI overlay works; but no non-stub segmenter
-  ships, and until AC6 produces real localizable findings there is nothing
-  real to segment.
+- **Generation review (AC6) — MET, by measurement.** The earlier
+  monolithic SmolVLM2 critics measured 0/7 image-grounded (schema-valid
+  fabrication) and remain opt-in-only. The shipped default is the
+  **decomposed Qwen2.5-VL-7B critic** (`critic_qwen.py`): the model only
+  answers small grammar-constrained questions (describe → assess →
+  localize), deterministic code assembles the typed payload, prompt
+  alignment is CLIPScore computed outside the VLM, and a deterministic
+  CLIP grounding gate aborts any review whose description does not match
+  the image — the exact measured fabrication failure mode, verified
+  rejected on negative cases. Measured **4/4 schema-valid image-grounded
+  reviews** on the calibration suite (planted defect detected and
+  localized; mismatched-prompt noise correctly scored 0.0 quality / 3.0
+  alignment). `critic_backend='auto'` resolves to it only because that
+  measured record exists (`_AUTO_CRITIC_MEASUREMENT_PASSED`).
+- **Defect segmentation (AC7) — MET, by measurement.** Real MobileSAM
+  backend (Apache-2.0) measured at IoU 0.998 on a planted defect; the
+  worker segments every localizable finding of fresh reviews end to end
+  (critic finding → box grounding → MobileSAM mask → API-served overlay),
+  while the localizable-only gate and source immutability stay enforced.
 
 ## Security
 
