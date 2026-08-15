@@ -100,8 +100,6 @@ class _LoadWatch(threading.Thread):
             external = max(0.0, (dkern - didle) + duser - (cur_proc - prev_proc_old))
             frac = external / total
             self.samples.append(frac)
-            if frac > self.warn_frac:
-                print(f"[load] external CPU load {frac:.0%} during timing", flush=True)
 
     def stop(self) -> dict:
         self._stop_evt.set()
@@ -412,7 +410,7 @@ def main() -> None:
     norms = np.linalg.norm(m, axis=1, keepdims=True)
     norms[norms == 0.0] = 1.0
     m = (m / norms).astype(np.float32)
-    print(f"source={source}  vectors={m.shape[0]}x{m.shape[1]}  threshold={args.threshold}")
+    print(f"{m.shape[0]:,} vectors ({m.shape[1]}-d), threshold {args.threshold} — {source}")
 
     backends = {}
     try:
@@ -481,8 +479,8 @@ def main() -> None:
             "largest_cluster": sizes[0] if sizes else 0,
         }
         print(
-            f"{name:10s} graph {best * 1e3:8.1f} ms | cw {cw_time * 1e3:8.1f} ms | "
-            f"edges={len(graph[1]):,} | clusters={len(sizes)} | top={sizes[0] if sizes else 0}"
+            f"  {name:10s} {best * 1e3:7.0f} ms graph + {cw_time * 1e3:5.0f} ms clustering",
+            flush=True,
         )
 
     # Float contract, not bitwise fantasy: cuBLAS/BLAS reduce dot products in
@@ -529,31 +527,41 @@ def main() -> None:
             "divergent_edges_all_at_threshold_boundary": boundary_ok,
             "clustering": same_clusters,
         }
-        print(
-            f"{ref} == {other}: shared max_weight_delta={max_w_delta:.2e} | "
-            f"divergent_edges={n_divergent} (all at boundary: {boundary_ok}) | "
-            f"clustering={same_clusters}"
-        )
         if not (weights_ok and boundary_ok and same_clusters):
-            raise SystemExit("BACKEND DIVERGENCE — evidence run FAILED")
+            print(
+                f"FAILED: {ref} and {other} disagree — max weight delta "
+                f"{max_w_delta:.2e}, {n_divergent} divergent edges "
+                f"(boundary-only: {boundary_ok}), clustering equal: {same_clusters}"
+            )
+            raise SystemExit(1)
+
+    sizes = sorted((len(g) for g in ref_part), reverse=True)
+    agreement = f" — identical across all {len(names)} backends" if len(names) > 1 else ""
+    print(
+        f"  result: {len(ref_cols):,} edges, {len(sizes):,} clusters "
+        f"(largest {sizes[0] if sizes else 0}){agreement}"
+    )
 
     record["load"] = watch.stop()
     if record["load"].get("samples"):
         print(
-            f"[load] external CPU during timing: mean "
-            f"{record['load']['mean_external_frac']:.0%}, peak "
-            f"{record['load']['max_external_frac']:.0%} (recorded in results)",
-            flush=True,
+            f"  background load: avg {record['load']['mean_external_frac']:.0%}, "
+            f"peak {record['load']['max_external_frac']:.0%}"
         )
 
     if ds_names:
         record["sanity"] = sanity_report(labels_by_backend[ref], ds_names, identities)
-        print("sanity:", json.dumps(record["sanity"], indent=2))
+        s = record["sanity"]
+        print(
+            f"  sanity: top cluster holds {s['top_cluster_share']:.1%} of faces; "
+            f"{s['labeled_identities']} labeled identities, "
+            f"purity {s['mean_identity_purity']}"
+        )
 
     os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
     with open(RESULTS_PATH, "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2)
-    print(f"wrote {RESULTS_PATH}")
+    print(f"  details: {os.path.relpath(RESULTS_PATH)}")
 
 
 if __name__ == "__main__":

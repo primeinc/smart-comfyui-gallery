@@ -1,8 +1,8 @@
 {
-  "source": "images(C:/Users/will/dev/sg-lab/hf-datasets)",
-  "threshold": 0.5,
+  "source": "synthetic(n=22712,d=128,centers=300,seed=0)",
+  "threshold": 0.6,
   "vectors": [
-    12713,
+    22712,
     128
   ],
   "machine": {
@@ -14,38 +14,38 @@
   "backends": {
     "torch-cuda": {
       "runtime": "torch 2.13.0+cu130 on NVIDIA GeForce RTX 3070 Ti",
-      "graph_ms": 19.3,
-      "chinese_whispers_ms": 765.5,
-      "edges": 133460,
-      "clusters": 7217,
-      "largest_cluster": 2365
+      "graph_ms": 75.1,
+      "chinese_whispers_ms": 1597.9,
+      "edges": 1720054,
+      "clusters": 300,
+      "largest_cluster": 102
     },
     "faiss-cpu": {
       "runtime": "faiss 1.15.0 omp=8 wait_policy=PASSIVE",
-      "graph_ms": 156.0,
-      "chinese_whispers_ms": 763.3,
-      "edges": 133460,
-      "clusters": 7217,
-      "largest_cluster": 2365
+      "graph_ms": 682.7,
+      "chinese_whispers_ms": 1240.2,
+      "edges": 1720054,
+      "clusters": 300,
+      "largest_cluster": 102
     },
     "numpy": {
       "runtime": "numpy 2.5.2",
-      "graph_ms": 1234.5,
-      "chinese_whispers_ms": 996.9,
-      "edges": 133460,
-      "clusters": 7217,
-      "largest_cluster": 2365
+      "graph_ms": 3680.6,
+      "chinese_whispers_ms": 1205.1,
+      "edges": 1720054,
+      "clusters": 300,
+      "largest_cluster": 102
     }
   },
   "equivalence": {
     "torch-cuda==faiss-cpu": {
-      "shared_edges_max_weight_delta": 4.172325134277344e-07,
+      "shared_edges_max_weight_delta": 7.152557373046875e-07,
       "divergent_edges": 0,
       "divergent_edges_all_at_threshold_boundary": true,
       "clustering": true
     },
     "torch-cuda==numpy": {
-      "shared_edges_max_weight_delta": 4.172325134277344e-07,
+      "shared_edges_max_weight_delta": 7.152557373046875e-07,
       "divergent_edges": 0,
       "divergent_edges_all_at_threshold_boundary": true,
       "clustering": true
@@ -53,25 +53,10 @@
   },
   "load": {
     "supported": true,
-    "samples": 7,
-    "max_external_frac": 0.355,
-    "mean_external_frac": 0.198,
+    "samples": 19,
+    "max_external_frac": 0.662,
+    "mean_external_frac": 0.254,
     "warn_frac": 0.1,
     "contaminated": true
-  },
-  "sanity": {
-    "faces_per_dataset": {
-      "Black_People_Face_Recognition": 111,
-      "IndoorSceneRecognition": 1638,
-      "caucasian-people-kyc-photo-dataset": 356,
-      "people": 7084,
-      "people_detection": 542,
-      "real_people_3000": 2982
-    },
-    "clusters": 7217,
-    "top_cluster_share": 0.186,
-    "labeled_identities": 31,
-    "identities_fully_grouped": 4,
-    "mean_identity_purity": 0.5211
   }
 }

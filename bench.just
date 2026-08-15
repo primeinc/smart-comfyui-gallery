@@ -17,16 +17,16 @@ default:
 
 # diagnostic: current CPU busy fraction and per-GPU utilization
 load:
-    -"$python" benchmarks/faiss_graph_evidence.py --check-idle
+    @-"$python" benchmarks/faiss_graph_evidence.py --check-idle
 
 # synthetic corpus at production shape (seeded, reproducible)
 faiss:
-    "$python" benchmarks/faiss_graph_evidence.py --omp-threads "$omp"
+    @"$python" benchmarks/faiss_graph_evidence.py --omp-threads "$omp"
 
 # real embeddings from a gallery cache DB (opened read-only)
 faiss-db db:
-    "$python" benchmarks/faiss_graph_evidence.py --source db --db "$1" --omp-threads "$omp"
+    @"$python" benchmarks/faiss_graph_evidence.py --source db --db "$1" --omp-threads "$omp"
 
 # real image corpus end to end (faces detected+embedded, cached in the npz)
 faiss-images dir models cache thr='0.5':
-    "$python" benchmarks/faiss_graph_evidence.py --source images --dir "$1" --models-dir "$2" --cache "$3" --threshold "$4" --omp-threads "$omp"
+    @"$python" benchmarks/faiss_graph_evidence.py --source images --dir "$1" --models-dir "$2" --cache "$3" --threshold "$4" --omp-threads "$omp"
