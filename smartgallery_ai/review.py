@@ -460,15 +460,31 @@ class SmolVlmCritic(CriticBackend):
 def _extract_json_object(text: str) -> dict:
     """Pull the first balanced JSON object out of model output. Raises
     ValueError when there is none -- the caller treats that as a failed
-    review, never as data."""
+    review, never as data.
+
+    Brace counting is string-aware: braces (and escaped quotes) inside
+    JSON string values do not affect nesting depth, so a summary
+    containing '}' still parses."""
     start = text.find("{")
     if start < 0:
         raise ValueError(f"critic output contains no JSON object: {text[:120]!r}")
     depth = 0
+    in_string = False
+    escaped = False
     for i in range(start, len(text)):
-        if text[i] == "{":
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch == "{":
             depth += 1
-        elif text[i] == "}":
+        elif ch == "}":
             depth -= 1
             if depth == 0:
                 return json.loads(text[start:i + 1])

@@ -186,18 +186,20 @@ def test_extract_json_object_tolerates_prose_prefix_and_suffix():
     assert _extract_json_object(text) == {"quality_score": 6, "meta": {"nested": True}}
 
 
-def test_extract_json_object_brace_inside_string_currently_misparses():
-    """CURRENT BEHAVIOR: a '}' inside a JSON string value derails the brace counter, so valid JSON raises ValueError.
+def test_extract_json_object_braces_inside_string_values_parse():
+    """Braces inside JSON string values do not affect nesting: the full
+    object parses and the brace-bearing string survives intact."""
+    text = 'noise {"summary": "brace } inside { here", "quality_score": 5} tail'
+    obj = _extract_json_object(text)
+    assert obj == {"summary": "brace } inside { here", "quality_score": 5}
 
-    Documented, not endorsed: _extract_json_object counts braces without
-    string-awareness, so a legitimate summary containing '}' truncates the
-    candidate early and json.loads fails. The caller treats the ValueError
-    as a failed review (degradation, not garbage), but this is a real
-    parser limitation.
-    """
-    text = '{"summary": "brace } inside", "quality_score": 5}'
-    with pytest.raises(ValueError):
-        _extract_json_object(text)
+
+def test_extract_json_object_escaped_quote_inside_string_parses():
+    """An escaped quote inside a string value does not terminate the
+    string, so a following brace is still treated as content."""
+    text = r'{"summary": "she said \"}\" loudly", "quality_score": 4}'
+    obj = _extract_json_object(text)
+    assert obj == {"summary": 'she said "}" loudly', "quality_score": 4}
 
 
 # --- StubCritic heuristic branches -------------------------------------------
