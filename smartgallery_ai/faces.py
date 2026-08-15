@@ -441,9 +441,8 @@ def _chinese_whispers(graph: tuple, sweeps: int = 20) -> list:
     id (np.unique returns labels ascending and np.argmax takes the first
     maximum), so the result is a pure function of the graph.
 
-    Replaces single-linkage connected components, whose transitive chaining
-    collapsed dense generated-face sets into one mega-cluster (observed
-    live: 97% of all faces in a single cluster).
+    Single-linkage connected components are unsuitable here: transitive
+    chaining merges dense look-alike sets into one cluster.
     """
     indptr, cols, weights = graph
     n = len(indptr) - 1
@@ -517,12 +516,11 @@ def cluster_faces(
 
     Loads every `ai_face_instances` row for that model/version with a
     non-null embedding, builds a cosine-similarity graph (edge iff cosine
-    >= `threshold`; backend per AI_DAM_FACE_GRAPH_BACKEND — torch CUDA,
-    FAISS CPU range_search, or chunked NumPy — recorded in cluster params
-    as `graph_backend`), and groups it with
-    deterministic chinese-whispers label propagation — NOT connected
-    components, whose single-linkage chaining collapses dense generated
-    faces into one mega-cluster. Groups with >= `min_cluster_size` members
+    >= `threshold`; backend per AI_DAM_FACE_GRAPH_BACKEND, recorded in
+    cluster params as `graph_backend`), and groups it with deterministic
+    chinese-whispers label propagation. See docs/FACE_CLUSTERING.md for
+    backends, thresholds, and measured behavior.
+    Groups with >= `min_cluster_size` members
     become cluster rows (centroid = L2-normalized mean of member
     embeddings); every other instance's `cluster_id` is left/set NULL. A
     face is clustered independently per instance, so a file with two faces
