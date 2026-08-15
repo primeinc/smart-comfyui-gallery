@@ -64,6 +64,7 @@ temp
 .sqlite_cache/
 .thumbnails_cache/
 .omniquery/
+.coverage
 # Benchmark scratch stays out, but the evidence reports that shipped
 # constants are derived from must be committed and reviewable.
 benchmarks/results/*
