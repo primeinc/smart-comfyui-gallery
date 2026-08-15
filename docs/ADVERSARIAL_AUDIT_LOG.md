@@ -78,13 +78,14 @@ regression test (**FIXED**, = #5), undeclared MobileSAM runtime dependency
 | O8 | "today/yesterday/this week/this month" implemented as rolling windows; benchmark certifies the bug | **FIXED** | Heuristic resolves calendar vocabulary to local calendar boundaries from the injected clock (bare-date values; ISO Monday weeks); corpus entry now uses date placeholders the harness resolves from the same clock; boundary tests incl. month transition. |
 
 Verdict preamble ("438 automated tests claim has no independent run
-attached"): **OPEN — externally blocked.** A GitHub Actions workflow
-(`.github/workflows/tests.yml`) is committed and triggers on every
-push/PR, but every run on this fork so far has failed at startup with the
-account's billing lock — no runner assigned, zero steps executed. The
-workflow existing is NOT independent verification; this finding stays
-open until an actual CI execution completes, which requires the
-repository owner to clear the Actions billing/enablement block.
+attached"): **CLOSED — owner decision (2026-08-15).** A GitHub Actions
+workflow was committed and triggered on every push/PR, but every run on
+this fork failed at startup with the account's billing lock (no runner
+assigned, zero steps executed). The repository owner has ruled out
+enabling GitHub Actions for this repository, so the workflow was removed
+— it produced only a failing check pair per push and could never provide
+the independent run. All test counts in this record are local runs;
+independent verification, if ever wanted, needs a different CI provider.
 
 ## Round: owner adversarial re-review of the repair delta (63841a5..79074db, 6 findings)
 
