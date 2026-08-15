@@ -10757,8 +10757,10 @@ _BACKFILL_PROCESS_THRESHOLD = 64
 def backfill_unhashed_workflows(conn=None, force_all=False):
     """
     Auto-migrates existing files in DB with real-time console progress.
-    Fast parallel execution, safe, non-destructive.
+    Fast parallel execution, safe, non-destructive. Sets the state 'aborted'
+    flag on any incomplete run so completion hooks don't fire.
     """
+    _CLUSTER_BACKFILL_STATE['aborted'] = False
     close_conn = False
     if conn is None:
         conn = get_db_connection()
@@ -10845,6 +10847,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
             # A crashed worker pool must not mass-mark the uncollected rows as
             # failed: write what was collected, leave the rest pending so the
             # next trigger resumes them.
+            _CLUSTER_BACKFILL_STATE['aborted'] = True
             print(f"\n{Colors.YELLOW}WARN: [Clustering] Worker pool died mid-run; "
                   f"{len(results)} results kept, the rest stay pending.{Colors.RESET}", flush=True)
 
@@ -10874,6 +10877,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         print(f"{Colors.GREEN}SUCCESS: [Clustering] Successfully indexed {len(results)}/{total_unhashed} files!{Colors.RESET}", flush=True)
         return len(results)
     except Exception as e:
+        _CLUSTER_BACKFILL_STATE['aborted'] = True
         print(f"ERROR in backfill_unhashed_workflows: {e}")
         return 0
     finally:
@@ -10888,13 +10892,20 @@ _CLUSTER_BACKFILL_STATE = {'running': False, 'done': 0, 'total': 0}
 _CLUSTER_BACKFILL_LOCK = threading.Lock()
 
 
-def ensure_cluster_backfill_async(force_all=False):
+def ensure_cluster_backfill_async(force_all=False, on_complete=None):
     """Run the cluster-hash backfill on a daemon thread unless one is already
     in flight; returns True when a new run was started. The backfill is
     idempotent and convergent (pending = both hashes empty and not failed),
     so a request that arrives while a run is active can simply be dropped —
     the active run picks those rows up, and the next trigger catches any
-    stragglers."""
+    stragglers.
+
+    `on_complete` fires only after a run that finished WITHOUT aborting
+    (no worker-pool death, no top-level error) — callers use it to record
+    "this migration actually completed" markers. A marker written before
+    completion turns an interrupted migration into a silently skipped one
+    (observed live: models_hash empty across the gallery with the schema
+    marker claiming done)."""
     with _CLUSTER_BACKFILL_LOCK:
         if _CLUSTER_BACKFILL_STATE['running']:
             return False
@@ -10905,6 +10916,8 @@ def ensure_cluster_backfill_async(force_all=False):
     def _run():
         try:
             backfill_unhashed_workflows(force_all=force_all)
+            if on_complete is not None and not _CLUSTER_BACKFILL_STATE.get('aborted'):
+                on_complete()
         finally:
             with _CLUSTER_BACKFILL_LOCK:
                 _CLUSTER_BACKFILL_STATE['running'] = False
@@ -10916,29 +10929,44 @@ def ensure_cluster_backfill_async(force_all=False):
 # Version of the cluster-hash column scheme. Bump when a hash's meaning or
 # coverage changes (not just the ComfyUI graph algorithm, which the sampling
 # check below detects on its own) so existing rows are recomputed once.
-# 2 = three-hash scheme: workflow_hash (graph / foreign pipeline shape),
-#     prompt_hash, models_hash.
-CLUSTER_HASH_SCHEMA = '2'
+# 3 = three-hash scheme: workflow_hash (graph / foreign pipeline shape),
+#     prompt_hash, models_hash. ('2' was the same scheme, but the old code
+#     recorded the marker BEFORE the migration ran, so a '2' marker can sit
+#     on a DB whose models_hash was never filled — '3' re-runs those once.)
+CLUSTER_HASH_SCHEMA = '3'
+
+
+def _write_cluster_schema_marker():
+    """Record that the CLUSTER_HASH_SCHEMA migration ran to completion.
+    Only ever called from the backfill's on_complete hook."""
+    try:
+        with get_db_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('cluster_hash_schema', ?, ?)",
+                (CLUSTER_HASH_SCHEMA, time.time()),
+            )
+            conn.commit()
+        print(f"{Colors.GREEN}SUCCESS: [Clustering] Hash scheme {CLUSTER_HASH_SCHEMA} migration complete.{Colors.RESET}", flush=True)
+    except Exception as e:
+        print(f"ERROR recording cluster schema marker: {e}")
 
 
 def check_and_update_workflow_hashes(conn):
     """
     Tests a few existing hashes against the current algorithm.
     If the algorithm was updated, it forces a complete recalculation of all hashes.
-    A CLUSTER_HASH_SCHEMA bump forces the same full recalculation.
+    A CLUSTER_HASH_SCHEMA bump forces the same full recalculation; the marker
+    is recorded only when that recalculation completes, so an interrupted
+    migration re-runs on the next startup instead of being silently skipped.
     """
     stored = conn.execute(
         "SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'"
     ).fetchone()
     if (stored[0] if stored else None) != CLUSTER_HASH_SCHEMA:
         conn.execute("DELETE FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'")
-        conn.execute(
-            "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('cluster_hash_schema', ?, ?)",
-            (CLUSTER_HASH_SCHEMA, time.time()),
-        )
         conn.commit()
         print(f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities in the background...{Colors.RESET}")
-        ensure_cluster_backfill_async(force_all=True)
+        ensure_cluster_backfill_async(force_all=True, on_complete=_write_cluster_schema_marker)
         return
 
     sample = conn.execute("SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3").fetchall()

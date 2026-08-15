@@ -8083,3 +8083,8 @@ body.sidebar-minimized .sidebar-user-row {
 
 body.sidebar-minimized .sidebar-ai-hub { display: none; }
 .sidebar.nav-collapsed .sidebar-ai-hub { display: none; }
+
+/* Thumbnail info block: permanently hidden. List view is exempt only
+   because it flattens .item-info with display:contents to use its children
+   as row columns (see list_view.html), which outranks this selector. */
+div.item-info { display: none !important; }

@@ -319,7 +319,10 @@ def test_workflow_identity_follows_param_shape(sg, tmp_path):
     assert md1 == md2 == md3   # model set: same checkpoint, no lora change
 
 
-def test_schema_bump_forces_full_rehash_once(sg, monkeypatch):
+def test_schema_bump_marker_written_only_on_completion(sg, monkeypatch):
+    """Regression: the marker used to be written BEFORE the migration ran,
+    so a killed migration was skipped forever (models_hash empty gallery-wide
+    with the marker claiming done)."""
     # Arrange: a hashed row and a stale schema marker.
     with sg.get_db_connection() as conn:
         _insert_file(conn, 'schemaf', has_workflow=0, workflow_hash='oldF', prompt_hash='oldP')
@@ -327,17 +330,44 @@ def test_schema_bump_forces_full_rehash_once(sg, monkeypatch):
         conn.commit()
         calls = []
         monkeypatch.setattr(sg, 'ensure_cluster_backfill_async',
-                            lambda force_all=False: calls.append(force_all) or True)
+                            lambda force_all=False, on_complete=None: calls.append((force_all, on_complete)) or True)
 
-        # Act: marker mismatch -> one forced full re-hash, marker updated.
+        # Act: marker mismatch -> forced re-hash requested; marker NOT yet earned.
         sg.check_and_update_workflow_hashes(conn)
-        # Act again: marker current -> only the normal incremental backfill.
-        sg.check_and_update_workflow_hashes(conn)
+        assert len(calls) == 1 and calls[0][0] is True
+        assert conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()[0] == 'stale'
 
-        # Assert
-        assert calls == [True, False]
-        stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()[0]
-        assert stored == sg.CLUSTER_HASH_SCHEMA
+        # The completion hook records it; the next check runs the normal backfill.
+        calls[0][1]()
+        sg.check_and_update_workflow_hashes(conn)
+        assert conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()[0] == sg.CLUSTER_HASH_SCHEMA
+        assert calls[1] == (False, None)
+
+
+def test_backfill_abort_suppresses_completion_hook(sg, monkeypatch):
+    import time as _time
+
+    fired = []
+
+    def _wait_done():
+        for _ in range(100):
+            if not sg._CLUSTER_BACKFILL_STATE['running']:
+                return
+            _time.sleep(0.05)
+
+    # An aborted run must not fire the completion hook...
+    monkeypatch.setattr(sg, 'backfill_unhashed_workflows',
+                        lambda conn=None, force_all=False: sg._CLUSTER_BACKFILL_STATE.update(aborted=True) or 0)
+    assert sg._real_ensure(force_all=True, on_complete=lambda: fired.append('aborted-run')) is True
+    _wait_done()
+    assert fired == []
+
+    # ...and a clean run must.
+    monkeypatch.setattr(sg, 'backfill_unhashed_workflows',
+                        lambda conn=None, force_all=False: sg._CLUSTER_BACKFILL_STATE.update(aborted=False) or 0)
+    assert sg._real_ensure(on_complete=lambda: fired.append('clean-run')) is True
+    _wait_done()
+    assert fired == ['clean-run']
 
 
 def test_clustering_trigger_is_async_not_inline(sg, monkeypatch):
