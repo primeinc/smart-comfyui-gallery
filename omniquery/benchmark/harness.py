@@ -52,8 +52,12 @@ from omniquery.validation import AuthContext
 
 _DEFAULT_CORPUS_PATH = Path(__file__).with_name("corpus.jsonl")
 
+# Maximally privileged context, so no corpus entry is rejected on
+# authorization grounds -- the benchmark measures parsing, not access control.
 BENCH_CTX = AuthContext(role="ADMIN", user_id="bench", client_uuid="bench", ai_enabled=True)
 
+# Fixed-id stand-ins for the model-backed similarity searches, keeping
+# execution comparisons deterministic and model-free.
 _STUB_AI_RESOLVERS = {
     "similar_to_semantic": lambda v: ["f001", "f002"],
     "similar_to_visual": lambda v: ["f001"],
@@ -68,6 +72,7 @@ _THETA_STEPS = [round(i * 0.1, 1) for i in range(10)]  # 0.0 .. 0.9
 # ---------------------------------------------------------------------------
 
 def load_corpus(corpus_path: Path) -> List[dict]:
+    """Parse a JSONL corpus: one entry per non-blank line, in file order."""
     entries: List[dict] = []
     with open(corpus_path, "r", encoding="utf-8") as fh:
         for line in fh:
@@ -94,6 +99,8 @@ def _date_placeholder_map(now_epoch: float) -> Dict[str, str]:
 
 
 def _resolve_date_placeholders(obj: Any, mapping: Dict[str, str]) -> Any:
+    """Deep copy of `obj` with every string equal to a placeholder token
+    replaced by its resolved date; everything else passes through unchanged."""
     if isinstance(obj, dict):
         return {k: _resolve_date_placeholders(v, mapping) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -104,14 +111,22 @@ def _resolve_date_placeholders(obj: Any, mapping: Dict[str, str]) -> Any:
 
 
 def _build_fixture_engine() -> OmniQueryEngine:
+    """Engine over a freshly built fixture database (default seed) in a
+    temp file, with the stub AI resolvers wired in. mkstemp reserves the
+    file atomically, so concurrent runs can never share a database."""
+    import os
     import tempfile
-    db_path = tempfile.mktemp(suffix=".db", prefix="omniquery_bench_")
+    fd, db_path = tempfile.mkstemp(suffix=".db", prefix="omniquery_bench_")
+    os.close(fd)
     build_fixture_db(db_path, seed=42)
     return OmniQueryEngine(db_path=db_path, base_path=FIXTURE_BASE_PATH,
                             ai_resolvers=_STUB_AI_RESOLVERS)
 
 
 def _exec_result(engine: OmniQueryEngine, query: Any, now_epoch: float) -> Optional[Tuple[str, Any]]:
+    """Comparable execution outcome: ("count", n) or ("ids", frozenset).
+    None means execution failed, and callers treat None as matching nothing,
+    so a failed run can never count as an execution match."""
     out = engine.run(query, BENCH_CTX, now_epoch=now_epoch)
     if not out.ok:
         return None
@@ -126,16 +141,20 @@ def _exec_result(engine: OmniQueryEngine, query: Any, now_epoch: float) -> Optio
 
 @dataclass
 class _EntryRecord:
-    expected_unsupported: bool
-    produced_ast: bool
-    valid: bool
-    ast_exact: bool
-    exec_match: bool
-    confidence: Optional[float]
+    """Scoring flags for one corpus entry under one backend."""
+    expected_unsupported: bool  # corpus marks the entry {"unsupported": true}
+    produced_ast: bool  # backend answered with an AST rather than declining
+    valid: bool  # harness-side validation of the produced AST passed
+    ast_exact: bool  # canonicalized produced AST equals the expected AST
+    exec_match: bool  # produced and expected ASTs yield the same fixture-DB result
+    confidence: Optional[float]  # backend's self-reported confidence, if any
 
 
 def _score_entry(expected: dict, outcome: ParserOutcome, engine: OmniQueryEngine,
                   now_epoch: float) -> _EntryRecord:
+    """Score one backend outcome against its corpus entry. ast_exact and
+    exec_match stay False for entries expected to be unsupported -- there
+    is no expected AST to compare against."""
     expected_unsupported = bool(expected.get("unsupported"))
     produced_ast_dict = outcome.ast if (outcome.ast is not None and not outcome.unsupported) else None
 
@@ -160,6 +179,7 @@ def _score_entry(expected: dict, outcome: ParserOutcome, engine: OmniQueryEngine
 
 
 def _latency_stats(latencies_ms: List[float]) -> Dict[str, Optional[float]]:
+    """p50/p95/mean over millisecond latencies; all None when empty."""
     if not latencies_ms:
         return {"p50": None, "p95": None, "mean": None}
     s = sorted(latencies_ms)
@@ -172,6 +192,9 @@ def _latency_stats(latencies_ms: List[float]) -> Dict[str, Optional[float]]:
 
 
 def _false_confident_sweep(records: List[_EntryRecord]) -> Dict[str, Optional[float]]:
+    """Per theta in _THETA_STEPS (keyed by its string form): among entries
+    where the backend produced an AST and reported confidence >= theta, the
+    fraction that are execution-mismatched; None where nothing clears theta."""
     scored = [(r.confidence, not r.exec_match) for r in records if r.produced_ast and r.confidence is not None]
     result: Dict[str, Optional[float]] = {}
     for theta in _THETA_STEPS:
@@ -181,6 +204,8 @@ def _false_confident_sweep(records: List[_EntryRecord]) -> Dict[str, Optional[fl
 
 
 def _aggregate(records: List[_EntryRecord], latencies_ms: List[float]) -> Dict[str, Any]:
+    """Fold per-entry records and latencies into one backend's metrics
+    block; the module docstring defines each metric."""
     n_total = len(records)
     n_supported = sum(1 for r in records if not r.expected_unsupported)
     n_unsupported = n_total - n_supported
@@ -211,6 +236,8 @@ def _aggregate(records: List[_EntryRecord], latencies_ms: List[float]) -> Dict[s
 
 def _run_backend(backend: ParserBackend, entries: List[dict], engine: OmniQueryEngine,
                   now_epoch: float) -> Dict[str, Any]:
+    """Run one backend over every entry -- timing only the .parse() call --
+    and aggregate the scores."""
     records: List[_EntryRecord] = []
     latencies: List[float] = []
     for entry in entries:
@@ -223,6 +250,10 @@ def _run_backend(backend: ParserBackend, entries: List[dict], engine: OmniQueryE
 
 def _run_router(router: Router, entries: List[dict], engine: OmniQueryEngine,
                  now_epoch: float) -> Dict[str, Any]:
+    """Like _run_backend but through router.route(), adding escalation
+    stats: which backend ultimately answered each entry, and how often the
+    heuristic's outright-accept rule did not settle it (trace longer than
+    one hop)."""
     records: List[_EntryRecord] = []
     latencies: List[float] = []
     winner_counts: Counter = Counter()
@@ -288,6 +319,7 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """CLI argument parsing; `argv=None` reads sys.argv."""
     parser = argparse.ArgumentParser(description="OmniQuery v2 NL-parser benchmark")
     parser.add_argument(
         "--backends", type=str, default="heuristic",
@@ -299,6 +331,8 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 
 def main(argv: Optional[List[str]] = None) -> None:
+    """CLI entry point: run the benchmark, then print the report to stdout
+    (or just the destination path when --out is given)."""
     args = _parse_args(argv)
     backend_names = [b.strip() for b in args.backends.split(",") if b.strip()]
     report = run_benchmark(backend_names, corpus_path=args.corpus, out_path=args.out)
