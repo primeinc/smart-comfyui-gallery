@@ -289,3 +289,93 @@ def test_worker_rescans_after_mtime_change(tmp_path):
         assert _wait_until(lambda: calls["n"] > first, timeout=5.0)
     finally:
         worker.stop(timeout=2.0)
+
+
+def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path, monkeypatch):
+    """Oracle-confirmed fix: a review stored while NO segmenter was
+    available must still get masks once a segmenter is provisioned — the
+    'masks' scan-log unit is independent of the review row."""
+    from smartgallery_ai import RUBRIC_VERSION, review as R
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img_path = str(tmp_path / "img.png")
+    Image.new("RGB", (64, 64), (90, 90, 90)).save(img_path)
+    _add_file(db_path, "mf1", img_path, mtime=1000.0)
+
+    # Store a review with one localizable finding directly (as if the
+    # critic ran while segmenter_backend was 'none').
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    result = R.validate_review_payload({
+        "quality_score": 5.0, "prompt_alignment_score": None, "summary": "s",
+        "findings": [{"type": "artifact", "severity": "low", "confidence": 0.9,
+                      "localizable": True, "description": "spot",
+                      "bbox": [0.25, 0.25, 0.5, 0.5]}]})
+    R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION,
+                   "{}", 1000.0, 1.0)
+    # Mark the review scan as done (so only the mask stage has work).
+    conn.execute(
+        "INSERT INTO ai_scan_log VALUES ('mf1', 'review', 'critic-x', 'v1',"
+        " 1000.0, 1.0, 1)")
+    conn.commit()
+    assert conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
+    conn.close()
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="none", segmenter_backend="stub",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
+    worker.start()
+    try:
+        def has_mask():
+            c = sqlite3.connect(db_path)
+            mp = c.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
+            c.close()
+            return mp is not None
+        assert _wait_until(has_mask, timeout=5.0), "late segmenter never masked"
+    finally:
+        worker.stop(timeout=2.0)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    log = conn.execute(
+        "SELECT * FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()
+    mask_path = conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
+    conn.close()
+    import os as _os
+    assert log is not None and log["result_count"] == 1
+    assert _os.path.isfile(mask_path)
+
+
+def test_scan_log_check_migration_admits_masks(tmp_path):
+    """Old databases carry a CHECK without kind 'masks'; init_schema
+    rebuilds the table in place, preserving rows."""
+    from smartgallery_ai import schema as S
+
+    db_path = str(tmp_path / "old.sqlite")
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL)")
+    conn.execute("INSERT INTO files VALUES ('f1', '/f1', 0)")
+    # Simulate the pre-'masks' table shape.
+    conn.execute("""
+        CREATE TABLE ai_scan_log (
+            file_id TEXT NOT NULL REFERENCES files(id)
+                ON DELETE CASCADE ON UPDATE CASCADE,
+            kind TEXT NOT NULL CHECK (kind IN ('faces', 'review')),
+            model_id TEXT NOT NULL, model_version TEXT NOT NULL,
+            source_mtime REAL NOT NULL, scanned_at REAL NOT NULL,
+            result_count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (file_id, kind))""")
+    conn.execute("INSERT INTO ai_scan_log VALUES ('f1','faces','m','v',0,0,2)")
+    conn.commit()
+
+    S.init_schema(conn)
+    # Old row preserved, new kind admitted.
+    rows = conn.execute("SELECT kind, result_count FROM ai_scan_log").fetchall()
+    assert ("faces", 2) in rows
+    conn.execute("INSERT INTO ai_scan_log VALUES ('f1','masks','m','v',0,0,1)")
+    conn.commit()

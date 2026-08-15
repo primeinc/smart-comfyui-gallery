@@ -10,12 +10,14 @@ the typed review.
 
 Protocol per image:
   1. DESCRIBE  — short free-text factual description (nothing to parrot).
-  2. GROUND    — deterministic anti-fabrication gate: CLIPScore between
-                 the description and the image via the runtime-proven
-                 OpenCLIP space. A description that does not match the
-                 image aborts the review (CriticGroundingError) instead of
-                 storing a plausible lie. No validator can catch a
-                 well-formed fabrication; this gate can.
+  2. GROUND    — deterministic anti-fabrication gate (v2, contrastive):
+                 the description must clear an absolute CLIP-cosine floor
+                 AND beat a generic baseline text on the same image by a
+                 calibrated margin, so vacuous or copied descriptions are
+                 rejected by construction (CriticGroundingError) instead
+                 of storing a plausible lie. This is a coarse filter over
+                 the description stage — per-finding topical verification
+                 happens separately in step 4/5.
   3. ASSESS    — one JSON-schema-constrained call: quality score + up to
                  3 defects, each typed from the fixed vocabulary with
                  severity/confidence and a coarse region enum.
@@ -64,10 +66,26 @@ MMPROJ_FILENAMES = (
     "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
 )
 
-# Measured on the calibration set in tests/benchmarks (see AI_MODELS.md):
-# grounded descriptions of matching images score well above this; mismatched
-# descriptions fall below it.
+# Gate v2 (contrastive), calibrated by probes/grounding_calibration.py
+# (results: benchmarks/results/grounding_calibration.json). The v1
+# absolute-cosine gate was shown by adversarial review to accept vacuous
+# and example-parroting descriptions; v2 additionally requires the
+# description to beat a generic baseline text on the same image by a
+# measured margin — a vacuous description IS the baseline, so it can
+# never pass. At margin >= 0.09 the calibration set shows FAR 3.1% /
+# FRR 25% (the FRR measured on deliberately terse one-line descriptions;
+# the critic's two-sentence descriptions score higher margins).
 DEFAULT_GROUNDING_MIN_COS = 0.20
+DEFAULT_GROUNDING_MIN_MARGIN = 0.09
+GROUNDING_BASELINE_TEXT = "an image with some shapes and colors"
+
+# Per-finding topical verification: a localizable finding's description
+# must beat the baseline on ITS OWN bbox crop (positive margin). This
+# checks that the named defect is visually present in the claimed region
+# (measured: true finding vs its crop +0.083; same text on wrong crop
+# -0.007; invented defect -0.056). It does NOT verify subjective quality
+# judgments — scope documented in AI_MODELS.md.
+DEFAULT_FINDING_MIN_MARGIN = 0.0
 
 _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
             "bottom-right", "center")
@@ -127,21 +145,54 @@ class CriticGroundingError(RuntimeError):
 
 def check_grounding(embedder: SemanticEmbedder, description: str,
                     img: Image.Image,
-                    min_cos: float = DEFAULT_GROUNDING_MIN_COS) -> float:
-    """The deterministic anti-fabrication gate, exposed as a pure function
-    so its negative cases are testable without loading the VLM. Returns the
-    CLIP cosine on success; raises CriticGroundingError when the
-    description does not match the image (or is empty)."""
+                    min_cos: float = DEFAULT_GROUNDING_MIN_COS,
+                    min_margin: float = DEFAULT_GROUNDING_MIN_MARGIN) -> float:
+    """The deterministic anti-fabrication gate (v2, contrastive), exposed
+    as a pure function so its negative cases are testable without loading
+    the VLM. Requires BOTH an absolute cosine floor AND a positive margin
+    over the generic-baseline text on the same image. Returns the margin on
+    success; raises CriticGroundingError otherwise. All comparisons fail
+    CLOSED on NaN (`not (x >= t)` instead of `x < t`)."""
     if not description:
         raise CriticGroundingError("critic produced no description")
-    cos = _cos(embedder.embed_text(description), embedder.embed_image(img))
-    # Fail CLOSED on NaN: `cos < min_cos` would be False for NaN (a
-    # degenerate zero-norm embedding), silently passing the gate.
+    iv = embedder.embed_image(img)
+    cos = _cos(embedder.embed_text(description), iv)
     if not (cos >= min_cos):
         raise CriticGroundingError(
             f"description does not match image (CLIP cos {cos:.3f} < "
             f"{min_cos}); refusing to store an ungrounded review")
-    return cos
+    margin = cos - _cos(embedder.embed_text(GROUNDING_BASELINE_TEXT), iv)
+    if not (margin >= min_margin):
+        raise CriticGroundingError(
+            f"description is not specific to this image (margin {margin:.3f}"
+            f" < {min_margin} over the generic baseline); vacuous or "
+            f"copied descriptions are rejected")
+    return margin
+
+
+def verify_finding_region(embedder: SemanticEmbedder, description: str,
+                          bbox: tuple, img: Image.Image,
+                          min_margin: float = DEFAULT_FINDING_MIN_MARGIN) -> bool:
+    """Topical grounding check for one localizable finding: does the named
+    defect/content actually appear in the claimed region? Crops the bbox
+    (with 10% padding), and requires the finding text to beat the generic
+    baseline on that crop. Returns False for findings naming things that
+    are not visually there (wrong region, invented object). Cannot judge
+    subjective quality claims — that scope is documented."""
+    w, h = img.size
+    x, y, bw, bh = bbox
+    pad_x, pad_y = 0.1 * bw, 0.1 * bh
+    box = (max(0, int((x - pad_x) * w)), max(0, int((y - pad_y) * h)),
+           min(w, int((x + bw + pad_x) * w)), min(h, int((y + bh + pad_y) * h)))
+    if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+        return False
+    crop = img.crop(box)
+    if max(crop.size) < 224:
+        crop = crop.resize((224, 224), Image.LANCZOS)
+    cv = embedder.embed_image(crop)
+    margin = (_cos(embedder.embed_text(description), cv)
+              - _cos(embedder.embed_text(GROUNDING_BASELINE_TEXT), cv))
+    return bool(margin >= min_margin)
 
 
 def _data_uri(img: Image.Image) -> str:
@@ -243,7 +294,7 @@ class QwenVlCritic(CriticBackend):
 
         # 2. GROUND — deterministic anti-fabrication gate (embedder is a
         # constructor-enforced hard dependency; this can never be skipped)
-        grounding_cos = check_grounding(self._embedder, description, img,
+        grounding_margin = check_grounding(self._embedder, description, img,
                                         self._grounding_min_cos)
 
         # 3. ASSESS (grammar-constrained)
@@ -258,20 +309,26 @@ class QwenVlCritic(CriticBackend):
         assess = json.loads(assess_raw)
 
         findings = []
+        dropped_unverified = 0
         for defect in (assess.get("defects") or [])[:3]:
             region = defect.get("region", "whole-image")
-            # Localizable requires BOTH an inherently spatial finding type
-            # AND a successful model-emitted bbox from the LOCALIZE step.
-            # No region-rectangle fallbacks: a finding we cannot genuinely
-            # ground becomes GLOBAL (the region, if any, stays as text in
-            # the description) rather than carrying invented geometry —
-            # per the ticket's no-fake-masks stop condition.
+            # Localizable requires ALL of: an inherently spatial finding
+            # type, a successful model-emitted bbox from the LOCALIZE step,
+            # AND passing the topical crop verification (the named defect
+            # is visually present in the claimed region). No fallbacks: a
+            # finding without a genuine locus becomes GLOBAL, and a finding
+            # naming content its own crop does not show is DROPPED — per
+            # the ticket's no-fake-masks stop condition.
+            description = str(defect.get("what", ""))[:300] or defect["type"]
             bbox = None
             if defect["type"] in _LOCALIZABLE_TYPES and region != "whole-image":
                 # 4. LOCALIZE (grammar-constrained bbox for this defect)
                 bbox = self._localize(uri, defect)
+                if bbox is not None and not verify_finding_region(
+                        self._embedder, description, bbox, img):
+                    dropped_unverified += 1
+                    continue
             localizable = bbox is not None
-            description = str(defect.get("what", ""))[:300] or defect["type"]
             if not localizable and region != "whole-image":
                 description = f"{description} (reported region: {region})"
             finding = {
@@ -298,7 +355,10 @@ class QwenVlCritic(CriticBackend):
                 _cos(self._embedder.embed_text(prompt_text),
                      self._embedder.embed_image(img)))
 
-        summary = f"{description[:280]} [grounding cos {grounding_cos:.2f}]"
+        summary = f"{description[:260]} [grounding margin {grounding_margin:.2f}]"
+        if dropped_unverified:
+            summary += (f" [{dropped_unverified} finding(s) dropped: region "
+                        f"verification failed]")
 
         return {
             # Not clamped: an out-of-range score is protocol failure and is

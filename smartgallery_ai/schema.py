@@ -159,12 +159,15 @@ DDL = [
 
     # --- scan bookkeeping: records that a (file, kind) was scanned with a
     # given model at a given source mtime, INCLUDING zero-result scans
-    # (a file with no faces must not be re-scanned every cycle) ---
+    # (a file with no faces must not be re-scanned every cycle).
+    # kind 'masks' records the segmentation pass over a review's
+    # localizable findings as its own segmenter-keyed unit of work, so
+    # masks are retried when a segmenter is provisioned later ---
     """
     CREATE TABLE IF NOT EXISTS ai_scan_log (
         file_id TEXT NOT NULL REFERENCES files(id)
             ON DELETE CASCADE ON UPDATE CASCADE,
-        kind TEXT NOT NULL CHECK (kind IN ('faces', 'review')),
+        kind TEXT NOT NULL CHECK (kind IN ('faces', 'review', 'masks')),
         model_id TEXT NOT NULL,
         model_version TEXT NOT NULL,
         source_mtime REAL NOT NULL,
@@ -205,7 +208,25 @@ def init_schema(conn) -> None:
     """Create AI DAM tables if missing. Idempotent."""
     for stmt in DDL:
         conn.execute(stmt)
+    _migrate_scan_log_kinds(conn)
     conn.commit()
+
+
+def _migrate_scan_log_kinds(conn) -> None:
+    """Databases created before kind 'masks' existed carry a narrower CHECK
+    on ai_scan_log. SQLite cannot ALTER a CHECK, but the table is derived
+    bookkeeping, so rebuild it in place preserving rows. Detection reads
+    the stored DDL — deterministic, no probe writes."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'"
+    ).fetchone()
+    if row is None or "'masks'" in row[0]:
+        return
+    masks_ddl = next(s for s in DDL if "ai_scan_log" in s)
+    conn.execute("ALTER TABLE ai_scan_log RENAME TO ai_scan_log_old")
+    conn.execute(masks_ddl.replace("IF NOT EXISTS ", ""))
+    conn.execute("INSERT INTO ai_scan_log SELECT * FROM ai_scan_log_old")
+    conn.execute("DROP TABLE ai_scan_log_old")
 
 
 def drop_derived_state(conn, keep_feedback: bool = True) -> None:

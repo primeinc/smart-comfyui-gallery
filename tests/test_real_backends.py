@@ -166,12 +166,28 @@ def test_real_grounding_gate_negative_cases():
 
     sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
     red = Image.new("RGB", (224, 224), (220, 20, 20))
-    cos = check_grounding(sem, "a plain solid red image", red)
-    assert cos >= 0.20
+    margin = check_grounding(sem, "a plain solid red image", red)
+    assert margin >= 0.09
+    # Unrelated content: rejected.
     with pytest.raises(CriticGroundingError):
         check_grounding(sem, "a portrait photo of an astronaut in a spacesuit", red)
+    # Empty: rejected.
     with pytest.raises(CriticGroundingError):
         check_grounding(sem, "", red)
+    # Adversarial classes from the oracle review — v2's contrastive margin
+    # rejects what the v1 absolute-cosine gate accepted:
+    # (a) vacuous description == the baseline -> margin ~ 0
+    with pytest.raises(CriticGroundingError):
+        check_grounding(sem,
+                        "This is an image. It contains some shapes and colors.",
+                        red)
+    # (b) the parroted schema example on an image it does not describe
+    with pytest.raises(CriticGroundingError):
+        check_grounding(sem,
+                        "Good portrait with one artifact. The image shows a "
+                        "red square artifact in the lower right and slightly "
+                        "flat lighting.",
+                        Image.new("RGB", (224, 224), (20, 20, 220)))
 
 
 def test_real_critic_to_mask_chain():

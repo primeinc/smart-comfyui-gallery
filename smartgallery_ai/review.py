@@ -449,10 +449,14 @@ def _extract_json_object(text: str) -> dict:
 # records a passing grounded-validity measurement in docs/AI_MODELS.md; the
 # measured record is the sole authority for this flag.
 # MEASURED 2026-08-15 (docs/AI_MODELS.md "Runtime verification record"):
-# 4/4 schema-valid image-grounded reviews on the calibration suite (clean /
-# planted-defect / dark / prompt-mismatch), planted defect detected and
-# localized, 0 fabrications, and the CLIP grounding gate verified to REJECT
-# the previously-measured fabrication failure mode (cos 0.130 < 0.20).
+# 4/4 schema-valid reviews with description-level grounding on the
+# calibration suite (clean / planted-defect / dark / prompt-mismatch);
+# the planted defect (the one finding with ground truth) was detected and
+# localized. Precise scope: the gate grounds descriptions, and after the
+# adversarial-oracle review it is the CONTRASTIVE v2 gate (calibrated
+# FAR 3.1% / FRR 25%, probes/grounding_calibration.py) plus per-finding
+# topical crop verification for localizable findings — a layered filter,
+# not proof of every finding's truth.
 _AUTO_CRITIC_MEASUREMENT_PASSED = True
 
 

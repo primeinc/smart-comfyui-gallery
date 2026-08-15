@@ -226,6 +226,12 @@ class AIWorker:
                                                review.get_critic_backend)
                 if critic_backend is not None:
                     budget -= self._process_reviews(conn, critic_backend, budget)
+
+            if budget > 0:
+                segmenter = self._backend("segmenter",
+                                          review.get_segmenter_backend)
+                if segmenter is not None:
+                    budget -= self._process_masks(conn, segmenter, budget)
         finally:
             conn.close()
 
@@ -399,7 +405,10 @@ class AIWorker:
                     RUBRIC_VERSION, json.dumps(payload), mtime, now,
                 )
                 if segmenter is not None:
-                    self._generate_masks(conn, img, file_id, review_id, segmenter)
+                    generated = self._generate_masks(conn, img, file_id,
+                                                     review_id, segmenter)
+                    self._log_scan(conn, file_id, "masks", segmenter, mtime,
+                                   now, generated)
                 self._log_scan(conn, file_id, "review", backend, mtime, now,
                                len(result.findings))
             except Exception as exc:
@@ -420,18 +429,61 @@ class AIWorker:
         return len(rows)
 
     def _generate_masks(self, conn: sqlite3.Connection, img, file_id: str,
-                        review_id: int, segmenter) -> None:
-        """Segment every localizable finding of a fresh review. Global
-        findings never reach the segmenter (generate_finding_mask enforces
-        it); a per-finding failure is logged, never fatal."""
+                        review_id: int, segmenter) -> int:
+        """Segment every localizable finding of a review. Global findings
+        never reach the segmenter (generate_finding_mask enforces it); a
+        per-finding failure is logged, never fatal. Returns the number of
+        masks successfully generated."""
         finding_ids = [r[0] for r in conn.execute(
             "SELECT finding_id FROM ai_review_findings "
             "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
             (review_id,)).fetchall()]
+        generated = 0
         for finding_id in finding_ids:
             try:
                 review.generate_finding_mask(
                     conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
+                generated += 1
             except Exception as exc:  # noqa: BLE001
                 self._note_error(f"mask:{finding_id}",
                                  f"mask: failed for finding {finding_id}: {exc}")
+        return generated
+
+    def _process_masks(self, conn: sqlite3.Connection, segmenter, limit: int) -> int:
+        """Standalone mask stage: covers reviews whose localizable findings
+        still lack masks — because the segmenter was provisioned AFTER the
+        review ran, or an earlier mask attempt failed. Its own
+        segmenter-keyed ai_scan_log unit ('masks') makes the attempt
+        recorded and retryable independently of the review row."""
+        if limit <= 0:
+            return 0
+        rows = conn.execute(
+            """
+            SELECT DISTINCT f.id, f.path, f.mtime, f.type,
+                   rv.review_id
+            FROM files f
+            JOIN ai_reviews rv ON rv.file_id = f.id
+            JOIN ai_review_findings rf ON rf.review_id = rv.review_id
+            WHERE rf.localizable = 1 AND rf.mask_path IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM ai_scan_log sl
+                WHERE sl.file_id = f.id AND sl.kind = 'masks'
+                  AND sl.model_id = ? AND sl.model_version = ?
+                  AND ABS(sl.source_mtime - f.mtime) <= ?
+              )
+            ORDER BY f.mtime DESC, f.id ASC
+            LIMIT ?
+            """,
+            (segmenter.model_id, segmenter.model_version, _MTIME_EPSILON, limit),
+        ).fetchall()
+        now = time.time()
+        for row in rows:
+            file_id, path, mtime = row["id"], row["path"], row["mtime"]
+            img = load_source_image(path, row["type"])
+            if img is None:
+                self._note_error(f"mask:{file_id}", f"mask: could not read {path}")
+                continue
+            generated = self._generate_masks(conn, img, file_id,
+                                             row["review_id"], segmenter)
+            self._log_scan(conn, file_id, "masks", segmenter, mtime, now, generated)
+        return len(rows)
