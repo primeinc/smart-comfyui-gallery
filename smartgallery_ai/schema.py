@@ -152,6 +152,23 @@ DDL = [
     );
     """,
 
+    # --- scan bookkeeping: records that a (file, kind) was scanned with a
+    # given model at a given source mtime, INCLUDING zero-result scans
+    # (a file with no faces must not be re-scanned every cycle) ---
+    """
+    CREATE TABLE IF NOT EXISTS ai_scan_log (
+        file_id TEXT NOT NULL REFERENCES files(id)
+            ON DELETE CASCADE ON UPDATE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('faces', 'review')),
+        model_id TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        source_mtime REAL NOT NULL,
+        scanned_at REAL NOT NULL,
+        result_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (file_id, kind)
+    );
+    """,
+
     # --- small key/value state (active model versions, measured thresholds) ---
     """
     CREATE TABLE IF NOT EXISTS ai_dam_state (
@@ -170,6 +187,7 @@ DERIVED_TABLES = [
     "ai_face_clusters",
     "ai_embeddings",
     "ai_file_hashes",
+    "ai_scan_log",
     "ai_feedback",
     "ai_dam_state",
 ]

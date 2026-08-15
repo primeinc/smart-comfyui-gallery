@@ -117,17 +117,20 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
     dim = 512
 
     def __init__(self, models_dir: str):
-        try:
-            import open_clip
-            import torch
-        except ImportError as exc:
-            raise BackendUnavailable(f"open_clip backend unavailable: {exc}") from exc
-
+        # Check the weights BEFORE importing the heavy runtime: 'auto'
+        # resolution on an unprovisioned system must stay fast and
+        # side-effect-free (a cold torch import costs ~10s).
         weights_path = os.path.join(
             models_dir, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin"
         )
         if not os.path.isfile(weights_path):
             raise BackendUnavailable(f"open_clip weights not found at {weights_path}")
+
+        try:
+            import open_clip
+            import torch
+        except ImportError as exc:
+            raise BackendUnavailable(f"open_clip backend unavailable: {exc}") from exc
 
         self._torch = torch
         try:
@@ -167,15 +170,16 @@ class Dinov2VisualEmbedder(VisualEmbedder):
     dim = 384
 
     def __init__(self, models_dir: str):
+        # Weights check precedes the heavy import (see OpenClip above).
+        weights_dir = os.path.join(models_dir, "dinov2-small")
+        if not os.path.isdir(weights_dir):
+            raise BackendUnavailable(f"dinov2 weights not found at {weights_dir}")
+
         try:
             import torch
             from transformers import AutoImageProcessor, AutoModel
         except ImportError as exc:
             raise BackendUnavailable(f"dinov2 backend unavailable: {exc}") from exc
-
-        weights_dir = os.path.join(models_dir, "dinov2-small")
-        if not os.path.isdir(weights_dir):
-            raise BackendUnavailable(f"dinov2 weights not found at {weights_dir}")
 
         try:
             self._processor = AutoImageProcessor.from_pretrained(

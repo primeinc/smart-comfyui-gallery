@@ -107,3 +107,47 @@ def test_real_face_backend_yunet_sface():
         d = dets[0]
         assert all(0.0 <= v <= 1.0 for v in d.bbox)
         assert d.embedding is not None and d.embedding.shape == (128,)
+
+
+def test_real_segmenter_mobilesam_box_prompt_iou():
+    if not os.path.isfile(os.path.join(MODELS_DIR, "mobile_sam.pt")):
+        pytest.skip("mobile_sam.pt not provisioned")
+    from smartgallery_ai.segmenter_mobilesam import MobileSamSegmenter
+
+    seg = MobileSamSegmenter(MODELS_DIR)
+    # Solid red square on a textured background; a loose box prompt around
+    # it must segment the square precisely (high IoU vs ground truth).
+    rng = np.random.default_rng(31)
+    base = Image.fromarray(
+        (rng.random((64, 64, 3)) * 255).astype("uint8")
+    ).resize((512, 512), Image.LANCZOS)
+    from PIL import ImageDraw
+    ImageDraw.Draw(base).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
+    gt = np.zeros((512, 512), bool)
+    gt[300:420, 300:420] = True
+
+    mask = seg.segment(base, bbox=(0.55, 0.55, 0.28, 0.28))
+    iou = (mask & gt).sum() / (mask | gt).sum()
+    assert iou > 0.7, f"MobileSAM IoU too low: {iou:.3f}"
+
+
+def test_segmenter_factory_resolution(tmp_path):
+    """Factory policy: 'auto' degrades to None without weights; 'mobilesam'
+    raises; 'none'/'stub' behave as documented. Model-free (empty dir)."""
+    from smartgallery_ai import AIConfig
+    from smartgallery_ai.embedders import BackendUnavailable
+    from smartgallery_ai.review import StubSegmenter, get_segmenter_backend
+
+    assert get_segmenter_backend(
+        AIConfig(enabled=True, models_dir=str(tmp_path),
+                 segmenter_backend="none")) is None
+    assert get_segmenter_backend(
+        AIConfig(enabled=True, models_dir=str(tmp_path),
+                 segmenter_backend="auto")) is None
+    assert isinstance(get_segmenter_backend(
+        AIConfig(enabled=True, models_dir=str(tmp_path),
+                 segmenter_backend="stub")), StubSegmenter)
+    with pytest.raises(BackendUnavailable):
+        get_segmenter_backend(
+            AIConfig(enabled=True, models_dir=str(tmp_path),
+                     segmenter_backend="mobilesam"))

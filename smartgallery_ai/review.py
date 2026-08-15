@@ -367,12 +367,8 @@ class SmolVlmCritic(CriticBackend):
     model_version = "smolvlm2-v1"
 
     def __init__(self, models_dir: str, max_new_tokens: int = 640):
-        try:
-            import torch
-            from transformers import AutoModelForImageTextToText, AutoProcessor
-        except Exception as exc:  # noqa: BLE001
-            raise BackendUnavailable(f"smolvlm critic unavailable: {exc}") from exc
-
+        # Weights check precedes the runtime import: resolution on an
+        # unprovisioned system must stay fast and side-effect-free.
         weights_dir = None
         for dirname in _SMOLVLM_DIRNAMES:
             candidate = os.path.join(models_dir, dirname)
@@ -380,6 +376,12 @@ class SmolVlmCritic(CriticBackend):
                 weights_dir = candidate
                 self.model_id, self.model_version = _SMOLVLM_MODEL_IDS[dirname]
                 break
+        if weights_dir is not None:
+            try:
+                import torch  # noqa: F401
+                from transformers import AutoModelForImageTextToText, AutoProcessor  # noqa: F401
+            except Exception as exc:  # noqa: BLE001
+                raise BackendUnavailable(f"smolvlm critic unavailable: {exc}") from exc
         if weights_dir is None:
             raise BackendUnavailable(
                 f"smolvlm weights not found under {models_dir} "
@@ -437,24 +439,73 @@ def _extract_json_object(text: str) -> dict:
     raise ValueError("critic output has an unterminated JSON object")
 
 
+# Gate for 'auto' -> qwen-vl resolution. Set to True ONLY in the commit that
+# records a passing grounded-validity measurement in docs/AI_MODELS.md; the
+# measured record is the sole authority for this flag.
+_AUTO_CRITIC_MEASUREMENT_PASSED = False
+
+
 def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
     """Resolve `config.critic_backend`.
 
-    'auto' returns None BY MEASUREMENT: the available local SmolVLM2
-    checkpoints fabricate schema-valid reviews copied from the prompt's
-    example instead of grounding in the image (see SmolVlmCritic docstring
-    and docs/AI_MODELS.md), and a fabricated review is worse than none.
-    'smolvlm' explicitly opts in to the experimental adapter; 'stub' is
-    test-only and never reachable implicitly.
+    'qwen-vl' loads the decomposed Qwen2.5-VL critic
+    (smartgallery_ai.critic_qwen): grammar-constrained decomposed
+    questioning plus a deterministic CLIP grounding gate — the
+    architecture that fixed the measured failure modes of the monolithic
+    SmolVLM2 attempts (0/7 grounded; they remain explicit-opt-in only via
+    'smolvlm'). Whether 'auto' resolves to the qwen-vl critic is decided
+    strictly by its measured record in docs/AI_MODELS.md — never flipped
+    ahead of the measurement. 'stub' is test-only and never reachable
+    implicitly.
     """
     name = config.critic_backend
-    if name in ("none", "auto"):
+    if name == "none":
         return None
+    if name in ("auto", "qwen-vl"):
+        if name == "auto" and not _AUTO_CRITIC_MEASUREMENT_PASSED:
+            return None
+        try:
+            from smartgallery_ai.critic_qwen import QwenVlCritic
+
+            from smartgallery_ai.embedders import get_semantic_backend
+            try:
+                embedder = get_semantic_backend(config)
+            except BackendUnavailable:
+                embedder = None
+            return QwenVlCritic(config.models_dir, semantic_embedder=embedder)
+        except BackendUnavailable:
+            if name == "qwen-vl":
+                raise
+            return None
     if name == "smolvlm":
         return SmolVlmCritic(config.models_dir)
     if name == "stub":
         return StubCritic()
     raise ValueError(f"unknown critic_backend: {name!r}")
+
+
+def get_segmenter_backend(config: AIConfig) -> Optional[SegmenterBackend]:
+    """Resolve `config.segmenter_backend`.
+
+    'auto'/'mobilesam' -> MobileSAM (smartgallery_ai.segmenter_mobilesam)
+    when weights + runtime are provisioned; 'auto' degrades to None,
+    'mobilesam' raises. 'stub' is test-only and explicit.
+    """
+    name = config.segmenter_backend
+    if name == "none":
+        return None
+    if name in ("auto", "mobilesam"):
+        try:
+            from smartgallery_ai.segmenter_mobilesam import MobileSamSegmenter
+
+            return MobileSamSegmenter(config.models_dir)
+        except BackendUnavailable:
+            if name == "mobilesam":
+                raise
+            return None
+    if name == "stub":
+        return StubSegmenter()
+    raise ValueError(f"unknown segmenter_backend: {name!r}")
 
 
 def store_review(

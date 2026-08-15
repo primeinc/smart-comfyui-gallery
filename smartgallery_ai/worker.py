@@ -287,24 +287,55 @@ class AIWorker:
                 self.stats["embedded"] += 1
         return len(candidates)
 
-    def _process_faces(self, conn: sqlite3.Connection, backend, limit: int) -> int:
-        if limit <= 0:
-            return 0
+    def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
+                         limit: int, extra_cols: str = "") -> list:
+        """Files needing a (re-)scan for `kind`: no ai_scan_log row for the
+        current model at the current source mtime. Zero-result scans are
+        logged too, so a file with no faces is scanned exactly once per
+        (model, mtime) instead of every cycle."""
         type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
-        rows = conn.execute(
+        return conn.execute(
             f"""
-            SELECT f.id, f.path, f.mtime, f.type FROM files f
+            SELECT f.id, f.path, f.mtime, f.type{extra_cols} FROM files f
             WHERE f.type IN ({type_placeholders})
               AND NOT EXISTS (
-                SELECT 1 FROM ai_face_instances fa
-                WHERE fa.file_id = f.id AND fa.model_id = ? AND fa.model_version = ?
-                  AND ABS(fa.source_mtime - f.mtime) <= ?
+                SELECT 1 FROM ai_scan_log sl
+                WHERE sl.file_id = f.id AND sl.kind = ?
+                  AND sl.model_id = ? AND sl.model_version = ?
+                  AND ABS(sl.source_mtime - f.mtime) <= ?
               )
             ORDER BY f.mtime DESC, f.id ASC
             LIMIT ?
             """,
-            (*_VISUAL_TYPES, backend.model_id, backend.model_version, _MTIME_EPSILON, limit),
+            (*_VISUAL_TYPES, kind, backend.model_id, backend.model_version,
+             _MTIME_EPSILON, limit),
         ).fetchall()
+
+    @staticmethod
+    def _log_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
+                  source_mtime: float, now: float, result_count: int) -> None:
+        conn.execute(
+            """
+            INSERT INTO ai_scan_log
+                (file_id, kind, model_id, model_version, source_mtime,
+                 scanned_at, result_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (file_id, kind) DO UPDATE SET
+                model_id = excluded.model_id,
+                model_version = excluded.model_version,
+                source_mtime = excluded.source_mtime,
+                scanned_at = excluded.scanned_at,
+                result_count = excluded.result_count
+            """,
+            (file_id, kind, backend.model_id, backend.model_version,
+             source_mtime, now, result_count),
+        )
+        conn.commit()
+
+    def _process_faces(self, conn: sqlite3.Connection, backend, limit: int) -> int:
+        if limit <= 0:
+            return 0
+        rows = self._scan_candidates(conn, "faces", backend, limit)
         now = time.time()
         for row in rows:
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
@@ -317,6 +348,7 @@ class AIWorker:
                 faces.replace_faces_for_file(
                     conn, file_id, detections, backend.model_id, backend.model_version, mtime, now
                 )
+                self._log_scan(conn, file_id, "faces", backend, mtime, now, len(detections))
             except Exception as exc:
                 self._note_error(f"faces:{file_id}", f"faces: failed for {path}: {exc}")
                 continue
@@ -327,23 +359,10 @@ class AIWorker:
     def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int) -> int:
         if limit <= 0:
             return 0
-        prompt_expr = "f.workflow_prompt" if _has_column(conn, "files", "workflow_prompt") else "NULL"
-        type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
-        rows = conn.execute(
-            f"""
-            SELECT f.id, f.path, f.mtime, f.type, {prompt_expr} AS workflow_prompt FROM files f
-            WHERE f.type IN ({type_placeholders})
-              AND NOT EXISTS (
-                SELECT 1 FROM ai_reviews rv
-                WHERE rv.file_id = f.id AND rv.rubric_version = ? AND rv.model_id = ?
-                  AND ABS(rv.source_mtime - f.mtime) <= ?
-              )
-            ORDER BY f.mtime DESC, f.id ASC
-            LIMIT ?
-            """,
-            (*_VISUAL_TYPES, RUBRIC_VERSION, backend.model_id, backend.model_version,
-             _MTIME_EPSILON, limit),
-        ).fetchall()
+        prompt_expr = ", f.workflow_prompt" if _has_column(conn, "files", "workflow_prompt") else ", NULL AS workflow_prompt"
+        rows = self._scan_candidates(conn, "review", backend, limit,
+                                     extra_cols=prompt_expr)
+        segmenter = review.get_segmenter_backend(self.config)
         now = time.time()
         for row in rows:
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
@@ -354,13 +373,34 @@ class AIWorker:
             try:
                 payload = backend.review(img, row["workflow_prompt"], RUBRIC_VERSION)
                 result = review.validate_review_payload(payload)
-                review.store_review(
+                review_id = review.store_review(
                     conn, file_id, result, backend.model_id, backend.model_version,
                     RUBRIC_VERSION, json.dumps(payload), mtime, now,
                 )
+                if segmenter is not None:
+                    self._generate_masks(conn, img, file_id, review_id, segmenter)
+                self._log_scan(conn, file_id, "review", backend, mtime, now,
+                               len(result.findings))
             except Exception as exc:
                 self._note_error(f"review:{file_id}", f"review: failed for {path}: {exc}")
                 continue
             with self._lock:
                 self.stats["reviewed"] += 1
         return len(rows)
+
+    def _generate_masks(self, conn: sqlite3.Connection, img, file_id: str,
+                        review_id: int, segmenter) -> None:
+        """Segment every localizable finding of a fresh review. Global
+        findings never reach the segmenter (generate_finding_mask enforces
+        it); a per-finding failure is logged, never fatal."""
+        finding_ids = [r[0] for r in conn.execute(
+            "SELECT finding_id FROM ai_review_findings "
+            "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
+            (review_id,)).fetchall()]
+        for finding_id in finding_ids:
+            try:
+                review.generate_finding_mask(
+                    conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
+            except Exception as exc:  # noqa: BLE001
+                self._note_error(f"mask:{finding_id}",
+                                 f"mask: failed for finding {finding_id}: {exc}")

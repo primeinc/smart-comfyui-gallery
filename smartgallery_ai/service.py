@@ -64,9 +64,10 @@ def _disabled_response():
 
 
 def _segmenter_available(config: AIConfig) -> bool:
-    """No 'auto'/real segmenter resolver exists yet (see review.py); only
-    the explicit test/dev stub is reachable."""
-    return config.segmenter_backend == "stub"
+    try:
+        return review.get_segmenter_backend(config) is not None
+    except Exception:  # noqa: BLE001 - availability probe must not raise
+        return False
 
 
 def _extract_file_id(value: Any) -> Optional[str]:

@@ -215,3 +215,77 @@ def test_worker_start_is_idempotent_and_default_state(tmp_path):
     assert worker.is_running
     worker.stop(timeout=2.0)
     assert not worker.is_running
+
+
+def test_worker_zero_result_scan_not_repeated(tmp_path):
+    """A file with zero faces gets ONE scan per (model, mtime), recorded in
+    ai_scan_log with result_count 0 — not re-detected every cycle."""
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img_path = str(tmp_path / "nofaces.png")
+    Image.new("RGB", (16, 16), (5, 5, 5)).save(img_path)
+    _add_file(db_path, "nf1", img_path, mtime=1000.0)
+
+    calls = {"n": 0}
+
+    def counting_empty_source(img):
+        calls["n"] += 1
+        return []
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="stub", critic_backend="none",
+        extra={"face_stub_source": counting_empty_source},
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
+    worker.start()
+    try:
+        assert _wait_until(lambda: worker.stats["cycles"] >= 4, timeout=5.0)
+    finally:
+        worker.stop(timeout=2.0)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM ai_scan_log WHERE file_id = 'nf1' AND kind = 'faces'"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row["result_count"] == 0
+    assert calls["n"] == 1, f"zero-face file re-scanned {calls['n']} times"
+
+
+def test_worker_rescans_after_mtime_change(tmp_path):
+    """The scan log keys on source mtime: touching the file re-scans it."""
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img_path = str(tmp_path / "face.png")
+    Image.new("RGB", (16, 16), (50, 50, 50)).save(img_path)
+    _add_file(db_path, "fx", img_path, mtime=1000.0)
+
+    calls = {"n": 0}
+
+    def counting_source(img):
+        calls["n"] += 1
+        return _face_stub_source(img)
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="stub", critic_backend="none",
+        extra={"face_stub_source": counting_source},
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
+    worker.start()
+    try:
+        assert _wait_until(lambda: calls["n"] >= 1, timeout=5.0)
+        first = calls["n"]
+        conn = sqlite3.connect(db_path)
+        conn.execute("UPDATE files SET mtime = 2000.0 WHERE id = 'fx'")
+        conn.commit(); conn.close()
+        assert _wait_until(lambda: calls["n"] > first, timeout=5.0)
+    finally:
+        worker.stop(timeout=2.0)
