@@ -567,3 +567,4 @@ def test_llama_native_logging_is_silenced_unless_opted_in(tmp_path, monkeypatch)
     log_sets.clear()
     QwenVlCritic(str(tmp_path), semantic_embedder=object())
     assert log_sets == []
+

@@ -1044,3 +1044,220 @@ def test_worker_start_disables_propagation_to_a_late_root_logger(tmp_path):
         root.handlers, pkg.handlers = saved_root, saved_pkg
         pkg.setLevel(saved_level)
         pkg.propagate = saved_prop
+
+
+# --- llama-cpp-python CUDA self-heal (the critic's runtime) ---------------------
+
+
+def test_llama_cuda_index_default_and_env_override(monkeypatch):
+    """The prebuilt-CUDA wheel index defaults to the official abetlen
+    cu124 index; AI_DAM_LLAMA_CUDA_INDEX overrides it."""
+    monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
+    assert P.llama_cuda_index() == \
+        "https://abetlen.github.io/llama-cpp-python/whl/cu124"
+    monkeypatch.setenv("AI_DAM_LLAMA_CUDA_INDEX", "https://example.test/whl/cu130")
+    assert P.llama_cuda_index() == "https://example.test/whl/cu130"
+
+
+def test_llama_gpu_probe_runs_in_child_process_and_memoizes(monkeypatch):
+    """The GPU-offload probe imports llama_cpp in a CHILD process (an
+    in-process import would lock the very DLL a later swap must replace,
+    exactly the torch already-imported problem) and runs at most once."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "_llama_gpu_cache", [])
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="1\n", stderr="")
+
+    monkeypatch.setattr(P.subprocess, "run", fake_run)
+    assert P._llama_supports_gpu() is True
+    assert calls[0][0] == P.sys.executable
+    assert "llama_supports_gpu_offload" in calls[0][2]
+    assert P._llama_supports_gpu() is True
+    assert len(calls) == 1
+
+
+def test_llama_gpu_probe_reports_cpu_build_as_false(monkeypatch):
+    """A probe that prints 0 is a working CPU-only build -> False (the
+    swap trigger), not None (unknown)."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "_llama_gpu_cache", [])
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P.subprocess, "run",
+                        lambda cmd, **kw: SimpleNamespace(returncode=0,
+                                                          stdout="0\n", stderr=""))
+    assert P._llama_supports_gpu() is False
+
+
+def test_llama_gpu_probe_absent_package_and_crash_yield_none(monkeypatch):
+    """No llama_cpp installed -> None without spawning a child at all; a
+    probe whose child dies (broken DLL) -> None. Neither may trigger a
+    swap -- there is nothing safe to replace."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "_llama_gpu_cache", [])
+    monkeypatch.setattr(P.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(
+        P.subprocess, "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no probe expected")))
+    assert P._llama_supports_gpu() is None
+
+    monkeypatch.setattr(P, "_llama_gpu_cache", [])
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P.subprocess, "run",
+                        lambda cmd, **kw: SimpleNamespace(returncode=3,
+                                                          stdout="", stderr="boom"))
+    assert P._llama_supports_gpu() is None
+
+
+def test_llama_cuda_reinstall_needed_matrix(monkeypatch):
+    """The swap triggers only for a CPU-only llama build on non-mac CUDA
+    hardware without the AI_DAM_DEVICE=cpu opt-out; an absent package or
+    a failed probe (None) never triggers it."""
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    monkeypatch.setattr(P.sys, "platform", "linux")
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: False)
+    assert P.llama_cuda_reinstall_needed() is True
+
+    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: True)
+    assert P.llama_cuda_reinstall_needed() is False
+    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: None)
+    assert P.llama_cuda_reinstall_needed() is False
+
+    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: False)
+    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
+    assert P.llama_cuda_reinstall_needed() is False
+    monkeypatch.delenv("AI_DAM_DEVICE")
+
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
+    assert P.llama_cuda_reinstall_needed() is False
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+
+    monkeypatch.setattr(P.sys, "platform", "darwin")
+    assert P.llama_cuda_reinstall_needed() is False  # macOS builds use Metal
+
+
+def test_provision_swaps_cpu_llama_for_cuda_build(tmp_path, monkeypatch):
+    """With a CPU-only llama build, CUDA hardware, and llama_cpp not yet
+    imported, provision() force-reinstalls llama-cpp-python (--no-deps)
+    from the prebuilt CUDA index and drops the memoized CPU verdict so
+    the next probe sees the new build."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
+    monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
+    monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P, "_llama_gpu_cache", [False])
+
+    installs = []
+    result = P.provision(
+        str(tmp_path), ["critic"], log=lambda m: None,
+        downloaders=_fake_downloaders({}),
+        pip_runner=lambda args: installs.append(args),
+    )
+    assert installs == [["--force-reinstall", "--no-deps", "llama-cpp-python",
+                         "--index-url",
+                         "https://abetlen.github.io/llama-cpp-python/whl/cu124"]]
+    assert "llama-cpp-python (CUDA)" in result["installed"]
+    assert P._llama_gpu_cache == []
+
+
+def test_provision_llama_swap_failure_is_best_effort_with_advisory(tmp_path, monkeypatch):
+    """No matching CUDA wheel (official coverage stops at CPython 3.12):
+    provisioning must still SUCCEED on the working CPU build, and the log
+    must name the fastest fix -- a Python 3.12 venv."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
+    monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+
+    def runner(args):
+        raise P.ProvisionError("No matching distribution found for llama-cpp-python")
+
+    lines = []
+    result = P.provision(
+        str(tmp_path), ["critic"], log=lines.append,
+        downloaders=_fake_downloaders({}), pip_runner=runner,
+    )
+    assert any("uv venv -p 3.12" in line for line in lines)
+    assert "llama-cpp-python (CUDA)" not in result["installed"]
+
+
+def test_provision_llama_swap_deferred_while_llama_loaded(tmp_path, monkeypatch):
+    """A loaded llama_cpp pins its shared library (Windows locks the
+    file), so provision() logs a restart advisory instead of replacing it
+    underneath the running critic."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
+    monkeypatch.setitem(P.sys.modules, "llama_cpp", SimpleNamespace())
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+
+    lines = []
+    result = P.provision(
+        str(tmp_path), ["critic"], log=lines.append,
+        downloaders=_fake_downloaders({}),
+        pip_runner=lambda args: (_ for _ in ()).throw(
+            AssertionError("no installs expected")),
+    )
+    assert any("restart the app" in line for line in lines)
+    assert result["installed"] == []
+
+
+def test_pip_runner_translates_force_reinstall_for_uv(monkeypatch):
+    """uv pip spells pip's --force-reinstall as --reinstall; the pip-less
+    venv fallback must translate it or the llama CUDA swap dies with
+    'unexpected argument' in exactly the venvs that need it most."""
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[1:3] == ["-m", "pip"]:
+            return _pip_proc(1, "No module named pip")
+        return _pip_proc()
+
+    monkeypatch.setattr(P.subprocess, "run", fake_run)
+    monkeypatch.setattr(P.shutil, "which",
+                        lambda name: "/usr/bin/uv" if name == "uv" else None)
+    P._default_pip_runner(["--force-reinstall", "--no-deps", "llama-cpp-python"])
+    assert "--force-reinstall" in calls[0]
+    assert "--reinstall" in calls[1]
+    assert "--force-reinstall" not in calls[1]
+    assert "--no-deps" in calls[1]
+
+
+def test_provision_groups_for_includes_llama_swap_groups(tmp_path, monkeypatch):
+    """A fully-provisioned critic still auto-provisions when the installed
+    llama-cpp-python is a CPU-only build on CUDA hardware -- that is how
+    the GPU swap reaches machines with nothing else missing."""
+    from types import SimpleNamespace
+    _make_db(str(tmp_path / "g.sqlite"))
+    models = tmp_path / "models"
+    models.mkdir(parents=True)
+    (models / "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").write_bytes(b"w")
+    (models / "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf").write_bytes(b"w")
+    (models / "open_clip").mkdir()
+    (models / "open_clip" / "ViT-B-32_laion2b_s34b_b79k.bin").write_bytes(b"w")
+    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
+               face_backend="none", segmenter_backend="none",
+               critic_backend="qwen-vl")
+
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
+    assert provision_groups_for(cfg) == []
+
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
+    assert provision_groups_for(cfg) == ["critic"]

@@ -134,7 +134,11 @@ def provision_groups_for(config: AIConfig) -> list:
         needs_cuda_swap = (
             any(req == "torch" for _, req in group.runtime)
             and provisioning.torch_cuda_reinstall_needed())
-        if weights_missing or needs_cuda_swap or provisioning.runtime_missing(group):
+        needs_llama_swap = (
+            any(req.startswith("llama-cpp-python") for _, req in group.runtime)
+            and provisioning.llama_cuda_reinstall_needed())
+        if (weights_missing or needs_cuda_swap or needs_llama_swap
+                or provisioning.runtime_missing(group)):
             missing.append(group.name)
     return missing
 

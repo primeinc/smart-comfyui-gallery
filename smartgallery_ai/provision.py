@@ -132,6 +132,53 @@ def torch_cuda_index() -> str:
     return _TORCH_CUDA_INDEX_BLACKWELL_FALLBACK
 
 
+# Official prebuilt CUDA wheels for llama-cpp-python (the critic's
+# runtime). Coverage is narrower than torch's: CPython 3.10-3.12 only as
+# of 2026-08 — the swap is attempted best-effort and the CPU build stays
+# when no wheel matches. AI_DAM_LLAMA_CUDA_INDEX overrides.
+_LLAMA_CUDA_INDEX_DEFAULT = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
+_llama_gpu_cache: list = []  # memoized [bool-or-None]
+
+
+def llama_cuda_index() -> str:
+    """The prebuilt-CUDA wheel index for llama-cpp-python."""
+    return (os.environ.get("AI_DAM_LLAMA_CUDA_INDEX", "").strip()
+            or _LLAMA_CUDA_INDEX_DEFAULT)
+
+
+def _llama_supports_gpu():
+    """Whether the installed llama-cpp-python build can offload to GPU,
+    probed in a CHILD process — importing it here would load (and on
+    Windows lock) the DLL a swap needs to replace. None when the package
+    is absent or the probe fails. Memoized."""
+    if _llama_gpu_cache:
+        return _llama_gpu_cache[0]
+    value = None
+    if importlib.util.find_spec("llama_cpp") is not None:
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c",
+                 "import llama_cpp; print(int(llama_cpp.llama_supports_gpu_offload()))"],
+                capture_output=True, text=True, timeout=120)
+            if proc.returncode == 0:
+                value = proc.stdout.strip() == "1"
+        except Exception:  # noqa: BLE001 - probe is best-effort
+            value = None
+    _llama_gpu_cache.append(value)
+    return value
+
+
+def llama_cuda_reinstall_needed() -> bool:
+    """Whether the installed llama-cpp-python is a CPU-only build on CUDA
+    hardware (the critic then runs its 30s-per-image vision encoder on
+    CPU while the GPU idles). AI_DAM_DEVICE=cpu opts out."""
+    if sys.platform == "darwin" or not cuda_hardware_present():
+        return False
+    if os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu":
+        return False
+    return _llama_supports_gpu() is False
+
+
 def cuda_summary():
     """One-shot GPU inventory for boot logging and /status: EVERY card
     with its own name/compute capability/VRAM (a machine can mix
@@ -423,9 +470,12 @@ def _run_pip_operation(pip_args: list, uv_args: list, timeout: int) -> None:
 
 def _default_pip_runner(args: list) -> None:
     """Install one requirement into the current interpreter's environment
-    (works in pip-less uv venvs too; see _run_pip_operation)."""
+    (works in pip-less uv venvs too; see _run_pip_operation). uv spells
+    pip's --force-reinstall as --reinstall; translate for its fallback."""
+    uv_args = ["--reinstall" if arg == "--force-reinstall" else arg
+               for arg in args]
     _run_pip_operation(["install", "--quiet", *args],
-                       ["install", "--quiet", *args], timeout=3600)
+                       ["install", "--quiet", *uv_args], timeout=3600)
 
 
 def _default_pip_uninstaller(packages: list) -> None:
@@ -620,6 +670,37 @@ def provision(
                 installed.extend(["torch", "torchvision"])
                 emit({"kind": "runtime", "phase": "done",
                       "item": f"torch ({tag} swap)"})
+        # Critic GPU self-heal, BEST-EFFORT: official prebuilt CUDA wheels
+        # for llama-cpp-python cover fewer Python versions than torch's,
+        # so a failed attempt keeps the working CPU build and says exactly
+        # what would unlock GPU reviews.
+        if (any(req.startswith("llama-cpp-python")
+                for g in groups for _, req in g.runtime)
+                and llama_cuda_reinstall_needed()):
+            if "llama_cpp" in sys.modules:
+                log("  ! llama-cpp-python is loaded in this process but is a "
+                    "CPU-only build; restart the app to attempt the CUDA swap")
+            else:
+                index = llama_cuda_index()
+                cuda_tag = index.rstrip("/").rsplit("/", 1)[-1]
+                log(f"  ~ trying prebuilt CUDA llama-cpp-python ({cuda_tag}) "
+                    "for GPU reviews")
+                try:
+                    (pip_runner or _default_pip_runner)(
+                        ["--force-reinstall", "--no-deps", "llama-cpp-python",
+                         "--index-url", index])
+                    importlib.invalidate_caches()
+                    _llama_gpu_cache.clear()
+                    installed.append("llama-cpp-python (CUDA)")
+                    log("  + llama-cpp-python CUDA build installed — the "
+                        "critic will offload to GPU")
+                except ProvisionError as exc:
+                    log("  ! no prebuilt CUDA llama-cpp-python wheel matches "
+                        "this Python/OS (official wheels cover CPython "
+                        "3.10-3.12); the critic stays on CPU (~90s/review). "
+                        "Fastest fix: recreate the venv on Python 3.12 "
+                        "(uv venv -p 3.12) and restart — everything "
+                        f"reinstalls itself. Details: {str(exc)[-160:]}")
         _ensure_hub(
             any(a.hf_repo is not None for g in groups for a in g.artifacts
                 if force or not artifact_present(models_dir, a)),
