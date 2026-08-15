@@ -29,6 +29,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import importlib
+import importlib.metadata
 import importlib.util
 import os
 import shutil
@@ -280,6 +281,33 @@ def _default_pip_runner(args: list) -> None:
             f"pip install {' '.join(args)} failed: {proc.stderr.strip()[-400:]}")
 
 
+def _default_pip_uninstaller(packages: list) -> None:
+    """Run one `pip uninstall -y` in the current interpreter's environment;
+    failure raises ProvisionError carrying the tail of pip's stderr."""
+    cmd = [sys.executable, "-m", "pip", "uninstall", "--quiet", "-y", *packages]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        raise ProvisionError(
+            f"pip uninstall {' '.join(packages)} failed: {proc.stderr.strip()[-400:]}")
+
+
+def torch_cuda_reinstall_needed() -> bool:
+    """Whether the installed torch is a CPU-index build on a machine whose
+    hardware calls for CUDA wheels. The static installers (uv/pip) pin the
+    CPU index because package resolution cannot see GPUs; only the running
+    app can, so it swaps the pair at startup. Metadata-only -- never
+    imports torch. AI_DAM_DEVICE=cpu opts out."""
+    if sys.platform == "darwin" or not cuda_hardware_present():
+        return False
+    if os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu":
+        return False
+    try:
+        version = importlib.metadata.version("torch")
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return "+cpu" in version
+
+
 def _pip_args_for(requirement: str) -> list:
     """pip arguments for one requirement. torch AND torchvision pick the
     wheel index matching the hardware — they must come from the SAME index
@@ -376,6 +404,7 @@ def provision(
     downloaders: Optional[dict] = None,
     install_packages: bool = True,
     pip_runner: Optional[Callable[[list], None]] = None,
+    pip_uninstaller: Optional[Callable[[list], None]] = None,
     progress: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     """Make the requested groups fully loadable: install their missing
@@ -411,6 +440,23 @@ def provision(
     groups = resolve_groups(group_names)
     installed: list = []
     if install_packages:
+        # GPU self-heal: a CPU-index torch on CUDA hardware is swapped for
+        # the matching CUDA wheels BEFORE the missing-package loop, which
+        # then reinstalls the pair with the normal hardware steering. Only
+        # safe while torch is unimported: an in-process torch pins its
+        # files (and locks DLLs on Windows), so then we can only advise.
+        if (any(req == "torch" for g in groups for _, req in g.runtime)
+                and torch_cuda_reinstall_needed()):
+            if "torch" in sys.modules:
+                log("  ! CPU-build torch is loaded in this process but an NVIDIA "
+                    "GPU is present; restart the app to switch to CUDA wheels "
+                    "(AI_DAM_DEVICE=cpu opts out)")
+            else:
+                log("  ~ replacing CPU-build torch/torchvision with CUDA wheels")
+                emit({"kind": "runtime", "phase": "start",
+                      "item": "torch (CUDA swap)"})
+                (pip_uninstaller or _default_pip_uninstaller)(["torch", "torchvision"])
+                importlib.invalidate_caches()
         _ensure_hub(
             any(a.hf_repo is not None for g in groups for a in g.artifacts
                 if force or not artifact_present(models_dir, a)),

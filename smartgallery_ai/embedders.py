@@ -20,6 +20,7 @@ rather than crashing at import time.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -28,6 +29,8 @@ import numpy as np
 from PIL import Image
 
 from smartgallery_ai import AIConfig
+
+_logger = logging.getLogger(__name__)
 
 
 class BackendUnavailable(Exception):
@@ -121,15 +124,30 @@ class StubVisualEmbedder(VisualEmbedder):
 
 
 
-def pick_torch_device(torch_module) -> str:
-    """Best available torch device: honors AI_DAM_DEVICE when set,
-    otherwise CUDA > MPS > CPU. Defensive against builds lacking a
-    backend attribute entirely."""
+def pick_torch_device(torch_module, role: Optional[str] = None) -> str:
+    """Best available torch device: honors AI_DAM_<ROLE>_DEVICE (e.g.
+    AI_DAM_VISUAL_DEVICE=cuda:1 pins one backend to one card, spreading
+    VRAM across GPUs), then AI_DAM_DEVICE, otherwise CUDA > MPS > CPU.
+    With several CUDA devices the one with the most total VRAM wins —
+    bare 'cuda' would silently mean enumeration order (PCI slot), not the
+    better card. Defensive against builds lacking a backend attribute."""
+    if role:
+        per_role = os.environ.get(f"AI_DAM_{role.upper()}_DEVICE", "").lower()
+        if per_role:
+            return per_role
     forced = os.environ.get("AI_DAM_DEVICE", "").lower()
     if forced:
         return forced
     cuda = getattr(torch_module, "cuda", None)
     if cuda is not None and cuda.is_available():
+        try:
+            count = cuda.device_count()
+            if count > 1:
+                best = max(range(count),
+                           key=lambda i: cuda.get_device_properties(i).total_memory)
+                return f"cuda:{best}"
+        except Exception:  # noqa: BLE001 - enumeration is best-effort; cuda:0 still works
+            pass
         return "cuda"
     mps = getattr(getattr(torch_module, "backends", None), "mps", None)
     if mps is not None and mps.is_available():
@@ -173,7 +191,9 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
             )
         except Exception as exc:
             raise BackendUnavailable(f"failed to load open_clip weights: {exc}") from exc
-        self._device = pick_torch_device(torch)
+        self._device = pick_torch_device(torch, role="semantic")
+        _logger.info("[AI] %s on device %s (torch %s)",
+                     self.model_id, self._device, getattr(torch, "__version__", "?"))
         model.eval()
         self._model = model.to(self._device)
         self._preprocess = preprocess
@@ -236,7 +256,9 @@ class Dinov2VisualEmbedder(VisualEmbedder):
         except Exception as exc:
             raise BackendUnavailable(f"failed to load dinov2 weights: {exc}") from exc
         self._model.eval()
-        self._device = pick_torch_device(torch)
+        self._device = pick_torch_device(torch, role="visual")
+        _logger.info("[AI] %s on device %s (torch %s)",
+                     self.model_id, self._device, getattr(torch, "__version__", "?"))
         self._model = self._model.to(self._device)
         self._torch = torch
 

@@ -278,7 +278,14 @@
             parts.push(`${ix.embeddings_visual}/${ix.visual_files_total} visual`);
             parts.push(`${ix.faces_scanned}/${ix.visual_files_total} faces`);
         }
-        return `<div style="margin-top:8px; font-size:0.78rem; color:var(--text-muted);">Gallery indexing: ${parts.join(' · ')}</div>`;
+        const devices = (status || {}).devices || {};
+        const devParts = Object.entries(devices)
+            .filter(([, dev]) => dev)
+            .map(([key, dev]) => `${escapeAidamHtml(key)} on ${escapeAidamHtml(dev)}`);
+        const devLine = devParts.length
+            ? `<div style="margin-top:4px; font-size:0.78rem; color:var(--text-muted);">Compute: ${devParts.join(' · ')}</div>`
+            : '';
+        return `<div style="margin-top:8px; font-size:0.78rem; color:var(--text-muted);">Gallery indexing: ${parts.join(' · ')}</div>${devLine}`;
     }
 
     async function aidamPendingMsg(section, what) {
@@ -289,9 +296,23 @@
         return `<div class="aidam-status-msg">⚡ ${escapeAidamHtml(what)} — indexing this file now; results appear here automatically.${aidamIndexingProgressLine(status)}</div>`;
     }
 
+    let aidamIndexPollTicks = 0;
+    const AIDAM_INDEX_POLL_MAX_TICKS = 150;  // 150 x 4s = 10 min (reviews take minutes on CPU)
+
     function aidamStartIndexPoll() {
         if (aidamIndexPoll !== null) return;
+        aidamIndexPollTicks = 0;
         aidamIndexPoll = setInterval(() => {
+            // A permanently failing file (unreadable, worker error) would
+            // otherwise keep this "in progress" spinner honest-looking
+            // forever; after the cap, stop and say so.
+            if (++aidamIndexPollTicks > AIDAM_INDEX_POLL_MAX_TICKS) {
+                aidamStopIndexPoll();
+                const panel = document.getElementById('aidam-tab-' + aidamActiveTab);
+                const msg = panel && panel.querySelector('.aidam-status-msg');
+                if (msg) msg.innerHTML = '⚠️ Still no results after several minutes — the worker may have hit an error on this file. Check the server log, then reopen this panel to retry.';
+                return;
+            }
             aidamStatusCache = null;   // refresh the backlog numbers too
             aidamLoadedFor = {};       // force a real re-fetch of the open tab
             aidamEnsureTabLoaded(aidamActiveTab);
@@ -619,6 +640,12 @@
                 ${aidamMeter('Quality', review.scores ? review.scores.quality : null)}
                 ${aidamMeter('Prompt Alignment', review.scores ? review.scores.prompt_alignment : null)}
             </div>`;
+
+            const alignmentMissing = !review.scores || review.scores.prompt_alignment === null
+                || review.scores.prompt_alignment === undefined;
+            if (alignmentMissing && data.prompt_available === false) {
+                html += `<p style="color:var(--text-muted); font-size:0.78rem; margin:-6px 0 12px 0;">No generation prompt is embedded in this file's workflow, so there is nothing to score alignment against.</p>`;
+            }
 
             if (review.summary) {
                 html += `<p style="color:#ccc; font-size:0.85rem; font-style:italic; margin:-6px 0 16px 0;">${escapeAidamHtml(review.summary)}</p>`;

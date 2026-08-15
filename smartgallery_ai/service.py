@@ -33,7 +33,14 @@ from smartgallery_ai import (
     SPACE_VISUAL,
 )
 from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, vectors
-from smartgallery_ai.worker import indexing_totals, load_source_image, record_scan
+from smartgallery_ai.worker import (
+    _MTIME_EPSILON,
+    _has_column,
+    indexing_totals,
+    load_source_image,
+    mark_faces_cluster_pending,
+    record_scan,
+)
 
 __all__ = ["create_ai_blueprint", "create_ai_resolvers", "set_worker", "get_worker"]
 
@@ -89,24 +96,25 @@ def _renderable(conn: sqlite3.Connection, file_id: str) -> bool:
 
 
 def _was_scanned(conn: sqlite3.Connection, file_id: str, kind: str):
-    """The file's ai_scan_log row for `kind` (any model/mtime), or None.
-    Row presence separates 'scanned, nothing found' from 'not reached yet'."""
+    """The file's ai_scan_log row for `kind` AT ITS CURRENT MTIME, or None.
+    Row presence separates 'scanned, nothing found' from 'not reached yet';
+    the mtime predicate keeps a modified file honest -- its stale scan row
+    must read as pending again, because the worker WILL rescan it. (A
+    model-version bump also re-queues; that rarer staleness is accepted
+    here since checking it would mean constructing the backend.)"""
     return conn.execute(
-        "SELECT result_count FROM ai_scan_log WHERE file_id = ? AND kind = ?",
-        (file_id, kind)).fetchone()
+        """
+        SELECT sl.result_count FROM ai_scan_log sl
+        JOIN files f ON f.id = sl.file_id
+        WHERE sl.file_id = ? AND sl.kind = ?
+          AND ABS(sl.source_mtime - f.mtime) <= ?
+        """,
+        (file_id, kind, _MTIME_EPSILON)).fetchone()
 
 
 def _disabled_response():
     """Uniform body every route except `/status` answers with while the layer is off."""
     return jsonify({"enabled": False}), 200
-
-
-def _segmenter_available(config: AIConfig) -> bool:
-    """Whether a segmenter backend can be constructed; a raising probe counts as unavailable."""
-    try:
-        return review.get_segmenter_backend(config) is not None
-    except Exception:  # noqa: BLE001 - availability probe must not raise
-        return False
 
 
 def _extract_file_id(value: Any) -> Optional[str]:
@@ -184,14 +192,12 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     result: dict = {"file_id": file_id, "hashed": False, "embedded": [], "faces": False, "reviewed": False}
 
     def _backend_for(key: str, factory):
-        """The worker's already-loaded backend instance when it has one,
-        else a fresh resolve: re-constructing OpenCLIP/DINOv2 per request
-        doubles latency and memory for a model this process already holds."""
-        worker = get_worker()
-        if worker is not None:
-            cached = worker.peek_backend(key)
-            if cached is not None:
-                return cached
+        """Fresh backend resolve for the no-worker inline path. NEVER hands
+        out the worker's cached instances: the worker thread runs inference
+        on those concurrently, and the detectors/predictors are stateful
+        (a shared cv2 FaceDetectorYN or SamPredictor is a data race). With
+        a running worker the endpoint defers to its priority queue instead
+        of calling this at all."""
         return factory(config)
 
     existing_hash = conn.execute(
@@ -245,6 +251,10 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
         # re-detects this file next cycle and the panel cannot tell
         # "scanned, zero faces" apart from "not scanned yet".
         record_scan(conn, file_id, "faces", face_backend, mtime, now, len(detections))
+        # And queue a recluster: these faces were stored outside the
+        # worker's scan loop, which otherwise only clusters after its own
+        # scans -- they would stay unclustered indefinitely.
+        mark_faces_cluster_pending(conn, face_backend)
         result["faces"] = True
 
     # Reviews are NEVER run synchronously here: constructing the critic can
@@ -314,6 +324,11 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # and at most once per process while enabled.
     backend_probe_cache: dict = {}
     _PROBE_CACHES.append(backend_probe_cache)
+    # Torch device each probed backend landed on (None for backends that
+    # have no device concept, e.g. OpenCV faces); same lifecycle as the
+    # probe cache so a post-provision invalidation refreshes both.
+    backend_device_cache: dict = {}
+    _PROBE_CACHES.append(backend_device_cache)
 
     def _probe_backends() -> dict:
         """Availability flag per backend: all-False while disabled, else probed once and cached."""
@@ -321,14 +336,28 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             return {"semantic": False, "visual": False, "face": False,
                     "critic": False, "segmenter": False}
         if not backend_probe_cache:
-            backend_probe_cache.update({
-                "semantic": embedders.get_semantic_backend(config) is not None,
-                "visual": embedders.get_visual_backend(config) is not None,
-                "face": faces.get_face_backend(config) is not None,
-                "critic": review.get_critic_backend(config) is not None,
-                "segmenter": _segmenter_available(config),
-            })
+            instances = {
+                "semantic": embedders.get_semantic_backend(config),
+                "visual": embedders.get_visual_backend(config),
+                "face": faces.get_face_backend(config),
+                "critic": review.get_critic_backend(config),
+            }
+            try:
+                instances["segmenter"] = review.get_segmenter_backend(config)
+            except Exception:  # noqa: BLE001 - availability probe must not raise
+                instances["segmenter"] = None
+            backend_probe_cache.update(
+                {key: inst is not None for key, inst in instances.items()})
+            backend_device_cache.update(
+                {key: getattr(inst, "_device", None) for key, inst in instances.items()})
         return dict(backend_probe_cache)
+
+    def _backend_devices() -> dict:
+        """Cached torch device per backend, filled by the same probe pass."""
+        if not config.enabled:
+            return {}
+        _probe_backends()
+        return dict(backend_device_cache)
 
     def status():
         """Backend availability, per-table counts, and worker state; answers even while disabled."""
@@ -361,6 +390,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         return jsonify({
             "enabled": config.enabled,
             "backends": backends,
+            "devices": _backend_devices(),
             "counts": counts,
             "indexing": indexing,
             "worker": worker_info,
@@ -554,6 +584,15 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "WHERE file_id = ? ORDER BY computed_at DESC LIMIT 1",
                 (file_id,),
             ).fetchone()
+            # Whether this file HAS a generation prompt to align against --
+            # a null alignment score means "no prompt to compare with" far
+            # more often than "scoring failed", and the panel says which.
+            prompt_available = False
+            if _has_column(conn, "files", "workflow_prompt"):
+                prow = conn.execute(
+                    "SELECT workflow_prompt FROM files WHERE id = ?", (file_id,)
+                ).fetchone()
+                prompt_available = bool(prow and (prow["workflow_prompt"] or "").strip())
             if review_row is None:
                 # scan-log row present + no review row = the one attempt
                 # failed (result_count -1); absent = not reached yet.
@@ -609,7 +648,8 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             },
             "computed_at": review_row["computed_at"],
         }
-        return jsonify({"enabled": True, "review": review_dict, "findings": findings})
+        return jsonify({"enabled": True, "review": review_dict, "findings": findings,
+                        "prompt_available": prompt_available})
 
     # -- GET /review/mask/<int:finding_id> -------------------------------------------
 
@@ -679,9 +719,17 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- POST /index/<file_id> (guarded) --------------------------------------------
 
     def index_file(file_id: str):
-        """Synchronously (re-)index one file; `force` also reschedules its background review."""
+        """(Re-)index one file NOW. With a running worker the file jumps
+        its priority queue and the worker (whose thread owns every loaded
+        model) runs all stages immediately -- sharing its live backend
+        instances with this request thread would be a data race. Only
+        without a worker does the request run the fast stages inline,
+        with backends it constructs itself. `force` additionally
+        reschedules the file's background review."""
         data = request.get_json(silent=True) or {}
         force = bool(data.get("force", False))
+        worker = get_worker()
+        defer = worker is not None and worker.is_running
         conn = _connect(config)
         try:
             file_row = conn.execute(
@@ -689,17 +737,20 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             ).fetchone()
             if file_row is None:
                 return jsonify({"enabled": True, "error": f"unknown file_id: {file_id!r}"}), 404
-            result = _index_one_file(conn, config, file_row, force=force)
+            if defer:
+                if force:
+                    conn.execute(
+                        "DELETE FROM ai_scan_log WHERE file_id = ? AND kind = 'review'",
+                        (file_id,))
+                    conn.commit()
+                result = {"file_id": file_id,
+                          "review_rescheduled": force,
+                          "worker_queued": worker.request_priority_index(file_id)}
+            else:
+                result = _index_one_file(conn, config, file_row, force=force)
+                result["worker_queued"] = False
         finally:
             conn.close()
-        # The stages this request could not run inline (review, and any
-        # stage whose backend only the worker has loaded) start NOW, not at
-        # the next poll tick: jump the worker's queue and wake it.
-        worker = get_worker()
-        if worker is not None and worker.is_running:
-            result["worker_queued"] = worker.request_priority_index(file_id)
-        else:
-            result["worker_queued"] = False
         return jsonify({"enabled": True, **result})
 
     # -- route table -----------------------------------------------------------------

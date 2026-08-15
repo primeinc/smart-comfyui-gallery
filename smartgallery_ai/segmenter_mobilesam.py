@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import os
 import warnings
 from typing import Optional
@@ -26,6 +27,8 @@ from smartgallery_ai.embedders import BackendUnavailable
 from smartgallery_ai.review import SegmenterBackend
 
 WEIGHTS_FILENAME = "mobile_sam.pt"
+
+_logger = logging.getLogger(__name__)
 
 
 class MobileSamSegmenter(SegmenterBackend):
@@ -61,7 +64,9 @@ class MobileSamSegmenter(SegmenterBackend):
                 raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
             try:
                 from smartgallery_ai.embedders import pick_torch_device
-                device = pick_torch_device(torch)
+                device = pick_torch_device(torch, role="segmenter")
+                self._device = device
+                _logger.info("[AI] %s on device %s", self.model_id, device)
                 with contextlib.redirect_stderr(io.StringIO()):
                     model = sam_model_registry["vit_t"](checkpoint=weights_path)
                 model.eval()

@@ -242,10 +242,29 @@ class QwenVlCritic(CriticBackend):
             from llama_cpp.llama_chat_format import Qwen25VLChatHandler
         except Exception as exc:  # noqa: BLE001
             raise BackendUnavailable(f"qwen-vl critic unavailable: {exc}") from exc
+        # Full GPU offload by default when the llama.cpp build has CUDA
+        # support; a CPU-only build ignores every GPU knob, so this is safe
+        # everywhere. AI_DAM_DEVICE=cpu forces 0 layers; =cuda:N pins the
+        # primary card; AI_DAM_GPU_LAYERS tunes partial offload for
+        # VRAM-constrained cards; AI_DAM_TENSOR_SPLIT ("0.6,0.4") sets the
+        # per-GPU proportions (llama.cpp already layer-splits across all
+        # visible GPUs by default when several are present).
+        device = os.environ.get("AI_DAM_DEVICE", "").lower()
+        gpu_kwargs: dict = {}
+        if device == "cpu":
+            gpu_kwargs["n_gpu_layers"] = 0
+        else:
+            gpu_kwargs["n_gpu_layers"] = int(os.environ.get("AI_DAM_GPU_LAYERS", "-1"))
+            if device.startswith("cuda:"):
+                gpu_kwargs["main_gpu"] = int(device.split(":", 1)[1])
+        split = os.environ.get("AI_DAM_TENSOR_SPLIT", "").strip()
+        if split and device != "cpu":
+            gpu_kwargs["tensor_split"] = [float(p) for p in split.split(",")]
         try:
             handler = Qwen25VLChatHandler(clip_model_path=mmproj_path, verbose=False)
             self._llm = Llama(model_path=model_path, chat_handler=handler,
-                              n_ctx=n_ctx, n_threads=n_threads, verbose=False)
+                              n_ctx=n_ctx, n_threads=n_threads,
+                              verbose=False, **gpu_kwargs)
         except Exception as exc:  # noqa: BLE001
             raise BackendUnavailable(f"failed to load qwen-vl weights: {exc}") from exc
 

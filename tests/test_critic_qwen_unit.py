@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import types
 
 import numpy as np
 import pytest
@@ -472,3 +473,72 @@ def test_review_null_describe_content_fails_grounding_closed(monkeypatch):
     critic._llm = _NullContentLlm()
     with pytest.raises(CriticGroundingError, match="no description"):
         critic.review(solid_color_image(), None, "rubric-1")
+
+
+# --- GPU offload knobs passed to llama.cpp ------------------------------------
+
+
+def _install_fake_llama(monkeypatch, recorded: dict):
+    """Working llama_cpp stand-in whose Llama records its kwargs."""
+
+    class _FakeLlama:
+        def __init__(self, **kwargs):
+            recorded.update(kwargs)
+
+    fake_fmt = types.ModuleType("llama_cpp.llama_chat_format")
+    fake_fmt.Qwen25VLChatHandler = lambda clip_model_path, verbose: object()
+    fake = types.ModuleType("llama_cpp")
+    fake.Llama = _FakeLlama
+    fake.llama_chat_format = fake_fmt
+    monkeypatch.setitem(sys.modules, "llama_cpp", fake)
+    monkeypatch.setitem(sys.modules, "llama_cpp.llama_chat_format", fake_fmt)
+
+
+def _touch_qwen_weights(tmp_path):
+    (tmp_path / MODEL_FILENAMES[1]).write_bytes(b"")
+    (tmp_path / CQ.MMPROJ_FILENAMES[1]).write_bytes(b"")
+
+
+def test_llama_defaults_to_full_gpu_offload(tmp_path, monkeypatch):
+    """Without overrides the critic asks llama.cpp for all layers on GPU
+    (a CPU-only build ignores it); no pin, no custom split."""
+    _touch_qwen_weights(tmp_path)
+    for var in ("AI_DAM_DEVICE", "AI_DAM_GPU_LAYERS", "AI_DAM_TENSOR_SPLIT"):
+        monkeypatch.delenv(var, raising=False)
+    recorded: dict = {}
+    _install_fake_llama(monkeypatch, recorded)
+
+    QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert recorded["n_gpu_layers"] == -1
+    assert "main_gpu" not in recorded
+    assert "tensor_split" not in recorded
+
+
+def test_llama_cpu_optout_forces_zero_layers_and_ignores_split(tmp_path, monkeypatch):
+    """AI_DAM_DEVICE=cpu keeps the whole model on CPU even when a tensor
+    split is configured."""
+    _touch_qwen_weights(tmp_path)
+    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
+    monkeypatch.setenv("AI_DAM_TENSOR_SPLIT", "0.5,0.5")
+    recorded: dict = {}
+    _install_fake_llama(monkeypatch, recorded)
+
+    QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert recorded["n_gpu_layers"] == 0
+    assert "tensor_split" not in recorded
+
+
+def test_llama_cuda_pin_and_tensor_split_and_partial_layers(tmp_path, monkeypatch):
+    """AI_DAM_DEVICE=cuda:1 pins llama's primary GPU, AI_DAM_TENSOR_SPLIT
+    becomes the per-GPU proportions, AI_DAM_GPU_LAYERS tunes offload."""
+    _touch_qwen_weights(tmp_path)
+    monkeypatch.setenv("AI_DAM_DEVICE", "cuda:1")
+    monkeypatch.setenv("AI_DAM_TENSOR_SPLIT", "0.6,0.4")
+    monkeypatch.setenv("AI_DAM_GPU_LAYERS", "20")
+    recorded: dict = {}
+    _install_fake_llama(monkeypatch, recorded)
+
+    QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert recorded["main_gpu"] == 1
+    assert recorded["tensor_split"] == [0.6, 0.4]
+    assert recorded["n_gpu_layers"] == 20

@@ -368,3 +368,54 @@ def test_stub_backends_expose_model_identity_and_dim():
     vis = get_visual_backend(_cfg("", visual_backend="stub"))
     assert (sem.model_id, sem.model_version, sem.dim) == ("stub-semantic", "stub-v1", 64)
     assert (vis.model_id, vis.model_version, vis.dim) == ("stub-visual", "stub-v1", 64)
+
+
+# --- pick_torch_device: multi-GPU selection and pinning -----------------------
+
+
+def _fake_torch_with_gpus(vram_by_index):
+    """torch stand-in whose cuda reports one device per entry with that
+    total_memory; is_available is True."""
+    cuda = types.SimpleNamespace(
+        is_available=lambda: True,
+        device_count=lambda: len(vram_by_index),
+        get_device_properties=lambda i: types.SimpleNamespace(
+            total_memory=vram_by_index[i]),
+    )
+    return types.SimpleNamespace(cuda=cuda, backends=None)
+
+
+def test_pick_torch_device_prefers_largest_vram_gpu(monkeypatch):
+    """With several CUDA devices the largest-VRAM card is chosen explicitly
+    (cuda:<i>), never bare 'cuda' (which means PCI enumeration order)."""
+    from smartgallery_ai.embedders import pick_torch_device
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    torch = _fake_torch_with_gpus([8 << 30, 24 << 30, 12 << 30])
+    assert pick_torch_device(torch) == "cuda:1"
+
+
+def test_pick_torch_device_single_gpu_stays_bare_cuda(monkeypatch):
+    """One CUDA device needs no index; a failing enumeration degrades to
+    bare 'cuda' instead of crashing device selection."""
+    from smartgallery_ai.embedders import pick_torch_device
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    assert pick_torch_device(_fake_torch_with_gpus([8 << 30])) == "cuda"
+
+    def _boom():
+        raise RuntimeError("driver hiccup")
+    broken = _fake_torch_with_gpus([1, 2])
+    broken.cuda.device_count = _boom
+    assert pick_torch_device(broken) == "cuda"
+
+
+def test_pick_torch_device_role_override_beats_global(monkeypatch):
+    """AI_DAM_<ROLE>_DEVICE pins one backend to one card even when the
+    global AI_DAM_DEVICE says something else; other roles follow the
+    global setting."""
+    from smartgallery_ai.embedders import pick_torch_device
+    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
+    monkeypatch.setenv("AI_DAM_VISUAL_DEVICE", "cuda:1")
+    torch = _fake_torch_with_gpus([8 << 30])
+    assert pick_torch_device(torch, role="visual") == "cuda:1"
+    assert pick_torch_device(torch, role="semantic") == "cpu"
+    assert pick_torch_device(torch) == "cpu"

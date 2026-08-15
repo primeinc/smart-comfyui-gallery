@@ -13,7 +13,26 @@ the backends load and verifies SHA-256 digests for single-file artifacts:
   environment — torch **and torchvision** wheels chosen by hardware and
   always from the same index (mixed indexes break torchvision's compiled
   ops): CUDA-capable when an NVIDIA driver is present (`AI_DAM_DEVICE=cpu`
-  forces CPU), CPU-index otherwise — then downloads any missing weights. Cycles are never
+  forces CPU), CPU-index otherwise — then downloads any missing weights.
+  A **CPU-build torch already installed on CUDA hardware is swapped for
+  the CUDA wheels automatically** at the same point (static installers pin
+  the CPU index because package resolution cannot see GPUs; the running
+  app can). If torch was already imported when the swap ran, one restart
+  finishes it — the console says so. Loaded backends log their device
+  (`[AI] <model> on device cuda`), `/status` reports `devices`, and the
+  panel shows "Compute: … on cuda" while indexing. The qwen-vl critic
+  offloads all layers to GPU when the installed `llama-cpp-python` is a
+  CUDA build (`AI_DAM_GPU_LAYERS` tunes partial offload; the default PyPI
+  wheel is CPU-only and ignores the setting).
+  **Multi-GPU**: the default device is the card with the most total VRAM
+  (bare `cuda` would mean PCI enumeration order). `AI_DAM_DEVICE=cuda:1`
+  pins everything to one card (the critic maps it to llama.cpp's
+  `main_gpu`); per-backend pins `AI_DAM_SEMANTIC_DEVICE` /
+  `AI_DAM_VISUAL_DEVICE` / `AI_DAM_SEGMENTER_DEVICE` spread the small
+  models across cards. The critic — the only model big enough to be worth
+  splitting — layer-splits across all visible GPUs natively (llama.cpp
+  default); `AI_DAM_TENSOR_SPLIT=0.6,0.4` sets the proportions, and
+  `CUDA_VISIBLE_DEVICES` remains the universal override. Cycles are never
   blocked; freshly landed runtimes/weights activate through the worker's
   backend re-probe without a restart, and torch backends place models on
   the best available device (CUDA > MPS > CPU). On an egress-denied host

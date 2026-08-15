@@ -68,6 +68,10 @@ default-groups = ["dev", "ai", "ai-models"]
 # torch and torchvision must resolve from the SAME index: a CPU-index torch
 # paired with a PyPI torchvision fails at import with
 # "operator torchvision::nms does not exist".
+# CPU index on purpose: static resolution cannot see GPUs. On CUDA
+# hardware the app swaps the pair for CUDA wheels at startup
+# (AI_DAM_DEVICE=cpu opts out), so `uv sync` stays lean and safe
+# everywhere without costing GPU users anything.
 torch = [{ index = "pytorch-cpu" }]
 torchvision = [{ index = "pytorch-cpu" }]
 mobile-sam = { git = "https://github.com/ChaoningZhang/MobileSAM.git" }

@@ -112,9 +112,10 @@ _PROVISION_MAP = (
 
 def provision_groups_for(config: AIConfig) -> list:
     """Provision groups the configured backends would use but which cannot
-    load right now — weights missing from `config.models_dir` OR runtime
-    packages not importable (auto-provisioning fixes both). The qwen-vl
-    critic additionally needs the semantic (grounding-gate) stack."""
+    load right now — weights missing from `config.models_dir`, runtime
+    packages not importable, or a CPU-build torch that CUDA hardware wants
+    swapped (auto-provisioning fixes all three). The qwen-vl critic
+    additionally needs the semantic (grounding-gate) stack."""
     wanted: list = []
     for attr, accepted, group in _PROVISION_MAP:
         if getattr(config, attr) in accepted:
@@ -128,7 +129,10 @@ def provision_groups_for(config: AIConfig) -> list:
         weights_missing = any(
             not provisioning.artifact_present(config.models_dir, a)
             for a in group.artifacts)
-        if weights_missing or provisioning.runtime_missing(group):
+        needs_cuda_swap = (
+            any(req == "torch" for _, req in group.runtime)
+            and provisioning.torch_cuda_reinstall_needed())
+        if weights_missing or needs_cuda_swap or provisioning.runtime_missing(group):
             missing.append(group.name)
     return missing
 
@@ -136,6 +140,18 @@ def provision_groups_for(config: AIConfig) -> list:
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
     """True when `table` has a column named `column`; a missing table reads as no columns."""
     return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+
+
+def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
+    """Set the persistent marker that makes the worker's next faces stage
+    re-cluster even when it has no new scan candidates. The synchronous
+    /index path stores faces OUTSIDE the worker's scan loop; without this
+    marker those faces would stay unclustered until some other file's
+    face scan happened to trigger clustering."""
+    AIWorker._set_state(
+        conn,
+        f"faces_cluster_pending:{backend.model_id}:{backend.model_version}",
+        "1")
 
 
 def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
@@ -580,14 +596,6 @@ class AIWorker:
                                  f"mask sweep: could not remove {target}: {exc}")
 
     # -- backend caching ---------------------------------------------------------
-
-    def peek_backend(self, key: str):
-        """The worker's cached backend instance for `key`, or None. Never
-        resolves: request threads use this to REUSE an already-loaded model
-        (constructing another OpenCLIP/DINOv2 in-request would double both
-        the latency and the memory) while resolution stays worker-only."""
-        with self._lock:
-            return self._backend_cache.get(key)
 
     def _backend(self, key: str, resolver):
         """Resolve a backend and reuse the instance. Constructing real

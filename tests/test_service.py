@@ -610,3 +610,20 @@ def test_file_access_check_filters_returned_neighbors(tmp_path):
     neighbor_ids = [n["file_id"] for n in sim["neighbors"]]
     assert "vis_twin" in neighbor_ids
     assert not any(fid.startswith("hid") for fid in neighbor_ids)
+
+
+def test_review_reports_prompt_availability(fixture):
+    """The review response says whether the file carries a generation
+    prompt: a null alignment score with prompt_available=False means
+    'nothing to align against', not 'scoring failed'."""
+    before = fixture.client.get(f"{_PREFIX}/review/review_file").get_json()
+    assert before["prompt_available"] is False
+
+    conn = sqlite3.connect(fixture.config.db_path)
+    conn.execute(
+        "UPDATE files SET workflow_prompt = 'a red fox in snow' WHERE id = 'review_file'")
+    conn.commit()
+    conn.close()
+
+    after = fixture.client.get(f"{_PREFIX}/review/review_file").get_json()
+    assert after["prompt_available"] is True

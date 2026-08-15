@@ -703,3 +703,114 @@ def test_provision_refuses_empty_models_dir():
     directory; provision() refuses it outright."""
     with pytest.raises(P.ProvisionError, match="models_dir is required"):
         P.provision("", ["faces"], log=lambda m: None)
+
+
+# --- GPU self-heal: CPU-build torch on CUDA hardware ---------------------------
+
+
+def test_torch_cuda_reinstall_needed_matrix(monkeypatch):
+    """The swap triggers only for a +cpu torch build on non-mac CUDA
+    hardware without the AI_DAM_DEVICE=cpu opt-out; absent torch or a
+    CUDA/plain build never triggers it."""
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    monkeypatch.setattr(P.sys, "platform", "linux")
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0+cpu")
+    assert P.torch_cuda_reinstall_needed() is True
+
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0+cu126")
+    assert P.torch_cuda_reinstall_needed() is False
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0")
+    assert P.torch_cuda_reinstall_needed() is False
+
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0+cpu")
+    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
+    assert P.torch_cuda_reinstall_needed() is False
+    monkeypatch.delenv("AI_DAM_DEVICE")
+
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
+    assert P.torch_cuda_reinstall_needed() is False
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+
+    monkeypatch.setattr(P.sys, "platform", "darwin")
+    assert P.torch_cuda_reinstall_needed() is False  # macOS torch has no CUDA variant
+
+    monkeypatch.setattr(P.sys, "platform", "linux")
+
+    def _missing(name):
+        raise P.importlib.metadata.PackageNotFoundError(name)
+    monkeypatch.setattr(P.importlib.metadata, "version", _missing)
+    assert P.torch_cuda_reinstall_needed() is False
+
+
+def test_provision_swaps_cpu_torch_for_cuda_when_unimported(tmp_path, monkeypatch):
+    """With a +cpu torch, CUDA hardware, and torch not yet imported,
+    provision() uninstalls the pair and the missing-package loop reinstalls
+    both with hardware steering."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P.sys, "platform", "linux")
+    monkeypatch.delitem(P.sys.modules, "torch", raising=False)
+
+    uninstalled = []
+    installs = []
+
+    def fake_find_spec(name):
+        # torch/torchvision read as missing once the uninstall happened
+        if name in ("torch", "torchvision") and uninstalled:
+            return None
+        return SimpleNamespace(origin="stub.py")
+
+    monkeypatch.setattr(P.importlib.util, "find_spec", fake_find_spec)
+    result = P.provision(
+        str(tmp_path), ["visual"], log=lambda m: None,
+        downloaders=_fake_downloaders({}),
+        pip_runner=lambda args: installs.append(args),
+        pip_uninstaller=lambda pkgs: uninstalled.append(pkgs),
+    )
+    assert uninstalled == [["torch", "torchvision"]]
+    assert ["torch"] in installs and ["torchvision"] in installs
+    assert set(result["installed"]) >= {"torch", "torchvision"}
+
+
+def test_provision_only_advises_when_torch_already_imported(tmp_path, monkeypatch):
+    """A loaded torch pins its files (locked DLLs on Windows), so the swap
+    must not uninstall underneath it: provision() logs a restart advisory
+    and leaves the packages alone."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
+    monkeypatch.setitem(P.sys.modules, "torch", SimpleNamespace())
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+
+    lines = []
+    result = P.provision(
+        str(tmp_path), ["visual"], log=lines.append,
+        downloaders=_fake_downloaders({}),
+        pip_runner=lambda args: (_ for _ in ()).throw(AssertionError("no installs expected")),
+        pip_uninstaller=lambda pkgs: (_ for _ in ()).throw(AssertionError("must not uninstall")),
+    )
+    assert any("restart the app to switch to CUDA" in line for line in lines)
+    assert result["installed"] == []
+
+
+def test_provision_groups_for_includes_cuda_swap_groups(tmp_path, monkeypatch):
+    """A fully-provisioned torch group still auto-provisions when the
+    installed torch is a CPU build on CUDA hardware -- that is how the
+    swap reaches machines with nothing else missing."""
+    from types import SimpleNamespace
+    _make_db(str(tmp_path / "g.sqlite"))
+    weights_dir = tmp_path / "models" / "dinov2-small"
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "model.safetensors").write_bytes(b"w")
+    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="auto",
+               face_backend="none", segmenter_backend="none", critic_backend="none")
+
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    assert provision_groups_for(cfg) == []
+
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
+    assert provision_groups_for(cfg) == ["visual"]

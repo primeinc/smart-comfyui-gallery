@@ -4,10 +4,11 @@ The AI panel's contract when a file has no derived rows yet:
   - per-file endpoints distinguish "the worker has not reached this file"
     (pending) from "scanned, nothing found" and from "no stage will ever
     process this type";
-  - POST /index runs the fast stages inline, records the faces scan the
-    same way the worker would (so neither re-scans the other's work), and
-    front-queues the file with the background worker so slow stages start
-    immediately instead of at the next poll tick;
+  - POST /index front-queues the file with the running worker (whose
+    thread owns every loaded model -- nothing runs inline then, avoiding
+    cross-thread model sharing) and wakes it; without a worker it runs
+    the fast stages inline with freshly constructed backends, recording
+    scans the same way the worker would;
   - /status carries gallery-wide backlog totals for progress display;
   - the worker wakes on a priority request instead of sleeping out its
     poll interval, and its cycle log shows progress only when work happened.
@@ -372,24 +373,59 @@ def test_status_carries_indexing_backlog_totals(api):
     }
 
 
-def test_index_endpoint_front_queues_the_running_worker(api):
-    """POST /index runs the inline stages AND front-queues the file with
-    the worker (worker_queued=True) so review/masks start immediately."""
+def test_index_endpoint_defers_entirely_to_a_running_worker(api):
+    """With a running worker POST /index front-queues the file and runs
+    NOTHING inline: the worker thread owns every loaded model, and sharing
+    its live instances with the request thread would be a data race."""
     queued = []
     fake_worker = SimpleNamespace(
         is_running=True,
         request_priority_index=lambda fid: queued.append(fid) or True,
-        peek_backend=lambda key: None,
     )
     set_worker(fake_worker)
     try:
         data = api.client.post(f"{_PREFIX}/index/fresh_img", json={}).get_json()
     finally:
         set_worker(None)
-    assert data["hashed"] is True
-    assert sorted(data["embedded"]) == [SPACE_SEMANTIC, SPACE_VISUAL]
     assert data["worker_queued"] is True
     assert queued == ["fresh_img"]
+    assert "hashed" not in data  # nothing ran inline
+
+    conn = sqlite3.connect(api.cfg.db_path)
+    try:
+        inline_rows = conn.execute("SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0]
+    finally:
+        conn.close()
+    assert inline_rows == 0
+
+
+def test_index_endpoint_force_reschedules_review_before_queueing(api):
+    """force=true clears the file's review scan-log row so the worker's
+    priority pass re-reviews it."""
+    conn = sqlite3.connect(api.cfg.db_path)
+    conn.row_factory = sqlite3.Row
+    record_scan(conn, "fresh_img", "review", StubSemanticEmbedder(),
+                1000.0, time.time(), 2)
+    conn.close()
+
+    fake_worker = SimpleNamespace(
+        is_running=True, request_priority_index=lambda fid: True)
+    set_worker(fake_worker)
+    try:
+        data = api.client.post(f"{_PREFIX}/index/fresh_img",
+                               json={"force": True}).get_json()
+    finally:
+        set_worker(None)
+    assert data["review_rescheduled"] is True
+
+    conn = sqlite3.connect(api.cfg.db_path)
+    try:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM ai_scan_log WHERE file_id = 'fresh_img' "
+            "AND kind = 'review'").fetchone()[0]
+    finally:
+        conn.close()
+    assert remaining == 0
 
 
 def test_index_endpoint_reports_worker_not_queued_when_absent(api):
@@ -401,32 +437,55 @@ def test_index_endpoint_reports_worker_not_queued_when_absent(api):
     assert data["worker_queued"] is False
 
 
-def test_index_one_file_reuses_the_workers_loaded_backend(tmp_path):
-    """When the worker already holds a backend instance the sync path uses
-    it instead of constructing another: the stored embedding carries the
-    cached instance's model identity."""
+def test_status_reports_backend_devices_key(api):
+    """/status carries a devices map (torch device per probed backend;
+    null for backends without a device concept, like the stubs here)."""
+    status = api.client.get(f"{_PREFIX}/status").get_json()
+    assert set(status["devices"]) == {"semantic", "visual", "face", "critic", "segmenter"}
+    assert all(device is None for device in status["devices"].values())
 
-    class MarkedEmbedder(StubSemanticEmbedder):
-        model_id = "marked-cached-instance"
 
-    cfg = _cfg(tmp_path, visual_backend="none")
+def test_sync_index_faces_queue_a_recluster_for_the_worker(tmp_path):
+    """Faces stored by the sync /index path set the worker's
+    cluster-pending marker, and the worker's next faces stage runs
+    clustering (clearing the marker) even with zero new scan candidates --
+    without this, sync-indexed faces stay unclustered indefinitely."""
+    cfg = _cfg(tmp_path, face_backend="stub")
     conn = _make_db(cfg.db_path)
-    _add_image_file(conn, tmp_path, "reuse_file")
+    _add_image_file(conn, tmp_path, "clustered_file")
 
-    fake_worker = SimpleNamespace(
-        is_running=True,
-        request_priority_index=lambda fid: True,
-        peek_backend=lambda key: MarkedEmbedder() if key == "semantic" else None,
-    )
-    set_worker(fake_worker)
-    try:
-        file_row = conn.execute("SELECT * FROM files WHERE id = 'reuse_file'").fetchone()
-        _index_one_file(conn, cfg, file_row, force=False)
-        model_id = conn.execute(
-            "SELECT model_id FROM ai_embeddings WHERE file_id = 'reuse_file' AND space = ?",
-            (SPACE_SEMANTIC,),
-        ).fetchone()[0]
-    finally:
-        set_worker(None)
-        conn.close()
-    assert model_id == "marked-cached-instance"
+    file_row = conn.execute("SELECT * FROM files WHERE id = 'clustered_file'").fetchone()
+    _index_one_file(conn, cfg, file_row, force=False)
+
+    markers = [r[0] for r in conn.execute(
+        "SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'")]
+    assert len(markers) == 1
+
+    from smartgallery_ai.faces import get_face_backend
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
+    worker._process_faces(conn, get_face_backend(cfg), 10)
+    remaining = conn.execute(
+        "SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'"
+    ).fetchall()
+    conn.close()
+    assert remaining == []
+
+
+def test_faces_modified_file_reads_as_pending_again(api):
+    """A scan recorded at an older mtime does NOT count as scanned: the
+    worker will rescan the modified file, so the panel must say pending,
+    not 'scanned — nothing found'."""
+    conn = sqlite3.connect(api.cfg.db_path)
+    conn.row_factory = sqlite3.Row
+    record_scan(conn, "fresh_img", "faces", StubSemanticEmbedder(),
+                1000.0, time.time(), 0)
+    conn.close()
+    scanned = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
+    assert scanned["pending"] is False
+
+    conn = sqlite3.connect(api.cfg.db_path)
+    conn.execute("UPDATE files SET mtime = 2000.0 WHERE id = 'fresh_img'")
+    conn.commit()
+    conn.close()
+    modified = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
+    assert modified["pending"] is True
