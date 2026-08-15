@@ -1,0 +1,557 @@
+"""Generation review: a typed, strictly-validated critique of one asset
+(quality score, prompt-alignment score, and typed findings), plus optional
+per-finding segmentation masks (WI-31).
+
+`validate_review_payload` is the ONLY door from raw model/backend JSON into
+a `ReviewResult`: any dict a `CriticBackend` returns, however it was
+produced, must pass through it before touching the database. It is strict
+by design -- unknown keys, wrong types, and out-of-range scores are
+rejected outright (never silently clamped or coerced) so a malformed or
+hallucinated payload fails loudly instead of writing garbage.
+
+`localizable` findings may carry a bounding box and/or points and, later, a
+segmentation mask; `localizable=False` ("global") findings may carry none
+of those -- enforced both here and by the `ai_review_findings` CHECK
+constraint in schema.py, so the invariant holds even for rows written
+outside this module.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Optional
+
+import numpy as np
+from PIL import Image
+
+from smartgallery_ai import AIConfig
+
+__all__ = [
+    "FINDING_TYPES",
+    "Finding",
+    "ReviewResult",
+    "ReviewSchemaError",
+    "validate_review_payload",
+    "CriticBackend",
+    "StubCritic",
+    "get_critic_backend",
+    "store_review",
+    "SegmenterBackend",
+    "StubSegmenter",
+    "MaskNotAllowedError",
+    "generate_finding_mask",
+]
+
+FINDING_TYPES = (
+    "anatomy",
+    "artifact",
+    "composition",
+    "lighting",
+    "text_render",
+    "prompt_mismatch",
+    "style",
+    "detail_loss",
+    "other",
+)
+
+_SEVERITIES = ("low", "medium", "high")
+_TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findings"}
+_FINDING_KEYS = {"type", "severity", "confidence", "localizable", "description", "bbox", "points"}
+
+
+@dataclass
+class Finding:
+    type: str
+    severity: str  # 'low' | 'medium' | 'high'
+    confidence: float  # 0..1
+    localizable: bool
+    description: str
+    bbox: Optional[tuple] = None  # (x, y, w, h), normalized -- localizable only
+    points: Optional[list] = None  # list[(x, y)], normalized -- localizable only
+
+
+@dataclass
+class ReviewResult:
+    quality_score: float  # 0..10
+    prompt_alignment_score: Optional[float]  # 0..10, or None if not applicable
+    summary: str
+    findings: list
+
+
+class ReviewSchemaError(ValueError):
+    """Raised by `validate_review_payload`, naming the first offending field.
+
+    `path` is a JSON-path-ish string (e.g. "findings[2].confidence") for
+    the first validation failure encountered, in a fixed, deterministic
+    check order.
+    """
+
+    def __init__(self, path: str, message: str):
+        self.path = path
+        super().__init__(f"{path}: {message}")
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _require(condition: bool, path: str, message: str) -> None:
+    if not condition:
+        raise ReviewSchemaError(path, message)
+
+
+def _validate_point(value, path: str) -> tuple:
+    _require(
+        isinstance(value, (list, tuple)) and len(value) == 2, path, "must be a 2-element [x, y]"
+    )
+    x, y = value
+    _require(_is_number(x) and _is_number(y), path, "coordinates must be numbers")
+    _require(
+        0.0 <= float(x) <= 1.0 and 0.0 <= float(y) <= 1.0,
+        path,
+        "coordinates must be within [0, 1]",
+    )
+    return (float(x), float(y))
+
+
+def _validate_bbox(value, path: str) -> tuple:
+    _require(isinstance(value, (list, tuple)) and len(value) == 4, path, "must be [x, y, w, h]")
+    _require(all(_is_number(v) for v in value), path, "all components must be numbers")
+    x, y, w, h = (float(v) for v in value)
+    _require(all(0.0 <= v <= 1.0 for v in (x, y, w, h)), path, "components must be within [0, 1]")
+    return (x, y, w, h)
+
+
+def _validate_finding(raw, index: int) -> Finding:
+    prefix = f"findings[{index}]"
+    _require(isinstance(raw, dict), prefix, "must be an object")
+    unknown = set(raw) - _FINDING_KEYS
+    _require(not unknown, prefix, f"unknown key(s): {sorted(unknown)}")
+
+    for key in ("type", "severity", "confidence", "localizable", "description"):
+        _require(key in raw, f"{prefix}.{key}", "missing required field")
+
+    ftype = raw["type"]
+    _require(
+        isinstance(ftype, str) and ftype in FINDING_TYPES,
+        f"{prefix}.type",
+        f"must be one of {FINDING_TYPES}",
+    )
+
+    severity = raw["severity"]
+    _require(
+        isinstance(severity, str) and severity in _SEVERITIES,
+        f"{prefix}.severity",
+        f"must be one of {_SEVERITIES}",
+    )
+
+    confidence = raw["confidence"]
+    _require(_is_number(confidence), f"{prefix}.confidence", "must be a number")
+    _require(0.0 <= float(confidence) <= 1.0, f"{prefix}.confidence", "must be within [0, 1]")
+
+    localizable = raw["localizable"]
+    _require(isinstance(localizable, bool), f"{prefix}.localizable", "must be a boolean")
+
+    description = raw["description"]
+    _require(isinstance(description, str), f"{prefix}.description", "must be a string")
+
+    bbox_raw = raw.get("bbox")
+    points_raw = raw.get("points")
+    if localizable:
+        _require(
+            bbox_raw is not None or points_raw is not None,
+            prefix,
+            "localizable findings require bbox or points",
+        )
+    else:
+        _require(
+            bbox_raw is None and points_raw is None,
+            prefix,
+            "non-localizable findings must not carry bbox or points",
+        )
+
+    bbox = _validate_bbox(bbox_raw, f"{prefix}.bbox") if bbox_raw is not None else None
+    points = None
+    if points_raw is not None:
+        _require(
+            isinstance(points_raw, list) and len(points_raw) > 0,
+            f"{prefix}.points",
+            "must be a non-empty list of [x, y] pairs",
+        )
+        points = [_validate_point(p, f"{prefix}.points[{i}]") for i, p in enumerate(points_raw)]
+
+    return Finding(
+        type=ftype,
+        severity=severity,
+        confidence=float(confidence),
+        localizable=localizable,
+        description=description,
+        bbox=bbox,
+        points=points,
+    )
+
+
+def validate_review_payload(payload: dict) -> ReviewResult:
+    """Strictly validate a raw critic payload into a `ReviewResult`.
+
+    Rejects (rather than coerces or clamps): non-dict input, any key
+    outside the known schema, wrong-typed values, out-of-range scores,
+    localizable findings missing grounding geometry, and non-localizable
+    findings carrying bbox/points. Raises `ReviewSchemaError` naming the
+    first offending field.
+    """
+    _require(isinstance(payload, dict), "$", "payload must be an object")
+    unknown = set(payload) - _TOP_LEVEL_KEYS
+    _require(not unknown, "$", f"unknown key(s): {sorted(unknown)}")
+
+    for key in ("quality_score", "summary", "findings"):
+        _require(key in payload, key, "missing required field")
+
+    quality_score = payload["quality_score"]
+    _require(_is_number(quality_score), "quality_score", "must be a number")
+    _require(0.0 <= float(quality_score) <= 10.0, "quality_score", "must be within [0, 10]")
+
+    prompt_alignment_score = payload.get("prompt_alignment_score")
+    if prompt_alignment_score is not None:
+        _require(
+            _is_number(prompt_alignment_score),
+            "prompt_alignment_score",
+            "must be a number or null",
+        )
+        _require(
+            0.0 <= float(prompt_alignment_score) <= 10.0,
+            "prompt_alignment_score",
+            "must be within [0, 10]",
+        )
+
+    summary = payload["summary"]
+    _require(isinstance(summary, str), "summary", "must be a string")
+
+    findings_raw = payload["findings"]
+    _require(isinstance(findings_raw, list), "findings", "must be a list")
+    findings = [_validate_finding(f, i) for i, f in enumerate(findings_raw)]
+
+    return ReviewResult(
+        quality_score=float(quality_score),
+        prompt_alignment_score=(
+            float(prompt_alignment_score) if prompt_alignment_score is not None else None
+        ),
+        summary=summary,
+        findings=findings,
+    )
+
+
+class CriticBackend(ABC):
+    model_id: str
+    model_version: str
+
+    @abstractmethod
+    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+        """Return a RAW payload dict; the caller must validate it via
+        `validate_review_payload` before it touches the database."""
+
+
+class StubCritic(CriticBackend):
+    """TEST/DEV STUB -- derives a payload from crude image statistics.
+
+    Not a real generation critic. Two deliberately simple, deterministic
+    heuristics exist purely so tests can construct images that trigger a
+    known finding:
+      - mean brightness below a threshold -> one global ('lighting') finding
+      - a solid, roughly-1/16th-image-area red rectangle -> one localizable
+        ('artifact') finding whose bbox is the rectangle's bounding box
+    """
+
+    model_id = "stub-critic"
+    model_version = "stub-v1"
+
+    _DARK_MEAN_THRESHOLD = 40.0
+    _RED_MIN_R = 180
+    _RED_MAX_GB = 80
+
+    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+        rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)
+        findings = []
+
+        mean_brightness = float(rgb.mean())
+        if mean_brightness < self._DARK_MEAN_THRESHOLD:
+            findings.append(
+                {
+                    "type": "lighting",
+                    "severity": "medium",
+                    "confidence": 0.8,
+                    "localizable": False,
+                    "description": f"Image is very dark (mean brightness {mean_brightness:.1f}/255).",
+                }
+            )
+
+        red_bbox = self._find_red_rectangle(rgb)
+        if red_bbox is not None:
+            findings.append(
+                {
+                    "type": "artifact",
+                    "severity": "high",
+                    "confidence": 0.9,
+                    "localizable": True,
+                    "description": "Solid red rectangular artifact detected.",
+                    "bbox": list(red_bbox),
+                }
+            )
+
+        quality_score = max(0.0, min(10.0, 10.0 - 2.0 * len(findings)))
+        return {
+            "quality_score": quality_score,
+            "prompt_alignment_score": 5.0 if prompt_text else None,
+            "summary": f"Stub critic ({rubric_version}) found {len(findings)} finding(s).",
+            "findings": findings,
+        }
+
+    @classmethod
+    def _find_red_rectangle(cls, rgb: np.ndarray) -> Optional[tuple]:
+        h, w = rgb.shape[:2]
+        r = rgb[..., 0].astype(np.int16)
+        g = rgb[..., 1].astype(np.int16)
+        b = rgb[..., 2].astype(np.int16)
+        mask = (r >= cls._RED_MIN_R) & (g <= cls._RED_MAX_GB) & (b <= cls._RED_MAX_GB)
+        if not mask.any():
+            return None
+        ys, xs = np.nonzero(mask)
+        x0, x1 = int(xs.min()), int(xs.max()) + 1
+        y0, y1 = int(ys.min()), int(ys.max()) + 1
+        return (x0 / w, y0 / h, (x1 - x0) / w, (y1 - y0) / h)
+
+
+def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
+    """Resolve `config.critic_backend`.
+
+    'none' and 'auto' both return None: no local VLM-based critic is wired
+    up in this package yet -- the `CriticBackend` interface plus
+    `validate_review_payload` are the deliverable, ready for a real backend
+    to be added behind this same interface later. 'stub' is only reachable
+    by explicit request.
+    """
+    name = config.critic_backend
+    if name in ("none", "auto"):
+        return None
+    if name == "stub":
+        return StubCritic()
+    raise ValueError(f"unknown critic_backend: {name!r}")
+
+
+def store_review(
+    conn: sqlite3.Connection,
+    file_id: str,
+    result: ReviewResult,
+    model_id: str,
+    model_version: str,
+    rubric_version: str,
+    raw_response: Optional[str],
+    source_mtime: float,
+    now: float,
+) -> int:
+    """Upsert one review by UNIQUE(file_id, rubric_version, model_id).
+
+    Deletes any prior review (and its findings, via `review_id`) under the
+    same key, then inserts fresh rows. Global (non-localizable) findings
+    always write NULL bbox/mask columns, honoring the `ai_review_findings`
+    CHECK regardless of what a `Finding` happens to carry.
+    """
+    try:
+        old = conn.execute(
+            "SELECT review_id FROM ai_reviews WHERE file_id = ? AND rubric_version = ? AND model_id = ?",
+            (file_id, rubric_version, model_id),
+        ).fetchone()
+        if old is not None:
+            conn.execute("DELETE FROM ai_review_findings WHERE review_id = ?", (old[0],))
+            conn.execute("DELETE FROM ai_reviews WHERE review_id = ?", (old[0],))
+
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_reviews
+                (file_id, rubric_version, model_id, model_version, quality_score,
+                 prompt_alignment_score, summary, raw_response, source_mtime, computed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                file_id,
+                rubric_version,
+                model_id,
+                model_version,
+                result.quality_score,
+                result.prompt_alignment_score,
+                result.summary,
+                raw_response,
+                source_mtime,
+                now,
+            ),
+        )
+        review_id = cur.lastrowid
+
+        for finding in result.findings:
+            if finding.localizable:
+                bbox = finding.bbox or (None, None, None, None)
+                bbox_x, bbox_y, bbox_w, bbox_h = bbox
+                points_json = (
+                    json.dumps([[p[0], p[1]] for p in finding.points])
+                    if finding.points
+                    else None
+                )
+            else:
+                bbox_x = bbox_y = bbox_w = bbox_h = None
+                points_json = None
+            cur.execute(
+                """
+                INSERT INTO ai_review_findings
+                    (review_id, file_id, type, severity, confidence, localizable,
+                     bbox_x, bbox_y, bbox_w, bbox_h, points, description,
+                     mask_path, mask_model_id, mask_model_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+                """,
+                (
+                    review_id,
+                    file_id,
+                    finding.type,
+                    finding.severity,
+                    finding.confidence,
+                    1 if finding.localizable else 0,
+                    bbox_x,
+                    bbox_y,
+                    bbox_w,
+                    bbox_h,
+                    points_json,
+                    finding.description,
+                ),
+            )
+        conn.commit()
+        return review_id
+    except Exception:
+        conn.rollback()
+        raise
+
+
+class SegmenterBackend(ABC):
+    model_id: str
+    model_version: str
+
+    @abstractmethod
+    def segment(
+        self,
+        img: Image.Image,
+        bbox: Optional[tuple] = None,
+        points: Optional[list] = None,
+    ) -> np.ndarray:
+        """Return a boolean HxW mask (True = part of the finding)."""
+
+
+class StubSegmenter(SegmenterBackend):
+    """Degenerate TEST/DEV segmenter: rasterizes the bbox rectangle as-is.
+
+    Not a real segmentation model. Ignores `points` unless no `bbox` is
+    given, in which case it falls back to the points' bounding box. Exists
+    so mask generation can be exercised end-to-end without a real backend.
+    """
+
+    model_id = "stub-segmenter"
+    model_version = "stub-v1"
+
+    def segment(
+        self,
+        img: Image.Image,
+        bbox: Optional[tuple] = None,
+        points: Optional[list] = None,
+    ) -> np.ndarray:
+        w, h = img.size
+        mask = np.zeros((h, w), dtype=np.bool_)
+        if bbox is None:
+            if not points:
+                return mask
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            bbox = (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        x, y, bw, bh = bbox
+        x0 = max(0, min(w, int(round(x * w))))
+        y0 = max(0, min(h, int(round(y * h))))
+        x1 = max(0, min(w, int(round((x + bw) * w))))
+        y1 = max(0, min(h, int(round((y + bh) * h))))
+        mask[y0:y1, x0:x1] = True
+        return mask
+
+
+class MaskNotAllowedError(Exception):
+    """A mask was requested for a non-localizable or ungrounded finding."""
+
+
+def _safe_path_component(value: str) -> str:
+    """Collapse a caller-supplied id into a single safe path segment so a
+    crafted `file_id`/`finding_id` can't be used to escape `cache_dir`."""
+    value = value.replace("\\", "_").replace("/", "_").replace("..", "_")
+    return value or "_"
+
+
+def generate_finding_mask(
+    conn: sqlite3.Connection,
+    cache_dir: str,
+    img: Image.Image,
+    file_id: str,
+    finding_id: int,
+    segmenter: SegmenterBackend,
+) -> str:
+    """Generate and persist a mask PNG for one localizable finding.
+
+    Loads the finding row fresh from the DB (never trusts caller-supplied
+    geometry) and raises `MaskNotAllowedError` if it is not localizable or
+    has no grounding geometry. Saves an 'L' mode 0/255 PNG under
+    `cache_dir/masks/<file_id>/<finding_id>.png`, asserting the resolved
+    path stays inside `cache_dir` even for a maliciously crafted id. Never
+    opens or writes to the source media path -- `img` is caller-provided
+    pixels only.
+    """
+    row = conn.execute(
+        """
+        SELECT localizable, bbox_x, bbox_y, bbox_w, bbox_h, points
+        FROM ai_review_findings
+        WHERE finding_id = ? AND file_id = ?
+        """,
+        (finding_id, file_id),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no finding {finding_id!r} for file {file_id!r}")
+
+    localizable, bbox_x, bbox_y, bbox_w, bbox_h, points_json = row
+    if not localizable:
+        raise MaskNotAllowedError(f"finding {finding_id} is not localizable")
+
+    bbox = (bbox_x, bbox_y, bbox_w, bbox_h) if bbox_x is not None else None
+    points = [tuple(p) for p in json.loads(points_json)] if points_json else None
+    if bbox is None and not points:
+        raise MaskNotAllowedError(f"finding {finding_id} has no grounding geometry")
+
+    mask = segmenter.segment(img, bbox=bbox, points=points)
+    mask_img = Image.fromarray(np.where(mask, np.uint8(255), np.uint8(0)), mode="L")
+
+    masks_root = os.path.realpath(os.path.join(cache_dir, "masks"))
+    file_dir = os.path.realpath(os.path.join(masks_root, _safe_path_component(str(file_id))))
+    mask_path = os.path.realpath(
+        os.path.join(file_dir, f"{_safe_path_component(str(finding_id))}.png")
+    )
+    if os.path.commonpath([masks_root, mask_path]) != masks_root:
+        raise ValueError("resolved mask path escapes cache_dir")
+
+    os.makedirs(file_dir, exist_ok=True)
+    mask_img.save(mask_path)
+
+    conn.execute(
+        """
+        UPDATE ai_review_findings
+        SET mask_path = ?, mask_model_id = ?, mask_model_version = ?
+        WHERE finding_id = ?
+        """,
+        (mask_path, segmenter.model_id, segmenter.model_version, finding_id),
+    )
+    conn.commit()
+    return mask_path
