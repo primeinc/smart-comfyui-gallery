@@ -341,3 +341,63 @@ def test_near_duplicate_pairs_empty_with_fewer_than_two_rows():
     add_file(conn, "f1")
     upsert_hashes(conn, "f1", HashResult("a", to_signed64(0), None), 1.0, "v1", 1.0)
     assert near_duplicate_pairs(conn, max_distance=8) == []
+
+
+# --- per-bit sensitivity: every bit in the 64-bit masks makes a difference ---
+
+
+def test_hamming64_every_single_bit_flip_is_distance_one():
+    """Flipping any one of the 64 bit positions changes the Hamming
+    distance by exactly 1 — including bit 63, whose flip crosses the
+    signed/unsigned two's-complement boundary SQLite stores."""
+    from smartgallery_ai.hashing import hamming64, phash64, to_signed64
+
+    # Arrange: one irregular synthetic pattern and one real image hash.
+    bases = [0x5DEECE66DAB0FF1E, to_signed64(phash64(checkerboard()))]
+    for base in bases:
+        for bit in range(64):
+            # Act: flip exactly one bit (in signed storage representation).
+            flipped = to_signed64(base ^ (1 << bit))
+            # Assert: distance is exactly 1, symmetrically.
+            assert hamming64(base, flipped) == 1, f"bit {bit} of {base:#x}"
+            assert hamming64(flipped, base) == 1, f"bit {bit} of {base:#x}"
+
+
+def test_near_duplicate_query_is_per_bit_exact_at_the_threshold():
+    """The near-duplicate predicate distinguishes every individual bit:
+    all 64 one-bit neighbors are inside max_distance=1, none are inside
+    max_distance=0, and a two-bit neighbor is excluded at 1."""
+    from smartgallery_ai.hashing import HashResult, find_near_duplicates, to_signed64, upsert_hashes
+
+    conn = make_conn()
+    target_phash = 0x0123456789ABCDEF
+
+    # Arrange: the target plus one neighbor per flipped bit, plus one
+    # two-bit neighbor.
+    add_file(conn, "target")
+    upsert_hashes(conn, "target",
+                  HashResult(sha256="t" * 64, phash64=to_signed64(target_phash), dhash64=0),
+                  1000.0, "algo-v1", 2000.0)
+    for bit in range(64):
+        fid = f"flip{bit:02d}"
+        add_file(conn, fid)
+        upsert_hashes(conn, fid,
+                      HashResult(sha256=f"{bit:064d}"[:64],
+                                 phash64=to_signed64(target_phash ^ (1 << bit)), dhash64=0),
+                      1000.0, "algo-v1", 2000.0)
+    add_file(conn, "twobits")
+    upsert_hashes(conn, "twobits",
+                  HashResult(sha256="u" * 64,
+                             phash64=to_signed64(target_phash ^ 0b11), dhash64=0),
+                  1000.0, "algo-v1", 2000.0)
+
+    # Act
+    at_one = find_near_duplicates(conn, "target", max_distance=1)
+    at_zero = find_near_duplicates(conn, "target", max_distance=0)
+
+    # Assert: exactly the 64 single-bit neighbors at distance 1; nothing
+    # at distance 0; the two-bit neighbor excluded.
+    assert [fid for fid, _ in at_one] == sorted(f"flip{b:02d}" for b in range(64))
+    assert all(dist == 1 for _, dist in at_one)
+    assert at_zero == []
+    assert "twobits" not in {fid for fid, _ in at_one}
