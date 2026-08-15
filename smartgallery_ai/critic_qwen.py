@@ -49,8 +49,16 @@ from PIL import Image
 from smartgallery_ai.embedders import BackendUnavailable, SemanticEmbedder
 from smartgallery_ai.review import FINDING_TYPES, CriticBackend
 
-MODEL_FILENAME = "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
-MMPROJ_FILENAME = "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf"
+# Both published quantizations of the official ggml-org conversion are
+# supported; the first provisioned file wins (higher fidelity first).
+MODEL_FILENAMES = (
+    "Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
+    "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+)
+MMPROJ_FILENAMES = (
+    "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf",
+    "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
+)
 
 # Measured on the calibration set in tests/benchmarks (see AI_MODELS.md):
 # grounded descriptions of matching images score well above this; mismatched
@@ -101,6 +109,14 @@ _BBOX_SCHEMA = {
 }
 
 
+def _first_existing(models_dir: str, names: tuple) -> Optional[str]:
+    for name in names:
+        p = os.path.join(models_dir, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
 class CriticGroundingError(RuntimeError):
     """The critic's description failed the CLIP grounding gate: the model
     is not talking about this image. The review is aborted, never stored."""
@@ -131,11 +147,15 @@ class QwenVlCritic(CriticBackend):
                  n_ctx: int = 8192, n_threads: int = 4):
         # Weights check precedes the runtime import: 'auto' resolution on
         # an unprovisioned system must stay fast and side-effect-free.
-        model_path = os.path.join(models_dir, MODEL_FILENAME)
-        mmproj_path = os.path.join(models_dir, MMPROJ_FILENAME)
-        for p in (model_path, mmproj_path):
-            if not os.path.isfile(p):
-                raise BackendUnavailable(f"qwen-vl weights not found at {p}")
+        model_path = _first_existing(models_dir, MODEL_FILENAMES)
+        mmproj_path = _first_existing(models_dir, MMPROJ_FILENAMES)
+        if model_path is None or mmproj_path is None:
+            raise BackendUnavailable(
+                f"qwen-vl weights not found under {models_dir} "
+                f"(model: one of {MODEL_FILENAMES}; mmproj: one of {MMPROJ_FILENAMES})")
+        self.model_version = (
+            f"qwen2.5-vl-7b-{os.path.basename(model_path).rsplit('-', 1)[-1].removesuffix('.gguf').lower()}"
+            f"+decomposed-v1")
 
         try:
             from llama_cpp import Llama
