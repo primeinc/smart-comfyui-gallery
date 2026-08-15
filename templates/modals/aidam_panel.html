@@ -141,6 +141,22 @@
         aidamSwitchTab('similar');
     }
 
+    // Global entry (sidebar AI hub): no file context. The Status and
+    // Clusters surfaces are gallery-wide; the per-file tabs explain
+    // themselves instead of showing another file's leftovers.
+    function openAidamPanelGlobal(tab) {
+        aidamCurrentFileId = null;
+        aidamLoadedFor = {};
+        aidamStatusCache = null;
+
+        const overlay = document.getElementById('aidam-overlay');
+        overlay.style.display = 'flex';
+        setTimeout(() => overlay.style.opacity = '1', 10);
+        document.body.classList.add('modal-open');
+
+        aidamSwitchTab(tab || 'status');
+    }
+
     function closeAidamPanel() {
         aidamStopProvisionPoll();
         aidamStopIndexPoll();
@@ -164,7 +180,37 @@
         if (overlay) {
             overlay.addEventListener('click', () => closeAidamPanel());
         }
+        // Sidebar AI hub: a compact always-on pulse of the ingest state,
+        // refreshed every 30s (the panel's Status tab is the deep view).
+        if (document.getElementById('ai-hub-stats')) {
+            aidamHubRefresh();
+            setInterval(aidamHubRefresh, 30000);
+        }
     });
+
+    async function aidamHubRefresh() {
+        const box = document.getElementById('ai-hub-stats');
+        if (!box) return;
+        let status = {};
+        try {
+            status = await (await fetch('/galleryout/api/aidam/status')).json();
+        } catch (e) { box.textContent = 'worker unreachable'; return; }
+        if (status.enabled === false) { box.textContent = 'AI layer disabled'; return; }
+        const ix = status.indexing || {};
+        const pct = (done, total) => total ? Math.round((done || 0) / total * 100) + '%' : '—';
+        const line1 = `hash ${pct(ix.hashed, ix.files_total)} · sem ${pct(ix.embeddings_semantic, ix.visual_files_total)} · vis ${pct(ix.embeddings_visual, ix.visual_files_total)} · faces ${pct(ix.faces_scanned, ix.visual_files_total)}`;
+        const worker = status.worker || {};
+        const prov = (worker.provisioning || {}).state;
+        const devices = status.devices || {};
+        const gpuDev = Object.values(devices).find(d => d && String(d).startsWith('cuda'));
+        const parts = [];
+        if (String(prov || '') === 'downloading') parts.push('⏳ setting up');
+        else if (String(prov || '').startsWith('failed')) parts.push('<span style="color:#ff6b6b;">setup failed</span>');
+        parts.push(worker.running ? (gpuDev ? '⚡ ' + escapeAidamHtml(gpuDev) : '🧮 cpu') : '<span style="color:#ff6b6b;">worker stopped</span>');
+        const errs = (worker.stats || {}).errors || 0;
+        if (errs > 0) parts.push(`<span style="color:#e8a19a;">${errs} errors</span>`);
+        box.innerHTML = `<div>${line1}</div><div>${parts.join(' · ')}</div>`;
+    }
 
     let aidamActiveTab = 'similar';  // which tab a finished provisioning run should reload
 
@@ -182,6 +228,19 @@
 
     function aidamEnsureTabLoaded(tab) {
         if (tab === 'status') { aidamLoadStatusTab(); return; }
+        if (!aidamCurrentFileId) {
+            // Global mode: faces becomes the gallery-wide cluster browser;
+            // the truly per-file tabs say so instead of showing stale data.
+            if (tab === 'faces') { aidamBrowseAllClusters(); return; }
+            const boxId = tab === 'similar' ? 'aidam-similar-content' : 'aidam-review-content';
+            const box = document.getElementById(boxId);
+            if (box) box.innerHTML = aidamEmptyMsg('This tab is per-image — open an image and hit 🧬. Gallery-wide tools live in 📊 Status and 🗂️ Clusters.');
+            if (tab === 'similar') {
+                const dup = document.getElementById('aidam-duplicates-content');
+                if (dup) dup.innerHTML = '';
+            }
+            return;
+        }
         if (aidamLoadedFor[tab] === aidamCurrentFileId) return;
         aidamLoadedFor[tab] = aidamCurrentFileId;
         if (tab === 'similar') { aidamLoadSimilar(); aidamLoadDuplicates(); }
@@ -693,7 +752,9 @@
             const data = await res.json();
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const clusters = data.clusters || [];
-            let html = aidamBackButton('aidamLoadFaces');
+            // Back leads to the per-file faces view; in global mode there
+            // is no file to go back to.
+            let html = aidamCurrentFileId ? aidamBackButton('aidamLoadFaces') : '';
             if (clusters.length === 0) {
                 html += aidamEmptyMsg('No face clusters yet.');
                 box.innerHTML = html;

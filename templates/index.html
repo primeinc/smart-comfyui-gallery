@@ -493,6 +493,11 @@ document.addEventListener('focusout', function(e) {
                     </h1>
                     <div class="version-row-header">
                         <span class="v-num">v{{ app_version }}</span>
+                        <a href="{{ github_url }}" target="_blank" class="gh-header-link" title="Original SmartGallery repository" onclick="event.stopPropagation();">
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                            </svg>
+                        </a>
                         {% if update_available %}
                         <a href="{{ github_url }}" target="_blank" class="header-update-badge" title="New version {{ remote_version }} is available!">Update</a>
                         {% endif %}
@@ -610,59 +615,19 @@ document.addEventListener('focusout', function(e) {
         <!-- END WRAPPER -->
 
         
-        <!-- USER SESSION FOOTER -->
-        {% set is_admin_or_local = (session.role in ['ADMIN', 'MANAGER'] or (not force_login and not is_exhibition_mode)) %}
-        
-        <div class="sidebar-user-row">
-            {% if session.user_id %}
-                <!-- Case A: Authenticated Session (Staff, Manager or Admin) -->
-                <div class="user-avatar-circle">
-                    {{ session.username[0] | upper }}
-                </div>
-                <div class="user-session-info">
-                    <span class="user-session-name">{{ session.full_name }}</span>
-                    <span class="user-session-role">{{ session.role }}</span>
-                </div>
-            {% else %}
-                <!-- Case B: Local Admin Mode (Hobbyist / No login forced) -->
-                <div class="user-avatar-circle" style="background: var(--ai-gradient);">
-                    A
-                </div>
-                <div class="user-session-info">
-                    <span class="user-session-name">System Admin</span>
-                    <span class="user-session-role">Local Access</span>
-                </div>
-            {% endif %}
-
-            <div class="user-session-actions">
-                <!-- User Management Access: Visible for Admin/Manager or Local Admin -->
-                {% if is_admin_or_local %}
-                <button class="user-session-btn" onclick="openUserManager()" title="Manage Users & Access">
-                    👥
-                </button>
-                {% endif %}
-                
-                <!-- Logout Button: Only visible if a real session exists -->
-                {% if session.user_id %}
-                <a href="#" onclick="confirmLogout(event)" class="user-session-btn logout-x" title="Logout / Sign Out">
-                    ×
-                </a>
-                {% endif %}
-            </div>
-        </div>
-        <!-- 3. SIDEBAR FOOTER -->
+        <!-- 3. SIDEBAR FOOTER: the AI DAM hub (user identity moved to the
+             compact header chip; upstream repo link moved to the header) -->
         <div class="sidebar-footer">
-            <div id="github-promo-box" class="sidebar-footer-promo">
-                <button class="promo-close-x" onclick="event.preventDefault(); event.stopPropagation(); document.getElementById('github-promo-box').style.display='none';" title="Dismiss for now">×</button>
-                <a href="{{ github_url }}" target="_blank" class="github-promo-link">
-                    <svg class="gh-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                    <div class="promo-text">
-                        Visit the repo to find news and updates. Don't forget to leave a ⭐!
-                    </div>
-                </a>
+            {% if enable_ai_dam %}
+            <div class="sidebar-ai-hub" id="sidebar-ai-hub">
+                <div class="ai-hub-title">🧬 AI DAM</div>
+                <div id="ai-hub-stats" class="ai-hub-stats">connecting&hellip;</div>
+                <div class="ai-hub-actions">
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('status')" title="Live ingest / backlog / GPU dashboard">📊 Status</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('faces')" title="Browse all face clusters">🗂️ Clusters</button>
+                </div>
             </div>
+            {% endif %}
         </div>
     </aside>
     
