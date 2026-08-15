@@ -106,11 +106,25 @@ Chinese Whispers on the same graph: 0.9-1.5 s (all backends; CPU-bound).
 ## Reproduce
 
 ```
-just bench-faiss                    # synthetic, production shape, seeded
-just bench-faiss-db <db-path>       # real embeddings from a gallery DB (read-only)
-python benchmarks/faiss_graph_evidence.py --source images \
-    --dir <corpus> --models-dir <onnx-dir> --cache <npz> --threshold 0.5
+just bench check-idle                          # preflight only
+just bench faiss                               # synthetic, production shape, seeded
+just bench faiss-db <db-path>                  # real embeddings, DB opened read-only
+just bench faiss-images <dir> <onnx> <npz>     # image corpus end to end
 ```
+
+Every recipe preflights for an idle machine and refuses when CPU or GPU is
+busy. The harness also watches external CPU load during timing, warns live,
+and writes the load summary (with a `contaminated` flag) into the results
+record.
+
+## Detection quality gate
+
+`face_min_px` (default 24, env `AI_DAM_FACE_MIN_PX`) drops detections whose
+box min-side is under N source pixels. Measured on the mixed corpus:
+junk-blob members have median min-side 15.5 px (YuNet's noise floor),
+labeled identities 525 px. At 24 px the gate keeps 96.6% of labeled-identity
+faces, removes 74% of blob members, and improves both top-cluster share
+(0.46 -> 0.20 at threshold 0.45) and identity purity simultaneously.
 
 ## Scale limits
 

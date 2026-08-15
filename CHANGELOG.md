@@ -16,6 +16,8 @@ The cosine-threshold neighbor graph runs on the best available backend and recor
 `AI_DAM_FACE_GRAPH_BACKEND` (`auto`/`torch-cuda`/`faiss`/`numpy`) forces a backend; a forced backend that is unavailable fails loudly instead of silently falling back. All backends produce the identical edge set (verified by cross-backend equivalence tests and `benchmarks/faiss_graph_evidence.py`, which also proves identical clustering on real data). Graph construction and clustering are fully vectorized (CSR adjacency; no per-edge Python loops).
 
 **Also:**
+* Detection quality gate: faces smaller than `face_min_px` (default 24px min-side, env `AI_DAM_FACE_MIN_PX`) are dropped before embedding — sub-24px detections sit at YuNet's noise floor and chained unrelated clusters together (measured basis in docs/FACE_CLUSTERING.md)
+* `just bench` module: benchmarks refuse to run on a busy machine (CPU + GPU preflight) and monitor external CPU load live during timing, stamping a `contaminated` flag into the results record
 * `VectorStore.topk` uses FAISS exact inner-product search when installed (identical scores/order to the numpy path)
 * FAISS (`faiss-cpu`) added to the `ai` extras and auto-provisioning
 * `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)

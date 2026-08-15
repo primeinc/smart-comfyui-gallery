@@ -136,9 +136,13 @@ class OpenCVFaceBackend(FaceBackend):
     model_id = "opencv/yunet+sface"
     model_version = "yunet-2023mar+sface-2021dec-v1"
 
-    def __init__(self, models_dir: str, min_det_score: float = 0.5):
-        """Load both ONNX models; `min_det_score` is the minimum detector
-        confidence for a face to be reported at all."""
+    def __init__(self, models_dir: str, min_det_score: float = 0.5, min_face_px: int = 24):
+        """Load both ONNX models. `min_det_score` is the minimum detector
+        confidence for a face to be reported; `min_face_px` is the minimum
+        face box side in source pixels — YuNet detects down to ~10px, and
+        detections near that floor are featureless, embed into one generic
+        SFace region, and chain unrelated clusters together
+        (docs/FACE_CLUSTERING.md has the measured basis for the default)."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise BackendUnavailable(
                 "this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF"
@@ -171,6 +175,7 @@ class OpenCVFaceBackend(FaceBackend):
             if prev_level is not None:
                 cv2_log.setLogLevel(prev_level)
         self._min_det_score = min_det_score
+        self._min_face_px = min_face_px
 
     def detect(self, img: Image.Image) -> list:
         """Detect faces, embed each via SFace on the aligned crop, and return
@@ -191,6 +196,8 @@ class OpenCVFaceBackend(FaceBackend):
             if score < self._min_det_score:
                 continue
             x, y, bw, bh = (float(v) for v in row[0:4])
+            if min(bw, bh) < self._min_face_px:
+                continue
             landmarks_px = row[4:14].reshape(5, 2)
             aligned = self._recognizer.alignCrop(bgr, row)
             feature = self._recognizer.feature(aligned)
@@ -231,10 +238,14 @@ def get_face_backend(config: AIConfig) -> Optional[FaceBackend]:
         source = config.extra.get("face_stub_source", lambda _img: [])
         return StubFaceBackend(source)
     if name == "opencv":
-        return OpenCVFaceBackend(config.models_dir, config.face_min_det_score)
+        return OpenCVFaceBackend(
+            config.models_dir, config.face_min_det_score, config.face_min_px
+        )
     if name == "auto":
         try:
-            return OpenCVFaceBackend(config.models_dir, config.face_min_det_score)
+            return OpenCVFaceBackend(
+                config.models_dir, config.face_min_det_score, config.face_min_px
+            )
         except BackendUnavailable:
             return None
     raise ValueError(f"unknown face_backend: {name!r}")

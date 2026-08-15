@@ -543,3 +543,14 @@ def test_neighbor_graph_reports_backend_that_ran(monkeypatch):
     monkeypatch.setenv("AI_DAM_FACE_GRAPH_BACKEND", "numpy")
     _, backend = _neighbor_graph(_backend_fixture(), 0.6)
     assert backend == "numpy"
+
+
+def test_aiconfig_face_min_px_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_DAM_FACE_MIN_PX", "32")
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_min_px == 32
+
+
+def test_aiconfig_face_min_px_default(tmp_path):
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_min_px == 24

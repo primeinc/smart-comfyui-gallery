@@ -67,6 +67,9 @@ class AIConfig:
     near_dup_max_distance: int = 8      # max Hamming distance on phash64
     face_cluster_threshold: float = 0.55  # cosine similarity threshold
     face_min_det_score: float = 0.5     # min detection confidence [0,1] to keep a face
+    face_min_px: int = 24               # min face box side in source pixels; smaller
+                                        #   detections sit at YuNet's ~10px noise floor and
+                                        #   embed as junk (docs/FACE_CLUSTERING.md)
     similar_default_k: int = 24         # default neighbor count for similarity queries
 
     extra: dict = field(default_factory=dict)  # free-form backend-specific options
@@ -98,6 +101,7 @@ class AIConfig:
             face_cluster_threshold=float(
                 os.environ.get("AI_DAM_FACE_CLUSTER_THRESHOLD", "0.55")
             ),
+            face_min_px=int(os.environ.get("AI_DAM_FACE_MIN_PX", "24")),
             similar_default_k=int(os.environ.get("AI_DAM_SIMILAR_K", "24")),
         )
 

@@ -27,7 +27,9 @@ import json
 import os
 import platform
 import sqlite3
+import subprocess
 import sys
+import threading
 import time
 
 # Must precede any BLAS-loading import: with OpenBLAS (what pip faiss-cpu and
@@ -40,6 +42,126 @@ import numpy as np
 RESULTS_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "results", "faiss_graph_evidence.json"
 )
+
+
+def _system_times():
+    """(idle, kernel, user) CPU seconds summed over all cores, via win32
+    GetSystemTimes; None on other platforms. kernel INCLUDES idle."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+
+    class _FT(ctypes.Structure):
+        _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
+
+    idle, kern, user = _FT(), _FT(), _FT()
+    ok = ctypes.windll.kernel32.GetSystemTimes(
+        ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)
+    )
+    if not ok:
+        return None
+
+    def _s(ft):
+        return ((ft.hi << 32) | ft.lo) / 1e7
+
+    return _s(idle), _s(kern), _s(user)
+
+
+class _LoadWatch(threading.Thread):
+    """Live external-CPU-load monitor for benchmark runs.
+
+    Each interval: system busy time minus THIS process's CPU time, as a
+    fraction of total capacity. Crossing `warn_frac` prints a warning the
+    moment contamination happens; `stop()` returns a summary for the
+    results record so a dirty run can never pass as clean evidence.
+    """
+
+    def __init__(self, warn_frac: float = 0.10, interval: float = 1.0):
+        super().__init__(daemon=True)
+        self.warn_frac = warn_frac
+        self.interval = interval
+        self.samples: list = []
+        self._stop_evt = threading.Event()
+
+    def run(self):
+        prev = _system_times()
+        if prev is None:
+            return
+        prev_proc = time.process_time()
+        while not self._stop_evt.wait(self.interval):
+            cur = _system_times()
+            cur_proc = time.process_time()
+            didle, dkern, duser = (c - p for c, p in zip(cur, prev))
+            total = dkern + duser
+            prev, prev_proc_old = cur, prev_proc
+            prev_proc = cur_proc
+            if total <= 0:
+                continue
+            external = max(0.0, (dkern - didle) + duser - (cur_proc - prev_proc_old))
+            frac = external / total
+            self.samples.append(frac)
+            if frac > self.warn_frac:
+                print(
+                    f"[load] WARNING: external CPU load {frac:.0%} — "
+                    "timings in this window are contaminated",
+                    flush=True,
+                )
+
+    def stop(self) -> dict:
+        self._stop_evt.set()
+        self.join(timeout=5)
+        if not self.samples:
+            return {"supported": _system_times() is not None, "samples": 0}
+        return {
+            "supported": True,
+            "samples": len(self.samples),
+            "max_external_frac": round(max(self.samples), 3),
+            "mean_external_frac": round(sum(self.samples) / len(self.samples), 3),
+            "warn_frac": self.warn_frac,
+            "contaminated": max(self.samples) > self.warn_frac,
+        }
+
+
+def check_idle(seconds: int = 3, busy_frac: float = 0.15) -> int:
+    """Preflight gate: refuse to benchmark on a busy machine.
+
+    Prints one live line per second for CPU (all processes) and one per GPU;
+    returns 1 when mean CPU busy exceeds `busy_frac` or any GPU is >20%
+    utilized.
+    """
+    fracs = []
+    prev = _system_times()
+    if prev is None:
+        print("[load] CPU preflight unsupported on this platform; proceeding")
+    else:
+        for _ in range(seconds):
+            time.sleep(1.0)
+            cur = _system_times()
+            didle, dkern, duser = (c - p for c, p in zip(cur, prev))
+            prev = cur
+            total = dkern + duser
+            busy = ((dkern - didle) + duser) / total if total > 0 else 0.0
+            fracs.append(busy)
+            print(f"[load] cpu busy {busy:.0%}", flush=True)
+    gpu_busy = False
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0:
+            for i, line in enumerate(out.stdout.split()):
+                util = int(line)
+                print(f"[load] gpu{i} util {util}%", flush=True)
+                gpu_busy = gpu_busy or util > 20
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        print("[load] nvidia-smi unavailable; skipping GPU preflight")
+    cpu_busy = bool(fracs) and sum(fracs) / len(fracs) > busy_frac
+    if cpu_busy or gpu_busy:
+        print("[load] FAIL: machine is busy — benchmark refused", flush=True)
+        return 1
+    print("[load] ok: machine is idle", flush=True)
+    return 0
 
 
 def load_faces_module():
@@ -258,7 +380,15 @@ def main() -> None:
         "guidance (faiss wiki How-to-make-Faiss-run-faster.md) is the number "
         "of PHYSICAL cores, not the hyperthread default.",
     )
+    ap.add_argument(
+        "--check-idle",
+        action="store_true",
+        help="preflight only: exit 1 if the machine is busy, run nothing",
+    )
     args = ap.parse_args()
+
+    if args.check_idle:
+        raise SystemExit(check_idle())
 
     faces = load_faces_module()
 
@@ -329,6 +459,8 @@ def main() -> None:
         "equivalence": {},
     }
 
+    watch = _LoadWatch()
+    watch.start()
     graphs, partitions, labels_by_backend = {}, {}, {}
     for name, (fn, runtime) in backends.items():
         best = float("inf")
@@ -408,6 +540,15 @@ def main() -> None:
         )
         if not (weights_ok and boundary_ok and same_clusters):
             raise SystemExit("BACKEND DIVERGENCE — evidence run FAILED")
+
+    record["load"] = watch.stop()
+    if record["load"].get("contaminated"):
+        print(
+            f"[load] RESULT CONTAMINATED: external CPU peaked at "
+            f"{record['load']['max_external_frac']:.0%} during timing — rerun on "
+            "an idle machine before citing these numbers",
+            flush=True,
+        )
 
     if ds_names:
         record["sanity"] = sanity_report(labels_by_backend[ref], ds_names, identities)
