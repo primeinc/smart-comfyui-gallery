@@ -165,6 +165,11 @@ class AIWorker:
         self._lock = threading.Lock()
         self._logged_errors: set = set()
         self._backend_cache: dict = {}
+        # monotonic time of the last failed resolution attempt per key;
+        # unavailable backends are re-probed after _backend_retry_seconds
+        # so provisioning weights later activates them without a restart.
+        self._backend_failed_at: dict = {}
+        self._backend_retry_seconds = 300.0
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
@@ -279,26 +284,37 @@ class AIWorker:
     # -- backend caching ---------------------------------------------------------
 
     def _backend(self, key: str, resolver):
-        """Resolve a backend ONCE per worker lifetime and reuse the instance.
-        Constructing real backends can load multi-GB models; doing that per
-        poll cycle (the resolver's natural behavior) is unaffordable. The
-        cached entry stores None too, so an unavailable backend is not
-        re-probed every cycle either.
+        """Resolve a backend and reuse the instance. Constructing real
+        backends can load multi-GB models; doing that per poll cycle (the
+        resolver's natural behavior) is unaffordable, so a successful
+        instance is kept for the worker's lifetime. An UNAVAILABLE result
+        (None or a raising resolver) is cached only for
+        `_backend_retry_seconds`: weights provisioned while the worker runs
+        must eventually activate the backend without a process restart.
 
         Resolution must stay OUTSIDE self._lock: _note_error acquires the
         same non-reentrant lock. Only the worker thread resolves backends,
         so the unlocked window cannot double-load."""
+        now = time.monotonic()
         with self._lock:
             if key in self._backend_cache:
-                return self._backend_cache[key]
+                cached = self._backend_cache[key]
+                if cached is not None:
+                    return cached
+                if now - self._backend_failed_at.get(key, 0.0) < self._backend_retry_seconds:
+                    return None
         try:
             backend = resolver(self.config)
         except Exception as exc:  # noqa: BLE001 - resolution must not kill the cycle
             self._note_error(f"backend:{key}", f"backend {key}: {exc}")
             backend = None
         with self._lock:
-            self._backend_cache.setdefault(key, backend)
-            return self._backend_cache[key]
+            self._backend_cache[key] = backend
+            if backend is None:
+                self._backend_failed_at[key] = now
+            else:
+                self._backend_failed_at.pop(key, None)
+            return backend
 
     # -- error bookkeeping -------------------------------------------------------
 
@@ -426,17 +442,44 @@ class AIWorker:
                 continue
             with self._lock:
                 self.stats["faces_indexed"] += 1
+        # Recluster when this cycle indexed faces OR an earlier clustering
+        # attempt is still pending. The pending marker is persisted BEFORE
+        # the attempt (face scans are already committed by this point, so
+        # without it a single clustering failure would never be retried:
+        # the next cycle would see no face candidates and skip this block).
+        pending_key = f"faces_cluster_pending:{backend.model_id}:{backend.model_version}"
         if rows:
-            # New/changed face instances: recluster so the cluster browser
-            # reflects them without a manual /faces/recluster call. The
-            # clustering is label-preserving and cheap at personal-gallery
-            # scale, and runs only on cycles that actually indexed faces.
+            self._set_state(conn, pending_key, "1")
+        if rows or self._get_state(conn, pending_key) is not None:
             try:
                 faces.cluster_faces(conn, backend.model_id, backend.model_version,
                                     self.config.face_cluster_threshold)
+                self._clear_state(conn, pending_key)
             except Exception as exc:  # noqa: BLE001
                 self._note_error("faces:cluster", f"face clustering failed: {exc}")
         return len(rows)
+
+    # -- small persistent state (ai_dam_state) -----------------------------------
+
+    @staticmethod
+    def _set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
+        conn.execute(
+            "INSERT INTO ai_dam_state (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+            "updated_at=excluded.updated_at",
+            (key, value, time.time()))
+        conn.commit()
+
+    @staticmethod
+    def _get_state(conn: sqlite3.Connection, key: str):
+        row = conn.execute(
+            "SELECT value FROM ai_dam_state WHERE key = ?", (key,)).fetchone()
+        return row[0] if row is not None else None
+
+    @staticmethod
+    def _clear_state(conn: sqlite3.Connection, key: str) -> None:
+        conn.execute("DELETE FROM ai_dam_state WHERE key = ?", (key,))
+        conn.commit()
 
     def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int) -> int:
         if limit <= 0:

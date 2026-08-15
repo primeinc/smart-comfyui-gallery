@@ -466,15 +466,16 @@ def test_calendar_today_is_current_calendar_day():
         "field": "mtime", "op": "between", "value": ["2025-06-18", "2025-06-18"]}
 
 
-def test_calendar_this_week_starts_monday():
-    # 2025-06-18 is a Wednesday; the ISO week began Monday the 16th.
+def test_calendar_this_week_is_bounded_monday_to_sunday():
+    # 2025-06-18 is a Wednesday; the ISO week runs Mon 16th .. Sun 22nd.
+    # Bounded on BOTH edges: a future-dated file is not "this week".
     assert _where("files from this week", _epoch(2025, 6, 18, 15, 30)) == {
-        "field": "mtime", "op": "ge", "value": "2025-06-16"}
+        "field": "mtime", "op": "between", "value": ["2025-06-16", "2025-06-22"]}
 
 
-def test_calendar_this_month_starts_on_the_first():
+def test_calendar_this_month_is_bounded_first_to_last():
     assert _where("files from this month", _epoch(2025, 6, 18, 15, 30)) == {
-        "field": "mtime", "op": "ge", "value": "2025-06-01"}
+        "field": "mtime", "op": "between", "value": ["2025-06-01", "2025-06-30"]}
 
 
 def test_calendar_terms_cross_month_boundary():
@@ -484,9 +485,37 @@ def test_calendar_terms_cross_month_boundary():
     assert _where("files from yesterday", now) == {
         "field": "mtime", "op": "between", "value": ["2025-06-30", "2025-06-30"]}
     assert _where("files from this month", now) == {
-        "field": "mtime", "op": "ge", "value": "2025-07-01"}
+        "field": "mtime", "op": "between", "value": ["2025-07-01", "2025-07-31"]}
     assert _where("files from this week", now) == {
-        "field": "mtime", "op": "ge", "value": "2025-06-30"}
+        "field": "mtime", "op": "between", "value": ["2025-06-30", "2025-07-06"]}
+
+
+def test_calendar_upper_boundaries_exclude_files_just_past_the_period():
+    """End-to-end through the compiler: a file one second past Sunday
+    midnight (resp. past the month's last midnight) is excluded, one
+    second before is included."""
+    import sqlite3 as _sqlite3
+
+    from omniquery.compiler import CompileParams, compile as compile_query
+    from omniquery.validation import AuthContext, validate
+
+    ctx = AuthContext(role="ADMIN", user_id="t", client_uuid="t", ai_enabled=True)
+    now = _epoch(2025, 6, 18, 15, 30)
+
+    for nl, last_inside in [
+        ("files from this week", _epoch(2025, 6, 23, 0, 0) - 1),    # Sun 22nd 23:59:59
+        ("files from this month", _epoch(2025, 7, 1, 0, 0) - 1),    # Jun 30th 23:59:59
+    ]:
+        out = h.parse(nl, now)
+        vq = validate(parse_query(out.ast), ctx)
+        cq = compile_query(vq, CompileParams(now_epoch=now, base_path="/g"))
+        conn = _sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL)")
+        conn.executemany("INSERT INTO files VALUES (?, '', ?)", [
+            ("inside", last_inside),
+            ("outside", last_inside + 2),
+        ])
+        assert [r[0] for r in conn.execute(cq.sql, cq.params)] == ["inside"], nl
 
 
 # ---------------------------------------------------------------------------

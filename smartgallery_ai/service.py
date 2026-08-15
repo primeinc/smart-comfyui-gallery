@@ -237,8 +237,11 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             view_func = guard(view_func)
         return _requires_enabled(view_func)
 
+    def _visible(file_id: str) -> bool:
+        return file_access_check is None or bool(file_access_check(file_id))
+
     def _check_file_access(file_id: str) -> None:
-        if file_access_check is not None and not file_access_check(file_id):
+        if not _visible(file_id):
             abort(404)
 
     # -- GET /status : always reports, even when disabled -----------------------
@@ -302,11 +305,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         try:
             groups = hashing.find_exact_duplicates(conn)
             own_group = next((group for group in groups if file_id in group), [])
-            exact = [fid for fid in own_group if fid != file_id]
+            # The visibility policy applies to every RETURNED id, not just
+            # the anchor: a visible file must not reveal hidden relatives.
+            exact = [fid for fid in own_group if fid != file_id and _visible(fid)]
             near_pairs = hashing.find_near_duplicates(conn, file_id, max_distance)
         finally:
             conn.close()
-        near = [{"file_id": fid, "distance": distance} for fid, distance in near_pairs]
+        near = [{"file_id": fid, "distance": distance}
+                for fid, distance in near_pairs if _visible(fid)]
         return jsonify({"enabled": True, "exact": exact, "near": near})
 
     # -- GET /similar/<file_id> --------------------------------------------------
@@ -337,9 +343,12 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                                    model_version=row["model_version"])
         finally:
             conn.close()
+        # Hidden neighbors are dropped, not backfilled: the response may
+        # carry fewer than k entries rather than leak hidden file ids.
         return jsonify({
             "enabled": True, "space": space,
-            "neighbors": [{"file_id": fid, "score": score} for fid, score in neighbors],
+            "neighbors": [{"file_id": fid, "score": score}
+                          for fid, score in neighbors if _visible(fid)],
         })
 
     # -- GET /faces/<file_id> -----------------------------------------------------

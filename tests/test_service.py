@@ -554,3 +554,54 @@ def test_file_access_check_scopes_per_file_routes(tmp_path):
     for path in ("/review/hid", "/duplicates/hid", "/similar/hid",
                  "/faces/hid", f"/review/mask/{hid_finding}"):
         assert client.get(f"{_PREFIX}{path}").status_code == 404, path
+
+
+def test_file_access_check_filters_returned_neighbors(tmp_path):
+    """The visibility policy applies to every RETURNED file id: a visible
+    anchor must not reveal hidden exact/near duplicates or hidden vector
+    neighbors."""
+    db_path = str(tmp_path / "authz2.sqlite")
+    cache_dir = str(tmp_path / "cache")
+    conn = _make_conn(db_path)
+    now = time.time()
+
+    for fid in ("vis_anchor", "vis_twin", "hid_twin", "hid_near"):
+        _add_file(conn, fid)
+    shared_sha = "c" * 64
+    hashing.upsert_hashes(
+        conn, "vis_anchor", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
+        1000.0, HASH_ALGO_VERSION, now)
+    hashing.upsert_hashes(
+        conn, "vis_twin", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
+        1000.0, HASH_ALGO_VERSION, now)
+    hashing.upsert_hashes(
+        conn, "hid_twin", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
+        1000.0, HASH_ALGO_VERSION, now)
+    hashing.upsert_hashes(
+        conn, "hid_near", hashing.HashResult(sha256="d" * 64, phash64=0b11, dhash64=0),
+        1000.0, HASH_ALGO_VERSION, now)
+
+    store = vectors.VectorStore(cache_dir=cache_dir, ephemeral=True)
+    base = np.ones(8, dtype=np.float32)
+    for i, fid in enumerate(("vis_anchor", "vis_twin", "hid_twin")):
+        store.add(conn, fid, SPACE_SEMANTIC, "m", "v1",
+                  _tight_vector(base, seed=i), 1000.0)
+
+    conn.close()
+
+    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
+                      cache_dir=cache_dir, ephemeral_index=True)
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_ai_blueprint(config, file_access_check=lambda fid: fid.startswith("vis")),
+        url_prefix=_PREFIX)
+    client = app.test_client()
+
+    dup = client.get(f"{_PREFIX}/duplicates/vis_anchor").get_json()
+    assert dup["exact"] == ["vis_twin"]
+    assert all(n["file_id"].startswith("vis") for n in dup["near"])
+
+    sim = client.get(f"{_PREFIX}/similar/vis_anchor?space=semantic").get_json()
+    neighbor_ids = [n["file_id"] for n in sim["neighbors"]]
+    assert "vis_twin" in neighbor_ids
+    assert not any(fid.startswith("hid") for fid in neighbor_ids)

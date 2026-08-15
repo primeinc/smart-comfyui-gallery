@@ -312,14 +312,20 @@ class HeuristicBackend(ParserBackend):
             return {"field": "mtime", "op": "ge", "value": {"days_ago": n * mult}}
 
         spanned_conds += _apply_rule(working, consumed, _LAST_N_RE, _last_n_builder)
-        # Calendar vocabulary means calendar boundaries, not rolling
-        # windows: anchored to the injected clock, emitted as bare-date
-        # strings (which the compiler resolves as local calendar days).
+        # Calendar vocabulary means BOUNDED calendar periods, not rolling
+        # windows and not open-ended lower bounds (a future-dated file is
+        # outside "this week"). Anchored to the injected clock, emitted as
+        # bare-date strings (which the compiler resolves as local calendar
+        # days, the 'between' upper date inclusive through its midnight).
         local_today = date.fromtimestamp(now_epoch)
         yesterday_iso = (local_today - timedelta(days=1)).isoformat()
-        # ISO convention: the week starts Monday.
-        week_start_iso = (local_today - timedelta(days=local_today.weekday())).isoformat()
+        # ISO convention: the week runs Monday..Sunday.
+        week_start = local_today - timedelta(days=local_today.weekday())
+        week_start_iso = week_start.isoformat()
+        week_end_iso = (week_start + timedelta(days=6)).isoformat()
         month_start_iso = local_today.replace(day=1).isoformat()
+        month_end_iso = local_today.replace(
+            day=calendar.monthrange(local_today.year, local_today.month)[1]).isoformat()
         spanned_conds += _apply_rule(
             working, consumed, _YESTERDAY_RE,
             lambda m: {"field": "mtime", "op": "between",
@@ -330,10 +336,16 @@ class HeuristicBackend(ParserBackend):
             lambda m: {"field": "mtime", "op": "between",
                        "value": [local_today.isoformat(), local_today.isoformat()]},
         )
-        spanned_conds += _apply_rule(working, consumed, _THIS_WEEK_RE,
-                                      lambda m: {"field": "mtime", "op": "ge", "value": week_start_iso})
-        spanned_conds += _apply_rule(working, consumed, _THIS_MONTH_RE,
-                                      lambda m: {"field": "mtime", "op": "ge", "value": month_start_iso})
+        spanned_conds += _apply_rule(
+            working, consumed, _THIS_WEEK_RE,
+            lambda m: {"field": "mtime", "op": "between",
+                       "value": [week_start_iso, week_end_iso]},
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _THIS_MONTH_RE,
+            lambda m: {"field": "mtime", "op": "between",
+                       "value": [month_start_iso, month_end_iso]},
+        )
 
         def _from_month_year_builder(m: re.Match) -> Optional[dict]:
             month = _MONTHS.get(m.group(1).lower())

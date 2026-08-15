@@ -524,3 +524,97 @@ def test_worker_clusters_faces_after_indexing(worker_env):
         db_path,
         "SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL")[0]
     assert assigned >= 2
+
+
+def test_unavailable_backend_reprobed_after_retry_window(tmp_path):
+    """An unavailable backend must not be cached for the worker's lifetime:
+    provisioning weights later has to activate it once the retry window
+    elapses — the advertised late-provisioning path for masks depends on
+    the standalone stage actually receiving a segmenter."""
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="none",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
+
+    provisioned = object()
+    attempts = []
+
+    def resolver(cfg):
+        attempts.append(1)
+        return None if len(attempts) == 1 else provisioned
+
+    # Within the retry window the None result is served from cache.
+    assert worker._backend("seg", resolver) is None
+    assert worker._backend("seg", resolver) is None
+    assert len(attempts) == 1
+
+    # After the window the backend is re-probed and the instance sticks.
+    worker._backend_retry_seconds = 0.0
+    assert worker._backend("seg", resolver) is provisioned
+    assert len(attempts) == 2
+    worker._backend_retry_seconds = 300.0
+    assert worker._backend("seg", resolver) is provisioned
+    assert len(attempts) == 2  # success is cached for the lifetime
+
+
+def test_face_clustering_retried_after_failure(tmp_path, monkeypatch):
+    """Face scans commit before clustering runs, so a clustering failure
+    must leave persistent pending state: the next cycle (with zero new
+    face candidates) has to retry and succeed."""
+    from smartgallery_ai import faces as F
+    from smartgallery_ai.faces import StubFaceBackend
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    # Two files, identical stub embeddings: enough to form one cluster
+    # (min_cluster_size = 2).
+    for i in (1, 2):
+        img_path = str(tmp_path / f"img{i}.png")
+        Image.new("RGB", (16, 16), (10 * i, 10, 10)).save(img_path)
+        _add_file(db_path, f"cf{i}", img_path, mtime=1000.0)
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="stub", critic_backend="none",
+        extra={"face_stub_source": _face_stub_source},
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
+    backend = StubFaceBackend(source=_face_stub_source)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    real_cluster = F.cluster_faces
+    calls = []
+
+    def failing_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("clustering exploded")
+        return real_cluster(*args, **kwargs)
+
+    monkeypatch.setattr(F, "cluster_faces", failing_once)
+
+    # Cycle 1: faces indexed, clustering fails — scan rows are committed,
+    # so without pending state this would never retry.
+    assert worker._process_faces(conn, backend, 10) == 2
+    assert conn.execute("SELECT COUNT(*) FROM ai_face_clusters").fetchone()[0] == 0
+
+    # Cycle 2: no face candidates remain, yet clustering retries and lands.
+    assert worker._process_faces(conn, backend, 10) == 0
+    assert len(calls) == 2
+    assert conn.execute(
+        "SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL"
+    ).fetchone()[0] >= 1
+
+    # Cycle 3: nothing pending — clustering is not re-run.
+    assert worker._process_faces(conn, backend, 10) == 0
+    assert len(calls) == 2
+    conn.close()

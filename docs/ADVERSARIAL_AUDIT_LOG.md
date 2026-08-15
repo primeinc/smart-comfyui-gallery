@@ -78,5 +78,21 @@ regression test (**FIXED**, = #5), undeclared MobileSAM runtime dependency
 | O8 | "today/yesterday/this week/this month" implemented as rolling windows; benchmark certifies the bug | **FIXED** | Heuristic resolves calendar vocabulary to local calendar boundaries from the injected clock (bare-date values; ISO Monday weeks); corpus entry now uses date placeholders the harness resolves from the same clock; boundary tests incl. month transition. |
 
 Verdict preamble ("438 automated tests claim has no independent run
-attached"): a GitHub Actions workflow (`.github/workflows/tests.yml`) now
-runs the model-free suite on every push/PR.
+attached"): **OPEN — externally blocked.** A GitHub Actions workflow
+(`.github/workflows/tests.yml`) is committed and triggers on every
+push/PR, but every run on this fork so far has failed at startup with the
+account's billing lock — no runner assigned, zero steps executed. The
+workflow existing is NOT independent verification; this finding stays
+open until an actual CI execution completes, which requires the
+repository owner to clear the Actions billing/enablement block.
+
+## Round: owner adversarial re-review of the repair delta (63841a5..79074db, 6 findings)
+
+| # | Finding | Disposition | Resolution / evidence |
+|---|---|---|---|
+| D1 | [P1] Authorization checked only for the anchor file: `/duplicates` and `/similar` serialize neighbor ids without applying the visibility policy, leaking hidden file ids/relationships through visible relatives | **FIXED** | Every returned id passes `file_access_check`; hidden neighbors are dropped, not backfilled. `test_file_access_check_filters_returned_neighbors` (visible anchor, hidden exact/near/vector neighbors). |
+| D2 | [P2] Unavailable backends cached `None` for the worker lifetime, so late provisioning never activates the standalone mask stage despite `_process_masks()` claiming that path | **FIXED** | Successful instances cached for the lifetime; unavailable results re-probed after a bounded retry window (`_backend_retry_seconds`, 300 s). `test_unavailable_backend_reprobed_after_retry_window` exercises `_backend()` itself. |
+| D3 | [P2] "this week"/"this month" emitted only a lower bound, admitting future-dated files | **FIXED** | Both emit bounded `between` bare-date ranges (`[monday, sunday]`, `[first, last]`); `test_calendar_upper_boundaries_exclude_files_just_past_the_period` runs the compiled SQL against rows one second either side of each upper boundary. |
+| D4 | [P2] Automatic face clustering had no retry state: face scans commit before clustering, so one clustering failure was never retried | **FIXED** | Persistent pending marker in `ai_dam_state` written before the attempt, cleared on success; the next cycle retries with zero face candidates. `test_face_clustering_retried_after_failure` (fails once, retries, then stops re-running). |
+| D5 | [P2] The auto-enable gate accepted any JSON with in-bounds numbers at the shipped threshold — not bound to the evidence's identity (backend, baseline, input population) | **FIXED** | `_auto_critic_measurement_passed` now also requires the report's backend to equal `OpenClipSemanticEmbedder`'s model_id/version, `baseline_text` to equal the shipped constant, the committed portrait entry to be present, and every file-backed manifest hash to match this checkout. `test_auto_critic_gate_binds_to_evidence_identity` covers each mismatch, including the previously-accepted minimal synthetic report. |
+| D6 | Verification claim false: both `pytest` checks at `79074db` failed before starting (account billing lock), so the workflow provides no independent run | **ACCEPTED — claim corrected** | The independent-run finding is recorded as OPEN/externally-blocked (above); PR body and replies restated. Unblocking is owner-side (Actions billing/enablement). |

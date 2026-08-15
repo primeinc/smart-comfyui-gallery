@@ -524,40 +524,75 @@ def test_store_review_successful_replacement_unlinks_old_mask(tmp_path):
 # --- 'auto' critic enablement is derived from committed evidence --------------
 
 
-def test_auto_critic_gate_reads_calibration_report(tmp_path):
+def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
+    """Acceptance requires the committed report's IDENTITY — backend,
+    baseline text, and input manifest hashes matching this checkout — not
+    merely in-bounds numbers. A synthetic numbers-only report must never
+    enable 'auto'."""
+    import copy
     import json as _json
 
+    from smartgallery_ai import review as REV
     from smartgallery_ai.critic_qwen import DEFAULT_GROUNDING_MIN_MARGIN
-    from smartgallery_ai.review import (
-        _AUTO_CRITIC_MAX_FAR, _AUTO_CRITIC_MAX_FRR, _auto_critic_measurement_passed,
-    )
+    from smartgallery_ai.review import _auto_critic_measurement_passed
 
-    def write(path, far, frr, thr=DEFAULT_GROUNDING_MIN_MARGIN):
-        with open(path, "w") as fh:
-            _json.dump({"sweep": [{"margin_threshold": thr,
-                                   "false_accept_rate": far,
-                                   "false_reject_rate": frr}]}, fh)
+    with open(REV._CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
+        real = _json.load(fh)
 
-    ok = str(tmp_path / "ok.json")
-    write(ok, _AUTO_CRITIC_MAX_FAR, _AUTO_CRITIC_MAX_FRR)
-    assert _auto_critic_measurement_passed(ok) is True
+    # The committed evidence itself passes ('auto' ships on).
+    assert _auto_critic_measurement_passed() is True
 
-    bad_far = str(tmp_path / "far.json")
-    write(bad_far, _AUTO_CRITIC_MAX_FAR + 0.01, 0.0)
-    assert _auto_critic_measurement_passed(bad_far) is False
+    counter = iter(range(100))
 
-    bad_frr = str(tmp_path / "frr.json")
-    write(bad_frr, 0.0, _AUTO_CRITIC_MAX_FRR + 0.01)
-    assert _auto_critic_measurement_passed(bad_frr) is False
+    def variant(mutate):
+        report = copy.deepcopy(real)
+        mutate(report)
+        path = str(tmp_path / f"r{next(counter)}.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            _json.dump(report, fh)
+        return _auto_critic_measurement_passed(path)
 
-    wrong_thr = str(tmp_path / "thr.json")
-    write(wrong_thr, 0.0, 0.0, thr=DEFAULT_GROUNDING_MIN_MARGIN + 0.05)
-    assert _auto_critic_measurement_passed(wrong_thr) is False
+    def shipped_row(report):
+        return next(s for s in report["sweep"]
+                    if abs(s["margin_threshold"] - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
+
+    # A faithful copy elsewhere passes: acceptance is content-bound.
+    assert variant(lambda r: None) is True
+
+    # Out-of-bounds numbers fail even with correct identity.
+    assert variant(lambda r: shipped_row(r).update(false_accept_rate=0.5)) is False
+    assert variant(lambda r: shipped_row(r).update(false_reject_rate=0.9)) is False
+    assert variant(lambda r: r.update(sweep=[])) is False
+
+    # Identity mismatches fail even with in-bounds numbers.
+    assert variant(lambda r: r["backend"].update(model_id="someone/else")) is False
+    assert variant(lambda r: r["backend"].update(model_version="v0-other")) is False
+    assert variant(lambda r: r.update(baseline_text="different baseline")) is False
+    assert variant(lambda r: r.update(inputs=[])) is False
+    assert variant(lambda r: r.pop("inputs")) is False
+
+    def tamper_hash(r):
+        entry = next(e for e in r["inputs"]
+                     if e.get("file") == "probes/data/calibration_portrait.png")
+        entry["file_sha256"] = "0" * 64
+
+    assert variant(tamper_hash) is False
+
+    def drop_portrait(r):
+        r["inputs"] = [e for e in r["inputs"]
+                       if e.get("file") != "probes/data/calibration_portrait.png"]
+
+    assert variant(drop_portrait) is False
+
+    # The failure mode this gate exists for: a bare numbers-only document.
+    minimal = str(tmp_path / "minimal.json")
+    with open(minimal, "w", encoding="utf-8") as fh:
+        _json.dump({"sweep": [{"margin_threshold": DEFAULT_GROUNDING_MIN_MARGIN,
+                               "false_accept_rate": 0.0,
+                               "false_reject_rate": 0.0}]}, fh)
+    assert _auto_critic_measurement_passed(minimal) is False
 
     assert _auto_critic_measurement_passed(str(tmp_path / "absent.json")) is False
-
-    # The committed evidence itself must satisfy the bounds ('auto' ships on).
-    assert _auto_critic_measurement_passed() is True
 
 
 # --- summary quotes the grounded description, never rejected finding text -----

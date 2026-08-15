@@ -18,6 +18,7 @@ outside this module.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -444,17 +445,59 @@ _AUTO_CRITIC_MAX_FAR = 0.05
 _AUTO_CRITIC_MAX_FRR = 0.30
 
 
+_CALIBRATION_PORTRAIT_REL = "probes/data/calibration_portrait.png"
+
+
+def _sha256_of_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
     """Whether the calibration report at `report_path` (default: the
     committed benchmarks/results/grounding_calibration.json, written by
-    probes/grounding_calibration.py) shows FAR/FRR within bounds at the
-    critic's shipped grounding margin. Missing, malformed, or out-of-bounds
-    reports all return False.
+    probes/grounding_calibration.py) authorizes 'auto' critic resolution.
+
+    Acceptance is bound to the evidence's IDENTITY, not just its numbers.
+    A report qualifies only when ALL hold:
+      - its `backend` names the exact embedding backend the shipped gate
+        runs on (OpenClipSemanticEmbedder model_id/model_version);
+      - its `baseline_text` is the shipped GROUNDING_BASELINE_TEXT;
+      - its input manifest includes the committed portrait input, and
+        every file-backed manifest entry's SHA-256 matches the file in
+        THIS checkout (a report calibrated on a different population
+        cannot authorize this one);
+      - the sweep row at the shipped margin threshold shows
+        FAR <= _AUTO_CRITIC_MAX_FAR and FRR <= _AUTO_CRITIC_MAX_FRR.
+    Anything missing, malformed, mismatched, or out of bounds -> False.
     """
     try:
-        from smartgallery_ai.critic_qwen import DEFAULT_GROUNDING_MIN_MARGIN
+        from smartgallery_ai.critic_qwen import (
+            DEFAULT_GROUNDING_MIN_MARGIN, GROUNDING_BASELINE_TEXT)
+        from smartgallery_ai.embedders import OpenClipSemanticEmbedder
         with open(report_path or _CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
             report = json.load(fh)
+
+        backend = report["backend"]
+        if (backend["model_id"] != OpenClipSemanticEmbedder.model_id
+                or backend["model_version"] != OpenClipSemanticEmbedder.model_version):
+            return False
+        if report["baseline_text"] != GROUNDING_BASELINE_TEXT:
+            return False
+
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        inputs = report["inputs"]
+        file_entries = [e for e in inputs if "file" in e]
+        if not inputs or not any(
+                e["file"] == _CALIBRATION_PORTRAIT_REL for e in file_entries):
+            return False
+        for entry in file_entries:
+            if _sha256_of_file(os.path.join(repo_root, entry["file"])) != entry["file_sha256"]:
+                return False
+
         row = next(
             s for s in report["sweep"]
             if abs(float(s["margin_threshold"]) - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
