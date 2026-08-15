@@ -106,11 +106,17 @@ Chinese Whispers on the same graph: 0.9-1.5 s (all backends; CPU-bound).
 ## Reproduce
 
 ```
-just bench load                                # current CPU/GPU load snapshot
-just bench faiss                               # synthetic, production shape, seeded
-just bench faiss-db <db-path>                  # real embeddings, DB opened read-only
-just bench faiss-images <dir> <onnx> <npz>     # image corpus end to end
+just bench load             # current CPU/GPU load snapshot
+just bench faiss [thr]      # image corpus through the production pipeline
+just bench faiss-db <db>    # real embeddings from a gallery DB, read-only
 ```
+
+`bench faiss` preconditions exactly as production does: backend from
+`get_face_backend(AIConfig.from_env(...))` (gates + env knobs identical to
+the worker), storage via `replace_faces_for_file`, and `cluster_faces()`
+itself timed. Corpus/model/cache paths are module variables
+(`just bench::corpus=... faiss`). The embedding cache stores its gate
+config and re-embeds automatically when the config changes.
 
 Benchmarks run under real load. The harness measures external CPU load
 (system busy minus its own CPU time) live during timing, warns past 10%,
@@ -127,6 +133,12 @@ junk-blob members have median min-side 15.5 px (YuNet's noise floor),
 labeled identities 525 px. At 24 px the gate keeps 96.6% of labeled-identity
 faces, removes 74% of blob members, and improves both top-cluster share
 (0.46 -> 0.20 at threshold 0.45) and identity purity simultaneously.
+
+Measured at detect time through the production pipeline: 8,210 of 12,713
+detections pass, corpus embedding drops 483s -> 161s (SFace never runs on
+gated detections), top-cluster share 18.6% -> 8.3% at threshold 0.5, and
+`cluster_faces()` end to end takes 0.32s on 8,210 faces (torch-cuda
+backend auto-selected).
 
 ## Scale limits
 

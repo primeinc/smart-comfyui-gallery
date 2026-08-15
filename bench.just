@@ -1,8 +1,9 @@
-# Repeatable benchmarks under real load. The harness measures external CPU
-# load live DURING timing, prints it, and stamps the summary into every
-# record in benchmarks/results/ — numbers always carry their measured load
-# context. Best-of-N timing takes the least-loaded window. `load` is a
-# standalone diagnostic snapshot of current CPU/GPU load.
+# Repeatable benchmarks under real load, through the PRODUCTION pipeline:
+# get_face_backend(AIConfig.from_env) resolves detection gates from the
+# same env knobs the worker uses, replace_faces_for_file writes through the
+# real schema, and cluster_faces() itself is timed. External CPU load is
+# measured live during timing and stamped into every record in
+# benchmarks/results/. `load` is a standalone CPU/GPU load snapshot.
 
 set export
 set positional-arguments
@@ -10,6 +11,9 @@ set script-interpreter := ['bash', '-euo', 'pipefail']
 
 python := './.venv/Scripts/python.exe'
 omp := '8'
+corpus := 'C:/Users/will/dev/sg-lab/hf-datasets'
+models := 'C:/Users/will/dev/sg-lab/models'
+cache := 'C:/Users/will/dev/sg-lab/hf-datasets-embeddings.npz'
 
 # bare `just bench` lists instead of executing
 default:
@@ -19,14 +23,10 @@ default:
 load:
     @-"$python" benchmarks/faiss_graph_evidence.py --check-idle
 
-# synthetic corpus at production shape (seeded, reproducible)
-faiss:
-    @"$python" benchmarks/faiss_graph_evidence.py --omp-threads "$omp"
+# image corpus through the production pipeline (detect -> embed -> DB -> cluster)
+faiss thr='0.5':
+    @"$python" benchmarks/faiss_graph_evidence.py --source images --dir "$corpus" --models-dir "$models" --cache "$cache" --threshold "$1" --omp-threads "$omp"
 
 # real embeddings from a gallery cache DB (opened read-only)
 faiss-db db:
     @"$python" benchmarks/faiss_graph_evidence.py --source db --db "$1" --omp-threads "$omp"
-
-# real image corpus end to end (faces detected+embedded, cached in the npz)
-faiss-images dir models cache thr='0.5':
-    @"$python" benchmarks/faiss_graph_evidence.py --source images --dir "$1" --models-dir "$2" --cache "$3" --threshold "$4" --omp-threads "$omp"

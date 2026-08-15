@@ -213,26 +213,42 @@ _LABELED_DATASETS = ("Black_People_Face_Recognition", "caucasian-people-kyc-phot
 
 
 def load_images(root: str, models_dir: str, cache: str) -> tuple:
-    """Embed every face in every image under `root` with the production
-    YuNet+SFace backend (the pixels->embeddings leg IS part of the system
-    under test). Returns (embeddings, face_datasets, face_identities).
+    """Embed every face in every image under `root` through the PRODUCTION
+    preconditioning path: the backend is resolved via
+    `get_face_backend(AIConfig.from_env(...))`, so the detection-score and
+    face-size gates and every AI_DAM_* env knob apply exactly as they do in
+    the worker. Returns (embeddings, face_datasets, face_identities).
 
-    The result is cached to `cache` (.npz) keyed by nothing fancier than
-    the file's existence — delete it to force a re-embed.
+    The cache (.npz) stores the gate configuration it was built with; a
+    config change triggers a re-embed automatically.
     """
+    from smartgallery_ai import AIConfig
+    from smartgallery_ai.faces import get_face_backend
+
+    cfg = AIConfig.from_env(base_path=root, db_path=":memory:")
+    cfg.models_dir = models_dir
+    cfg.face_backend = "opencv"
+    backend = get_face_backend(cfg)
+    gate = (
+        f"{backend.model_version}|det>={cfg.face_min_det_score}"
+        f"|px>={cfg.face_min_px}"
+    )
+
     if cache and os.path.isfile(cache):
         data = np.load(cache, allow_pickle=False)
-        if "paths" not in data:
-            print(f"cache {cache} lacks per-face paths; re-embedding")
+        cached_gate = str(data["gate"]) if "gate" in data else ""
+        if "paths" not in data or cached_gate != gate:
+            print(
+                f"cache config {cached_gate or 'missing'!r} != current "
+                f"{gate!r}; re-embedding"
+            )
         else:
-            print(f"loaded embedding cache {cache} ({data['embeddings'].shape[0]} faces)")
+            print(
+                f"loaded embedding cache ({data['embeddings'].shape[0]} faces, {gate})"
+            )
             return data["embeddings"], list(data["datasets"]), list(data["identities"])
 
     from PIL import Image
-
-    from smartgallery_ai.faces import OpenCVFaceBackend
-
-    backend = OpenCVFaceBackend(models_dir)
     paths = []
     for dirpath, _dirnames, filenames in os.walk(root):
         for fn in filenames:
@@ -286,9 +302,52 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
             identities=np.array(identities),
             paths=np.array(face_paths),
             bboxes=np.array(face_bboxes, dtype=np.float32).reshape(-1, 4),
+            gate=np.array(gate),
         )
         print(f"wrote embedding cache {cache}")
     return embeddings, ds_names, identities
+
+
+def time_production_clustering(m: np.ndarray, threshold: float) -> dict:
+    """Time `cluster_faces` itself — the function production calls — over
+    the same embeddings, via the production write path
+    (`replace_faces_for_file` into a `schema.init_schema` database)."""
+    from smartgallery_ai.faces import FaceDetection, cluster_faces, replace_faces_for_file
+    from smartgallery_ai.schema import init_schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, "
+        "mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT)"
+    )
+    init_schema(conn)
+    batch = 32  # faces per synthetic file; grouping does not affect clustering
+    for start in range(0, len(m), batch):
+        fid = f"f{start // batch}"
+        conn.execute(
+            "INSERT INTO files (id, path, mtime, name, type) VALUES (?, ?, 0, ?, 'image')",
+            (fid, f"/bench/{fid}.png", fid),
+        )
+        dets = [
+            FaceDetection(bbox=(0.0, 0.0, 0.1, 0.1), landmarks=[], det_score=0.9, embedding=v)
+            for v in m[start : start + batch]
+        ]
+        replace_faces_for_file(conn, fid, dets, "bench", "bench-v1", 0.0, 0.0)
+    conn.commit()
+    t0 = time.perf_counter()
+    cluster_ids = cluster_faces(conn, "bench", "bench-v1", threshold=threshold)
+    elapsed = time.perf_counter() - t0
+    params = json.loads(
+        conn.execute(
+            "SELECT params FROM ai_face_clusters WHERE cluster_id = ?", (cluster_ids[0],)
+        ).fetchone()[0]
+    ) if cluster_ids else {}
+    conn.close()
+    return {
+        "seconds": round(elapsed, 2),
+        "clusters": len(cluster_ids),
+        "graph_backend": params.get("graph_backend", "?"),
+    }
 
 
 def sanity_report(labels: list, ds_names: list, identities: list) -> dict:
@@ -556,6 +615,12 @@ def main() -> None:
             f"  sanity: top cluster holds {s['top_cluster_share']:.1%} of faces; "
             f"{s['labeled_identities']} labeled identities, "
             f"purity {s['mean_identity_purity']}"
+        )
+        prod = time_production_clustering(m, args.threshold)
+        record["production_cluster_faces"] = prod
+        print(
+            f"  production cluster_faces(): {prod['seconds']}s end to end, "
+            f"{prod['clusters']} clusters, backend {prod['graph_backend']}"
         )
 
     os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
