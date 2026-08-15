@@ -342,14 +342,25 @@ Keep the reply short: at most 3 findings."""
 
 
 class SmolVlmCritic(CriticBackend):
-    """Local VLM critic via HuggingFaceTB/SmolVLM2-500M-Video-Instruct
-    (Apache-2.0), loaded ONLY from `models_dir/smolvlm2-500m`
-    (local_files_only) -- never downloaded at runtime. CPU-friendly
-    (~1 GB RAM, tens of seconds per review).
+    """EXPERIMENTAL local VLM critic via SmolVLM2 (Apache-2.0), loaded ONLY
+    from `models_dir/smolvlm2-2.2b` or `models_dir/smolvlm2-500m`
+    (local_files_only) -- never downloaded at runtime.
+
+    Measured on this stack (CPU, 2026-08-15, see docs/AI_MODELS.md):
+    NEITHER checkpoint produced an image-grounded, schema-valid review.
+    The 500M model parrots the prompt's example instead of describing the
+    image (0/5 valid); the 2.2B model either truncates its JSON or emits a
+    schema-valid COPY of the example for the wrong image (0/2 grounded).
+    That is why `get_critic_backend('auto')` deliberately returns None:
+    a critic that fabricates plausible reviews is worse than no critic.
+    This adapter stays available behind the explicit 'smolvlm' opt-in for
+    experimentation and for stronger future checkpoints using the same
+    directory layout.
 
     Emits the RAW payload dict; `validate_review_payload` remains the only
     gate into the database, so schema violations from the model are
-    rejected, never coerced.
+    rejected, never coerced. Note validation cannot catch a schema-valid
+    fabrication -- that is a model-capability problem, hence the opt-in.
     """
 
     model_id = "HuggingFaceTB/SmolVLM2"  # refined per provisioned checkpoint
@@ -429,20 +440,16 @@ def _extract_json_object(text: str) -> dict:
 def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
     """Resolve `config.critic_backend`.
 
-    'smolvlm' loads the local SmolVLM2-500M critic (weights must be
-    provisioned into models_dir/smolvlm2-500m). 'auto' tries it and falls
-    back to None when the runtime or weights are absent -- 'auto' never
-    silently substitutes the stub. 'stub' is only reachable by explicit
-    request.
+    'auto' returns None BY MEASUREMENT: the available local SmolVLM2
+    checkpoints fabricate schema-valid reviews copied from the prompt's
+    example instead of grounding in the image (see SmolVlmCritic docstring
+    and docs/AI_MODELS.md), and a fabricated review is worse than none.
+    'smolvlm' explicitly opts in to the experimental adapter; 'stub' is
+    test-only and never reachable implicitly.
     """
     name = config.critic_backend
-    if name == "none":
+    if name in ("none", "auto"):
         return None
-    if name == "auto":
-        try:
-            return SmolVlmCritic(config.models_dir)
-        except BackendUnavailable:
-            return None
     if name == "smolvlm":
         return SmolVlmCritic(config.models_dir)
     if name == "stub":

@@ -46,13 +46,13 @@ not justify invoking it (`OMNIQUERY_ENABLE_FALLBACK=true` re-enables).
 |---|---|---|---|---|
 | Exact duplicate | SHA-256 (stdlib `hashlib`) | — | — | No model. |
 | Near-duplicate | In-repo pHash64 (32×32 numpy DCT-II, top-left 8×8, DC-excluded median) + dHash64 | — | 64-bit | No GPU, no external deps (the `ImageHash` package is deliberately **not** used — avoids scipy/PyWavelets). Hamming threshold default **≤ 8** (`AI_DAM_NEAR_DUP_DISTANCE`). |
-| Face detection | OpenCV Zoo YuNet `face_detection_yunet_2023mar.onnx` | **MIT** ([opencv_zoo LICENSE](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)) | — | 232 KB; runs via `cv2.FaceDetectorYN` (no extra runtime). |
-| Face embedding | OpenCV Zoo SFace `face_recognition_sface_2021dec.onnx` | **Apache-2.0** ([opencv_zoo LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/LICENSE)) | **128** (float32, verified at runtime on this machine) | Runs via `cv2.FaceRecognizerSF` with alignCrop. Cluster threshold default cosine ≥ **0.55** (`AI_DAM_FACE_CLUSTER_THRESHOLD`) — a starting point; calibrate on your corpus via the feedback loop. |
+| Face detection (**runtime-verified**) | OpenCV Zoo YuNet `face_detection_yunet_2023mar.onnx` | **MIT** ([opencv_zoo LICENSE](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)) | — | 232 KB; runs via `cv2.FaceDetectorYN`. Measured: real-photo detection score 0.93 with 5 landmarks in ~80 ms (CPU, 512×512). |
+| Face embedding (**runtime-verified**) | OpenCV Zoo SFace `face_recognition_sface_2021dec.onnx` | **Apache-2.0** ([opencv_zoo LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/LICENSE)) | **128** (float32, verified at runtime) | Runs via `cv2.FaceRecognizerSF` with alignCrop. Measured: same-identity cosine 0.987 across a brightness edit; the two instances clustered together at the default threshold cosine ≥ **0.55** (`AI_DAM_FACE_CLUSTER_THRESHOLD`) — calibrate on your corpus via the feedback loop. |
 | Face stack (higher-accuracy alternative, not shipped) | `fal/AuraFace-v1` (SCRFD `scrfd_10g_bnkps.onnx` + `glintr100.onnx`, 512-d) | Apache-2.0 ([HF](https://huggingface.co/fal/AuraFace-v1)) | 512 | Drop-in candidate if SFace clustering quality is insufficient. |
 | **Explicitly avoided** | insightface model zoo (`buffalo_l`, SCRFD/ArcFace pretrained weights) | **Non-commercial research only** ([insightface README](https://github.com/deepinsight/insightface/blob/master/python-package/README.md)) | — | WI-31 forbids silently shipping these; they are not referenced anywhere in the code. |
-| Semantic embedding (provision to enable) | OpenCLIP (`mlfoundations/open_clip`, MIT) with `laion/CLIP-ViT-B-32-laion2B-s34b-b79k` | MIT (code + weights per model card) | 512 | Joint image/text space (`space='semantic'`). `auto` backend resolution never substitutes stubs. |
-| Visual embedding (provision to enable) | `facebook/dinov2-small` | Apache-2.0 | 384 | Image-only self-supervised space (`space='visual'`). Kept strictly separate from the semantic space. |
-| Review critic (interface ready; candidates, none shipped) | `HuggingFaceTB/SmolVLM2-2.2B-Instruct`; `vikhyatk/moondream2`; `Qwen/Qwen2.5-VL-7B-Instruct` | Apache-2.0 (all three) | — | Qwen2.5-VL GGUF vision currently needs the `HimariO/llama.cpp.qwen2.5vl` fork; mainline llama.cpp support pending. |
+| Semantic embedding (**runtime-verified**) | OpenCLIP (`mlfoundations/open_clip`, MIT) with `laion/CLIP-ViT-B-32-laion2B-s34b-b79k`, file `open_clip/ViT-B-32_laion2b_s34b_b79k.bin` | MIT (code + weights per model card) | 512 | Joint image/text space (`space='semantic'`). Measured on CPU: load 5.6s, ~40 ms/image, ~24 ms/text; text→image retrieval verified (correct caption ranks its image above unrelated caption and above noise). `auto` never substitutes stubs. |
+| Visual embedding (**runtime-verified**) | `facebook/dinov2-small`, snapshot dir `dinov2-small/` | Apache-2.0 | 384 | Image-only self-supervised space (`space='visual'`). Measured on CPU: load 8s, ~59 ms/image; same-image edit cosine 0.988 vs unrelated −0.03. Kept strictly separate from the semantic space. |
+| Review critic (**adapter shipped, opt-in only — measured unfit at these sizes**) | `SmolVlmCritic` for `HuggingFaceTB/SmolVLM2-2.2B-Instruct` / `SmolVLM2-500M-Video-Instruct`; future: `Qwen/Qwen2.5-VL-7B-Instruct` | Apache-2.0 (all) | — | **Measured 2026-08-15 (CPU): 0/7 image-grounded schema-valid reviews.** 500M parrots the prompt's few-shot example (0/5); 2.2B truncates JSON (213 s) or emits a schema-valid copy of the example for the wrong image (59 s). `critic_backend='auto'` therefore returns None — a fabricated review is worse than none; `'smolvlm'` opts in explicitly. Qwen2.5-VL-7B remains the untested next candidate (needs more RAM than this measurement environment). |
 | Segmentation (interface ready; candidates, none shipped) | `facebookresearch/segment-anything-2` (SAM 2); `ChaoningZhang/MobileSAM`; `yunyangx/EfficientSAM` | Apache-2.0 (code + weights) | — | Box/point-prompted masks for **localizable** findings only. |
 
 ## Supporting libraries
@@ -63,6 +63,25 @@ not justify invoking it (`OMNIQUERY_ENABLE_FALLBACK=true` re-enables).
 | `llama-cpp-python` | 0.3.x | MIT | Grammar-constrained fallback parser |
 | `cactus-needle` | 2.0.4 | Apache-2.0 | Needle2 engine |
 | `sqlite-vec` | — | MIT/Apache-2.0 | **Evaluated, not adopted**: pre-v1 API churn; numpy brute-force cosine is sufficient and dependency-free at personal-gallery scale (~10⁵ vectors). Decision can be revisited behind the `VectorStore` interface. |
+
+## Runtime verification record (2026-08-15, CPU-only sandbox)
+
+Everything marked *runtime-verified* above was proven live, not statically:
+
+- **Full pipeline**: with all real weights provisioned, `auto` backend
+  resolution picked OpenCLIP + DINOv2 + YuNet/SFace; the background worker
+  indexed a 3-image corpus (hashes, 6 embeddings across both spaces, faces)
+  with 0 errors; `/galleryout/api/aidam/similar` returned the correct
+  nearest neighbor per space (visual top: the edited copy at 0.988); the
+  OmniQuery `similar_to_visual` resolver returned the same ranking.
+- **Reproducible**: `RUN_REAL_BACKEND_TESTS=1 python -m pytest
+  tests/test_real_backends.py` re-runs the DINOv2 / OpenCLIP / YuNet+SFace
+  proofs whenever weights are provisioned (skipped otherwise).
+- **Probes**: `probes/egress_probe.py` and `probes/media_readonly_probe.py`
+  both PASS with the real-model stack installed.
+- **Critic**: measured unfit at ≤2.2B (see table); the failure mode that
+  matters is *schema-valid fabrication* (example parroting), which no
+  validator can catch — hence the opt-in-only policy.
 
 ## Index and invalidation parameters
 
