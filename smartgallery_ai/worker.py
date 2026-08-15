@@ -138,6 +138,56 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
     return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
 
 
+def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
+                source_mtime: float, now: float, result_count: int) -> None:
+    """Upsert the single (file, kind) scan-log row recording an attempt at
+    (model, mtime); `result_count` of -1 marks a failed attempt. Shared by
+    the worker stages and the synchronous /index path so both mark work the
+    same way and neither re-scans the other's results."""
+    conn.execute(
+        """
+        INSERT INTO ai_scan_log
+            (file_id, kind, model_id, model_version, source_mtime,
+             scanned_at, result_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (file_id, kind) DO UPDATE SET
+            model_id = excluded.model_id,
+            model_version = excluded.model_version,
+            source_mtime = excluded.source_mtime,
+            scanned_at = excluded.scanned_at,
+            result_count = excluded.result_count
+        """,
+        (file_id, kind, backend.model_id, backend.model_version,
+         source_mtime, now, result_count),
+    )
+    conn.commit()
+
+
+def indexing_totals(conn: sqlite3.Connection) -> dict:
+    """Backlog progress snapshot: how many files exist vs. how many each
+    stage has covered so far. Approximate BY DESIGN (a model-version bump
+    re-queues files without resetting these counters) — meant for progress
+    display in /status, the panel, and the cycle log, never scheduling."""
+    type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
+    def one(sql, params=()):
+        return conn.execute(sql, params).fetchone()[0]
+    return {
+        "files_total": one("SELECT COUNT(*) FROM files"),
+        "visual_files_total": one(
+            f"SELECT COUNT(*) FROM files WHERE type IN ({type_placeholders})",
+            _VISUAL_TYPES),
+        "hashed": one("SELECT COUNT(*) FROM ai_file_hashes"),
+        "embeddings_semantic": one(
+            "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,)),
+        "embeddings_visual": one(
+            "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)),
+        "faces_scanned": one(
+            "SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'faces'"),
+        "reviews_scanned": one(
+            "SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'review'"),
+    }
+
+
 def _fetch_candidates(
     conn: sqlite3.Connection,
     file_ids,
@@ -214,6 +264,13 @@ class AIWorker:
         self._backend_retry_seconds = 300.0
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        # On-demand indexing: file ids a user is actively looking at (the
+        # AI panel requests them) jump the queue. Deduped FIFO, bounded so
+        # a request flood cannot grow it without limit; _wake_event breaks
+        # the between-cycle sleep so a request is picked up immediately.
+        self._priority_ids: list = []
+        self._priority_max = 100
+        self._wake_event = threading.Event()
 
         # Background weight-provisioning: one attempt per worker lifetime,
         # in its own daemon thread so cycles are never blocked by
@@ -354,11 +411,34 @@ class AIWorker:
     def stop(self, timeout: Optional[float] = None) -> None:
         """Signal the thread to stop and join it. Safe to call repeatedly."""
         self._stop_event.set()
+        self._wake_event.set()  # break the between-cycle sleep immediately
         thread = self._thread
         if thread is not None:
             thread.join(timeout=timeout)
             if not thread.is_alive():
                 self._thread = None
+
+    # -- on-demand indexing ------------------------------------------------------
+
+    def request_priority_index(self, file_id: str) -> bool:
+        """Queue one file for immediate indexing ahead of the backlog crawl
+        and wake the worker. Duplicate requests collapse; returns False
+        (not queued) only when the bounded queue is full."""
+        with self._lock:
+            if file_id in self._priority_ids:
+                self._wake_event.set()
+                return True
+            if len(self._priority_ids) >= self._priority_max:
+                return False
+            self._priority_ids.append(file_id)
+        self._wake_event.set()
+        return True
+
+    def _drain_priority(self) -> list:
+        """Take (and clear) the queued priority file ids, oldest request first."""
+        with self._lock:
+            ids, self._priority_ids = self._priority_ids, []
+        return ids
 
     # -- main loop -------------------------------------------------------------
 
@@ -371,15 +451,23 @@ class AIWorker:
                 _logger.exception("[AIWorker] cycle failed")
                 with self._lock:
                     self.stats["errors"] += 1
-            self._stop_event.wait(self.poll_interval)
+            # Sleep until the poll interval elapses OR a priority-index
+            # request arrives (request_priority_index sets the event).
+            self._wake_event.wait(self.poll_interval)
+            self._wake_event.clear()
 
     def _run_cycle(self) -> None:
-        """One wake: fresh connection, schema ensured, stages run in fixed order
-        against a shared file budget, then the orphaned-mask sweep."""
+        """One wake: fresh connection, schema ensured, user-requested files
+        first, then stages run in fixed order against a shared file budget,
+        then the orphaned-mask sweep."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        with self._lock:
+            stats_before = dict(self.stats)
         try:
             schema.init_schema(conn)
+
+            self._process_priority_requests(conn)
 
             budget = self.batch_size
             budget -= self._process_hashes(conn, budget)
@@ -418,11 +506,54 @@ class AIWorker:
                     budget -= self._process_masks(conn, segmenter, budget)
 
             self._sweep_orphaned_masks(conn)
+            self._log_cycle_progress(conn, stats_before)
         finally:
             conn.close()
 
         with self._lock:
             self.stats["cycles"] += 1
+
+    def _process_priority_requests(self, conn: sqlite3.Connection) -> None:
+        """Fully index the user-requested files NOW, every stage whose
+        backend is up, outside the shared cycle budget: the AI panel is
+        open on these files and waiting for results."""
+        for file_id in self._drain_priority():
+            self._process_hashes(conn, 1, only_file_id=file_id)
+            semantic = self._backend("semantic", embedders.get_semantic_backend)
+            if semantic is not None:
+                self._process_embedding_space(conn, semantic, SPACE_SEMANTIC, 1,
+                                              only_file_id=file_id)
+            visual = self._backend("visual", embedders.get_visual_backend)
+            if visual is not None:
+                self._process_embedding_space(conn, visual, SPACE_VISUAL, 1,
+                                              only_file_id=file_id)
+            face_backend = self._backend("face", faces.get_face_backend)
+            if face_backend is not None:
+                self._process_faces(conn, face_backend, 1, only_file_id=file_id)
+            critic = self._backend("critic", review.get_critic_backend)
+            if critic is not None:
+                self._process_reviews(conn, critic, 1, only_file_id=file_id)
+
+    def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict) -> None:
+        """One INFO line per cycle that did work — what was indexed and how
+        far the gallery backlog has progressed — so a long first index is
+        visibly alive in the console. Idle cycles stay silent."""
+        with self._lock:
+            deltas = {key: self.stats[key] - stats_before.get(key, 0)
+                      for key in ("hashed", "embedded", "faces_indexed", "reviewed")}
+        if not any(deltas.values()):
+            return
+        totals = indexing_totals(conn)
+        _logger.info(
+            "[AIWorker] indexed: +%d hashed, +%d embedded, +%d faces, +%d reviews "
+            "(gallery: %d/%d hashed, %d/%d semantic, %d/%d visual, %d/%d faces)",
+            deltas["hashed"], deltas["embedded"], deltas["faces_indexed"],
+            deltas["reviewed"],
+            totals["hashed"], totals["files_total"],
+            totals["embeddings_semantic"], totals["visual_files_total"],
+            totals["embeddings_visual"], totals["visual_files_total"],
+            totals["faces_scanned"], totals["visual_files_total"],
+        )
 
     def _sweep_orphaned_masks(self, conn: sqlite3.Connection) -> None:
         """Deleting a `files` row cascades away its findings rows but not
@@ -449,6 +580,14 @@ class AIWorker:
                                  f"mask sweep: could not remove {target}: {exc}")
 
     # -- backend caching ---------------------------------------------------------
+
+    def peek_backend(self, key: str):
+        """The worker's cached backend instance for `key`, or None. Never
+        resolves: request threads use this to REUSE an already-loaded model
+        (constructing another OpenCLIP/DINOv2 in-request would double both
+        the latency and the memory) while resolution stays worker-only."""
+        with self._lock:
+            return self._backend_cache.get(key)
 
     def _backend(self, key: str, resolver):
         """Resolve a backend and reuse the instance. Constructing real
@@ -495,14 +634,19 @@ class AIWorker:
 
     # -- stages ------------------------------------------------------------------
 
-    def _process_hashes(self, conn: sqlite3.Connection, limit: int) -> int:
+    def _process_hashes(self, conn: sqlite3.Connection, limit: int,
+                        only_file_id: Optional[str] = None) -> int:
         """Hash stage: (re)compute content hashes for missing/stale files. Returns
-        candidates consumed -- charged against the budget even when hashing fails."""
+        candidates consumed -- charged against the budget even when hashing fails.
+        `only_file_id` restricts the stage to that file (priority requests)."""
         if limit <= 0:
             return 0
         missing = invalidation.find_missing(conn, "ai_file_hashes")
         stale = invalidation.find_stale_hashes(conn, HASH_ALGO_VERSION)
-        candidates = _fetch_candidates(conn, set(missing) | set(stale), limit)
+        wanted = set(missing) | set(stale)
+        if only_file_id is not None:
+            wanted &= {only_file_id}
+        candidates = _fetch_candidates(conn, wanted, limit)
         now = time.time()
         for row in candidates:
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
@@ -517,16 +661,21 @@ class AIWorker:
         return len(candidates)
 
     def _process_embedding_space(
-        self, conn: sqlite3.Connection, backend, space: str, limit: int
+        self, conn: sqlite3.Connection, backend, space: str, limit: int,
+        only_file_id: Optional[str] = None,
     ) -> int:
         """Embedding stage for one space: embed missing/stale renderable files.
-        Returns candidates consumed, successful or not."""
+        Returns candidates consumed, successful or not. `only_file_id`
+        restricts the stage to that file (priority requests)."""
         if limit <= 0:
             return 0
         missing = invalidation.find_missing(conn, "ai_embeddings", space=space)
         stale = invalidation.find_stale_embeddings(conn, space, backend.model_id, backend.model_version)
+        wanted = set(missing) | set(stale)
+        if only_file_id is not None:
+            wanted &= {only_file_id}
         candidates = _fetch_candidates(
-            conn, set(missing) | set(stale), limit, allowed_types=_VISUAL_TYPES
+            conn, wanted, limit, allowed_types=_VISUAL_TYPES
         )
         store = vectors.VectorStore(cache_dir=self.config.cache_dir, ephemeral=self.config.ephemeral_index)
         for row in candidates:
@@ -548,16 +697,21 @@ class AIWorker:
         return len(candidates)
 
     def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
-                         limit: int, extra_cols: str = "") -> list:
+                         limit: int, extra_cols: str = "",
+                         only_file_id: Optional[str] = None) -> list:
         """Files needing a (re-)scan for `kind`: no ai_scan_log row for the
         current model at the current source mtime. Zero-result scans are
         logged too, so a file with no faces is scanned exactly once per
-        (model, mtime) instead of every cycle."""
+        (model, mtime) instead of every cycle. `only_file_id` restricts the
+        scan to that file (priority requests)."""
         type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
+        only_clause = "AND f.id = ?" if only_file_id is not None else ""
+        only_params = (only_file_id,) if only_file_id is not None else ()
         return conn.execute(
             f"""
             SELECT f.id, f.path, f.mtime, f.type{extra_cols} FROM files f
             WHERE f.type IN ({type_placeholders})
+              {only_clause}
               AND NOT EXISTS (
                 SELECT 1 FROM ai_scan_log sl
                 WHERE sl.file_id = f.id AND sl.kind = ?
@@ -567,8 +721,8 @@ class AIWorker:
             ORDER BY f.mtime DESC, f.id ASC
             LIMIT ?
             """,
-            (*_VISUAL_TYPES, kind, backend.model_id, backend.model_version,
-             _MTIME_EPSILON, limit),
+            (*_VISUAL_TYPES, *only_params, kind, backend.model_id,
+             backend.model_version, _MTIME_EPSILON, limit),
         ).fetchall()
 
     @staticmethod
@@ -576,31 +730,17 @@ class AIWorker:
                   source_mtime: float, now: float, result_count: int) -> None:
         """Upsert the single (file, kind) scan-log row recording an attempt at
         (model, mtime); `result_count` of -1 marks a failed attempt."""
-        conn.execute(
-            """
-            INSERT INTO ai_scan_log
-                (file_id, kind, model_id, model_version, source_mtime,
-                 scanned_at, result_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (file_id, kind) DO UPDATE SET
-                model_id = excluded.model_id,
-                model_version = excluded.model_version,
-                source_mtime = excluded.source_mtime,
-                scanned_at = excluded.scanned_at,
-                result_count = excluded.result_count
-            """,
-            (file_id, kind, backend.model_id, backend.model_version,
-             source_mtime, now, result_count),
-        )
-        conn.commit()
+        record_scan(conn, file_id, kind, backend, source_mtime, now, result_count)
 
-    def _process_faces(self, conn: sqlite3.Connection, backend, limit: int) -> int:
+    def _process_faces(self, conn: sqlite3.Connection, backend, limit: int,
+                       only_file_id: Optional[str] = None) -> int:
         """Face stage: detect and store faces per candidate, then recluster when
         faces were indexed or a clustering attempt is still pending. Returns
         candidates consumed, successful or not."""
         if limit <= 0:
             return 0
-        rows = self._scan_candidates(conn, "faces", backend, limit)
+        rows = self._scan_candidates(conn, "faces", backend, limit,
+                                     only_file_id=only_file_id)
         now = time.time()
         for row in rows:
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
@@ -661,7 +801,8 @@ class AIWorker:
         conn.execute("DELETE FROM ai_dam_state WHERE key = ?", (key,))
         conn.commit()
 
-    def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int) -> int:
+    def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int,
+                         only_file_id: Optional[str] = None) -> int:
         """Review stage: run the critic per candidate, store the review, and
         generate finding masks when a segmenter is available. Returns candidates
         consumed, successful or not."""
@@ -669,7 +810,8 @@ class AIWorker:
             return 0
         prompt_expr = ", f.workflow_prompt" if _has_column(conn, "files", "workflow_prompt") else ", NULL AS workflow_prompt"
         rows = self._scan_candidates(conn, "review", backend, limit,
-                                     extra_cols=prompt_expr)
+                                     extra_cols=prompt_expr,
+                                     only_file_id=only_file_id)
         segmenter = self._backend("segmenter", review.get_segmenter_backend)
         now = time.time()
         for row in rows:

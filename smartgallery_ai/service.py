@@ -33,7 +33,7 @@ from smartgallery_ai import (
     SPACE_VISUAL,
 )
 from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, vectors
-from smartgallery_ai.worker import load_source_image
+from smartgallery_ai.worker import indexing_totals, load_source_image, record_scan
 
 __all__ = ["create_ai_blueprint", "create_ai_resolvers", "set_worker", "get_worker"]
 
@@ -67,11 +67,33 @@ def invalidate_backend_probe_cache() -> None:
         cache.clear()
 
 
+# File types the embedding/faces/review stages can render a frame from --
+# the same membership the worker's stages use. Other types (audio, text)
+# are never "pending": no stage will ever produce results for them.
+_RENDERABLE_TYPES = tuple(hashing.IMAGE_FILE_TYPES | hashing.VIDEO_FILE_TYPES)
+
+
 def _connect(config: AIConfig) -> sqlite3.Connection:
     """Open a fresh SQLite connection to the gallery DB with name-addressable rows."""
     conn = sqlite3.connect(config.db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _renderable(conn: sqlite3.Connection, file_id: str) -> bool:
+    """Whether the file exists and is a type the AI stages can process --
+    the panel shows 'queued for indexing' only when results can actually
+    arrive, never for types no stage will touch."""
+    row = conn.execute("SELECT type FROM files WHERE id = ?", (file_id,)).fetchone()
+    return row is not None and row["type"] in _RENDERABLE_TYPES
+
+
+def _was_scanned(conn: sqlite3.Connection, file_id: str, kind: str):
+    """The file's ai_scan_log row for `kind` (any model/mtime), or None.
+    Row presence separates 'scanned, nothing found' from 'not reached yet'."""
+    return conn.execute(
+        "SELECT result_count FROM ai_scan_log WHERE file_id = ? AND kind = ?",
+        (file_id, kind)).fetchone()
 
 
 def _disabled_response():
@@ -161,6 +183,17 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     now = time.time()
     result: dict = {"file_id": file_id, "hashed": False, "embedded": [], "faces": False, "reviewed": False}
 
+    def _backend_for(key: str, factory):
+        """The worker's already-loaded backend instance when it has one,
+        else a fresh resolve: re-constructing OpenCLIP/DINOv2 per request
+        doubles latency and memory for a model this process already holds."""
+        worker = get_worker()
+        if worker is not None:
+            cached = worker.peek_backend(key)
+            if cached is not None:
+                return cached
+        return factory(config)
+
     existing_hash = conn.execute(
         "SELECT source_mtime, algo_version FROM ai_file_hashes WHERE file_id = ?", (file_id,)
     ).fetchone()
@@ -176,11 +209,11 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
 
     img = load_source_image(path, file_type)
 
-    for space, get_backend in (
-        (SPACE_SEMANTIC, embedders.get_semantic_backend),
-        (SPACE_VISUAL, embedders.get_visual_backend),
+    for key, space, get_backend in (
+        ("semantic", SPACE_SEMANTIC, embedders.get_semantic_backend),
+        ("visual", SPACE_VISUAL, embedders.get_visual_backend),
     ):
-        backend = get_backend(config)
+        backend = _backend_for(key, get_backend)
         if backend is None or img is None:
             continue
         existing = conn.execute(
@@ -202,12 +235,16 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
             store.add(conn, file_id, space, backend.model_id, backend.model_version, vec, mtime)
             result["embedded"].append(space)
 
-    face_backend = faces.get_face_backend(config)
+    face_backend = _backend_for("face", faces.get_face_backend)
     if face_backend is not None and img is not None:
         detections = face_backend.detect(img)
         faces.replace_faces_for_file(
             conn, file_id, detections, face_backend.model_id, face_backend.model_version, mtime, now
         )
+        # Mark the scan like the worker does: without this row the worker
+        # re-detects this file next cycle and the panel cannot tell
+        # "scanned, zero faces" apart from "not scanned yet".
+        record_scan(conn, file_id, "faces", face_backend, mtime, now, len(detections))
         result["faces"] = True
 
     # Reviews are NEVER run synchronously here: constructing the critic can
@@ -310,6 +347,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "face_clusters": conn.execute("SELECT COUNT(*) FROM ai_face_clusters").fetchone()[0],
                 "reviews": conn.execute("SELECT COUNT(*) FROM ai_reviews").fetchone()[0],
             }
+            indexing = indexing_totals(conn)
         finally:
             conn.close()
 
@@ -324,6 +362,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             "enabled": config.enabled,
             "backends": backends,
             "counts": counts,
+            "indexing": indexing,
             "worker": worker_info,
         })
 
@@ -341,11 +380,21 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             # the anchor: a visible file must not reveal hidden relatives.
             exact = [fid for fid in own_group if fid != file_id and _visible(fid)]
             near_pairs = hashing.find_near_duplicates(conn, file_id, max_distance)
+            # Duplicate detection needs this file's hashes; until they exist
+            # an empty result means "not indexed yet", not "no duplicates" --
+            # but only for files that actually exist to be hashed.
+            exists = conn.execute(
+                "SELECT 1 FROM files WHERE id = ?", (file_id,)
+            ).fetchone() is not None
+            hashed = conn.execute(
+                "SELECT 1 FROM ai_file_hashes WHERE file_id = ?", (file_id,)
+            ).fetchone() is not None
         finally:
             conn.close()
         near = [{"file_id": fid, "distance": distance}
                 for fid, distance in near_pairs if _visible(fid)]
-        return jsonify({"enabled": True, "exact": exact, "near": near})
+        return jsonify({"enabled": True, "exact": exact, "near": near,
+                        "pending": exists and not hashed})
 
     # -- GET /similar/<file_id> --------------------------------------------------
 
@@ -363,9 +412,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "WHERE file_id = ? AND space = ?", (file_id, space)
             ).fetchone()
             if row is None:
+                # pending separates "the worker has not reached this file"
+                # (results will arrive) from "no stage will ever embed it".
+                pending = _renderable(conn, file_id)
                 return jsonify({
                     "enabled": True, "space": space, "neighbors": [],
-                    "note": "no embedding for this file",
+                    "pending": pending,
+                    "note": ("not indexed yet" if pending
+                             else "no embedding for this file"),
                 })
             query_vec = np.frombuffer(row["vector"], dtype="<f4")
             store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
@@ -396,6 +450,10 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
                 (file_id,),
             ).fetchall()
+            # Zero faces means two very different things depending on whether
+            # a detector has actually looked at this file yet.
+            pending = (not rows and _was_scanned(conn, file_id, "faces") is None
+                       and _renderable(conn, file_id))
         finally:
             conn.close()
         result = [
@@ -408,7 +466,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             }
             for row in rows
         ]
-        return jsonify({"enabled": True, "faces": result})
+        return jsonify({"enabled": True, "faces": result, "pending": pending})
 
     # -- GET /faces/clusters -------------------------------------------------------
 
@@ -497,7 +555,13 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 (file_id,),
             ).fetchone()
             if review_row is None:
-                return jsonify({"enabled": True, "review": None, "findings": []})
+                # scan-log row present + no review row = the one attempt
+                # failed (result_count -1); absent = not reached yet.
+                scan = _was_scanned(conn, file_id, "review")
+                pending = scan is None and _renderable(conn, file_id)
+                failed = scan is not None and scan["result_count"] == -1
+                return jsonify({"enabled": True, "review": None, "findings": [],
+                                "pending": pending, "scan_failed": failed})
 
             finding_rows = conn.execute(
                 "SELECT finding_id, type, severity, confidence, localizable, "
@@ -628,6 +692,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             result = _index_one_file(conn, config, file_row, force=force)
         finally:
             conn.close()
+        # The stages this request could not run inline (review, and any
+        # stage whose backend only the worker has loaded) start NOW, not at
+        # the next poll tick: jump the worker's queue and wake it.
+        worker = get_worker()
+        if worker is not None and worker.is_running:
+            result["worker_queued"] = worker.request_priority_index(file_id)
+        else:
+            result["worker_queued"] = False
         return jsonify({"enabled": True, **result})
 
     # -- route table -----------------------------------------------------------------

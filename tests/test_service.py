@@ -283,8 +283,10 @@ def test_duplicates_respects_max_distance_param(fixture):
 
 
 def test_duplicates_unknown_file_is_empty(fixture):
+    """Unknown ids yield empty results and are NOT 'pending': nothing will
+    ever hash a file that does not exist."""
     data = fixture.client.get(f"{_PREFIX}/duplicates/does-not-exist").get_json()
-    assert data == {"enabled": True, "exact": [], "near": []}
+    assert data == {"enabled": True, "exact": [], "near": [], "pending": False}
 
 
 # --- /similar -------------------------------------------------------------------
@@ -371,8 +373,11 @@ def test_review_for_file_findings_mask_url_only_on_localizable(fixture):
 
 
 def test_review_for_file_missing_review_returns_none(fixture):
+    """Unknown ids yield the empty review shape, not-pending and not-failed:
+    no critic will ever reach a file that does not exist."""
     data = fixture.client.get(f"{_PREFIX}/review/no-such-file").get_json()
-    assert data == {"enabled": True, "review": None, "findings": []}
+    assert data == {"enabled": True, "review": None, "findings": [],
+                    "pending": False, "scan_failed": False}
 
 
 def test_review_mask_serves_png(fixture):

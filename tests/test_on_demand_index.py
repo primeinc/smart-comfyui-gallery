@@ -1,0 +1,432 @@
+"""On-demand indexing and honest pending states (AAA).
+
+The AI panel's contract when a file has no derived rows yet:
+  - per-file endpoints distinguish "the worker has not reached this file"
+    (pending) from "scanned, nothing found" and from "no stage will ever
+    process this type";
+  - POST /index runs the fast stages inline, records the faces scan the
+    same way the worker would (so neither re-scans the other's work), and
+    front-queues the file with the background worker so slow stages start
+    immediately instead of at the next poll tick;
+  - /status carries gallery-wide backlog totals for progress display;
+  - the worker wakes on a priority request instead of sleeping out its
+    poll interval, and its cycle log shows progress only when work happened.
+
+Model-free: stub backends and real tiny PNGs only.
+"""
+
+from __future__ import annotations
+
+import logging
+import sqlite3
+import time
+from types import SimpleNamespace
+
+import pytest
+from flask import Flask
+from PIL import Image
+
+from smartgallery_ai import AIConfig, SPACE_SEMANTIC, SPACE_VISUAL
+from smartgallery_ai import hashing
+from smartgallery_ai.embedders import StubSemanticEmbedder
+from smartgallery_ai.schema import init_schema
+from smartgallery_ai.service import _index_one_file, create_ai_blueprint, set_worker
+from smartgallery_ai.worker import AIWorker, indexing_totals, record_scan
+
+_PREFIX = "/aidam"
+
+
+def _make_db(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE files (
+            id TEXT PRIMARY KEY,
+            path TEXT NOT NULL UNIQUE,
+            mtime REAL NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT,
+            workflow_prompt TEXT DEFAULT ''
+        )
+        """
+    )
+    init_schema(conn)
+    return conn
+
+
+def _add_image_file(conn, tmp_path, file_id: str, mtime: float = 1000.0) -> str:
+    path = str(tmp_path / f"{file_id}.png")
+    Image.new("RGB", (16, 16), (40, 90, 200)).save(path)
+    conn.execute(
+        "INSERT INTO files (id, path, mtime, name, type) VALUES (?, ?, ?, ?, 'image')",
+        (file_id, path, mtime, file_id),
+    )
+    conn.commit()
+    return path
+
+
+def _add_typed_file(conn, file_id: str, file_type: str) -> None:
+    conn.execute(
+        "INSERT INTO files (id, path, mtime, name, type) VALUES (?, ?, 1000.0, ?, ?)",
+        (file_id, f"/gallery/{file_id}", file_id, file_type),
+    )
+    conn.commit()
+
+
+def _cfg(tmp_path, **overrides) -> AIConfig:
+    base = dict(
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=str(tmp_path / "gallery.sqlite"),
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="stub",
+        visual_backend="stub",
+        face_backend="none",
+        critic_backend="none",
+        segmenter_backend="none",
+    )
+    base.update(overrides)
+    return AIConfig(**base)
+
+
+# --- worker: priority queue and wake ------------------------------------------
+
+
+def test_request_priority_index_dedupes_bounds_and_wakes(tmp_path):
+    """Duplicate requests collapse to one queue slot, a full queue refuses
+    (returns False), and any accepted or duplicate request sets the wake
+    event so the sleeping loop starts a cycle immediately."""
+    cfg = _cfg(tmp_path)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+    worker._priority_max = 2
+
+    assert worker.request_priority_index("f1") is True
+    assert worker.request_priority_index("f1") is True
+    assert worker._priority_ids == ["f1"]
+
+    assert worker.request_priority_index("f2") is True
+    assert worker.request_priority_index("f3") is False
+    assert worker._priority_ids == ["f1", "f2"]
+    assert worker._wake_event.is_set()
+
+
+def test_priority_file_fully_indexed_outside_the_cycle_budget(tmp_path):
+    """With a zero per-cycle budget the backlog is untouched, but a
+    priority-requested file still gets hashed and embedded in both spaces
+    in the same cycle: user requests never wait behind the crawl budget."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "backlog_file")
+    _add_image_file(conn, tmp_path, "urgent_file")
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+    worker.request_priority_index("urgent_file")
+    worker._run_cycle()
+
+    conn = sqlite3.connect(cfg.db_path)
+    try:
+        hashed = {r[0] for r in conn.execute("SELECT file_id FROM ai_file_hashes")}
+        embedded = {
+            (r[0], r[1])
+            for r in conn.execute("SELECT file_id, space FROM ai_embeddings")
+        }
+    finally:
+        conn.close()
+    assert hashed == {"urgent_file"}
+    assert ("urgent_file", SPACE_SEMANTIC) in embedded
+    assert ("urgent_file", SPACE_VISUAL) in embedded
+    assert not any(fid == "backlog_file" for fid, _ in embedded)
+
+
+def test_priority_request_wakes_a_sleeping_worker(tmp_path):
+    """A priority request breaks the between-cycle sleep: with a 30s poll
+    interval the requested file's rows appear within a couple of seconds,
+    which is only possible when the wake event interrupts the wait."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    path = _add_image_file(conn, tmp_path, "wake_file")
+    conn.close()
+    assert path
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=30.0, batch_size=0)
+    worker.start()
+    try:
+        deadline = time.time() + 10.0
+        while worker.stats["cycles"] < 1 and time.time() < deadline:
+            time.sleep(0.05)
+        assert worker.stats["cycles"] >= 1, "first cycle never ran"
+
+        worker.request_priority_index("wake_file")
+        deadline = time.time() + 5.0
+        hashed = False
+        while time.time() < deadline:
+            conn = sqlite3.connect(cfg.db_path)
+            try:
+                hashed = conn.execute(
+                    "SELECT 1 FROM ai_file_hashes WHERE file_id = 'wake_file'"
+                ).fetchone() is not None
+            finally:
+                conn.close()
+            if hashed:
+                break
+            time.sleep(0.1)
+        assert hashed, "priority request did not wake the worker within 5s"
+    finally:
+        worker.stop(timeout=5.0)
+
+
+def test_stop_interrupts_the_between_cycle_sleep(tmp_path):
+    """stop() returns promptly even mid-sleep on a long poll interval."""
+    cfg = _cfg(tmp_path)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=60.0, batch_size=0)
+    worker.start()
+    deadline = time.time() + 10.0
+    while worker.stats["cycles"] < 1 and time.time() < deadline:
+        time.sleep(0.05)
+
+    started = time.time()
+    worker.stop(timeout=5.0)
+    assert not worker.is_running
+    assert time.time() - started < 5.0
+
+
+# --- shared scan marker --------------------------------------------------------
+
+
+def test_sync_index_faces_scan_suppresses_worker_rescan(tmp_path):
+    """_index_one_file records the faces scan exactly like a worker stage
+    would, so the worker's candidate query no longer offers the file."""
+    cfg = _cfg(tmp_path, face_backend="stub")
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "sync_file")
+
+    file_row = conn.execute("SELECT * FROM files WHERE id = 'sync_file'").fetchone()
+    result = _index_one_file(conn, cfg, file_row, force=False)
+    assert result["faces"] is True
+
+    from smartgallery_ai.faces import StubFaceBackend
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
+    remaining = worker._scan_candidates(
+        conn, "faces", StubFaceBackend(lambda img: []), 10)
+    conn.close()
+    assert [r["id"] for r in remaining] == []
+
+
+# --- indexing totals -----------------------------------------------------------
+
+
+def test_indexing_totals_counts_files_and_stage_coverage(tmp_path):
+    """Totals reflect the files table and each stage's covered set;
+    non-renderable types count in files_total but not visual_files_total."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "img1")
+    _add_image_file(conn, tmp_path, "img2")
+    _add_typed_file(conn, "song", "music")
+
+    now = time.time()
+    hashing.upsert_hashes(
+        conn, "img1",
+        hashing.HashResult(sha256="a" * 64, phash64=0, dhash64=0),
+        1000.0, "algo-v1", now,
+    )
+    backend = StubSemanticEmbedder()
+    record_scan(conn, "img1", "faces", backend, 1000.0, now, 0)
+    record_scan(conn, "img1", "review", backend, 1000.0, now, -1)
+
+    totals = indexing_totals(conn)
+    conn.close()
+    assert totals == {
+        "files_total": 3,
+        "visual_files_total": 2,
+        "hashed": 1,
+        "embeddings_semantic": 0,
+        "embeddings_visual": 0,
+        "faces_scanned": 1,
+        "reviews_scanned": 1,
+    }
+
+
+# --- cycle progress log --------------------------------------------------------
+
+
+def test_cycle_logs_progress_only_when_work_happened(tmp_path, caplog):
+    """A cycle that indexed something emits one '[AIWorker] indexed:' INFO
+    line with backlog totals; an idle cycle stays silent."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "logged_file")
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
+    with caplog.at_level(logging.INFO, logger="smartgallery_ai.worker"):
+        worker._run_cycle()
+    progress_lines = [r for r in caplog.records if "indexed:" in r.getMessage()]
+    assert len(progress_lines) == 1
+    assert "1/1 hashed" in progress_lines[0].getMessage()
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="smartgallery_ai.worker"):
+        worker._run_cycle()
+    assert not [r for r in caplog.records if "indexed:" in r.getMessage()]
+
+
+# --- service: pending flags and the /index kick --------------------------------
+
+
+@pytest.fixture()
+def api(tmp_path):
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "fresh_img")
+    _add_typed_file(conn, "song", "music")
+    conn.close()
+
+    app = Flask(__name__)
+    app.register_blueprint(create_ai_blueprint(cfg), url_prefix=_PREFIX)
+    return SimpleNamespace(cfg=cfg, client=app.test_client(), tmp_path=tmp_path)
+
+
+def test_similar_pending_only_for_renderable_unembedded_files(api):
+    """An unembedded image reports pending=True ('not indexed yet'); a
+    music file reports pending=False (no stage will ever embed it)."""
+    img = api.client.get(f"{_PREFIX}/similar/fresh_img").get_json()
+    assert img["pending"] is True
+    assert img["note"] == "not indexed yet"
+
+    song = api.client.get(f"{_PREFIX}/similar/song").get_json()
+    assert song["pending"] is False
+    assert song["note"] == "no embedding for this file"
+
+
+def test_duplicates_pending_until_hashed(api):
+    """pending flips False as soon as the anchor file has hash rows."""
+    before = api.client.get(f"{_PREFIX}/duplicates/fresh_img").get_json()
+    assert before["pending"] is True
+
+    conn = sqlite3.connect(api.cfg.db_path)
+    conn.row_factory = sqlite3.Row
+    hashing.upsert_hashes(
+        conn, "fresh_img",
+        hashing.HashResult(sha256="d" * 64, phash64=0, dhash64=0),
+        1000.0, "algo-v1", time.time(),
+    )
+    conn.close()
+
+    after = api.client.get(f"{_PREFIX}/duplicates/fresh_img").get_json()
+    assert after["pending"] is False
+    assert after["exact"] == [] and after["near"] == []
+
+
+def test_faces_pending_vs_scanned_zero_faces(api):
+    """No scan row -> pending; a recorded zero-face scan -> a definitive
+    empty (pending False), which is a different UI state."""
+    before = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
+    assert before["pending"] is True
+
+    conn = sqlite3.connect(api.cfg.db_path)
+    conn.row_factory = sqlite3.Row
+    record_scan(conn, "fresh_img", "faces", StubSemanticEmbedder(),
+                1000.0, time.time(), 0)
+    conn.close()
+
+    after = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
+    assert after["pending"] is False
+    assert after["faces"] == []
+
+
+def test_review_pending_vs_recorded_failure(api):
+    """No scan row -> pending; a result_count=-1 scan row -> scan_failed
+    (the one attempt failed; it is NOT still pending)."""
+    before = api.client.get(f"{_PREFIX}/review/fresh_img").get_json()
+    assert before["pending"] is True
+    assert before["scan_failed"] is False
+
+    conn = sqlite3.connect(api.cfg.db_path)
+    conn.row_factory = sqlite3.Row
+    record_scan(conn, "fresh_img", "review", StubSemanticEmbedder(),
+                1000.0, time.time(), -1)
+    conn.close()
+
+    after = api.client.get(f"{_PREFIX}/review/fresh_img").get_json()
+    assert after["pending"] is False
+    assert after["scan_failed"] is True
+
+
+def test_status_carries_indexing_backlog_totals(api):
+    """/status exposes the same totals indexing_totals computes, so the
+    panel can render gallery-wide progress."""
+    status = api.client.get(f"{_PREFIX}/status").get_json()
+    assert status["indexing"]["files_total"] == 2
+    assert status["indexing"]["visual_files_total"] == 1
+    assert set(status["indexing"]) == {
+        "files_total", "visual_files_total", "hashed",
+        "embeddings_semantic", "embeddings_visual",
+        "faces_scanned", "reviews_scanned",
+    }
+
+
+def test_index_endpoint_front_queues_the_running_worker(api):
+    """POST /index runs the inline stages AND front-queues the file with
+    the worker (worker_queued=True) so review/masks start immediately."""
+    queued = []
+    fake_worker = SimpleNamespace(
+        is_running=True,
+        request_priority_index=lambda fid: queued.append(fid) or True,
+        peek_backend=lambda key: None,
+    )
+    set_worker(fake_worker)
+    try:
+        data = api.client.post(f"{_PREFIX}/index/fresh_img", json={}).get_json()
+    finally:
+        set_worker(None)
+    assert data["hashed"] is True
+    assert sorted(data["embedded"]) == [SPACE_SEMANTIC, SPACE_VISUAL]
+    assert data["worker_queued"] is True
+    assert queued == ["fresh_img"]
+
+
+def test_index_endpoint_reports_worker_not_queued_when_absent(api):
+    """Without a running worker the inline stages still run but the
+    response says the background stages were not queued."""
+    set_worker(None)
+    data = api.client.post(f"{_PREFIX}/index/fresh_img", json={}).get_json()
+    assert data["hashed"] is True
+    assert data["worker_queued"] is False
+
+
+def test_index_one_file_reuses_the_workers_loaded_backend(tmp_path):
+    """When the worker already holds a backend instance the sync path uses
+    it instead of constructing another: the stored embedding carries the
+    cached instance's model identity."""
+
+    class MarkedEmbedder(StubSemanticEmbedder):
+        model_id = "marked-cached-instance"
+
+    cfg = _cfg(tmp_path, visual_backend="none")
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "reuse_file")
+
+    fake_worker = SimpleNamespace(
+        is_running=True,
+        request_priority_index=lambda fid: True,
+        peek_backend=lambda key: MarkedEmbedder() if key == "semantic" else None,
+    )
+    set_worker(fake_worker)
+    try:
+        file_row = conn.execute("SELECT * FROM files WHERE id = 'reuse_file'").fetchone()
+        _index_one_file(conn, cfg, file_row, force=False)
+        model_id = conn.execute(
+            "SELECT model_id FROM ai_embeddings WHERE file_id = 'reuse_file' AND space = ?",
+            (SPACE_SEMANTIC,),
+        ).fetchone()[0]
+    finally:
+        set_worker(None)
+        conn.close()
+    assert model_id == "marked-cached-instance"

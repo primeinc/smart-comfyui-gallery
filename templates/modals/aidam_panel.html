@@ -137,6 +137,7 @@
 
     function closeAidamPanel() {
         aidamStopProvisionPoll();
+        aidamStopIndexPoll();
         const overlay = document.getElementById('aidam-overlay');
         overlay.style.opacity = '0';
         setTimeout(() => {
@@ -238,6 +239,65 @@
         }, 2000);
     }
 
+    // --- on-demand indexing: a pending file is indexed NOW, not whenever ---
+    // the background crawl reaches it. One POST per file per page load;
+    // while any visible section is pending, the active tab reloads on a
+    // short poll until real results (or a definitive empty) arrive.
+    let aidamIndexPoll = null;
+    let aidamIndexRequested = {};   // fileId -> true once /index was POSTed
+    let aidamPendingNow = {};       // section -> still waiting on the worker
+
+    function aidamStopIndexPoll() {
+        if (aidamIndexPoll !== null) { clearInterval(aidamIndexPoll); aidamIndexPoll = null; }
+        aidamPendingNow = {};
+    }
+
+    function aidamMarkPending(section, isPending) {
+        aidamPendingNow[section] = isPending;
+        if (!Object.values(aidamPendingNow).some(Boolean)) {
+            if (aidamIndexPoll !== null) { clearInterval(aidamIndexPoll); aidamIndexPoll = null; }
+        }
+    }
+
+    async function aidamRequestIndex() {
+        if (aidamIndexRequested[aidamCurrentFileId]) return;
+        aidamIndexRequested[aidamCurrentFileId] = true;
+        try {
+            await fetch(`/galleryout/api/aidam/index/${encodeURIComponent(aidamCurrentFileId)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+            });
+        } catch (e) { /* restricted mode or offline: the background crawl still gets there */ }
+    }
+
+    function aidamIndexingProgressLine(status) {
+        const ix = (status || {}).indexing || {};
+        if (!ix.files_total) return '';
+        const parts = [`${ix.hashed}/${ix.files_total} hashed`];
+        if (ix.visual_files_total) {
+            parts.push(`${ix.embeddings_semantic}/${ix.visual_files_total} semantic`);
+            parts.push(`${ix.embeddings_visual}/${ix.visual_files_total} visual`);
+            parts.push(`${ix.faces_scanned}/${ix.visual_files_total} faces`);
+        }
+        return `<div style="margin-top:8px; font-size:0.78rem; color:var(--text-muted);">Gallery indexing: ${parts.join(' · ')}</div>`;
+    }
+
+    async function aidamPendingMsg(section, what) {
+        aidamMarkPending(section, true);
+        aidamRequestIndex();
+        aidamStartIndexPoll();
+        const status = await aidamFetchStatus();
+        return `<div class="aidam-status-msg">⚡ ${escapeAidamHtml(what)} — indexing this file now; results appear here automatically.${aidamIndexingProgressLine(status)}</div>`;
+    }
+
+    function aidamStartIndexPoll() {
+        if (aidamIndexPoll !== null) return;
+        aidamIndexPoll = setInterval(() => {
+            aidamStatusCache = null;   // refresh the backlog numbers too
+            aidamLoadedFor = {};       // force a real re-fetch of the open tab
+            aidamEnsureTabLoaded(aidamActiveTab);
+        }, 4000);
+    }
+
     // Empty state that says WHY: backend missing -> live download progress,
     // the provision command, or the plain "no data yet" when the backend is
     // fine.
@@ -303,11 +363,20 @@
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const neighbors = data.neighbors || [];
             if (neighbors.length === 0) {
+                const status = await aidamFetchStatus();
+                if (data.pending && (status.backends || {})[aidamSimilarSpace] !== false) {
+                    box.innerHTML = await aidamPendingMsg(
+                        'similar', `No ${aidamSimilarSpace} embedding for this file yet`);
+                    return;
+                }
+                aidamMarkPending('similar', false);
                 box.innerHTML = await aidamBackendAwareEmpty(
                     aidamSimilarSpace, aidamSimilarSpace,
-                    data.note || 'No similar files found yet.');
+                    data.pending ? 'Waiting for the backend…'
+                                 : (data.note || 'No similar files found.'));
                 return;
             }
+            aidamMarkPending('similar', false);
             box.innerHTML = `<div class="aidam-thumb-grid">${neighbors.map(n => aidamThumbCard(n.file_id, aidamFormatScore(n.score))).join('')}</div>`;
         } catch (e) {
             box.innerHTML = aidamErrorMsg('Failed to load similar files.');
@@ -323,7 +392,16 @@
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const exact = data.exact || [];
             const near = data.near || [];
-            if (exact.length === 0 && near.length === 0) { box.innerHTML = aidamEmptyMsg('No duplicates found.'); return; }
+            if (exact.length === 0 && near.length === 0) {
+                if (data.pending) {
+                    box.innerHTML = await aidamPendingMsg('duplicates', 'This file is not hashed yet');
+                    return;
+                }
+                aidamMarkPending('duplicates', false);
+                box.innerHTML = aidamEmptyMsg('No duplicates found.');
+                return;
+            }
+            aidamMarkPending('duplicates', false);
             let html = '<div class="aidam-thumb-grid">';
             exact.forEach(fid => { html += aidamThumbCard(fid, null, '<span class="aidam-badge-exact">exact</span>'); });
             near.forEach(n => { html += aidamThumbCard(n.file_id, null, `<span class="aidam-badge-near">near &middot; d=${escapeAidamHtml(n.distance)}</span>`); });
@@ -353,21 +431,24 @@
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const faces = data.faces || [];
             if (faces.length === 0) {
+                const status = await aidamFetchStatus();
+                if (data.pending && (status.backends || {}).face !== false) {
+                    box.innerHTML = await aidamPendingMsg('faces', 'This file has not been scanned for faces yet');
+                    return;
+                }
+                aidamMarkPending('faces', false);
                 box.innerHTML = await aidamBackendAwareEmpty(
-                    'face', 'faces', 'No faces detected in this file.');
+                    'face', 'faces',
+                    data.pending ? 'Waiting for the backend…'
+                                 : 'Scanned — no faces detected in this file.');
                 return;
             }
+            aidamMarkPending('faces', false);
 
             let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <span style="color:var(--text-muted); font-size:0.85rem;">${faces.length} face${faces.length === 1 ? '' : 's'} detected</span>
                 <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamBrowseAllClusters()">🗂️ Browse all clusters</button>
             </div>`;
-
-            if (faces.length === 0) {
-                html += aidamEmptyMsg('No faces detected in this file.');
-                box.innerHTML = html;
-                return;
-            }
 
             html += `<div class="aidam-preview-wrap" id="aidam-faces-preview">
                 <img src="/galleryout/thumbnail/${encodeURIComponent(aidamCurrentFileId)}" alt="">
@@ -508,10 +589,23 @@
             const data = await res.json();
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             if (!data.review) {
+                const status = await aidamFetchStatus();
+                if (data.scan_failed) {
+                    aidamMarkPending('review', false);
+                    box.innerHTML = aidamEmptyMsg('Review was attempted for this file and failed — check the server log. It retries when the file or model changes.');
+                    return;
+                }
+                if (data.pending && (status.backends || {}).critic !== false) {
+                    box.innerHTML = await aidamPendingMsg('review',
+                        'No review yet — the critic is working through the queue (a review takes minutes per image on CPU)');
+                    return;
+                }
+                aidamMarkPending('review', false);
                 box.innerHTML = await aidamBackendAwareEmpty(
                     'critic', 'critic', 'No review computed for this file yet.');
                 return;
             }
+            aidamMarkPending('review', false);
 
             const review = data.review;
             const findings = data.findings || [];
