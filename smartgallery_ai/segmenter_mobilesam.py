@@ -63,10 +63,14 @@ class MobileSamSegmenter(SegmenterBackend):
             except Exception as exc:  # noqa: BLE001
                 raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
             try:
-                from smartgallery_ai.embedders import pick_torch_device
+                from smartgallery_ai.embedders import (
+                    pick_torch_device,
+                    warn_if_vram_pressure,
+                )
                 device = pick_torch_device(torch, role="segmenter")
                 self._device = device
                 _logger.info("[AI] %s on device %s", self.model_id, device)
+                warn_if_vram_pressure(torch, device, self.model_id)
                 with contextlib.redirect_stderr(io.StringIO()):
                     model = sam_model_registry["vit_t"](checkpoint=weights_path)
                 model.eval()

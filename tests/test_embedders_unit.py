@@ -437,3 +437,29 @@ def test_pick_torch_device_ties_go_to_the_newer_generation(monkeypatch):
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     torch = _fake_torch_with_gpus([(8 << 30, 8, 6), (8 << 30, 12, 0)])
     assert pick_torch_device(torch) == "cuda:1"
+
+
+def test_vram_pressure_warns_only_when_the_chosen_card_is_nearly_full(caplog):
+    """Loading onto a CUDA card with under ~2 GiB free logs a warning
+    naming the device and the escape hatch; ample free VRAM, CPU devices,
+    and torch builds without mem_get_info all stay silent."""
+    import logging
+
+    from smartgallery_ai.embedders import warn_if_vram_pressure
+
+    def torch_with_free(free_bytes):
+        cuda = types.SimpleNamespace(
+            mem_get_info=lambda index=0: (free_bytes, 16 << 30))
+        return types.SimpleNamespace(cuda=cuda)
+
+    with caplog.at_level(logging.WARNING, logger="smartgallery_ai.embedders"):
+        warn_if_vram_pressure(torch_with_free(1 << 30), "cuda:1", "model-x")
+    assert any("cuda:1" in r.getMessage() and "VRAM free" in r.getMessage()
+               for r in caplog.records)
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="smartgallery_ai.embedders"):
+        warn_if_vram_pressure(torch_with_free(8 << 30), "cuda:1", "model-x")
+        warn_if_vram_pressure(torch_with_free(1 << 30), "cpu", "model-x")
+        warn_if_vram_pressure(types.SimpleNamespace(cuda=None), "cuda", "model-x")
+    assert not caplog.records

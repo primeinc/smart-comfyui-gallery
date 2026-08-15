@@ -516,7 +516,9 @@ def test_backlog_processes_newest_files_first(tmp_path):
     finally:
         conn.close()
     assert hashed == {"today", "yesterday"}
-    assert embedded == {"today", "yesterday"}
+    # The even budget split gives each embedding space one slot this
+    # cycle; both spend it on the NEWEST file.
+    assert embedded == {"today"}
 
 
 def test_hashing_no_longer_starves_the_model_stages(tmp_path):
@@ -535,12 +537,11 @@ def test_hashing_no_longer_starves_the_model_stages(tmp_path):
     conn = sqlite3.connect(cfg.db_path)
     try:
         hashed = conn.execute("SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0]
-        embedded = conn.execute(
-            "SELECT COUNT(DISTINCT file_id) FROM ai_embeddings").fetchone()[0]
+        embedded = conn.execute("SELECT COUNT(*) FROM ai_embeddings").fetchone()[0]
     finally:
         conn.close()
     assert hashed == 2
-    assert embedded == 2
+    assert embedded == 2  # one slot per embedding space, same cycle
 
 
 def test_loop_skips_sleep_while_backlog_remains(tmp_path):
@@ -705,3 +706,109 @@ def test_status_exposes_priority_queue_depth_and_recent_errors(api):
     bare = api.client.get(f"{_PREFIX}/status").get_json()
     assert bare["worker"]["priority_queued"] == 0
     assert bare["worker"]["recent_errors"] == []
+
+
+# --- fair scheduling across model stages ---------------------------------------
+
+
+def test_model_stages_share_the_budget_evenly(tmp_path):
+    """With both embedding spaces active and a backlog bigger than the
+    budget, ONE cycle advances both spaces instead of letting the first
+    stage starve the second (observed live: semantic 1,841 vs visual 3)."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    for i in range(6):
+        _add_image_file(conn, tmp_path, f"even{i}", mtime=1000.0 + i)
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=4)
+    worker._run_cycle()
+
+    conn = sqlite3.connect(cfg.db_path)
+    try:
+        by_space = dict(conn.execute(
+            "SELECT space, COUNT(*) FROM ai_embeddings GROUP BY space").fetchall())
+    finally:
+        conn.close()
+    assert by_space.get(SPACE_SEMANTIC, 0) == 2
+    assert by_space.get(SPACE_VISUAL, 0) == 2
+
+
+def test_backlog_reviews_wait_for_the_fast_stages(tmp_path, monkeypatch):
+    """While embeddings/faces still have backlog, the review stage is not
+    offered backlog work (minutes per file would throttle the crawl); once
+    the fast stages find nothing, reviews run."""
+    from smartgallery_ai import worker as W
+
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    for i in range(3):
+        _add_image_file(conn, tmp_path, f"rev{i}", mtime=1000.0 + i)
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=2)
+    review_calls = []
+    monkeypatch.setattr(
+        worker, "_backend",
+        lambda key, resolver, _orig=worker._backend: (
+            object() if key == "critic" else _orig(key, resolver)))
+    monkeypatch.setattr(
+        AIWorker, "_process_reviews",
+        lambda self, conn_, backend, limit, only_file_id=None:
+            review_calls.append(limit) or 0)
+
+    worker._run_cycle()   # embedding backlog present -> reviews held
+    assert review_calls == []
+
+    while True:           # drain the fast-stage backlog
+        before = dict(worker.stats)
+        worker._run_cycle()
+        if worker.stats["embedded"] == before["embedded"]:
+            break
+    assert review_calls, "reviews never ran after the fast stages went idle"
+
+
+def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):
+    """A failed provisioning run re-attempts after the cooldown (bounded
+    at three retries) instead of staying dead until restart."""
+    from smartgallery_ai import worker as W
+
+    cfg = _cfg(tmp_path, semantic_backend="auto", auto_provision=True)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+    worker.provision_state = {"state": "failed: connection reset", "groups": ["semantic"]}
+    worker._provision_started_at = time.monotonic() - 601.0
+
+    monkeypatch.setattr(W, "provision_groups_for", lambda config: ["semantic"])
+    monkeypatch.setattr(W.provisioning, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(
+        W.provisioning, "provision",
+        lambda *a, **k: {"installed": [], "downloaded": [], "skipped": []})
+
+    worker._maybe_retry_provision()
+    worker._provision_thread.join(timeout=10)
+    assert worker.provision_state["state"] == "done"
+    assert worker._provision_attempts == 1
+
+    # A healthy state is never retried.
+    worker._maybe_retry_provision()
+    assert worker._provision_attempts == 1
+
+
+def test_cycle_log_names_why_stages_are_waiting(tmp_path, caplog):
+    """When a configured stage produced nothing, the cycle log says why --
+    e.g. the CUDA swap hold -- instead of a bare '+0 embedded'."""
+    cfg = _cfg(tmp_path, semantic_backend="auto", visual_backend="auto")
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "why_file")
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=5)
+    worker._hold_torch_backends = True
+    worker._provision_started_at = time.monotonic() - 120.0
+
+    with caplog.at_level(logging.INFO, logger="smartgallery_ai.worker"):
+        worker._run_cycle()
+    lines = [r.getMessage() for r in caplog.records if "indexed:" in r.getMessage()]
+    assert lines and "CUDA swap in progress" in lines[0]
+    assert "semantic" in lines[0] and "visual" in lines[0]

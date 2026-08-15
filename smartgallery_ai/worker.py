@@ -143,6 +143,33 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
     return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
 
 
+class _ClickConsoleHandler(logging.Handler):
+    """Readable console logging with what the app already ships: click
+    (a core dependency) styles a dim HH:MM:SS timestamp and colors
+    warnings yellow / errors red, handles Windows consoles, and strips
+    color automatically when output is redirected to a file."""
+
+    _LEVEL_COLORS = {
+        logging.WARNING: "yellow",
+        logging.ERROR: "red",
+        logging.CRITICAL: "red",
+    }
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            import click
+            stamp = click.style(
+                time.strftime("%H:%M:%S", time.localtime(record.created)),
+                dim=True)
+            message = record.getMessage()
+            color = self._LEVEL_COLORS.get(record.levelno)
+            if color:
+                message = click.style(message, fg=color)
+            click.echo(f"{stamp} {message}")
+        except Exception:  # noqa: BLE001 - logging must never crash the app
+            self.handleError(record)
+
+
 def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
     """Set the persistent marker that makes the worker's next faces stage
     re-cluster even when it has no new scan candidates. The synchronous
@@ -300,6 +327,10 @@ class AIWorker:
         # not import torch in the meantime -- an imported torch pins its
         # files and would force a second restart to finish the swap.
         self._hold_torch_backends = False
+        # Retry bookkeeping for FAILED provisioning runs: a transient
+        # network stall must not disable self-provisioning until restart.
+        self._provision_started_at = 0.0
+        self._provision_attempts = 0
 
         # Background weight-provisioning: one attempt per worker lifetime,
         # in its own daemon thread so cycles are never blocked by
@@ -323,14 +354,12 @@ class AIWorker:
             return
         # The host app never configures the logging module, which leaves
         # INFO invisible (no handler, WARNING-level last resort). Attach one
-        # plain stream handler to the package logger so worker/provisioning
+        # console handler to the package logger so worker/provisioning
         # progress reaches the console — unless the app or user configured
         # logging themselves, which always wins.
         pkg_logger = logging.getLogger("smartgallery_ai")
         if not pkg_logger.handlers and not logging.getLogger().handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter("%(message)s"))
-            pkg_logger.addHandler(handler)
+            pkg_logger.addHandler(_ClickConsoleHandler())
             pkg_logger.setLevel(logging.INFO)
         self._stop_event.clear()
         # Boot GPU inventory: what the machine has and which wheels it
@@ -359,6 +388,22 @@ class AIWorker:
 
     # -- background weight provisioning --------------------------------------
 
+    def _maybe_retry_provision(self) -> None:
+        """Re-attempt a FAILED provisioning run after a 10-minute cooldown,
+        at most three retries: a transient network stall (or a pip timeout
+        on a multi-GB wheel) must not leave backends dead until the next
+        restart. Successful and in-flight runs are never touched."""
+        state = str(self.provision_state.get("state", ""))
+        if not state.startswith("failed") or self._provision_attempts >= 3:
+            return
+        if time.monotonic() - self._provision_started_at < 600.0:
+            return
+        self._provision_attempts += 1
+        self._provision_thread = None
+        _logger.info("[AIWorker] retrying auto-provisioning (attempt %d of 3)",
+                     self._provision_attempts)
+        self._maybe_start_auto_provision()
+
     def _maybe_start_auto_provision(self) -> None:
         """Spawn the one-shot provisioning thread when auto-provisioning is
         enabled and any configured backend's weights are missing. Never
@@ -385,6 +430,7 @@ class AIWorker:
             self._hold_torch_backends = provisioning.torch_cuda_reinstall_needed()
         except Exception:  # noqa: BLE001 - detection is best-effort
             self._hold_torch_backends = False
+        self._provision_started_at = time.monotonic()
         self.provision_state = {"state": "downloading", "groups": list(missing)}
         self._provision_thread = threading.Thread(
             target=self._provision_worker, args=(list(missing),),
@@ -527,59 +573,80 @@ class AIWorker:
 
     def _run_cycle(self) -> None:
         """One wake: fresh connection, schema ensured, user-requested files
-        first, then stages run in fixed order — hashing against its own
-        budget (it costs milliseconds per file; sharing a budget with the
-        model stages would starve them for hours on a large hash backlog),
-        the model stages against the shared file budget — then the
-        orphaned-mask sweep."""
+        first, then hashing against its own budget (milliseconds per file;
+        a shared budget would starve the model stages for hours on a large
+        hash backlog), then the FAST model stages — semantic, visual,
+        faces — against an EVEN split of the shared budget (a fixed order
+        would let the first stage starve the rest for the whole first
+        index), then masks from the leftovers. Backlog reviews (minutes
+        per file on CPU) run only when every fast stage found nothing, so
+        they never throttle the crawl; priority requests still review
+        immediately. Ends with the orphaned-mask sweep."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         with self._lock:
             stats_before = dict(self.stats)
+        skips: dict = {}
         try:
             schema.init_schema(conn)
 
+            self._maybe_retry_provision()
             self._process_priority_requests(conn)
 
             hashed = self._process_hashes(conn, self.batch_size)
 
+            fast_stages = []
+            semantic_backend = self._backend("semantic",
+                                             embedders.get_semantic_backend)
+            if semantic_backend is not None:
+                fast_stages.append(("semantic", lambda limit: self._process_embedding_space(
+                    conn, semantic_backend, SPACE_SEMANTIC, limit)))
+            else:
+                self._note_skip(skips, "semantic", self.config.semantic_backend)
+            visual_backend = self._backend("visual", embedders.get_visual_backend)
+            if visual_backend is not None:
+                fast_stages.append(("visual", lambda limit: self._process_embedding_space(
+                    conn, visual_backend, SPACE_VISUAL, limit)))
+            else:
+                self._note_skip(skips, "visual", self.config.visual_backend)
+            face_backend = self._backend("face", faces.get_face_backend)
+            if face_backend is not None:
+                fast_stages.append(("faces", lambda limit: self._process_faces(
+                    conn, face_backend, limit)))
+            else:
+                self._note_skip(skips, "faces", self.config.face_backend)
+
             budget = self.batch_size
-
-            if budget > 0:
-                semantic_backend = self._backend("semantic",
-                                                 embedders.get_semantic_backend)
-                if semantic_backend is not None:
-                    budget -= self._process_embedding_space(
-                        conn, semantic_backend, SPACE_SEMANTIC, budget
-                    )
-
-            if budget > 0:
-                visual_backend = self._backend("visual",
-                                               embedders.get_visual_backend)
-                if visual_backend is not None:
-                    budget -= self._process_embedding_space(
-                        conn, visual_backend, SPACE_VISUAL, budget
-                    )
-
-            if budget > 0:
-                face_backend = self._backend("face", faces.get_face_backend)
-                if face_backend is not None:
-                    budget -= self._process_faces(conn, face_backend, budget)
-
-            if budget > 0:
-                critic_backend = self._backend("critic",
-                                               review.get_critic_backend)
-                if critic_backend is not None:
-                    budget -= self._process_reviews(conn, critic_backend, budget)
+            fast_consumed = 0
+            if fast_stages and budget > 0:
+                quota = max(1, budget // len(fast_stages))
+                for _name, run_stage in fast_stages:
+                    fast_consumed += run_stage(min(quota, budget - fast_consumed))
+                    if fast_consumed >= budget:
+                        break
+            budget -= fast_consumed
 
             if budget > 0:
                 segmenter = self._backend("segmenter",
                                           review.get_segmenter_backend)
                 if segmenter is not None:
                     budget -= self._process_masks(conn, segmenter, budget)
+                else:
+                    self._note_skip(skips, "masks", self.config.segmenter_backend)
+
+            if fast_consumed == 0:
+                critic_backend = self._backend("critic",
+                                               review.get_critic_backend)
+                if critic_backend is not None:
+                    self._process_reviews(conn, critic_backend,
+                                          max(1, self.batch_size // 10))
+                else:
+                    self._note_skip(skips, "reviews", self.config.critic_backend)
+            elif self.config.critic_backend not in ("none", "stub"):
+                skips.setdefault("reviews", "queued behind the faster stages")
 
             self._sweep_orphaned_masks(conn)
-            self._log_cycle_progress(conn, stats_before)
+            self._log_cycle_progress(conn, stats_before, skips)
             # Exhausted hash budget or exhausted stage budget both mean the
             # backlog continues; the loop skips its sleep and keeps going.
             self._backlog_remaining = (
@@ -590,6 +657,21 @@ class AIWorker:
 
         with self._lock:
             self.stats["cycles"] += 1
+
+    def _note_skip(self, skips: dict, stage: str, selector: str) -> None:
+        """Record WHY a configured stage produced nothing this cycle so the
+        cycle log can say it; deliberately-off stages stay silent."""
+        if selector in ("none", "stub"):
+            return
+        if self._hold_torch_backends and stage != "faces":
+            minutes = (time.monotonic() - self._provision_started_at) / 60.0
+            skips[stage] = f"CUDA swap in progress ({minutes:.0f} min)"
+        elif str(self.provision_state.get("state", "")).startswith("failed"):
+            skips[stage] = "provisioning failed (see Status tab); will retry"
+        elif self.provision_state.get("state") == "downloading":
+            skips[stage] = "provisioning still downloading"
+        else:
+            skips[stage] = "backend unavailable"
 
     def _process_priority_requests(self, conn: sqlite3.Connection) -> None:
         """Fully index the user-requested files NOW, every stage whose
@@ -612,25 +694,32 @@ class AIWorker:
             if critic is not None:
                 self._process_reviews(conn, critic, 1, only_file_id=file_id)
 
-    def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict) -> None:
-        """One INFO line per cycle that did work — what was indexed and how
-        far the gallery backlog has progressed — so a long first index is
-        visibly alive in the console. Idle cycles stay silent."""
+    def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict,
+                            skips: Optional[dict] = None) -> None:
+        """One INFO line per cycle that did work — what was indexed, how far
+        the gallery backlog has progressed, and WHY any configured stage
+        produced nothing — so a long first index is visibly alive (and its
+        stalls diagnosable) from the console. Idle cycles stay silent."""
         with self._lock:
             deltas = {key: self.stats[key] - stats_before.get(key, 0)
                       for key in ("hashed", "embedded", "faces_indexed", "reviewed")}
         if not any(deltas.values()):
             return
         totals = indexing_totals(conn)
+        waiting = ""
+        if skips:
+            parts = [f"{stage}: {reason}" for stage, reason in sorted(skips.items())]
+            waiting = " | waiting: " + "; ".join(parts)
         _logger.info(
             "[AIWorker] indexed: +%d hashed, +%d embedded, +%d faces, +%d reviews "
-            "(gallery: %d/%d hashed, %d/%d semantic, %d/%d visual, %d/%d faces)",
+            "(gallery: %d/%d hashed, %d/%d semantic, %d/%d visual, %d/%d faces)%s",
             deltas["hashed"], deltas["embedded"], deltas["faces_indexed"],
             deltas["reviewed"],
             totals["hashed"], totals["files_total"],
             totals["embeddings_semantic"], totals["visual_files_total"],
             totals["embeddings_visual"], totals["visual_files_total"],
             totals["faces_scanned"], totals["visual_files_total"],
+            waiting,
         )
 
     def _sweep_orphaned_masks(self, conn: sqlite3.Connection) -> None:

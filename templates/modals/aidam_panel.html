@@ -432,7 +432,17 @@
             (gpu.gpus || []).forEach((card, idx) => {
                 const active = devices && Object.values(devices).some(d => d === ('cuda:' + idx))
                     || ((gpu.gpus || []).length === 1 && Object.values(devices || {}).some(d => d === 'cuda'));
-                html += `🎮 GPU${idx}: ${escapeAidamHtml(card.name || '?')} &middot; compute ${escapeAidamHtml(card.compute_capability || '?')} &middot; ${escapeAidamHtml(card.vram || '?')}${active ? ' &middot; <b style="color:var(--ai-color);">in use</b>' : ''}<br>`;
+                // Live VRAM occupancy; flag pressure so an OOM-in-waiting
+                // (ComfyUI holding the card) is visible at a glance.
+                let vramTxt = escapeAidamHtml(card.vram || '?');
+                if (card.vram_used) {
+                    const usedMiB = parseFloat(card.vram_used);
+                    const totalMiB = parseFloat(card.vram);
+                    const hot = totalMiB > 0 && usedMiB / totalMiB > 0.85;
+                    vramTxt = `${escapeAidamHtml(card.vram_used)} used / ${escapeAidamHtml(card.vram)}`
+                        + (hot ? ' <b style="color:#ff6b6b;">⚠ VRAM pressure</b>' : '');
+                }
+                html += `🎮 GPU${idx}: ${escapeAidamHtml(card.name || '?')} &middot; compute ${escapeAidamHtml(card.compute_capability || '?')} &middot; ${vramTxt}${active ? ' &middot; <b style="color:var(--ai-color);">in use</b>' : ''}<br>`;
             });
             html += `driver ${escapeAidamHtml(gpu.driver || '?')} (CUDA ${escapeAidamHtml(gpu.driver_cuda || '?')}) &middot; wheels ${escapeAidamHtml(String(gpu.torch_index || '').split('/').pop() || '?')}</div>`;
         }

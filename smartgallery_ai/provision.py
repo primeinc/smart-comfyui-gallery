@@ -36,6 +36,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -143,7 +144,7 @@ def cuda_summary():
     try:
         proc = subprocess.run(
             ["nvidia-smi",
-             "--query-gpu=name,driver_version,compute_cap,memory.total",
+             "--query-gpu=name,driver_version,compute_cap,memory.total,memory.used",
              "--format=csv,noheader"],
             capture_output=True, text=True, timeout=10)
         for line in proc.stdout.splitlines():
@@ -155,7 +156,8 @@ def cuda_summary():
                 except ValueError:
                     cap = None
                 gpus.append({"name": parts[0], "compute_capability": cap,
-                             "vram": parts[3]})
+                             "vram": parts[3],
+                             "vram_used": parts[4] if len(parts) >= 5 else None})
     except Exception:  # noqa: BLE001 - inventory is best-effort
         pass
     return {
@@ -507,7 +509,9 @@ def ensure_runtime(group: Group, log: Callable[[str], None] = print,
     installed = []
     for probe, requirement in runtime_missing(group):
         log(f"  + runtime {requirement} (provides '{probe}')")
+        started = time.time()
         runner(_pip_args_for(requirement))
+        log(f"    {requirement} installed in {time.time() - started:.0f}s")
         installed.append(requirement)
     if installed:
         importlib.invalidate_caches()
@@ -555,7 +559,6 @@ def provision(
     downloaders: Optional[dict] = None,
     install_packages: bool = True,
     pip_runner: Optional[Callable[[list], None]] = None,
-    pip_uninstaller: Optional[Callable[[list], None]] = None,
     progress: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     """Make the requested groups fully loadable: install their missing
@@ -591,23 +594,32 @@ def provision(
     groups = resolve_groups(group_names)
     installed: list = []
     if install_packages:
-        # GPU self-heal: a CPU-index torch on CUDA hardware is swapped for
-        # the matching CUDA wheels BEFORE the missing-package loop, which
-        # then reinstalls the pair with the normal hardware steering. Only
-        # safe while torch is unimported: an in-process torch pins its
-        # files (and locks DLLs on Windows), so then we can only advise.
+        # GPU self-heal: a torch build that cannot use this machine's GPU
+        # is upgraded IN PLACE to the right wheels (PEP 440: +cu130 >
+        # +cu126 > +cpu, so --upgrade against the target index replaces
+        # it without an uninstall — a failed or interrupted download
+        # leaves the previous working build installed). Only safe while
+        # torch is unimported: an in-process torch pins its files (and
+        # locks DLLs on Windows), so then we can only advise.
         if (any(req == "torch" for g in groups for _, req in g.runtime)
                 and torch_cuda_reinstall_needed()):
             if "torch" in sys.modules:
-                log("  ! CPU-build torch is loaded in this process but an NVIDIA "
-                    "GPU is present; restart the app to switch to CUDA wheels "
+                log("  ! torch is loaded in this process but its build cannot "
+                    "use the GPU; restart the app to switch wheels "
                     "(AI_DAM_DEVICE=cpu opts out)")
             else:
-                log("  ~ replacing CPU-build torch/torchvision with CUDA wheels")
+                steering = _pip_args_for("torch")[1:]
+                tag = (steering[-1].rstrip("/").rsplit("/", 1)[-1]
+                       if steering else "PyPI")
+                log(f"  ~ upgrading torch/torchvision in place to {tag} wheels")
                 emit({"kind": "runtime", "phase": "start",
-                      "item": "torch (CUDA swap)"})
-                (pip_uninstaller or _default_pip_uninstaller)(["torch", "torchvision"])
+                      "item": f"torch ({tag} swap)"})
+                (pip_runner or _default_pip_runner)(
+                    ["--upgrade", "torch", "torchvision", *steering])
                 importlib.invalidate_caches()
+                installed.extend(["torch", "torchvision"])
+                emit({"kind": "runtime", "phase": "done",
+                      "item": f"torch ({tag} swap)"})
         _ensure_hub(
             any(a.hf_repo is not None for g in groups for a in g.artifacts
                 if force or not artifact_present(models_dir, a)),

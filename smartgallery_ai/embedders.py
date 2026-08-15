@@ -161,6 +161,36 @@ def pick_torch_device(torch_module, role: Optional[str] = None) -> str:
         return "mps"
     return "cpu"
 
+
+# Free-VRAM floor below which loading another model on the card is asking
+# for an OOM (another app -- typically ComfyUI mid-generation -- owns it).
+_VRAM_PRESSURE_FLOOR_BYTES = 2 << 30
+
+
+def warn_if_vram_pressure(torch_module, device: str, model_id: str) -> None:
+    """Log a warning when the chosen CUDA device is nearly out of free
+    VRAM at model-load time: the load may OOM or evict whatever else
+    (ComfyUI) is using the card. Detection is best-effort -- non-CUDA
+    devices and torch builds without mem_get_info stay silent."""
+    if not str(device).startswith("cuda"):
+        return
+    cuda = getattr(torch_module, "cuda", None)
+    if cuda is None or not hasattr(cuda, "mem_get_info"):
+        return
+    try:
+        if ":" in str(device):
+            free, total = cuda.mem_get_info(int(str(device).split(":", 1)[1]))
+        else:
+            free, total = cuda.mem_get_info()
+    except Exception:  # noqa: BLE001 - pressure check must never block loading
+        return
+    if free < _VRAM_PRESSURE_FLOOR_BYTES:
+        _logger.warning(
+            "[AI] %s: %s has only %.1f GiB of %.1f GiB VRAM free — another "
+            "app (ComfyUI?) is using this card; loading here may OOM. Pin a "
+            "different device with AI_DAM_DEVICE=cuda:N (or AI_DAM_DEVICE=cpu).",
+            model_id, device, free / (1 << 30), total / (1 << 30))
+
 class OpenClipSemanticEmbedder(SemanticEmbedder):
     """Joint image/text embedding via open_clip ViT-B-32 (laion2b_s34b_b79k).
 
@@ -201,6 +231,7 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         self._device = pick_torch_device(torch, role="semantic")
         _logger.info("[AI] %s on device %s (torch %s)",
                      self.model_id, self._device, getattr(torch, "__version__", "?"))
+        warn_if_vram_pressure(torch, self._device, self.model_id)
         model.eval()
         self._model = model.to(self._device)
         self._preprocess = preprocess
@@ -266,6 +297,7 @@ class Dinov2VisualEmbedder(VisualEmbedder):
         self._device = pick_torch_device(torch, role="visual")
         _logger.info("[AI] %s on device %s (torch %s)",
                      self.model_id, self._device, getattr(torch, "__version__", "?"))
+        warn_if_vram_pressure(torch, self._device, self.model_id)
         self._model = self._model.to(self._device)
         self._torch = torch
 

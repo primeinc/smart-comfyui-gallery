@@ -672,6 +672,25 @@ def test_worker_start_makes_info_logging_visible(tmp_path):
         pkg.setLevel(saved_level)
 
 
+def test_console_handler_prefixes_a_timestamp(capsys):
+    """Every console line carries an HH:MM:SS timestamp so long indexing
+    runs are readable; the message text follows unchanged."""
+    import logging
+
+    from smartgallery_ai.worker import _ClickConsoleHandler
+
+    handler = _ClickConsoleHandler()
+    record = logging.LogRecord(
+        name="smartgallery_ai.worker", level=logging.INFO, pathname=__file__,
+        lineno=1, msg="[AIWorker] indexed: +50 hashed", args=(), exc_info=None)
+    handler.emit(record)
+
+    out = capsys.readouterr().out
+    assert "[AIWorker] indexed: +50 hashed" in out
+    stamp = time.strftime("%H:%M", time.localtime(record.created))
+    assert stamp in out  # HH:MM of the record's own timestamp leads the line
+
+
 def test_namespace_package_shadow_counts_as_missing():
     """A bare directory on sys.path materializes as a namespace package
     (spec.origin is None); the runtime probe must treat that as NOT
@@ -745,40 +764,36 @@ def test_torch_cuda_reinstall_needed_matrix(monkeypatch):
     assert P.torch_cuda_reinstall_needed() is False
 
 
-def test_provision_swaps_cpu_torch_for_cuda_when_unimported(tmp_path, monkeypatch):
-    """With a +cpu torch, CUDA hardware, and torch not yet imported,
-    provision() uninstalls the pair and the missing-package loop reinstalls
-    both with hardware steering."""
+def test_provision_swaps_wrong_torch_in_place_when_unimported(tmp_path, monkeypatch):
+    """With a GPU-unusable torch build and torch not yet imported,
+    provision() upgrades torch+torchvision IN PLACE (one --upgrade against
+    the steered index, no uninstall) so a failed download can never leave
+    the environment torch-less."""
     from types import SimpleNamespace
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P.sys, "platform", "linux")
+    monkeypatch.setattr(P.sys, "platform", "win32")
+    monkeypatch.setattr(P, "torch_cuda_index",
+                        lambda: "https://download.pytorch.org/whl/cu130")
     monkeypatch.delitem(P.sys.modules, "torch", raising=False)
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
 
-    uninstalled = []
     installs = []
-
-    def fake_find_spec(name):
-        # torch/torchvision read as missing once the uninstall happened
-        if name in ("torch", "torchvision") and uninstalled:
-            return None
-        return SimpleNamespace(origin="stub.py")
-
-    monkeypatch.setattr(P.importlib.util, "find_spec", fake_find_spec)
     result = P.provision(
         str(tmp_path), ["visual"], log=lambda m: None,
         downloaders=_fake_downloaders({}),
         pip_runner=lambda args: installs.append(args),
-        pip_uninstaller=lambda pkgs: uninstalled.append(pkgs),
     )
-    assert uninstalled == [["torch", "torchvision"]]
-    assert ["torch"] in installs and ["torchvision"] in installs
-    assert set(result["installed"]) >= {"torch", "torchvision"}
+    assert installs == [["--upgrade", "torch", "torchvision", "--index-url",
+                         "https://download.pytorch.org/whl/cu130"]]
+    assert set(result["installed"]) == {"torch", "torchvision"}
 
 
 def test_provision_only_advises_when_torch_already_imported(tmp_path, monkeypatch):
     """A loaded torch pins its files (locked DLLs on Windows), so the swap
-    must not uninstall underneath it: provision() logs a restart advisory
+    must not replace it underneath: provision() logs a restart advisory
     and leaves the packages alone."""
     from types import SimpleNamespace
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
@@ -791,9 +806,8 @@ def test_provision_only_advises_when_torch_already_imported(tmp_path, monkeypatc
         str(tmp_path), ["visual"], log=lines.append,
         downloaders=_fake_downloaders({}),
         pip_runner=lambda args: (_ for _ in ()).throw(AssertionError("no installs expected")),
-        pip_uninstaller=lambda pkgs: (_ for _ in ()).throw(AssertionError("must not uninstall")),
     )
-    assert any("restart the app to switch to CUDA" in line for line in lines)
+    assert any("restart the app to switch wheels" in line for line in lines)
     assert result["installed"] == []
 
 
@@ -955,11 +969,12 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
                         lambda: "https://download.pytorch.org/whl/cu130")
 
     def fake_run(cmd, **kw):
-        assert "--query-gpu=name,driver_version,compute_cap,memory.total" in cmd
+        assert ("--query-gpu=name,driver_version,compute_cap,"
+                "memory.total,memory.used") in cmd
         return SimpleNamespace(
             returncode=0, stderr="",
-            stdout=("NVIDIA GeForce RTX 3070 Ti, 591.86, 8.6, 8192 MiB\n"
-                    "NVIDIA GeForce RTX 5060 Ti, 591.86, 12.0, 16384 MiB\n"))
+            stdout=("NVIDIA GeForce RTX 3070 Ti, 591.86, 8.6, 8192 MiB, 512 MiB\n"
+                    "NVIDIA GeForce RTX 5060 Ti, 591.86, 12.0, 16384 MiB, 15020 MiB\n"))
 
     monkeypatch.setattr(P.subprocess, "run", fake_run)
     summary = P.cuda_summary()
@@ -967,5 +982,6 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
         "NVIDIA GeForce RTX 3070 Ti", "NVIDIA GeForce RTX 5060 Ti"]
     assert summary["gpus"][0]["compute_capability"] == 8.6
     assert summary["gpus"][1]["vram"] == "16384 MiB"
+    assert summary["gpus"][1]["vram_used"] == "15020 MiB"
     assert summary["driver"] == "591.86"
     assert summary["torch_index"].endswith("/cu130")
