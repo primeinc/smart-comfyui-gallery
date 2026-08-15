@@ -8559,6 +8559,123 @@ def execute_omniquery():
     except Exception as e:
         return jsonify({'status': 'error', 'message': f"Database Error: {str(e)}"}), 500
 
+# --- OMNIQUERY LOCAL NLQ (WI-31 wave 3) ---
+# Natural language -> parser router -> typed AST -> validated -> compiled
+# read-only SELECT (see omniquery/engine.py). No model in this path ever
+# emits SQL. This is now the PRIMARY OmniQuery UX; execute_omniquery() above
+# remains untouched as the demoted "Advanced / manual SQL" path.
+_omniquery_router = None
+_omniquery_router_lock = threading.Lock()
+
+def _get_omniquery_router():
+    """Lazy, thread-safe module-level singleton for the NL parser router.
+    Built once: the heuristic backend is zero-dependency/always available,
+    and needle2/fallback_qwen self-report unavailable instead of raising
+    when their optional runtime is missing, so this is safe to construct
+    even if those extras aren't installed."""
+    global _omniquery_router
+    if _omniquery_router is None:
+        with _omniquery_router_lock:
+            if _omniquery_router is None:
+                import omniquery.parsers as omniquery_parsers
+                _omniquery_router = omniquery_parsers.make_default_router()
+    return _omniquery_router
+
+
+@app.route('/galleryout/api/omniquery/nlq', methods=['POST'])
+@management_api_only
+def omniquery_nlq():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'Request body must be JSON.'}), 400
+
+    query_text = str(data.get('query', '') or '').strip()
+    if not query_text:
+        return jsonify({'status': 'error', 'message': 'Query text cannot be empty.'}), 400
+
+    router = _get_omniquery_router()
+    outcome, trace = router.route(query_text, time.time())
+
+    if outcome.unsupported or outcome.ast is None:
+        return jsonify({
+            'status': 'unsupported',
+            'reasons': outcome.reason,
+            'trace': [
+                {'backend': t.backend, 'confidence': t.confidence,
+                 'coverage': t.coverage, 'reason': t.reason}
+                for t in trace
+            ],
+        })
+
+    from omniquery.engine import OmniQueryEngine
+    from omniquery.validation import AuthContext
+
+    # Same role-derivation formula used elsewhere for the local/no-auth
+    # admin case (see is_effectively_blind / management_api_only): when
+    # neither FORCE_LOGIN nor exhibition mode is active, an unauthenticated
+    # session is the local admin; otherwise it's an unauthenticated guest.
+    role = session.get('role', 'ADMIN' if not (FORCE_LOGIN or IS_EXHIBITION_MODE) else 'GUEST')
+    user_id = session.get('user_id')
+    ctx = AuthContext(role=role, user_id=user_id, client_uuid=user_id, ai_enabled=AI_CONFIG.enabled)
+
+    engine = OmniQueryEngine(
+        DATABASE_FILE, BASE_OUTPUT_PATH,
+        ai_resolvers=ai_dam_service.create_ai_resolvers(AI_CONFIG),
+    )
+    try:
+        result = engine.run(outcome.ast, ctx)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    if not result.ok:
+        return jsonify({'status': 'error', 'message': result.error}), 400
+
+    if result.kind == 'count':
+        return jsonify({
+            'status': 'success', 'kind': 'count', 'count': result.count,
+            'sql': result.sql, 'backend': outcome.backend,
+            'confidence': outcome.confidence, 'coverage': outcome.coverage,
+            'ast': outcome.ast,
+        })
+
+    result_ids = result.ids or []
+    if not result_ids:
+        return jsonify({
+            'status': 'success', 'session_id': None, 'count': 0,
+            'sql': result.sql, 'backend': outcome.backend,
+            'confidence': outcome.confidence, 'coverage': outcome.coverage,
+            'ast': outcome.ast,
+            'message': 'Query executed successfully, but returned 0 results.',
+        })
+
+    session_id = str(uuid.uuid4())
+    # Sanitize embedded newlines so the NL text can never break out of the
+    # single-line SQL comment it's prefixed into below.
+    safe_nl_text = query_text.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    raw_sql = f"-- OmniQuery local: {safe_nl_text}\n{result.sql}"
+
+    try:
+        with get_db_connection() as rw_conn:
+            # Housekeeping: delete sessions older than 2 hours (same policy
+            # as the legacy manual-SQL endpoint above).
+            rw_conn.execute("DELETE FROM omniquery_sessions WHERE created_at < ?", (time.time() - 7200,))
+            rw_conn.execute(
+                "INSERT INTO omniquery_sessions (session_id, raw_sql, created_at) VALUES (?, ?, ?)",
+                (session_id, raw_sql, time.time()),
+            )
+            records = [(session_id, fid) for fid in result_ids]
+            rw_conn.executemany("INSERT INTO omniquery_results (session_id, file_id) VALUES (?, ?)", records)
+            rw_conn.commit()
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f"Database Error: {str(e)}"}), 500
+
+    return jsonify({
+        'status': 'success', 'session_id': session_id, 'count': len(result_ids),
+        'sql': result.sql, 'backend': outcome.backend,
+        'confidence': outcome.confidence, 'coverage': outcome.coverage,
+        'ast': outcome.ast,
+    })
+
 # --- ADMIN BLIND RATING OVERRIDE ---
 def is_effectively_blind():
     """Determines if blind rating should be applied for the current user session."""

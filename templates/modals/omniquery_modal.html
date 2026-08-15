@@ -5,7 +5,18 @@
     .omni-body-container { display: flex; flex-direction: row; flex: 1; min-height: 0; overflow: hidden; }
     .omni-left-panel { flex: 1; min-width: 300px; display: flex; flex-direction: column; overflow-y: auto; padding: 20px; border-right: 1px solid var(--border-color); background: rgba(0,0,0,0.2); }
     .omni-right-panel { flex: 1.2; min-width: 350px; display: flex; flex-direction: column; padding: 20px; min-height: 0; }
-    
+
+    /* --- Tab Bar: Local (primary) vs Advanced (manual SQL) --- */
+    .omni-tabbar { display:flex; gap:6px; padding:10px 20px 0 20px; background:var(--surface-hover); border-bottom:1px solid var(--border-color); flex-shrink:0; }
+    .omni-tab-btn { background:transparent; border:none; border-bottom:3px solid transparent; color:var(--text-muted); padding:10px 14px; font-size:0.9rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; border-radius:6px 6px 0 0; transition:all 0.15s ease; }
+    .omni-tab-btn:hover { color:#fff; background:rgba(255,255,255,0.06); }
+    .omni-tab-btn.omni-tab-active { color:#fff; border-bottom-color:#34db98; background:rgba(52,219,152,0.08); }
+    .omni-tab-default-badge { font-size:0.62rem; text-transform:uppercase; background:rgba(52,219,152,0.2); color:#34db98; padding:1px 6px; border-radius:8px; font-weight:800; letter-spacing:0.5px; }
+    .omni-nlq-badge { padding:2px 10px; border-radius:12px; font-size:0.75rem; font-weight:bold; text-transform:uppercase; border:1px solid; }
+    .omni-nlq-meta { color:#aaa; font-size:0.8rem; }
+    .omni-nlq-sql-ast summary { cursor:pointer; color:#89cfff; font-size:0.85rem; }
+    .omni-nlq-sql-ast pre { white-space:pre-wrap; word-break:break-all; margin:0; }
+
     @media (max-width: 800px) {
         .omni-body-container { flex-direction: column; overflow-y: auto; }
         .omni-left-panel { border-right: none; border-bottom: 1px solid var(--border-color); overflow-y: visible; }
@@ -64,17 +75,23 @@
         
         <!-- Header -->
         <div class="omni-header-container">
-            <h3 style="margin:0; font-size:1.3rem; color:white; display:flex; align-items:center; gap:10px;">⚡ OmniQuery <span style="font-size:0.8rem; background:#9b59b6; color:#fff; padding:2px 6px; border-radius:4px;">AI-SQL</span></h3>
+            <h3 style="margin:0; font-size:1.3rem; color:white; display:flex; align-items:center; gap:10px;">⚡ OmniQuery <span style="font-size:0.8rem; background:#9b59b6; color:#fff; padding:2px 6px; border-radius:4px;">Local AI</span></h3>
             <div style="display:flex; gap:10px; align-items:center;">
             <button onclick="document.getElementById('omni-help-modal').style.display='flex';" class="glass-btn omni-help-btn" style="border-radius:20px; padding:6px 16px; display:flex; justify-content:center; align-items:center; font-weight:bold; background:rgba(52,219,152,0.15); color:#34db98; border:1px solid #34db98; font-size:0.9rem; text-transform:uppercase;" title="How to use OmniQuery">✨ <span class="omni-help-text" style="margin-left:5px;">Readme first! Understand OmniQuery</span></button>
             <button onclick="closeOmniQueryModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
         </div>
         </div>
-        
+
+        <!-- Tab Bar: Local (primary UX) vs Advanced (demoted manual-SQL / clipboard flow) -->
+        <div class="omni-tabbar">
+            <button type="button" id="omni-tab-btn-local" class="omni-tab-btn omni-tab-active" onclick="switchOmniTab('local')">🏠 Ask locally <span class="omni-tab-default-badge">default</span></button>
+            <button type="button" id="omni-tab-btn-advanced" class="omni-tab-btn" onclick="switchOmniTab('advanced')">🛠️ Advanced (manual SQL)</button>
+        </div>
+
         <!-- Body -->
         <div class="omni-body-container">
-            
-            
+
+
         <!-- OMNIQUERY NESTED MODALS -->
         <!-- Custom Dialog -->
         <div id="omni-custom-dialog" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center;">
@@ -174,8 +191,32 @@
             <div id="omni-preview-content" class="omni-preview-table-container"></div>
         </div>
 
-            <!-- Left Panel: Prompt Editor & Schema -->
-            <div class="omni-left-panel">
+            <!-- LOCAL TAB: Ask in plain English -- runs entirely on this machine via the
+                 /galleryout/api/omniquery/nlq endpoint (parser router -> typed AST ->
+                 validated -> compiled read-only SELECT). No network call, no external LLM. -->
+            <div id="omni-tab-local" class="omni-local-panel" style="flex:1; display:flex; flex-direction:column; padding:20px; overflow-y:auto; min-height:0; box-sizing:border-box;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-shrink:0;">
+                    <h4 style="margin:0; color:#34db98;">🏠 Ask in plain English</h4>
+                </div>
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px; flex-shrink:0;">
+                    Parsed and run entirely on this machine -- no external LLM, no network call.
+                    Try things like <i>"favorite videos"</i>, <i>"images rated at least 4 stars from last month"</i>,
+                    <i>"how many videos over 50MB"</i>, or <i>"photos with faces in the vacation folder"</i>.
+                </p>
+
+                <textarea id="omni-nlq-input" placeholder='e.g. "favorite videos" or "how many images with faces"' style="width:100%; min-height:90px; background:#111; border:1px solid #444; border-radius:8px; color:#fff; font-family:inherit; padding:12px; font-size:0.95rem; resize:vertical; box-sizing:border-box; margin-bottom:12px; flex-shrink:0;"></textarea>
+
+                <div style="display:flex; gap:10px; margin-bottom:8px; flex-shrink:0;">
+                    <button id="omni-nlq-run-btn" onclick="runOmniNlq()" class="glass-btn" style="flex:1; justify-content:center; background:#34db98; border-color:#2ec98c; color:#04241a; font-weight:bold;">🔎 Run</button>
+                    <button type="button" onclick="switchOmniTab('advanced')" class="glass-btn" style="background:transparent; border-color:#555; color:var(--text-muted);" title="Switch to manual SQL for full control">🛠️ Advanced</button>
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:15px; flex-shrink:0;">Tip: Ctrl/Cmd + Enter runs the query.</div>
+
+                <div id="omni-nlq-result" style="flex:1; min-height:0;"></div>
+            </div>
+
+            <!-- Left Panel: Prompt Editor & Schema (ADVANCED TAB) -->
+            <div id="omni-adv-left" class="omni-left-panel" style="display:none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-shrink:0;">
                     <h4 style="margin:0; color:#e0b0ff;">1. Prepare AI Prompt</h4>
                     <button onclick="toggleOmniFullscreen('omniquery-prompt-text', this)" class="glass-btn" style="padding:4px 8px; font-size:0.8rem; background:rgba(155,89,182,0.2); border-color:#9b59b6; color:#e0b0ff;" title="Zen Mode / Maximize">⛶</button>
@@ -269,8 +310,8 @@ target_audience (TEXT)</pre>
                 </div>
             </div>
             
-            <!-- Right Panel: SQL Input & Execute -->
-            <div class="omni-right-panel">
+            <!-- Right Panel: SQL Input & Execute (ADVANCED TAB) -->
+            <div id="omni-adv-right" class="omni-right-panel" style="display:none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-shrink:0;">
                     <h4 style="margin:0; color:#3498db;">2. Execute Query</h4>
                     <button onclick="toggleOmniFullscreen('omniquery-input', this)" class="glass-btn" style="padding:4px 8px; font-size:0.8rem; background:rgba(52,152,219,0.2); border-color:#3498db; color:#52a1ff;" title="Zen Mode / Maximize">⛶</button>
@@ -308,14 +349,23 @@ target_audience (TEXT)</pre>
         overlay.style.display = 'flex';
         setTimeout(() => overlay.style.opacity = '1', 10);
         document.body.classList.add('modal-open');
-        
+
+        // Local (natural-language) tab is always the entry point.
+        switchOmniTab('local');
+
+        const nlqInput = document.getElementById('omni-nlq-input');
+        const savedNlq = localStorage.getItem('sg_omniquery_nlq');
+        if (nlqInput && savedNlq) { nlqInput.value = savedNlq; }
+        const nlqResult = document.getElementById('omni-nlq-result');
+        if (nlqResult) { nlqResult.innerHTML = ''; }
+
         const savedSql = localStorage.getItem('sg_omniquery_sql');
         if (savedSql) { document.getElementById('omniquery-input').value = savedSql; }
 
         const promptArea = document.getElementById('omniquery-prompt-text');
         const savedPrompt = localStorage.getItem('sg_omniquery_prompt');
         const defaultDict = document.getElementById('omniquery-default-dictionary');
-        
+
         if (savedPrompt && savedPrompt.trim() !== '') {
             promptArea.value = savedPrompt;
         } else if (defaultDict) {
@@ -324,15 +374,24 @@ target_audience (TEXT)</pre>
         }
 
         document.getElementById('omni-feedback-box').style.display = 'none';
-        
+
         setTimeout(() => {
-            if (promptArea) {
-                promptArea.focus();
-                promptArea.selectionStart = promptArea.value.length;
-                promptArea.selectionEnd = promptArea.value.length;
-                promptArea.scrollTop = promptArea.scrollHeight;
+            if (nlqInput) {
+                nlqInput.focus();
+                nlqInput.selectionStart = nlqInput.value.length;
+                nlqInput.selectionEnd = nlqInput.value.length;
             }
         }, 50);
+    }
+
+    // --- TABS: Local (primary UX) vs Advanced (demoted manual-SQL / clipboard flow) ---
+    function switchOmniTab(tab) {
+        const isLocal = tab !== 'advanced';
+        document.getElementById('omni-tab-local').style.display = isLocal ? 'flex' : 'none';
+        document.getElementById('omni-adv-left').style.display = isLocal ? 'none' : 'flex';
+        document.getElementById('omni-adv-right').style.display = isLocal ? 'none' : 'flex';
+        document.getElementById('omni-tab-btn-local').classList.toggle('omni-tab-active', isLocal);
+        document.getElementById('omni-tab-btn-advanced').classList.toggle('omni-tab-active', !isLocal);
     }
 
     function closeOmniQueryModal() {
@@ -343,6 +402,174 @@ target_audience (TEXT)</pre>
             document.body.classList.remove('modal-open');
         }, 200);
     }
+
+    // --- LOCAL NLQ (WI-31 wave 3): primary UX. Runs entirely on this
+    // machine via /galleryout/api/omniquery/nlq -- no external LLM, no
+    // clipboard round-trip. The Advanced tab (manual SQL / clipboard flow)
+    // remains available for power users. ---
+    function escapeOmniHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str === null || str === undefined ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    function omniBackendBadge(backend) {
+        const styles = {
+            needle2:       { border: '#9b59b6', fg: '#e0b0ff', bg: 'rgba(155,89,182,0.18)', label: 'needle2' },
+            heuristic:     { border: '#3498db', fg: '#89cfff', bg: 'rgba(52,152,219,0.18)',  label: 'heuristic' },
+            fallback_qwen: { border: '#e67e22', fg: '#ffbf80', bg: 'rgba(230,126,34,0.18)',  label: 'fallback' },
+        };
+        const s = styles[backend] || { border: '#888', fg: '#ccc', bg: 'rgba(150,150,150,0.15)', label: backend || 'unknown' };
+        return `<span class="omni-nlq-badge" style="border-color:${s.border}; color:${s.fg}; background:${s.bg};">${escapeOmniHtml(s.label)}</span>`;
+    }
+
+    function omniPct(value) {
+        return (value === null || value === undefined) ? null : Math.round(value * 100) + '%';
+    }
+
+    function omniMetaRow(data) {
+        const bits = [omniBackendBadge(data.backend)];
+        const conf = omniPct(data.confidence);
+        const cov = omniPct(data.coverage);
+        if (conf !== null) bits.push(`<span class="omni-nlq-meta">confidence ${conf}</span>`);
+        if (cov !== null) bits.push(`<span class="omni-nlq-meta">coverage ${cov}</span>`);
+        return `<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0;">${bits.join('')}</div>`;
+    }
+
+    function omniSqlAstDetails(data) {
+        const sql = data.sql ? escapeOmniHtml(data.sql) : '(no SQL)';
+        let astText = '';
+        try { astText = data.ast ? JSON.stringify(data.ast, null, 2) : '(no AST)'; }
+        catch (e) { astText = '(unable to display AST)'; }
+        return `
+            <details class="omni-nlq-sql-ast" style="background:#111; border:1px solid #333; border-radius:8px; padding:10px; margin-top:8px;">
+                <summary>Show generated SQL &amp; AST</summary>
+                <div style="margin-top:10px;">
+                    <div style="color:#888; font-size:0.7rem; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">SQL</div>
+                    <pre style="color:#52a1ff; font-size:0.8rem; margin-bottom:12px;">${sql}</pre>
+                    <div style="color:#888; font-size:0.7rem; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">AST</div>
+                    <pre style="color:#ccc; font-size:0.75rem;">${escapeOmniHtml(astText)}</pre>
+                </div>
+            </details>`;
+    }
+
+    function renderOmniNlqError(msg) {
+        return `<div style="padding:12px; border-radius:8px; background:rgba(231,76,60,0.15); color:#ff6b6b; border:1px solid #e74c3c; font-size:0.9rem; font-weight:bold;">⚠️ ${escapeOmniHtml(msg)}</div>`;
+    }
+
+    function renderOmniNlqUnsupported(data) {
+        const trace = data.trace || [];
+        const traceRows = trace.map(t => `
+            <tr>
+                <td style="padding:6px 8px;">${omniBackendBadge(t.backend)}</td>
+                <td style="padding:6px 8px; color:#ccc; font-size:0.8rem;">${omniPct(t.confidence) || '-'}</td>
+                <td style="padding:6px 8px; color:#ccc; font-size:0.8rem;">${omniPct(t.coverage) || '-'}</td>
+                <td style="padding:6px 8px; color:#aaa; font-size:0.8rem;">${escapeOmniHtml(t.reason || '')}</td>
+            </tr>`).join('');
+        const traceTable = traceRows ? `
+            <div style="overflow-x:auto; margin-top:10px;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                    <thead><tr style="text-align:left; color:#888; border-bottom:1px solid #444;">
+                        <th style="padding:6px 8px;">Backend</th><th style="padding:6px 8px;">Confidence</th>
+                        <th style="padding:6px 8px;">Coverage</th><th style="padding:6px 8px;">Reason</th>
+                    </tr></thead>
+                    <tbody>${traceRows}</tbody>
+                </table>
+            </div>` : '';
+        return `
+            <div style="padding:14px; border-radius:8px; background:rgba(241,196,15,0.1); border:1px solid #f1c40f;">
+                <div style="color:#f1c40f; font-weight:bold; margin-bottom:6px;">🤔 Couldn't confidently parse that.</div>
+                <div style="color:#ddd; font-size:0.88rem;">${escapeOmniHtml(data.reasons || 'No backend produced an acceptable parse.')}</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:10px;">
+                    Try rephrasing, or switch to the
+                    <b onclick="switchOmniTab('advanced')" style="cursor:pointer; color:#3498db; text-decoration:underline;">Advanced (manual SQL)</b> tab for full control.
+                </div>
+            </div>
+            ${traceTable}`;
+    }
+
+    function renderOmniNlqSuccess(data) {
+        if (data.kind === 'count') {
+            return `
+                <div style="padding:18px; border-radius:8px; background:rgba(52,219,152,0.1); border:1px solid #34db98; text-align:center;">
+                    <div style="font-size:2.2rem; font-weight:bold; color:#34db98;">${data.count}</div>
+                    <div style="color:#ccc; font-size:0.85rem;">matching files</div>
+                </div>
+                ${omniMetaRow(data)}
+                ${omniSqlAstDetails(data)}`;
+        }
+
+        if (!data.session_id) {
+            return `
+                <div style="padding:14px; border-radius:8px; background:rgba(241,196,15,0.1); border:1px solid #f1c40f; color:#f1c40f;">
+                    Query understood, but matched 0 files.
+                </div>
+                ${omniMetaRow(data)}
+                ${omniSqlAstDetails(data)}`;
+        }
+
+        const galleryUrl = `{{ url_for('gallery_view', folder_key=current_folder_key) }}?omniquery_id=${encodeURIComponent(data.session_id)}`;
+        return `
+            <div style="padding:14px; border-radius:8px; background:rgba(52,219,152,0.1); border:1px solid #34db98;">
+                <div style="color:#34db98; font-weight:bold; font-size:1.1rem;">✅ ${data.count} result${data.count === 1 ? '' : 's'} found</div>
+                ${omniMetaRow(data)}
+            </div>
+            <button onclick="window.location.href='${galleryUrl}'" class="glass-btn" style="width:100%; justify-content:center; background:#9b59b6; border-color:#8e44ad; color:white; font-weight:bold; margin:12px 0;">🖼️ Show results in gallery</button>
+            ${omniSqlAstDetails(data)}`;
+    }
+
+    async function runOmniNlq() {
+        const input = document.getElementById('omni-nlq-input');
+        const resultBox = document.getElementById('omni-nlq-result');
+        const text = input.value.trim();
+
+        if (!text) {
+            resultBox.innerHTML = renderOmniNlqError('Please enter a question.');
+            return;
+        }
+
+        localStorage.setItem('sg_omniquery_nlq', text);
+
+        const btn = document.getElementById('omni-nlq-run-btn');
+        const originalLabel = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Thinking...';
+        resultBox.innerHTML = '';
+
+        try {
+            const res = await fetch('/galleryout/api/omniquery/nlq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: text }),
+            });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                resultBox.innerHTML = renderOmniNlqSuccess(data);
+            } else if (data.status === 'unsupported') {
+                resultBox.innerHTML = renderOmniNlqUnsupported(data);
+            } else {
+                resultBox.innerHTML = renderOmniNlqError((data && data.message) || 'Unknown error.');
+            }
+        } catch (e) {
+            resultBox.innerHTML = renderOmniNlqError('Network error occurred.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalLabel;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const nlqInput = document.getElementById('omni-nlq-input');
+        if (nlqInput) {
+            nlqInput.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    runOmniNlq();
+                }
+            });
+        }
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
         const omniOverlay = document.getElementById('omniquery-overlay');

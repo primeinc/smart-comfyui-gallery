@@ -37,10 +37,26 @@ def stage1() -> int:
         print("FAIL: 'unshare' not available; cannot build isolated netns")
         return 2
     env = dict(os.environ, **{MARK: "1"})
-    # -n: new network namespace (no interfaces but lo, which we bring up).
-    cmd = ["unshare", "-n", "sh", "-c",
-           f"ip link set lo up 2>/dev/null || true; exec {sys.executable} {os.path.abspath(__file__)}"]
+    # -n: new network namespace (no interfaces but lo, which stage2 brings
+    # up itself via ioctl -- the 'ip' binary may not exist on minimal hosts).
+    cmd = ["unshare", "-n", sys.executable, os.path.abspath(__file__)]
     return subprocess.call(cmd, env=env)
+
+
+def _loopback_up() -> None:
+    """Bring 'lo' up inside the fresh namespace without the iproute2 tools."""
+    import fcntl
+    import socket
+    import struct
+
+    SIOCSIFFLAGS = 0x8914
+    IFF_UP, IFF_RUNNING = 0x1, 0x40
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        ifr = struct.pack("16sh", b"lo", IFF_UP | IFF_RUNNING)
+        fcntl.ioctl(s, SIOCSIFFLAGS, ifr)
+    finally:
+        s.close()
 
 
 def wait_for(url: str, timeout: float = 60.0) -> None:
@@ -63,6 +79,7 @@ def get(url: str):
 
 
 def stage2() -> int:
+    _loopback_up()
     # Prove the namespace actually denies egress before trusting anything.
     try:
         urllib.request.urlopen("https://example.com", timeout=3)
@@ -140,15 +157,25 @@ def stage2() -> int:
             ok = False
 
         print(json.dumps(evidence, indent=2))
-        print("PASS" if ok else "FAIL")
-        return 0 if ok else 1
-    finally:
-        server.terminate()
+        print("PASS" if ok else "FAIL", flush=True)
+        # Teardown inside the ephemeral namespace can be reaped ungracefully
+        # by sandboxed hosts (observed: SIGKILL during graceful shutdown after
+        # the verdict). The verdict is already out; exit hard so the process
+        # reports the true result instead of the reaper's 137.
         try:
-            server.wait(timeout=10)
-        except subprocess.TimeoutExpired:
             server.kill()
+            server.wait(timeout=5)
+        except Exception:
+            pass
         shutil.rmtree(tmp, ignore_errors=True)
+        os._exit(0 if ok else 1)
+    except Exception as exc:  # noqa: BLE001
+        print(f"FAIL: {exc}", flush=True)
+        try:
+            server.kill()
+        except Exception:
+            pass
+        os._exit(1)
 
 
 if __name__ == "__main__":
