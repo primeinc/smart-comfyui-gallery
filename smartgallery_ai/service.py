@@ -220,16 +220,29 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
 
     # -- GET /status : always reports, even when disabled -----------------------
 
-    def status():
-        conn = _connect(config)
-        try:
-            backends = {
+    # Probing availability constructs real backends (may load model weights
+    # and import torch), so it must never run while the layer is disabled,
+    # and at most once per process while enabled.
+    backend_probe_cache: dict = {}
+
+    def _probe_backends() -> dict:
+        if not config.enabled:
+            return {"semantic": False, "visual": False, "face": False,
+                    "critic": False, "segmenter": False}
+        if not backend_probe_cache:
+            backend_probe_cache.update({
                 "semantic": embedders.get_semantic_backend(config) is not None,
                 "visual": embedders.get_visual_backend(config) is not None,
                 "face": faces.get_face_backend(config) is not None,
                 "critic": review.get_critic_backend(config) is not None,
                 "segmenter": _segmenter_available(config),
-            }
+            })
+        return dict(backend_probe_cache)
+
+    def status():
+        conn = _connect(config)
+        try:
+            backends = _probe_backends()
             counts = {
                 "hashed": conn.execute("SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0],
                 "embeddings_semantic": conn.execute(

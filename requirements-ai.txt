@@ -12,10 +12,16 @@
 cactus-needle>=2.0.4        # Needle2 primary intent parser (Apache-2.0)
 llama-cpp-python>=0.3.0      # optional constrained fallback parser (MIT); off by default
 
-# --- semantic / visual embedding backends (enable by provisioning weights) ---
-# open_clip_torch           # semantic space (MIT); pulls in torch
-# torch                     # required by open_clip / dinov2 backends
-# transformers              # visual space (facebook/dinov2-small, Apache-2.0)
+# --- semantic / visual embedding + critic backends (runtime-verified) ---
+# Uncomment to enable the real model backends; then provision weights per
+# docs/AI_MODELS.md. Verified end to end (worker + API + omniquery
+# resolvers) with a CPU-only torch build:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch
+# torch                     # required by open_clip / dinov2 / smolvlm backends
+# open_clip_torch           # semantic space: ViT-B-32 laion2b (MIT)
+# transformers              # visual space: facebook/dinov2-small (Apache-2.0)
+#                           #   + SmolVLM2 critic backend (Apache-2.0)
+# num2words                 # required by the SmolVLM2 processor
 
 # --- testing ---
 pytest

@@ -29,6 +29,7 @@ import numpy as np
 from PIL import Image
 
 from smartgallery_ai import AIConfig
+from smartgallery_ai.embedders import BackendUnavailable
 
 __all__ = [
     "FINDING_TYPES",
@@ -325,18 +326,125 @@ class StubCritic(CriticBackend):
         return (x0 / w, y0 / h, (x1 - x0) / w, (y1 - y0) / h)
 
 
+# Larger checkpoints win when several are provisioned side by side.
+_SMOLVLM_DIRNAMES = ("smolvlm2-2.2b", "smolvlm2-500m")
+_SMOLVLM_MODEL_IDS = {
+    "smolvlm2-2.2b": ("HuggingFaceTB/SmolVLM2-2.2B-Instruct", "smolvlm2-2.2b-instruct-v1"),
+    "smolvlm2-500m": ("HuggingFaceTB/SmolVLM2-500M-Video-Instruct", "smolvlm2-500m-video-instruct-v1"),
+}
+
+_CRITIC_INSTRUCTION = """You are a strict image-generation quality reviewer. Reply with ONLY one JSON object, no other text.
+Required keys: quality_score (0-10), prompt_alignment_score (0-10, or null when no prompt given), summary (one sentence), findings (list, may be empty).
+EVERY finding must have ALL of these keys: type (one of anatomy, artifact, composition, lighting, text_render, prompt_mismatch, style, detail_loss, other), severity (low, medium or high), confidence (0-1), localizable (true or false), description (short text). Add bbox [x,y,w,h] (fractions 0-1) ONLY when localizable is true.
+Example of a complete, valid reply:
+{"quality_score": 6.5, "prompt_alignment_score": 7.0, "summary": "Good portrait with one artifact.", "findings": [{"type": "artifact", "severity": "high", "confidence": 0.9, "localizable": true, "description": "red square artifact", "bbox": [0.55, 0.6, 0.2, 0.2]}, {"type": "lighting", "severity": "low", "confidence": 0.6, "localizable": false, "description": "slightly flat lighting"}]}
+Keep the reply short: at most 3 findings."""
+
+
+class SmolVlmCritic(CriticBackend):
+    """Local VLM critic via HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+    (Apache-2.0), loaded ONLY from `models_dir/smolvlm2-500m`
+    (local_files_only) -- never downloaded at runtime. CPU-friendly
+    (~1 GB RAM, tens of seconds per review).
+
+    Emits the RAW payload dict; `validate_review_payload` remains the only
+    gate into the database, so schema violations from the model are
+    rejected, never coerced.
+    """
+
+    model_id = "HuggingFaceTB/SmolVLM2"  # refined per provisioned checkpoint
+    model_version = "smolvlm2-v1"
+
+    def __init__(self, models_dir: str, max_new_tokens: int = 640):
+        try:
+            import torch
+            from transformers import AutoModelForImageTextToText, AutoProcessor
+        except Exception as exc:  # noqa: BLE001
+            raise BackendUnavailable(f"smolvlm critic unavailable: {exc}") from exc
+
+        weights_dir = None
+        for dirname in _SMOLVLM_DIRNAMES:
+            candidate = os.path.join(models_dir, dirname)
+            if os.path.isdir(candidate):
+                weights_dir = candidate
+                self.model_id, self.model_version = _SMOLVLM_MODEL_IDS[dirname]
+                break
+        if weights_dir is None:
+            raise BackendUnavailable(
+                f"smolvlm weights not found under {models_dir} "
+                f"(looked for {', '.join(_SMOLVLM_DIRNAMES)})")
+        try:
+            self._processor = AutoProcessor.from_pretrained(
+                weights_dir, local_files_only=True
+            )
+            self._model = AutoModelForImageTextToText.from_pretrained(
+                weights_dir, local_files_only=True, torch_dtype=torch.float32
+            )
+            self._model.eval()
+        except Exception as exc:  # noqa: BLE001
+            raise BackendUnavailable(f"failed to load smolvlm weights: {exc}") from exc
+        self._torch = torch
+        self._max_new_tokens = max_new_tokens
+
+    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+        instruction = _CRITIC_INSTRUCTION
+        if prompt_text:
+            instruction += f'\nGeneration prompt: "{prompt_text}"'
+        messages = [{
+            "role": "user",
+            "content": [{"type": "image", "image": img.convert("RGB")},
+                        {"type": "text", "text": instruction}],
+        }]
+        inputs = self._processor.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=True,
+            return_dict=True, return_tensors="pt",
+        )
+        with self._torch.no_grad():
+            generated = self._model.generate(
+                **inputs, do_sample=False, max_new_tokens=self._max_new_tokens
+            )
+        new_tokens = generated[0][inputs["input_ids"].shape[1]:]
+        text = self._processor.decode(new_tokens, skip_special_tokens=True)
+        return _extract_json_object(text)
+
+
+def _extract_json_object(text: str) -> dict:
+    """Pull the first balanced JSON object out of model output. Raises
+    ValueError when there is none -- the caller treats that as a failed
+    review, never as data."""
+    start = text.find("{")
+    if start < 0:
+        raise ValueError(f"critic output contains no JSON object: {text[:120]!r}")
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start:i + 1])
+    raise ValueError("critic output has an unterminated JSON object")
+
+
 def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
     """Resolve `config.critic_backend`.
 
-    'none' and 'auto' both return None: no local VLM-based critic is wired
-    up in this package yet -- the `CriticBackend` interface plus
-    `validate_review_payload` are the deliverable, ready for a real backend
-    to be added behind this same interface later. 'stub' is only reachable
-    by explicit request.
+    'smolvlm' loads the local SmolVLM2-500M critic (weights must be
+    provisioned into models_dir/smolvlm2-500m). 'auto' tries it and falls
+    back to None when the runtime or weights are absent -- 'auto' never
+    silently substitutes the stub. 'stub' is only reachable by explicit
+    request.
     """
     name = config.critic_backend
-    if name in ("none", "auto"):
+    if name == "none":
         return None
+    if name == "auto":
+        try:
+            return SmolVlmCritic(config.models_dir)
+        except BackendUnavailable:
+            return None
+    if name == "smolvlm":
+        return SmolVlmCritic(config.models_dir)
     if name == "stub":
         return StubCritic()
     raise ValueError(f"unknown critic_backend: {name!r}")
