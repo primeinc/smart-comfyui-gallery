@@ -271,24 +271,53 @@ def _download_hf_snapshot(repo: str, dest_dir: str) -> None:
     snapshot_download(repo_id=repo, local_dir=dest_dir)
 
 
+def _run_pip_operation(pip_args: list, uv_args: list, timeout: int) -> None:
+    """Run one pip operation in THIS interpreter's environment, tolerating
+    environments that ship without pip (uv-created venvs do): try
+    `python -m pip` first, then `uv pip ... --python <this python>` when
+    uv is on PATH, else bootstrap pip once via ensurepip and retry.
+    Failure raises ProvisionError carrying the tail of stderr."""
+    proc = subprocess.run([sys.executable, "-m", "pip", *pip_args],
+                          capture_output=True, text=True, timeout=timeout)
+    if proc.returncode == 0:
+        return
+    err = proc.stderr or ""
+    if "No module named pip" in err:
+        uv = shutil.which("uv")
+        if uv is not None:
+            proc = subprocess.run(
+                [uv, "pip", *uv_args, "--python", sys.executable],
+                capture_output=True, text=True, timeout=timeout)
+            if proc.returncode == 0:
+                return
+            err = proc.stderr or err
+        else:
+            boot = subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"],
+                                  capture_output=True, text=True, timeout=600)
+            if boot.returncode == 0:
+                proc = subprocess.run([sys.executable, "-m", "pip", *pip_args],
+                                      capture_output=True, text=True, timeout=timeout)
+                if proc.returncode == 0:
+                    return
+                err = proc.stderr or err
+            else:
+                err = boot.stderr or err
+    raise ProvisionError(
+        f"pip {' '.join(pip_args)} failed: {err.strip()[-400:]}")
+
+
 def _default_pip_runner(args: list) -> None:
-    """Run one `pip install` into the current interpreter's environment;
-    failure raises ProvisionError carrying the tail of pip's stderr."""
-    cmd = [sys.executable, "-m", "pip", "install", "--quiet", *args]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-    if proc.returncode != 0:
-        raise ProvisionError(
-            f"pip install {' '.join(args)} failed: {proc.stderr.strip()[-400:]}")
+    """Install one requirement into the current interpreter's environment
+    (works in pip-less uv venvs too; see _run_pip_operation)."""
+    _run_pip_operation(["install", "--quiet", *args],
+                       ["install", "--quiet", *args], timeout=3600)
 
 
 def _default_pip_uninstaller(packages: list) -> None:
-    """Run one `pip uninstall -y` in the current interpreter's environment;
-    failure raises ProvisionError carrying the tail of pip's stderr."""
-    cmd = [sys.executable, "-m", "pip", "uninstall", "--quiet", "-y", *packages]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if proc.returncode != 0:
-        raise ProvisionError(
-            f"pip uninstall {' '.join(packages)} failed: {proc.stderr.strip()[-400:]}")
+    """Uninstall packages from the current interpreter's environment
+    (works in pip-less uv venvs too; see _run_pip_operation)."""
+    _run_pip_operation(["uninstall", "--quiet", "-y", *packages],
+                       ["uninstall", "--quiet", *packages], timeout=600)
 
 
 def torch_cuda_reinstall_needed() -> bool:

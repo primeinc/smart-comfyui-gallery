@@ -814,3 +814,68 @@ def test_provision_groups_for_includes_cuda_swap_groups(tmp_path, monkeypatch):
 
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
     assert provision_groups_for(cfg) == ["visual"]
+
+
+# --- pip operations in pip-less (uv) environments ------------------------------
+
+
+def _pip_proc(returncode=0, stderr=""):
+    from types import SimpleNamespace
+    return SimpleNamespace(returncode=returncode, stderr=stderr, stdout="")
+
+
+def test_pip_runner_uses_python_m_pip_when_available(monkeypatch):
+    """The normal environment needs exactly one subprocess call."""
+    calls = []
+    monkeypatch.setattr(P.subprocess, "run",
+                        lambda cmd, **kw: calls.append(cmd) or _pip_proc())
+    P._default_pip_runner(["timm"])
+    assert len(calls) == 1
+    assert calls[0][1:] == ["-m", "pip", "install", "--quiet", "timm"]
+
+
+def test_pip_runner_falls_back_to_uv_pip_in_pipless_venv(monkeypatch):
+    """A uv-created venv has no pip module; the runner retries the same
+    operation through `uv pip --python <this python>` (the user's exact
+    'No module named pip' failure)."""
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[1:3] == ["-m", "pip"]:
+            return _pip_proc(1, "python.exe: No module named pip")
+        return _pip_proc()
+
+    monkeypatch.setattr(P.subprocess, "run", fake_run)
+    monkeypatch.setattr(P.shutil, "which",
+                        lambda name: "/usr/bin/uv" if name == "uv" else None)
+    P._default_pip_uninstaller(["torch", "torchvision"])
+    assert calls[1][0] == "/usr/bin/uv"
+    assert calls[1][1:4] == ["pip", "uninstall", "--quiet"]
+    assert "--python" in calls[1]
+
+
+def test_pip_runner_bootstraps_ensurepip_without_uv(monkeypatch):
+    """No uv on PATH: bootstrap pip via ensurepip once, then retry."""
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[1:3] == ["-m", "pip"] and len(calls) == 1:
+            return _pip_proc(1, "No module named pip")
+        return _pip_proc()
+
+    monkeypatch.setattr(P.subprocess, "run", fake_run)
+    monkeypatch.setattr(P.shutil, "which", lambda name: None)
+    P._default_pip_runner(["timm"])
+    assert calls[1][1:3] == ["-m", "ensurepip"]
+    assert calls[2][1:3] == ["-m", "pip"]
+
+
+def test_pip_runner_raises_when_every_fallback_fails(monkeypatch):
+    """All routes exhausted -> ProvisionError carrying stderr."""
+    monkeypatch.setattr(P.subprocess, "run",
+                        lambda cmd, **kw: _pip_proc(1, "No module named pip"))
+    monkeypatch.setattr(P.shutil, "which", lambda name: None)
+    with pytest.raises(P.ProvisionError, match="No module named pip"):
+        P._default_pip_runner(["timm"])

@@ -287,6 +287,9 @@ class AIWorker:
         self._priority_ids: list = []
         self._priority_max = 100
         self._wake_event = threading.Event()
+        # True after a cycle that exhausted a budget: the loop skips its
+        # between-cycle sleep and continues the crawl immediately.
+        self._backlog_remaining = False
 
         # Background weight-provisioning: one attempt per worker lifetime,
         # in its own daemon thread so cycles are never blocked by
@@ -461,21 +464,31 @@ class AIWorker:
     def _run_loop(self) -> None:
         """Thread body: run cycles until stopped; a failing cycle is counted, never fatal."""
         while not self._stop_event.is_set():
+            self._backlog_remaining = False
             try:
                 self._run_cycle()
             except Exception:
                 _logger.exception("[AIWorker] cycle failed")
                 with self._lock:
                     self.stats["errors"] += 1
-            # Sleep until the poll interval elapses OR a priority-index
-            # request arrives (request_priority_index sets the event).
+            # A cycle that exhausted its budget almost certainly left work
+            # behind: start the next one immediately. Sleeping the full
+            # poll interval between full batches turns a first index of a
+            # large gallery into hours of idle waiting. Otherwise sleep
+            # until the interval elapses OR a priority-index request
+            # arrives (request_priority_index sets the event).
+            if self._backlog_remaining:
+                continue
             self._wake_event.wait(self.poll_interval)
             self._wake_event.clear()
 
     def _run_cycle(self) -> None:
         """One wake: fresh connection, schema ensured, user-requested files
-        first, then stages run in fixed order against a shared file budget,
-        then the orphaned-mask sweep."""
+        first, then stages run in fixed order — hashing against its own
+        budget (it costs milliseconds per file; sharing a budget with the
+        model stages would starve them for hours on a large hash backlog),
+        the model stages against the shared file budget — then the
+        orphaned-mask sweep."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         with self._lock:
@@ -485,8 +498,9 @@ class AIWorker:
 
             self._process_priority_requests(conn)
 
+            hashed = self._process_hashes(conn, self.batch_size)
+
             budget = self.batch_size
-            budget -= self._process_hashes(conn, budget)
 
             if budget > 0:
                 semantic_backend = self._backend("semantic",
@@ -523,6 +537,11 @@ class AIWorker:
 
             self._sweep_orphaned_masks(conn)
             self._log_cycle_progress(conn, stats_before)
+            # Exhausted hash budget or exhausted stage budget both mean the
+            # backlog continues; the loop skips its sleep and keeps going.
+            self._backlog_remaining = (
+                self.batch_size > 0
+                and (hashed >= self.batch_size or budget <= 0))
         finally:
             conn.close()
 
@@ -687,6 +706,10 @@ class AIWorker:
         )
         store = vectors.VectorStore(cache_dir=self.config.cache_dir, ephemeral=self.config.ephemeral_index)
         for row in candidates:
+            # A user is waiting on priority files; serve them between items
+            # so panel requests never queue behind a long crawl batch.
+            if only_file_id is None:
+                self._process_priority_requests(conn)
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
             img = load_source_image(path, file_type)
             if img is None:
@@ -751,6 +774,8 @@ class AIWorker:
                                      only_file_id=only_file_id)
         now = time.time()
         for row in rows:
+            if only_file_id is None:
+                self._process_priority_requests(conn)
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
             img = load_source_image(path, file_type)
             if img is None:
@@ -823,6 +848,8 @@ class AIWorker:
         segmenter = self._backend("segmenter", review.get_segmenter_backend)
         now = time.time()
         for row in rows:
+            if only_file_id is None:
+                self._process_priority_requests(conn)
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
             img = load_source_image(path, file_type)
             if img is None:

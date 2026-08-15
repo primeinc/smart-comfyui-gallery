@@ -262,11 +262,17 @@
     async function aidamRequestIndex() {
         if (aidamIndexRequested[aidamCurrentFileId]) return;
         aidamIndexRequested[aidamCurrentFileId] = true;
+        const fileId = aidamCurrentFileId;
         try {
-            await fetch(`/galleryout/api/aidam/index/${encodeURIComponent(aidamCurrentFileId)}`, {
+            await fetch(`/galleryout/api/aidam/index/${encodeURIComponent(fileId)}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
             });
-        } catch (e) { /* restricted mode or offline: the background crawl still gets there */ }
+        } catch (e) {
+            // Network failure: allow the next poll tick to retry. (A denied
+            // request in restricted mode returns a response, keeps the flag,
+            // and is not retried -- the background crawl still gets there.)
+            delete aidamIndexRequested[fileId];
+        }
     }
 
     function aidamIndexingProgressLine(status) {

@@ -191,9 +191,11 @@ def test_fetch_candidates_empty_ids_or_nonpositive_limit():
 
 # -- per-cycle budget ---------------------------------------------------------
 
-def test_budget_exhausted_by_hashing_starves_later_stages(tmp_path):
-    """A stage consuming the whole per-cycle budget stops later stages that
-    cycle; the starved stages catch up on subsequent cycles."""
+def test_hashing_has_its_own_budget_and_model_stages_share_theirs(tmp_path):
+    """Hashing never starves the model stages (its per-file cost is
+    milliseconds; on a large gallery a shared budget would delay the first
+    embedding by hours). The model stages still share one budget: semantic
+    exhausts it in cycle 1, visual catches up in cycle 2."""
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     for i in range(2):
@@ -203,19 +205,15 @@ def test_budget_exhausted_by_hashing_starves_later_stages(tmp_path):
                      visual_backend="stub")
     worker = AIWorker(config, db_path, batch_size=2)
 
-    worker._run_cycle()  # cycle 1: hashing eats the whole budget
+    worker._run_cycle()  # cycle 1: hashes AND semantic (own budgets)
     assert worker.stats["hashed"] == 2
-    assert worker.stats["embedded"] == 0
-    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings")[0] == 0
-
-    worker._run_cycle()  # cycle 2: hashes done; semantic eats the budget
     assert worker.stats["embedded"] == 2
     assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings "
                       "WHERE space = ?", (SPACE_SEMANTIC,))[0] == 2
     assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings "
                       "WHERE space = ?", (SPACE_VISUAL,))[0] == 0
 
-    worker._run_cycle()  # cycle 3: visual finally runs
+    worker._run_cycle()  # cycle 2: visual gets the shared budget
     assert worker.stats["embedded"] == 4
     assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings "
                       "WHERE space = ?", (SPACE_VISUAL,))[0] == 2

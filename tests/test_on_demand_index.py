@@ -489,3 +489,127 @@ def test_faces_modified_file_reads_as_pending_again(api):
     conn.close()
     modified = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
     assert modified["pending"] is True
+
+
+# --- crawl order + throughput --------------------------------------------------
+
+
+def test_backlog_processes_newest_files_first(tmp_path):
+    """Indexing is strictly newest-first (mtime descending): with a budget
+    of 2 and three files, the two most recent get hashed AND embedded in
+    the first cycle; the oldest waits."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "oldest", mtime=1000.0)
+    _add_image_file(conn, tmp_path, "yesterday", mtime=2000.0)
+    _add_image_file(conn, tmp_path, "today", mtime=3000.0)
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=2)
+    worker._run_cycle()
+
+    conn = sqlite3.connect(cfg.db_path)
+    try:
+        hashed = {r[0] for r in conn.execute("SELECT file_id FROM ai_file_hashes")}
+        embedded = {r[0] for r in conn.execute(
+            "SELECT DISTINCT file_id FROM ai_embeddings")}
+    finally:
+        conn.close()
+    assert hashed == {"today", "yesterday"}
+    assert embedded == {"today", "yesterday"}
+
+
+def test_hashing_no_longer_starves_the_model_stages(tmp_path):
+    """Hashing runs against its own budget: even with a hash backlog at or
+    beyond batch_size, embeddings still happen in the same cycle (before
+    this fix a 42k-file gallery hashed for hours with zero embeddings)."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    for i in range(4):
+        _add_image_file(conn, tmp_path, f"file{i}", mtime=1000.0 + i)
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=2)
+    worker._run_cycle()
+
+    conn = sqlite3.connect(cfg.db_path)
+    try:
+        hashed = conn.execute("SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0]
+        embedded = conn.execute(
+            "SELECT COUNT(DISTINCT file_id) FROM ai_embeddings").fetchone()[0]
+    finally:
+        conn.close()
+    assert hashed == 2
+    assert embedded == 2
+
+
+def test_loop_skips_sleep_while_backlog_remains(tmp_path):
+    """With batch_size=1 and a 60s poll interval, four files all get
+    hashed within seconds -- only possible when full-budget cycles skip
+    the between-cycle sleep and continue the crawl immediately."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    for i in range(4):
+        _add_image_file(conn, tmp_path, f"burst{i}", mtime=1000.0 + i)
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=60.0, batch_size=1)
+    worker.start()
+    try:
+        deadline = time.time() + 10.0
+        count = 0
+        while time.time() < deadline:
+            conn = sqlite3.connect(cfg.db_path)
+            try:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0]
+            finally:
+                conn.close()
+            if count >= 4:
+                break
+            time.sleep(0.1)
+        assert count >= 4, f"only {count}/4 hashed: loop slept between batches"
+    finally:
+        worker.stop(timeout=5.0)
+
+
+def test_priority_request_served_mid_stage(tmp_path):
+    """A priority request that arrives while a crawl batch is mid-flight
+    is served between items of the SAME cycle, not after it: the panel
+    never waits behind a long batch."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    for i in range(3):
+        _add_image_file(conn, tmp_path, f"crawl{i}", mtime=2000.0 + i)
+    _add_image_file(conn, tmp_path, "urgent", mtime=1000.0)  # oldest: crawled last
+    conn.close()
+
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
+
+    order = []
+    original_stage = worker._process_embedding_space
+
+    def tracking_stage(conn_, backend, space, limit, only_file_id=None):
+        if only_file_id is not None:
+            order.append(("priority", only_file_id, space))
+        return original_stage(conn_, backend, space, limit,
+                              only_file_id=only_file_id)
+
+    worker._process_embedding_space = tracking_stage
+
+    fired = []
+    original_load = worker._process_hashes
+
+    def hashes_then_request(conn_, limit, only_file_id=None):
+        consumed = original_load(conn_, limit, only_file_id=only_file_id)
+        # Simulate the panel POSTing /index while the cycle is running.
+        if not fired and only_file_id is None:
+            fired.append(True)
+            worker.request_priority_index("urgent")
+        return consumed
+
+    worker._process_hashes = hashes_then_request
+    worker._run_cycle()
+
+    assert ("priority", "urgent", SPACE_SEMANTIC) in order, (
+        "the mid-cycle priority request was not served during the cycle")
