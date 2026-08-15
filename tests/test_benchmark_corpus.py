@@ -17,7 +17,9 @@ from omniquery.ast import ASTError, parse_query
 from omniquery.benchmark.fixtures import (
     ANCHOR_EPOCH, FIXTURE_BASE_PATH, FIXTURE_FILES, build_fixture_db,
 )
-from omniquery.benchmark.harness import load_corpus, run_benchmark
+from omniquery.benchmark.harness import (
+    _date_placeholder_map, _resolve_date_placeholders, load_corpus, run_benchmark,
+)
 from omniquery.engine import OmniQueryEngine
 from omniquery.validation import AuthContext, ValidationError, validate
 
@@ -37,6 +39,9 @@ _FIXTURE_IDS = {f["id"] for f in FIXTURE_FILES}
 @pytest.fixture(scope="module")
 def corpus():
     entries = load_corpus(CORPUS_PATH)
+    # Calendar-vocabulary entries carry date placeholders resolved against
+    # the same clock the parsers receive (here: the fixture anchor).
+    entries = _resolve_date_placeholders(entries, _date_placeholder_map(ANCHOR_EPOCH))
     assert len(entries) >= 60, f"corpus must have >= 60 entries, has {len(entries)}"
     return entries
 

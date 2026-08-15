@@ -47,3 +47,36 @@ LIKE/GLOB divergence (**FIXED** as hardening). The human audits' findings
 by measurement), fail-open gate (**FIXED**, = #1), missing critic
 regression test (**FIXED**, = #5), undeclared MobileSAM runtime dependency
 (**FIXED**: declared in `requirements-ai.txt`).
+
+## Round: Codex bot PR review (11 findings, head 63841a5)
+
+| # | Finding (severity) | Disposition | Resolution / evidence |
+|---|---|---|---|
+| C1 | `_backend` resolver exception deadlocks worker via `_note_error` re-acquiring the non-reentrant lock (P1) | **FIXED** | Resolution moved outside the lock (cache check → unlocked resolve → `setdefault`); `test_backend_resolver_exception_cached_none_no_deadlock` proves a raising resolver returns None, caches, and never hangs. |
+| C2 | `_fetch_candidates` loads the whole backlog into memory (P1) | **FIXED** | Chunked scanning (500/batch) with merge by `(-mtime, id)`, bounded by `limit`. |
+| C3 | Mask scan-log row recorded even when all mask attempts failed → never retried (P1) | **FIXED** | `_log_masks_if_complete` records completion only when zero localizable findings remain unmasked; `test_failed_mask_generation_is_retried_not_logged_complete` covers the segmenter-recovers path. |
+| C4 | Faces indexed but never clustered automatically (P1) | **FIXED** | Worker triggers `cluster_faces` after any cycle that indexed faces; `test_worker_clusters_faces_after_indexing`. |
+| C5 | AI read routes bypass gallery access rules (P1) | **FIXED** | `create_ai_blueprint(file_access_check=...)`: per-file 404 on duplicates/similar/faces/review/mask; cluster listings now management-guarded; host wires `is_file_accessible`; `test_file_access_check_scopes_per_file_routes`. |
+| C6 | Vector cache tmp-file collisions between concurrent writers (P2) | **FIXED** | Per-writer tmp name (pid + thread ident) with cleanup on failure. |
+| C7 | `topk` compares a stored row's vector against the *active* model version during migration (P2) | **FIXED** | `topk(..., model_version=)` pins the matrix; both service call sites pass the row's own version; `test_topk_pins_model_version_during_migration`. |
+| C8 | Duration SQL only parses MM:SS; H:MM:SS silently misfilters (P2) | **FIXED** | `DURATION_SECONDS_EXPR` branches on colon count; `test_duration_seconds_expr_handles_hms_and_ms`. |
+| C9 | Bare-date `between` adds fixed 86400s → wrong on DST days (P2) | **FIXED** | Upper bound is the constructed next local calendar midnight; `test_between_bare_dates_dst_transition_days` (23h/25h days). |
+| C10 | Folder predicates never match Windows-separator paths (P2) | **FIXED** | Column and values normalized to `/` (`REPLACE(f.path,'\','/')`); `test_folder_predicates_match_windows_separators`. |
+| C11 | Modal "Show results in gallery" link routes collection-origin queries into `collection_view`, dropping the session (P2) | **FIXED** | Link always targets the physical root view (`_root_`), which renders OmniQuery sessions. |
+
+## Round: owner adversarial review (VERDICT: FAIL at 63841a5, 8 findings)
+
+| # | Finding | Disposition | Resolution / evidence |
+|---|---|---|---|
+| O1 | Critic overwrites the grounded `description` with per-defect text; summary pairs rejected text with a margin computed for a different string | **FIXED** | Separate `finding_description`; summary always quotes the step-1 description; `test_qwen_critic_summary_survives_rejected_last_finding` (last finding crop-rejected). |
+| O2 | Term-coverage guard collapses media-type/status classes to one boolean, so "images or videos" with a dropped disjunct scores full coverage | **FIXED** | Per-normalized-value coverage units against the AST's condition values (incl. `in` lists); negative tests for both corpus cases. |
+| O3 | Worker deadlock (same as C1) | **FIXED** | See C1. |
+| O4 | `auto` critic enablement justified by evidence absent from the repo (gitignored report, env-dependent population) | **FIXED** | Constant replaced by `_auto_critic_measurement_passed()`, which reads the now-committed `benchmarks/results/grounding_calibration.json` and requires FAR ≤ 5% / FRR ≤ 30% at the shipped threshold, fail-closed. The probe emits a SHA-256 input manifest; the portrait input is committed (`probes/data/calibration_portrait.png`, public-domain NASA photo). `test_auto_critic_gate_reads_calibration_report`. |
+| O5 | Mask files unlinked before the DB replacement commits → rollback restores rows pointing at deleted PNGs | **FIXED** | Unlink deferred until after commit; `test_store_review_failed_replacement_preserves_old_review_and_mask` injects a mid-transaction constraint failure. |
+| O6 | AI route authorization bypass (same as C5) | **FIXED** | See C5. |
+| O7 | Mask retry contract (same as C3) | **FIXED** | See C3. |
+| O8 | "today/yesterday/this week/this month" implemented as rolling windows; benchmark certifies the bug | **FIXED** | Heuristic resolves calendar vocabulary to local calendar boundaries from the injected clock (bare-date values; ISO Monday weeks); corpus entry now uses date placeholders the harness resolves from the same clock; boundary tests incl. month transition. |
+
+Verdict preamble ("438 automated tests claim has no independent run
+attached"): a GitHub Actions workflow (`.github/workflows/tests.yml`) now
+runs the model-free suite on every push/PR.

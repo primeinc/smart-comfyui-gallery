@@ -33,6 +33,7 @@ import calendar
 import json
 import re
 import time
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from omniquery.parsers import ParserBackend, ParserOutcome, try_validate
@@ -228,7 +229,7 @@ def _and_or_single(conds: List[dict]) -> Optional[dict]:
 class HeuristicBackend(ParserBackend):
     name = "heuristic"
 
-    def parse(self, text: str, now_epoch: float) -> ParserOutcome:  # noqa: ARG002
+    def parse(self, text: str, now_epoch: float) -> ParserOutcome:
         t0 = time.monotonic()
         placeheld, quotes = _extract_quotes(text)
         working = placeheld.lower()
@@ -311,23 +312,28 @@ class HeuristicBackend(ParserBackend):
             return {"field": "mtime", "op": "ge", "value": {"days_ago": n * mult}}
 
         spanned_conds += _apply_rule(working, consumed, _LAST_N_RE, _last_n_builder)
-        # ast.py forbids dicts inside a list, so a relative-date "between"
-        # isn't representable as op="between" with two {"days_ago": N}
-        # elements -- express "yesterday" as an AND of two plain bounds
-        # instead (structurally just a Group, valid anywhere a Cond is).
+        # Calendar vocabulary means calendar boundaries, not rolling
+        # windows: anchored to the injected clock, emitted as bare-date
+        # strings (which the compiler resolves as local calendar days).
+        local_today = date.fromtimestamp(now_epoch)
+        yesterday_iso = (local_today - timedelta(days=1)).isoformat()
+        # ISO convention: the week starts Monday.
+        week_start_iso = (local_today - timedelta(days=local_today.weekday())).isoformat()
+        month_start_iso = local_today.replace(day=1).isoformat()
         spanned_conds += _apply_rule(
             working, consumed, _YESTERDAY_RE,
-            lambda m: {"op": "and", "children": [
-                {"field": "mtime", "op": "ge", "value": {"days_ago": 2}},
-                {"field": "mtime", "op": "lt", "value": {"days_ago": 1}},
-            ]},
+            lambda m: {"field": "mtime", "op": "between",
+                       "value": [yesterday_iso, yesterday_iso]},
         )
-        spanned_conds += _apply_rule(working, consumed, _TODAY_RE,
-                                      lambda m: {"field": "mtime", "op": "ge", "value": {"days_ago": 1}})
+        spanned_conds += _apply_rule(
+            working, consumed, _TODAY_RE,
+            lambda m: {"field": "mtime", "op": "between",
+                       "value": [local_today.isoformat(), local_today.isoformat()]},
+        )
         spanned_conds += _apply_rule(working, consumed, _THIS_WEEK_RE,
-                                      lambda m: {"field": "mtime", "op": "ge", "value": {"days_ago": 7}})
+                                      lambda m: {"field": "mtime", "op": "ge", "value": week_start_iso})
         spanned_conds += _apply_rule(working, consumed, _THIS_MONTH_RE,
-                                      lambda m: {"field": "mtime", "op": "ge", "value": {"days_ago": 30}})
+                                      lambda m: {"field": "mtime", "op": "ge", "value": month_start_iso})
 
         def _from_month_year_builder(m: re.Match) -> Optional[dict]:
             month = _MONTHS.get(m.group(1).lower())

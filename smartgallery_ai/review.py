@@ -352,21 +352,11 @@ class SmolVlmCritic(CriticBackend):
     from `models_dir/smolvlm2-2.2b` or `models_dir/smolvlm2-500m`
     (local_files_only) -- never downloaded at runtime.
 
-    Measured on this stack (CPU, 2026-08-15, see docs/AI_MODELS.md):
-    NEITHER checkpoint produced an image-grounded, schema-valid review.
-    The 500M model parrots the prompt's example instead of describing the
-    image (0/5 valid); the 2.2B model either truncates its JSON or emits a
-    schema-valid COPY of the example for the wrong image (0/2 grounded).
-    That is why `get_critic_backend('auto')` deliberately returns None:
-    a critic that fabricates plausible reviews is worse than no critic.
-    This adapter stays available behind the explicit 'smolvlm' opt-in for
-    experimentation and for stronger future checkpoints using the same
-    directory layout.
-
-    Emits the RAW payload dict; `validate_review_payload` remains the only
-    gate into the database, so schema violations from the model are
-    rejected, never coerced. Note validation cannot catch a schema-valid
-    fabrication -- that is a model-capability problem, hence the opt-in.
+    Explicit 'smolvlm' opt-in only; 'auto' never resolves here (see
+    docs/AI_MODELS.md for the record behind that). Emits the RAW payload
+    dict; `validate_review_payload` remains the only gate into the
+    database. Validation cannot catch a schema-valid fabrication, which is
+    the failure mode that keeps this opt-in.
     """
 
     model_id = "HuggingFaceTB/SmolVLM2"  # refined per provisioned checkpoint
@@ -445,47 +435,56 @@ def _extract_json_object(text: str) -> dict:
     raise ValueError("critic output has an unterminated JSON object")
 
 
-# Gate for 'auto' -> qwen-vl resolution. Set to True ONLY in the commit that
-# records a passing grounded-validity measurement in docs/AI_MODELS.md; the
-# measured record is the sole authority for this flag.
-# MEASURED 2026-08-15 (docs/AI_MODELS.md "Runtime verification record"):
-# 4/4 schema-valid reviews with description-level grounding on the
-# calibration suite (clean / planted-defect / dark / prompt-mismatch);
-# the planted defect (the one finding with ground truth) was detected and
-# localized. Precise scope: the gate grounds descriptions, and after the
-# adversarial-oracle review it is the CONTRASTIVE v2 gate (calibrated
-# FAR 3.1% / FRR 25%, probes/grounding_calibration.py) plus per-finding
-# topical crop verification for localizable findings — a layered filter,
-# not proof of every finding's truth.
-_AUTO_CRITIC_MEASUREMENT_PASSED = True
+# 'auto' -> qwen-vl resolution requires the committed grounding-gate
+# calibration report to meet these bounds at the shipped margin threshold.
+_CALIBRATION_REPORT_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "benchmarks", "results", "grounding_calibration.json")
+_AUTO_CRITIC_MAX_FAR = 0.05
+_AUTO_CRITIC_MAX_FRR = 0.30
+
+
+def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
+    """Whether the calibration report at `report_path` (default: the
+    committed benchmarks/results/grounding_calibration.json, written by
+    probes/grounding_calibration.py) shows FAR/FRR within bounds at the
+    critic's shipped grounding margin. Missing, malformed, or out-of-bounds
+    reports all return False.
+    """
+    try:
+        from smartgallery_ai.critic_qwen import DEFAULT_GROUNDING_MIN_MARGIN
+        with open(report_path or _CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
+            report = json.load(fh)
+        row = next(
+            s for s in report["sweep"]
+            if abs(float(s["margin_threshold"]) - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
+        return (float(row["false_accept_rate"]) <= _AUTO_CRITIC_MAX_FAR
+                and float(row["false_reject_rate"]) <= _AUTO_CRITIC_MAX_FRR)
+    except Exception:
+        return False
 
 
 def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
     """Resolve `config.critic_backend`.
 
     'qwen-vl' loads the decomposed Qwen2.5-VL critic
-    (smartgallery_ai.critic_qwen): grammar-constrained decomposed
-    questioning plus a deterministic CLIP grounding gate — the
-    architecture that fixed the measured failure modes of the monolithic
-    SmolVLM2 attempts (0/7 grounded; they remain explicit-opt-in only via
-    'smolvlm'). Whether 'auto' resolves to the qwen-vl critic is decided
-    strictly by its measured record in docs/AI_MODELS.md — never flipped
-    ahead of the measurement. 'stub' is test-only and never reachable
-    implicitly.
+    (smartgallery_ai.critic_qwen). 'auto' resolves to it only when
+    `_auto_critic_measurement_passed()` accepts the committed calibration
+    evidence. 'smolvlm' is explicit-opt-in; 'stub' is test-only and never
+    reachable implicitly.
     """
     name = config.critic_backend
     if name == "none":
         return None
     if name in ("auto", "qwen-vl"):
-        if name == "auto" and not _AUTO_CRITIC_MEASUREMENT_PASSED:
+        if name == "auto" and not _auto_critic_measurement_passed():
             return None
         try:
             from smartgallery_ai.critic_qwen import QwenVlCritic
 
             from smartgallery_ai.embedders import get_semantic_backend
-            # FAIL CLOSED: the critic's measured record depends on its CLIP
-            # grounding gate, so a missing/broken semantic backend makes the
-            # critic unavailable — never a gate-less critic.
+            # A missing semantic backend makes the critic unavailable;
+            # it must never run without its grounding gate.
             embedder = get_semantic_backend(config)
             if embedder is None:
                 raise BackendUnavailable(
@@ -545,22 +544,18 @@ def store_review(
     always write NULL bbox/mask columns, honoring the `ai_review_findings`
     CHECK regardless of what a `Finding` happens to carry.
     """
+    superseded_masks: list = []
     try:
         old = conn.execute(
             "SELECT review_id FROM ai_reviews WHERE file_id = ? AND rubric_version = ? AND model_id = ?",
             (file_id, rubric_version, model_id),
         ).fetchone()
         if old is not None:
-            # Unlink the superseded findings' mask FILES before dropping the
-            # rows that reference them — otherwise every re-review leaks
-            # orphaned PNGs into the derived cache forever.
-            for (old_mask,) in conn.execute(
+            # Collect superseded mask files now; unlink only after the
+            # replacement commits — rollback() cannot undo os.unlink.
+            superseded_masks = [m for (m,) in conn.execute(
                 "SELECT mask_path FROM ai_review_findings "
-                "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],)):
-                try:
-                    os.unlink(old_mask)
-                except OSError:
-                    pass
+                "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],))]
             conn.execute("DELETE FROM ai_review_findings WHERE review_id = ?", (old[0],))
             conn.execute("DELETE FROM ai_reviews WHERE review_id = ?", (old[0],))
 
@@ -623,10 +618,15 @@ def store_review(
                 ),
             )
         conn.commit()
-        return review_id
     except Exception:
         conn.rollback()
         raise
+    for old_mask in superseded_masks:
+        try:
+            os.unlink(old_mask)
+        except OSError:
+            pass
+    return review_id
 
 
 class SegmenterBackend(ABC):

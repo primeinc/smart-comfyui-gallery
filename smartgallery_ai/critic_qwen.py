@@ -1,40 +1,28 @@
 """Decomposed local VLM critic: Qwen2.5-VL-7B (Apache-2.0) via llama.cpp.
 
-Why decomposed: the measured failure of monolithic small-VLM critics in
-this repo was never "the model can't see" — it was free-form structured
-output (schema violations, truncation, and worst, schema-valid
-fabrication by parroting the prompt's example). This module applies the
-same architecture that made OmniQuery work: the model only ever answers
-SMALL, GRAMMAR-CONSTRAINED questions, and deterministic code assembles
-the typed review.
+The model only ever answers small, grammar-constrained questions;
+deterministic code assembles the typed review. Design rationale and the
+measurement record live in docs/AI_MODELS.md.
 
 Protocol per image:
-  1. DESCRIBE  — short free-text factual description (nothing to parrot).
-  2. GROUND    — deterministic anti-fabrication gate (v2, contrastive):
-                 the description must clear an absolute CLIP-cosine floor
-                 AND beat a generic baseline text on the same image by a
-                 calibrated margin, so vacuous or copied descriptions are
-                 rejected by construction (CriticGroundingError) instead
-                 of storing a plausible lie. This is a coarse filter over
-                 the description stage — per-finding topical verification
-                 happens separately in step 4/5.
+  1. DESCRIBE  — short free-text factual description.
+  2. GROUND    — contrastive gate: the description must clear an absolute
+                 CLIP-cosine floor AND beat a generic baseline text on the
+                 same image by a margin, else CriticGroundingError. This
+                 filters the description stage only; per-finding
+                 verification happens in step 4/5.
   3. ASSESS    — one JSON-schema-constrained call: quality score + up to
-                 3 defects, each typed from the fixed vocabulary with
-                 severity/confidence and a coarse region enum.
-  4. LOCALIZE  — for defects whose TYPE is inherently spatial (anatomy,
-                 artifact, text_render, detail_loss, other) and whose
-                 region is not whole-image: one schema-constrained bbox
-                 call (fractional coords). A finding is localizable ONLY
-                 if this step yields a geometrically valid model-emitted
-                 box; otherwise it becomes a GLOBAL finding (region kept
-                 as text). No region-rectangle fallbacks — invented
-                 geometry is the "fake mask" the ticket forbids.
-  5. ASSEMBLE  — our code builds the payload; prompt_alignment_score is
-                 computed OUTSIDE the VLM as CLIPScore(prompt, image)
-                 mapped to 0-10 (min(10, 25*max(cos,0)) — the standard
-                 CLIPScore w=2.5 scaling on a 0-10 scale). The payload
-                 still goes through validate_review_payload like every
-                 other critic.
+                 3 defects (type from the fixed vocabulary, severity,
+                 confidence, coarse region enum).
+  4. LOCALIZE  — only for defects whose type is inherently spatial and
+                 whose region is not whole-image: one schema-constrained
+                 bbox call. Localizable requires a geometrically valid
+                 model-emitted box; otherwise the finding stays GLOBAL.
+                 There are no region-rectangle fallbacks.
+  5. ASSEMBLE  — deterministic payload assembly; prompt_alignment_score is
+                 CLIPScore(prompt, image) mapped to 0-10
+                 (min(10, 25*max(cos,0))), computed outside the VLM. The
+                 payload still goes through validate_review_payload.
 
 Weights load ONLY from the models dir (never downloaded at runtime):
   <models_dir>/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
@@ -66,34 +54,26 @@ MMPROJ_FILENAMES = (
     "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
 )
 
-# Gate v2 (contrastive), calibrated by probes/grounding_calibration.py
-# (results: benchmarks/results/grounding_calibration.json). The v1
-# absolute-cosine gate was shown by adversarial review to accept vacuous
-# and example-parroting descriptions; v2 additionally requires the
-# description to beat a generic baseline text on the same image by a
-# measured margin — a vacuous description IS the baseline, so it can
-# never pass. At margin >= 0.09 the calibration set shows FAR 3.1% /
-# FRR 25% (the FRR measured on deliberately terse one-line descriptions;
-# the critic's two-sentence descriptions score higher margins).
+# Contrastive gate thresholds. Chosen from the sweep in
+# benchmarks/results/grounding_calibration.json (written by
+# probes/grounding_calibration.py); changing them without re-running that
+# probe invalidates the 'auto' enablement check in review.py.
 DEFAULT_GROUNDING_MIN_COS = 0.20
 DEFAULT_GROUNDING_MIN_MARGIN = 0.09
 GROUNDING_BASELINE_TEXT = "an image with some shapes and colors"
 
 # Per-finding topical verification: a localizable finding's description
-# must beat the baseline on ITS OWN bbox crop (positive margin). This
-# checks that the named defect is visually present in the claimed region
-# (measured: true finding vs its crop +0.083; same text on wrong crop
-# -0.007; invented defect -0.056). It does NOT verify subjective quality
-# judgments — scope documented in AI_MODELS.md.
+# must beat the baseline on its own bbox crop by this margin. Verifies the
+# named defect is visually present in the claimed region, not subjective
+# quality judgments.
 DEFAULT_FINDING_MIN_MARGIN = 0.0
 
 _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
             "bottom-right", "center")
 
-# Only finding types with an inherent spatial locus may be localizable.
-# lighting/style/composition/prompt_mismatch are properties of the whole
-# image; letting a region enum turn them into mask-bearing findings would
-# be exactly the "forced fake mask" the ticket forbids.
+# Only finding types with an inherent spatial locus may be localizable;
+# lighting/style/composition/prompt_mismatch are whole-image properties
+# and must never carry a bbox or mask.
 _LOCALIZABLE_TYPES = frozenset(
     {"anatomy", "artifact", "text_render", "detail_loss", "other"})
 
@@ -218,12 +198,9 @@ class QwenVlCritic(CriticBackend):
                  semantic_embedder: Optional[SemanticEmbedder] = None,
                  grounding_min_cos: float = DEFAULT_GROUNDING_MIN_COS,
                  n_ctx: int = 8192, n_threads: int = 4):
-        # FAIL CLOSED on the grounding dependency: the CLIP gate is the
-        # anti-fabrication mechanism this critic's measured record (and its
-        # 'auto' enablement) relies on. Running the VLM without it would be
-        # a strictly weaker, unmeasured configuration, so it is not allowed
-        # to exist. It also carries prompt-alignment scoring, so a
-        # prompt-bearing review can never silently lose its score.
+        # The CLIP gate is a hard dependency: this critic must not exist in
+        # a gate-less configuration, and the embedder also carries
+        # prompt-alignment scoring.
         if semantic_embedder is None:
             raise BackendUnavailable(
                 "qwen-vl critic requires the semantic (OpenCLIP) backend for "
@@ -312,35 +289,33 @@ class QwenVlCritic(CriticBackend):
         dropped_unverified = 0
         for defect in (assess.get("defects") or [])[:3]:
             region = defect.get("region", "whole-image")
-            # Localizable requires ALL of: an inherently spatial finding
-            # type, a successful model-emitted bbox from the LOCALIZE step,
-            # AND passing the topical crop verification (the named defect
-            # is visually present in the claimed region). No fallbacks: a
-            # finding without a genuine locus becomes GLOBAL, and a finding
-            # naming content its own crop does not show is DROPPED — per
-            # the ticket's no-fake-masks stop condition.
-            description = str(defect.get("what", ""))[:300] or defect["type"]
+            # Localizable requires all of: an inherently spatial finding
+            # type, a valid model-emitted bbox, and passing crop
+            # verification. No fallbacks: without a genuine locus the
+            # finding stays GLOBAL; failing verification drops it.
+            # Kept separate from `description` — the summary must quote the
+            # step-1 description the grounding margin was computed for,
+            # never per-defect text.
+            finding_description = str(defect.get("what", ""))[:300] or defect["type"]
             bbox = None
             if defect["type"] in _LOCALIZABLE_TYPES and region != "whole-image":
                 # 4. LOCALIZE (grammar-constrained bbox for this defect)
                 bbox = self._localize(uri, defect)
                 if bbox is not None and not verify_finding_region(
-                        self._embedder, description, bbox, img):
+                        self._embedder, finding_description, bbox, img):
                     dropped_unverified += 1
                     continue
             localizable = bbox is not None
             if not localizable and region != "whole-image":
-                description = f"{description} (reported region: {region})"
+                finding_description = f"{finding_description} (reported region: {region})"
             finding = {
                 "type": defect["type"],
                 "severity": defect["severity"],
-                # Grammar constrains structure, not numeric ranges; an
-                # out-of-range confidence is the model failing the protocol
-                # and is REJECTED downstream by validate_review_payload —
-                # never clamped into plausibility.
+                # Not clamped: validate_review_payload rejects out-of-range
+                # values.
                 "confidence": defect.get("confidence", 0.5),
                 "localizable": localizable,
-                "description": description,
+                "description": finding_description,
             }
             if localizable:
                 finding["bbox"] = list(bbox)
@@ -361,9 +336,8 @@ class QwenVlCritic(CriticBackend):
                         f"verification failed]")
 
         return {
-            # Not clamped: an out-of-range score is protocol failure and is
-            # rejected by validate_review_payload (the review then errors
-            # rather than storing a laundered number).
+            # Not clamped: validate_review_payload rejects out-of-range
+            # values.
             "quality_score": assess.get("quality_score"),
             "prompt_alignment_score": alignment,
             "summary": summary,

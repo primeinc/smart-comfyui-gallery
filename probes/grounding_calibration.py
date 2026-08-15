@@ -20,6 +20,7 @@ Usage: python3 probes/grounding_calibration.py [--models-dir DIR]
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -34,6 +35,26 @@ from smartgallery_ai import AIConfig  # noqa: E402
 from smartgallery_ai.embedders import get_semantic_backend  # noqa: E402
 
 GENERIC_BASELINE = "an image with some shapes and colors"
+
+# Fixed portrait input, committed with the repo (public-domain NASA
+# photograph of Eileen Collins, distributed as scikit-image's `astronaut`
+# sample). CAL_PORTRAIT_IMAGE overrides it, and the override's file hash is
+# recorded in the report manifest so a changed population is visible.
+DEFAULT_PORTRAIT = os.path.join(REPO, "probes", "data", "calibration_portrait.png")
+
+
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _sha256_pixels(img):
+    return hashlib.sha256(
+        img.size[0].to_bytes(4, "big") + img.size[1].to_bytes(4, "big")
+        + img.convert("RGB").tobytes()).hexdigest()
 
 VACUOUS = [
     "This is an image. It contains some shapes and colors.",
@@ -53,37 +74,57 @@ UNRELATED = [
 
 
 def build_images():
+    """Returns (imgs, manifest): the calibration population plus one
+    manifest row per image pinning its exact pixels (and, for file-backed
+    inputs, the source file's hash)."""
     rng = np.random.default_rng(23)
     imgs = {}
-    astro_path = os.environ.get("CAL_PORTRAIT_IMAGE")
+    manifest = []
+
+    def _add(name, img, desc, source, file_path=None):
+        imgs[name] = (img, desc)
+        row = {"image": name, "source": source,
+               "pixels_sha256": _sha256_pixels(img)}
+        if file_path is not None:
+            row["file"] = os.path.relpath(file_path, REPO)
+            row["file_sha256"] = _sha256_file(file_path)
+        manifest.append(row)
+
+    astro_path = os.environ.get("CAL_PORTRAIT_IMAGE", DEFAULT_PORTRAIT)
     if astro_path and os.path.isfile(astro_path):
         astro = Image.open(astro_path).convert("RGB").resize((512, 512))
-        imgs["portrait"] = (astro, "a person wearing an orange astronaut "
-                                    "space suit with patches, in front of a flag")
+        _add("portrait", astro,
+             "a person wearing an orange astronaut space suit with patches, "
+             "in front of a flag",
+             "portrait file, resized to 512x512", file_path=astro_path)
         flawed = astro.copy()
         ImageDraw.Draw(flawed).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
-        imgs["portrait-defect"] = (
-            flawed, "a person in an orange space suit, with a solid red "
-                    "square artifact in the lower right")
-        imgs["portrait-dark"] = (
-            ImageEnhance.Brightness(astro).enhance(0.12),
-            "a very dark, underexposed photo of a person in a space suit")
+        _add("portrait-defect", flawed,
+             "a person in an orange space suit, with a solid red square "
+             "artifact in the lower right",
+             "portrait + planted 120px red square at (300,300)",
+             file_path=astro_path)
+        _add("portrait-dark", ImageEnhance.Brightness(astro).enhance(0.12),
+             "a very dark, underexposed photo of a person in a space suit",
+             "portrait at brightness 0.12", file_path=astro_path)
     noise = Image.fromarray((rng.random((512, 512, 3)) * 255).astype("uint8"))
-    imgs["noise"] = (noise, "dense multicolored static noise with no subject")
+    _add("noise", noise, "dense multicolored static noise with no subject",
+         "np.random.default_rng(23) uniform noise 512x512")
     yy, xx = np.mgrid[0:512, 0:512].astype(np.float32) / 512.0
-    imgs["gradient"] = (
-        Image.fromarray(np.stack([xx * 255, yy * 255, (1 - xx) * 255],
-                                 axis=-1).astype("uint8")),
-        "a smooth colorful gradient from orange to blue with no objects")
-    imgs["red"] = (Image.new("RGB", (512, 512), (220, 20, 20)),
-                   "a plain solid red image")
+    _add("gradient",
+         Image.fromarray(np.stack([xx * 255, yy * 255, (1 - xx) * 255],
+                                  axis=-1).astype("uint8")),
+         "a smooth colorful gradient from orange to blue with no objects",
+         "deterministic RGB gradient 512x512")
+    _add("red", Image.new("RGB", (512, 512), (220, 20, 20)),
+         "a plain solid red image", "solid RGB(220,20,20) 512x512")
     for name in ("filter_panel.png", "compare.png"):
         p = os.path.join(REPO, "assets", name)
         if os.path.isfile(p):
-            imgs[f"screenshot:{name}"] = (
-                Image.open(p).convert("RGB"),
-                "a screenshot of a software user interface with panels and text")
-    return imgs
+            _add(f"screenshot:{name}", Image.open(p).convert("RGB"),
+                 "a screenshot of a software user interface with panels and text",
+                 "repo asset", file_path=p)
+    return imgs, manifest
 
 
 def main() -> int:
@@ -98,7 +139,7 @@ def main() -> int:
         print("FAIL: OpenCLIP weights not provisioned")
         return 2
 
-    imgs = build_images()
+    imgs, manifest = build_images()
 
     def cos(a, b):
         return float(np.dot(a / np.linalg.norm(a), b / np.linalg.norm(b)))
@@ -127,7 +168,16 @@ def main() -> int:
                       "false_accept_rate": round(len(far) / n_bad, 3),
                       "false_reject_rate": round(len(frr) / n_good, 3)})
 
-    report = {"baseline_text": GENERIC_BASELINE, "pairs": rows, "sweep": sweep}
+    report = {
+        "baseline_text": GENERIC_BASELINE,
+        "backend": {"model_id": sem.model_id, "model_version": sem.model_version},
+        "inputs": manifest,
+        "description_classes": {
+            "vacuous": VACUOUS, "parroted": PARROTED, "unrelated": UNRELATED,
+        },
+        "pairs": rows,
+        "sweep": sweep,
+    }
     out = os.path.join(REPO, "benchmarks", "results",
                        "grounding_calibration.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)

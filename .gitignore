@@ -64,4 +64,8 @@ temp
 .sqlite_cache/
 .thumbnails_cache/
 .omniquery/
-benchmarks/results/
+# Benchmark scratch stays out, but the evidence reports that shipped
+# constants are derived from must be committed and reviewable.
+benchmarks/results/*
+!benchmarks/results/grounding_calibration.json
+!benchmarks/results/wi31_benchmark.json

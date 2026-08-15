@@ -47,8 +47,8 @@ def test_golden_enum_in():
 def test_golden_folder_contains():
     cq = _compile({"where": {"field": "folder", "op": "contains", "value": "landscapes"}})
     assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f WHERE (f.path LIKE ? ESCAPE '\\' "
-        "AND f.path LIKE ? ESCAPE '\\') ORDER BY f.id ASC LIMIT ?"
+        "SELECT DISTINCT f.id FROM files f WHERE (REPLACE(f.path, '\\', '/') LIKE ? ESCAPE '\\' "
+        "AND REPLACE(f.path, '\\', '/') LIKE ? ESCAPE '\\') ORDER BY f.id ASC LIMIT ?"
     )
     assert cq.params == ("/gallery/%", "%landscapes%", 500)
 
@@ -56,10 +56,73 @@ def test_golden_folder_contains():
 def test_golden_folder_eq():
     cq = _compile({"where": {"field": "folder", "op": "eq", "value": "landscapes/2024"}})
     assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f WHERE f.path LIKE ? ESCAPE '\\' "
+        "SELECT DISTINCT f.id FROM files f WHERE REPLACE(f.path, '\\', '/') LIKE ? ESCAPE '\\' "
         "ORDER BY f.id ASC LIMIT ?"
     )
     assert cq.params == ("/gallery/landscapes/2024/%", 500)
+
+
+def test_folder_predicates_match_windows_separators():
+    """Folder predicates must match rows regardless of which separator the
+    scanning host stored, and accept backslashes in base_path/value."""
+    cq = _compile({"where": {"field": "folder", "op": "eq", "value": "landscapes\\2024"}},
+                  base_path="C:\\gallery")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT)")
+    conn.executemany("INSERT INTO files VALUES (?, ?)", [
+        ("p1", "C:/gallery/landscapes/2024/b.png"),
+        ("w1", "C:\\gallery\\landscapes\\2024\\a.png"),
+        ("x1", "C:\\gallery\\other\\c.png"),
+    ])
+    assert [r[0] for r in conn.execute(cq.sql, cq.params)] == ["p1", "w1"]
+
+    cq2 = _compile({"where": {"field": "folder", "op": "contains", "value": "landscapes"}},
+                   base_path="C:\\gallery")
+    assert [r[0] for r in conn.execute(cq2.sql, cq2.params)] == ["p1", "w1"]
+
+
+def test_between_bare_dates_dst_transition_days():
+    """A bare-date 'between' upper bound extends to the next local calendar
+    midnight, which is 23h away on spring-forward day and 25h on fall-back
+    day — never a fixed 86400s."""
+    import os as _os
+    import time as _time
+
+    old_tz = _os.environ.get("TZ")
+    _os.environ["TZ"] = "America/New_York"
+    _time.tzset()
+    try:
+        spring = _compile({"where": {"field": "mtime", "op": "between",
+                                     "value": ["2025-03-09", "2025-03-09"]}})
+        lo, hi, _ = spring.params
+        assert hi - lo == 23 * 3600.0
+        fall = _compile({"where": {"field": "mtime", "op": "between",
+                                   "value": ["2025-11-02", "2025-11-02"]}})
+        lo2, hi2, _ = fall.params
+        assert hi2 - lo2 == 25 * 3600.0
+    finally:
+        if old_tz is None:
+            _os.environ.pop("TZ", None)
+        else:
+            _os.environ["TZ"] = old_tz
+        _time.tzset()
+
+
+def test_duration_seconds_expr_handles_hms_and_ms():
+    """duration is stored as text in either MM:SS or H:MM:SS."""
+    cq = _compile({"where": {"field": "duration_seconds", "op": "ge", "value": 3600}})
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, duration TEXT)")
+    conn.executemany("INSERT INTO files VALUES (?, '', ?)", [
+        ("long", "1:02:03"),   # 3723s
+        ("short", "02:03"),    # 123s
+        ("nodur", None),
+    ])
+    assert [r[0] for r in conn.execute(cq.sql, cq.params)] == ["long"]
+
+    cq2 = _compile({"where": {"field": "duration_seconds", "op": "between",
+                              "value": [120, 300]}})
+    assert [r[0] for r in conn.execute(cq2.sql, cq2.params)] == ["short"]
 
 
 def test_golden_mtime_between_bare_dates_covers_whole_days():

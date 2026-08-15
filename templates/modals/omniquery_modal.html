@@ -508,7 +508,10 @@ target_audience (TEXT)</pre>
                 ${omniSqlAstDetails(data)}`;
         }
 
-        const galleryUrl = `{{ url_for('gallery_view', folder_key=current_folder_key) }}?omniquery_id=${encodeURIComponent(data.session_id)}`;
+        // Always land on the physical root view: OmniQuery results are
+        // library-global, and a collection_* folder_key would redirect to
+        // collection_view, which does not render omniquery sessions.
+        const galleryUrl = `{{ url_for('gallery_view', folder_key='_root_') }}?omniquery_id=${encodeURIComponent(data.session_id)}`;
         return `
             <div style="padding:14px; border-radius:8px; background:rgba(52,219,152,0.1); border:1px solid #34db98;">
                 <div style="color:#34db98; font-weight:bold; font-size:1.1rem;">✅ ${data.count} result${data.count === 1 ? '' : 's'} found</div>

@@ -514,3 +514,43 @@ def test_ai_resolvers_end_to_end_with_omniquery_engine(fixture):
     )
     assert unknown_file_outcome.ok
     assert unknown_file_outcome.ids == []
+
+
+# --- per-file authorization (file_access_check) -------------------------------
+
+
+def test_file_access_check_scopes_per_file_routes(tmp_path):
+    """Every per-file read route (including mask fetches) must 404 for a
+    file the host's access policy denies, and still serve visible files."""
+    db_path = str(tmp_path / "authz.sqlite")
+    cache_dir = str(tmp_path / "cache")
+    conn = _make_conn(db_path)
+
+    _add_file(conn, "vis")
+    _add_file(conn, "hid")
+    for fid in ("vis", "hid"):
+        result = ReviewResult(
+            quality_score=5.0, prompt_alignment_score=None, summary="s",
+            findings=[Finding(type="artifact", severity="low", confidence=0.9,
+                              localizable=True, description="spot",
+                              bbox=(0.25, 0.25, 0.5, 0.5))])
+        store_review(conn, fid, result, "critic-x", "v1", RUBRIC_VERSION,
+                     None, 1000.0, 2000.0)
+    hid_finding = conn.execute(
+        "SELECT finding_id FROM ai_review_findings WHERE file_id='hid'").fetchone()[0]
+    img = Image.new("RGB", (32, 32), (40, 40, 40))
+    generate_finding_mask(conn, cache_dir, img, "hid", hid_finding, StubSegmenter())
+    conn.close()
+
+    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
+                      cache_dir=cache_dir, ephemeral_index=True)
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_ai_blueprint(config, file_access_check=lambda fid: fid == "vis"),
+        url_prefix=_PREFIX)
+    client = app.test_client()
+
+    assert client.get(f"{_PREFIX}/review/vis").status_code == 200
+    for path in ("/review/hid", "/duplicates/hid", "/similar/hid",
+                 "/faces/hid", f"/review/mask/{hid_finding}"):
+        assert client.get(f"{_PREFIX}{path}").status_code == 404, path

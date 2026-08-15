@@ -280,3 +280,26 @@ def test_invalidate_drops_memory_and_disk_cache(tmp_path):
     store.invalidate("semantic")
     assert not cache_file.exists()
     assert "semantic" not in store._memory
+
+
+def test_topk_pins_model_version_during_migration():
+    """A query vector taken from a stored row must be compared only against
+    rows of that row's own model_version — even when a newer version has
+    become the space's active one."""
+    conn = make_conn()
+    add_files(conn, ["old_a", "old_b", "new_a", "new_b"])
+    store = VectorStore(ephemeral=True)
+
+    va = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    vb = np.array([0.9, 0.1, 0.0, 0.0], dtype=np.float32)
+    store.add(conn, "old_a", "semantic", "m", "v1", va, 1000.0)
+    store.add(conn, "old_b", "semantic", "m", "v1", vb, 1000.0)
+    store.add(conn, "new_a", "semantic", "m", "v2", va, 1000.0)
+    store.add(conn, "new_b", "semantic", "m", "v2", vb, 1000.0)
+
+    pinned = store.topk(conn, "semantic", va, k=10, model_version="v1")
+    assert [fid for fid, _ in pinned] == ["old_a", "old_b"]
+
+    # Unpinned falls back to the active (most recently computed) version.
+    active = store.topk(conn, "semantic", va, k=10)
+    assert [fid for fid, _ in active] == ["new_a", "new_b"]

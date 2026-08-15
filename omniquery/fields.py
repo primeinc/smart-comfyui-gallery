@@ -53,10 +53,19 @@ _DATETIME_CMP = frozenset({"eq", "ne", "lt", "le", "gt", "ge", "between"})
 
 # --- trusted SQL expression templates (static; never carry user data) ------
 #
-# duration is stored as 'MM:SS' text; guarded against empty/no-colon values.
+# duration is stored as 'MM:SS' text, or 'H:MM:SS' for media over an hour
+# (core format_duration emits both); guarded against empty/no-colon values.
+# Colon count distinguishes the two forms.
 DURATION_SECONDS_EXPR = (
-    "(CASE WHEN f.duration IS NULL OR f.duration = '' "
+    "(CASE "
+    "WHEN f.duration IS NULL OR f.duration = '' "
     "OR instr(f.duration, ':') = 0 THEN NULL "
+    "WHEN length(f.duration) - length(replace(f.duration, ':', '')) = 2 THEN "
+    "CAST(substr(f.duration, 1, instr(f.duration, ':') - 1) AS INTEGER) * 3600 "
+    "+ CAST(substr(substr(f.duration, instr(f.duration, ':') + 1), 1, "
+    "instr(substr(f.duration, instr(f.duration, ':') + 1), ':') - 1) AS INTEGER) * 60 "
+    "+ CAST(substr(substr(f.duration, instr(f.duration, ':') + 1), "
+    "instr(substr(f.duration, instr(f.duration, ':') + 1), ':') + 1) AS INTEGER) "
     "ELSE CAST(substr(f.duration, 1, instr(f.duration, ':') - 1) AS INTEGER) * 60 "
     "+ CAST(substr(f.duration, instr(f.duration, ':') + 1) AS INTEGER) END)"
 )

@@ -107,14 +107,17 @@ def create_ai_resolvers(config: AIConfig) -> dict:
         conn = _connect(config)
         try:
             row = conn.execute(
-                "SELECT vector FROM ai_embeddings WHERE file_id = ? AND space = ?",
+                "SELECT vector, model_version FROM ai_embeddings "
+                "WHERE file_id = ? AND space = ?",
                 (file_id, space),
             ).fetchone()
             if row is None:
                 return []
             query_vec = np.frombuffer(row["vector"], dtype="<f4")
             store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
-            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id])
+            # Pin to the query row's model version (see /similar).
+            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id],
+                                   model_version=row["model_version"])
         finally:
             conn.close()
         return [fid for fid, _score in neighbors]
@@ -203,10 +206,22 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     return result
 
 
-def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> Blueprint:
-    """Build the AI DAM Flask blueprint. `guard`, if given, is applied to
-    the mutating endpoints (recluster, feedback POST, index POST) -- the
-    caller passes its own auth decorator (e.g. `management_api_only`)."""
+def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
+                        file_access_check: Optional[Callable[[str], bool]] = None,
+                        ) -> Blueprint:
+    """Build the AI DAM Flask blueprint.
+
+    `guard`, if given, is applied to the mutating endpoints (recluster,
+    feedback POST, index POST) AND to cross-file enumeration endpoints
+    (cluster listings, feedback export) -- the caller passes its own auth
+    decorator (e.g. `management_api_only`).
+
+    `file_access_check(file_id) -> bool`, if given, gates every per-file
+    read route (similar/duplicates/faces/review, and masks via their
+    finding's file) with the host app's per-file visibility policy (e.g.
+    `is_file_accessible`), so restricted-mode viewers cannot read derived
+    AI metadata for files the normal gallery routes would refuse to serve.
+    Inaccessible files answer 404, indistinguishable from nonexistent."""
     bp = Blueprint("aidam", __name__)
 
     def _requires_enabled(view_func: Callable) -> Callable:
@@ -221,6 +236,10 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
         if guarded and guard is not None:
             view_func = guard(view_func)
         return _requires_enabled(view_func)
+
+    def _check_file_access(file_id: str) -> None:
+        if file_access_check is not None and not file_access_check(file_id):
+            abort(404)
 
     # -- GET /status : always reports, even when disabled -----------------------
 
@@ -277,6 +296,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
     # -- GET /duplicates/<file_id> -----------------------------------------------
 
     def duplicates(file_id: str):
+        _check_file_access(file_id)
         max_distance = request.args.get("max_distance", config.near_dup_max_distance, type=int)
         conn = _connect(config)
         try:
@@ -292,6 +312,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
     # -- GET /similar/<file_id> --------------------------------------------------
 
     def similar(file_id: str):
+        _check_file_access(file_id)
         space = request.args.get("space", SPACE_SEMANTIC)
         if space not in (SPACE_SEMANTIC, SPACE_VISUAL):
             return jsonify({"enabled": True, "error": f"invalid space: {space!r}"}), 400
@@ -299,7 +320,8 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
         conn = _connect(config)
         try:
             row = conn.execute(
-                "SELECT vector FROM ai_embeddings WHERE file_id = ? AND space = ?", (file_id, space)
+                "SELECT vector, model_version FROM ai_embeddings "
+                "WHERE file_id = ? AND space = ?", (file_id, space)
             ).fetchone()
             if row is None:
                 return jsonify({
@@ -308,7 +330,11 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
                 })
             query_vec = np.frombuffer(row["vector"], dtype="<f4")
             store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
-            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id])
+            # Pin candidates to the query row's OWN model version: mid-
+            # migration, the space's most recent version may differ, and
+            # cross-version cosine is meaningless (or a dim mismatch).
+            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id],
+                                   model_version=row["model_version"])
         finally:
             conn.close()
         return jsonify({
@@ -319,6 +345,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
     # -- GET /faces/<file_id> -----------------------------------------------------
 
     def faces_for_file(file_id: str):
+        _check_file_access(file_id)
         conn = _connect(config)
         try:
             rows = conn.execute(
@@ -413,6 +440,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
     # -- GET /review/<file_id> -----------------------------------------------------
 
     def review_for_file(file_id: str):
+        _check_file_access(file_id)
         conn = _connect(config)
         try:
             review_row = conn.execute(
@@ -478,12 +506,15 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
         conn = _connect(config)
         try:
             row = conn.execute(
-                "SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)
+                "SELECT mask_path, file_id FROM ai_review_findings "
+                "WHERE finding_id = ?", (finding_id,)
             ).fetchone()
         finally:
             conn.close()
         if row is None or not row["mask_path"]:
             abort(404)
+        # A mask belongs to a file: the caller must be allowed to see it.
+        _check_file_access(row["file_id"])
 
         # Containment is checked against the masks/ subdirectory (the only
         # place the writer puts masks), not the whole cache dir.
@@ -554,10 +585,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
     bp.add_url_rule("/duplicates/<file_id>", "duplicates", _wrap(duplicates), methods=["GET"])
     bp.add_url_rule("/similar/<file_id>", "similar", _wrap(similar), methods=["GET"])
     bp.add_url_rule("/faces/<file_id>", "faces_for_file", _wrap(faces_for_file), methods=["GET"])
-    bp.add_url_rule("/faces/clusters", "faces_clusters", _wrap(faces_clusters), methods=["GET"])
+    # Cluster listings enumerate metadata ACROSS files, so per-file
+    # visibility checks cannot scope them; they carry the management guard
+    # (open in local mode, privileged-only in restricted modes).
+    bp.add_url_rule("/faces/clusters", "faces_clusters",
+                    _wrap(faces_clusters, guarded=True), methods=["GET"])
     bp.add_url_rule(
         "/faces/clusters/<int:cluster_id>", "faces_cluster_detail",
-        _wrap(faces_cluster_detail), methods=["GET"],
+        _wrap(faces_cluster_detail, guarded=True), methods=["GET"],
     )
     bp.add_url_rule(
         "/faces/recluster", "faces_recluster",

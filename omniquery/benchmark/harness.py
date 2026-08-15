@@ -39,6 +39,7 @@ import resource
 import time
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -74,6 +75,32 @@ def load_corpus(corpus_path: Path) -> List[dict]:
             if line:
                 entries.append(json.loads(line))
     return entries
+
+
+def _date_placeholder_map(now_epoch: float) -> Dict[str, str]:
+    """Calendar anchors for corpus placeholders, derived from the SAME
+    injected clock the parsers receive. The corpus can't hardcode dates for
+    calendar vocabulary ("yesterday" has no fixed value), so it carries
+    tokens and the harness resolves them with the calendar-boundary
+    semantics the parsers are contractually required to implement:
+    local-timezone days, ISO weeks starting Monday, calendar months."""
+    local_today = date.fromtimestamp(now_epoch)
+    return {
+        "<today>": local_today.isoformat(),
+        "<yesterday>": (local_today - timedelta(days=1)).isoformat(),
+        "<week_start>": (local_today - timedelta(days=local_today.weekday())).isoformat(),
+        "<month_start>": local_today.replace(day=1).isoformat(),
+    }
+
+
+def _resolve_date_placeholders(obj: Any, mapping: Dict[str, str]) -> Any:
+    if isinstance(obj, dict):
+        return {k: _resolve_date_placeholders(v, mapping) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_resolve_date_placeholders(v, mapping) for v in obj]
+    if isinstance(obj, str) and obj in mapping:
+        return mapping[obj]
+    return obj
 
 
 def _build_fixture_engine() -> OmniQueryEngine:
@@ -227,6 +254,7 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     JSON report to `out_path` if given, and always returns the report dict.
     """
     entries = load_corpus(Path(corpus_path))
+    entries = _resolve_date_placeholders(entries, _date_placeholder_map(now_epoch))
     engine = _build_fixture_engine()
 
     instances: Dict[str, ParserBackend] = {

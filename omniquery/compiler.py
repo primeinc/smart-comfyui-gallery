@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from omniquery import fields
@@ -195,16 +195,21 @@ def _build_text(spec: fields.FieldSpec, op: str, value: Any,
 
 
 def _build_folder(op: str, value: str, params: CompileParams) -> Tuple[str, List[Any]]:
-    base = params.base_path.rstrip("/\\")
-    folder = value.strip("/\\")
+    # Stored paths carry whichever separator the scanning host used, so a
+    # Windows-scanned library stores 'C:\gallery\output\foo.png'. Normalize
+    # both the column and every compared value to '/' so folder predicates
+    # match regardless of the separator convention on disk.
+    column = "REPLACE(f.path, '\\', '/')"
+    base = params.base_path.replace("\\", "/").rstrip("/")
+    folder = value.replace("\\", "/").strip("/")
     if op == "eq":
         pattern = _escape_like(f"{base}/{folder}/") + "%"
-        return "f.path LIKE ? ESCAPE '\\'", [pattern]
+        return f"{column} LIKE ? ESCAPE '\\'", [pattern]
     # contains: file lives somewhere under base_path AND the folder value
     # appears anywhere in its path.
     base_pattern = _escape_like(base) + "/%"
     folder_pattern = "%" + _escape_like(folder) + "%"
-    return ("(f.path LIKE ? ESCAPE '\\' AND f.path LIKE ? ESCAPE '\\')",
+    return (f"({column} LIKE ? ESCAPE '\\' AND {column} LIKE ? ESCAPE '\\')",
             [base_pattern, folder_pattern])
 
 
@@ -316,7 +321,12 @@ def _build_datetime(spec: fields.FieldSpec, op: str, value: Any,
         lo_epoch, _ = _resolve_datetime(lo_raw, params.now_epoch)
         hi_epoch, hi_is_bare_date = _resolve_datetime(hi_raw, params.now_epoch)
         if hi_is_bare_date:
-            hi_epoch += 86400.0  # whole day: up to (exclusive) the next midnight
+            # Whole day: up to (exclusive) the next local calendar midnight,
+            # constructed as a date rather than midnight + 86400s -- on DST
+            # transition days the local day is 23 or 25 hours long, so a
+            # fixed offset would land an hour off the boundary.
+            next_day = datetime.strptime(hi_raw, "%Y-%m-%d") + timedelta(days=1)
+            hi_epoch = _local_epoch(next_day)
         return f"{column} >= ? AND {column} < ?", [lo_epoch, hi_epoch]
     epoch, _ = _resolve_datetime(value, params.now_epoch)
     return f"{column} {_CMP_SQL[op]} ?", [epoch]

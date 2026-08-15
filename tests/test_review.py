@@ -469,3 +469,126 @@ def test_qwen_critic_requires_semantic_embedder():
                     semantic_backend="none", critic_backend="qwen-vl")
     with _pytest.raises(BackendUnavailable):
         get_critic_backend(cfg2)
+
+
+# --- store_review replacement vs. mask files ---------------------------------
+
+
+def _plant_mask(conn, finding_id, tmp_path, name="old_mask.png"):
+    mask_file = tmp_path / name
+    mask_file.write_bytes(b"mask-bytes")
+    conn.execute(
+        "UPDATE ai_review_findings SET mask_path = ?, mask_model_id = 'seg', "
+        "mask_model_version = 'v1' WHERE finding_id = ?",
+        (str(mask_file), finding_id))
+    conn.commit()
+    return mask_file
+
+
+def test_store_review_failed_replacement_preserves_old_review_and_mask(tmp_path):
+    """A replacement that fails mid-transaction must roll back to the old
+    review AND leave its mask file on disk — the file may only be unlinked
+    once the replacement has committed."""
+    conn = make_conn()
+    add_file(conn, "f1")
+    finding_id = _store_one_finding(conn, "f1", localizable=True, bbox=(0.25, 0.25, 0.5, 0.5))
+    mask_file = _plant_mask(conn, finding_id, tmp_path)
+
+    bad = ReviewResult(
+        quality_score=5.0, prompt_alignment_score=None, summary="new",
+        findings=[Finding(type="artifact", severity="catastrophic",
+                          confidence=0.9, localizable=False, description="d")])
+    with pytest.raises(sqlite3.IntegrityError):
+        store_review(conn, "f1", bad, "critic-x", "v1", "rubric-1", None, 1000.0, 3000.0)
+
+    row = conn.execute(
+        "SELECT r.summary, fi.mask_path FROM ai_reviews r "
+        "JOIN ai_review_findings fi ON fi.review_id = r.review_id").fetchone()
+    assert row == ("s", str(mask_file))
+    assert mask_file.exists()
+
+
+def test_store_review_successful_replacement_unlinks_old_mask(tmp_path):
+    conn = make_conn()
+    add_file(conn, "f1")
+    finding_id = _store_one_finding(conn, "f1", localizable=True, bbox=(0.25, 0.25, 0.5, 0.5))
+    mask_file = _plant_mask(conn, finding_id, tmp_path)
+
+    good = ReviewResult(quality_score=6.0, prompt_alignment_score=None,
+                        summary="replacement", findings=[])
+    store_review(conn, "f1", good, "critic-x", "v1", "rubric-1", None, 1000.0, 3000.0)
+    assert conn.execute("SELECT summary FROM ai_reviews").fetchone()[0] == "replacement"
+    assert not mask_file.exists()
+
+
+# --- 'auto' critic enablement is derived from committed evidence --------------
+
+
+def test_auto_critic_gate_reads_calibration_report(tmp_path):
+    import json as _json
+
+    from smartgallery_ai.critic_qwen import DEFAULT_GROUNDING_MIN_MARGIN
+    from smartgallery_ai.review import (
+        _AUTO_CRITIC_MAX_FAR, _AUTO_CRITIC_MAX_FRR, _auto_critic_measurement_passed,
+    )
+
+    def write(path, far, frr, thr=DEFAULT_GROUNDING_MIN_MARGIN):
+        with open(path, "w") as fh:
+            _json.dump({"sweep": [{"margin_threshold": thr,
+                                   "false_accept_rate": far,
+                                   "false_reject_rate": frr}]}, fh)
+
+    ok = str(tmp_path / "ok.json")
+    write(ok, _AUTO_CRITIC_MAX_FAR, _AUTO_CRITIC_MAX_FRR)
+    assert _auto_critic_measurement_passed(ok) is True
+
+    bad_far = str(tmp_path / "far.json")
+    write(bad_far, _AUTO_CRITIC_MAX_FAR + 0.01, 0.0)
+    assert _auto_critic_measurement_passed(bad_far) is False
+
+    bad_frr = str(tmp_path / "frr.json")
+    write(bad_frr, 0.0, _AUTO_CRITIC_MAX_FRR + 0.01)
+    assert _auto_critic_measurement_passed(bad_frr) is False
+
+    wrong_thr = str(tmp_path / "thr.json")
+    write(wrong_thr, 0.0, 0.0, thr=DEFAULT_GROUNDING_MIN_MARGIN + 0.05)
+    assert _auto_critic_measurement_passed(wrong_thr) is False
+
+    assert _auto_critic_measurement_passed(str(tmp_path / "absent.json")) is False
+
+    # The committed evidence itself must satisfy the bounds ('auto' ships on).
+    assert _auto_critic_measurement_passed() is True
+
+
+# --- summary quotes the grounded description, never rejected finding text -----
+
+
+def test_qwen_critic_summary_survives_rejected_last_finding(monkeypatch):
+    """When the final defect fails crop verification, the summary must keep
+    quoting the step-1 (grounded) description; the rejected defect text must
+    not appear anywhere in the payload."""
+    import json as _json
+
+    from smartgallery_ai import critic_qwen as CQ
+
+    critic = object.__new__(CQ.QwenVlCritic)
+    critic._embedder = object()  # patched functions below never touch it
+    critic._grounding_min_cos = CQ.DEFAULT_GROUNDING_MIN_COS
+
+    chats = iter([
+        "A cat sitting on a red sofa. The room is bright.",              # DESCRIBE
+        _json.dumps({"quality_score": 7.0, "defects": [
+            {"type": "artifact", "severity": "low", "confidence": 0.9,
+             "region": "bottom-right", "what": "fabricated glitch text"}]}),  # ASSESS
+        _json.dumps({"x": 0.6, "y": 0.6, "w": 0.2, "h": 0.2}),           # LOCALIZE
+    ])
+    monkeypatch.setattr(CQ.QwenVlCritic, "_chat",
+                        lambda self, uri, text, schema, max_tokens: next(chats))
+    monkeypatch.setattr(CQ, "check_grounding", lambda *a, **k: 0.12)
+    monkeypatch.setattr(CQ, "verify_finding_region", lambda *a, **k: False)
+
+    payload = critic.review(solid_color_image(size=(64, 64)), None, "rubric-1")
+    assert payload["findings"] == []
+    assert payload["summary"].startswith("A cat sitting on a red sofa.")
+    assert "fabricated glitch text" not in payload["summary"]
+    assert "1 finding(s) dropped" in payload["summary"]

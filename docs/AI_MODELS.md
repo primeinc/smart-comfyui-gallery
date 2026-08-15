@@ -111,9 +111,17 @@ Everything marked *runtime-verified* above was proven live, not statically:
   image-grounded reviews** on the calibration suite (clean 8.0 / planted
   defect detected+localized / dark still grounded / mismatched-prompt
   noise 0.0 quality, 3.0 alignment), with the grounding gate verified to
-  reject fabricated and unrelated descriptions on negative cases. This is
-  the record `_AUTO_CRITIC_MEASUREMENT_PASSED` refers to. **Scope
-  honesty:** the gate grounds the stage-1 *description*; per-finding
+  reject fabricated and unrelated descriptions on negative cases.
+  `critic_backend='auto'` enablement is no longer a hand-set constant: at
+  resolution time `smartgallery_ai.review._auto_critic_measurement_passed()`
+  reads the **committed** calibration report
+  `benchmarks/results/grounding_calibration.json` (written by
+  `probes/grounding_calibration.py`, whose input population is pinned by a
+  SHA-256 manifest over the committed `probes/data/calibration_portrait.png`
+  plus deterministic generated images) and requires FAR ≤ 5% / FRR ≤ 30% at
+  the shipped margin threshold; a missing or failing report disables
+  `auto`. **Scope honesty:** the gate grounds the stage-1 *description*;
+  per-finding
   grounding is only evidenced by the planted-defect case, the calibration
   suite is 4 images, and the 0.20 threshold was calibrated on a small
   description sample — it is one defense layer alongside decomposition

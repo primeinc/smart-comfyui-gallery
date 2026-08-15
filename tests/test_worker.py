@@ -412,3 +412,115 @@ def test_worker_sweeps_orphaned_mask_dirs(tmp_path):
     finally:
         worker.stop(timeout=2.0)
     assert _os.path.isfile(str(cache / "masks" / "keep1" / "1.png"))
+
+
+def test_backend_resolver_exception_cached_none_no_deadlock(tmp_path):
+    """A raising resolver must record the error, cache None, and return —
+    without re-acquiring the worker lock from inside the locked section."""
+    import threading
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="none",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
+
+    calls = []
+
+    def bad_resolver(cfg):
+        calls.append(1)
+        raise RuntimeError("resolver exploded")
+
+    out = {}
+
+    def run():
+        out["first"] = worker._backend("boom", bad_resolver)
+        out["second"] = worker._backend("boom", bad_resolver)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=5.0)
+    assert not t.is_alive(), "worker._backend deadlocked on a raising resolver"
+    assert out["first"] is None and out["second"] is None
+    assert len(calls) == 1  # the failure is cached, not re-probed
+
+
+class _ExplodingSegmenter:
+    model_id = "boom-segmenter"
+    model_version = "boom-v1"
+
+    def segment(self, img, bbox=None, points=None):
+        raise RuntimeError("segmentation failed")
+
+
+def test_failed_mask_generation_is_retried_not_logged_complete(tmp_path):
+    """A cycle where every mask attempt fails must not record a 'masks'
+    scan row; the file stays selectable and succeeds once the segmenter
+    recovers."""
+    from smartgallery_ai import RUBRIC_VERSION, review as R
+    from smartgallery_ai.review import StubSegmenter
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img_path = str(tmp_path / "img.png")
+    Image.new("RGB", (64, 64), (90, 90, 90)).save(img_path)
+    _add_file(db_path, "mf1", img_path, mtime=1000.0)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    result = R.validate_review_payload({
+        "quality_score": 5.0, "prompt_alignment_score": None, "summary": "s",
+        "findings": [{"type": "artifact", "severity": "low", "confidence": 0.9,
+                      "localizable": True, "description": "spot",
+                      "bbox": [0.25, 0.25, 0.5, 0.5]}]})
+    R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION,
+                   "{}", 1000.0, 1.0)
+    conn.execute(
+        "INSERT INTO ai_scan_log VALUES ('mf1', 'review', 'critic-x', 'v1',"
+        " 1000.0, 1.0, 1)")
+    conn.commit()
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="none", segmenter_backend="stub",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=50)
+
+    processed = worker._process_masks(conn, _ExplodingSegmenter(), 10)
+    assert processed == 1  # the candidate was attempted...
+    assert conn.execute(
+        "SELECT COUNT(*) FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'"
+    ).fetchone()[0] == 0  # ...but not recorded as complete
+    assert conn.execute(
+        "SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
+
+    worker._process_masks(conn, StubSegmenter(), 10)
+    mask_path = conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
+    log = conn.execute(
+        "SELECT result_count FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'"
+    ).fetchone()
+    conn.close()
+    import os as _os
+    assert mask_path is not None and _os.path.isfile(mask_path)
+    assert log is not None and log[0] == 1
+
+
+def test_worker_clusters_faces_after_indexing(worker_env):
+    """Indexing new face instances triggers clustering in the same cycle;
+    the identical stub embeddings across files form one cluster."""
+    db_path, config, worker, file_ids = worker_env
+    worker.start()
+    assert _wait_until(
+        lambda: (_query_one(db_path, "SELECT COUNT(*) FROM ai_face_clusters") or (0,))[0] > 0,
+        timeout=5.0,
+    ), "worker never clustered the indexed faces"
+    assigned = _query_one(
+        db_path,
+        "SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL")[0]
+    assert assigned >= 2

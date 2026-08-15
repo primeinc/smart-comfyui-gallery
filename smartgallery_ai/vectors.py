@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, Union
@@ -134,15 +135,22 @@ class VectorStore:
         query_vec: np.ndarray,
         k: int,
         exclude: Sequence[str] = (),
+        model_version: Optional[str] = None,
     ) -> list[tuple[str, float]]:
         """Top-k (file_id, cosine_similarity) neighbors of `query_vec` in `space`.
 
         Ties break on ascending file_id for determinism. Never mixes spaces:
         the matrix used here only ever holds rows for this exact space.
+
+        `model_version` pins the candidate matrix to that version. Callers
+        whose query vector comes from a stored row MUST pass the row's own
+        model_version: during a model migration the "active" (most recent)
+        version can differ from the row's, and comparing vectors across
+        versions is meaningless (or a dim-mismatch error).
         """
         conn, owns_conn = self._resolve_conn(conn)
         try:
-            sm = self._get_matrix(conn, space)
+            sm = self._get_matrix(conn, space, model_version)
         finally:
             if owns_conn:
                 conn.close()
@@ -201,8 +209,10 @@ class VectorStore:
         safe_version = model_version.replace(os.sep, "_").replace("/", "_")
         return os.path.join(self.cache_dir, "vectors", f"{space}__{safe_version}.npz")
 
-    def _get_matrix(self, conn: sqlite3.Connection, space: str) -> Optional[_SpaceMatrix]:
-        model_version = self._active_model_version(conn, space)
+    def _get_matrix(self, conn: sqlite3.Connection, space: str,
+                    model_version: Optional[str] = None) -> Optional[_SpaceMatrix]:
+        if model_version is None:
+            model_version = self._active_model_version(conn, space)
         if model_version is None:
             self._memory.pop(space, None)
             return None
@@ -259,15 +269,25 @@ class VectorStore:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # np.savez appends ".npz" itself only when the name lacks that suffix,
         # so give the temp file the suffix up front and rename atomically.
-        tmp_path = path + ".tmp.npz"
-        np.savez(
-            tmp_path,
-            ids=np.array(sm.ids),
-            matrix=sm.matrix,
-            row_count=np.array(sm.row_count),
-            max_computed_at=np.array(sm.max_computed_at),
-        )
-        os.replace(tmp_path, path)
+        # The temp name is unique per writer: concurrent request threads can
+        # each hold their own VectorStore, and a shared temp path would let
+        # one writer os.replace the file out from under another mid-save.
+        tmp_path = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}.npz"
+        try:
+            np.savez(
+                tmp_path,
+                ids=np.array(sm.ids),
+                matrix=sm.matrix,
+                row_count=np.array(sm.row_count),
+                max_computed_at=np.array(sm.max_computed_at),
+            )
+            os.replace(tmp_path, path)
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def _load_disk_cache(self, space: str, model_version: str) -> Optional[_SpaceMatrix]:
         path = self._cache_path(space, model_version)

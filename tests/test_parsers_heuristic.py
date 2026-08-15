@@ -437,3 +437,90 @@ def test_frame_to_ast_output_is_always_validatable():
         ast_dict = frame_to_ast(frame, "some query")
         query, err = try_validate(ast_dict)
         assert err is None, f"{frame} -> {ast_dict} failed: {err}"
+
+
+# ---------------------------------------------------------------------------
+# 7. Calendar vocabulary: real calendar boundaries from the injected clock
+# ---------------------------------------------------------------------------
+
+def _where(nl: str, now_epoch: float):
+    out = h.parse(nl, now_epoch)
+    assert out.ast is not None, f"{nl!r}: {out.reason}"
+    assert out.coverage == 1.0, f"{nl!r} coverage {out.coverage}"
+    return out.ast["where"]
+
+
+def _epoch(*args):
+    import time as _time
+    from datetime import datetime as _dt
+    return _time.mktime(_dt(*args).timetuple())
+
+
+def test_calendar_yesterday_is_previous_calendar_day():
+    assert _where("files from yesterday", _epoch(2025, 6, 18, 15, 30)) == {
+        "field": "mtime", "op": "between", "value": ["2025-06-17", "2025-06-17"]}
+
+
+def test_calendar_today_is_current_calendar_day():
+    assert _where("files from today", _epoch(2025, 6, 18, 15, 30)) == {
+        "field": "mtime", "op": "between", "value": ["2025-06-18", "2025-06-18"]}
+
+
+def test_calendar_this_week_starts_monday():
+    # 2025-06-18 is a Wednesday; the ISO week began Monday the 16th.
+    assert _where("files from this week", _epoch(2025, 6, 18, 15, 30)) == {
+        "field": "mtime", "op": "ge", "value": "2025-06-16"}
+
+
+def test_calendar_this_month_starts_on_the_first():
+    assert _where("files from this month", _epoch(2025, 6, 18, 15, 30)) == {
+        "field": "mtime", "op": "ge", "value": "2025-06-01"}
+
+
+def test_calendar_terms_cross_month_boundary():
+    # Tuesday 2025-07-01, 00:30 local: "yesterday" is June 30, the month
+    # began an hour ago, and the week began Monday June 30.
+    now = _epoch(2025, 7, 1, 0, 30)
+    assert _where("files from yesterday", now) == {
+        "field": "mtime", "op": "between", "value": ["2025-06-30", "2025-06-30"]}
+    assert _where("files from this month", now) == {
+        "field": "mtime", "op": "ge", "value": "2025-07-01"}
+    assert _where("files from this week", now) == {
+        "field": "mtime", "op": "ge", "value": "2025-06-30"}
+
+
+# ---------------------------------------------------------------------------
+# 8. coverage_guard: every named value in a keyword class counts on its own
+# ---------------------------------------------------------------------------
+
+def test_coverage_guard_catches_dropped_media_type_disjunct():
+    ast_dict = {"target": "files", "result": "ids",
+                "where": {"field": "type", "op": "eq", "value": "image"}}
+    coverage, missing = coverage_guard("images or videos", ast_dict)
+    assert coverage < 1.0
+    assert any("video" in m for m in missing)
+
+
+def test_coverage_guard_media_type_disjuncts_all_present():
+    ast_dict = {"target": "files", "result": "ids",
+                "where": {"op": "or", "children": [
+                    {"field": "type", "op": "eq", "value": "image"},
+                    {"field": "type", "op": "eq", "value": "video"}]}}
+    coverage, missing = coverage_guard("images or videos", ast_dict)
+    assert coverage == 1.0
+    assert missing == []
+
+
+def test_coverage_guard_media_type_in_list_counts_as_present():
+    ast_dict = {"target": "files", "result": "ids",
+                "where": {"field": "type", "op": "in", "value": ["image", "video"]}}
+    coverage, missing = coverage_guard("images or videos", ast_dict)
+    assert coverage == 1.0
+
+
+def test_coverage_guard_catches_dropped_status_disjunct():
+    ast_dict = {"target": "files", "result": "ids",
+                "where": {"field": "status_flag", "op": "eq", "value": "Approved"}}
+    coverage, missing = coverage_guard("approved or rejected files", ast_dict)
+    assert coverage < 1.0
+    assert any("rejected" in m for m in missing)

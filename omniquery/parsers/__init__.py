@@ -234,9 +234,26 @@ _MEDIA_TYPE_RE = re.compile(
     r"\b(photos?|pictures?|images?|videos?|clips?|movies?|gifs?|animated[ -]images?|"
     r"sounds?|music|songs?|audio|documents?|pdfs?)\b", re.I,
 )
+# Normalized (singular, space-separated, lowercase) keyword -> AST enum value.
+# Kept in lockstep with the alternatives of _MEDIA_TYPE_RE above.
+_MEDIA_TYPE_NORMALIZE: Dict[str, str] = {
+    "photo": "image", "picture": "image", "image": "image",
+    "video": "video", "clip": "video", "movie": "video",
+    "gif": "animated_image", "animated image": "animated_image",
+    "sound": "audio", "music": "audio", "song": "audio", "audio": "audio",
+    "document": "document", "pdf": "document",
+}
 _STATUS_WORD_RE = re.compile(
     r"\b(approved|rejected|needs?\s+review|in\s+review|review|to\s+edit|selected|select)\b", re.I,
 )
+# Normalized keyword -> lowercased AST status_flag value ("To Edit" etc.).
+_STATUS_NORMALIZE: Dict[str, str] = {
+    "approved": "approved", "rejected": "rejected",
+    "need review": "review", "needs review": "review", "in review": "review",
+    "review": "review",
+    "to edit": "to edit",
+    "selected": "select", "select": "select",
+}
 _FAVORITE_WORD_RE = re.compile(r"\bfavou?rite[sd]?\b", re.I)
 _COUNT_WORD_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.I)
 
@@ -247,6 +264,32 @@ def _number_candidates(raw: str, unit: Optional[str]) -> List[float]:
     if unit:
         candidates.extend(n * m for m in _UNIT_MULTIPLIERS.get(unit.lower(), ()))
     return candidates
+
+
+def _normalize_keyword(word: str, table: Dict[str, str]) -> Optional[str]:
+    """Look `word` up in `table` after lowercasing, collapsing whitespace/
+    hyphens, and (if needed) stripping one plural 's'."""
+    w = re.sub(r"[\s-]+", " ", word.lower().strip())
+    if w in table:
+        return table[w]
+    if w.endswith("s") and w[:-1] in table:
+        return table[w[:-1]]
+    return None
+
+
+def _cond_values_for_field(ast_dict: dict, field: str) -> set:
+    """Every scalar value (lowercased) any condition on `field` carries,
+    flattening 'in'-style list values."""
+    out: set = set()
+    for c in _walk_conds(ast_dict.get("where")):
+        if c.get("field") != field:
+            continue
+        v = c.get("value")
+        if isinstance(v, list):
+            out.update(str(x).lower() for x in v)
+        else:
+            out.add(str(v).lower())
+    return out
 
 
 def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
@@ -287,19 +330,34 @@ def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
         else:
             missing.append(f"number {raw!r} not reflected in AST")
 
-    if _MEDIA_TYPE_RE.search(text):
-        total += 1
-        if any(c.get("field") == "type" for c in _walk_conds(ast_dict.get("where"))):
-            ok += 1
-        else:
-            missing.append("media-type keyword not reflected as a 'type' condition")
+    # Each distinct normalized value the text names is its own coverage
+    # unit: "images or videos" must find both 'image' and 'video' among
+    # the AST's type-condition values, or the dropped half is a miss.
+    mentioned_types = {
+        t for m in _MEDIA_TYPE_RE.finditer(text)
+        if (t := _normalize_keyword(m.group(1), _MEDIA_TYPE_NORMALIZE)) is not None
+    }
+    if mentioned_types:
+        present = _cond_values_for_field(ast_dict, "type")
+        for t in sorted(mentioned_types):
+            total += 1
+            if t in present:
+                ok += 1
+            else:
+                missing.append(f"media-type {t!r} not reflected in any 'type' condition")
 
-    if _STATUS_WORD_RE.search(text):
-        total += 1
-        if any(c.get("field") == "status_flag" for c in _walk_conds(ast_dict.get("where"))):
-            ok += 1
-        else:
-            missing.append("status keyword not reflected as a 'status_flag' condition")
+    mentioned_statuses = {
+        s for m in _STATUS_WORD_RE.finditer(text)
+        if (s := _normalize_keyword(m.group(1), _STATUS_NORMALIZE)) is not None
+    }
+    if mentioned_statuses:
+        present = _cond_values_for_field(ast_dict, "status_flag")
+        for s in sorted(mentioned_statuses):
+            total += 1
+            if s in present:
+                ok += 1
+            else:
+                missing.append(f"status {s!r} not reflected in any 'status_flag' condition")
 
     if _FAVORITE_WORD_RE.search(text):
         total += 1

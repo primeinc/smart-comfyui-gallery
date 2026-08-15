@@ -115,8 +115,10 @@ the critic from first principles rather than by relabeling:
   rejected on negative cases. Measured **4/4 schema-valid image-grounded
   reviews** on the calibration suite (planted defect detected and
   localized; mismatched-prompt noise correctly scored 0.0 quality / 3.0
-  alignment). `critic_backend='auto'` resolves to it only because that
-  measured record exists (`_AUTO_CRITIC_MEASUREMENT_PASSED`).
+  alignment). `critic_backend='auto'` resolves to it only when
+  `_auto_critic_measurement_passed()` accepts the committed, hash-pinned
+  calibration evidence (`benchmarks/results/grounding_calibration.json`);
+  without that evidence in bounds, `auto` yields no critic.
 - **Defect segmentation (AC7) — MET, by measurement.** Real MobileSAM
   backend (Apache-2.0) measured at IoU 0.998 on a planted defect; the
   worker segments every localizable finding of fresh reviews end to end

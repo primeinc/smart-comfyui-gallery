@@ -113,16 +113,26 @@ def _fetch_candidates(
     ids = list(file_ids)
     if not ids or limit <= 0:
         return []
-    id_placeholders = ",".join("?" for _ in ids)
-    query = f"SELECT id, path, mtime, type FROM files WHERE id IN ({id_placeholders})"
-    params: list = list(ids)
-    if allowed_types is not None:
-        type_placeholders = ",".join("?" for _ in allowed_types)
-        query += f" AND type IN ({type_placeholders})"
-        params.extend(allowed_types)
-    query += " ORDER BY mtime DESC, id ASC LIMIT ?"
-    params.append(limit)
-    return conn.execute(query, params).fetchall()
+    # Chunk the IN list: on a first-time index of a large gallery the
+    # staleness helpers can return every file id, and one bound variable
+    # per id blows SQLite's variable limit (999 on older builds). Query in
+    # bounded chunks, then merge-sort and re-apply the limit.
+    CHUNK = 500
+    rows: list = []
+    for start in range(0, len(ids), CHUNK):
+        chunk = ids[start:start + CHUNK]
+        id_placeholders = ",".join("?" for _ in chunk)
+        query = f"SELECT id, path, mtime, type FROM files WHERE id IN ({id_placeholders})"
+        params: list = list(chunk)
+        if allowed_types is not None:
+            type_placeholders = ",".join("?" for _ in allowed_types)
+            query += f" AND type IN ({type_placeholders})"
+            params.extend(allowed_types)
+        query += " ORDER BY mtime DESC, id ASC LIMIT ?"
+        params.append(limit)
+        rows.extend(conn.execute(query, params).fetchall())
+    rows.sort(key=lambda r: (-r["mtime"], r["id"]))
+    return rows[:limit]
 
 
 class AIWorker:
@@ -273,14 +283,21 @@ class AIWorker:
         Constructing real backends can load multi-GB models; doing that per
         poll cycle (the resolver's natural behavior) is unaffordable. The
         cached entry stores None too, so an unavailable backend is not
-        re-probed every cycle either."""
+        re-probed every cycle either.
+
+        Resolution must stay OUTSIDE self._lock: _note_error acquires the
+        same non-reentrant lock. Only the worker thread resolves backends,
+        so the unlocked window cannot double-load."""
         with self._lock:
-            if key not in self._backend_cache:
-                try:
-                    self._backend_cache[key] = resolver(self.config)
-                except Exception as exc:  # noqa: BLE001 - resolution must not kill the cycle
-                    self._note_error(f"backend:{key}", f"backend {key}: {exc}")
-                    self._backend_cache[key] = None
+            if key in self._backend_cache:
+                return self._backend_cache[key]
+        try:
+            backend = resolver(self.config)
+        except Exception as exc:  # noqa: BLE001 - resolution must not kill the cycle
+            self._note_error(f"backend:{key}", f"backend {key}: {exc}")
+            backend = None
+        with self._lock:
+            self._backend_cache.setdefault(key, backend)
             return self._backend_cache[key]
 
     # -- error bookkeeping -------------------------------------------------------
@@ -409,6 +426,16 @@ class AIWorker:
                 continue
             with self._lock:
                 self.stats["faces_indexed"] += 1
+        if rows:
+            # New/changed face instances: recluster so the cluster browser
+            # reflects them without a manual /faces/recluster call. The
+            # clustering is label-preserving and cheap at personal-gallery
+            # scale, and runs only on cycles that actually indexed faces.
+            try:
+                faces.cluster_faces(conn, backend.model_id, backend.model_version,
+                                    self.config.face_cluster_threshold)
+            except Exception as exc:  # noqa: BLE001
+                self._note_error("faces:cluster", f"face clustering failed: {exc}")
         return len(rows)
 
     def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int) -> int:
@@ -435,8 +462,8 @@ class AIWorker:
                 if segmenter is not None:
                     generated = self._generate_masks(conn, img, file_id,
                                                      review_id, segmenter)
-                    self._log_scan(conn, file_id, "masks", segmenter, mtime,
-                                   now, generated)
+                    self._log_masks_if_complete(conn, file_id, review_id,
+                                                segmenter, mtime, now, generated)
                 self._log_scan(conn, file_id, "review", backend, mtime, now,
                                len(result.findings))
             except Exception as exc:
@@ -513,5 +540,21 @@ class AIWorker:
                 continue
             generated = self._generate_masks(conn, img, file_id,
                                              row["review_id"], segmenter)
-            self._log_scan(conn, file_id, "masks", segmenter, mtime, now, generated)
+            self._log_masks_if_complete(conn, file_id, row["review_id"],
+                                        segmenter, mtime, now, generated)
         return len(rows)
+
+    def _log_masks_if_complete(self, conn: sqlite3.Connection, file_id: str,
+                               review_id: int, segmenter, mtime: float,
+                               now: float, generated: int) -> None:
+        """Record the mask scan ONLY when every localizable finding of the
+        review has a mask. A partial failure (transient segmenter or
+        filesystem error) leaves the file selectable so the next cycle
+        retries the remaining findings, instead of a completion row
+        freezing them mask-less until the next mtime/model change."""
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM ai_review_findings "
+            "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
+            (review_id,)).fetchone()[0]
+        if remaining == 0:
+            self._log_scan(conn, file_id, "masks", segmenter, mtime, now, generated)

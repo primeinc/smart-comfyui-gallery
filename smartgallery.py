@@ -706,8 +706,15 @@ folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
 
 # --- AI DAM BLUEPRINT (WI-31, optional; every route no-ops when disabled) ---
+# file_access_check applies the gallery's per-file visibility policy to the
+# AI read routes so restricted-mode viewers cannot read derived AI metadata
+# for files the normal routes would refuse (lambda: is_file_accessible is
+# defined later in this module and resolved at request time).
 app.register_blueprint(
-    ai_dam_service.create_ai_blueprint(AI_CONFIG, guard=management_api_only),
+    ai_dam_service.create_ai_blueprint(
+        AI_CONFIG, guard=management_api_only,
+        file_access_check=lambda fid: is_file_accessible(fid),
+    ),
     url_prefix='/galleryout/api/aidam',
 )
 
