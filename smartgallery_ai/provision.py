@@ -200,11 +200,30 @@ def _verify(path: str, expected: Optional[str], label: str) -> None:
             f"{actual[:16]}...); refusing to keep the file")
 
 
-def _download_url(url: str, dest_path: str) -> None:
-    """Stream one direct URL to dest_path via a temp file."""
+def _copy_with_progress(reader, writer, total: Optional[int],
+                        progress: Optional[Callable[[int, Optional[int]], None]],
+                        chunk_size: int = 1 << 20) -> None:
+    """Chunked stream copy that reports (bytes_done, bytes_total) after
+    every chunk; total may be None when the server sent no length."""
+    done = 0
+    while True:
+        chunk = reader.read(chunk_size)
+        if not chunk:
+            break
+        writer.write(chunk)
+        done += len(chunk)
+        if progress is not None:
+            progress(done, total)
+
+
+def _download_url(url: str, dest_path: str,
+                  progress: Optional[Callable[[int, Optional[int]], None]] = None) -> None:
+    """Stream one direct URL to dest_path via a temp file, reporting byte
+    progress as it goes."""
     tmp = dest_path + ".part"
     with urllib.request.urlopen(url) as resp, open(tmp, "wb") as out:
-        shutil.copyfileobj(resp, out)
+        length = resp.headers.get("Content-Length")
+        _copy_with_progress(resp, out, int(length) if length else None, progress)
     os.replace(tmp, dest_path)
 
 
@@ -315,6 +334,7 @@ def provision(
     downloaders: Optional[dict] = None,
     install_packages: bool = True,
     pip_runner: Optional[Callable[[list], None]] = None,
+    progress: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     """Make the requested groups fully loadable: install their missing
     runtime packages (unless `install_packages` is False), then download
@@ -323,7 +343,13 @@ def provision(
     re-downloads artifacts that already exist. `downloaders` overrides the
     three fetch functions (keys 'url', 'hf_file', 'hf_snapshot') and
     `pip_runner` the pip invocation -- the seams tests use to stay
-    network-free."""
+    network-free.
+
+    `progress`, when given, receives structured events as work happens:
+    {'kind': 'runtime'|'artifact', 'phase': 'start'|'bytes'|'done',
+     'item': <requirement or dest>, ...} with 'bytes_done'/'bytes_total'
+    on byte events (direct-URL downloads only; Hugging Face transfers
+    report start/done)."""
     dl = {
         "url": _download_url,
         "hf_file": _download_hf_file,
@@ -331,6 +357,10 @@ def provision(
     }
     if downloaders:
         dl.update(downloaders)
+
+    def emit(event: dict) -> None:
+        if progress is not None:
+            progress(event)
 
     groups = resolve_groups(group_names)
     installed: list = []
@@ -340,7 +370,11 @@ def provision(
                 if force or not artifact_present(models_dir, a)),
             log, pip_runner)
         for group in groups:
-            installed.extend(ensure_runtime(group, log=log, pip_runner=pip_runner))
+            for _, requirement in runtime_missing(group):
+                emit({"kind": "runtime", "phase": "start", "item": requirement})
+            for requirement in ensure_runtime(group, log=log, pip_runner=pip_runner):
+                installed.append(requirement)
+                emit({"kind": "runtime", "phase": "done", "item": requirement})
 
     downloaded: list = []
     skipped: list = []
@@ -353,9 +387,17 @@ def provision(
                 continue
             os.makedirs(os.path.dirname(dest_path) or models_dir, exist_ok=True)
             log(f"  + {artifact.dest} ({artifact.approx_size}, {artifact.license})")
+            emit({"kind": "artifact", "phase": "start", "item": artifact.dest,
+                  "size": artifact.approx_size})
+            url_dl = dl["url"]
+            if url_dl is _download_url and progress is not None:
+                def url_dl(u, d, _dest=artifact.dest):
+                    _download_url(u, d, progress=lambda done, total: emit(
+                        {"kind": "artifact", "phase": "bytes", "item": _dest,
+                         "bytes_done": done, "bytes_total": total}))
             try:
                 if artifact.url is not None:
-                    dl["url"](artifact.url, dest_path)
+                    url_dl(artifact.url, dest_path)
                 elif artifact.hf_filename is not None:
                     dl["hf_file"](artifact.hf_repo, artifact.hf_filename, dest_path)
                 else:
@@ -371,6 +413,7 @@ def provision(
                     os.unlink(dest_path)
                     raise
             downloaded.append(artifact.dest)
+            emit({"kind": "artifact", "phase": "done", "item": artifact.dest})
     return {"downloaded": downloaded, "skipped": skipped, "installed": installed}
 
 

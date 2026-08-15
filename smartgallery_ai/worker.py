@@ -221,6 +221,7 @@ class AIWorker:
         # | 'disabled'; groups: the missing groups being (or last) fetched.
         self.provision_state: dict = {"state": "idle", "groups": []}
         self._provision_thread: Optional[threading.Thread] = None
+        self._provision_next_log_pct = 10  # byte-progress log throttle
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -234,6 +235,17 @@ class AIWorker:
         weight-provisioning attempt). No-op if already running."""
         if self.is_running:
             return
+        # The host app never configures the logging module, which leaves
+        # INFO invisible (no handler, WARNING-level last resort). Attach one
+        # plain stream handler to the package logger so worker/provisioning
+        # progress reaches the console — unless the app or user configured
+        # logging themselves, which always wins.
+        pkg_logger = logging.getLogger("smartgallery_ai")
+        if not pkg_logger.handlers and not logging.getLogger().handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            pkg_logger.addHandler(handler)
+            pkg_logger.setLevel(logging.INFO)
         self._stop_event.clear()
         self._maybe_start_auto_provision()
         self._thread = threading.Thread(target=self._run_loop, name="AIWorker", daemon=True)
@@ -265,19 +277,66 @@ class AIWorker:
             name="AIWorkerProvision", daemon=True)
         self._provision_thread.start()
 
+    def _on_provision_event(self, event: dict) -> None:
+        """Fold one provisioning progress event into `provision_state`
+        (served live by /status) and into the visible log — byte events
+        throttled to every 10% so a 5 GB file logs ~10 lines, not 5000.
+        The state dict is replaced, never mutated: /status snapshots it
+        from another thread."""
+        state = dict(self.provision_state)
+        state["done"] = list(state.get("done", []))
+        item = event.get("item", "")
+        if event["phase"] == "start":
+            state["current"] = item
+            state["detail"] = ("installing package" if event["kind"] == "runtime"
+                              else f"downloading ({event.get('size', '?')})")
+            self._provision_next_log_pct = 10
+            _logger.info("[AIWorker] provisioning %s: %s", state["detail"], item)
+        elif event["phase"] == "bytes":
+            done, total = event["bytes_done"], event.get("bytes_total")
+            if total:
+                pct = int(done * 100 / total)
+                state["detail"] = (f"{done / 1e6:.1f} MB / {total / 1e6:.1f} MB "
+                                   f"({pct}%)")
+                if pct >= self._provision_next_log_pct:
+                    self._provision_next_log_pct = pct + 10
+                    _logger.info("[AIWorker] %s: %s", item, state["detail"])
+            else:
+                state["detail"] = f"{done / 1e6:.1f} MB"
+        elif event["phase"] == "done":
+            state["done"].append(item)
+            state["current"] = None
+            state["detail"] = None
+            _logger.info("[AIWorker] provisioned: %s", item)
+        self.provision_state = state
+
     def _provision_worker(self, groups: list) -> None:
         """Thread body: install the missing groups' runtime packages and
         download their weights, then force an immediate backend re-probe so
         everything activates in this process without a restart. Network
         failure (e.g. an egress-denied host) leaves the layer degraded
         exactly as if nothing had been provisioned."""
+        _logger.info("[AIWorker] auto-provisioning missing capability "
+                     "group(s): %s (set AI_DAM_AUTO_PROVISION=false to opt out)",
+                     ", ".join(groups))
         try:
-            provisioning.provision(
+            result = provisioning.provision(
                 self.config.models_dir, groups,
-                log=lambda msg: _logger.info("[AIWorker] provision %s", msg))
-            self.provision_state = {"state": "done", "groups": list(groups)}
+                log=lambda msg: _logger.info("[AIWorker] provision %s", msg),
+                progress=self._on_provision_event)
+            self.provision_state = {
+                "state": "done", "groups": list(groups),
+                "done": self.provision_state.get("done", []),
+            }
+            _logger.info("[AIWorker] provisioning complete: %d installed, "
+                         "%d downloaded, %d already present",
+                         len(result["installed"]), len(result["downloaded"]),
+                         len(result["skipped"]))
         except Exception as exc:  # noqa: BLE001 - downloads may fail; never fatal
-            self.provision_state = {"state": f"failed: {exc}", "groups": list(groups)}
+            self.provision_state = {
+                "state": f"failed: {exc}", "groups": list(groups),
+                "done": self.provision_state.get("done", []),
+            }
             self._note_error("provision:download", f"auto-provision failed: {exc}")
             return
         with self._lock:

@@ -136,6 +136,7 @@
     }
 
     function closeAidamPanel() {
+        aidamStopProvisionPoll();
         const overlay = document.getElementById('aidam-overlay');
         overlay.style.opacity = '0';
         setTimeout(() => {
@@ -157,7 +158,10 @@
         }
     });
 
+    let aidamActiveTab = 'similar';  // which tab a finished provisioning run should reload
+
     function aidamSwitchTab(tab) {
+        aidamActiveTab = tab;
         ['similar', 'faces', 'review'].forEach(t => {
             const panel = document.getElementById('aidam-tab-' + t);
             const btn = document.getElementById('aidam-tab-btn-' + t);
@@ -198,18 +202,56 @@
         return aidamStatusCache;
     }
 
-    // Empty state that says WHY: backend missing -> download progress, the
-    // provision command, or the plain "no data yet" when the backend is fine.
+    // Live provisioning progress: while the worker reports 'downloading',
+    // poll /status every 2s, render current item + percent, and reload the
+    // open tab the moment provisioning finishes so it populates itself.
+    let aidamProvisionPoll = null;
+
+    function aidamStopProvisionPoll() {
+        if (aidamProvisionPoll !== null) { clearInterval(aidamProvisionPoll); aidamProvisionPoll = null; }
+    }
+
+    function aidamProvisionProgressHtml(prov) {
+        const doneCount = (prov.done || []).length;
+        const current = prov.current
+            ? `<div style="margin-top:8px; color:#fff;">${escapeAidamHtml(prov.current)}</div><div style="color:var(--ai-color); font-weight:700;">${escapeAidamHtml(prov.detail || 'starting…')}</div>`
+            : '';
+        return `<div class="aidam-status-msg" id="aidam-provision-progress">⏳ Setting up the AI layer (${escapeAidamHtml((prov.groups || []).join(', '))}) — ${doneCount} item${doneCount === 1 ? '' : 's'} done.${current}<div style="margin-top:8px; font-size:0.78rem;">This tab activates automatically when it finishes.</div></div>`;
+    }
+
+    function aidamStartProvisionPoll() {
+        if (aidamProvisionPoll !== null) return;
+        aidamProvisionPoll = setInterval(async () => {
+            let status = {};
+            try { status = await (await fetch('/galleryout/api/aidam/status')).json(); } catch (e) { return; }
+            aidamStatusCache = status;
+            const prov = (status.worker || {}).provisioning || {};
+            const box = document.getElementById('aidam-provision-progress');
+            if (prov.state === 'downloading') {
+                if (box) box.outerHTML = aidamProvisionProgressHtml(prov);
+                return;
+            }
+            // Finished (done/failed/idle): stop polling and reload whatever
+            // tab is showing the progress card so real content appears.
+            aidamStopProvisionPoll();
+            if (box) { aidamLoadedFor = {}; aidamEnsureTabLoaded(aidamActiveTab); }
+        }, 2000);
+    }
+
+    // Empty state that says WHY: backend missing -> live download progress,
+    // the provision command, or the plain "no data yet" when the backend is
+    // fine.
     async function aidamBackendAwareEmpty(backendKey, groupName, fallbackMsg) {
         const status = await aidamFetchStatus();
         const backends = status.backends || {};
         if (backends[backendKey] === false) {
             const prov = (status.worker || {}).provisioning || {};
             if (prov.state === 'downloading') {
-                return `<div class="aidam-status-msg">⏳ Model weights are downloading in the background (${escapeAidamHtml((prov.groups || []).join(', '))}). This tab activates automatically once they land — check back in a few minutes.</div>`;
+                aidamStartProvisionPoll();
+                return aidamProvisionProgressHtml(prov);
             }
             if (String(prov.state || '').startsWith('failed')) {
-                return `<div class="aidam-status-msg">⚠️ Automatic weight download failed (no network access?). Run <code>python -m smartgallery_ai provision ${groupName}</code> on the server, then reopen this panel.</div>`;
+                return `<div class="aidam-status-msg">⚠️ Automatic setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 200))}. Run <code>python -m smartgallery_ai provision ${groupName}</code> on the server, then reopen this panel.</div>`;
             }
             return `<div class="aidam-status-msg">📦 The ${escapeAidamHtml(groupName)} model is not available yet. Restart the app and it installs itself automatically (packages and weights; AI_DAM_AUTO_PROVISION=true is the default), or run <code>python -m smartgallery_ai provision ${groupName}</code> on the server.</div>`;
         }

@@ -194,9 +194,10 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
 
     calls = []
 
-    def fake_provision(models_dir, groups, force=False, log=print, downloaders=None):
+    def fake_provision(models_dir, groups, force=False, log=print,
+                       downloaders=None, progress=None):
         calls.append((models_dir, list(groups)))
-        return {"downloaded": list(groups), "skipped": []}
+        return {"downloaded": list(groups), "skipped": [], "installed": []}
 
     monkeypatch.setattr(W.provisioning, "provision", fake_provision)
     worker._backend_cache["face"] = None  # a cached miss that must be dropped
@@ -479,3 +480,95 @@ def test_pick_torch_device_prefers_cuda_then_cpu(monkeypatch):
     assert pick_torch_device(fake_cpu) == "cpu"
     monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
     assert pick_torch_device(fake_cuda) == "cpu"
+
+
+# --- progress reporting -------------------------------------------------------
+
+
+def test_copy_with_progress_reports_running_totals():
+    """Every chunk reports cumulative bytes against the total."""
+    import io
+
+    src = io.BytesIO(b"x" * 2500)
+    dst = io.BytesIO()
+    seen = []
+    P._copy_with_progress(src, dst, 2500, lambda done, total: seen.append((done, total)),
+                          chunk_size=1000)
+    assert dst.getvalue() == b"x" * 2500
+    assert seen == [(1000, 2500), (2000, 2500), (2500, 2500)]
+
+
+def test_provision_emits_structured_progress_events(tmp_path, monkeypatch):
+    """provision() narrates its work: runtime install start/done, then
+    artifact start/done, in execution order."""
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: None if name == "transformers" else object())
+    events = []
+    P.provision(str(tmp_path), ["visual"], log=lambda m: None,
+                downloaders=_fake_downloaders({}),
+                pip_runner=lambda args: None,
+                progress=events.append)
+    assert [(e["kind"], e["phase"], e["item"]) for e in events] == [
+        ("runtime", "start", "transformers"),
+        ("runtime", "done", "transformers"),
+        ("artifact", "start", "dinov2-small"),
+        ("artifact", "done", "dinov2-small"),
+    ]
+    assert events[2]["size"] == "90 MB"
+
+
+def test_worker_folds_progress_events_into_served_state(tmp_path):
+    """The worker's event handler keeps /status-visible state current —
+    item, human-readable byte detail, completed list — and swaps the dict
+    instead of mutating it (another thread snapshots it)."""
+    _make_db(str(tmp_path / "g.sqlite"))
+    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
+               face_backend="none", segmenter_backend="none", critic_backend="none")
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
+    worker.provision_state = {"state": "downloading", "groups": ["semantic"]}
+    snapshot = worker.provision_state
+
+    worker._on_provision_event({"kind": "artifact", "phase": "start",
+                                "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
+                                "size": "605 MB"})
+    assert worker.provision_state["current"].endswith(".bin")
+    assert "605 MB" in worker.provision_state["detail"]
+
+    worker._on_provision_event({"kind": "artifact", "phase": "bytes",
+                                "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
+                                "bytes_done": 302_500_000, "bytes_total": 605_000_000})
+    assert "(50%)" in worker.provision_state["detail"]
+
+    worker._on_provision_event({"kind": "artifact", "phase": "done",
+                                "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin"})
+    assert worker.provision_state["done"] == ["open_clip/ViT-B-32_laion2b_s34b_b79k.bin"]
+    assert worker.provision_state["current"] is None
+    assert snapshot == {"state": "downloading", "groups": ["semantic"]}  # never mutated
+
+
+def test_worker_start_makes_info_logging_visible(tmp_path):
+    """start() attaches a handler so provisioning progress reaches the
+    console even though the host app never configures logging."""
+    import logging
+
+    _make_db(str(tmp_path / "g.sqlite"))
+    cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="none",
+               visual_backend="none", face_backend="none",
+               segmenter_backend="none", critic_backend="none")
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
+
+    # Simulate production: no root handlers (pytest installs its own, which
+    # start() correctly treats as "logging already configured" and defers to).
+    root = logging.getLogger()
+    pkg = logging.getLogger("smartgallery_ai")
+    saved_root, saved_pkg = root.handlers[:], pkg.handlers[:]
+    saved_level = pkg.level
+    root.handlers, pkg.handlers = [], []
+    try:
+        worker.start()
+        assert pkg.handlers, "start() must attach a console handler"
+        assert logging.getLogger("smartgallery_ai.worker").isEnabledFor(logging.INFO)
+    finally:
+        worker.stop(timeout=2.0)
+        root.handlers, pkg.handlers = saved_root, saved_pkg
+        pkg.setLevel(saved_level)
