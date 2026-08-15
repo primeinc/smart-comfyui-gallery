@@ -17,15 +17,15 @@
       },
       "invalid_rate": 0.0,
       "latency_ms": {
-        "mean": 4193.20011790363,
-        "p50": 1785.2584039992507,
-        "p95": 31630.075627000224
+        "mean": 11200.42311066266,
+        "p50": 2131.7647850000867,
+        "p95": 40776.20280500014
       },
       "n_entries": 83,
       "n_supported_expected": 76,
       "n_unsupported_expected": 7,
       "n_with_ast": 2,
-      "peak_rss_kb": 890308,
+      "peak_rss_kb": 896732,
       "unsupported_correct": 7,
       "unsupported_correct_rate": 1.0,
       "unsupported_incorrect": 0
@@ -47,15 +47,15 @@
       },
       "invalid_rate": 0.0,
       "latency_ms": {
-        "mean": 0.12920074699518794,
-        "p50": 0.12073200014128815,
-        "p95": 0.19956100004492328
+        "mean": 0.17659219276472604,
+        "p50": 0.1613189999716269,
+        "p95": 0.25246899986086646
       },
       "n_entries": 83,
       "n_supported_expected": 76,
       "n_unsupported_expected": 7,
       "n_with_ast": 67,
-      "peak_rss_kb": 21416,
+      "peak_rss_kb": 21348,
       "unsupported_correct": 7,
       "unsupported_correct_rate": 1.0,
       "unsupported_incorrect": 0
@@ -77,15 +77,15 @@
       },
       "invalid_rate": 0.0,
       "latency_ms": {
-        "mean": 1129.3552556265472,
-        "p50": 503.88981199921545,
-        "p95": 4174.94592300045
+        "mean": 2026.3777667831448,
+        "p50": 633.2201640000221,
+        "p95": 7477.309367000089
       },
       "n_entries": 83,
       "n_supported_expected": 76,
       "n_unsupported_expected": 7,
       "n_with_ast": 63,
-      "peak_rss_kb": 57644,
+      "peak_rss_kb": 57548,
       "unsupported_correct": 6,
       "unsupported_correct_rate": 0.8571428571428571,
       "unsupported_incorrect": 1
@@ -95,35 +95,35 @@
       "escalation": {
         "escalated_past_heuristic_rate": 0.39759036144578314,
         "winner_counts": {
+          "fallback_qwen": 1,
           "heuristic": 53,
-          "needle2": 1,
           "router": 29
         }
       },
       "execution_match_rate": 0.6447368421052632,
       "false_confident_rate": {
-        "0.0": 0.09259259259259259,
-        "0.1": 0.09259259259259259,
-        "0.2": 0.09259259259259259,
-        "0.3": 0.09259259259259259,
-        "0.4": 0.09259259259259259,
-        "0.5": 0.09259259259259259,
-        "0.6": 0.09259259259259259,
+        "0.0": 0.07547169811320754,
+        "0.1": 0.07547169811320754,
+        "0.2": 0.07547169811320754,
+        "0.3": 0.07547169811320754,
+        "0.4": 0.07547169811320754,
+        "0.5": 0.07547169811320754,
+        "0.6": 0.07547169811320754,
         "0.7": 0.07547169811320754,
         "0.8": 0.057692307692307696,
         "0.9": 0.06
       },
       "invalid_rate": 0.0,
       "latency_ms": {
-        "mean": 2361.415386602419,
-        "p50": 0.21106700023665326,
-        "p95": 4945.322866000424
+        "mean": 2859.019384614484,
+        "p50": 0.2876329999708105,
+        "p95": 5963.363970000046
       },
       "n_entries": 83,
       "n_supported_expected": 76,
       "n_unsupported_expected": 7,
       "n_with_ast": 54,
-      "peak_rss_kb": 890308,
+      "peak_rss_kb": 896732,
       "unsupported_correct": 7,
       "unsupported_correct_rate": 1.0,
       "unsupported_incorrect": 0
