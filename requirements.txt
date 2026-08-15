@@ -1,7 +1,7 @@
 # Kept in sync with pyproject.toml [project.dependencies] (uv users: `uv sync`).
 Flask
 Pillow
-opencv-python
+opencv-python<5  # keep in sync with pyproject.toml (static-shape YuNet ONNX)
 numpy # needed for opencv-python
 tqdm
 werkzeug # needed for Flask

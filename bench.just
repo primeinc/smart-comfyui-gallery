@@ -30,3 +30,7 @@ faiss thr='0.5':
 # real embeddings from a gallery cache DB (opened read-only)
 faiss-db db:
     @"$python" benchmarks/faiss_graph_evidence.py --source db --db "$1" --omp-threads "$omp"
+
+# detection recall by ground-truth face-size band (production detect path)
+face-recall *args:
+    @"$python" benchmarks/face_detection_recall.py --dir "$corpus" --models-dir "$models" "$@"
