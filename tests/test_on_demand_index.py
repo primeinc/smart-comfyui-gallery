@@ -812,3 +812,27 @@ def test_cycle_log_names_why_stages_are_waiting(tmp_path, caplog):
     lines = [r.getMessage() for r in caplog.records if "indexed:" in r.getMessage()]
     assert lines and "CUDA swap in progress" in lines[0]
     assert "semantic" in lines[0] and "visual" in lines[0]
+
+
+def test_app_git_ref_reads_branch_and_short_sha(tmp_path):
+    """Reads branch@shortsha from a .git dir (loose ref, packed-refs, and
+    detached HEAD all supported); non-checkouts return None."""
+    from smartgallery_ai.worker import app_git_ref
+
+    git = tmp_path / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "HEAD").write_text("ref: refs/heads/feature-x\n")
+    (git / "refs" / "heads" / "feature-x").write_text("abc123def456789\n")
+    assert app_git_ref(str(tmp_path)) == "feature-x@abc123def"
+
+    (git / "refs" / "heads" / "feature-x").unlink()
+    (git / "packed-refs").write_text(
+        "# pack-refs\nfeedbeef12345678 refs/heads/feature-x\n")
+    assert app_git_ref(str(tmp_path)) == "feature-x@feedbeef1"
+
+    (git / "HEAD").write_text("0123456789abcdef\n")
+    assert app_git_ref(str(tmp_path)) == "012345678"
+
+    assert app_git_ref(str(tmp_path / "not-a-checkout")) is None
+
+    assert app_git_ref() is not None  # this test runs inside the repo checkout

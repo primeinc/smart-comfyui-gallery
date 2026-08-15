@@ -207,6 +207,33 @@ def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
     conn.commit()
 
 
+def app_git_ref(root: Optional[str] = None) -> Optional[str]:
+    """The running checkout's branch and short commit ("main@a1b2c3d"), or
+    None outside a git checkout. Debug provenance for the boot log and
+    /status — row-level provenance stays with the model/algo VERSION
+    strings, which are what actually drive re-indexing."""
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        head = open(os.path.join(root, ".git", "HEAD")).read().strip()
+        if head.startswith("ref:"):
+            ref = head.split(None, 1)[1]
+            branch = ref.rsplit("/", 1)[-1]
+            try:
+                sha = open(os.path.join(root, ".git", *ref.split("/"))).read().strip()
+            except OSError:
+                sha = None
+                packed = os.path.join(root, ".git", "packed-refs")
+                if os.path.isfile(packed):
+                    for line in open(packed):
+                        if line.strip().endswith(ref):
+                            sha = line.split()[0]
+                            break
+            return f"{branch}@{sha[:9]}" if sha else branch
+        return head[:9]  # detached HEAD: bare commit
+    except OSError:
+        return None
+
+
 def indexing_totals(conn: sqlite3.Connection) -> dict:
     """Backlog progress snapshot: how many files exist vs. how many each
     stage has covered so far. Approximate BY DESIGN (a model-version bump
@@ -362,6 +389,9 @@ class AIWorker:
             pkg_logger.addHandler(_ClickConsoleHandler())
             pkg_logger.setLevel(logging.INFO)
         self._stop_event.clear()
+        ref = app_git_ref()
+        if ref:
+            _logger.info("[AI] running %s", ref)
         # Boot GPU inventory: what the machine has and which wheels it
         # gets, before any provisioning/backends run. Silence = no GPU.
         try:

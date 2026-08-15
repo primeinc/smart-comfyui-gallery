@@ -464,6 +464,7 @@
                 &middot; cycles ${stats.cycles || 0}
                 &middot; priority queue ${worker.priority_queued || 0}
                 &middot; errors ${stats.errors || 0}
+                ${status.app_git_ref ? '&middot; build ' + escapeAidamHtml(status.app_git_ref) : ''}
             </div>`;
 
         const errs = worker.recent_errors || [];

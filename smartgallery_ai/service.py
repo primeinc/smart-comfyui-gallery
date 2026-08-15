@@ -37,6 +37,7 @@ from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
     _MTIME_EPSILON,
     _has_column,
+    app_git_ref,
     indexing_totals,
     load_source_image,
     mark_faces_cluster_pending,
@@ -397,6 +398,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             gpu = None
         return jsonify({
             "enabled": config.enabled,
+            "app_git_ref": app_git_ref(),
             "backends": backends,
             "devices": _backend_devices(),
             "gpu": gpu,
