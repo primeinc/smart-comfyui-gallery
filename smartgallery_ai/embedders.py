@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -236,19 +237,26 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         self._model = model.to(self._device)
         self._preprocess = preprocess
         self._tokenizer = open_clip.get_tokenizer("ViT-B-32")
+        # Serializes inference so the semantic-search request path can
+        # borrow the worker's loaded instance: pure forwards are
+        # practically thread-safe, but the lock makes concurrent
+        # worker-embed vs. search-encode airtight.
+        self._infer_lock = threading.Lock()
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """CLIP image feature, unit-normalized so image/text cosine works."""
         tensor = self._preprocess(img.convert("RGB")).unsqueeze(0).to(self._device)
-        with self._torch.no_grad():
-            features = self._model.encode_image(tensor)
+        with self._infer_lock:
+            with self._torch.no_grad():
+                features = self._model.encode_image(tensor)
         return _l2_normalize(features.squeeze(0).cpu().numpy())
 
     def embed_text(self, text: str) -> np.ndarray:
         """CLIP text feature, unit-normalized so image/text cosine works."""
         tokens = self._tokenizer([text]).to(self._device)
-        with self._torch.no_grad():
-            features = self._model.encode_text(tokens)
+        with self._infer_lock:
+            with self._torch.no_grad():
+                features = self._model.encode_text(tokens)
         return _l2_normalize(features.squeeze(0).cpu().numpy())
 
 

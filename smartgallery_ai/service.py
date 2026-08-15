@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import time
 from functools import wraps
 from typing import Any, Callable, Optional
@@ -764,6 +765,166 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             conn.close()
         return jsonify({"enabled": True, **result})
 
+    # -- GET /search/semantic?q= ----------------------------------------------------
+
+    # Fallback text encoder for deployments without a running worker;
+    # request threads share one instance (the real backend serializes its
+    # forwards internally). Registered for post-provision invalidation so
+    # a freshly landed backend replaces a cached None.
+    search_embedder_cache: dict = {}
+    _PROBE_CACHES.append(search_embedder_cache)
+    search_embedder_lock = threading.Lock()
+
+    def _search_embedder():
+        """The worker's loaded semantic embedder when available (cheapest,
+        already in memory), else one lazily constructed for this blueprint."""
+        worker = get_worker()
+        if worker is not None:
+            borrowed = worker.semantic_embedder_for_search()
+            if borrowed is not None:
+                return borrowed
+        with search_embedder_lock:
+            if "semantic" not in search_embedder_cache:
+                try:
+                    search_embedder_cache["semantic"] = embedders.get_semantic_backend(config)
+                except Exception:  # noqa: BLE001 - unavailable, not fatal
+                    search_embedder_cache["semantic"] = None
+            return search_embedder_cache["semantic"]
+
+    def search_semantic():
+        """Free-text semantic image search: the query text goes through the
+        CLIP text tower into the SAME space as the image embeddings, so
+        'a red car at night' finds images by meaning, not filename. Every
+        returned id passes the visibility policy."""
+        query = (request.args.get("q") or "").strip()
+        if not query:
+            return jsonify({"enabled": True, "error": "missing query ?q="}), 400
+        k = request.args.get("k", config.similar_default_k, type=int)
+        embedder = _search_embedder()
+        if embedder is None:
+            return jsonify({"enabled": True, "query": query, "results": [],
+                            "note": "semantic backend not available yet"})
+        query_vec = embedder.embed_text(query)
+        conn = _connect(config)
+        try:
+            store = vectors.VectorStore(cache_dir=config.cache_dir,
+                                        ephemeral=config.ephemeral_index)
+            neighbors = store.topk(conn, SPACE_SEMANTIC, query_vec, k,
+                                   model_version=embedder.model_version)
+        finally:
+            conn.close()
+        return jsonify({
+            "enabled": True, "query": query,
+            "results": [{"file_id": fid, "score": score}
+                        for fid, score in neighbors if _visible(fid)],
+        })
+
+    # -- GET /reviews (guarded): gallery-wide review browser ------------------------
+
+    _REVIEW_SORTS = {
+        # SQLite sorts NULLs first on ASC; push score-less rows last instead.
+        "quality_asc": "r.quality_score IS NULL, r.quality_score ASC",
+        "quality_desc": "r.quality_score IS NULL, r.quality_score DESC",
+        "alignment_asc": "r.prompt_alignment_score IS NULL, r.prompt_alignment_score ASC",
+        "alignment_desc": "r.prompt_alignment_score IS NULL, r.prompt_alignment_score DESC",
+        "newest": "r.computed_at DESC",
+    }
+
+    def reviews_list():
+        """Newest review per file across the gallery, sortable by quality /
+        prompt alignment / recency — the 'show me my worst generations'
+        browser. Carries a findings count per row."""
+        sort = request.args.get("sort", "quality_asc")
+        order = _REVIEW_SORTS.get(sort)
+        if order is None:
+            return jsonify({"enabled": True,
+                            "error": f"invalid sort: {sort!r}"}), 400
+        limit = min(max(request.args.get("limit", 60, type=int), 1), 200)
+        offset = max(request.args.get("offset", 0, type=int), 0)
+        conn = _connect(config)
+        try:
+            total = conn.execute(
+                "SELECT COUNT(DISTINCT file_id) FROM ai_reviews").fetchone()[0]
+            rows = conn.execute(
+                f"""
+                SELECT r.file_id, r.quality_score, r.prompt_alignment_score,
+                       r.summary, r.computed_at,
+                       (SELECT COUNT(*) FROM ai_review_findings f
+                        WHERE f.review_id = r.review_id) AS finding_count
+                FROM ai_reviews r
+                WHERE r.review_id IN
+                      (SELECT MAX(review_id) FROM ai_reviews GROUP BY file_id)
+                ORDER BY {order}
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        finally:
+            conn.close()
+        return jsonify({
+            "enabled": True, "sort": sort, "total": total, "offset": offset,
+            "reviews": [
+                {"file_id": row["file_id"],
+                 "quality": row["quality_score"],
+                 "prompt_alignment": row["prompt_alignment_score"],
+                 "summary": row["summary"],
+                 "computed_at": row["computed_at"],
+                 "finding_count": row["finding_count"]}
+                for row in rows
+            ],
+        })
+
+    # -- GET /duplicates (guarded): gallery-wide duplicate sweep --------------------
+
+    def duplicates_overview():
+        """Every exact-duplicate group in the gallery with the bytes you
+        would reclaim by keeping one copy of each, largest waste first."""
+        conn = _connect(config)
+        try:
+            groups = hashing.find_exact_duplicates(conn)
+            out = []
+            total_reclaimable = 0
+            for group in groups:
+                placeholders = ",".join("?" for _ in group)
+                size_rows = conn.execute(
+                    f"SELECT id, COALESCE(size, 0) AS size FROM files "
+                    f"WHERE id IN ({placeholders})", list(group)).fetchall()
+                sizes = [row["size"] for row in size_rows]
+                reclaimable = max(sum(sizes) - max(sizes), 0) if sizes else 0
+                total_reclaimable += reclaimable
+                out.append({"file_ids": list(group), "count": len(group),
+                            "bytes_reclaimable": reclaimable})
+        finally:
+            conn.close()
+        out.sort(key=lambda g: g["bytes_reclaimable"], reverse=True)
+        return jsonify({
+            "enabled": True,
+            "group_count": len(out),
+            "redundant_files": sum(g["count"] - 1 for g in out),
+            "total_bytes_reclaimable": total_reclaimable,
+            "groups": out,
+        })
+
+    # -- POST /faces/clusters/<id>/label (guarded) ----------------------------------
+
+    def faces_cluster_label(cluster_id: int):
+        """Name a face cluster ('Sarah', 'the knight character'); empty
+        label clears back to the numbered default."""
+        data = request.get_json(silent=True) or {}
+        label = (data.get("label") or "").strip()[:80] or None
+        conn = _connect(config)
+        try:
+            cur = conn.execute(
+                "UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?",
+                (label, cluster_id))
+            conn.commit()
+        finally:
+            conn.close()
+        if cur.rowcount == 0:
+            return jsonify({"enabled": True,
+                            "error": f"unknown cluster_id: {cluster_id}"}), 404
+        return jsonify({"enabled": True, "cluster_id": cluster_id, "label": label})
+
     # -- route table -----------------------------------------------------------------
 
     bp.add_url_rule("/status", "status", status, methods=["GET"])
@@ -796,5 +957,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         _wrap(review_feedback_export, guarded=True), methods=["GET"],
     )
     bp.add_url_rule("/index/<file_id>", "index_file", _wrap(index_file, guarded=True), methods=["POST"])
+    bp.add_url_rule("/search/semantic", "search_semantic",
+                    _wrap(search_semantic), methods=["GET"])
+    # Cross-file listings carry the management guard, like cluster listings.
+    bp.add_url_rule("/reviews", "reviews_list",
+                    _wrap(reviews_list, guarded=True), methods=["GET"])
+    bp.add_url_rule("/duplicates", "duplicates_overview",
+                    _wrap(duplicates_overview, guarded=True), methods=["GET"])
+    bp.add_url_rule("/faces/clusters/<int:cluster_id>/label", "faces_cluster_label",
+                    _wrap(faces_cluster_label, guarded=True), methods=["POST"])
 
     return bp

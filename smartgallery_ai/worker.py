@@ -778,6 +778,18 @@ class AIWorker:
 
     # -- backend caching ---------------------------------------------------------
 
+    def semantic_embedder_for_search(self):
+        """The worker's loaded semantic embedder for TEXT queries, or None.
+        Safe to call from request threads ONLY because the real embedder
+        serializes its forwards internally (`_infer_lock`) — instances
+        without that lock (stubs, fakes) are not lent out. Never resolves:
+        loading models stays worker-only."""
+        with self._lock:
+            cached = self._backend_cache.get("semantic")
+        if cached is not None and hasattr(cached, "_infer_lock"):
+            return cached
+        return None
+
     def _backend(self, key: str, resolver):
         """Resolve a backend and reuse the instance. Constructing real
         backends can load multi-GB models; doing that per poll cycle (the

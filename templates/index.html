@@ -621,10 +621,15 @@ document.addEventListener('focusout', function(e) {
             {% if enable_ai_dam %}
             <div class="sidebar-ai-hub" id="sidebar-ai-hub">
                 <div class="ai-hub-title">🧬 AI DAM</div>
+                <input type="search" id="ai-hub-search" placeholder="🔎 Search by meaning…"
+                       style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; border-radius:8px; color:#fff; padding:5px 9px; font-size:0.75rem; margin-bottom:8px;"
+                       onkeydown="if (event.key === 'Enter' && this.value.trim()) { openAidamPanelGlobal('search', this.value.trim()); }">
                 <div id="ai-hub-stats" class="ai-hub-stats">connecting&hellip;</div>
                 <div class="ai-hub-actions">
                     <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('status')" title="Live ingest / backlog / GPU dashboard">📊 Status</button>
                     <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('faces')" title="Browse all face clusters">🗂️ Clusters</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('similar')" title="Gallery-wide duplicate sweep">♻️ Dupes</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('review')" title="Browse reviews: worst/best quality">🩺 Reviews</button>
                 </div>
             </div>
             {% endif %}

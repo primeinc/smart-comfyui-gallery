@@ -48,6 +48,7 @@ def _make_db(db_path: str) -> sqlite3.Connection:
             mtime REAL NOT NULL,
             name TEXT NOT NULL,
             type TEXT,
+            size INTEGER DEFAULT 0,
             workflow_prompt TEXT DEFAULT ''
         )
         """
@@ -836,3 +837,153 @@ def test_app_git_ref_reads_branch_and_short_sha(tmp_path):
     assert app_git_ref(str(tmp_path / "not-a-checkout")) is None
 
     assert app_git_ref() is not None  # this test runs inside the repo checkout
+
+
+# --- gallery-wide surfacing endpoints ------------------------------------------
+
+
+@pytest.fixture()
+def surf(tmp_path):
+    """Fixture for the global surfaces: three visible embedded files (two
+    of them exact duplicates with sizes), one policy-hidden embedded file,
+    two reviews with distinct quality, and one 2-face cluster."""
+    import numpy as np
+
+    from smartgallery_ai import RUBRIC_VERSION, vectors
+    from smartgallery_ai.faces import FaceDetection, StubFaceBackend, cluster_faces, replace_faces_for_file
+    from smartgallery_ai.review import Finding, ReviewResult, store_review
+
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    now = time.time()
+    for fid in ("vis_a", "vis_b", "vis_c", "hidden1"):
+        _add_image_file(conn, tmp_path, fid)
+
+    stub = StubSemanticEmbedder()
+    store = vectors.VectorStore(cache_dir=cfg.cache_dir, ephemeral=True)
+    for fid in ("vis_a", "vis_b", "hidden1"):
+        store.add(conn, fid, SPACE_SEMANTIC, stub.model_id, stub.model_version,
+                  stub.embed_text(fid), 1000.0)
+
+    store_review(conn, "vis_a",
+                 ReviewResult(quality_score=0.2, prompt_alignment_score=None,
+                              summary="rough", findings=[
+                                  Finding(type="artifact", severity="high",
+                                          confidence=0.9, localizable=False,
+                                          description="bad hands")]),
+                 "stub-critic", "stub-v1", RUBRIC_VERSION, None, 1000.0, now)
+    store_review(conn, "vis_b",
+                 ReviewResult(quality_score=0.8, prompt_alignment_score=0.5,
+                              summary="clean", findings=[]),
+                 "stub-critic", "stub-v1", RUBRIC_VERSION, None, 1000.0, now)
+
+    shared = "e" * 64
+    for fid, size in (("vis_a", 100), ("vis_b", 40), ("hidden1", 0)):
+        conn.execute("UPDATE files SET size = ? WHERE id = ?", (size, fid))
+    hashing.upsert_hashes(conn, "vis_a",
+                          hashing.HashResult(sha256=shared, phash64=0, dhash64=0),
+                          1000.0, "algo-v1", now)
+    hashing.upsert_hashes(conn, "vis_b",
+                          hashing.HashResult(sha256=shared, phash64=-1, dhash64=0),
+                          1000.0, "algo-v1", now)
+
+    rng = np.random.default_rng(3)
+    base = rng.standard_normal(16).astype(np.float32)
+    base /= np.linalg.norm(base)
+    for fid, seed in (("vis_a", 1), ("vis_b", 2)):
+        jitter = base + rng.standard_normal(16).astype(np.float32) * 0.01
+        replace_faces_for_file(
+            conn, fid,
+            [FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[],
+                           det_score=0.9, embedding=jitter.astype(np.float32))],
+            StubFaceBackend.model_id, StubFaceBackend.model_version, 1000.0, now)
+    cluster_ids = cluster_faces(conn, StubFaceBackend.model_id,
+                                StubFaceBackend.model_version,
+                                threshold=0.9, min_cluster_size=2)
+    conn.close()
+
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_ai_blueprint(cfg, file_access_check=lambda fid: fid != "hidden1"),
+        url_prefix=_PREFIX)
+    return SimpleNamespace(cfg=cfg, client=app.test_client(),
+                           cluster_id=cluster_ids[0])
+
+
+def test_semantic_search_filters_hidden_files(surf):
+    """Free-text search embeds the query with the stub text tower and
+    returns nearest embedded files, minus policy-hidden ids; a missing
+    query is a 400."""
+    data = surf.client.get(f"{_PREFIX}/search/semantic?q=anything").get_json()
+    returned = {r["file_id"] for r in data["results"]}
+    assert "vis_a" in returned and "vis_b" in returned
+    assert "hidden1" not in returned
+
+    assert surf.client.get(f"{_PREFIX}/search/semantic").status_code == 400
+
+
+def test_reviews_browser_sorts_by_quality_and_counts_findings(surf):
+    """quality_asc puts the rough review first with its finding count;
+    quality_desc flips it; an unknown sort is a 400."""
+    worst = surf.client.get(f"{_PREFIX}/reviews?sort=quality_asc").get_json()
+    assert worst["total"] == 2
+    assert [r["file_id"] for r in worst["reviews"]] == ["vis_a", "vis_b"]
+    assert worst["reviews"][0]["finding_count"] == 1
+
+    best = surf.client.get(f"{_PREFIX}/reviews?sort=quality_desc").get_json()
+    assert [r["file_id"] for r in best["reviews"]] == ["vis_b", "vis_a"]
+
+    assert surf.client.get(f"{_PREFIX}/reviews?sort=sneaky").status_code == 400
+
+
+def test_duplicates_overview_reports_reclaimable_bytes(surf):
+    """The sweep lists each exact-duplicate group with the bytes saved by
+    keeping the largest copy (100+40 -> keep 100, reclaim 40)."""
+    data = surf.client.get(f"{_PREFIX}/duplicates").get_json()
+    assert data["group_count"] == 1
+    assert data["redundant_files"] == 1
+    assert data["total_bytes_reclaimable"] == 40
+    assert set(data["groups"][0]["file_ids"]) == {"vis_a", "vis_b"}
+
+
+def test_cluster_label_roundtrip_and_unknown_404(surf):
+    """POST sets a cluster's label (visible in the listing), empty clears
+    it, and an unknown cluster id is a 404."""
+    cid = surf.cluster_id
+    res = surf.client.post(f"{_PREFIX}/faces/clusters/{cid}/label",
+                           json={"label": "  Sarah  "})
+    assert res.get_json()["label"] == "Sarah"
+
+    listing = surf.client.get(f"{_PREFIX}/faces/clusters").get_json()
+    labels = {c["cluster_id"]: c["label"] for c in listing["clusters"]}
+    assert labels[cid] == "Sarah"
+
+    cleared = surf.client.post(f"{_PREFIX}/faces/clusters/{cid}/label",
+                               json={"label": ""})
+    assert cleared.get_json()["label"] is None
+
+    assert surf.client.post(f"{_PREFIX}/faces/clusters/99999/label",
+                            json={"label": "x"}).status_code == 404
+
+
+def test_semantic_embedder_for_search_only_lends_locked_instances(tmp_path):
+    """The worker lends its semantic embedder to request threads ONLY when
+    the instance serializes its own forwards (_infer_lock); stubs and
+    fakes without the lock are never shared across threads."""
+    cfg = _cfg(tmp_path)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+
+    assert worker.semantic_embedder_for_search() is None  # nothing cached
+
+    worker._backend_cache["semantic"] = StubSemanticEmbedder()  # no lock
+    assert worker.semantic_embedder_for_search() is None
+
+    class _Locked(StubSemanticEmbedder):
+        def __init__(self):
+            import threading
+            self._infer_lock = threading.Lock()
+
+    locked = _Locked()
+    worker._backend_cache["semantic"] = locked
+    assert worker.semantic_embedder_for_search() is locked

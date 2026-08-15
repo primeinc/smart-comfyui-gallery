@@ -84,21 +84,22 @@
             <button type="button" id="aidam-tab-btn-similar" class="aidam-tab-btn aidam-tab-active" onclick="aidamSwitchTab('similar')">🧭 Similar</button>
             <button type="button" id="aidam-tab-btn-faces" class="aidam-tab-btn" onclick="aidamSwitchTab('faces')">🙂 Faces</button>
             <button type="button" id="aidam-tab-btn-review" class="aidam-tab-btn" onclick="aidamSwitchTab('review')">🩺 Review</button>
+            <button type="button" id="aidam-tab-btn-search" class="aidam-tab-btn" onclick="aidamSwitchTab('search')">🔎 Search</button>
             <button type="button" id="aidam-tab-btn-status" class="aidam-tab-btn" onclick="aidamSwitchTab('status')">📊 Status</button>
         </div>
 
         <!-- Body -->
         <div class="aidam-body">
 
-            <!-- SIMILAR TAB -->
+            <!-- SIMILAR TAB (global mode: gallery-wide duplicate sweep) -->
             <div id="aidam-tab-similar" class="aidam-tab-panel" style="display:flex;">
-                <div class="aidam-toggle-group">
+                <div class="aidam-toggle-group" id="aidam-similar-chrome-toggle">
                     <button type="button" id="aidam-space-semantic-btn" class="aidam-toggle-btn aidam-toggle-active" onclick="aidamSetSimilarSpace('semantic')">Semantic</button>
                     <button type="button" id="aidam-space-visual-btn" class="aidam-toggle-btn" onclick="aidamSetSimilarSpace('visual')">Visual</button>
                 </div>
                 <div id="aidam-similar-content"></div>
 
-                <span class="aidam-section-title">Duplicates</span>
+                <span class="aidam-section-title" id="aidam-similar-chrome-dup-title">Duplicates</span>
                 <div id="aidam-duplicates-content"></div>
             </div>
 
@@ -110,6 +111,17 @@
             <!-- REVIEW TAB -->
             <div id="aidam-tab-review" class="aidam-tab-panel">
                 <div id="aidam-review-content"></div>
+            </div>
+
+            <!-- SEARCH TAB: free-text semantic image search (gallery-wide) -->
+            <div id="aidam-tab-search" class="aidam-tab-panel">
+                <div style="display:flex; gap:8px; margin-bottom:14px;">
+                    <input type="search" id="aidam-search-input" placeholder="Describe what you're looking for — e.g. 'a red car at night'"
+                           style="flex:1; background:#111; border:1px solid #444; border-radius:8px; color:#fff; padding:8px 12px; font-size:0.9rem;"
+                           onkeydown="if (event.key === 'Enter') aidamRunSemanticSearch();">
+                    <button type="button" class="glass-btn" style="padding:8px 16px;" onclick="aidamRunSemanticSearch()">🔎 Search</button>
+                </div>
+                <div id="aidam-search-content"></div>
             </div>
 
             <!-- STATUS TAB: live ingest/backlog dashboard -->
@@ -141,10 +153,10 @@
         aidamSwitchTab('similar');
     }
 
-    // Global entry (sidebar AI hub): no file context. The Status and
-    // Clusters surfaces are gallery-wide; the per-file tabs explain
-    // themselves instead of showing another file's leftovers.
-    function openAidamPanelGlobal(tab) {
+    // Global entry (sidebar AI hub): no file context. Every tab shows its
+    // gallery-wide counterpart -- Status, Clusters, the duplicate sweep,
+    // the reviews browser, and semantic search.
+    function openAidamPanelGlobal(tab, searchQuery) {
         aidamCurrentFileId = null;
         aidamLoadedFor = {};
         aidamStatusCache = null;
@@ -155,6 +167,10 @@
         document.body.classList.add('modal-open');
 
         aidamSwitchTab(tab || 'status');
+        if (tab === 'search' && searchQuery) {
+            const input = document.getElementById('aidam-search-input');
+            if (input) { input.value = searchQuery; aidamRunSemanticSearch(); }
+        }
     }
 
     function closeAidamPanel() {
@@ -216,7 +232,7 @@
 
     function aidamSwitchTab(tab) {
         aidamActiveTab = tab;
-        ['similar', 'faces', 'review', 'status'].forEach(t => {
+        ['similar', 'faces', 'review', 'search', 'status'].forEach(t => {
             const panel = document.getElementById('aidam-tab-' + t);
             const btn = document.getElementById('aidam-tab-btn-' + t);
             if (panel) panel.style.display = (t === tab) ? 'flex' : 'none';
@@ -226,21 +242,27 @@
         aidamEnsureTabLoaded(tab);
     }
 
+    function aidamSetSimilarChrome(perFile) {
+        // The space toggle and Duplicates header only make sense per-file;
+        // global mode replaces the pane with the duplicate sweep.
+        const toggle = document.getElementById('aidam-similar-chrome-toggle');
+        const dupTitle = document.getElementById('aidam-similar-chrome-dup-title');
+        if (toggle) toggle.style.display = perFile ? 'inline-flex' : 'none';
+        if (dupTitle) dupTitle.style.display = perFile ? 'block' : 'none';
+    }
+
     function aidamEnsureTabLoaded(tab) {
         if (tab === 'status') { aidamLoadStatusTab(); return; }
+        if (tab === 'search') { aidamRenderSearchTab(); return; }
         if (!aidamCurrentFileId) {
-            // Global mode: faces becomes the gallery-wide cluster browser;
-            // the truly per-file tabs say so instead of showing stale data.
+            // Global mode: every tab shows its gallery-wide counterpart.
+            aidamSetSimilarChrome(false);
             if (tab === 'faces') { aidamBrowseAllClusters(); return; }
-            const boxId = tab === 'similar' ? 'aidam-similar-content' : 'aidam-review-content';
-            const box = document.getElementById(boxId);
-            if (box) box.innerHTML = aidamEmptyMsg('This tab is per-image — open an image and hit 🧬. Gallery-wide tools live in 📊 Status and 🗂️ Clusters.');
-            if (tab === 'similar') {
-                const dup = document.getElementById('aidam-duplicates-content');
-                if (dup) dup.innerHTML = '';
-            }
+            if (tab === 'similar') { aidamLoadDuplicatesOverview(); return; }
+            if (tab === 'review') { aidamLoadReviewsBrowser(); return; }
             return;
         }
+        aidamSetSimilarChrome(true);
         if (aidamLoadedFor[tab] === aidamCurrentFileId) return;
         aidamLoadedFor[tab] = aidamCurrentFileId;
         if (tab === 'similar') { aidamLoadSimilar(); aidamLoadDuplicates(); }
@@ -730,9 +752,11 @@
                 return;
             }
             const members = data.members || [];
-            let html = aidamBackButton('aidamLoadFaces');
+            let html = aidamBackButton(aidamCurrentFileId ? 'aidamLoadFaces' : 'aidamBrowseAllClusters');
             html += `<h5 style="margin:0 0 10px 0; color:#fff;">🙂 ${escapeAidamHtml(data.cluster.label || ('Cluster #' + data.cluster.cluster_id))}
-                <span style="color:var(--text-muted); font-weight:normal; font-size:0.8rem;">(${data.cluster.size} face${data.cluster.size === 1 ? '' : 's'})</span></h5>`;
+                <span style="color:var(--text-muted); font-weight:normal; font-size:0.8rem;">(${data.cluster.size} face${data.cluster.size === 1 ? '' : 's'})</span>
+                <button type="button" class="glass-btn" style="padding:2px 8px; font-size:0.75rem; margin-left:6px;"
+                        onclick="aidamRenameCluster(${data.cluster.cluster_id}, this)" title="Name this person/character">✏️ Rename</button></h5>`;
             if (members.length === 0) {
                 html += aidamEmptyMsg('No members in this cluster.');
             } else {
@@ -742,6 +766,18 @@
         } catch (e) {
             box.innerHTML = aidamErrorMsg('Failed to load cluster.');
         }
+    }
+
+    async function aidamRenameCluster(clusterId, btnEl) {
+        const label = prompt('Name this cluster (person / character); empty clears the name:');
+        if (label === null) return;
+        try {
+            const res = await fetch(`/galleryout/api/aidam/faces/clusters/${encodeURIComponent(clusterId)}/label`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label: label }),
+            });
+            if (res.ok) aidamViewCluster(clusterId);
+        } catch (e) { /* rename is best-effort; the view simply keeps the old name */ }
     }
 
     async function aidamBrowseAllClusters() {
@@ -808,12 +844,144 @@
         }
     }
 
+    // --- SEMANTIC SEARCH (gallery-wide) ---
+    let aidamSearchLastHtml = null;  // survives tab switches within a panel session
+
+    function aidamRenderSearchTab() {
+        const box = document.getElementById('aidam-search-content');
+        if (!box) return;
+        box.innerHTML = aidamSearchLastHtml !== null
+            ? aidamSearchLastHtml
+            : aidamEmptyMsg('Search your gallery by MEANING: the query text and every image live in the same CLIP embedding space. Try "close-up portrait, dramatic lighting".');
+    }
+
+    async function aidamRunSemanticSearch() {
+        const input = document.getElementById('aidam-search-input');
+        const box = document.getElementById('aidam-search-content');
+        const query = (input && input.value || '').trim();
+        if (!query || !box) return;
+        box.innerHTML = aidamSpinner();
+        try {
+            const res = await fetch(`/galleryout/api/aidam/search/semantic?q=${encodeURIComponent(query)}&k=48`);
+            const data = await res.json();
+            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
+            if (data.note) {
+                box.innerHTML = await aidamBackendAwareEmpty('semantic', 'semantic', data.note);
+            } else if (!data.results || data.results.length === 0) {
+                box.innerHTML = aidamEmptyMsg(`Nothing close to "${escapeAidamHtml(query)}" yet — results grow as embedding indexing progresses (see 📊 Status).`);
+            } else {
+                box.innerHTML = `<div class="aidam-thumb-grid">${data.results.map(r => aidamThumbCard(r.file_id, aidamFormatScore(r.score))).join('')}</div>`;
+            }
+            aidamSearchLastHtml = box.innerHTML;
+        } catch (e) {
+            box.innerHTML = aidamErrorMsg('Search failed.');
+        }
+    }
+
+    // --- GLOBAL DUPLICATE SWEEP (Similar tab without a file) ---
+    function aidamFormatBytes(n) {
+        if (!n || n <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+        return (n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+    }
+
+    async function aidamLoadDuplicatesOverview() {
+        const box = document.getElementById('aidam-similar-content');
+        const dup = document.getElementById('aidam-duplicates-content');
+        if (dup) dup.innerHTML = '';
+        if (!box) return;
+        box.innerHTML = aidamSpinner();
+        try {
+            const res = await fetch('/galleryout/api/aidam/duplicates');
+            const data = await res.json();
+            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
+            const groups = data.groups || [];
+            if (groups.length === 0) {
+                box.innerHTML = aidamEmptyMsg('No exact duplicates in the gallery (among hashed files — see 📊 Status for hashing progress).');
+                return;
+            }
+            let html = `<div style="color:#ddd; font-size:0.9rem; margin-bottom:12px;">
+                ♻️ <b>${data.group_count}</b> duplicate group${data.group_count === 1 ? '' : 's'} ·
+                <b>${data.redundant_files}</b> redundant file${data.redundant_files === 1 ? '' : 's'} ·
+                <b>${aidamFormatBytes(data.total_bytes_reclaimable)}</b> reclaimable (keep one copy of each)
+            </div>`;
+            groups.forEach(g => {
+                html += `<span class="aidam-section-title">${g.count} copies · ${aidamFormatBytes(g.bytes_reclaimable)} reclaimable</span>`;
+                html += `<div class="aidam-thumb-grid">${g.file_ids.map(fid => aidamThumbCard(fid, null)).join('')}</div>`;
+            });
+            box.innerHTML = html;
+        } catch (e) {
+            box.innerHTML = aidamErrorMsg('Failed to load the duplicate sweep.');
+        }
+    }
+
+    // --- GLOBAL REVIEWS BROWSER (Review tab without a file) ---
+    let aidamReviewsSort = 'quality_asc';
+
+    async function aidamLoadReviewsBrowser() {
+        const box = document.getElementById('aidam-review-content');
+        if (!box) return;
+        box.innerHTML = aidamSpinner();
+        try {
+            const res = await fetch(`/galleryout/api/aidam/reviews?sort=${encodeURIComponent(aidamReviewsSort)}&limit=60`);
+            const data = await res.json();
+            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
+            let html = `<div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                <span style="color:var(--text-muted); font-size:0.85rem;">${data.total || 0} reviewed file${(data.total || 0) === 1 ? '' : 's'}</span>
+                <select onchange="aidamReviewsSort = this.value; aidamLoadReviewsBrowser();"
+                        style="background:#111; color:#fff; border:1px solid #444; border-radius:8px; padding:4px 8px; font-size:0.8rem;">
+                    <option value="quality_asc" ${aidamReviewsSort === 'quality_asc' ? 'selected' : ''}>Worst quality first</option>
+                    <option value="quality_desc" ${aidamReviewsSort === 'quality_desc' ? 'selected' : ''}>Best quality first</option>
+                    <option value="alignment_asc" ${aidamReviewsSort === 'alignment_asc' ? 'selected' : ''}>Least prompt-aligned first</option>
+                    <option value="newest" ${aidamReviewsSort === 'newest' ? 'selected' : ''}>Newest reviews first</option>
+                </select>
+            </div>`;
+            const reviews = data.reviews || [];
+            if (reviews.length === 0) {
+                html += aidamEmptyMsg('No reviews yet — the critic works through the queue when the fast stages are idle, and any image you open gets reviewed with priority.');
+            } else {
+                html += `<div class="aidam-thumb-grid">${reviews.map(r => {
+                    const q = (r.quality === null || r.quality === undefined) ? 'n/a' : Math.round(r.quality * 10) + '/10';
+                    const badge = `<span class="aidam-badge-near" title="${escapeAidamHtml(r.summary || '')}">${r.finding_count > 0 ? '⚠ ' + r.finding_count + ' · ' : ''}${q}</span>`;
+                    return aidamThumbCard(r.file_id, null, badge);
+                }).join('')}</div>`;
+            }
+            box.innerHTML = html;
+        } catch (e) {
+            box.innerHTML = aidamErrorMsg('Failed to load the reviews browser.');
+        }
+    }
+
+    // --- FEEDBACK (thumbs on findings; exported for model tuning) ---
+    async function aidamSendFeedback(targetKind, targetId, verdict, btnEl) {
+        try {
+            const res = await fetch('/galleryout/api/aidam/review/feedback', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_kind: targetKind, target_id: targetId,
+                                       verdict: verdict, file_id: aidamCurrentFileId }),
+            });
+            if (res.ok && btnEl) {
+                const wrap = btnEl.parentElement;
+                if (wrap) wrap.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.35'; });
+                btnEl.style.opacity = '1';
+            }
+        } catch (e) { /* feedback is best-effort */ }
+    }
+
     function aidamFindingRow(f) {
         const sevColor = _AIDAM_SEVERITY_COLORS[(f.severity || '').toLowerCase()] || '#888';
         const confShown = (f.confidence === null || f.confidence === undefined) ? 'n/a' : Math.round(f.confidence * 100) + '%';
         const scopeChip = f.localizable
             ? (f.mask_url ? `<button type="button" class="aidam-mask-toggle-btn" onclick="aidamToggleMask('${f.mask_url}', this)">🎭 Show mask</button>` : '')
             : `<span class="aidam-chip-global">global</span>`;
+        const feedback = f.finding_id ? `
+            <span style="display:inline-flex; gap:2px; flex-shrink:0;">
+                <button type="button" title="Finding is correct" style="background:none; border:none; cursor:pointer; font-size:0.85rem;"
+                        onclick="aidamSendFeedback('finding', ${f.finding_id}, 'accept', this)">👍</button>
+                <button type="button" title="Finding is wrong (false positive)" style="background:none; border:none; cursor:pointer; font-size:0.85rem;"
+                        onclick="aidamSendFeedback('finding', ${f.finding_id}, 'false_positive', this)">👎</button>
+            </span>` : '';
         return `
             <div class="aidam-finding-row">
                 <span class="aidam-chip" style="background:${sevColor}22; color:${sevColor}; border-color:${sevColor};">${escapeAidamHtml(f.severity || 'n/a')}</span>
@@ -821,6 +989,7 @@
                     <div class="aidam-finding-type">${escapeAidamHtml(f.type || 'finding')} <span style="color:var(--text-muted); font-weight:normal; font-size:0.75rem;">conf ${confShown}</span></div>
                     ${f.description ? `<div class="aidam-finding-desc">${escapeAidamHtml(f.description)}</div>` : ''}
                 </div>
+                ${feedback}
                 ${scopeChip}
             </div>`;
     }
