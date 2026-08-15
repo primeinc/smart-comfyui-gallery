@@ -107,6 +107,13 @@
                             <div class="cluster-card-sub">Group by exact positive prompt match. Useful to see how different models interpret the same text.</div>
                         </div>
                     </label>
+                    <label class="cluster-opt-card" id="lbl-basis-models" onclick="selectClusterBasis('models')">
+                        <input type="radio" name="cluster_basis" value="models">
+                        <div>
+                            <div class="cluster-card-title">📦 Model Set</div>
+                            <div class="cluster-card-sub">Group by identical checkpoint + LoRA set, across every pipeline variant. Broader than Architecture.</div>
+                        </div>
+                    </label>
                 </div>
             </div>
 
@@ -212,12 +219,13 @@ function getClusterColor(hashStr) {
 let activeClusterTargetFileId = null;
 
 function selectClusterBasis(basis) {
-    document.getElementById('lbl-basis-wf').classList.toggle('active', basis === 'workflow');
-    document.getElementById('lbl-basis-prompt').classList.toggle('active', basis === 'prompt');
-    const radWf = document.querySelector('input[name="cluster_basis"][value="workflow"]');
-    const radPr = document.querySelector('input[name="cluster_basis"][value="prompt"]');
-    if (radWf) radWf.checked = (basis === 'workflow');
-    if (radPr) radPr.checked = (basis === 'prompt');
+    const cards = { workflow: 'lbl-basis-wf', prompt: 'lbl-basis-prompt', models: 'lbl-basis-models' };
+    for (const [value, cardId] of Object.entries(cards)) {
+        const card = document.getElementById(cardId);
+        if (card) card.classList.toggle('active', basis === value);
+        const rad = document.querySelector(`input[name="cluster_basis"][value="${value}"]`);
+        if (rad) rad.checked = (basis === value);
+    }
 }
 
 function selectClusterScope(scope) {
@@ -234,11 +242,11 @@ function selectClusterScope(scope) {
 function openClusteringModal(targetFileId = null) {
     if (targetFileId && typeof allFilesData !== 'undefined') {
         const fileObj = allFilesData.find(f => f.id === targetFileId);
-        if (fileObj && !fileObj.has_workflow) {
+        if (fileObj && !fileObj.workflow_hash && !fileObj.prompt_hash && !fileObj.models_hash) {
             if (typeof showNotification === 'function') {
-                showNotification("⚠️ This asset has no workflow metadata and cannot be clustered.", "warning");
+                showNotification("⚠️ This asset has no generation metadata and cannot be clustered.", "warning");
             } else {
-                alert("This asset has no workflow metadata and cannot be clustered.");
+                alert("This asset has no generation metadata and cannot be clustered.");
             }
             return;
         }
@@ -312,7 +320,11 @@ function submitClusteringModal() {
                 if (typeof showNotification === 'function') showNotification("⚠️ This asset has no prompt text, so it cannot anchor a Prompt Text cluster. Try Architecture instead.", "warning");
                 return;
             }
-            if (basis !== 'prompt' && !targetObj.workflow_hash) {
+            if (basis === 'models' && !targetObj.models_hash) {
+                if (typeof showNotification === 'function') showNotification("⚠️ No model set could be indexed for this asset, so it cannot anchor a Model Set cluster.", "warning");
+                return;
+            }
+            if (basis !== 'prompt' && basis !== 'models' && !targetObj.workflow_hash) {
                 if (typeof showNotification === 'function') showNotification("⚠️ This asset's workflow could not be indexed, so it cannot anchor an Architecture cluster.", "warning");
                 return;
             }
@@ -509,7 +521,9 @@ function initClusteringBanner() {
     const bannerText = document.getElementById('cluster-banner-text');
 
     if (clusterMode && banner && bannerText) {
-        const basisLabel = clusterMode === 'prompt' ? 'Same Prompt Text' : 'Same Workflow Architecture';
+        const basisLabel = clusterMode === 'prompt' ? 'Same Prompt Text'
+            : clusterMode === 'models' ? 'Same Model Set'
+            : 'Same Workflow Architecture';
         const isRecursive = params.get('recursive') !== 'false';
         const scopeLabel = clusterScope === 'current'
             ? ('Current Context' + (isRecursive ? ' + Subfolders' : ' (Folder Only)'))
@@ -639,8 +653,10 @@ function openClusterInfoInspector(hashVal, hashType, fileId = null) {
     if (!overlay || !titleEl || !bodyEl) return;
 
     const shortHash = hashVal.substring(0, 7).toUpperCase();
-    titleEl.innerHTML = (hashType === 'workflow') 
+    titleEl.innerHTML = (hashType === 'workflow')
         ? `🧬 Architecture Inspector <span style="background:rgba(255,0,255,0.2); border:1px solid var(--ai-color, #ff00ff); color:#fff; padding:2px 8px; border-radius:6px; font-size:0.8rem; font-family:monospace;">#${shortHash}</span>`
+        : (hashType === 'models')
+        ? `📦 Model Set Inspector <span style="background:rgba(255,193,7,0.2); border:1px solid #ffc107; color:#fff; padding:2px 8px; border-radius:6px; font-size:0.8rem; font-family:monospace;">#${shortHash}</span>`
         : `💬 Prompt Inspector <span style="background:rgba(0,255,255,0.2); border:1px solid #00ffff; color:#fff; padding:2px 8px; border-radius:6px; font-size:0.8rem; font-family:monospace;">#${shortHash}</span>`;
 
     bodyEl.innerHTML = '<div class="loader" style="margin: 40px auto;"></div>';
@@ -694,8 +710,10 @@ function renderClusterInspectorContent(data) {
     currentInspectedSampleFileId = data.sample_file ? data.sample_file.id : null;
 
     if (actionBtn) {
-        actionBtn.innerHTML = isWf 
+        actionBtn.innerHTML = isWf
             ? '🚀 Clusterize Gallery by this Architecture'
+            : (data.hash_type === 'models')
+            ? '🚀 Clusterize Gallery by this Model Set'
             : '🚀 Clusterize Gallery by this Prompt';
             
         actionBtn.onclick = function() {
@@ -746,6 +764,7 @@ function renderClusterInspectorContent(data) {
     }
 
     const counterpartLabel = isWf ? 'Distinct Prompts Tested' : 'Distinct Architecture Pipeline Variants';
+    // 'models' also reports architecture variants (how many pipelines use this model set).
 
     bodyEl.innerHTML = `
         <div class="fd-stats-row" style="justify-content:space-around; background:rgba(255,255,255,0.03); padding:15px; border-radius:12px; border:1px solid var(--glass-border,#333);">

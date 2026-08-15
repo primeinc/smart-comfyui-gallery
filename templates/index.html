@@ -12201,6 +12201,7 @@ function renderMarkdownText(text) {
 
                 const wfHashStr = f.workflow_hash ? f.workflow_hash.substring(0, 7).toUpperCase() : 'N/A';
                 const prHashStr = f.prompt_hash ? f.prompt_hash.substring(0, 7).toUpperCase() : 'N/A';
+                const mdHashStr = f.models_hash ? f.models_hash.substring(0, 7).toUpperCase() : 'N/A';
 
                 const totalClusterSum = (data.cluster_wf_count || 0) + (data.cluster_pr_count || 0);
                 const showClusterBtn = totalClusterSum > 2;
@@ -12314,6 +12315,10 @@ function renderMarkdownText(text) {
                             <div class="fd-stat-box">
                                 <span class="fd-stat-num" style="color:#00ffff;">💬 #${prHashStr}</span>
                                 <span class="fd-stat-lbl">${data.cluster_pr_count || 0} Assets with Prompt</span>
+                            </div>
+                            <div class="fd-stat-box">
+                                <span class="fd-stat-num" style="color:#ffc107;">📦 #${mdHashStr}</span>
+                                <span class="fd-stat-lbl">${data.cluster_md_count || 0} Assets with Model Set</span>
                             </div>
                         </div>
 

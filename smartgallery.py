@@ -331,17 +331,6 @@ ENABLE_AI_SEARCH = os.environ.get('ENABLE_AI_SEARCH', 'false').lower() == 'true'
 GENERATE_WAVEFORMS = os.environ.get('GENERATE_WAVEFORMS', 'false').lower() == 'true'
 COMFYUI_SERVER_URL = os.environ.get('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
 
-# Cluster-architecture identity for images without an embedded ComfyUI graph.
-# SwarmUI and friends forward generation to backends like ComfyUI, so their
-# parameter set describes the workflow they generated:
-#   model    -> checkpoint model + LoRA set
-#   pipeline -> parameter-set shape plus every model/LoRA/VAE-valued
-#               parameter, ignoring seeds, steps, CFG, and prompts — the
-#               same policy the ComfyUI graph hash applies
-# Changing this re-hashes affected files automatically on the next startup.
-CLUSTER_FOREIGN_ARCH = os.environ.get('CLUSTER_FOREIGN_ARCH', 'model').strip().lower()
-if CLUSTER_FOREIGN_ARCH not in ('model', 'pipeline'):
-    CLUSTER_FOREIGN_ARCH = 'model'
 
 # ============================================================================
 # END OF USER CONFIGURATION
@@ -1913,14 +1902,14 @@ def process_single_file(filepath):
                 workflow_prompt_content = parsed_meta.positive
         
         hashable = metadata['has_workflow'] or metadata['type'] in ('image', 'animated_image')
-        wf_hash, pr_hash = compute_workflow_hashes(filepath) if hashable else ('', '')
+        wf_hash, pr_hash, md_hash = compute_workflow_hashes(filepath) if hashable else ('', '', '')
         return (
             file_id, filepath, mtime, os.path.basename(filepath),
-            metadata['type'], metadata['duration'], metadata['dimensions'], 
-            metadata['has_workflow'], file_size, time.time(), 
-            workflow_files_content, 
+            metadata['type'], metadata['duration'], metadata['dimensions'],
+            metadata['has_workflow'], file_size, time.time(),
+            workflow_files_content,
             workflow_prompt_content,
-            wf_hash, pr_hash
+            wf_hash, pr_hash, md_hash
         )
     except Exception as e:
         print(f"ERROR: Failed to process file {os.path.basename(filepath)} in worker: {e}")
@@ -2155,6 +2144,7 @@ def init_db(conn=None):
             'ai_error': 'TEXT',
             'workflow_hash': "TEXT DEFAULT ''",
             'prompt_hash': "TEXT DEFAULT ''",
+            'models_hash': "TEXT DEFAULT ''",
             'hash_failed': 'INTEGER DEFAULT 0'
         }
 
@@ -2565,8 +2555,8 @@ def full_sync_database(conn):
             for i in range(0, len(results), BATCH_SIZE):
                 batch = results[i:i + BATCH_SIZE]
                 conn.executemany("""
-                    INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         path = excluded.path,
                         name = excluded.name,
@@ -2580,6 +2570,7 @@ def full_sync_database(conn):
                         workflow_prompt = excluded.workflow_prompt,
                         workflow_hash = excluded.workflow_hash,
                         prompt_hash = excluded.prompt_hash,
+                        models_hash = excluded.models_hash,
                         hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
 
                         -- CONDITIONAL LOGIC:
@@ -2734,8 +2725,8 @@ def sync_folder_on_demand(folder_path):
 
                 if data_to_upsert:
                     conn.executemany("""
-                        INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(id) DO UPDATE SET
                             path = excluded.path,
                             name = excluded.name,
@@ -2749,6 +2740,7 @@ def sync_folder_on_demand(folder_path):
                             workflow_prompt = excluded.workflow_prompt,
                             workflow_hash = excluded.workflow_hash,
                             prompt_hash = excluded.prompt_hash,
+                        models_hash = excluded.models_hash,
                             hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
 
                             -- CONDITIONAL LOGIC:
@@ -4050,7 +4042,10 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 
     # The hash column that defines cluster identity for this mode. Files
     # missing it cannot belong to any cluster of this kind.
-    primary_hash_key = 'prompt_hash' if cluster_mode == 'prompt' else 'workflow_hash'
+    primary_hash_key = {
+        'prompt': 'prompt_hash',
+        'models': 'models_hash',
+    }.get(cluster_mode, 'workflow_hash')
 
     result_files = []
 
@@ -4066,9 +4061,10 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                 comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
 
             if cluster_target_id:
-                target_row = conn_target.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
+                target_row = conn_target.execute("SELECT workflow_hash, prompt_hash, models_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
                 target_wf = target_row[0] if target_row else None
                 target_pr = target_row[1] if target_row else None
+                target_md = target_row[2] if target_row else None
 
                 where_clause = ""
                 params_t = ()
@@ -4078,7 +4074,10 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                 elif cluster_mode == 'prompt' and target_pr:
                     where_clause = "f.prompt_hash = ?"
                     params_t = (target_pr,)
-                elif target_wf:
+                elif cluster_mode == 'models' and target_md:
+                    where_clause = "f.models_hash = ?"
+                    params_t = (target_md,)
+                elif cluster_mode not in ('prompt', 'models') and target_wf:
                     where_clause = "f.workflow_hash = ?"
                     params_t = (target_wf,)
 
@@ -4132,22 +4131,24 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                     chunk = stale_ids[i:i + 500]
                     placeholders = ','.join('?' * len(chunk))
                     for r in conn_refresh.execute(
-                        f"SELECT id, workflow_hash, prompt_hash FROM files WHERE id IN ({placeholders})", chunk
+                        f"SELECT id, workflow_hash, prompt_hash, models_hash FROM files WHERE id IN ({placeholders})", chunk
                     ).fetchall():
-                        fresh_hashes[r['id']] = (r['workflow_hash'], r['prompt_hash'])
+                        fresh_hashes[r['id']] = (r['workflow_hash'], r['prompt_hash'], r['models_hash'])
             for f in result_files:
                 if f['id'] in fresh_hashes:
-                    f['workflow_hash'], f['prompt_hash'] = fresh_hashes[f['id']]
+                    f['workflow_hash'], f['prompt_hash'], f['models_hash'] = fresh_hashes[f['id']]
 
         if cluster_target_id:
             with get_db_connection() as conn_t:
-                t_row = conn_t.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
+                t_row = conn_t.execute("SELECT workflow_hash, prompt_hash, models_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
                 if t_row:
-                    t_wf, t_pr = t_row[0], t_row[1]
+                    t_wf, t_pr, t_md = t_row[0], t_row[1], t_row[2]
                     if cluster_mode == 'combo':
                         result_files = [f for f in result_files if f.get('workflow_hash') == t_wf and f.get('prompt_hash') == t_pr]
                     elif cluster_mode == 'prompt':
                         result_files = [f for f in result_files if f.get('prompt_hash') == t_pr]
+                    elif cluster_mode == 'models':
+                        result_files = [f for f in result_files if f.get('models_hash') == t_md]
                     else:
                         result_files = [f for f in result_files if f.get('workflow_hash') == t_wf]
                 else:
@@ -4841,8 +4842,8 @@ def background_rescan_worker(job_id, files_to_process):
 
             if results:
                 conn.executemany("""
-                    INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         path = excluded.path,
                         name = excluded.name,
@@ -4856,6 +4857,7 @@ def background_rescan_worker(job_id, files_to_process):
                         workflow_prompt = excluded.workflow_prompt,
                         workflow_hash = excluded.workflow_hash,
                         prompt_hash = excluded.prompt_hash,
+                        models_hash = excluded.models_hash,
                         hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
                         is_favorite = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.is_favorite END,
                         ai_caption = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_caption END,
@@ -5520,7 +5522,7 @@ def move_batch():
                     SELECT 
                         path, name, size, has_workflow, is_favorite, type, duration, dimensions,
                         ai_last_scanned, ai_caption, ai_embedding, ai_error, workflow_files, workflow_prompt,
-                        workflow_hash, prompt_hash
+                        workflow_hash, prompt_hash, models_hash
                     FROM files WHERE id = ?
                 """
                 file_info_row = conn.execute(query_fetch, (file_id,)).fetchone()
@@ -5549,7 +5551,8 @@ def move_batch():
                     'workflow_files': file_info['workflow_files'],
                     'workflow_prompt': file_info['workflow_prompt'],
                     'workflow_hash': file_info.get('workflow_hash', ''),
-                    'prompt_hash': file_info.get('prompt_hash', '')
+                    'prompt_hash': file_info.get('prompt_hash', ''),
+                    'models_hash': file_info.get('models_hash', '')
                 }
                 
                 # Check Source vs Dest (OS Agnostic comparison)
@@ -5592,7 +5595,7 @@ def move_batch():
                             type = ?, duration = ?, dimensions = ?,
                             ai_last_scanned = ?, ai_caption = ?, ai_embedding = ?, ai_error = ?,
                             workflow_files = ?, workflow_prompt = ?,
-                            workflow_hash = ?, prompt_hash = ?
+                            workflow_hash = ?, prompt_hash = ?, models_hash = ?
                         WHERE id = ?
                     """
                     conn.execute(query_merge, (
@@ -5602,7 +5605,7 @@ def move_batch():
                         meta['ai_last_scanned'], meta['ai_caption'], meta['ai_embedding'], meta['ai_error'],
                         meta['workflow_files'], 
                         meta['workflow_prompt'],
-                        meta['workflow_hash'], meta['prompt_hash'],
+                        meta['workflow_hash'], meta['prompt_hash'], meta['models_hash'],
                         new_id
                     ))
                     conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
@@ -5684,8 +5687,8 @@ def copy_batch():
                         id, path, mtime, name, type, duration, dimensions, has_workflow, 
                         size, is_favorite, last_scanned, workflow_files, workflow_prompt,
                         ai_last_scanned, ai_caption, ai_embedding, ai_error,
-                        workflow_hash, prompt_hash
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        workflow_hash, prompt_hash, models_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     new_id, final_dest_path, new_mtime, final_filename, 
                     file_info['type'], file_info['duration'], file_info['dimensions'], 
@@ -5694,7 +5697,7 @@ def copy_batch():
                     file_info['last_scanned'], 
                     file_info['workflow_files'], file_info['workflow_prompt'],
                     file_info['ai_last_scanned'], file_info['ai_caption'], file_info['ai_embedding'], file_info['ai_error'],
-                    file_info.get('workflow_hash', ''), file_info.get('prompt_hash', '')
+                    file_info.get('workflow_hash', ''), file_info.get('prompt_hash', ''), file_info.get('models_hash', '')
                 ))
                 
                 copied_count += 1
@@ -5849,7 +5852,7 @@ def rename_file(file_id):
                 SELECT 
                     path, name, size, has_workflow, is_favorite, type, duration, dimensions,
                     ai_last_scanned, ai_caption, ai_embedding, ai_error, workflow_files, workflow_prompt,
-                    workflow_hash, prompt_hash
+                    workflow_hash, prompt_hash, models_hash
                 FROM files WHERE id = ?
             """
             file_info = conn.execute(query_fetch, (file_id,)).fetchone()
@@ -5875,7 +5878,8 @@ def rename_file(file_id):
                 'workflow_files': file_info['workflow_files'],
                 'workflow_prompt': file_info['workflow_prompt'],
                 'workflow_hash': file_info.get('workflow_hash', ''),
-                'prompt_hash': file_info.get('prompt_hash', '')
+                'prompt_hash': file_info.get('prompt_hash', ''),
+                'models_hash': file_info.get('models_hash', '')
             }
             
             # Extension logic
@@ -5909,7 +5913,7 @@ def rename_file(file_id):
                         type = ?, duration = ?, dimensions = ?,
                         ai_last_scanned = ?, ai_caption = ?, ai_embedding = ?, ai_error = ?,
                         workflow_files = ?, workflow_prompt = ?,
-                        workflow_hash = ?, prompt_hash = ?
+                        workflow_hash = ?, prompt_hash = ?, models_hash = ?
                     WHERE id = ?
                 """
                 conn.execute(query_merge, (
@@ -5919,7 +5923,7 @@ def rename_file(file_id):
                     meta['ai_last_scanned'], meta['ai_caption'], meta['ai_embedding'], meta['ai_error'],
                     meta['workflow_files'], 
                     meta['workflow_prompt'],
-                    meta['workflow_hash'], meta['prompt_hash'],
+                    meta['workflow_hash'], meta['prompt_hash'], meta['models_hash'],
                     new_id
                 ))
                 conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
@@ -7245,15 +7249,19 @@ def get_file_full_details(file_id):
 
             cluster_wf_count = 0
             cluster_pr_count = 0
+            cluster_md_count = 0
             nodes_pipeline = []
             models_used = []
 
             wf_h = file_data.get('workflow_hash')
             pr_h = file_data.get('prompt_hash')
+            md_h = file_data.get('models_hash')
             if wf_h:
                 cluster_wf_count = conn.execute("SELECT COUNT(*) FROM files WHERE workflow_hash = ?", (wf_h,)).fetchone()[0]
             if pr_h:
                 cluster_pr_count = conn.execute("SELECT COUNT(*) FROM files WHERE prompt_hash = ?", (pr_h,)).fetchone()[0]
+            if md_h:
+                cluster_md_count = conn.execute("SELECT COUNT(*) FROM files WHERE models_hash = ?", (md_h,)).fetchone()[0]
 
             if file_data.get('has_workflow'):
                 wf_json = extract_workflow(abs_path, target_type='ui')
@@ -7286,6 +7294,7 @@ def get_file_full_details(file_id):
                 'collections': collections_list,
                 'cluster_wf_count': cluster_wf_count,
                 'cluster_pr_count': cluster_pr_count,
+                'cluster_md_count': cluster_md_count,
                 'nodes_pipeline': nodes_pipeline,
                 'models_used': sorted(list(set(models_used)))
             })
@@ -10379,15 +10388,17 @@ _FOREIGN_MODEL_KEY_RE = re.compile(r'model|lora|vae|refiner|controlnet', re.I)
 
 def _foreign_cluster_hashes(parsed):
     """Cluster identities for images whose metadata names a non-ComfyUI tool
-    (SwarmUI, A1111/Forge, Fooocus, ...). There is no node graph to hash;
-    CLUSTER_FOREIGN_ARCH picks the architecture analog:
-      model    -> checkpoint model + LoRA set
-      pipeline -> which parameters are present (SwarmUI's parameter set shapes
-                  the ComfyUI workflow it generates) + model-valued parameters
+    (SwarmUI, A1111/Forge, Fooocus, ...). There is no node graph, but SwarmUI
+    and friends forward generation to backends like ComfyUI, so the parameter
+    set shapes the workflow they generate. Returns (workflow_hash,
+    prompt_hash, models_hash):
+      workflow_hash -> which parameters are present + model-valued parameters
+                       (fine-grained pipeline identity)
+      models_hash   -> checkpoint model + LoRA set (coarse identity)
     The prompt hash uses the same normalization as the ComfyUI path so
     identical prompts cluster across tools."""
     if parsed is None:
-        return '', ''
+        return '', '', ''
     prompt_hash = ''
     if parsed.positive:
         prompt_hash = hashlib.md5(parsed.positive.strip().lower().encode('utf-8')).hexdigest()
@@ -10397,40 +10408,43 @@ def _foreign_cluster_hashes(parsed):
         if value:
             loras.add(str(value).strip().lower())
 
-    if CLUSTER_FOREIGN_ARCH == 'pipeline':
-        keys = []
-        model_values = set()
-        for key, value in {**parsed.extra, **parsed.params}.items():
-            k = str(key).strip().lower()
-            if k in _FOREIGN_EPHEMERAL_KEYS or 'time' in k:
-                continue
-            keys.append(k)
-            if _FOREIGN_MODEL_KEY_RE.search(k):
-                model_values.add(str(value).strip().lower())
-        if not keys and not loras:
-            return '', prompt_hash
+    keys = []
+    model_values = set()
+    for key, value in {**parsed.extra, **parsed.params}.items():
+        k = str(key).strip().lower()
+        if k in _FOREIGN_EPHEMERAL_KEYS or 'time' in k:
+            continue
+        keys.append(k)
+        if _FOREIGN_MODEL_KEY_RE.search(k):
+            model_values.add(str(value).strip().lower())
+    workflow_hash = ''
+    if keys or loras:
         identity = json.dumps(
             {'keys': sorted(keys), 'models': sorted(model_values), 'loras': sorted(loras)},
             sort_keys=True,
         )
-        return hashlib.md5(identity.encode('utf-8')).hexdigest(), prompt_hash
+        workflow_hash = hashlib.md5(identity.encode('utf-8')).hexdigest()
 
+    models_hash = ''
     model = str(parsed.params.get('model') or '').strip().lower()
-    if not model:
-        return '', prompt_hash
-    identity = json.dumps({'model': model, 'loras': sorted(loras)}, sort_keys=True)
-    return hashlib.md5(identity.encode('utf-8')).hexdigest(), prompt_hash
+    if model:
+        identity = json.dumps({'model': model, 'loras': sorted(loras)}, sort_keys=True)
+        models_hash = hashlib.md5(identity.encode('utf-8')).hexdigest()
+    return workflow_hash, prompt_hash, models_hash
 
 
 def compute_workflow_hashes(filepath):
     """
-    Computes workflow_hash (canonical structural architecture & models) and prompt_hash (positive prompt).
+    Computes (workflow_hash, prompt_hash, models_hash):
+      workflow_hash -> canonical structural architecture (node graph, or the
+                       parameter-set shape for graph-less foreign images)
+      prompt_hash   -> normalized positive prompt
+      models_hash   -> the set of model/LoRA files used (coarse identity)
     Ignores folder paths, seeds, steps, CFG, prompts, and ephemeral widget values.
-    Files without an embedded ComfyUI graph fall back to metaparse identities
-    (model+LoRA architecture analog, parsed positive prompt).
+    Files without an embedded ComfyUI graph fall back to metaparse identities.
     """
     if not filepath or not os.path.exists(filepath):
-        return '', ''
+        return '', '', ''
     try:
         # Marker-detected non-ComfyUI files skip extract_workflow: its raw
         # byte-scan fallback reads the whole file twice, which is what made
@@ -10556,17 +10570,23 @@ def compute_workflow_hashes(filepath):
         node_descriptors.sort(key=lambda d: (d['type'], json.dumps(d['connections']), json.dumps(d['models'])))
 
         if not node_descriptors:
-            return '', prompt_hash
+            return '', prompt_hash, ''
 
         struct_str = json.dumps(node_descriptors, sort_keys=True)
         workflow_hash = hashlib.md5(struct_str.encode('utf-8')).hexdigest()
 
+        # Coarse identity: just the set of model files the graph loads.
+        all_models = sorted({m for d in node_descriptors for m in d['models']})
+        models_hash = ''
+        if all_models:
+            models_hash = hashlib.md5(json.dumps(all_models).encode('utf-8')).hexdigest()
+
         # prompt_hash stays empty when the workflow has no positive prompt:
         # prompt clusters mean "identical prompt text", and a synthesized
         # value would group files that share no prompt at all.
-        return workflow_hash, prompt_hash
+        return workflow_hash, prompt_hash, models_hash
     except Exception:
-        return '', '' 
+        return '', '', ''
 
 def backfill_audio_durations(conn=None):
     """
@@ -10722,7 +10742,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
 
         def _work(item):
             fid, fpath, had_prompt = item
-            wf_h, pr_h = compute_workflow_hashes(fpath)
+            wf_h, pr_h, md_h = compute_workflow_hashes(fpath)
             # Rows indexed before foreign-metadata support have no searchable
             # prompt; the file is already open here, so fill it in one pass.
             prompt_text = ''
@@ -10730,7 +10750,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
                 parsed = metaparse.parse_file(fpath)
                 if parsed and parsed.positive:
                     prompt_text = parsed.positive
-            return (wf_h, pr_h, prompt_text, fid)
+            return (wf_h, pr_h, md_h, prompt_text, fid)
 
         results = []
         failed_ids = []
@@ -10743,7 +10763,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
                 completed += 1
                 try:
                     res = future.result()
-                    if res and (res[0] or res[1]):
+                    if res and (res[0] or res[1] or res[2]):
                         results.append(res)
                     else:
                         failed_ids.append((futures[future],))
@@ -10757,10 +10777,10 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
 
         batch_size = 500
         if results:
-            hash_rows = [(wf, pr, fid) for wf, pr, _, fid in results]
-            prompt_rows = [(text, fid) for _, _, text, fid in results if text]
+            hash_rows = [(wf, pr, md, fid) for wf, pr, md, _, fid in results]
+            prompt_rows = [(text, fid) for _, _, _, text, fid in results if text]
             for i in range(0, len(hash_rows), batch_size):
-                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ?, hash_failed = 0 WHERE id = ?", hash_rows[i:i + batch_size])
+                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ?, models_hash = ?, hash_failed = 0 WHERE id = ?", hash_rows[i:i + batch_size])
                 conn.commit()
             for i in range(0, len(prompt_rows), batch_size):
                 conn.executemany(
@@ -10787,37 +10807,40 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         if close_conn and conn:
             conn.close()
 
+# Version of the cluster-hash column scheme. Bump when a hash's meaning or
+# coverage changes (not just the ComfyUI graph algorithm, which the sampling
+# check below detects on its own) so existing rows are recomputed once.
+# 2 = three-hash scheme: workflow_hash (graph / foreign pipeline shape),
+#     prompt_hash, models_hash.
+CLUSTER_HASH_SCHEMA = '2'
+
+
 def check_and_update_workflow_hashes(conn):
     """
     Tests a few existing hashes against the current algorithm.
     If the algorithm was updated, it forces a complete recalculation of all hashes.
-    Also re-hashes foreign (graph-less) images when the configured
-    CLUSTER_FOREIGN_ARCH identity mode differs from the one their hashes
-    were computed under.
+    A CLUSTER_HASH_SCHEMA bump forces the same full recalculation.
     """
     stored = conn.execute(
-        "SELECT value FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'"
+        "SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'"
     ).fetchone()
-    stored_mode = stored[0] if stored else 'model'
-    if stored_mode != CLUSTER_FOREIGN_ARCH:
-        print(f"{Colors.YELLOW}INFO: Foreign architecture identity mode changed "
-              f"({stored_mode} -> {CLUSTER_FOREIGN_ARCH}). Re-indexing non-ComfyUI images...{Colors.RESET}")
+    if (stored[0] if stored else None) != CLUSTER_HASH_SCHEMA:
+        conn.execute("DELETE FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'")
         conn.execute(
-            "UPDATE files SET workflow_hash = '', prompt_hash = '', hash_failed = 0 "
-            "WHERE has_workflow = 0 AND type IN ('image', 'animated_image')"
+            "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('cluster_hash_schema', ?, ?)",
+            (CLUSTER_HASH_SCHEMA, time.time()),
         )
-    conn.execute(
-        "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('foreign_arch_identity_mode', ?, ?)",
-        (CLUSTER_FOREIGN_ARCH, time.time()),
-    )
-    conn.commit()
+        conn.commit()
+        print(f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities...{Colors.RESET}")
+        backfill_unhashed_workflows(conn, force_all=True)
+        return
 
     sample = conn.execute("SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3").fetchall()
     
     needs_update = False
     for row in sample:
         if os.path.exists(row['path']):
-            new_wf_hash, _ = compute_workflow_hashes(row['path'])
+            new_wf_hash, _, _ = compute_workflow_hashes(row['path'])
             # If the newly computed hash differs from the one in the DB, the algorithm changed!
             if new_wf_hash and new_wf_hash != row['workflow_hash']:
                 needs_update = True
@@ -10897,15 +10920,15 @@ def api_cluster_info(hash_type, hash_val):
     if should_strip_metadata():
         return jsonify({'status': 'error', 'message': 'Security Policy: Access to cluster metadata is restricted for your role.'}), 403
 
-    if hash_type not in ('workflow', 'prompt'):
+    if hash_type not in ('workflow', 'prompt', 'models'):
         return jsonify({'status': 'error', 'message': 'Invalid hash type'}), 400
 
-    col_name = 'workflow_hash' if hash_type == 'workflow' else 'prompt_hash'
+    col_name = {'workflow': 'workflow_hash', 'prompt': 'prompt_hash', 'models': 'models_hash'}[hash_type]
     requested_file_id = request.args.get('file_id')
 
     try:
         with get_db_connection() as conn:
-            rows = conn.execute(f"SELECT id, name, path, type, mtime, dimensions, workflow_files, workflow_prompt FROM files WHERE {col_name} = ? AND has_workflow = 1 ORDER BY mtime DESC", (hash_val,)).fetchall()
+            rows = conn.execute(f"SELECT id, name, path, type, mtime, dimensions, workflow_files, workflow_prompt FROM files WHERE {col_name} = ? ORDER BY mtime DESC", (hash_val,)).fetchall()
             
             if not rows:
                 return jsonify({'status': 'error', 'message': 'No matching cluster assets found'}), 404
@@ -10953,9 +10976,11 @@ def api_cluster_info(hash_type, hash_val):
 
             distinct_other_hashes = 0
             if hash_type == 'prompt':
-                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE prompt_hash = ? AND has_workflow = 1", (hash_val,)).fetchone()[0]
+                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE prompt_hash = ? AND workflow_hash != ''", (hash_val,)).fetchone()[0]
+            elif hash_type == 'models':
+                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE models_hash = ? AND workflow_hash != ''", (hash_val,)).fetchone()[0]
             else:
-                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT prompt_hash) FROM files WHERE workflow_hash = ? AND has_workflow = 1", (hash_val,)).fetchone()[0]
+                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT prompt_hash) FROM files WHERE workflow_hash = ? AND prompt_hash != ''", (hash_val,)).fetchone()[0]
 
             return jsonify({
                 'status': 'success',

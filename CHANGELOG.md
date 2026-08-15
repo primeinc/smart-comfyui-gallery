@@ -28,7 +28,11 @@ The gallery now identifies and parses embedded generation metadata from every ma
 * **Prompt basis:** hash of the parsed positive prompt — identical prompts now cluster across ComfyUI, SwarmUI, A1111, and the rest.
 * **Architecture basis:** for graph-less images, the pipeline identity is checkpoint model + LoRA set.
 * The hash backfill, the in-request trigger, all clustering filters, and the Details-panel cluster badges are de-gated from `has_workflow`; the startup backfill migrates existing rows (one-time, console progress) and fills the searchable prompt field for previously indexed foreign images in the same pass.
-* **`CLUSTER_FOREIGN_ARCH` option** picks the architecture identity for graph-less images: `model` (default — checkpoint + LoRA set, broad clusters) or `pipeline` (parameter-set shape plus every model/LoRA/VAE-valued parameter — SwarmUI forwards generation to backends like ComfyUI, so its parameter set shapes the workflow it generates; seeds/steps/CFG/prompts stay ignored, matching the ComfyUI graph-hash policy). Changing the value re-hashes affected images automatically on the next startup.
+* **Third clustering basis — 📦 Model Set:** every file now carries three cluster identities at once, so nothing is an either/or option:
+  - **Architecture** (`workflow_hash`): the ComfyUI node graph, or for graph-less images the parameter-set shape plus model-valued parameters — SwarmUI forwards generation to backends like ComfyUI, so its parameter set shapes the workflow it generates. Seeds/steps/CFG/prompts are ignored, matching the graph-hash policy.
+  - **Model Set** (`models_hash`, new column): the checkpoint + LoRA/VAE file set — for ComfyUI graphs and foreign images alike. Broad "everything made with this combo" clusters.
+  - **Prompt** (`prompt_hash`): unchanged.
+  The clustering modal, banner, Details panel, and Cluster Inspector all support the new basis; a stored schema marker triggers one automatic full re-hash on the next startup. Targets without a ComfyUI graph can now open the clustering modal and the Cluster Inspector (both previously refused `has_workflow=0` assets).
 
 ---
 

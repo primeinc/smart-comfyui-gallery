@@ -27,12 +27,13 @@ def _insert_file(conn, suffix, **overrides):
         'has_workflow': 1,
         'workflow_hash': '',
         'prompt_hash': '',
+        'models_hash': '',
         'hash_failed': 0,
     }
     row.update(overrides)
     conn.execute(
-        """INSERT INTO files (id, path, mtime, name, type, has_workflow, workflow_hash, prompt_hash, hash_failed)
-           VALUES (:id, :path, :mtime, :name, :type, :has_workflow, :workflow_hash, :prompt_hash, :hash_failed)""",
+        """INSERT INTO files (id, path, mtime, name, type, has_workflow, workflow_hash, prompt_hash, models_hash, hash_failed)
+           VALUES (:id, :path, :mtime, :name, :type, :has_workflow, :workflow_hash, :prompt_hash, :models_hash, :hash_failed)""",
         row,
     )
     conn.commit()
@@ -273,14 +274,15 @@ def test_compute_hashes_swarmui_file_without_graph(sg, tmp_path):
     p2 = _make_swarm_png(tmp_path, "s2.png", "a red fox", "modelB")
 
     # Act
-    wf1, pr1 = sg.compute_workflow_hashes(p1)
-    wf2, pr2 = sg.compute_workflow_hashes(p2)
+    wf1, pr1, md1 = sg.compute_workflow_hashes(p1)
+    wf2, pr2, md2 = sg.compute_workflow_hashes(p2)
 
-    # Assert: both hashable without any ComfyUI graph; prompt identity is
-    # shared, architecture identity follows the model.
-    assert wf1 and pr1
+    # Assert: all three identities without any ComfyUI graph; prompt is
+    # shared, architecture and model set follow the model.
+    assert wf1 and pr1 and md1
     assert pr1 == pr2
     assert wf1 != wf2
+    assert md1 != md2
 
 
 _PIPE_BASE = {
@@ -289,66 +291,64 @@ _PIPE_BASE = {
 }
 
 
-def test_pipeline_identity_follows_param_shape(sg, tmp_path, monkeypatch):
-    """CLUSTER_FOREIGN_ARCH=pipeline: SwarmUI's parameter set shapes the
-    ComfyUI workflow it generates, so parameter presence is architecture
-    while seeds/steps/CFG are not."""
+def test_workflow_identity_follows_param_shape(sg, tmp_path):
+    """SwarmUI's parameter set shapes the ComfyUI workflow it generates, so
+    parameter presence is architecture while seeds/steps/CFG are not — and
+    the model-set identity ignores the pipeline shape entirely."""
     # Arrange
-    monkeypatch.setattr(sg, 'CLUSTER_FOREIGN_ARCH', 'pipeline')
     p1 = _make_swarm_png_params(tmp_path, "p1.png", dict(_PIPE_BASE))
     p2 = _make_swarm_png_params(tmp_path, "p2.png", dict(_PIPE_BASE, seed=999, steps=50, cfgscale=3.5))
     p3 = _make_swarm_png_params(tmp_path, "p3.png", dict(_PIPE_BASE, refinermodel="refinerX"))
 
     # Act
-    wf1, _ = sg.compute_workflow_hashes(p1)
-    wf2, _ = sg.compute_workflow_hashes(p2)
-    wf3, _ = sg.compute_workflow_hashes(p3)
+    wf1, _, md1 = sg.compute_workflow_hashes(p1)
+    wf2, _, md2 = sg.compute_workflow_hashes(p2)
+    wf3, _, md3 = sg.compute_workflow_hashes(p3)
 
     # Assert
     assert wf1 and wf1 == wf2  # per-image knobs are not architecture
     assert wf1 != wf3          # an extra pipeline stage is
+    assert md1 == md2 == md3   # model set: same checkpoint, no lora change
 
 
-def test_model_identity_ignores_param_shape(sg, tmp_path):
-    # Arrange: default mode — same checkpoint means same architecture even
-    # when one image adds a refiner parameter.
-    p1 = _make_swarm_png_params(tmp_path, "m1.png", dict(_PIPE_BASE))
-    p3 = _make_swarm_png_params(tmp_path, "m3.png", dict(_PIPE_BASE, refinermodel="refinerX"))
-
-    # Act / Assert
-    assert sg.compute_workflow_hashes(p1)[0] == sg.compute_workflow_hashes(p3)[0]
-
-
-def test_mode_change_resets_foreign_hashes_once(sg, monkeypatch):
-    # Arrange: one hashed foreign row, one hashed ComfyUI row; stored mode 'model'.
+def test_schema_bump_forces_full_rehash_once(sg, monkeypatch):
+    # Arrange: a hashed row and a stale schema marker.
     with sg.get_db_connection() as conn:
-        _insert_file(conn, 'modef', has_workflow=0, workflow_hash='oldF', prompt_hash='oldP')
-        _insert_file(conn, 'modec', has_workflow=1, workflow_hash='comfyH', prompt_hash='comfyP')
-        conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('foreign_arch_identity_mode', 'model', 0)")
+        _insert_file(conn, 'schemaf', has_workflow=0, workflow_hash='oldF', prompt_hash='oldP')
+        conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('cluster_hash_schema', 'stale', 0)")
         conn.commit()
-        monkeypatch.setattr(sg, 'CLUSTER_FOREIGN_ARCH', 'pipeline')
-        monkeypatch.setattr(sg, 'backfill_unhashed_workflows', lambda conn=None, force_all=False: 0)
+        calls = []
+        monkeypatch.setattr(sg, 'backfill_unhashed_workflows',
+                            lambda conn=None, force_all=False: calls.append(force_all) or 0)
 
-        # Act: mode differs from stored -> foreign hashes reset, mode recorded.
+        # Act: marker mismatch -> one forced full re-hash, marker updated.
+        sg.check_and_update_workflow_hashes(conn)
+        # Act again: marker current -> only the normal incremental backfill.
         sg.check_and_update_workflow_hashes(conn)
 
         # Assert
-        foreign = conn.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (_PREFIX + 'modef',)).fetchone()
-        comfy = conn.execute("SELECT workflow_hash FROM files WHERE id = ?", (_PREFIX + 'modec',)).fetchone()
-        stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'").fetchone()[0]
-        assert (foreign['workflow_hash'], foreign['prompt_hash']) == ('', '')
-        assert comfy['workflow_hash'] == 'comfyH'
-        assert stored == 'pipeline'
+        assert calls == [True, False]
+        stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()[0]
+        assert stored == sg.CLUSTER_HASH_SCHEMA
 
-        # Act again with the mode unchanged: no reset.
-        conn.execute("UPDATE files SET workflow_hash = 'newF' WHERE id = ?", (_PREFIX + 'modef',))
-        conn.commit()
-        sg.check_and_update_workflow_hashes(conn)
 
-        # Assert + restore the stored mode for the shared session DB.
-        assert conn.execute("SELECT workflow_hash FROM files WHERE id = ?", (_PREFIX + 'modef',)).fetchone()[0] == 'newF'
-        conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('foreign_arch_identity_mode', 'model', 0)")
-        conn.commit()
+def test_models_mode_global_clustering(sg):
+    # Arrange: same model set across two different architectures.
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'md1', has_workflow=0, workflow_hash='archA', prompt_hash='p1', models_hash='setX')
+        _insert_file(conn, 'md2', has_workflow=0, workflow_hash='archB', prompt_hash='p2', models_hash='setX')
+        _insert_file(conn, 'md3', has_workflow=0, workflow_hash='archC', prompt_hash='p3', models_hash='setY')
+
+    # Act
+    with sg.app.test_request_context('/'):
+        all_sets = sg.process_clustering([], 'models', 'date_desc', None, 'global')
+        targeted = sg.process_clustering([], 'models', 'date_desc', _PREFIX + 'md1', 'global')
+
+    # Assert
+    ids_all = {f['id'] for f in all_sets if f['id'].startswith(_PREFIX)}
+    ids_target = {f['id'] for f in targeted if f['id'].startswith(_PREFIX)}
+    assert ids_all == {_PREFIX + 'md1', _PREFIX + 'md2', _PREFIX + 'md3'}
+    assert ids_target == {_PREFIX + 'md1', _PREFIX + 'md2'}
 
 
 def test_global_clustering_includes_foreign_files_and_bases_differ(sg):
@@ -397,7 +397,7 @@ def test_backfill_selects_foreign_image_rows(sg, tmp_path, monkeypatch):
     target.write_bytes(b"png")
     with sg.get_db_connection() as conn:
         _insert_file(conn, 'fimg', path=str(target).replace('\\', '/'), has_workflow=0)
-        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('archF', 'prF'))
+        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('archF', 'prF', 'mdF'))
 
         # Act
         updated = sg.backfill_unhashed_workflows(conn)
@@ -424,11 +424,12 @@ def test_backfill_hashes_and_prompts_real_swarm_file(sg, tmp_path):
         # Assert
         assert updated >= 1
         row = conn.execute(
-            "SELECT workflow_hash, prompt_hash, workflow_prompt, hash_failed FROM files WHERE id = ?",
+            "SELECT workflow_hash, prompt_hash, models_hash, workflow_prompt, hash_failed FROM files WHERE id = ?",
             (_PREFIX + 'realsw',),
         ).fetchone()
         assert row['workflow_hash'] != ''
         assert row['prompt_hash'] != ''
+        assert row['models_hash'] != ''
         assert row['workflow_prompt'] == "a lighthouse at dusk"
         assert row['hash_failed'] == 0
 
@@ -444,7 +445,7 @@ def test_backfill_does_not_reselect_partially_hashed_rows(sg, tmp_path, monkeypa
         _insert_file(conn, 'pdone', path=str(target).replace('\\', '/'),
                      has_workflow=0, workflow_hash='', prompt_hash='prOnly')
         monkeypatch.setattr(sg, 'compute_workflow_hashes',
-                            lambda p: calls.append(p) or ('', ''))
+                            lambda p: calls.append(p) or ('', '', ''))
 
         # Act
         sg.backfill_unhashed_workflows(conn)
@@ -495,7 +496,7 @@ def test_backfill_force_all_retries_failed_rows(sg, tmp_path, monkeypatch):
     target.write_bytes(b"png")
     with sg.get_db_connection() as conn:
         _insert_file(conn, 'retry', path=str(target).replace('\\', '/'), hash_failed=1)
-        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('wfNEW', 'prNEW'))
+        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('wfNEW', 'prNEW', 'mdNEW'))
 
         # Act
         updated = sg.backfill_unhashed_workflows(conn, force_all=True)
@@ -503,10 +504,10 @@ def test_backfill_force_all_retries_failed_rows(sg, tmp_path, monkeypatch):
         # Assert: hashes written and the failure flag cleared.
         assert updated >= 1
         row = conn.execute(
-            "SELECT workflow_hash, prompt_hash, hash_failed FROM files WHERE id = ?",
+            "SELECT workflow_hash, prompt_hash, models_hash, hash_failed FROM files WHERE id = ?",
             (_PREFIX + 'retry',),
         ).fetchone()
-        assert (row['workflow_hash'], row['prompt_hash'], row['hash_failed']) == ('wfNEW', 'prNEW', 0)
+        assert (row['workflow_hash'], row['prompt_hash'], row['models_hash'], row['hash_failed']) == ('wfNEW', 'prNEW', 'mdNEW', 0)
 
 
 # --- compute_workflow_hashes: no synthetic prompt hash ----------------------
@@ -525,7 +526,7 @@ def test_compute_hashes_promptless_workflow_has_empty_prompt_hash(sg, tmp_path, 
     monkeypatch.setattr(sg, 'extract_workflow_prompt_string', lambda wf_json: '')
 
     # Act
-    wf_hash, prompt_hash = sg.compute_workflow_hashes(str(f))
+    wf_hash, prompt_hash, _ = sg.compute_workflow_hashes(str(f))
 
     # Assert: architecture hashed, prompt hash stays empty (no synthesis).
     assert wf_hash != ''
@@ -540,7 +541,7 @@ def test_compute_hashes_prompt_hash_is_normalized_md5_of_prompt(sg, tmp_path, mo
     monkeypatch.setattr(sg, 'extract_workflow_prompt_string', lambda wf_json: '  A Cyberpunk STREET  ')
 
     # Act
-    _, prompt_hash = sg.compute_workflow_hashes(str(f))
+    _, prompt_hash, _ = sg.compute_workflow_hashes(str(f))
 
     # Assert: stripped + lowercased before hashing.
     assert prompt_hash == hashlib.md5(b"a cyberpunk street").hexdigest()
