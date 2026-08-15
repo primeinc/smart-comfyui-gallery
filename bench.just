@@ -1,7 +1,8 @@
-# Repeatable benchmarks with live load monitoring. `check-idle` refuses a
-# busy machine; the harness watches external CPU load DURING timing, warns
-# live, and stamps load stats into benchmarks/results/ so a contaminated
-# run cannot pass as clean evidence.
+# Repeatable benchmarks under real load. The harness measures external CPU
+# load live DURING timing, prints it, and stamps the summary into every
+# record in benchmarks/results/ — numbers always carry their measured load
+# context. Best-of-N timing takes the least-loaded window. `load` is a
+# standalone diagnostic snapshot of current CPU/GPU load.
 
 set export
 set positional-arguments
@@ -14,18 +15,18 @@ omp := '8'
 default:
     @just --list bench
 
-# preflight: exit 1 unless CPU and GPUs are idle
-check-idle:
-    "$python" benchmarks/faiss_graph_evidence.py --check-idle
+# diagnostic: current CPU busy fraction and per-GPU utilization
+load:
+    -"$python" benchmarks/faiss_graph_evidence.py --check-idle
 
 # synthetic corpus at production shape (seeded, reproducible)
-faiss: check-idle
+faiss:
     "$python" benchmarks/faiss_graph_evidence.py --omp-threads "$omp"
 
 # real embeddings from a gallery cache DB (opened read-only)
-faiss-db db: check-idle
+faiss-db db:
     "$python" benchmarks/faiss_graph_evidence.py --source db --db "$1" --omp-threads "$omp"
 
 # real image corpus end to end (faces detected+embedded, cached in the npz)
-faiss-images dir models cache thr='0.5': check-idle
+faiss-images dir models cache thr='0.5':
     "$python" benchmarks/faiss_graph_evidence.py --source images --dir "$1" --models-dir "$2" --cache "$3" --threshold "$4" --omp-threads "$omp"

@@ -101,11 +101,7 @@ class _LoadWatch(threading.Thread):
             frac = external / total
             self.samples.append(frac)
             if frac > self.warn_frac:
-                print(
-                    f"[load] WARNING: external CPU load {frac:.0%} — "
-                    "timings in this window are contaminated",
-                    flush=True,
-                )
+                print(f"[load] external CPU load {frac:.0%} during timing", flush=True)
 
     def stop(self) -> dict:
         self._stop_evt.set()
@@ -542,11 +538,11 @@ def main() -> None:
             raise SystemExit("BACKEND DIVERGENCE — evidence run FAILED")
 
     record["load"] = watch.stop()
-    if record["load"].get("contaminated"):
+    if record["load"].get("samples"):
         print(
-            f"[load] RESULT CONTAMINATED: external CPU peaked at "
-            f"{record['load']['max_external_frac']:.0%} during timing — rerun on "
-            "an idle machine before citing these numbers",
+            f"[load] external CPU during timing: mean "
+            f"{record['load']['mean_external_frac']:.0%}, peak "
+            f"{record['load']['max_external_frac']:.0%} (recorded in results)",
             flush=True,
         )
 

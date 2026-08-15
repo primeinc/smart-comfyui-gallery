@@ -79,4 +79,6 @@ benchmarks/results/*
 !benchmarks/results/grounding_calibration.json
 !benchmarks/results/wi31_benchmark.json
 !benchmarks/results/faiss_graph_evidence.json
+!benchmarks/results/faiss_graph_evidence_synthetic.json
+!benchmarks/results/faiss_graph_evidence_images.json
 run_smartgallery.bat

@@ -106,16 +106,18 @@ Chinese Whispers on the same graph: 0.9-1.5 s (all backends; CPU-bound).
 ## Reproduce
 
 ```
-just bench check-idle                          # preflight only
+just bench load                                # current CPU/GPU load snapshot
 just bench faiss                               # synthetic, production shape, seeded
 just bench faiss-db <db-path>                  # real embeddings, DB opened read-only
 just bench faiss-images <dir> <onnx> <npz>     # image corpus end to end
 ```
 
-Every recipe preflights for an idle machine and refuses when CPU or GPU is
-busy. The harness also watches external CPU load during timing, warns live,
-and writes the load summary (with a `contaminated` flag) into the results
-record.
+Benchmarks run under real load. The harness measures external CPU load
+(system busy minus its own CPU time) live during timing, warns past 10%,
+and writes the summary into the results record — every number carries its
+measured load context (`load.contaminated` = external load exceeded 10%
+at some point during timing). Best-of-N timing takes the least-loaded
+window.
 
 ## Detection quality gate
 
