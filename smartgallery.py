@@ -52,6 +52,7 @@ import smartgallery_ai
 import smartgallery_ai.schema
 from smartgallery_ai import service as ai_dam_service
 from smartgallery_ai.worker import AIWorker
+import metaparse
 try:
     from waitress import serve
     WAITRESS_AVAILABLE = True
@@ -1449,164 +1450,6 @@ def extract_workflow(filepath, target_type='ui'):
 
     return None
 
-def extract_a1111_parameters(filepath):
-    """
-    Extracts the raw WebUI Forge/A1111-style 'parameters' generation text embedded
-    in an image (PNG text chunk, or JPEG/WebP Exif UserComment). Returns None if absent.
-    """
-    ext = os.path.splitext(filepath)[1].lower()
-    if ext not in ['.png', '.jpg', '.jpeg', '.webp']:
-        return None
-
-    try:
-        with Image.open(filepath) as img:
-            params = img.info.get('parameters')
-            if params and isinstance(params, str) and params.strip():
-                return params
-
-            exif_data = img.info.get('exif')
-            if exif_data and isinstance(exif_data, bytes):
-                try:
-                    exif_str = exif_data.decode('utf-8', errors='ignore')
-                    marker = 'UNICODE\x00' if 'UNICODE\x00' in exif_str else None
-                    idx = exif_str.find('parameters')
-                    if idx != -1:
-                        candidate = exif_str[idx + len('parameters'):].lstrip('\x00: ')
-                        candidate = candidate.split('\x00\x00')[0].strip('\x00 ')
-                        if candidate.strip():
-                            return candidate
-                except Exception:
-                    pass
-
-            try:
-                exif_tags = img.getexif()
-                if exif_tags:
-                    user_comment = exif_tags.get(0x9286)
-                    if user_comment:
-                        if isinstance(user_comment, bytes):
-                            user_comment = user_comment.decode('utf-8', errors='ignore').strip('\x00 ')
-                        if isinstance(user_comment, str) and user_comment.strip():
-                            return user_comment
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    return None
-
-
-def parse_webui_metadata(text, include_emojis=True):
-    """
-    Formats a raw WebUI Forge/A1111 'parameters' string into a human-readable report.
-    Mirrors the extraction/formatting approach used by the ComfyUI-Simple_Readable_Metadata-SG
-    custom node (https://github.com/ShammiG/ComfyUI-Simple_Readable_Metadata-SG).
-    """
-    if not text or not isinstance(text, str):
-        return None
-
-    emoji_map = {
-        "sampling": "🎯", "dimensions": "📏", "prompts": "📝",
-        "models": "🧠", "lora": "🎨", "advanced": "⚙️"
-    } if include_emojis else {k: "" for k in ["sampling", "dimensions", "prompts", "models", "lora", "advanced"]}
-
-    output = ["=== WebUI Forge/A1111 Generation Parameters ===\n"]
-
-    lines = text.strip().split('\n')
-    positive_prompt = ""
-    negative_prompt = ""
-    metadata_line = ""
-    section = "positive"
-
-    for line in lines:
-        if line.startswith("Negative prompt:"):
-            section = "negative"
-            negative_prompt += line.replace("Negative prompt:", "").strip() + " "
-        elif re.search(r'Steps:\s*\d+', line):
-            metadata_line = line
-            section = "done"
-        elif section == "positive":
-            positive_prompt += line + " "
-        elif section == "negative":
-            negative_prompt += line + " "
-
-    positive_prompt = positive_prompt.strip()
-    negative_prompt = negative_prompt.strip()
-
-    model_name_display = "N/A"
-    if metadata_line:
-        model_match = re.search(r'Model:\s*([^,\n]+)', metadata_line)
-        if model_match:
-            model_name_display = model_match.group(1).strip()
-
-    output.append(f"{emoji_map['models']} MODEL: {model_name_display}\n")
-    output.append(f"{emoji_map['prompts']} PROMPTS: |If empty, Check fail-safe below|\n")
-    output.append(f"  Positive:\n           {positive_prompt if positive_prompt else '(empty)'}\n")
-    if negative_prompt:
-        output.append(f"  Negative:\n           {negative_prompt}")
-    output.append("")
-
-    if metadata_line:
-        params = {}
-        patterns = {
-            'steps': r'Steps:\s*(\d+)',
-            'sampler': r'Sampler:\s*([^,]+)',
-            'cfg': r'CFG scale:\s*([\d.]+)',
-            'seed': r'Seed:\s*(\d+)',
-            'size': r'Size:\s*(\d+x\d+)',
-            'model': r'Model:\s*([^,]+)',
-            'model_hash': r'Model hash:\s*([^,]+)',
-            'denoising': r'Denoising strength:\s*([\d.]+)',
-            'clip_skip': r'Clip skip:\s*(\d+)',
-            'scheduler': r'Schedule type:\s*([^,]+)',
-            'version': r'Version:\s*([^,]+)',
-        }
-        for key, pattern in patterns.items():
-            match = re.search(pattern, metadata_line)
-            if match:
-                params[key] = match.group(1).strip()
-
-        output.append(f"{emoji_map['sampling']} SAMPLING SETTINGS:")
-        if 'seed' in params: output.append(f"  Seed: {params['seed']}")
-        if 'steps' in params: output.append(f"  Steps: {params['steps']}")
-        if 'cfg' in params: output.append(f"  CFG Scale: {params['cfg']}")
-        if 'sampler' in params: output.append(f"  Sampler: {params['sampler']}")
-        if 'scheduler' in params: output.append(f"  Scheduler: {params['scheduler']}")
-        if 'denoising' in params: output.append(f"  Denoise: {params['denoising']}")
-        output.append("")
-
-        if 'size' in params:
-            output.append(f"{emoji_map['dimensions']} IMAGE DIMENSIONS:")
-            output.append(f"  Resolution: {params['size']}")
-            output.append("")
-
-        if 'model' in params or 'model_hash' in params:
-            output.append(f"{emoji_map['models']} MODELS & COMPONENTS:")
-            if 'model' in params: output.append(f"  Checkpoint: {params['model']}")
-            if 'model_hash' in params: output.append(f"  Model Hash: {params['model_hash']}")
-            output.append("")
-
-        lora_pattern = r'<lora:([^:]+):([\d.]+)>'
-        lora_matches = re.findall(lora_pattern, text)
-        if lora_matches:
-            output.append(f"{emoji_map['lora']} LORA MODELS:")
-            for lora_name, lora_strength in lora_matches:
-                output.append(f"  {lora_name} (Strength: {lora_strength})")
-            output.append("")
-
-        params_check = {}
-        adv_patterns = {'clip_skip': r'Clip skip:\s*(\d+)', 'version': r'Version:\s*([^,]+)'}
-        for key, pattern in adv_patterns.items():
-            match = re.search(pattern, metadata_line)
-            if match: params_check[key] = match.group(1).strip()
-        if 'clip_skip' in params_check or 'version' in params_check:
-            output.append(f"{emoji_map['advanced']} ADVANCED SETTINGS:")
-            if 'clip_skip' in params_check: output.append(f"  Clip Skip: {params_check['clip_skip']}")
-            if 'version' in params_check: output.append(f"  WebUI Version: {params_check['version']}")
-            output.append("")
-
-    return "\n".join(output).strip()
-
-
 def is_webp_animated(filepath):
     try:
         with Image.open(filepath) as img: return getattr(img, 'is_animated', False)
@@ -2044,10 +1887,18 @@ def process_single_file(filepath):
             # UPDATED: Request 'api' format for indexing to get real execution values (seeds, clean prompts)
             # If not found, extract_workflow will automatically fallback to 'ui'
             wf_json = extract_workflow(filepath, target_type='api')
-            
+
             if wf_json:
                 workflow_files_content = extract_workflow_files_string(wf_json)
-                workflow_prompt_content = extract_workflow_prompt_string(wf_json) 
+                workflow_prompt_content = extract_workflow_prompt_string(wf_json)
+
+        # Non-ComfyUI generators (A1111/Forge, SwarmUI, Fooocus, InvokeAI, ...):
+        # index their positive prompt so prompt search covers them too.
+        # Stealth (LSB) decoding stays off here -- too costly for bulk scans.
+        if not workflow_prompt_content and metadata['type'] in ('image', 'animated_image'):
+            parsed_meta = metaparse.parse_file(filepath, allow_stealth=False)
+            if parsed_meta and parsed_meta.positive:
+                workflow_prompt_content = parsed_meta.positive
         
         wf_hash, pr_hash = compute_workflow_hashes(filepath) if metadata['has_workflow'] else ('', '')
         return (
@@ -7302,11 +7153,14 @@ def get_file_full_details(file_id):
                 file_data['has_workflow'] = 0
 
             generation_metadata_text = None
+            generation_tool = None
             if not should_strip_metadata() and file_data.get('type') in ('image', 'animated_image'):
-                raw_params = extract_a1111_parameters(file_data['path'])
-                if raw_params:
-                    generation_metadata_text = parse_webui_metadata(raw_params)
+                parsed = metaparse.parse_file(file_data['path'], allow_stealth=True)
+                if parsed:
+                    generation_tool = parsed.tool
+                    generation_metadata_text = metaparse.render_report(parsed)
             file_data['generation_metadata'] = generation_metadata_text
+            file_data['generation_tool'] = generation_tool
 
             folders_config = get_dynamic_folder_config()
             abs_path = file_data['path']

@@ -1,5 +1,29 @@
 # Changelog
 
+### **[2.23] - 2026-08-15**
+
+### 🧾 Universal Generation-Metadata Parsing (metaparse)
+
+**What it does:**  
+The gallery now identifies and parses embedded generation metadata from every major image-generation tool — not just ComfyUI and A1111. The Details panel shows a normalized parameter report with the source tool named, and prompt search now covers images from all of these tools.
+
+**Supported formats (marker-based detection first, popularity fallthrough second):**
+* **ComfyUI** — `prompt`/`workflow` chunks and WebP EXIF tags (workflow panel continues to own graph display; A1111-compatible `parameters` chunks are rendered)
+* **A1111 / Forge** — `parameters` infotext, JPEG/WebP/AVIF EXIF UserComment, GIF comments
+* **SwarmUI** — `sui_image_params` JSON (per `docs/Image Metadata Format.md`), including the legacy EXIF Model-tag variant
+* **Fooocus** — `fooocus_scheme` chunk (both `a1111` and `fooocus` schemes) plus legacy `Comment` JSON
+* **InvokeAI** — `invokeai_metadata` (v3+), `sd-metadata` (v2), `Dream` (v1)
+* **NovelAI** — legacy `Software=NovelAI` chunks and stealth-pnginfo LSB payloads
+* **Easy Diffusion**, **Draw Things (XMP)**
+* **Stealth-pnginfo** (NovelAI / Forge / SwarmUI LSB steganography) — decoded on demand in the Details view; skipped during bulk indexing
+
+**Key Enhancements:**
+* **Cross-tool prompt search:** images without a ComfyUI workflow now index their positive prompt into the searchable prompt field.
+* **`generation_tool` field** in the file-details API identifies the generator.
+* Disambiguates the three tools that all write a chunk literally named `parameters` (A1111/Forge, SwarmUI, Fooocus).
+
+---
+
 ### **[2.22] - 2026-08-12**
 
 ### 📁 Folder File Count Badges & Dynamic Tree Collapse
