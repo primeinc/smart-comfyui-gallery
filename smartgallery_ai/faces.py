@@ -299,45 +299,169 @@ def replace_faces_for_file(
         raise
 
 
-def _connected_components(normed: np.ndarray, threshold: float) -> list:
-    """Union-find over a cosine-similarity graph (edge iff sim >= threshold).
+def _csr_from_edges(rows: np.ndarray, cols: np.ndarray, weights: np.ndarray, n: int) -> tuple:
+    """Assemble row-grouped edge arrays into CSR (indptr, cols, weights).
 
-    `normed` rows must already be unit vectors. Similarities are computed in
-    row chunks so memory stays O(chunk_size * n) rather than O(n^2). Returns
-    a root-index per row (deterministic: a component's root is always its
-    lowest original row index, since union always attaches the higher root
-    under the lower one).
+    `rows` must be non-decreasing (every backend emits edges row-major), so
+    grouping is a bincount + cumsum, never a sort.
     """
+    counts = np.bincount(rows, minlength=n)
+    indptr = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(counts, out=indptr[1:])
+    return indptr, cols.astype(np.int64, copy=False), weights.astype(np.float32, copy=False)
+
+
+def _neighbor_graph_torch_cuda(normed: np.ndarray, threshold: float) -> tuple:
+    """Cosine-threshold graph via blocked CUDA matmul (torch) -> CSR.
+
+    Faiss GPU indexes expose only k-NN `search`, never `range_search`
+    (faiss/gpu/GpuIndex.h), but the *operation* — an exhaustive threshold
+    graph — is a plain tiled matrix multiply, which any CUDA tensor runtime
+    performs. TF32 is disabled (docs/source/notes/cuda.md: allow_tf32=False
+    forces IEEE float32 matmul) so the edge set matches the CPU backends
+    instead of drifting at the threshold boundary. Self-edges are masked on
+    device; no per-edge Python loop anywhere.
+
+    Raises (ImportError / RuntimeError) when torch or a CUDA device is
+    absent; the dispatcher decides whether that is a hard error.
+    """
+    import torch
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("torch is installed but no CUDA device is available")
+    torch.backends.cuda.matmul.allow_tf32 = False
     n = normed.shape[0]
-    parent = list(range(n))
+    x = torch.from_numpy(normed).cuda()
+    row_parts, col_parts, w_parts = [], [], []
+    with torch.no_grad():
+        for start in range(0, n, 1024):
+            end = min(start + 1024, n)
+            sims = x[start:end] @ x.T  # (b, n) tile, ~90MB at n~22k
+            mask = sims >= threshold
+            b = end - start
+            mask[torch.arange(b, device=mask.device), torch.arange(start, end, device=mask.device)] = False
+            idx = mask.nonzero()
+            row_parts.append((idx[:, 0] + start).cpu().numpy())
+            col_parts.append(idx[:, 1].cpu().numpy())
+            w_parts.append(sims[mask].cpu().numpy())
+    rows = np.concatenate(row_parts) if row_parts else np.zeros(0, dtype=np.int64)
+    cols = np.concatenate(col_parts) if col_parts else np.zeros(0, dtype=np.int64)
+    weights = np.concatenate(w_parts) if w_parts else np.zeros(0, dtype=np.float32)
+    return _csr_from_edges(rows, cols, weights, n)
 
-    def find(x: int) -> int:
-        """Root of `x`, with path halving."""
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
 
-    def union(a: int, b: int) -> None:
-        """Merge components; the lower root survives, keeping roots deterministic."""
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            if ra < rb:
-                parent[rb] = ra
-            else:
-                parent[ra] = rb
+def _neighbor_graph_faiss(normed: np.ndarray, threshold: float) -> tuple:
+    """Cosine-threshold graph via FAISS CPU range_search -> CSR.
 
+    IndexFlatIP is exact inner product, which equals cosine on the unit
+    vectors passed in (facebookresearch/faiss README); range_search's
+    (lims, D, I) result already IS a CSR triple — only self-edges are
+    filtered out, vectorized. Raises ImportError when faiss is not
+    installed.
+    """
+    import faiss
+
+    n = normed.shape[0]
+    index = faiss.IndexFlatIP(int(normed.shape[1]))
+    index.add(normed)
+    lims, sims, ids = index.range_search(normed, float(threshold))
+    rows = np.repeat(np.arange(n, dtype=np.int64), np.diff(lims).astype(np.int64))
+    keep = ids != rows
+    return _csr_from_edges(rows[keep], ids[keep], sims[keep], n)
+
+
+def _neighbor_graph_numpy(normed: np.ndarray, threshold: float) -> tuple:
+    """Cosine-threshold graph via chunked NumPy matmul -> CSR; always
+    available, memory bounded at O(chunk * n)."""
+    n = normed.shape[0]
+    row_parts, col_parts, w_parts = [], [], []
     for start in range(0, n, _SIM_CHUNK_SIZE):
         end = min(start + _SIM_CHUNK_SIZE, n)
-        block = normed[start:end]  # (b, dim)
-        sims = block @ normed[start:].T  # (b, n - start)
-        for bi in range(end - start):
-            i = start + bi
-            hits = np.nonzero(sims[bi, bi + 1 :] >= threshold)[0]
-            for h in hits:
-                union(i, start + bi + 1 + int(h))
+        sims = normed[start:end] @ normed.T  # (b, n)
+        mask = sims >= threshold
+        mask[np.arange(end - start), np.arange(start, end)] = False
+        bi, j = np.nonzero(mask)
+        row_parts.append(bi.astype(np.int64) + start)
+        col_parts.append(j)
+        w_parts.append(sims[mask])
+    rows = np.concatenate(row_parts) if row_parts else np.zeros(0, dtype=np.int64)
+    cols = np.concatenate(col_parts) if col_parts else np.zeros(0, dtype=np.int64)
+    weights = np.concatenate(w_parts) if w_parts else np.zeros(0, dtype=np.float32)
+    return _csr_from_edges(rows, cols, weights, n)
 
-    return [find(i) for i in range(n)]
+
+def _neighbor_graph(normed: np.ndarray, threshold: float) -> tuple:
+    """CSR cosine graph (edge iff sim >= threshold, self excluded).
+
+    Returns ((indptr, cols, weights), backend): indptr has n+1 entries and
+    row i's neighbors live at cols[indptr[i]:indptr[i+1]] with matching
+    weights; backend names the implementation that actually ran
+    ("torch-cuda", "faiss-cpu", or "numpy"). All three backends compute the
+    same exhaustive edge set — they differ only in where the multiply runs.
+
+    Selection honors AI_DAM_FACE_GRAPH_BACKEND (auto | torch-cuda | faiss |
+    numpy). A specific request that cannot be satisfied raises instead of
+    silently falling back; "auto" tries torch-cuda, then faiss, then numpy.
+    """
+    requested = os.environ.get("AI_DAM_FACE_GRAPH_BACKEND", "auto").strip().lower()
+    n = normed.shape[0]
+    if n == 0:
+        empty = (np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.float32))
+        return empty, "numpy"
+
+    if requested == "torch-cuda":
+        return _neighbor_graph_torch_cuda(normed, threshold), "torch-cuda"
+    if requested == "faiss":
+        return _neighbor_graph_faiss(normed, threshold), "faiss-cpu"
+    if requested == "numpy":
+        return _neighbor_graph_numpy(normed, threshold), "numpy"
+    if requested != "auto":
+        raise ValueError(
+            f"AI_DAM_FACE_GRAPH_BACKEND={requested!r} is not one of "
+            "auto/torch-cuda/faiss/numpy"
+        )
+
+    try:
+        return _neighbor_graph_torch_cuda(normed, threshold), "torch-cuda"
+    except Exception:
+        pass
+    try:
+        return _neighbor_graph_faiss(normed, threshold), "faiss-cpu"
+    except ImportError:
+        pass
+    return _neighbor_graph_numpy(normed, threshold), "numpy"
+
+
+def _chinese_whispers(graph: tuple, sweeps: int = 20) -> list:
+    """Deterministic chinese-whispers label propagation over the CSR
+    neighbor graph (dlib/clustering/chinese_whispers.h is the canonical
+    form: each node adopts the label with the highest summed edge weight
+    among its neighbors). dlib visits nodes randomly; this variant sweeps
+    nodes in ascending index order with ties broken toward the LOWEST label
+    id (np.unique returns labels ascending and np.argmax takes the first
+    maximum), so the result is a pure function of the graph.
+
+    Replaces single-linkage connected components, whose transitive chaining
+    collapsed dense generated-face sets into one mega-cluster (observed
+    live: 97% of all faces in a single cluster).
+    """
+    indptr, cols, weights = graph
+    n = len(indptr) - 1
+    labels = np.arange(n, dtype=np.int64)
+    for _ in range(sweeps):
+        changed = 0
+        for i in range(n):
+            s, e = int(indptr[i]), int(indptr[i + 1])
+            if s == e:
+                continue
+            uniq, inverse = np.unique(labels[cols[s:e]], return_inverse=True)
+            best = int(uniq[int(np.argmax(np.bincount(inverse, weights=weights[s:e])))])
+            if best != labels[i]:
+                labels[i] = best
+                changed += 1
+        if changed == 0:
+            break
+    return [int(v) for v in labels]
 
 
 def _match_preserved_labels(new_centroids: np.ndarray, old_rows: list) -> dict:
@@ -393,12 +517,16 @@ def cluster_faces(
 
     Loads every `ai_face_instances` row for that model/version with a
     non-null embedding, builds a cosine-similarity graph (edge iff cosine
-    >= `threshold`), and takes its connected components via union-find.
-    Components with >= `min_cluster_size` members become cluster rows
-    (centroid = L2-normalized mean of member embeddings); every other
-    instance's `cluster_id` is left/set NULL. A face is clustered
-    independently per instance, so a file with two faces in two different
-    groups correctly ends up represented in both clusters.
+    >= `threshold`; backend per AI_DAM_FACE_GRAPH_BACKEND — torch CUDA,
+    FAISS CPU range_search, or chunked NumPy — recorded in cluster params
+    as `graph_backend`), and groups it with
+    deterministic chinese-whispers label propagation — NOT connected
+    components, whose single-linkage chaining collapses dense generated
+    faces into one mega-cluster. Groups with >= `min_cluster_size` members
+    become cluster rows (centroid = L2-normalized mean of member
+    embeddings); every other instance's `cluster_id` is left/set NULL. A
+    face is clustered independently per instance, so a file with two faces
+    in two different groups correctly ends up represented in both clusters.
 
     Re-running is idempotent: prior clusters for this model/version are
     replaced, but a new cluster whose centroid is > 0.9 cosine-similar to a
@@ -455,10 +583,11 @@ def cluster_faces(
         norms[norms == 0.0] = 1.0
         normed = (matrix / norms).astype(np.float32)
 
-        roots = _connected_components(normed, threshold)
+        graph, graph_backend = _neighbor_graph(normed, threshold)
+        labels = _chinese_whispers(graph)
         components: dict = {}
-        for idx, root in enumerate(roots):
-            components.setdefault(root, []).append(idx)
+        for idx, label in enumerate(labels):
+            components.setdefault(label, []).append(idx)
 
         cluster_components = [
             members for members in components.values() if len(members) >= min_cluster_size
@@ -475,7 +604,8 @@ def cluster_faces(
 
         params = {
             "threshold": threshold,
-            "algo": "cosine-union-find",
+            "algo": "cosine-chinese-whispers",
+            "graph_backend": graph_backend,
             "min_cluster_size": min_cluster_size,
         }
         if params_note:

@@ -49,6 +49,19 @@ def _resolve_model_path(model_path: Optional[str]) -> str:
     return os.environ.get(ENV_MODEL_PATH, DEFAULT_MODEL_PATH)
 
 
+def _prepare_dll_path() -> None:
+    """Prebuilt CUDA llama-cpp-python wheels need the pip-installed NVIDIA
+    runtime DLLs on PATH (the wheel's loader uses winmode=RTLD_GLOBAL, the
+    legacy search that ignores add_dll_directory — see
+    llama_cpp/_ctypes_extensions.py). smartgallery_ai owns the shared
+    bootstrap; standalone omniquery use falls through harmlessly."""
+    try:
+        from smartgallery_ai.llama_runtime import prepare_llama_runtime
+        prepare_llama_runtime()
+    except ImportError:
+        pass
+
+
 def _example_for(spec: fields.FieldSpec) -> str:
     """One representative JSON literal for a field's kind, shown in the
     system prompt's field listing so the model sees each value shape."""
@@ -117,6 +130,7 @@ def _load_model(model_path: str, n_ctx: int, n_threads: int) -> Tuple[Any, Any]:
         return cached
     if not os.path.isfile(model_path):
         raise FileNotFoundError(f"fallback GGUF model not found at {model_path}")
+    _prepare_dll_path()
     from llama_cpp import Llama, LlamaGrammar  # local import: optional runtime
 
     llama = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads, verbose=False)
@@ -151,10 +165,12 @@ class FallbackQwenBackend(ParserBackend):
         """True when llama_cpp imports and the model file exists;
         deliberately never triggers the (expensive) model load."""
         try:
-            importlib.import_module("llama_cpp")
-        except ImportError:
+            _prepare_dll_path()
+            import llama_cpp
+        except Exception:
+            # CUDA builds can fail at DLL load, not just plain ImportError.
             return False
-        return os.path.isfile(self.model_path)
+        return bool(llama_cpp) and os.path.isfile(self.model_path)
 
     def parse(self, text: str, _now_epoch: float) -> ParserOutcome:
         """Constrained-decode an AST from `text` at temperature 0, gated by

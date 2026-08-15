@@ -1172,9 +1172,14 @@ def test_provision_swaps_cpu_llama_for_cuda_build(tmp_path, monkeypatch):
         downloaders=_fake_downloaders({}),
         pip_runner=lambda args: installs.append(args),
     )
-    assert installs == [["--force-reinstall", "--no-deps", "llama-cpp-python",
-                         "--index-url",
-                         "https://abetlen.github.io/llama-cpp-python/whl/cu124"]]
+    expected = [["--force-reinstall", "--no-deps", "llama-cpp-python",
+                 "--index-url",
+                 "https://abetlen.github.io/llama-cpp-python/whl/cu124"]]
+    if P.sys.platform == "win32":
+        # The cu12x wheel links cudart64_12/cublas64_12; shipping it without
+        # its runtime wheels produced a build that could not import.
+        expected.append(["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"])
+    assert installs == expected
     assert "llama-cpp-python (CUDA)" in result["installed"]
     assert P._llama_gpu_cache == []
 

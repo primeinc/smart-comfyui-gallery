@@ -238,6 +238,8 @@ class QwenVlCritic(CriticBackend):
             f"+decomposed-v1")
 
         try:
+            from smartgallery_ai.llama_runtime import prepare_llama_runtime
+            prepare_llama_runtime()
             import llama_cpp
             from llama_cpp import Llama
             from llama_cpp.llama_chat_format import Qwen25VLChatHandler

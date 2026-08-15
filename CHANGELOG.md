@@ -1,5 +1,26 @@
 # Changelog
 
+### **[2.24] - 2026-08-15**
+
+### 👥 Face Clustering: Chinese Whispers + Multi-Backend Similarity Graph
+
+**What it does:**
+Face identity grouping no longer collapses into one mega-cluster. The similarity graph is grouped with deterministic Chinese Whispers label propagation (dlib's canonical update rule) instead of single-linkage connected components, whose transitive chaining had merged 97% of all faces into a single cluster on a real 22k-face library.
+
+**Backends (explicit, provenance-recorded):**
+The cosine-threshold neighbor graph runs on the best available backend and records which one ran in every cluster's `params.graph_backend`:
+* **torch-cuda** — blocked CUDA matmul (TF32 disabled for IEEE float32 parity); ~10x faster than CPU at 22k faces
+* **faiss-cpu** — FAISS `IndexFlatIP.range_search` (faiss GPU indexes do not implement range search on any platform)
+* **numpy** — chunked matmul fallback, always available
+
+`AI_DAM_FACE_GRAPH_BACKEND` (`auto`/`torch-cuda`/`faiss`/`numpy`) forces a backend; a forced backend that is unavailable fails loudly instead of silently falling back. All backends produce the identical edge set (verified by cross-backend equivalence tests and `benchmarks/faiss_graph_evidence.py`, which also proves identical clustering on real data). Graph construction and clustering are fully vectorized (CSR adjacency; no per-edge Python loops).
+
+**Also:**
+* `VectorStore.topk` uses FAISS exact inner-product search when installed (identical scores/order to the numpy path)
+* FAISS (`faiss-cpu`) added to the `ai` extras and auto-provisioning
+* `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)
+* `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes
+
 ### **[2.23] - 2026-08-15**
 
 ### 🧾 Universal Generation-Metadata Parsing (metaparse)

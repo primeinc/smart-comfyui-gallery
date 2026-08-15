@@ -37,6 +37,7 @@ dev = ["pytest"]
 # OmniQuery local natural-language parsing + weight provisioning.
 ai = [
     "cactus-needle>=2.0.4",
+    "faiss-cpu>=1.15",
     "llama-cpp-python>=0.3.0",
     "huggingface_hub",
 ]

@@ -158,6 +158,13 @@ def _llama_supports_gpu():
         try:
             proc = subprocess.run(
                 [sys.executable, "-c",
+                 # Inline PATH bootstrap (mirrors smartgallery_ai.llama_runtime,
+                 # dependency-free for the child): the prebuilt CUDA wheel loads
+                 # its DLLs via the legacy PATH search, so the pip-installed
+                 # NVIDIA runtime bins must be prepended first.
+                 "import glob, os, sysconfig; "
+                 "[os.environ.__setitem__('PATH', d + os.pathsep + os.environ['PATH']) "
+                 "for d in glob.glob(os.path.join(sysconfig.get_paths()['purelib'], 'nvidia', '*', 'bin'))]; "
                  "import llama_cpp; print(int(llama_cpp.llama_supports_gpu_offload()))"],
                 capture_output=True, text=True, timeout=120)
             if proc.returncode == 0:
@@ -255,7 +262,9 @@ GROUPS = (
     Group(
         name="faces",
         enables="Faces tab (detection + clustering); ~3 MB",
-        runtime=(),  # OpenCV ships with the core app
+        # OpenCV ships with the core app; faiss accelerates the clustering
+        # similarity graph (exact IndexFlatIP; NumPy fallback exists).
+        runtime=(("faiss", "faiss-cpu"),),
         artifacts=(
             Artifact(
                 dest="face_detection_yunet_2023mar.onnx",
@@ -689,6 +698,13 @@ def provision(
                     (pip_runner or _default_pip_runner)(
                         ["--force-reinstall", "--no-deps", "llama-cpp-python",
                          "--index-url", index])
+                    if sys.platform == "win32":
+                        # The prebuilt cu12x wheel links cudart64_12/cublas64_12,
+                        # which nothing else provides on a torch-cu13 box —
+                        # without these the swap ships a build that cannot even
+                        # import (observed live: critic dead post-swap).
+                        (pip_runner or _default_pip_runner)(
+                            ["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"])
                     importlib.invalidate_caches()
                     _llama_gpu_cache.clear()
                     installed.append("llama-cpp-python (CUDA)")

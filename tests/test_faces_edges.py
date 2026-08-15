@@ -389,9 +389,10 @@ def test_cluster_faces_params_note_recorded_in_cluster_provenance():
         "SELECT params FROM ai_face_clusters WHERE cluster_id = ?", (ids[0],)
     ).fetchone()[0]
     params = json.loads(params_json)
+    assert params.pop("graph_backend") in {"torch-cuda", "faiss-cpu", "numpy"}
     assert params == {
         "threshold": 0.9,
-        "algo": "cosine-union-find",
+        "algo": "cosine-chinese-whispers",
         "min_cluster_size": 2,
         "note": "tuned-v2",
     }

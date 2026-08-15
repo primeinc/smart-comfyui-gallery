@@ -1,7 +1,8 @@
 """Tests for smartgallery_ai.faces: replace_faces_for_file round-trip,
-cosine-threshold clustering (union-find), cluster-label preservation across
+cosine-threshold clustering (chinese whispers), cluster-label preservation across
 re-clustering, and multi-face-per-file cluster cardinality."""
 
+import os
 import sqlite3
 
 import numpy as np
@@ -276,6 +277,55 @@ def test_cluster_faces_two_tight_groups_plus_outliers():
         assert cluster_id is not None
 
 
+def test_cluster_faces_bridge_does_not_chain_cliques_together():
+    """Regression for the production mega-cluster (97% of 22k faces in one
+    cluster): single-linkage merged any two groups connected by ONE bridge
+    face. Chinese whispers must keep two dense cliques separate even when a
+    bridge face is similar to members of both."""
+    conn = make_conn()
+    rng = np.random.default_rng(5)
+    base_a = np.zeros(16, dtype=np.float32); base_a[0] = 1.0
+    base_b = np.zeros(16, dtype=np.float32); base_b[1] = 1.0
+    clique_a = [base_a + rng.standard_normal(16).astype(np.float32) * 0.02 for _ in range(4)]
+    clique_b = [base_b + rng.standard_normal(16).astype(np.float32) * 0.02 for _ in range(4)]
+    bridge = (base_a + base_b) / np.linalg.norm(base_a + base_b)  # ~0.71 cos to both cliques
+
+    all_vectors = clique_a + clique_b + [bridge.astype(np.float32)]
+    file_ids = [f"br{i}" for i in range(len(all_vectors))]
+    add_files(conn, file_ids)
+    for fid, vec in zip(file_ids, all_vectors):
+        _insert_instances(conn, fid, [vec])
+
+    new_cluster_ids = cluster_faces(conn, "m1", "v1", threshold=0.6, min_cluster_size=2)
+
+    # Single-linkage would produce ONE 9-member cluster via the bridge.
+    assert len(new_cluster_ids) == 2
+    sizes = sorted(r[0] for r in conn.execute("SELECT size FROM ai_face_clusters").fetchall())
+    assert max(sizes) <= 5  # each clique (+ possibly the bridge) stays separate
+
+
+def test_cluster_faces_is_deterministic():
+    conn = make_conn()
+    rng = np.random.default_rng(11)
+    vectors = [rng.standard_normal(16).astype(np.float32) for _ in range(30)]
+    file_ids = [f"det{i}" for i in range(len(vectors))]
+    add_files(conn, file_ids)
+    for fid, vec in zip(file_ids, vectors):
+        _insert_instances(conn, fid, [vec])
+
+    def snapshot():
+        cluster_faces(conn, "m1", "v1", threshold=0.2, min_cluster_size=2)
+        return conn.execute(
+            "SELECT file_id, cluster_id IS NULL, "
+            "(SELECT size FROM ai_face_clusters c WHERE c.cluster_id = ai_face_instances.cluster_id) "
+            "FROM ai_face_instances ORDER BY file_id"
+        ).fetchall()
+
+    first = snapshot()
+    second = snapshot()
+    assert [r[1:] for r in first] == [r[1:] for r in second]
+
+
 def test_cluster_faces_label_preserved_across_recluster():
     conn = make_conn()
     group_a = tight_group(seed=5, n=4)
@@ -384,3 +434,112 @@ def test_cluster_faces_below_min_size_stays_unclustered():
             "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
         ).fetchone()[0]
         assert cid is None
+
+
+# --- neighbor-graph backend contract ---------------------------------------
+# All backends must produce the identical exhaustive edge set: same (i, j)
+# pairs, same similarities (IEEE float32 in every backend; the torch backend
+# pins allow_tf32=False so Ampere+ tensor cores cannot skew the boundary).
+
+def _edge_set(graph):
+    indptr, cols, weights = graph
+    rows = np.repeat(np.arange(len(indptr) - 1), np.diff(indptr))
+    return {
+        (int(i), int(j), round(float(w), 4))
+        for i, j, w in zip(rows, cols, weights)
+    }
+
+
+def _backend_fixture():
+    """Two tight cliques + spread noise, all sims kept >= 1e-3 away from the
+    0.6 threshold except the deliberately exact boundary pair below."""
+    rng = np.random.default_rng(7)
+    base_a = rng.standard_normal(64).astype(np.float32)
+    base_b = rng.standard_normal(64).astype(np.float32)
+    rows = []
+    for base in (base_a, base_b):
+        for _ in range(6):
+            v = base + 0.05 * rng.standard_normal(64).astype(np.float32)
+            rows.append(v)
+    rows.extend(rng.standard_normal((8, 64)).astype(np.float32))
+    m = np.stack(rows)
+    m /= np.linalg.norm(m, axis=1, keepdims=True)
+    return m.astype(np.float32)
+
+
+def test_neighbor_graph_faiss_matches_numpy():
+    faiss = pytest.importorskip("faiss")
+    assert faiss is not None
+    from smartgallery_ai.faces import _neighbor_graph_faiss, _neighbor_graph_numpy
+
+    m = _backend_fixture()
+    assert _edge_set(_neighbor_graph_faiss(m, 0.6)) == _edge_set(
+        _neighbor_graph_numpy(m, 0.6)
+    )
+
+
+def test_neighbor_graph_torch_cuda_matches_numpy():
+    """Runs in a SUBPROCESS: importing torch in this process would poison
+    sys.modules and break test_normal_browsing_never_imports_torch's
+    process-level lazy-import guard."""
+    import subprocess
+    import sys
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = (
+        "import importlib.util, sys\n"
+        f"sys.path.insert(0, {repo_root!r})\n"
+        "if importlib.util.find_spec('torch') is None:\n"
+        "    print('SKIP: torch not installed'); raise SystemExit(0)\n"
+        "import torch\n"
+        "if not torch.cuda.is_available():\n"
+        "    print('SKIP: no CUDA device'); raise SystemExit(0)\n"
+        "from tests.test_faces import _backend_fixture, _edge_set\n"
+        "from smartgallery_ai.faces import _neighbor_graph_numpy, _neighbor_graph_torch_cuda\n"
+        "m = _backend_fixture()\n"
+        "assert _edge_set(_neighbor_graph_torch_cuda(m, 0.6)) == _edge_set(\n"
+        "    _neighbor_graph_numpy(m, 0.6)\n"
+        ")\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=300
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    if result.stdout.startswith("SKIP"):
+        pytest.skip(result.stdout.strip())
+    assert "OK" in result.stdout
+
+
+def test_neighbor_graph_threshold_boundary_inclusive():
+    """sim == threshold exactly must be an edge (>= contract). d=4 with a
+    single nonzero product term makes the float32 result exact in every
+    backend: dot((1,0,0,0), (0.6, 0.8, 0, 0)) is the float32 literal 0.6."""
+    from smartgallery_ai.faces import _neighbor_graph_numpy
+
+    m = np.array([[1, 0, 0, 0], [0.6, 0.8, 0, 0]], dtype=np.float32)
+    thr = float(np.float32(0.6))
+    at_indptr, at_cols, _ = _neighbor_graph_numpy(m, thr)
+    assert list(at_indptr) == [0, 1, 2] and list(at_cols) == [1, 0]
+    above_indptr, _, _ = _neighbor_graph_numpy(
+        m, float(np.nextafter(np.float32(0.6), np.float32(1)))
+    )
+    assert list(above_indptr) == [0, 0, 0]
+
+
+def test_neighbor_graph_unknown_backend_request_raises(monkeypatch):
+    """An explicit backend request that cannot be honored must fail loud,
+    never silently fall back."""
+    from smartgallery_ai.faces import _neighbor_graph
+
+    monkeypatch.setenv("AI_DAM_FACE_GRAPH_BACKEND", "quantum")
+    with pytest.raises(ValueError):
+        _neighbor_graph(_backend_fixture(), 0.6)
+
+
+def test_neighbor_graph_reports_backend_that_ran(monkeypatch):
+    from smartgallery_ai.faces import _neighbor_graph
+
+    monkeypatch.setenv("AI_DAM_FACE_GRAPH_BACKEND", "numpy")
+    _, backend = _neighbor_graph(_backend_fixture(), 0.6)
+    assert backend == "numpy"

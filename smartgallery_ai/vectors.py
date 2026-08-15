@@ -48,6 +48,7 @@ class _SpaceMatrix:
     matrix: np.ndarray  # (n, dim), L2-normalized rows, float32
     row_count: int
     max_computed_at: float
+    faiss_index: Optional[object] = None  # lazy IndexFlatIP over `matrix`; rebuilt with it
 
 
 class VectorStore:
@@ -179,6 +180,28 @@ class VectorStore:
         q = q / norm
 
         excluded = set(exclude)
+        try:
+            import faiss
+        except ImportError:
+            faiss = None
+        if faiss is not None:
+            # Exact cosine via inner product on the already-normalized rows
+            # (facebookresearch/faiss README: cosine similarity is a dot
+            # product on normalized vectors; IndexFlatIP is exact search).
+            if sm.faiss_index is None:
+                index = faiss.IndexFlatIP(int(sm.matrix.shape[1]))
+                index.add(sm.matrix)
+                sm.faiss_index = index
+            k_fetch = min(sm.row_count, k + len(excluded))
+            sims_f, ids_f = sm.faiss_index.search(q[None, :].astype(np.float32), k_fetch)
+            pairs = [
+                (sm.ids[int(i)], float(s))
+                for s, i in zip(sims_f[0], ids_f[0])
+                if int(i) >= 0 and sm.ids[int(i)] not in excluded
+            ]
+            pairs.sort(key=lambda t: (-t[1], t[0]))
+            return pairs[:k]
+
         sims = sm.matrix @ q
         candidates = [i for i in range(len(sm.ids)) if sm.ids[i] not in excluded]
         candidates.sort(key=lambda i: (-float(sims[i]), sm.ids[i]))
