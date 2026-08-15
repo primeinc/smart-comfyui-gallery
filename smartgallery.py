@@ -47,6 +47,10 @@ import sg_auth
 import urllib.request
 import secrets
 from typing import Dict, List, Any, Optional, Union # Added for type hinting in new tools
+import smartgallery_ai
+import smartgallery_ai.schema
+from smartgallery_ai import service as ai_dam_service
+from smartgallery_ai.worker import AIWorker
 try:
     from waitress import serve
     WAITRESS_AVAILABLE = True
@@ -403,6 +407,17 @@ IMPORTED_WORKFLOWS_DIR = os.path.join(BASE_SMARTGALLERY_PATH, IMPORTED_WORKFLOWS
 PROTECTED_FOLDER_KEYS = {path_to_key(f) for f in SPECIAL_FOLDERS}
 PROTECTED_FOLDER_KEYS.add('_root_')
 
+# ============================================================================
+# AI DAM LAYER CONFIGURATION (WI-31, OPTIONAL, NON-BLOCKING)
+# ============================================================================
+# Fully optional derived-AI layer (hashing/embeddings/faces/review). Disabled
+# by default (ENABLE_AI_DAM unset/false): no background worker starts, every
+# /galleryout/api/aidam/* route responds {'enabled': False}, and no heavy
+# model runtime (e.g. torch) is ever imported on the normal browsing path.
+#   Windows:     set ENABLE_AI_DAM=true
+#   Linux / Mac: export ENABLE_AI_DAM=true
+AI_CONFIG = smartgallery_ai.AIConfig.from_env(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
+
 
 # --- CONSOLE STYLING ---
 class Colors:
@@ -689,6 +704,12 @@ app.secret_key = SECRET_KEY
 gallery_view_cache = []
 folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
+
+# --- AI DAM BLUEPRINT (WI-31, optional; every route no-ops when disabled) ---
+app.register_blueprint(
+    ai_dam_service.create_ai_blueprint(AI_CONFIG, guard=management_api_only),
+    url_prefix='/galleryout/api/aidam',
+)
 
 
 # Data structures for node categorization and analysis
@@ -2270,8 +2291,16 @@ def init_db(conn=None):
         except Exception as e:
             print(f"WARNING: Could not update DB schema version: {e}")
 
+        # 7. AI DAM SCHEMA (WI-31) -- derived, rebuildable tables; always kept
+        # in sync regardless of ENABLE_AI_DAM so enabling the feature later
+        # never requires a separate migration step.
+        try:
+            smartgallery_ai.schema.init_schema(conn)
+        except Exception as e:
+            print(f"WARNING: Could not initialize AI DAM schema: {e}")
+
         conn.commit()
-        
+
     except Exception as e:
         print(f"CRITICAL DATABASE ERROR: {e}")
         
@@ -4753,7 +4782,7 @@ def gallery_view(folder_key):
                            available_raters=available_raters, selected_raters=selected_raters, selected_rating_ranges=selected_rating_ranges,
                            protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
-                           generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, is_ai_search=False, ai_query="", is_omniquery=is_omniquery, omniquery_sql=omniquery_sql, omniquery_dictionary=get_omniquery_dictionary(),
+                           generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, enable_ai_dam=AI_CONFIG.enabled, is_ai_search=False, ai_query="", is_omniquery=is_omniquery, omniquery_sql=omniquery_sql, omniquery_dictionary=get_omniquery_dictionary(),
                            is_global_search=is_global_search, 
                            active_filters_count=active_filters_count, 
                            current_scope=search_scope,
@@ -8091,7 +8120,7 @@ def collection_view(coll_id):
                            selected_extensions=selected_exts, selected_prefixes=selected_prefixes,
                            available_raters=available_raters, selected_raters=selected_raters, selected_rating_ranges=selected_rating_ranges, protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
-                           generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, is_ai_search=False, ai_query="", is_omniquery=False, omniquery_sql="", omniquery_dictionary=get_omniquery_dictionary(),
+                           generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, enable_ai_dam=AI_CONFIG.enabled, is_ai_search=False, ai_query="", is_omniquery=False, omniquery_sql="", omniquery_dictionary=get_omniquery_dictionary(),
                            is_global_search=False, 
                            active_filters_count=active_filters_count, 
                            current_scope='local', is_recursive=False,
@@ -10825,6 +10854,18 @@ if __name__ == '__main__':
             print(f"{Colors.BLUE}INFO: AI Background Watcher started.{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}ERROR: Failed to start AI Watcher: {e}{Colors.RESET}")
+
+    # --- START AI DAM BACKGROUND WORKER (Optional, WI-31) ---
+    # Disabled by default (ENABLE_AI_DAM unset/false): this block is skipped
+    # entirely, so normal startup/browsing is completely unchanged.
+    if AI_CONFIG.enabled and not IS_EXHIBITION_MODE:
+        try:
+            ai_dam_worker = AIWorker(AI_CONFIG, DATABASE_FILE)
+            ai_dam_worker.start()
+            ai_dam_service.set_worker(ai_dam_worker)
+            print(f"{Colors.BLUE}INFO: AI DAM background worker started.{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.RED}ERROR: Failed to start AI DAM worker: {e}{Colors.RESET}")
 
     print(f"{Colors.GREEN}{Colors.BOLD}🚀 Gallery started successfully!{Colors.RESET}")
     url_host = "localhost" if SERVER_PORT == 80 else "127.0.0.1"
