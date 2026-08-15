@@ -24,6 +24,22 @@ reflected in the AST) gates acceptance, and thresholds in
 `omniquery/parsers/routing_defaults.json` are set from benchmark
 measurements, not from the model's self-report.
 
+Full-corpus results (83 entries, `benchmarks/results/`):
+
+| Backend | Execution match | False-confident | Latency p50 | Peak RSS |
+|---|---|---|---|---|
+| heuristic (deterministic) | **67.1%** | 24% accepting all parses; ~6–7% at coverage ≥ 0.7 | 0.13 ms | 21 MB |
+| needle2 standalone | 21.1% | 0% at confidence ≥ 0.7; 33–75% below | 504 ms | 56 MB |
+| fallback (Qwen 0.5B, grammar) | 0% | n/a (no confidence signal) | 1.8 s | ~870 MB |
+| **router (tuned)** | 64.5% | **7.5%** | 0.24 ms (p95 5.4 s on escalation) | — |
+
+The tuned router trades ~2.6 points of raw accuracy vs. the
+accept-everything heuristic for a 3× lower false-confident rate and 100%
+unsupported-precision: out-of-scope queries get an explicit "unsupported"
+with per-backend reasons instead of silently wrong results. The fallback
+model is retained but **disabled by default** — the measured evidence does
+not justify invoking it (`OMNIQUERY_ENABLE_FALLBACK=true` re-enables).
+
 ## Similarity / faces / review
 
 | Role | Exact identifier | License | Dim | Notes |
