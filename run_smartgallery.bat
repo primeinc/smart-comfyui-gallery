@@ -10,6 +10,7 @@ set "BASE_SMARTGALLERY_PATH=C:\Users\will\!comfy-output\smart-gallery-data"
 set "FFPROBE_MANUAL_PATH=C:/ffmpeg/bin/ffmpeg.exe"
 set SERVER_PORT=8222
 set ENABLE_AI_DAM=true
+set GENERATE_THUMBNAILS=Off
 
 :: --- OPTIONAL LAUNCH PARAMETERS ---
 :: Add any of the following to the python command below depending on your scenario:
