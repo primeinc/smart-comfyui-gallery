@@ -9,15 +9,18 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # No marketplace actions: plain run steps keep this workflow valid under
+    # restrictive allowed-actions policies (common on forks).
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
+      - name: Check out
+        run: |
+          git init -q .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt pytest
       - name: Run test suite (model-free tier)
-        run: python -m pytest tests/ -p no:cacheprovider -q
+        run: python3 -m pytest tests/ -p no:cacheprovider -q
