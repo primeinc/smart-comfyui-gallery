@@ -345,6 +345,10 @@ def test_stub_critic_red_square_yields_localizable_artifact_overlapping_square()
 
 def test_get_critic_backend_stub_explicit_only():
     assert get_critic_backend(AIConfig(critic_backend="none")) is None
+    # 'auto' with a default (empty) models_dir: the qwen-vl critic is
+    # unavailable because neither the OpenCLIP grounding dependency nor its
+    # own weights resolve — this asserts the POST-flip fail-closed
+    # behavior on an unprovisioned system, not the old always-None policy.
     assert get_critic_backend(AIConfig(critic_backend="auto")) is None
     assert isinstance(get_critic_backend(AIConfig(critic_backend="stub")), StubCritic)
     with pytest.raises(ValueError):

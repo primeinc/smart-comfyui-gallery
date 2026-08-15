@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import sqlite3
 import threading
 import time
@@ -232,11 +234,37 @@ class AIWorker:
                                           review.get_segmenter_backend)
                 if segmenter is not None:
                     budget -= self._process_masks(conn, segmenter, budget)
+
+            self._sweep_orphaned_masks(conn)
         finally:
             conn.close()
 
         with self._lock:
             self.stats["cycles"] += 1
+
+    def _sweep_orphaned_masks(self, conn: sqlite3.Connection) -> None:
+        """Deleting a `files` row cascades away its findings rows but not
+        their mask PNGs on disk. Sweep the derived masks cache each cycle:
+        any per-file mask directory whose file id no longer exists in the
+        DB is removed. Cheap (one dir listing), keeps the derived cache
+        from leaking on file deletions."""
+        masks_root = os.path.join(self.config.cache_dir, "masks")
+        try:
+            entries = os.listdir(masks_root)
+        except OSError:
+            return
+        if not entries:
+            return
+        existing = {r[0] for r in conn.execute("SELECT id FROM files")}
+        for entry in entries:
+            if entry in existing:
+                continue
+            target = os.path.join(masks_root, entry)
+            try:
+                shutil.rmtree(target)
+            except OSError as exc:
+                self._note_error(f"sweep:{entry}",
+                                 f"mask sweep: could not remove {target}: {exc}")
 
     # -- backend caching ---------------------------------------------------------
 

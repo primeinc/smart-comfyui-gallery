@@ -379,3 +379,36 @@ def test_scan_log_check_migration_admits_masks(tmp_path):
     assert ("faces", 2) in rows
     conn.execute("INSERT INTO ai_scan_log VALUES ('f1','masks','m','v',0,0,1)")
     conn.commit()
+
+
+def test_worker_sweeps_orphaned_mask_dirs(tmp_path):
+    """Deleting a files row cascades findings rows away but not mask PNGs;
+    the worker's sweep removes mask directories for vanished file ids."""
+    import os as _os
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img_path = str(tmp_path / "img.png")
+    Image.new("RGB", (16, 16), (10, 10, 10)).save(img_path)
+    _add_file(db_path, "keep1", img_path, mtime=1000.0)
+
+    cache = tmp_path / "cache"
+    (cache / "masks" / "keep1").mkdir(parents=True)
+    (cache / "masks" / "keep1" / "1.png").write_bytes(b"x")
+    (cache / "masks" / "ghost").mkdir(parents=True)
+    (cache / "masks" / "ghost" / "9.png").write_bytes(b"x")
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(cache),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="none",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
+    worker.start()
+    try:
+        assert _wait_until(
+            lambda: not _os.path.isdir(str(cache / "masks" / "ghost")), timeout=5.0)
+    finally:
+        worker.stop(timeout=2.0)
+    assert _os.path.isfile(str(cache / "masks" / "keep1" / "1.png"))
