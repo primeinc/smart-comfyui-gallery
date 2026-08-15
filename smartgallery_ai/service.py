@@ -383,9 +383,12 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         worker = get_worker()
         worker_info = (
             {"running": bool(worker.is_running), "stats": dict(worker.stats),
-             "provisioning": dict(getattr(worker, "provision_state", {}) or {})}
+             "provisioning": dict(getattr(worker, "provision_state", {}) or {}),
+             "priority_queued": len(getattr(worker, "_priority_ids", []) or []),
+             "recent_errors": list(getattr(worker, "recent_errors", []) or [])}
             if worker is not None
-            else {"running": False, "stats": {}, "provisioning": {}}
+            else {"running": False, "stats": {}, "provisioning": {},
+                  "priority_queued": 0, "recent_errors": []}
         )
         return jsonify({
             "enabled": config.enabled,

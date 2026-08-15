@@ -75,7 +75,7 @@
 
         <!-- Header -->
         <div class="aidam-header-container">
-            <h3 style="margin:0; font-size:1.25rem; color:white; display:flex; align-items:center; gap:10px;">🧬 AI DAM <span style="font-size:0.75rem; background:var(--ai-color); color:#1a001a; padding:2px 6px; border-radius:4px;">Similar &middot; Faces &middot; Review</span></h3>
+            <h3 style="margin:0; font-size:1.25rem; color:white; display:flex; align-items:center; gap:10px;">🧬 AI DAM <span style="font-size:0.75rem; background:var(--ai-color); color:#1a001a; padding:2px 6px; border-radius:4px;">Similar &middot; Faces &middot; Review &middot; Status</span></h3>
             <button onclick="closeAidamPanel()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
         </div>
 
@@ -84,6 +84,7 @@
             <button type="button" id="aidam-tab-btn-similar" class="aidam-tab-btn aidam-tab-active" onclick="aidamSwitchTab('similar')">🧭 Similar</button>
             <button type="button" id="aidam-tab-btn-faces" class="aidam-tab-btn" onclick="aidamSwitchTab('faces')">🙂 Faces</button>
             <button type="button" id="aidam-tab-btn-review" class="aidam-tab-btn" onclick="aidamSwitchTab('review')">🩺 Review</button>
+            <button type="button" id="aidam-tab-btn-status" class="aidam-tab-btn" onclick="aidamSwitchTab('status')">📊 Status</button>
         </div>
 
         <!-- Body -->
@@ -109,6 +110,11 @@
             <!-- REVIEW TAB -->
             <div id="aidam-tab-review" class="aidam-tab-panel">
                 <div id="aidam-review-content"></div>
+            </div>
+
+            <!-- STATUS TAB: live ingest/backlog dashboard -->
+            <div id="aidam-tab-status" class="aidam-tab-panel">
+                <div id="aidam-status-content"></div>
             </div>
 
         </div>
@@ -138,6 +144,7 @@
     function closeAidamPanel() {
         aidamStopProvisionPoll();
         aidamStopIndexPoll();
+        aidamStopStatusPoll();
         const overlay = document.getElementById('aidam-overlay');
         overlay.style.opacity = '0';
         setTimeout(() => {
@@ -163,16 +170,18 @@
 
     function aidamSwitchTab(tab) {
         aidamActiveTab = tab;
-        ['similar', 'faces', 'review'].forEach(t => {
+        ['similar', 'faces', 'review', 'status'].forEach(t => {
             const panel = document.getElementById('aidam-tab-' + t);
             const btn = document.getElementById('aidam-tab-btn-' + t);
             if (panel) panel.style.display = (t === tab) ? 'flex' : 'none';
             if (btn) btn.classList.toggle('aidam-tab-active', t === tab);
         });
+        if (tab !== 'status') aidamStopStatusPoll();
         aidamEnsureTabLoaded(tab);
     }
 
     function aidamEnsureTabLoaded(tab) {
+        if (tab === 'status') { aidamLoadStatusTab(); return; }
         if (aidamLoadedFor[tab] === aidamCurrentFileId) return;
         aidamLoadedFor[tab] = aidamCurrentFileId;
         if (tab === 'similar') { aidamLoadSimilar(); aidamLoadDuplicates(); }
@@ -323,6 +332,131 @@
             aidamLoadedFor = {};       // force a real re-fetch of the open tab
             aidamEnsureTabLoaded(aidamActiveTab);
         }, 4000);
+    }
+
+    // --- STATUS TAB: live ingest/backlog dashboard --------------------------
+    // Polls /status every 2s while visible; rates and ETA come from the
+    // deltas between successive samples, so they reflect what the worker
+    // is ACTUALLY doing right now, not an average since startup.
+    let aidamStatusPoll = null;
+    let aidamStatusPrevSample = null;   // {t, indexing} from the previous tick
+    let aidamStatusRates = {};          // stage -> smoothed files/sec
+
+    function aidamStopStatusPoll() {
+        if (aidamStatusPoll !== null) { clearInterval(aidamStatusPoll); aidamStatusPoll = null; }
+        aidamStatusPrevSample = null;
+        aidamStatusRates = {};
+    }
+
+    function aidamLoadStatusTab() {
+        aidamRenderStatusTick();
+        if (aidamStatusPoll === null) {
+            aidamStatusPoll = setInterval(aidamRenderStatusTick, 2000);
+        }
+    }
+
+    function aidamRateFor(stage, done, now) {
+        // Exponential smoothing over per-tick deltas keeps the number
+        // readable while still reacting within a few seconds.
+        if (aidamStatusPrevSample) {
+            const dt = (now - aidamStatusPrevSample.t) / 1000;
+            const prev = aidamStatusPrevSample.indexing[stage];
+            if (dt > 0 && prev !== undefined && done >= prev) {
+                const instant = (done - prev) / dt;
+                const old = aidamStatusRates[stage] || 0;
+                aidamStatusRates[stage] = old * 0.6 + instant * 0.4;
+            }
+        }
+        return aidamStatusRates[stage] || 0;
+    }
+
+    function aidamEta(remaining, perSec) {
+        if (remaining <= 0) return 'done';
+        if (!perSec || perSec <= 0) return '&mdash;';
+        const s = Math.round(remaining / perSec);
+        if (s < 90) return `~${s}s`;
+        if (s < 5400) return `~${Math.round(s / 60)}m`;
+        return `~${(s / 3600).toFixed(1)}h`;
+    }
+
+    function aidamStageBar(label, done, total, rateKey, now) {
+        const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+        const rate = aidamRateFor(rateKey, done, now);
+        const rateTxt = rate > 0.05 ? ` &middot; ${(rate * 60).toFixed(0)}/min` : '';
+        const eta = total > 0 ? ` &middot; ETA ${aidamEta(total - done, rate)}` : '';
+        return `
+            <div class="aidam-meter">
+                <div class="aidam-meter-label"><span>${label}</span><span>${done.toLocaleString()} / ${total.toLocaleString()} (${pct}%)${rateTxt}${eta}</span></div>
+                <div class="aidam-meter-track"><div class="aidam-meter-fill" style="width:${pct}%;"></div></div>
+            </div>`;
+    }
+
+    async function aidamRenderStatusTick() {
+        const box = document.getElementById('aidam-status-content');
+        if (!box) return;
+        let status = {};
+        try {
+            status = await (await fetch('/galleryout/api/aidam/status')).json();
+        } catch (e) {
+            box.innerHTML = aidamErrorMsg('Cannot reach the server.');
+            return;
+        }
+        if (status.enabled === false) { aidamStopStatusPoll(); box.innerHTML = aidamDisabledMsg(); return; }
+        const now = Date.now();
+        const ix = status.indexing || {};
+        const worker = status.worker || {};
+        const stats = worker.stats || {};
+        const prov = worker.provisioning || {};
+        const devices = status.devices || {};
+        const backends = status.backends || {};
+
+        let html = '';
+
+        if (prov.state === 'downloading') {
+            html += aidamProvisionProgressHtml(prov);
+        } else if (String(prov.state || '').startsWith('failed')) {
+            html += `<div class="aidam-status-msg aidam-status-error">⚠️ Auto-setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 300))}</div>`;
+        }
+
+        html += '<span class="aidam-section-title">Ingest backlog</span><div class="aidam-meter-row">';
+        html += aidamStageBar('Hashes / duplicates', ix.hashed || 0, ix.files_total || 0, 'hashed', now);
+        html += aidamStageBar('Semantic embeddings', ix.embeddings_semantic || 0, ix.visual_files_total || 0, 'embeddings_semantic', now);
+        html += aidamStageBar('Visual embeddings', ix.embeddings_visual || 0, ix.visual_files_total || 0, 'embeddings_visual', now);
+        html += aidamStageBar('Face scans', ix.faces_scanned || 0, ix.visual_files_total || 0, 'faces_scanned', now);
+        html += aidamStageBar('Reviews', ix.reviews_scanned || 0, ix.visual_files_total || 0, 'reviews_scanned', now);
+        html += '</div>';
+
+        html += '<span class="aidam-section-title">Backends</span><div style="display:flex; flex-wrap:wrap; gap:8px;">';
+        Object.keys(backends).sort().forEach(key => {
+            const up = backends[key];
+            const dev = devices[key];
+            const chip = up
+                ? `✅ ${escapeAidamHtml(key)}${dev ? ' on ' + escapeAidamHtml(dev) : ''}`
+                : `⭕ ${escapeAidamHtml(key)}`;
+            html += `<span style="background:#151515; border:1px solid #333; border-radius:8px; padding:5px 10px; font-size:0.8rem; color:${up ? '#ddd' : 'var(--text-muted)'};">${chip}</span>`;
+        });
+        html += '</div>';
+
+        html += `<span class="aidam-section-title">Worker</span>
+            <div style="color:#ddd; font-size:0.85rem; line-height:1.7;">
+                ${worker.running ? '🟢 running' : '🔴 not running'}
+                &middot; cycles ${stats.cycles || 0}
+                &middot; priority queue ${worker.priority_queued || 0}
+                &middot; errors ${stats.errors || 0}
+            </div>`;
+
+        const errs = worker.recent_errors || [];
+        if (errs.length) {
+            html += '<span class="aidam-section-title">Recent errors</span><div style="display:flex; flex-direction:column; gap:6px;">';
+            errs.slice(-8).reverse().forEach(err => {
+                const when = err.at ? new Date(err.at * 1000).toLocaleTimeString() : '';
+                html += `<div style="background:rgba(231,76,60,0.08); border:1px solid #5c2b24; border-radius:8px; padding:6px 10px; font-size:0.78rem; color:#e8a19a;">${escapeAidamHtml(when)} &middot; ${escapeAidamHtml(err.message || '')}</div>`;
+            });
+            html += '</div>';
+        }
+
+        box.innerHTML = html;
+        aidamStatusPrevSample = { t: now, indexing: { ...ix } };
     }
 
     // Empty state that says WHY: backend missing -> live download progress,

@@ -613,3 +613,95 @@ def test_priority_request_served_mid_stage(tmp_path):
 
     assert ("priority", "urgent", SPACE_SEMANTIC) in order, (
         "the mid-cycle priority request was not served during the cycle")
+
+
+# --- status page data + CUDA-swap hold -----------------------------------------
+
+
+def test_backend_resolution_held_during_pending_cuda_swap(tmp_path):
+    """While a CUDA swap is pending, torch-dependent backends are NOT
+    resolved (importing torch would pin the CPU build mid-swap); the
+    cv2-only face backend keeps resolving; the hold lifts afterwards."""
+    cfg = _cfg(tmp_path)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+
+    def must_not_resolve(config):
+        raise AssertionError("torch-dependent backend resolved during swap hold")
+
+    worker._hold_torch_backends = True
+    assert worker._backend("semantic", must_not_resolve) is None
+    assert "semantic" not in worker._backend_cache  # not cached as a miss
+
+    face = object()
+    assert worker._backend("face", lambda config: face) is face
+
+    worker._hold_torch_backends = False
+    resolved = object()
+    assert worker._backend("semantic", lambda config: resolved) is resolved
+
+
+def test_auto_provision_holds_torch_backends_until_swap_completes(tmp_path, monkeypatch):
+    """When provisioning starts with a CUDA swap planned, the hold is set
+    before the provisioning thread runs and cleared when it finishes --
+    success or failure."""
+    from smartgallery_ai import worker as W
+    cfg = _cfg(tmp_path, semantic_backend="auto", auto_provision=True)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+
+    monkeypatch.setattr(W, "provision_groups_for", lambda config: ["semantic"])
+    monkeypatch.setattr(W.provisioning, "torch_cuda_reinstall_needed", lambda: True)
+
+    held_during_provision = []
+
+    def fake_provision(models_dir, groups, force=False, log=print,
+                       downloaders=None, progress=None):
+        held_during_provision.append(worker._hold_torch_backends)
+        return {"installed": [], "downloaded": [], "skipped": []}
+
+    monkeypatch.setattr(W.provisioning, "provision", fake_provision)
+
+    worker._maybe_start_auto_provision()
+    worker._provision_thread.join(timeout=10)
+    assert held_during_provision == [True]
+    assert worker._hold_torch_backends is False
+
+
+def test_note_error_feeds_recent_errors_once_per_key(tmp_path):
+    """recent_errors records each distinct error key once (with timestamp
+    and message); repeats bump the counter only."""
+    cfg = _cfg(tmp_path)
+    _make_db(cfg.db_path).close()
+    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
+
+    worker._note_error("hash:f1", "hash: could not read /x/f1")
+    worker._note_error("hash:f1", "hash: could not read /x/f1")
+    worker._note_error("embed:semantic:f2", "embed failed for /x/f2")
+
+    assert worker.stats["errors"] == 3
+    messages = [entry["message"] for entry in worker.recent_errors]
+    assert messages == ["hash: could not read /x/f1", "embed failed for /x/f2"]
+    assert all(entry["at"] > 0 for entry in worker.recent_errors)
+
+
+def test_status_exposes_priority_queue_depth_and_recent_errors(api):
+    """/status carries the live worker signals the status tab renders."""
+    fake_worker = SimpleNamespace(
+        is_running=True,
+        stats={"cycles": 3, "errors": 1},
+        provision_state={"state": "done", "groups": []},
+        _priority_ids=["a", "b"],
+        recent_errors=[{"at": 123.0, "message": "boom"}],
+    )
+    set_worker(fake_worker)
+    try:
+        status = api.client.get(f"{_PREFIX}/status").get_json()
+    finally:
+        set_worker(None)
+    assert status["worker"]["priority_queued"] == 2
+    assert status["worker"]["recent_errors"] == [{"at": 123.0, "message": "boom"}]
+
+    bare = api.client.get(f"{_PREFIX}/status").get_json()
+    assert bare["worker"]["priority_queued"] == 0
+    assert bare["worker"]["recent_errors"] == []

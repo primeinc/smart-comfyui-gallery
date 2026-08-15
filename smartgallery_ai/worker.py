@@ -23,6 +23,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from collections import deque
 from typing import Optional
 
 import cv2
@@ -269,6 +270,10 @@ class AIWorker:
             "reviewed": 0,
             "errors": 0,
         }
+        # First-occurrence error messages (newest last), bounded; the
+        # status page shows these so failures are visible without shell
+        # access to the server log.
+        self.recent_errors: deque = deque(maxlen=20)
 
         self._lock = threading.Lock()
         self._logged_errors: set = set()  # error keys already logged (log-once dedup)
@@ -290,6 +295,11 @@ class AIWorker:
         # True after a cycle that exhausted a budget: the loop skips its
         # between-cycle sleep and continues the crawl immediately.
         self._backlog_remaining = False
+        # True while auto-provisioning intends to (or is about to) swap a
+        # CPU-build torch for CUDA wheels: torch-dependent backends must
+        # not import torch in the meantime -- an imported torch pins its
+        # files and would force a second restart to finish the swap.
+        self._hold_torch_backends = False
 
         # Background weight-provisioning: one attempt per worker lifetime,
         # in its own daemon thread so cycles are never blocked by
@@ -347,6 +357,14 @@ class AIWorker:
         if not missing:
             self.provision_state = {"state": "done", "groups": []}
             return
+        # A planned CUDA swap uninstalls torch: hold every torch-dependent
+        # backend un-imported until provisioning finishes, or the crawl
+        # would import (and pin) the CPU build first and the swap would
+        # need a second restart. Set BEFORE the cycle thread exists.
+        try:
+            self._hold_torch_backends = provisioning.torch_cuda_reinstall_needed()
+        except Exception:  # noqa: BLE001 - detection is best-effort
+            self._hold_torch_backends = False
         self.provision_state = {"state": "downloading", "groups": list(missing)}
         self._provision_thread = threading.Thread(
             target=self._provision_worker, args=(list(missing),),
@@ -415,6 +433,11 @@ class AIWorker:
             }
             self._note_error("provision:download", f"auto-provision failed: {exc}")
             return
+        finally:
+            # Success or failure, backends may resolve again (a held torch
+            # import either finds the CUDA build now or fails cleanly into
+            # the bounded re-probe).
+            self._hold_torch_backends = False
         with self._lock:
             # Drop cached misses and their retry timestamps: the next cycle
             # re-resolves every backend against the freshly landed weights.
@@ -628,6 +651,11 @@ class AIWorker:
         Resolution must stay OUTSIDE self._lock: _note_error acquires the
         same non-reentrant lock. Only the worker thread resolves backends,
         so the unlocked window cannot double-load."""
+        # While a CUDA swap is pending, torch-dependent backends stay
+        # unresolved (importing torch now would pin the CPU build mid-swap
+        # and force a restart). Faces are cv2-only and keep working.
+        if self._hold_torch_backends and key != "face":
+            return None
         now = time.monotonic()
         with self._lock:
             if key in self._backend_cache:
@@ -652,11 +680,13 @@ class AIWorker:
     # -- error bookkeeping -------------------------------------------------------
 
     def _note_error(self, key: str, message: str) -> None:
-        """Count an error in stats; emit the log line only on `key`'s first occurrence."""
+        """Count an error in stats; log and remember the message only on
+        `key`'s first occurrence (recent_errors feeds the status page)."""
         with self._lock:
             self.stats["errors"] += 1
         if key not in self._logged_errors:
             self._logged_errors.add(key)
+            self.recent_errors.append({"at": time.time(), "message": message})
             _logger.warning("[AIWorker] %s", message)
 
     # -- stages ------------------------------------------------------------------

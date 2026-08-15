@@ -104,12 +104,14 @@ def test_status_reports_registered_worker_and_reset(tmp_path):
         assert get_worker() is fake_worker
         data = client.get(f"{_PREFIX}/status").get_json()
         assert data["worker"] == {"running": True, "stats": {"scanned": 3},
-                              "provisioning": {}}
+                              "provisioning": {}, "priority_queued": 0,
+                              "recent_errors": []}
     finally:
         set_worker(None)
 
     data = client.get(f"{_PREFIX}/status").get_json()
-    assert data["worker"] == {"running": False, "stats": {}, "provisioning": {}}
+    assert data["worker"] == {"running": False, "stats": {}, "provisioning": {},
+                              "priority_queued": 0, "recent_errors": []}
 
 
 def test_status_invalid_segmenter_selector_degrades_to_unavailable(tmp_path):
