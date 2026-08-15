@@ -237,7 +237,15 @@ def _popcount_u64(values: np.ndarray) -> np.ndarray:
 
 
 def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
-    """Full O(n^2) near-duplicate sweep, chunked with numpy XOR + popcount."""
+    """Full near-duplicate sweep over phash64.
+
+    Uses FAISS `IndexBinaryFlat` when installed — Hamming distance with
+    popcount instructions in C++ (faiss wiki Binary indexes); its
+    `range_search` returns distances strictly BELOW the radius
+    (faiss tests/test_index_binary.py), hence `max_distance + 1`. Falls
+    back to the chunked numpy XOR + popcount sweep. Both paths return the
+    identical pair set, sorted by (distance, file_id, file_id).
+    """
     rows = conn.execute(
         "SELECT file_id, phash64 FROM ai_file_hashes "
         "WHERE phash64 IS NOT NULL ORDER BY file_id"
@@ -246,8 +254,27 @@ def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
         return []
     ids = [r[0] for r in rows]
     values = np.array([to_unsigned64(r[1]) for r in rows], dtype=np.uint64)
-    pairs: list[tuple[str, str, int]] = []
     n = len(ids)
+    pairs: list[tuple[str, str, int]] = []
+
+    try:
+        import faiss
+    except ImportError:
+        faiss = None
+    if faiss is not None:
+        packed = values.view(np.uint8).reshape(n, 8)  # 64 bits -> 8 bytes;
+        # byte order is irrelevant: both sides of every XOR share the layout.
+        index = faiss.IndexBinaryFlat(64)
+        index.add(packed)
+        lims, dists, neigh = index.range_search(packed, int(max_distance) + 1)
+        for i in range(n):
+            for pos in range(int(lims[i]), int(lims[i + 1])):
+                j = int(neigh[pos])
+                if j > i:
+                    pairs.append((ids[i], ids[j], int(dists[pos])))
+        pairs.sort(key=lambda t: (t[2], t[0], t[1]))
+        return pairs
+
     for i in range(n - 1):
         xor = values[i] ^ values[i + 1 :]
         dists = _popcount_u64(xor)

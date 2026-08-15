@@ -303,3 +303,29 @@ def test_topk_pins_model_version_during_migration():
     # Unpinned falls back to the active (most recently computed) version.
     active = store.topk(conn, "semantic", va, k=10)
     assert [fid for fid, _ in active] == ["new_a", "new_b"]
+
+
+def test_topk_faiss_and_numpy_paths_agree_with_exclusions(tmp_path, monkeypatch):
+    """The faiss IDSelector exclusion path and the numpy fallback must return
+    the same ids and similarities. sys.modules[name]=None makes the inline
+    `import faiss` raise ImportError, forcing the fallback."""
+    import sys
+
+    pytest.importorskip("faiss")
+    conn = make_conn()
+    file_ids = [f"f{i}" for i in range(12)]
+    add_files(conn, file_ids)
+    store = VectorStore(cache_dir=str(tmp_path), ephemeral=False)
+    rng = np.random.default_rng(23)
+    for fid in file_ids:
+        store.add(conn, fid, "semantic", "modelA", "v1", rng.standard_normal(8), 1000.0)
+    query = rng.standard_normal(8).astype(np.float32)
+
+    via_faiss = store.topk(conn, "semantic", query, k=5, exclude=("f3", "f7", "ghost"))
+    monkeypatch.setitem(sys.modules, "faiss", None)
+    store.invalidate("semantic")
+    via_numpy = store.topk(conn, "semantic", query, k=5, exclude=("f3", "f7", "ghost"))
+
+    assert [fid for fid, _ in via_faiss] == [fid for fid, _ in via_numpy]
+    for (_, a), (_, b) in zip(via_faiss, via_numpy):
+        assert a == pytest.approx(b, abs=1e-5)

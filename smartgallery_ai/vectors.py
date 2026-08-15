@@ -49,6 +49,7 @@ class _SpaceMatrix:
     row_count: int
     max_computed_at: float
     faiss_index: Optional[object] = None  # lazy IndexFlatIP over `matrix`; rebuilt with it
+    id_to_row: Optional[dict] = None  # lazy file_id -> row index; rebuilt with matrix
 
 
 class VectorStore:
@@ -192,12 +193,29 @@ class VectorStore:
                 index = faiss.IndexFlatIP(int(sm.matrix.shape[1]))
                 index.add(sm.matrix)
                 sm.faiss_index = index
-            k_fetch = min(sm.row_count, k + len(excluded))
-            sims_f, ids_f = sm.faiss_index.search(q[None, :].astype(np.float32), k_fetch)
+            params = None
+            if excluded:
+                # First-party exclusion: excluded rows are skipped inside the
+                # scan itself (faiss wiki "Setting search parameters for one
+                # query"; tests/test_search_params.py), instead of
+                # over-fetching and filtering here.
+                if sm.id_to_row is None:
+                    sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
+                rows = np.array(
+                    sorted(sm.id_to_row[f] for f in excluded if f in sm.id_to_row),
+                    dtype=np.int64,
+                )
+                if len(rows):
+                    params = faiss.SearchParameters(
+                        sel=faiss.IDSelectorNot(faiss.IDSelectorBatch(rows))
+                    )
+            sims_f, ids_f = sm.faiss_index.search(
+                q[None, :].astype(np.float32), min(sm.row_count, k), params=params
+            )
             pairs = [
                 (sm.ids[int(i)], float(s))
                 for s, i in zip(sims_f[0], ids_f[0])
-                if int(i) >= 0 and sm.ids[int(i)] not in excluded
+                if int(i) >= 0
             ]
             pairs.sort(key=lambda t: (-t[1], t[0]))
             return pairs[:k]

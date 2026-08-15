@@ -18,7 +18,8 @@ The cosine-threshold neighbor graph runs on the best available backend and recor
 **Also:**
 * Detection quality gate: faces smaller than `face_min_px` (default 24px min-side, env `AI_DAM_FACE_MIN_PX`) are dropped before embedding — sub-24px detections sit at YuNet's noise floor and chained unrelated clusters together (measured basis in docs/FACE_CLUSTERING.md)
 * `just bench` module: benchmarks run under real load with live external-CPU monitoring — load warnings print during timing and the measured load summary is stamped into every results record; `just bench load` is a standalone CPU/GPU load snapshot
-* `VectorStore.topk` uses FAISS exact inner-product search when installed (identical scores/order to the numpy path)
+* `VectorStore.topk` uses FAISS exact inner-product search when installed, with exclusions applied inside the scan via `IDSelectorNot` (identical results to the numpy path, verified by cross-path tests)
+* Near-duplicate sweep (`near_duplicate_pairs`) runs on FAISS `IndexBinaryFlat` when installed — Hamming via native popcount instead of a Python-loop XOR sweep; identical pair sets verified against the numpy fallback
 * FAISS (`faiss-cpu`) added to the `ai` extras and auto-provisioning
 * `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)
 * `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes

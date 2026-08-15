@@ -401,3 +401,25 @@ def test_near_duplicate_query_is_per_bit_exact_at_the_threshold():
     assert all(dist == 1 for _, dist in at_one)
     assert at_zero == []
     assert "twobits" not in {fid for fid, _ in at_one}
+
+
+def test_near_duplicate_pairs_faiss_and_numpy_paths_agree(monkeypatch):
+    """The IndexBinaryFlat sweep and the numpy XOR+popcount sweep must return
+    the identical pair list, including the boundary distance (radius is
+    exclusive in faiss range_search, inclusive in our contract)."""
+    import sys
+
+    pytest.importorskip("faiss")
+    entries = {
+        "a": 0,
+        "b": 0b1,
+        "c": 0b1111,  # exactly max_distance from b at 3
+        "d": 0xFFFFFFFFFFFFFFFF,
+        "e": 0b111,  # exactly max_distance from a at 3
+    }
+    conn = _phash_conn_with(entries)
+    via_faiss = near_duplicate_pairs(conn, max_distance=3)
+    monkeypatch.setitem(sys.modules, "faiss", None)
+    via_numpy = near_duplicate_pairs(conn, max_distance=3)
+    assert via_faiss == via_numpy
+    assert any(d == 3 for _, _, d in via_faiss)  # boundary distance included
