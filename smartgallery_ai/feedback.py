@@ -25,9 +25,12 @@ __all__ = [
     "export_feedback",
 ]
 
+# What a feedback row passes judgment on; mirrors the ai_feedback.target_kind CHECK.
 TARGET_KINDS = ("review", "finding", "similarity", "face_cluster", "duplicate")
+# Allowed verdict values; mirrors the ai_feedback.verdict CHECK.
 VERDICTS = ("accept", "reject", "false_positive", "rating")
 
+# Every ai_feedback column, in the order rows are listed and exported.
 _COLUMNS = (
     "feedback_id",
     "target_kind",

@@ -18,11 +18,11 @@ from typing import Any, Optional
 from omniquery import fields
 from omniquery.ast import Query, iter_conditions
 
-DEFAULT_LIMIT = 500
-MAX_LIMIT = 2000
-MAX_CORRELATED_FIELDS = 8
+DEFAULT_LIMIT = 500  # row cap applied when the query specifies no limit
+MAX_LIMIT = 2000     # hard ceiling on any requested limit
+MAX_CORRELATED_FIELDS = 8  # distinct join/subquery-backed fields allowed per query
 
-PRIVILEGED_ROLES = {"ADMIN", "MANAGER", "STAFF"}
+PRIVILEGED_ROLES = {"ADMIN", "MANAGER", "STAFF"}  # roles allowed to query privileged fields
 
 
 class ValidationError(ValueError):
@@ -31,10 +31,13 @@ class ValidationError(ValueError):
 
 @dataclass(frozen=True)
 class AuthContext:
-    role: str
-    user_id: Optional[str]
-    client_uuid: Optional[str]
-    ai_enabled: bool
+    """Caller identity and entitlements, established by the host application
+    outside any model. Validation trusts this object, never the query."""
+
+    role: str  # caller's role name; gates privileged fields via PRIVILEGED_ROLES
+    user_id: Optional[str]  # authenticated user id, when known
+    client_uuid: Optional[str]  # per-device identity; keys 'my_rating' lookups
+    ai_enabled: bool  # whether AI-derived fields may be queried at all
 
 
 # ---------------------------------------------------------------------------
@@ -43,14 +46,19 @@ class AuthContext:
 # compiler.py asserts isinstance(vq, ValidatedQuery) before compiling.
 # ---------------------------------------------------------------------------
 
-_CONSTRUCTOR_SENTINEL = object()
+_CONSTRUCTOR_SENTINEL = object()  # module-private token; possession marks construction via validate()
 
 
 class ValidatedQuery:
+    """Immutable capability token: holding one is proof the wrapped Query
+    passed validate() under the wrapped AuthContext."""
+
     __slots__ = ("_query", "_effective_limit", "_ctx")
 
     def __init__(self, query: Query, effective_limit: int, ctx: AuthContext,
                  *, _sentinel: Any = None):
+        """Blocked outside this module: without the private sentinel the call
+        fails, so validate() stays the only construction path."""
         if _sentinel is not _CONSTRUCTOR_SENTINEL:
             raise TypeError(
                 "ValidatedQuery cannot be constructed directly; "
@@ -61,23 +69,28 @@ class ValidatedQuery:
         object.__setattr__(self, "_ctx", ctx)
 
     def __setattr__(self, key: str, value: Any) -> None:
+        """Reject all mutation; state is set once in __init__ via object.__setattr__."""
         raise AttributeError("ValidatedQuery is immutable")
 
     @property
     def query(self) -> Query:
+        """The validated Query, exactly as validate() received it."""
         return self._query
 
     @property
     def effective_limit(self) -> int:
+        """Row cap the compiler must bind: the query's limit, or DEFAULT_LIMIT when unset."""
         return self._effective_limit
 
     @property
     def ctx(self) -> AuthContext:
+        """The AuthContext the authorization decisions were made under."""
         return self._ctx
 
 
 def _new_validated_query(query: Query, effective_limit: int,
                           ctx: AuthContext) -> ValidatedQuery:
+    """Module-private factory: the one sanctioned ValidatedQuery constructor."""
     return ValidatedQuery(query, effective_limit, ctx, _sentinel=_CONSTRUCTOR_SENTINEL)
 
 
@@ -85,21 +98,25 @@ def _new_validated_query(query: Query, effective_limit: int,
 # Value validation
 # ---------------------------------------------------------------------------
 
+# Accepted absolute datetime literal shapes (interpreted as local time by the compiler).
 _ISO_DATE_FMT = "%Y-%m-%d"
 _ISO_DATETIME_FMT = "%Y-%m-%dT%H:%M:%S"
 
 
 def _check_number(value: Any, field_name: str) -> None:
+    """Require an int/float; bool is excluded despite being an int subclass."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValidationError(f"field '{field_name}': expected a numeric value, got {value!r}")
 
 
 def _check_enum_member(spec: fields.FieldSpec, value: Any) -> None:
+    """Require a string drawn from the spec's enum_values."""
     if not isinstance(value, str) or value not in (spec.enum_values or frozenset()):
         raise ValidationError(f"field '{spec.name}': invalid enum value {value!r}")
 
 
 def _check_date_string(value: str, field_name: str) -> None:
+    """Require 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS'."""
     for fmt in (_ISO_DATE_FMT, _ISO_DATETIME_FMT):
         try:
             datetime.strptime(value, fmt)
@@ -113,6 +130,8 @@ def _check_date_string(value: str, field_name: str) -> None:
 
 
 def _check_datetime_value(spec: fields.FieldSpec, value: Any) -> None:
+    """Accept an absolute date string, or a single-key relative object
+    {'days_ago': N} / {'hours_ago': N} with N a non-negative number."""
     if isinstance(value, str):
         _check_date_string(value, spec.name)
         return
@@ -136,6 +155,9 @@ def _check_datetime_value(spec: fields.FieldSpec, value: Any) -> None:
 
 
 def _check_file_ref_value(spec: fields.FieldSpec, value: Any) -> None:
+    """Accept a non-empty file id string; similarity fields may instead take
+    {'file_id': str, 'k': 1..200} (k = neighbor count), while 'near_dup_of'
+    is restricted to the plain string form."""
     if isinstance(value, str):
         if not value:
             raise ValidationError(f"field '{spec.name}': file id string must not be empty")
@@ -166,6 +188,8 @@ def _check_file_ref_value(spec: fields.FieldSpec, value: Any) -> None:
 
 
 def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
+    """Type-check a condition value against the field's kind and operator:
+    list arities for 'between'/'in', enum membership, date/file-ref shapes."""
     if op in ("is_null", "not_null"):
         if value is not None:
             raise ValidationError(f"field '{spec.name}': op '{op}' takes no value")
@@ -224,6 +248,7 @@ def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
 # ---------------------------------------------------------------------------
 
 def _check_field_authorization(spec: fields.FieldSpec, ctx: AuthContext) -> None:
+    """Enforce role and AI-layer entitlements for one field."""
     if spec.privileged and ctx.role not in PRIVILEGED_ROLES:
         raise ValidationError(
             f"field '{spec.name}': requires a privileged role ({sorted(PRIVILEGED_ROLES)}), "
@@ -234,6 +259,9 @@ def _check_field_authorization(spec: fields.FieldSpec, ctx: AuthContext) -> None
 
 
 def validate(query: Query, ctx: AuthContext) -> ValidatedQuery:
+    """Run every semantic, authorization, and complexity check on a
+    structurally parsed Query and mint the ValidatedQuery that compiler.py
+    requires. Raises ValidationError on the first violation."""
     conditions = list(iter_conditions(query.where))
     if len(conditions) > 32:  # ast.py already enforces this; defensive re-check
         raise ValidationError("query has more than 32 conditions")

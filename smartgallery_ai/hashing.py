@@ -16,9 +16,10 @@ import cv2
 import numpy as np
 from PIL import Image
 
-_MASK64 = (1 << 64) - 1
-_SIGN_BIT64 = 1 << 63
+_MASK64 = (1 << 64) - 1  # keeps the low 64 bits of an arbitrary Python int
+_SIGN_BIT64 = 1 << 63    # sign bit of a 64-bit two's complement integer
 
+# Host-app file_type values whose frames decode via PIL / cv2 respectively.
 IMAGE_FILE_TYPES = frozenset({"image", "animated_image"})
 VIDEO_FILE_TYPES = frozenset({"video"})
 
@@ -60,7 +61,7 @@ def _dct_basis(n: int) -> np.ndarray:
     return basis
 
 
-_DCT32 = _dct_basis(32)
+_DCT32 = _dct_basis(32)  # cached 32x32 basis shared by every phash64 call
 
 
 def _bits_to_int(bits: np.ndarray) -> int:
@@ -104,12 +105,17 @@ def hamming64(a: int, b: int) -> int:
 
 @dataclass
 class HashResult:
-    sha256: str
-    phash64: Optional[int]
-    dhash64: Optional[int]
+    """Hashes for one media file; perceptual fields are None when no frame
+    could be decoded (non-visual or corrupt content)."""
+
+    sha256: str  # hex digest of the raw file bytes
+    phash64: Optional[int]  # signed 64-bit form (SQLite representation)
+    dhash64: Optional[int]  # signed 64-bit form (SQLite representation)
 
 
 def _first_video_frame(path: str) -> Optional[Image.Image]:
+    """First decodable frame as an RGB PIL image, or None when the container
+    cannot be opened or yields nothing within the attempt budget."""
     cap = cv2.VideoCapture(path)
     try:
         if not cap.isOpened():
@@ -157,6 +163,7 @@ def upsert_hashes(
     algo_version: str,
     now: float,
 ) -> None:
+    """Insert or fully replace the `ai_file_hashes` row for `file_id`; commits."""
     conn.execute(
         """
         INSERT INTO ai_file_hashes
@@ -216,7 +223,7 @@ def find_near_duplicates(conn, file_id: str, max_distance: int) -> list[tuple[st
     return results
 
 
-_POPCOUNT_TABLE = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
+_POPCOUNT_TABLE = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)  # set-bit count per byte value 0..255
 
 
 def _popcount_u64(values: np.ndarray) -> np.ndarray:

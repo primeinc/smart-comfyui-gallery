@@ -44,10 +44,10 @@ __all__ = [
     "cluster_faces",
 ]
 
-_YUNET_FILENAME = "face_detection_yunet_2023mar.onnx"
-_SFACE_FILENAME = "face_recognition_sface_2021dec.onnx"
-_SIM_CHUNK_SIZE = 256
-_LABEL_MATCH_THRESHOLD = 0.9
+_YUNET_FILENAME = "face_detection_yunet_2023mar.onnx"  # detector ONNX, expected directly under models_dir
+_SFACE_FILENAME = "face_recognition_sface_2021dec.onnx"  # recognizer ONNX, expected directly under models_dir
+_SIM_CHUNK_SIZE = 256  # rows per similarity block; caps clustering memory at O(chunk * n)
+_LABEL_MATCH_THRESHOLD = 0.9  # min centroid cosine for a recomputed cluster to inherit an old label
 
 
 @dataclass
@@ -56,11 +56,13 @@ class FaceDetection:
 
     bbox: tuple  # (x, y, w, h), normalized
     landmarks: list  # list[(x, y)], normalized, may be empty
-    det_score: float
+    det_score: float  # detector confidence; higher is more face-like
     embedding: Optional[np.ndarray]  # float32 1-D, or None
-    dim: Optional[int] = None
+    dim: Optional[int] = None  # embedding length; derived from `embedding` when one is present
 
     def __post_init__(self) -> None:
+        """Coerce fields to plain floats / float32 and keep `dim` consistent
+        with the embedding actually carried."""
         self.bbox = tuple(float(v) for v in self.bbox)
         self.landmarks = [tuple(float(v) for v in pt) for pt in self.landmarks]
         if self.embedding is not None:
@@ -70,8 +72,10 @@ class FaceDetection:
 
 
 class FaceBackend(ABC):
-    model_id: str
-    model_version: str
+    """Face detector + per-face embedder over a single image."""
+
+    model_id: str  # provenance recorded on every ai_face_instances row
+    model_version: str  # scopes stored instances and clusters; versions never mix
 
     @abstractmethod
     def detect(self, img: Image.Image) -> list:
@@ -94,6 +98,8 @@ class StubFaceBackend(FaceBackend):
         self._source = source
 
     def detect(self, img: Image.Image) -> list:
+        """Replay the pre-programmed detections for `img`; unknown images
+        detect as no faces."""
         if callable(self._source):
             return list(self._source(img))
         return list(self._source.get(image_key(img), []))
@@ -109,10 +115,12 @@ def image_key(img: Image.Image) -> str:
 
 
 def _clamp01(value: float) -> float:
+    """Clamp to [0, 1], the normalized-coordinate range stored in the DB."""
     return 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
 
 
 def _pil_to_bgr(img: Image.Image) -> np.ndarray:
+    """Convert to the BGR uint8 array layout OpenCV expects."""
     rgb = np.asarray(img.convert("RGB"))
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
@@ -129,6 +137,8 @@ class OpenCVFaceBackend(FaceBackend):
     model_version = "yunet-2023mar+sface-2021dec-v1"
 
     def __init__(self, models_dir: str, min_det_score: float = 0.5):
+        """Load both ONNX models; `min_det_score` is the minimum detector
+        confidence for a face to be reported at all."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise BackendUnavailable(
                 "this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF"
@@ -149,6 +159,8 @@ class OpenCVFaceBackend(FaceBackend):
         self._min_det_score = min_det_score
 
     def detect(self, img: Image.Image) -> list:
+        """Detect faces, embed each via SFace on the aligned crop, and return
+        `FaceDetection`s with coordinates normalized to [0, 1]."""
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]
         if h == 0 or w == 0:
@@ -159,6 +171,7 @@ class OpenCVFaceBackend(FaceBackend):
             return []
 
         detections = []
+        # YuNet row layout: x, y, w, h, five landmark (x, y) pairs, confidence.
         for row in faces:
             score = float(row[14])
             if score < self._min_det_score:
@@ -285,12 +298,14 @@ def _connected_components(normed: np.ndarray, threshold: float) -> list:
     parent = list(range(n))
 
     def find(x: int) -> int:
+        """Root of `x`, with path halving."""
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
         return x
 
     def union(a: int, b: int) -> None:
+        """Merge components; the lower root survives, keeping roots deterministic."""
         ra, rb = find(a), find(b)
         if ra != rb:
             if ra < rb:

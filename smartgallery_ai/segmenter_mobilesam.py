@@ -25,10 +25,18 @@ WEIGHTS_FILENAME = "mobile_sam.pt"
 
 
 class MobileSamSegmenter(SegmenterBackend):
+    """Box/point-prompted MobileSAM predictor behind the
+    `SegmenterBackend` contract; construction fails with
+    `BackendUnavailable` unless weights and the torch/mobile_sam runtime
+    are provisioned."""
+
     model_id = "ChaoningZhang/MobileSAM"
     model_version = "mobile_sam-vit_t-v1"
 
     def __init__(self, models_dir: str):
+        """Load the ViT-T checkpoint from `models_dir`; raises
+        `BackendUnavailable` when weights or the runtime are missing or
+        fail to load."""
         # Weights check precedes the runtime import: 'auto' resolution on
         # an unprovisioned system must stay fast and side-effect-free.
         weights_path = os.path.join(models_dir, WEIGHTS_FILENAME)
@@ -50,6 +58,10 @@ class MobileSamSegmenter(SegmenterBackend):
 
     def segment(self, img: Image.Image, bbox: Optional[tuple] = None,
                 points: Optional[list] = None) -> np.ndarray:
+        """Predict one boolean HxW mask from normalized-[0,1] prompts:
+        `bbox` as (x, y, w, h), `points` as foreground clicks. At least
+        one prompt is required; single-mask mode keeps output
+        deterministic for a given prompt."""
         if bbox is None and not points:
             raise ValueError("segment() requires a bbox or points prompt")
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)

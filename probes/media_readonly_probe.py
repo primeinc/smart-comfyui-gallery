@@ -17,7 +17,7 @@ import sys
 import tempfile
 import time
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root (parent of probes/)
 sys.path.insert(0, REPO)
 
 import numpy as np  # noqa: E402
@@ -25,6 +25,8 @@ from PIL import Image  # noqa: E402
 
 
 def snapshot(root: str) -> dict:
+    """Map of relative path -> (sha256 hex, mtime_ns) for every file under
+    `root`; two equal snapshots mean no byte and no timestamp changed."""
     out = {}
     for dirpath, _dirnames, filenames in os.walk(root):
         for fn in filenames:
@@ -37,6 +39,10 @@ def snapshot(root: str) -> dict:
 
 
 def main() -> int:
+    """Build the full derived state (hashes, both embedding spaces, a review
+    with a localizable finding, its mask) over a throwaway gallery, then
+    verify the source snapshot is untouched and the mask landed inside the
+    cache directory. Returns the process exit code (0 = PASS)."""
     tmp = tempfile.mkdtemp(prefix="sg_romedia_probe_")
     media = os.path.join(tmp, "media")
     cache = os.path.join(tmp, "cache")

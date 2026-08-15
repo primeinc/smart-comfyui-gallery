@@ -1,6 +1,6 @@
 """Generation review: a typed, strictly-validated critique of one asset
 (quality score, prompt-alignment score, and typed findings), plus optional
-per-finding segmentation masks (WI-31).
+per-finding segmentation masks.
 
 `validate_review_payload` is the ONLY door from raw model/backend JSON into
 a `ReviewResult`: any dict a `CriticBackend` returns, however it was
@@ -48,6 +48,8 @@ __all__ = [
     "generate_finding_mask",
 ]
 
+# Closed vocabulary of finding categories; the DB CHECK constraint and every
+# critic prompt/schema reference exactly this set.
 FINDING_TYPES = (
     "anatomy",
     "artifact",
@@ -61,16 +63,20 @@ FINDING_TYPES = (
 )
 
 _SEVERITIES = ("low", "medium", "high")
+# Exhaustive key sets: any key outside these fails validation outright.
 _TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findings"}
 _FINDING_KEYS = {"type", "severity", "confidence", "localizable", "description", "bbox", "points"}
 
 
 @dataclass
 class Finding:
-    type: str
+    """One typed defect/observation within a review. Geometry is normalized
+    to the unit square and permitted only when `localizable` is True."""
+
+    type: str  # one of FINDING_TYPES
     severity: str  # 'low' | 'medium' | 'high'
     confidence: float  # 0..1
-    localizable: bool
+    localizable: bool  # True = tied to a specific image region; False = whole-image
     description: str
     bbox: Optional[tuple] = None  # (x, y, w, h), normalized -- localizable only
     points: Optional[list] = None  # list[(x, y)], normalized -- localizable only
@@ -78,10 +84,14 @@ class Finding:
 
 @dataclass
 class ReviewResult:
+    """Validated critique of one asset -- the only shape `store_review`
+    accepts. Construct via `validate_review_payload`, never by hand from
+    raw model output."""
+
     quality_score: float  # 0..10
     prompt_alignment_score: Optional[float]  # 0..10, or None if not applicable
     summary: str
-    findings: list
+    findings: list  # list[Finding]
 
 
 class ReviewSchemaError(ValueError):
@@ -93,20 +103,28 @@ class ReviewSchemaError(ValueError):
     """
 
     def __init__(self, path: str, message: str):
+        """`path` locates the offending field; the exception text reads
+        "<path>: <message>"."""
         self.path = path
         super().__init__(f"{path}: {message}")
 
 
 def _is_number(value) -> bool:
+    """True for int/float only; bool subclasses int and must never satisfy
+    a numeric-field check."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _require(condition: bool, path: str, message: str) -> None:
+    """Enforce one schema rule: raises `ReviewSchemaError` at `path` when
+    `condition` is false."""
     if not condition:
         raise ReviewSchemaError(path, message)
 
 
 def _validate_point(value, path: str) -> tuple:
+    """Validate one [x, y] pair into a float tuple; coordinates are
+    fractions of image size and must lie in [0, 1]."""
     _require(
         isinstance(value, (list, tuple)) and len(value) == 2, path, "must be a 2-element [x, y]"
     )
@@ -121,6 +139,8 @@ def _validate_point(value, path: str) -> tuple:
 
 
 def _validate_bbox(value, path: str) -> tuple:
+    """Validate one [x, y, w, h] box into a float tuple: components in
+    [0, 1], positive area, and the whole box inside the unit frame."""
     _require(isinstance(value, (list, tuple)) and len(value) == 4, path, "must be [x, y, w, h]")
     _require(all(_is_number(v) for v in value), path, "all components must be numbers")
     x, y, w, h = (float(v) for v in value)
@@ -135,6 +155,9 @@ def _validate_bbox(value, path: str) -> tuple:
 
 
 def _validate_finding(raw, index: int) -> Finding:
+    """Validate one raw finding dict into a `Finding`, enforcing the
+    geometry rule: localizable findings need bbox or points; global
+    findings may carry neither."""
     prefix = f"findings[{index}]"
     _require(isinstance(raw, dict), prefix, "must be an object")
     unknown = set(raw) - _FINDING_KEYS
@@ -254,8 +277,12 @@ def validate_review_payload(payload: dict) -> ReviewResult:
 
 
 class CriticBackend(ABC):
-    model_id: str
-    model_version: str
+    """A model that critiques one image and emits a raw payload dict;
+    `model_id`/`model_version` are recorded as provenance with every
+    stored review."""
+
+    model_id: str  # stable identifier of the underlying model (e.g. HF repo id)
+    model_version: str  # provenance tag stored with every review row
 
     @abstractmethod
     def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
@@ -277,11 +304,13 @@ class StubCritic(CriticBackend):
     model_id = "stub-critic"
     model_version = "stub-v1"
 
-    _DARK_MEAN_THRESHOLD = 40.0
-    _RED_MIN_R = 180
-    _RED_MAX_GB = 80
+    _DARK_MEAN_THRESHOLD = 40.0  # mean RGB (0-255) below this -> 'lighting' finding
+    _RED_MIN_R = 180  # red-channel floor (0-255) for the artifact-rectangle mask
+    _RED_MAX_GB = 80  # green/blue ceiling (0-255) for the artifact-rectangle mask
 
     def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+        """Apply the two stub heuristics and emit a raw payload dict; the
+        quality score drops 2 points per finding."""
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)
         findings = []
 
@@ -320,6 +349,8 @@ class StubCritic(CriticBackend):
 
     @classmethod
     def _find_red_rectangle(cls, rgb: np.ndarray) -> Optional[tuple]:
+        """Normalized (x, y, w, h) bounding box of all strongly-red pixels,
+        or None when the image has none."""
         h, w = rgb.shape[:2]
         r = rgb[..., 0].astype(np.int16)
         g = rgb[..., 1].astype(np.int16)
@@ -335,11 +366,14 @@ class StubCritic(CriticBackend):
 
 # Larger checkpoints win when several are provisioned side by side.
 _SMOLVLM_DIRNAMES = ("smolvlm2-2.2b", "smolvlm2-500m")
+# dirname -> (model_id, model_version) provenance recorded with reviews.
 _SMOLVLM_MODEL_IDS = {
     "smolvlm2-2.2b": ("HuggingFaceTB/SmolVLM2-2.2B-Instruct", "smolvlm2-2.2b-instruct-v1"),
     "smolvlm2-500m": ("HuggingFaceTB/SmolVLM2-500M-Video-Instruct", "smolvlm2-500m-video-instruct-v1"),
 }
 
+# Single-turn instruction for SmolVLM: demands one JSON object in the exact
+# review schema; `validate_review_payload` rejects any deviation downstream.
 _CRITIC_INSTRUCTION = """You are a strict image-generation quality reviewer. Reply with ONLY one JSON object, no other text.
 Required keys: quality_score (0-10), prompt_alignment_score (0-10, or null when no prompt given), summary (one sentence), findings (list, may be empty).
 EVERY finding must have ALL of these keys: type (one of anatomy, artifact, composition, lighting, text_render, prompt_mismatch, style, detail_loss, other), severity (low, medium or high), confidence (0-1), localizable (true or false), description (short text). Add bbox [x,y,w,h] (fractions 0-1) ONLY when localizable is true.
@@ -364,6 +398,9 @@ class SmolVlmCritic(CriticBackend):
     model_version = "smolvlm2-v1"
 
     def __init__(self, models_dir: str, max_new_tokens: int = 640):
+        """Load processor + weights from the provisioned checkpoint dir;
+        raises `BackendUnavailable` when weights are absent or the
+        torch/transformers runtime is missing or fails to load them."""
         # Weights check precedes the runtime import: resolution on an
         # unprovisioned system must stay fast and side-effect-free.
         weights_dir = None
@@ -397,6 +434,8 @@ class SmolVlmCritic(CriticBackend):
         self._max_new_tokens = max_new_tokens
 
     def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+        """Single greedy-decoded image+instruction turn; returns the first
+        JSON object in the reply (ValueError when there is none)."""
         instruction = _CRITIC_INSTRUCTION
         if prompt_text:
             instruction += f'\nGeneration prompt: "{prompt_text}"'
@@ -441,14 +480,18 @@ def _extract_json_object(text: str) -> dict:
 _CALIBRATION_REPORT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "benchmarks", "results", "grounding_calibration.json")
-_AUTO_CRITIC_MAX_FAR = 0.05
-_AUTO_CRITIC_MAX_FRR = 0.30
+_AUTO_CRITIC_MAX_FAR = 0.05  # false-accept-rate ceiling (ungrounded text passing the gate)
+_AUTO_CRITIC_MAX_FRR = 0.30  # false-reject-rate ceiling (grounded text failing the gate)
 
 
+# Repo-relative calibration input that must appear (hash-verified) in the
+# report's input manifest.
 _CALIBRATION_PORTRAIT_REL = "probes/data/calibration_portrait.png"
 
 
 def _sha256_of_file(path: str) -> str:
+    """Hex SHA-256 of a file's bytes, streamed so large media never loads
+    into memory whole."""
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -594,7 +637,7 @@ def store_review(
             (file_id, rubric_version, model_id),
         ).fetchone()
         if old is not None:
-            # Collect superseded mask files now; unlink only after the
+            # Collect superseded mask paths up front; unlink only after the
             # replacement commits — rollback() cannot undo os.unlink.
             superseded_masks = [m for (m,) in conn.execute(
                 "SELECT mask_path FROM ai_review_findings "
@@ -673,8 +716,12 @@ def store_review(
 
 
 class SegmenterBackend(ABC):
-    model_id: str
-    model_version: str
+    """A promptable segmentation model turning box/point grounding into a
+    pixel mask; `model_id`/`model_version` are recorded as provenance on
+    each finding's mask columns."""
+
+    model_id: str  # stable identifier of the underlying model
+    model_version: str  # provenance tag stored with each generated mask
 
     @abstractmethod
     def segment(
@@ -683,7 +730,8 @@ class SegmenterBackend(ABC):
         bbox: Optional[tuple] = None,
         points: Optional[list] = None,
     ) -> np.ndarray:
-        """Return a boolean HxW mask (True = part of the finding)."""
+        """Return a boolean HxW mask (True = part of the finding); `bbox`
+        and `points` are normalized to [0, 1]."""
 
 
 class StubSegmenter(SegmenterBackend):
@@ -703,6 +751,8 @@ class StubSegmenter(SegmenterBackend):
         bbox: Optional[tuple] = None,
         points: Optional[list] = None,
     ) -> np.ndarray:
+        """Rasterize the normalized bbox (or the points' bounding box) onto
+        an all-False HxW canvas."""
         w, h = img.size
         mask = np.zeros((h, w), dtype=np.bool_)
         if bbox is None:

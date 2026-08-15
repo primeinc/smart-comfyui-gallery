@@ -68,6 +68,8 @@ GROUNDING_BASELINE_TEXT = "an image with some shapes and colors"
 # quality judgments.
 DEFAULT_FINDING_MIN_MARGIN = 0.0
 
+# Coarse region vocabulary for the ASSESS step; any value other than
+# 'whole-image' invites a LOCALIZE attempt for spatial finding types.
 _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
             "bottom-right", "center")
 
@@ -77,6 +79,7 @@ _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
 _LOCALIZABLE_TYPES = frozenset(
     {"anatomy", "artifact", "text_render", "detail_loss", "other"})
 
+# JSON schema enforced (via llama.cpp grammar decoding) on the ASSESS reply.
 _ASSESS_SCHEMA = {
     "type": "object",
     "properties": {
@@ -100,6 +103,8 @@ _ASSESS_SCHEMA = {
     "required": ["quality_score", "defects"],
 }
 
+# JSON schema enforced on each LOCALIZE reply; geometric validity is
+# checked separately in `_localize`.
 _BBOX_SCHEMA = {
     "type": "object",
     "properties": {
@@ -111,6 +116,8 @@ _BBOX_SCHEMA = {
 
 
 def _first_existing(models_dir: str, names: tuple) -> Optional[str]:
+    """First provisioned file among `names` under `models_dir` (tuple order
+    encodes preference), or None when none exists."""
     for name in names:
         p = os.path.join(models_dir, name)
         if os.path.isfile(p):
@@ -127,9 +134,9 @@ def check_grounding(embedder: SemanticEmbedder, description: str,
                     img: Image.Image,
                     min_cos: float = DEFAULT_GROUNDING_MIN_COS,
                     min_margin: float = DEFAULT_GROUNDING_MIN_MARGIN) -> float:
-    """The deterministic anti-fabrication gate (v2, contrastive), exposed
-    as a pure function so its negative cases are testable without loading
-    the VLM. Requires BOTH an absolute cosine floor AND a positive margin
+    """The deterministic contrastive anti-fabrication gate, exposed as a
+    pure function so its negative cases are testable without loading the
+    VLM. Requires BOTH an absolute cosine floor AND a positive margin
     over the generic-baseline text on the same image. Returns the margin on
     success; raises CriticGroundingError otherwise. All comparisons fail
     CLOSED on NaN (`not (x >= t)` instead of `x < t`)."""
@@ -176,12 +183,16 @@ def verify_finding_region(embedder: SemanticEmbedder, description: str,
 
 
 def _data_uri(img: Image.Image) -> str:
+    """Encode the image as a PNG data: URI -- the image form llama.cpp's
+    chat handler accepts without touching the filesystem or network."""
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 def _cos(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity; normalizes both vectors, so inputs need not be
+    unit length."""
     return float(np.dot(a / np.linalg.norm(a), b / np.linalg.norm(b)))
 
 
@@ -191,13 +202,20 @@ def clip_score_10(cos: float) -> float:
 
 
 class QwenVlCritic(CriticBackend):
+    """The decomposed Qwen2.5-VL critic (protocol in the module docstring).
+    Exists only with a semantic embedder attached: the grounding gate and
+    prompt-alignment scoring are inseparable from the critic."""
+
     model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
-    model_version = "qwen2.5-vl-7b-q4_k_m+decomposed-v1"
+    model_version = "qwen2.5-vl-7b-q4_k_m+decomposed-v1"  # refined per provisioned quantization in __init__
 
     def __init__(self, models_dir: str,
                  semantic_embedder: Optional[SemanticEmbedder] = None,
                  grounding_min_cos: float = DEFAULT_GROUNDING_MIN_COS,
                  n_ctx: int = 8192, n_threads: int = 4):
+        """Raises `BackendUnavailable` unless the embedder, the GGUF
+        weights (model + mmproj), and the llama.cpp runtime are all
+        present and loadable."""
         # The CLIP gate is a hard dependency: this critic must not exist in
         # a gate-less configuration, and the embedder also carries
         # prompt-alignment scoring.
@@ -237,6 +255,10 @@ class QwenVlCritic(CriticBackend):
 
     def _chat(self, img_uri: str, text: str, schema: Optional[dict],
               max_tokens: int) -> str:
+        """One greedy-decoded single-turn image+text call. A non-None
+        `schema` constrains decoding to that JSON shape via llama.cpp's
+        grammar support; returns the raw reply text ('' when the model
+        emits nothing)."""
         messages = [{
             "role": "user",
             "content": [
@@ -257,6 +279,10 @@ class QwenVlCritic(CriticBackend):
 
     def review(self, img: Image.Image, prompt_text: Optional[str],
                rubric_version: str) -> dict:
+        """Run the DESCRIBE/GROUND/ASSESS/LOCALIZE/ASSEMBLE protocol and
+        return the RAW payload dict for `validate_review_payload`. Raises
+        `CriticGroundingError` when the description fails the gate --
+        nothing is stored for that image."""
         img = img.convert("RGB")
         # Keep the vision token budget bounded and deterministic.
         if max(img.size) > 768:
@@ -345,6 +371,10 @@ class QwenVlCritic(CriticBackend):
         }
 
     def _localize(self, uri: str, defect: dict) -> Optional[tuple]:
+        """Ask for one defect's bounding box; returns a normalized
+        (x, y, w, h) clipped to the frame, or None when the model cannot
+        state a geometrically coherent box (the finding then stays
+        global)."""
         try:
             raw = self._chat(
                 uri,

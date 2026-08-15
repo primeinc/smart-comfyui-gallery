@@ -13,8 +13,9 @@ Conventions:
     is decidable without opening the media file (see invalidation.py)
 """
 
-AI_SCHEMA_VERSION = 1
+AI_SCHEMA_VERSION = 1  # structural version of the ai_* tables
 
+# Idempotent statements executed in order by init_schema().
 DDL = [
     # --- content identity / near-duplicates (no GPU required) ---
     """
@@ -205,7 +206,8 @@ REBUILDABLE_TABLES = [t for t in DERIVED_TABLES if t != "ai_feedback"]
 
 
 def init_schema(conn) -> None:
-    """Create AI DAM tables if missing. Idempotent."""
+    """Create AI DAM tables if missing and reconcile any table whose stored
+    DDL diverges from the DDL here. Idempotent."""
     for stmt in DDL:
         conn.execute(stmt)
     _migrate_scan_log_kinds(conn)
@@ -213,10 +215,10 @@ def init_schema(conn) -> None:
 
 
 def _migrate_scan_log_kinds(conn) -> None:
-    """Databases created before kind 'masks' existed carry a narrower CHECK
-    on ai_scan_log. SQLite cannot ALTER a CHECK, but the table is derived
-    bookkeeping, so rebuild it in place preserving rows. Detection reads
-    the stored DDL — deterministic, no probe writes."""
+    """Rebuild ai_scan_log in place, preserving rows, when its stored CHECK
+    does not admit kind 'masks'. SQLite cannot ALTER a CHECK, but the table
+    is derived bookkeeping, so a rename/copy/drop rebuild is safe. Detection
+    reads the stored DDL — deterministic, no probe writes."""
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'"
     ).fetchone()

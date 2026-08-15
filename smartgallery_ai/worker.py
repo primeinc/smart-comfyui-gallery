@@ -1,4 +1,4 @@
-"""Background indexing worker (WI-31 wave 2).
+"""Background indexing worker.
 
 `AIWorker` is a daemon thread, separate from Flask request handling, that
 periodically catches derived AI DAM state up with the source-of-truth
@@ -51,6 +51,8 @@ _MTIME_EPSILON = 1e-6
 # per-cycle budget forever).
 _VISUAL_TYPES = tuple(hashing.IMAGE_FILE_TYPES | hashing.VIDEO_FILE_TYPES)
 
+# Upper bound on frames decoded while hunting for the first usable one, so
+# a corrupt or all-empty video cannot stall a worker cycle indefinitely.
 _MAX_VIDEO_FRAME_ATTEMPTS = 60
 
 
@@ -96,6 +98,7 @@ def load_source_image(path: str, file_type: str) -> Optional[Image.Image]:
 
 
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """True when `table` has a column named `column`; a missing table reads as no columns."""
     return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
 
 
@@ -148,11 +151,14 @@ class AIWorker:
 
     def __init__(self, config: AIConfig, db_path: str, poll_interval: float = 20.0,
                  batch_size: int = 50):
+        """`poll_interval` is the sleep between wake cycles in seconds; `batch_size`
+        is the per-cycle file budget shared across all stages combined."""
         self.config = config
         self.db_path = db_path
         self.poll_interval = poll_interval
         self.batch_size = batch_size
 
+        # Cumulative counters since construction; exposed verbatim by /status.
         self.stats = {
             "cycles": 0,
             "hashed": 0,
@@ -163,8 +169,8 @@ class AIWorker:
         }
 
         self._lock = threading.Lock()
-        self._logged_errors: set = set()
-        self._backend_cache: dict = {}
+        self._logged_errors: set = set()  # error keys already logged (log-once dedup)
+        self._backend_cache: dict = {}  # key -> backend instance, or None for a cached miss
         # monotonic time of the last failed resolution attempt per key;
         # unavailable backends are re-probed after _backend_retry_seconds
         # so provisioning weights later activates them without a restart.
@@ -177,6 +183,7 @@ class AIWorker:
 
     @property
     def is_running(self) -> bool:
+        """True while the background thread is alive."""
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
@@ -199,6 +206,7 @@ class AIWorker:
     # -- main loop -------------------------------------------------------------
 
     def _run_loop(self) -> None:
+        """Thread body: run cycles until stopped; a failing cycle is counted, never fatal."""
         while not self._stop_event.is_set():
             try:
                 self._run_cycle()
@@ -209,6 +217,8 @@ class AIWorker:
             self._stop_event.wait(self.poll_interval)
 
     def _run_cycle(self) -> None:
+        """One wake: fresh connection, schema ensured, stages run in fixed order
+        against a shared file budget, then the orphaned-mask sweep."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
@@ -319,6 +329,7 @@ class AIWorker:
     # -- error bookkeeping -------------------------------------------------------
 
     def _note_error(self, key: str, message: str) -> None:
+        """Count an error in stats; emit the log line only on `key`'s first occurrence."""
         with self._lock:
             self.stats["errors"] += 1
         if key not in self._logged_errors:
@@ -328,6 +339,8 @@ class AIWorker:
     # -- stages ------------------------------------------------------------------
 
     def _process_hashes(self, conn: sqlite3.Connection, limit: int) -> int:
+        """Hash stage: (re)compute content hashes for missing/stale files. Returns
+        candidates consumed -- charged against the budget even when hashing fails."""
         if limit <= 0:
             return 0
         missing = invalidation.find_missing(conn, "ai_file_hashes")
@@ -349,6 +362,8 @@ class AIWorker:
     def _process_embedding_space(
         self, conn: sqlite3.Connection, backend, space: str, limit: int
     ) -> int:
+        """Embedding stage for one space: embed missing/stale renderable files.
+        Returns candidates consumed, successful or not."""
         if limit <= 0:
             return 0
         missing = invalidation.find_missing(conn, "ai_embeddings", space=space)
@@ -402,6 +417,8 @@ class AIWorker:
     @staticmethod
     def _log_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
                   source_mtime: float, now: float, result_count: int) -> None:
+        """Upsert the single (file, kind) scan-log row recording an attempt at
+        (model, mtime); `result_count` of -1 marks a failed attempt."""
         conn.execute(
             """
             INSERT INTO ai_scan_log
@@ -421,6 +438,9 @@ class AIWorker:
         conn.commit()
 
     def _process_faces(self, conn: sqlite3.Connection, backend, limit: int) -> int:
+        """Face stage: detect and store faces per candidate, then recluster when
+        faces were indexed or a clustering attempt is still pending. Returns
+        candidates consumed, successful or not."""
         if limit <= 0:
             return 0
         rows = self._scan_candidates(conn, "faces", backend, limit)
@@ -463,6 +483,7 @@ class AIWorker:
 
     @staticmethod
     def _set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
+        """Upsert one key of the persistent worker state, committed immediately."""
         conn.execute(
             "INSERT INTO ai_dam_state (key, value, updated_at) VALUES (?, ?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
@@ -472,16 +493,21 @@ class AIWorker:
 
     @staticmethod
     def _get_state(conn: sqlite3.Connection, key: str):
+        """Stored value for `key`, or None when unset."""
         row = conn.execute(
             "SELECT value FROM ai_dam_state WHERE key = ?", (key,)).fetchone()
         return row[0] if row is not None else None
 
     @staticmethod
     def _clear_state(conn: sqlite3.Connection, key: str) -> None:
+        """Remove `key` from the persistent state; absent keys are a no-op."""
         conn.execute("DELETE FROM ai_dam_state WHERE key = ?", (key,))
         conn.commit()
 
     def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int) -> int:
+        """Review stage: run the critic per candidate, store the review, and
+        generate finding masks when a segmenter is available. Returns candidates
+        consumed, successful or not."""
         if limit <= 0:
             return 0
         prompt_expr = ", f.workflow_prompt" if _has_column(conn, "files", "workflow_prompt") else ", NULL AS workflow_prompt"

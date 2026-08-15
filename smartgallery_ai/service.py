@@ -1,4 +1,4 @@
-"""Flask blueprint for the AI DAM layer (WI-31 wave 2).
+"""Flask blueprint for the AI DAM layer.
 
 `create_ai_blueprint` builds a self-contained Blueprint the host app mounts
 at `/galleryout/api/aidam`; every route opens its own SQLite connection to
@@ -50,20 +50,24 @@ def set_worker(worker) -> None:
 
 
 def get_worker():
+    """Return the registered background `AIWorker`, or None when none is running."""
     return _worker_ref.get("worker")
 
 
 def _connect(config: AIConfig) -> sqlite3.Connection:
+    """Open a fresh SQLite connection to the gallery DB with name-addressable rows."""
     conn = sqlite3.connect(config.db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _disabled_response():
+    """Uniform body every route except `/status` answers with while the layer is off."""
     return jsonify({"enabled": False}), 200
 
 
 def _segmenter_available(config: AIConfig) -> bool:
+    """Whether a segmenter backend can be constructed; a raising probe counts as unavailable."""
     try:
         return review.get_segmenter_backend(config) is not None
     except Exception:  # noqa: BLE001 - availability probe must not raise
@@ -71,6 +75,7 @@ def _segmenter_available(config: AIConfig) -> bool:
 
 
 def _extract_file_id(value: Any) -> Optional[str]:
+    """File id from a resolver AST value -- bare string or `{"file_id": ...}` dict; None otherwise."""
     if isinstance(value, dict):
         return value.get("file_id")
     if isinstance(value, str):
@@ -79,6 +84,7 @@ def _extract_file_id(value: Any) -> Optional[str]:
 
 
 def _extract_file_id_and_k(value: Any, default_k: int) -> tuple:
+    """(file_id, k) from a resolver AST value; only the dict form can override `default_k`."""
     if isinstance(value, dict):
         return value.get("file_id"), int(value.get("k", default_k))
     return value, default_k
@@ -90,6 +96,7 @@ def create_ai_resolvers(config: AIConfig) -> dict:
     own connection and returns `[]` for an unknown/unembedded file."""
 
     def near_dup_of(value: Any) -> list:
+        """Ids of files within the configured perceptual-hash distance of `value`'s file."""
         file_id = _extract_file_id(value)
         if not file_id:
             return []
@@ -101,6 +108,7 @@ def create_ai_resolvers(config: AIConfig) -> dict:
         return [fid for fid, _distance in pairs]
 
     def _similar(value: Any, space: str) -> list:
+        """Ids of `value`'s file's k nearest neighbors in `space`, same model version only."""
         file_id, k = _extract_file_id_and_k(value, config.similar_default_k)
         if not file_id:
             return []
@@ -225,22 +233,27 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     bp = Blueprint("aidam", __name__)
 
     def _requires_enabled(view_func: Callable) -> Callable:
+        """Decorator: short-circuit to the disabled response while the layer is off."""
         @wraps(view_func)
         def wrapper(*args, **kwargs):
+            """Answer the disabled body instead of running the view while the layer is off."""
             if not config.enabled:
                 return _disabled_response()
             return view_func(*args, **kwargs)
         return wrapper
 
     def _wrap(view_func: Callable, guarded: bool = False) -> Callable:
+        """Apply the caller's guard (guarded routes only), then the enabled check outermost."""
         if guarded and guard is not None:
             view_func = guard(view_func)
         return _requires_enabled(view_func)
 
     def _visible(file_id: str) -> bool:
+        """Per-file visibility under the host policy; no policy means everything is visible."""
         return file_access_check is None or bool(file_access_check(file_id))
 
     def _check_file_access(file_id: str) -> None:
+        """Abort 404 for policy-hidden files, indistinguishable from nonexistent ones."""
         if not _visible(file_id):
             abort(404)
 
@@ -252,6 +265,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     backend_probe_cache: dict = {}
 
     def _probe_backends() -> dict:
+        """Availability flag per backend: all-False while disabled, else probed once and cached."""
         if not config.enabled:
             return {"semantic": False, "visual": False, "face": False,
                     "critic": False, "segmenter": False}
@@ -266,6 +280,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         return dict(backend_probe_cache)
 
     def status():
+        """Backend availability, per-table counts, and worker state; answers even while disabled."""
         conn = _connect(config)
         try:
             backends = _probe_backends()
@@ -299,6 +314,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /duplicates/<file_id> -----------------------------------------------
 
     def duplicates(file_id: str):
+        """Exact and near duplicates of one file, both filtered through the visibility policy."""
         _check_file_access(file_id)
         max_distance = request.args.get("max_distance", config.near_dup_max_distance, type=int)
         conn = _connect(config)
@@ -318,6 +334,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /similar/<file_id> --------------------------------------------------
 
     def similar(file_id: str):
+        """The file's k nearest embedding neighbors in the requested space."""
         _check_file_access(file_id)
         space = request.args.get("space", SPACE_SEMANTIC)
         if space not in (SPACE_SEMANTIC, SPACE_VISUAL):
@@ -354,6 +371,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /faces/<file_id> -----------------------------------------------------
 
     def faces_for_file(file_id: str):
+        """Detected faces for one file: bounding boxes, landmarks, cluster assignments."""
         _check_file_access(file_id)
         conn = _connect(config)
         try:
@@ -379,6 +397,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /faces/clusters -------------------------------------------------------
 
     def faces_clusters():
+        """All face clusters, each with up to four sample file ids."""
         conn = _connect(config)
         try:
             cluster_rows = conn.execute(
@@ -404,6 +423,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /faces/clusters/<int:cluster_id> ---------------------------------------
 
     def faces_cluster_detail(cluster_id: int):
+        """One cluster's metadata and every member face; unknown ids answer 404."""
         conn = _connect(config)
         try:
             crow = conn.execute(
@@ -434,6 +454,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- POST /faces/recluster (guarded) --------------------------------------------
 
     def faces_recluster():
+        """Re-run face clustering across the whole library; reports the resulting cluster count."""
         backend = faces.get_face_backend(config)
         if backend is None:
             return jsonify({"enabled": True, "clusters": 0, "note": "no face backend configured"})
@@ -449,6 +470,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /review/<file_id> -----------------------------------------------------
 
     def review_for_file(file_id: str):
+        """The file's most recent review plus findings; mask URLs only where a mask exists."""
         _check_file_access(file_id)
         conn = _connect(config)
         try:
@@ -512,6 +534,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /review/mask/<int:finding_id> -------------------------------------------
 
     def review_mask(finding_id: int):
+        """Serve one finding's mask PNG; the stored path must resolve inside the masks cache."""
         conn = _connect(config)
         try:
             row = conn.execute(
@@ -540,6 +563,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- POST /review/feedback (guarded) / GET /review/feedback/export --------------
 
     def review_feedback_post():
+        """Record one human feedback entry; validation failures answer 400."""
         data = request.get_json(silent=True) or {}
         conn = _connect(config)
         try:
@@ -560,6 +584,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         return jsonify({"enabled": True, "feedback_id": feedback_id}), 201
 
     def review_feedback_export():
+        """Full feedback log as a downloadable NDJSON attachment."""
         conn = _connect(config)
         try:
             text = feedback.export_feedback(conn)
@@ -574,6 +599,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- POST /index/<file_id> (guarded) --------------------------------------------
 
     def index_file(file_id: str):
+        """Synchronously (re-)index one file; `force` also reschedules its background review."""
         data = request.get_json(silent=True) or {}
         force = bool(data.get("force", False))
         conn = _connect(config)

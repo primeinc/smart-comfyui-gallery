@@ -10,7 +10,7 @@ usable query) or a plain JSON-compatible dict that already round-tripped
 through :func:`omniquery.ast.parse_query` and
 :func:`omniquery.validation.validate` -- backends must never hand back an
 AST that hasn't been validated. ``router.py`` combines backends according
-to a measured policy; ``get_backend``/``make_default_router`` below are the
+to its documented routing policy; ``get_backend``/``make_default_router`` below are the
 convenience entry points the rest of the app (and the benchmark harness)
 use instead of importing individual backend modules directly.
 
@@ -43,20 +43,24 @@ PERMISSIVE_CTX = AuthContext(
 
 @dataclass(frozen=True)
 class ParserOutcome:
-    ast: Optional[dict]
-    confidence: Optional[float]
-    backend: str
-    unsupported: bool = False
-    reason: Optional[str] = None
-    coverage: Optional[float] = None
-    latency_ms: Optional[float] = None
-    raw: Optional[dict] = None
+    """Result of one parse attempt: either a validated AST plus quality
+    signals, or a diagnosis of why no usable AST exists. Backends set
+    ``ast`` only to a dict that already passed :func:`try_validate`."""
+
+    ast: Optional[dict]  # validated JSON-compatible AST; None when the parse failed
+    confidence: Optional[float]  # backend's self-reported confidence in [0, 1]; None when the backend emits none; not comparable across backends
+    backend: str  # registry name of the producing backend ("router" for aggregate outcomes)
+    unsupported: bool = False  # True: no usable AST was produced; `reason` says why
+    reason: Optional[str] = None  # failure diagnostics; on success, soft warnings (e.g. literals the AST missed)
+    coverage: Optional[float] = None  # literal/keyword coverage fraction in [0, 1]; None when not computed
+    latency_ms: Optional[float] = None  # wall-clock parse duration in milliseconds
+    raw: Optional[dict] = None  # backend-specific debug payload (engine response, raw generation, router flags)
 
 
 class ParserBackend(ABC):
     """Common interface for every NL -> AST parser backend."""
 
-    name: str = ""
+    name: str = ""  # registry identifier, reported in every ParserOutcome; each subclass overrides
 
     @abstractmethod
     def parse(self, text: str, now_epoch: float) -> ParserOutcome:
@@ -76,7 +80,7 @@ class ParserBackend(ABC):
 # Registry
 # ---------------------------------------------------------------------------
 
-_BACKEND_PATHS: Dict[str, str] = {
+_BACKEND_PATHS: Dict[str, str] = {  # backend name -> dotted class path, imported lazily by get_backend
     "heuristic": "omniquery.parsers.heuristic.HeuristicBackend",
     "needle2": "omniquery.parsers.needle2.Needle2Backend",
     "fallback_qwen": "omniquery.parsers.fallback_qwen.FallbackQwenBackend",
@@ -178,6 +182,9 @@ def contains_not_node(node: Any) -> bool:
 
 
 def _scalar_leaves(value: Any) -> Iterator[Any]:
+    """Yield every non-container leaf inside `value`, recursing through
+    dicts and lists (a condition value may be a scalar, an 'in'-style list,
+    or a structured value like {"days_ago": 7})."""
     if isinstance(value, dict):
         for v in value.values():
             yield from _scalar_leaves(v)
@@ -189,6 +196,9 @@ def _scalar_leaves(value: Any) -> Iterator[Any]:
 
 
 def _all_ast_values(ast_dict: dict) -> List[Any]:
+    """Every scalar literal the AST commits to (all condition values,
+    flattened, plus `limit` when set) -- the pool coverage_guard matches
+    the query text's literals against."""
     values: List[Any] = []
     for cond in _walk_conds(ast_dict.get("where")):
         values.extend(_scalar_leaves(cond.get("value")))
@@ -203,7 +213,7 @@ def _all_ast_values(ast_dict: dict) -> List[Any]:
 # (checking its grammar-constrained-but-still-hallucination-prone output).
 # ---------------------------------------------------------------------------
 
-_QUOTED_RE = re.compile(r"[\"']([^\"']+)[\"']")
+_QUOTED_RE = re.compile(r"[\"']([^\"']+)[\"']")  # either quote style; no escape handling inside
 
 # number optionally followed by a unit word; unit drives which scaled
 # variants of the raw number are accepted as "the same value" (e.g. "100 MB"
@@ -216,6 +226,9 @@ _NUMBER_UNIT_RE = re.compile(
     re.I,
 )
 
+# unit word -> multipliers whose products with the raw number are each an
+# accepted AST encoding of it: sizes may be stored in MB or bytes, durations
+# in seconds, week/month counts in days; unitless kinds multiply by 1.
 _UNIT_MULTIPLIERS: Dict[str, Tuple[float, ...]] = {
     "mb": (1.0, 1024.0 * 1024.0), "megabyte": (1.0, 1024.0 * 1024.0), "megabytes": (1.0, 1024.0 * 1024.0),
     "gb": (1024.0, 1024.0 ** 3), "gigabyte": (1024.0, 1024.0 ** 3), "gigabytes": (1024.0, 1024.0 ** 3),
@@ -254,11 +267,13 @@ _STATUS_NORMALIZE: Dict[str, str] = {
     "to edit": "to edit",
     "selected": "select", "select": "select",
 }
-_FAVORITE_WORD_RE = re.compile(r"\bfavou?rite[sd]?\b", re.I)
-_COUNT_WORD_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.I)
+_FAVORITE_WORD_RE = re.compile(r"\bfavou?rite[sd]?\b", re.I)  # both spellings, optional plural/past-tense suffix
+_COUNT_WORD_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.I)  # phrasings that demand result="count"
 
 
 def _number_candidates(raw: str, unit: Optional[str]) -> List[float]:
+    """Every numeric value an AST may legally carry for the literal `raw`:
+    the number itself plus each unit-scaled variant from _UNIT_MULTIPLIERS."""
     n = float(raw)
     candidates = [n]
     if unit:
@@ -299,9 +314,9 @@ def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
 
     This is deliberately NOT a semantic checker (it can't tell "not
     approved" from "approved" -- that's the negation check next to it in
-    needle2.py) -- it only catches the failure mode measured on this
-    machine: constraints silently DROPPED from the parse.  coverage == 1.0
-    when there is nothing to check (an empty/trivial query).
+    needle2.py) -- it only catches one specific failure mode: constraints
+    silently DROPPED from the parse.  coverage == 1.0 when there is
+    nothing to check (an empty/trivial query).
     """
     values = _all_ast_values(ast_dict)
     numeric_values = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]

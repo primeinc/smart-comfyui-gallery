@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Calibrate the critic's grounding gate on adversarial description classes.
 
-The v1 gate (absolute CLIP cosine >= 0.20) was shown by adversarial review
-to have no separating power: vacuous descriptions ("an image with some
-shapes and colors") score ABOVE genuinely grounded ones, and paraphrases
-of the schema example pass on unrelated images. This probe measures the
-v2 CONTRASTIVE gate:
+An absolute-cosine gate (accept when cos(desc, img) clears a fixed
+threshold) has no separating power: vacuous descriptions ("an image with
+some shapes and colors") can score ABOVE genuinely grounded ones, and
+paraphrases of the schema's worked example pass on unrelated images. The
+CONTRASTIVE gate measured here scores instead
 
     margin(desc, img) = cos(desc, img) - cos(GENERIC_BASELINE, img)
 
@@ -34,6 +34,8 @@ sys.path.insert(0, REPO)
 from smartgallery_ai import AIConfig  # noqa: E402
 from smartgallery_ai.embedders import get_semantic_backend  # noqa: E402
 
+# Content-free reference description; the gate scores a candidate by how
+# much its cosine beats this baseline's cosine on the same image.
 GENERIC_BASELINE = "an image with some shapes and colors"
 
 # Fixed portrait input, committed with the repo (public-domain NASA
@@ -44,6 +46,7 @@ DEFAULT_PORTRAIT = os.path.join(REPO, "probes", "data", "calibration_portrait.pn
 
 
 def _sha256_file(path):
+    """Streamed SHA-256 hex digest of the file at `path`."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -52,20 +55,26 @@ def _sha256_file(path):
 
 
 def _sha256_pixels(img):
+    """SHA-256 over (width, height, raw RGB bytes): identical pixels hash
+    identically regardless of file format or encoding."""
     return hashlib.sha256(
         img.size[0].to_bytes(4, "big") + img.size[1].to_bytes(4, "big")
         + img.convert("RGB").tobytes()).hexdigest()
 
+# Description classes the gate must reject, regardless of image.
+# Vacuous: content-free text that fits any image equally well.
 VACUOUS = [
     "This is an image. It contains some shapes and colors.",
     "A picture showing various elements and details.",
     "An image with a subject in it.",
 ]
+# Parroted: restates the schema's worked example instead of the image.
 PARROTED = [
     "Good portrait with one artifact. The image shows a red square artifact "
     "in the lower right and slightly flat lighting.",
     "A portrait with a red square artifact and slightly flat lighting.",
 ]
+# Unrelated: concrete, well-formed text about an entirely different scene.
 UNRELATED = [
     "A golden retriever puppy sits on a wooden porch in afternoon sunlight.",
     "A bowl of ramen with chopsticks on a restaurant table.",
@@ -82,6 +91,8 @@ def build_images():
     manifest = []
 
     def _add(name, img, desc, source, file_path=None):
+        """Register one calibration image with its grounded description and
+        its manifest row."""
         imgs[name] = (img, desc)
         row = {"image": name, "source": source,
                "pixels_sha256": _sha256_pixels(img)}
@@ -128,6 +139,9 @@ def build_images():
 
 
 def main() -> int:
+    """Run the margin sweep with the real OpenCLIP backend and write the
+    JSON report. Returns the process exit code: 0 on success, 2 when the
+    model weights are not provisioned."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--models-dir",
                     default=os.path.join(REPO, ".AImodels"))
@@ -142,6 +156,7 @@ def main() -> int:
     imgs, manifest = build_images()
 
     def cos(a, b):
+        """Cosine similarity of two vectors."""
         return float(np.dot(a / np.linalg.norm(a), b / np.linalg.norm(b)))
 
     base_t = sem.embed_text(GENERIC_BASELINE)

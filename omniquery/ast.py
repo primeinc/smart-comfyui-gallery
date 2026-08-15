@@ -30,11 +30,11 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Union
 
-AST_VERSION = 1
+AST_VERSION = 1  # wire-format version; parse_query rejects any other
 
 MAX_DEPTH = 6           # maximum nesting of Group/Not nodes
 MAX_CONDITIONS = 32     # maximum number of Cond leaves in one query
-MAX_GROUP_CHILDREN = 16
+MAX_GROUP_CHILDREN = 16  # maximum children in a single and/or group
 MAX_IN_VALUES = 64      # maximum number of items in an "in" list
 MAX_STR_LEN = 512       # maximum length of a string literal
 
@@ -49,11 +49,16 @@ class ASTError(ValueError):
 
 @dataclass(frozen=True)
 class Cond:
-    field: str
-    op: str
-    value: Any = None
+    """Leaf predicate: one field/operator/value comparison. Only structure is
+    guaranteed here; whether the field exists and accepts the op/value is
+    omniquery.validation's job."""
+
+    field: str  # field name; resolved against the registry by validation
+    op: str     # operator name; allowed set depends on the field
+    value: Any = None  # JSON scalar, flat scalar list, or small dict; None for value-less ops
 
     def to_dict(self) -> dict:
+        """JSON form parse_query accepts; the value key is omitted when None."""
         d: dict = {"field": self.field, "op": self.op}
         if self.value is not None:
             d["value"] = self.value
@@ -62,18 +67,24 @@ class Cond:
 
 @dataclass(frozen=True)
 class Not:
+    """Logical negation of a single child node."""
+
     child: "Node"
 
     def to_dict(self) -> dict:
+        """JSON form parse_query accepts."""
         return {"op": "not", "child": self.child.to_dict()}
 
 
 @dataclass(frozen=True)
 class Group:
+    """N-ary conjunction or disjunction; always has at least one child."""
+
     op: str  # "and" | "or"
-    children: tuple  # tuple[Node, ...]
+    children: tuple  # tuple[Node, ...], non-empty
 
     def to_dict(self) -> dict:
+        """JSON form parse_query accepts."""
         return {"op": self.op, "children": [c.to_dict() for c in self.children]}
 
 
@@ -82,23 +93,30 @@ Node = Union[Cond, Not, Group]
 
 @dataclass(frozen=True)
 class OrderSpec:
+    """One ORDER BY entry; the field must be registered as orderable, which
+    validation enforces."""
+
     field: str
     direction: str = "desc"  # "asc" | "desc"
 
     def to_dict(self) -> dict:
+        """JSON form parse_query accepts (direction serializes as 'dir')."""
         return {"field": self.field, "dir": self.direction}
 
 
 @dataclass(frozen=True)
 class Query:
-    target: str = "files"
+    """AST root: result shape, optional where tree, ordering, and row limit."""
+
+    target: str = "files"  # only "files" is supported
     result: str = "ids"  # "ids" | "count"
-    where: Optional[Node] = None
+    where: Optional[Node] = None  # None means "match every file"
     order_by: tuple = field(default_factory=tuple)  # tuple[OrderSpec, ...]
-    limit: Optional[int] = None
+    limit: Optional[int] = None  # None defers to validation's DEFAULT_LIMIT
     version: int = AST_VERSION
 
     def to_dict(self) -> dict:
+        """JSON form parse_query accepts; unset optional parts are omitted."""
         d: dict = {"version": self.version, "target": self.target,
                    "result": self.result}
         if self.where is not None:
@@ -110,6 +128,8 @@ class Query:
         return d
 
     def to_json(self) -> str:
+        """Compact serialization with sorted keys, so equal queries yield
+        byte-identical strings (usable as a cache/comparison key)."""
         return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
 
 
@@ -117,10 +137,12 @@ class Query:
 # Strict parsing from JSON-compatible dicts
 # ---------------------------------------------------------------------------
 
-_SCALAR_TYPES = (str, int, float, bool)
+_SCALAR_TYPES = (str, int, float, bool)  # JSON-native scalar types a Cond value may contain
 
 
 def _check_scalar(value: Any, ctx: str) -> None:
+    """Reject non-JSON literal types and over-long strings; None and all
+    numeric/bool scalars pass. ctx names the location for error messages."""
     if value is None or isinstance(value, bool):
         return
     if isinstance(value, str):
@@ -160,6 +182,9 @@ def _parse_value(value: Any, ctx: str) -> Any:
 
 
 def _parse_node(obj: Any, depth: int, counter: dict, ctx: str) -> Node:
+    """Recursively parse one where-tree node, enforcing the depth, group-size,
+    and whole-query condition caps. counter["conds"] is the Cond-leaf tally
+    shared across the entire recursive parse."""
     if depth > MAX_DEPTH:
         raise ASTError(f"{ctx}: nesting deeper than {MAX_DEPTH}")
     if not isinstance(obj, dict):
@@ -203,6 +228,8 @@ def _parse_node(obj: Any, depth: int, counter: dict, ctx: str) -> Node:
 
 
 def _require_keys(obj: dict, allowed: set, ctx: str) -> None:
+    """Reject any key outside the allowed set: the schema is closed, so
+    parser extensions cannot smuggle extra data past validation."""
     unknown = set(obj.keys()) - allowed
     if unknown:
         raise ASTError(f"{ctx}: unknown keys {sorted(unknown)}")
@@ -236,7 +263,7 @@ def parse_query(obj: Any) -> Query:
         raise ASTError(f"unsupported result kind {result!r}")
 
     where_obj = obj.get("where")
-    counter = {"conds": 0}
+    counter = {"conds": 0}  # Cond-leaf tally, shared across the recursive parse
     where = None
     if where_obj is not None:
         where = _parse_node(where_obj, 1, counter, "where")

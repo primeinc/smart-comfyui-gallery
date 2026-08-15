@@ -27,12 +27,14 @@ import tempfile
 import time
 import urllib.request
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT = 18911
-MARK = "SG_EGRESS_PROBE_STAGE2"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root (parent of probes/)
+PORT = 18911  # loopback-only port the probe's server listens on
+MARK = "SG_EGRESS_PROBE_STAGE2"  # env var whose presence means "this process is the stage-2 re-exec"
 
 
 def stage1() -> int:
+    """Re-exec this script inside a fresh network namespace (unshare -n).
+    Returns the child's exit code, or 2 when unshare is unavailable."""
     if shutil.which("unshare") is None:
         print("FAIL: 'unshare' not available; cannot build isolated netns")
         return 2
@@ -60,6 +62,8 @@ def _loopback_up() -> None:
 
 
 def wait_for(url: str, timeout: float = 60.0) -> None:
+    """Poll `url` until it answers; after `timeout` seconds, raise
+    RuntimeError carrying the most recent connection error."""
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
@@ -74,11 +78,16 @@ def wait_for(url: str, timeout: float = 60.0) -> None:
 
 
 def get(url: str):
+    """GET `url`, returning (HTTP status, body bytes)."""
     with urllib.request.urlopen(url, timeout=15) as resp:
         return resp.status, resp.read()
 
 
 def stage2() -> int:
+    """Namespace-side body: verify egress really is denied, start the real
+    server with the AI layer enabled, exercise it plus the local OmniQuery
+    parse path, print JSON evidence and the verdict, then terminate via
+    os._exit(0 on PASS, 1 on FAIL) -- it never returns."""
     _loopback_up()
     # Prove the namespace actually denies egress before trusting anything.
     try:

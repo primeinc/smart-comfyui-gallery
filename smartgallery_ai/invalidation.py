@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-_MTIME_EPSILON = 1e-6
+_MTIME_EPSILON = 1e-6  # seconds; covers float64 round-tripping through REAL columns
 
 
 def is_stale(
@@ -21,6 +21,8 @@ def is_stale(
     row_version: str,
     active_version: str,
 ) -> bool:
+    """True when a derived row must be recomputed: version strings differ
+    exactly, or the recorded mtime drifts from the file's beyond epsilon."""
     if row_version != active_version:
         return True
     return abs(row_source_mtime - file_mtime) > _MTIME_EPSILON

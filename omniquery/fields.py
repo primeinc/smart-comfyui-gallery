@@ -20,12 +20,14 @@ from typing import Dict, FrozenSet, List, Optional
 
 
 class Kind(str, Enum):
+    """Value domain of a field; selects which value checks and SQL builders apply."""
+
     TEXT = "text"
     NUMBER = "number"
     BOOL = "bool"
-    ENUM = "enum"
-    DATETIME = "datetime"
-    FILE_REF = "file_ref"
+    ENUM = "enum"          # string drawn from the spec's enum_values
+    DATETIME = "datetime"  # epoch-seconds column; literals are ISO strings or relative offsets
+    FILE_REF = "file_ref"  # value names another file; resolved to an id list outside SQL
 
 
 class Strategy(str, Enum):
@@ -85,11 +87,14 @@ MEGAPIXELS_EXPR = f"(({WIDTH_EXPR}) * ({HEIGHT_EXPR}) / 1000000.0)"
 # Binary megabytes (1024*1024 bytes), matching common file-manager display.
 SIZE_MB_EXPR = "(f.size / 1048576.0)"
 
+# Correlated scalar subqueries over per-file child tables. AVG and the
+# review-score forms yield NULL for a file with no matching rows (so such
+# files fail every comparison); the COUNT forms yield 0.
 RATING_AVG_EXPR = "(SELECT AVG(r.rating) FROM file_ratings r WHERE r.file_id = f.id)"
 RATING_COUNT_EXPR = "(SELECT COUNT(*) FROM file_ratings r WHERE r.file_id = f.id)"
 COMMENT_COUNT_EXPR = "(SELECT COUNT(*) FROM file_comments c WHERE c.file_id = f.id)"
 FACE_COUNT_EXPR = "(SELECT COUNT(*) FROM ai_face_instances fa WHERE fa.file_id = f.id)"
-# "latest" review = most recent by computed_at, per (file_id, rubric, model).
+# "latest" review = the file's single most recent ai_reviews row by computed_at.
 REVIEW_QUALITY_EXPR = (
     "(SELECT rv.quality_score FROM ai_reviews rv WHERE rv.file_id = f.id "
     "ORDER BY rv.computed_at DESC LIMIT 1)"
@@ -99,12 +104,15 @@ REVIEW_ALIGNMENT_EXPR = (
     "ORDER BY rv.computed_at DESC LIMIT 1)"
 )
 
+# collections.name values for the built-in type='system_flag' collections.
 STATUS_FLAG_VALUES: FrozenSet[str] = frozenset(
     {"Approved", "Review", "To Edit", "Rejected", "Select"}
 )
+# Accepted values of the files.type column.
 FILE_TYPE_VALUES: FrozenSet[str] = frozenset(
     {"image", "video", "animated_image", "audio", "document"}
 )
+# Accepted values of the ai_review_findings.type column.
 REVIEW_ISSUE_VALUES: FrozenSet[str] = frozenset({
     "anatomy", "artifact", "composition", "lighting", "text_render",
     "prompt_mismatch", "style", "detail_loss", "other",
@@ -113,19 +121,22 @@ REVIEW_ISSUE_VALUES: FrozenSet[str] = frozenset({
 
 @dataclass(frozen=True)
 class FieldSpec:
-    name: str
+    """Static, trusted description of one queryable field: what values and
+    operators it accepts, who may use it, and how the compiler renders it."""
+
+    name: str            # field name as parsers emit it
     kind: Kind
-    ops: FrozenSet[str]
+    ops: FrozenSet[str]  # operator names validation accepts for this field
     strategy: Strategy
-    orderable: bool = False
-    privileged: bool = False
-    requires_ai: bool = False
+    orderable: bool = False   # usable in ORDER BY (order_expr must then be set)
+    privileged: bool = False  # restricted to validation.PRIVILEGED_ROLES
+    requires_ai: bool = False  # only valid when the AI layer is enabled
     # Counts toward validation's "distinct EXISTS-style fields" complexity cap:
     # true for every field whose SQL strategy adds a join or (correlated)
     # subquery rather than a plain column/expression comparison.
     correlated: bool = False
-    needs_client_uuid: bool = False
-    enum_values: Optional[FrozenSet[str]] = None
+    needs_client_uuid: bool = False  # rejected unless the AuthContext carries a client_uuid
+    enum_values: Optional[FrozenSet[str]] = None  # allowed literals for Kind.ENUM fields
     column: Optional[str] = None        # Strategy.COLUMN
     expr: Optional[str] = None          # Strategy.EXPR / SUBQUERY_SCALAR
     order_expr: Optional[str] = None    # only set when orderable
@@ -136,9 +147,11 @@ class FieldSpec:
 
 
 def _f(**kwargs) -> FieldSpec:
+    """Keyword shorthand keeping the _SPECS table compact."""
     return FieldSpec(**kwargs)
 
 
+# Registry source of truth: one spec per queryable field.
 _SPECS: List[FieldSpec] = [
     _f(name="name", kind=Kind.TEXT, ops=_TEXT_FULL, strategy=Strategy.COLUMN,
        column="f.name", orderable=True, order_expr="f.name"),
@@ -209,7 +222,7 @@ _SPECS: List[FieldSpec] = [
        strategy=Strategy.FILE_REF, requires_ai=True, correlated=True),
 ]
 
-FIELDS: Dict[str, FieldSpec] = {spec.name: spec for spec in _SPECS}
+FIELDS: Dict[str, FieldSpec] = {spec.name: spec for spec in _SPECS}  # name -> spec
 
 ORDERABLE_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.orderable)
 PRIVILEGED_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.privileged)
@@ -218,10 +231,13 @@ CORRELATED_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.
 
 
 def get_field(name: str) -> Optional[FieldSpec]:
+    """Spec for a field name, or None (not an exception) for unknown names,
+    so callers can phrase their own error."""
     return FIELDS.get(name)
 
 
 def field_names() -> List[str]:
+    """Sorted field vocabulary, for schema embedding and error messages."""
     return sorted(FIELDS)
 
 

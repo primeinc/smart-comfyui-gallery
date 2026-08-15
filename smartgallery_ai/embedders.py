@@ -36,29 +36,36 @@ class BackendUnavailable(Exception):
 class SemanticEmbedder(ABC):
     """Joint image/text embedding space (see `SPACE_SEMANTIC`)."""
 
-    model_id: str
-    model_version: str
-    dim: int
+    model_id: str  # identifies the producing model; stored with every vector
+    model_version: str  # separates incompatible vector generations; versions never mix
+    dim: int  # length of every embedding this backend returns
 
     @abstractmethod
-    def embed_image(self, img: Image.Image) -> np.ndarray: ...
+    def embed_image(self, img: Image.Image) -> np.ndarray:
+        """Map an image into this space: float32, length `dim`, unit L2 norm."""
+        ...
 
     @abstractmethod
-    def embed_text(self, text: str) -> np.ndarray: ...
+    def embed_text(self, text: str) -> np.ndarray:
+        """Map text into the same space as images, so image/text cosine is meaningful."""
+        ...
 
 
 class VisualEmbedder(ABC):
     """Image-only self-supervised embedding space (see `SPACE_VISUAL`)."""
 
-    model_id: str
-    model_version: str
-    dim: int
+    model_id: str  # identifies the producing model; stored with every vector
+    model_version: str  # separates incompatible vector generations; versions never mix
+    dim: int  # length of every embedding this backend returns
 
     @abstractmethod
-    def embed_image(self, img: Image.Image) -> np.ndarray: ...
+    def embed_image(self, img: Image.Image) -> np.ndarray:
+        """Map an image into this space: float32, length `dim`, unit L2 norm."""
+        ...
 
 
 def _l2_normalize(vec: np.ndarray) -> np.ndarray:
+    """Scale to unit L2 norm as float32; a zero vector passes through unchanged."""
     vec = vec.astype(np.float32)
     norm = np.linalg.norm(vec)
     return vec if norm == 0 else (vec / norm).astype(np.float32)
@@ -72,6 +79,9 @@ class StubSemanticEmbedder(SemanticEmbedder):
     dim = 64
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
+        """Pseudo-embedding seeded from a hash of the 8x8 quantized grayscale
+        thumbnail: identical pixels give identical vectors, but visually
+        similar images do not land near each other."""
         small = img.convert("L").resize((8, 8), Image.LANCZOS)
         quantized = (np.asarray(small, dtype=np.uint8) // 32).astype(np.uint8)
         digest = hashlib.sha256(quantized.tobytes()).digest()
@@ -80,6 +90,8 @@ class StubSemanticEmbedder(SemanticEmbedder):
         return _l2_normalize(vec)
 
     def embed_text(self, text: str) -> np.ndarray:
+        """Hashed character-trigram bag: near-duplicate strings overlap in
+        buckets and score similar; there is no semantic understanding."""
         vec = np.zeros(self.dim, dtype=np.float32)
         lowered = text.lower()
         trigrams = [lowered[i : i + 3] for i in range(len(lowered) - 2)] or [lowered]
@@ -98,6 +110,8 @@ class StubVisualEmbedder(VisualEmbedder):
     dim = 64  # 4x4x4 RGB color histogram
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
+        """L2-normalized 4x4x4 RGB histogram: reflects palette overlap only,
+        never layout or content."""
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8).reshape(-1, 3)
         bins = (rgb.astype(np.int32) // 64)  # 4 bins per channel (0..3)
         indices = bins[:, 0] * 16 + bins[:, 1] * 4 + bins[:, 2]
@@ -117,6 +131,8 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
     dim = 512
 
     def __init__(self, models_dir: str):
+        """Raises `BackendUnavailable` when the weights file or the
+        torch/open_clip runtime is missing; never triggers a download."""
         # Check the weights BEFORE importing the heavy runtime: 'auto'
         # resolution on an unprovisioned system must stay fast and
         # side-effect-free (a cold torch import costs ~10s).
@@ -145,12 +161,14 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         self._tokenizer = open_clip.get_tokenizer("ViT-B-32")
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
+        """CLIP image feature, unit-normalized so image/text cosine works."""
         tensor = self._preprocess(img.convert("RGB")).unsqueeze(0)
         with self._torch.no_grad():
             features = self._model.encode_image(tensor)
         return _l2_normalize(features.squeeze(0).cpu().numpy())
 
     def embed_text(self, text: str) -> np.ndarray:
+        """CLIP text feature, unit-normalized so image/text cosine works."""
         tokens = self._tokenizer([text])
         with self._torch.no_grad():
             features = self._model.encode_text(tokens)
@@ -170,6 +188,8 @@ class Dinov2VisualEmbedder(VisualEmbedder):
     dim = 384
 
     def __init__(self, models_dir: str):
+        """Raises `BackendUnavailable` when the weights directory or the
+        torch/transformers runtime is missing; never triggers a download."""
         # Weights check precedes the heavy import (see OpenClip above).
         weights_dir = os.path.join(models_dir, "dinov2-small")
         if not os.path.isdir(weights_dir):
@@ -192,10 +212,11 @@ class Dinov2VisualEmbedder(VisualEmbedder):
         self._torch = torch
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
+        """DINOv2 global image descriptor (CLS token), unit-normalized."""
         inputs = self._processor(images=img.convert("RGB"), return_tensors="pt")
         with self._torch.no_grad():
             outputs = self._model(**inputs)
-        cls_token = outputs.last_hidden_state[:, 0, :]
+        cls_token = outputs.last_hidden_state[:, 0, :]  # position 0 is the CLS summary token
         return _l2_normalize(cls_token.squeeze(0).cpu().numpy())
 
 

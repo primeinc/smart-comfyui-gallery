@@ -1,6 +1,6 @@
 """OmniQuery v2: local natural-language querying for SmartGallery.
 
-Pipeline (WI-31):
+Pipeline:
 
     natural language
         -> intent parser (Needle2 primary / heuristic baseline / one optional
@@ -19,4 +19,4 @@ Invariants:
     the SmartGallery benchmark corpus (omniquery/benchmark/), not assumed.
 """
 
-AST_VERSION = 1
+AST_VERSION = 1  # wire-format version parsers must emit; mirrored in ast.py, which rejects any other

@@ -3,9 +3,9 @@
 # Passwords are stored ONLY as Argon2id hashes. There is no supported way to
 # recover a stored password from this module. The single exception is
 # migrate_legacy_passwords(), which performs a one-time decrypt-then-rehash
-# of pre-existing Fernet ciphertexts left over from the old reversible
-# scheme; its decryption helper is module-private and is never exposed as a
-# general-purpose "decrypt this password" API.
+# of legacy Fernet ciphertexts (a reversible storage scheme this module
+# supersedes); its decryption helper is module-private and is never exposed
+# as a general-purpose "decrypt this password" API.
 
 import os
 import secrets
@@ -37,7 +37,7 @@ def is_legacy_ciphertext(stored: object) -> bool:
 
 
 def hash_password(pw: str) -> str:
-    """Return a new Argon2id hash for `pw`."""
+    """Return an Argon2id hash of `pw`, salted freshly on every call."""
     return ph.hash(pw)
 
 

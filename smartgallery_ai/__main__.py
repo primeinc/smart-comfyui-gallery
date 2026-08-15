@@ -19,12 +19,15 @@ from smartgallery_ai import schema
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
+    """Open the gallery SQLite database with name-addressable rows."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def cmd_rebuild(args: argparse.Namespace) -> int:
+    """Drop derived AI tables (feedback kept unless --drop-feedback) and recreate
+    the empty schema, leaving repopulation to the background worker."""
     conn = _connect(args.db)
     try:
         schema.drop_derived_state(conn, keep_feedback=not args.drop_feedback)
@@ -38,6 +41,7 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
+    """Print one row count per derived table; tables absent from the DB print as 'missing'."""
     conn = _connect(args.db)
     try:
         for table in schema.DERIVED_TABLES:
@@ -52,6 +56,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def main(argv=None) -> int:
+    """Parse arguments and dispatch to the chosen subcommand; returns its exit code."""
     parser = argparse.ArgumentParser(prog="smartgallery_ai")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

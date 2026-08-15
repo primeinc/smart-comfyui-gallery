@@ -24,22 +24,29 @@ from smartgallery_ai.schema import DDL as _AI_DDL
 
 from omniquery.fields import REVIEW_ISSUE_VALUES
 
-FIXTURE_BASE_PATH = "/gallery"
+FIXTURE_BASE_PATH = "/gallery"  # virtual gallery root prefixed onto every generated file path
 # A fixed instant (2025-01-01T00:00:00 local), not wall-clock "now" -- every
 # generated mtime and every FIXTURE_EXPECTATIONS entry is independent of
 # when the test suite happens to run.
 ANCHOR_EPOCH = 1735689600.0
 
+# Relative folder pool; files are assigned round-robin by index.
 FOLDERS = ["portraits", "landscapes/2024", "landscapes/2025", "renders/batch_a", "misc"]
 
+# One media-type slot per generated file; the shuffled pool fixes each
+# file's type while keeping the overall mix (30/10/6/8/6) constant.
 _TYPE_POOL = (
     ["image"] * 30 + ["video"] * 10 + ["animated_image"] * 6
     + ["audio"] * 8 + ["document"] * 6
 )
+# Canonical file extension per media type.
 _EXT = {"image": ".png", "video": ".mp4", "animated_image": ".gif",
         "audio": ".mp3", "document": ".pdf"}
+# "WIDTHxHEIGHT" pixel strings, as stored in files.dimensions.
 _DIMENSIONS_POOL = ["512x512", "768x1024", "1024x1024", "1920x1080", "1280x720", "2048x1536"]
 
+# Workflow prompts; "cyberpunk" appears in exactly one entry, so the
+# prompt-substring expectation selects a single well-defined file set.
 _PROMPT_POOL = [
     "cyberpunk city skyline at night, neon reflections",
     "portrait of a warrior queen, dramatic lighting",
@@ -54,6 +61,8 @@ _CAPTION_POOL = [
     "A mechanical creature rendered in a steampunk style.",
     "An underwater scene with glowing plant life.",
 ]
+# Two entries contain "amazing" (differing case), giving the
+# case-insensitive comment-substring expectation real matches.
 _COMMENT_POOL = [
     "This is amazing work, love the lighting.",
     "The composition feels a bit off to me.",
@@ -62,6 +71,8 @@ _COMMENT_POOL = [
     "Great mood, very atmospheric.",
 ]
 
+# (user_id, username, full_name, role) rows for the users table; one
+# account per role tier exercised by role-scoped queries.
 USERS: List[Tuple[int, str, str, str]] = [
     (1, "alice", "Alice Anders", "USER"),
     (2, "bob", "Bob Baker", "GUEST"),
@@ -70,6 +81,7 @@ USERS: List[Tuple[int, str, str, str]] = [
     (5, "erin", "Erin Evans", "ADMIN"),
 ]
 
+# (collection name, collection type, hex color) rows for system flags.
 STATUS_FLAGS: List[Tuple[str, str, str]] = [
     ("Approved", "system_flag", "#28a745"),
     ("Review", "system_flag", "#ffc107"),
@@ -81,9 +93,11 @@ _FLAG_SIZES = [8, 6, 5, 4, 3]  # disjoint chunk sizes, matched to STATUS_FLAGS o
 
 USER_ALBUMS = ["Portfolio", "Client Picks", "WIP"]
 
+# client_uuid pools: opaque anonymous browser ids plus digit strings that
+# alias logged-in users (stringified user_id -- e.g. "3" is carol).
 _RATING_CLIENT_POOL = ["anon-aaa", "anon-bbb", "anon-ccc", "anon-ddd", "1", "2", "3", "4", "5"]
 _COMMENT_CLIENT_POOL = ["anon-aaa", "anon-bbb", "3", "4"]
-_USERNAME_BY_UUID = {"1": "alice", "2": "bob", "3": "carol", "4": "dave", "5": "erin"}
+_USERNAME_BY_UUID = {"1": "alice", "2": "bob", "3": "carol", "4": "dave", "5": "erin"}  # stringified user_id -> username, mirroring USERS
 
 # --- core SmartGallery tables (mirrors smartgallery.py's init_db()) --------
 
@@ -178,10 +192,17 @@ _CORE_DDL = [
 # ---------------------------------------------------------------------------
 
 def _make_id(idx: int) -> str:
+    """Fixture file id for a 1-based index, zero-padded to three digits ("f001")."""
     return f"f{idx:03d}"
 
 
 def _generate(seed: int) -> Dict[str, Any]:
+    """Build the complete in-memory fixture record set from `seed` alone.
+
+    Every random draw comes from one seeded RNG consumed in a fixed order,
+    so equal seeds yield identical records; both the database rows and the
+    ground-truth expectations derive from this single output.
+    """
     rng = random.Random(seed)
 
     types = list(_TYPE_POOL)
@@ -346,6 +367,8 @@ def _generate(seed: int) -> Dict[str, Any]:
 
 
 def _signed64(unsigned: int) -> int:
+    """Reinterpret an unsigned 64-bit value as two's-complement signed,
+    the form SQLite INTEGER columns store 64-bit perceptual hashes in."""
     return unsigned - (1 << 64) if unsigned >= (1 << 63) else unsigned
 
 
@@ -354,7 +377,8 @@ def _signed64(unsigned: int) -> int:
 # ---------------------------------------------------------------------------
 
 def build_fixture_db(path: str, seed: int = 42) -> None:
-    """Write a deterministic fixture SQLite database to `path`."""
+    """Write a deterministic fixture SQLite database to `path`, replacing
+    any existing file; equal (path, seed) always yields identical content."""
     data = _generate(seed)
     if os.path.exists(path):
         os.remove(path)
@@ -480,6 +504,9 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
 # ---------------------------------------------------------------------------
 
 def _compute_expectations(data: Dict[str, Any]) -> Dict[str, FrozenSet[str]]:
+    """Ground-truth answer sets, keyed by scenario name, each the frozenset
+    of file ids satisfying that predicate. Computed from the in-memory
+    records -- never via SQL -- so they can cross-check the compiler."""
     files = data["files"]
 
     rating_totals: Dict[str, List[int]] = defaultdict(list)
@@ -526,6 +553,8 @@ def _compute_expectations(data: Dict[str, Any]) -> Dict[str, FrozenSet[str]]:
     }
 
 
+# The FIXTURE_* views below describe exactly the database that
+# build_fixture_db writes with its default seed.
 _DEFAULT_SEED = 42
 _DEFAULT_DATA = _generate(_DEFAULT_SEED)
 

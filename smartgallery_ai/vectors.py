@@ -28,6 +28,8 @@ _VECTOR_DTYPE = "<f4"  # little-endian float32, per schema.py contract
 
 
 def _l2_normalize_rows(matrix: np.ndarray) -> np.ndarray:
+    """Row-wise L2 normalization; all-zero rows pass through unchanged (their
+    norm is substituted with 1 to avoid division by zero)."""
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     return (matrix / norms).astype(np.float32)
@@ -35,8 +37,14 @@ def _l2_normalize_rows(matrix: np.ndarray) -> np.ndarray:
 
 @dataclass
 class _SpaceMatrix:
+    """In-memory candidate matrix for one (space, model_version) pair.
+
+    `row_count` and `max_computed_at` mirror the SQLite stamp so staleness
+    checks are a cheap comparison rather than a reload.
+    """
+
     model_version: str
-    ids: list
+    ids: list  # file_ids aligned with matrix rows, ascending
     matrix: np.ndarray  # (n, dim), L2-normalized rows, float32
     row_count: int
     max_computed_at: float
@@ -51,6 +59,9 @@ class VectorStore:
         cache_dir: str = "",
         ephemeral: bool = False,
     ):
+        """`db` is a sqlite path, a zero-arg connection factory, or None (each
+        call must then supply its own connection). `ephemeral=True` keeps the
+        cache purely in memory -- nothing is written under `cache_dir`."""
         if db is None:
             self._conn_factory: Optional[Callable[[], sqlite3.Connection]] = None
         elif callable(db):
@@ -198,6 +209,8 @@ class VectorStore:
 
     @staticmethod
     def _db_stamp(conn: sqlite3.Connection, space: str, model_version: str) -> tuple[int, float]:
+        """(row_count, max computed_at) for the pair -- the cheap staleness
+        stamp compared against memory and disk caches."""
         row = conn.execute(
             "SELECT COUNT(*), COALESCE(MAX(computed_at), 0.0) FROM ai_embeddings "
             "WHERE space = ? AND model_version = ?",
@@ -206,11 +219,16 @@ class VectorStore:
         return int(row[0]), float(row[1])
 
     def _cache_path(self, space: str, model_version: str) -> str:
+        """On-disk mirror path; path separators in the version are flattened
+        so the pair always maps to a single filename."""
         safe_version = model_version.replace(os.sep, "_").replace("/", "_")
         return os.path.join(self.cache_dir, "vectors", f"{space}__{safe_version}.npz")
 
     def _get_matrix(self, conn: sqlite3.Connection, space: str,
                     model_version: Optional[str] = None) -> Optional[_SpaceMatrix]:
+        """Current matrix for `space`: memory first, then disk mirror, then a
+        rebuild from SQLite. `model_version` defaults to the most recently
+        computed one; None means the space holds no rows for any version."""
         if model_version is None:
             model_version = self._active_model_version(conn, space)
         if model_version is None:
@@ -241,6 +259,8 @@ class VectorStore:
 
     @staticmethod
     def _load_from_sqlite(conn: sqlite3.Connection, space: str, model_version: str) -> _SpaceMatrix:
+        """Build the matrix straight from `ai_embeddings`; raises ValueError
+        if stored dims disagree within the (space, model_version) pair."""
         rows = conn.execute(
             "SELECT file_id, vector, dim, computed_at FROM ai_embeddings "
             "WHERE space = ? AND model_version = ? ORDER BY file_id",
@@ -265,6 +285,8 @@ class VectorStore:
         return _SpaceMatrix(model_version, ids, matrix, len(rows), max_computed_at)
 
     def _save_disk_cache(self, space: str, sm: _SpaceMatrix) -> None:
+        """Write the space's .npz mirror atomically (temp file + rename), so a
+        reader never observes a partially written cache."""
         path = self._cache_path(space, sm.model_version)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # np.savez appends ".npz" itself only when the name lacks that suffix,
@@ -290,6 +312,8 @@ class VectorStore:
                     pass
 
     def _load_disk_cache(self, space: str, model_version: str) -> Optional[_SpaceMatrix]:
+        """Read the .npz mirror; None when absent or unreadable -- any failure
+        means fall back to SQLite, never raise."""
         path = self._cache_path(space, model_version)
         if not os.path.exists(path):
             return None

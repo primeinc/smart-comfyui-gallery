@@ -30,8 +30,10 @@ from omniquery import ast as ast_module
 from omniquery import fields
 from omniquery.parsers import ParserBackend, ParserOutcome, coverage_guard, try_validate
 
+# Model file resolution precedence: constructor argument, then the
+# ENV_MODEL_PATH environment variable, then DEFAULT_MODEL_PATH.
 DEFAULT_MODEL_PATH = "/home/user/smart-comfyui-gallery/.AImodels/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf"
-ENV_MODEL_PATH = "OMNIQUERY_FALLBACK_GGUF"
+ENV_MODEL_PATH = "OMNIQUERY_FALLBACK_GGUF"  # name of the env var, not a path itself
 
 # (llama_instance, grammar_instance), keyed by resolved model path -- loaded
 # once per process no matter how many FallbackQwenBackend instances exist.
@@ -39,12 +41,16 @@ _MODEL_CACHE: Dict[str, Tuple[Any, Any]] = {}
 
 
 def _resolve_model_path(model_path: Optional[str]) -> str:
+    """Apply the model-path precedence: explicit argument, then
+    $OMNIQUERY_FALLBACK_GGUF, then DEFAULT_MODEL_PATH."""
     if model_path:
         return model_path
     return os.environ.get(ENV_MODEL_PATH, DEFAULT_MODEL_PATH)
 
 
 def _example_for(spec: fields.FieldSpec) -> str:
+    """One representative JSON literal for a field's kind, shown in the
+    system prompt's field listing so the model sees each value shape."""
     if spec.kind == fields.Kind.TEXT:
         return '"dragon"'
     if spec.kind == fields.Kind.NUMBER:
@@ -62,6 +68,9 @@ def _example_for(spec: fields.FieldSpec) -> str:
 
 
 def _build_system_prompt() -> str:
+    """Compose the fixed system prompt: output contract, the field catalog
+    (generated from omniquery.fields so it can never lag the live schema),
+    and few-shot examples covering and/or/not, count, and days_ago."""
     lines = [
         "You translate a natural-language SmartGallery media query into a single "
         "JSON query AST. Output ONLY the JSON object -- no prose, no markdown "
@@ -98,6 +107,10 @@ def _build_system_prompt() -> str:
 
 
 def _load_model(model_path: str, n_ctx: int, n_threads: int) -> Tuple[Any, Any]:
+    """Return the process-wide (llama, grammar) pair for `model_path`,
+    loading and caching on first use. The grammar is built from
+    omniquery.ast.json_schema(), so decoding is constrained to the real
+    AST shape by construction."""
     cached = _MODEL_CACHE.get(model_path)
     if cached is not None:
         return cached
@@ -113,14 +126,20 @@ def _load_model(model_path: str, n_ctx: int, n_threads: int) -> Tuple[Any, Any]:
 
 
 def _ms(t0: float) -> float:
+    """Milliseconds elapsed since monotonic timestamp `t0`."""
     return (time.monotonic() - t0) * 1000.0
 
 
 class FallbackQwenBackend(ParserBackend):
+    """ParserBackend wrapper around the grammar-constrained GGUF model; the
+    module docstring states the shape-vs-semantics contract."""
+
     name = "fallback_qwen"
 
     def __init__(self, model_path: Optional[str] = None, n_ctx: int = 2048,
                  n_threads: int = 4, max_tokens: int = 512):
+        """Store decode settings only; the model itself is loaded (once per
+        process) on the first parse() call, never here."""
         self.model_path = _resolve_model_path(model_path)
         self.n_ctx = n_ctx
         self.n_threads = n_threads
@@ -128,6 +147,8 @@ class FallbackQwenBackend(ParserBackend):
         self._system_prompt = _build_system_prompt()
 
     def available(self) -> bool:
+        """True when llama_cpp imports and the model file exists;
+        deliberately never triggers the (expensive) model load."""
         try:
             import llama_cpp  # noqa: F401
         except ImportError:
@@ -135,6 +156,9 @@ class FallbackQwenBackend(ParserBackend):
         return os.path.isfile(self.model_path)
 
     def parse(self, text: str, now_epoch: float) -> ParserOutcome:  # noqa: ARG002
+        """Constrained-decode an AST from `text` at temperature 0, gated by
+        coverage_guard and validation. `now_epoch` is unused: relative
+        dates stay symbolic as {"days_ago": N}. Never raises."""
         t0 = time.monotonic()
         try:
             llama, grammar = _load_model(self.model_path, self.n_ctx, self.n_threads)
@@ -171,9 +195,9 @@ class FallbackQwenBackend(ParserBackend):
                                   reason=f"invalid AST: {err}", coverage=coverage,
                                   latency_ms=latency_ms, raw={"raw_content": content})
 
-        # This backend has no calibrated confidence signal at all (grammar
-        # constraining doesn't produce one); the router leans entirely on
-        # `coverage` for it -- see router.py's fallback acceptance rule.
+        # This backend emits no confidence signal at all (grammar-constrained
+        # decoding produces none); the router leans entirely on `coverage`
+        # for it -- see router.py's fallback acceptance rule.
         return ParserOutcome(ast=query.to_dict(), confidence=None, backend=self.name,
                               unsupported=False, reason=("; ".join(missing) or None),
                               coverage=coverage, latency_ms=latency_ms, raw={"raw_content": content})

@@ -38,8 +38,10 @@ from typing import Dict, List, Optional, Tuple
 
 from omniquery.parsers import ParserBackend, ParserOutcome
 
-_DEFAULTS_PATH = Path(__file__).with_name("routing_defaults.json")
+_DEFAULTS_PATH = Path(__file__).with_name("routing_defaults.json")  # shipped beside this module
 
+# The complete set of numeric routing thresholds; any other key in the
+# defaults JSON is commentary, not configuration.
 _THRESHOLD_KEYS = (
     "needle2_min_confidence", "needle2_min_coverage",
     "fallback_min_coverage", "heuristic_partial_floor",
@@ -74,18 +76,33 @@ def fallback_enabled(path: Optional[str] = None) -> bool:
 
 
 def _accepts(o: ParserOutcome) -> bool:
+    """Outcome carries a validated AST -- an acceptance *candidate*; the
+    caller still applies its threshold gates on top."""
     return o.ast is not None and not o.unsupported
 
 
 class Router:
+    """Executes the routing policy described in the module docstring across
+    pre-constructed backends. `primary`/`fallback` may be None, and each is
+    `.available()`-checked per route() call, so an absent optional runtime
+    degrades the route instead of breaking it."""
+
     def __init__(self, primary: Optional[ParserBackend], fallback: Optional[ParserBackend],
                  heuristic: ParserBackend, thresholds: Dict[str, float]):
+        """`thresholds` must supply every _THRESHOLD_KEYS value the policy
+        reads (see load_thresholds); `heuristic` is required, the model
+        backends optional."""
         self.primary = primary
         self.fallback = fallback
         self.heuristic = heuristic
         self.thresholds = thresholds
 
     def route(self, text: str, now_epoch: float) -> Tuple[ParserOutcome, List[ParserOutcome]]:
+        """Apply the policy to `text`, returning (chosen outcome, trace of
+        every backend outcome in execution order). The chosen outcome is
+        the winning trace entry -- or, for a partial heuristic accept, a
+        copy flagged via reason/raw -- or an aggregate unsupported outcome
+        collecting every backend's reason."""
         trace: List[ParserOutcome] = []
 
         heuristic_out = self.heuristic.parse(text, now_epoch)

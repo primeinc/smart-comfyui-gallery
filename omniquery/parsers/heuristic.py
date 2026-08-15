@@ -42,6 +42,7 @@ from omniquery.parsers import ParserBackend, ParserOutcome, try_validate
 # Vocabulary
 # ---------------------------------------------------------------------------
 
+# Surface phrase -> AST 'type' enum value.
 _TYPE_SYNONYMS: Dict[str, str] = {
     "animated images": "animated_image", "animated image": "animated_image",
     "photos": "image", "photo": "image", "pictures": "image", "picture": "image",
@@ -54,6 +55,7 @@ _TYPE_SYNONYMS: Dict[str, str] = {
     "documents": "document", "document": "document", "pdfs": "document", "pdf": "document",
 }
 
+# Surface phrase -> AST status_flag value (canonical capitalization).
 _STATUS_SYNONYMS: Dict[str, str] = {
     "needs review": "Review", "in review": "Review", "review": "Review",
     "approved": "Approved", "rejected": "Rejected",
@@ -61,6 +63,7 @@ _STATUS_SYNONYMS: Dict[str, str] = {
     "selected": "Select", "select": "Select",
 }
 
+# Surface phrase -> AST review_issue enum value.
 _ISSUE_SYNONYMS: Dict[str, str] = {
     "anatomy": "anatomy", "artifact": "artifact", "artifacts": "artifact",
     "composition": "composition", "lighting": "lighting",
@@ -76,6 +79,9 @@ _MONTHS: Dict[str, int] = {
     "october": 10, "oct": 10, "november": 11, "nov": 11, "december": 12, "dec": 12,
 }
 
+# Tokens excluded from significant-token coverage: query scaffolding, plus
+# qualifier/negation words that only carry meaning as part of a larger
+# phrase some rule consumes whole.
 STOPWORDS = frozenset({
     "a", "an", "the", "of", "in", "on", "at", "is", "are", "was", "were",
     "be", "been", "being", "with", "to", "for", "and", "or", "that", "this",
@@ -88,10 +94,15 @@ STOPWORDS = frozenset({
     "more", "less", "better", "above", "below", "over", "under",
 })
 
+# Quoted substrings are replaced with qzq<N>qzq tokens: stable under
+# lowercasing and never a substring of real query vocabulary.
 _PLACEHOLDER_FRAGMENT = r"qzq(\d+)qzq"
 
 
 def _build_alternation(mapping: Dict[str, str]) -> re.Pattern:
+    """Compile a case-insensitive whole-word alternation over the mapping's
+    keys, longest key first so multi-word synonyms beat their own
+    substrings; a key's internal spaces match any whitespace run."""
     keys = sorted(mapping.keys(), key=len, reverse=True)
     parts = [re.escape(k).replace(r"\ ", r"\s+") for k in keys]
     return re.compile(r"\b(" + "|".join(parts) + r")\b", re.I)
@@ -107,6 +118,8 @@ _RATING_PLUS_RE = re.compile(r"\b(\d+)\s*\+\s*stars?\b", re.I)
 _RATING_OR_BETTER_RE = re.compile(r"\b(\d+)\s*stars?\s+or\s+(?:better|more|higher|above)\b", re.I)
 _RATING_EXACT_RE = re.compile(r"\brated\s+(\d+)\b", re.I)
 
+# The *_OP_MAP tables map a qualifier phrase (lowercased, whitespace
+# collapsed to single spaces) to the comparison op it means.
 _SIZE_OP_MAP = {
     "over": "gt", "bigger than": "gt", "larger than": "gt", "more than": "gt",
     "under": "lt", "smaller than": "lt", "less than": "lt", "at least": "ge",
@@ -140,6 +153,7 @@ _QUALITY_RE = re.compile(r"\bquality\s+(above|over|at\s+least|below|under)\s+(\d
 
 _FOLDER_IN_THE_RE = re.compile(r"\bin\s+the\s+([a-z0-9_\-/]+(?:\s[a-z0-9_\-/]+)*?)\s+folder\b", re.I)
 _FOLDER_IN_FOLDER_RE = re.compile(r"\bin\s+folder\s+([a-z0-9_\-/]+)\b", re.I)
+# Trailing slash required: distinguishes a path prefix from comparative "under N".
 _FOLDER_UNDER_RE = re.compile(r"\bunder\s+([a-z0-9_\-]+(?:/[a-z0-9_\-]+)*)/", re.I)
 
 _COLLECTION_RE = re.compile(r"\bin\s+the\s+([a-z0-9_\- ]+?)\s+(?:collection|album)\b", re.I)
@@ -177,7 +191,7 @@ _BEFORE_RE = re.compile(r"\bbefore\s+(\d{4}-\d{2}-\d{2})\b", re.I)
 _BETWEEN_DATES_RE = re.compile(r"\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b", re.I)
 
 _NEGATION_TRIGGER_RE = re.compile(r"\b(not|except|without|excluding)\b", re.I)
-_NEGATION_BOUNDARY_RE = re.compile(r",|;|\band\b|\bor\b")
+_NEGATION_BOUNDARY_RE = re.compile(r",|;|\band\b|\bor\b")  # ends a negation's scope; matched against already-lowercased text
 _OR_TOKEN_RE = re.compile(r"\bor\b", re.I)
 _QUOTE_EXTRACT_RE = re.compile(r'["\']([^"\']+)["\']')
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -209,6 +223,9 @@ def _apply_rule(text: str, consumed: List[bool], pattern: re.Pattern,
 
 
 def _and_or_single(conds: List[dict]) -> Optional[dict]:
+    """Collapse a condition list to one where-node: None when empty, the
+    lone condition itself, else an 'and' group -- exact duplicates dropped
+    first."""
     # De-duplicate identical conditions -- two synonyms for the same value
     # in one query (e.g. "video clips") each produce their own match, and a
     # repeated AND-term is semantically inert but structurally ugly.
@@ -227,9 +244,17 @@ def _and_or_single(conds: List[dict]) -> Optional[dict]:
 
 
 class HeuristicBackend(ParserBackend):
+    """The always-available deterministic backend; the module docstring
+    describes the rule/consumption design. Confidence equals significant-
+    token coverage, hard-capped at 0.4 when any literal went unconsumed."""
+
     name = "heuristic"
 
     def parse(self, text: str, now_epoch: float) -> ParserOutcome:
+        """Run every rule battery once over the quote-placeheld text and
+        assemble the surviving conditions/meta into a validated AST.
+        `now_epoch` anchors calendar vocabulary ("today", "this week") so
+        parses are reproducible under an injected clock."""
         t0 = time.monotonic()
         placeheld, quotes = _extract_quotes(text)
         working = placeheld.lower()
@@ -506,6 +531,9 @@ class HeuristicBackend(ParserBackend):
 # ---------------------------------------------------------------------------
 
 def _match_predicate_at_start(s: str) -> Optional[Tuple[dict, int]]:
+    """Match one negatable predicate (favorite / media type / status flag)
+    anchored at the very start of `s`; returns (condition, chars matched)
+    or None when `s` does not begin with any of the three."""
     m = _FAVORITE_RE.match(s)
     if m:
         return {"field": "is_favorite", "op": "eq", "value": True}, m.end()
@@ -525,6 +553,10 @@ def _match_predicate_at_start(s: str) -> Optional[Tuple[dict, int]]:
 
 
 def _try_negation(text: str, consumed: List[bool]) -> List[Tuple[int, int, dict]]:
+    """Claim each unconsumed negation trigger together with the single
+    predicate immediately following it (scope ends at the next
+    comma/semicolon/'and'/'or'), wrapping that predicate in a 'not' node.
+    A trigger whose following predicate is unrecognized consumes nothing."""
     hits: List[Tuple[int, int, dict]] = []
     for m in _NEGATION_TRIGGER_RE.finditer(text):
         s, e = m.span()
@@ -553,6 +585,10 @@ def _try_negation(text: str, consumed: List[bool]) -> List[Tuple[int, int, dict]
 # ---------------------------------------------------------------------------
 
 def _extract_quotes(text: str) -> Tuple[str, Dict[int, str]]:
+    """Replace each quoted substring with a qzq<N>qzq placeholder, returning
+    the rewritten text and the N -> original-literal map. Literals thereby
+    keep their exact casing/content and can never be mis-tokenized by later
+    word-level rules."""
     quotes: Dict[int, str] = {}
     counter = [0]
 
@@ -566,6 +602,9 @@ def _extract_quotes(text: str) -> Tuple[str, Dict[int, str]]:
 
 
 def _token_coverage(text: str, consumed: List[bool]) -> Tuple[float, List[str]]:
+    """Fraction of non-stopword tokens whose whole span was consumed, plus
+    the list of tokens that were not; a text with no significant tokens
+    counts as fully covered (1.0)."""
     significant = [
         (m.group(0), m.start(), m.end())
         for m in _TOKEN_RE.finditer(text)
@@ -584,6 +623,9 @@ def _token_coverage(text: str, consumed: List[bool]) -> Tuple[float, List[str]]:
 
 
 def _has_unconsumed_literal(text: str, consumed: List[bool]) -> bool:
+    """True when any digit run or quote placeholder is not fully consumed
+    -- the trigger for the 0.4 confidence hard-cap, because a dropped
+    literal is a far worse miss than dropped filler words."""
     for m in _DIGIT_RUN_RE.finditer(text):
         s, e = m.span()
         if not all(consumed[s:e]):

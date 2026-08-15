@@ -21,7 +21,7 @@ from omniquery.ast import ASTError, Query, iter_conditions, parse_query
 from omniquery.compiler import CompileParams, CompileError, compile as compile_query, resolution_key
 from omniquery.validation import AuthContext, ValidationError, validate
 
-AiResolver = Callable[[Any], List[str]]
+AiResolver = Callable[[Any], List[str]]  # validated file_ref value -> matching file ids
 
 # 21 = SQLITE_SELECT, 20 = SQLITE_READ, 31 = SQLITE_FUNCTION. Everything else
 # (INSERT/UPDATE/DELETE/ATTACH/PRAGMA/...) is denied at the C-engine level,
@@ -32,6 +32,8 @@ _ALLOWED_AUTHORIZER_ACTIONS = frozenset(
 
 
 def _authorizer(action: int, arg1, arg2, dbname, source) -> int:
+    """SQLite authorizer callback: permit SELECT/READ/FUNCTION, deny every
+    other action code."""
     if action in _ALLOWED_AUTHORIZER_ACTIONS:
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
@@ -39,24 +41,38 @@ def _authorizer(action: int, arg1, arg2, dbname, source) -> int:
 
 @dataclass(frozen=True)
 class QueryOutcome:
+    """Result envelope for one run(): ok=True with a payload, or ok=False
+    with an error message -- run() never raises for input-level failures."""
+
     ok: bool
     kind: Optional[str] = None          # "ids" | "count"
-    ids: Optional[List[str]] = None
-    count: Optional[int] = None
-    sql: Optional[str] = None
-    params: Optional[tuple] = None
-    error: Optional[str] = None
+    ids: Optional[List[str]] = None     # file ids as strings; set when kind == "ids"
+    count: Optional[int] = None         # set when kind == "count"
+    sql: Optional[str] = None           # compiled statement, for logging/diagnostics
+    params: Optional[tuple] = None      # its bind values
+    error: Optional[str] = None         # human-readable failure reason when ok is False
 
 
 class OmniQueryEngine:
+    """Runs the full pipeline against one gallery database. Holds only static
+    configuration; every execution opens its own short-lived read-only
+    connection."""
+
     def __init__(self, db_path: str, base_path: str,
                  ai_resolvers: Optional[Dict[str, AiResolver]] = None):
+        """ai_resolvers maps file_ref field names to resolver callables; a
+        file_ref condition whose field has no resolver fails the query with
+        an 'AI feature unavailable' error."""
         self.db_path = db_path
         self.base_path = base_path
         self.ai_resolvers = ai_resolvers or {}
 
     def run(self, ast_dict_or_query: Union[dict, str, Query], ctx: AuthContext,
             now_epoch: Optional[float] = None) -> QueryOutcome:
+        """Execute one query end to end (parse, validate, resolve file_refs,
+        compile, run). Every input-level failure comes back as an error
+        QueryOutcome rather than an exception. now_epoch overrides the wall
+        clock, making relative-date queries reproducible."""
         try:
             query = (ast_dict_or_query if isinstance(ast_dict_or_query, Query)
                       else parse_query(ast_dict_or_query))

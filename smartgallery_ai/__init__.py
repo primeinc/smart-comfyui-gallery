@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 
 def _env_bool(name: str, default: str = "false") -> bool:
+    """Truthy-string environment flag: "1"/"true"/"yes"/"on" (any case) is True."""
     return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -53,13 +54,15 @@ class AIConfig:
     # Tunables (documented in docs/AI_MODELS.md; override via env)
     near_dup_max_distance: int = 8      # max Hamming distance on phash64
     face_cluster_threshold: float = 0.55  # cosine similarity threshold
-    face_min_det_score: float = 0.5
-    similar_default_k: int = 24
+    face_min_det_score: float = 0.5     # min detection confidence [0,1] to keep a face
+    similar_default_k: int = 24         # default neighbor count for similarity queries
 
-    extra: dict = field(default_factory=dict)
+    extra: dict = field(default_factory=dict)  # free-form backend-specific options
 
     @classmethod
     def from_env(cls, base_path: str, db_path: str) -> "AIConfig":
+        """Build a config from AI_DAM_* environment variables, defaulting the
+        cache and models directories to hidden folders under `base_path`."""
         cache_dir = os.environ.get(
             "AI_DAM_CACHE_DIR", os.path.join(base_path, ".ai_cache")
         )
