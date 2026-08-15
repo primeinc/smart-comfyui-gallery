@@ -23,9 +23,12 @@ llama-cpp-python>=0.3.0      # optional constrained fallback parser (MIT); off b
 # --- semantic / visual embedding + critic + segmentation backends ---
 # Uncomment to enable the real model backends; then provision weights per
 # docs/AI_MODELS.md. All runtime-verified end to end (worker + API +
-# omniquery resolvers) with a CPU-only torch build:
-#   pip install --index-url https://download.pytorch.org/whl/cpu torch
+# omniquery resolvers) with a CPU-only torch build. torch AND torchvision
+# must come from the SAME index (both CPU-index or both PyPI) or imports
+# fail with "operator torchvision::nms does not exist":
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
 # torch                     # required by open_clip / dinov2 / mobile_sam backends
+# torchvision               # keep index-paired with torch (see above)
 # open_clip_torch           # semantic space: ViT-B-32 laion2b (MIT).
 #                           #   REQUIRED by the qwen-vl critic (grounding gate
 #                           #   + prompt alignment) — the critic fails closed

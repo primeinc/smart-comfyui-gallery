@@ -13,7 +13,10 @@ gate: only localizable findings with real box/point grounding ever reach
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
+import warnings
 from typing import Optional
 
 import numpy as np
@@ -44,19 +47,28 @@ class MobileSamSegmenter(SegmenterBackend):
         if not os.path.isfile(weights_path):
             raise BackendUnavailable(f"mobile_sam weights not found at {weights_path}")
 
-        try:
-            import torch
-            from mobile_sam import SamPredictor, sam_model_registry
-        except Exception as exc:  # noqa: BLE001
-            raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
-        try:
-            from smartgallery_ai.embedders import pick_torch_device
-            device = pick_torch_device(torch)
-            model = sam_model_registry["vit_t"](checkpoint=weights_path)
-            model.eval()
-            self._predictor = SamPredictor(model.to(device))
-        except Exception as exc:  # noqa: BLE001
-            raise BackendUnavailable(f"failed to load mobile_sam weights: {exc}") from exc
+        # mobile_sam's import spews timm deprecation FutureWarnings and
+        # model-registry-overwrite UserWarnings, and its checkpoint build
+        # prints a tqdm bar to stderr; none of it is actionable by the
+        # operator, so keep it off the server console. Errors still raise.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            warnings.simplefilter("ignore", UserWarning)
+            try:
+                import torch
+                from mobile_sam import SamPredictor, sam_model_registry
+            except Exception as exc:  # noqa: BLE001
+                raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
+            try:
+                from smartgallery_ai.embedders import pick_torch_device
+                device = pick_torch_device(torch)
+                with contextlib.redirect_stderr(io.StringIO()):
+                    model = sam_model_registry["vit_t"](checkpoint=weights_path)
+                model.eval()
+                self._predictor = SamPredictor(model.to(device))
+            except Exception as exc:  # noqa: BLE001
+                raise BackendUnavailable(
+                    f"failed to load mobile_sam weights: {exc}") from exc
         self._torch = torch
 
     def segment(self, img: Image.Image, bbox: Optional[tuple] = None,

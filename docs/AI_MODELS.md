@@ -10,9 +10,10 @@ the backends load and verifies SHA-256 digests for single-file artifacts:
   opts out) and the background worker makes itself runnable once,
   **asynchronously**, on startup (`AI_DAM_AUTO_PROVISION`, default
   `true`): it pip-installs any missing runtime packages into the current
-  environment — torch wheels chosen by hardware: CUDA-capable when an
-  NVIDIA driver is present (`AI_DAM_DEVICE=cpu` forces CPU), CPU-index
-  otherwise — then downloads any missing weights. Cycles are never
+  environment — torch **and torchvision** wheels chosen by hardware and
+  always from the same index (mixed indexes break torchvision's compiled
+  ops): CUDA-capable when an NVIDIA driver is present (`AI_DAM_DEVICE=cpu`
+  forces CPU), CPU-index otherwise — then downloads any missing weights. Cycles are never
   blocked; freshly landed runtimes/weights activate through the worker's
   backend re-probe without a restart, and torch backends place models on
   the best available device (CUDA > MPS > CPU). On an egress-denied host

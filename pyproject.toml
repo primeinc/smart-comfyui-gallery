@@ -48,6 +48,7 @@ ai = [
 ai-models = [
     { include-group = "ai" },
     "torch",
+    "torchvision",
     "open_clip_torch",
     "transformers",
     "timm",
@@ -64,7 +65,11 @@ package = false
 default-groups = ["dev", "ai", "ai-models"]
 
 [tool.uv.sources]
+# torch and torchvision must resolve from the SAME index: a CPU-index torch
+# paired with a PyPI torchvision fails at import with
+# "operator torchvision::nms does not exist".
 torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
 mobile-sam = { git = "https://github.com/ChaoningZhang/MobileSAM.git" }
 
 [[tool.uv.index]]

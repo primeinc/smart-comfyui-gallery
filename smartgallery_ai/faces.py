@@ -149,6 +149,17 @@ class OpenCVFaceBackend(FaceBackend):
             raise BackendUnavailable(f"YuNet model not found at {detector_path}")
         if not os.path.isfile(recognizer_path):
             raise BackendUnavailable(f"SFace model not found at {recognizer_path}")
+        # Model creation logs native "setPreferableTarget ... not supported"
+        # WARNs from inside OpenCV on some builds; not actionable, so hold
+        # cv2's native log level at ERROR just for the create calls.
+        cv2_log = getattr(getattr(cv2, "utils", None), "logging", None)
+        prev_level = None
+        if cv2_log is not None:
+            try:
+                prev_level = cv2_log.getLogLevel()
+                cv2_log.setLogLevel(cv2_log.LOG_LEVEL_ERROR)
+            except Exception:  # noqa: BLE001 - log tuning must never block loading
+                prev_level = None
         try:
             self._detector = cv2.FaceDetectorYN.create(
                 detector_path, "", (320, 320), score_threshold=min_det_score
@@ -156,6 +167,9 @@ class OpenCVFaceBackend(FaceBackend):
             self._recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
         except Exception as exc:
             raise BackendUnavailable(f"failed to load face models: {exc}") from exc
+        finally:
+            if prev_level is not None:
+                cv2_log.setLogLevel(prev_level)
         self._min_det_score = min_det_score
 
     def detect(self, img: Image.Image) -> list:

@@ -26,6 +26,7 @@ download-free process. Invoke:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib
 import importlib.util
@@ -112,7 +113,8 @@ GROUPS = (
     Group(
         name="semantic",
         enables="Similar tab (semantic space), critic grounding gate, prompt alignment",
-        runtime=(("torch", "torch"), ("open_clip", "open_clip_torch")),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
+                 ("open_clip", "open_clip_torch")),
         artifacts=(
             Artifact(
                 dest="open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
@@ -126,7 +128,8 @@ GROUPS = (
     Group(
         name="visual",
         enables="Similar tab (visual space)",
-        runtime=(("torch", "torch"), ("transformers", "transformers")),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
+                 ("transformers", "transformers")),
         artifacts=(
             Artifact(
                 dest="dinov2-small",  # snapshot directory
@@ -138,7 +141,8 @@ GROUPS = (
     Group(
         name="segmenter",
         enables="Defect masks for localizable review findings",
-        runtime=(("torch", "torch"), ("timm", "timm"),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
+                 ("timm", "timm"),
                  ("mobile_sam",
                   "mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git")),
         artifacts=(
@@ -155,7 +159,8 @@ GROUPS = (
         name="critic",
         enables="Review tab (quality/alignment scores + typed findings); needs 'semantic' too",
         runtime=(("llama_cpp", "llama-cpp-python>=0.3.0"),
-                 ("torch", "torch"), ("open_clip", "open_clip_torch")),
+                 ("torch", "torch"), ("torchvision", "torchvision"),
+                 ("open_clip", "open_clip_torch")),
         artifacts=(
             Artifact(
                 dest="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
@@ -227,6 +232,27 @@ def _download_url(url: str, dest_path: str,
     os.replace(tmp, dest_path)
 
 
+@contextlib.contextmanager
+def _hub_bars_silenced():
+    """Silence huggingface_hub's own console progress bars (including the
+    hf_xet 'downloading bytes'/'reconstructing file' ones) for the duration.
+    Structured-progress callers render their own output; the hub's
+    carriage-return bars interleave with it and garble the console."""
+    try:
+        from huggingface_hub import utils as hub_utils
+    except Exception:  # noqa: BLE001 - no hub, nothing to silence
+        yield
+        return
+    was_disabled = hub_utils.are_progress_bars_disabled()
+    if not was_disabled:
+        hub_utils.disable_progress_bars()
+    try:
+        yield
+    finally:
+        if not was_disabled:
+            hub_utils.enable_progress_bars()
+
+
 def _download_hf_file(repo: str, filename: str, dest_path: str) -> None:
     """Fetch one file from a Hugging Face repo into dest_path, using the
     hub's cache/resume machinery."""
@@ -255,19 +281,22 @@ def _default_pip_runner(args: list) -> None:
 
 
 def _pip_args_for(requirement: str) -> list:
-    """pip arguments for one requirement. torch picks the wheel matching
-    the hardware: CUDA-capable with an NVIDIA driver present (unless
-    AI_DAM_DEVICE=cpu), CPU-index otherwise; macOS always uses PyPI."""
-    if requirement != "torch":
+    """pip arguments for one requirement. torch AND torchvision pick the
+    wheel index matching the hardware — they must come from the SAME index
+    or torchvision's compiled ops fail to register against the installed
+    torch (RuntimeError: operator torchvision::nms does not exist).
+    CUDA-capable with an NVIDIA driver present (unless AI_DAM_DEVICE=cpu),
+    CPU-index otherwise; macOS always uses PyPI."""
+    if requirement not in ("torch", "torchvision"):
         return [requirement]
     if sys.platform == "darwin":
-        return ["torch"]
+        return [requirement]
     force_cpu = os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu"
     if not force_cpu and cuda_hardware_present():
         if sys.platform == "win32":
-            return ["torch", "--index-url", _TORCH_CUDA_WINDOWS_INDEX]
-        return ["torch"]  # PyPI Linux wheels bundle CUDA
-    return ["torch", "--index-url", _TORCH_CPU_INDEX]
+            return [requirement, "--index-url", _TORCH_CUDA_WINDOWS_INDEX]
+        return [requirement]  # PyPI Linux wheels bundle CUDA
+    return [requirement, "--index-url", _TORCH_CPU_INDEX]
 
 
 def _module_installed(probe: str) -> bool:
@@ -412,13 +441,21 @@ def provision(
                     _download_url(u, d, progress=lambda done, total: emit(
                         {"kind": "artifact", "phase": "bytes", "item": _dest,
                          "bytes_done": done, "bytes_total": total}))
+            # Structured-progress mode owns the console: the hub's own
+            # carriage-return bars would interleave with the caller's log
+            # lines, so silence them around the default hub downloaders.
+            def hf_quiet(fn, default):
+                return (_hub_bars_silenced if progress is not None
+                        and fn is default else contextlib.nullcontext)
             try:
                 if artifact.url is not None:
                     url_dl(artifact.url, dest_path)
                 elif artifact.hf_filename is not None:
-                    dl["hf_file"](artifact.hf_repo, artifact.hf_filename, dest_path)
+                    with hf_quiet(dl["hf_file"], _download_hf_file)():
+                        dl["hf_file"](artifact.hf_repo, artifact.hf_filename, dest_path)
                 else:
-                    dl["hf_snapshot"](artifact.hf_repo, dest_path)
+                    with hf_quiet(dl["hf_snapshot"], _download_hf_snapshot)():
+                        dl["hf_snapshot"](artifact.hf_repo, dest_path)
             except ProvisionError:
                 raise
             except Exception as exc:

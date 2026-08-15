@@ -17,6 +17,7 @@ import subprocess
 import sys
 import textwrap
 import types
+import warnings
 
 import pytest
 from PIL import Image
@@ -126,6 +127,37 @@ def test_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
     with pytest.raises(BackendUnavailable, match="failed to load mobile_sam weights") as exc_info:
         MobileSamSegmenter(str(tmp_path))
     assert exc_info.value.__cause__ is boom
+
+
+def test_ctor_contains_third_party_warning_and_stderr_noise(tmp_path, monkeypatch, capsys):
+    """Construction keeps the server console clean: timm-style
+    FutureWarnings/UserWarnings and tqdm-style stderr output emitted while
+    the model builds never reach the caller, and the model still loads."""
+    _touch_mobilesam_weights(tmp_path)
+    model = types.SimpleNamespace(eval=lambda: None)
+    model.to = lambda device: model
+
+    def _noisy_build(checkpoint):
+        warnings.warn("Importing from timm.models.layers is deprecated", FutureWarning)
+        warnings.warn("Overwriting tiny_vit_5m_224 in registry", UserWarning)
+        print("Loading weights: 100%|#| 223/223", file=sys.stderr)
+        return model
+
+    monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
+    monkeypatch.setitem(
+        sys.modules, "mobile_sam",
+        _fake_module(
+            "mobile_sam",
+            SamPredictor=lambda m: types.SimpleNamespace(model=m),
+            sam_model_registry={"vit_t": _noisy_build},
+        ),
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        seg = MobileSamSegmenter(str(tmp_path))
+    assert seg is not None
+    assert caught == []
+    assert capsys.readouterr().err == ""
 
 
 # --- model identity ----------------------------------------------------------

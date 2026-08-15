@@ -6,6 +6,7 @@ network-free: every downloader is injected or monkeypatched."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sqlite3
 import time
@@ -356,32 +357,114 @@ def test_ensure_runtime_installs_missing_via_pip_runner(monkeypatch):
     calls = []
     installed = P.ensure_runtime(group, log=lambda m: None,
                                  pip_runner=lambda args: calls.append(args))
-    assert installed == ["torch", "transformers"]
-    assert calls[1] == ["transformers"]
+    assert installed == ["torch", "torchvision", "transformers"]
+    assert calls[2] == ["transformers"]
     assert invalidated == [1]
 
 
-def test_pip_args_steer_torch_by_hardware(monkeypatch):
-    """torch wheel choice: NVIDIA present -> CUDA-capable (PyPI on Linux,
-    cu-index on Windows); absent -> CPU index; AI_DAM_DEVICE=cpu forces
-    CPU even with hardware; non-torch requirements pass through."""
+@pytest.mark.parametrize("requirement", ["torch", "torchvision"])
+def test_pip_args_steer_torch_by_hardware(monkeypatch, requirement):
+    """torch AND torchvision wheel choice: NVIDIA present -> CUDA-capable
+    (PyPI on Linux, cu-index on Windows); absent -> CPU index;
+    AI_DAM_DEVICE=cpu forces CPU even with hardware. Both must get the
+    SAME steering or torchvision's compiled ops fail to register against
+    the installed torch; other requirements pass through."""
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     monkeypatch.setattr(P.sys, "platform", "linux")
 
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
-    assert P._pip_args_for("torch") == ["torch", "--index-url", P._TORCH_CPU_INDEX]
+    assert P._pip_args_for(requirement) == [
+        requirement, "--index-url", P._TORCH_CPU_INDEX]
 
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    assert P._pip_args_for("torch") == ["torch"]
+    assert P._pip_args_for(requirement) == [requirement]
 
     monkeypatch.setattr(P.sys, "platform", "win32")
-    assert P._pip_args_for("torch") == [
-        "torch", "--index-url", P._TORCH_CUDA_WINDOWS_INDEX]
+    assert P._pip_args_for(requirement) == [
+        requirement, "--index-url", P._TORCH_CUDA_WINDOWS_INDEX]
 
     monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
-    assert P._pip_args_for("torch") == ["torch", "--index-url", P._TORCH_CPU_INDEX]
+    assert P._pip_args_for(requirement) == [
+        requirement, "--index-url", P._TORCH_CPU_INDEX]
 
     assert P._pip_args_for("timm") == ["timm"]
+
+
+def test_every_torch_group_also_declares_torchvision():
+    """Registry contract: any group whose runtime needs torch must install
+    torchvision alongside it, and BEFORE packages that transitively depend
+    on torchvision (open_clip_torch/timm/mobile_sam). Installs run
+    sequentially, so a steered torchvision must already be present or pip
+    resolves the transitive dependency from PyPI -- pairing a CPU-index
+    torch with a PyPI torchvision, and every import dies with
+    'operator torchvision::nms does not exist'."""
+    torchvision_dependents = {"open_clip", "timm", "mobile_sam"}
+    for group in P.GROUPS:
+        probes = [probe for probe, _ in group.runtime]
+        if "torch" in probes:
+            assert "torchvision" in probes, (
+                f"group {group.name!r} installs torch without torchvision")
+            for dependent in torchvision_dependents & set(probes):
+                assert probes.index("torchvision") < probes.index(dependent), (
+                    f"group {group.name!r} must install torchvision before "
+                    f"{dependent!r} or pip pulls an unpaired PyPI build")
+
+
+def test_hub_bars_silenced_disables_bars_then_restores():
+    """Inside the context the hub's console progress bars are off; on exit
+    the previous state comes back."""
+    hub_utils = pytest.importorskip("huggingface_hub.utils")
+    if hub_utils.are_progress_bars_disabled():
+        pytest.skip("progress bars globally disabled in this environment")
+    with P._hub_bars_silenced():
+        assert hub_utils.are_progress_bars_disabled()
+    assert not hub_utils.are_progress_bars_disabled()
+
+
+def test_hub_bars_silenced_keeps_pre_disabled_state():
+    """When bars were already disabled the context changes nothing and does
+    not re-enable them on exit."""
+    hub_utils = pytest.importorskip("huggingface_hub.utils")
+    if hub_utils.are_progress_bars_disabled():
+        pytest.skip("progress bars globally disabled in this environment")
+    hub_utils.disable_progress_bars()
+    try:
+        with P._hub_bars_silenced():
+            assert hub_utils.are_progress_bars_disabled()
+        assert hub_utils.are_progress_bars_disabled()
+    finally:
+        hub_utils.enable_progress_bars()
+
+
+def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, monkeypatch):
+    """With a structured progress callback the default HF downloaders run
+    inside the hub-bar silencer (the caller owns console rendering); the
+    bar-rendering CLI path -- no callback -- leaves the hub's bars on."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin="stub.py"))
+    entered = []
+
+    @contextlib.contextmanager
+    def recording_silencer():
+        entered.append(True)
+        yield
+
+    def fake_hf_snapshot(repo, dest):
+        os.makedirs(dest, exist_ok=True)
+        with open(os.path.join(dest, "model.safetensors"), "wb") as fh:
+            fh.write(b"weights")
+
+    monkeypatch.setattr(P, "_hub_bars_silenced", recording_silencer)
+    monkeypatch.setattr(P, "_download_hf_snapshot", fake_hf_snapshot)
+
+    P.provision(str(tmp_path / "with_progress"), ["visual"],
+                log=lambda m: None, progress=lambda e: None)
+    assert entered == [True]
+
+    entered.clear()
+    P.provision(str(tmp_path / "no_progress"), ["visual"], log=lambda m: None)
+    assert entered == []
 
 
 def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
@@ -391,7 +474,7 @@ def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(
         P.importlib.util, "find_spec",
-        lambda name: None if name in ("torch", "transformers")
+        lambda name: None if name in ("torch", "torchvision", "transformers")
         else SimpleNamespace(origin="stub.py"))
 
     def runner(args):
@@ -406,8 +489,8 @@ def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
     result = P.provision(str(tmp_path), ["visual"], log=lambda m: None,
                          downloaders={**downloaders, "hf_snapshot": snapshot},
                          pip_runner=runner)
-    assert result["installed"] == ["torch", "transformers"]
-    assert [e[0] for e in events] == ["pip", "pip", "weights"]
+    assert result["installed"] == ["torch", "torchvision", "transformers"]
+    assert [e[0] for e in events] == ["pip", "pip", "pip", "weights"]
 
 
 def test_provision_install_packages_false_skips_pip(tmp_path, monkeypatch):

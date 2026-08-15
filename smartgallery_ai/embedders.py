@@ -162,7 +162,8 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         try:
             import open_clip
             import torch
-        except ImportError as exc:
+        except Exception as exc:  # noqa: BLE001 - any import failure (incl. a
+            # torch/torchvision pairing RuntimeError) means unavailable
             raise BackendUnavailable(f"open_clip backend unavailable: {exc}") from exc
 
         self._torch = torch
@@ -215,8 +216,16 @@ class Dinov2VisualEmbedder(VisualEmbedder):
 
         try:
             import torch
+            # torchvision MUST come before transformers: transformers
+            # freezes its torchvision-availability flag when first imported,
+            # and AutoImageProcessor hard-requires torchvision. Importing
+            # transformers in a torchvision-less process would keep this
+            # backend dead until a full restart even after auto-provisioning
+            # installs torchvision; failing here first keeps transformers
+            # unimported so the post-provision re-probe activates cleanly.
+            import torchvision  # noqa: F401
             from transformers import AutoImageProcessor, AutoModel
-        except ImportError as exc:
+        except Exception as exc:  # noqa: BLE001 - see open_clip note above
             raise BackendUnavailable(f"dinov2 backend unavailable: {exc}") from exc
 
         try:

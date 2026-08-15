@@ -11,6 +11,7 @@ runs in a clean subprocess.
 
 from __future__ import annotations
 
+import builtins
 import os
 import subprocess
 import sys
@@ -228,11 +229,84 @@ def test_dinov2_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
             raise OSError("corrupt checkpoint dir")
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
+    monkeypatch.setitem(sys.modules, "torchvision", _fake_module("torchvision"))
     monkeypatch.setitem(
         sys.modules, "transformers",
         _fake_module("transformers", AutoImageProcessor=_FailingAuto, AutoModel=_FailingAuto),
     )
     with pytest.raises(BackendUnavailable, match="failed to load dinov2 weights"):
+        Dinov2VisualEmbedder(str(tmp_path))
+
+
+def test_openclip_ctor_wraps_runtime_error_during_import(tmp_path, monkeypatch):
+    """A non-ImportError raised WHILE `import open_clip` executes (e.g. the
+    torch/torchvision wheel-index mismatch: 'operator torchvision::nms does
+    not exist') is wrapped into BackendUnavailable, and 'auto' resolution
+    still degrades to None instead of crashing the caller."""
+    _touch_openclip_weights(tmp_path)
+    boom = RuntimeError("operator torchvision::nms does not exist")
+    real_import = builtins.__import__
+
+    def _exploding_import(name, *args, **kwargs):
+        if name == "open_clip":
+            raise boom
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "open_clip", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _exploding_import)
+
+    with pytest.raises(BackendUnavailable, match="open_clip backend unavailable") as exc_info:
+        OpenClipSemanticEmbedder(str(tmp_path))
+    assert exc_info.value.__cause__ is boom
+    assert get_semantic_backend(_cfg(str(tmp_path), semantic_backend="auto")) is None
+
+
+def test_dinov2_ctor_wraps_runtime_error_during_import(tmp_path, monkeypatch):
+    """Same containment for the visual backend: a RuntimeError during the
+    torch/transformers import becomes BackendUnavailable and 'auto' -> None."""
+    _make_dinov2_weights_dir(tmp_path)
+    boom = RuntimeError("operator torchvision::nms does not exist")
+    real_import = builtins.__import__
+
+    def _exploding_import(name, *args, **kwargs):
+        if name == "transformers":
+            raise boom
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
+    monkeypatch.setitem(sys.modules, "torchvision", _fake_module("torchvision"))
+    monkeypatch.delitem(sys.modules, "transformers", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _exploding_import)
+
+    with pytest.raises(BackendUnavailable, match="dinov2 backend unavailable") as exc_info:
+        Dinov2VisualEmbedder(str(tmp_path))
+    assert exc_info.value.__cause__ is boom
+    assert get_visual_backend(_cfg(str(tmp_path), visual_backend="auto")) is None
+
+
+def test_dinov2_ctor_fails_before_transformers_when_torchvision_missing(tmp_path, monkeypatch):
+    """When torchvision is missing the ctor must fail WITHOUT importing
+    transformers: transformers freezes its torchvision-availability flag at
+    import time, so importing it early would keep the visual backend dead
+    for the whole process even after auto-provisioning installs torchvision
+    (transformers then demands a runtime restart)."""
+    _make_dinov2_weights_dir(tmp_path)
+    real_import = builtins.__import__
+
+    def _guarded_import(name, *args, **kwargs):
+        if name == "torchvision":
+            raise ImportError("No module named 'torchvision'")
+        if name == "transformers":
+            raise AssertionError(
+                "transformers imported in a torchvision-less process")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
+    monkeypatch.delitem(sys.modules, "torchvision", raising=False)
+    monkeypatch.delitem(sys.modules, "transformers", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _guarded_import)
+
+    with pytest.raises(BackendUnavailable, match="dinov2 backend unavailable"):
         Dinov2VisualEmbedder(str(tmp_path))
 
 

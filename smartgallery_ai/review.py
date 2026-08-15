@@ -413,6 +413,12 @@ class SmolVlmCritic(CriticBackend):
         if weights_dir is not None:
             try:
                 import torch  # noqa: F401
+                # torchvision before transformers: transformers freezes its
+                # torchvision-availability flag at first import, and its
+                # processors hard-require torchvision -- importing it in a
+                # torchvision-less process would keep transformers backends
+                # dead until a restart (see embedders.Dinov2VisualEmbedder).
+                import torchvision  # noqa: F401
                 from transformers import AutoModelForImageTextToText, AutoProcessor  # noqa: F401
             except Exception as exc:  # noqa: BLE001
                 raise BackendUnavailable(f"smolvlm critic unavailable: {exc}") from exc
