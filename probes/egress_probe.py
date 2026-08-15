@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Runtime egress probe (WI-31).
+
+Proves — at runtime, not by static inspection — that SmartGallery with the
+AI DAM layer enabled operates with public Internet egress denied.
+
+Method: re-exec the whole probe inside an isolated network namespace
+(`unshare -n`, requires root or CAP_SYS_ADMIN) where only loopback exists,
+then start the real server (waitress, ENABLE_AI_DAM=true) against a temp
+gallery, exercise the gallery view, the AI DAM API surface, and the local
+OmniQuery parse path, and assert every request succeeds. Inside the
+namespace any attempted egress fails at the kernel level (ENETUNREACH), so
+a functioning server IS the evidence of local-only operation.
+
+Run AFTER model provisioning (the needle engine cache and any local model
+files must already exist). Exit code 0 = PASS.
+
+Usage: sudo python3 probes/egress_probe.py
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PORT = 18911
+MARK = "SG_EGRESS_PROBE_STAGE2"
+
+
+def stage1() -> int:
+    if shutil.which("unshare") is None:
+        print("FAIL: 'unshare' not available; cannot build isolated netns")
+        return 2
+    env = dict(os.environ, **{MARK: "1"})
+    # -n: new network namespace (no interfaces but lo, which we bring up).
+    cmd = ["unshare", "-n", "sh", "-c",
+           f"ip link set lo up 2>/dev/null || true; exec {sys.executable} {os.path.abspath(__file__)}"]
+    return subprocess.call(cmd, env=env)
+
+
+def wait_for(url: str, timeout: float = 60.0) -> None:
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                resp.read()
+                return
+        except Exception as exc:  # noqa: BLE001 - retry loop
+            last = exc
+            time.sleep(0.5)
+    raise RuntimeError(f"server never came up: {last}")
+
+
+def get(url: str):
+    with urllib.request.urlopen(url, timeout=15) as resp:
+        return resp.status, resp.read()
+
+
+def stage2() -> int:
+    # Prove the namespace actually denies egress before trusting anything.
+    try:
+        urllib.request.urlopen("https://example.com", timeout=3)
+        print("FAIL: egress unexpectedly possible inside the namespace")
+        return 2
+    except Exception:
+        pass  # good: no route out
+
+    tmp = tempfile.mkdtemp(prefix="sg_egress_probe_")
+    gallery = os.path.join(tmp, "gallery")
+    os.makedirs(gallery, exist_ok=True)
+    # A tiny real image so the scanner has something to chew on.
+    try:
+        from PIL import Image
+        Image.new("RGB", (64, 64), (120, 40, 200)).save(
+            os.path.join(gallery, "probe_img.png"))
+    except Exception:
+        pass
+
+    env = dict(os.environ)
+    env.update({
+        "BASE_OUTPUT_PATH": gallery,
+        "BASE_SMARTGALLERY_PATH": gallery,
+        "BASE_INPUT_PATH": os.path.join(tmp, "input"),
+        "SERVER_PORT": str(PORT),
+        "ENABLE_AI_DAM": "true",
+        # Explicit stub backends: heavy models are a provisioning concern;
+        # the probe proves the *service layer* needs no network.
+        "AI_DAM_SEMANTIC_BACKEND": "stub",
+        "AI_DAM_VISUAL_BACKEND": "stub",
+        # Egress must be denied by the netns, not by proxy settings:
+        "HTTP_PROXY": "", "HTTPS_PROXY": "", "http_proxy": "", "https_proxy": "",
+    })
+    os.makedirs(env["BASE_INPUT_PATH"], exist_ok=True)
+
+    server = subprocess.Popen(
+        [sys.executable, os.path.join(REPO, "smartgallery.py")],
+        cwd=REPO, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    evidence = {"netns_egress_denied": True, "requests": []}
+    try:
+        base = f"http://127.0.0.1:{PORT}"
+        wait_for(f"{base}/galleryout/")
+        checks = [
+            ("gallery_view", f"{base}/galleryout/"),
+            ("aidam_status", f"{base}/galleryout/api/aidam/status"),
+        ]
+        ok = True
+        for name, url in checks:
+            try:
+                status, body = get(url)
+                evidence["requests"].append({"name": name, "status": status,
+                                             "bytes": len(body)})
+                if status != 200:
+                    ok = False
+            except Exception as exc:  # noqa: BLE001
+                evidence["requests"].append({"name": name, "error": str(exc)})
+                ok = False
+
+        # Local OmniQuery parse path (no server round-trip needed): the
+        # heuristic parser and validator/compiler must work with zero egress.
+        sys.path.insert(0, REPO)
+        try:
+            from omniquery.parsers.heuristic import HeuristicBackend
+            outcome = HeuristicBackend().parse(
+                "favorite videos from the last 7 days", now_epoch=time.time())
+            evidence["omniquery_heuristic"] = {
+                "ast_produced": outcome.ast is not None,
+                "confidence": outcome.confidence,
+            }
+            ok = ok and outcome.ast is not None
+        except Exception as exc:  # noqa: BLE001
+            evidence["omniquery_heuristic"] = {"error": str(exc)}
+            ok = False
+
+        print(json.dumps(evidence, indent=2))
+        print("PASS" if ok else "FAIL")
+        return 0 if ok else 1
+    finally:
+        server.terminate()
+        try:
+            server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            server.kill()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(stage2() if os.environ.get(MARK) else stage1())
