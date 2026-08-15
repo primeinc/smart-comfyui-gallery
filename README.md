@@ -371,6 +371,17 @@ pip install -r requirements.txt
 
 Or download the Source Code ZIP from [Releases](https://github.com/biagiomaf/smart-comfyui-gallery/releases/latest), extract, and run the pip commands above.
 
+**Alternative: [uv](https://docs.astral.sh/uv/)** — the repository ships a `pyproject.toml` and `uv.lock`, so one command creates the environment and installs locked dependencies:
+
+```sh
+git clone https://github.com/biagiomaf/smart-comfyui-gallery
+cd smart-comfyui-gallery
+uv sync                        # core app (+ test tooling) into ./.venv
+uv run python smartgallery.py  # run the gallery
+```
+
+Optional extras: `uv sync --extra ai` adds the OmniQuery natural-language parser; `uv sync --extra ai-models` additionally installs the real embedding/critic/segmentation runtimes with CPU-only torch wheels (model weights are provisioned separately — see `docs/AI_MODELS.md`).
+
 **2. Create your launch script**
 
 Create `run_smartgallery.bat` in the root folder:

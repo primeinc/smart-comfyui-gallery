@@ -1,4 +1,6 @@
-# Optional AI DAM layer (WI-31). NOT required for core SmartGallery.
+# Optional AI DAM layer. NOT required for core SmartGallery.
+# Kept in sync with pyproject.toml extras 'ai' / 'ai-models'
+# (uv users: `uv sync --extra ai` / `--extra ai-models`).
 # Install only when enabling ENABLE_AI_DAM / the OmniQuery local NL path.
 # Model weights are provisioned separately into .AImodels/ (see docs/AI_MODELS.md);
 # nothing here downloads models at runtime.

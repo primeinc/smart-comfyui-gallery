@@ -1,0 +1,70 @@
+# uv-native install path. Mirrors requirements.txt (core) and
+# requirements-ai.txt (optional AI layer) -- keep the three in sync.
+#
+#   uv sync                        core app + test tooling -> ./.venv
+#   uv sync --extra ai             + OmniQuery natural-language parsing
+#   uv sync --extra ai-models      + real embedding/critic/segmentation
+#                                    runtimes (CPU torch; weights are
+#                                    provisioned separately, see
+#                                    docs/AI_MODELS.md)
+#   uv run python smartgallery.py  run the gallery
+#   uv run pytest tests/           run the model-free suite
+
+[project]
+name = "smartgallery"
+version = "0.0.0"
+description = "Local-first browser-based DAM for ComfyUI with an optional derived AI layer"
+requires-python = ">=3.10"
+dependencies = [
+    "Flask",
+    "Pillow",
+    "opencv-python",
+    "numpy",
+    "tqdm",
+    "werkzeug",
+    "markupsafe",
+    "pyOpenSSL",
+    "click",
+    "itsdangerous",
+    "blinker",
+    "cryptography",
+    "waitress",
+    "argon2-cffi",
+]
+
+[project.optional-dependencies]
+# OmniQuery local natural-language parsing (no model weights required).
+ai = [
+    "cactus-needle>=2.0.4",
+    "llama-cpp-python>=0.3.0",
+]
+# Real model backends: semantic/visual embeddings, the qwen-vl critic's
+# grounding gate, and MobileSAM segmentation. CPU-only torch wheels (the
+# application is designed to run without a GPU). Weights never download at
+# runtime; provision them per docs/AI_MODELS.md.
+ai-models = [
+    "smartgallery[ai]",
+    "torch",
+    "open_clip_torch",
+    "transformers",
+    "timm",
+    "mobile-sam",
+    "num2words",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+# Application, not a distributable package: uv manages the environment but
+# never builds/installs the project itself.
+package = false
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+mobile-sam = { git = "https://github.com/ChaoningZhang/MobileSAM.git" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
