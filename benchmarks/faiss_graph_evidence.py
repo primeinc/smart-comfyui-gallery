@@ -101,8 +101,11 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
     """
     if cache and os.path.isfile(cache):
         data = np.load(cache, allow_pickle=False)
-        print(f"loaded embedding cache {cache} ({data['embeddings'].shape[0]} faces)")
-        return data["embeddings"], list(data["datasets"]), list(data["identities"])
+        if "paths" not in data:
+            print(f"cache {cache} lacks per-face paths; re-embedding")
+        else:
+            print(f"loaded embedding cache {cache} ({data['embeddings'].shape[0]} faces)")
+            return data["embeddings"], list(data["datasets"]), list(data["identities"])
 
     from PIL import Image
 
@@ -118,6 +121,7 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
     print(f"embedding {len(paths)} images under {root} via {backend.model_id} ...")
 
     embs, ds_names, identities = [], [], []
+    face_paths, face_bboxes = [], []
     decode_failures = 0
     t0 = time.perf_counter()
     for i, path in enumerate(paths):
@@ -140,6 +144,8 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
                 embs.append(det.embedding)
                 ds_names.append(dataset)
                 identities.append(identity)
+                face_paths.append(rel)
+                face_bboxes.append(det.bbox)
         if (i + 1) % 500 == 0:
             print(
                 f"  {i + 1}/{len(paths)} images, {len(embs)} faces, "
@@ -157,6 +163,8 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
             embeddings=embeddings,
             datasets=np.array(ds_names),
             identities=np.array(identities),
+            paths=np.array(face_paths),
+            bboxes=np.array(face_bboxes, dtype=np.float32).reshape(-1, 4),
         )
         print(f"wrote embedding cache {cache}")
     return embeddings, ds_names, identities
