@@ -63,7 +63,7 @@ def _query_one(db_path: str, sql: str, params: tuple = ()):
         conn.close()
 
 
-def _face_stub_source(img):
+def _face_stub_source(_img):
     return [
         FaceDetection(
             bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9,
@@ -228,7 +228,7 @@ def test_worker_zero_result_scan_not_repeated(tmp_path):
 
     calls = {"n": 0}
 
-    def counting_empty_source(img):
+    def counting_empty_source(_img):
         calls["n"] += 1
         return []
 
@@ -285,13 +285,14 @@ def test_worker_rescans_after_mtime_change(tmp_path):
         first = calls["n"]
         conn = sqlite3.connect(db_path)
         conn.execute("UPDATE files SET mtime = 2000.0 WHERE id = 'fx'")
-        conn.commit(); conn.close()
+        conn.commit()
+        conn.close()
         assert _wait_until(lambda: calls["n"] > first, timeout=5.0)
     finally:
         worker.stop(timeout=2.0)
 
 
-def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path, monkeypatch):
+def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path):
     """Oracle-confirmed fix: a review stored while NO segmenter was
     available must still get masks once a segmenter is provisioned — the
     'masks' scan-log unit is independent of the review row."""
@@ -431,7 +432,7 @@ def test_backend_resolver_exception_cached_none_no_deadlock(tmp_path):
 
     calls = []
 
-    def bad_resolver(cfg):
+    def bad_resolver(_cfg):
         calls.append(1)
         raise RuntimeError("resolver exploded")
 
@@ -453,7 +454,8 @@ class _ExplodingSegmenter:
     model_id = "boom-segmenter"
     model_version = "boom-v1"
 
-    def segment(self, img, bbox=None, points=None):
+    def segment(self, _img, bbox=None, points=None):
+        del bbox, points  # accepted only for segment()'s call-signature compatibility (kwarg call)
         raise RuntimeError("segmentation failed")
 
 
@@ -544,7 +546,7 @@ def test_unavailable_backend_reprobed_after_retry_window(tmp_path):
     provisioned = object()
     attempts = []
 
-    def resolver(cfg):
+    def resolver(_cfg):
         attempts.append(1)
         return None if len(attempts) == 1 else provisioned
 

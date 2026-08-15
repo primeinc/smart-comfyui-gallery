@@ -173,7 +173,7 @@ class _ClickConsoleHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             message = record.getMessage()
-        except Exception:  # noqa: BLE001 - malformed record; report once
+        except Exception:  # malformed record; report once
             self.handleError(record)
             return
         stamp = time.strftime("%H:%M:%S", time.localtime(record.created))
@@ -184,11 +184,11 @@ class _ClickConsoleHandler(logging.Handler):
                 styled = click.style(message, fg=color) if color else message
                 click.echo(f"{click.style(stamp, dim=True)} {styled}")
                 return
-            except Exception:  # noqa: BLE001 - broken console; fall to plain
+            except Exception:  # broken console; fall to plain
                 self._plain = True
         try:
             sys.stderr.write(f"{stamp} {message}\n")
-        except Exception:  # noqa: BLE001 - logging must never crash the app
+        except Exception:  # logging must never crash the app
             pass
 
 
@@ -422,7 +422,7 @@ class AIWorker:
         # gets, before any provisioning/backends run. Silence = no GPU.
         try:
             gpu = provisioning.cuda_summary()
-        except Exception:  # noqa: BLE001 - inventory is best-effort
+        except Exception:  # inventory is best-effort
             gpu = None
         if gpu is not None:
             for idx, card in enumerate(gpu.get("gpus") or []):
@@ -472,7 +472,7 @@ class AIWorker:
             return
         try:
             missing = provision_groups_for(self.config)
-        except Exception as exc:  # noqa: BLE001 - startup must not fail on this
+        except Exception as exc:  # startup must not fail on this
             self._note_error("provision:plan", f"auto-provision planning failed: {exc}")
             return
         if not missing:
@@ -484,7 +484,7 @@ class AIWorker:
         # need a second restart. Set BEFORE the cycle thread exists.
         try:
             self._hold_torch_backends = provisioning.torch_cuda_reinstall_needed()
-        except Exception:  # noqa: BLE001 - detection is best-effort
+        except Exception:  # detection is best-effort
             self._hold_torch_backends = False
         self._provision_started_at = time.monotonic()
         self.provision_state = {"state": "downloading", "groups": list(missing)}
@@ -548,7 +548,7 @@ class AIWorker:
                          "%d downloaded, %d already present",
                          len(result["installed"]), len(result["downloaded"]),
                          len(result["skipped"]))
-        except Exception as exc:  # noqa: BLE001 - downloads may fail; never fatal
+        except Exception as exc:  # downloads may fail; never fatal
             self.provision_state = {
                 "state": f"failed: {exc}", "groups": list(groups),
                 "done": self.provision_state.get("done", []),
@@ -569,7 +569,7 @@ class AIWorker:
         try:
             from smartgallery_ai import service as _service
             _service.invalidate_backend_probe_cache()
-        except Exception:  # noqa: BLE001 - status cache refresh is best-effort
+        except Exception:  # status cache refresh is best-effort
             pass
 
     def stop(self, timeout: Optional[float] = None) -> None:
@@ -843,7 +843,7 @@ class AIWorker:
                     return None
         try:
             backend = resolver(self.config)
-        except Exception as exc:  # noqa: BLE001 - resolution must not kill the cycle
+        except Exception as exc:  # resolution must not kill the cycle
             self._note_error(f"backend:{key}", f"backend {key}: {exc}")
             backend = None
         with self._lock:
@@ -1012,7 +1012,7 @@ class AIWorker:
                 faces.cluster_faces(conn, backend.model_id, backend.model_version,
                                     self.config.face_cluster_threshold)
                 self._clear_state(conn, pending_key)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._note_error("faces:cluster", f"face clustering failed: {exc}")
         return len(rows)
 
@@ -1086,7 +1086,7 @@ class AIWorker:
                 try:
                     self._log_scan(conn, file_id, "review", backend, mtime,
                                    now, -1)
-                except Exception:  # noqa: BLE001
+                except sqlite3.Error:
                     pass
                 continue
             with self._lock:
@@ -1109,7 +1109,7 @@ class AIWorker:
                 review.generate_finding_mask(
                     conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
                 generated += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._note_error(f"mask:{finding_id}",
                                  f"mask: failed for finding {finding_id}: {exc}")
         return generated

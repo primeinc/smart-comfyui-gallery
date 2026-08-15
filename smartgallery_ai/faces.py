@@ -158,7 +158,7 @@ class OpenCVFaceBackend(FaceBackend):
             try:
                 prev_level = cv2_log.getLogLevel()
                 cv2_log.setLogLevel(cv2_log.LOG_LEVEL_ERROR)
-            except Exception:  # noqa: BLE001 - log tuning must never block loading
+            except Exception:  # log tuning must never block loading
                 prev_level = None
         try:
             self._detector = cv2.FaceDetectorYN.create(
@@ -228,7 +228,7 @@ def get_face_backend(config: AIConfig) -> Optional[FaceBackend]:
     if name == "none":
         return None
     if name == "stub":
-        source = config.extra.get("face_stub_source", lambda img: [])
+        source = config.extra.get("face_stub_source", lambda _img: [])
         return StubFaceBackend(source)
     if name == "opencv":
         return OpenCVFaceBackend(config.models_dir, config.face_min_det_score)

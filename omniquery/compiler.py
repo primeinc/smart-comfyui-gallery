@@ -91,7 +91,7 @@ def _order_by_clause(order_by: tuple) -> str:
     parts = []
     for ospec in order_by:
         spec = fields.get_field(ospec.field)
-        if spec is None or not spec.orderable:  # pragma: no cover - validated already
+        if spec is None or not spec.orderable:  # validated already
             raise CompileError(f"field '{ospec.field}' is not a valid order_by field")
         direction = "ASC" if ospec.direction == "asc" else "DESC"
         parts.append(f"{spec.order_expr} {direction}")
@@ -123,13 +123,13 @@ def _compile_node(node: Node, params: CompileParams) -> Tuple[str, List[Any]]:
             all_params.extend(cparams)
         joiner = " AND " if node.op == "and" else " OR "
         return "(" + joiner.join(parts) + ")", all_params
-    raise CompileError(f"unhandled node type {type(node).__name__}")  # pragma: no cover
+    raise CompileError(f"unhandled node type {type(node).__name__}")
 
 
 def _compile_cond(cond: Cond, params: CompileParams) -> Tuple[str, List[Any]]:
     """Dispatch a leaf condition to the builder for its field's kind."""
     spec = fields.get_field(cond.field)
-    if spec is None:  # pragma: no cover - validated already
+    if spec is None:  # validated already
         raise CompileError(f"unknown field '{cond.field}'")
 
     if spec.kind == fields.Kind.TEXT:
@@ -144,7 +144,7 @@ def _compile_cond(cond: Cond, params: CompileParams) -> Tuple[str, List[Any]]:
         return _build_datetime(spec, cond.op, cond.value, params)
     if spec.kind == fields.Kind.FILE_REF:
         return _build_file_ref(spec, cond.value, params)
-    raise CompileError(f"unhandled kind {spec.kind!r}")  # pragma: no cover
+    raise CompileError(f"unhandled kind {spec.kind!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ def _like_clause(column: str, op: str, value: str) -> Tuple[str, List[Any]]:
         return f"{column} LIKE ? ESCAPE '\\'", [pattern + "%"]
     if op == "suffix":
         return f"{column} LIKE ? ESCAPE '\\'", ["%" + pattern]
-    raise CompileError(f"unhandled text op {op!r}")  # pragma: no cover
+    raise CompileError(f"unhandled text op {op!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +212,7 @@ def _build_text(spec: fields.FieldSpec, op: str, value: Any,
                 f"WHERE {spec.alias}.file_id = f.id AND {name_sql}")
         return f"EXISTS ({core})", name_params
 
-    raise CompileError(f"unhandled text strategy {spec.strategy!r}")  # pragma: no cover
+    raise CompileError(f"unhandled text strategy {spec.strategy!r}")
 
 
 def _build_folder(op: str, value: str, params: CompileParams) -> Tuple[str, List[Any]]:
@@ -263,14 +263,14 @@ def _build_number(spec: fields.FieldSpec, op: str, value: Any,
             return f"{expr} BETWEEN ? AND ?", [lo, hi]
         return f"{expr} {_CMP_SQL[op]} ?", [value]
 
-    raise CompileError(f"unhandled number strategy {spec.strategy!r}")  # pragma: no cover
+    raise CompileError(f"unhandled number strategy {spec.strategy!r}")
 
 
 # ---------------------------------------------------------------------------
 # BOOL
 # ---------------------------------------------------------------------------
 
-def _build_bool(spec: fields.FieldSpec, op: str, value: bool) -> Tuple[str, List[Any]]:
+def _build_bool(spec: fields.FieldSpec, _op: str, value: bool) -> Tuple[str, List[Any]]:
     """Boolean predicate: 0/1 column comparison, or EXISTS / NOT EXISTS for
     presence-style fields."""
     if spec.strategy == fields.Strategy.COLUMN:
@@ -278,7 +278,7 @@ def _build_bool(spec: fields.FieldSpec, op: str, value: bool) -> Tuple[str, List
     if spec.strategy == fields.Strategy.EXISTS_BOOL:
         core = "SELECT 1 FROM ai_face_instances fa WHERE fa.file_id = f.id"
         return (f"EXISTS ({core})" if value else f"NOT EXISTS ({core})"), []
-    raise CompileError(f"unhandled bool strategy {spec.strategy!r}")  # pragma: no cover
+    raise CompileError(f"unhandled bool strategy {spec.strategy!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +316,7 @@ def _build_enum(spec: fields.FieldSpec, op: str, value: Any) -> Tuple[str, List[
         core = f"SELECT 1 FROM ai_review_findings rf WHERE rf.file_id = f.id AND {inner_sql}"
         return (f"NOT EXISTS ({core})" if op == "ne" else f"EXISTS ({core})"), inner_params
 
-    raise CompileError(f"unhandled enum strategy {spec.strategy!r}")  # pragma: no cover
+    raise CompileError(f"unhandled enum strategy {spec.strategy!r}")
 
 
 # ---------------------------------------------------------------------------

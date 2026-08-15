@@ -8,7 +8,7 @@ from omniquery import fields
 from omniquery.ast import parse_query
 from omniquery.validation import (
     AuthContext, DEFAULT_LIMIT, MAX_CORRELATED_FIELDS, MAX_LIMIT,
-    PRIVILEGED_ROLES, ValidatedQuery, ValidationError, validate,
+    PRIVILEGED_ROLES, ValidatedQuery, ValidationError, validate, _validate_value,
 )
 
 GUEST = AuthContext(role="GUEST", user_id=None, client_uuid=None, ai_enabled=False)
@@ -351,3 +351,16 @@ def test_validate_returns_validated_query_wrapping_original_query():
     vq = validate(q, GUEST)
     assert vq.query is q
     assert vq.ctx is GUEST
+
+
+# ---------------------------------------------------------------------------
+# Defensive dispatch: _validate_value's kind dispatch is exhaustive over the
+# real registry, so this is reached only by constructing a spec whose kind
+# isn't one of the real Kind members (validate() never builds one).
+# ---------------------------------------------------------------------------
+
+def test_validate_value_rejects_unhandled_kind():
+    bogus_spec = fields.FieldSpec(name="x", kind="not_a_real_kind", ops=frozenset({"eq"}),
+                                   strategy=fields.Strategy.COLUMN)
+    with pytest.raises(ValidationError, match="unhandled kind"):
+        _validate_value(bogus_spec, "eq", "v")

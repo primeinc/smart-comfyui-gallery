@@ -27,7 +27,7 @@ class FakeBackend(ParserBackend):
     def available(self) -> bool:
         return self._avail
 
-    def parse(self, text: str, now_epoch: float) -> ParserOutcome:
+    def parse(self, _text: str, _now_epoch: float) -> ParserOutcome:
         self.call_count += 1
         return self._outcome
 

@@ -38,7 +38,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 # torch wheel selection: an NVIDIA GPU (detected via nvidia-smi on PATH)
@@ -87,7 +87,7 @@ def _cuda_compute_capability():
         caps = [float(line.strip()) for line in proc.stdout.splitlines()
                 if line.strip()]
         cap = max(caps) if caps else None
-    except Exception:  # noqa: BLE001 - detection is best-effort
+    except (OSError, subprocess.SubprocessError, ValueError):
         cap = None
     _compute_cap_cache.append(cap)
     return cap
@@ -105,7 +105,7 @@ def _driver_cuda_version():
         match = re.search(r"CUDA Version:\s*([\d.]+)", proc.stdout or "")
         if match:
             value = float(match.group(1))
-    except Exception:  # noqa: BLE001 - detection is best-effort
+    except (OSError, subprocess.SubprocessError, ValueError):
         value = None
     _driver_cuda_cache.append(value)
     return value
@@ -162,7 +162,7 @@ def _llama_supports_gpu():
                 capture_output=True, text=True, timeout=120)
             if proc.returncode == 0:
                 value = proc.stdout.strip() == "1"
-        except Exception:  # noqa: BLE001 - probe is best-effort
+        except (OSError, subprocess.SubprocessError, ValueError):
             value = None
     _llama_gpu_cache.append(value)
     return value
@@ -205,7 +205,7 @@ def cuda_summary():
                 gpus.append({"name": parts[0], "compute_capability": cap,
                              "vram": parts[3],
                              "vram_used": parts[4] if len(parts) >= 5 else None})
-    except Exception:  # noqa: BLE001 - inventory is best-effort
+    except (OSError, subprocess.SubprocessError, ValueError):
         pass
     return {
         "gpus": gpus,
@@ -403,7 +403,7 @@ def _hub_bars_silenced():
     carriage-return bars interleave with it and garble the console."""
     try:
         from huggingface_hub import utils as hub_utils
-    except Exception:  # noqa: BLE001 - no hub, nothing to silence
+    except Exception:  # no hub, nothing to silence
         yield
         return
     was_disabled = hub_utils.are_progress_bars_disabled()

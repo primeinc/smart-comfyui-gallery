@@ -176,7 +176,7 @@ def test_stub_face_backend_callable_is_deterministic():
 
     img = Image.new("RGB", (32, 32), color=(1, 2, 3))
     dets = [detection(seed=0)]
-    backend = StubFaceBackend(lambda im: dets)
+    backend = StubFaceBackend(lambda _im: dets)
     assert backend.detect(img) == dets
     assert backend.detect(img) == dets
 

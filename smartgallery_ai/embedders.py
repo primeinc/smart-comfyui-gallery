@@ -20,6 +20,7 @@ rather than crashing at import time.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import logging
 import os
 import threading
@@ -154,7 +155,7 @@ def pick_torch_device(torch_module, role: Optional[str] = None) -> str:
                             getattr(props, "major", 0),
                             getattr(props, "minor", 0))
                 return f"cuda:{max(range(count), key=rank)}"
-        except Exception:  # noqa: BLE001 - enumeration is best-effort; cuda:0 still works
+        except Exception:  # enumeration is best-effort; cuda:0 still works
             pass
         return "cuda"
     mps = getattr(getattr(torch_module, "backends", None), "mps", None)
@@ -183,7 +184,7 @@ def warn_if_vram_pressure(torch_module, device: str, model_id: str) -> None:
             free, total = cuda.mem_get_info(int(str(device).split(":", 1)[1]))
         else:
             free, total = cuda.mem_get_info()
-    except Exception:  # noqa: BLE001 - pressure check must never block loading
+    except Exception:  # pressure check must never block loading
         return
     if free < _VRAM_PRESSURE_FLOOR_BYTES:
         _logger.warning(
@@ -218,7 +219,7 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         try:
             import open_clip
             import torch
-        except Exception as exc:  # noqa: BLE001 - any import failure (incl. a
+        except Exception as exc:  # any import failure (incl. a
             # torch/torchvision pairing RuntimeError) means unavailable
             raise BackendUnavailable(f"open_clip backend unavailable: {exc}") from exc
 
@@ -289,9 +290,9 @@ class Dinov2VisualEmbedder(VisualEmbedder):
             # backend dead until a full restart even after auto-provisioning
             # installs torchvision; failing here first keeps transformers
             # unimported so the post-provision re-probe activates cleanly.
-            import torchvision  # noqa: F401
+            importlib.import_module("torchvision")
             from transformers import AutoImageProcessor, AutoModel
-        except Exception as exc:  # noqa: BLE001 - see open_clip note above
+        except Exception as exc:  # see open_clip note above
             raise BackendUnavailable(f"dinov2 backend unavailable: {exc}") from exc
 
         try:

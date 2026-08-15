@@ -26,10 +26,13 @@ import importlib
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 from omniquery.ast import ASTError, Query, parse_query
 from omniquery.validation import AuthContext, ValidationError, validate
+
+if TYPE_CHECKING:
+    from omniquery.parsers.router import Router
 
 # A maximally-permissive AuthContext used by parsers to self-check their own
 # output before returning it. Real authorization happens again, for real,
@@ -105,7 +108,7 @@ def get_backend(name: str, **kwargs: Any) -> ParserBackend:
     return cls(**kwargs)
 
 
-def make_default_router(config: Optional[Dict[str, Any]] = None) -> "Router":  # noqa: F821
+def make_default_router(config: Optional[Dict[str, Any]] = None) -> Router:
     """Convenience: build the standard heuristic/needle2/fallback Router
     with thresholds loaded from routing_defaults.json, optionally overridden
     by `config`. Backend runtimes that are unavailable are still handed to

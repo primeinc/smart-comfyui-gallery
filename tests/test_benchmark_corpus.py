@@ -28,9 +28,9 @@ CORPUS_PATH = Path(__file__).resolve().parent.parent / "omniquery" / "benchmark"
 PERM_CTX = AuthContext(role="ADMIN", user_id="test", client_uuid="test", ai_enabled=True)
 
 _STUB_RESOLVERS = {
-    "similar_to_semantic": lambda v: ["f001", "f002"],
-    "similar_to_visual": lambda v: ["f001"],
-    "near_dup_of": lambda v: ["f003"],
+    "similar_to_semantic": lambda _v: ["f001", "f002"],
+    "similar_to_visual": lambda _v: ["f001"],
+    "near_dup_of": lambda _v: ["f003"],
 }
 
 _FIXTURE_IDS = {f["id"] for f in FIXTURE_FILES}
@@ -133,7 +133,7 @@ def test_every_supported_entry_parses_validates_and_executes(corpus, engine):
         n_supported += 1
         try:
             query = parse_query(expected["ast"])
-        except ASTError as exc:  # pragma: no cover - failure path, informative message
+        except ASTError as exc:  # failure path, informative message
             pytest.fail(f"{entry['id']}: AST failed to parse: {exc}")
         try:
             validate(query, PERM_CTX)
@@ -195,6 +195,6 @@ def test_harness_smoke_heuristic_only(tmp_path):
     assert metrics["peak_rss_kb"] > 0
 
 
-def test_harness_router_not_requested_means_no_router_key(tmp_path):
+def test_harness_router_not_requested_means_no_router_key():
     report = run_benchmark(["heuristic"], corpus_path=str(CORPUS_PATH))
     assert "router" not in report["backends"]

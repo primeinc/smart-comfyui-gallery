@@ -4,12 +4,9 @@ and the smartgallery.py routes that consume it."""
 import os
 import re
 import sqlite3
-import tempfile
 
 import pytest
 from cryptography.fernet import Fernet
-
-import secrets
 
 import sg_auth
 
@@ -320,7 +317,7 @@ def test_login_unknown_user_performs_decoy_verify(monkeypatch, smartgallery_app)
     assert calls["n"] == 1
 
 
-def test_migration_gate_is_case_sensitive_glob(smartgallery_app, tmp_path):
+def test_migration_gate_is_case_sensitive_glob(tmp_path):
     # A lowercase 'gaaaa...' value is NOT a real Fernet ciphertext and must
     # not, via a case-insensitive gate, cause the key file to be retained.
     import sqlite3

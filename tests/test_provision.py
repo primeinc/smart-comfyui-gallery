@@ -90,7 +90,7 @@ def test_provision_dispatches_by_source_kind_and_skips_present(tmp_path):
     (tmp_path / "face_detection_yunet_2023mar.onnx").write_bytes(b"x")
     (tmp_path / "face_recognition_sface_2021dec.onnx").write_bytes(b"x")
 
-    result = P.provision(str(tmp_path), ["faces", "visual"], log=lambda m: None,
+    result = P.provision(str(tmp_path), ["faces", "visual"], log=lambda _m: None,
                          downloaders=_fake_downloaders(written))
 
     assert result["skipped"] == ["face_detection_yunet_2023mar.onnx",
@@ -106,7 +106,7 @@ def test_provision_hash_mismatch_deletes_and_raises(tmp_path):
     removed and the run fails loudly, never leaving a poisoned file."""
     written: dict = {}
     with pytest.raises(P.ProvisionError, match="SHA-256 mismatch"):
-        P.provision(str(tmp_path), ["faces"], log=lambda m: None,
+        P.provision(str(tmp_path), ["faces"], log=lambda _m: None,
                     downloaders=_fake_downloaders(written, content=b"tampered"))
     assert not os.path.exists(tmp_path / "face_detection_yunet_2023mar.onnx")
 
@@ -114,11 +114,11 @@ def test_provision_hash_mismatch_deletes_and_raises(tmp_path):
 def test_provision_download_failure_names_artifact(tmp_path):
     """A downloader exception surfaces as ProvisionError naming the dest."""
 
-    def boom(u, dest):
+    def boom(_u, _dest):
         raise OSError("connection refused")
 
     with pytest.raises(P.ProvisionError, match="face_detection_yunet_2023mar.onnx"):
-        P.provision(str(tmp_path), ["faces"], log=lambda m: None,
+        P.provision(str(tmp_path), ["faces"], log=lambda _m: None,
                     downloaders={"url": boom})
 
 
@@ -198,6 +198,10 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
 
     def fake_provision(models_dir, groups, force=False, log=print,
                        downloaders=None, progress=None):
+        # force/log/downloaders/progress accepted (log, progress kept named
+        # since the real call site passes them by keyword) only for
+        # provision()'s call-signature compatibility; this stub ignores them.
+        del force, log, downloaders, progress
         calls.append((models_dir, list(groups)))
         return {"downloaded": list(groups), "skipped": [], "installed": []}
 
@@ -230,7 +234,7 @@ def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, mo
                segmenter_backend="none", critic_backend="none")
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
-    def refuse(*a, **k):
+    def refuse(*_a, **_k):
         raise P.ProvisionError("connection refused")
 
     monkeypatch.setattr(W.provisioning, "provision", refuse)
@@ -256,7 +260,7 @@ def test_worker_auto_provision_disabled_never_downloads(tmp_path, monkeypatch):
                segmenter_backend="auto", critic_backend="auto")
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
-    def must_not_run(*a, **k):
+    def must_not_run(*_a, **_k):
         raise AssertionError("provisioning ran despite auto_provision=False")
 
     monkeypatch.setattr(W.provisioning, "provision", must_not_run)
@@ -268,13 +272,11 @@ def test_worker_auto_provision_disabled_never_downloads(tmp_path, monkeypatch):
         worker.stop(timeout=2.0)
 
 
-def test_worker_provision_state_exposed_by_status_endpoint(tmp_path, monkeypatch):
+def test_worker_provision_state_exposed_by_status_endpoint(tmp_path):
     """/status reports the worker's provisioning state so the UI can show
     download progress instead of a bare empty tab."""
     from flask import Flask
 
-    from smartgallery_ai import service as S
-    from smartgallery_ai import worker as W
     from smartgallery_ai.service import create_ai_blueprint, set_worker
 
     _make_db(str(tmp_path / "g.sqlite"))
@@ -294,7 +296,7 @@ def test_worker_provision_state_exposed_by_status_endpoint(tmp_path, monkeypatch
         set_worker(None)
 
 
-def test_invalidate_backend_probe_cache_clears_registered_caches(tmp_path):
+def test_invalidate_backend_probe_cache_clears_registered_caches():
     """The worker's post-provision hook empties every blueprint's probe
     cache so /status re-probes instead of serving a stale False."""
     from smartgallery_ai import service as S
@@ -350,12 +352,12 @@ def test_ensure_runtime_installs_missing_via_pip_runner(monkeypatch):
     """ensure_runtime pip-installs exactly the missing requirements and
     refreshes import caches afterwards."""
     group = next(g for g in P.GROUPS if g.name == "visual")
-    monkeypatch.setattr(P.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: None)
     invalidated = []
     monkeypatch.setattr(P.importlib, "invalidate_caches", lambda: invalidated.append(1))
 
     calls = []
-    installed = P.ensure_runtime(group, log=lambda m: None,
+    installed = P.ensure_runtime(group, log=lambda _m: None,
                                  pip_runner=lambda args: calls.append(args))
     assert installed == ["torch", "torchvision", "transformers"]
     assert calls[2] == ["transformers"]
@@ -444,7 +446,7 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
     bar-rendering CLI path -- no callback -- leaves the hub's bars on."""
     from types import SimpleNamespace
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     entered = []
 
     @contextlib.contextmanager
@@ -452,7 +454,7 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
         entered.append(True)
         yield
 
-    def fake_hf_snapshot(repo, dest):
+    def fake_hf_snapshot(_repo, dest):
         os.makedirs(dest, exist_ok=True)
         with open(os.path.join(dest, "model.safetensors"), "wb") as fh:
             fh.write(b"weights")
@@ -461,11 +463,11 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
     monkeypatch.setattr(P, "_download_hf_snapshot", fake_hf_snapshot)
 
     P.provision(str(tmp_path / "with_progress"), ["visual"],
-                log=lambda m: None, progress=lambda e: None)
+                log=lambda _m: None, progress=lambda _e: None)
     assert entered == [True]
 
     entered.clear()
-    P.provision(str(tmp_path / "no_progress"), ["visual"], log=lambda m: None)
+    P.provision(str(tmp_path / "no_progress"), ["visual"], log=lambda _m: None)
     assert entered == []
 
 
@@ -488,7 +490,7 @@ def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
         events.append(("weights", repo))
         downloaders["hf_snapshot"](repo, dest)
 
-    result = P.provision(str(tmp_path), ["visual"], log=lambda m: None,
+    result = P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
                          downloaders={**downloaders, "hf_snapshot": snapshot},
                          pip_runner=runner)
     assert result["installed"] == ["torch", "torchvision", "transformers"]
@@ -497,12 +499,12 @@ def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
 
 def test_provision_install_packages_false_skips_pip(tmp_path, monkeypatch):
     """The opt-out: install_packages=False downloads weights only."""
-    monkeypatch.setattr(P.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: None)
 
     def must_not_run(args):
         raise AssertionError(f"pip ran: {args}")
 
-    result = P.provision(str(tmp_path), ["visual"], log=lambda m: None,
+    result = P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
                          downloaders=_fake_downloaders({}),
                          install_packages=False, pip_runner=must_not_run)
     assert result["installed"] == []
@@ -602,9 +604,9 @@ def test_provision_emits_structured_progress_events(tmp_path, monkeypatch):
         lambda name: None if name == "transformers"
         else SimpleNamespace(origin="stub.py"))
     events = []
-    P.provision(str(tmp_path), ["visual"], log=lambda m: None,
+    P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
                 downloaders=_fake_downloaders({}),
-                pip_runner=lambda args: None,
+                pip_runner=lambda _args: None,
                 progress=events.append)
     assert [(e["kind"], e["phase"], e["item"]) for e in events] == [
         ("runtime", "start", "transformers"),
@@ -711,7 +713,7 @@ def test_namespace_package_shadow_counts_as_missing():
         assert ("open_clip", "open_clip_torch") in P.runtime_missing(group)
 
 
-def test_explicitly_constructed_config_never_auto_provisions(tmp_path):
+def test_explicitly_constructed_config_never_auto_provisions():
     """AIConfig() is inert: auto_provision defaults False on the dataclass
     (from_env flips it on), so tests and embedders constructing configs by
     hand can never reach the network by accident."""
@@ -723,7 +725,7 @@ def test_provision_refuses_empty_models_dir():
     """An empty models_dir would scatter weights relative to the working
     directory; provision() refuses it outright."""
     with pytest.raises(P.ProvisionError, match="models_dir is required"):
-        P.provision("", ["faces"], log=lambda m: None)
+        P.provision("", ["faces"], log=lambda _m: None)
 
 
 # --- GPU self-heal: CPU-build torch on CUDA hardware ---------------------------
@@ -736,15 +738,15 @@ def test_torch_cuda_reinstall_needed_matrix(monkeypatch):
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     monkeypatch.setattr(P.sys, "platform", "linux")
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0+cpu")
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0+cpu")
     assert P.torch_cuda_reinstall_needed() is True
 
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0+cu126")
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0+cu126")
     assert P.torch_cuda_reinstall_needed() is False
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0")
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0")
     assert P.torch_cuda_reinstall_needed() is False
 
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda name: "2.13.0+cpu")
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0+cpu")
     monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
     assert P.torch_cuda_reinstall_needed() is False
     monkeypatch.delenv("AI_DAM_DEVICE")
@@ -778,11 +780,11 @@ def test_provision_swaps_wrong_torch_in_place_when_unimported(tmp_path, monkeypa
     monkeypatch.delitem(P.sys.modules, "torch", raising=False)
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
 
     installs = []
     result = P.provision(
-        str(tmp_path), ["visual"], log=lambda m: None,
+        str(tmp_path), ["visual"], log=lambda _m: None,
         downloaders=_fake_downloaders({}),
         pip_runner=lambda args: installs.append(args),
     )
@@ -799,13 +801,13 @@ def test_provision_only_advises_when_torch_already_imported(tmp_path, monkeypatc
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
     monkeypatch.setitem(P.sys.modules, "torch", SimpleNamespace())
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
 
     lines = []
     result = P.provision(
         str(tmp_path), ["visual"], log=lines.append,
         downloaders=_fake_downloaders({}),
-        pip_runner=lambda args: (_ for _ in ()).throw(AssertionError("no installs expected")),
+        pip_runner=lambda _args: (_ for _ in ()).throw(AssertionError("no installs expected")),
     )
     assert any("restart the app to switch wheels" in line for line in lines)
     assert result["installed"] == []
@@ -824,7 +826,7 @@ def test_provision_groups_for_includes_cuda_swap_groups(tmp_path, monkeypatch):
                face_backend="none", segmenter_backend="none", critic_backend="none")
 
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
     assert provision_groups_for(cfg) == []
 
@@ -844,7 +846,7 @@ def test_pip_runner_uses_python_m_pip_when_available(monkeypatch):
     """The normal environment needs exactly one subprocess call."""
     calls = []
     monkeypatch.setattr(P.subprocess, "run",
-                        lambda cmd, **kw: calls.append(cmd) or _pip_proc())
+                        lambda cmd, **_kw: calls.append(cmd) or _pip_proc())
     P._default_pip_runner(["timm"])
     assert len(calls) == 1
     assert calls[0][1:] == ["-m", "pip", "install", "--quiet", "timm"]
@@ -856,7 +858,7 @@ def test_pip_runner_falls_back_to_uv_pip_in_pipless_venv(monkeypatch):
     'No module named pip' failure)."""
     calls = []
 
-    def fake_run(cmd, **kw):
+    def fake_run(cmd, **_kw):
         calls.append(cmd)
         if cmd[1:3] == ["-m", "pip"]:
             return _pip_proc(1, "python.exe: No module named pip")
@@ -875,14 +877,14 @@ def test_pip_runner_bootstraps_ensurepip_without_uv(monkeypatch):
     """No uv on PATH: bootstrap pip via ensurepip once, then retry."""
     calls = []
 
-    def fake_run(cmd, **kw):
+    def fake_run(cmd, **_kw):
         calls.append(cmd)
         if cmd[1:3] == ["-m", "pip"] and len(calls) == 1:
             return _pip_proc(1, "No module named pip")
         return _pip_proc()
 
     monkeypatch.setattr(P.subprocess, "run", fake_run)
-    monkeypatch.setattr(P.shutil, "which", lambda name: None)
+    monkeypatch.setattr(P.shutil, "which", lambda _name: None)
     P._default_pip_runner(["timm"])
     assert calls[1][1:3] == ["-m", "ensurepip"]
     assert calls[2][1:3] == ["-m", "pip"]
@@ -891,8 +893,8 @@ def test_pip_runner_bootstraps_ensurepip_without_uv(monkeypatch):
 def test_pip_runner_raises_when_every_fallback_fails(monkeypatch):
     """All routes exhausted -> ProvisionError carrying stderr."""
     monkeypatch.setattr(P.subprocess, "run",
-                        lambda cmd, **kw: _pip_proc(1, "No module named pip"))
-    monkeypatch.setattr(P.shutil, "which", lambda name: None)
+                        lambda _cmd, **_kw: _pip_proc(1, "No module named pip"))
+    monkeypatch.setattr(P.shutil, "which", lambda _name: None)
     with pytest.raises(P.ProvisionError, match="No module named pip"):
         P._default_pip_runner(["timm"])
 
@@ -937,16 +939,16 @@ def test_reinstall_needed_for_wrong_generation_cuda_build(monkeypatch):
                         lambda: "https://download.pytorch.org/whl/cu130")
 
     monkeypatch.setattr(P.importlib.metadata, "version",
-                        lambda name: "2.13.0+cu126")
+                        lambda _name: "2.13.0+cu126")
     assert P.torch_cuda_reinstall_needed() is True
 
     monkeypatch.setattr(P.importlib.metadata, "version",
-                        lambda name: "2.13.0+cu130")
+                        lambda _name: "2.13.0+cu130")
     assert P.torch_cuda_reinstall_needed() is False
 
     monkeypatch.setattr(P.sys, "platform", "linux")
     monkeypatch.setattr(P.importlib.metadata, "version",
-                        lambda name: "2.13.0+cu126")
+                        lambda _name: "2.13.0+cu126")
     assert P.torch_cuda_reinstall_needed() is False
 
 
@@ -968,7 +970,7 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
     monkeypatch.setattr(P, "torch_cuda_index",
                         lambda: "https://download.pytorch.org/whl/cu130")
 
-    def fake_run(cmd, **kw):
+    def fake_run(cmd, **_kw):
         assert ("--query-gpu=name,driver_version,compute_cap,"
                 "memory.total,memory.used") in cmd
         return SimpleNamespace(
@@ -999,7 +1001,7 @@ def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, 
 
     attempts = []
 
-    def broken_echo(*args, **kwargs):
+    def broken_echo(*_args, **_kwargs):
         attempts.append(1)
         raise OSError("Windows error: 6")
 
@@ -1066,10 +1068,10 @@ def test_llama_gpu_probe_runs_in_child_process_and_memoizes(monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(P, "_llama_gpu_cache", [])
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     calls = []
 
-    def fake_run(cmd, **kw):
+    def fake_run(cmd, **_kw):
         calls.append(cmd)
         return SimpleNamespace(returncode=0, stdout="1\n", stderr="")
 
@@ -1087,9 +1089,9 @@ def test_llama_gpu_probe_reports_cpu_build_as_false(monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(P, "_llama_gpu_cache", [])
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     monkeypatch.setattr(P.subprocess, "run",
-                        lambda cmd, **kw: SimpleNamespace(returncode=0,
+                        lambda _cmd, **_kw: SimpleNamespace(returncode=0,
                                                           stdout="0\n", stderr=""))
     assert P._llama_supports_gpu() is False
 
@@ -1100,18 +1102,25 @@ def test_llama_gpu_probe_absent_package_and_crash_yield_none(monkeypatch):
     swap -- there is nothing safe to replace."""
     from types import SimpleNamespace
     monkeypatch.setattr(P, "_llama_gpu_cache", [])
-    monkeypatch.setattr(P.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: None)
     monkeypatch.setattr(
         P.subprocess, "run",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no probe expected")))
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("no probe expected")))
     assert P._llama_supports_gpu() is None
 
     monkeypatch.setattr(P, "_llama_gpu_cache", [])
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     monkeypatch.setattr(P.subprocess, "run",
-                        lambda cmd, **kw: SimpleNamespace(returncode=3,
+                        lambda _cmd, **_kw: SimpleNamespace(returncode=3,
                                                           stdout="", stderr="boom"))
+    assert P._llama_supports_gpu() is None
+
+    def _decode_error(*_a, **_k):
+        raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(P, "_llama_gpu_cache", [])
+    monkeypatch.setattr(P.subprocess, "run", _decode_error)
     assert P._llama_supports_gpu() is None
 
 
@@ -1154,12 +1163,12 @@ def test_provision_swaps_cpu_llama_for_cuda_build(tmp_path, monkeypatch):
     monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
     monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     monkeypatch.setattr(P, "_llama_gpu_cache", [False])
 
     installs = []
     result = P.provision(
-        str(tmp_path), ["critic"], log=lambda m: None,
+        str(tmp_path), ["critic"], log=lambda _m: None,
         downloaders=_fake_downloaders({}),
         pip_runner=lambda args: installs.append(args),
     )
@@ -1179,9 +1188,9 @@ def test_provision_llama_swap_failure_is_best_effort_with_advisory(tmp_path, mon
     monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
     monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
 
-    def runner(args):
+    def runner(_args):
         raise P.ProvisionError("No matching distribution found for llama-cpp-python")
 
     lines = []
@@ -1202,13 +1211,13 @@ def test_provision_llama_swap_deferred_while_llama_loaded(tmp_path, monkeypatch)
     monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
     monkeypatch.setitem(P.sys.modules, "llama_cpp", SimpleNamespace())
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
 
     lines = []
     result = P.provision(
         str(tmp_path), ["critic"], log=lines.append,
         downloaders=_fake_downloaders({}),
-        pip_runner=lambda args: (_ for _ in ()).throw(
+        pip_runner=lambda _args: (_ for _ in ()).throw(
             AssertionError("no installs expected")),
     )
     assert any("restart the app" in line for line in lines)
@@ -1221,7 +1230,7 @@ def test_pip_runner_translates_force_reinstall_for_uv(monkeypatch):
     'unexpected argument' in exactly the venvs that need it most."""
     calls = []
 
-    def fake_run(cmd, **kw):
+    def fake_run(cmd, **_kw):
         calls.append(cmd)
         if cmd[1:3] == ["-m", "pip"]:
             return _pip_proc(1, "No module named pip")
@@ -1254,7 +1263,7 @@ def test_provision_groups_for_includes_llama_swap_groups(tmp_path, monkeypatch):
                critic_backend="qwen-vl")
 
     monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: SimpleNamespace(origin="stub.py"))
+                        lambda _name: SimpleNamespace(origin="stub.py"))
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
     monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
     assert provision_groups_for(cfg) == []

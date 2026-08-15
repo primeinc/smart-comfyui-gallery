@@ -10,6 +10,8 @@ at module scope) is safe everywhere in the suite.
 import os
 import tempfile
 
+import pytest
+
 _SESSION_TMP_DIR = tempfile.mkdtemp(prefix="smartgallery_test_")
 
 # The AI layer is opt-OUT in production; the suite runs the monolith with
@@ -25,8 +27,6 @@ os.environ.setdefault('BASE_INPUT_PATH', os.path.join(_SESSION_TMP_DIR, 'input')
 
 for _var in ('BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BASE_INPUT_PATH'):
     os.makedirs(os.environ[_var], exist_ok=True)
-
-import pytest
 
 
 @pytest.fixture(scope="session")

@@ -109,7 +109,7 @@ class _RaisingCritic(CriticBackend):
     def __init__(self):
         self.calls = 0
 
-    def review(self, img, prompt_text, rubric_version):
+    def review(self, _img, _prompt_text, _rubric_version):
         self.calls += 1
         raise RuntimeError("VLM exploded")
 
@@ -123,7 +123,7 @@ class _RecordingCritic(CriticBackend):
     def __init__(self):
         self.prompts = []
 
-    def review(self, img, prompt_text, rubric_version):
+    def review(self, _img, prompt_text, _rubric_version):
         self.prompts.append(prompt_text)
         return {"quality_score": 7.0, "prompt_alignment_score": None,
                 "summary": "recorded", "findings": []}
@@ -270,7 +270,7 @@ def test_stop_during_active_cycle_joins_cleanly(tmp_path):
 
     detect_started = []
 
-    def slow_source(img):
+    def slow_source(_img):
         detect_started.append(1)
         time.sleep(0.15)
         return []
@@ -456,7 +456,7 @@ class _RaisingEmbedder:
     model_id = "raising-embedder"
     model_version = "v1"
 
-    def embed_image(self, img):
+    def embed_image(self, _img):
         raise RuntimeError("embed exploded")
 
 
@@ -486,7 +486,7 @@ class _RaisingFaceBackend:
     def __init__(self):
         self.calls = 0
 
-    def detect(self, img):
+    def detect(self, _img):
         self.calls += 1
         raise RuntimeError("detect exploded")
 

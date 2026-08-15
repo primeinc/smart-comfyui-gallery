@@ -54,7 +54,7 @@ def test_toggle_roundtrip_via_api(sg):
 def test_scan_skips_thumbnail_when_disabled(sg, tmp_path, monkeypatch):
     path = _make_png(tmp_path)
     calls = []
-    monkeypatch.setattr(sg, 'create_thumbnail', lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(sg, 'create_thumbnail', lambda *a, **_k: calls.append(a))
 
     _set(sg, False)
     assert sg.process_single_file(path) is not None
@@ -94,7 +94,7 @@ def test_serve_thumbnail_falls_back_to_original_when_disabled(sg, tmp_path):
             conn.commit()
 
 
-def test_toggle_never_touches_cached_thumbnails(sg, tmp_path):
+def test_toggle_never_touches_cached_thumbnails(sg):
     # Arrange: a pre-existing cached thumbnail.
     os.makedirs(sg.THUMBNAIL_CACHE_DIR, exist_ok=True)
     cached = os.path.join(sg.THUMBNAIL_CACHE_DIR, "deadbeef00.jpeg")

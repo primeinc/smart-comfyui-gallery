@@ -31,7 +31,7 @@ _ALLOWED_AUTHORIZER_ACTIONS = frozenset(
 )
 
 
-def _authorizer(action: int, arg1, arg2, dbname, source) -> int:
+def _authorizer(action: int, _arg1, _arg2, _dbname, _source) -> int:
     """SQLite authorizer callback: permit SELECT/READ/FUNCTION, deny every
     other action code."""
     if action in _ALLOWED_AUTHORIZER_ACTIONS:

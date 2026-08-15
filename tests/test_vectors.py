@@ -210,10 +210,10 @@ def test_persistence_round_trip_via_disk_cache(tmp_path):
     # Fresh store instance: empty in-memory cache, same on-disk cache_dir.
     store2 = VectorStore(cache_dir=str(tmp_path), ephemeral=False)
 
-    def _forbidden_rebuild(*args, **kwargs):
+    def _forbidden_rebuild(*_args, **_kwargs):
         raise AssertionError("should have loaded from the on-disk cache, not SQLite")
 
-    store2._load_from_sqlite = _forbidden_rebuild  # type: ignore[method-assign]
+    store2._load_from_sqlite = _forbidden_rebuild
     got = store2.topk(conn, "semantic", query, k=6)
     assert got == expected
 

@@ -55,8 +55,10 @@ def sg(smartgallery_app, monkeypatch):
     spawn real background threads by accident; tests that exercise the real
     dispatcher use the stashed `_real_ensure` reference."""
     real_ensure = smartgallery_app.ensure_cluster_backfill_async
-    monkeypatch.setattr(smartgallery_app, 'ensure_cluster_backfill_async',
-                        lambda force_all=False: True)
+    def _ensure_stub(force_all=False, on_complete=None):
+        del force_all, on_complete  # kwarg call-signature compatibility
+        return True
+    monkeypatch.setattr(smartgallery_app, 'ensure_cluster_backfill_async', _ensure_stub)
     smartgallery_app._real_ensure = real_ensure
     yield smartgallery_app
     with smartgallery_app.get_db_connection() as conn:
@@ -356,15 +358,21 @@ def test_backfill_abort_suppresses_completion_hook(sg, monkeypatch):
             _time.sleep(0.05)
 
     # An aborted run must not fire the completion hook...
-    monkeypatch.setattr(sg, 'backfill_unhashed_workflows',
-                        lambda conn=None, force_all=False: sg._CLUSTER_BACKFILL_STATE.update(aborted=True) or 0)
+    def _aborted_backfill(conn=None, force_all=False):
+        del conn, force_all  # kwarg call-signature compatibility
+        sg._CLUSTER_BACKFILL_STATE.update(aborted=True)
+        return 0
+    monkeypatch.setattr(sg, 'backfill_unhashed_workflows', _aborted_backfill)
     assert sg._real_ensure(force_all=True, on_complete=lambda: fired.append('aborted-run')) is True
     _wait_done()
     assert fired == []
 
     # ...and a clean run must.
-    monkeypatch.setattr(sg, 'backfill_unhashed_workflows',
-                        lambda conn=None, force_all=False: sg._CLUSTER_BACKFILL_STATE.update(aborted=False) or 0)
+    def _clean_backfill(conn=None, force_all=False):
+        del conn, force_all  # kwarg call-signature compatibility
+        sg._CLUSTER_BACKFILL_STATE.update(aborted=False)
+        return 0
+    monkeypatch.setattr(sg, 'backfill_unhashed_workflows', _clean_backfill)
     assert sg._real_ensure(on_complete=lambda: fired.append('clean-run')) is True
     _wait_done()
     assert fired == ['clean-run']
@@ -382,6 +390,7 @@ def test_clustering_trigger_is_async_not_inline(sg, monkeypatch):
                         lambda force_all=False: kicked.append(force_all) or True)
 
     def _forbidden(conn=None, force_all=False):
+        del conn, force_all  # kwarg call-signature compatibility
         raise AssertionError("backfill ran inline during a clustering request")
     monkeypatch.setattr(sg, 'backfill_unhashed_workflows', _forbidden)
 
@@ -402,6 +411,7 @@ def test_ensure_backfill_collapses_concurrent_runs(sg, monkeypatch):
     started = threading.Event()
 
     def _slow_backfill(conn=None, force_all=False):
+        del conn, force_all  # kwarg call-signature compatibility
         started.set()
         release.wait(timeout=5)
         return 0
@@ -502,7 +512,7 @@ def test_backfill_selects_foreign_image_rows(sg, tmp_path, monkeypatch):
     target.write_bytes(b"png")
     with sg.get_db_connection() as conn:
         _insert_file(conn, 'fimg', path=str(target).replace('\\', '/'), has_workflow=0)
-        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('archF', 'prF', 'mdF'))
+        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda _p: ('archF', 'prF', 'mdF'))
 
         # Act
         updated = sg.backfill_unhashed_workflows(conn)
@@ -625,7 +635,7 @@ def test_backfill_force_all_retries_failed_rows(sg, tmp_path, monkeypatch):
     target.write_bytes(b"png")
     with sg.get_db_connection() as conn:
         _insert_file(conn, 'retry', path=str(target).replace('\\', '/'), hash_failed=1)
-        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('wfNEW', 'prNEW', 'mdNEW'))
+        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda _p: ('wfNEW', 'prNEW', 'mdNEW'))
 
         # Act
         updated = sg.backfill_unhashed_workflows(conn, force_all=True)
@@ -651,8 +661,11 @@ def test_compute_hashes_promptless_workflow_has_empty_prompt_hash(sg, tmp_path, 
     # Arrange: a real file whose embedded workflow has no positive prompt.
     f = tmp_path / "wf.png"
     f.write_bytes(b"png")
-    monkeypatch.setattr(sg, 'extract_workflow', lambda path, target_type=None: _API_WORKFLOW)
-    monkeypatch.setattr(sg, 'extract_workflow_prompt_string', lambda wf_json: '')
+    def _fake_extract(_path, target_type=None):
+        del target_type  # kwarg call-signature compatibility
+        return _API_WORKFLOW
+    monkeypatch.setattr(sg, 'extract_workflow', _fake_extract)
+    monkeypatch.setattr(sg, 'extract_workflow_prompt_string', lambda _wf_json: '')
 
     # Act
     wf_hash, prompt_hash, _ = sg.compute_workflow_hashes(str(f))
@@ -666,8 +679,11 @@ def test_compute_hashes_prompt_hash_is_normalized_md5_of_prompt(sg, tmp_path, mo
     # Arrange
     f = tmp_path / "wf.png"
     f.write_bytes(b"png")
-    monkeypatch.setattr(sg, 'extract_workflow', lambda path, target_type=None: _API_WORKFLOW)
-    monkeypatch.setattr(sg, 'extract_workflow_prompt_string', lambda wf_json: '  A Cyberpunk STREET  ')
+    def _fake_extract(_path, target_type=None):
+        del target_type  # kwarg call-signature compatibility
+        return _API_WORKFLOW
+    monkeypatch.setattr(sg, 'extract_workflow', _fake_extract)
+    monkeypatch.setattr(sg, 'extract_workflow_prompt_string', lambda _wf_json: '  A Cyberpunk STREET  ')
 
     # Act
     _, prompt_hash, _ = sg.compute_workflow_hashes(str(f))

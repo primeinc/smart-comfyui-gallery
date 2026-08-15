@@ -444,12 +444,12 @@ def test_get_critic_backend_auto_gate_is_the_deciding_factor(tmp_path, monkeypat
     import smartgallery_ai.embedders as EMB
 
     sentinel = object()
-    monkeypatch.setattr(EMB, "get_semantic_backend", lambda cfg: object())
-    monkeypatch.setattr(CQ, "QwenVlCritic", lambda *a, **k: sentinel)
+    monkeypatch.setattr(EMB, "get_semantic_backend", lambda _cfg: object())
+    monkeypatch.setattr(CQ, "QwenVlCritic", lambda *_a, **_k: sentinel)
     cfg = AIConfig(critic_backend="auto", models_dir=str(tmp_path))
 
-    monkeypatch.setattr(REV, "_auto_critic_measurement_passed", lambda *a: False)
+    monkeypatch.setattr(REV, "_auto_critic_measurement_passed", lambda *_a: False)
     assert get_critic_backend(cfg) is None
 
-    monkeypatch.setattr(REV, "_auto_critic_measurement_passed", lambda *a: True)
+    monkeypatch.setattr(REV, "_auto_critic_measurement_passed", lambda *_a: True)
     assert get_critic_backend(cfg) is sentinel

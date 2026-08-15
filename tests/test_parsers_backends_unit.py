@@ -20,9 +20,10 @@ import types
 
 import pytest
 
+from omniquery import fields
 from omniquery.parsers import ParserOutcome
 from omniquery.parsers import fallback_qwen as fallback_module
-from omniquery.parsers.fallback_qwen import DEFAULT_MODEL_PATH, FallbackQwenBackend
+from omniquery.parsers.fallback_qwen import DEFAULT_MODEL_PATH, FallbackQwenBackend, _example_for
 from omniquery.parsers.needle2 import Needle2Backend
 
 NOW = 1735689600.0  # unused by both backends, but required by the interface
@@ -49,7 +50,8 @@ class FakeNeedleAgent:
     def reset(self):
         pass
 
-    def complete(self, text, max_new_tokens=None):
+    def complete(self, _text, max_new_tokens=None):
+        del max_new_tokens  # accepted only for complete()'s call-signature compatibility (kwarg call)
         if self._exc is not None:
             raise self._exc
         return self._resp
@@ -82,7 +84,8 @@ def _fake_needle_module(resp):
         def reset(self):
             pass
 
-        def complete(self, text, max_new_tokens=None):
+        def complete(self, _text, max_new_tokens=None):
+            del max_new_tokens  # accepted only for complete()'s call-signature compatibility (kwarg call)
             return resp
 
     mod.Needle = Needle
@@ -99,6 +102,9 @@ class FakeLlama:
 
     def create_chat_completion(self, messages, grammar=None, temperature=None,
                                max_tokens=None):
+        # all four accepted only for create_chat_completion()'s call-signature
+        # compatibility (the real call passes each of them by keyword).
+        del messages, grammar, temperature, max_tokens
         if self._exc is not None:
             raise self._exc
         return {"choices": [{"message": {"content": self._content}}]}
@@ -310,6 +316,20 @@ def test_fallback_available_false_when_runtime_missing_despite_model_file(monkey
     monkeypatch.setitem(sys.modules, "llama_cpp", None)  # forces ImportError
     backend = FallbackQwenBackend(model_path=str(model))
     assert backend.available() is False
+
+
+# ---------------------------------------------------------------------------
+# 4b. Fallback Qwen: _example_for's exhaustive-over-Kind fallback branch
+# ---------------------------------------------------------------------------
+
+def test_example_for_unrecognized_kind_falls_through_to_ellipsis():
+    """_example_for's if-chain matches every real fields.Kind member; an
+    unrecognized kind (only reachable if Kind is ever extended without
+    updating this function) must still fall through to the "..." default
+    instead of raising."""
+    spec = fields.FieldSpec(name="bogus", kind="not_a_real_kind",
+                             ops=frozenset(), strategy=fields.Strategy.COLUMN)
+    assert _example_for(spec) == "..."
 
 
 # ---------------------------------------------------------------------------

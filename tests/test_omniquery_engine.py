@@ -30,9 +30,9 @@ def engine(fixture_db_path):
     return OmniQueryEngine(
         db_path=fixture_db_path, base_path=FIXTURE_BASE_PATH,
         ai_resolvers={
-            "similar_to_semantic": lambda v: ["f001", "f002"],
-            "similar_to_visual": lambda v: [],
-            "near_dup_of": lambda v: ["f003"],
+            "similar_to_semantic": lambda _v: ["f001", "f002"],
+            "similar_to_visual": lambda _v: [],
+            "near_dup_of": lambda _v: ["f003"],
         },
     )
 
@@ -318,7 +318,7 @@ def test_missing_resolver_produces_ai_unavailable_error(fixture_db_path):
 
 
 def test_resolver_exception_produces_ai_unavailable_error(fixture_db_path):
-    def _boom(value):
+    def _boom(_value):
         raise RuntimeError("model not loaded")
 
     engine_broken = OmniQueryEngine(
@@ -384,7 +384,7 @@ def test_authorizer_allows_plain_select(engine):
     assert len(rows) == 1
 
 
-def test_engine_run_never_mutates_row_count(engine, fixture_db_path):
+def test_engine_run_never_mutates_row_count(engine):
     before = engine._execute("SELECT COUNT(*) FROM files", ())[0][0]
     engine.run({"where": {"field": "type", "op": "eq", "value": "image"}}, GUEST, now_epoch=ANCHOR_EPOCH)
     after = engine._execute("SELECT COUNT(*) FROM files", ())[0][0]

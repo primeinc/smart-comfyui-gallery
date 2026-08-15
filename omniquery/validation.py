@@ -239,7 +239,7 @@ def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
     elif spec.kind == fields.Kind.FILE_REF:
         _check_file_ref_value(spec, value)
 
-    else:  # pragma: no cover - exhaustive over Kind
+    else:  # exhaustive over Kind
         raise ValidationError(f"field '{spec.name}': unhandled kind {spec.kind!r}")
 
 

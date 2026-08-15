@@ -31,9 +31,6 @@ from PIL import Image, ImageDraw, ImageEnhance
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-from smartgallery_ai import AIConfig  # noqa: E402
-from smartgallery_ai.embedders import get_semantic_backend  # noqa: E402
-
 # Content-free reference description; the gate scores a candidate by how
 # much its cosine beats this baseline's cosine on the same image.
 GENERIC_BASELINE = "an image with some shapes and colors"
@@ -146,6 +143,9 @@ def main() -> int:
     ap.add_argument("--models-dir",
                     default=os.path.join(REPO, ".AImodels"))
     args = ap.parse_args()
+
+    from smartgallery_ai import AIConfig
+    from smartgallery_ai.embedders import get_semantic_backend
 
     sem = get_semantic_backend(AIConfig(enabled=True, models_dir=args.models_dir,
                                         semantic_backend="open_clip"))

@@ -215,7 +215,7 @@ def test_sync_index_faces_scan_suppresses_worker_rescan(tmp_path):
     from smartgallery_ai.faces import StubFaceBackend
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
     remaining = worker._scan_candidates(
-        conn, "faces", StubFaceBackend(lambda img: []), 10)
+        conn, "faces", StubFaceBackend(lambda _img: []), 10)
     conn.close()
     assert [r["id"] for r in remaining] == []
 
@@ -410,7 +410,7 @@ def test_index_endpoint_force_reschedules_review_before_queueing(api):
     conn.close()
 
     fake_worker = SimpleNamespace(
-        is_running=True, request_priority_index=lambda fid: True)
+        is_running=True, request_priority_index=lambda _fid: True)
     set_worker(fake_worker)
     try:
         data = api.client.post(f"{_PREFIX}/index/fresh_img",
@@ -628,7 +628,7 @@ def test_backend_resolution_held_during_pending_cuda_swap(tmp_path):
     _make_db(cfg.db_path).close()
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
 
-    def must_not_resolve(config):
+    def must_not_resolve(_config):
         raise AssertionError("torch-dependent backend resolved during swap hold")
 
     worker._hold_torch_backends = True
@@ -636,11 +636,11 @@ def test_backend_resolution_held_during_pending_cuda_swap(tmp_path):
     assert "semantic" not in worker._backend_cache  # not cached as a miss
 
     face = object()
-    assert worker._backend("face", lambda config: face) is face
+    assert worker._backend("face", lambda _config: face) is face
 
     worker._hold_torch_backends = False
     resolved = object()
-    assert worker._backend("semantic", lambda config: resolved) is resolved
+    assert worker._backend("semantic", lambda _config: resolved) is resolved
 
 
 def test_auto_provision_holds_torch_backends_until_swap_completes(tmp_path, monkeypatch):
@@ -652,13 +652,17 @@ def test_auto_provision_holds_torch_backends_until_swap_completes(tmp_path, monk
     _make_db(cfg.db_path).close()
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
 
-    monkeypatch.setattr(W, "provision_groups_for", lambda config: ["semantic"])
+    monkeypatch.setattr(W, "provision_groups_for", lambda _config: ["semantic"])
     monkeypatch.setattr(W.provisioning, "torch_cuda_reinstall_needed", lambda: True)
 
     held_during_provision = []
 
-    def fake_provision(models_dir, groups, force=False, log=print,
+    def fake_provision(_models_dir, _groups, force=False, log=print,
                        downloaders=None, progress=None):
+        # force/log/downloaders/progress accepted (log, progress kept named
+        # since the real call site passes them by keyword) only for
+        # provision()'s call-signature compatibility; this stub ignores them.
+        del force, log, downloaders, progress
         held_during_provision.append(worker._hold_torch_backends)
         return {"installed": [], "downloaded": [], "skipped": []}
 
@@ -739,8 +743,6 @@ def test_backlog_reviews_wait_for_the_fast_stages(tmp_path, monkeypatch):
     """While embeddings/faces still have backlog, the review stage is not
     offered backlog work (minutes per file would throttle the crawl); once
     the fast stages find nothing, reviews run."""
-    from smartgallery_ai import worker as W
-
     cfg = _cfg(tmp_path)
     conn = _make_db(cfg.db_path)
     for i in range(3):
@@ -753,10 +755,12 @@ def test_backlog_reviews_wait_for_the_fast_stages(tmp_path, monkeypatch):
         worker, "_backend",
         lambda key, resolver, _orig=worker._backend: (
             object() if key == "critic" else _orig(key, resolver)))
-    monkeypatch.setattr(
-        AIWorker, "_process_reviews",
-        lambda self, conn_, backend, limit, only_file_id=None:
-            review_calls.append(limit) or 0)
+    def _fake_process_reviews(_self, _conn, _backend, limit, only_file_id=None):
+        del only_file_id  # accepted only for _process_reviews' call-signature compatibility
+        review_calls.append(limit)
+        return 0
+
+    monkeypatch.setattr(AIWorker, "_process_reviews", _fake_process_reviews)
 
     worker._run_cycle()   # embedding backlog present -> reviews held
     assert review_calls == []
@@ -780,11 +784,11 @@ def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):
     worker.provision_state = {"state": "failed: connection reset", "groups": ["semantic"]}
     worker._provision_started_at = time.monotonic() - 601.0
 
-    monkeypatch.setattr(W, "provision_groups_for", lambda config: ["semantic"])
+    monkeypatch.setattr(W, "provision_groups_for", lambda _config: ["semantic"])
     monkeypatch.setattr(W.provisioning, "torch_cuda_reinstall_needed", lambda: False)
     monkeypatch.setattr(
         W.provisioning, "provision",
-        lambda *a, **k: {"installed": [], "downloaded": [], "skipped": []})
+        lambda *_a, **_k: {"installed": [], "downloaded": [], "skipped": []})
 
     worker._maybe_retry_provision()
     worker._provision_thread.join(timeout=10)

@@ -557,7 +557,7 @@ def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
                     if abs(s["margin_threshold"] - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
 
     # A faithful copy elsewhere passes: acceptance is content-bound.
-    assert variant(lambda r: None) is True
+    assert variant(lambda _r: None) is True
 
     # Out-of-bounds numbers fail even with correct identity.
     assert variant(lambda r: shipped_row(r).update(false_accept_rate=0.5)) is False
@@ -617,10 +617,13 @@ def test_qwen_critic_summary_survives_rejected_last_finding(monkeypatch):
              "region": "bottom-right", "what": "fabricated glitch text"}]}),  # ASSESS
         _json.dumps({"x": 0.6, "y": 0.6, "w": 0.2, "h": 0.2}),           # LOCALIZE
     ])
-    monkeypatch.setattr(CQ.QwenVlCritic, "_chat",
-                        lambda self, uri, text, schema, max_tokens: next(chats))
-    monkeypatch.setattr(CQ, "check_grounding", lambda *a, **k: 0.12)
-    monkeypatch.setattr(CQ, "verify_finding_region", lambda *a, **k: False)
+    def _fake_chat(_self, _uri, _text, schema, max_tokens):
+        del schema, max_tokens  # accepted only for _chat's call-signature compatibility (kwarg call)
+        return next(chats)
+
+    monkeypatch.setattr(CQ.QwenVlCritic, "_chat", _fake_chat)
+    monkeypatch.setattr(CQ, "check_grounding", lambda *_a, **_k: 0.12)
+    monkeypatch.setattr(CQ, "verify_finding_region", lambda *_a, **_k: False)
 
     payload = critic.review(solid_color_image(size=(64, 64)), None, "rubric-1")
     assert payload["findings"] == []

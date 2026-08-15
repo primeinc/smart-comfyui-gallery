@@ -7,7 +7,6 @@ references in metaparse/adapters.py).
 import gzip
 import json
 
-import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 

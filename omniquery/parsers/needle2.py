@@ -234,10 +234,10 @@ class Needle2Backend(ParserBackend):
                 self._available = False
         return self._available
 
-    def parse(self, text: str, now_epoch: float) -> ParserOutcome:  # noqa: ARG002
+    def parse(self, text: str, _now_epoch: float) -> ParserOutcome:
         """Run the engine and expand its calls into a validated AST; if the
         engine reports detecting negation but the expanded AST carries no
-        'not' node, the parse is refused as unsupported. `now_epoch` is
+        'not' node, the parse is refused as unsupported. `_now_epoch` is
         unused: relative dates stay symbolic as {"days_ago": N}. Never
         raises."""
         t0 = time.monotonic()

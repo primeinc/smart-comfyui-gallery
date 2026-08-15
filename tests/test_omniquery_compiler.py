@@ -8,7 +8,8 @@ import time
 
 import pytest
 
-from omniquery.ast import parse_query
+from omniquery import compiler, fields
+from omniquery.ast import Cond, OrderSpec, parse_query
 from omniquery.compiler import CompileError, CompileParams, compile as compile_query, resolution_key
 from omniquery.validation import AuthContext, validate
 
@@ -353,3 +354,65 @@ def test_similar_to_dict_value_resolution_key_distinguishes_k():
 def test_compile_rejects_non_validated_query_object():
     with pytest.raises(AssertionError):
         compile_query("not a ValidatedQuery", CompileParams(now_epoch=NOW, base_path="/gallery"))
+
+
+# ---------------------------------------------------------------------------
+# Defensive dispatch branches, reached by constructing an AST node/spec the
+# corresponding private builder does not handle (validate() never lets these
+# through compile()'s public entry point, so each is exercised directly).
+# ---------------------------------------------------------------------------
+
+_PARAMS = CompileParams(now_epoch=NOW, base_path="/gallery")
+
+
+def test_order_by_clause_rejects_unknown_field():
+    with pytest.raises(CompileError, match="not a valid order_by field"):
+        compiler._order_by_clause((OrderSpec(field="not_a_real_field"),))
+
+
+def test_order_by_clause_rejects_non_orderable_field():
+    with pytest.raises(CompileError, match="not a valid order_by field"):
+        compiler._order_by_clause((OrderSpec(field="path"),))  # exists, but not orderable
+
+
+def test_compile_node_rejects_unknown_node_type():
+    with pytest.raises(CompileError, match="unhandled node type"):
+        compiler._compile_node(object(), _PARAMS)
+
+
+def test_compile_cond_rejects_unknown_field():
+    with pytest.raises(CompileError, match="unknown field"):
+        compiler._compile_cond(Cond(field="not_a_real_field", op="eq", value="x"), _PARAMS)
+
+
+def test_like_clause_rejects_unhandled_text_op():
+    with pytest.raises(CompileError, match="unhandled text op"):
+        compiler._like_clause("f.name", "regex", "x")
+
+
+def test_build_text_rejects_unhandled_strategy():
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.TEXT, ops=frozenset({"eq"}),
+                             strategy=fields.Strategy.EXPR)
+    with pytest.raises(CompileError, match="unhandled text strategy"):
+        compiler._build_text(spec, "eq", "v", _PARAMS)
+
+
+def test_build_number_rejects_unhandled_strategy():
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.NUMBER, ops=frozenset({"eq"}),
+                             strategy=fields.Strategy.EXISTS_BOOL)
+    with pytest.raises(CompileError, match="unhandled number strategy"):
+        compiler._build_number(spec, "eq", 1, _PARAMS)
+
+
+def test_build_bool_rejects_unhandled_strategy():
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.BOOL, ops=frozenset({"eq"}),
+                             strategy=fields.Strategy.EXPR)
+    with pytest.raises(CompileError, match="unhandled bool strategy"):
+        compiler._build_bool(spec, "eq", True)
+
+
+def test_build_enum_rejects_unhandled_strategy():
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.ENUM, ops=frozenset({"eq"}),
+                             strategy=fields.Strategy.EXPR)
+    with pytest.raises(CompileError, match="unhandled enum strategy"):
+        compiler._build_enum(spec, "eq", "v")

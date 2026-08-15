@@ -29,7 +29,6 @@ from flask import Blueprint, Response, abort, jsonify, request, send_file, url_f
 from smartgallery_ai import (
     AIConfig,
     HASH_ALGO_VERSION,
-    RUBRIC_VERSION,
     SPACE_SEMANTIC,
     SPACE_VISUAL,
 )
@@ -194,7 +193,7 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     now = time.time()
     result: dict = {"file_id": file_id, "hashed": False, "embedded": [], "faces": False, "reviewed": False}
 
-    def _backend_for(key: str, factory):
+    def _backend_for(factory):
         """Fresh backend resolve for the no-worker inline path. NEVER hands
         out the worker's cached instances: the worker thread runs inference
         on those concurrently, and the detectors/predictors are stateful
@@ -218,11 +217,11 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
 
     img = load_source_image(path, file_type)
 
-    for key, space, get_backend in (
-        ("semantic", SPACE_SEMANTIC, embedders.get_semantic_backend),
-        ("visual", SPACE_VISUAL, embedders.get_visual_backend),
+    for space, get_backend in (
+        (SPACE_SEMANTIC, embedders.get_semantic_backend),
+        (SPACE_VISUAL, embedders.get_visual_backend),
     ):
-        backend = _backend_for(key, get_backend)
+        backend = _backend_for(get_backend)
         if backend is None or img is None:
             continue
         existing = conn.execute(
@@ -244,7 +243,7 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
             store.add(conn, file_id, space, backend.model_id, backend.model_version, vec, mtime)
             result["embedded"].append(space)
 
-    face_backend = _backend_for("face", faces.get_face_backend)
+    face_backend = _backend_for(faces.get_face_backend)
     if face_backend is not None and img is not None:
         detections = face_backend.detect(img)
         faces.replace_faces_for_file(
@@ -347,7 +346,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             }
             try:
                 instances["segmenter"] = review.get_segmenter_backend(config)
-            except Exception:  # noqa: BLE001 - availability probe must not raise
+            except Exception:  # availability probe must not raise
                 instances["segmenter"] = None
             backend_probe_cache.update(
                 {key: inst is not None for key, inst in instances.items()})
@@ -395,7 +394,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         )
         try:
             gpu = provisioning.cuda_summary()
-        except Exception:  # noqa: BLE001 - inventory is best-effort
+        except Exception:  # inventory is best-effort
             gpu = None
         return jsonify({
             "enabled": config.enabled,
@@ -787,7 +786,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             if "semantic" not in search_embedder_cache:
                 try:
                     search_embedder_cache["semantic"] = embedders.get_semantic_backend(config)
-                except Exception:  # noqa: BLE001 - unavailable, not fatal
+                except Exception:  # unavailable, not fatal
                     search_embedder_cache["semantic"] = None
             return search_embedder_cache["semantic"]
 

@@ -70,7 +70,7 @@ def solid_color_image(size=(64, 64), color=(30, 30, 30)) -> Image.Image:
     return Image.new("RGB", size, color=color)
 
 
-def _fail_if_called(*args, **kwargs):
+def _fail_if_called(*_args, **_kwargs):
     raise AssertionError("verify_finding_region must not be consulted here")
 
 
@@ -84,12 +84,13 @@ def _bare_critic(monkeypatch, chats, embedder=None, verify=_fail_if_called):
     calls = []
     seq = iter(chats)
 
-    def fake_chat(self, uri, text, schema, max_tokens):
+    def fake_chat(_self, uri, text, schema, max_tokens):
+        del max_tokens  # accepted only for _chat's call-signature compatibility (kwarg call)
         calls.append({"uri": uri, "text": text, "schema": schema})
         return next(seq)
 
     monkeypatch.setattr(QwenVlCritic, "_chat", fake_chat)
-    monkeypatch.setattr(CQ, "check_grounding", lambda *a, **k: 0.15)
+    monkeypatch.setattr(CQ, "check_grounding", lambda *_a, **_k: 0.15)
     monkeypatch.setattr(CQ, "verify_finding_region", verify)
     return critic, calls
 
@@ -423,7 +424,7 @@ def test_review_valid_bbox_verified_yields_localizable_finding(monkeypatch):
         "A hand holding a cup.",
         _assess([_defect("anatomy", "bottom-right")], quality=6.5),
         '{"x": 0.6, "y": 0.55, "w": 0.2, "h": 0.3}',
-    ], verify=lambda *a, **k: True)
+    ], verify=lambda *_a, **_k: True)
     payload = critic.review(solid_color_image(), None, "rubric-1")
     assert len(calls) == 3
     (finding,) = payload["findings"]
@@ -460,11 +461,11 @@ def test_review_downscales_oversized_image_before_chat(monkeypatch):
         assert sent.size == (768, 384)
 
 
-def test_review_null_describe_content_fails_grounding_closed(monkeypatch):
+def test_review_null_describe_content_fails_grounding_closed():
     """A None-content DESCRIBE completion coerces to an empty description, and the grounding gate aborts the review."""
 
     class _NullContentLlm:
-        def create_chat_completion(self, **kwargs):
+        def create_chat_completion(self, **_kwargs):
             return {"choices": [{"message": {"content": None}}]}
 
     critic = object.__new__(QwenVlCritic)
@@ -486,7 +487,11 @@ def _install_fake_llama(monkeypatch, recorded: dict):
             recorded.update(kwargs)
 
     fake_fmt = types.ModuleType("llama_cpp.llama_chat_format")
-    fake_fmt.Qwen25VLChatHandler = lambda clip_model_path, verbose: object()
+    def _fake_chat_handler(clip_model_path, verbose):
+        del clip_model_path, verbose  # accepted only for call-signature compatibility (kwarg call)
+        return object()
+
+    fake_fmt.Qwen25VLChatHandler = _fake_chat_handler
     fake = types.ModuleType("llama_cpp")
     fake.Llama = _FakeLlama
     fake.llama_chat_format = fake_fmt
@@ -557,7 +562,7 @@ def test_llama_native_logging_is_silenced_unless_opted_in(tmp_path, monkeypatch)
     fake = sys.modules["llama_cpp"]
     log_sets = []
     fake.llama_log_callback = lambda fn: ("cb", fn)
-    fake.llama_log_set = lambda cb, user: log_sets.append(cb)
+    fake.llama_log_set = lambda cb, _user: log_sets.append(cb)
 
     critic = QwenVlCritic(str(tmp_path), semantic_embedder=object())
     assert len(log_sets) == 1

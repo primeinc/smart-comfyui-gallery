@@ -73,6 +73,7 @@ def seeded_files(smartgallery_app):
 # ---------------------------------------------------------------------------
 
 def test_favorite_videos_success_persists_session(smartgallery_app, nlq_router, seeded_files):
+    del nlq_router, seeded_files  # fixtures applied for their setup side effects only
     client = smartgallery_app.app.test_client()
     resp = client.post(_NLQ_URL, json={"query": "favorite videos"})
     assert resp.status_code == 200
@@ -101,6 +102,7 @@ def test_favorite_videos_success_persists_session(smartgallery_app, nlq_router, 
 
 
 def test_garbage_query_is_unsupported_with_trace(smartgallery_app, nlq_router):
+    del nlq_router  # fixture applied for its setup side effect only
     client = smartgallery_app.app.test_client()
     resp = client.post(_NLQ_URL, json={"query": "qwertyuiop asdf"})
     assert resp.status_code == 200
@@ -114,6 +116,7 @@ def test_garbage_query_is_unsupported_with_trace(smartgallery_app, nlq_router):
 
 
 def test_count_query(smartgallery_app, nlq_router, seeded_files):
+    del nlq_router, seeded_files  # fixtures applied for their setup side effects only
     client = smartgallery_app.app.test_client()
     resp = client.post(_NLQ_URL, json={"query": "how many images"})
     assert resp.status_code == 200
@@ -127,6 +130,7 @@ def test_count_query(smartgallery_app, nlq_router, seeded_files):
 
 
 def test_rejects_non_json_body_cleanly(smartgallery_app, nlq_router):
+    del nlq_router  # fixture applied for its setup side effect only
     client = smartgallery_app.app.test_client()
     resp = client.post(_NLQ_URL, data="not json at all", content_type="text/plain")
     assert resp.status_code == 400
@@ -135,6 +139,7 @@ def test_rejects_non_json_body_cleanly(smartgallery_app, nlq_router):
 
 
 def test_rejects_missing_query_field(smartgallery_app, nlq_router):
+    del nlq_router  # fixture applied for its setup side effect only
     client = smartgallery_app.app.test_client()
     resp = client.post(_NLQ_URL, json={})
     assert resp.status_code == 400
@@ -145,6 +150,7 @@ def test_rejects_missing_query_field(smartgallery_app, nlq_router):
 def test_never_accepts_raw_sql_field(smartgallery_app, nlq_router, seeded_files):
     """The endpoint must ignore any 'sql' key entirely -- only 'query' (NL
     text) drives it; a would-be injector cannot smuggle raw SQL in."""
+    del nlq_router, seeded_files  # fixtures applied for their setup side effects only
     client = smartgallery_app.app.test_client()
     resp = client.post(_NLQ_URL, json={
         "query": "favorite videos",
@@ -161,6 +167,7 @@ def test_never_accepts_raw_sql_field(smartgallery_app, nlq_router, seeded_files)
 
 
 def test_legacy_execute_endpoint_still_works(smartgallery_app, seeded_files):
+    del seeded_files  # fixture applied for its setup side effect only
     client = smartgallery_app.app.test_client()
     resp = client.post(_EXEC_URL, json={"sql": "SELECT f.id FROM files f WHERE f.type = 'video' AND f.id LIKE 'nlqtest-%'"})
     assert resp.status_code == 200

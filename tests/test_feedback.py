@@ -194,7 +194,7 @@ def test_export_feedback_round_trip_jsonl_and_stamps_exported_at(tmp_path):
         assert by_id[feedback_id]["exported_at"] == pytest.approx(exported_at)
 
 
-def test_export_feedback_preserves_original_exported_at_on_second_export(tmp_path):
+def test_export_feedback_preserves_original_exported_at_on_second_export():
     conn = make_conn()
     record_feedback(conn, "review", "1", "accept", now=100.0)
     export_feedback(conn, mark=True)

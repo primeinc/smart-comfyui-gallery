@@ -21,6 +21,7 @@ file exists -- it never triggers the load.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import time
@@ -64,7 +65,7 @@ def _example_for(spec: fields.FieldSpec) -> str:
         return '{"days_ago": 7}'
     if spec.kind == fields.Kind.FILE_REF:
         return '"f001"'
-    return "..."  # pragma: no cover - exhaustive over Kind
+    return "..."  # exhaustive over Kind
 
 
 def _build_system_prompt() -> str:
@@ -150,14 +151,14 @@ class FallbackQwenBackend(ParserBackend):
         """True when llama_cpp imports and the model file exists;
         deliberately never triggers the (expensive) model load."""
         try:
-            import llama_cpp  # noqa: F401
+            importlib.import_module("llama_cpp")
         except ImportError:
             return False
         return os.path.isfile(self.model_path)
 
-    def parse(self, text: str, now_epoch: float) -> ParserOutcome:  # noqa: ARG002
+    def parse(self, text: str, _now_epoch: float) -> ParserOutcome:
         """Constrained-decode an AST from `text` at temperature 0, gated by
-        coverage_guard and validation. `now_epoch` is unused: relative
+        coverage_guard and validation. `_now_epoch` is unused: relative
         dates stay symbolic as {"days_ago": N}. Never raises."""
         t0 = time.monotonic()
         try:

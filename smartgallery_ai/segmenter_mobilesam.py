@@ -60,7 +60,7 @@ class MobileSamSegmenter(SegmenterBackend):
             try:
                 import torch
                 from mobile_sam import SamPredictor, sam_model_registry
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
             try:
                 from smartgallery_ai.embedders import (
@@ -75,7 +75,7 @@ class MobileSamSegmenter(SegmenterBackend):
                     model = sam_model_registry["vit_t"](checkpoint=weights_path)
                 model.eval()
                 self._predictor = SamPredictor(model.to(device))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise BackendUnavailable(
                     f"failed to load mobile_sam weights: {exc}") from exc
         self._torch = torch

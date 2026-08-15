@@ -64,9 +64,9 @@ BENCH_CTX = AuthContext(role="ADMIN", user_id="bench", client_uuid="bench", ai_e
 # Fixed-id stand-ins for the model-backed similarity searches, keeping
 # execution comparisons deterministic and model-free.
 _STUB_AI_RESOLVERS = {
-    "similar_to_semantic": lambda v: ["f001", "f002"],
-    "similar_to_visual": lambda v: ["f001"],
-    "near_dup_of": lambda v: ["f003"],
+    "similar_to_semantic": lambda _v: ["f001", "f002"],
+    "similar_to_visual": lambda _v: ["f001"],
+    "near_dup_of": lambda _v: ["f003"],
 }
 
 _THETA_STEPS = [round(i * 0.1, 1) for i in range(10)]  # 0.0 .. 0.9

@@ -275,18 +275,18 @@ class HeuristicBackend(ParserBackend):
         # the generic negation trigger so "without workflow" isn't reread as
         # NOT(has_workflow=True) via the generic path. --------------------
         spanned_conds += _apply_rule(working, consumed, _WORKFLOW_WITH_RE,
-                                      lambda m: {"field": "has_workflow", "op": "eq", "value": True})
+                                      lambda _m: {"field": "has_workflow", "op": "eq", "value": True})
         spanned_conds += _apply_rule(working, consumed, _WORKFLOW_WITHOUT_RE,
-                                      lambda m: {"field": "has_workflow", "op": "eq", "value": False})
+                                      lambda _m: {"field": "has_workflow", "op": "eq", "value": False})
         spanned_conds += _apply_rule(working, consumed, _FACES_WITH_RE,
-                                      lambda m: {"field": "has_faces", "op": "eq", "value": True})
+                                      lambda _m: {"field": "has_faces", "op": "eq", "value": True})
         spanned_conds += _apply_rule(working, consumed, _FACES_WITHOUT_RE,
-                                      lambda m: {"field": "has_faces", "op": "eq", "value": False})
+                                      lambda _m: {"field": "has_faces", "op": "eq", "value": False})
 
         # -- un-favorited: single-word negation, own direct rule. ----------
         spanned_conds += _apply_rule(
             working, consumed, _UNFAVORITED_RE,
-            lambda m: {"op": "not", "child": {"field": "is_favorite", "op": "eq", "value": True}},
+            lambda _m: {"op": "not", "child": {"field": "is_favorite", "op": "eq", "value": True}},
         )
 
         # -- star ratings (also protects "N stars or better"'s "or" from
@@ -353,22 +353,22 @@ class HeuristicBackend(ParserBackend):
             day=calendar.monthrange(local_today.year, local_today.month)[1]).isoformat()
         spanned_conds += _apply_rule(
             working, consumed, _YESTERDAY_RE,
-            lambda m: {"field": "mtime", "op": "between",
+            lambda _m: {"field": "mtime", "op": "between",
                        "value": [yesterday_iso, yesterday_iso]},
         )
         spanned_conds += _apply_rule(
             working, consumed, _TODAY_RE,
-            lambda m: {"field": "mtime", "op": "between",
+            lambda _m: {"field": "mtime", "op": "between",
                        "value": [local_today.isoformat(), local_today.isoformat()]},
         )
         spanned_conds += _apply_rule(
             working, consumed, _THIS_WEEK_RE,
-            lambda m: {"field": "mtime", "op": "between",
+            lambda _m: {"field": "mtime", "op": "between",
                        "value": [week_start_iso, week_end_iso]},
         )
         spanned_conds += _apply_rule(
             working, consumed, _THIS_MONTH_RE,
-            lambda m: {"field": "mtime", "op": "between",
+            lambda _m: {"field": "mtime", "op": "between",
                        "value": [month_start_iso, month_end_iso]},
         )
 
@@ -419,7 +419,7 @@ class HeuristicBackend(ParserBackend):
         spanned_conds += _apply_rule(working, consumed, _CAPTION_RE, _quote_builder("ai_caption"))
         spanned_conds += _apply_rule(working, consumed, _COMMENT_MENTIONS_RE, _quote_builder("comment_contains"))
         spanned_conds += _apply_rule(working, consumed, _COMMENTED_RE,
-                                      lambda m: {"field": "comment_count", "op": "gt", "value": 0})
+                                      lambda _m: {"field": "comment_count", "op": "gt", "value": 0})
 
         # -- review issues ------------------------------------------------
         def _issue_builder(m: re.Match) -> Optional[dict]:
@@ -431,15 +431,15 @@ class HeuristicBackend(ParserBackend):
         spanned_conds += _apply_rule(working, consumed, _ISSUE_RE, _issue_builder)
 
         # -- meta: counts and presentation -----------------------------------
-        if _apply_rule(working, consumed, _COUNT_META_RE, lambda m: True):
+        if _apply_rule(working, consumed, _COUNT_META_RE, lambda _m: True):
             meta["result"] = "count"
-        if _apply_rule(working, consumed, _NEWEST_FIRST_RE, lambda m: True):
+        if _apply_rule(working, consumed, _NEWEST_FIRST_RE, lambda _m: True):
             meta["order"] = ("mtime", "desc")
-        elif _apply_rule(working, consumed, _OLDEST_RE, lambda m: True):
+        elif _apply_rule(working, consumed, _OLDEST_RE, lambda _m: True):
             meta["order"] = ("mtime", "asc")
-        elif _apply_rule(working, consumed, _LARGEST_RE, lambda m: True):
+        elif _apply_rule(working, consumed, _LARGEST_RE, lambda _m: True):
             meta["order"] = ("size_bytes", "desc")
-        elif _apply_rule(working, consumed, _BEST_RATED_RE, lambda m: True):
+        elif _apply_rule(working, consumed, _BEST_RATED_RE, lambda _m: True):
             meta["order"] = ("rating_avg", "desc")
         top_hits = _apply_rule(working, consumed, _TOP_N_RE, lambda m: int(m.group(1)))
         if top_hits:
@@ -452,7 +452,7 @@ class HeuristicBackend(ParserBackend):
 
         # -- plain positive favorite / media type / status flag -------------
         spanned_conds += _apply_rule(working, consumed, _FAVORITE_RE,
-                                      lambda m: {"field": "is_favorite", "op": "eq", "value": True})
+                                      lambda _m: {"field": "is_favorite", "op": "eq", "value": True})
 
         def _type_builder(m: re.Match) -> Optional[dict]:
             key = re.sub(r"\s+", " ", m.group(1).lower())

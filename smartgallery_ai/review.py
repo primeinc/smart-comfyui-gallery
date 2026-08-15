@@ -19,6 +19,7 @@ outside this module.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import sqlite3
@@ -412,15 +413,15 @@ class SmolVlmCritic(CriticBackend):
                 break
         if weights_dir is not None:
             try:
-                import torch  # noqa: F401
+                import torch
                 # torchvision before transformers: transformers freezes its
                 # torchvision-availability flag at first import, and its
                 # processors hard-require torchvision -- importing it in a
                 # torchvision-less process would keep transformers backends
                 # dead until a restart (see embedders.Dinov2VisualEmbedder).
-                import torchvision  # noqa: F401
-                from transformers import AutoModelForImageTextToText, AutoProcessor  # noqa: F401
-            except Exception as exc:  # noqa: BLE001
+                importlib.import_module("torchvision")
+                from transformers import AutoModelForImageTextToText, AutoProcessor
+            except Exception as exc:
                 raise BackendUnavailable(f"smolvlm critic unavailable: {exc}") from exc
         if weights_dir is None:
             raise BackendUnavailable(
@@ -434,12 +435,12 @@ class SmolVlmCritic(CriticBackend):
                 weights_dir, local_files_only=True, torch_dtype=torch.float32
             )
             self._model.eval()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise BackendUnavailable(f"failed to load smolvlm weights: {exc}") from exc
         self._torch = torch
         self._max_new_tokens = max_new_tokens
 
-    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+    def review(self, img: Image.Image, prompt_text: Optional[str], _rubric_version: str) -> dict:
         """Single greedy-decoded image+instruction turn; returns the first
         JSON object in the reply (ValueError when there is none)."""
         instruction = _CRITIC_INSTRUCTION

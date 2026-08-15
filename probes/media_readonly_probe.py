@@ -17,11 +17,11 @@ import sys
 import tempfile
 import time
 
+import numpy as np
+from PIL import Image
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root (parent of probes/)
 sys.path.insert(0, REPO)
-
-import numpy as np  # noqa: E402
-from PIL import Image  # noqa: E402
 
 
 def snapshot(root: str) -> dict:

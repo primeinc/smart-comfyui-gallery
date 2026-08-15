@@ -206,7 +206,7 @@ def test_openclip_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
     _touch_openclip_weights(tmp_path)
     boom = RuntimeError("corrupt checkpoint")
 
-    def _fail(*args, **kwargs):
+    def _fail(*_args, **_kwargs):
         raise boom
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
@@ -225,7 +225,7 @@ def test_dinov2_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
 
     class _FailingAuto:
         @staticmethod
-        def from_pretrained(*args, **kwargs):
+        def from_pretrained(*_args, **_kwargs):
             raise OSError("corrupt checkpoint dir")
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
@@ -350,7 +350,7 @@ def test_auto_degrades_to_none_even_when_weight_loading_fails(tmp_path, monkeypa
     still resolve to None instead of crashing the caller."""
     _touch_openclip_weights(tmp_path)
 
-    def _fail(*args, **kwargs):
+    def _fail(*_args, **_kwargs):
         raise RuntimeError("corrupt checkpoint")
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
@@ -449,7 +449,7 @@ def test_vram_pressure_warns_only_when_the_chosen_card_is_nearly_full(caplog):
 
     def torch_with_free(free_bytes):
         cuda = types.SimpleNamespace(
-            mem_get_info=lambda index=0: (free_bytes, 16 << 30))
+            mem_get_info=lambda _index=0: (free_bytes, 16 << 30))
         return types.SimpleNamespace(cuda=cuda)
 
     with caplog.at_level(logging.WARNING, logger="smartgallery_ai.embedders"):

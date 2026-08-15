@@ -47,14 +47,19 @@ def _install_fake_runtime(monkeypatch):
     """Simulate a working torch/mobile_sam runtime whose model loads fine
     (including the .to(device) placement every real SAM model supports)."""
     model = types.SimpleNamespace(eval=lambda: None)
-    model.to = lambda device: model
+    model.to = lambda _device: model
+
+    def _build(checkpoint):
+        del checkpoint  # accepted only for the registry's call-signature compatibility (kwarg call)
+        return model
+
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
         sys.modules, "mobile_sam",
         _fake_module(
             "mobile_sam",
             SamPredictor=lambda m: types.SimpleNamespace(model=m),
-            sam_model_registry={"vit_t": lambda checkpoint: model},
+            sam_model_registry={"vit_t": _build},
         ),
     )
 
@@ -112,7 +117,7 @@ def test_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
     _touch_mobilesam_weights(tmp_path)
     boom = RuntimeError("corrupt checkpoint")
 
-    def _fail(*args, **kwargs):
+    def _fail(*_args, **_kwargs):
         raise boom
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
@@ -120,7 +125,7 @@ def test_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
         sys.modules, "mobile_sam",
         _fake_module(
             "mobile_sam",
-            SamPredictor=lambda m: None,
+            SamPredictor=lambda _m: None,
             sam_model_registry={"vit_t": _fail},
         ),
     )
@@ -135,9 +140,10 @@ def test_ctor_contains_third_party_warning_and_stderr_noise(tmp_path, monkeypatc
     the model builds never reach the caller, and the model still loads."""
     _touch_mobilesam_weights(tmp_path)
     model = types.SimpleNamespace(eval=lambda: None)
-    model.to = lambda device: model
+    model.to = lambda _device: model
 
     def _noisy_build(checkpoint):
+        del checkpoint  # accepted only for the registry's call-signature compatibility (kwarg call)
         warnings.warn("Importing from timm.models.layers is deprecated", FutureWarning)
         warnings.warn("Overwriting tiny_vit_5m_224 in registry", UserWarning)
         print("Loading weights: 100%|#| 223/223", file=sys.stderr)

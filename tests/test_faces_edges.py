@@ -7,7 +7,6 @@ inconsistent-dim failure rollback, params provenance, empty recluster).
 """
 
 import json
-import os
 import sqlite3
 
 import cv2

@@ -241,7 +241,7 @@ class QwenVlCritic(CriticBackend):
             import llama_cpp
             from llama_cpp import Llama
             from llama_cpp.llama_chat_format import Qwen25VLChatHandler
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise BackendUnavailable(f"qwen-vl critic unavailable: {exc}") from exc
 
         # llama.cpp logs its internals -- including FULL PROMPTS and
@@ -253,9 +253,9 @@ class QwenVlCritic(CriticBackend):
         if not os.environ.get("AI_DAM_LLAMA_VERBOSE"):
             try:
                 self._llama_log_cb = llama_cpp.llama_log_callback(
-                    lambda level, text, user_data: None)
+                    lambda _level, _text, _user_data: None)
                 llama_cpp.llama_log_set(self._llama_log_cb, None)
-            except Exception:  # noqa: BLE001 - silencing is best-effort
+            except Exception:  # silencing is best-effort
                 pass
         # Full GPU offload by default when the llama.cpp build has CUDA
         # support; a CPU-only build ignores every GPU knob, so this is safe
@@ -280,7 +280,7 @@ class QwenVlCritic(CriticBackend):
             self._llm = Llama(model_path=model_path, chat_handler=handler,
                               n_ctx=n_ctx, n_threads=n_threads,
                               verbose=False, **gpu_kwargs)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise BackendUnavailable(f"failed to load qwen-vl weights: {exc}") from exc
 
         self._embedder = semantic_embedder
@@ -313,7 +313,7 @@ class QwenVlCritic(CriticBackend):
     # -- protocol ------------------------------------------------------------
 
     def review(self, img: Image.Image, prompt_text: Optional[str],
-               rubric_version: str) -> dict:
+               _rubric_version: str) -> dict:
         """Run the DESCRIBE/GROUND/ASSESS/LOCALIZE/ASSEMBLE protocol and
         return the RAW payload dict for `validate_review_payload`. Raises
         `CriticGroundingError` when the description fails the gate --
@@ -426,7 +426,7 @@ class QwenVlCritic(CriticBackend):
                     and 0.01 <= h <= 1.0 - y + 1e-6):
                 return None
             return (x, y, min(w, 1.0 - x), min(h, 1.0 - y))
-        except Exception:  # noqa: BLE001 - failed localization -> global finding
+        except Exception:  # failed localization -> global finding
             return None
 
 

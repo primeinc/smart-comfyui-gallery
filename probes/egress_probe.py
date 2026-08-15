@@ -71,7 +71,7 @@ def wait_for(url: str, timeout: float = 60.0) -> None:
             with urllib.request.urlopen(url, timeout=2) as resp:
                 resp.read()
                 return
-        except Exception as exc:  # noqa: BLE001 - retry loop
+        except Exception as exc:  # retry loop
             last = exc
             time.sleep(0.5)
     raise RuntimeError(f"server never came up: {last}")
@@ -145,7 +145,7 @@ def stage2() -> int:
                                              "bytes": len(body)})
                 if status != 200:
                     ok = False
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 evidence["requests"].append({"name": name, "error": str(exc)})
                 ok = False
 
@@ -161,7 +161,7 @@ def stage2() -> int:
                 "confidence": outcome.confidence,
             }
             ok = ok and outcome.ast is not None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             evidence["omniquery_heuristic"] = {"error": str(exc)}
             ok = False
 
@@ -178,7 +178,7 @@ def stage2() -> int:
             pass
         shutil.rmtree(tmp, ignore_errors=True)
         os._exit(0 if ok else 1)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"FAIL: {exc}", flush=True)
         try:
             server.kill()
