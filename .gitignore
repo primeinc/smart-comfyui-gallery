@@ -82,3 +82,5 @@ benchmarks/results/*
 !benchmarks/results/faiss_graph_evidence_synthetic.json
 !benchmarks/results/faiss_graph_evidence_images.json
 run_smartgallery.bat
+!benchmarks/results/face_detection_recall_native.json
+!benchmarks/results/face_detection_recall_ms1600.json

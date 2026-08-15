@@ -132,7 +132,8 @@ def main() -> None:
     cfg.face_backend = "opencv"
     gate_px = cfg.face_min_px
     cfg.face_min_px = 0  # detector recall needs raw detections; the gate is
-    backend = get_face_backend(cfg)  # applied arithmetically below
+    cfg.face_detect_max_side = args.max_side  # the policy under test (0=off)
+    backend = get_face_backend(cfg)  # gate applied arithmetically below
 
     cases = []  # (image_or_path, gt_boxes_px, tag)
     if args.labels:
@@ -166,10 +167,6 @@ def main() -> None:
             if tag.startswith("scale->"):
                 target = int(tag[len("scale->"):-2])
                 scale = target / min(gt_boxes[0][2], gt_boxes[0][3])
-            if args.max_side:
-                w, h = (int(round(v * scale)) for v in img.size)
-                if max(w, h) > args.max_side:
-                    scale *= args.max_side / max(w, h)
             if scale != 1.0:
                 nw = max(1, int(round(img.size[0] * scale)))
                 nh = max(1, int(round(img.size[1] * scale)))

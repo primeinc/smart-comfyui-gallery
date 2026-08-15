@@ -134,15 +134,25 @@ class OpenCVFaceBackend(FaceBackend):
     """
 
     model_id = "opencv/yunet+sface"
-    model_version = "yunet-2023mar+sface-2021dec-v1"
+    model_version = "yunet-2023mar+sface-2021dec-v2-ms1600"
 
-    def __init__(self, models_dir: str, min_det_score: float = 0.5, min_face_px: int = 24):
+    def __init__(
+        self,
+        models_dir: str,
+        min_det_score: float = 0.5,
+        min_face_px: int = 24,
+        detect_max_side: int = 1600,
+    ):
         """Load both ONNX models. `min_det_score` is the minimum detector
         confidence for a face to be reported; `min_face_px` is the minimum
-        face box side in source pixels — YuNet detects down to ~10px, and
-        detections near that floor are featureless, embed into one generic
-        SFace region, and chain unrelated clusters together
-        (docs/FACE_CLUSTERING.md has the measured basis for the default)."""
+        face box side in detect-input pixels — YuNet detects down to ~10px,
+        and detections near that floor are featureless, embed into one
+        generic SFace region, and chain unrelated clusters together.
+        `detect_max_side` caps the detection input: images larger than N px
+        on their longest side are downscaled first, keeping large faces
+        inside YuNet's ~10-300px training band (measured: >=300px-face
+        recall 55%->97%, false positives 7x down, detection 3.7x faster —
+        docs/FACE_CLUSTERING.md). 0 disables the cap."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise BackendUnavailable(
                 "this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF"
@@ -176,10 +186,19 @@ class OpenCVFaceBackend(FaceBackend):
                 cv2_log.setLogLevel(prev_level)
         self._min_det_score = min_det_score
         self._min_face_px = min_face_px
+        self._detect_max_side = detect_max_side
 
     def detect(self, img: Image.Image) -> list:
         """Detect faces, embed each via SFace on the aligned crop, and return
-        `FaceDetection`s with coordinates normalized to [0, 1]."""
+        `FaceDetection`s with coordinates normalized to [0, 1]. Detection and
+        alignment run on the (possibly downscaled) detect input; normalized
+        coordinates are scale-free."""
+        if self._detect_max_side and max(img.size) > self._detect_max_side:
+            f = self._detect_max_side / max(img.size)
+            img = img.resize(
+                (max(1, round(img.size[0] * f)), max(1, round(img.size[1] * f))),
+                Image.LANCZOS,
+            )
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]
         if h == 0 or w == 0:
@@ -239,12 +258,18 @@ def get_face_backend(config: AIConfig) -> Optional[FaceBackend]:
         return StubFaceBackend(source)
     if name == "opencv":
         return OpenCVFaceBackend(
-            config.models_dir, config.face_min_det_score, config.face_min_px
+            config.models_dir,
+            config.face_min_det_score,
+            config.face_min_px,
+            config.face_detect_max_side,
         )
     if name == "auto":
         try:
             return OpenCVFaceBackend(
-                config.models_dir, config.face_min_det_score, config.face_min_px
+                config.models_dir,
+                config.face_min_det_score,
+                config.face_min_px,
+                config.face_detect_max_side,
             )
         except BackendUnavailable:
             return None

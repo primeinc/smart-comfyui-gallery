@@ -125,6 +125,35 @@ measured load context (`load.contaminated` = external load exceeded 10%
 at some point during timing). Best-of-N timing takes the least-loaded
 window.
 
+## Detection policy
+
+Detection input is capped at `face_detect_max_side` = 1600 px (env
+`AI_DAM_FACE_DETECT_MAX_SIDE`, 0 disables): larger images are downscaled
+before detection so large faces stay inside YuNet's ~10-300px band.
+Measured by `just bench face-recall` (103 trusted single-face sources,
+per-band synthesized variants, IoU >= 0.5, production detect path):
+
+| ground-truth min-side | native recall | max-side-1600 recall |
+|---|---|---|
+| <16 px | 51.5% | 51.5% |
+| 16-23 | 92.2% | 92.2% |
+| 24-39 | 93.2% | 93.2% |
+| 40-79 | 94.2% | 94.2% |
+| 80-159 | 99.0% | 99.0% |
+| 160-299 | 100% | 100% |
+| >=300 | 55.3% | **97.1%** |
+
+Native policy also costs precision (66.3% vs 93.8%; 0.41 vs 0.06 false
+positives/image) and speed (62 vs 33 ms/image). The policy change bumps
+`model_version` to `yunet-2023mar+sface-2021dec-v2-ms1600`; instances from
+the two policies never mix. Records:
+`benchmarks/results/face_detection_recall_{native,ms1600}.json`.
+
+Detector replacement (SCRFD etc.) is not justified by this data: every
+band from 24-299px sits at 93-100% under the deployed detector, and the
+only weak bands are sub-gate junk (<24px) and the large-face hole the
+policy closes.
+
 ## Detection quality gate
 
 `face_min_px` (default 24, env `AI_DAM_FACE_MIN_PX`) drops detections whose
