@@ -58,6 +58,30 @@ not justify invoking it (`OMNIQUERY_ENABLE_FALLBACK=true` re-enables).
 | Defect segmentation (**runtime-verified**) | `MobileSamSegmenter`: `ChaoningZhang/MobileSAM` vit_t, weights `mobile_sam.pt` (40 MB) | Apache-2.0 | — | Box/point-prompted; **measured: IoU 0.998** vs ground truth on a planted defect with a loose box prompt, 3.6 s CPU. The worker segments every localizable finding of a fresh review; `generate_finding_mask` still forbids masks for global findings. |
 | Segmentation (interface ready; candidates, none shipped) | `facebookresearch/segment-anything-2` (SAM 2); `ChaoningZhang/MobileSAM`; `yunyangx/EfficientSAM` | Apache-2.0 (code + weights) | — | Box/point-prompted masks for **localizable** findings only. |
 
+## Critic failure mechanism and alternatives (vendor-doc vetted)
+
+The measured SmolVLM2 failure is the known sub-3B pathology of **visual
+token neglect**: under few-shot structured-output prompting, small
+language backbones over-attend the text tokens (including any example
+payload) and bypass cross-attention to the visual embeddings — producing
+schema-valid text that ignores the image. The shipped critic implements
+the standard mitigations, which is why it measures 4/4 grounded:
+grammar masks at sampling time instead of an in-context example payload
+to parrot (llama.cpp GBNF via `response_format`), zero-shot structural
+directives only, a describe-first stage with a deterministic CLIP
+grounding gate, and decomposed atomic questions (the same VQA-
+decomposition idea as TIFA/DSG applied to defect review).
+
+Alternative critics evaluated against WI-31's licensing stop condition:
+
+| Candidate | License (verified from source) | Verdict |
+|---|---|---|
+| `Qwen/Qwen2.5-VL-3B-Instruct` | **Qwen RESEARCH LICENSE — non-commercial only** (LICENSE file in repo; corrects an earlier research pass that wrongly reported all Qwen2.5-VL sizes Apache-2.0) | **Excluded** per the no-research-only-weights stop condition, despite its attractive ~2.5 GB Q4 footprint. |
+| `Qwen/Qwen2.5-VL-7B-Instruct` | Apache-2.0 (model card) | **Shipped default** (measured 4/4 grounded). |
+| `microsoft/Phi-3.5-vision-instruct` (+ official INT4 ONNX) | MIT | Viable candidate; different runtime surface (onnxruntime-genai); unmeasured here. |
+| `OpenGVLab/InternVL2_5-2B/-4B` | Mixed (InternViT MIT; LM backbones carry InternLM/Qwen terms) | Requires per-model license verification before any adoption; unmeasured. |
+| `THUDM/ImageReward`, `yuvalkirstain/PickScore_v1`, HPSv2 | Apache-2.0 / MIT-family scalar scorers | Attractive future *score enrichment* (human-preference-calibrated quality/alignment scalars alongside CLIPScore); not typed-finding critics, so they complement rather than replace the VLM stage. |
+
 ## Supporting libraries
 
 | Library | Version | License | Used for |
