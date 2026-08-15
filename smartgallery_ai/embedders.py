@@ -143,9 +143,16 @@ def pick_torch_device(torch_module, role: Optional[str] = None) -> str:
         try:
             count = cuda.device_count()
             if count > 1:
-                best = max(range(count),
-                           key=lambda i: cuda.get_device_properties(i).total_memory)
-                return f"cuda:{best}"
+                def rank(i):
+                    props = cuda.get_device_properties(i)
+                    # Most VRAM wins; equal VRAM goes to the newer
+                    # generation (higher compute capability) -- otherwise
+                    # an older card that happens to enumerate first would
+                    # win the tie.
+                    return (props.total_memory,
+                            getattr(props, "major", 0),
+                            getattr(props, "minor", 0))
+                return f"cuda:{max(range(count), key=rank)}"
         except Exception:  # noqa: BLE001 - enumeration is best-effort; cuda:0 still works
             pass
         return "cuda"

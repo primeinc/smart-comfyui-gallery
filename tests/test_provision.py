@@ -941,3 +941,31 @@ def test_cuda_summary_absent_without_nvidia_driver(monkeypatch):
     'no NVIDIA GPU detected')."""
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
     assert P.cuda_summary() is None
+
+
+def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
+    """A mixed-generation machine reports each card with its OWN name,
+    compute capability, and VRAM -- never one card's name stitched to
+    another card's capability."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.1)
+    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
+    monkeypatch.setattr(P, "torch_cuda_index",
+                        lambda: "https://download.pytorch.org/whl/cu130")
+
+    def fake_run(cmd, **kw):
+        assert "--query-gpu=name,driver_version,compute_cap,memory.total" in cmd
+        return SimpleNamespace(
+            returncode=0, stderr="",
+            stdout=("NVIDIA GeForce RTX 3070 Ti, 591.86, 8.6, 8192 MiB\n"
+                    "NVIDIA GeForce RTX 5060 Ti, 591.86, 12.0, 16384 MiB\n"))
+
+    monkeypatch.setattr(P.subprocess, "run", fake_run)
+    summary = P.cuda_summary()
+    assert [g["name"] for g in summary["gpus"]] == [
+        "NVIDIA GeForce RTX 3070 Ti", "NVIDIA GeForce RTX 5060 Ti"]
+    assert summary["gpus"][0]["compute_capability"] == 8.6
+    assert summary["gpus"][1]["vram"] == "16384 MiB"
+    assert summary["driver"] == "591.86"
+    assert summary["torch_index"].endswith("/cu130")

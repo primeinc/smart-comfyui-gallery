@@ -373,14 +373,22 @@ def test_stub_backends_expose_model_identity_and_dim():
 # --- pick_torch_device: multi-GPU selection and pinning -----------------------
 
 
-def _fake_torch_with_gpus(vram_by_index):
-    """torch stand-in whose cuda reports one device per entry with that
-    total_memory; is_available is True."""
+def _fake_torch_with_gpus(cards):
+    """torch stand-in with one CUDA device per entry: either a bare
+    total_memory int or a (total_memory, cc_major, cc_minor) tuple."""
+
+    def _props(index):
+        entry = cards[index]
+        if isinstance(entry, tuple):
+            mem, major, minor = entry
+        else:
+            mem, major, minor = entry, 0, 0
+        return types.SimpleNamespace(total_memory=mem, major=major, minor=minor)
+
     cuda = types.SimpleNamespace(
         is_available=lambda: True,
-        device_count=lambda: len(vram_by_index),
-        get_device_properties=lambda i: types.SimpleNamespace(
-            total_memory=vram_by_index[i]),
+        device_count=lambda: len(cards),
+        get_device_properties=_props,
     )
     return types.SimpleNamespace(cuda=cuda, backends=None)
 
@@ -419,3 +427,13 @@ def test_pick_torch_device_role_override_beats_global(monkeypatch):
     assert pick_torch_device(torch, role="visual") == "cuda:1"
     assert pick_torch_device(torch, role="semantic") == "cpu"
     assert pick_torch_device(torch) == "cpu"
+
+
+def test_pick_torch_device_ties_go_to_the_newer_generation(monkeypatch):
+    """Equal VRAM: the higher compute-capability card wins the tie, not
+    whichever happens to enumerate first (mixed-generation rigs: an 8GB
+    Ampere in slot 0 must not beat an 8GB Blackwell in slot 1)."""
+    from smartgallery_ai.embedders import pick_torch_device
+    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
+    torch = _fake_torch_with_gpus([(8 << 30, 8, 6), (8 << 30, 12, 0)])
+    assert pick_torch_device(torch) == "cuda:1"

@@ -132,24 +132,34 @@ def torch_cuda_index() -> str:
 
 
 def cuda_summary():
-    """One-shot GPU inventory for boot logging and /status: name, driver,
-    compute capability, and the wheel index this machine would use — or
-    None when no NVIDIA driver is present."""
+    """One-shot GPU inventory for boot logging and /status: EVERY card
+    with its own name/compute capability/VRAM (a machine can mix
+    generations), the driver, and the wheel index this machine would use
+    — or None when no NVIDIA driver is present."""
     if not cuda_hardware_present():
         return None
-    name = driver = None
+    gpus = []
+    driver = None
     try:
         proc = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,driver_version",
+            ["nvidia-smi",
+             "--query-gpu=name,driver_version,compute_cap,memory.total",
              "--format=csv,noheader"],
             capture_output=True, text=True, timeout=10)
-        first = next((ln for ln in proc.stdout.splitlines() if ln.strip()), "")
-        if "," in first:
-            name, driver = [part.strip() for part in first.split(",", 1)]
+        for line in proc.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) >= 4:
+                driver = parts[1] or driver
+                try:
+                    cap = float(parts[2])
+                except ValueError:
+                    cap = None
+                gpus.append({"name": parts[0], "compute_capability": cap,
+                             "vram": parts[3]})
     except Exception:  # noqa: BLE001 - inventory is best-effort
         pass
     return {
-        "gpu": name,
+        "gpus": gpus,
         "driver": driver,
         "driver_cuda": _driver_cuda_version(),
         "compute_capability": _cuda_compute_capability(),

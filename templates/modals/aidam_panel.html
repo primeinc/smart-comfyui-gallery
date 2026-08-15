@@ -428,11 +428,13 @@
 
         const gpu = status.gpu;
         if (gpu) {
-            html += `<span class="aidam-section-title">GPU</span>
-                <div style="color:#ddd; font-size:0.85rem;">🎮 ${escapeAidamHtml(gpu.gpu || 'unknown NVIDIA device')}
-                &middot; driver ${escapeAidamHtml(gpu.driver || '?')} (CUDA ${escapeAidamHtml(gpu.driver_cuda || '?')})
-                &middot; compute ${escapeAidamHtml(gpu.compute_capability || '?')}
-                &middot; wheels ${escapeAidamHtml(String(gpu.torch_index || '').split('/').pop() || '?')}</div>`;
+            html += '<span class="aidam-section-title">GPU</span><div style="color:#ddd; font-size:0.85rem; line-height:1.7;">';
+            (gpu.gpus || []).forEach((card, idx) => {
+                const active = devices && Object.values(devices).some(d => d === ('cuda:' + idx))
+                    || ((gpu.gpus || []).length === 1 && Object.values(devices || {}).some(d => d === 'cuda'));
+                html += `🎮 GPU${idx}: ${escapeAidamHtml(card.name || '?')} &middot; compute ${escapeAidamHtml(card.compute_capability || '?')} &middot; ${escapeAidamHtml(card.vram || '?')}${active ? ' &middot; <b style="color:var(--ai-color);">in use</b>' : ''}<br>`;
+            });
+            html += `driver ${escapeAidamHtml(gpu.driver || '?')} (CUDA ${escapeAidamHtml(gpu.driver_cuda || '?')}) &middot; wheels ${escapeAidamHtml(String(gpu.torch_index || '').split('/').pop() || '?')}</div>`;
         }
 
         html += '<span class="aidam-section-title">Backends</span><div style="display:flex; flex-wrap:wrap; gap:8px;">';

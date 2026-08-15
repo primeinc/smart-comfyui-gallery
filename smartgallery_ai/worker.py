@@ -340,12 +340,16 @@ class AIWorker:
         except Exception:  # noqa: BLE001 - inventory is best-effort
             gpu = None
         if gpu is not None:
+            for idx, card in enumerate(gpu.get("gpus") or []):
+                _logger.info(
+                    "[AI] GPU%d: %s (compute capability %s, %s)",
+                    idx, card.get("name") or "unknown NVIDIA device",
+                    card.get("compute_capability"), card.get("vram") or "?")
             _logger.info(
-                "[AI] GPU: %s (driver %s, CUDA %s, compute capability %s) "
-                "-> torch wheels %s",
-                gpu.get("gpu") or "unknown NVIDIA device",
+                "[AI] driver %s (CUDA %s) -> torch wheels %s; device rule: "
+                "most VRAM, newest generation on ties (AI_DAM_DEVICE=cuda:N "
+                "overrides)",
                 gpu.get("driver") or "?", gpu.get("driver_cuda") or "?",
-                gpu.get("compute_capability"),
                 (gpu.get("torch_index") or "").rsplit("/", 1)[-1] or "?")
         else:
             _logger.info("[AI] no NVIDIA GPU detected — CPU wheels/devices")
