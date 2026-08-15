@@ -329,6 +329,9 @@ IS_EXHIBITION_MODE = False
 #
 ENABLE_AI_SEARCH = os.environ.get('ENABLE_AI_SEARCH', 'false').lower() == 'true'
 GENERATE_WAVEFORMS = os.environ.get('GENERATE_WAVEFORMS', 'false').lower() == 'true'
+# Default for server-side thumbnail generation; a runtime toggle stored in
+# the DB (Tools menu / POST /galleryout/api/site_settings) overrides it.
+GENERATE_THUMBNAILS = os.environ.get('GENERATE_THUMBNAILS', 'true').lower() == 'true'
 COMFYUI_SERVER_URL = os.environ.get('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
 
 
@@ -1561,8 +1564,37 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
         pass # Silently fail if corrupted or timeout
     return None
 
+# Site setting cache for thumbnail_generation_enabled(); per-process, short
+# TTL so scan workers and the web process converge quickly after a toggle.
+_THUMBNAIL_SETTING_CACHE = {'value': None, 'read_at': 0.0}
+
+
+def thumbnail_generation_enabled():
+    """Site setting: spend CPU on server-side thumbnail generation?
+
+    Stored in ai_metadata (key 'thumbnail_generation', '1'/'0') so it survives
+    restarts; the GENERATE_THUMBNAILS env default applies while unset.
+    Toggling never touches existing cached thumbnails: cache keys are
+    md5(path + mtime), so cached thumbs keep serving either way and
+    regeneration only ever happens for files whose content changed."""
+    now = time.time()
+    if _THUMBNAIL_SETTING_CACHE['value'] is not None and now - _THUMBNAIL_SETTING_CACHE['read_at'] < 5:
+        return _THUMBNAIL_SETTING_CACHE['value']
+    value = GENERATE_THUMBNAILS
+    try:
+        with get_db_connection() as conn:
+            row = conn.execute("SELECT value FROM ai_metadata WHERE key = 'thumbnail_generation'").fetchone()
+        if row is not None:
+            value = (row[0] != '0')
+    except Exception:
+        pass  # missing table (first boot): fall back to the env default
+    _THUMBNAIL_SETTING_CACHE['value'] = value
+    _THUMBNAIL_SETTING_CACHE['read_at'] = now
+    return value
+
+
 def create_thumbnail(filepath, file_hash, file_type):
-    Image.MAX_IMAGE_PIXELS = None 
+    Image.MAX_IMAGE_PIXELS = None
     
     # --- IMAGES / ANIMATIONS ---
     if file_type in ['image', 'animated_image']:
@@ -1871,7 +1903,7 @@ def process_single_file(filepath):
         metadata = analyze_file_metadata(filepath)
         file_hash_for_thumbnail = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
         
-        if not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash_for_thumbnail}.*")):
+        if thumbnail_generation_enabled() and not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash_for_thumbnail}.*")):
             create_thumbnail(filepath, file_hash_for_thumbnail, metadata['type'])
         
         if GENERATE_WAVEFORMS and metadata['type'] in ['video', 'audio']:
@@ -6202,6 +6234,14 @@ def serve_thumbnail(file_id):
     file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
     existing_thumbnails = glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*"))
     if existing_thumbnails: return send_file(existing_thumbnails[0])
+    if not thumbnail_generation_enabled() and info['type'] in ('image', 'animated_image'):
+        # Site setting says no thumbnail compute: serve the original and let
+        # the browser downscale. Videos fall through — a raw video file can't
+        # act as an <img> tile, so a single poster frame is still rendered
+        # on demand.
+        if os.path.exists(filepath):
+            return send_file(filepath)
+        abort(404)
     print(f"WARN: Thumbnail not found for {os.path.basename(filepath)}, generating...")
     cache_path = create_thumbnail(filepath, file_hash, info['type'])
     if cache_path and os.path.exists(cache_path): return send_file(cache_path)
@@ -10949,6 +10989,33 @@ def api_workflow_files_suggestions():
         'suggestions': matching_suggestions[:15],
         'did_you_mean': did_you_mean
     })
+
+
+@app.route('/galleryout/api/site_settings', methods=['GET'])
+def api_site_settings_get():
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    return jsonify({
+        'status': 'success',
+        'thumbnail_generation': thumbnail_generation_enabled(),
+    })
+
+
+@app.route('/galleryout/api/site_settings', methods=['POST'])
+@management_api_only
+def api_site_settings_set():
+    data = request.get_json(silent=True) or {}
+    if 'thumbnail_generation' not in data:
+        return jsonify({'status': 'error', 'message': 'No known setting in payload'}), 400
+    enabled = bool(data['thumbnail_generation'])
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('thumbnail_generation', ?, ?)",
+            ('1' if enabled else '0', time.time()),
+        )
+        conn.commit()
+    _THUMBNAIL_SETTING_CACHE['value'] = None  # re-read on next check
+    return jsonify({'status': 'success', 'thumbnail_generation': enabled})
 
 
 @app.route('/galleryout/api/cluster_hash_status')
