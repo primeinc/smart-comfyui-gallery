@@ -1,0 +1,21 @@
+# Optional AI DAM layer (WI-31). NOT required for core SmartGallery.
+# Install only when enabling ENABLE_AI_DAM / the OmniQuery local NL path.
+# Model weights are provisioned separately into .AImodels/ (see docs/AI_MODELS.md);
+# nothing here downloads models at runtime.
+
+# --- always-useful, pure-Python/numpy (no model weights needed) ---
+# (numpy + Pillow + opencv-python already come from requirements.txt and
+#  cover exact/perceptual hashing, the vector store, and the OpenCV face
+#  backend once ONNX weights are provisioned.)
+
+# --- OmniQuery local natural-language parsing ---
+cactus-needle>=2.0.4        # Needle2 primary intent parser (Apache-2.0)
+llama-cpp-python>=0.3.0      # optional constrained fallback parser (MIT); off by default
+
+# --- semantic / visual embedding backends (enable by provisioning weights) ---
+# open_clip_torch           # semantic space (MIT); pulls in torch
+# torch                     # required by open_clip / dinov2 backends
+# transformers              # visual space (facebook/dinov2-small, Apache-2.0)
+
+# --- testing ---
+pytest
