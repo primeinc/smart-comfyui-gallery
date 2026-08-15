@@ -78,4 +78,5 @@ temp
 benchmarks/results/*
 !benchmarks/results/grounding_calibration.json
 !benchmarks/results/wi31_benchmark.json
+!benchmarks/results/faiss_graph_evidence.json
 run_smartgallery.bat

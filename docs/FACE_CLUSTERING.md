@@ -91,17 +91,17 @@ Visual sampling of cluster contact sheets (crops of members) shows:
   is scored as error while being correct.
 - Coherent single-person clusters form at every threshold tested.
 
-Graph-build timings at that shape, threshold 0.5, `OMP_WAIT_POLICY=PASSIVE`
-(faiss wiki Troubleshooting), 8 OMP threads (physical cores, faiss wiki
-How-to-make-Faiss-run-faster):
+Graph-build timings at that shape, threshold 0.5, idle machine,
+`OMP_WAIT_POLICY=PASSIVE` (faiss wiki Troubleshooting), 8 OMP threads
+(physical cores, faiss wiki How-to-make-Faiss-run-faster):
 
 | backend | graph build |
 |---|---|
-| torch-cuda | ~25 ms |
-| faiss-cpu | ~480 ms |
-| numpy | ~3.5 s |
+| torch-cuda | 24 ms |
+| faiss-cpu | 270 ms |
+| numpy | 1.27 s |
 
-Chinese Whispers on the same graph: 1.2-1.9 s (all backends; CPU-bound).
+Chinese Whispers on the same graph: 0.9-1.5 s (all backends; CPU-bound).
 
 ## Reproduce
 

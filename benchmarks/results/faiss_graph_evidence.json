@@ -1,0 +1,69 @@
+{
+  "source": "images(C:/Users/will/dev/sg-lab/hf-datasets)",
+  "threshold": 0.5,
+  "vectors": [
+    12713,
+    128
+  ],
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+    "cpu_count": 16,
+    "python": "3.13.5"
+  },
+  "backends": {
+    "torch-cuda": {
+      "runtime": "torch 2.13.0+cu130 on NVIDIA GeForce RTX 3070 Ti",
+      "graph_ms": 24.4,
+      "chinese_whispers_ms": 1499.7,
+      "edges": 133460,
+      "clusters": 7217,
+      "largest_cluster": 2365
+    },
+    "faiss-cpu": {
+      "runtime": "faiss 1.15.0 omp=8 wait_policy=PASSIVE",
+      "graph_ms": 269.7,
+      "chinese_whispers_ms": 1202.4,
+      "edges": 133460,
+      "clusters": 7217,
+      "largest_cluster": 2365
+    },
+    "numpy": {
+      "runtime": "numpy 2.5.2",
+      "graph_ms": 1267.6,
+      "chinese_whispers_ms": 851.1,
+      "edges": 133460,
+      "clusters": 7217,
+      "largest_cluster": 2365
+    }
+  },
+  "equivalence": {
+    "torch-cuda==faiss-cpu": {
+      "shared_edges_max_weight_delta": 4.172325134277344e-07,
+      "divergent_edges": 0,
+      "divergent_edges_all_at_threshold_boundary": true,
+      "clustering": true
+    },
+    "torch-cuda==numpy": {
+      "shared_edges_max_weight_delta": 4.172325134277344e-07,
+      "divergent_edges": 0,
+      "divergent_edges_all_at_threshold_boundary": true,
+      "clustering": true
+    }
+  },
+  "sanity": {
+    "faces_per_dataset": {
+      "Black_People_Face_Recognition": 111,
+      "IndoorSceneRecognition": 1638,
+      "caucasian-people-kyc-photo-dataset": 356,
+      "people": 7084,
+      "people_detection": 542,
+      "real_people_3000": 2982
+    },
+    "clusters": 7217,
+    "top_cluster_share": 0.186,
+    "labeled_identities": 31,
+    "identities_fully_grouped": 4,
+    "mean_identity_purity": 0.5211
+  }
+}
