@@ -30,6 +30,11 @@ import sqlite3
 import sys
 import time
 
+# Must precede any BLAS-loading import: with OpenBLAS (what pip faiss-cpu and
+# numpy wheels bundle), active OpenMP spin-waiting degrades search seriously
+# (faiss wiki Troubleshooting.md "Slow brute-force search with OpenBLAS").
+os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+
 import numpy as np
 
 RESULTS_PATH = os.path.join(
@@ -245,6 +250,14 @@ def main() -> None:
     ap.add_argument("--centers", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--repeat", type=int, default=3)
+    ap.add_argument(
+        "--omp-threads",
+        type=int,
+        default=0,
+        help="OpenMP threads for faiss (0 = library default). Upstream "
+        "guidance (faiss wiki How-to-make-Faiss-run-faster.md) is the number "
+        "of PHYSICAL cores, not the hyperthread default.",
+    )
     args = ap.parse_args()
 
     faces = load_faces_module()
@@ -290,9 +303,13 @@ def main() -> None:
     try:
         import faiss
 
+        if args.omp_threads > 0:
+            faiss.omp_set_num_threads(args.omp_threads)
         backends["faiss-cpu"] = (
             faces._neighbor_graph_faiss,
-            f"faiss {getattr(faiss, '__version__', '?')} omp={faiss.omp_get_max_threads()}",
+            f"faiss {getattr(faiss, '__version__', '?')} "
+            f"omp={faiss.omp_get_max_threads()} "
+            f"wait_policy={os.environ.get('OMP_WAIT_POLICY', 'default')}",
         )
     except ImportError:
         pass
