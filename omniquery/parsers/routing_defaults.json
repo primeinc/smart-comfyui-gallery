@@ -1,0 +1,8 @@
+{
+    "_provisional": true,
+    "_note": "PROVISIONAL. These four thresholds were not fit to any measured data -- they encode the qualitative findings from manual probing (Needle2 confidence is not trustworthy a priori; a full deterministic heuristic parse should always win; a non-full-coverage model output should not be trusted at all by default). Run `python -m omniquery.benchmark.harness --backends heuristic,needle2,fallback_qwen,router --out <path>` against omniquery/benchmark/corpus.jsonl and use its recommended_thresholds section to replace these before relying on needle2/fallback_qwen acceptance in production.",
+    "needle2_min_confidence": 0.3,
+    "needle2_min_coverage": 1.0,
+    "fallback_min_coverage": 1.0,
+    "heuristic_partial_floor": 0.75
+}
