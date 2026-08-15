@@ -536,10 +536,34 @@ function initClusteringBanner() {
             promptBtn = ` &nbsp;<button type="button" class="glass-btn dym-btn" onclick="openClusterPromptModal('${targetId}')" title="View Shared Prompt Text" style="padding:2px 8px !important; height:24px !important; font-size:0.75rem !important;">👁️ View Prompt</button>`;
         }
 
-        bannerText.innerHTML = `<strong>CLUSTERING MODE ACTIVE</strong> &nbsp;|&nbsp; Basis: <span style="color:var(--ai-color,#ff00ff); font-weight:bold;">${basisLabel}</span> &nbsp;|&nbsp; <span style="color:#00ffff; font-weight:bold;">${scopeLabel}</span> ${countLabel}${promptBtn}`;
+        bannerText.innerHTML = `<strong>CLUSTERING MODE ACTIVE</strong> &nbsp;|&nbsp; Basis: <span style="color:var(--ai-color,#ff00ff); font-weight:bold;">${basisLabel}</span> &nbsp;|&nbsp; <span style="color:#00ffff; font-weight:bold;">${scopeLabel}</span> ${countLabel}${promptBtn}<span id="cluster-hash-progress"></span>`;
         banner.setAttribute('style', 'display: flex !important; background: rgba(155, 48, 255, 0.2) !important; border: 2px solid var(--ai-color, #ff00ff) !important; box-shadow: 0 4px 20px rgba(255, 0, 255, 0.3) !important;');
         document.body.classList.add('cluster-mode-active');
+        pollClusterHashProgress();
     }
+}
+
+let clusterHashWasPending = false;
+
+function pollClusterHashProgress() {
+    const el = document.getElementById('cluster-hash-progress');
+    if (!el) return;
+    fetch('/galleryout/api/cluster_hash_status')
+        .then(r => r.json())
+        .then(d => {
+            if (d.status !== 'success') return;
+            if (d.running || d.pending > 0) {
+                clusterHashWasPending = true;
+                const prog = (d.running && d.total > 0) ? ` (${d.done}/${d.total})` : '';
+                el.innerHTML = ` &nbsp;|&nbsp; <span style="color:#ffc107; font-weight:bold;">⏳ Hashing ${d.pending} assets${prog} — clusters are partial</span>`;
+                setTimeout(pollClusterHashProgress, 5000);
+            } else if (clusterHashWasPending) {
+                el.innerHTML = ` &nbsp;|&nbsp; <button type="button" class="glass-btn dym-btn" onclick="window.location.reload()" style="padding:2px 8px !important; height:24px !important; font-size:0.75rem !important;">✅ Hashing complete — Refresh clusters</button>`;
+            } else {
+                el.innerHTML = '';
+            }
+        })
+        .catch(() => {});
 }
 
 if (document.readyState === 'loading') {

@@ -48,8 +48,16 @@ def _view_dict(row):
 
 
 @pytest.fixture()
-def sg(smartgallery_app):
-    """The monolith module plus per-test cleanup of every wfc: row."""
+def sg(smartgallery_app, monkeypatch):
+    """The monolith module plus per-test cleanup of every wfc: row.
+
+    The async cluster-backfill dispatcher is stubbed to a no-op so tests never
+    spawn real background threads by accident; tests that exercise the real
+    dispatcher use the stashed `_real_ensure` reference."""
+    real_ensure = smartgallery_app.ensure_cluster_backfill_async
+    monkeypatch.setattr(smartgallery_app, 'ensure_cluster_backfill_async',
+                        lambda force_all=False: True)
+    smartgallery_app._real_ensure = real_ensure
     yield smartgallery_app
     with smartgallery_app.get_db_connection() as conn:
         conn.execute("DELETE FROM files WHERE id LIKE ?", (_PREFIX + '%',))
@@ -318,8 +326,8 @@ def test_schema_bump_forces_full_rehash_once(sg, monkeypatch):
         conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('cluster_hash_schema', 'stale', 0)")
         conn.commit()
         calls = []
-        monkeypatch.setattr(sg, 'backfill_unhashed_workflows',
-                            lambda conn=None, force_all=False: calls.append(force_all) or 0)
+        monkeypatch.setattr(sg, 'ensure_cluster_backfill_async',
+                            lambda force_all=False: calls.append(force_all) or True)
 
         # Act: marker mismatch -> one forced full re-hash, marker updated.
         sg.check_and_update_workflow_hashes(conn)
@@ -330,6 +338,73 @@ def test_schema_bump_forces_full_rehash_once(sg, monkeypatch):
         assert calls == [True, False]
         stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()[0]
         assert stored == sg.CLUSTER_HASH_SCHEMA
+
+
+def test_clustering_trigger_is_async_not_inline(sg, monkeypatch):
+    """A clustering request with unhashed rows must kick the background
+    worker and return partial results immediately, never hash inline."""
+    # Arrange: one pending (unhashed) row and one already-clustered row.
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'apend', has_workflow=0, workflow_hash='', prompt_hash='')
+        _insert_file(conn, 'adone', has_workflow=0, workflow_hash='archAsync', prompt_hash='pA')
+    kicked = []
+    monkeypatch.setattr(sg, 'ensure_cluster_backfill_async',
+                        lambda force_all=False: kicked.append(force_all) or True)
+
+    def _forbidden(conn=None, force_all=False):
+        raise AssertionError("backfill ran inline during a clustering request")
+    monkeypatch.setattr(sg, 'backfill_unhashed_workflows', _forbidden)
+
+    # Act
+    with sg.app.test_request_context('/'):
+        result = sg.process_clustering([], 'workflow', 'date_desc', None, 'global')
+
+    # Assert: worker kicked once, partial results served.
+    assert kicked == [False]
+    ids = {f['id'] for f in result if f['id'].startswith(_PREFIX)}
+    assert _PREFIX + 'adone' in ids
+    assert _PREFIX + 'apend' not in ids
+
+
+def test_ensure_backfill_collapses_concurrent_runs(sg, monkeypatch):
+    import threading
+    release = threading.Event()
+    started = threading.Event()
+
+    def _slow_backfill(conn=None, force_all=False):
+        started.set()
+        release.wait(timeout=5)
+        return 0
+    monkeypatch.setattr(sg, 'backfill_unhashed_workflows', _slow_backfill)
+
+    # Act: first call starts a run, second collapses while it is in flight.
+    # (The sg fixture stubs the dispatcher; this test targets the real one.)
+    assert sg._real_ensure() is True
+    assert started.wait(timeout=5)
+    assert sg._real_ensure() is False
+    release.set()
+
+    # The state flag clears once the thread finishes (poll briefly).
+    import time as _t
+    for _ in range(100):
+        if not sg._CLUSTER_BACKFILL_STATE['running']:
+            break
+        _t.sleep(0.05)
+    assert sg._CLUSTER_BACKFILL_STATE['running'] is False
+
+
+def test_cluster_hash_status_endpoint(sg):
+    # Arrange: one pending row.
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'statp', has_workflow=0, workflow_hash='', prompt_hash='')
+
+    # Act
+    data = sg.app.test_client().get('/galleryout/api/cluster_hash_status').get_json()
+
+    # Assert
+    assert data['status'] == 'success'
+    assert data['pending'] >= 1
+    assert 'running' in data and 'done' in data and 'total' in data
 
 
 def test_models_mode_global_clustering(sg):

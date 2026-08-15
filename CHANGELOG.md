@@ -33,6 +33,7 @@ The gallery now identifies and parses embedded generation metadata from every ma
   - **Model Set** (`models_hash`, new column): the checkpoint + LoRA/VAE file set — for ComfyUI graphs and foreign images alike. Broad "everything made with this combo" clusters.
   - **Prompt** (`prompt_hash`): unchanged.
   The clustering modal, banner, Details panel, and Cluster Inspector all support the new basis; a stored schema marker triggers one automatic full re-hash on the next startup. Targets without a ComfyUI graph can now open the clustering modal and the Cluster Inspector (both previously refused `has_workflow=0` assets).
+* **Async hashing:** the cluster-hash backfill now runs on a background thread — startup no longer blocks on a large migration, and a clustering request with unhashed files serves honest partial clusters immediately instead of hashing inline. Progress is visible in the sidebar AI hub (`🧬 hashing cluster identities: N/M`) and, in cluster mode, in the banner with a "Hashing N assets — clusters are partial" note that turns into a Refresh button when done (`/api/cluster_hash_status`). Interrupting a run is safe: the pending-selection logic resumes exactly where it stopped.
 
 ---
 

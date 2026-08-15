@@ -225,7 +225,17 @@
         parts.push(worker.running ? (gpuDev ? '⚡ ' + escapeAidamHtml(gpuDev) : '🧮 cpu') : '<span style="color:#ff6b6b;">worker stopped</span>');
         const errs = (worker.stats || {}).errors || 0;
         if (errs > 0) parts.push(`<span style="color:#e8a19a;">${errs} errors</span>`);
-        box.innerHTML = `<div>${line1}</div><div>${parts.join(' · ')}</div>`;
+        // Cluster-hash backfill (workflow/prompt/model-set identities) runs in
+        // its own background thread; show it here while it works.
+        let clusterLine = '';
+        try {
+            const ch = await (await fetch('/galleryout/api/cluster_hash_status')).json();
+            if (ch.status === 'success' && (ch.running || ch.pending > 0)) {
+                const prog = (ch.running && ch.total > 0) ? `${ch.done}/${ch.total}` : `${ch.pending} queued`;
+                clusterLine = `<div><span style="color:#ffc107;">🧬 hashing cluster identities: ${prog}</span></div>`;
+            }
+        } catch (e) { /* status endpoint unavailable: hide the line */ }
+        box.innerHTML = `<div>${line1}</div><div>${parts.join(' · ')}</div>${clusterLine}`;
     }
 
     let aidamActiveTab = 'similar';  // which tab a finished provisioning run should reload

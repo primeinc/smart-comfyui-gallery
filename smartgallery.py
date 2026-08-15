@@ -4029,6 +4029,10 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
     if not cluster_mode:
         return current_files
 
+    # Never hash inline: a first clustering click on a large un-hashed library
+    # used to block this request for minutes. Kick the background worker and
+    # serve honest partial clusters; the banner shows hashing progress and the
+    # stale-refresh below picks up rows the worker finishes mid-request.
     with get_db_connection() as conn_check:
         unhashed_cnt = conn_check.execute(
             """SELECT COUNT(*) FROM files
@@ -4037,8 +4041,8 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                AND (prompt_hash IS NULL OR prompt_hash = '')
                AND hash_failed = 0"""
         ).fetchone()[0]
-        if unhashed_cnt > 0:
-            backfill_unhashed_workflows(conn_check)
+    if unhashed_cnt > 0:
+        ensure_cluster_backfill_async()
 
     # The hash column that defines cluster identity for this mode. Files
     # missing it cannot belong to any cluster of this kind.
@@ -10738,6 +10742,8 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
             if close_conn: conn.close()
             return 0
 
+        _CLUSTER_BACKFILL_STATE['total'] = total_unhashed
+        _CLUSTER_BACKFILL_STATE['done'] = 0
         print(f"{Colors.BLUE}INFO: [Clustering] Starting hash indexing for {total_unhashed} files...{Colors.RESET}", flush=True)
 
         def _work(item):
@@ -10770,6 +10776,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
                 except Exception:
                     failed_ids.append((futures[future],))
 
+                _CLUSTER_BACKFILL_STATE['done'] = completed
                 pct = int((completed / total_unhashed) * 100)
                 if pct % 5 == 0 and pct != last_reported_pct:
                     last_reported_pct = pct
@@ -10807,6 +10814,39 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         if close_conn and conn:
             conn.close()
 
+# Live progress of the cluster-hash backfill, readable from any thread.
+# 'running' is owned by ensure_cluster_backfill_async(); done/total are
+# written by backfill_unhashed_workflows() itself, so synchronous callers
+# (tests, scripts) report progress the same way.
+_CLUSTER_BACKFILL_STATE = {'running': False, 'done': 0, 'total': 0}
+_CLUSTER_BACKFILL_LOCK = threading.Lock()
+
+
+def ensure_cluster_backfill_async(force_all=False):
+    """Run the cluster-hash backfill on a daemon thread unless one is already
+    in flight; returns True when a new run was started. The backfill is
+    idempotent and convergent (pending = both hashes empty and not failed),
+    so a request that arrives while a run is active can simply be dropped —
+    the active run picks those rows up, and the next trigger catches any
+    stragglers."""
+    with _CLUSTER_BACKFILL_LOCK:
+        if _CLUSTER_BACKFILL_STATE['running']:
+            return False
+        _CLUSTER_BACKFILL_STATE['running'] = True
+        _CLUSTER_BACKFILL_STATE['done'] = 0
+        _CLUSTER_BACKFILL_STATE['total'] = 0
+
+    def _run():
+        try:
+            backfill_unhashed_workflows(force_all=force_all)
+        finally:
+            with _CLUSTER_BACKFILL_LOCK:
+                _CLUSTER_BACKFILL_STATE['running'] = False
+
+    threading.Thread(target=_run, name='ClusterHashBackfill', daemon=True).start()
+    return True
+
+
 # Version of the cluster-hash column scheme. Bump when a hash's meaning or
 # coverage changes (not just the ComfyUI graph algorithm, which the sampling
 # check below detects on its own) so existing rows are recomputed once.
@@ -10831,12 +10871,12 @@ def check_and_update_workflow_hashes(conn):
             (CLUSTER_HASH_SCHEMA, time.time()),
         )
         conn.commit()
-        print(f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities...{Colors.RESET}")
-        backfill_unhashed_workflows(conn, force_all=True)
+        print(f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities in the background...{Colors.RESET}")
+        ensure_cluster_backfill_async(force_all=True)
         return
 
     sample = conn.execute("SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3").fetchall()
-    
+
     needs_update = False
     for row in sample:
         if os.path.exists(row['path']):
@@ -10845,13 +10885,13 @@ def check_and_update_workflow_hashes(conn):
             if new_wf_hash and new_wf_hash != row['workflow_hash']:
                 needs_update = True
                 break
-                
+
     if needs_update:
-        print(f"{Colors.YELLOW}INFO: Workflow clustering algorithm updated. Re-indexing architectures...{Colors.RESET}")
-        backfill_unhashed_workflows(conn, force_all=True)
+        print(f"{Colors.YELLOW}INFO: Workflow clustering algorithm updated. Re-indexing architectures in the background...{Colors.RESET}")
+        ensure_cluster_backfill_async(force_all=True)
     else:
         # Standard check for newly added files that missed the hash
-        backfill_unhashed_workflows(conn, force_all=False)
+        ensure_cluster_backfill_async(force_all=False)
 
 @app.route('/galleryout/api/workflow_files_suggestions', methods=['GET'])
 def api_workflow_files_suggestions():
@@ -10908,6 +10948,28 @@ def api_workflow_files_suggestions():
         'status': 'success',
         'suggestions': matching_suggestions[:15],
         'did_you_mean': did_you_mean
+    })
+
+
+@app.route('/galleryout/api/cluster_hash_status')
+def api_cluster_hash_status():
+    """Progress of the background cluster-hash backfill, for the banner."""
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    with get_db_connection() as conn:
+        pending = conn.execute(
+            """SELECT COUNT(*) FROM files
+               WHERE (has_workflow = 1 OR type IN ('image', 'animated_image'))
+               AND (workflow_hash IS NULL OR workflow_hash = '')
+               AND (prompt_hash IS NULL OR prompt_hash = '')
+               AND hash_failed = 0"""
+        ).fetchone()[0]
+    return jsonify({
+        'status': 'success',
+        'running': _CLUSTER_BACKFILL_STATE['running'],
+        'done': _CLUSTER_BACKFILL_STATE['done'],
+        'total': _CLUSTER_BACKFILL_STATE['total'],
+        'pending': pending,
     })
 
 
