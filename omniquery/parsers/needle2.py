@@ -262,8 +262,13 @@ class Needle2Backend(ParserBackend):
 
         if not isinstance(resp, dict) or not resp.get("success") or not resp.get("function_calls"):
             error = resp.get("error") if isinstance(resp, dict) else "malformed response"
+            # error=None means the engine succeeded but chose to emit no tool
+            # call -- typically a query outside the frame vocabulary, not a
+            # crash. Say that instead of leaking "no function call: None".
+            reason = (f"no function call: {error}" if error
+                      else "model produced no structured query for this phrasing")
             return ParserOutcome(ast=None, confidence=confidence, backend=self.name, unsupported=True,
-                                  reason=f"no function call: {error}", latency_ms=latency_ms, raw=resp)
+                                  reason=reason, latency_ms=latency_ms, raw=resp)
 
         frame = _merge_calls(resp["function_calls"])
         ast_dict = frame_to_ast(frame, text)
