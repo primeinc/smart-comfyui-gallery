@@ -97,6 +97,25 @@ NL -> parser backend -> typed AST (ast.py, strict, versioned)
 - The legacy manual-SQL endpoint remains as a demoted "advanced" path with
   its existing authorizer; it is not the primary UX and no model feeds it.
 
+## Status against WI-31 (honest accounting)
+
+17 of 19 acceptance criteria are met with runtime evidence. Two are **not**:
+
+- **Generation review (AC6) — UNMET, blocking.** The pipeline
+  (schema validation, storage, worker wiring, UI) is complete and tested,
+  but no shipped critic model passes measurement: SmolVLM2-500M and -2.2B
+  scored 0/7 image-grounded schema-valid reviews (failure mode:
+  schema-valid fabrication), so `critic_backend='auto'` correctly fails
+  closed to None and the system does **not** emit reviews by default.
+  The capability requires a production-capable local multimodal critic
+  (Qwen2.5-VL-7B-class; exceeds the CPU/RAM budget this was built and
+  measured on). Architecture around a capability is not the capability.
+- **Defect segmentation (AC7) — constraint met, capability gated.** The
+  localizable-only mask gating and the no-source-modification property are
+  enforced and probed, and the UI overlay works; but no non-stub segmenter
+  ships, and until AC6 produces real localizable findings there is nothing
+  real to segment.
+
 ## Security
 
 - Passwords: Argon2id via `argon2-cffi` (`sg_auth.py`). No decrypt
