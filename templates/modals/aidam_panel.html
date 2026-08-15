@@ -125,6 +125,7 @@
         if (typeof currentLightboxFile === 'undefined' || !currentLightboxFile || !currentLightboxFile.id) return;
         aidamCurrentFileId = currentLightboxFile.id;
         aidamLoadedFor = {};
+        aidamStatusCache = null;  // re-read backend/provisioning state per open
 
         const overlay = document.getElementById('aidam-overlay');
         overlay.style.display = 'flex';
@@ -185,6 +186,35 @@
     function aidamDisabledMsg() { return '<div class="aidam-status-msg">🚫 The AI layer is disabled on this server. Ask an administrator to enable it (ENABLE_AI_DAM).</div>'; }
     function aidamEmptyMsg(msg) { return `<div class="aidam-status-msg">🌙 ${escapeAidamHtml(msg || 'No data yet.')}</div>`; }
     function aidamErrorMsg(msg) { return `<div class="aidam-status-msg aidam-status-error">⚠️ ${escapeAidamHtml(msg)}</div>`; }
+
+    // One /status fetch per panel open, shared by every tab's empty state.
+    let aidamStatusCache = null;
+    async function aidamFetchStatus() {
+        if (aidamStatusCache !== null) return aidamStatusCache;
+        try {
+            const res = await fetch('/galleryout/api/aidam/status');
+            aidamStatusCache = await res.json();
+        } catch (e) { aidamStatusCache = {}; }
+        return aidamStatusCache;
+    }
+
+    // Empty state that says WHY: backend missing -> download progress, the
+    // provision command, or the plain "no data yet" when the backend is fine.
+    async function aidamBackendAwareEmpty(backendKey, groupName, fallbackMsg) {
+        const status = await aidamFetchStatus();
+        const backends = status.backends || {};
+        if (backends[backendKey] === false) {
+            const prov = (status.worker || {}).provisioning || {};
+            if (prov.state === 'downloading') {
+                return `<div class="aidam-status-msg">⏳ Model weights are downloading in the background (${escapeAidamHtml((prov.groups || []).join(', '))}). This tab activates automatically once they land — check back in a few minutes.</div>`;
+            }
+            if (String(prov.state || '').startsWith('failed')) {
+                return `<div class="aidam-status-msg">⚠️ Automatic weight download failed (no network access?). Run <code>python -m smartgallery_ai provision ${groupName}</code> on the server, then reopen this panel.</div>`;
+            }
+            return `<div class="aidam-status-msg">📦 The ${escapeAidamHtml(groupName)} model is not available yet. Restart the app and it installs itself automatically (packages and weights; AI_DAM_AUTO_PROVISION=true is the default), or run <code>python -m smartgallery_ai provision ${groupName}</code> on the server.</div>`;
+        }
+        return aidamEmptyMsg(fallbackMsg);
+    }
     function aidamBackButton(fnName) { return `<button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem; margin-bottom:12px;" onclick="${fnName}()">← Back</button>`; }
 
     function aidamThumbCard(fileId, scoreLabel, badgeHtml) {
@@ -230,7 +260,12 @@
             const data = await res.json();
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const neighbors = data.neighbors || [];
-            if (neighbors.length === 0) { box.innerHTML = aidamEmptyMsg(data.note || 'No similar files found yet.'); return; }
+            if (neighbors.length === 0) {
+                box.innerHTML = await aidamBackendAwareEmpty(
+                    aidamSimilarSpace, aidamSimilarSpace,
+                    data.note || 'No similar files found yet.');
+                return;
+            }
             box.innerHTML = `<div class="aidam-thumb-grid">${neighbors.map(n => aidamThumbCard(n.file_id, aidamFormatScore(n.score))).join('')}</div>`;
         } catch (e) {
             box.innerHTML = aidamErrorMsg('Failed to load similar files.');
@@ -275,6 +310,11 @@
             const data = await res.json();
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const faces = data.faces || [];
+            if (faces.length === 0) {
+                box.innerHTML = await aidamBackendAwareEmpty(
+                    'face', 'faces', 'No faces detected in this file.');
+                return;
+            }
 
             let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <span style="color:var(--text-muted); font-size:0.85rem;">${faces.length} face${faces.length === 1 ? '' : 's'} detected</span>
@@ -425,7 +465,11 @@
             const res = await fetch(`/galleryout/api/aidam/review/${encodeURIComponent(aidamCurrentFileId)}`);
             const data = await res.json();
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
-            if (!data.review) { box.innerHTML = aidamEmptyMsg('No review computed for this file yet.'); return; }
+            if (!data.review) {
+                box.innerHTML = await aidamBackendAwareEmpty(
+                    'critic', 'critic', 'No review computed for this file yet.');
+                return;
+            }
 
             const review = data.review;
             const findings = data.findings || [];

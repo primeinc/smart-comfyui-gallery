@@ -2,13 +2,19 @@
 # Kept in sync with pyproject.toml extras 'ai' / 'ai-models'
 # (uv users: `uv sync --extra ai` / `--extra ai-models`).
 # Install only when enabling ENABLE_AI_DAM / the OmniQuery local NL path.
-# Model weights are provisioned separately into .AImodels/ (see docs/AI_MODELS.md);
-# nothing here downloads models at runtime.
+# Model weights land in .AImodels/ via `python -m smartgallery_ai provision`
+# or the worker's async auto-provisioning (AI_DAM_AUTO_PROVISION, default on);
+# backends and request handlers never download (see docs/AI_MODELS.md).
 
 # --- always-useful, pure-Python/numpy (no model weights needed) ---
 # (numpy + Pillow + opencv-python already come from requirements.txt and
 #  cover exact/perceptual hashing, the vector store, and the OpenCV face
 #  backend once ONNX weights are provisioned.)
+
+# --- model-weight provisioning (auto on worker start, or explicit CLI) ---
+huggingface_hub              # cached/resumable weight downloads for
+                             #   `python -m smartgallery_ai provision` and the
+                             #   worker's async auto-provisioning
 
 # --- OmniQuery local natural-language parsing ---
 cactus-needle>=2.0.4        # Needle2 primary intent parser (Apache-2.0)

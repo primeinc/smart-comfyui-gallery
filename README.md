@@ -376,11 +376,11 @@ Or download the Source Code ZIP from [Releases](https://github.com/biagiomaf/sma
 ```sh
 git clone https://github.com/biagiomaf/smart-comfyui-gallery
 cd smart-comfyui-gallery
-uv sync                        # core app (+ test tooling) into ./.venv
+uv sync                        # everything (app + AI runtimes, CPU torch) into ./.venv
 uv run python smartgallery.py  # run the gallery
 ```
 
-Optional extras: `uv sync --extra ai` adds the OmniQuery natural-language parser; `uv sync --extra ai-models` additionally installs the real embedding/critic/segmentation runtimes with CPU-only torch wheels (model weights are provisioned separately — see `docs/AI_MODELS.md`).
+Everything is included by default (`--no-group ai-models` for a lighter install). The AI layer is on by default: on first start it downloads any missing model weights in the background — and with a plain `pip install -r requirements.txt` install it even pip-installs its own runtimes lazily, choosing CUDA torch wheels automatically when an NVIDIA GPU is present (`AI_DAM_DEVICE=cpu` or `AI_DAM_AUTO_PROVISION=false` to opt out; `ENABLE_AI_DAM=false` disables the layer entirely) — see `docs/AI_MODELS.md`.
 
 **2. Create your launch script**
 

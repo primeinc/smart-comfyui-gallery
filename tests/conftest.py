@@ -12,6 +12,13 @@ import tempfile
 
 _SESSION_TMP_DIR = tempfile.mkdtemp(prefix="smartgallery_test_")
 
+# The AI layer is opt-OUT in production; the suite runs the monolith with
+# the explicit opt-out so browsing-path tests exercise the disabled
+# contract, and with auto-provisioning off so no test can ever download.
+# (Default-enabled itself is pinned in tests/test_provision.py.)
+os.environ.setdefault('ENABLE_AI_DAM', 'false')
+os.environ.setdefault('AI_DAM_AUTO_PROVISION', 'false')
+
 os.environ.setdefault('BASE_OUTPUT_PATH', os.path.join(_SESSION_TMP_DIR, 'output'))
 os.environ.setdefault('BASE_SMARTGALLERY_PATH', os.path.join(_SESSION_TMP_DIR, 'gallery'))
 os.environ.setdefault('BASE_INPUT_PATH', os.path.join(_SESSION_TMP_DIR, 'input'))

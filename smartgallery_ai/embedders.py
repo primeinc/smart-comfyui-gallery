@@ -11,7 +11,8 @@ use `get_semantic_backend`/`get_visual_backend` with a real backend name
 (`open_clip`, `dinov2`) instead.
 
 Real adapters lazy-import their runtime (torch/open_clip/transformers) and
-load weights ONLY from `AIConfig.models_dir` (local files, never downloaded).
+load weights ONLY from `AIConfig.models_dir`; nothing in this module
+downloads (weights arrive via smartgallery_ai.provision).
 When the runtime or weights are missing they raise `BackendUnavailable`
 rather than crashing at import time.
 """
@@ -119,6 +120,22 @@ class StubVisualEmbedder(VisualEmbedder):
         return _l2_normalize(hist)
 
 
+
+def pick_torch_device(torch_module) -> str:
+    """Best available torch device: honors AI_DAM_DEVICE when set,
+    otherwise CUDA > MPS > CPU. Defensive against builds lacking a
+    backend attribute entirely."""
+    forced = os.environ.get("AI_DAM_DEVICE", "").lower()
+    if forced:
+        return forced
+    cuda = getattr(torch_module, "cuda", None)
+    if cuda is not None and cuda.is_available():
+        return "cuda"
+    mps = getattr(getattr(torch_module, "backends", None), "mps", None)
+    if mps is not None and mps.is_available():
+        return "mps"
+    return "cpu"
+
 class OpenClipSemanticEmbedder(SemanticEmbedder):
     """Joint image/text embedding via open_clip ViT-B-32 (laion2b_s34b_b79k).
 
@@ -155,21 +172,22 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
             )
         except Exception as exc:
             raise BackendUnavailable(f"failed to load open_clip weights: {exc}") from exc
+        self._device = pick_torch_device(torch)
         model.eval()
-        self._model = model
+        self._model = model.to(self._device)
         self._preprocess = preprocess
         self._tokenizer = open_clip.get_tokenizer("ViT-B-32")
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """CLIP image feature, unit-normalized so image/text cosine works."""
-        tensor = self._preprocess(img.convert("RGB")).unsqueeze(0)
+        tensor = self._preprocess(img.convert("RGB")).unsqueeze(0).to(self._device)
         with self._torch.no_grad():
             features = self._model.encode_image(tensor)
         return _l2_normalize(features.squeeze(0).cpu().numpy())
 
     def embed_text(self, text: str) -> np.ndarray:
         """CLIP text feature, unit-normalized so image/text cosine works."""
-        tokens = self._tokenizer([text])
+        tokens = self._tokenizer([text]).to(self._device)
         with self._torch.no_grad():
             features = self._model.encode_text(tokens)
         return _l2_normalize(features.squeeze(0).cpu().numpy())
@@ -209,11 +227,14 @@ class Dinov2VisualEmbedder(VisualEmbedder):
         except Exception as exc:
             raise BackendUnavailable(f"failed to load dinov2 weights: {exc}") from exc
         self._model.eval()
+        self._device = pick_torch_device(torch)
+        self._model = self._model.to(self._device)
         self._torch = torch
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """DINOv2 global image descriptor (CLS token), unit-normalized."""
         inputs = self._processor(images=img.convert("RGB"), return_tensors="pt")
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
         with self._torch.no_grad():
             outputs = self._model(**inputs)
         cls_token = outputs.last_hidden_state[:, 0, :]  # position 0 is the CLS summary token

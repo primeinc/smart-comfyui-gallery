@@ -32,18 +32,21 @@ dependencies = [
     "argon2-cffi",
 ]
 
-[project.optional-dependencies]
-# OmniQuery local natural-language parsing (no model weights required).
+[dependency-groups]
+dev = ["pytest"]
+# OmniQuery local natural-language parsing + weight provisioning.
 ai = [
     "cactus-needle>=2.0.4",
     "llama-cpp-python>=0.3.0",
+    "huggingface_hub",
 ]
 # Real model backends: semantic/visual embeddings, the qwen-vl critic's
-# grounding gate, and MobileSAM segmentation. CPU-only torch wheels (the
-# application is designed to run without a GPU). Weights never download at
-# runtime; provision them per docs/AI_MODELS.md.
+# grounding gate, and MobileSAM segmentation. torch resolves to CPU wheels
+# here; at runtime the auto-provisioner picks CUDA wheels when an NVIDIA
+# GPU is present. Weights auto-download on first start (or via
+# `python -m smartgallery_ai provision`); see docs/AI_MODELS.md.
 ai-models = [
-    "smartgallery[ai]",
+    { include-group = "ai" },
     "torch",
     "open_clip_torch",
     "transformers",
@@ -52,13 +55,13 @@ ai-models = [
     "num2words",
 ]
 
-[dependency-groups]
-dev = ["pytest"]
-
 [tool.uv]
 # Application, not a distributable package: uv manages the environment but
-# never builds/installs the project itself.
+# never builds/installs the project itself. Batteries included by default:
+# plain `uv sync` installs everything (opt out with --no-default-groups or
+# --no-group ai-models).
 package = false
+default-groups = ["dev", "ai", "ai-models"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]

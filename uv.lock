@@ -2311,13 +2311,15 @@ dependencies = [
     { name = "werkzeug" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 ai = [
     { name = "cactus-needle" },
+    { name = "huggingface-hub" },
     { name = "llama-cpp-python" },
 ]
 ai-models = [
     { name = "cactus-needle" },
+    { name = "huggingface-hub" },
     { name = "llama-cpp-python" },
     { name = "mobile-sam" },
     { name = "num2words" },
@@ -2327,8 +2329,6 @@ ai-models = [
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "transformers" },
 ]
-
-[package.dev-dependencies]
 dev = [
     { name = "pytest" },
 ]
@@ -2337,31 +2337,37 @@ dev = [
 requires-dist = [
     { name = "argon2-cffi" },
     { name = "blinker" },
-    { name = "cactus-needle", marker = "extra == 'ai'", specifier = ">=2.0.4" },
     { name = "click" },
     { name = "cryptography" },
     { name = "flask" },
     { name = "itsdangerous" },
-    { name = "llama-cpp-python", marker = "extra == 'ai'", specifier = ">=0.3.0" },
     { name = "markupsafe" },
-    { name = "mobile-sam", marker = "extra == 'ai-models'", git = "https://github.com/ChaoningZhang/MobileSAM.git" },
-    { name = "num2words", marker = "extra == 'ai-models'" },
     { name = "numpy" },
-    { name = "open-clip-torch", marker = "extra == 'ai-models'" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pyopenssl" },
-    { name = "smartgallery", extras = ["ai"], marker = "extra == 'ai-models'" },
-    { name = "timm", marker = "extra == 'ai-models'" },
-    { name = "torch", marker = "extra == 'ai-models'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "tqdm" },
-    { name = "transformers", marker = "extra == 'ai-models'" },
     { name = "waitress" },
     { name = "werkzeug" },
 ]
-provides-extras = ["ai", "ai-models"]
 
 [package.metadata.requires-dev]
+ai = [
+    { name = "cactus-needle", specifier = ">=2.0.4" },
+    { name = "huggingface-hub" },
+    { name = "llama-cpp-python", specifier = ">=0.3.0" },
+]
+ai-models = [
+    { name = "cactus-needle", specifier = ">=2.0.4" },
+    { name = "huggingface-hub" },
+    { name = "llama-cpp-python", specifier = ">=0.3.0" },
+    { name = "mobile-sam", git = "https://github.com/ChaoningZhang/MobileSAM.git" },
+    { name = "num2words" },
+    { name = "open-clip-torch" },
+    { name = "timm" },
+    { name = "torch", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "transformers" },
+]
 dev = [{ name = "pytest" }]
 
 [[package]]

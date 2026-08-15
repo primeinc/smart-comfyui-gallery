@@ -385,7 +385,7 @@ Keep the reply short: at most 3 findings."""
 class SmolVlmCritic(CriticBackend):
     """EXPERIMENTAL local VLM critic via SmolVLM2 (Apache-2.0), loaded ONLY
     from `models_dir/smolvlm2-2.2b` or `models_dir/smolvlm2-500m`
-    (local_files_only) -- never downloaded at runtime.
+    (local_files_only); this module never downloads.
 
     Explicit 'smolvlm' opt-in only; 'auto' never resolves here (see
     docs/AI_MODELS.md for the record behind that). Emits the RAW payload

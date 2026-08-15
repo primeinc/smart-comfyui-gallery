@@ -36,8 +36,9 @@ from smartgallery_ai import (
     SPACE_VISUAL,
 )
 from smartgallery_ai import embedders, faces, hashing, invalidation, review, schema, vectors
+from smartgallery_ai import provision as provisioning
 
-__all__ = ["AIWorker", "load_source_image"]
+__all__ = ["AIWorker", "load_source_image", "provision_groups_for"]
 
 _logger = logging.getLogger(__name__)
 
@@ -95,6 +96,41 @@ def load_source_image(path: str, file_type: str) -> Optional[Image.Image]:
         except Exception:
             return None
     return None
+
+
+# Backend selector -> (accepted selector values, provision group). A backend
+# participates in auto-provisioning only when its selector would actually
+# load the real model ("auto" or the explicit real-backend name).
+_PROVISION_MAP = (
+    ("semantic_backend", ("auto", "open_clip"), "semantic"),
+    ("visual_backend", ("auto", "dinov2"), "visual"),
+    ("face_backend", ("auto", "opencv"), "faces"),
+    ("segmenter_backend", ("auto", "mobilesam"), "segmenter"),
+    ("critic_backend", ("auto", "qwen-vl"), "critic"),
+)
+
+
+def provision_groups_for(config: AIConfig) -> list:
+    """Provision groups the configured backends would use but which cannot
+    load right now — weights missing from `config.models_dir` OR runtime
+    packages not importable (auto-provisioning fixes both). The qwen-vl
+    critic additionally needs the semantic (grounding-gate) stack."""
+    wanted: list = []
+    for attr, accepted, group in _PROVISION_MAP:
+        if getattr(config, attr) in accepted:
+            wanted.append(group)
+            if group == "critic" and "semantic" not in wanted:
+                wanted.append("semantic")
+    if not wanted:
+        return []
+    missing = []
+    for group in provisioning.resolve_groups(wanted):
+        weights_missing = any(
+            not provisioning.artifact_present(config.models_dir, a)
+            for a in group.artifacts)
+        if weights_missing or provisioning.runtime_missing(group):
+            missing.append(group.name)
+    return missing
 
 
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -179,6 +215,13 @@ class AIWorker:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
+        # Background weight-provisioning: one attempt per worker lifetime,
+        # in its own daemon thread so cycles are never blocked by
+        # downloads. state: 'idle' | 'downloading' | 'done' | 'failed: ...'
+        # | 'disabled'; groups: the missing groups being (or last) fetched.
+        self.provision_state: dict = {"state": "idle", "groups": []}
+        self._provision_thread: Optional[threading.Thread] = None
+
     # -- lifecycle -----------------------------------------------------------
 
     @property
@@ -187,12 +230,67 @@ class AIWorker:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
-        """Start the background thread. No-op if already running."""
+        """Start the background thread (and, when enabled, one async
+        weight-provisioning attempt). No-op if already running."""
         if self.is_running:
             return
         self._stop_event.clear()
+        self._maybe_start_auto_provision()
         self._thread = threading.Thread(target=self._run_loop, name="AIWorker", daemon=True)
         self._thread.start()
+
+    # -- background weight provisioning --------------------------------------
+
+    def _maybe_start_auto_provision(self) -> None:
+        """Spawn the one-shot provisioning thread when auto-provisioning is
+        enabled and any configured backend's weights are missing. Never
+        blocks: downloads run in a daemon thread, and cycles proceed with
+        whatever backends already resolve."""
+        if not self.config.auto_provision:
+            self.provision_state = {"state": "disabled", "groups": []}
+            return
+        if self._provision_thread is not None:
+            return
+        try:
+            missing = provision_groups_for(self.config)
+        except Exception as exc:  # noqa: BLE001 - startup must not fail on this
+            self._note_error("provision:plan", f"auto-provision planning failed: {exc}")
+            return
+        if not missing:
+            self.provision_state = {"state": "done", "groups": []}
+            return
+        self.provision_state = {"state": "downloading", "groups": list(missing)}
+        self._provision_thread = threading.Thread(
+            target=self._provision_worker, args=(list(missing),),
+            name="AIWorkerProvision", daemon=True)
+        self._provision_thread.start()
+
+    def _provision_worker(self, groups: list) -> None:
+        """Thread body: install the missing groups' runtime packages and
+        download their weights, then force an immediate backend re-probe so
+        everything activates in this process without a restart. Network
+        failure (e.g. an egress-denied host) leaves the layer degraded
+        exactly as if nothing had been provisioned."""
+        try:
+            provisioning.provision(
+                self.config.models_dir, groups,
+                log=lambda msg: _logger.info("[AIWorker] provision %s", msg))
+            self.provision_state = {"state": "done", "groups": list(groups)}
+        except Exception as exc:  # noqa: BLE001 - downloads may fail; never fatal
+            self.provision_state = {"state": f"failed: {exc}", "groups": list(groups)}
+            self._note_error("provision:download", f"auto-provision failed: {exc}")
+            return
+        with self._lock:
+            # Drop cached misses and their retry timestamps: the next cycle
+            # re-resolves every backend against the freshly landed weights.
+            for key in [k for k, v in self._backend_cache.items() if v is None]:
+                self._backend_cache.pop(key, None)
+            self._backend_failed_at.clear()
+        try:
+            from smartgallery_ai import service as _service
+            _service.invalidate_backend_probe_cache()
+        except Exception:  # noqa: BLE001 - status cache refresh is best-effort
+            pass
 
     def stop(self, timeout: Optional[float] = None) -> None:
         """Signal the thread to stop and join it. Safe to call repeatedly."""

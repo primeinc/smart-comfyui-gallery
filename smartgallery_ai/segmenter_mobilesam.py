@@ -3,7 +3,8 @@
 MobileSAM is a distilled Segment Anything model (ViT-T image encoder,
 ~40 MB weights) with the same predictor API as the original SAM; CPU
 inference takes roughly a second per image. Weights load ONLY from
-`<models_dir>/mobile_sam.pt` — never downloaded at runtime.
+`<models_dir>/mobile_sam.pt`; this module never downloads (weights
+arrive via smartgallery_ai.provision).
 
 This backend feeds `review.generate_finding_mask`, which remains the sole
 gate: only localizable findings with real box/point grounding ever reach
@@ -49,9 +50,11 @@ class MobileSamSegmenter(SegmenterBackend):
         except Exception as exc:  # noqa: BLE001
             raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
         try:
+            from smartgallery_ai.embedders import pick_torch_device
+            device = pick_torch_device(torch)
             model = sam_model_registry["vit_t"](checkpoint=weights_path)
             model.eval()
-            self._predictor = SamPredictor(model)
+            self._predictor = SamPredictor(model.to(device))
         except Exception as exc:  # noqa: BLE001
             raise BackendUnavailable(f"failed to load mobile_sam weights: {exc}") from exc
         self._torch = torch

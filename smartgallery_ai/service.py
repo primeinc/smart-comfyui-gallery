@@ -54,6 +54,19 @@ def get_worker():
     return _worker_ref.get("worker")
 
 
+# Every blueprint's backend-availability cache, so the worker can flush them
+# after auto-provisioning lands new weights (a cached False would otherwise
+# misreport the backend as unavailable until process restart).
+_PROBE_CACHES: list = []
+
+
+def invalidate_backend_probe_cache() -> None:
+    """Clear every blueprint's cached backend-availability probe; the next
+    `/status` re-probes against the current models_dir contents."""
+    for cache in _PROBE_CACHES:
+        cache.clear()
+
+
 def _connect(config: AIConfig) -> sqlite3.Connection:
     """Open a fresh SQLite connection to the gallery DB with name-addressable rows."""
     conn = sqlite3.connect(config.db_path)
@@ -263,6 +276,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # and import torch), so it must never run while the layer is disabled,
     # and at most once per process while enabled.
     backend_probe_cache: dict = {}
+    _PROBE_CACHES.append(backend_probe_cache)
 
     def _probe_backends() -> dict:
         """Availability flag per backend: all-False while disabled, else probed once and cached."""
@@ -301,8 +315,10 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
 
         worker = get_worker()
         worker_info = (
-            {"running": bool(worker.is_running), "stats": dict(worker.stats)}
-            if worker is not None else {"running": False, "stats": {}}
+            {"running": bool(worker.is_running), "stats": dict(worker.stats),
+             "provisioning": dict(getattr(worker, "provision_state", {}) or {})}
+            if worker is not None
+            else {"running": False, "stats": {}, "provisioning": {}}
         )
         return jsonify({
             "enabled": config.enabled,

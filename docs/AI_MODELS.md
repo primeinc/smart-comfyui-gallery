@@ -1,10 +1,31 @@
 # AI Models, Licenses, and Parameters (WI-31)
 
 Everything below runs **locally**. No cloud inference, no telemetry. Model
-weights are provisioned into `.AImodels/` (env `AI_DAM_MODELS_DIR` /
-`OMNIQUERY_FALLBACK_GGUF`) as a separate step; the application never
-downloads at runtime. Licenses were verified against the primary sources on
-2026-08-14/15 (links inline).
+weights live in `.AImodels/` (env `AI_DAM_MODELS_DIR` /
+`OMNIQUERY_FALLBACK_GGUF`) and arrive one of two ways — both driven by
+`smartgallery_ai/provision.py`, which pins destinations to the exact paths
+the backends load and verifies SHA-256 digests for single-file artifacts:
+
+- **Auto (default):** the AI layer is ON by default (`ENABLE_AI_DAM=false`
+  opts out) and the background worker makes itself runnable once,
+  **asynchronously**, on startup (`AI_DAM_AUTO_PROVISION`, default
+  `true`): it pip-installs any missing runtime packages into the current
+  environment — torch wheels chosen by hardware: CUDA-capable when an
+  NVIDIA driver is present (`AI_DAM_DEVICE=cpu` forces CPU), CPU-index
+  otherwise — then downloads any missing weights. Cycles are never
+  blocked; freshly landed runtimes/weights activate through the worker's
+  backend re-probe without a restart, and torch backends place models on
+  the best available device (CUDA > MPS > CPU). On an egress-denied host
+  the attempt fails fast and the layer degrades exactly as if nothing had
+  been provisioned.
+- **Explicit:** `python -m smartgallery_ai provision [--list] [groups]`
+  (groups: `faces semantic visual segmenter critic all`) — for
+  pre-provisioning, air-gapped staging, or `AI_DAM_AUTO_PROVISION=false`
+  strict no-egress deployments.
+
+Backends and request handlers never download; inference is always local.
+Licenses were verified against the primary sources on 2026-08-14/15
+(links inline).
 
 ## OmniQuery v2
 

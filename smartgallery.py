@@ -408,14 +408,16 @@ PROTECTED_FOLDER_KEYS = {path_to_key(f) for f in SPECIAL_FOLDERS}
 PROTECTED_FOLDER_KEYS.add('_root_')
 
 # ============================================================================
-# AI DAM LAYER CONFIGURATION (WI-31, OPTIONAL, NON-BLOCKING)
+# AI DAM LAYER CONFIGURATION (NON-BLOCKING, OPT-OUT)
 # ============================================================================
-# Fully optional derived-AI layer (hashing/embeddings/faces/review). Disabled
-# by default (ENABLE_AI_DAM unset/false): no background worker starts, every
-# /galleryout/api/aidam/* route responds {'enabled': False}, and no heavy
-# model runtime (e.g. torch) is ever imported on the normal browsing path.
-#   Windows:     set ENABLE_AI_DAM=true
-#   Linux / Mac: export ENABLE_AI_DAM=true
+# Derived-AI layer (hashing/embeddings/faces/review). ENABLED by default:
+# the background worker starts, auto-downloads any missing model weights it
+# can actually run (asynchronously; see smartgallery_ai/provision.py), and
+# the AI panel appears in the lightbox. No heavy model runtime (e.g. torch)
+# is ever imported on the normal browsing path, and every capability whose
+# runtime or weights are absent degrades to an actionable message.
+# Opt out entirely:            ENABLE_AI_DAM=false
+# Opt out of downloads only:   AI_DAM_AUTO_PROVISION=false
 AI_CONFIG = smartgallery_ai.AIConfig.from_env(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
 
 

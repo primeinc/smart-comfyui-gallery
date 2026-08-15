@@ -34,7 +34,10 @@ class AIConfig:
 
     Constructed explicitly (tests) or from environment (app startup).
     `enabled` gates the worker and all API surfaces; individual backends can
-    additionally be missing/disabled without breaking anything else.
+    additionally be missing/disabled without breaking anything else. The
+    layer is opt-OUT: `from_env` enables it unless ENABLE_AI_DAM=false
+    (this dataclass default stays False so explicit test construction
+    activates nothing by accident).
     """
 
     enabled: bool = False
@@ -50,6 +53,12 @@ class AIConfig:
     face_backend: str = "auto"
     critic_backend: str = "auto"
     segmenter_backend: str = "auto"
+
+    # True: the background worker downloads missing model weights once,
+    # asynchronously, on startup (the request path never downloads; network
+    # failure degrades to backends-unavailable). False: strict no-egress —
+    # weights only ever arrive via `python -m smartgallery_ai provision`.
+    auto_provision: bool = True
 
     # Tunables (documented in docs/AI_MODELS.md; override via env)
     near_dup_max_distance: int = 8      # max Hamming distance on phash64
@@ -70,12 +79,13 @@ class AIConfig:
             "AI_DAM_MODELS_DIR", os.path.join(base_path, ".AImodels")
         )
         return cls(
-            enabled=_env_bool("ENABLE_AI_DAM"),
+            enabled=_env_bool("ENABLE_AI_DAM", "true"),
             base_path=base_path,
             db_path=db_path,
             models_dir=models_dir,
             cache_dir=cache_dir,
             ephemeral_index=_env_bool("AI_DAM_EPHEMERAL_INDEX"),
+            auto_provision=_env_bool("AI_DAM_AUTO_PROVISION", "true"),
             semantic_backend=os.environ.get("AI_DAM_SEMANTIC_BACKEND", "auto"),
             visual_backend=os.environ.get("AI_DAM_VISUAL_BACKEND", "auto"),
             face_backend=os.environ.get("AI_DAM_FACE_BACKEND", "auto"),

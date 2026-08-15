@@ -55,6 +55,38 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_provision(args: argparse.Namespace) -> int:
+    """Show the provisioning plan and, unless --list, download the missing
+    weights for the requested groups. The request path never downloads;
+    besides this command, only the worker's async auto-provisioning
+    (AI_DAM_AUTO_PROVISION, default on) fetches weights."""
+    from smartgallery_ai import provision as P
+
+    try:
+        print(P.format_plan(args.models_dir, args.groups))
+    except ValueError as exc:
+        print(f"error: {exc}")
+        return 2
+    if args.list:
+        return 0
+    if not args.yes:
+        answer = input("\nDownload the MISSING artifacts above? [y/N] ").strip().lower()
+        if answer not in ("y", "yes"):
+            print("aborted")
+            return 1
+    try:
+        result = P.provision(args.models_dir, args.groups, force=args.force)
+    except P.ProvisionError as exc:
+        print(f"error: {exc}")
+        return 1
+    print(f"\ndone: {len(result['downloaded'])} downloaded, "
+          f"{len(result['skipped'])} already present")
+    if result["downloaded"]:
+        print("Restart the gallery (or wait for the worker's backend retry "
+              "window) to activate the new backends.")
+    return 0
+
+
 def main(argv=None) -> int:
     """Parse arguments and dispatch to the chosen subcommand; returns its exit code."""
     parser = argparse.ArgumentParser(prog="smartgallery_ai")
@@ -69,6 +101,22 @@ def main(argv=None) -> int:
     p_status = sub.add_parser("status", help="row counts per derived table")
     p_status.add_argument("--db", required=True)
     p_status.set_defaults(fn=cmd_status)
+
+    p_prov = sub.add_parser(
+        "provision",
+        help="download model weights into the models dir (the worker also "
+             "auto-provisions on start unless AI_DAM_AUTO_PROVISION=false)")
+    p_prov.add_argument("groups", nargs="*", default=["all"],
+                        help="faces, semantic, visual, segmenter, critic, or all")
+    p_prov.add_argument("--models-dir", default=".AImodels",
+                        help="target directory the backends load from")
+    p_prov.add_argument("--list", action="store_true",
+                        help="show the plan only; download nothing")
+    p_prov.add_argument("--yes", action="store_true",
+                        help="skip the confirmation prompt")
+    p_prov.add_argument("--force", action="store_true",
+                        help="re-download artifacts that already exist")
+    p_prov.set_defaults(fn=cmd_provision)
 
     args = parser.parse_args(argv)
     return args.fn(args)

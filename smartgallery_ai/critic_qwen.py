@@ -24,7 +24,8 @@ Protocol per image:
                  (min(10, 25*max(cos,0))), computed outside the VLM. The
                  payload still goes through validate_review_payload.
 
-Weights load ONLY from the models dir (never downloaded at runtime):
+Weights load ONLY from the models dir (this module never downloads;
+provisioning is smartgallery_ai.provision's job):
   <models_dir>/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
   <models_dir>/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf
 """

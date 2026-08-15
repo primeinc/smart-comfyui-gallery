@@ -43,8 +43,10 @@ def _touch_mobilesam_weights(models_dir) -> str:
 
 
 def _install_fake_runtime(monkeypatch):
-    """Simulate a working torch/mobile_sam runtime whose model loads fine."""
+    """Simulate a working torch/mobile_sam runtime whose model loads fine
+    (including the .to(device) placement every real SAM model supports)."""
     model = types.SimpleNamespace(eval=lambda: None)
+    model.to = lambda device: model
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
         sys.modules, "mobile_sam",

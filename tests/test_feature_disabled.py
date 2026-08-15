@@ -1,8 +1,10 @@
-"""WI-31 acceptance: with the AI DAM layer disabled (the default), the
-feature must be fully inert -- every /galleryout/api/aidam/* route (except
-/status, which always reports) responds {'enabled': False}, normal gallery
-browsing routes are unaffected, no background worker is running, and no
-heavy model runtime (torch) is ever imported on that path.
+"""With the AI DAM layer explicitly opted out (ENABLE_AI_DAM=false --
+the layer itself is opt-OUT and defaults to enabled), the feature must be
+fully inert: every /galleryout/api/aidam/* route (except /status, which
+always reports) responds {'enabled': False}, normal gallery browsing
+routes are unaffected, no background worker is running, and no heavy
+model runtime (torch) is ever imported on that path. The suite's conftest
+sets the opt-out before the monolith imports.
 """
 
 from __future__ import annotations
@@ -15,12 +17,12 @@ from smartgallery_ai.service import create_ai_resolvers
 _PREFIX = "/galleryout/api/aidam"
 
 
-def test_ai_config_disabled_by_default(smartgallery_app):
+def test_ai_config_honors_explicit_opt_out(smartgallery_app):
     assert isinstance(smartgallery_app.AI_CONFIG, smartgallery_ai.AIConfig)
     assert smartgallery_app.AI_CONFIG.enabled is False
 
 
-def test_no_worker_thread_running_by_default(smartgallery_app):
+def test_no_worker_thread_running_when_opted_out(smartgallery_app):
     worker = smartgallery_app.ai_dam_service.get_worker()
     assert worker is None or not worker.is_running
     assert not any(t.name == "AIWorker" for t in __import__("threading").enumerate())
