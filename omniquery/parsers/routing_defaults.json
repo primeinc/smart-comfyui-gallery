@@ -1,8 +1,9 @@
 {
-    "_provisional": true,
-    "_note": "PROVISIONAL. These four thresholds were not fit to any measured data -- they encode the qualitative findings from manual probing (Needle2 confidence is not trustworthy a priori; a full deterministic heuristic parse should always win; a non-full-coverage model output should not be trusted at all by default). Run `python -m omniquery.benchmark.harness --backends heuristic,needle2,fallback_qwen,router --out <path>` against omniquery/benchmark/corpus.jsonl and use its recommended_thresholds section to replace these before relying on needle2/fallback_qwen acceptance in production.",
-    "needle2_min_confidence": 0.3,
+    "_provenance": "MEASURED on omniquery/benchmark/corpus.jsonl (83 entries) via benchmarks/results/wi31_benchmark.json, 2026-08-15, needle2 engine cactus-needle 2.0.4, fallback Qwen2.5-Coder-0.5B-Instruct q4_k_m.",
+    "_note": "needle2_min_confidence=0.7: measured false-confident rate among needle2 parses is 0.0 at confidence >= 0.7 but 33-75% below it (its confidence head is otherwise miscalibrated: high scores on constraint-dropping parses). heuristic_partial_floor=0.75: measured false-confident ~7.5% at coverage >= 0.7-0.75 vs 24% when accepting every heuristic parse. fallback_enabled=false: the 0.5B grammar-constrained fallback scored 0% execution accuracy on the corpus with 4.2s mean latency and ~870MB RSS -- the benchmark evidence does not justify invoking it by default; set OMNIQUERY_ENABLE_FALLBACK=true (or override here) to re-enable after improving it. Re-run: python -m omniquery.benchmark.harness --backends heuristic,needle2,fallback_qwen,router --out <path>.",
+    "needle2_min_confidence": 0.7,
     "needle2_min_coverage": 1.0,
     "fallback_min_coverage": 1.0,
-    "heuristic_partial_floor": 0.75
+    "heuristic_partial_floor": 0.75,
+    "fallback_enabled": false
 }

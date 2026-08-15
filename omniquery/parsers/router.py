@@ -31,6 +31,7 @@ supersede these before the router is trusted in production.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -53,6 +54,23 @@ def load_thresholds(path: Optional[str] = None) -> Dict[str, float]:
     with open(p, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     return {k: float(data[k]) for k in _THRESHOLD_KEYS if k in data}
+
+
+def fallback_enabled(path: Optional[str] = None) -> bool:
+    """Whether the constrained fallback model participates in routing.
+
+    Benchmark-measured default is off (see routing_defaults.json's note);
+    the OMNIQUERY_ENABLE_FALLBACK env var overrides in either direction.
+    """
+    env = os.environ.get("OMNIQUERY_ENABLE_FALLBACK")
+    if env is not None:
+        return env.strip().lower() in ("1", "true", "yes", "on")
+    p = Path(path) if path else _DEFAULTS_PATH
+    try:
+        with open(p, "r", encoding="utf-8") as fh:
+            return bool(json.load(fh).get("fallback_enabled", False))
+    except (OSError, ValueError):
+        return False
 
 
 def _accepts(o: ParserOutcome) -> bool:

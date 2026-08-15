@@ -225,12 +225,21 @@ def test_load_thresholds_has_all_four_keys():
     assert all(isinstance(v, float) for v in thresholds.values())
 
 
-def test_make_default_router_wires_real_backend_types():
+def test_make_default_router_wires_real_backend_types(monkeypatch):
+    # Benchmark-measured default: the fallback model is NOT wired in
+    # (routing_defaults.json fallback_enabled=false).
+    monkeypatch.delenv("OMNIQUERY_ENABLE_FALLBACK", raising=False)
     router = make_default_router()
     assert router.heuristic.name == "heuristic"
     assert router.primary.name == "needle2"
-    assert router.fallback.name == "fallback_qwen"
+    assert router.fallback is None
     assert router.thresholds == load_thresholds()
+
+    # Env override re-enables it without touching the config file.
+    monkeypatch.setenv("OMNIQUERY_ENABLE_FALLBACK", "true")
+    router_with_fb = make_default_router()
+    assert router_with_fb.fallback is not None
+    assert router_with_fb.fallback.name == "fallback_qwen"
 
 
 def test_make_default_router_config_overrides_thresholds():

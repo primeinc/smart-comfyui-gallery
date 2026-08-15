@@ -106,11 +106,14 @@ def make_default_router(config: Optional[Dict[str, Any]] = None) -> "Router":  #
     with thresholds loaded from routing_defaults.json, optionally overridden
     by `config`. Backend runtimes that are unavailable are still handed to
     the Router (it checks `.available()` itself before ever calling them)."""
-    from omniquery.parsers.router import Router, load_thresholds
+    from omniquery.parsers.router import Router, fallback_enabled, load_thresholds
 
     heuristic = get_backend("heuristic")
     primary = get_backend("needle2")
-    fallback = get_backend("fallback_qwen")
+    # Benchmark-measured default: the 0.5B fallback adds no accuracy on the
+    # SmartGallery corpus, so it only joins the route when explicitly enabled
+    # (routing_defaults.json "fallback_enabled" or OMNIQUERY_ENABLE_FALLBACK).
+    fallback = get_backend("fallback_qwen") if fallback_enabled() else None
     thresholds = load_thresholds()
     if config:
         thresholds.update(config)
