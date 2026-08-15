@@ -21,8 +21,8 @@ policy) against `corpus.jsonl` and reports, per backend:
     confidence >= theta, what fraction were execution-mismatched (includes
     every unsupported_incorrect case, since "confidently wrong" there too).
   - latency p50/p95/mean (wall-clock around `.parse()`/`.route()`).
-  - peak_rss_kb: `resource.getrusage(RUSAGE_SELF).ru_maxrss` sampled after
-    the backend's entries all ran (process-wide high-water mark).
+  - peak_rss_kb: process-wide peak resident set size in KB, sampled after
+    the backend's entries all ran (getrusage on POSIX, psapi on Windows).
 
 `router` additionally reports escalation stats: which backend ultimately
 answered each entry, and what fraction of entries needed to escalate past
@@ -35,8 +35,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import resource
+import sys
 import time
+
+try:
+    import resource  # POSIX-only; absent on Windows
+except ImportError:
+    resource = None
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -226,8 +231,54 @@ def _aggregate(records: List[_EntryRecord], latencies_ms: List[float]) -> Dict[s
         ),
         "false_confident_rate": _false_confident_sweep(records),
         "latency_ms": _latency_stats(latencies_ms),
-        "peak_rss_kb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        "peak_rss_kb": _peak_rss_kb(),
     }
+
+
+def _peak_rss_kb() -> int:
+    """Process-wide peak resident set size in KB.
+
+    POSIX: getrusage ru_maxrss (KB on Linux, bytes on macOS). Windows has no
+    `resource` module; psapi GetProcessMemoryInfo's PeakWorkingSetSize (bytes)
+    is the equivalent high-water mark.
+    """
+    if resource is not None:
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return peak // 1024 if sys.platform == 'darwin' else peak
+
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    # Typed signatures are load-bearing: the GetCurrentProcess pseudo-handle
+    # ((HANDLE)-1) truncates to a 32-bit int under ctypes' default
+    # conversions on 64-bit Windows and yields ERROR_INVALID_HANDLE.
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.K32GetProcessMemoryInfo.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD,
+    ]
+    kernel32.K32GetProcessMemoryInfo.restype = wintypes.BOOL
+
+    counters = PROCESS_MEMORY_COUNTERS()
+    counters.cb = ctypes.sizeof(counters)
+    ok = kernel32.K32GetProcessMemoryInfo(
+        kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+    )
+    return int(counters.PeakWorkingSetSize) // 1024 if ok else 0
 
 
 # ---------------------------------------------------------------------------

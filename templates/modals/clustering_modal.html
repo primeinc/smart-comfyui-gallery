@@ -125,9 +125,13 @@
                         <input type="radio" name="cluster_scope" value="current">
                         <div>
                             <div class="cluster-card-title">📂 Current Context</div>
-                            <div class="cluster-card-sub">Search only within the currently active folder or collection, respecting your active search filters.</div>
+                            <div class="cluster-card-sub">Search within the currently active folder or collection — subfolders included — respecting your active search filters.</div>
                         </div>
                     </label>
+                </div>
+                <div id="cluster-subfolder-opt" style="display:none; margin-top:10px; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-muted,#aaa);">
+                    <input type="checkbox" id="cluster-exclude-subfolders" style="width:16px; height:16px; accent-color:var(--ai-color,#ff00ff); cursor:pointer;">
+                    <label for="cluster-exclude-subfolders" style="cursor:pointer;">Exclude subfolders (search only the folder itself)</label>
                 </div>
             </div>
 
@@ -194,12 +198,13 @@ function getClusterColor(hashStr) {
     if (clusterColorMap.has(hashStr)) {
         return clusterColorMap.get(hashStr);
     }
-    
-    // Strict alternating algorithm to guarantee adjacent hashes never share the same color
-    let nextIdx = (lastAssignedColorIdx + 1) % CLUSTER_PALETTE.length;
-    lastAssignedColorIdx = nextIdx;
-    
-    const chosenColor = CLUSTER_PALETTE[nextIdx];
+
+    // First cycle uses the curated palette; beyond it, golden-angle hues keep
+    // every further cluster distinct instead of repeating the same 8 colors.
+    const nextIdx = ++lastAssignedColorIdx;
+    const chosenColor = nextIdx < CLUSTER_PALETTE.length
+        ? CLUSTER_PALETTE[nextIdx]
+        : 'hsl(' + Math.round((nextIdx * 137.508) % 360) + ', 85%, 60%)';
     clusterColorMap.set(hashStr, chosenColor);
     return chosenColor;
 }
@@ -222,6 +227,8 @@ function selectClusterScope(scope) {
     const radCu = document.querySelector('input[name="cluster_scope"][value="current"]');
     if (radGl) radGl.checked = (scope === 'global');
     if (radCu) radCu.checked = (scope === 'current');
+    const subOpt = document.getElementById('cluster-subfolder-opt');
+    if (subOpt) subOpt.style.display = (scope === 'current') ? 'flex' : 'none';
 }
 
 function openClusteringModal(targetFileId = null) {
@@ -265,6 +272,10 @@ function openClusteringModal(targetFileId = null) {
         defaultScope = 'current';
     }
     
+    // Subtree inclusion is the default for Current Context; opting out is per-run.
+    const exclSub = document.getElementById('cluster-exclude-subfolders');
+    if (exclSub) exclSub.checked = false;
+
     selectClusterScope(defaultScope);
 
     const overlay = document.getElementById('clustering-modal-overlay');
@@ -292,11 +303,34 @@ function submitClusteringModal() {
     const scopeVal = scopeRad ? scopeRad.value : 'global';
     const sortVal = document.getElementById('cluster-sort-select').value;
 
+    // A target without the hash the chosen basis clusters on would produce a
+    // silent empty gallery — refuse here with an explanation instead.
+    if (activeClusterTargetFileId && typeof allFilesData !== 'undefined') {
+        const targetObj = allFilesData.find(f => f.id === activeClusterTargetFileId);
+        if (targetObj) {
+            if (basis === 'prompt' && !targetObj.prompt_hash) {
+                if (typeof showNotification === 'function') showNotification("⚠️ This asset has no prompt text, so it cannot anchor a Prompt Text cluster. Try Architecture instead.", "warning");
+                return;
+            }
+            if (basis !== 'prompt' && !targetObj.workflow_hash) {
+                if (typeof showNotification === 'function') showNotification("⚠️ This asset's workflow could not be indexed, so it cannot anchor an Architecture cluster.", "warning");
+                return;
+            }
+        }
+    }
+
+    const exclSubEl = document.getElementById('cluster-exclude-subfolders');
+    const excludeSubfolders = !!(exclSubEl && exclSubEl.checked);
+
     closeClusteringModal();
     if (typeof closeLightbox === 'function') closeLightbox();
 
+    // Remember where the user was so exiting cluster mode can restore the
+    // exact pre-cluster view (Global scope wipes the filter params below).
+    try { sessionStorage.setItem('sg_precluster_url', window.location.href); } catch (e) {}
+
     const params = new URLSearchParams(window.location.search);
-    
+
     // Clear ALL active filter parameters if Global Scope is selected
     if (scopeVal === 'global') {
         params.delete('search');
@@ -322,6 +356,12 @@ function submitClusteringModal() {
         }
     }
 
+    if (scopeVal === 'current') {
+        // Subtree inclusion is the default: a folder's cluster members
+        // routinely live in date-stamped subfolders. Excluding is opt-in.
+        params.set('recursive', excludeSubfolders ? 'false' : 'true');
+    }
+
     params.set('cluster_mode', basis);
     params.set('cluster_scope', scopeVal);
     params.set('cluster_sort', sortVal);
@@ -340,12 +380,25 @@ function exitClusteringMode(e) {
         e.stopPropagation();
         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     }
+
+    // Restore the exact pre-cluster view (folder, filters, scroll context)
+    // when this tab recorded one; Global scope deleted those params at entry.
+    let preClusterUrl = null;
+    try {
+        preClusterUrl = sessionStorage.getItem('sg_precluster_url');
+        sessionStorage.removeItem('sg_precluster_url');
+    } catch (err) {}
+    if (preClusterUrl) {
+        setTimeout(function() { window.location.replace(preClusterUrl); }, 10);
+        return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     params.delete('cluster_mode');
     params.delete('cluster_scope');
     params.delete('cluster_sort');
     params.delete('cluster_target_id');
-    
+
     let newSearch = params.toString();
     let targetUrl = newSearch ? (window.location.pathname + '?' + newSearch) : (window.location.pathname || '/galleryout/');
 
@@ -437,6 +490,9 @@ document.addEventListener('keydown', function(e) {
         } else if (typeof focusedItemIndex !== 'undefined' && focusedItemIndex !== -1 && typeof galleryItems !== 'undefined' && galleryItems[focusedItemIndex]) {
             openClusteringModal(galleryItems[focusedItemIndex].dataset.fileId);
         } else if (typeof selectedFiles !== 'undefined' && selectedFiles.size > 0) {
+            if (selectedFiles.size > 1 && typeof showNotification === 'function') {
+                showNotification(`Clustering targets one asset: using the first of your ${selectedFiles.size} selected files.`, 'info', 4000);
+            }
             openClusteringModal(Array.from(selectedFiles)[0]);
         } else {
             openClusteringModal();
@@ -454,7 +510,10 @@ function initClusteringBanner() {
 
     if (clusterMode && banner && bannerText) {
         const basisLabel = clusterMode === 'prompt' ? 'Same Prompt Text' : 'Same Workflow Architecture';
-        const scopeLabel = clusterScope === 'current' ? 'Current Context' : 'Global Scope';
+        const isRecursive = params.get('recursive') !== 'false';
+        const scopeLabel = clusterScope === 'current'
+            ? ('Current Context' + (isRecursive ? ' + Subfolders' : ' (Folder Only)'))
+            : 'Global Scope';
         const totalCount = (typeof totalFiles !== 'undefined') ? totalFiles : (typeof galleryItems !== 'undefined' ? galleryItems.length : 0);
         const countLabel = `<span style="background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:12px; font-size:0.8rem; margin-left:6px; color:#fff;">${totalCount} Assets</span>`;
 
@@ -692,7 +751,7 @@ function renderClusterInspectorContent(data) {
         <div class="fd-stats-row" style="justify-content:space-around; background:rgba(255,255,255,0.03); padding:15px; border-radius:12px; border:1px solid var(--glass-border,#333);">
             <div class="fd-stat-box">
                 <span class="fd-stat-num" style="color:var(--ai-color, #ff00ff);">${data.total_count}</span>
-                <span class="fd-stat-lbl">Matching Gallery Assets</span>
+                <span class="fd-stat-lbl">Matching Assets (Library-wide)</span>
             </div>
             <div class="fd-stat-box">
                 <span class="fd-stat-num" style="color:#00ffff;">${data.distinct_counterparts}</span>

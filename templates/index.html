@@ -21,12 +21,28 @@
             var activeTag = document.activeElement ? document.activeElement.tagName : '';
             if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable)) return;
 
-            var openOverlay = document.querySelector('.modal-overlay.visible, #smart-dialog-overlay.visible, .sort-popover.visible, #options-popover.visible, #tools-popover.visible, #desktop-search-panel.visible');
+            // ESC must close the lightbox (or any open overlay) first;
+            // exiting cluster mode is only for the bare grid.
+            if (document.body.classList.contains('lightbox-open')) return;
+
+            var openOverlay = document.querySelector('.modal-overlay.visible, #smart-dialog-overlay.visible, #cluster-info-modal-overlay.visible, .sort-popover.visible, #options-popover.visible, #tools-popover.visible, #desktop-search-panel.visible');
             if (openOverlay) return;
 
             e.preventDefault();
             e.stopPropagation();
             if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+            // Prefer the exact pre-cluster view recorded at entry (Global
+            // scope wiped the filter params from the current URL).
+            var preClusterUrl = null;
+            try {
+                preClusterUrl = sessionStorage.getItem('sg_precluster_url');
+                sessionStorage.removeItem('sg_precluster_url');
+            } catch (err) {}
+            if (preClusterUrl) {
+                setTimeout(function() { window.location.replace(preClusterUrl); }, 10);
+                return;
+            }
 
             var params = new URLSearchParams(window.location.search);
             params.delete('cluster_mode');
@@ -46,6 +62,21 @@
 
 // --- GLOBAL WORKFLOW FILES AUTOCOMPLETE FUNCTIONS (HEAD LEVEL) ---
 var wfDebounceTimer = null;
+
+// Keeps the visible subfolder checkboxes and the hidden `recursive` form
+// field in sync. Unchecked checkboxes submit nothing, so the folder-only
+// opt-out can only travel via the hidden field (absent/true = subtree).
+function syncRecursiveParam(checkbox) {
+    checkbox.parentElement.classList.toggle('active', checkbox.checked);
+    var hidden = document.getElementById('recursive-param');
+    if (hidden) hidden.value = checkbox.checked ? 'true' : 'false';
+    document.querySelectorAll('.recursive-checkbox').forEach(function(cb) {
+        if (cb !== checkbox) {
+            cb.checked = checkbox.checked;
+            cb.parentElement.classList.toggle('active', checkbox.checked);
+        }
+    });
+}
 
 function safeEscapeHTML(str) {
     if (!str) return '';
@@ -947,8 +978,8 @@ document.addEventListener('focusout', function(e) {
                             <input type="radio" name="scope" value="global" {% if current_scope == 'global' %}checked{% endif %}> 🌐 Global (All)
                         </label>
                     </div>
-                    <label class="recursive-wrapper {% if request.args.get('recursive') == 'true' %}active{% endif %}" id="recursive-standard-ui">
-                        <input type="checkbox" name="recursive" value="true" {% if request.args.get('recursive') == 'true' %}checked{% endif %} onchange="this.parentElement.classList.toggle('active', this.checked)">
+                    <label class="recursive-wrapper {% if request.args.get('recursive') != 'false' %}active{% endif %}" id="recursive-standard-ui">
+                        <input type="checkbox" class="recursive-checkbox" {% if request.args.get('recursive') != 'false' %}checked{% endif %} onchange="syncRecursiveParam(this)">
                         <span class="recursive-label">📂 Include Subfolders</span>
                     </label>
                 </div>
@@ -958,10 +989,13 @@ document.addEventListener('focusout', function(e) {
                 {% if current_folder_info.collection_id != 'all' %}
                 <div class="filter-group">
                     <label>Search Scope</label>
-                    <label class="recursive-wrapper {% if request.args.get('recursive') == 'true' %}active{% endif %}" id="recursive-collection-ui">
-                        <input type="checkbox" name="recursive" value="true" {% if request.args.get('recursive') == 'true' %}checked{% endif %} onchange="this.parentElement.classList.toggle('active', this.checked)">
+                    <label class="recursive-wrapper {% if request.args.get('recursive') != 'false' %}active{% endif %}" id="recursive-collection-ui">
+                        <input type="checkbox" class="recursive-checkbox" {% if request.args.get('recursive') != 'false' %}checked{% endif %} onchange="syncRecursiveParam(this)">
                         <span class="recursive-label">📚 Include Sub-collections</span>
                     </label>
+                    <!-- Unchecked checkboxes submit nothing, so the opt-out must
+                         travel in this hidden field: absent/true = subtree, false = folder only. -->
+                    <input type="hidden" name="recursive" id="recursive-param" value="{{ 'false' if request.args.get('recursive') == 'false' else 'true' }}">
                 </div>
                 {% endif %}
                 {% endif %}
@@ -1580,7 +1614,7 @@ document.addEventListener('focusout', function(e) {
                 <!-- Recursive Option -->
                 <div class="ai-opt-row">
                     <label for="ai-opt-recursive" style="cursor:pointer; font-weight:bold;">Include Subfolders</label>
-                    <input type="checkbox" id="ai-opt-recursive" style="width:20px; height:20px; accent-color:var(--ai-color);">
+                    <input type="checkbox" id="ai-opt-recursive" checked style="width:20px; height:20px; accent-color:var(--ai-color);">
                 </div>
                 <span class="ai-opt-desc">If checked, processes all nested folders.</span>
 
@@ -2449,6 +2483,9 @@ document.addEventListener('focusout', function(e) {
         const initialFiles = {{ files | tojson }};
         let totalFiles = {{ total_files }};
         let totalFolderFiles = {{ total_folder_files }};
+        // Opaque server-side snapshot token for this exact render; pagination
+        // endpoints require it so concurrent tabs/users never mix views.
+        const viewToken = '{{ view_token }}';
         const currentFolderKey = '{{ current_folder_key }}';
         const ancestorKeys = {{ ancestor_keys | tojson }};
         // --- IDENTITY LOGIC FOR RATING ---
@@ -2911,7 +2948,7 @@ document.addEventListener('focusout', function(e) {
 
             // NOTE: HTML must be all in one only row to avoid indentations in the side bar 
             if (isMovePanel) {
-                const isRecursive = document.querySelector('input[name="recursive"]')?.checked || false;
+                const isRecursive = document.querySelector('.recursive-checkbox')?.checked || false;
                 // Disable move to current folder unless copying, global/AI search, or recursive
                 const shouldDisable = (currentDropAction !== 'copy' && folderKey === currentFolderKey && !isAiGlobal && !isGlobalSearch && !isRecursive);
                 const disabledAttr = shouldDisable ? 'disabled' : '';
@@ -4245,13 +4282,16 @@ document.addEventListener('focusout', function(e) {
                 const btns = document.querySelectorAll('.toggle-select-all-btn');
                 btns.forEach(b => b.innerHTML = "⏳...");
 
-                const res = await fetch('/galleryout/api/current_view_ids');
+                const res = await fetch('/galleryout/api/current_view_ids?view_token=' + encodeURIComponent(viewToken));
                 const data = await res.json();
-                
+
                 if (data.status === 'success') {
                     data.ids.forEach(id => selectedFiles.add(id));
                     updateSelectionUI();
                     showNotification(`Selected all ${data.ids.length} files.`, 'info', 3000);
+                } else if (data.stale) {
+                    showNotification("This view expired on the server. Reloading...", "warning");
+                    setTimeout(() => window.location.reload(), 800);
                 }
             } catch (e) {
                 console.error("Smart Select Error:", e);
@@ -5941,9 +5981,9 @@ document.addEventListener('focusout', function(e) {
                         aiRecursiveCheckbox.checked = (lastAiRecursive === "true");
                         recursiveToggle.classList.toggle('active', aiRecursiveCheckbox.checked);
                     } else {
-                        // Default: unchecked
-                        aiRecursiveCheckbox.checked = false;
-                        recursiveToggle.classList.remove('active');
+                        // Default: subfolders included
+                        aiRecursiveCheckbox.checked = true;
+                        recursiveToggle.classList.add('active');
                     }
                 } else {
                     recursiveToggle.style.display = 'none';
@@ -6121,7 +6161,7 @@ document.addEventListener('focusout', function(e) {
         
         // --- SCOPE SELECTOR & RECURSIVE LOGIC (Custom Native Dropdowns) ---
         const scopeRadios = document.querySelectorAll('input[name="scope"]');
-        const recursiveCheckbox = document.querySelector('input[name="recursive"]');
+        const recursiveCheckbox = document.querySelector('.recursive-checkbox');
         const recursiveWrapper = document.getElementById('recursive-standard-ui');
 
         let selectedExts = new Set({{ selected_extensions | tojson }});
@@ -6281,7 +6321,7 @@ document.addEventListener('focusout', function(e) {
         function updateRecursiveUIState() {
             const isGlobal = document.querySelector('input[name="scope"][value="global"]')?.checked;
             const recWrap = document.querySelector('.recursive-wrapper');
-            const recCheck = document.querySelector('input[name="recursive"]');
+            const recCheck = document.querySelector('.recursive-checkbox');
             if (recWrap && recCheck) {
                 if (isGlobal) {
                     recWrap.classList.add('disabled');
@@ -6297,7 +6337,7 @@ document.addEventListener('focusout', function(e) {
         // 4. AJAX Refresh
         function triggerOptionsRefresh() {
             const scope = document.querySelector('input[name="scope"][value="global"]')?.checked ? 'global' : 'local';
-            const isRec = document.querySelector('input[name="recursive"]')?.checked || false;
+            const isRec = document.querySelector('.recursive-checkbox')?.checked || false;
             const folderKey = '{{ current_folder_key }}';
             
             const wrapExt = document.getElementById('wrapper-extensions');
@@ -6342,7 +6382,7 @@ document.addEventListener('focusout', function(e) {
             });
         });
 
-        const recCheck = document.querySelector('input[name="recursive"]');
+        const recCheck = document.querySelector('.recursive-checkbox');
         if (recCheck) {
             recCheck.addEventListener('change', function() {
                 const parentWrap = this.closest('.recursive-wrapper');
@@ -8065,17 +8105,17 @@ document.addEventListener('focusout', function(e) {
                     if (textSpan) textSpan.textContent = 'Loading...';
                     
                     try {
-                        let fetchUrl = `/galleryout/load_more?offset=${currentItemCount}&folder_key=${currentFolderKey}`;
-                        
-                        const filterForm = document.querySelector('#filter-form');
-                        if (filterForm) {
-                            fetchUrl += `&${new URLSearchParams(new FormData(filterForm))}`;
-                        }
-                        
+                        let fetchUrl = `/galleryout/load_more?offset=${currentItemCount}&view_token=${encodeURIComponent(viewToken)}`;
+
                         const response = await fetch(fetchUrl);
                         const data = await response.json();
-                        
-                        if (data.files && data.files.length > 0) {
+
+                        if (data.stale) {
+                            // Snapshot evicted server-side: appending anything
+                            // else would mix views. Re-render this one.
+                            showNotification("This view expired on the server. Reloading...", "warning");
+                            setTimeout(() => window.location.reload(), 800);
+                        } else if (data.files && data.files.length > 0) {
                             appendFiles(data.files);
                         } else {
                             // No more files: hide container and disconnect observer

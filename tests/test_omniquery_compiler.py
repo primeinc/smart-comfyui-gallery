@@ -4,6 +4,7 @@ safety, and the file_ref resolution hand-off."""
 from __future__ import annotations
 
 import sqlite3
+import time
 
 import pytest
 
@@ -81,6 +82,8 @@ def test_folder_predicates_match_windows_separators():
     assert [r[0] for r in conn.execute(cq2.sql, cq2.params)] == ["p1", "w1"]
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"),
+                    reason="requires time.tzset (POSIX) to control the process timezone")
 def test_between_bare_dates_dst_transition_days():
     """A bare-date 'between' upper bound extends to the next local calendar
     midnight, which is 23h away on spring-forward day and 25h on fall-back

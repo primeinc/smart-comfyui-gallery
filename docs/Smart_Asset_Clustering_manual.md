@@ -43,7 +43,7 @@ When configuring a cluster search, you can customize the scope and order.
 ### Search Scope
 
 * **🌐 Global Scope:** Searches your entire library across all folders and drives. It automatically clears active search filters to ensure every matching asset is discovered.
-* **📂 Current Context:** Restricts the search to your currently active folder or virtual collection, allowing you to cluster within a specific project.
+* **📂 Current Context:** Restricts the search to your currently active folder or virtual collection, **including its subfolders**, allowing you to cluster within a specific project. Tick **Exclude subfolders** in the dialog to search only the folder itself.
 
 ### Inner Cluster Sorting
 
@@ -84,7 +84,7 @@ Once clustering is activated:
 
 * **Active Cluster Banner:** A bright fuchsia banner appears at the top of your gallery indicating that Clustering Mode is active, showing the current basis, scope and total matching assets.
 * **Cluster Badges:** Each image thumbnail displays a distinct color coded hash badge, for example 🧬 #A1F3E or 💬 #C89B1. Items sharing the same color badge belong to the same cluster.
-* **Exiting Cluster Mode:** Click the red ✕ Exit Cluster Mode button on the top banner, or simply press `ESC` at any time.
+* **Exiting Cluster Mode:** Click the red ✕ Exit Cluster Mode button on the top banner, or press `ESC` from the gallery grid (with the Lightbox or a dialog open, `ESC` closes that first). Exiting returns you to the exact folder, filters and search you had before clustering.
 
 ![Active Cluster Mode: the fuchsia banner confirms the basis and scope in use, while matching assets share the same architecture badge.](images/Gallery_Clustering_Same_Workflow.png)
 
@@ -102,7 +102,7 @@ Clicking on any cluster badge on a thumbnail opens the Cluster Inspector Modal. 
 
 ### What You Can See in the Inspector
 
-* **Total Matching Assets:** How many files in your library share this exact workflow or prompt.
+* **Total Matching Assets:** How many files share this exact workflow or prompt. This count is always library-wide, even when the gallery is clustered in Current Context scope.
 * **Distinct Counterparts:** Shows how many unique prompt variations were tested on this workflow, or vice versa.
 * **Node Pipeline Sequence:** A visual chain showing the flow of nodes used to generate the asset.
 * **Loaded Models & LoRAs:** An itemized list of all checkpoints, LoRAs and models used.

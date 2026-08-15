@@ -3795,7 +3795,7 @@ function renderMarkdownText(text) {
         if (params.get('search')) { document.getElementById('exh_search_name').value = params.get('search'); }
         if (params.get('start_date')) { document.getElementById('exh_start_date').value = params.get('start_date'); }
         if (params.get('end_date')) { document.getElementById('exh_end_date').value = params.get('end_date'); }
-        if (params.get('recursive') === 'true') {
+        if (params.get('recursive') !== 'false') {
             document.getElementById('exh_recursive').checked = true;
             document.getElementById('exh-recursive-wrapper').classList.add('active');
         }

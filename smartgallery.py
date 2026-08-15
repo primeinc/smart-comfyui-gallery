@@ -31,6 +31,7 @@ from tqdm import tqdm
 import threading
 import uuid
 import socket
+from collections import OrderedDict
 # Try to import tkinter for GUI dialogs, but make it optional for Docker/headless environments
 try:
     import tkinter as tk
@@ -703,9 +704,52 @@ def management_api_only(f):
 # --- FLASK APP INITIALIZATION ---
 app = Flask(__name__, static_folder='templates', static_url_path='/static')
 app.secret_key = SECRET_KEY
-gallery_view_cache = []
 folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
+
+
+class ViewSnapshotStore:
+    """Per-view result snapshots backing the pagination endpoints.
+
+    Every full gallery render stores its computed file list under an opaque
+    token bound to the session owner that produced it; /load_more and
+    /api/current_view_ids look the snapshot up by that token. Concurrent
+    tabs and users therefore can never be served each other's views (the
+    previous single process-wide cache was overwritten by whichever render
+    happened last, from any session). Capacity is a bounded LRU; a missing
+    token signals the client that its view snapshot expired and the page
+    must re-render.
+    """
+
+    def __init__(self, capacity=32):
+        self._lock = threading.Lock()
+        self._snapshots = OrderedDict()  # token -> (owner, files)
+        self._capacity = capacity
+
+    def put(self, owner, files):
+        token = secrets.token_urlsafe(16)
+        with self._lock:
+            self._snapshots[token] = (owner, files)
+            while len(self._snapshots) > self._capacity:
+                self._snapshots.popitem(last=False)
+        return token
+
+    def get(self, token, owner):
+        with self._lock:
+            entry = self._snapshots.get(token)
+            if entry is None or entry[0] != owner:
+                return None
+            self._snapshots.move_to_end(token)
+            return entry[1]
+
+
+VIEW_SNAPSHOTS = ViewSnapshotStore()
+
+
+def _view_owner():
+    """Snapshot ownership key: the logged-in user id, or '' for the single
+    anonymous local-admin session (no login modes)."""
+    return str(session.get('user_id') or '')
 
 # --- AI DAM BLUEPRINT (WI-31, optional; every route no-ops when disabled) ---
 # file_access_check applies the gallery's per-file visibility policy to the
@@ -2246,7 +2290,8 @@ def init_db(conn=None):
             'ai_embedding': 'BLOB',
             'ai_error': 'TEXT',
             'workflow_hash': "TEXT DEFAULT ''",
-            'prompt_hash': "TEXT DEFAULT ''"
+            'prompt_hash': "TEXT DEFAULT ''",
+            'hash_failed': 'INTEGER DEFAULT 0'
         }
 
         # Handle comments target migration
@@ -2288,6 +2333,13 @@ def init_db(conn=None):
                     conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
                 except Exception as e:
                     print(f"WARNING: Could not add column {col_name}: {e}")
+
+        try:
+            cleared = clear_synthetic_prompt_hashes(conn)
+            if cleared:
+                print(f"INFO: Cleared {cleared} synthetic prompt hashes (promptless files no longer form fake prompt clusters)")
+        except Exception as e:
+            print(f"WARNING: Could not clear synthetic prompt hashes: {e}")
 
         # 6. SCHEMA VERSION
         try:
@@ -2664,7 +2716,8 @@ def full_sync_database(conn):
                         workflow_prompt = excluded.workflow_prompt,
                         workflow_hash = excluded.workflow_hash,
                         prompt_hash = excluded.prompt_hash,
-                        
+                        hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
+
                         -- CONDITIONAL LOGIC:
                         is_favorite = CASE 
                             WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0  
@@ -2832,7 +2885,8 @@ def sync_folder_on_demand(folder_path):
                             workflow_prompt = excluded.workflow_prompt,
                             workflow_hash = excluded.workflow_hash,
                             prompt_hash = excluded.prompt_hash,
-                        
+                            hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
+
                             -- CONDITIONAL LOGIC:
                             is_favorite = CASE 
                                 WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0  
@@ -2869,7 +2923,7 @@ def sync_folder_on_demand(folder_path):
         print(f"ERROR: {error_message}")
         yield f"data: {json.dumps({'message': error_message, 'current': 1, 'total': 1, 'error': True})}\n\n"
         
-def scan_folder_and_extract_options(folder_path, recursive=False):
+def scan_folder_and_extract_options(folder_path, recursive=True):
     """
     Scans the physical folder to count files and extract metadata.
     Supports recursive mode to include subfolders in the count.
@@ -3141,7 +3195,7 @@ def initialize_gallery():
         except sqlite3.DatabaseError as e:
             print(f"ERROR initializing database: {e}")
             
-def get_filter_options_from_db(conn, scope, folder_path=None, recursive=False):
+def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
     """
     Extracts extensions and prefixes for dropdowns using a robust 
     Python-side path filtering to handle mixed slashes and cross-platform issues.
@@ -3587,7 +3641,7 @@ def sync_status(folder_key):
 def api_search_options():
     scope = request.args.get('scope', 'local')
     folder_key = request.args.get('folder_key', '_root_')
-    is_rec = request.args.get('recursive', 'false').lower() == 'true'
+    is_rec = request.args.get('recursive', 'true').lower() != 'false'
     
     exts, pfxs, limit_reached = [], [], False
     user_role = session.get('role', 'GUEST')
@@ -3727,7 +3781,7 @@ def ai_indexing_reset():
     
     # Mode 2: Folder Path
     folder_key = data.get('folder_key')
-    recursive = data.get('recursive', False)
+    recursive = data.get('recursive', True)
     
     count = 0
     
@@ -3865,7 +3919,7 @@ def ai_indexing_add_folder():
     data = request.json
     
     folder_key = data.get('folder_key')
-    recursive = data.get('recursive', False)
+    recursive = data.get('recursive', True)
     watch = data.get('watch', False)
     force = data.get('force', False)
     
@@ -4115,14 +4169,20 @@ def ai_indexing_control():
     return jsonify({'status': 'success', 'message': f'Queue {action}d'})
     
 
-def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope, active_filters_count=0):
+def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope):
     if not cluster_mode:
         return current_files
 
     with get_db_connection() as conn_check:
-        unhashed_cnt = conn_check.execute("SELECT COUNT(*) FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '')").fetchone()[0]
+        unhashed_cnt = conn_check.execute(
+            "SELECT COUNT(*) FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '') AND hash_failed = 0"
+        ).fetchone()[0]
         if unhashed_cnt > 0:
             backfill_unhashed_workflows(conn_check)
+
+    # The hash column that defines cluster identity for this mode. Files
+    # missing it cannot belong to any cluster of this kind.
+    primary_hash_key = 'prompt_hash' if cluster_mode == 'prompt' else 'workflow_hash'
 
     result_files = []
 
@@ -4138,8 +4198,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                 comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
 
             if cluster_target_id:
-                hash_col = 'workflow_hash' if cluster_mode == 'workflow' else ('prompt_hash' if cluster_mode == 'prompt' else 'workflow_hash')
-                target_row = conn_target.execute(f"SELECT workflow_hash, prompt_hash FROM files WHERE id = ? AND has_workflow = 1", (cluster_target_id,)).fetchone()
+                target_row = conn_target.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ? AND has_workflow = 1", (cluster_target_id,)).fetchone()
                 target_wf = target_row[0] if target_row else None
                 target_pr = target_row[1] if target_row else None
 
@@ -4180,7 +4239,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                     (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
                     (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
                     FROM files f
-                    WHERE f.has_workflow = 1 AND f.workflow_hash IS NOT NULL AND f.workflow_hash != ''
+                    WHERE f.has_workflow = 1 AND f.{primary_hash_key} IS NOT NULL AND f.{primary_hash_key} != ''
                 """).fetchall()
                 result_files = [dict(r) for r in rows]
 
@@ -4188,6 +4247,29 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                 d.pop('ai_embedding', None)
     else:
         result_files = [dict(f) for f in current_files]
+
+        # The caller fetched these rows before the backfill above ran, so a
+        # first-ever clustering request would otherwise silently drop files
+        # whose hashes were computed moments ago. Re-read hashes for any row
+        # that still looks unhashed.
+        stale_ids = [
+            f['id'] for f in result_files
+            if f.get('has_workflow') and not str(f.get('workflow_hash') or '').strip()
+        ]
+        if stale_ids:
+            fresh_hashes = {}
+            with get_db_connection() as conn_refresh:
+                for i in range(0, len(stale_ids), 500):
+                    chunk = stale_ids[i:i + 500]
+                    placeholders = ','.join('?' * len(chunk))
+                    for r in conn_refresh.execute(
+                        f"SELECT id, workflow_hash, prompt_hash FROM files WHERE id IN ({placeholders})", chunk
+                    ).fetchall():
+                        fresh_hashes[r['id']] = (r['workflow_hash'], r['prompt_hash'])
+            for f in result_files:
+                if f['id'] in fresh_hashes:
+                    f['workflow_hash'], f['prompt_hash'] = fresh_hashes[f['id']]
+
         if cluster_target_id:
             with get_db_connection() as conn_t:
                 t_row = conn_t.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ? AND has_workflow = 1", (cluster_target_id,)).fetchone()
@@ -4203,11 +4285,9 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                     result_files = []
 
     result_files = [
-        f for f in result_files 
-        if f.get('has_workflow') and f.get('workflow_hash') and str(f.get('workflow_hash')).strip() != ''
+        f for f in result_files
+        if f.get('has_workflow') and str(f.get(primary_hash_key) or '').strip()
     ]
-
-    primary_hash_key = 'prompt_hash' if cluster_mode == 'prompt' else 'workflow_hash'
 
     def get_inner_sort_key(item):
         if cluster_sort == 'date_asc': return item.get('mtime') or 0
@@ -4271,8 +4351,8 @@ def gallery_view(folder_key):
         except IndexError:
             pass
 
-    global gallery_view_cache
-    
+    view_files = []
+
     # 4. EXHIBITION MODE SECURITY CHECK
     # Prevent browsing physical folders if in Exhibition mode
     if IS_EXHIBITION_MODE and folder_key != '_root_':
@@ -4289,7 +4369,10 @@ def gallery_view(folder_key):
     folder_path = current_folder_info['path']
     
     # 1. Capture All Request Parameters
-    is_recursive = request.args.get('recursive', 'false').lower() == 'true'
+    # Subfolders are included by default (ComfyUI routinely scatters outputs
+    # into date-stamped subfolders); only an explicit recursive=false narrows
+    # the view to the folder itself.
+    is_recursive = request.args.get('recursive', 'true').lower() != 'false'
     search_scope = request.args.get('scope', 'local')
     is_global_search = (search_scope == 'global')
     ai_session_id = request.args.get('ai_session_id')
@@ -4368,8 +4451,7 @@ def gallery_view(folder_key):
                             files_list.sort(key=lambda x: x.get('mtime') or 0, reverse=True)
                     # --------------------------------------------------
 
-                    global gallery_view_cache
-                    gallery_view_cache = files_list
+                    view_files = files_list
             except Exception as e:
                 print(f"OmniQuery Search Error: {e}")
                 is_omniquery = False
@@ -4395,7 +4477,7 @@ def gallery_view(folder_key):
                             del d['ai_embedding'] 
                         files_list.append(d)
                     
-                    gallery_view_cache = files_list
+                    view_files = files_list
             except Exception as e:
                 print(f"AI Search Error: {e}")
                 is_ai_search = False
@@ -4715,7 +4797,7 @@ def gallery_view(folder_key):
                     if f_dir_norm == target_norm:
                         final_files.append(f_data)
             
-            gallery_view_cache = final_files
+            view_files = final_files
 
     active_filters_count = 0
     if search_term: active_filters_count += 1
@@ -4731,16 +4813,20 @@ def gallery_view(folder_key):
     if request.args.get('favorites') == 'true': active_filters_count += 1
     if request.args.get('no_workflow') == 'true': active_filters_count += 1
     if ENABLE_AI_SEARCH and request.args.get('no_ai_caption') == 'true': active_filters_count += 1
-    if is_global_search or is_recursive: active_filters_count += 1
+    # Subtree inclusion is the browsing default; the narrowing states are
+    # global search and the explicit folder-only opt-out.
+    if is_global_search or not is_recursive: active_filters_count += 1
 
     
     # --- CLUSTER MODE OVERRIDE LOGIC & SCOPE SEARCH ---
-    cluster_mode = request.args.get('cluster_mode')
+    # Exhibition mode ships no clustering UI (banner/exit controls), so
+    # crafted cluster URLs must not switch the view into an inescapable mode.
+    cluster_mode = None if IS_EXHIBITION_MODE else request.args.get('cluster_mode')
     cluster_sort = request.args.get('cluster_sort', 'date_desc')
     cluster_target_id = request.args.get('cluster_target_id')
     cluster_scope = request.args.get('cluster_scope', 'global')
-    
-    gallery_view_cache = process_clustering(gallery_view_cache, cluster_mode, cluster_sort, cluster_target_id, cluster_scope, active_filters_count)
+
+    view_files = process_clustering(view_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope)
 
     total_folder_files, _, _ = scan_folder_and_extract_options(folder_path, recursive=is_recursive)
     total_db_files = 0 
@@ -4783,9 +4869,10 @@ def gallery_view(folder_key):
     available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
     template_name = 'exhibition.html' if IS_EXHIBITION_MODE else 'index.html'
 
-    return render_template(template_name, 
-                           files=gallery_view_cache[:PAGE_SIZE],
-                           total_files=len(gallery_view_cache),
+    return render_template(template_name,
+                           files=view_files[:PAGE_SIZE],
+                           total_files=len(view_files),
+                           view_token=VIEW_SNAPSHOTS.put(_view_owner(), view_files),
                            total_folder_files=total_folder_files, 
                            total_db_files=total_db_files,
                            folders=folders,
@@ -4900,6 +4987,7 @@ def background_rescan_worker(job_id, files_to_process):
                         workflow_prompt = excluded.workflow_prompt,
                         workflow_hash = excluded.workflow_hash,
                         prompt_hash = excluded.prompt_hash,
+                        hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
                         is_favorite = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.is_favorite END,
                         ai_caption = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_caption END,
                         ai_embedding = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_embedding END,
@@ -5490,20 +5578,24 @@ def delete_folder(folder_key):
 
 @app.route('/galleryout/api/current_view_ids')
 def get_current_view_ids():
-    """Returns all file IDs currently in the global search cache."""
+    """Returns all file IDs in the caller's view snapshot (by view_token)."""
     if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
         return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-    global gallery_view_cache
-    ids = [f['id'] for f in gallery_view_cache]
-    return jsonify({'status': 'success', 'ids': ids})
+    snapshot = VIEW_SNAPSHOTS.get(request.args.get('view_token', ''), _view_owner())
+    if snapshot is None:
+        return jsonify({'status': 'error', 'message': 'View expired. Reload the page.', 'stale': True}), 410
+    return jsonify({'status': 'success', 'ids': [f['id'] for f in snapshot]})
 
 @app.route('/galleryout/load_more')
 def load_more():
     if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
         return jsonify({'files': []}), 401
+    snapshot = VIEW_SNAPSHOTS.get(request.args.get('view_token', ''), _view_owner())
+    if snapshot is None:
+        return jsonify({'files': [], 'stale': True})
     offset = request.args.get('offset', 0, type=int)
-    if offset >= len(gallery_view_cache): return jsonify(files=[])
-    return jsonify(files=gallery_view_cache[offset:offset + PAGE_SIZE])
+    if offset >= len(snapshot): return jsonify(files=[])
+    return jsonify(files=snapshot[offset:offset + PAGE_SIZE])
 
 def get_file_info_from_db(file_id, column='*'):
     with get_db_connection() as conn:
@@ -7498,8 +7590,6 @@ def tag_batch():
 # Updated route to accept both integer IDs and the string "all"
 @app.route('/galleryout/collection/<coll_id>')
 def collection_view(coll_id):
-    global gallery_view_cache
-
     # AUTHENTICATION CHECK FOR EXHIBITION / FORCE_LOGIN MODES
     is_management_side = not IS_EXHIBITION_MODE
     is_logged_in = 'user_id' in session
@@ -7594,9 +7684,13 @@ def collection_view(coll_id):
         
         conditions.append(f"cf.collection_id IN ({sub_query})")
     else:
-        is_recursive = request.args.get('recursive', 'false').lower() == 'true'
-        if is_recursive:
+        # Sub-collections are included by default; only an explicit
+        # recursive=false narrows to this collection alone (counted as a
+        # filter, since it is the non-default narrowing state).
+        is_recursive = request.args.get('recursive', 'true').lower() != 'false'
+        if not is_recursive:
             active_filters_count += 1
+        if is_recursive:
             user_role = session.get('role', 'GUEST')
             safe_uid = str(session.get('user_id', '')).replace("'", "''")
             is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
@@ -7993,14 +8087,14 @@ def collection_view(coll_id):
         available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
             
     # --- CLUSTER MODE OVERRIDE LOGIC & SCOPE SEARCH ---
-    cluster_mode = request.args.get('cluster_mode')
+    # Exhibition mode ships no clustering UI; ignore crafted cluster URLs.
+    cluster_mode = None if IS_EXHIBITION_MODE else request.args.get('cluster_mode')
     cluster_sort = request.args.get('cluster_sort', 'date_desc')
     cluster_target_id = request.args.get('cluster_target_id')
     cluster_scope = request.args.get('cluster_scope', 'global')
-    
-    final_files = process_clustering(final_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope, active_filters_count)
-    gallery_view_cache = final_files
-    
+
+    final_files = process_clustering(final_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope)
+
     fake_folder_key = f"collection_{coll_id}"
 
     # Fetch notes dynamically for the current collection
@@ -8123,10 +8217,11 @@ def collection_view(coll_id):
     available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
     template_name = 'exhibition.html' if IS_EXHIBITION_MODE else 'index.html'
 
-    return render_template(template_name, 
-                           files=final_files[:PAGE_SIZE], 
+    return render_template(template_name,
+                           files=final_files[:PAGE_SIZE],
                            total_files=len(final_files),
-                           total_folder_files=total_folder_files, 
+                           view_token=VIEW_SNAPSHOTS.put(_view_owner(), final_files),
+                           total_folder_files=total_folder_files,
                            total_db_files=total_db_files,
                            folders=folders,
                            current_folder_key=fake_folder_key, 
@@ -8142,7 +8237,7 @@ def collection_view(coll_id):
                            generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, enable_ai_dam=AI_CONFIG.enabled, is_ai_search=False, ai_query="", is_omniquery=False, omniquery_sql="", omniquery_dictionary=get_omniquery_dictionary(),
                            is_global_search=False, 
                            active_filters_count=active_filters_count, 
-                           current_scope='local', is_recursive=False,
+                           current_scope='local', is_recursive=True,
                            server_dam_default=ENABLE_DAM_MODE,
                            is_exhibition_mode=IS_EXHIBITION_MODE, blind_rating=is_effectively_blind(), global_blind_active=BLIND_RATING,
                            app_version=APP_VERSION, github_url=GITHUB_REPO_URL,
@@ -10525,9 +10620,9 @@ def compute_workflow_hashes(filepath):
         struct_str = json.dumps(node_descriptors, sort_keys=True)
         workflow_hash = hashlib.md5(struct_str.encode('utf-8')).hexdigest()
 
-        if not prompt_hash and workflow_hash:
-            prompt_hash = hashlib.md5((workflow_hash + "_prompt").encode('utf-8')).hexdigest()
-
+        # prompt_hash stays empty when the workflow has no positive prompt:
+        # prompt clusters mean "identical prompt text", and a synthesized
+        # value would group files that share no prompt at all.
         return workflow_hash, prompt_hash
     except Exception:
         return '', '' 
@@ -10612,6 +10707,24 @@ def backfill_audio_durations(conn=None):
         if close_conn and conn:
             conn.close()
 
+def clear_synthetic_prompt_hashes(conn):
+    """One-time data repair: prompt_hash used to be synthesized as
+    md5(workflow_hash + '_prompt') for promptless workflows, which made
+    'identical prompt text' clusters group files sharing no prompt. Detect
+    exactly those synthetic values and clear them. Idempotent."""
+    rows = conn.execute(
+        "SELECT id, workflow_hash, prompt_hash FROM files WHERE prompt_hash != '' AND workflow_hash != ''"
+    ).fetchall()
+    synthetic = [
+        (r['id'],) for r in rows
+        if r['prompt_hash'] == hashlib.md5((r['workflow_hash'] + "_prompt").encode('utf-8')).hexdigest()
+    ]
+    if synthetic:
+        conn.executemany("UPDATE files SET prompt_hash = '' WHERE id = ?", synthetic)
+        conn.commit()
+    return len(synthetic)
+
+
 def backfill_unhashed_workflows(conn=None, force_all=False):
     """
     Auto-migrates existing files in DB with real-time console progress.
@@ -10624,15 +10737,27 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
 
     try:
         if force_all:
+            # Algorithm change: every file gets a fresh attempt, including
+            # ones previously marked failed.
+            conn.execute("UPDATE files SET hash_failed = 0 WHERE has_workflow = 1 AND hash_failed = 1")
+            conn.commit()
             rows = conn.execute("SELECT id, path FROM files WHERE has_workflow = 1").fetchall()
         else:
-            rows = conn.execute("SELECT id, path FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '')").fetchall()
-            
+            rows = conn.execute("SELECT id, path FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '') AND hash_failed = 0").fetchall()
+
         if not rows:
             if close_conn: conn.close()
             return 0
 
         unhashed = [(r['id'], r['path']) for r in rows if os.path.exists(r['path'])]
+
+        # Rows whose file vanished can never hash; mark them failed so they
+        # stop re-triggering this backfill on every clustered page view.
+        missing_ids = [(r['id'],) for r in rows if not os.path.exists(r['path'])]
+        if missing_ids:
+            conn.executemany("UPDATE files SET hash_failed = 1 WHERE id = ?", missing_ids)
+            conn.commit()
+
         total_unhashed = len(unhashed)
         if total_unhashed == 0:
             if close_conn: conn.close()
@@ -10646,30 +10771,41 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
             return (wf_h, pr_h, fid)
 
         results = []
+        failed_ids = []
         completed = 0
         last_reported_pct = -1
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
-            futures = [executor.submit(_work, item) for item in unhashed]
+            futures = {executor.submit(_work, item): item[0] for item in unhashed}
             for future in concurrent.futures.as_completed(futures):
                 completed += 1
                 try:
                     res = future.result()
                     if res and (res[0] or res[1]):
                         results.append(res)
+                    else:
+                        failed_ids.append((futures[future],))
                 except Exception:
-                    pass
+                    failed_ids.append((futures[future],))
 
                 pct = int((completed / total_unhashed) * 100)
                 if pct % 5 == 0 and pct != last_reported_pct:
                     last_reported_pct = pct
                     print(f"\r   [Clustering Progress] Indexed {completed}/{total_unhashed} files ({pct}%)...", end="", flush=True)
 
+        batch_size = 500
         if results:
-            batch_size = 500
             for i in range(0, len(results), batch_size):
                 batch = results[i:i + batch_size]
-                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ? WHERE id = ?", batch)
+                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ?, hash_failed = 0 WHERE id = ?", batch)
+                conn.commit()
+
+        # Unhashable files (corrupt/promptless-and-graphless workflows) are
+        # marked failed; a rescan that changes the file's mtime resets the
+        # flag and earns them another attempt.
+        if failed_ids:
+            for i in range(0, len(failed_ids), batch_size):
+                conn.executemany("UPDATE files SET hash_failed = 1 WHERE id = ?", failed_ids[i:i + batch_size])
                 conn.commit()
 
         print()

@@ -19,6 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.bak
 
 # Virtual Environment
 venv/
@@ -77,3 +78,4 @@ temp
 benchmarks/results/*
 !benchmarks/results/grounding_calibration.json
 !benchmarks/results/wi31_benchmark.json
+run_smartgallery.bat
