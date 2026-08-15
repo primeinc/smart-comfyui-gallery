@@ -22,6 +22,13 @@ The gallery now identifies and parses embedded generation metadata from every ma
 * **`generation_tool` field** in the file-details API identifies the generator.
 * Disambiguates the three tools that all write a chunk literally named `parameters` (A1111/Forge, SwarmUI, Fooocus).
 
+### 🧬 Smart Clustering Covers Non-ComfyUI Images
+
+**Fixed:** In a SwarmUI-dominated gallery, clustering showed the same tiny asset count for every basis (e.g. "Global Scope 211 Assets" out of 42k files) because every clustering gate required an embedded ComfyUI graph (`has_workflow=1`). Files whose metadata metaparse can identify now receive cluster identities without a graph:
+* **Prompt basis:** hash of the parsed positive prompt — identical prompts now cluster across ComfyUI, SwarmUI, A1111, and the rest.
+* **Architecture basis:** for graph-less images, the pipeline identity is checkpoint model + LoRA set.
+* The hash backfill, the in-request trigger, all clustering filters, and the Details-panel cluster badges are de-gated from `has_workflow`; the startup backfill migrates existing rows (one-time, console progress) and fills the searchable prompt field for previously indexed foreign images in the same pass.
+
 ---
 
 ### **[2.22] - 2026-08-12**

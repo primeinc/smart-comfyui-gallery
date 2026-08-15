@@ -1900,7 +1900,8 @@ def process_single_file(filepath):
             if parsed_meta and parsed_meta.positive:
                 workflow_prompt_content = parsed_meta.positive
         
-        wf_hash, pr_hash = compute_workflow_hashes(filepath) if metadata['has_workflow'] else ('', '')
+        hashable = metadata['has_workflow'] or metadata['type'] in ('image', 'animated_image')
+        wf_hash, pr_hash = compute_workflow_hashes(filepath) if hashable else ('', '')
         return (
             file_id, filepath, mtime, os.path.basename(filepath),
             metadata['type'], metadata['duration'], metadata['dimensions'], 
@@ -4026,7 +4027,11 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 
     with get_db_connection() as conn_check:
         unhashed_cnt = conn_check.execute(
-            "SELECT COUNT(*) FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '') AND hash_failed = 0"
+            """SELECT COUNT(*) FROM files
+               WHERE (has_workflow = 1 OR type IN ('image', 'animated_image'))
+               AND (workflow_hash IS NULL OR workflow_hash = '')
+               AND (prompt_hash IS NULL OR prompt_hash = '')
+               AND hash_failed = 0"""
         ).fetchone()[0]
         if unhashed_cnt > 0:
             backfill_unhashed_workflows(conn_check)
@@ -4049,7 +4054,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                 comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
 
             if cluster_target_id:
-                target_row = conn_target.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ? AND has_workflow = 1", (cluster_target_id,)).fetchone()
+                target_row = conn_target.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
                 target_wf = target_row[0] if target_row else None
                 target_pr = target_row[1] if target_row else None
 
@@ -4075,7 +4080,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                         (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
                         (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
                         FROM files f
-                        WHERE f.has_workflow = 1 AND {where_clause}
+                        WHERE {where_clause}
                     """, params_t).fetchall()
                     result_files = [dict(r) for r in rows]
                 else:
@@ -4090,7 +4095,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                     (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
                     (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
                     FROM files f
-                    WHERE f.has_workflow = 1 AND f.{primary_hash_key} IS NOT NULL AND f.{primary_hash_key} != ''
+                    WHERE f.{primary_hash_key} IS NOT NULL AND f.{primary_hash_key} != ''
                 """).fetchall()
                 result_files = [dict(r) for r in rows]
 
@@ -4105,7 +4110,8 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
         # that still looks unhashed.
         stale_ids = [
             f['id'] for f in result_files
-            if f.get('has_workflow') and not str(f.get('workflow_hash') or '').strip()
+            if not str(f.get('workflow_hash') or '').strip()
+            and not str(f.get('prompt_hash') or '').strip()
         ]
         if stale_ids:
             fresh_hashes = {}
@@ -4123,7 +4129,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 
         if cluster_target_id:
             with get_db_connection() as conn_t:
-                t_row = conn_t.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ? AND has_workflow = 1", (cluster_target_id,)).fetchone()
+                t_row = conn_t.execute("SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
                 if t_row:
                     t_wf, t_pr = t_row[0], t_row[1]
                     if cluster_mode == 'combo':
@@ -4137,7 +4143,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 
     result_files = [
         f for f in result_files
-        if f.get('has_workflow') and str(f.get(primary_hash_key) or '').strip()
+        if str(f.get(primary_hash_key) or '').strip()
     ]
 
     def get_inner_sort_key(item):
@@ -7230,14 +7236,14 @@ def get_file_full_details(file_id):
             nodes_pipeline = []
             models_used = []
 
-            if file_data.get('has_workflow'):
-                wf_h = file_data.get('workflow_hash')
-                pr_h = file_data.get('prompt_hash')
-                if wf_h:
-                    cluster_wf_count = conn.execute("SELECT COUNT(*) FROM files WHERE workflow_hash = ? AND has_workflow = 1", (wf_h,)).fetchone()[0]
-                if pr_h:
-                    cluster_pr_count = conn.execute("SELECT COUNT(*) FROM files WHERE prompt_hash = ? AND has_workflow = 1", (pr_h,)).fetchone()[0]
+            wf_h = file_data.get('workflow_hash')
+            pr_h = file_data.get('prompt_hash')
+            if wf_h:
+                cluster_wf_count = conn.execute("SELECT COUNT(*) FROM files WHERE workflow_hash = ?", (wf_h,)).fetchone()[0]
+            if pr_h:
+                cluster_pr_count = conn.execute("SELECT COUNT(*) FROM files WHERE prompt_hash = ?", (pr_h,)).fetchone()[0]
 
+            if file_data.get('has_workflow'):
                 wf_json = extract_workflow(abs_path, target_type='ui')
                 if not wf_json:
                     wf_json = extract_workflow(abs_path, target_type='api')
@@ -10347,19 +10353,54 @@ def upload_collection_note():
 # --- SMART WORKFLOW FILES SEARCH, SUGGESTIONS & CLUSTERING HASHES ---
 import difflib
 
+def _foreign_cluster_hashes(parsed):
+    """Cluster identities for images whose metadata names a non-ComfyUI tool
+    (SwarmUI, A1111/Forge, Fooocus, ...). There is no node graph to hash, so
+    the architecture analog is the generation pipeline identity: checkpoint
+    model + LoRA set. The prompt hash uses the same normalization as the
+    ComfyUI path so identical prompts cluster across tools."""
+    if parsed is None:
+        return '', ''
+    prompt_hash = ''
+    if parsed.positive:
+        prompt_hash = hashlib.md5(parsed.positive.strip().lower().encode('utf-8')).hexdigest()
+    model = str(parsed.params.get('model') or '').strip().lower()
+    if not model:
+        return '', prompt_hash
+    loras = {m.group(1).strip().lower() for m in re.finditer(r'<lora:([^:>]+)', parsed.positive or '')}
+    for key in ('loras', 'used_loras', 'lora_hashes', 'Lora hashes', 'used models'):
+        value = parsed.extra.get(key)
+        if value:
+            loras.add(str(value).strip().lower())
+    identity = json.dumps({'model': model, 'loras': sorted(loras)}, sort_keys=True)
+    return hashlib.md5(identity.encode('utf-8')).hexdigest(), prompt_hash
+
+
 def compute_workflow_hashes(filepath):
     """
     Computes workflow_hash (canonical structural architecture & models) and prompt_hash (positive prompt).
     Ignores folder paths, seeds, steps, CFG, prompts, and ephemeral widget values.
+    Files without an embedded ComfyUI graph fall back to metaparse identities
+    (model+LoRA architecture analog, parsed positive prompt).
     """
     if not filepath or not os.path.exists(filepath):
         return '', ''
     try:
-        wf_json = extract_workflow(filepath, target_type='api')
+        # Marker-detected non-ComfyUI files skip extract_workflow: its raw
+        # byte-scan fallback reads the whole file twice, which is what made
+        # bulk hashing of a SwarmUI-dominated tree prohibitive.
+        foreign = None
+        raw_meta = metaparse.load_raw(filepath)
+        if raw_meta is not None and not metaparse.adapters.ComfyUIAdapter.match(raw_meta):
+            foreign = metaparse.parse_raw(raw_meta)
+
+        wf_json = None
+        if foreign is None:
+            wf_json = extract_workflow(filepath, target_type='api')
+            if not wf_json:
+                wf_json = extract_workflow(filepath, target_type='ui')
         if not wf_json:
-            wf_json = extract_workflow(filepath, target_type='ui')
-        if not wf_json:
-            return '', ''
+            return _foreign_cluster_hashes(foreign)
 
         data = json.loads(wf_json)
         prompt_text = extract_workflow_prompt_string(wf_json)
@@ -10590,20 +10631,34 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         close_conn = True
 
     try:
+        # Hashable population: ComfyUI-graph carriers plus any image whose
+        # embedded metadata metaparse can identify (SwarmUI, A1111, ...).
+        hashable = "(has_workflow = 1 OR type IN ('image', 'animated_image'))"
         if force_all:
             # Algorithm change: every file gets a fresh attempt, including
             # ones previously marked failed.
-            conn.execute("UPDATE files SET hash_failed = 0 WHERE has_workflow = 1 AND hash_failed = 1")
+            conn.execute(f"UPDATE files SET hash_failed = 0 WHERE {hashable} AND hash_failed = 1")
             conn.commit()
-            rows = conn.execute("SELECT id, path FROM files WHERE has_workflow = 1").fetchall()
+            rows = conn.execute(f"SELECT id, path, workflow_prompt FROM files WHERE {hashable}").fetchall()
         else:
-            rows = conn.execute("SELECT id, path FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '') AND hash_failed = 0").fetchall()
+            # Both hashes empty: a file that yielded only a prompt hash (or
+            # only an architecture hash) is done, not pending — selecting on
+            # one column alone would re-scan it forever.
+            rows = conn.execute(
+                f"""SELECT id, path, workflow_prompt FROM files WHERE {hashable}
+                    AND (workflow_hash IS NULL OR workflow_hash = '')
+                    AND (prompt_hash IS NULL OR prompt_hash = '')
+                    AND hash_failed = 0"""
+            ).fetchall()
 
         if not rows:
             if close_conn: conn.close()
             return 0
 
-        unhashed = [(r['id'], r['path']) for r in rows if os.path.exists(r['path'])]
+        unhashed = [
+            (r['id'], r['path'], bool(str(r['workflow_prompt'] or '').strip()))
+            for r in rows if os.path.exists(r['path'])
+        ]
 
         # Rows whose file vanished can never hash; mark them failed so they
         # stop re-triggering this backfill on every clustered page view.
@@ -10620,9 +10675,16 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         print(f"{Colors.BLUE}INFO: [Clustering] Starting hash indexing for {total_unhashed} files...{Colors.RESET}", flush=True)
 
         def _work(item):
-            fid, fpath = item
+            fid, fpath, had_prompt = item
             wf_h, pr_h = compute_workflow_hashes(fpath)
-            return (wf_h, pr_h, fid)
+            # Rows indexed before foreign-metadata support have no searchable
+            # prompt; the file is already open here, so fill it in one pass.
+            prompt_text = ''
+            if not had_prompt:
+                parsed = metaparse.parse_file(fpath)
+                if parsed and parsed.positive:
+                    prompt_text = parsed.positive
+            return (wf_h, pr_h, prompt_text, fid)
 
         results = []
         failed_ids = []
@@ -10649,9 +10711,16 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
 
         batch_size = 500
         if results:
-            for i in range(0, len(results), batch_size):
-                batch = results[i:i + batch_size]
-                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ?, hash_failed = 0 WHERE id = ?", batch)
+            hash_rows = [(wf, pr, fid) for wf, pr, _, fid in results]
+            prompt_rows = [(text, fid) for _, _, text, fid in results if text]
+            for i in range(0, len(hash_rows), batch_size):
+                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ?, hash_failed = 0 WHERE id = ?", hash_rows[i:i + batch_size])
+                conn.commit()
+            for i in range(0, len(prompt_rows), batch_size):
+                conn.executemany(
+                    "UPDATE files SET workflow_prompt = ? WHERE id = ? AND (workflow_prompt IS NULL OR workflow_prompt = '')",
+                    prompt_rows[i:i + batch_size],
+                )
                 conn.commit()
 
         # Unhashable files (corrupt/promptless-and-graphless workflows) are

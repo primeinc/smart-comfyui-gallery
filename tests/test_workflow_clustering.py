@@ -232,6 +232,152 @@ def test_global_target_without_required_hash_yields_empty(sg):
     assert result == []
 
 
+# --- non-ComfyUI generators join clusters (WI-31 "211 assets" defect) --------
+#
+# Regression for: a SwarmUI-dominated gallery showed "Global Scope 211 Assets"
+# for BOTH cluster bases, because every clustering gate required has_workflow=1
+# (an embedded ComfyUI graph) and 42k SwarmUI images had none.
+
+
+_SUI_PARAMS_TMPL = (
+    '{"sui_image_params": {"prompt": "%s", "negativeprompt": "", '
+    '"model": "%s", "seed": 7, "steps": 20, "cfgscale": 7.0, '
+    '"width": 64, "height": 64, "swarm_version": "0.9.3.1"}}'
+)
+
+
+def _make_swarm_png(tmp_path, name, prompt, model):
+    from PIL import Image
+    from PIL.PngImagePlugin import PngInfo
+    info = PngInfo()
+    info.add_text("parameters", _SUI_PARAMS_TMPL % (prompt, model))
+    path = tmp_path / name
+    Image.new("RGB", (8, 8), (30, 60, 90)).save(path, pnginfo=info)
+    return str(path).replace('\\', '/')
+
+
+def test_compute_hashes_swarmui_file_without_graph(sg, tmp_path):
+    # Arrange: two SwarmUI files, same prompt, different models.
+    p1 = _make_swarm_png(tmp_path, "s1.png", "a red fox", "modelA")
+    p2 = _make_swarm_png(tmp_path, "s2.png", "a red fox", "modelB")
+
+    # Act
+    wf1, pr1 = sg.compute_workflow_hashes(p1)
+    wf2, pr2 = sg.compute_workflow_hashes(p2)
+
+    # Assert: both hashable without any ComfyUI graph; prompt identity is
+    # shared, architecture identity follows the model.
+    assert wf1 and pr1
+    assert pr1 == pr2
+    assert wf1 != wf2
+
+
+def test_global_clustering_includes_foreign_files_and_bases_differ(sg):
+    """The user-visible symptom: both bases returned the same (ComfyUI-only)
+    population. Foreign rows (has_workflow=0) with hashes must be clustered,
+    and the two bases must reflect their own hash columns."""
+    # Arrange: two swarm files sharing a prompt but not an architecture,
+    # plus one with an architecture twin and no prompt.
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'sw1', has_workflow=0, workflow_hash='archX', prompt_hash='promptQ')
+        _insert_file(conn, 'sw2', has_workflow=0, workflow_hash='archY', prompt_hash='promptQ')
+        _insert_file(conn, 'sw3', has_workflow=0, workflow_hash='archX', prompt_hash='')
+
+    # Act
+    with sg.app.test_request_context('/'):
+        by_arch = sg.process_clustering([], 'workflow', 'date_desc', None, 'global')
+        by_prompt = sg.process_clustering([], 'prompt', 'date_desc', None, 'global')
+
+    # Assert
+    arch_ids = {f['id'] for f in by_arch if f['id'].startswith(_PREFIX)}
+    prompt_ids = {f['id'] for f in by_prompt if f['id'].startswith(_PREFIX)}
+    assert arch_ids == {_PREFIX + 'sw1', _PREFIX + 'sw2', _PREFIX + 'sw3'}
+    assert prompt_ids == {_PREFIX + 'sw1', _PREFIX + 'sw2'}
+    assert arch_ids != prompt_ids  # the two bases must not mirror each other
+
+
+def test_global_target_cluster_works_for_foreign_file(sg):
+    # Arrange
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'ft', has_workflow=0, workflow_hash='archT', prompt_hash='pT')
+        _insert_file(conn, 'ft2', has_workflow=0, workflow_hash='archT', prompt_hash='pOther')
+        _insert_file(conn, 'ftno', has_workflow=0, workflow_hash='archElse', prompt_hash='pT2')
+
+    # Act
+    with sg.app.test_request_context('/'):
+        result = sg.process_clustering([], 'workflow', 'date_desc', _PREFIX + 'ft', 'global')
+
+    # Assert
+    ids = {f['id'] for f in result if f['id'].startswith(_PREFIX)}
+    assert ids == {_PREFIX + 'ft', _PREFIX + 'ft2'}
+
+
+def test_backfill_selects_foreign_image_rows(sg, tmp_path, monkeypatch):
+    # Arrange: an unhashed image row without a ComfyUI graph.
+    target = tmp_path / "sw.png"
+    target.write_bytes(b"png")
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'fimg', path=str(target).replace('\\', '/'), has_workflow=0)
+        monkeypatch.setattr(sg, 'compute_workflow_hashes', lambda p: ('archF', 'prF'))
+
+        # Act
+        updated = sg.backfill_unhashed_workflows(conn)
+
+        # Assert
+        assert updated >= 1
+        row = conn.execute(
+            "SELECT workflow_hash, prompt_hash FROM files WHERE id = ?", (_PREFIX + 'fimg',)
+        ).fetchone()
+        assert (row['workflow_hash'], row['prompt_hash']) == ('archF', 'prF')
+
+
+def test_backfill_hashes_and_prompts_real_swarm_file(sg, tmp_path):
+    """End-to-end at the backfill seam: a real SwarmUI PNG (no ComfyUI graph)
+    gets cluster hashes AND a searchable workflow_prompt in one pass."""
+    # Arrange
+    path = _make_swarm_png(tmp_path, "real_swarm.png", "a lighthouse at dusk", "modelReal")
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'realsw', path=path, has_workflow=0)
+
+        # Act
+        updated = sg.backfill_unhashed_workflows(conn)
+
+        # Assert
+        assert updated >= 1
+        row = conn.execute(
+            "SELECT workflow_hash, prompt_hash, workflow_prompt, hash_failed FROM files WHERE id = ?",
+            (_PREFIX + 'realsw',),
+        ).fetchone()
+        assert row['workflow_hash'] != ''
+        assert row['prompt_hash'] != ''
+        assert row['workflow_prompt'] == "a lighthouse at dusk"
+        assert row['hash_failed'] == 0
+
+
+def test_backfill_does_not_reselect_partially_hashed_rows(sg, tmp_path, monkeypatch):
+    """A file that yielded only a prompt hash is complete, not pending —
+    selecting on workflow_hash alone would re-scan it on every request."""
+    # Arrange
+    target = tmp_path / "ponly.png"
+    target.write_bytes(b"png")
+    calls = []
+    with sg.get_db_connection() as conn:
+        _insert_file(conn, 'pdone', path=str(target).replace('\\', '/'),
+                     has_workflow=0, workflow_hash='', prompt_hash='prOnly')
+        monkeypatch.setattr(sg, 'compute_workflow_hashes',
+                            lambda p: calls.append(p) or ('', ''))
+
+        # Act
+        sg.backfill_unhashed_workflows(conn)
+
+        # Assert: the partially hashed row was never re-scanned.
+        assert all(_PREFIX + 'pdone' not in c for c in calls)
+        row = conn.execute(
+            "SELECT prompt_hash, hash_failed FROM files WHERE id = ?", (_PREFIX + 'pdone',)
+        ).fetchone()
+        assert (row['prompt_hash'], row['hash_failed']) == ('prOnly', 0)
+
+
 # --- backfill_unhashed_workflows: failure marking ---------------------------
 
 
