@@ -19,10 +19,14 @@ Protocol per image:
   3. ASSESS    — one JSON-schema-constrained call: quality score + up to
                  3 defects, each typed from the fixed vocabulary with
                  severity/confidence and a coarse region enum.
-  4. LOCALIZE  — for each non-whole-image defect, one schema-constrained
-                 bbox call (fractional coords). Invalid boxes degrade to
-                 the coarse region's box — still model-claimed grounding,
-                 never invented by us.
+  4. LOCALIZE  — for defects whose TYPE is inherently spatial (anatomy,
+                 artifact, text_render, detail_loss, other) and whose
+                 region is not whole-image: one schema-constrained bbox
+                 call (fractional coords). A finding is localizable ONLY
+                 if this step yields a geometrically valid model-emitted
+                 box; otherwise it becomes a GLOBAL finding (region kept
+                 as text). No region-rectangle fallbacks — invented
+                 geometry is the "fake mask" the ticket forbids.
   5. ASSEMBLE  — our code builds the payload; prompt_alignment_score is
                  computed OUTSIDE the VLM as CLIPScore(prompt, image)
                  mapped to 0-10 (min(10, 25*max(cos,0)) — the standard
@@ -68,13 +72,12 @@ DEFAULT_GROUNDING_MIN_COS = 0.20
 _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
             "bottom-right", "center")
 
-_REGION_BOXES = {
-    "top-left": (0.0, 0.0, 0.5, 0.5),
-    "top-right": (0.5, 0.0, 0.5, 0.5),
-    "bottom-left": (0.0, 0.5, 0.5, 0.5),
-    "bottom-right": (0.5, 0.5, 0.5, 0.5),
-    "center": (0.25, 0.25, 0.5, 0.5),
-}
+# Only finding types with an inherent spatial locus may be localizable.
+# lighting/style/composition/prompt_mismatch are properties of the whole
+# image; letting a region enum turn them into mask-bearing findings would
+# be exactly the "forced fake mask" the ticket forbids.
+_LOCALIZABLE_TYPES = frozenset(
+    {"anatomy", "artifact", "text_render", "detail_loss", "other"})
 
 _ASSESS_SCHEMA = {
     "type": "object",
@@ -122,6 +125,25 @@ class CriticGroundingError(RuntimeError):
     is not talking about this image. The review is aborted, never stored."""
 
 
+def check_grounding(embedder: SemanticEmbedder, description: str,
+                    img: Image.Image,
+                    min_cos: float = DEFAULT_GROUNDING_MIN_COS) -> float:
+    """The deterministic anti-fabrication gate, exposed as a pure function
+    so its negative cases are testable without loading the VLM. Returns the
+    CLIP cosine on success; raises CriticGroundingError when the
+    description does not match the image (or is empty)."""
+    if not description:
+        raise CriticGroundingError("critic produced no description")
+    cos = _cos(embedder.embed_text(description), embedder.embed_image(img))
+    # Fail CLOSED on NaN: `cos < min_cos` would be False for NaN (a
+    # degenerate zero-norm embedding), silently passing the gate.
+    if not (cos >= min_cos):
+        raise CriticGroundingError(
+            f"description does not match image (CLIP cos {cos:.3f} < "
+            f"{min_cos}); refusing to store an ungrounded review")
+    return cos
+
+
 def _data_uri(img: Image.Image) -> str:
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="PNG")
@@ -145,6 +167,17 @@ class QwenVlCritic(CriticBackend):
                  semantic_embedder: Optional[SemanticEmbedder] = None,
                  grounding_min_cos: float = DEFAULT_GROUNDING_MIN_COS,
                  n_ctx: int = 8192, n_threads: int = 4):
+        # FAIL CLOSED on the grounding dependency: the CLIP gate is the
+        # anti-fabrication mechanism this critic's measured record (and its
+        # 'auto' enablement) relies on. Running the VLM without it would be
+        # a strictly weaker, unmeasured configuration, so it is not allowed
+        # to exist. It also carries prompt-alignment scoring, so a
+        # prompt-bearing review can never silently lose its score.
+        if semantic_embedder is None:
+            raise BackendUnavailable(
+                "qwen-vl critic requires the semantic (OpenCLIP) backend for "
+                "its grounding gate and prompt-alignment scoring; provision "
+                "the OpenCLIP weights or disable the critic")
         # Weights check precedes the runtime import: 'auto' resolution on
         # an unprovisioned system must stay fast and side-effect-free.
         model_path = _first_existing(models_dir, MODEL_FILENAMES)
@@ -208,18 +241,10 @@ class QwenVlCritic(CriticBackend):
             uri, "Describe this image factually in two short sentences.",
             schema=None, max_tokens=120).strip()
 
-        # 2. GROUND — deterministic anti-fabrication gate
-        grounding_cos = None
-        if self._embedder is not None:
-            if not description:
-                raise CriticGroundingError("critic produced no description")
-            grounding_cos = _cos(self._embedder.embed_text(description),
-                                 self._embedder.embed_image(img))
-            if grounding_cos < self._grounding_min_cos:
-                raise CriticGroundingError(
-                    f"description does not match image "
-                    f"(CLIP cos {grounding_cos:.3f} < {self._grounding_min_cos}); "
-                    f"refusing to store an ungrounded review")
+        # 2. GROUND — deterministic anti-fabrication gate (embedder is a
+        # constructor-enforced hard dependency; this can never be skipped)
+        grounding_cos = check_grounding(self._embedder, description, img,
+                                        self._grounding_min_cos)
 
         # 3. ASSESS (grammar-constrained)
         assess_raw = self._chat(
@@ -235,37 +260,51 @@ class QwenVlCritic(CriticBackend):
         findings = []
         for defect in (assess.get("defects") or [])[:3]:
             region = defect.get("region", "whole-image")
-            localizable = region != "whole-image"
+            # Localizable requires BOTH an inherently spatial finding type
+            # AND a successful model-emitted bbox from the LOCALIZE step.
+            # No region-rectangle fallbacks: a finding we cannot genuinely
+            # ground becomes GLOBAL (the region, if any, stays as text in
+            # the description) rather than carrying invented geometry —
+            # per the ticket's no-fake-masks stop condition.
             bbox = None
-            if localizable:
+            if defect["type"] in _LOCALIZABLE_TYPES and region != "whole-image":
                 # 4. LOCALIZE (grammar-constrained bbox for this defect)
                 bbox = self._localize(uri, defect)
-                if bbox is None:
-                    bbox = _REGION_BOXES[region]
+            localizable = bbox is not None
+            description = str(defect.get("what", ""))[:300] or defect["type"]
+            if not localizable and region != "whole-image":
+                description = f"{description} (reported region: {region})"
             finding = {
                 "type": defect["type"],
                 "severity": defect["severity"],
-                "confidence": _clamp(defect.get("confidence", 0.5), 0.0, 1.0),
+                # Grammar constrains structure, not numeric ranges; an
+                # out-of-range confidence is the model failing the protocol
+                # and is REJECTED downstream by validate_review_payload —
+                # never clamped into plausibility.
+                "confidence": defect.get("confidence", 0.5),
                 "localizable": localizable,
-                "description": str(defect.get("what", ""))[:300] or defect["type"],
+                "description": description,
             }
             if localizable:
                 finding["bbox"] = list(bbox)
             findings.append(finding)
 
-        # 5. ASSEMBLE (deterministic; alignment computed outside the VLM)
+        # 5. ASSEMBLE (deterministic; alignment computed outside the VLM).
+        # The embedder is mandatory, so a prompt-bearing review always gets
+        # a real alignment score; None means only "no prompt available".
         alignment = None
-        if prompt_text and self._embedder is not None:
+        if prompt_text:
             alignment = clip_score_10(
                 _cos(self._embedder.embed_text(prompt_text),
                      self._embedder.embed_image(img)))
 
-        summary = description[:280] if description else "(no description)"
-        if grounding_cos is not None:
-            summary += f" [grounding cos {grounding_cos:.2f}]"
+        summary = f"{description[:280]} [grounding cos {grounding_cos:.2f}]"
 
         return {
-            "quality_score": _clamp(assess.get("quality_score", 5.0), 0.0, 10.0),
+            # Not clamped: an out-of-range score is protocol failure and is
+            # rejected by validate_review_payload (the review then errors
+            # rather than storing a laundered number).
+            "quality_score": assess.get("quality_score"),
             "prompt_alignment_score": alignment,
             "summary": summary,
             "findings": findings,
@@ -280,19 +319,15 @@ class QwenVlCritic(CriticBackend):
                 "(x, y = top-left corner; w, h = size; all between 0 and 1).",
                 schema=_BBOX_SCHEMA, max_tokens=80)
             b = json.loads(raw)
-            x = _clamp(b["x"], 0.0, 1.0)
-            y = _clamp(b["y"], 0.0, 1.0)
-            w = _clamp(b["w"], 0.0, 1.0 - x)
-            h = _clamp(b["h"], 0.0, 1.0 - y)
-            if w < 0.01 or h < 0.01:
+            x, y, w, h = (float(b[k]) for k in ("x", "y", "w", "h"))
+            # Strict geometric validity — a box the model cannot state
+            # coherently is a failed localization, never repaired for it.
+            if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0
+                    and 0.01 <= w <= 1.0 - x + 1e-6
+                    and 0.01 <= h <= 1.0 - y + 1e-6):
                 return None
-            return (x, y, w, h)
-        except Exception:  # noqa: BLE001 - degrade to the coarse region box
+            return (x, y, min(w, 1.0 - x), min(h, 1.0 - y))
+        except Exception:  # noqa: BLE001 - failed localization -> global finding
             return None
 
 
-def _clamp(v, lo: float, hi: float) -> float:
-    try:
-        return max(lo, min(hi, float(v)))
-    except (TypeError, ValueError):
-        return lo

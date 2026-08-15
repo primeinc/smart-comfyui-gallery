@@ -434,3 +434,34 @@ def test_generate_finding_mask_path_traversal_stays_inside_cache_dir(tmp_path):
     assert os.path.isfile(mask_path)
     # nothing was written outside the cache dir
     assert not os.path.exists(os.path.realpath(os.path.join(str(cache_dir), "..", "..", "..", "..", "etc", "evil")))
+
+
+# --- Fail-closed critic dependency invariant (adversarial-audit fix) ---
+
+def test_qwen_critic_requires_semantic_embedder():
+    """The CLIP grounding gate is the anti-fabrication mechanism the
+    critic's measured record relies on: constructing the critic without an
+    embedder must be impossible, in the class AND through the factory."""
+    import pytest as _pytest
+
+    from smartgallery_ai import AIConfig
+    from smartgallery_ai.critic_qwen import QwenVlCritic
+    from smartgallery_ai.embedders import BackendUnavailable
+    from smartgallery_ai.review import get_critic_backend
+
+    # Class-level invariant: embedder=None is rejected before anything else
+    # (no weights needed for this check to fire).
+    with _pytest.raises(BackendUnavailable, match="grounding"):
+        QwenVlCritic("/nonexistent", semantic_embedder=None)
+
+    # Factory 'auto': no semantic backend available -> critic unavailable
+    # (returns None), never a gate-less critic.
+    cfg = AIConfig(enabled=True, models_dir="/nonexistent",
+                   semantic_backend="none", critic_backend="auto")
+    assert get_critic_backend(cfg) is None
+
+    # Factory explicit 'qwen-vl': surfaces the configuration error.
+    cfg2 = AIConfig(enabled=True, models_dir="/nonexistent",
+                    semantic_backend="none", critic_backend="qwen-vl")
+    with _pytest.raises(BackendUnavailable):
+        get_critic_backend(cfg2)

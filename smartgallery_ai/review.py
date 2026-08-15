@@ -124,6 +124,12 @@ def _validate_bbox(value, path: str) -> tuple:
     _require(all(_is_number(v) for v in value), path, "all components must be numbers")
     x, y, w, h = (float(v) for v in value)
     _require(all(0.0 <= v <= 1.0 for v in (x, y, w, h)), path, "components must be within [0, 1]")
+    # Degenerate or out-of-frame boxes are rejected, not repaired: a
+    # zero-area box would produce an empty mask the UI still advertises,
+    # and x+w/y+h beyond the frame is not a real image region.
+    _require(w > 0.0 and h > 0.0, path, "bbox must have positive area")
+    _require(x + w <= 1.0 + 1e-6 and y + h <= 1.0 + 1e-6, path,
+             "bbox must lie within the image frame")
     return (x, y, w, h)
 
 
@@ -473,10 +479,14 @@ def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
             from smartgallery_ai.critic_qwen import QwenVlCritic
 
             from smartgallery_ai.embedders import get_semantic_backend
-            try:
-                embedder = get_semantic_backend(config)
-            except BackendUnavailable:
-                embedder = None
+            # FAIL CLOSED: the critic's measured record depends on its CLIP
+            # grounding gate, so a missing/broken semantic backend makes the
+            # critic unavailable — never a gate-less critic.
+            embedder = get_semantic_backend(config)
+            if embedder is None:
+                raise BackendUnavailable(
+                    "qwen-vl critic requires the semantic (OpenCLIP) backend "
+                    "for grounding and prompt-alignment; it is unavailable")
             return QwenVlCritic(config.models_dir, semantic_embedder=embedder)
         except BackendUnavailable:
             if name == "qwen-vl":
@@ -537,6 +547,16 @@ def store_review(
             (file_id, rubric_version, model_id),
         ).fetchone()
         if old is not None:
+            # Unlink the superseded findings' mask FILES before dropping the
+            # rows that reference them — otherwise every re-review leaks
+            # orphaned PNGs into the derived cache forever.
+            for (old_mask,) in conn.execute(
+                "SELECT mask_path FROM ai_review_findings "
+                "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],)):
+                try:
+                    os.unlink(old_mask)
+                except OSError:
+                    pass
             conn.execute("DELETE FROM ai_review_findings WHERE review_id = ?", (old[0],))
             conn.execute("DELETE FROM ai_reviews WHERE review_id = ?", (old[0],))
 

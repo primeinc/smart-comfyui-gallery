@@ -12,16 +12,24 @@
 cactus-needle>=2.0.4        # Needle2 primary intent parser (Apache-2.0)
 llama-cpp-python>=0.3.0      # optional constrained fallback parser (MIT); off by default
 
-# --- semantic / visual embedding + critic backends (runtime-verified) ---
+# --- semantic / visual embedding + critic + segmentation backends ---
 # Uncomment to enable the real model backends; then provision weights per
-# docs/AI_MODELS.md. Verified end to end (worker + API + omniquery
-# resolvers) with a CPU-only torch build:
+# docs/AI_MODELS.md. All runtime-verified end to end (worker + API +
+# omniquery resolvers) with a CPU-only torch build:
 #   pip install --index-url https://download.pytorch.org/whl/cpu torch
-# torch                     # required by open_clip / dinov2 / smolvlm backends
-# open_clip_torch           # semantic space: ViT-B-32 laion2b (MIT)
+# torch                     # required by open_clip / dinov2 / mobile_sam backends
+# open_clip_torch           # semantic space: ViT-B-32 laion2b (MIT).
+#                           #   REQUIRED by the qwen-vl critic (grounding gate
+#                           #   + prompt alignment) — the critic fails closed
+#                           #   without it.
 # transformers              # visual space: facebook/dinov2-small (Apache-2.0)
-#                           #   + SmolVLM2 critic backend (Apache-2.0)
-# num2words                 # required by the SmolVLM2 processor
+# timm                      # mobile_sam's vision backbone (also an
+#                           #   open_clip_torch dependency)
+# mobile_sam @ git+https://github.com/ChaoningZhang/MobileSAM.git
+#                           # MobileSAM runtime (Apache-2.0); weights file
+#                           #   mobile_sam.pt provisioned separately
+#                           #   (HF mirror: dhkim2810/MobileSAM)
+# num2words                 # required by the (opt-in) SmolVLM2 processor
 
 # --- testing ---
 pytest

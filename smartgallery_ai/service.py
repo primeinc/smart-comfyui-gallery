@@ -186,16 +186,19 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
         )
         result["faces"] = True
 
-    critic_backend = review.get_critic_backend(config)
-    if critic_backend is not None and img is not None:
-        prompt_text = file_row["workflow_prompt"] if "workflow_prompt" in file_row.keys() else None
-        payload = critic_backend.review(img, prompt_text, RUBRIC_VERSION)
-        review_result = review.validate_review_payload(payload)
-        review.store_review(
-            conn, file_id, review_result, critic_backend.model_id, critic_backend.model_version,
-            RUBRIC_VERSION, json.dumps(payload), mtime, now,
-        )
-        result["reviewed"] = True
+    # Reviews are NEVER run synchronously here: constructing the critic can
+    # load a multi-GB VLM and one review takes minutes — that does not
+    # belong in a Flask request thread. Worse, re-running store_review here
+    # would wipe the previous findings' masks without regenerating them
+    # (mask generation lives in the worker). Instead, clear this file's
+    # review scan-log entry so the background worker re-reviews it (and
+    # regenerates masks) on its next cycle.
+    if force:
+        conn.execute(
+            "DELETE FROM ai_scan_log WHERE file_id = ? AND kind = 'review'",
+            (file_id,))
+        conn.commit()
+        result["review_rescheduled"] = True
 
     return result
 
@@ -482,10 +485,12 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None) -> B
         if row is None or not row["mask_path"]:
             abort(404)
 
-        cache_root = os.path.realpath(config.cache_dir)
+        # Containment is checked against the masks/ subdirectory (the only
+        # place the writer puts masks), not the whole cache dir.
+        masks_root = os.path.realpath(os.path.join(config.cache_dir, "masks"))
         resolved = os.path.realpath(row["mask_path"])
         try:
-            inside = os.path.commonpath([cache_root, resolved]) == cache_root
+            inside = os.path.commonpath([masks_root, resolved]) == masks_root
         except ValueError:
             inside = False
         if not inside or not os.path.isfile(resolved):

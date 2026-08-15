@@ -106,9 +106,24 @@ Everything marked *runtime-verified* above was proven live, not statically:
   proofs whenever weights are provisioned (skipped otherwise).
 - **Probes**: `probes/egress_probe.py` and `probes/media_readonly_probe.py`
   both PASS with the real-model stack installed.
-- **Critic**: measured unfit at ≤2.2B (see table); the failure mode that
-  matters is *schema-valid fabrication* (example parroting), which no
-  validator can catch — hence the opt-in-only policy.
+- **Critic**: the monolithic SmolVLM2 attempts measured unfit at ≤2.2B
+  (0/7; schema-valid fabrication) and stay opt-in-only. The decomposed
+  Qwen2.5-VL-7B critic superseded them and **measured 4/4 schema-valid
+  image-grounded reviews** on the calibration suite (clean 8.0 / planted
+  defect detected+localized / dark still grounded / mismatched-prompt
+  noise 0.0 quality, 3.0 alignment), with the grounding gate verified to
+  reject fabricated and unrelated descriptions on negative cases. This is
+  the record `_AUTO_CRITIC_MEASUREMENT_PASSED` refers to. **Scope
+  honesty:** the gate grounds the stage-1 *description*; per-finding
+  grounding is only evidenced by the planted-defect case, the calibration
+  suite is 4 images, and the 0.20 threshold was calibrated on a small
+  description sample — it is one defense layer alongside decomposition
+  and grammar constraints, not a proof of finding-level truth. Findings
+  tend toward the 3-item cap with low severities.
+- **Segmenter IoU scope:** the 0.998 IoU was measured on a solid-color
+  rectangle over a smooth background — a best-case boundary. The repo
+  test asserts IoU > 0.7; soft-boundary defects will score lower. The
+  masks remain genuine model segmentations of model-claimed regions.
 
 ## Index and invalidation parameters
 

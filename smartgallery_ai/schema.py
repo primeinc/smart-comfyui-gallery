@@ -127,8 +127,13 @@ DDL = [
         mask_model_id TEXT,
         mask_model_version TEXT,
         -- masks and grounding geometry are only meaningful for localizable
-        -- findings; global findings must keep these columns NULL
-        CHECK (localizable = 1 OR (bbox_x IS NULL AND mask_path IS NULL))
+        -- findings; global findings must keep ALL of these columns NULL.
+        -- (Existing databases created before this CHECK was widened keep
+        -- the narrower constraint until rebuilt; validate_review_payload
+        -- enforces the full invariant in code regardless.)
+        CHECK (localizable = 1 OR (bbox_x IS NULL AND bbox_y IS NULL
+               AND bbox_w IS NULL AND bbox_h IS NULL
+               AND points IS NULL AND mask_path IS NULL))
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_ai_findings_file "

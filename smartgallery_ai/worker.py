@@ -152,6 +152,7 @@ class AIWorker:
 
         self._lock = threading.Lock()
         self._logged_errors: set = set()
+        self._backend_cache: dict = {}
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
@@ -200,26 +201,29 @@ class AIWorker:
             budget -= self._process_hashes(conn, budget)
 
             if budget > 0:
-                semantic_backend = embedders.get_semantic_backend(self.config)
+                semantic_backend = self._backend("semantic",
+                                                 embedders.get_semantic_backend)
                 if semantic_backend is not None:
                     budget -= self._process_embedding_space(
                         conn, semantic_backend, SPACE_SEMANTIC, budget
                     )
 
             if budget > 0:
-                visual_backend = embedders.get_visual_backend(self.config)
+                visual_backend = self._backend("visual",
+                                               embedders.get_visual_backend)
                 if visual_backend is not None:
                     budget -= self._process_embedding_space(
                         conn, visual_backend, SPACE_VISUAL, budget
                     )
 
             if budget > 0:
-                face_backend = faces.get_face_backend(self.config)
+                face_backend = self._backend("face", faces.get_face_backend)
                 if face_backend is not None:
                     budget -= self._process_faces(conn, face_backend, budget)
 
             if budget > 0:
-                critic_backend = review.get_critic_backend(self.config)
+                critic_backend = self._backend("critic",
+                                               review.get_critic_backend)
                 if critic_backend is not None:
                     budget -= self._process_reviews(conn, critic_backend, budget)
         finally:
@@ -227,6 +231,23 @@ class AIWorker:
 
         with self._lock:
             self.stats["cycles"] += 1
+
+    # -- backend caching ---------------------------------------------------------
+
+    def _backend(self, key: str, resolver):
+        """Resolve a backend ONCE per worker lifetime and reuse the instance.
+        Constructing real backends can load multi-GB models; doing that per
+        poll cycle (the resolver's natural behavior) is unaffordable. The
+        cached entry stores None too, so an unavailable backend is not
+        re-probed every cycle either."""
+        with self._lock:
+            if key not in self._backend_cache:
+                try:
+                    self._backend_cache[key] = resolver(self.config)
+                except Exception as exc:  # noqa: BLE001 - resolution must not kill the cycle
+                    self._note_error(f"backend:{key}", f"backend {key}: {exc}")
+                    self._backend_cache[key] = None
+            return self._backend_cache[key]
 
     # -- error bookkeeping -------------------------------------------------------
 
@@ -362,7 +383,7 @@ class AIWorker:
         prompt_expr = ", f.workflow_prompt" if _has_column(conn, "files", "workflow_prompt") else ", NULL AS workflow_prompt"
         rows = self._scan_candidates(conn, "review", backend, limit,
                                      extra_cols=prompt_expr)
-        segmenter = review.get_segmenter_backend(self.config)
+        segmenter = self._backend("segmenter", review.get_segmenter_backend)
         now = time.time()
         for row in rows:
             file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
@@ -383,6 +404,16 @@ class AIWorker:
                                len(result.findings))
             except Exception as exc:
                 self._note_error(f"review:{file_id}", f"review: failed for {path}: {exc}")
+                # Record the FAILED attempt too (result_count = -1): a
+                # grounding rejection or malformed generation must not put a
+                # ~200s VLM inference on infinite retry every cycle. The
+                # file re-enters the queue when its mtime or the model
+                # changes (normal staleness), or on rebuild.
+                try:
+                    self._log_scan(conn, file_id, "review", backend, mtime,
+                                   now, -1)
+                except Exception:  # noqa: BLE001
+                    pass
                 continue
             with self._lock:
                 self.stats["reviewed"] += 1

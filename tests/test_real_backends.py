@@ -151,3 +151,121 @@ def test_segmenter_factory_resolution(tmp_path):
         get_segmenter_backend(
             AIConfig(enabled=True, models_dir=str(tmp_path),
                      segmenter_backend="mobilesam"))
+
+
+def test_real_grounding_gate_negative_cases():
+    """The critic's anti-fabrication gate, proven on the REAL OpenCLIP
+    space without loading the VLM: a grounded description passes, the
+    previously-measured fabricated description and an unrelated one raise
+    CriticGroundingError."""
+    if not os.path.isfile(os.path.join(
+            MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
+        pytest.skip("open_clip weights not provisioned")
+    from smartgallery_ai.critic_qwen import CriticGroundingError, check_grounding
+    from smartgallery_ai.embedders import get_semantic_backend
+
+    sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
+    red = Image.new("RGB", (224, 224), (220, 20, 20))
+    cos = check_grounding(sem, "a plain solid red image", red)
+    assert cos >= 0.20
+    with pytest.raises(CriticGroundingError):
+        check_grounding(sem, "a portrait photo of an astronaut in a spacesuit", red)
+    with pytest.raises(CriticGroundingError):
+        check_grounding(sem, "", red)
+
+
+def test_real_critic_to_mask_chain():
+    """FULL AC6+AC7 chain with zero stubs: real Qwen2.5-VL critic reviews a
+    flawed image -> validated typed findings -> worker generates real
+    MobileSAM masks -> API serves them. ~5-10 minutes on CPU, so it needs
+    RUN_REAL_CRITIC_TESTS=1 on top of the suite's own opt-in."""
+    if os.environ.get("RUN_REAL_CRITIC_TESTS") != "1":
+        pytest.skip("critic chain test is a second-tier opt-in (RUN_REAL_CRITIC_TESTS=1)")
+    for f in ("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", "mobile_sam.pt",
+              os.path.join("open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
+        if not os.path.isfile(os.path.join(MODELS_DIR, f)):
+            pytest.skip(f"{f} not provisioned")
+
+    import sqlite3
+    import tempfile
+    import time as _time
+
+    from flask import Flask
+    from PIL import ImageDraw
+
+    from smartgallery_ai import schema
+    from smartgallery_ai.service import create_ai_blueprint
+    from smartgallery_ai.worker import AIWorker
+
+    tmp = tempfile.mkdtemp(prefix="sg_critic_chain_")
+    media = os.path.join(tmp, "m")
+    os.makedirs(media)
+    rng = np.random.default_rng(17)
+    img = Image.fromarray(
+        (rng.random((64, 64, 3)) * 255).astype("uint8")
+    ).resize((512, 512), Image.LANCZOS)
+    ImageDraw.Draw(img).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
+    path = os.path.join(media, "flawed.png")
+    img.save(path)
+
+    db = os.path.join(tmp, "g.sqlite")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
+        " mtime REAL NOT NULL, name TEXT, type TEXT, workflow_prompt TEXT)")
+    schema.init_schema(conn)
+    conn.execute(
+        "INSERT INTO files VALUES ('fc1', ?, ?, 'flawed.png', 'image',"
+        " 'abstract colorful texture')", (path, os.path.getmtime(path)))
+    conn.commit()
+    conn.close()
+
+    cfg = _cfg(base_path=tmp, db_path=db, cache_dir=os.path.join(tmp, "cache"),
+               semantic_backend="open_clip", visual_backend="none",
+               face_backend="none", critic_backend="qwen-vl",
+               segmenter_backend="auto")
+    worker = AIWorker(cfg, db, poll_interval=0.2)
+    worker.start()
+    try:
+        deadline = _time.time() + 900
+        stored = False
+        while _time.time() < deadline and not stored:
+            c = sqlite3.connect(db)
+            stored = c.execute(
+                "SELECT 1 FROM ai_scan_log WHERE file_id='fc1' AND kind='review'"
+            ).fetchone() is not None
+            c.close()
+            if not stored:
+                _time.sleep(5)
+    finally:
+        worker.stop(timeout=30)
+    assert stored, f"review never completed; worker stats: {worker.stats}"
+
+    c = sqlite3.connect(db)
+    c.row_factory = sqlite3.Row
+    review_row = c.execute("SELECT * FROM ai_reviews WHERE file_id='fc1'").fetchone()
+    findings = c.execute(
+        "SELECT * FROM ai_review_findings WHERE file_id='fc1'").fetchall()
+    c.close()
+    assert review_row is not None
+    assert 0.0 <= review_row["quality_score"] <= 10.0
+    # prompt was provided -> alignment must be a real score, never None
+    assert review_row["prompt_alignment_score"] is not None
+    assert findings, "critic emitted no findings for a defective image"
+    localizable = [f for f in findings if f["localizable"]]
+    for f in localizable:
+        assert f["mask_path"], "localizable finding missing a real mask"
+
+    app = Flask(__name__)
+    app.register_blueprint(create_ai_blueprint(cfg), url_prefix="/aidam")
+    client = app.test_client()
+    body = client.get("/aidam/review/fc1").get_json()
+    assert body["review"] is not None and len(body["findings"]) == len(findings)
+    served = 0
+    for f in body["findings"]:
+        if f.get("mask_url"):
+            resp = client.get(f["mask_url"].replace("/galleryout/api/aidam", "/aidam"))
+            assert resp.status_code == 200 and len(resp.data) > 100
+            served += 1
+    if localizable:
+        assert served > 0, "no masks served through the API"
