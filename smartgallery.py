@@ -1327,6 +1327,21 @@ def _std_path(path):
     return str(path or '').replace('\\', '/')
 
 
+def _is_under(path, root):
+    """True when `path` sits inside `root`.
+
+    Compared on '/' because stored paths mix separators, and requiring the
+    separator so a folder named `box` does not claim `box_archive`.
+    """
+    candidate = _std_path(path)
+    parent = _std_path(root).rstrip('/')
+    if not parent:
+        return False
+    if os.name == 'nt':
+        candidate, parent = candidate.lower(), parent.lower()
+    return candidate.startswith(parent + '/')
+
+
 def _descendant_filter(column, folder_path):
     """SQL condition and parameter selecting everything stored under
     `folder_path`, however deep.
@@ -2795,21 +2810,34 @@ def full_sync_database(conn):
         '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.txt', '.md' # Audio & Docs
     }
 
+    # Folders we could not read. "We looked and it is empty" and "we could
+    # not look" are the same thing to the diff below, and only the first one
+    # means the files were deleted -- so the second is recorded and the rows
+    # underneath are left alone.
+    unreadable_roots = []
+
     for folder_data in all_folders.values():
         folder_path = folder_data['path']
         if not os.path.isdir(folder_path): continue
         try:
             for name in os.listdir(folder_path):
                 filepath = os.path.join(folder_path, name)
-                
+
                 # Check extension against whitelist
                 _, ext = os.path.splitext(name)
                 if os.path.isfile(filepath) and ext.lower() in valid_extensions:
                     disk_files[filepath] = os.path.getmtime(filepath)
-                    
+
         except OSError as e:
             print(f"WARNING: Could not access folder {folder_path}: {e}")
-            
+            unreadable_roots.append(folder_path)
+
+    # The gallery root is the one path every install has, and the one most
+    # likely to be the external drive or network share. If it is not there,
+    # nothing under it can be judged missing.
+    if not os.path.isdir(BASE_OUTPUT_PATH):
+        unreadable_roots.append(BASE_OUTPUT_PATH)
+
     db_paths = set(db_files.keys())
     disk_paths = set(disk_files.keys())
     
@@ -2939,19 +2967,27 @@ def full_sync_database(conn):
                 print(f"{Colors.YELLOW}WARN: Mount point seems offline: {m_path}{Colors.RESET}")
                 offline_prefixes.append(m_path)
 
+        # A folder we failed to read counts the same as an offline mount:
+        # its files are unaccounted for, not gone.
+        for unreadable in unreadable_roots:
+            print(f"{Colors.YELLOW}WARN: Folder could not be read, keeping its entries: "
+                  f"{unreadable}{Colors.RESET}")
+            offline_prefixes.append(unreadable)
+
         # 2. Filter files to delete
         # Only delete files if they do NOT belong to an offline mount
         safe_to_delete = []
         protected_count = 0
-        
+
         for path_to_remove in to_delete:
             is_protected = False
             for offline_root in offline_prefixes:
-                # Check if file path starts with the offline root path
-                if path_to_remove.startswith(offline_root):
+                # Containment, not a bare prefix: an offline "box" must not
+                # also protect the files of a "box_archive" that is present.
+                if _is_under(path_to_remove, offline_root):
                     is_protected = True
                     break
-            
+
             if is_protected:
                 protected_count += 1
             else:
