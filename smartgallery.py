@@ -8226,22 +8226,22 @@ def collection_view(coll_id):
     if not coll_info: 
         return redirect(url_for('gallery_view', folder_key='_root_'))
 
-    # --- EXHIBITION SECURITY: Only allow PUBLIC content ---
-    if IS_EXHIBITION_MODE:
-        # In Exhibition mode, "all" is allowed, but specific collections must be public OR shared with the current user
+    # --- ACCESS: only public or shared content, for anyone not staff ---
+    # This was written as `if IS_EXHIBITION_MODE`, so the same non-staff
+    # account under --force-login skipped the check entirely and could read
+    # any private album's listing. Whether a caller may see an album depends
+    # on the caller.
+    if not is_privileged:
+        # "all" is allowed and filtered below; a specific collection must be
+        # public or shared with this user.
         if not is_all_mode and coll_info['type'] == 'system_flag':
             return redirect(url_for('gallery_view', folder_key='_root_'))
-        
+
         if not is_all_mode and not coll_info['is_public']:
-            # It's private. Check if shared with this specific user OR if user is Staff
             user_id = str(session.get('user_id', ''))
-            user_role = session.get('role', 'GUEST')
-            is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-            is_privileged = is_local_admin or (user_role in ['ADMIN', 'MANAGER', 'STAFF'])
-            
             shared_list = [u.strip() for u in str(coll_info.get('shared_users', '')).split(',') if u.strip()]
-            
-            if not is_privileged and user_id not in shared_list:
+
+            if user_id not in shared_list:
                 return redirect(url_for('gallery_view', folder_key='_root_'))
 
     # 2. Capture Filter Parameters
@@ -8269,16 +8269,13 @@ def collection_view(coll_id):
     if is_all_mode:
         # Logic for "All Categories": Select files belonging to any user album
         sub_query = "SELECT id FROM collections WHERE type='user_album'"
-        if IS_EXHIBITION_MODE:
-            user_role = session.get('role', 'GUEST')
-            safe_uid = _current_client_identity().replace("'", "''")
-            is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-            
-            if is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']:
-                sub_query += " AND (is_public = 1 OR shared_users != '')"
-            else:
-                sub_query += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
-        
+        if not is_privileged:
+            # Applies in either mode: "all" must not become a way to read the
+            # albums a specific request would have been refused.
+            sub_query += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+        elif IS_EXHIBITION_MODE:
+            sub_query += " AND (is_public = 1 OR shared_users != '')"
+
         conditions.append(f"cf.collection_id IN ({sub_query})")
     else:
         # Sub-collections are included by default; only an explicit
@@ -8300,11 +8297,10 @@ def collection_view(coll_id):
                 )
                 SELECT id FROM children
             """
-            if IS_EXHIBITION_MODE:
-                if is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']:
-                    pass # Staff sees all nested
-                else:
-                    sub_query += f" WHERE (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+            # Staff see all nested collections; nobody else sees one they
+            # were not given, whichever mode the server is in.
+            if not is_privileged:
+                sub_query += f" WHERE (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
             
             conditions.append(f"cf.collection_id IN ({sub_query})")
         else:
@@ -8608,13 +8604,10 @@ def collection_view(coll_id):
         # Calculate total files in this view (without search/filters)
         if is_all_mode:
             count_subquery = "SELECT id FROM collections WHERE type='user_album'"
-            if IS_EXHIBITION_MODE: 
-                user_role = session.get('role', 'GUEST')
-                safe_uid = _current_client_identity().replace("'", "''")
-                if user_role in['ADMIN', 'MANAGER', 'STAFF']:
-                    count_subquery += " AND (is_public = 1 OR shared_users != '')"
-                else:
-                    count_subquery += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+            if not is_privileged:
+                count_subquery += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+            elif IS_EXHIBITION_MODE:
+                count_subquery += " AND (is_public = 1 OR shared_users != '')"
             total_folder_files = conn.execute(
                 f"SELECT COUNT(DISTINCT file_id) FROM collection_files WHERE collection_id IN ({count_subquery})"
             ).fetchone()[0]
@@ -8731,21 +8724,17 @@ def collection_view(coll_id):
                     )
                     SELECT id FROM children
                 """
-                if IS_EXHIBITION_MODE and not is_privileged:
+                if not is_privileged:
                     sub_query += f" WHERE (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
                 ext_query += f" WHERE cf.collection_id IN ({sub_query})"
             else:
                 ext_query += f" WHERE cf.collection_id = {int(coll_id)}"
         else:
             count_subquery = "SELECT id FROM collections WHERE type='user_album'"
-            if IS_EXHIBITION_MODE: 
-                user_role = session.get('role', 'GUEST')
-                safe_uid = _current_client_identity().replace("'", "''")
-                is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-                if is_local_admin or user_role in['ADMIN', 'MANAGER', 'STAFF']:
-                    count_subquery += " AND (is_public = 1 OR shared_users != '')"
-                else:
-                    count_subquery += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+            if not is_privileged:
+                count_subquery += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+            elif IS_EXHIBITION_MODE:
+                count_subquery += " AND (is_public = 1 OR shared_users != '')"
             ext_query += f" WHERE cf.collection_id IN ({count_subquery})"
             
         ext_rows = conn_ext.execute(ext_query).fetchall()
