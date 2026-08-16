@@ -1149,26 +1149,37 @@ class AIWorker:
                 cur.rowcount)
 
     def _ensure_review_alignment_requeue(self, conn: sqlite3.Connection, backend) -> None:
-        """One-time re-queue of reviews scored with no prompt that would
-        resolve one today (review.resolve_prompt_texts).
+        """One-time re-queue of reviews whose alignment score cannot be
+        trusted under the current contract. Two populations:
 
-        Alignment is null whenever the critic had no prompt to score
-        against. Before prompt resolution was unified, a file whose traced
-        `generation_params.positive_prompt` landed after its review kept
-        that null forever: nothing about the file or the model changed, so
-        normal staleness never re-queued it. Deleting those 'review'
-        scan-log rows re-enters them through the ordinary path -- same
-        model, same rubric -- and the UNIQUE (file_id, rubric_version,
-        model_id) row is overwritten in place. Marker-guarded to run once
-        per (model_id, model_version), like the faces attribute backfill."""
-        marker = f"review_alignment_requeue:{backend.model_id}:{backend.model_version}"
+        1. NULL alignment where a prompt resolves today
+           (review.resolve_prompt_texts). Alignment is null whenever the
+           critic had no prompt to score against; before prompt resolution
+           was unified, a file whose traced
+           `generation_params.positive_prompt` landed after its review kept
+           that null forever -- nothing about the file or the model
+           changed, so normal staleness never revisited it.
+        2. Alignment > 1.0, which is impossible under the current 0..1
+           fraction and therefore a leftover from the retired 0..10 score.
+           Such a value cannot be converted: the new score MUST equal
+           satisfied/total over the stored alignment elements, and a legacy
+           row has no elements, so dividing by ten would fabricate a
+           number no element list supports. Re-scoring is the only honest
+           repair, and it applies whether or not a prompt resolves -- a
+           re-review with no prompt yields an honest null, which still
+           beats a stale 7.0 rendering as a confident full bar.
+
+        Deleting those 'review' scan-log rows re-enters the files through
+        the ordinary path -- same model, same rubric -- and the UNIQUE
+        (file_id, rubric_version, model_id) row is overwritten in place.
+        Marker-guarded to run once per (model_id, model_version), like the
+        faces attribute backfill. The marker carries a version: widening
+        the predicate must re-run for installs that already swept."""
+        marker = f"review_alignment_requeue:v2:{backend.model_id}:{backend.model_version}"
         if self._get_state(conn, marker) is not None:
             return
         has_genparams = _has_column(conn, "generation_params", "positive_prompt")
         has_workflow_prompt = _has_column(conn, "files", "workflow_prompt")
-        if not (has_genparams or has_workflow_prompt):
-            self._set_state(conn, marker, "1")
-            return
         # "A prompt resolves today" == exactly what resolve_prompt_texts
         # would find: the traced positive prompt, else files.workflow_prompt.
         sources = []
@@ -1180,6 +1191,13 @@ class AIWorker:
             sources.append(
                 "SELECT id FROM files "
                 "WHERE TRIM(COALESCE(workflow_prompt, '')) <> ''")
+        # Legacy-scale rows are stale on their own; the null-alignment case
+        # additionally requires that a prompt exists to score against.
+        stale = ["prompt_alignment_score > 1.0"]
+        if sources:
+            stale.append(
+                "(prompt_alignment_score IS NULL AND file_id IN "
+                f"({' UNION '.join(sources)}))")
         cur = conn.execute(
             f"""
             DELETE FROM ai_scan_log WHERE kind = 'review'
@@ -1187,8 +1205,7 @@ class AIWorker:
               AND file_id IN (
                 SELECT file_id FROM ai_reviews
                 WHERE model_id = ? AND model_version = ?
-                  AND prompt_alignment_score IS NULL
-                  AND file_id IN ({' UNION '.join(sources)})
+                  AND ({' OR '.join(stale)})
               )
             """,
             (backend.model_id, backend.model_version,
@@ -1196,8 +1213,8 @@ class AIWorker:
         self._set_state(conn, marker, "1")
         if cur.rowcount:
             _logger.info(
-                "[AIWorker] review alignment re-queue: %d file(s) reviewed "
-                "without a prompt now resolve one and will be re-scored",
+                "[AIWorker] review alignment re-queue: %d file(s) carry an "
+                "untrustworthy alignment score and will be re-scored",
                 cur.rowcount)
 
     def _process_faces(self, conn: sqlite3.Connection, backend, limit: int,
@@ -1331,10 +1348,11 @@ class AIWorker:
 
     def _generate_masks(self, conn: sqlite3.Connection, img, file_id: str,
                         review_id: int, segmenter) -> int:
-        """Segment every localizable finding of a review. Global findings
-        never reach the segmenter (generate_finding_mask enforces it); a
-        per-finding failure is logged, never fatal. Returns the number of
-        masks successfully generated."""
+        """Segment every localizable finding of a review, then every located
+        satisfied prompt element (the highlight layer showing WHERE the
+        prompt was honored). Ungrounded rows never reach the segmenter
+        (the generate_* helpers enforce it); a per-row failure is logged,
+        never fatal. Returns the number of masks successfully generated."""
         finding_ids = [r[0] for r in conn.execute(
             "SELECT finding_id FROM ai_review_findings "
             "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
@@ -1348,6 +1366,18 @@ class AIWorker:
             except Exception as exc:
                 self._note_error(f"mask:{finding_id}",
                                  f"mask: failed for finding {finding_id}: {exc}")
+        element_ids = [r[0] for r in conn.execute(
+            "SELECT element_id FROM ai_review_alignment "
+            "WHERE review_id = ? AND satisfied = 1 AND bbox_x IS NOT NULL "
+            "AND mask_path IS NULL", (review_id,)).fetchall()]
+        for element_id in element_ids:
+            try:
+                review.generate_alignment_mask(
+                    conn, self.config.cache_dir, img, file_id, element_id, segmenter)
+                generated += 1
+            except Exception as exc:
+                self._note_error(f"alignmask:{element_id}",
+                                 f"mask: failed for prompt element {element_id}: {exc}")
         return generated
 
     def _process_masks(self, conn: sqlite3.Connection, segmenter, limit: int) -> int:

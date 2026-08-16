@@ -1038,3 +1038,79 @@ def test_alignment_requeue_leaves_promptless_files_alone(tmp_path):
         assert _scan_rows(conn) == 1, "re-queued a file that still has no prompt"
     finally:
         conn.close()
+
+
+def test_alignment_requeue_catches_legacy_0_to_10_scores(tmp_path):
+    """A score > 1.0 is impossible under the 0..1 fraction, so it is a
+    leftover from the retired 0..10 scale: re-queue it regardless of
+    whether a prompt resolves (re-scoring yields an honest value or an
+    honest null; the stale number renders as a confident full bar)."""
+    db_path, worker, backend = _review_env(tmp_path, workflow_prompt="")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute(
+            "INSERT INTO ai_reviews (file_id, rubric_version, model_id, "
+            "model_version, quality_score, prompt_alignment_score, summary, "
+            "raw_response, source_mtime, computed_at) VALUES ('f1', 'r1', ?, ?, "
+            "8.0, 7.0, 's', '{}', 1000.0, 1.0)",
+            (backend.model_id, backend.model_version))
+        conn.execute(
+            "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
+            "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
+            "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+        conn.commit()
+        worker._ensure_review_alignment_requeue(conn, backend)
+        assert _scan_rows(conn) == 0, "legacy 0..10 alignment score not re-queued"
+    finally:
+        conn.close()
+
+
+def test_alignment_requeue_keeps_valid_fractional_scores(tmp_path):
+    """A score already inside 0..1 is current: leave it alone."""
+    db_path, worker, backend = _review_env(tmp_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute(
+            "INSERT INTO ai_reviews (file_id, rubric_version, model_id, "
+            "model_version, quality_score, prompt_alignment_score, summary, "
+            "raw_response, source_mtime, computed_at) VALUES ('f1', 'r1', ?, ?, "
+            "8.0, 0.75, 's', '{}', 1000.0, 1.0)",
+            (backend.model_id, backend.model_version))
+        conn.execute(
+            "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
+            "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
+            "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+        conn.commit()
+        worker._ensure_review_alignment_requeue(conn, backend)
+        assert _scan_rows(conn) == 1, "re-queued a review whose score is already 0..1"
+    finally:
+        conn.close()
+
+
+def test_alignment_requeue_reruns_after_predicate_widened(tmp_path):
+    """An install that already swept under the v1 marker must still get the
+    widened v2 sweep -- otherwise legacy-scale rows stay broken forever on
+    exactly the installs that ran the earlier version."""
+    db_path, worker, backend = _review_env(tmp_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        worker._set_state(
+            conn, f"review_alignment_requeue:{backend.model_id}:{backend.model_version}", "1")
+        conn.execute(
+            "INSERT INTO ai_reviews (file_id, rubric_version, model_id, "
+            "model_version, quality_score, prompt_alignment_score, summary, "
+            "raw_response, source_mtime, computed_at) VALUES ('f1', 'r1', ?, ?, "
+            "8.0, 7.0, 's', '{}', 1000.0, 1.0)",
+            (backend.model_id, backend.model_version))
+        conn.execute(
+            "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
+            "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
+            "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+        conn.commit()
+        worker._ensure_review_alignment_requeue(conn, backend)
+        assert _scan_rows(conn) == 0, "the v1 marker suppressed the widened v2 sweep"
+    finally:
+        conn.close()
