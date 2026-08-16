@@ -17,6 +17,10 @@ huggingface_hub              # cached/resumable weight downloads for
                              #   `python -m smartgallery_ai provision` and the
                              #   worker's async auto-provisioning
 
+# --- faces (SCRFD + glintr100, the default face backend) ---
+insightface>=1.0.1           # FaceAnalysis pipeline (weights via provisioning)
+onnxruntime                  # ONNX inference for insightface / YuNet / SFace
+
 # --- OmniQuery local natural-language search ---
 # The deterministic nlq rules parser is dependency-free. llama-cpp-python
 # runs the search palette's nl2sql answerer: free-language questions become
