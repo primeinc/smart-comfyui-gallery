@@ -7999,12 +7999,25 @@ def serve_input_file(filename):
         abort(403, description="Access Denied.")
     """Serves input files directly from the ComfyUI Input folder."""
     try:
-        # Prevent path traversal
-        filename = secure_filename(filename)
-        filepath = os.path.abspath(os.path.join(BASE_INPUT_PATH, filename))
-        if not filepath.startswith(os.path.abspath(BASE_INPUT_PATH)):
+        # secure_filename() used to run here, and it is the wrong tool: it
+        # is for naming a file you are about to WRITE, not for finding one
+        # you are about to READ. It strips every non-ASCII character, so
+        # 测试.png arrived as "png" and 404'd, and Ordner-Größe.png lost its
+        # umlaut -- the same fault that was fixed for uploads. It also
+        # flattens separators, so ComfyUI's own clipspace/ images, which
+        # every paste and mask produces, became clipspace_x.png and 404'd
+        # for everyone.
+        #
+        # Containment is the thing that matters, and it is checked twice:
+        # here on the resolved path, and again inside send_from_directory,
+        # whose safe_join refuses '..', absolute paths and drive-relative
+        # ones. Compared with _is_under rather than startswith, so a
+        # sibling folder named input_backup cannot pass for input.
+        input_root = os.path.realpath(BASE_INPUT_PATH)
+        resolved = os.path.realpath(os.path.join(BASE_INPUT_PATH, filename))
+        if resolved != input_root and not _is_under(resolved, input_root):
             abort(403)
-        
+
         # For webp, frocing the correct mimetype
         if filename.lower().endswith('.webp'):
             return send_from_directory(BASE_INPUT_PATH, filename, mimetype='image/webp', as_attachment=False)
