@@ -1,8 +1,7 @@
-"""OmniQuery NL parser backends: shared types, registry, and the search
-entry point.
+"""OmniQuery NL parser backends: shared types and the registry.
 
-Every backend under this package (nlq, nl2sql, fallback_qwen) speaks the
-same contract:
+Every AST-emitting backend here (nlq, and the benchmark-only
+fallback_qwen) speaks the same contract:
 
     ParserBackend.parse(text, now_epoch) -> ParserOutcome
 
@@ -12,23 +11,16 @@ through :func:`omniquery.ast.parse_query` and
 :func:`omniquery.validation.validate` -- backends must never hand back an
 AST that hasn't been validated.
 
-``parse_search`` below is the app's single entry point and encodes the
-whole policy -- there is no router, no thresholds file, no confidence
-theater:
-
-  1. `nlq` (deterministic, sub-millisecond) parses EVERY query: structural
-     rules consume what they recognize; every leftover term is a full-text
-     search. It cannot return "unsupported".
-  2. When nlq's leftover text contains structural vocabulary (digits,
-     units, comparatives, month names -- its `model_hint` flag) and the
-     local nl2sql GGUF is available, the model gets one grammar-constrained
-     attempt; its AST REPLACES the deterministic one only when it validates
-     and passes coverage_guard at full coverage. Anything less and the
-     deterministic parse stands.
+`nlq` (deterministic, sub-millisecond) parses EVERY query -- structural
+rules consume what they recognize, every leftover term is a full-text
+search, and "unsupported" does not exist. The nl2sql model lives OUTSIDE
+this contract (parsers/nl2sql.SqlSearch speaks SQL through the sqlexec
+sandbox, not ASTs); the app's endpoint fuses the two -- see
+omniquery/__init__.py for the whole picture.
 
 This module also hosts ``coverage_guard``, the model-free "did the AST
 actually keep every literal number/quoted string/recognized keyword in the
-query" check that gates every model-produced AST.
+query" check the benchmark harness applies to model-produced ASTs.
 """
 
 from __future__ import annotations

@@ -64,38 +64,36 @@ probes/                  # runtime evidence scripts (egress, media read-only)
   handling; consumes the indexing queue; the Flask UI never blocks on
   inference.
 
-## OmniQuery v2 (`omniquery`)
+## OmniQuery (`omniquery`)
 
-The clipboard "paste SQL from an external LLM" flow is replaced as the
-primary UX by a fully local path:
+The search field is an LLM: the palette (Ctrl+P) fuses two fully local
+answerers per query.
 
 ```
-NL -> parser backend -> typed AST (ast.py, strict, versioned)
-   -> validation (fields.py registry: schema, semantics, authorization,
-      complexity caps — all outside any model)
-   -> deterministic compiler (compiler.py): parameterized read-only SELECT
-   -> execution on a mode=ro connection with a SQLite authorizer
+RULES  NL -> nlq parser (deterministic; leftovers become universal
+       full-text conditions; "unsupported" does not exist)
+          -> typed AST (ast.py) -> validation (fields.py: schema,
+             semantics, authorization, complexity caps)
+          -> deterministic compiler: parameterized read-only SELECT
+          -> mode=ro connection + SQLite authorizer
+
+MODEL  NL + live schema (sqlite_master) -> text2sql GGUF -> SQL
+          -> sqlexec.run_readonly_select: the ONE sandboxed gate
+             (SELECT prefix, mode=ro URI, C-engine authorizer)
 ```
 
-- **No model emits SQL.** Parsers emit the AST (or a flat intent frame that
-  expands deterministically into the AST). The compiler only accepts
-  validator-approved ASTs and binds every literal as a parameter.
-- **Backends**: `needle2` (primary; `cactus-needle` pip package,
-  Apache-2.0, 14MB local engine — measured here to handle flat tool
-  schemas well but not deeply recursive ones, hence the intent-frame
-  design), `heuristic` (deterministic rule-based baseline, zero deps,
-  always available), and at most one constrained fallback
-  (Qwen2.5-Coder-0.5B-Instruct via grammar-constrained decoding) which
-  must emit the same AST schema.
-- **Routing**: parser confidence is only an input. Empirically the Needle2
-  confidence head is not trustworthy a priori (a correct parse scored
-  0.20 while degenerate empty parses scored 0.72–0.87 in initial probes),
-  so thresholds come from `omniquery/benchmark/` measurements against the
-  SmartGallery-specific corpus; the harness reports AST accuracy,
-  invalid-call rate, false-confident rate, escalation rate, latency, and
-  execution accuracy against a fixture DB.
-- The legacy manual-SQL endpoint remains as a demoted "advanced" path with
-  its existing authorizer; it is not the primary UX and no model feeds it.
+- **Fusion policy** (the endpoint): rules answer what they fully consume
+  (exact; the only live-typing path); free language goes to the model;
+  any model failure falls back to the rules answer.
+- **The model reads its results before answering** (agentic loop):
+  execution errors go back for repair, zero rows offer broaden-or-confirm
+  (returning identical SQL asserts emptiness), rows are accepted.
+- **Model SQL is data, not trusted code**: it executes only through the
+  sqlexec sandbox — shared verbatim with the manual "advanced" endpoint —
+  and can at worst return wrong rows.
+- **Measured, reproducibly**: `just ai bench-fusion` runs the acceptance
+  benchmark (fixture DB, committed corpus); `just ai` lists every AI
+  diagnostic. Current numbers live in AI_MODELS.md.
 
 ## Status against WI-31 (honest accounting)
 
