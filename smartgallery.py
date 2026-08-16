@@ -25,7 +25,6 @@ import io
 from flask import Flask, render_template, send_from_directory, abort, send_file, url_for, redirect, request, jsonify, Response, session
 from PIL import Image, ImageSequence
 import colorsys
-from werkzeug.utils import secure_filename
 import concurrent.futures
 from tqdm import tqdm
 import threading
@@ -7971,7 +7970,11 @@ def serve_storyboard_frame(file_hash, filename):
     if not re.fullmatch(r'[0-9a-f]{32}', file_hash or ''):
         abort(404)
 
-    safe_name = secure_filename(filename)
+    # Frames are written by this app as frame_NN.jpg, so nothing is lost
+    # here -- but the same helper is used everywhere a name becomes a
+    # path, so there is one rule to check rather than a judgement call
+    # per call site about whether that particular name could be someone's.
+    safe_name = safe_media_filename(filename)
     directory = os.path.join(THUMBNAIL_CACHE_DIR, file_hash)
     # Belt and braces: whatever the segment was, the folder it names has to
     # sit inside the frame cache.
@@ -10417,7 +10420,7 @@ def save_omniquery_prompt():
     
     if not name or not text: return jsonify({'status': 'error', 'message': 'Name and Prompt text required.'}), 400
     if not name.lower().endswith('.txt'): name += '.txt'
-    safe_name = secure_filename(name)
+    safe_name = safe_media_filename(name, fallback='untitled')
     
     try:
         p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
@@ -10432,7 +10435,7 @@ def save_omniquery_prompt():
 @management_api_only
 def load_omniquery_prompt():
     name = request.json.get('name')
-    safe_name = secure_filename(name)
+    safe_name = safe_media_filename(name, fallback='untitled')
     try:
         p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
         with open(os.path.join(p_dir, safe_name), 'r', encoding='utf-8') as f:
@@ -10445,7 +10448,7 @@ def load_omniquery_prompt():
 @management_api_only
 def delete_omniquery_prompt():
     name = request.json.get('name')
-    safe_name = secure_filename(name)
+    safe_name = safe_media_filename(name, fallback='untitled')
     try:
         p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
         path = os.path.join(p_dir, safe_name)
@@ -10459,10 +10462,10 @@ def delete_omniquery_prompt():
 @management_api_only
 def rename_omniquery_prompt():
     data = request.json
-    old_name = secure_filename(data.get('old_name', ''))
+    old_name = safe_media_filename(data.get('old_name', ''), fallback='untitled')
     new_name = data.get('new_name', '').strip()
     if not new_name.lower().endswith('.txt'): new_name += '.txt'
-    safe_new = secure_filename(new_name)
+    safe_new = safe_media_filename(new_name, fallback='untitled')
     try:
         p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
         old_path = os.path.join(p_dir, old_name)
@@ -10515,7 +10518,7 @@ def save_omniquery_query():
     
     if not name or not sql: return jsonify({'status': 'error', 'message': 'Name and SQL required.'}), 400
     if not name.lower().endswith('.txt'): name += '.txt'
-    safe_name = secure_filename(name)
+    safe_name = safe_media_filename(name, fallback='untitled')
     
     # The frontend now sends the fully formatted SQL
     final_sql = sql
@@ -10533,7 +10536,7 @@ def save_omniquery_query():
 @management_api_only
 def load_omniquery_query():
     name = request.json.get('name')
-    safe_name = secure_filename(name)
+    safe_name = safe_media_filename(name, fallback='untitled')
     try:
         q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
         with open(os.path.join(q_dir, safe_name), 'r', encoding='utf-8') as f:
@@ -10546,7 +10549,7 @@ def load_omniquery_query():
 @management_api_only
 def delete_omniquery_query():
     name = request.json.get('name')
-    safe_name = secure_filename(name)
+    safe_name = safe_media_filename(name, fallback='untitled')
     try:
         q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
         path = os.path.join(q_dir, safe_name)
@@ -10560,10 +10563,10 @@ def delete_omniquery_query():
 @management_api_only
 def rename_omniquery_query():
     data = request.json
-    old_name = secure_filename(data.get('old_name', ''))
+    old_name = safe_media_filename(data.get('old_name', ''), fallback='untitled')
     new_name = data.get('new_name', '').strip()
     if not new_name.lower().endswith('.txt'): new_name += '.txt'
-    safe_new = secure_filename(new_name)
+    safe_new = safe_media_filename(new_name, fallback='untitled')
     try:
         q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
         old_path = os.path.join(q_dir, old_name)
@@ -10866,7 +10869,7 @@ def _register_remix_routes_inline():
             
             if not name: return jsonify({'status': 'error', 'message': 'Missing name'}), 400
             
-            safe_name = secure_filename(name)
+            safe_name = safe_media_filename(name, fallback='untitled')
             if not safe_name.lower().endswith('.json'): safe_name += '.json'
             
             raw_api, raw_ui = None, None
@@ -10874,7 +10877,7 @@ def _register_remix_routes_inline():
 
             if workflow_file:
                 # PATCH: Read workflow data directly from the existing template instead of extracting from media
-                tpl_path = os.path.join(IMPORTED_WORKFLOWS_DIR, secure_filename(workflow_file))
+                tpl_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(workflow_file, fallback='untitled'))
                 if os.path.exists(tpl_path):
                     with open(tpl_path, 'r', encoding='utf-8') as f:
                         tpl_data = json.load(f)
@@ -10977,8 +10980,8 @@ def _register_remix_routes_inline():
             old_name = request.json.get('old_name')
             new_name = request.json.get('new_name')
             if not old_name or not new_name: return jsonify({'status': 'error'}), 400
-            safe_old = secure_filename(old_name)
-            safe_new = secure_filename(new_name)
+            safe_old = safe_media_filename(old_name, fallback='untitled')
+            safe_new = safe_media_filename(new_name, fallback='untitled')
             if not safe_new.lower().endswith('.json'): safe_new += '.json'
             old_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_old)
             new_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_new)
@@ -10994,7 +10997,7 @@ def _register_remix_routes_inline():
         try:
             filename = request.json.get('filename')
             if not filename or not filename.lower().endswith('.json'): return jsonify({'status': 'error'}), 400
-            path = os.path.join(IMPORTED_WORKFLOWS_DIR, secure_filename(filename))
+            path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(filename, fallback='untitled'))
             if os.path.exists(path):
                 os.remove(path)
                 return jsonify({'status': 'success'})
@@ -11063,7 +11066,7 @@ def _register_remix_routes_inline():
 
     def _get_unified_workflow(file_id, workflow_override, companion_override, target_comfy_url=COMFYUI_SERVER_URL):
         if workflow_override:
-            override_path = os.path.join(IMPORTED_WORKFLOWS_DIR, secure_filename(workflow_override))
+            override_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(workflow_override, fallback='untitled'))
             if os.path.isfile(override_path):
                 with open(override_path, 'r', encoding='utf-8') as wf_f:
                     tpl_data = json.load(wf_f)
@@ -11801,9 +11804,8 @@ def upload_collection_note():
     notes_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.collection_notes')
     os.makedirs(notes_dir, exist_ok=True)
     
-    from werkzeug.utils import secure_filename
     import hashlib, time
-    safe_name = f"note_c{coll_id}_{int(time.time())}_{secure_filename(file.filename)}"
+    safe_name = f"note_c{coll_id}_{int(time.time())}_{safe_media_filename(file.filename)}"
     dest_path = os.path.join(notes_dir, safe_name)
     
     try:
