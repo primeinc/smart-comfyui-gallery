@@ -6582,8 +6582,28 @@ def serve_cleaned_file(file_id):
         os.makedirs(CLEAN_CACHE_DIR, exist_ok=True)
         success = strip_media_metadata(filepath, clean_path, file_type)
         if not success:
+            if should_strip_metadata():
+                # Refuse. Serving the original here hands the visitor exactly
+                # the prompt and workflow this mode exists to withhold, and the
+                # commonest way to get here is not exotic: video and audio are
+                # stripped with ffmpeg, and that branch is only entered when an
+                # ffmpeg was found at all. The gallery kept working and quietly
+                # published the prompts, with a warning on a console nobody
+                # reads.
+                print(f"{Colors.RED}SECURITY: refusing to serve {info['name']} -- "
+                      f"its metadata could not be removed.{Colors.RESET}")
+                message = ("This file cannot be shown right now: its metadata could "
+                           "not be removed, and showing it unchanged would reveal the "
+                           "prompt and workflow stored inside it.")
+                if file_type in ('video', 'audio'):
+                    message += (" Removing metadata from video and audio needs ffmpeg:"
+                                " install it on PATH, or point FFPROBE_MANUAL_PATH at"
+                                " the folder holding ffmpeg and ffprobe.")
+                abort(503, description=message)
+
+            # Not a protected request -- this caller is entitled to the
+            # original, so an unstrippable file is served as it is.
             print(f"WARNING: Metadata stripping failed for {info['name']}. Falling back to original file.")
-            # Fallback: serve the original file if stripping fails
             if filepath.lower().endswith('.webp'):
                 return send_file(filepath, mimetype='image/webp')
             return send_file(filepath)
@@ -6624,9 +6644,19 @@ def download_file(file_id):
             os.makedirs(CLEAN_CACHE_DIR, exist_ok=True)
             success = strip_media_metadata(filepath, clean_path, file_type)
             if not success:
-                print(f"WARNING: Metadata stripping failed for {info['name']} during download. Falling back to original.")
-                # Fallback: serve original file as attachment
-                return send_file(filepath, as_attachment=True, download_name=info['name'])
+                # Same refusal as the view route, and it matters more here:
+                # a download hands the visitor the file itself, prompt and
+                # workflow included, to keep and read at leisure.
+                print(f"{Colors.RED}SECURITY: refusing to hand out {info['name']} -- "
+                      f"its metadata could not be removed.{Colors.RESET}")
+                message = ("This file cannot be downloaded right now: its metadata "
+                           "could not be removed, and the original carries the prompt "
+                           "and workflow used to make it.")
+                if file_type in ('video', 'audio'):
+                    message += (" Removing metadata from video and audio needs ffmpeg:"
+                                " install it on PATH, or point FFPROBE_MANUAL_PATH at"
+                                " the folder holding ffmpeg and ffprobe.")
+                abort(503, description=message)
             
         return send_file(clean_path, as_attachment=True, download_name=info['name'])
     
