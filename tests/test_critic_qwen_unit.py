@@ -2,7 +2,7 @@
 tests in tests/test_review.py: the contrastive grounding gate's fail-closed
 NaN handling and inclusive (>=) thresholds, per-finding crop verification
 (bounds clamping, degenerate-crop rejection, below-baseline rejection),
-clip_score_10 mapping, _first_existing preference order, _data_uri encoding,
+_first_existing preference order, _data_uri encoding,
 the constructor's weights-before-llama-import availability contract,
 model_version derivation from the provisioned filename, and the review()
 localization policy (whole-image / non-spatial / malformed-bbox demotion)
@@ -31,7 +31,6 @@ from smartgallery_ai.critic_qwen import (
     _data_uri,
     _first_existing,
     check_grounding,
-    clip_score_10,
     verify_finding_region,
 )
 from smartgallery_ai.embedders import BackendUnavailable, SemanticEmbedder
@@ -149,18 +148,6 @@ def test_data_uri_produces_decodable_png_with_rgb_conversion():
         assert reopened.size == (10, 7)
         assert reopened.mode == "RGB"
         assert reopened.getpixel((0, 0)) == (255, 0, 0)
-
-
-# --- clip_score_10 ------------------------------------------------------------
-
-
-def test_clip_score_10_mapping_zero_negative_cap_and_linear_region():
-    """clip_score_10 maps cos 0 -> 0, negative cos -> 0, caps at 10 from cos 0.4, and is 25*cos below the cap."""
-    assert clip_score_10(0.0) == 0.0
-    assert clip_score_10(-0.5) == 0.0
-    assert clip_score_10(0.4) == 10.0
-    assert clip_score_10(1.0) == 10.0
-    assert clip_score_10(0.2) == pytest.approx(5.0)
 
 
 # --- check_grounding: fail-closed + inclusive thresholds ----------------------
@@ -348,7 +335,7 @@ def test_qwen_critic_model_version_prefers_q8_filename(tmp_path, monkeypatch):
     critic = object.__new__(QwenVlCritic)
     with pytest.raises(BackendUnavailable, match="qwen-vl critic unavailable"):
         critic.__init__(str(tmp_path), semantic_embedder=object())
-    assert critic.model_version == "qwen2.5-vl-7b-q8_0+decomposed-v1"
+    assert critic.model_version == "qwen2.5-vl-7b-q8_0+decomposed-v2"
 
 
 def test_qwen_critic_model_version_q4_matches_class_default(tmp_path, monkeypatch):
@@ -359,8 +346,8 @@ def test_qwen_critic_model_version_q4_matches_class_default(tmp_path, monkeypatc
     critic = object.__new__(QwenVlCritic)
     with pytest.raises(BackendUnavailable, match="qwen-vl critic unavailable"):
         critic.__init__(str(tmp_path), semantic_embedder=object())
-    assert critic.model_version == "qwen2.5-vl-7b-q4_k_m+decomposed-v1"
-    assert QwenVlCritic.model_version == "qwen2.5-vl-7b-q4_k_m+decomposed-v1"
+    assert critic.model_version == "qwen2.5-vl-7b-q4_k_m+decomposed-v2"
+    assert QwenVlCritic.model_version == "qwen2.5-vl-7b-q4_k_m+decomposed-v2"
 
 
 # --- review(): localization policy via monkeypatched _chat --------------------
@@ -436,15 +423,16 @@ def test_review_valid_bbox_verified_yields_localizable_finding(monkeypatch):
     assert result.findings[0].bbox == (0.6, 0.55, 0.2, 0.3)
 
 
-def test_review_prompt_alignment_is_clip_score_of_prompt_and_image(monkeypatch):
-    """With a prompt, alignment is clip_score_10 of the prompt-image cosine from the embedder, computed outside the VLM."""
+def test_review_prompt_alignment_is_none_without_align_verdicts(monkeypatch):
+    """A prompt whose ALIGN call never lands scores None -- no elements to count, and a similarity number is never substituted."""
     emb = VecEmbedder({"a red cube": (1.0, 0.0, 0.0)}, image_vec=(1.0, 0.0, 0.0))
     critic, calls = _bare_critic(monkeypatch, [
         "A red cube.",
         _assess([], quality=9.0),
     ], embedder=emb)
     payload = critic.review(solid_color_image(), "a red cube", "rubric-1")
-    assert payload["prompt_alignment_score"] == 10.0  # cos 1.0 -> capped 10
+    assert payload["prompt_alignment_score"] is None
+    assert payload["alignment"] == []
     assert payload["findings"] == []
 
 
@@ -707,8 +695,8 @@ def test_assess_defect_list_is_not_numerically_anchored():
 
 def test_align_absent_elements_become_prompt_mismatch_findings(monkeypatch):
     align_reply = json.dumps({"elements": [
-        {"present": True, "confidence": 0.9},
-        {"present": False, "confidence": 0.8},
+        {"present": True, "confidence": 0.9, "where": "whole-image"},
+        {"present": False, "confidence": 0.8, "where": "absent"},
     ]})
     emb = VecEmbedder({"a red cube, a blue sphere": (1.0, 0.0, 0.0)},
                       image_vec=(1.0, 0.0, 0.0))
@@ -727,14 +715,53 @@ def test_align_absent_elements_become_prompt_mismatch_findings(monkeypatch):
     assert "1. a red cube" in calls[-1]["text"] and "2. a blue sphere" in calls[-1]["text"]
 
 
+def test_align_emits_one_scored_element_per_prompt_slice(monkeypatch):
+    """Every element -- satisfied AND absent -- is reported, with the score
+    equal to satisfied/total, so the panel can highlight both sides."""
+    align_reply = json.dumps({"elements": [
+        {"present": True, "confidence": 0.9, "where": "whole-image"},
+        {"present": False, "confidence": 0.8, "where": "absent"},
+    ]})
+    emb = VecEmbedder({"a red cube, a blue sphere": (1.0, 0.0, 0.0)},
+                      image_vec=(1.0, 0.0, 0.0))
+    critic, _calls = _bare_critic(monkeypatch, [
+        "A red cube.", _assess([], quality=9.0), align_reply,
+    ], embedder=emb)
+    payload = critic.review(solid_color_image(), "a red cube, a blue sphere", "rubric-1")
+    assert [(e["ordinal"], e["text"], e["satisfied"]) for e in payload["alignment"]] == [
+        (0, "a red cube", True), (1, "a blue sphere", False)]
+    assert payload["prompt_alignment_score"] == pytest.approx(0.5)
+    # absent elements carry no locus
+    assert "bbox" not in payload["alignment"][1]
+    # and the whole payload is accepted by the strict schema
+    result = validate_review_payload(payload)
+    assert result.prompt_alignment_score == pytest.approx(0.5)
+    assert [e.satisfied for e in result.alignment] == [True, False]
+
+
+def test_align_caption_is_supplied_as_context_to_the_align_call(monkeypatch):
+    """The step-1 caption rides along in the ALIGN prompt -- the pass judges
+    the prompt against what the model already committed to seeing."""
+    align_reply = json.dumps({"elements": [
+        {"present": True, "confidence": 0.9, "where": "whole-image"}]})
+    emb = VecEmbedder({"a red cube": (1.0, 0.0, 0.0)}, image_vec=(1.0, 0.0, 0.0))
+    critic, calls = _bare_critic(monkeypatch, [
+        "A red cube on a table.", _assess([], quality=9.0), align_reply,
+    ], embedder=emb)
+    critic.review(solid_color_image(), "a red cube", "rubric-1")
+    assert "A red cube on a table." in calls[-1]["text"]
+
+
 def test_align_all_present_adds_no_findings(monkeypatch):
-    align_reply = json.dumps({"elements": [{"present": True, "confidence": 0.9}]})
+    align_reply = json.dumps({"elements": [
+        {"present": True, "confidence": 0.9, "where": "whole-image"}]})
     emb = VecEmbedder({"a red cube": (1.0, 0.0, 0.0)}, image_vec=(1.0, 0.0, 0.0))
     critic, _calls = _bare_critic(monkeypatch, [
         "A red cube.", _assess([], quality=9.0), align_reply,
     ], embedder=emb)
     payload = critic.review(solid_color_image(), "a red cube", "rubric-1")
     assert payload["findings"] == []
+    assert payload["prompt_alignment_score"] == pytest.approx(1.0)
     assert "[adherence 1/1 prompt elements]" in payload["summary"]
 
 
@@ -746,4 +773,6 @@ def test_align_failure_never_sinks_the_review(monkeypatch):
     ], embedder=emb)
     payload = critic.review(solid_color_image(), "a red cube", "rubric-1")
     assert payload["findings"] == []
+    assert payload["alignment"] == []
+    assert payload["prompt_alignment_score"] is None
     assert "adherence" not in payload["summary"]

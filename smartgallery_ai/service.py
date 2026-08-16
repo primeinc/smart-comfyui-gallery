@@ -744,12 +744,9 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             # Whether this file HAS a generation prompt to align against --
             # a null alignment score means "no prompt to compare with" far
             # more often than "scoring failed", and the panel says which.
-            prompt_available = False
-            if _has_column(conn, "files", "workflow_prompt"):
-                prow = conn.execute(
-                    "SELECT workflow_prompt FROM files WHERE id = ?", (file_id,)
-                ).fetchone()
-                prompt_available = bool(prow and (prow["workflow_prompt"] or "").strip())
+            # Same resolver the critic scored against, so the panel can
+            # never claim "no prompt" about a file the critic did score.
+            prompt_available = review.resolve_prompt_texts(conn, file_id)[0] is not None
             if review_row is None:
                 # scan-log row present + no review row = the one attempt
                 # failed (result_count -1); absent = not reached yet.
@@ -763,6 +760,12 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "SELECT finding_id, type, severity, confidence, localizable, "
                 "bbox_x, bbox_y, bbox_w, bbox_h, points, description, mask_path "
                 "FROM ai_review_findings WHERE review_id = ? ORDER BY finding_id",
+                (review_row["review_id"],),
+            ).fetchall()
+            alignment_rows = conn.execute(
+                "SELECT element_id, ordinal, text, satisfied, confidence, "
+                "bbox_x, bbox_y, bbox_w, bbox_h, mask_path "
+                "FROM ai_review_alignment WHERE review_id = ? ORDER BY ordinal",
                 (review_row["review_id"],),
             ).fetchall()
         finally:
@@ -792,11 +795,32 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                     )
             findings.append(entry)
 
+        alignment = []
+        for arow in alignment_rows:
+            satisfied = bool(arow["satisfied"])
+            entry = {
+                "element_id": arow["element_id"],
+                "ordinal": arow["ordinal"],
+                "text": arow["text"],
+                "satisfied": satisfied,
+                "confidence": arow["confidence"],
+                "bbox": None,
+            }
+            if satisfied and arow["bbox_x"] is not None:
+                entry["bbox"] = [arow["bbox_x"], arow["bbox_y"],
+                                 arow["bbox_w"], arow["bbox_h"]]
+                if arow["mask_path"]:
+                    entry["mask_url"] = url_for(
+                        "aidam.review_alignment_mask", element_id=arow["element_id"])
+            alignment.append(entry)
+
         review_dict = {
             "scores": {
                 "quality": review_row["quality_score"],
+                # 0..1; the panel renders it as a percentage
                 "prompt_alignment": review_row["prompt_alignment_score"],
             },
+            "alignment": alignment,
             "summary": review_row["summary"],
             "model": {
                 "id": review_row["model_id"],
@@ -810,13 +834,16 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
 
     # -- GET /review/mask/<int:finding_id> -------------------------------------------
 
-    def review_mask(finding_id: int):
-        """Serve one finding's mask PNG; the stored path must resolve inside the masks cache."""
+    def _serve_mask(table: str, key_column: str, key: int):
+        """Serve one stored mask PNG from `table`, enforcing file-level
+        access and path containment. The stored path must resolve inside
+        the masks cache -- a row pointing anywhere else is a 404, not a
+        file read."""
         conn = _connect(config)
         try:
             row = conn.execute(
-                "SELECT mask_path, file_id FROM ai_review_findings "
-                "WHERE finding_id = ?", (finding_id,)
+                f"SELECT mask_path, file_id FROM {table} WHERE {key_column} = ?",
+                (key,),
             ).fetchone()
         finally:
             conn.close()
@@ -836,6 +863,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         if not inside or not os.path.isfile(resolved):
             abort(404)
         return send_file(resolved, mimetype="image/png")
+
+    def review_mask(finding_id: int):
+        """Serve one finding's mask PNG."""
+        return _serve_mask("ai_review_findings", "finding_id", finding_id)
+
+    def review_alignment_mask(element_id: int):
+        """Serve one satisfied prompt element's highlight mask PNG."""
+        return _serve_mask("ai_review_alignment", "element_id", element_id)
 
     # -- POST /review/feedback (guarded) / GET /review/feedback/export --------------
 
@@ -1098,6 +1133,10 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     bp.add_url_rule("/review/<file_id>", "review_for_file", _wrap(review_for_file), methods=["GET"])
     bp.add_url_rule(
         "/review/mask/<int:finding_id>", "review_mask", _wrap(review_mask), methods=["GET"]
+    )
+    bp.add_url_rule(
+        "/review/alignment/mask/<int:element_id>", "review_alignment_mask",
+        _wrap(review_alignment_mask), methods=["GET"]
     )
     bp.add_url_rule(
         "/review/feedback", "review_feedback_post",

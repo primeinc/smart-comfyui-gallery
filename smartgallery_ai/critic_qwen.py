@@ -24,13 +24,18 @@ Protocol per image:
   4.5 ALIGN    — when a prompt exists: expected elements are extracted
                  DETERMINISTICALLY from the prompt (verbatim slices;
                  negative-prompt terms excluded), and one fixed-length
-                 schema call answers present/absent per element.
-                 Confidently-absent elements become prompt_mismatch
-                 findings; the VLM never chooses what to expect.
+                 schema call answers present/absent/where per element,
+                 with the step-1 caption supplied as context. Located
+                 satisfied elements get a bbox (crop-verified, same rule
+                 as findings) so the panel can highlight what landed;
+                 confidently-absent elements also become prompt_mismatch
+                 findings. The VLM never chooses what to expect.
   5. ASSEMBLE  — deterministic payload assembly; prompt_alignment_score is
-                 CLIPScore(prompt, image) mapped to 0-10
-                 (min(10, 25*max(cos,0))), computed outside the VLM. The
-                 payload still goes through validate_review_payload.
+                 satisfied/total over the ALIGN elements, on 0..1 — the
+                 fraction of the user's own prompt the image delivered,
+                 explained element by element rather than asserted as a
+                 similarity number. The payload still goes through
+                 validate_review_payload.
 
 Weights load ONLY from the models dir (this module never downloads;
 provisioning is smartgallery_ai.provision's job):
@@ -121,7 +126,10 @@ def extract_prompt_elements(prompt: Optional[str], negative: Optional[str] = Non
 
 def _align_schema(n: int) -> dict:
     """Grammar schema for the ALIGN reply: one verdict per element, in
-    order, fixed length."""
+    order, fixed length. `where` is the coarse region the element was found
+    in -- 'absent' when it is not there, 'whole-image' for properties with
+    no locus (style, mood, lighting) -- and drives the per-element
+    localization that the panel highlights."""
     return {
         "type": "object",
         "properties": {
@@ -134,8 +142,9 @@ def _align_schema(n: int) -> dict:
                     "properties": {
                         "present": {"type": "boolean"},
                         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                        "where": {"enum": ["absent", *_REGIONS]},
                     },
-                    "required": ["present", "confidence"],
+                    "required": ["present", "confidence", "where"],
                 },
             },
         },
@@ -263,18 +272,14 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a / np.linalg.norm(a), b / np.linalg.norm(b)))
 
 
-def clip_score_10(cos: float) -> float:
-    """CLIPScore-style mapping (w=2.5) onto the 0-10 UI scale."""
-    return min(10.0, 25.0 * max(cos, 0.0))
-
-
 class QwenVlCritic(CriticBackend):
     """The decomposed Qwen2.5-VL critic (protocol in the module docstring).
     Exists only with a semantic embedder attached: the grounding gate and
-    prompt-alignment scoring are inseparable from the critic."""
+    the per-region verification behind every bbox it emits are inseparable
+    from the critic."""
 
     model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
-    model_version = "qwen2.5-vl-7b-q4_k_m+decomposed-v1"  # refined per provisioned quantization in __init__
+    model_version = "qwen2.5-vl-7b-q4_k_m+decomposed-v2"  # refined per provisioned quantization in __init__
 
     def __init__(self, models_dir: str,
                  semantic_embedder: Optional[SemanticEmbedder] = None,
@@ -284,12 +289,12 @@ class QwenVlCritic(CriticBackend):
         weights (model + mmproj), and the llama.cpp runtime are all
         present and loadable."""
         # The CLIP gate is a hard dependency: this critic must not exist in
-        # a gate-less configuration, and the embedder also carries
-        # prompt-alignment scoring.
+        # a gate-less configuration, and the embedder also verifies every
+        # region it claims (findings and located prompt elements alike).
         if semantic_embedder is None:
             raise BackendUnavailable(
                 "qwen-vl critic requires the semantic (OpenCLIP) backend for "
-                "its grounding gate and prompt-alignment scoring; provision "
+                "its grounding gate and region verification; provision "
                 "the OpenCLIP weights or disable the critic")
         # Weights check precedes the runtime import: 'auto' resolution on
         # an unprovisioned system must stay fast and side-effect-free.
@@ -301,7 +306,7 @@ class QwenVlCritic(CriticBackend):
                 f"(model: one of {MODEL_FILENAMES}; mmproj: one of {MMPROJ_FILENAMES})")
         self.model_version = (
             f"qwen2.5-vl-7b-{os.path.basename(model_path).rsplit('-', 1)[-1].removesuffix('.gguf').lower()}"
-            f"+decomposed-v1")
+            f"+decomposed-v2")
 
         try:
             from smartgallery_ai.llama_runtime import (
@@ -503,55 +508,87 @@ class QwenVlCritic(CriticBackend):
                 finding["bbox"] = list(bbox)
             findings.append(finding)
 
-        # 4.5 ALIGN — per-element prompt adherence. Elements come from the
-        # deterministic expected-text guard (verbatim prompt slices,
-        # negative-prompt terms excluded); the VLM only answers
-        # present/absent per element, so a mismatch finding can never
-        # describe content the prompt did not actually request. Every
-        # confidently-absent element becomes a finding — no cap.
+        # 4.5 ALIGN — its own pass over the prompt, in its own context.
+        # Elements come from the deterministic expected-text guard
+        # (verbatim prompt slices, negative-prompt terms excluded), so a
+        # verdict can never be about content the prompt did not request.
+        # The step-1 caption rides along as context: the model has already
+        # committed to what it sees, and judging the prompt against that
+        # commitment is harder to talk itself out of than judging the
+        # prompt against the pixels a second time.
+        alignment_elements: list = []
         adherence_note = ""
         if prompt_text:
-            elements = extract_prompt_elements(prompt_text, negative_text)
-            if elements:
-                listing = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(elements))
+            expected = extract_prompt_elements(prompt_text, negative_text)
+            if expected:
+                listing = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(expected))
                 try:
                     align_raw = self._chat(
                         uri,
-                        "This image was generated from a prompt requesting "
-                        "the following elements:\n" + listing + "\n"
+                        f"You already described this image as: {description}\n\n"
+                        "It was generated from a prompt requesting the "
+                        "following elements:\n" + listing + "\n"
                         "For each element, in order, say whether it is "
-                        "visibly present in the image and your confidence 0-1.",
-                        schema=_align_schema(len(elements)),
-                        max_tokens=30 * len(elements) + 40)
+                        "visibly present in the image, your confidence 0-1, "
+                        "and where it is — a region name, or 'absent' when "
+                        "it is not there, or 'whole-image' when it is an "
+                        "overall property rather than a thing in one place.",
+                        schema=_align_schema(len(expected)),
+                        max_tokens=40 * len(expected) + 40)
                     verdicts = json.loads(align_raw).get("elements") or []
                 except Exception:
                     verdicts = []  # ALIGN failure never sinks the review
-                if len(verdicts) == len(elements):
-                    missing = [
-                        (element, v) for element, v in zip(elements, verdicts)
-                        if not v.get("present")
-                        and float(v.get("confidence", 0)) >= 0.5
-                    ]
-                    for element, v in missing:
-                        findings.append({
-                            "type": "prompt_mismatch",
-                            "severity": "medium",
-                            "confidence": v.get("confidence", 0.5),
-                            "localizable": False,
-                            "description": f'requested "{element[:120]}" is not visible',
-                        })
-                    adherence_note = (
-                        f" [adherence {len(elements) - len(missing)}"
-                        f"/{len(elements)} prompt elements]")
+                if len(verdicts) == len(expected):
+                    for ordinal, (text, verdict) in enumerate(zip(expected, verdicts)):
+                        satisfied = bool(verdict.get("present"))
+                        confidence = verdict.get("confidence", 0.5)
+                        where = verdict.get("where", "whole-image")
+                        # A satisfied element with a real region gets one
+                        # localization attempt so the panel can highlight
+                        # exactly what landed. No box -> no highlight; a
+                        # rectangle invented here would be a confident
+                        # claim the model never made.
+                        bbox = None
+                        if satisfied and where not in ("absent", "whole-image"):
+                            bbox = self._localize(
+                                uri, {"type": "other", "what": text})
+                            if bbox is not None and not verify_finding_region(
+                                    self._embedder, text, bbox, img):
+                                bbox = None
+                        element = {
+                            "ordinal": ordinal,
+                            "text": text,
+                            "satisfied": satisfied,
+                            # Not clamped: validate_review_payload rejects
+                            # out-of-range values.
+                            "confidence": confidence,
+                        }
+                        if bbox is not None:
+                            element["bbox"] = list(bbox)
+                        alignment_elements.append(element)
+                        # A confidently-absent element is also a defect, so
+                        # it stays in the findings list the reviewer reads.
+                        if not satisfied and float(confidence or 0) >= 0.5:
+                            findings.append({
+                                "type": "prompt_mismatch",
+                                "severity": "medium",
+                                "confidence": confidence,
+                                "localizable": False,
+                                "description": f'requested "{text[:120]}" is not visible',
+                            })
+                    satisfied_count = sum(
+                        1 for e in alignment_elements if e["satisfied"])
+                    adherence_note = (f" [adherence {satisfied_count}"
+                                      f"/{len(alignment_elements)} prompt elements]")
 
-        # 5. ASSEMBLE (deterministic; alignment computed outside the VLM).
-        # The embedder is mandatory, so a prompt-bearing review always gets
-        # a real alignment score; None means only "no prompt available".
-        alignment = None
-        if prompt_text:
-            alignment = clip_score_10(
-                _cos(self._embedder.embed_text(prompt_text),
-                     self._embedder.embed_image(img)))
+        # 5. ASSEMBLE (deterministic). Prompt-following is the fraction of
+        # the user's own prompt the image actually delivered — countable,
+        # and explained element by element by the rows above. None means
+        # only "this file carries no generation prompt to follow".
+        alignment_score = None
+        if alignment_elements:
+            alignment_score = (sum(1 for e in alignment_elements if e["satisfied"])
+                               / len(alignment_elements))
 
         summary = f"{description[:260]} [grounding margin {grounding_margin:.2f}]"
         if dropped_unverified:
@@ -563,9 +600,10 @@ class QwenVlCritic(CriticBackend):
             # Not clamped: validate_review_payload rejects out-of-range
             # values.
             "quality_score": assess.get("quality_score"),
-            "prompt_alignment_score": alignment,
+            "prompt_alignment_score": alignment_score,
             "summary": summary,
             "findings": findings,
+            "alignment": alignment_elements,
         }
 
     def _localize(self, uri: str, defect: dict) -> Optional[tuple]:

@@ -145,6 +145,38 @@ DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_ai_findings_file "
     "ON ai_review_findings(file_id, type);",
+    """
+    CREATE TABLE IF NOT EXISTS ai_review_alignment (
+        element_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL REFERENCES ai_reviews(review_id)
+            ON DELETE CASCADE,
+        file_id TEXT NOT NULL,
+        -- position in the generation prompt, so the panel can render the
+        -- elements in the order the user actually wrote them
+        ordinal INTEGER NOT NULL,
+        -- verbatim slice of the positive prompt (never model-authored text)
+        text TEXT NOT NULL,
+        satisfied INTEGER NOT NULL CHECK (satisfied IN (0, 1)),
+        confidence REAL NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),
+        -- where the element was found. Present for satisfied elements the
+        -- model could locate; NULL for whole-image judgements (style,
+        -- lighting, "cinematic") and for absent elements, which have no
+        -- locus by definition.
+        bbox_x REAL,
+        bbox_y REAL,
+        bbox_w REAL,
+        bbox_h REAL,
+        mask_path TEXT,
+        mask_model_id TEXT,
+        mask_model_version TEXT,
+        UNIQUE (review_id, ordinal),
+        -- an absent element cannot have been located
+        CHECK (satisfied = 1 OR (bbox_x IS NULL AND bbox_y IS NULL
+               AND bbox_w IS NULL AND bbox_h IS NULL AND mask_path IS NULL))
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_ai_alignment_review "
+    "ON ai_review_alignment(review_id, ordinal);",
 
     # --- human feedback (exportable for reviewer tuning / LoRA work) ---
     """
@@ -198,6 +230,7 @@ DDL = [
 
 # Tables owned by this package, in drop order (children before parents).
 DERIVED_TABLES = [
+    "ai_review_alignment",
     "ai_review_findings",
     "ai_reviews",
     "ai_face_instances",

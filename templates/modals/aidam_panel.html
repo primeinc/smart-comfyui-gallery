@@ -86,6 +86,28 @@
     .aidam-meter-fill { height:100%; background:linear-gradient(90deg, var(--ai-color), #9b59b6); border-radius:5px; }
 
     .aidam-findings-list { display:flex; flex-direction:column; gap:8px; }
+
+    /* Prompt-following breakdown: one chip per element of the generation
+       prompt, colored to match the region it highlights on the image. */
+    .aidam-align-block { margin:-4px 0 16px 0; }
+    .aidam-align-head { display:flex; align-items:center; justify-content:space-between;
+        gap:8px; margin-bottom:6px; font-size:0.78rem; color:var(--text-muted); }
+    .aidam-align-all-btn { background:transparent; border:1px solid #444; color:#ccc;
+        border-radius:4px; padding:2px 8px; font-size:0.72rem; cursor:pointer; }
+    .aidam-align-all-btn:hover { border-color:#666; color:#fff; }
+    .aidam-align-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .aidam-align-chip { display:inline-flex; align-items:center; gap:6px;
+        padding:3px 9px; border-radius:12px; font-size:0.78rem; line-height:1.3;
+        border:1px solid transparent; max-width:100%; }
+    .aidam-align-hit { background:rgba(60,160,90,0.14); color:#dfe; border-color:rgba(60,160,90,0.35); }
+    .aidam-align-miss { background:rgba(190,60,60,0.14); color:#fdd;
+        border-color:rgba(190,60,60,0.35); text-decoration:line-through;
+        text-decoration-color:rgba(255,140,140,0.6); }
+    .aidam-align-clickable { cursor:pointer; }
+    .aidam-align-clickable:hover { border-color:#888; }
+    .aidam-align-active { outline:1px solid #fff; background:rgba(60,160,90,0.3); }
+    .aidam-align-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+    .aidam-align-dot-miss { background:#c25; }
     .aidam-finding-row { display:flex; align-items:flex-start; gap:10px; background:#151515; border:1px solid #333; border-radius:8px; padding:10px 12px; }
     .aidam-finding-body { flex:1; min-width:0; }
     .aidam-finding-type { color:#fff; font-size:0.88rem; font-weight:700; text-transform:capitalize; }
@@ -755,6 +777,59 @@
             </div>`;
     }
 
+    // One stable hue per prompt element, so a chip and the region it
+    // highlights are the same color. Golden-angle spacing keeps adjacent
+    // elements far apart in hue even for long prompts.
+    function aidamAlignColor(ordinal) {
+        return `hsl(${(ordinal * 137.508) % 360}, 85%, 55%)`;
+    }
+
+    function aidamAlignChip(el) {
+        const color = aidamAlignColor(el.ordinal);
+        const pct = Math.round((el.confidence || 0) * 100);
+        if (!el.satisfied) {
+            return `<span class="aidam-align-chip aidam-align-miss" title="Not visible in the image (${pct}% confidence)">
+                <span class="aidam-align-dot aidam-align-dot-miss"></span>${escapeAidamHtml(el.text)}</span>`;
+        }
+        const clickable = el.mask_url ? ` onclick="aidamToggleAlignOne(${el.element_id}, this)"` : '';
+        const cls = el.mask_url ? ' aidam-align-clickable' : '';
+        return `<span class="aidam-align-chip aidam-align-hit${cls}"${clickable}
+            title="Found in the image (${pct}% confidence)${el.mask_url ? ' — click to highlight' : ''}">
+            <span class="aidam-align-dot" style="background:${color};"></span>${escapeAidamHtml(el.text)}</span>`;
+    }
+
+    // Whole-overlay toggle: every located match at once, each in its own color.
+    function aidamToggleAlignOverlay(btnEl) {
+        const overlay = document.getElementById('aidam-align-overlay');
+        if (!overlay) return;
+        const showing = overlay.style.display !== 'none';
+        overlay.querySelectorAll('.aidam-align-hl').forEach(d => { d.style.display = 'block'; });
+        overlay.style.display = showing ? 'none' : 'block';
+        if (btnEl) btnEl.textContent = showing ? 'Highlight matches' : 'Hide highlights';
+        document.querySelectorAll('.aidam-align-chip.aidam-align-active')
+            .forEach(c => c.classList.remove('aidam-align-active'));
+    }
+
+    // Single-element toggle: isolate one match's region.
+    function aidamToggleAlignOne(elementId, chipEl) {
+        const overlay = document.getElementById('aidam-align-overlay');
+        if (!overlay) return;
+        const already = chipEl.classList.contains('aidam-align-active');
+        document.querySelectorAll('.aidam-align-chip.aidam-align-active')
+            .forEach(c => c.classList.remove('aidam-align-active'));
+        const allBtn = document.querySelector('.aidam-align-all-btn');
+        if (allBtn) allBtn.textContent = 'Highlight matches';
+        if (already) {
+            overlay.style.display = 'none';
+            return;
+        }
+        chipEl.classList.add('aidam-align-active');
+        overlay.querySelectorAll('.aidam-align-hl').forEach(d => {
+            d.style.display = (Number(d.dataset.elementId) === elementId) ? 'block' : 'none';
+        });
+        overlay.style.display = 'block';
+    }
+
     function aidamToggleMask(maskUrl, btnEl) {
         const overlay = document.getElementById('aidam-mask-overlay');
         if (!overlay) return;
@@ -842,9 +917,19 @@
             const review = data.review;
             const findings = data.findings || [];
 
+            const alignment = review.alignment || [];
+
             let html = `<div class="aidam-preview-wrap" id="aidam-review-preview">
                 <img src="/galleryout/thumbnail/${encodeURIComponent(aidamCurrentFileId)}" alt="">
                 <img id="aidam-mask-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; mix-blend-mode:screen; opacity:0.6; pointer-events:none;" alt="">
+                <div id="aidam-align-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;">
+                    ${alignment.filter(e => e.mask_url).map(e => `
+                        <div class="aidam-align-hl" data-element-id="${e.element_id}" style="
+                            position:absolute; top:0; left:0; width:100%; height:100%;
+                            background:${aidamAlignColor(e.ordinal)}; opacity:0.5;
+                            -webkit-mask-image:url('${e.mask_url}'); mask-image:url('${e.mask_url}');
+                            -webkit-mask-size:100% 100%; mask-size:100% 100%;"></div>`).join('')}
+                </div>
             </div>`;
 
             html += `<div class="aidam-meter-row">
@@ -856,6 +941,20 @@
                 || review.scores.prompt_alignment === undefined;
             if (alignmentMissing && data.prompt_available === false) {
                 html += `<p style="color:var(--text-muted); font-size:0.78rem; margin:-6px 0 12px 0;">No generation prompt is embedded in this file's workflow, so there is nothing to score alignment against.</p>`;
+            }
+
+            if (alignment.length) {
+                const kept = alignment.filter(e => e.satisfied).length;
+                const highlightable = alignment.some(e => e.mask_url);
+                html += `<div class="aidam-align-block">
+                    <div class="aidam-align-head">
+                        <span>Prompt following — ${kept} of ${alignment.length} elements</span>
+                        ${highlightable ? `<button type="button" class="aidam-align-all-btn" onclick="aidamToggleAlignOverlay(this)">Highlight matches</button>` : ''}
+                    </div>
+                    <div class="aidam-align-chips">
+                        ${alignment.map(aidamAlignChip).join('')}
+                    </div>
+                </div>`;
             }
 
             if (review.summary) {

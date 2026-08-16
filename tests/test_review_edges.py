@@ -228,7 +228,7 @@ def test_stub_critic_dark_image_with_red_square_yields_both_findings():
     result = validate_review_payload(raw)
     assert sorted(f.type for f in result.findings) == ["artifact", "lighting"]
     assert result.quality_score == 6.0
-    assert result.prompt_alignment_score == 5.0
+    assert result.prompt_alignment_score == 1.0
 
 
 # --- store_review: points-only findings --------------------------------------
@@ -265,8 +265,8 @@ def test_generate_finding_mask_points_only_masks_points_bounding_box(tmp_path):
         conn, str(tmp_path / "cache"), img, "f1", finding_id, StubSegmenter()
     )
     with Image.open(mask_path) as mask_img:
-        assert mask_img.mode == "L"
-        arr = np.asarray(mask_img)
+        assert mask_img.mode == "RGBA"
+        arr = np.asarray(mask_img)[..., 3]
     assert arr[20, 20] == 255  # center of the points' bbox
     assert arr[2, 2] == 0  # outside it
     assert int((arr == 255).sum()) == 20 * 20  # exactly the 0.5x0.5 rectangle

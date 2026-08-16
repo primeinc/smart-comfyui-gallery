@@ -22,7 +22,15 @@ from omniquery.validation import AuthContext
 from smartgallery_ai import AIConfig, HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
 from smartgallery_ai import hashing, vectors
 from smartgallery_ai.faces import FaceDetection, StubFaceBackend, cluster_faces, replace_faces_for_file
-from smartgallery_ai.review import Finding, ReviewResult, StubSegmenter, generate_finding_mask, store_review
+from smartgallery_ai.review import (
+    AlignmentElement,
+    Finding,
+    ReviewResult,
+    StubSegmenter,
+    generate_alignment_mask,
+    generate_finding_mask,
+    store_review,
+)
 from smartgallery_ai.schema import init_schema
 from smartgallery_ai.service import create_ai_blueprint, create_ai_resolvers
 
@@ -167,12 +175,22 @@ def fixture(tmp_path):
     # --- review: one global finding, one localizable finding + mask --------
     _add_file(conn, "review_file")
     review_result = ReviewResult(
-        quality_score=6.0, prompt_alignment_score=None, summary="stub review",
+        quality_score=6.0, prompt_alignment_score=2 / 3, summary="stub review",
         findings=[
             Finding(type="lighting", severity="medium", confidence=0.8,
                     localizable=False, description="too dark"),
             Finding(type="artifact", severity="high", confidence=0.9,
                     localizable=True, description="red box", bbox=(0.1, 0.1, 0.2, 0.2)),
+        ],
+        alignment=[
+            # located match -> gets a mask and a highlight
+            AlignmentElement(ordinal=0, text="a red cube", satisfied=True,
+                             confidence=0.9, bbox=(0.1, 0.1, 0.2, 0.2)),
+            # satisfied but whole-image (style) -> no locus, no mask
+            AlignmentElement(ordinal=1, text="cinematic lighting", satisfied=True,
+                             confidence=0.6),
+            AlignmentElement(ordinal=2, text="a blue sphere", satisfied=False,
+                             confidence=0.8),
         ],
     )
     review_id = store_review(
@@ -188,6 +206,16 @@ def fixture(tmp_path):
 
     mask_img = Image.new("RGB", (64, 64), (5, 5, 5))
     generate_finding_mask(conn, cache_dir, mask_img, "review_file", local_finding_id, StubSegmenter())
+
+    element_rows = conn.execute(
+        "SELECT element_id, ordinal FROM ai_review_alignment WHERE review_id = ? "
+        "ORDER BY ordinal", (review_id,),
+    ).fetchall()
+    located_element_id = element_rows[0]["element_id"]      # ordinal 0, has a bbox
+    global_element_id = element_rows[1]["element_id"]       # ordinal 1, whole-image
+    absent_element_id = element_rows[2]["element_id"]       # ordinal 2, not present
+    generate_alignment_mask(conn, cache_dir, mask_img, "review_file",
+                            located_element_id, StubSegmenter())
 
     # --- a finding whose mask_path was tampered to point outside cache_dir -
     _add_file(conn, "review_file2")
@@ -238,6 +266,9 @@ def fixture(tmp_path):
         global_finding_id=global_finding_id,
         local_finding_id=local_finding_id,
         outside_finding_id=outside_finding_id,
+        located_element_id=located_element_id,
+        global_element_id=global_element_id,
+        absent_element_id=absent_element_id,
     )
 
 
@@ -380,6 +411,51 @@ def test_review_for_file_missing_review_returns_none(fixture):
     data = fixture.client.get(f"{_PREFIX}/review/no-such-file").get_json()
     assert data == {"enabled": True, "review": None, "findings": [],
                     "pending": False, "scan_failed": False}
+
+
+def test_review_alignment_reports_every_element_in_prompt_order(fixture):
+    """Both sides of prompt-following reach the panel -- what landed AND what
+    did not -- with the score as a 0..1 fraction of the elements."""
+    data = fixture.client.get(f"{_PREFIX}/review/review_file").get_json()
+    alignment = data["review"]["alignment"]
+    assert [(e["ordinal"], e["text"], e["satisfied"]) for e in alignment] == [
+        (0, "a red cube", True),
+        (1, "cinematic lighting", True),
+        (2, "a blue sphere", False),
+    ]
+    assert data["review"]["scores"]["prompt_alignment"] == pytest.approx(2 / 3)
+
+
+def test_review_alignment_mask_url_only_on_located_matches(fixture):
+    """A highlight needs a locus: the whole-image match and the absent
+    element carry no bbox and no mask, so nothing is drawn for them."""
+    alignment = {e["ordinal"]: e for e in
+                 fixture.client.get(f"{_PREFIX}/review/review_file").get_json()["review"]["alignment"]}
+
+    located = alignment[0]
+    assert located["bbox"] == pytest.approx([0.1, 0.1, 0.2, 0.2])
+    assert located["mask_url"] == (
+        f"{_PREFIX}/review/alignment/mask/{fixture.located_element_id}")
+
+    for ordinal in (1, 2):
+        assert alignment[ordinal]["bbox"] is None
+        assert "mask_url" not in alignment[ordinal]
+
+
+def test_review_alignment_mask_serves_png(fixture):
+    resp = fixture.client.get(
+        f"{_PREFIX}/review/alignment/mask/{fixture.located_element_id}")
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/png"
+
+
+def test_review_alignment_mask_404s_without_a_mask(fixture):
+    """An unlocalized match and an absent element have no mask to serve."""
+    for element_id in (fixture.global_element_id, fixture.absent_element_id):
+        assert fixture.client.get(
+            f"{_PREFIX}/review/alignment/mask/{element_id}").status_code == 404
+    assert fixture.client.get(
+        f"{_PREFIX}/review/alignment/mask/999999").status_code == 404
 
 
 def test_review_mask_serves_png(fixture):

@@ -122,7 +122,7 @@ class AIConfig:
 # Version stamps for derived state. Bumping one of these deterministically
 # invalidates the corresponding derived rows (see invalidation.py).
 HASH_ALGO_VERSION = "sha256+phash64/dhash64-v1"
-RUBRIC_VERSION = "review-rubric-v1"
+RUBRIC_VERSION = "review-rubric-v2"
 
 # Canonical space names. Semantic and visual are distinct spaces by design
 # (WI-31): do not merge or cross-compare their scores.

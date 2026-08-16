@@ -397,7 +397,7 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
             "FROM ai_reviews WHERE file_id = 'ok1'").fetchone()
         assert review_row is not None
         assert review_row["quality_score"] == pytest.approx(8.0)  # one finding
-        assert review_row["prompt_alignment_score"] == pytest.approx(5.0)
+        assert review_row["prompt_alignment_score"] == pytest.approx(1.0)
         assert review_row["rubric_version"] == RUBRIC_VERSION
 
         finding = conn.execute(

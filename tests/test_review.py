@@ -57,7 +57,7 @@ def add_file(conn, file_id, mtime=1000.0):
 def valid_payload(**overrides) -> dict:
     payload = {
         "quality_score": 7.5,
-        "prompt_alignment_score": 6.0,
+        "prompt_alignment_score": 0.6,
         "summary": "Mostly good, minor artifact.",
         "findings": [
             {
@@ -99,7 +99,7 @@ def test_validate_review_payload_accepts_well_formed_payload():
     result = validate_review_payload(valid_payload())
     assert isinstance(result, ReviewResult)
     assert result.quality_score == 7.5
-    assert result.prompt_alignment_score == 6.0
+    assert result.prompt_alignment_score == 0.6
     assert len(result.findings) == 2
     assert result.findings[0].localizable is False
     assert result.findings[0].bbox is None
@@ -140,6 +140,122 @@ def test_validate_review_payload_missing_prompt_alignment_key_defaults_none():
 
 
 # --- validate_review_payload: rejections ------------------------------------
+
+
+def test_validate_alignment_elements_and_derived_score():
+    """Elements round-trip in prompt order, and the score is accepted when
+    it equals satisfied/total."""
+    payload = valid_payload(
+        prompt_alignment_score=0.5,
+        alignment=[
+            {"ordinal": 0, "text": "a red cube", "satisfied": True,
+             "confidence": 0.9, "bbox": [0.1, 0.1, 0.2, 0.2]},
+            {"ordinal": 1, "text": "a blue sphere", "satisfied": False, "confidence": 0.8},
+        ],
+    )
+    result = validate_review_payload(payload)
+    assert [(e.ordinal, e.text, e.satisfied) for e in result.alignment] == [
+        (0, "a red cube", True), (1, "a blue sphere", False)]
+    assert result.alignment[0].bbox == (0.1, 0.1, 0.2, 0.2)
+    assert result.alignment[1].bbox is None
+
+
+def test_reject_alignment_score_disagreeing_with_its_own_elements():
+    """A score that contradicts the element list is incoherent -- neither half
+    is silently trusted."""
+    payload = valid_payload(
+        prompt_alignment_score=0.9,
+        alignment=[
+            {"ordinal": 0, "text": "a", "satisfied": True, "confidence": 0.9},
+            {"ordinal": 1, "text": "b", "satisfied": False, "confidence": 0.9},
+        ],
+    )
+    with pytest.raises(ReviewSchemaError) as exc:
+        validate_review_payload(payload)
+    assert exc.value.path == "prompt_alignment_score"
+
+
+def test_reject_absent_alignment_element_carrying_a_bbox():
+    """An element that is not in the image cannot have been located."""
+    payload = valid_payload(
+        prompt_alignment_score=0.0,
+        alignment=[{"ordinal": 0, "text": "a blue sphere", "satisfied": False,
+                    "confidence": 0.8, "bbox": [0.1, 0.1, 0.2, 0.2]}],
+    )
+    with pytest.raises(ReviewSchemaError) as exc:
+        validate_review_payload(payload)
+    assert exc.value.path == "alignment[0]"
+
+
+def test_reject_duplicate_alignment_ordinals():
+    payload = valid_payload(
+        prompt_alignment_score=1.0,
+        alignment=[
+            {"ordinal": 0, "text": "a", "satisfied": True, "confidence": 0.9},
+            {"ordinal": 0, "text": "b", "satisfied": True, "confidence": 0.9},
+        ],
+    )
+    with pytest.raises(ReviewSchemaError) as exc:
+        validate_review_payload(payload)
+    assert exc.value.path == "alignment"
+
+
+def test_reject_alignment_score_above_one():
+    """The score is a fraction now, not a 0-10 rating."""
+    with pytest.raises(ReviewSchemaError) as exc:
+        validate_review_payload(valid_payload(prompt_alignment_score=6.0))
+    assert exc.value.path == "prompt_alignment_score"
+
+
+def test_store_review_persists_alignment_elements_and_replaces_them_on_upsert():
+    conn = make_conn()
+    add_file(conn, "f1")
+    result = validate_review_payload(valid_payload(
+        prompt_alignment_score=0.5,
+        alignment=[
+            {"ordinal": 0, "text": "a red cube", "satisfied": True,
+             "confidence": 0.9, "bbox": [0.1, 0.1, 0.2, 0.2]},
+            {"ordinal": 1, "text": "a blue sphere", "satisfied": False, "confidence": 0.8},
+        ],
+    ))
+    review_id = store_review(conn, "f1", result, "critic-x", "v1",
+                             "review-rubric-v2", None, 1000.0, 2000.0)
+    rows = conn.execute(
+        "SELECT ordinal, text, satisfied, bbox_x FROM ai_review_alignment "
+        "WHERE review_id = ? ORDER BY ordinal", (review_id,)).fetchall()
+    assert [tuple(r) for r in rows] == [
+        (0, "a red cube", 1, 0.1),
+        (1, "a blue sphere", 0, None),
+    ]
+
+    # re-reviewing the same (file, rubric, model) replaces the old elements
+    # rather than accumulating a second prompt's worth of rows
+    replacement = validate_review_payload(valid_payload(
+        prompt_alignment_score=1.0,
+        alignment=[{"ordinal": 0, "text": "a green field", "satisfied": True,
+                    "confidence": 0.7}],
+    ))
+    store_review(conn, "f1", replacement, "critic-x", "v1",
+                 "review-rubric-v2", None, 1000.0, 3000.0)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM ai_review_alignment").fetchone()[0] == 1
+    assert conn.execute(
+        "SELECT text FROM ai_review_alignment").fetchone()[0] == "a green field"
+
+
+def test_alignment_check_constraint_is_live_for_direct_sql():
+    """The 'absent elements have no locus' rule holds even for rows written
+    outside validate_review_payload."""
+    conn = make_conn()
+    add_file(conn, "f1")
+    result = validate_review_payload(valid_payload(prompt_alignment_score=None))
+    review_id = store_review(conn, "f1", result, "critic-x", "v1",
+                             "review-rubric-v2", None, 1000.0, 2000.0)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO ai_review_alignment "
+            "(review_id, file_id, ordinal, text, satisfied, confidence, bbox_x) "
+            "VALUES (?, 'f1', 0, 'x', 0, 0.5, 0.1)", (review_id,))
 
 
 def test_reject_non_dict_payload():
@@ -255,7 +371,7 @@ def test_store_review_inserts_review_and_findings():
         "FROM ai_reviews WHERE review_id = ?",
         (review_id,),
     ).fetchone()
-    assert review_row == ("f1", "review-rubric-v1", "critic-x", 7.5, 6.0, "Mostly good, minor artifact.")
+    assert review_row == ("f1", "review-rubric-v1", "critic-x", 7.5, 0.6, "Mostly good, minor artifact.")
 
     findings = conn.execute(
         "SELECT type, localizable, bbox_x, bbox_y, bbox_w, bbox_h FROM ai_review_findings "
@@ -324,7 +440,7 @@ def test_stub_critic_red_square_yields_localizable_artifact_overlapping_square()
     size = (64, 64)
     square = (24, 24, 16, 16)  # x, y, w, h in pixels; 16*16=256 = 1/16 of 4096
     img = image_with_red_square(size=size, square=square)
-    raw = critic.review(img, prompt_text="a green field", rubric_version="review-rubric-v1")
+    raw = critic.review(img, prompt_text="a green field", rubric_version="review-rubric-v2")
     result = validate_review_payload(raw)
 
     artifacts = [f for f in result.findings if f.type == "artifact"]
@@ -340,7 +456,8 @@ def test_stub_critic_red_square_yields_localizable_artifact_overlapping_square()
     overlap_x = max(0.0, min(bx + bw, sx_n + sw_n) - max(bx, sx_n))
     overlap_y = max(0.0, min(by + bh, sy_n + sh_n) - max(by, sy_n))
     assert overlap_x > 0.0 and overlap_y > 0.0
-    assert result.prompt_alignment_score == 5.0
+    # one prompt slice, satisfied -> the whole prompt was followed
+    assert result.prompt_alignment_score == 1.0
 
 
 def test_get_critic_backend_stub_explicit_only():
@@ -393,8 +510,9 @@ def test_generate_finding_mask_localizable_creates_png_source_untouched(tmp_path
     assert os.path.isfile(mask_path)
     assert mask_path.startswith(os.path.realpath(str(cache_dir)))
     with Image.open(mask_path) as mask_img:
-        assert mask_img.mode == "L"
-        mask_arr = np.asarray(mask_img)
+        # RGBA: the mask lives in the alpha channel so the panel can tint it
+        assert mask_img.mode == "RGBA"
+        mask_arr = np.asarray(mask_img)[..., 3]
         assert set(np.unique(mask_arr).tolist()) <= {0, 255}
         assert mask_arr[20, 20] == 255  # inside the bbox center
 

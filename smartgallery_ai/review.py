@@ -49,6 +49,7 @@ __all__ = [
     "StubSegmenter",
     "MaskNotAllowedError",
     "generate_finding_mask",
+    "generate_alignment_mask",
 ]
 
 # Closed vocabulary of finding categories; the DB CHECK constraint and every
@@ -67,7 +68,9 @@ FINDING_TYPES = (
 
 _SEVERITIES = ("low", "medium", "high")
 # Exhaustive key sets: any key outside these fails validation outright.
-_TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findings"}
+_TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findings",
+                   "alignment"}
+_ALIGNMENT_KEYS = {"ordinal", "text", "satisfied", "confidence", "bbox"}
 _FINDING_KEYS = {"type", "severity", "confidence", "localizable", "description", "bbox", "points"}
 
 
@@ -290,6 +293,49 @@ def _validate_finding(raw, index: int) -> Finding:
     )
 
 
+def _validate_alignment_element(raw, index: int) -> AlignmentElement:
+    """Validate one raw alignment element, enforcing the locus rule: only a
+    satisfied element may carry a bbox."""
+    prefix = f"alignment[{index}]"
+    _require(isinstance(raw, dict), prefix, "must be an object")
+    unknown = set(raw) - _ALIGNMENT_KEYS
+    _require(not unknown, prefix, f"unknown key(s): {sorted(unknown)}")
+
+    for key in ("ordinal", "text", "satisfied", "confidence"):
+        _require(key in raw, f"{prefix}.{key}", "missing required field")
+
+    ordinal = raw["ordinal"]
+    _require(isinstance(ordinal, int) and not isinstance(ordinal, bool),
+             f"{prefix}.ordinal", "must be an integer")
+    _require(ordinal >= 0, f"{prefix}.ordinal", "must not be negative")
+
+    text = raw["text"]
+    _require(isinstance(text, str), f"{prefix}.text", "must be a string")
+    _require(bool(text.strip()), f"{prefix}.text", "must not be blank")
+
+    satisfied = raw["satisfied"]
+    _require(isinstance(satisfied, bool), f"{prefix}.satisfied", "must be a boolean")
+
+    confidence = raw["confidence"]
+    _require(_is_number(confidence), f"{prefix}.confidence", "must be a number")
+    _require(0.0 <= float(confidence) <= 1.0, f"{prefix}.confidence",
+             "must be within [0, 1]")
+
+    bbox_raw = raw.get("bbox")
+    if not satisfied:
+        _require(bbox_raw is None, prefix,
+                 "an absent element cannot carry a bbox")
+    bbox = _validate_bbox(bbox_raw, f"{prefix}.bbox") if bbox_raw is not None else None
+
+    return AlignmentElement(
+        ordinal=ordinal,
+        text=text,
+        satisfied=satisfied,
+        confidence=float(confidence),
+        bbox=bbox,
+    )
+
+
 def validate_review_payload(payload: dict) -> ReviewResult:
     """Strictly validate a raw critic payload into a `ReviewResult`.
 
@@ -318,9 +364,9 @@ def validate_review_payload(payload: dict) -> ReviewResult:
             "must be a number or null",
         )
         _require(
-            0.0 <= float(prompt_alignment_score) <= 10.0,
+            0.0 <= float(prompt_alignment_score) <= 1.0,
             "prompt_alignment_score",
-            "must be within [0, 10]",
+            "must be within [0, 1]",
         )
 
     summary = payload["summary"]
@@ -330,6 +376,22 @@ def validate_review_payload(payload: dict) -> ReviewResult:
     _require(isinstance(findings_raw, list), "findings", "must be a list")
     findings = [_validate_finding(f, i) for i, f in enumerate(findings_raw)]
 
+    alignment_raw = payload.get("alignment") or []
+    _require(isinstance(alignment_raw, list), "alignment", "must be a list")
+    alignment = [_validate_alignment_element(e, i) for i, e in enumerate(alignment_raw)]
+    ordinals = [e.ordinal for e in alignment]
+    _require(len(set(ordinals)) == len(ordinals), "alignment",
+             "ordinals must be unique")
+    # The score is the elements, not a second opinion about them: a payload
+    # that scores 0.9 while its own element list says half the prompt is
+    # missing is incoherent, and silently trusting either half would hide
+    # the disagreement. Reject it.
+    if alignment and prompt_alignment_score is not None:
+        expected = sum(1 for e in alignment if e.satisfied) / len(alignment)
+        _require(abs(float(prompt_alignment_score) - expected) <= 1e-6,
+                 "prompt_alignment_score",
+                 f"must equal satisfied/total over `alignment` ({expected:.6f})")
+
     return ReviewResult(
         quality_score=float(quality_score),
         prompt_alignment_score=(
@@ -337,6 +399,7 @@ def validate_review_payload(payload: dict) -> ReviewResult:
         ),
         summary=summary,
         findings=findings,
+        alignment=alignment,
     )
 
 
@@ -409,11 +472,23 @@ class StubCritic(CriticBackend):
             )
 
         quality_score = max(0.0, min(10.0, 10.0 - 2.0 * len(findings)))
+        # One alignment element per comma-separated prompt slice, every
+        # other one satisfied -- enough structure for the storage, service
+        # and panel layers to be exercised without a real VLM.
+        alignment = [
+            {"ordinal": i, "text": text, "satisfied": i % 2 == 0, "confidence": 0.7}
+            for i, text in enumerate(
+                t.strip() for t in (prompt_text or "").split(",") if t.strip())
+        ]
+        score = None
+        if alignment:
+            score = sum(1 for e in alignment if e["satisfied"]) / len(alignment)
         return {
             "quality_score": quality_score,
-            "prompt_alignment_score": 5.0 if prompt_text else None,
+            "prompt_alignment_score": score,
             "summary": f"Stub critic ({rubric_version}) found {len(findings)} finding(s).",
             "findings": findings,
+            "alignment": alignment,
         }
 
     @classmethod
@@ -734,6 +809,10 @@ def store_review(
             superseded_masks = [m for (m,) in conn.execute(
                 "SELECT mask_path FROM ai_review_findings "
                 "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],))]
+            superseded_masks += [m for (m,) in conn.execute(
+                "SELECT mask_path FROM ai_review_alignment "
+                "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],))]
+            conn.execute("DELETE FROM ai_review_alignment WHERE review_id = ?", (old[0],))
             conn.execute("DELETE FROM ai_review_findings WHERE review_id = ?", (old[0],))
             conn.execute("DELETE FROM ai_reviews WHERE review_id = ?", (old[0],))
 
@@ -793,6 +872,28 @@ def store_review(
                     bbox_h,
                     points_json,
                     finding.description,
+                ),
+            )
+
+        for element in result.alignment:
+            bbox = element.bbox if element.satisfied else None
+            bx, by, bw, bh = bbox if bbox is not None else (None, None, None, None)
+            cur.execute(
+                """
+                INSERT INTO ai_review_alignment
+                    (review_id, file_id, ordinal, text, satisfied, confidence,
+                     bbox_x, bbox_y, bbox_w, bbox_h,
+                     mask_path, mask_model_id, mask_model_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+                """,
+                (
+                    review_id,
+                    file_id,
+                    element.ordinal,
+                    element.text,
+                    1 if element.satisfied else 0,
+                    element.confidence,
+                    bx, by, bw, bh,
                 ),
             )
         conn.commit()
@@ -873,6 +974,84 @@ def _safe_path_component(value: str) -> str:
     return value or "_"
 
 
+def _write_mask(cache_dir: str, file_id: str, name: str, mask: np.ndarray) -> str:
+    """Persist one boolean mask as an RGBA PNG under
+    `cache_dir/masks/<file_id>/<name>.png`, asserting the resolved path
+    stays inside `cache_dir` even for a maliciously crafted id.
+
+    White pixels where the mask is set, transparent elsewhere. Carrying the
+    mask in the ALPHA channel (rather than luminance alone) is what lets
+    the panel tint each prompt element its own color via a plain CSS
+    `mask-image`, while the white RGB keeps the older screen-blend overlay
+    rendering identically.
+    """
+    opaque = np.where(mask, np.uint8(255), np.uint8(0))
+    rgba = np.dstack([np.full_like(opaque, 255), np.full_like(opaque, 255),
+                      np.full_like(opaque, 255), opaque])
+    mask_img = Image.fromarray(rgba, mode="RGBA")
+    masks_root = os.path.realpath(os.path.join(cache_dir, "masks"))
+    file_dir = os.path.realpath(
+        os.path.join(masks_root, _safe_path_component(str(file_id))))
+    mask_path = os.path.realpath(
+        os.path.join(file_dir, f"{_safe_path_component(name)}.png"))
+    if os.path.commonpath([masks_root, mask_path]) != masks_root:
+        raise ValueError("resolved mask path escapes cache_dir")
+    os.makedirs(file_dir, exist_ok=True)
+    mask_img.save(mask_path)
+    return mask_path
+
+
+def generate_alignment_mask(
+    conn: sqlite3.Connection,
+    cache_dir: str,
+    img: Image.Image,
+    file_id: str,
+    element_id: int,
+    segmenter: SegmenterBackend,
+) -> str:
+    """Generate and persist the highlight mask for one satisfied prompt
+    element -- the pixels the panel tints to show WHERE the prompt was
+    honored.
+
+    Loads the element row fresh from the DB (never trusts caller-supplied
+    geometry). Raises `MaskNotAllowedError` for an unsatisfied element or a
+    satisfied one the model could not localize: an element with no locus
+    has nothing to highlight, and inventing a rectangle for it would draw a
+    confident box around a claim the model never made.
+    """
+    row = conn.execute(
+        """
+        SELECT satisfied, bbox_x, bbox_y, bbox_w, bbox_h
+        FROM ai_review_alignment
+        WHERE element_id = ? AND file_id = ?
+        """,
+        (element_id, file_id),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no alignment element {element_id!r} for file {file_id!r}")
+
+    satisfied, bbox_x, bbox_y, bbox_w, bbox_h = row
+    if not satisfied:
+        raise MaskNotAllowedError(
+            f"alignment element {element_id} is absent and has no locus")
+    if bbox_x is None:
+        raise MaskNotAllowedError(
+            f"alignment element {element_id} was not localized")
+
+    mask = segmenter.segment(img, bbox=(bbox_x, bbox_y, bbox_w, bbox_h))
+    mask_path = _write_mask(cache_dir, file_id, f"align-{element_id}", mask)
+    conn.execute(
+        """
+        UPDATE ai_review_alignment
+        SET mask_path = ?, mask_model_id = ?, mask_model_version = ?
+        WHERE element_id = ?
+        """,
+        (mask_path, segmenter.model_id, segmenter.model_version, element_id),
+    )
+    conn.commit()
+    return mask_path
+
+
 def generate_finding_mask(
     conn: sqlite3.Connection,
     cache_dir: str,
@@ -912,18 +1091,7 @@ def generate_finding_mask(
         raise MaskNotAllowedError(f"finding {finding_id} has no grounding geometry")
 
     mask = segmenter.segment(img, bbox=bbox, points=points)
-    mask_img = Image.fromarray(np.where(mask, np.uint8(255), np.uint8(0)), mode="L")
-
-    masks_root = os.path.realpath(os.path.join(cache_dir, "masks"))
-    file_dir = os.path.realpath(os.path.join(masks_root, _safe_path_component(str(file_id))))
-    mask_path = os.path.realpath(
-        os.path.join(file_dir, f"{_safe_path_component(str(finding_id))}.png")
-    )
-    if os.path.commonpath([masks_root, mask_path]) != masks_root:
-        raise ValueError("resolved mask path escapes cache_dir")
-
-    os.makedirs(file_dir, exist_ok=True)
-    mask_img.save(mask_path)
+    mask_path = _write_mask(cache_dir, file_id, str(finding_id), mask)
 
     conn.execute(
         """
