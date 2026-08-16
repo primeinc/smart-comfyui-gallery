@@ -54,7 +54,7 @@ permissively-licensed YuNet+SFace stack only.
 
 ```bash
 python -m smartgallery_ai provision --list      # show groups and sizes
-python -m smartgallery_ai provision all         # or: faces semantic visual segmenter critic
+python -m smartgallery_ai provision all         # or any of: faces semantic visual segmenter omniquery critic llama-cuda
 ```
 
 Run it on a connected staging box, then ship the venv plus `.AImodels/`

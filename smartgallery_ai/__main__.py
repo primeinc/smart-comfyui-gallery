@@ -102,12 +102,14 @@ def main(argv=None) -> int:
     p_status.add_argument("--db", required=True)
     p_status.set_defaults(fn=cmd_status)
 
+    from smartgallery_ai.provision import GROUPS  # stdlib-only import; registry drives the help
+
     p_prov = sub.add_parser(
         "provision",
         help="download model weights into the models dir (the worker also "
              "auto-provisions on start unless AI_DAM_AUTO_PROVISION=false)")
     p_prov.add_argument("groups", nargs="*", default=["all"],
-                        help="faces, semantic, visual, segmenter, critic, or all")
+                        help=", ".join(g.name for g in GROUPS) + ", or all")
     p_prov.add_argument("--models-dir", default=".AImodels",
                         help="target directory the backends load from")
     p_prov.add_argument("--list", action="store_true",
