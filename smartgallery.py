@@ -1322,6 +1322,34 @@ def safe_delete_file(filepath):
         os.remove(filepath)
 
 
+def _std_path(path):
+    """A path with one separator style, for comparing stored paths."""
+    return str(path or '').replace('\\', '/')
+
+
+def _descendant_filter(column, folder_path):
+    """SQL condition and parameter selecting everything stored under
+    `folder_path`, however deep.
+
+    Stored paths mix separators: the scanner joins a folder-config path,
+    which uses forward slashes, with `os.sep`. On Windows that makes a file
+    sitting directly in a folder `C:/gallery/box\\a.png` and one a level
+    deeper `C:/gallery/box/sub\\b.png`, so the obvious prefix of
+    `folder + os.sep` matches only the first kind -- while on Linux, where
+    os.sep is '/', it matches both. Folder deletes were leaving a row for
+    every file in a subfolder, and ComfyUI writes into date-stamped
+    subfolders by default.
+
+    Both sides are compared with '/' so depth stops mattering, and the
+    trailing separator is required so `box` does not also claim
+    `box_archive`. LIKE wildcards in the folder name itself are escaped;
+    a folder called `100%_keep` would otherwise match its neighbours.
+    """
+    prefix = _std_path(folder_path).rstrip('/')
+    escaped = prefix.replace('!', '!!').replace('%', '!%').replace('_', '!_')
+    return f"REPLACE({column}, '\\', '/') LIKE ? ESCAPE '!'", escaped + '/%'
+
+
 def _trash_destination(name):
     """A free `<timestamp>_<name>` path inside TRASH_FOLDER, disambiguated
     with a counter so same-second deletes never overwrite each other."""
@@ -5526,16 +5554,15 @@ def unmount_folder():
             # 2. Remove from AI Watch list (if present)
             conn.execute("DELETE FROM ai_watched_folders WHERE path = ?", (path_to_remove,))
             
-            # 3. CRITICAL: Remove the file records associated with this path from the Gallery DB
-            # We use LIKE to match the folder and everything inside it
-            # Standardize path separator for SQL query just in case
-            clean_path_for_query = path_to_remove + os.sep + '%'
-            conn.execute("DELETE FROM files WHERE path LIKE ?", (clean_path_for_query,))
-            
+            # 3. CRITICAL: Remove the file records associated with this path
+            # from the Gallery DB -- the folder and everything inside it,
+            # at any depth.
+            cond, param = _descendant_filter('path', path_to_remove)
+            conn.execute(f"DELETE FROM files WHERE {cond}", (param,))
+
             # 4. Also clean pending AI jobs for these files
-            # (We need to handle path separators carefully here, usually normalized in AI queue)
-            std_path_prefix = path_to_remove.replace('\\', '/')
-            conn.execute("DELETE FROM ai_indexing_queue WHERE file_path LIKE ?", (std_path_prefix + '/%',))
+            q_cond, q_param = _descendant_filter('file_path', path_to_remove)
+            conn.execute(f"DELETE FROM ai_indexing_queue WHERE {q_cond}", (q_param,))
             
             conn.commit()
             
@@ -5762,31 +5789,42 @@ def rename_folder(folder_key):
             update_data = []
             ids_to_clean_collisions = []
             
-            # Prepare check
+            # Prepare check. Compare on '/' alone: stored paths mix
+            # separators, so a raw comparison misses everything nested.
             is_windows = (os.name == 'nt')
-            check_old = old_folder_path.lower() if is_windows else old_folder_path
+            std_old = _std_path(old_folder_path).rstrip('/')
+            check_old = std_old.lower() if is_windows else std_old
             
             for row in all_files_cursor:
                 current_path = row['path']
-                check_curr = current_path.lower() if is_windows else current_path
-                
-                # Check containment
-                if check_curr.startswith(check_old):
-                    
-                    # 1. EXTRACT FILENAME
-                    # We rely on os.path.basename. It works on "C:/A/B\file.txt" correctly on Windows.
-                    filename = os.path.basename(current_path)
-                    
-                    # 2. CONSTRUCT NEW PATH EXACTLY LIKE THE SCANNER DOES
-                    # Scanner logic: os.path.join(folder_path_from_config, filename)
-                    # This produces "C:/.../NewName\filename.ext" on Windows.
-                    new_file_path = os.path.join(new_folder_path, filename)
-                    
-                    # 3. GENERATE ID
-                    new_id = hashlib.md5(new_file_path.encode()).hexdigest()
-                    
-                    update_data.append((new_id, new_file_path, row['id']))
-                    ids_to_clean_collisions.append(new_id)
+                norm_curr = _std_path(current_path)
+                check_curr = norm_curr.lower() if is_windows else norm_curr
+
+                # The trailing separator is the whole check: without it,
+                # renaming "box" also drags in every file under a sibling
+                # called "box_archive".
+                if not check_curr.startswith(check_old + '/'):
+                    continue
+
+                # 1. KEEP THE TAIL, NOT JUST THE FILENAME
+                # A file one level deeper is stored as ".../box/2026-08-15\a.png";
+                # rebuilding from the basename alone would move it to the top
+                # of the renamed folder, where no such file exists.
+                relative = norm_curr[len(check_old) + 1:]
+                subdirs, filename = relative.rsplit('/', 1) if '/' in relative else ('', relative)
+
+                # 2. CONSTRUCT NEW PATH EXACTLY LIKE THE SCANNER DOES
+                # Scanner logic: os.path.join(folder_path_from_config, filename),
+                # where the config path keeps '/' separators. That produces
+                # "C:/.../NewName/sub\filename.ext" on Windows.
+                new_dir = f"{new_folder_path}/{subdirs}" if subdirs else new_folder_path
+                new_file_path = os.path.join(new_dir, filename)
+
+                # 3. GENERATE ID
+                new_id = hashlib.md5(new_file_path.encode()).hexdigest()
+
+                update_data.append((new_id, new_file_path, row['id']))
+                ids_to_clean_collisions.append(new_id)
 
             # Cleanup Ghost records
             if ids_to_clean_collisions:
@@ -5804,17 +5842,19 @@ def rename_folder(folder_key):
             watched_folders = conn.execute("SELECT path FROM ai_watched_folders").fetchall()
             for row in watched_folders:
                 w_path = row['path']
-                w_check = w_path.lower() if is_windows else w_path
-                
+                w_std = _std_path(w_path)
+                w_check = w_std.lower() if is_windows else w_std
+
                 if w_check == check_old:
                     conn.execute("UPDATE ai_watched_folders SET path = ? WHERE path = ?", (new_folder_path, w_path))
-                elif w_check.startswith(check_old):
-                    # Subfolder logic: simple string replace to preserve structure
-                    # We use standard string replacement which works because we enforced '/' structure above
+                elif w_check.startswith(check_old + '/'):
+                    # Subfolder logic: keep the tail below the renamed folder.
+                    # The separator above matters here too -- otherwise a
+                    # watched "box_archive" is rewritten when "box" is renamed.
                     if is_windows:
                         # Case insensitive replace is tricky, let's assume structure holds
                         # We reconstruct the tail
-                        suffix = w_path[len(old_folder_path):]
+                        suffix = w_std[len(check_old):]
                         new_w_path = new_folder_path + suffix
                         conn.execute("UPDATE ai_watched_folders SET path = ? WHERE path = ?", (new_w_path, w_path))
                     else:
@@ -5839,14 +5879,16 @@ def delete_folder(folder_key):
     try:
         folder_path = folders[folder_key]['path']
         with get_db_connection() as conn:
-            # 1. Remove files from DB
-            conn.execute("DELETE FROM files WHERE path LIKE ?", (folder_path + os.sep + '%',))
-            
+            # 1. Remove files from DB, including everything in subfolders
+            cond, param = _descendant_filter('path', folder_path)
+            conn.execute(f"DELETE FROM files WHERE {cond}", (param,))
+
             # 2. AI WATCHED FOLDERS CLEANUP (Logic added)
             # Remove the folder itself from watched list
             conn.execute("DELETE FROM ai_watched_folders WHERE path = ?", (folder_path,))
             # Remove any subfolders that might be in the watched list
-            conn.execute("DELETE FROM ai_watched_folders WHERE path LIKE ?", (folder_path + os.sep + '%',))
+            w_cond, w_param = _descendant_filter('path', folder_path)
+            conn.execute(f"DELETE FROM ai_watched_folders WHERE {w_cond}", (w_param,))
             
             conn.commit()
             
