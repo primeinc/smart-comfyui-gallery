@@ -8,6 +8,49 @@
 # GitHub: https://github.com/biagiomaf/smart-comfyui-gallery
 
 import os
+import sys
+
+
+def make_output_carry_any_filename(streams=None):
+    """Let the gallery print the names of the files it actually indexes.
+
+    It reports damaged files, unreachable folders and offline mounts by
+    name, and those names are frequently not written in English -- the
+    whole point of the unicode handling elsewhere. Whether that name can
+    be printed depends on where the output is going. Attached to a console
+    Python writes wide characters and anything prints; redirected to a
+    file or a pipe -- a launcher keeping a log, ComfyUI starting the
+    gallery itself, anything reading its output -- the encoding is the
+    machine's code page instead, which on most Windows installs is cp1252.
+
+    Printing a Japanese filename to cp1252 raises UnicodeEncodeError, and
+    it raises inside the message rather than inside the work: the scan is
+    built so one damaged file costs that file alone, and then the line
+    saying so killed the process. Measured on a library holding one good
+    picture and one damaged one, both named in CJK, with the output
+    redirected:
+
+        STARTUP DIED: 'charmap' codec can't encode characters in
+        position 38-42: character maps to <undefined>
+
+    So the streams are asked for UTF-8, and asked to substitute rather
+    than raise if they cannot give it. A name that arrives unreadable is a
+    bad line of output; a name that raises is a gallery that will not
+    start.
+    """
+    for stream in (streams if streams is not None else
+                   (sys.stdout, sys.stderr)):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            # Not every stream is reconfigurable -- a captured one, a
+            # replaced one, a plain file object. Nothing here is worth
+            # failing over; the point is to try before anything prints.
+            pass
+
+
+make_output_carry_any_filename()
+
 import hashlib
 import cv2
 import json
