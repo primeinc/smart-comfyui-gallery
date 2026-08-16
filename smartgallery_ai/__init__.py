@@ -33,11 +33,24 @@ def _env_bool(name: str, default: str = "false") -> bool:
     A blank value falls back to `default`: `set "ENABLE_AI_DAM="` defines
     the variable as "", which would otherwise read as False and silently
     disable the whole layer.
+
+    A word that is neither true nor false says so and keeps the default.
+    Testing membership of the truthy set alone made every misspelling mean
+    False, so `ENABLE_AI_DAM=ture` switched the entire AI layer off without
+    a word -- the opposite of the documented default, and indistinguishable
+    from the feature being broken.
     """
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         raw = default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
+    token = raw.strip().lower()
+    if token in ("1", "true", "yes", "on"):
+        return True
+    if token in ("0", "false", "no", "off"):
+        return False
+    fallback = str(default).strip().lower() in ("1", "true", "yes", "on")
+    _logger.warning("%s=%r is not a yes/no value; using %s", name, raw, fallback)
+    return fallback
 
 
 def _env_str(name: str, default: str) -> str:
