@@ -667,16 +667,19 @@ document.addEventListener('focusout', function(e) {
         <div class="sidebar-footer">
             {% if enable_ai_dam %}
             <div class="sidebar-ai-hub" id="sidebar-ai-hub">
-                <div class="ai-hub-title">🧬 AI DAM</div>
-                <input type="search" id="ai-hub-search" placeholder="🔎 Search by meaning…"
+                <div class="ai-hub-title" style="display:flex; justify-content:space-between; align-items:center;">AI DAM
+                    <a href="/galleryout/aidam" style="font-size:0.7rem; font-weight:700; color:var(--ai-color); text-decoration:none; letter-spacing:1px; text-transform:uppercase;">Dashboard</a>
+                </div>
+                <input type="search" id="ai-hub-search" placeholder="Search by meaning…"
                        style="width:100%; box-sizing:border-box; background:#111; border:1px solid #444; border-radius:8px; color:#fff; padding:5px 9px; font-size:0.75rem; margin-bottom:8px;"
                        onkeydown="if (event.key === 'Enter' && this.value.trim()) { openAidamPanelGlobal('search', this.value.trim()); }">
                 <div id="ai-hub-stats" class="ai-hub-stats">connecting&hellip;</div>
                 <div class="ai-hub-actions">
-                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('status')" title="Live ingest / backlog / GPU dashboard">📊 Status</button>
-                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('faces')" title="Browse all face clusters">🗂️ Clusters</button>
-                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('similar')" title="Gallery-wide duplicate sweep">♻️ Dupes</button>
-                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('review')" title="Browse reviews: worst/best quality">🩺 Reviews</button>
+                    <button type="button" class="ai-hub-btn" onclick="location.href='/galleryout/aidam'" title="Pipeline status, generation analytics, face workspace, detector compare" style="border-color:var(--ai-color); color:var(--ai-color); font-weight:700;">Dashboard</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('status')" title="Live ingest / backlog / GPU status">Status</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('faces')" title="Browse all face clusters">Clusters</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('similar')" title="Gallery-wide duplicate sweep">Dupes</button>
+                    <button type="button" class="ai-hub-btn" onclick="openAidamPanelGlobal('review')" title="Browse reviews: worst/best quality">Reviews</button>
                 </div>
             </div>
             {% endif %}
@@ -1274,7 +1277,7 @@ document.addEventListener('focusout', function(e) {
                 <button id="lightbox-reset-ai-btn" class="lb-hide-mobile" title="Erase AI Data Only" onclick="resetAiDataCurrentLightbox()" style="border-color:var(--danger-color); color:var(--danger-color); display:none;">❌</button>
                 {% endif %}
                 {% if enable_ai_dam %}
-                <button id="lightbox-aidam-btn" class="lb-hide-mobile" title="Similar / Faces / Review (AI)" onclick="openAidamPanel()" style="border-color:var(--ai-color); color:var(--ai-color);">🧬</button>
+                <button id="lightbox-aidam-btn" class="lb-hide-mobile" title="Similar / Faces / Review (AI)" onclick="openAidamPanel()" style="border-color:var(--ai-color); color:var(--ai-color);">AI</button>
                 {% endif %}
                 <a id="lightbox-download" class="lb-hide-mobile" href="#" title="Download Original File">💾</a>
                 <button id="lightbox-clean-export" class="lb-hide-mobile" title="Clean Export (Remove Metadata)" onclick="downloadCleanedFile(currentLightboxFile.id, currentLightboxFile.name)" style="color:var(--success-color); border-color:var(--success-color);">🛡️</button>
