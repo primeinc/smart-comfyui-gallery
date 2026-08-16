@@ -198,6 +198,19 @@ document.addEventListener('focusout', function(e) {
         }, 150);
     }
 }, true);</script>
+<script>
+// Where ComfyUI actually is, as configured by COMFYUI_SERVER_URL. Set here,
+// before anything on the page can ask for it, because the tools menu below
+// is markup rather than script and runs whenever it is clicked.
+//
+// The Remix window overrides this per job and remembers the choice in
+// sg_comfy_url; that still wins. This is only the starting point, and it
+// used to be the literal 127.0.0.1:8188 written out eight times, so a
+// gallery pointed at any other ComfyUI opened dead tabs and never found
+// LoRA Manager -- while the server it talked to had the right address all
+// along.
+window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', true) | tojson }};
+</script>
 </head>
 
 <body>
@@ -398,7 +411,7 @@ document.addEventListener('focusout', function(e) {
         
         <div id="comfy-tools-container" class="desktop-tool-item" style="display: none; flex-direction: column; gap: 0;">
             <!-- Open ComfyUI -->
-            <div class="opt-item" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188'); window.open(url, '_blank');">
+            <div class="opt-item" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL); window.open(url, '_blank');">
                 <div>
                     <div class="opt-label" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                         <span style="background:#17a2b8; color:#fff; border-radius:6px; padding:2px 8px; font-size:0.85rem; font-weight:bold;">🖥️ Open ComfyUI</span>
@@ -410,7 +423,7 @@ document.addEventListener('focusout', function(e) {
             </div>
             
             <!-- Open LoRA Manager -->
-            <div id="tool-lora-manager" class="opt-item" style="display: none;" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188'); window.open(url.replace(/\/$/, '') + '/loras', '_blank');">
+            <div id="tool-lora-manager" class="opt-item" style="display: none;" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL); window.open(url.replace(/\/$/, '') + '/loras', '_blank');">
                 <div>
                     <div class="opt-label" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                         <span style="background:#8e44ad; color:#fff; border-radius:6px; padding:2px 8px; font-size:0.85rem; font-weight:bold;">🧩 Open LoRA Manager</span>
@@ -427,7 +440,7 @@ document.addEventListener('focusout', function(e) {
             setTimeout(() => {
                 if (window.innerWidth <= 768) return;
                 
-                const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188');
+                const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL);
                 const loraUrl = comfyUrl.replace(/\/$/, '') + '/loras';
                 
                 if (typeof window._hasLoraManager === 'undefined') {
@@ -472,7 +485,7 @@ document.addEventListener('focusout', function(e) {
                                     
                                     // Always perform a fresh check on menu open, ignoring any cached value,
                                     // so that turning ComfyUI on later is detected without a page reload
-                                    const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188');
+                                    const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL);
                                     const loraUrl = comfyUrl.replace(/\/$/, '') + '/loras';
                                     fetch(loraUrl, { method: 'HEAD' })
                                     .then(res => {
@@ -5695,7 +5708,7 @@ document.addEventListener('focusout', function(e) {
                         // C. LoRAs
                         let loraSection = '';
                         if (m.loras && m.loras.length > 0) {
-                            const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188');
+                            const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL);
                             const loraManagerUrl = comfyUrl.replace(/\/$/, '') + '/loras';
                             
                             const loraChips = m.loras.map(l => {

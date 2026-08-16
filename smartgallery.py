@@ -5966,6 +5966,7 @@ def gallery_view(folder_key):
                            app_version=APP_VERSION, github_url=GITHUB_REPO_URL,
                            update_available=UPDATE_AVAILABLE, remote_version=REMOTE_VERSION,
                            ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
+                           comfy_server_url=COMFYUI_SERVER_URL,
                            stream_threshold=STREAM_THRESHOLD_BYTES,
                            page_size_from_backend=PAGE_SIZE,
                            force_login=FORCE_LOGIN,
@@ -9630,6 +9631,7 @@ def collection_view(coll_id):
                            app_version=APP_VERSION, github_url=GITHUB_REPO_URL,
                            update_available=UPDATE_AVAILABLE, remote_version=REMOTE_VERSION,
                            ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
+                           comfy_server_url=COMFYUI_SERVER_URL,
                            stream_threshold=STREAM_THRESHOLD_BYTES,
                            has_notes=has_notes, note_files=note_files)
 

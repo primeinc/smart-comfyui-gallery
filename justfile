@@ -14,8 +14,9 @@ test:
 # a class of bug comes back rather than when one instance of it is noticed:
 # a route added without deciding who may call it, a prompt reaching a
 # visitor, an id change that leaves its ratings behind, a documented setting
-# nothing reads, a subprocess that can hang, a pipe read with no clock on
-# it, a misspelt setting name, a
+# nothing reads, a setting the server honours that never reaches the page, a
+# subprocess that can hang, a pipe read with no clock on it, a misspelt
+# setting name, a
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
@@ -41,6 +42,7 @@ audit:
         tests/test_exhibition_leak_sweep.py \
         tests/test_file_id_changes_carry_their_data.py \
         tests/test_configuration_doc_matches_code.py \
+        tests/test_comfyui_address_reaches_the_page.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
         tests/test_env_var_typos.py \

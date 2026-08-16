@@ -364,7 +364,7 @@
                 </div>
             </div>
             <h4 style="color:white; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 30px;">Server Configuration</h4>
-            <p style="color:#888; font-size:0.85rem; margin-top:10px;">By default, Remix sends generation jobs to <code>http://127.0.0.1:8188</code>. You can temporarily override this URL using the input field at the top of the window.</p>
+            <p style="color:#888; font-size:0.85rem; margin-top:10px;">By default, Remix sends generation jobs to <code>{{ comfy_server_url | default('http://127.0.0.1:8188', true) }}</code>, which is set by <code>COMFYUI_SERVER_URL</code>. You can temporarily override this URL using the input field at the top of the window.</p>
         </div>
     </div>
 </div>
@@ -624,7 +624,7 @@
     
     window.askToOpenComfyUI = async function() {
         const urlInput = document.getElementById('remix-comfy-url');
-        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || 'http://127.0.0.1:8188');
+        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || window.SG_COMFY_URL);
         const wantOpen = await window.sgDialog({
             type: 'confirm',
             title: 'Launch ComfyUI',
@@ -747,7 +747,7 @@
     
     window.askToOpenComfyUI = async function() {
         const urlInput = document.getElementById('remix-comfy-url');
-        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || 'http://127.0.0.1:8188');
+        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || window.SG_COMFY_URL);
         const wantOpen = await window.sgDialog({
             type: 'confirm',
             title: 'Launch ComfyUI',
@@ -1366,7 +1366,7 @@
                 window._remixRawUi  = currentRemixData.raw_ui_json  || "";
                 window._rawNodeEditorReady = false; 
                 window._remixObjectInfo = null; // Reset Dictionary cache
-                const serverDefaultUrl = currentRemixData.default_comfy_url || "http://127.0.0.1:8188";
+                const serverDefaultUrl = currentRemixData.default_comfy_url || window.SG_COMFY_URL;
                 window._remixServerDefaultUrl = serverDefaultUrl;
                 const savedUrl = localStorage.getItem('sg_comfy_url') || serverDefaultUrl;
                 html += `
