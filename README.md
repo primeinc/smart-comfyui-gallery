@@ -587,14 +587,16 @@ The `CLI_ARGS` environment variable passes optional launch parameters to SmartGa
 
 | Scenario | CLI_ARGS value | Port mapping |
 |---|---|---|
-| Main Interface with login | `--admin-pass yourpassword --force-login` | `-p 8189:8189` |
-| Exhibition | `--exhibition --admin-pass yourpassword` | `-p 8190:8189` |
-| Exhibition with guest access | `--exhibition --admin-pass yourpassword --enable-guest-login` | `-p 8190:8189` |
-| Exhibition with Blind Rating | `--exhibition --admin-pass yourpassword --blind-rating` | `-p 8190:8189` |
+| Main Interface with login | `--force-login` | `-p 8189:8189` |
+| Exhibition | `--exhibition` | `-p 8190:8189` |
+| Exhibition with guest access | `--exhibition --enable-guest-login` | `-p 8190:8189` |
+| Exhibition with Blind Rating | `--exhibition --blind-rating` | `-p 8190:8189` |
+
+Set the password with its own variable, `-e ADMIN_PASSWORD=yourpassword`, rather than putting `--admin-pass` inside `CLI_ARGS`. `CLI_ARGS` is split on spaces before it reaches the gallery, so a passphrase such as `correct horse battery` would arrive as `correct` and you would not be able to log in with what you set.
 
 For Exhibition scenarios, replace `-p 8189:8189` in the `docker run` command above with `-p 8190:8189`. This maps port 8190 on your host to the container's internal port 8189, so clients reach Exhibition at `http://youraddress:8190`.
 
-When using `--admin-pass`, log in with username `admin` (always lowercase) and the password you set.
+Log in with username `admin` (always lowercase) and the password you set.
 
 For running both instances simultaneously, see the dedicated section under [Launch Parameters](#22-launch-parameters).
 
@@ -687,7 +689,8 @@ docker run --name smartgallery-main \
   -e BASE_SMARTGALLERY_PATH=/mnt/SmartGallery \
   -e WANTED_UID=`id -u` \
   -e WANTED_GID=`id -g` \
-  -e CLI_ARGS="--admin-pass yourpassword --force-login" \
+  -e ADMIN_PASSWORD=yourpassword \
+  -e CLI_ARGS="--force-login" \
   -p 8189:8189 \
   mmartial/smart-comfyui-gallery
 
@@ -701,7 +704,8 @@ docker run --name smartgallery-exhibition \
   -e BASE_SMARTGALLERY_PATH=/mnt/SmartGallery \
   -e WANTED_UID=`id -u` \
   -e WANTED_GID=`id -g` \
-  -e CLI_ARGS="--exhibition --admin-pass yourpassword --blind-rating" \
+  -e ADMIN_PASSWORD=yourpassword \
+  -e CLI_ARGS="--exhibition --blind-rating" \
   -p 8190:8189 \
   mmartial/smart-comfyui-gallery
 ```

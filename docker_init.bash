@@ -19,7 +19,9 @@ ok_exit() {
 # Ignore list: variables to ignore when loading environment variables from user to user
 export ENV_IGNORELIST="HOME PWD USER SHLVL TERM OLDPWD SHELL _ SUDO_COMMAND HOSTNAME LOGNAME MAIL SUDO_GID SUDO_UID SUDO_USER CHECK_NV_CUDNN_VERSION VIRTUAL_ENV VIRTUAL_ENV_PROMPT ENV_IGNORELIST ENV_OBFUSCATE_PART"
 # Obfuscate part: part of the key to obfuscate when loading environment variables from user to user, ex: HF_TOKEN, ...
-export ENV_OBFUSCATE_PART="TOKEN API KEY"
+# PASS/PASSWORD/SECRET/CRED cover ADMIN_PASSWORD and the MAIN_PASS /
+# EXHIBITION_PASS names the compose file uses.
+export ENV_OBFUSCATE_PART="TOKEN API KEY PASS SECRET CRED"
 
 # Check for ENV_IGNORELIST and ENV_OBFUSCATE_PART
 if [ -z "${ENV_IGNORELIST+x}" ]; then error_exit "ENV_IGNORELIST not set"; fi
@@ -82,6 +84,15 @@ echo "== user ($whoami)"
 echo "  uid: $new_uid / WANTED_UID: $WANTED_UID"
 echo "  gid: $new_gid / WANTED_GID: $WANTED_GID"
 
+# A secret is not always in a variable whose name admits it: the README's
+# docker examples put the admin password inside CLI_ARGS, which the
+# name-based obfuscation below cannot recognise. Scrub the value itself
+# before anything is echoed, the same way smartgallery.py already masks the
+# password out of its own startup banner.
+redact_secrets() {
+  printf '%s' "$1" | sed -E 's/(--admin-pass[ =])[^ ]*/\1********/g'
+}
+
 save_env() {
   tosave=$1
   echo "-- Saving environment variables to $tosave"
@@ -104,7 +115,7 @@ load_env() {
         if [[ "A$key" ==  "A$i" ]]; then doit=ignore; break; fi
       done
       if [[ "A$doit" == "Aignore" ]]; then continue; fi
-      rvalue=$value
+      rvalue=$(redact_secrets "$value")
       # checking if part of the key is in the obfuscate list
       doobs=false
       for i in $obfuscate_part; do
@@ -116,7 +127,7 @@ load_env() {
         echo "  ++ Setting environment variable $key [$rvalue]"
         doit=true
       elif [ "A$overwrite_if_different" == "Atrue" ]; then
-        cvalue="${!key}"
+        cvalue=$(redact_secrets "${!key}")
         if [[ "A${doobs}" == "Aobfuscate" ]]; then cvalue="**OBFUSCATED**"; fi
         if [[ "A${!key}" != "A${value}" ]]; then
           echo "  @@ Overwriting environment variable $key [$cvalue] -> [$rvalue]"

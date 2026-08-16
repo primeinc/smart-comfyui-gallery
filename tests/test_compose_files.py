@@ -111,5 +111,30 @@ def test_the_compose_files_are_valid_yaml(path):
         environment = service.get("environment")
         if isinstance(environment, dict) and "CLI_ARGS" in environment:
             assert isinstance(environment["CLI_ARGS"], str)
-            assert "--admin-pass ${" in environment["CLI_ARGS"], (
-                environment["CLI_ARGS"])
+
+
+@pytest.mark.parametrize("path", _COMPOSE, ids=lambda p: p.name)
+def test_the_password_does_not_travel_inside_cli_args(path):
+    """docker_init.bash runs `python smartgallery.py ${CLI_ARGS}` unquoted,
+    so the shell splits that string on spaces. A passphrase set as
+    MAIN_PASS="correct horse battery" reached the gallery as `correct` --
+    measured, not assumed -- and the remaining words were dropped without
+    an error, so the operator could not log in with what they had set.
+
+    ADMIN_PASSWORD is the documented equivalent and crosses as one
+    environment value, which nothing splits."""
+    yaml = pytest.importorskip("yaml", reason="PyYAML is not a declared dependency")
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    for name, service in document["services"].items():
+        environment = service.get("environment")
+        if not isinstance(environment, dict):
+            continue
+        assert "--admin-pass" not in (environment.get("CLI_ARGS") or ""), (
+            f"{path.name}: {name} passes the password inside CLI_ARGS, which "
+            f"is word-split. Use ADMIN_PASSWORD.")
+        if "--force-login" in (environment.get("CLI_ARGS") or "") or \
+                "--exhibition" in (environment.get("CLI_ARGS") or ""):
+            assert environment.get("ADMIN_PASSWORD"), (
+                f"{path.name}: {name} forces a login but sets no "
+                f"ADMIN_PASSWORD, so it cannot start")

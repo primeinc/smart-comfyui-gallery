@@ -18,7 +18,8 @@ test:
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
-# imports, someone's own launch script shipped in the repository.
+# imports, someone's own launch script shipped in the repository, a
+# password printed into a log.
 # `just test` runs these too; this is for running them alone.
 #
 # --list shows only a comment's LAST line, which turns an explanation into a
@@ -31,6 +32,7 @@ audit:
         tests/test_compose_files.py \
         tests/test_docker_image_contents.py \
         tests/test_tracked_files.py \
+        tests/test_container_entrypoint.py \
         tests/test_every_route_is_classified.py \
         tests/test_exhibition_leak_sweep.py \
         tests/test_file_id_changes_carry_their_data.py \

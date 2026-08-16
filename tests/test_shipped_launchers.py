@@ -118,7 +118,11 @@ def test_no_shipped_file_carries_a_real_password(path):
         f"{path.relative_to(_REPO_ROOT)} ships a concrete admin password "
         f"{found!r}. Anyone who downloads this gets that password. Use an "
         f"empty ADMIN_PASSWORD, or a placeholder, and let the gallery refuse "
-        f"to start until the person sets their own.")
+        f"to start until the person sets their own.\n"
+        f"If that is prose rather than a command, the next word after the "
+        f"flag reads as its value -- reword so the flag is not followed by "
+        f"one. Staying strict here is deliberate: a secret scanner that "
+        f"guesses at English is one that misses secrets.")
 
 
 def test_the_exhibition_sample_asks_for_a_password_without_supplying_one():

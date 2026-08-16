@@ -24,7 +24,11 @@ services:
       #FORCE_CHOWN: true
       #DELETE_TO: /deleteto
       # do not change the internal port below (it is allowed in the Dockerfile), only in the `ports` section above, 
-      CLI_ARGS: "--port 8189 --admin-pass ${MAIN_PASS:?set MAIN_PASS in a .env file beside this compose file, 8+ characters} --force-login"
+      CLI_ARGS: --port 8189 --force-login
+      # The password travels as its own variable, not inside CLI_ARGS: the
+      # entrypoint word-splits CLI_ARGS, so a passphrase with spaces would
+      # silently become its first word.
+      ADMIN_PASSWORD: "${MAIN_PASS:?set MAIN_PASS in a .env file beside this compose file, 8+ characters}"
       # see README.md for a list of the available CLI arguments
       # Default umask: 0022 (files readable by others); allow override using the UMASK environment variable
 #      - UMASK=0077
@@ -56,7 +60,9 @@ services:
       #FORCE_CHOWN: true
       #DELETE_TO: /deleteto
       # do not change the internal port below (it is allowed in the Dockerfile), only in the `ports` section above
-      CLI_ARGS: "--exhibition --port 8190 --admin-pass ${EXHIBITION_PASS:?set EXHIBITION_PASS in a .env file beside this compose file, 8+ characters, different from MAIN_PASS}"
+      CLI_ARGS: --exhibition --port 8190
+      # Its own variable, for the reason given on the main service above.
+      ADMIN_PASSWORD: "${EXHIBITION_PASS:?set EXHIBITION_PASS in a .env file beside this compose file, 8+ characters, different from MAIN_PASS}"
       # see README.md for a list of the available CLI arguments
       # Default umask: 0022 (files readable by others); allow override using the UMASK environment variable
 #      - UMASK=0077
