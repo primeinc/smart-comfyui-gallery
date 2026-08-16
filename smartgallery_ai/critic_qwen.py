@@ -277,8 +277,58 @@ class QwenVlCritic(CriticBackend):
         split = os.environ.get("AI_DAM_TENSOR_SPLIT", "").strip()
         if split and device != "cpu":
             gpu_kwargs["tensor_split"] = [float(p) for p in split.split(",")]
+        # Upstream hardcodes the mtmd vision encoder onto GPU
+        # (llama_chat_format.py Llava15ChatHandler._init_mtmd_context:
+        # `ctx_params.use_gpu = True  # TODO: Make this configurable`).
+        # On this CUDA-13 build, GPU image-slice encoding faults with a
+        # null read ("access violation reading 0x0" during
+        # "encoding image slice..."), killing every review. Subclass to
+        # make it configurable; vision preprocessing runs on CPU unless
+        # AI_DAM_VISION_GPU=1. Text generation stays fully on GPU either
+        # way.
+        vision_gpu = os.environ.get("AI_DAM_VISION_GPU", "0") == "1"
+
+        def _init_mtmd_cpu_capable(handler_self, llama_model):
+            if handler_self.mtmd_ctx is not None:
+                return
+            mtmd_cpp = handler_self._mtmd_cpp
+            ctx_params = mtmd_cpp.mtmd_context_params_default()
+            ctx_params.use_gpu = vision_gpu
+            ctx_params.print_timings = handler_self.verbose
+            ctx_params.n_threads = llama_model.n_threads
+            ctx_params.flash_attn_type = (
+                llama_cpp.LLAMA_FLASH_ATTN_TYPE_ENABLED
+                if (llama_model.context_params.flash_attn_type
+                    == llama_cpp.LLAMA_FLASH_ATTN_TYPE_ENABLED)
+                else llama_cpp.LLAMA_FLASH_ATTN_TYPE_DISABLED
+            )
+            handler_self.mtmd_ctx = mtmd_cpp.mtmd_init_from_file(
+                handler_self.clip_model_path.encode(), llama_model.model, ctx_params
+            )
+            if handler_self.mtmd_ctx is None:
+                raise ValueError(
+                    f"Failed to load mtmd context from: {handler_self.clip_model_path}"
+                )
+            if not mtmd_cpp.mtmd_support_vision(handler_self.mtmd_ctx):
+                raise ValueError("Vision is not supported by this model")
+
+            def mtmd_free():
+                if handler_self.mtmd_ctx is not None:
+                    mtmd_cpp.mtmd_free(handler_self.mtmd_ctx)
+                    handler_self.mtmd_ctx = None
+
+            handler_self._exit_stack.callback(mtmd_free)
+
         try:
             handler = Qwen25VLChatHandler(clip_model_path=mmproj_path, verbose=False)
+            # Bound per-instance so test fakes (MagicMock handlers) are
+            # unaffected; only a real handler carries these attributes.
+            if hasattr(handler, "_mtmd_cpp"):
+                import types as _types
+
+                handler._init_mtmd_context = _types.MethodType(
+                    _init_mtmd_cpu_capable, handler
+                )
             self._llm = Llama(model_path=model_path, chat_handler=handler,
                               n_ctx=n_ctx, n_threads=n_threads,
                               verbose=False, **gpu_kwargs)

@@ -332,26 +332,60 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     backend_device_cache: dict = {}
     _PROBE_CACHES.append(backend_device_cache)
 
+    # backend key -> (config selector attr, values that mean "real model",
+    # provisioning group). The probe decides availability from weights on
+    # disk + importable runtime — it must NEVER construct backends: doing so
+    # loads multi-GB models (the 7B critic included) just to compute a
+    # boolean, doubles every model load at startup, and the discarded
+    # critic's GC teardown trips a llama.cpp CUDA context-free fault
+    # (0xC000001D) on this build.
+    _PROBE_MAP = {
+        "semantic": ("semantic_backend", ("auto", "open_clip"), "semantic"),
+        "visual": ("visual_backend", ("auto", "dinov2"), "visual"),
+        "face": ("face_backend", ("auto", "opencv"), "faces"),
+        "segmenter": ("segmenter_backend", ("auto", "mobilesam"), "segmenter"),
+        "critic": ("critic_backend", ("auto", "qwen-vl", "smolvlm"), "critic"),
+    }
+
+    def _cheap_available(key: str) -> bool:
+        """Weights present + runtime importable for `key`, without loading
+        any model. Selector 'none' is unavailable; 'stub' is available."""
+        attr, real_values, group_name = _PROBE_MAP[key]
+        selector = getattr(config, attr)
+        if selector == "none":
+            return False
+        if selector == "stub":
+            return True
+        if selector not in real_values:
+            return False
+        try:
+            group = provisioning.resolve_groups([group_name])[0]
+        except Exception:
+            return False
+        weights_ok = all(
+            provisioning.artifact_present(config.models_dir, a)
+            for a in group.artifacts
+        )
+        return weights_ok and not provisioning.runtime_missing(group)
+
     def _probe_backends() -> dict:
-        """Availability flag per backend: all-False while disabled, else probed once and cached."""
+        """Availability flag per backend: all-False while disabled. Uses the
+        running worker's already-loaded instances when it has them (ground
+        truth), falling back to the cheap weights+runtime check."""
         if not config.enabled:
             return {"semantic": False, "visual": False, "face": False,
                     "critic": False, "segmenter": False}
         if not backend_probe_cache:
-            instances = {
-                "semantic": embedders.get_semantic_backend(config),
-                "visual": embedders.get_visual_backend(config),
-                "face": faces.get_face_backend(config),
-                "critic": review.get_critic_backend(config),
-            }
-            try:
-                instances["segmenter"] = review.get_segmenter_backend(config)
-            except Exception:  # availability probe must not raise
-                instances["segmenter"] = None
-            backend_probe_cache.update(
-                {key: inst is not None for key, inst in instances.items()})
-            backend_device_cache.update(
-                {key: getattr(inst, "_device", None) for key, inst in instances.items()})
+            worker = get_worker()
+            loaded = dict(getattr(worker, "_backend_cache", {}) or {}) if worker else {}
+            for key in _PROBE_MAP:
+                inst = loaded.get(key)
+                if inst is not None:
+                    backend_probe_cache[key] = True
+                    backend_device_cache[key] = getattr(inst, "_device", None)
+                else:
+                    backend_probe_cache[key] = _cheap_available(key)
+                    backend_device_cache[key] = None
         return dict(backend_probe_cache)
 
     def _backend_devices() -> dict:
