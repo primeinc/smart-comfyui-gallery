@@ -1291,9 +1291,11 @@
     .sc-panel, .smart-dialog-panel, #user-manager-panel, .theater-panel {
         overscroll-behavior: contain !important;
     }
-    /* Style for async notifications in Exhibition Mode */
+    /* Style for async notifications in Exhibition Mode. Bottom-center:
+       toasts must never sit over the top-right controls. */
     .notification {
-        position: fixed; top: 20px; right: 20px; z-index: 10000;
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        z-index: 10000;
         background: #222; color: white; padding: 12px 20px; border-radius: 8px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-left: 5px solid var(--primary-color);
         transition: all 0.5s ease;

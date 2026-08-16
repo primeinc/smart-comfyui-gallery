@@ -283,15 +283,19 @@ body.modal-open {
     overflow: hidden;
 }
 
+/* Bottom-center: toasts must never sit over the top-right toolbar. The
+   container is click-through; only the toasts themselves take pointers. */
 #notification-container {
     position: fixed;
-    top: 20px;
-    right: 20px;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 100000 !important;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    align-items: flex-end;
+    align-items: center;
+    pointer-events: none;
 }
 
 .notification {
@@ -302,14 +306,15 @@ body.modal-open {
     box-shadow: var(--shadow-lg);
     border-left: 5px solid var(--primary-color);
     opacity: 0;
-    transform: translateX(100%);
+    transform: translateY(24px);
     transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
     font-weight: 600;
+    pointer-events: auto;
 }
 
 .notification.show {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
 }
 
 .notification.success {
@@ -3053,7 +3058,8 @@ body.sidebar-minimized .sidebar #mount-folder-btn { display: none !important; }
 @media (max-width: 1024px) {
     /* 1. NOTIFICATIONS: Positioned lower and centered to avoid browser URL bar overlap */
     #notification-container {
-        top: 120px !important; 
+        top: 120px !important;
+        bottom: auto !important;
         right: auto !important;
         left: 50% !important;
         transform: translateX(-50%) !important;
