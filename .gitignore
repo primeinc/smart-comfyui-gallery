@@ -81,9 +81,17 @@ benchmarks/results/*
 !benchmarks/results/faiss_graph_evidence.json
 !benchmarks/results/faiss_graph_evidence_synthetic.json
 !benchmarks/results/faiss_graph_evidence_images.json
-run_smartgallery.bat
 !benchmarks/results/face_detection_recall_native.json
 !benchmarks/results/face_detection_recall_ms1600.json
 # Vendored Windows GPU faiss build ships its extension module
 !vendor/faiss-gpu-win64/faiss/*.pyd
 !benchmarks/results/face_embedder_ab.json
+
+# Personal launch scripts. The README has every user make these by copying
+# the sample_run_* files and filling in their own paths, passwords and
+# ports, and tells them to carry the same file across upgrades. One of ours
+# in the repo would overwrite theirs on update, so these stay local.
+run_smartgallery.bat
+run_exhibition.bat
+run_smartgallery.sh
+run_exhibition.sh
