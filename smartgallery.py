@@ -5684,7 +5684,7 @@ def gallery_view(folder_key):
                 comment_exists_filter = f"SELECT file_id FROM file_comments WHERE (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
 
             if req_sort_by == 'name':
-                order_clause = f"f.name {sort_order}"
+                order_clause = f"ulower(f.name) {sort_order}"
             elif req_sort_by == 'rating':
                 if is_effectively_blind():
 
@@ -5703,7 +5703,7 @@ def gallery_view(folder_key):
 
             elif req_sort_by == 'type':
 
-                order_clause = f"f.type {sort_order}, f.name ASC"
+                order_clause = f"f.type {sort_order}, ulower(f.name) ASC"
 
             elif req_sort_by == 'duration':
 
@@ -8188,7 +8188,7 @@ def get_collections():
                    (SELECT COUNT(*) FROM collection_files cf WHERE cf.collection_id = c.id) AS file_count,
                    (SELECT COUNT(*) FROM collection_files cf JOIN files f ON cf.file_id = f.id WHERE cf.collection_id = c.id AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')) AS note_count
             FROM collections c
-            ORDER BY c.name
+            ORDER BY ulower(c.name)
         """).fetchall()
         
         all_cols = [dict(r) for r in rows]
@@ -8315,7 +8315,7 @@ def get_sidebar_state():
                        (SELECT COUNT(*) FROM collection_files cf JOIN files f ON cf.file_id = f.id WHERE cf.collection_id = c.id AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')) AS note_count
                 FROM collections c
                 WHERE c.type='user_album'
-                ORDER BY c.name
+                ORDER BY ulower(c.name)
             """).fetchall()
             all_count = None
         else:
@@ -8325,7 +8325,7 @@ def get_sidebar_state():
                        (SELECT COUNT(*) FROM collection_files cf JOIN files f ON cf.file_id = f.id WHERE cf.collection_id = c.id AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')) AS note_count
                 FROM collections c
                 WHERE c.type='user_album'
-                ORDER BY c.name
+                ORDER BY ulower(c.name)
             """).fetchall()
             all_count = conn.execute("""
                 SELECT COUNT(DISTINCT cf.file_id)
@@ -8592,7 +8592,7 @@ def get_file_full_details(file_id):
                 FROM collections c
                 JOIN collection_files cf ON c.id = cf.collection_id
                 WHERE cf.file_id = ? AND c.type = 'user_album'
-                ORDER BY c.name
+                ORDER BY ulower(c.name)
             """, (file_id,)).fetchall()
 
             all_colls = conn.execute("SELECT id, name, parent_id FROM collections WHERE type = 'user_album'").fetchall()
@@ -8706,7 +8706,7 @@ def get_file_collections(file_id):
     if public_only:
         query += " AND c.is_public = 1 AND c.type = 'user_album'"
         
-    query += " ORDER BY c.type DESC, c.name ASC"
+    query += " ORDER BY c.type DESC, ulower(c.name) ASC"
     
     try:
         with get_db_connection() as conn:
@@ -9232,7 +9232,7 @@ def collection_view(coll_id):
     # --- SORTING LOGIC ---
     safe_uuid = _current_client_identity().replace("'", "''")
     if req_sort_by == 'name':
-        order_clause = f"f.name {req_sort_order}"
+        order_clause = f"ulower(f.name) {req_sort_order}"
     elif req_sort_by == 'rating':
         if is_effectively_blind():
 
@@ -9266,7 +9266,7 @@ def collection_view(coll_id):
     elif req_sort_by == 'size':
         order_clause = f"f.size {req_sort_order}"
     elif req_sort_by == 'type':
-        order_clause = f"f.type {req_sort_order}, f.name ASC"
+        order_clause = f"f.type {req_sort_order}, ulower(f.name) ASC"
     elif req_sort_by == 'duration':
         order_clause = f"f.duration {req_sort_order}"
     elif req_sort_by == 'dimensions':
