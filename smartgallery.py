@@ -1539,6 +1539,23 @@ def _is_guest_uuid(value):
 FFPROBE_TIMEOUT = 30    # version check and metadata reads
 FFMPEG_TIMEOUT = 300    # thumbnail extraction and metadata stripping
 
+# Pillow refuses to decode an image above twice this, and warns above it.
+#
+# Its own default is 89 megapixels, which a 16384x16384 upscale (268 Mpx)
+# exceeds -- so create_thumbnail turned the guard off entirely with
+# `Image.MAX_IMAGE_PIXELS = None`. That fixed a real problem and left no
+# ceiling at all, for the whole process and for every later image, since the
+# setting is global and one thumbnail switched it off for good. A header
+# claiming 65535x65535 then asks for about 13 GB, and the process dies
+# rather than the file failing.
+#
+# 500 Mpx decodes anything up to roughly 22000x22000 in silence and refuses
+# above about 31600x31600. A refusal costs that one file its thumbnail --
+# create_thumbnail already treats a raised exception as "no thumbnail" --
+# instead of costing the gallery.
+MAX_DECODED_PIXELS = 500_000_000
+Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
+
 
 def _is_ffprobe(path_or_name):
     """True only when `-version` runs AND identifies itself as ffprobe.
@@ -1898,8 +1915,10 @@ def thumbnail_generation_enabled():
 
 
 def create_thumbnail(filepath, file_hash, file_type):
-    Image.MAX_IMAGE_PIXELS = None
-    
+    # The pixel ceiling is set once at import (MAX_DECODED_PIXELS). It used
+    # to be cleared here, which switched the guard off process-wide the
+    # first time any thumbnail was made.
+
     # --- IMAGES / ANIMATIONS ---
     # All encoders write to a tmp_ path and os.replace() into place: a save
     # that dies mid-write (disk full, process kill) must never leave a
