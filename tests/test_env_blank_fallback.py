@@ -241,3 +241,69 @@ def test_configuration_doc_covers_the_user_facing_env_vars():
     referenced = set(pattern.findall(src))
     missing = sorted(v for v in referenced if v not in doc)
     assert not missing, f"undocumented settings in docs/CONFIGURATION.md: {missing}"
+
+
+# --- DELETE_TO (trash instead of permanent deletion) ----------------------
+# The whole feature crashed on first use: its validation block prints
+# coloured diagnostics at import time, but `class Colors` was defined
+# further down the file, so creating the trash folder -- the ordinary first
+# run -- raised NameError before the app could start. Only an install whose
+# <DELETE_TO>/SmartGallery folder already existed ever booted.
+
+def test_colors_is_defined_before_the_configuration_block_uses_it():
+    """Ordering guard: the config block runs at import, so anything it
+    references must already exist above it."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "smartgallery.py"), encoding="utf-8").read()
+    definition = src.index("class Colors:")
+    first_use = src.index("Colors.RED")
+    assert definition < first_use, (
+        "class Colors is defined after its first use; the DELETE_TO "
+        "validation paths will raise NameError at import")
+
+
+def test_delete_to_moves_files_to_trash_without_overwriting(tmp_path):
+    """safe_delete_file must relocate rather than remove, and two files of
+    the same name deleted in the same second must both survive.
+
+    Run in a subprocess: DELETE_TO is resolved at module scope, so this
+    needs a fresh interpreter with that environment -- and reimporting
+    smartgallery inside the test session would hand other tests a
+    different module object than the session fixture holds.
+    """
+    import subprocess
+    import sys
+
+    trash_root = tmp_path / "trash"
+    trash_root.mkdir()
+    gallery = tmp_path / "gallery"
+    gallery.mkdir()
+
+    script = """
+import os, sys
+sys.argv = ['smartgallery.py']
+import smartgallery as sg
+assert sg.TRASH_FOLDER and os.path.isdir(sg.TRASH_FOLDER), 'trash folder missing'
+victim = os.path.join(sg.BASE_OUTPUT_PATH, 'gone.png')
+open(victim, 'wb').write(b'first')
+sg.safe_delete_file(victim)
+assert not os.path.exists(victim), 'file was not removed from the gallery'
+assert len(os.listdir(sg.TRASH_FOLDER)) == 1, 'file did not arrive in the trash'
+open(victim, 'wb').write(b'second')
+sg.safe_delete_file(victim)
+n = len(os.listdir(sg.TRASH_FOLDER))
+assert n == 2, f'a same-name delete overwrote the first ({n} file(s) in trash)'
+print('OK')
+"""
+    env = dict(os.environ,
+               DELETE_TO=str(trash_root),
+               BASE_OUTPUT_PATH=str(gallery),
+               BASE_SMARTGALLERY_PATH=str(gallery),
+               ENABLE_AI_DAM="false",
+               AI_DAM_AUTO_PROVISION="false")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    proc = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
+                          capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, (
+        f"DELETE_TO first-run path failed:\n{proc.stdout}\n{proc.stderr}")
+    assert "OK" in proc.stdout

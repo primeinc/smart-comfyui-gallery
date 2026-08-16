@@ -153,6 +153,24 @@ except ImportError:
 # Remember: environment variables take priority over these default values.
 # ============================================================================
 
+# --- CONSOLE STYLING ---
+# Defined before the configuration block below, which uses it: the
+# DELETE_TO validation prints coloured diagnostics at import time, and
+# with this class further down the file every one of those paths raised
+# NameError instead -- including the ordinary first run, which has to
+# create the trash folder.
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+
+
 def env_or(name, default):
     """Environment value for `name`, falling back to `default` when the
     variable is unset OR set to nothing.
@@ -490,19 +508,6 @@ AI_CONFIG = smartgallery_ai.AIConfig.from_env(BASE_SMARTGALLERY_PATH, DATABASE_F
 # elsewhere (ComfyUI plugin deployments), so publish the resolved path --
 # a user's own AI_DAM_MODELS_DIR still wins.
 os.environ.setdefault("AI_DAM_MODELS_DIR", os.path.abspath(AI_CONFIG.models_dir))
-
-
-# --- CONSOLE STYLING ---
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
 
 
 def get_omniquery_dictionary(reset=False):
