@@ -157,6 +157,55 @@ def test_renaming_a_folder_keeps_the_ratings_of_the_files_inside(
         "renaming a folder dropped the data attached to the files inside it")
 
 
+def test_moving_a_file_keeps_its_rating_and_comments(
+        smartgallery_app, client, rated_file):
+    """Moving changes the path, so it changes the id too. This one failed
+    more quietly than rename: the file was moved before the rows were
+    touched, and the error was folded into a "partial success" message."""
+    base = smartgallery_app.BASE_OUTPUT_PATH
+    dest = os.path.join(base, f"{_PREFIX}dest")
+    os.makedirs(dest, exist_ok=True)
+    folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
+    dest_key = next(k for k, v in folders.items()
+                    if str(v["path"]).replace("\\", "/").endswith(f"{_PREFIX}dest"))
+
+    resp = client.post("/galleryout/move_batch",
+                       json={"file_ids": [rated_file], "destination_folder": dest_key})
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()
+    assert "Failed" not in (body.get("message") or ""), body
+    assert os.path.exists(os.path.join(dest, f"{_PREFIX}pic.png")), "the file did not move"
+    assert _attached(smartgallery_app, f"{_PREFIX}pic.png") == (5, 1, 1, 1), (
+        "moving a file dropped the data attached to it")
+
+
+def test_a_failed_move_leaves_disk_and_database_agreeing(
+        smartgallery_app, client, rated_file, monkeypatch):
+    """The batch reports failures per file and carries on, so a half-applied
+    move would be committed with everything else."""
+    base = smartgallery_app.BASE_OUTPUT_PATH
+    box = os.path.join(base, f"{_PREFIX}box")
+    dest = os.path.join(base, f"{_PREFIX}dest")
+    os.makedirs(dest, exist_ok=True)
+    folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
+    dest_key = next(k for k, v in folders.items()
+                    if str(v["path"]).replace("\\", "/").endswith(f"{_PREFIX}dest"))
+
+    def _refuse(*_args, **_kwargs):
+        raise OSError("simulated: destination volume went away")
+
+    monkeypatch.setattr(smartgallery_app.shutil, "move", _refuse)
+    resp = client.post("/galleryout/move_batch",
+                       json={"file_ids": [rated_file], "destination_folder": dest_key})
+    monkeypatch.undo()
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert sorted(os.listdir(box)) == [f"{_PREFIX}pic.png"], "the file moved anyway"
+    assert _attached(smartgallery_app, f"{_PREFIX}pic.png") == (5, 1, 1, 1), (
+        "a failed move still altered the database")
+
+
 def test_a_failed_rename_leaves_disk_and_database_agreeing(
         smartgallery_app, client, rated_file, monkeypatch):
     """If the file cannot be moved, nothing may be recorded as moved --

@@ -3444,8 +3444,12 @@ def initialize_gallery():
                         old_p = r['path']
                         new_p = old_p.replace(old_notes_prefix, new_notes_prefix, 1)
                         new_id = hashlib.md5(new_p.encode()).hexdigest()
+                        # Everything referencing the old id moves with it. Updating
+                        # files.id first used to raise a foreign key error that this
+                        # block's own except swallowed into a one-line notice, so the
+                        # migration never ran for anyone with a separate gallery path.
+                        _reassign_file_ids(conn, [(r['id'], new_id)])
                         conn.execute("UPDATE files SET id = ?, path = ? WHERE id = ?", (new_id, new_p, r['id']))
-                        conn.execute("UPDATE collection_files SET file_id = ? WHERE file_id = ?", (new_id, r['id']))
                     conn.commit()
             except Exception as e:
                 print(f"Notes path migration notice: {e}")
@@ -6141,15 +6145,21 @@ def move_batch():
                 if final_filename != source_filename: 
                     renamed_count += 1
                 
-                # 3. Move file on disk
-                shutil.move(source_path, final_dest_path)
-                
-                # 4. Calculate New ID based on the NATIVE path
+                # 3. Calculate New ID based on the NATIVE path
                 new_id = hashlib.md5(final_dest_path.encode()).hexdigest()
-                
-                # 5. DB Update / Merge Logic
+
+                # 4. DB Update / Merge Logic, then the file itself.
+                # A file's id is derived from its path, so moving one changes
+                # it and everything keyed to it has to come along. The rows go
+                # first and the file second, inside a savepoint, so a file that
+                # fails changes neither -- moving the file first meant a failure
+                # here left it moved on disk with its row still pointing at the
+                # old folder, and this loop reports that as a partial success
+                # rather than an error, so the next scan quietly deleted the row
+                # and the rating with it.
+                conn.execute("SAVEPOINT move_one")
                 existing_target = conn.execute("SELECT id FROM files WHERE id = ?", (new_id,)).fetchone()
-                
+
                 if existing_target:
                     # MERGE: Target exists (e.g. ghost record). Overwrite with source metadata.
                     query_merge = """
@@ -6172,15 +6182,27 @@ def move_batch():
                         meta['workflow_hash'], meta['prompt_hash'], meta['models_hash'],
                         new_id
                     ))
+                    # The ratings and comments belong to the file being moved,
+                    # so they move onto the surviving row before the old one is
+                    # deleted -- the delete cascades them away otherwise.
+                    _reassign_file_ids(conn, [(file_id, new_id)])
                     conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
                 else:
                     # STANDARD: Update existing record path/name.
-                    conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?", 
+                    _reassign_file_ids(conn, [(file_id, new_id)])
+                    conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?",
                                 (new_id, final_dest_path, final_filename, file_id))
-                    
+
+                shutil.move(source_path, final_dest_path)
+                conn.execute("RELEASE move_one")
                 moved_count += 1
-                
+
             except Exception as e:
+                try:
+                    conn.execute("ROLLBACK TO move_one")
+                    conn.execute("RELEASE move_one")
+                except sqlite3.Error:
+                    pass  # the savepoint was never opened for this file
                 filename_for_error = os.path.basename(source_path) if source_path else f"ID {file_id}"
                 failed_files.append(filename_for_error)
                 print(f"ERROR: Failed to move file {filename_for_error}. Reason: {e}")
