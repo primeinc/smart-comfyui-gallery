@@ -53,6 +53,7 @@ import smartgallery_ai.schema
 from smartgallery_ai import service as ai_dam_service
 from smartgallery_ai.worker import AIWorker
 import metaparse
+from metaparse import typed as metaparse_typed
 try:
     from waitress import serve
     WAITRESS_AVAILABLE = True
@@ -1926,13 +1927,33 @@ def process_single_file(filepath):
                 workflow_prompt_content = extract_workflow_prompt_string(wf_json)
 
         # Non-ComfyUI generators (A1111/Forge, SwarmUI, Fooocus, InvokeAI, ...):
-        # index their positive prompt so prompt search covers them too.
+        # parse their metadata once -- it feeds both the searchable prompt
+        # field and the typed generation_params row below.
         # Stealth (LSB) decoding stays off here -- too costly for bulk scans.
-        if not workflow_prompt_content and metadata['type'] in ('image', 'animated_image'):
+        parsed_meta = None
+        if (not (metadata['has_workflow'] and wf_json)
+                and metadata['type'] in ('image', 'animated_image')):
             parsed_meta = metaparse.parse_file(filepath, allow_stealth=False)
-            if parsed_meta and parsed_meta.positive:
-                workflow_prompt_content = parsed_meta.positive
-        
+        if not workflow_prompt_content and parsed_meta and parsed_meta.positive:
+            workflow_prompt_content = parsed_meta.positive
+
+        # First-class typed generation parameters (metaparse.typed):
+        # ComfyUI graphs go through the sampler-tracing parser; every
+        # other tool through its metaparse adapter.
+        gen_row = None
+        try:
+            if metadata['has_workflow'] and wf_json:
+                graph_meta = ComfyMetadataParser(json.loads(wf_json)).parse()
+                gp = metaparse_typed.GenerationParams.from_comfy(graph_meta)
+                if gp.has_content:
+                    gen_row = gp.to_row(file_id, time.time())
+            elif parsed_meta is not None:
+                gp = metaparse_typed.GenerationParams.from_parsed(parsed_meta)
+                if gp.has_content or parsed_meta.params:
+                    gen_row = gp.to_row(file_id, time.time())
+        except Exception:
+            gen_row = None
+
         hashable = metadata['has_workflow'] or metadata['type'] in ('image', 'animated_image')
         wf_hash, pr_hash, md_hash = compute_workflow_hashes(filepath) if hashable else ('', '', '')
         return (
@@ -1941,12 +1962,38 @@ def process_single_file(filepath):
             metadata['has_workflow'], file_size, time.time(),
             workflow_files_content,
             workflow_prompt_content,
-            wf_hash, pr_hash, md_hash
+            wf_hash, pr_hash, md_hash,
+            gen_row
         )
     except Exception as e:
         print(f"ERROR: Failed to process file {os.path.basename(filepath)} in worker: {e}")
         return None
         
+def split_file_results(results):
+    """process_file returns the 15-column files row plus its
+    generation_params row (or None); split them for the two upserts."""
+    file_rows = [r[:-1] for r in results]
+    gen_rows = [r[-1] for r in results if r[-1] is not None]
+    gen_deletes = [(r[0],) for r in results if r[-1] is None]
+    return file_rows, gen_rows, gen_deletes
+
+
+_GENPARAMS_UPSERT = (
+    "INSERT OR REPLACE INTO generation_params ("
+    + ", ".join(metaparse_typed.ROW_COLUMNS)
+    + ") VALUES (" + ", ".join("?" * len(metaparse_typed.ROW_COLUMNS)) + ")"
+)
+
+
+def upsert_generation_params(conn, gen_rows, gen_deletes):
+    """Write typed generation rows; a re-indexed file whose metadata
+    vanished loses its stale row."""
+    if gen_deletes:
+        conn.executemany("DELETE FROM generation_params WHERE file_id = ?", gen_deletes)
+    if gen_rows:
+        conn.executemany(_GENPARAMS_UPSERT, gen_rows)
+
+
 def get_db_connection():
     # Timeout increased to 60s to be patient with the Indexer
     conn = sqlite3.connect(DATABASE_FILE, timeout=60)
@@ -1989,6 +2036,39 @@ def init_db(conn=None):
                 ai_error TEXT
             )
         ''')
+
+        # First-class generation parameters, one typed row per file
+        # (metaparse.typed.GenerationParams.to_row order). Numeric fields
+        # carry real SQL types; unmapped tool keys live verbatim in
+        # `extra` JSON so no first-party field is ever dropped.
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS generation_params (
+                file_id TEXT PRIMARY KEY REFERENCES files(id)
+                    ON DELETE CASCADE ON UPDATE CASCADE,
+                tool TEXT NOT NULL,
+                detection TEXT NOT NULL,
+                positive_prompt TEXT NOT NULL DEFAULT '',
+                negative_prompt TEXT NOT NULL DEFAULT '',
+                model TEXT,
+                model_hash TEXT,
+                sampler TEXT,
+                scheduler TEXT,
+                seed INTEGER,
+                steps INTEGER,
+                cfg REAL,
+                width INTEGER,
+                height INTEGER,
+                denoise REAL,
+                clip_skip INTEGER,
+                version TEXT,
+                loras TEXT,
+                extra TEXT,
+                parsed_at REAL NOT NULL
+            )
+        ''')
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_genparams_tool ON generation_params(tool)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_genparams_model ON generation_params(model)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_genparams_seed ON generation_params(seed)")
 
         # 2. AI TABLES
         conn.execute('''
@@ -2585,7 +2665,7 @@ def full_sync_database(conn):
         if results:
             print(f"INFO: Inserting {len(results)} processed records into the database...")
             for i in range(0, len(results), BATCH_SIZE):
-                batch = results[i:i + BATCH_SIZE]
+                batch, gen_rows, gen_deletes = split_file_results(results[i:i + BATCH_SIZE])
                 conn.executemany("""
                     INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2628,7 +2708,8 @@ def full_sync_database(conn):
 
                         -- Update mtime at the end
                         mtime = excluded.mtime
-                """, batch) 
+                """, batch)
+                upsert_generation_params(conn, gen_rows, gen_deletes)
                 conn.commit()
 
     # SAFETY GUARD FOR DISCONNECTED DRIVES
@@ -2756,6 +2837,7 @@ def sync_folder_on_demand(folder_path):
                         yield f"data: {json.dumps(progress_data)}\n\n"
 
                 if data_to_upsert:
+                    file_rows_2, gen_rows_2, gen_deletes_2 = split_file_results(data_to_upsert)
                     conn.executemany("""
                         INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2798,7 +2880,8 @@ def sync_folder_on_demand(folder_path):
 
                             -- Update mtime at the end
                             mtime = excluded.mtime
-                    """, data_to_upsert) 
+                    """, file_rows_2)
+                    upsert_generation_params(conn, gen_rows_2, gen_deletes_2)
                     
             if files_to_delete:
                 conn.executemany("DELETE FROM files WHERE path IN (?)", [(p,) for p in files_to_delete])
@@ -3069,6 +3152,7 @@ def initialize_gallery():
             full_sync_database(conn)
             check_and_update_workflow_hashes(conn)
             backfill_audio_durations(conn)
+            ensure_genparams_backfill_async(conn)
             migration_report = sg_auth.migrate_legacy_passwords(conn, ENCRYPTION_KEY_FILE)
             if migration_report['migrated'] or migration_report['failed']:
                 print(f"{Colors.BLUE}INFO: Password migration - "
@@ -3306,6 +3390,56 @@ def strip_media_metadata(input_path, output_path, file_type):
 @app.route('/')
 def gallery_redirect_base():
     return redirect(url_for('gallery_view', folder_key='_root_'))
+
+@app.route('/galleryout/aidam')
+@management_api_only
+def aidam_dashboard():
+    """The AI DAM dashboard: pipeline status, generation-parameter
+    analytics, face workspace, and the detector comparison tool as a
+    full page (the per-file modal keeps only quick context)."""
+    return render_template('aidam_dashboard.html',
+                           file_id=request.args.get('file', ''),
+                           view=request.args.get('view', 'status'))
+
+
+@app.route('/galleryout/api/genparams/summary')
+@management_api_only
+def genparams_summary():
+    """Aggregates over the first-class generation_params table: tracked
+    coverage, per-tool counts, top models/samplers, steps and cfg
+    distributions. Everything computed in SQL on the typed columns."""
+    with get_db_connection() as conn:
+        total_files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        tracked = conn.execute("SELECT COUNT(*) FROM generation_params").fetchone()[0]
+        tools = [dict(r) for r in conn.execute(
+            "SELECT tool, COUNT(*) AS n FROM generation_params "
+            "GROUP BY tool ORDER BY n DESC")]
+        models = [dict(r) for r in conn.execute(
+            "SELECT model, COUNT(*) AS n FROM generation_params "
+            "WHERE model IS NOT NULL GROUP BY model ORDER BY n DESC LIMIT 15")]
+        samplers = [dict(r) for r in conn.execute(
+            "SELECT sampler, COUNT(*) AS n FROM generation_params "
+            "WHERE sampler IS NOT NULL GROUP BY sampler ORDER BY n DESC LIMIT 12")]
+        steps = [dict(r) for r in conn.execute(
+            "SELECT steps, COUNT(*) AS n FROM generation_params "
+            "WHERE steps IS NOT NULL GROUP BY steps ORDER BY n DESC LIMIT 12")]
+        cfg = [dict(r) for r in conn.execute(
+            "SELECT ROUND(cfg * 2) / 2.0 AS cfg, COUNT(*) AS n "
+            "FROM generation_params WHERE cfg IS NOT NULL "
+            "GROUP BY ROUND(cfg * 2) ORDER BY n DESC LIMIT 12")]
+        sizes = [dict(r) for r in conn.execute(
+            "SELECT width || 'x' || height AS size, COUNT(*) AS n "
+            "FROM generation_params WHERE width IS NOT NULL "
+            "GROUP BY width, height ORDER BY n DESC LIMIT 10")]
+        negatives = conn.execute(
+            "SELECT COUNT(*) FROM generation_params "
+            "WHERE negative_prompt != ''").fetchone()[0]
+    return jsonify({
+        "total_files": total_files, "tracked": tracked,
+        "with_negative": negatives, "tools": tools, "models": models,
+        "samplers": samplers, "steps": steps, "cfg": cfg, "sizes": sizes,
+    })
+
 
 @app.route('/galleryout/login', methods=['POST'])
 def exhibition_login():
@@ -4456,7 +4590,35 @@ def gallery_view(folder_key):
                             s = s[1:].strip()
                         if not s: continue
                         
-                        if s.startswith('"') and s.endswith('"') and len(s) > 2:
+                        # Typed generation_params operators: neg:, tool:,
+                        # model:, sampler:, scheduler: (LIKE) and seed:,
+                        # steps:, cfg: (typed equality). '!' negation applies.
+                        gp_match = re.match(
+                            r'^(neg|tool|model|sampler|scheduler|seed|steps|cfg):(.*)$',
+                            s, re.IGNORECASE)
+                        if gp_match:
+                            op_name = gp_match.group(1).lower()
+                            op_val = gp_match.group(2).strip().strip('"')
+                            if not op_val: continue
+                            _GP_TEXT = {'neg': 'negative_prompt', 'tool': 'tool',
+                                        'model': 'model', 'sampler': 'sampler',
+                                        'scheduler': 'scheduler'}
+                            if op_name in _GP_TEXT:
+                                inner = (f"SELECT 1 FROM generation_params gp "
+                                         f"WHERE gp.file_id = f.id AND gp.{_GP_TEXT[op_name]} LIKE ?")
+                                param_val = f"%{op_val}%"
+                            else:
+                                if op_name == 'cfg':
+                                    try: typed_val = float(op_val)
+                                    except ValueError: continue
+                                else:
+                                    try: typed_val = int(op_val)
+                                    except ValueError: continue
+                                inner = (f"SELECT 1 FROM generation_params gp "
+                                         f"WHERE gp.file_id = f.id AND gp.{op_name} = ?")
+                                param_val = typed_val
+                            cond_str = f"{'NOT ' if is_not else ''}EXISTS ({inner})"
+                        elif s.startswith('"') and s.endswith('"') and len(s) > 2:
                             clean_s = s[1:-1]
                             col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(workflow_prompt, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')"
                             cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
@@ -4877,6 +5039,7 @@ def background_rescan_worker(job_id, files_to_process):
                         print(f"ERROR: Worker failed for a file: {e}")
 
             if results:
+                file_rows_3, gen_rows_3, gen_deletes_3 = split_file_results(results)
                 conn.executemany("""
                     INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -4900,7 +5063,8 @@ def background_rescan_worker(job_id, files_to_process):
                         ai_embedding = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_embedding END,
                         ai_last_scanned = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.ai_last_scanned END,
                         mtime = excluded.mtime
-                """, results) 
+                """, file_rows_3)
+                upsert_generation_params(conn, gen_rows_3, gen_deletes_3)
                 conn.commit()
                 
         print(f"INFO: [Background] Job {job_id} finished.")
@@ -10631,6 +10795,97 @@ def compute_workflow_hashes(filepath):
         return workflow_hash, prompt_hash, models_hash
     except Exception:
         return '', '', ''
+
+GENPARAMS_SCHEMA = "genparams-v1"
+
+
+def _genparams_backfill_worker(item):
+    """Parse one file into a typed generation_params row (or None).
+    Module-level so worker pools can pickle it."""
+    file_id, path, ftype, has_workflow = item
+    try:
+        if not os.path.exists(path):
+            return file_id, None
+        gp = None
+        if has_workflow:
+            wf_json = extract_workflow(path, target_type='api')
+            if wf_json:
+                graph_meta = ComfyMetadataParser(json.loads(wf_json)).parse()
+                gp = metaparse_typed.GenerationParams.from_comfy(graph_meta)
+        if (gp is None or not gp.has_content) and ftype in ('image', 'animated_image'):
+            parsed = metaparse.parse_file(path, allow_stealth=False)
+            if parsed is not None:
+                candidate = metaparse_typed.GenerationParams.from_parsed(parsed)
+                if candidate.has_content or parsed.params:
+                    gp = candidate
+        if gp is not None and gp.has_content:
+            return file_id, gp.to_row(file_id, time.time())
+        return file_id, None
+    except Exception:
+        return file_id, None
+
+
+def ensure_genparams_backfill_async(conn):
+    """One-time typed generation-params backfill for files indexed before
+    the generation_params table existed. Marker-gated like the cluster
+    hash migration: recorded only on completion, so an interrupted run
+    resumes next startup (already-written rows are skipped by query)."""
+    stored = conn.execute(
+        "SELECT value FROM ai_metadata WHERE key = 'genparams_schema'"
+    ).fetchone()
+    if (stored[0] if stored else None) == GENPARAMS_SCHEMA:
+        return
+
+    def run():
+        try:
+            with get_db_connection() as bconn:
+                todo = bconn.execute(
+                    "SELECT f.id, f.path, f.type, f.has_workflow FROM files f "
+                    "LEFT JOIN generation_params gp ON gp.file_id = f.id "
+                    "WHERE gp.file_id IS NULL "
+                    "AND (f.has_workflow = 1 OR f.type IN ('image', 'animated_image'))"
+                ).fetchall()
+                written = 0
+                if todo:
+                    print(f"{Colors.BLUE}INFO: [GenParams] Backfilling typed generation "
+                          f"parameters for {len(todo)} files...{Colors.RESET}", flush=True)
+                    done = 0
+                    from concurrent.futures import ThreadPoolExecutor
+                    batch = []
+                    with ThreadPoolExecutor(max_workers=8) as pool:
+                        for file_id, row in pool.map(
+                                _genparams_backfill_worker,
+                                [tuple(r) for r in todo]):
+                            done += 1
+                            if row is not None:
+                                batch.append(row)
+                            if len(batch) >= 500:
+                                bconn.executemany(_GENPARAMS_UPSERT, batch)
+                                bconn.commit()
+                                written += len(batch)
+                                batch = []
+                            if done % 2000 == 0:
+                                print(f"INFO: [GenParams] {done}/{len(todo)} scanned, "
+                                      f"{written + len(batch)} with parameters...",
+                                      flush=True)
+                    if batch:
+                        bconn.executemany(_GENPARAMS_UPSERT, batch)
+                        bconn.commit()
+                        written += len(batch)
+                total = bconn.execute(
+                    "SELECT COUNT(*) FROM generation_params").fetchone()[0]
+                bconn.execute(
+                    "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) "
+                    "VALUES ('genparams_schema', ?, ?)",
+                    (GENPARAMS_SCHEMA, time.time()))
+                bconn.commit()
+                print(f"{Colors.GREEN}SUCCESS: [GenParams] Typed generation parameters "
+                      f"tracked for {total} files.{Colors.RESET}", flush=True)
+        except Exception as e:
+            print(f"ERROR in genparams backfill: {e}")
+
+    threading.Thread(target=run, daemon=True, name="genparams-backfill").start()
+
 
 def backfill_audio_durations(conn=None):
     """

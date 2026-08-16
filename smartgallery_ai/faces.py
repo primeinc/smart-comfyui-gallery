@@ -9,12 +9,15 @@ attaches to a bucket of similar-looking generated faces, never a claim about
 who (if anyone real) a face resembles.
 
 `StubFaceBackend` is a TEST/DEV stub: it returns pre-programmed detections
-and does not look at pixels at all. `OpenCVFaceBackend` is the only real
-backend wired up here: OpenCV's YuNet detector plus one of two per-face
-recognizers -- ArcFace glintr100 (default when present) or OpenCV SFace --
-all ONNX, loaded only from local files under `models_dir`, never
-downloaded. It self-reports `BackendUnavailable` instead of raising when
-the runtime or weights are missing.
+and does not look at pixels at all. Two real pipelines are deployed and
+config-swappable (`AI_DAM_FACE_BACKEND`): `InsightFaceBackend` (upstream
+FaceAnalysis over the provisioned antelopev2 pack -- SCRFD detection,
+glintr100 embedding, genderage attributes; preferred by `auto`) and
+`OpenCVFaceBackend` (YuNet detection plus ArcFace-glintr100-via-cv2.dnn
+or SFace embedding). All models load only from local files under
+`models_dir`, never downloaded here. Backends self-report
+`BackendUnavailable` instead of raising when runtime or weights are
+missing.
 """
 
 from __future__ import annotations
@@ -110,6 +113,7 @@ class FaceDetection:
     det_score: float  # detector confidence; higher is more face-like
     embedding: Optional[np.ndarray]  # float32 1-D, or None
     dim: Optional[int] = None  # embedding length; derived from `embedding` when one is present
+    attributes: Optional[dict] = None  # per-face model attributes, e.g. {"age": 27, "sex": "M"}
 
     def __post_init__(self) -> None:
         """Coerce fields to plain floats / float32 and keep `dim` consistent
@@ -363,7 +367,7 @@ class InsightFaceBackend(FaceBackend):
     (deepinsight/insightface)."""
 
     model_id = "insightface/antelopev2"
-    model_version = "scrfd10g+glintr100-v1"
+    model_version = "scrfd10g+glintr100-v2"  # v2: genderage attributes stored per face
     # Pairwise F1 is 0.995-0.999 across 0.35-0.50 on the labeled A/B;
     # 0.40 keeps P 1.000 with F1 0.998.
     default_cluster_threshold = 0.40
@@ -396,10 +400,58 @@ class InsightFaceBackend(FaceBackend):
             landmarks = ([(_clamp01(float(px) / w), _clamp01(float(py) / h))
                           for px, py in face.kps]
                          if face.kps is not None else [])
+            attributes: dict = {}
+            if face.gender is not None and face.age is not None:
+                attributes["age"] = int(face.age)
+                attributes["sex"] = face.sex
+            lmk106 = face.get("landmark_2d_106")
+            if lmk106 is not None:
+                attributes["landmark_2d_106"] = [
+                    [round(_clamp01(float(px) / w), 5),
+                     round(_clamp01(float(py) / h), 5)]
+                    for px, py in lmk106]
+            lmk68 = face.get("landmark_3d_68")
+            if lmk68 is not None:
+                # x/y normalized like every other coordinate; z stays in
+                # the model's pixel-scaled depth units (no image norm
+                # exists for depth) — recorded as-is.
+                attributes["landmark_3d_68"] = [
+                    [round(_clamp01(float(px) / w), 5),
+                     round(_clamp01(float(py) / h), 5),
+                     round(float(pz), 2)]
+                    for px, py, pz in lmk68]
+            pose = face.get("pose")
+            if pose is not None:
+                attributes["pose"] = {
+                    "pitch": round(float(pose[0]), 2),
+                    "yaw": round(float(pose[1]), 2),
+                    "roll": round(float(pose[2]), 2),
+                }
             detections.append(FaceDetection(
                 bbox=bbox, landmarks=landmarks, det_score=score,
-                embedding=embedding))
+                embedding=embedding, attributes=attributes or None))
         return detections
+
+
+def _ort_providers() -> list:
+    """Execution providers for the insightface ORT sessions, in ORT's
+    priority-list form (docs/python/api_summary.rst: kernels are chosen
+    in the order given; anything a provider lacks runs on CPU).
+    AI_DAM_ORT_PROVIDERS: 'auto' (default -- CUDA first when the
+    installed onnxruntime build offers it; the provisioner swaps in
+    onnxruntime-gpu on NVIDIA boxes), 'cpu', or an explicit comma list."""
+    value = os.environ.get("AI_DAM_ORT_PROVIDERS", "auto").strip()
+    if value.lower() == "cpu":
+        return ["CPUExecutionProvider"]
+    if value and value.lower() != "auto":
+        return [p.strip() for p in value.split(",") if p.strip()]
+    try:
+        import onnxruntime as ort
+        if "CUDAExecutionProvider" in ort.get_available_providers():
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    except Exception:
+        pass
+    return ["CPUExecutionProvider"]
 
 
 _insightface_apps: dict = {}  # models_dir -> FaceAnalysis (cached; models stay loaded)
@@ -419,13 +471,36 @@ def get_insightface_app(models_dir: str):
     except Exception as exc:
         raise BackendUnavailable(f"insightface unavailable: {exc}") from exc
     try:
+        # Every pack head loads: genderage (age/sex), 2d106det (dense
+        # 106-pt 2D landmarks), 1k3d68 (3D 68-pt + pitch/yaw/roll pose,
+        # a 143MB session — the cost of keeping the pack's data
+        # first-class). All of it persists per face in
+        # FaceDetection.attributes.
+        #
+        # Providers are PER STAGE, from measurement on the dev box:
+        # detection runs dynamic input shapes (SCRFD '?' dims), where the
+        # CUDA EP re-tunes conv algos per shape and loses to CPU (205ms
+        # CPU vs 280-440ms CUDA per image); recognition is a heavy
+        # ResNet100 at a fixed 112x112, where CUDA wins 4.4x (14.6ms vs
+        # 64.5ms per face). So detection + genderage stay on CPU and the
+        # recognition session gets _ort_providers() (CUDA when the
+        # installed build offers it; AI_DAM_ORT_PROVIDERS overrides).
         app = FaceAnalysis(
             name="antelopev2",
             root=os.path.join(models_dir, _INSIGHTFACE_ROOT),
-            allowed_modules=["detection", "recognition"],
+            allowed_modules=["detection", "recognition", "genderage",
+                             "landmark_2d_106", "landmark_3d_68"],
             providers=["CPUExecutionProvider"],
         )
         app.prepare(ctx_id=0)  # Auto det-size: joint 128x128 + 640x640
+        rec_providers = _ort_providers()
+        if rec_providers != ["CPUExecutionProvider"]:
+            from insightface.model_zoo import model_zoo
+            rec = model_zoo.get_model(
+                os.path.join(models_dir, _ARCFACE_FILENAME),
+                providers=rec_providers)
+            rec.prepare(ctx_id=0)
+            app.models["recognition"] = rec
     except Exception as exc:
         raise BackendUnavailable(f"FaceAnalysis failed to load: {exc}") from exc
     _insightface_apps[models_dir] = app
@@ -459,7 +534,7 @@ def installed_pipelines(config: AIConfig) -> list:
 
     return [
         _entry("scrfd+glintr100",
-               "insightface/antelopev2", "scrfd10g+glintr100-v1",
+               "insightface/antelopev2", "scrfd10g+glintr100-v2",
                [os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2",
                              "scrfd_10g_bnkps.onnx"), _ARCFACE_FILENAME],
                "AI_DAM_FACE_BACKEND=insightface"),
@@ -493,7 +568,8 @@ def compare_detectors(img: Image.Image, config: AIConfig) -> dict:
             "model": f"{backend.model_id} ({backend.model_version})",
             "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
             "faces": [{"bbox": list(d.bbox), "landmarks": d.landmarks,
-                       "det_score": d.det_score} for d in dets],
+                       "det_score": d.det_score, "attributes": d.attributes}
+                      for d in dets],
         }
 
     lanes: dict = {}
@@ -594,12 +670,22 @@ def replace_faces_for_file(
                 embedding_blob = det.embedding.tobytes()
                 dim = int(det.embedding.shape[0])
             landmarks_json = json.dumps([[x, y] for x, y in det.landmarks])
+            # Scalars land in their own typed columns (comparable and
+            # aggregatable in SQL); the structured geometry stays as
+            # normalized JSON arrays in `attributes`.
+            attrs = dict(det.attributes or {})
+            age = attrs.pop("age", None)
+            sex = attrs.pop("sex", None)
+            pose = attrs.pop("pose", None) or {}
+            attributes_json = json.dumps(attrs) if attrs else None
             cur.execute(
                 """
                 INSERT INTO ai_face_instances
                     (file_id, bbox_x, bbox_y, bbox_w, bbox_h, landmarks, det_score,
-                     embedding, dim, model_id, model_version, source_mtime, computed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     embedding, dim, attributes, age, sex,
+                     pose_pitch, pose_yaw, pose_roll,
+                     model_id, model_version, source_mtime, computed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     file_id,
@@ -611,6 +697,12 @@ def replace_faces_for_file(
                     det.det_score,
                     embedding_blob,
                     dim,
+                    attributes_json,
+                    age,
+                    sex,
+                    pose.get("pitch"),
+                    pose.get("yaw"),
+                    pose.get("roll"),
                     model_id,
                     model_version,
                     source_mtime,

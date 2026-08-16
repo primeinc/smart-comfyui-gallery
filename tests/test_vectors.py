@@ -340,3 +340,31 @@ def test_topk_faiss_and_numpy_paths_agree_with_exclusions(tmp_path, monkeypatch)
     assert [fid for fid, _ in via_faiss] == [fid for fid, _ in via_numpy]
     for (_, a), (_, b) in zip(via_faiss, via_numpy):
         assert a == pytest.approx(b, abs=1e-5)
+
+
+def test_topk_gpu_and_cpu_paths_agree(monkeypatch):
+    """With a GPU faiss build the GPU index must return exactly the CPU
+    path's neighbors (exact search either way; exclusions honored via
+    over-fetch+filter on GPU, IDSelector on CPU). On faiss-cpu builds
+    both runs take the CPU path and the test still holds."""
+    from smartgallery_ai import vectors as V
+
+    conn = make_conn()
+    ids = [f"g{i:03d}" for i in range(200)]
+    add_files(conn, ids)
+    store = VectorStore(ephemeral=True)
+    rng = np.random.default_rng(9)
+    for fid in ids:
+        v = rng.standard_normal(32).astype(np.float32)
+        store.add(conn, fid, "semantic", "m", "v", v / np.linalg.norm(v), 1.0)
+    q = rng.standard_normal(32).astype(np.float32)
+
+    monkeypatch.setenv("AI_DAM_VECTOR_GPU", "1")
+    first = store.topk(conn, "semantic", q, 10, exclude=["g001", "g002"])
+    V._GENERATIONS.clear()
+    monkeypatch.setenv("AI_DAM_VECTOR_GPU", "0")
+    second = store.topk(conn, "semantic", q, 10, exclude=["g001", "g002"])
+
+    assert [f for f, _ in first] == [f for f, _ in second]
+    assert max(abs(a - b) for (_, a), (_, b) in zip(first, second)) < 1e-5
+    assert all(f not in ("g001", "g002") for f, _ in first)

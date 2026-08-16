@@ -41,6 +41,7 @@
     .aidam-face-list { display:flex; flex-direction:column; gap:6px; }
     .aidam-face-row { display:flex; align-items:center; gap:10px; background:#151515; border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; color:#ddd; }
     .aidam-face-swatch { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+    .aidam-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:baseline; }
 
     /* Detector comparison: two deployed pipelines over one frame.
        Solid box = the other lane found this face too (IoU >= 0.5);
@@ -93,17 +94,17 @@
 
         <!-- Header -->
         <div class="aidam-header-container">
-            <h3 style="margin:0; font-size:1.25rem; color:white; display:flex; align-items:center; gap:10px;">🧬 AI DAM <span style="font-size:0.75rem; background:var(--ai-color); color:#1a001a; padding:2px 6px; border-radius:4px;">Similar &middot; Faces &middot; Review &middot; Status</span></h3>
+            <h3 style="margin:0; font-size:1.25rem; color:white; display:flex; align-items:center; gap:10px;">AI DAM <span style="font-size:0.75rem; background:var(--ai-color); color:#1a001a; padding:2px 6px; border-radius:4px;">Similar &middot; Faces &middot; Review &middot; Status</span></h3>
             <button onclick="closeAidamPanel()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
         </div>
 
         <!-- Tab Bar -->
         <div class="aidam-tabbar">
-            <button type="button" id="aidam-tab-btn-similar" class="aidam-tab-btn aidam-tab-active" onclick="aidamSwitchTab('similar')">🧭 Similar</button>
-            <button type="button" id="aidam-tab-btn-faces" class="aidam-tab-btn" onclick="aidamSwitchTab('faces')">🙂 Faces</button>
-            <button type="button" id="aidam-tab-btn-review" class="aidam-tab-btn" onclick="aidamSwitchTab('review')">🩺 Review</button>
-            <button type="button" id="aidam-tab-btn-search" class="aidam-tab-btn" onclick="aidamSwitchTab('search')">🔎 Search</button>
-            <button type="button" id="aidam-tab-btn-status" class="aidam-tab-btn" onclick="aidamSwitchTab('status')">📊 Status</button>
+            <button type="button" id="aidam-tab-btn-similar" class="aidam-tab-btn aidam-tab-active" onclick="aidamSwitchTab('similar')">Similar</button>
+            <button type="button" id="aidam-tab-btn-faces" class="aidam-tab-btn" onclick="aidamSwitchTab('faces')">Faces</button>
+            <button type="button" id="aidam-tab-btn-review" class="aidam-tab-btn" onclick="aidamSwitchTab('review')">Review</button>
+            <button type="button" id="aidam-tab-btn-search" class="aidam-tab-btn" onclick="aidamSwitchTab('search')">Search</button>
+            <button type="button" id="aidam-tab-btn-status" class="aidam-tab-btn" onclick="aidamSwitchTab('status')">Status</button>
         </div>
 
         <!-- Body -->
@@ -137,7 +138,7 @@
                     <input type="search" id="aidam-search-input" placeholder="Describe what you're looking for — e.g. 'a red car at night'"
                            style="flex:1; background:#111; border:1px solid #444; border-radius:8px; color:#fff; padding:8px 12px; font-size:0.9rem;"
                            onkeydown="if (event.key === 'Enter') aidamRunSemanticSearch();">
-                    <button type="button" class="glass-btn" style="padding:8px 16px;" onclick="aidamRunSemanticSearch()">🔎 Search</button>
+                    <button type="button" class="glass-btn" style="padding:8px 16px;" onclick="aidamRunSemanticSearch()">Search</button>
                 </div>
                 <div id="aidam-search-content"></div>
             </div>
@@ -240,7 +241,7 @@
         const parts = [];
         if (String(prov || '') === 'downloading') parts.push('⏳ setting up');
         else if (String(prov || '').startsWith('failed')) parts.push('<span style="color:#ff6b6b;">setup failed</span>');
-        parts.push(worker.running ? (gpuDev ? '⚡ ' + escapeAidamHtml(gpuDev) : '🧮 cpu') : '<span style="color:#ff6b6b;">worker stopped</span>');
+        parts.push(worker.running ? (gpuDev ? escapeAidamHtml(gpuDev) : 'cpu') : '<span style="color:#ff6b6b;">worker stopped</span>');
         const errs = (worker.stats || {}).errors || 0;
         if (errs > 0) parts.push(`<span style="color:#e8a19a;">${errs} errors</span>`);
         // Cluster-hash backfill (workflow/prompt/model-set identities) runs in
@@ -250,7 +251,7 @@
             const ch = await (await fetch('/galleryout/api/cluster_hash_status')).json();
             if (ch.status === 'success' && (ch.running || ch.pending > 0)) {
                 const prog = (ch.running && ch.total > 0) ? `${ch.done}/${ch.total}` : `${ch.pending} queued`;
-                clusterLine = `<div><span style="color:#ffc107;">🧬 hashing cluster identities: ${prog}</span></div>`;
+                clusterLine = `<div><span style="color:#ffc107;">hashing cluster identities: ${prog}</span></div>`;
             }
         } catch (e) { /* status endpoint unavailable: hide the line */ }
         box.innerHTML = `<div>${line1}</div><div>${parts.join(' · ')}</div>${clusterLine}`;
@@ -306,8 +307,8 @@
     }
 
     function aidamSpinner() { return '<div class="aidam-status-msg">Loading…</div>'; }
-    function aidamDisabledMsg() { return '<div class="aidam-status-msg">🚫 The AI layer is disabled on this server. Ask an administrator to enable it (ENABLE_AI_DAM).</div>'; }
-    function aidamEmptyMsg(msg) { return `<div class="aidam-status-msg">🌙 ${escapeAidamHtml(msg || 'No data yet.')}</div>`; }
+    function aidamDisabledMsg() { return '<div class="aidam-status-msg">The AI layer is disabled on this server. Ask an administrator to enable it (ENABLE_AI_DAM).</div>'; }
+    function aidamEmptyMsg(msg) { return `<div class="aidam-status-msg">${escapeAidamHtml(msg || 'No data yet.')}</div>`; }
     function aidamErrorMsg(msg) { return `<div class="aidam-status-msg aidam-status-error">${escapeAidamHtml(msg)}</div>`; }
 
     // One /status fetch per panel open, shared by every tab's empty state.
@@ -417,7 +418,7 @@
         aidamRequestIndex();
         aidamStartIndexPoll();
         const status = await aidamFetchStatus();
-        return `<div class="aidam-status-msg">⚡ ${escapeAidamHtml(what)} — indexing this file now; results appear here automatically.${aidamIndexingProgressLine(status)}</div>`;
+        return `<div class="aidam-status-msg">${escapeAidamHtml(what)} — indexing this file now; results appear here automatically.${aidamIndexingProgressLine(status)}</div>`;
     }
 
     let aidamIndexPollTicks = 0;
@@ -434,7 +435,7 @@
                 aidamStopIndexPoll();
                 const panel = document.getElementById('aidam-tab-' + aidamActiveTab);
                 const msg = panel && panel.querySelector('.aidam-status-msg');
-                if (msg) msg.innerHTML = '⚠️ Still no results after several minutes — the worker may have hit an error on this file. Check the server log, then reopen this panel to retry.';
+                if (msg) msg.innerHTML = 'Still no results after several minutes — the worker may have hit an error on this file. Check the server log, then reopen this panel to retry.';
                 return;
             }
             aidamStatusCache = null;   // refresh the backlog numbers too
@@ -524,7 +525,7 @@
         if (prov.state === 'downloading') {
             html += aidamProvisionProgressHtml(prov);
         } else if (String(prov.state || '').startsWith('failed')) {
-            html += `<div class="aidam-status-msg aidam-status-error">⚠️ Auto-setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 300))}</div>`;
+            html += `<div class="aidam-status-msg aidam-status-error">Auto-setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 300))}</div>`;
         }
 
         html += '<span class="aidam-section-title">Ingest backlog</span><div class="aidam-meter-row">';
@@ -549,9 +550,9 @@
                     const totalMiB = parseFloat(card.vram);
                     const hot = totalMiB > 0 && usedMiB / totalMiB > 0.85;
                     vramTxt = `${escapeAidamHtml(card.vram_used)} used / ${escapeAidamHtml(card.vram)}`
-                        + (hot ? ' <b style="color:#ff6b6b;">⚠ VRAM pressure</b>' : '');
+                        + (hot ? ' <b style="color:#ff6b6b;">VRAM pressure</b>' : '');
                 }
-                html += `🎮 GPU${idx}: ${escapeAidamHtml(card.name || '?')} &middot; compute ${escapeAidamHtml(card.compute_capability || '?')} &middot; ${vramTxt}${active ? ' &middot; <b style="color:var(--ai-color);">in use</b>' : ''}<br>`;
+                html += `GPU${idx}: ${escapeAidamHtml(card.name || '?')} &middot; compute ${escapeAidamHtml(card.compute_capability || '?')} &middot; ${vramTxt}${active ? ' &middot; <b style="color:var(--ai-color);">in use</b>' : ''}<br>`;
             });
             html += `driver ${escapeAidamHtml(gpu.driver || '?')} (CUDA ${escapeAidamHtml(gpu.driver_cuda || '?')}) &middot; wheels ${escapeAidamHtml(String(gpu.torch_index || '').split('/').pop() || '?')}</div>`;
         }
@@ -561,15 +562,15 @@
             const up = backends[key];
             const dev = devices[key];
             const chip = up
-                ? `✅ ${escapeAidamHtml(key)}${dev ? ' on ' + escapeAidamHtml(dev) : ''}`
-                : `⭕ ${escapeAidamHtml(key)}`;
+                ? `<span class="aidam-dot" style="background:#34db98;"></span>${escapeAidamHtml(key)}${dev ? ' on ' + escapeAidamHtml(dev) : ''}`
+                : `<span class="aidam-dot" style="background:#555;"></span>${escapeAidamHtml(key)}`;
             html += `<span style="background:#151515; border:1px solid #333; border-radius:8px; padding:5px 10px; font-size:0.8rem; color:${up ? '#ddd' : 'var(--text-muted)'};">${chip}</span>`;
         });
         html += '</div>';
 
         html += `<span class="aidam-section-title">Worker</span>
             <div style="color:#ddd; font-size:0.85rem; line-height:1.7;">
-                ${worker.running ? '🟢 running' : '🔴 not running'}
+                ${worker.running ? '<span class="aidam-dot" style="background:#34db98;"></span>running' : '<span class="aidam-dot" style="background:#e74c3c;"></span>not running'}
                 &middot; cycles ${stats.cycles || 0}
                 &middot; priority queue ${worker.priority_queued || 0}
                 &middot; errors ${stats.errors || 0}
@@ -603,9 +604,9 @@
                 return aidamProvisionProgressHtml(prov);
             }
             if (String(prov.state || '').startsWith('failed')) {
-                return `<div class="aidam-status-msg">⚠️ Automatic setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 200))}. Run <code>python -m smartgallery_ai provision ${groupName}</code> on the server, then reopen this panel.</div>`;
+                return `<div class="aidam-status-msg">Automatic setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 200))}. Run <code>python -m smartgallery_ai provision ${groupName}</code> on the server, then reopen this panel.</div>`;
             }
-            return `<div class="aidam-status-msg">📦 The ${escapeAidamHtml(groupName)} model is not available yet. Restart the app and it installs itself automatically (packages and weights; AI_DAM_AUTO_PROVISION=true is the default), or run <code>python -m smartgallery_ai provision ${groupName}</code> on the server.</div>`;
+            return `<div class="aidam-status-msg">The ${escapeAidamHtml(groupName)} model is not available yet. Restart the app and it installs itself automatically (packages and weights; AI_DAM_AUTO_PROVISION=true is the default), or run <code>python -m smartgallery_ai provision ${groupName}</code> on the server.</div>`;
         }
         return aidamEmptyMsg(fallbackMsg);
     }
@@ -714,180 +715,28 @@
         return `<div class="aidam-bbox" style="left:${(x * 100).toFixed(2)}%; top:${(y * 100).toFixed(2)}%; width:${(w * 100).toFixed(2)}%; height:${(h * 100).toFixed(2)}%; border-color:${aidamFaceColor(idx)};"></div>`;
     }
 
-    // --- Detector comparison -------------------------------------------------
-    // Every installed detection lane over one frame. Overlay mode stacks all
-    // lanes on a single image with per-lane visibility and opacity; Lanes mode
-    // shows one image per lane. Solid box = matched in every other lane
-    // (IoU >= 0.5); dashed = this lane alone sees it.
+    // Faces view state: which landmark layer draws on the preview.
+    let aidamFacesLmk = 'kps';  // 'none' | 'kps' | 'dense'
 
-    const _AIDAM_CMP_LANE_COLORS = { yunet: '#e6a23c', scrfd: '#41d6a3' };
-    const _AIDAM_CMP_FALLBACK_COLORS = ['#3498db', '#e74c3c', '#9b59b6'];
-    let aidamCmpState = null;
-
-    function aidamCmpLaneColor(lane, idx) {
-        return _AIDAM_CMP_LANE_COLORS[lane] || _AIDAM_CMP_FALLBACK_COLORS[idx % _AIDAM_CMP_FALLBACK_COLORS.length];
+    function aidamFacesSetLmk(mode) {
+        aidamFacesLmk = mode;
+        aidamLoadFaces();
     }
 
-    function aidamCmpIou(a, b) {
-        const ax2 = a[0] + a[2], ay2 = a[1] + a[3], bx2 = b[0] + b[2], by2 = b[1] + b[3];
-        const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(a[0], b[0]));
-        const iy = Math.max(0, Math.min(ay2, by2) - Math.max(a[1], b[1]));
-        const inter = ix * iy;
-        const union = a[2] * a[3] + b[2] * b[3] - inter;
-        return union > 0 ? inter / union : 0;
-    }
-
-    function aidamCmpMarkConsensus(lanes) {
-        const names = Object.keys(lanes).filter(n => lanes[n].faces);
-        names.forEach(name => {
-            (lanes[name].faces || []).forEach(f => {
-                f.consensus = names.every(other => {
-                    if (other === name) return true;
-                    return (lanes[other].faces || []).some(g => aidamCmpIou(f.bbox, g.bbox) >= 0.5);
-                });
+    function aidamFaceOverlay(f, idx) {
+        const color = aidamFaceColor(idx);
+        let html = aidamBboxDiv(f.bbox, idx);
+        if (aidamFacesLmk !== 'none') {
+            (f.landmarks || []).forEach(pt => {
+                html += `<div class="aidam-cmp-kp" style="left:${(pt[0] * 100).toFixed(2)}%; top:${(pt[1] * 100).toFixed(2)}%; background:${color};"></div>`;
             });
-        });
-        return names;
-    }
-
-    function aidamCmpOverlayLayer(lane, color, faces, cfg) {
-        const boxes = faces.map(f => {
-            const [x, y, w, h] = f.bbox;
-            const cls = f.consensus ? 'aidam-bbox' : 'aidam-bbox aidam-bbox--miss';
-            const kps = (f.landmarks || []).map(pt =>
-                `<div class="aidam-cmp-kp" style="left:${(pt[0] * 100).toFixed(2)}%; top:${(pt[1] * 100).toFixed(2)}%; background:${color};"></div>`).join('');
-            return `<div class="${cls}" style="left:${(x * 100).toFixed(2)}%; top:${(y * 100).toFixed(2)}%; width:${(w * 100).toFixed(2)}%; height:${(h * 100).toFixed(2)}%; border-color:${color};"></div>${kps}`;
-        }).join('');
-        const style = `opacity:${cfg.alpha}; display:${cfg.on ? 'block' : 'none'};`;
-        return `<div class="aidam-cmp-layer" data-lane="${lane}" style="position:absolute; inset:0; pointer-events:none; ${style}">${boxes}</div>`;
-    }
-
-    function aidamCmpSetLane(lane, prop, value) {
-        const cfg = aidamCmpState.cfg[lane];
-        if (prop === 'on') cfg.on = value;
-        if (prop === 'alpha') cfg.alpha = value;
-        document.querySelectorAll(`.aidam-cmp-layer[data-lane="${lane}"]`).forEach(el => {
-            el.style.opacity = cfg.alpha;
-            el.style.display = cfg.on ? 'block' : 'none';
-        });
-    }
-
-    function aidamCmpSetMode(mode) {
-        aidamCmpState.mode = mode;
-        aidamCmpRender();
-    }
-
-    function aidamCmpRender() {
-        const box = document.getElementById('aidam-faces-content');
-        const { data, mode, cfg } = aidamCmpState;
-        const lanes = data.lanes || {};
-        const laneNames = Object.keys(lanes);
-        const img = `/galleryout/thumbnail/${encodeURIComponent(aidamCurrentFileId)}`;
-
-        let html = aidamBackButton('aidamLoadFaces');
-        html += `<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-            <h5 style="margin:0; color:#fff;">Detector comparison</h5>
-            <div class="aidam-toggle-group" style="margin:0;">
-                <button type="button" class="aidam-toggle-btn ${mode === 'overlay' ? 'aidam-toggle-active' : ''}" onclick="aidamCmpSetMode('overlay')">Overlay</button>
-                <button type="button" class="aidam-toggle-btn ${mode === 'lanes' ? 'aidam-toggle-active' : ''}" onclick="aidamCmpSetMode('lanes')">Lanes</button>
-            </div>
-        </div>`;
-
-        const laneHead = (name, i) => {
-            const lane = lanes[name];
-            const color = aidamCmpLaneColor(name, i);
-            if (lane.error) {
-                return `<div class="aidam-cmp-lane" style="--lane-color:${color};">
-                    <span class="aidam-cmp-lane-name">${escapeAidamHtml(name)}</span>
-                    <div class="aidam-status-msg aidam-status-error" style="margin-top:8px;">${escapeAidamHtml(lane.error)}</div>
-                </div>`;
-            }
-            return null;
-        };
-
-        if (mode === 'overlay') {
-            html += `<div class="aidam-preview-wrap" style="max-width:none;">
-                <img src="${img}" alt="">
-                ${laneNames.map((n, i) => lanes[n].faces
-                    ? aidamCmpOverlayLayer(n, aidamCmpLaneColor(n, i), lanes[n].faces, cfg[n]) : '').join('')}
-            </div>`;
-            html += laneNames.map((n, i) => {
-                const lane = lanes[n];
-                const color = aidamCmpLaneColor(n, i);
-                if (lane.error) return laneHead(n, i);
-                const count = lane.faces.length;
-                return `<div class="aidam-face-row" style="border-left:3px solid ${color};">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                        <input type="checkbox" ${cfg[n].on ? 'checked' : ''} onchange="aidamCmpSetLane('${n}', 'on', this.checked)">
-                        <span class="aidam-cmp-lane-name" style="--lane-color:${color};">${escapeAidamHtml(n)}</span>
-                    </label>
-                    <span style="color:var(--text-muted); font-size:0.75rem;">${count} face${count === 1 ? '' : 's'} - ${lane.elapsed_ms} ms</span>
-                    <input type="range" min="0.15" max="1" step="0.05" value="${cfg[n].alpha}" style="margin-left:auto; width:110px;"
-                           oninput="aidamCmpSetLane('${n}', 'alpha', this.value)" title="Overlay opacity">
-                </div>`;
-            }).join('');
-        } else {
-            html += `<div class="aidam-cmp-grid">` + laneNames.map((n, i) => {
-                const lane = lanes[n];
-                const color = aidamCmpLaneColor(n, i);
-                if (lane.error) return laneHead(n, i);
-                const chips = lane.faces.map(f =>
-                    `<span class="aidam-cmp-chip ${f.consensus ? '' : 'aidam-cmp-chip--miss'}" style="border-color:${color};">${Math.round(f.det_score * 100)}%</span>`).join('');
-                return `<div class="aidam-cmp-lane" style="--lane-color:${color};">
-                    <span class="aidam-cmp-lane-name">${escapeAidamHtml(n)}</span>
-                    <div class="aidam-cmp-lane-meta">${escapeAidamHtml(lane.model)} - ${lane.faces.length} face${lane.faces.length === 1 ? '' : 's'} - ${lane.elapsed_ms} ms</div>
-                    <div class="aidam-preview-wrap">
-                        <img src="${img}" alt="">
-                        ${aidamCmpOverlayLayer(n, color, lane.faces, { on: true, alpha: 1 })}
-                    </div>
-                    <div class="aidam-cmp-scores">${chips}</div>
-                </div>`;
-            }).join('') + `</div>`;
         }
-
-        const okLanes = laneNames.filter(n => lanes[n].faces);
-        if (okLanes.length > 1) {
-            const agreed = (lanes[okLanes[0]].faces || []).filter(f => f.consensus).length;
-            const only = okLanes.map(n => {
-                const solo = lanes[n].faces.filter(f => !f.consensus).length;
-                return solo ? `<span><b>${solo}</b> only ${escapeAidamHtml(n)}</span>` : '';
-            }).join('');
-            html += `<div class="aidam-cmp-strip"><span><b>${agreed}</b> agreed by all lanes</span>${only}</div>`;
+        if (aidamFacesLmk === 'dense') {
+            (((f.attributes || {}).landmark_2d_106) || []).forEach(pt => {
+                html += `<div class="aidam-cmp-kp" style="left:${(pt[0] * 100).toFixed(2)}%; top:${(pt[1] * 100).toFixed(2)}%; background:${color}; width:2px; height:2px; margin:-1px 0 0 -1px; opacity:0.65;"></div>`;
+            });
         }
-
-        const inv = data.installed || [];
-        if (inv.length) {
-            html += `<span class="aidam-section-title">Installed pipelines</span><div class="aidam-face-list">`;
-            html += inv.map(p => `
-                <div class="aidam-face-row" style="justify-content:space-between; flex-wrap:wrap;">
-                    <span style="font-weight:700;">${escapeAidamHtml(p.name)}${p.active ? ' <span style="color:var(--ai-color); font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:1px;">active</span>' : ''}</span>
-                    <span style="color:var(--text-muted); font-size:0.72rem;">${p.weights_present ? escapeAidamHtml(p.model_version) : 'weights not installed'}</span>
-                    <span style="color:var(--text-muted); font-size:0.7rem; font-family:monospace;">${escapeAidamHtml(p.selector)}</span>
-                </div>`).join('');
-            html += `</div>`;
-        }
-        box.innerHTML = html;
-    }
-
-    async function aidamCompareDetectors() {
-        const box = document.getElementById('aidam-faces-content');
-        box.innerHTML = aidamSpinner();
-        try {
-            const res = await fetch(`/galleryout/api/aidam/faces/compare/${encodeURIComponent(aidamCurrentFileId)}`);
-            const data = await res.json();
-            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
-            if (data.error) {
-                box.innerHTML = aidamBackButton('aidamLoadFaces') + aidamErrorMsg(escapeAidamHtml(data.error));
-                return;
-            }
-            aidamCmpMarkConsensus(data.lanes || {});
-            const cfg = {};
-            Object.keys(data.lanes || {}).forEach(n => { cfg[n] = { on: true, alpha: 1 }; });
-            aidamCmpState = { data, mode: 'overlay', cfg };
-            aidamCmpRender();
-        } catch (e) {
-            box.innerHTML = aidamBackButton('aidamLoadFaces') + aidamErrorMsg('Detector comparison failed.');
-        }
+        return html;
     }
 
     async function aidamLoadFaces() {
@@ -913,29 +762,40 @@
             }
             aidamMarkPending('faces', false);
 
-            let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:6px;">
+            const hasDense = faces.some(f => ((f.attributes || {}).landmark_2d_106 || []).length);
+            let html = `<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
                 <span style="color:var(--text-muted); font-size:0.85rem;">${faces.length} face${faces.length === 1 ? '' : 's'} detected</span>
-                <span style="display:flex; gap:6px;">
-                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamCompareDetectors()">Compare detectors</button>
-                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamBrowseAllClusters()">Browse all clusters</button>
+                <span style="display:flex; gap:6px; align-items:center;">
+                    <span class="aidam-toggle-group" style="margin:0;">
+                        <button type="button" class="aidam-toggle-btn ${aidamFacesLmk === 'none' ? 'aidam-toggle-active' : ''}" onclick="aidamFacesSetLmk('none')">Boxes</button>
+                        <button type="button" class="aidam-toggle-btn ${aidamFacesLmk === 'kps' ? 'aidam-toggle-active' : ''}" onclick="aidamFacesSetLmk('kps')">5-pt</button>
+                        ${hasDense ? `<button type="button" class="aidam-toggle-btn ${aidamFacesLmk === 'dense' ? 'aidam-toggle-active' : ''}" onclick="aidamFacesSetLmk('dense')">Dense</button>` : ''}
+                    </span>
+                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="window.open('/galleryout/aidam?view=compare&file=' + encodeURIComponent(aidamCurrentFileId), '_blank')">Compare detectors</button>
+                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="window.open('/galleryout/aidam#faces', '_blank')">AI dashboard</button>
                 </span>
             </div>`;
 
             html += `<div class="aidam-preview-wrap" id="aidam-faces-preview">
                 <img src="/galleryout/thumbnail/${encodeURIComponent(aidamCurrentFileId)}" alt="">
-                ${faces.map((f, idx) => aidamBboxDiv(f.bbox, idx)).join('')}
+                ${faces.map((f, idx) => aidamFaceOverlay(f, idx)).join('')}
             </div>`;
 
             html += '<div class="aidam-face-list">';
             faces.forEach((f, idx) => {
                 const det = (f.det_score === null || f.det_score === undefined) ? 'n/a' : Math.round(f.det_score * 100) + '%';
+                const meta = [`det ${det}`];
+                if (f.sex) meta.push(`${f.sex} ${f.age ?? ''}`.trim());
+                if (f.pose && f.pose.yaw !== null && f.pose.yaw !== undefined) {
+                    meta.push(`pitch ${Math.round(f.pose.pitch)} / yaw ${Math.round(f.pose.yaw)} / roll ${Math.round(f.pose.roll)}`);
+                }
                 const clusterBtn = (f.cluster_id === null || f.cluster_id === undefined)
                     ? `<span style="margin-left:auto; color:var(--text-muted); font-size:0.75rem;">unclustered</span>`
                     : `<button type="button" class="glass-btn" style="padding:2px 8px; font-size:0.75rem; margin-left:auto;" onclick="aidamViewCluster(${f.cluster_id})">View cluster</button>`;
                 html += `
                     <div class="aidam-face-row">
                         <span class="aidam-face-swatch" style="background:${aidamFaceColor(idx)};"></span>
-                        <span>Face #${escapeAidamHtml(f.face_id)} &middot; det ${det}</span>
+                        <span>Face #${escapeAidamHtml(f.face_id)} &middot; ${escapeAidamHtml(meta.join(' \u00b7 '))}</span>
                         ${clusterBtn}
                     </div>`;
             });
@@ -960,10 +820,10 @@
             }
             const members = data.members || [];
             let html = aidamBackButton(aidamCurrentFileId ? 'aidamLoadFaces' : 'aidamBrowseAllClusters');
-            html += `<h5 style="margin:0 0 10px 0; color:#fff;">🙂 ${escapeAidamHtml(data.cluster.label || ('Cluster #' + data.cluster.cluster_id))}
+            html += `<h5 style="margin:0 0 10px 0; color:#fff;">${escapeAidamHtml(data.cluster.label || ('Cluster #' + data.cluster.cluster_id))}
                 <span style="color:var(--text-muted); font-weight:normal; font-size:0.8rem;">(${data.cluster.size} face${data.cluster.size === 1 ? '' : 's'})</span>
                 <button type="button" class="glass-btn" style="padding:2px 8px; font-size:0.75rem; margin-left:6px;"
-                        onclick="aidamRenameCluster(${data.cluster.cluster_id}, this)" title="Name this person/character">✏️ Rename</button></h5>`;
+                        onclick="aidamRenameCluster(${data.cluster.cluster_id}, this)" title="Name this person/character">Rename</button></h5>`;
             if (members.length === 0) {
                 html += aidamEmptyMsg('No members in this cluster.');
             } else {
@@ -1008,7 +868,7 @@
                 const sample = (c.sample_file_ids && c.sample_file_ids.length > 0) ? c.sample_file_ids[0] : null;
                 html += `
                     <div class="aidam-cluster-card" onclick="aidamViewCluster(${c.cluster_id})">
-                        ${sample ? `<img src="/galleryout/thumbnail/${encodeURIComponent(sample)}" loading="lazy" alt="">` : '<div class="aidam-cluster-noimg">🙂</div>'}
+                        ${sample ? `<img src="/galleryout/thumbnail/${encodeURIComponent(sample)}" loading="lazy" alt="">` : '<div class="aidam-cluster-noimg">&mdash;</div>'}
                         <div class="aidam-cluster-label">${escapeAidamHtml(c.label || ('Cluster #' + c.cluster_id))}</div>
                         <div class="aidam-cluster-size">${c.size} face${c.size === 1 ? '' : 's'}</div>
                     </div>`;
@@ -1038,7 +898,7 @@
         const overlay = document.getElementById('aidam-mask-overlay');
         if (!overlay) return;
         const isShowingThis = overlay.style.display !== 'none' && overlay.dataset.maskUrl === maskUrl;
-        document.querySelectorAll('.aidam-mask-toggle-btn').forEach(b => { b.textContent = '🎭 Show mask'; });
+        document.querySelectorAll('.aidam-mask-toggle-btn').forEach(b => { b.textContent = 'Show mask'; });
         if (isShowingThis) {
             overlay.style.display = 'none';
             overlay.removeAttribute('src');
@@ -1047,7 +907,7 @@
             overlay.src = maskUrl;
             overlay.style.display = 'block';
             overlay.dataset.maskUrl = maskUrl;
-            if (btnEl) btnEl.textContent = '🎭 Hide mask';
+            if (btnEl) btnEl.textContent = 'Hide mask';
         }
     }
 
@@ -1075,7 +935,7 @@
             if (data.note) {
                 box.innerHTML = await aidamBackendAwareEmpty('semantic', 'semantic', data.note);
             } else if (!data.results || data.results.length === 0) {
-                box.innerHTML = aidamEmptyMsg(`Nothing close to "${escapeAidamHtml(query)}" yet — results grow as embedding indexing progresses (see 📊 Status).`);
+                box.innerHTML = aidamEmptyMsg(`Nothing close to "${escapeAidamHtml(query)}" yet — results grow as embedding indexing progresses (see Status).`);
             } else {
                 box.innerHTML = `<div class="aidam-thumb-grid">${data.results.map(r => aidamThumbCard(r.file_id, aidamFormatScore(r.score))).join('')}</div>`;
             }
@@ -1105,11 +965,11 @@
             if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
             const groups = data.groups || [];
             if (groups.length === 0) {
-                box.innerHTML = aidamEmptyMsg('No exact duplicates in the gallery (among hashed files — see 📊 Status for hashing progress).');
+                box.innerHTML = aidamEmptyMsg('No exact duplicates in the gallery (among hashed files — see Status for hashing progress).');
                 return;
             }
             let html = `<div style="color:#ddd; font-size:0.9rem; margin-bottom:12px;">
-                ♻️ <b>${data.group_count}</b> duplicate group${data.group_count === 1 ? '' : 's'} ·
+                <b>${data.group_count}</b> duplicate group${data.group_count === 1 ? '' : 's'} ·
                 <b>${data.redundant_files}</b> redundant file${data.redundant_files === 1 ? '' : 's'} ·
                 <b>${aidamFormatBytes(data.total_bytes_reclaimable)}</b> reclaimable (keep one copy of each)
             </div>`;
@@ -1150,7 +1010,7 @@
             } else {
                 html += `<div class="aidam-thumb-grid">${reviews.map(r => {
                     const q = (r.quality === null || r.quality === undefined) ? 'n/a' : Math.round(r.quality * 10) + '/10';
-                    const badge = `<span class="aidam-badge-near" title="${escapeAidamHtml(r.summary || '')}">${r.finding_count > 0 ? '⚠ ' + r.finding_count + ' · ' : ''}${q}</span>`;
+                    const badge = `<span class="aidam-badge-near" title="${escapeAidamHtml(r.summary || '')}">${r.finding_count > 0 ? r.finding_count + ' · ' : ''}${q}</span>`;
                     return aidamThumbCard(r.file_id, null, badge);
                 }).join('')}</div>`;
             }
@@ -1180,14 +1040,14 @@
         const sevColor = _AIDAM_SEVERITY_COLORS[(f.severity || '').toLowerCase()] || '#888';
         const confShown = (f.confidence === null || f.confidence === undefined) ? 'n/a' : Math.round(f.confidence * 100) + '%';
         const scopeChip = f.localizable
-            ? (f.mask_url ? `<button type="button" class="aidam-mask-toggle-btn" onclick="aidamToggleMask('${f.mask_url}', this)">🎭 Show mask</button>` : '')
+            ? (f.mask_url ? `<button type="button" class="aidam-mask-toggle-btn" onclick="aidamToggleMask('${f.mask_url}', this)">Show mask</button>` : '')
             : `<span class="aidam-chip-global">global</span>`;
         const feedback = f.finding_id ? `
             <span style="display:inline-flex; gap:2px; flex-shrink:0;">
                 <button type="button" title="Finding is correct" style="background:none; border:none; cursor:pointer; font-size:0.85rem;"
-                        onclick="aidamSendFeedback('finding', ${f.finding_id}, 'accept', this)">👍</button>
+                        onclick="aidamSendFeedback('finding', ${f.finding_id}, 'accept', this)">Accept</button>
                 <button type="button" title="Finding is wrong (false positive)" style="background:none; border:none; cursor:pointer; font-size:0.85rem;"
-                        onclick="aidamSendFeedback('finding', ${f.finding_id}, 'false_positive', this)">👎</button>
+                        onclick="aidamSendFeedback('finding', ${f.finding_id}, 'false_positive', this)">False positive</button>
             </span>` : '';
         return `
             <div class="aidam-finding-row">

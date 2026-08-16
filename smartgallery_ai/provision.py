@@ -549,6 +549,32 @@ def _run_pip_operation(pip_args: list, uv_args: list, timeout: int) -> None:
         f"pip {' '.join(pip_args)} failed: {err.strip()[-400:]}")
 
 
+_ort_gpu_cache: list = []  # memoized [bool-or-None]
+
+
+def _ort_cuda_reinstall_needed():
+    """Whether the installed onnxruntime build lacks the CUDA execution
+    provider, probed in a CHILD process (importing it here would lock the
+    DLLs the swap needs to replace). False when the package is absent or
+    the probe fails. Memoized."""
+    if _ort_gpu_cache:
+        return _ort_gpu_cache[0]
+    value = False
+    if importlib.util.find_spec("onnxruntime") is not None:
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c",
+                 "import onnxruntime; print(int('CUDAExecutionProvider' in "
+                 "onnxruntime.get_available_providers()))"],
+                capture_output=True, text=True, timeout=120)
+            if proc.returncode == 0:
+                value = proc.stdout.strip() == "0"
+        except (OSError, subprocess.SubprocessError, ValueError):
+            value = False
+    _ort_gpu_cache.append(value)
+    return value
+
+
 def _default_pip_runner(args: list) -> None:
     """Install one requirement into the current interpreter's environment
     (works in pip-less uv venvs too; see _run_pip_operation). uv spells
@@ -789,6 +815,37 @@ def provision(
                         "Fastest fix: recreate the venv on Python 3.12 "
                         "(uv venv -p 3.12) and restart — everything "
                         f"reinstalls itself. Details: {str(exc)[-160:]}")
+        # ORT GPU self-heal, BEST-EFFORT: the faces group ships CPU
+        # onnxruntime; on an NVIDIA box swap it for onnxruntime-gpu so
+        # the insightface pipeline's sessions get CUDAExecutionProvider
+        # (faces._ort_providers picks it up; ORT falls back to CPU
+        # per-session if the EP cannot initialize). The two packages
+        # provide the same module, so the CPU build is removed first.
+        if (cuda_hardware_present()
+                and any(req == "onnxruntime"
+                        for g in groups for _, req in g.runtime)
+                and _ort_cuda_reinstall_needed()):
+            if "onnxruntime" in sys.modules:
+                log("  ! onnxruntime is loaded in this process but is a "
+                    "CPU-only build; restart the app to attempt the CUDA swap")
+            else:
+                log("  ~ swapping onnxruntime for onnxruntime-gpu "
+                    "(insightface pipeline on GPU)")
+                emit({"kind": "runtime", "phase": "start",
+                      "item": "onnxruntime-gpu swap"})
+                try:
+                    _default_pip_uninstaller(["onnxruntime"])
+                    (pip_runner or _default_pip_runner)(["onnxruntime-gpu"])
+                    importlib.invalidate_caches()
+                    _ort_gpu_cache.clear()
+                    installed.append("onnxruntime-gpu")
+                    log("  + onnxruntime-gpu installed")
+                except ProvisionError as exc:
+                    log("  ! onnxruntime-gpu swap failed; restoring the CPU "
+                        f"build. Details: {str(exc)[-160:]}")
+                    (pip_runner or _default_pip_runner)(["onnxruntime"])
+                emit({"kind": "runtime", "phase": "done",
+                      "item": "onnxruntime-gpu swap"})
         # Vendored GPU faiss (vendor/faiss-gpu-win64) links the CUDA-13
         # runtime DLLs, which are not vendored (GitHub's 100MB file cap);
         # the nvidia wheels carry them (nvidia/<pkg>/bin/x86_64/). Install

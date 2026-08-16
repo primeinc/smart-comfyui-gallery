@@ -673,7 +673,7 @@ def test_get_face_backend_auto_prefers_insightface(tmp_path, monkeypatch):
 
     class _FakeInsight(F.FaceBackend):
         model_id = "insightface/antelopev2"
-        model_version = "scrfd10g+glintr100-v1"
+        model_version = "scrfd10g+glintr100-v2"
 
         def __init__(self, models_dir, min_det_score, min_face_px):
             pass
@@ -747,3 +747,52 @@ def test_compare_detectors_reports_every_lane(tmp_path, monkeypatch):
     assert out["lanes"]["yunet"]["faces"][0]["landmarks"] == [(0.15, 0.15)]
     assert "antelopev2" in out["lanes"]["scrfd"]["error"]
     assert len(out["installed"]) == 3
+
+
+# --- face attributes (genderage) ----------------------------------------------
+
+
+def test_replace_faces_round_trips_attributes():
+    """Scalars land in typed, comparable columns; structured geometry
+    stays as normalized JSON in `attributes`."""
+    conn = make_conn()
+    add_files(conn, ["f1"])
+    det = detection(seed=1)
+    det.attributes = {"age": 27, "sex": "F",
+                      "pose": {"pitch": -3.1, "yaw": 12.5, "roll": 0.4},
+                      "landmark_2d_106": [[0.1, 0.2], [0.3, 0.4]]}
+    replace_faces_for_file(conn, "f1", [det, detection(seed=2)], "m1", "v1", 1000.0, 2000.0)
+    rows = conn.execute(
+        "SELECT attributes, age, sex, pose_pitch, pose_yaw, pose_roll "
+        "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
+        ("f1",)).fetchall()
+    import json as _json
+    attrs, age, sex, pitch, yaw, roll = rows[0]
+    assert (age, sex) == (27, "F") and isinstance(age, int)
+    assert (pitch, yaw, roll) == (-3.1, 12.5, 0.4)
+    assert _json.loads(attrs) == {"landmark_2d_106": [[0.1, 0.2], [0.3, 0.4]]}
+    assert rows[1] == (None, None, None, None, None, None)
+    # analyzable in plain SQL, not locked in a blob
+    assert conn.execute(
+        "SELECT COUNT(*) FROM ai_face_instances WHERE ABS(pose_yaw) > 10"
+    ).fetchone()[0] == 1
+
+
+def test_schema_migration_adds_attributes_column():
+    """A database created before the column existed gains it on init."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
+                 " mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT)")
+    init_schema(conn)
+    conn.execute("ALTER TABLE ai_face_instances RENAME TO t_old")
+    conn.execute("""CREATE TABLE ai_face_instances (
+        face_id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT NOT NULL,
+        bbox_x REAL NOT NULL, bbox_y REAL NOT NULL, bbox_w REAL NOT NULL,
+        bbox_h REAL NOT NULL, landmarks TEXT, det_score REAL, embedding BLOB,
+        dim INTEGER, model_id TEXT NOT NULL, model_version TEXT NOT NULL,
+        source_mtime REAL NOT NULL, computed_at REAL NOT NULL,
+        cluster_id INTEGER)""")
+    conn.execute("DROP TABLE t_old")
+    init_schema(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ai_face_instances)")}
+    assert "attributes" in cols

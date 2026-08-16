@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI DAM — SmartGallery</title>
+<style>
+    /* Instrument-desk tokens: dark ground, mono data voice, one green
+       data accent; amber/green are the detector lane colors shared with
+       the per-file modal. */
+    :root {
+        --ground: #0b0c0e; --panel: #141518; --panel-2: #1a1c20;
+        --line: #26282c; --ink: #e8e6e2; --muted: #8a8d93;
+        --data: #41d6a3; --lane-b: #e6a23c; --alert: #e05252;
+        --identity: #c73fd4;
+        --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--ground); color: var(--ink);
+           font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+    a { color: var(--data); text-decoration: none; }
+
+    .shell { display: grid; grid-template-columns: 210px 1fr; min-height: 100vh; }
+    @media (max-width: 760px) { .shell { grid-template-columns: 1fr; } .rail { position: static; height: auto; } }
+
+    .rail { border-right: 1px solid var(--line); padding: 20px 0; position: sticky; top: 0; height: 100vh; }
+    .rail h1 { font-size: 0.95rem; letter-spacing: 2px; text-transform: uppercase;
+               margin: 0 0 4px 0; padding: 0 20px; }
+    .rail .sub { color: var(--muted); font-size: 0.72rem; padding: 0 20px; margin-bottom: 22px; }
+    .rail a.nav { display: block; padding: 9px 20px; color: var(--muted);
+                  border-left: 3px solid transparent; font-weight: 600; font-size: 0.85rem; }
+    .rail a.nav:hover { color: var(--ink); background: rgba(255,255,255,0.03); }
+    .rail a.nav.active { color: var(--ink); border-left-color: var(--data); background: rgba(65,214,163,0.06); }
+    .rail .back { margin-top: 26px; }
+
+    main { padding: 26px 30px 60px 30px; max-width: 1200px; }
+    section { display: none; }
+    section.active { display: block; }
+    h2 { font-size: 1.05rem; margin: 0 0 4px 0; }
+    .lede { color: var(--muted); font-size: 0.82rem; margin: 0 0 20px 0; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 22px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+    .card .k { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
+    .card .v { font-family: var(--mono); font-size: 1.45rem; margin-top: 2px; }
+    .card .v small { font-size: 0.75rem; color: var(--muted); }
+
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+             padding: 16px 18px; margin-bottom: 18px; }
+    .panel h3 { margin: 0 0 12px 0; font-size: 0.75rem; text-transform: uppercase;
+                letter-spacing: 1.5px; color: var(--muted); }
+
+    /* the signature: every aggregate is a data-bar row */
+    .bar-row { display: grid; grid-template-columns: minmax(90px, 1fr) 3fr 64px;
+               gap: 10px; align-items: center; padding: 3px 0; font-size: 0.82rem; }
+    .bar-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-row .bar { height: 10px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+    .bar-row .bar i { display: block; height: 100%; background: var(--data); }
+    .bar-row .n { font-family: var(--mono); text-align: right; color: var(--muted); }
+
+    .meter { margin: 8px 0; }
+    .meter .mk { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 3px; }
+    .meter .mk b { font-family: var(--mono); font-weight: 400; }
+    .meter .track { height: 8px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+    .meter .track i { display: block; height: 100%; background: var(--data); }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--muted); }
+    .btn { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+           border-radius: 6px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .btn:hover { border-color: var(--data); }
+    .btn.active { background: var(--data); color: #06231a; border-color: var(--data); }
+    input[type="text"] { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+           border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; }
+
+    /* faces / clusters */
+    .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+    .cluster-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+                    overflow: hidden; cursor: pointer; text-align: center; }
+    .cluster-card:hover { border-color: var(--data); }
+    .cluster-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
+    .cluster-card .cl { font-size: 0.78rem; padding: 6px 6px 2px 6px; font-weight: 600; }
+    .cluster-card .cs { font-size: 0.7rem; color: var(--muted); padding-bottom: 8px; }
+    .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+    .thumb-grid img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 6px;
+                      border: 1px solid var(--line); display: block; }
+
+    /* compare */
+    .preview { position: relative; border-radius: 8px; overflow: hidden; background: #000; }
+    .preview img { width: 100%; display: block; }
+    .bbox { position: absolute; border: 2px solid; border-radius: 2px; pointer-events: none; }
+    .bbox.miss { border-style: dashed; }
+    .kp { position: absolute; width: 4px; height: 4px; border-radius: 50%; margin: -2px 0 0 -2px; pointer-events: none; }
+    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .cmp-grid { grid-template-columns: 1fr; } }
+    .lane { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+            padding: 12px; border-top: 3px solid var(--lane-color, #666); }
+    .lane .ln { color: var(--lane-color); font-weight: 800; font-size: 0.75rem;
+                text-transform: uppercase; letter-spacing: 1px; }
+    .lane .lm { color: var(--muted); font-size: 0.72rem; margin: 2px 0 10px 0; word-break: break-all; }
+    .chip { font-size: 0.72rem; background: var(--panel); border: 1px solid var(--line);
+            border-radius: 6px; padding: 2px 8px; margin: 2px 4px 0 0; display: inline-block; font-family: var(--mono); }
+    .chip.miss { border-style: dashed; }
+    .strip { margin-top: 14px; padding: 10px 14px; background: var(--panel-2); border: 1px solid var(--line);
+             border-radius: 8px; font-size: 0.85rem; display: flex; gap: 18px; flex-wrap: wrap; }
+    .status-msg { padding: 22px; text-align: center; color: var(--muted); border: 1px dashed var(--line);
+                  border-radius: 8px; font-size: 0.9rem; }
+    .lane-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+                     padding: 8px 0; font-size: 0.82rem; }
+    @media (prefers-reduced-motion: no-preference) {
+        section.active { animation: rise 0.18s ease-out; }
+        @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+    }
+</style>
+</head>
+<body>
+<div class="shell">
+    <nav class="rail">
+        <h1>AI DAM</h1>
+        <div class="sub">machine-tracked gallery data</div>
+        <a class="nav" href="#status" data-view="status">Status</a>
+        <a class="nav" href="#generation" data-view="generation">Generation</a>
+        <a class="nav" href="#faces" data-view="faces">Faces</a>
+        <a class="nav" href="#compare" data-view="compare">Detector compare</a>
+        <a class="nav back" href="/galleryout/">Back to gallery</a>
+    </nav>
+    <main>
+        <section id="view-status">
+            <h2>Pipeline status</h2>
+            <p class="lede">Indexing progress, backends, and hardware as the worker reports them.</p>
+            <div class="cards" id="status-cards"></div>
+            <div class="grid2">
+                <div class="panel"><h3>Indexing</h3><div id="status-meters"></div></div>
+                <div class="panel"><h3>Backends and hardware</h3><div id="status-backends" class="mono" style="font-size:0.82rem;"></div></div>
+            </div>
+        </section>
+
+        <section id="view-generation">
+            <h2>Generation parameters</h2>
+            <p class="lede">First-class typed metadata imported from every generator's first-party shape. Search operators: <span class="mono">neg: tool: model: sampler: scheduler: seed: steps: cfg:</span></p>
+            <div class="cards" id="gen-cards"></div>
+            <div class="grid2">
+                <div class="panel"><h3>By tool</h3><div id="gen-tools"></div></div>
+                <div class="panel"><h3>Top models</h3><div id="gen-models"></div></div>
+                <div class="panel"><h3>Samplers</h3><div id="gen-samplers"></div></div>
+                <div class="panel"><h3>Steps</h3><div id="gen-steps"></div></div>
+                <div class="panel"><h3>CFG</h3><div id="gen-cfg"></div></div>
+                <div class="panel"><h3>Native sizes</h3><div id="gen-sizes"></div></div>
+            </div>
+        </section>
+
+        <section id="view-faces">
+            <h2>Face clusters</h2>
+            <p class="lede">Similarity clusters of generated faces — browsing convenience, never identity claims.</p>
+            <div id="faces-content"></div>
+        </section>
+
+        <section id="view-compare">
+            <h2>Detector comparison</h2>
+            <p class="lede">Every installed pipeline over one frame. Solid box: all lanes agree (IoU &ge; 0.5). Dashed: one lane alone sees it.</p>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
+                <input type="text" id="cmp-file" placeholder="file id" style="width:280px;" value="{{ file_id }}">
+                <button class="btn" onclick="cmpRun()">Run</button>
+                <span style="flex:1"></span>
+                <span id="cmp-mode-group">
+                    <button class="btn" id="cmp-mode-overlay" onclick="cmpSetMode('overlay')">Overlay</button>
+                    <button class="btn" id="cmp-mode-lanes" onclick="cmpSetMode('lanes')">Lanes</button>
+                </span>
+            </div>
+            <div id="cmp-content"><div class="status-msg">Enter a file id (or open this page from a file's Faces tab) and run the comparison.</div></div>
+        </section>
+    </main>
+</div>
+
+<script>
+const API = '/galleryout/api/aidam';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+
+function barRows(el, items, labelKey) {
+    const max = Math.max(1, ...items.map(i => i.n));
+    el.innerHTML = items.length ? items.map(i => `
+        <div class="bar-row">
+            <span class="label mono" title="${esc(i[labelKey])}">${esc(i[labelKey])}</span>
+            <span class="bar"><i style="width:${Math.max(2, i.n / max * 100)}%"></i></span>
+            <span class="n">${i.n}</span>
+        </div>`).join('') : '<div class="status-msg">No tracked rows yet — the startup backfill fills this table.</div>';
+}
+
+// ---- status ----
+async function loadStatus() {
+    const r = await fetch(`${API}/status`); const d = await r.json();
+    const ix = d.indexing || {};
+    document.getElementById('status-cards').innerHTML = `
+        <div class="card"><div class="k">Files</div><div class="v">${ix.files_total ?? '—'}</div></div>
+        <div class="card"><div class="k">Hashed</div><div class="v">${pct(ix.hashed, ix.files_total)}<small>%</small></div></div>
+        <div class="card"><div class="k">Faces scanned</div><div class="v">${pct(ix.faces_scanned, ix.visual_files_total)}<small>%</small></div></div>
+        <div class="card"><div class="k">Worker</div><div class="v" style="font-size:1rem;">${(d.worker || {}).running ? '<span class="dot" style="background:var(--data)"></span>running' : '<span class="dot" style="background:var(--alert)"></span>stopped'}</div></div>`;
+    const meters = [
+        ['Hashing', ix.hashed, ix.files_total],
+        ['Semantic embeddings', ix.embeddings_semantic, ix.visual_files_total],
+        ['Visual embeddings', ix.embeddings_visual, ix.visual_files_total],
+        ['Face scans', ix.faces_scanned, ix.visual_files_total],
+    ];
+    document.getElementById('status-meters').innerHTML = meters.map(([k, a, b]) => `
+        <div class="meter"><div class="mk"><span>${k}</span><b>${a ?? 0} / ${b ?? 0}</b></div>
+        <div class="track"><i style="width:${pct(a, b)}%"></i></div></div>`).join('');
+    const be = d.backends || {};
+    const gpus = d.gpus || [];
+    document.getElementById('status-backends').innerHTML =
+        Object.entries(be).map(([k, v]) =>
+            `<div><span class="dot" style="background:${v ? 'var(--data)' : '#555'}"></span>${esc(k)}</div>`).join('')
+        + gpus.map((g, i) => `<div style="margin-top:6px;">GPU${i}: ${esc(g.name || '?')} <span class="muted">${esc(g.vram || '')}</span></div>`).join('');
+}
+
+// ---- generation ----
+async function loadGeneration() {
+    const r = await fetch('/galleryout/api/genparams/summary'); const d = await r.json();
+    document.getElementById('gen-cards').innerHTML = `
+        <div class="card"><div class="k">Tracked</div><div class="v">${d.tracked}</div></div>
+        <div class="card"><div class="k">Coverage</div><div class="v">${pct(d.tracked, d.total_files)}<small>%</small></div></div>
+        <div class="card"><div class="k">With negative prompt</div><div class="v">${d.with_negative}</div></div>
+        <div class="card"><div class="k">Tools</div><div class="v">${(d.tools || []).length}</div></div>`;
+    barRows(document.getElementById('gen-tools'), d.tools || [], 'tool');
+    barRows(document.getElementById('gen-models'), (d.models || []).map(m => ({...m, model: (m.model || '').split(/[\\/]/).pop()})), 'model');
+    barRows(document.getElementById('gen-samplers'), d.samplers || [], 'sampler');
+    barRows(document.getElementById('gen-steps'), d.steps || [], 'steps');
+    barRows(document.getElementById('gen-cfg'), d.cfg || [], 'cfg');
+    barRows(document.getElementById('gen-sizes'), d.sizes || [], 'size');
+}
+
+// ---- faces ----
+async function loadFaces() {
+    const box = document.getElementById('faces-content');
+    box.innerHTML = '<div class="status-msg">Loading…</div>';
+    const r = await fetch(`${API}/faces/clusters`); const d = await r.json();
+    const clusters = d.clusters || [];
+    if (!clusters.length) { box.innerHTML = '<div class="status-msg">No clusters yet.</div>'; return; }
+    box.innerHTML = '<div class="cluster-grid">' + clusters.map(c => `
+        <div class="cluster-card" onclick="openCluster(${c.cluster_id})">
+            ${c.sample_file_ids && c.sample_file_ids.length
+                ? `<img src="/galleryout/thumbnail/${encodeURIComponent(c.sample_file_ids[0])}" loading="lazy" alt="">`
+                : '<div style="aspect-ratio:1/1"></div>'}
+            <div class="cl">${esc(c.label || ('Cluster #' + c.cluster_id))}</div>
+            <div class="cs">${c.size} face${c.size === 1 ? '' : 's'}</div>
+        </div>`).join('') + '</div>';
+}
+
+async function openCluster(id) {
+    const box = document.getElementById('faces-content');
+    box.innerHTML = '<div class="status-msg">Loading…</div>';
+    const r = await fetch(`${API}/faces/clusters/${id}`); const d = await r.json();
+    const members = d.members || [];
+    box.innerHTML = `<button class="btn" onclick="loadFaces()" style="margin-bottom:14px;">Back</button>
+        <h3 style="margin:0 0 12px 0;">${esc((d.cluster || {}).label || ('Cluster #' + id))}
+        <span class="muted" style="font-weight:400; font-size:0.8rem;">${(d.cluster || {}).size ?? members.length} faces</span></h3>
+        <div class="thumb-grid">` + members.map(m => `
+            <a href="/galleryout/aidam?view=compare&file=${encodeURIComponent(m.file_id)}" onclick="return cmpJump('${esc(m.file_id)}')">
+            <img src="/galleryout/thumbnail/${encodeURIComponent(m.file_id)}" loading="lazy" alt=""></a>`).join('') + '</div>';
+}
+
+// ---- compare ----
+const LANE_COLORS = { yunet: 'var(--lane-b)', scrfd: 'var(--data)' };
+let cmpState = null;
+
+function cmpJump(fileId) {
+    document.getElementById('cmp-file').value = fileId;
+    switchView('compare'); cmpRun();
+    return false;
+}
+
+function cmpIou(a, b) {
+    const ix = Math.max(0, Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0]));
+    const iy = Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]));
+    const inter = ix * iy, union = a[2] * a[3] + b[2] * b[3] - inter;
+    return union > 0 ? inter / union : 0;
+}
+
+function cmpLayer(lane, color, faces, cfg) {
+    const bits = faces.map(f => {
+        const [x, y, w, h] = f.bbox;
+        const kps = (f.landmarks || []).map(pt =>
+            `<div class="kp" style="left:${pt[0] * 100}%; top:${pt[1] * 100}%; background:${color};"></div>`).join('');
+        const dense = (((f.attributes || {}).landmark_2d_106) || []).map(pt =>
+            `<div class="kp" style="left:${pt[0] * 100}%; top:${pt[1] * 100}%; background:${color}; width:2px; height:2px; margin:-1px 0 0 -1px; opacity:0.6;"></div>`).join('');
+        return `<div class="bbox ${f.consensus ? '' : 'miss'}" style="left:${x * 100}%; top:${y * 100}%; width:${w * 100}%; height:${h * 100}%; border-color:${color};"></div>${kps}${dense}`;
+    }).join('');
+    return `<div class="cmp-layer" data-lane="${lane}" style="position:absolute; inset:0; pointer-events:none; opacity:${cfg.alpha}; display:${cfg.on ? 'block' : 'none'};">${bits}</div>`;
+}
+
+function cmpSetLane(lane, prop, value) {
+    const c = cmpState.cfg[lane];
+    if (prop === 'on') c.on = value; else c.alpha = value;
+    document.querySelectorAll(`.cmp-layer[data-lane="${lane}"]`).forEach(el => {
+        el.style.opacity = c.alpha; el.style.display = c.on ? 'block' : 'none';
+    });
+}
+
+function cmpSetMode(mode) { if (cmpState) { cmpState.mode = mode; cmpRender(); } }
+
+function cmpChip(f, color) {
+    const at = f.attributes || {};
+    const bits = [`${Math.round(f.det_score * 100)}%`];
+    if (at.sex) bits.push(`${at.sex}${at.age ?? ''}`);
+    if (at.pose) bits.push(`yaw ${Math.round(at.pose.yaw)}`);
+    return `<span class="chip ${f.consensus ? '' : 'miss'}" style="border-color:${color};">${esc(bits.join(' '))}</span>`;
+}
+
+function cmpRender() {
+    const { data, mode, cfg } = cmpState;
+    const lanes = data.lanes || {};
+    const names = Object.keys(lanes);
+    const img = `/galleryout/thumbnail/${encodeURIComponent(data.file_id)}`;
+    document.getElementById('cmp-mode-overlay').classList.toggle('active', mode === 'overlay');
+    document.getElementById('cmp-mode-lanes').classList.toggle('active', mode === 'lanes');
+    let html = '';
+    if (mode === 'overlay') {
+        html += `<div class="preview" style="max-width:760px;"><img src="${img}" alt="">`
+            + names.map(n => lanes[n].faces ? cmpLayer(n, LANE_COLORS[n] || '#3498db', lanes[n].faces, cfg[n]) : '').join('')
+            + '</div>';
+        html += names.map(n => {
+            const lane = lanes[n]; const color = LANE_COLORS[n] || '#3498db';
+            if (lane.error) return `<div class="strip" style="border-color:${color};">${esc(n)}: ${esc(lane.error)}</div>`;
+            return `<div class="lane-controls">
+                <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+                    <input type="checkbox" ${cfg[n].on ? 'checked' : ''} onchange="cmpSetLane('${n}', 'on', this.checked)">
+                    <b style="color:${color}; text-transform:uppercase; letter-spacing:1px; font-size:0.75rem;">${esc(n)}</b>
+                </label>
+                <span class="muted mono" style="font-size:0.75rem;">${lane.faces.length} faces &middot; ${lane.elapsed_ms} ms</span>
+                <input type="range" min="0.15" max="1" step="0.05" value="${cfg[n].alpha}"
+                       oninput="cmpSetLane('${n}', 'alpha', this.value)" title="opacity">
+                <span>${lane.faces.map(f => cmpChip(f, color)).join('')}</span>
+            </div>`;
+        }).join('');
+    } else {
+        html += '<div class="cmp-grid">' + names.map(n => {
+            const lane = lanes[n]; const color = LANE_COLORS[n] || '#3498db';
+            if (lane.error) return `<div class="lane" style="--lane-color:${color};"><span class="ln">${esc(n)}</span><div class="status-msg" style="margin-top:8px;">${esc(lane.error)}</div></div>`;
+            return `<div class="lane" style="--lane-color:${color};">
+                <span class="ln">${esc(n)}</span>
+                <div class="lm">${esc(lane.model)} &middot; ${lane.faces.length} faces &middot; ${lane.elapsed_ms} ms</div>
+                <div class="preview"><img src="${img}" alt="">${cmpLayer(n, color, lane.faces, { on: true, alpha: 1 })}</div>
+                <div style="margin-top:8px;">${lane.faces.map(f => cmpChip(f, color)).join('')}</div>
+            </div>`;
+        }).join('') + '</div>';
+    }
+    const ok = names.filter(n => lanes[n].faces);
+    if (ok.length > 1) {
+        const agreed = lanes[ok[0]].faces.filter(f => f.consensus).length;
+        const only = ok.map(n => {
+            const solo = lanes[n].faces.filter(f => !f.consensus).length;
+            return solo ? `<span><b class="mono">${solo}</b> only ${esc(n)}</span>` : '';
+        }).join('');
+        html += `<div class="strip"><span><b class="mono">${agreed}</b> agreed by all lanes</span>${only}</div>`;
+    }
+    const inv = data.installed || [];
+    if (inv.length) {
+        html += '<div class="panel" style="margin-top:16px;"><h3>Installed pipelines</h3>'
+            + inv.map(p => `<div class="bar-row" style="grid-template-columns: 1fr 2fr 1fr;">
+                <span>${esc(p.name)}${p.active ? ' <b style="color:var(--identity); font-size:0.68rem; letter-spacing:1px;">ACTIVE</b>' : ''}</span>
+                <span class="muted mono" style="font-size:0.72rem;">${p.weights_present ? esc(p.model_version) : 'weights not installed'}</span>
+                <span class="muted mono" style="font-size:0.7rem;">${esc(p.selector)}</span>
+            </div>`).join('') + '</div>';
+    }
+    document.getElementById('cmp-content').innerHTML = html;
+}
+
+async function cmpRun() {
+    const fileId = document.getElementById('cmp-file').value.trim();
+    if (!fileId) return;
+    const box = document.getElementById('cmp-content');
+    box.innerHTML = '<div class="status-msg">Running every installed lane…</div>';
+    try {
+        const r = await fetch(`${API}/faces/compare/${encodeURIComponent(fileId)}`);
+        const d = await r.json();
+        if (d.error) { box.innerHTML = `<div class="status-msg">${esc(d.error)}</div>`; return; }
+        const lanes = d.lanes || {};
+        const names = Object.keys(lanes).filter(n => lanes[n].faces);
+        names.forEach(name => lanes[name].faces.forEach(f => {
+            f.consensus = names.every(o => o === name
+                || lanes[o].faces.some(g => cmpIou(f.bbox, g.bbox) >= 0.5));
+        }));
+        const cfg = {};
+        Object.keys(lanes).forEach(n => { cfg[n] = { on: true, alpha: 1 }; });
+        cmpState = { data: d, mode: (cmpState || {}).mode || 'overlay', cfg };
+        cmpRender();
+    } catch (e) {
+        box.innerHTML = '<div class="status-msg">Comparison failed.</div>';
+    }
+}
+
+// ---- view switching ----
+const LOADERS = { status: loadStatus, generation: loadGeneration, faces: loadFaces, compare: () => {} };
+function switchView(view) {
+    if (!LOADERS[view]) view = 'status';
+    document.querySelectorAll('section').forEach(s => s.classList.toggle('active', s.id === 'view-' + view));
+    document.querySelectorAll('.rail a.nav').forEach(a => a.classList.toggle('active', a.dataset.view === view));
+    history.replaceState(null, '', '#' + view);
+    LOADERS[view]();
+}
+document.querySelectorAll('.rail a.nav[data-view]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); switchView(a.dataset.view); });
+});
+const initialView = '{{ view }}' || (location.hash || '#status').slice(1);
+switchView(initialView);
+if ('{{ file_id }}') cmpRun();
+</script>
+</body>
+</html>

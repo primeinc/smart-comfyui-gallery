@@ -78,6 +78,12 @@ DDL = [
         det_score REAL,
         embedding BLOB,
         dim INTEGER,
+        attributes TEXT,
+        age INTEGER,
+        sex TEXT,
+        pose_pitch REAL,
+        pose_yaw REAL,
+        pose_roll REAL,
         model_id TEXT NOT NULL,
         model_version TEXT NOT NULL,
         source_mtime REAL NOT NULL,
@@ -211,7 +217,23 @@ def init_schema(conn) -> None:
     for stmt in DDL:
         conn.execute(stmt)
     _migrate_scan_log_kinds(conn)
+    _migrate_face_attributes(conn)
     conn.commit()
+
+
+def _migrate_face_attributes(conn) -> None:
+    """Add the per-face attribute columns to databases created before
+    they existed. Scalars are real columns so they stay comparable and
+    aggregatable in SQL (age/sex from genderage, pitch/yaw/roll from the
+    3D landmark head); `attributes` JSON carries the structured geometry
+    (normalized landmark arrays). All nullable: existing rows stay valid."""
+    cols = {row[1] for row in conn.execute(
+        "PRAGMA table_info(ai_face_instances)").fetchall()}
+    for name, decl in (("attributes", "TEXT"), ("age", "INTEGER"),
+                       ("sex", "TEXT"), ("pose_pitch", "REAL"),
+                       ("pose_yaw", "REAL"), ("pose_roll", "REAL")):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE ai_face_instances ADD COLUMN {name} {decl}")
 
 
 def _migrate_scan_log_kinds(conn) -> None:

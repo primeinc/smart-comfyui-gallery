@@ -38,6 +38,25 @@ _GEN_LOCK = threading.Lock()
 _GENERATIONS: dict = {}  # space -> _SpaceMatrix
 _WRITER_ACTIVE = threading.Event()
 
+# GPU faiss state: StandardGpuResources is created once per process, and
+# every GPU-index search runs under this lock — faiss GPU indexes are not
+# thread-safe even for concurrent reads (faiss wiki Threads-and-
+# asynchronous-calls), and topk serves multiple request threads.
+_FAISS_GPU_SEARCH_LOCK = threading.Lock()
+_faiss_gpu_res: list = []  # memoized [StandardGpuResources]
+
+
+def _vector_gpu_wanted() -> bool:
+    """AI_DAM_VECTOR_GPU=0 keeps topk on the CPU index even when the
+    loaded faiss build has GPUs."""
+    return os.environ.get("AI_DAM_VECTOR_GPU", "1") == "1"
+
+
+def _faiss_gpu_resources(faiss):
+    if not _faiss_gpu_res:
+        _faiss_gpu_res.append(faiss.StandardGpuResources())
+    return _faiss_gpu_res[0]
+
 
 def set_writer_active(active: bool) -> None:
     """Declare a single-writer (the ingest worker) present in this process.
@@ -76,6 +95,7 @@ class _SpaceMatrix:
     row_count: int
     max_computed_at: float
     faiss_index: Optional[object] = None  # lazy IndexFlatIP over `matrix`; rebuilt with it
+    faiss_gpu: bool = False  # True when faiss_index lives on a GPU (search needs the lock)
     id_to_row: Optional[dict] = None  # lazy file_id -> row index; rebuilt with matrix
 
 
@@ -222,31 +242,55 @@ class VectorStore:
             if sm.faiss_index is None:
                 index = faiss.IndexFlatIP(int(sm.matrix.shape[1]))
                 index.add(sm.matrix)
+                sm.faiss_gpu = False
+                if _vector_gpu_wanted() and faiss.get_num_gpus() > 0:
+                    # Same exact search on the GPU. Falls back to the CPU
+                    # index when the copy fails (VRAM pressure, driver).
+                    try:
+                        index = faiss.index_cpu_to_gpu(
+                            _faiss_gpu_resources(faiss), 0, index)
+                        sm.faiss_gpu = True
+                    except Exception:
+                        pass
                 sm.faiss_index = index
-            params = None
-            if excluded:
-                # First-party exclusion: excluded rows are skipped inside the
-                # scan itself (faiss wiki "Setting search parameters for one
-                # query"; tests/test_search_params.py), instead of
-                # over-fetching and filtering here.
-                if sm.id_to_row is None:
-                    sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
-                rows = np.array(
-                    sorted(sm.id_to_row[f] for f in excluded if f in sm.id_to_row),
-                    dtype=np.int64,
-                )
+            if excluded and sm.id_to_row is None:
+                sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
+            rows = (np.array(
+                sorted(sm.id_to_row[f] for f in excluded if f in sm.id_to_row),
+                dtype=np.int64) if excluded else np.empty(0, np.int64))
+            if sm.faiss_gpu:
+                # GPU indexes support neither SearchParameters/IDSelector
+                # nor k > 2048 (faiss wiki), and are not thread-safe even
+                # for reads: over-fetch by the exclusion count under the
+                # module lock, filter after.
+                fetch = min(sm.row_count, min(k + len(rows), 2048))
+                with _FAISS_GPU_SEARCH_LOCK:
+                    sims_f, ids_f = sm.faiss_index.search(
+                        q[None, :].astype(np.float32), fetch)
+                pairs = [
+                    (sm.ids[int(i)], float(s))
+                    for s, i in zip(sims_f[0], ids_f[0])
+                    if int(i) >= 0 and sm.ids[int(i)] not in excluded
+                ]
+            else:
+                params = None
                 if len(rows):
+                    # First-party exclusion: excluded rows are skipped inside
+                    # the scan itself (faiss wiki "Setting search parameters
+                    # for one query"; tests/test_search_params.py), instead
+                    # of over-fetching and filtering here.
                     params = faiss.SearchParameters(
                         sel=faiss.IDSelectorNot(faiss.IDSelectorBatch(rows))
                     )
-            sims_f, ids_f = sm.faiss_index.search(
-                q[None, :].astype(np.float32), min(sm.row_count, k), params=params
-            )
-            pairs = [
-                (sm.ids[int(i)], float(s))
-                for s, i in zip(sims_f[0], ids_f[0])
-                if int(i) >= 0
-            ]
+                sims_f, ids_f = sm.faiss_index.search(
+                    q[None, :].astype(np.float32), min(sm.row_count, k),
+                    params=params
+                )
+                pairs = [
+                    (sm.ids[int(i)], float(s))
+                    for s, i in zip(sims_f[0], ids_f[0])
+                    if int(i) >= 0
+                ]
             pairs.sort(key=lambda t: (-t[1], t[0]))
             return pairs[:k]
 

@@ -521,7 +521,8 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         conn = _connect(config)
         try:
             rows = conn.execute(
-                "SELECT face_id, bbox_x, bbox_y, bbox_w, bbox_h, landmarks, det_score, cluster_id "
+                "SELECT face_id, bbox_x, bbox_y, bbox_w, bbox_h, landmarks, det_score, "
+                "attributes, age, sex, pose_pitch, pose_yaw, pose_roll, cluster_id "
                 "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
                 (file_id,),
             ).fetchall()
@@ -537,6 +538,12 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "bbox": [row["bbox_x"], row["bbox_y"], row["bbox_w"], row["bbox_h"]],
                 "landmarks": json.loads(row["landmarks"]) if row["landmarks"] else [],
                 "det_score": row["det_score"],
+                "attributes": json.loads(row["attributes"]) if row["attributes"] else None,
+                "age": row["age"],
+                "sex": row["sex"],
+                "pose": ({"pitch": row["pose_pitch"], "yaw": row["pose_yaw"],
+                          "roll": row["pose_roll"]}
+                         if row["pose_yaw"] is not None else None),
                 "cluster_id": row["cluster_id"],
             }
             for row in rows

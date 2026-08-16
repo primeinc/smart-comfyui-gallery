@@ -24,6 +24,53 @@ The cosine-threshold neighbor graph runs on the best available backend and recor
 * `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)
 * `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes; `just faiss-gpu-install` swaps the venv's faiss-cpu for the local Windows GPU build (build recipe in docs/FAISS_GPU_WINDOWS.md)
 
+### 📇 First-Class Generation Metadata + AI Dashboard
+
+**Every metadata-rich field from every supported generator is now
+first-class tracked data.** The indexer writes a typed
+`generation_params` row per file (`metaparse.typed.GenerationParams` —
+the single coercion point; SwarmUI's own metadata doc mandates
+consumer-side type forcing): tool, detection method, positive/negative
+prompts, model, model_hash, sampler, scheduler, and properly typed
+seed/steps/clip_skip/width/height (INTEGER), cfg/denoise (REAL), loras
+and every unmapped first-party key verbatim as JSON. Sources: ComfyUI
+graphs through the sampler-tracing parser; A1111/Forge, SwarmUI,
+Fooocus, InvokeAI, NovelAI, Easy Diffusion, Draw Things through their
+metaparse adapters. A marker-gated startup backfill imports existing
+libraries once.
+
+The data is queryable everywhere: prompt search gains typed operators
+(`neg:` `tool:` `model:` `sampler:` `scheduler:` `seed:` `steps:`
+`cfg:`, with `!` negation), and OmniQuery gains `gen_*` fields
+(gen_tool/model/sampler/scheduler/positive_prompt/negative_prompt/
+seed/steps/cfg/denoise/clip_skip/width/height).
+
+**Face data is fully first-class too:** the insightface pipeline now
+runs every antelopev2 head — genderage, dense 106-pt 2D landmarks, 3D
+68-pt landmarks with pitch/yaw/roll pose. Scalars land in typed,
+aggregatable columns on `ai_face_instances` (age, sex, pose_pitch/yaw/
+roll); normalized landmark geometry persists as JSON arrays; embeddings
+remain raw float32 vectors. OmniQuery gains `face_sex`, `face_age_min`,
+`face_age_max`, `face_yaw_abs_max`.
+
+**AI dashboard (`/galleryout/aidam`, management-gated):** the ML layer
+gets its own page — pipeline status meters, generation-parameter
+analytics (per-tool/model/sampler/steps/cfg/size distributions from the
+typed columns), the face-cluster workspace, and the full detector
+comparison tool (overlay with per-lane visibility/opacity, side-by-side
+lanes, dense-landmark rendering, installed-pipeline inventory). The
+per-file modal keeps quick context (faces list with age/sex/pose and a
+Boxes/5-pt/Dense landmark toggle) and links out to the dashboard; page
+and modal are separate surfaces. All panel emoji removed.
+
+**Runtime:** the insightface recognition session runs on CUDA via
+onnxruntime-gpu (measured 4.4x per face; detection stays CPU where its
+dynamic shapes measure faster — `AI_DAM_ORT_PROVIDERS` overrides; the
+provisioner swaps in onnxruntime-gpu on NVIDIA boxes), and `topk`
+vector search now uses the vendored GPU faiss index when present
+(equivalence-tested against the CPU path; `AI_DAM_VECTOR_GPU=0` opts
+out).
+
 ### 🙂 Face Pipelines: insightface FaceAnalysis Default + In-App Detector Comparison
 
 Two full face pipelines are now deployed and config-swappable
