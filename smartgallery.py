@@ -1689,6 +1689,20 @@ def _is_guest_uuid(value):
 FFPROBE_TIMEOUT = 30    # version check and metadata reads
 FFMPEG_TIMEOUT = 300    # thumbnail extraction and metadata stripping
 
+# Playing a video transcodes it as it goes, so it has no total run time to
+# bound -- a two hour film legitimately streams for two hours. What it must
+# not do is wait forever for a frame that is not coming.
+#
+# That call reads from a pipe, and a read with nothing on the other end
+# blocks. The reading thread is the one serving the request, so it cannot
+# notice, and the clean-up only runs when the generator is closed, which a
+# blocked thread never reaches. One unreadable file therefore costs a
+# server thread for good; a handful of them and nothing loads at all.
+#
+# So the bound is on silence rather than on length: output resets it, and
+# only a gap this long ends the stream.
+MEDIA_STREAM_STALL_TIMEOUT = 60
+
 # Pillow refuses to decode an image above twice this, and warns above it.
 #
 # Its own default is 89 megapixels, which a 16384x16384 upscale (268 Mpx)
@@ -8138,6 +8152,67 @@ def check_metadata(file_id):
         print(f"Metadata Check Error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
         
+def stream_media_process(process, label='', stall_timeout=None):
+    """Hand a transcoder's output to the caller, and give up if it goes quiet.
+
+    The reading thread is the one serving the request, so it cannot watch
+    itself; a separate thread holds the clock and kills the child if no
+    output arrives for stall_timeout seconds. Killing it closes the pipe,
+    the blocked read returns empty, and the loop below ends normally --
+    which is also what runs the clean-up.
+    """
+    if stall_timeout is None:
+        stall_timeout = MEDIA_STREAM_STALL_TIMEOUT
+
+    last_output = [time.monotonic()]
+    delivered = [0]
+    stopped = threading.Event()
+    gave_up = []
+
+    def watch():
+        # Polls rather than re-arming a timer per chunk: a healthy stream
+        # produces thousands of chunks and each one would be a new thread.
+        while not stopped.wait(min(1.0, max(stall_timeout / 4.0, 0.05))):
+            if time.monotonic() - last_output[0] > stall_timeout:
+                gave_up.append(True)
+                print(f"Stream Stalled: no output for {stall_timeout}s, "
+                      f"stopping the transcode of {label or 'a file'}.")
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                return
+
+    guard = threading.Thread(target=watch, daemon=True)
+    guard.start()
+
+    try:
+        # read1 rather than read: read() waits for the full 16KB before it
+        # returns anything, which holds finished frames back from the player
+        # and, worse, makes a stream that is producing steadily look silent
+        # to the clock above until a whole chunk has piled up.
+        while True:
+            data = process.stdout.read1(16384)
+            if not data:
+                break
+            last_output[0] = time.monotonic()
+            delivered[0] += len(data)
+            yield data
+    finally:
+        stopped.set()
+        # Clean up: ensure the process is killed when the request ends
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        # A stream that produced nothing at all reaches the player as an
+        # empty video with no explanation, so say so where it can be read.
+        if not delivered[0] and not gave_up:
+            print(f"Stream Empty: the transcode of {label or 'a file'} "
+                  f"produced no output (exit code {process.returncode}).")
+
+
 @app.route('/galleryout/stream/<string:file_id>')
 def stream_video(file_id):
     if not is_file_accessible(file_id):
@@ -8184,25 +8259,12 @@ def stream_video(file_id):
     def generate():
         # Start ffmpeg process with specific flags to avoid console windows on Windows
         process = subprocess.Popen(
-            cmd, 
-            stdout=subprocess.PIPE, 
+            cmd,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         )
-        try:
-            # Read in chunks of 16KB for better streaming performance
-            while True:
-                data = process.stdout.read(16384)
-                if not data:
-                    break
-                yield data
-        finally:
-            # Clean up: ensure the process is killed when the request ends
-            process.terminate()
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                process.kill()
+        return stream_media_process(process, os.path.basename(filepath or ''))
 
     return Response(generate(), mimetype='video/mp4')
 
