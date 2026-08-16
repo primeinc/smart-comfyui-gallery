@@ -1152,7 +1152,13 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
 
     # -- route table -----------------------------------------------------------------
 
-    bp.add_url_rule("/status", "status", status, methods=["GET"])
+    # Status carries the management guard but NOT _requires_enabled: it has to
+    # keep reporting while the layer is off, which is how the panel knows to
+    # say so. It reports across the whole library -- worker errors quote the
+    # path of the file that failed -- so it belongs with the other cross-file
+    # routes rather than open to anyone who can reach the port.
+    bp.add_url_rule("/status", "status",
+                    guard(status) if guard is not None else status, methods=["GET"])
     bp.add_url_rule("/duplicates/<file_id>", "duplicates", _wrap(duplicates), methods=["GET"])
     bp.add_url_rule("/similar/<file_id>", "similar", _wrap(similar), methods=["GET"])
     bp.add_url_rule("/faces/<file_id>", "faces_for_file", _wrap(faces_for_file), methods=["GET"])
