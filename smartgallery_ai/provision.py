@@ -412,7 +412,8 @@ GROUPS = (
     ),
     Group(
         name="omniquery",
-        enables="Search palette nl2sql refinement (structurally-ambiguous phrasing)",
+        enables="Search palette AI answerer (free-language questions via "
+                "read-only nl2sql)",
         runtime=(("llama_cpp", "llama-cpp-python>=0.3.0"),),
         artifacts=(
             # Best measured of five GGUF candidates on the 98-entry corpus

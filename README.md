@@ -60,7 +60,7 @@ Whether you're generating for fun, building a portfolio, or running a production
 | 📋 [**Full Asset Details**](docs/Asset_Info_Panel_manual.md) | Instant 360° inspector for disk paths, symlink targets & node pipelines (`I`) - **NEW** |
 | 📝 [**Collection Notes & Briefs**](docs/Collection_Notes_manual.md) | Attach rich Markdown specs & checklists to virtual albums - **NEW** |
 | 🔍 **Instant Search** | Find by prompt, checkpoint, LoRA (with live autocomplete), date or comment |
-| 🧠 [**OmniQuery**](docs/OmniQuery.md) | Search your gallery in plain English, any criteria. Let AI write complex SQL queries to find hyper-specific cross-referenced media |
+| 🧠 [**OmniQuery**](docs/OmniQuery.md) | Ctrl+P: search your gallery in plain English. Instant for structured criteria; a local AI answers free-language questions against your own database, read-only |
 | 🔗 **Any Folder & Drive Mounts** | Point at any ComfyUI output, NAS, symlink or network path |
 | 📤 **Magic Upload** | Drag & drop from PC/smartphone, auto-extract & index workflows |
 | 📑 **Grid & List Views** | Browse the way you prefer (with inline audio player in List View) |
@@ -109,7 +109,7 @@ SmartGallery DAM is *ComfyUI-aware* (it reads workflows, extracts prompts, under
         *   [3.1.1 Sidebar Navigation](#311-sidebar-navigation)
         *   [3.1.2 Top Toolbar & Global Actions](#312-top-toolbar--global-actions)
         *   [3.1.3 Search, Filters & Fuzzy Auto-Suggest](#313-search-filters--fuzzy-auto-suggest)
-        *   [3.1.4 OmniQuery – AI-Powered SQL Explorer](#314-omniquery--ai-powered-sql-explorer)
+        *   [3.1.4 OmniQuery – Search in Plain English](#314-omniquery--search-in-plain-english)
         *   [3.1.5 Gallery Grid & Focus Mode](#315-gallery-grid--focus-mode)
         *   [3.1.6 Batch Selection Bar](#316-batch-selection-bar)
     *   [3.2 Advanced Media Inspection](#32-advanced-media-inspection)
@@ -171,7 +171,7 @@ Evolve your workflow from a simple collection of files into a structured, search
 - 🛡️ **API Route & System Hardening:** Enhanced backend route fortification, strict session validation, and strengthened data isolation across public, guest, and administrative contexts.
 
 > **Previous Highlights:**
-> - 🧠 [**OmniQuery (AI-Powered SQL Explorer)**](docs/OmniQuery.md): Ask complex questions to your DAM in natural language via LLMs. 👉 READ the **[OmniQuery Manual](docs/OmniQuery.md)**.
+> - 🧠 [**OmniQuery**](docs/OmniQuery.md): Ctrl+P search in plain English — instant structured criteria plus a local AI for free-language questions, read-only and fully offline. 👉 READ the **[OmniQuery Manual](docs/OmniQuery.md)**.
 > - 🔌 [**LoRA Synergy™**](docs/LORA_SYNERGY.md): Offline LoRA matchmaker that reads safetensors headers to guarantee checkpoint compatibility and auto-wire nodes. 👉 READ the **[LoRA Synergy Manual](docs/LORA_SYNERGY.md)**.
 > - 📑 **List View:** High-density browsing mode with sortable sticky columns.
 
@@ -214,7 +214,7 @@ Evolve your workflow from a simple collection of files into a structured, search
 
 -   **Collection Notes & Production Briefs:** Attach rich Markdown `.md` or `.txt` briefs to Virtual Collections. Collections with notes feature a yellow accent, top toolbar access button, tabbed multi-note reader, and interactive rating/commenting.
 -   **Fuzzy Workflow Search & Auto-Suggest:** Search models and LoRAs with alphanumeric normalization (`wan 2.2` -> `wan2.2_i2v_high.safetensors`), live two-line autocomplete dropdown, and "Did You Mean?" suggestions.
--   **OmniQuery (AI SQL Explorer):** Query the database using AI to answer complex questions safely (read-only).
+-   **OmniQuery:** Ctrl+P plain-English search — a local AI queries your database read-only for free-language questions.
 -   **Virtual Nested Collections:** Group files from different physical folders into a hierarchical tree of albums without duplicating a byte on disk.
 -   **Collection Sharing:** Keep collections private, mark them as Exhibition Ready for all guests, or share them *exclusively* with specific users.
 -   **Status Tags:** Keyboard shortcuts `1` to `5` apply color-coded team statuses: Approved, Review, To Edit, Rejected, Select.
@@ -908,10 +908,10 @@ Sorting criteria for Ratings and Comments feature sub-menus to effortlessly togg
 
 ---
 
-### 3.1.4 OmniQuery – AI-Powered SQL Explorer
+### 3.1.4 OmniQuery – Search in Plain English
 
 **If you can describe it, you can find it.**  
-Click the **⚡ OmniQuery** icon in the gallery toolbar to open the AI-Assisted SQL Explorer. Ask questions in natural language, let an LLM generate read-only SQLite queries, and execute them safely.
+Press **Ctrl+P** (or **Alt+P**, or the **⚡** toolbar button): a search field opens over a live masonry of your images. Type anything — `girlnextdoor`, `favorite videos from last week`, `seed 424242`, `files rated at least 4 by more than one person` — tiles morph as you type, a local AI answers the free-language questions by querying your database read-only, and Enter opens the results in the gallery. Fully local, sandboxed, no SQL shown.
 
 👉 **[Read the full OmniQuery Guide](docs/OmniQuery.md)** for detailed instructions and examples.
 

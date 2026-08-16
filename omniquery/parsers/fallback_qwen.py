@@ -1,9 +1,16 @@
-"""Grammar-constrained Qwen2.5-Coder-0.5B fallback: the single optional
-constrained-decoding backend. It emits the SAME typed AST schema as every
-other backend, enforced structurally by decoding under a grammar built
-straight from `omniquery.ast.json_schema()` (not a hand-rolled schema) --
-so "the fallback might drift from the real AST shape" is not a failure mode
-that needs separate handling here.
+"""Grammar-constrained GGUF backend emitting the typed AST schema, plus
+the shared canaried llama loader (load_canaried_llama) that the shipped
+SQL search (nl2sql.py) builds on.
+
+ROLE: benchmark/experimental only. No product path routes queries here --
+the shipped answerers are the nlq rules engine and nl2sql.SqlSearch. This
+backend stays registered so the harness can measure grammar-constrained
+AST decoding against them.
+
+It decodes under a grammar built straight from
+`omniquery.ast.json_schema()` (not a hand-rolled schema) -- so "the
+backend might drift from the real AST shape" is not a failure mode that
+needs separate handling here.
 
 The grammar guarantees *shape* (valid JSON matching the schema: known
 field/op enums, typed values, well-formed and/or/not nesting, no unknown

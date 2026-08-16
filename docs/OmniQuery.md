@@ -1,90 +1,63 @@
-## OmniQuery – AI‑Powered SQL Explorer
+# OmniQuery — Search Your Gallery in Plain English
 
-**OmniQuery** is a powerful extension inside SmartGallery DAM that gives you full SQL access to your media library, assisted by AI.  
-It’s designed for power users who need to ask **complex, cross‑table questions** that go beyond the standard filter panel.
+Press **Ctrl+P** (or **Alt+P**, or the ⚡ toolbar button) anywhere in the
+gallery. A search field opens over a live masonry of your newest images.
+Type anything — the tiles morph as you type; pause for a moment and the
+AI's deeper answer swaps in; press **Enter** to open the full result set
+in the gallery. Press **Esc** to close. No SQL is ever shown, nothing
+leaves your machine.
 
----
+## Ways you can search
 
-### Why OmniQuery?
+Structured criteria are understood instantly (under a millisecond,
+deterministic), and anything else is treated as a search of your prompts,
+captions, filenames, models, and LoRA names:
 
-The built‑in filter panel is great for everyday searches: by date, rating, collection, etc.  
-But sometimes you need queries like:
+| You type | It finds |
+|---|---|
+| `girlnextdoor` | every file whose prompt, LoRA, caption, name, or path carries the term |
+| `favorite videos` | starred files of one media type |
+| `4+ star images from last week` | ratings and calendar words combined |
+| `not approved images` | status flags, including negations |
+| `seed 424242` / `images with 30 steps cfg 7.5` | exact generation settings |
+| `lora girlnextdoor` / `model flux` | generation provenance |
+| `videos longer than 2 minutes` | durations, sizes, resolutions |
+| `images with faces` / `face cluster 1` | the face pipeline's results |
+| `how many favorites` | count questions get a number |
+| `files rated at least 4 by more than one person` | free language — the AI writes the database query itself |
 
-> *“Show me all images that have never been rated and that belong to collections shared with user #3”*  
-> *“Find videos longer than 2 minutes that have at least 3 comments mentioning ‘review’”*
+## How it works (and why it's safe)
 
-These kinds of questions require joining multiple tables and applying logic that no simple form can express.  
-OmniQuery **bridges this gap** by letting you use natural language to generate the perfect SQL query – with the help of your favourite AI assistant (ChatGPT, Gemini, Claude, DeepSeek…).
+Two answerers cooperate per query:
 
----
+- A **deterministic rules engine** handles everything it fully
+  recognizes. It is exact, instant, and what live typing always uses.
+- The **local nl2sql model** (a 2.5 GB text2sql GGUF, Apache-2.0) handles
+  free language: it reads your database's actual schema, writes a
+  read-only query, **looks at what came back**, and refines before
+  answering — broadening a search that found nothing, repairing its own
+  mistakes. If it fails, the rules answer stands; search never breaks.
 
-### How It Works
+Everything the model writes executes through one sandbox: SELECT-only,
+a read-only database connection, and SQLite's engine-level authorizer —
+it is impossible for a generated query to modify anything.
 
-1. **Prepare a Prompt** – OmniQuery automatically builds a detailed prompt containing the full database schema, rules, and your request in plain English.  
-2. **Copy & Ask an LLM** – Copy that prompt to an AI assistant and let it write the SQL for you.  
-3. **Paste & Run** – Paste the SQL back into OmniQuery, preview the results, and execute the query.  
-The results replace the current gallery view, and you can browse, sort, or download just like any other folder.
+## Setup
 
-Only `SELECT` statements are allowed – your data is never at risk.
+The rules engine needs nothing. The AI answerer is one command:
 
----
+```bash
+python -m smartgallery_ai provision omniquery
+```
 
-### Interface Overview
+See [INSTALL_AI.md](INSTALL_AI.md) for GPU notes and environment knobs.
+Everything runs locally; no external AI service is involved.
 
-The OmniQuery window is divided into two main panels:
+## For developers
 
-| Left Panel | Right Panel |
-|------------|-------------|
-| **Prompt Editor** – Here you write (or edit) the natural language request that will be sent to the AI. A factory template is loaded automatically and can be customised. | **SQL Input** – Paste the SQL returned by the AI. Syntax highlighting and smart paste handling prevent formatting issues. |
-| **Schema Reference** (collapsible) – A handy list of all available tables and columns so you know exactly what data you can query. | **Action Buttons** – Run the query, preview first, or save/load your favourite SQL snippets. |
-
-Both text areas can be maximised with the **⛶** button for a distraction‑free editing experience.
-
----
-
-### Steps to Use
-
-1. **Open OmniQuery** – Click the ⚡ icon in the gallery toolbar (or use the keyboard shortcut if configured).  
-2. **Write your request** in the left panel.  
-   Example: *“List all photos with an average rating above 4 and that are inside a collection named ‘Holidays’”*.  
-3. **Copy the prompt** – Click **📋 Copy** (or select all and copy manually).  
-4. **Paste it into your AI assistant** (ChatGPT, Gemini, Claude, DeepSeek…). It will return a `SELECT` statement.  
-5. **Paste the SQL** back into the right panel (use the **📋 Paste** button or Ctrl+V).  
-6. **Preview** (optional) – Click **🔍 Preview** to see a sample of the first rows without leaving the page.  
-7. **Run** – Click **🚀 Run Query**. The gallery will reload showing only the matching files.
-
----
-
-### Saving and Managing Queries / Prompts
-
-Both your prompts and SQL queries can be saved for later reuse:
-
-- **💾 Save** – Give your query/prompt a name and an optional description.  
-- **📂 Load** – Browse a list of all saved items. You can rename or delete them from the same view.  
-- **🔄 Factory** – Reset the prompt to the original template at any time.  
-- **Clear** – Start with an empty prompt or query.
-
-Everything is stored on the server, so your saved items follow you across devices.
-
----
-
-### Security
-
-OmniQuery enforces **read‑only access** at the database level.  
-Only `SELECT` statements are permitted; any attempt to use `UPDATE`, `DELETE`, `INSERT`, or other modifying commands is rejected by the server.  
-You can safely let the AI generate any query – your files and metadata remain untouched.
-
----
-
-### Tips & Tricks
-
-- **Order matters** – If your query includes `ORDER BY`, the usual UI sort buttons are disabled to respect your custom order.  
-- **Session persistence** – Your last prompt and SQL are saved in the browser’s local storage, so you can close the modal and come back without losing your work.  
-- **Preview first** – Always use the Preview button to check how many results you’ll get and what columns are returned before running the full query.  
-- **Combine with Collections** – You can create a dynamic collection from an OmniQuery result by using the bulk‑select tools after the search.  
-- **Keyboard shortcuts** – Use `Escape` to close child modals (like help or saved lists), or press it again to close the entire OmniQuery window.
-
----
-
-> **OmniQuery gives you the freedom to explore your media library like never before – with the intelligence of AI and the safety of read‑only SQL.**  
-> If you can describe it, you can find it.
+`POST /galleryout/api/omniquery/nlq` with `{"query": "...", "live": true}`
+is the palette's endpoint (live = rules-only, no writes; non-live may
+consult the model and stores a result session). Raw read-only SQL remains
+available at `POST /galleryout/api/omniquery/execute` through the same
+sandbox. Diagnostics and acceptance benchmarks are `just ai` recipes;
+current measured numbers live in [AI_MODELS.md](AI_MODELS.md).
