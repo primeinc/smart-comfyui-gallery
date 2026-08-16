@@ -17,7 +17,8 @@ test:
 # nothing reads, a subprocess that can hang, a misspelt setting name, a
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
-# do not match its own instructions.
+# do not match its own instructions, a container missing a module the app
+# imports.
 # `just test` runs these too; this is for running them alone.
 #
 # --list shows only a comment's LAST line, which turns an explanation into a
@@ -28,6 +29,7 @@ audit:
         tests/test_suite_is_runnable.py \
         tests/test_shipped_launchers.py \
         tests/test_compose_files.py \
+        tests/test_docker_image_contents.py \
         tests/test_every_route_is_classified.py \
         tests/test_exhibition_leak_sweep.py \
         tests/test_file_id_changes_carry_their_data.py \

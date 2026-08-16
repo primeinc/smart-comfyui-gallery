@@ -89,6 +89,15 @@ RUN --mount=type=cache,target=/uv_cache,uid=1025,gid=1025,mode=0755 \
     && test -x /app/venv/bin/uv \
     && unset UV_CACHE_DIR
 
+# smartgallery.py imports sg_auth, smartgallery_ai and metaparse at module
+# scope, and omniquery inside the OmniQuery request handlers. Copied ahead
+# of smartgallery.py because they change far less often, so editing the
+# monolith does not invalidate their layers.
+COPY sg_auth.py /app/sg_auth.py
+COPY smartgallery_ai/ /app/smartgallery_ai/
+COPY metaparse/ /app/metaparse/
+COPY omniquery/ /app/omniquery/
+
 ARG CHOOSEN_SMARTGALLERY_FILE
 ARG CHOOSEN_TEMPLATE_DIR
 COPY ${CHOOSEN_SMARTGALLERY_FILE} /app/smartgallery.py
