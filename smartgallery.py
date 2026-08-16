@@ -6233,10 +6233,15 @@ def rename_file(file_id):
                     workflow_hash, prompt_hash, models_hash
                 FROM files WHERE id = ?
             """
-            file_info = conn.execute(query_fetch, (file_id,)).fetchone()
-            
-            if not file_info:
+            file_info_row = conn.execute(query_fetch, (file_id,)).fetchone()
+
+            if not file_info_row:
                 return jsonify({'status': 'error', 'message': 'File not found.'}), 404
+
+            # A sqlite3.Row has no .get(), and the metadata pack below uses
+            # it -- so every rename raised AttributeError and returned 500.
+            # move_batch/copy_batch already convert here for the same reason.
+            file_info = dict(file_info_row)
 
             old_path = file_info['path']
             old_name = file_info['name']
@@ -10490,7 +10495,14 @@ def _register_remix_routes_inline():
                     img_file = request.files['image_upload']
                     if img_file.filename:
                         filename = secure_filename("remix_" + img_file.filename)
-                        img_file.save(os.path.join(BASE_INPUT_PATH, filename))
+                        # Never clobber an input already queued for another
+                        # generation: two remixes of same-named sources would
+                        # otherwise overwrite each other's bytes, and ComfyUI
+                        # would render whichever landed last. The workflow is
+                        # pointed at what was actually written.
+                        saved_path = _get_unique_filepath(BASE_INPUT_PATH, filename)
+                        img_file.save(saved_path)
+                        filename = os.path.basename(saved_path)
                         img_node_id = modifications['image_node_id']
                         if img_node_id in wf_data: wf_data[img_node_id]['inputs'][modifications.get('image_key', 'image')] = filename
             else:
@@ -10524,7 +10536,14 @@ def _register_remix_routes_inline():
                     img_file = request.files['image_upload']
                     if img_file.filename:
                         filename = secure_filename("remix_" + img_file.filename)
-                        img_file.save(os.path.join(BASE_INPUT_PATH, filename))
+                        # Never clobber an input already queued for another
+                        # generation: two remixes of same-named sources would
+                        # otherwise overwrite each other's bytes, and ComfyUI
+                        # would render whichever landed last. The workflow is
+                        # pointed at what was actually written.
+                        saved_path = _get_unique_filepath(BASE_INPUT_PATH, filename)
+                        img_file.save(saved_path)
+                        filename = os.path.basename(saved_path)
                         target_node = next((n for n in nodes if str(n.get('id')) == str(modifications['image_node_id'])), None)
                         if target_node and 'widgets_values' in target_node:
                             orig_img = str(modifications.get('image_orig_value', ''))
