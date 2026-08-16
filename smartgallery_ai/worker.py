@@ -264,6 +264,16 @@ def app_git_ref(root: Optional[str] = None) -> Optional[str]:
 _REVIEW_SLOW_SECONDS = 30.0
 _REVIEW_MAX_INTERVAL = 16
 
+# Load adaptation for hashing and the fast stages: every stage's real
+# per-item cost is measured AS IT WORKS (an EMA over cycle timings — no
+# benchmark runs), and each cycle's quotas are whatever fits the stage's
+# time slice at that measured pace. `batch_size` remains the per-cycle
+# item ceiling; the time target is what actually governs on slow or busy
+# hardware — when the GPU is being hammered by generation, throughput
+# drops, quotas shrink with it, and the worker automatically backs off.
+_CYCLE_TARGET_SECONDS = 12.0
+_PACE_EMA_KEEP = 0.6  # weight of the previous estimate in the pace EMA
+
 
 def indexing_totals(conn: sqlite3.Connection) -> dict:
     """Backlog progress snapshot: how many files exist vs. how many each
@@ -388,6 +398,9 @@ class AIWorker:
         self._review_interval = 1
         self._cycles_since_review = 10 ** 9  # first cycle always eligible
         self._last_review_seconds: Optional[float] = None
+        # stage -> smoothed seconds/item, measured passively from real
+        # cycle work (see _CYCLE_TARGET_SECONDS above).
+        self._stage_pace: dict = {}
         # True while auto-provisioning intends to (or is about to) swap a
         # CPU-build torch for CUDA wheels: torch-dependent backends must
         # not import torch in the meantime -- an imported torch pins its
@@ -651,14 +664,15 @@ class AIWorker:
 
     def _run_cycle(self) -> None:
         """One wake: fresh connection, schema ensured, user-requested files
-        first, then hashing against its own budget (milliseconds per file;
-        a shared budget would starve the model stages for hours on a large
-        hash backlog), then the FAST model stages — semantic, visual,
-        faces — through the two-pass fair scheduler (_run_fast_stages:
-        even quotas first, then leftover budget re-offered to the stages
-        that are still hungry, so a drained stage's share is never
-        wasted), then masks from the leftovers. Backlog reviews run EVERY
-        cycle under measured pacing: one review rides along while the
+        first, then hashing against its own paced budget (its measured
+        per-file cost sizes the quota; a shared budget would starve the
+        model stages on a large hash backlog), then the FAST model stages
+        — semantic, visual, faces — through the measured two-pass fair
+        scheduler (_run_fast_stages: offers sized to each stage's live
+        seconds/item so the cycle targets _CYCLE_TARGET_SECONDS on any
+        hardware; leftover budget flows to the stages still hungry), then
+        masks from the leftovers. Backlog reviews run EVERY cycle under
+        the same measured-pacing idea: one review rides along while the
         crawl is busy, backing off exponentially (up to 1-per-16-cycles)
         when a review measures slow, and the full review batch runs when
         everything else is idle — bounded progress always, starvation
@@ -674,7 +688,11 @@ class AIWorker:
             self._maybe_retry_provision()
             self._process_priority_requests(conn)
 
-            hashed = self._process_hashes(conn, self.batch_size)
+            hash_quota = self._paced_quota("hash", _CYCLE_TARGET_SECONDS,
+                                            self.batch_size)
+            t0 = time.monotonic()
+            hashed = self._process_hashes(conn, hash_quota)
+            self._note_pace("hash", time.monotonic() - t0, hashed)
 
             fast_stages = []
             semantic_backend = self._backend("semantic",
@@ -744,47 +762,70 @@ class AIWorker:
             # backlog continues; the loop skips its sleep and keeps going.
             self._backlog_remaining = (
                 self.batch_size > 0
-                and (hashed >= self.batch_size or budget <= 0))
+                and (hashed >= hash_quota or budget <= 0))
         finally:
             conn.close()
 
         with self._lock:
             self.stats["cycles"] += 1
 
-    @staticmethod
-    def _run_fast_stages(stages, budget: int) -> int:
-        """Two-pass fair scheduler over (name, run(limit) -> consumed)
-        stages sharing `budget` items.
+    def _note_pace(self, stage: str, elapsed: float, items: int) -> None:
+        """Fold one real timing into the stage's seconds/item EMA."""
+        if items <= 0 or elapsed <= 0:
+            return
+        per_item = elapsed / items
+        old = self._stage_pace.get(stage)
+        self._stage_pace[stage] = (
+            per_item if old is None
+            else old * _PACE_EMA_KEEP + per_item * (1 - _PACE_EMA_KEEP))
 
-        Pass 1 gives every stage an even quota (fairness during a fresh
-        index, when every backlog is deep). Pass 2 re-offers the leftover
-        budget, round-robin, to the stages that consumed their FULL quota
-        — a drained stage's share flows to the ones still hungry instead
-        of being wasted (observed live: semantic/visual complete, faces
-        crawling at a third of throughput on their dead quotas). Returns
-        total items consumed."""
+    def _paced_quota(self, stage: str, time_slice: float, cap: int) -> int:
+        """Items that fit `time_slice` at the stage's measured pace, never
+        more than `cap`, never less than 1. An unmeasured stage gets the
+        cap — its first run IS the measurement."""
+        pace = self._stage_pace.get(stage)
+        if not pace:
+            return cap
+        return max(1, min(cap, int(time_slice / pace)))
+
+    def _run_fast_stages(self, stages, budget: int) -> int:
+        """Two-pass fair scheduler over (name, run(limit) -> consumed)
+        stages sharing `budget` items and _CYCLE_TARGET_SECONDS of wall
+        clock.
+
+        Each offer is the smaller of the even ITEM share and what fits
+        the stage's TIME slice at its measured pace, so a 30s/item CPU
+        embedder gets 1 while a 20ms/item GPU stage gets its full share
+        — the cycle stays near the time target on any hardware. Pass 1
+        offers every stage once (fairness, and the timing that feeds the
+        pace model). Pass 2 re-offers leftover budget, round-robin, to
+        the stages that consumed their FULL offer — a drained stage's
+        share flows to the ones still hungry instead of being wasted
+        (observed live: semantic/visual complete, faces crawling at a
+        third of throughput on their dead quotas) — until the budget or
+        the time target runs out. Returns total items consumed."""
         consumed = 0
-        quota = max(1, budget // len(stages))
-        hungry = []
-        for name, run_stage in stages:
-            take = min(quota, budget - consumed)
+        count_quota = max(1, budget // len(stages))
+        time_slice = _CYCLE_TARGET_SECONDS / len(stages)
+        deadline = time.monotonic() + _CYCLE_TARGET_SECONDS
+
+        def offer(name, run_stage):
+            nonlocal consumed
+            take = min(count_quota,
+                       self._paced_quota(name, time_slice, count_quota),
+                       budget - consumed)
             if take <= 0:
-                break
+                return False
+            t0 = time.monotonic()
             got = run_stage(take)
+            self._note_pace(name, time.monotonic() - t0, got)
             consumed += got
-            if got >= take:
-                hungry.append((name, run_stage))
-        while consumed < budget and hungry:
-            still_hungry = []
-            for name, run_stage in hungry:
-                take = min(quota, budget - consumed)
-                if take <= 0:
-                    break
-                got = run_stage(take)
-                consumed += got
-                if got >= take:
-                    still_hungry.append((name, run_stage))
-            hungry = still_hungry
+            return got >= take
+
+        hungry = [(n, r) for n, r in stages if offer(n, r)]
+        while consumed < budget and hungry and time.monotonic() < deadline:
+            hungry = [(n, r) for n, r in hungry
+                      if consumed < budget and offer(n, r)]
         return consumed
 
     def _note_skip(self, skips: dict, stage: str, selector: str) -> None:

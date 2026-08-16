@@ -578,6 +578,14 @@ def _stage(backlog: int):
     return state, run
 
 
+def _pace_host(pace=None):
+    """A bare AIWorker carrying only the pace model — enough for the
+    scheduler methods, which touch nothing else on self."""
+    host = AIWorker.__new__(AIWorker)
+    host._stage_pace = dict(pace or {})
+    return host
+
+
 def test_fast_scheduler_redistributes_drained_stage_quotas():
     """The production pathology: two stages fully indexed, one deep
     backlog. The drained stages' quotas must flow to the hungry stage —
@@ -585,7 +593,7 @@ def test_fast_scheduler_redistributes_drained_stage_quotas():
     sem, run_sem = _stage(0)
     vis, run_vis = _stage(0)
     fac, run_fac = _stage(1000)
-    consumed = AIWorker._run_fast_stages(
+    consumed = _pace_host()._run_fast_stages(
         [("semantic", run_sem), ("visual", run_vis), ("faces", run_fac)], 9)
     assert consumed == 9
     assert 1000 - fac["remaining"] == 9
@@ -596,7 +604,7 @@ def test_fast_scheduler_is_fair_when_every_backlog_is_deep():
     a, run_a = _stage(1000)
     b, run_b = _stage(1000)
     c, run_c = _stage(1000)
-    consumed = AIWorker._run_fast_stages(
+    consumed = _pace_host()._run_fast_stages(
         [("a", run_a), ("b", run_b), ("c", run_c)], 9)
     assert consumed == 9
     assert [1000 - s["remaining"] for s in (a, b, c)] == [3, 3, 3]
@@ -606,7 +614,7 @@ def test_fast_scheduler_stops_when_all_backlogs_drain():
     """Total backlog under budget: consume it all, never loop forever."""
     a, run_a = _stage(2)
     b, run_b = _stage(1)
-    consumed = AIWorker._run_fast_stages([("a", run_a), ("b", run_b)], 50)
+    consumed = _pace_host()._run_fast_stages([("a", run_a), ("b", run_b)], 50)
     assert consumed == 3
     assert a["remaining"] == 0 and b["remaining"] == 0
 
@@ -881,3 +889,53 @@ def test_face_clustering_retried_after_failure(tmp_path, monkeypatch):
     assert worker._process_faces(conn, backend, 10) == 0
     assert len(calls) == 2
     conn.close()
+
+
+def test_paced_quota_shrinks_offers_for_measured_slow_stages():
+    """A stage measured at 10s/item gets 1 item of a 4s slice; unmeasured
+    stages get the full even share (their first run is the measurement)."""
+    host = _pace_host({"a": 10.0})
+    a, run_a = _stage(1000)
+    b, run_b = _stage(1000)
+    c, run_c = _stage(1000)
+    host._run_fast_stages([("a", run_a), ("b", run_b), ("c", run_c)], 9)
+    assert a["offers"][0] == 1
+    assert b["offers"][0] == 3 and c["offers"][0] == 3
+
+
+def test_note_pace_ema_and_first_measurement():
+    host = _pace_host()
+    host._note_pace("s", elapsed=10.0, items=5)
+    assert host._stage_pace["s"] == 2.0
+    host._note_pace("s", elapsed=4.0, items=1)   # 2.0*0.6 + 4.0*0.4
+    assert abs(host._stage_pace["s"] - 2.8) < 1e-9
+    host._note_pace("s", elapsed=0.0, items=0)   # no-op, never divides by 0
+    assert abs(host._stage_pace["s"] - 2.8) < 1e-9
+
+
+def test_paced_quota_unmeasured_gets_cap_and_floor_is_one():
+    host = _pace_host({"slow": 100.0})
+    assert host._paced_quota("new", 4.0, 16) == 16
+    assert host._paced_quota("slow", 4.0, 16) == 1
+
+
+def test_fast_scheduler_time_deadline_stops_reoffers(monkeypatch):
+    """When measured work has already blown the cycle's time target, the
+    leftover budget is NOT re-offered — the cycle yields instead of
+    grinding on (this is the load-adaptation contract)."""
+    from smartgallery_ai import worker as W
+
+    clock = {"t": 0.0}
+    monkeypatch.setattr(W.time, "monotonic", lambda: clock["t"])
+    host = _pace_host()
+    a, run_a_inner = _stage(1000)
+
+    def run_a(limit):
+        clock["t"] += 20.0   # each offer costs 20s; target is 12s
+        return run_a_inner(limit)
+
+    consumed = host._run_fast_stages([("a", run_a)], 50)
+    assert len(a["offers"]) == 1, "re-offered past the time deadline"
+    assert consumed == a["offers"][0]
+    # ...and the measurement was recorded for the next cycle's quota.
+    assert host._stage_pace["a"] > 0

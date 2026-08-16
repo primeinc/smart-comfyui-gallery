@@ -264,7 +264,7 @@ def test_status_reports_backends_and_counts(fixture):
     assert counts["reviews"] == 2
     assert data["worker"] == {"running": False, "stats": {}, "provisioning": {},
                               "priority_queued": 0, "recent_errors": [],
-                              "review_seconds": None}
+                              "review_seconds": None, "stage_pace": {}}
 
 
 # --- /duplicates ----------------------------------------------------------------

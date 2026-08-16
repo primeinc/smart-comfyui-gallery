@@ -432,11 +432,13 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
              "provisioning": dict(getattr(worker, "provision_state", {}) or {}),
              "priority_queued": len(getattr(worker, "_priority_ids", []) or []),
              "recent_errors": list(getattr(worker, "recent_errors", []) or []),
-             "review_seconds": getattr(worker, "_last_review_seconds", None)}
+             "review_seconds": getattr(worker, "_last_review_seconds", None),
+             "stage_pace": {k: round(v, 4) for k, v in
+                            (getattr(worker, "_stage_pace", {}) or {}).items()}}
             if worker is not None
             else {"running": False, "stats": {}, "provisioning": {},
                   "priority_queued": 0, "recent_errors": [],
-                  "review_seconds": None}
+                  "review_seconds": None, "stage_pace": {}}
         )
         try:
             gpu = provisioning.cuda_summary()

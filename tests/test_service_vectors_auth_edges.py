@@ -105,14 +105,15 @@ def test_status_reports_registered_worker_and_reset(tmp_path):
         data = client.get(f"{_PREFIX}/status").get_json()
         assert data["worker"] == {"running": True, "stats": {"scanned": 3},
                               "provisioning": {}, "priority_queued": 0,
-                              "recent_errors": [], "review_seconds": None}
+                              "recent_errors": [], "review_seconds": None,
+                              "stage_pace": {}}
     finally:
         set_worker(None)
 
     data = client.get(f"{_PREFIX}/status").get_json()
     assert data["worker"] == {"running": False, "stats": {}, "provisioning": {},
                               "priority_queued": 0, "recent_errors": [],
-                              "review_seconds": None}
+                              "review_seconds": None, "stage_pace": {}}
 
 
 def test_status_invalid_segmenter_selector_degrades_to_unavailable(tmp_path):
