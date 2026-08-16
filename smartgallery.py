@@ -2433,7 +2433,20 @@ def init_db(conn=None):
     if conn is None:
         conn = get_db_connection()
         close_conn = True
-        
+
+    # A database with no `files` table has never been used. Everything below
+    # adds tables and columns with IF NOT EXISTS, so a first run performed
+    # the whole migration history and announced each step: a new user's very
+    # first start reported six schema updates and a version upgrade, which
+    # reads as "already out of date" rather than "created". The steps still
+    # run; only the commentary is withheld.
+    try:
+        is_new_database = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='files'"
+        ).fetchone() is None
+    except Exception:
+        is_new_database = False
+
     try:
         # 1. CORE TABLE CREATION
         conn.execute('''
@@ -2660,7 +2673,7 @@ def init_db(conn=None):
             cursor_usr = conn.execute("PRAGMA table_info(users)")
             usr_columns = {row['name'] for row in cursor_usr.fetchall()}
             if 'last_login' not in usr_columns:
-                print("INFO: Updating Database Schema... Adding 'last_login' to users")
+                if not is_new_database: print("INFO: Updating Database Schema... Adding 'last_login' to users")
                 conn.execute("ALTER TABLE users ADD COLUMN last_login REAL")
         except Exception as e:
             print(f"WARNING: Could not migrate users table: {e}")    
@@ -2686,7 +2699,7 @@ def init_db(conn=None):
             cursor_fc = conn.execute("PRAGMA table_info(file_comments)")
             fc_columns = {row['name'] for row in cursor_fc.fetchall()}
             if 'target_audience' not in fc_columns:
-                print("INFO: Updating Database Schema... Adding 'target_audience' to file_comments")
+                if not is_new_database: print("INFO: Updating Database Schema... Adding 'target_audience' to file_comments")
                 conn.execute("ALTER TABLE file_comments ADD COLUMN target_audience TEXT DEFAULT 'public'")
         except Exception as e:
             print(f"WARNING: Could not migrate file_comments table: {e}")
@@ -2698,13 +2711,13 @@ def init_db(conn=None):
             # Auto-fix existing txt/md files in database from unknown to document
             conn.execute("UPDATE files SET type = 'document' WHERE (type = 'unknown' OR type IS NULL OR type = '') AND (LOWER(name) LIKE '%.txt' OR LOWER(name) LIKE '%.md')")
             if 'is_public' not in col_columns:
-                print("INFO: Updating Database Schema... Adding 'is_public' to collections")
+                if not is_new_database: print("INFO: Updating Database Schema... Adding 'is_public' to collections")
                 conn.execute("ALTER TABLE collections ADD COLUMN is_public INTEGER DEFAULT 0")
             if 'shared_users' not in col_columns:
-                print("INFO: Updating Database Schema... Adding 'shared_users' to collections")
+                if not is_new_database: print("INFO: Updating Database Schema... Adding 'shared_users' to collections")
                 conn.execute("ALTER TABLE collections ADD COLUMN shared_users TEXT DEFAULT ''")
             if 'parent_id' not in col_columns:
-                print("INFO: Updating Database Schema... Adding 'parent_id' to collections")
+                if not is_new_database: print("INFO: Updating Database Schema... Adding 'parent_id' to collections")
                 conn.execute("ALTER TABLE collections ADD COLUMN parent_id INTEGER DEFAULT NULL")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id)")
         except Exception as e:
@@ -2715,7 +2728,7 @@ def init_db(conn=None):
 
         for col_name, col_type in required_columns.items():
             if col_name not in existing_columns:
-                print(f"INFO: Updating Database Schema... Adding missing column '{col_name}'")
+                if not is_new_database: print(f"INFO: Updating Database Schema... Adding missing column '{col_name}'")
                 try:
                     conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
                 except Exception as e:
@@ -2733,8 +2746,23 @@ def init_db(conn=None):
             cur = conn.execute("PRAGMA user_version")
             current_ver = cur.fetchone()[0]
             
-            if current_ver != DB_SCHEMA_VERSION:
-                print(f"INFO: Updating Database Schema Version: {current_ver} -> {DB_SCHEMA_VERSION}")
+            if current_ver > DB_SCHEMA_VERSION:
+                # Stamping this DOWN would erase the only record that newer
+                # migrations have already run, so the newer build would run
+                # them again over its own work. Two installs sharing one
+                # gallery folder is how this happens -- a container and a
+                # local copy at different versions, or a rollback after an
+                # upgrade -- and `!=` treated it as an ordinary migration.
+                print(f"{Colors.RED}{Colors.BOLD}WARNING: this database was made by a "
+                      f"NEWER SmartGallery (schema {current_ver}; this build knows "
+                      f"{DB_SCHEMA_VERSION}).{Colors.RESET}")
+                print(f"{Colors.YELLOW}Its version marker is being left alone. Newer "
+                      f"data may not appear here, and changes made from this build may "
+                      f"not be understood by the newer one. Update SmartGallery, or "
+                      f"point BASE_SMARTGALLERY_PATH at a different folder.{Colors.RESET}")
+            elif current_ver < DB_SCHEMA_VERSION:
+                if not is_new_database:
+                    print(f"INFO: Updating Database Schema Version: {current_ver} -> {DB_SCHEMA_VERSION}")
                 conn.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
         except Exception as e:
             print(f"WARNING: Could not update DB schema version: {e}")
