@@ -4,11 +4,11 @@ call .venv\Scripts\activate.bat
 
 :: --- CONFIGURATION: replace with your real paths ---
 :: Use forward slashes (/) even on Windows
-set "BASE_OUTPUT_PATH=C:/Users/will/!comfy-output/latest/local"
+set "BASE_OUTPUT_PATH="
 set "BASE_INPUT_PATH="
-set "BASE_SMARTGALLERY_PATH=C:\Users\will\!comfy-output\smart-gallery-data"
-set "FFPROBE_MANUAL_PATH=C:/ffmpeg/bin/ffmpeg.exe"
-set SERVER_PORT=8222
+set "BASE_SMARTGALLERY_PATH="
+set "FFPROBE_MANUAL_PATH=C:/ffmpeg/bin/ffprobe.exe"
+set SERVER_PORT=8190
 set ENABLE_AI_DAM=true
 set GENERATE_THUMBNAILS=Off
 
@@ -29,5 +29,5 @@ set GENERATE_THUMBNAILS=Off
 ::   python smartgallery.py --exhibition --port 8190 --admin-pass yourpassword --blind-rating
 
 :: --- START ---
-python smartgallery.py --port 8222
+python smartgallery.py
 pause

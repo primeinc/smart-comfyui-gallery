@@ -153,21 +153,37 @@ except ImportError:
 # Remember: environment variables take priority over these default values.
 # ============================================================================
 
+def env_or(name, default):
+    """Environment value for `name`, falling back to `default` when the
+    variable is unset OR set to nothing.
+
+    A blank is a fallback, not a value. `set "BASE_OUTPUT_PATH="` in a .bat
+    (and `export X=` in a shell, and an empty field in a Docker/Unraid
+    template) defines the variable as an empty string, which
+    `os.environ.get(name, default)` returns AS the value -- so clearing a
+    path in the launcher template, the obvious way to say "use the
+    default", silently set the gallery root to "" and scattered cache
+    folders into the working directory instead.
+    """
+    value = os.environ.get(name)
+    return default if value is None or not value.strip() else value.strip()
+
+
 # Path to the ComfyUI 'output' folder.
 # Common locations:
 #   Windows: C:/ComfyUI/output or C:/Users/YourName/ComfyUI/output
 #   Linux/Mac: /home/username/ComfyUI/output or ~/ComfyUI/output
-BASE_OUTPUT_PATH = os.environ.get('BASE_OUTPUT_PATH', 'C:/ComfyUI/output')
+BASE_OUTPUT_PATH = env_or('BASE_OUTPUT_PATH', 'C:/ComfyUI/output')
 
-# Path to the ComfyUI 'input' folder 
-BASE_INPUT_PATH = os.environ.get('BASE_INPUT_PATH', 'C:/ComfyUI/input')
+# Path to the ComfyUI 'input' folder
+BASE_INPUT_PATH = env_or('BASE_INPUT_PATH', 'C:/ComfyUI/input')
 
 # --- Granular Paths for Advanced Setups (Docker, Stability Matrix, extra_model_paths.yaml) ---
 # If not set, they fallback to the standard ComfyUI relative structure
-BASE_MODELS_PATH = os.environ.get('BASE_MODELS_PATH', os.path.join(os.path.dirname(os.path.normpath(BASE_OUTPUT_PATH)), 'models'))
-LORAS_PATH = os.environ.get('LORAS_PATH', os.path.join(BASE_MODELS_PATH, 'loras'))
-CHECKPOINTS_PATH = os.environ.get('CHECKPOINTS_PATH', os.path.join(BASE_MODELS_PATH, 'checkpoints'))
-UNET_PATH = os.environ.get('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
+BASE_MODELS_PATH = env_or('BASE_MODELS_PATH', os.path.join(os.path.dirname(os.path.normpath(BASE_OUTPUT_PATH)), 'models'))
+LORAS_PATH = env_or('LORAS_PATH', os.path.join(BASE_MODELS_PATH, 'loras'))
+CHECKPOINTS_PATH = env_or('CHECKPOINTS_PATH', os.path.join(BASE_MODELS_PATH, 'checkpoints'))
+UNET_PATH = env_or('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
 
 
 # Path for service folders (database, cache, zip files). 
@@ -176,7 +192,7 @@ UNET_PATH = os.environ.get('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
 # Change this if you want the cache stored separately for better performance
 # or to keep system files separate from gallery content.
 # Leave as-is if you are unsure. 
-BASE_SMARTGALLERY_PATH = os.environ.get('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
+BASE_SMARTGALLERY_PATH = env_or('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
 
 # Path to ffprobe executable (part of ffmpeg).
 # Common locations:
@@ -185,12 +201,12 @@ BASE_SMARTGALLERY_PATH = os.environ.get('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PA
 #   Mac: /usr/local/bin/ffprobe or /opt/homebrew/bin/ffprobe
 # Required for extracting workflows from .mp4 files.
 # NOTE: A full ffmpeg installation is highly recommended.
-FFPROBE_MANUAL_PATH = os.environ.get('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
+FFPROBE_MANUAL_PATH = env_or('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
 
 # Port on which the gallery web server will run. 
 # Must be different from the ComfyUI port (usually 8188).
 # The gallery does not require ComfyUI to be running; it works independently.
-SERVER_PORT = int(os.environ.get('SERVER_PORT', 8189))
+SERVER_PORT = int(env_or('SERVER_PORT', '8189'))
 
 # Width (in pixels) of the generated thumbnails.
 THUMBNAIL_WIDTH = int(os.environ.get('THUMBNAIL_WIDTH', 300))
@@ -1270,17 +1286,35 @@ def safe_delete_file(filepath):
         # Permanently delete
         os.remove(filepath)
 
+def _is_ffprobe(path_or_name):
+    """True only when `-version` runs AND identifies itself as ffprobe.
+
+    Exit status alone cannot tell the tools apart: ffmpeg answers
+    `-version` happily, so a FFPROBE_MANUAL_PATH aimed at ffmpeg.exe (an
+    easy typo, and what the launcher template used to ship) passed this
+    check and then failed every metadata call, since ffmpeg rejects
+    ffprobe's arguments. The banner is the discriminator -- "ffprobe
+    version ..." vs "ffmpeg version ...".
+    """
+    try:
+        proc = subprocess.run(
+            [path_or_name, "-version"], capture_output=True, check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    except Exception:
+        return False
+    banner = (proc.stdout or b"").decode("utf-8", "replace").lower()
+    return banner.startswith("ffprobe")
+
+
 def find_ffprobe_path():
     if FFPROBE_MANUAL_PATH and os.path.isfile(FFPROBE_MANUAL_PATH):
-        try:
-            subprocess.run([FFPROBE_MANUAL_PATH, "-version"], capture_output=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        if _is_ffprobe(FFPROBE_MANUAL_PATH):
             return FFPROBE_MANUAL_PATH
-        except Exception: pass
+        print(f"WARNING: FFPROBE_MANUAL_PATH does not point at ffprobe "
+              f"({FFPROBE_MANUAL_PATH}); falling back to PATH.")
     base_name = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
-    try:
-        subprocess.run([base_name, "-version"], capture_output=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    if _is_ffprobe(base_name):
         return base_name
-    except Exception: pass
     print("WARNING: ffprobe not found. Video metadata analysis will be disabled.")
     return None
 

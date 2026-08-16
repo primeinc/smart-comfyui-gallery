@@ -86,12 +86,17 @@ class AIConfig:
     def from_env(cls, base_path: str, db_path: str) -> "AIConfig":
         """Build a config from AI_DAM_* environment variables, defaulting the
         cache and models directories to hidden folders under `base_path`."""
-        cache_dir = os.environ.get(
-            "AI_DAM_CACHE_DIR", os.path.join(base_path, ".ai_cache")
-        )
-        models_dir = os.environ.get(
-            "AI_DAM_MODELS_DIR", os.path.join(base_path, ".AImodels")
-        )
+        # A blank is a fallback, not a value: `set "AI_DAM_MODELS_DIR="`
+        # and an empty Docker/Unraid template field both define the
+        # variable as "", which os.environ.get returns AS the value and
+        # would scatter the cache and multi-GB weights into the working
+        # directory.
+        def _dir(name: str, default: str) -> str:
+            value = os.environ.get(name)
+            return default if value is None or not value.strip() else value.strip()
+
+        cache_dir = _dir("AI_DAM_CACHE_DIR", os.path.join(base_path, ".ai_cache"))
+        models_dir = _dir("AI_DAM_MODELS_DIR", os.path.join(base_path, ".AImodels"))
         return cls(
             enabled=_env_bool("ENABLE_AI_DAM", "true"),
             base_path=base_path,
