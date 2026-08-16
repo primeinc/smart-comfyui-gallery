@@ -713,6 +713,79 @@ def normalize_smart_path(path_str):
     if not path_str: return ""
     return str(path_str).lower().replace('\\', '/')
 
+# Every environment variable this program reads, across all its packages.
+# tests/test_configuration_doc_matches_code.py holds this to the code, so it
+# cannot drift as settings are added.
+KNOWN_ENV_VARS = (
+    'ADMIN_PASSWORD', 'AI_DAM_AUTO_PROVISION', 'AI_DAM_CACHE_DIR',
+    'AI_DAM_CRITIC_BACKEND', 'AI_DAM_CUDA_INDEX', 'AI_DAM_DEVICE',
+    'AI_DAM_EMBED_BATCH', 'AI_DAM_EPHEMERAL_INDEX', 'AI_DAM_FACE_BACKEND',
+    'AI_DAM_FACE_DETECT_MAX_SIDE', 'AI_DAM_FACE_EMBEDDER',
+    'AI_DAM_FACE_GRAPH_BACKEND', 'AI_DAM_FACE_MIN_PX', 'AI_DAM_FAISS_GPU',
+    'AI_DAM_GPU_LAYERS', 'AI_DAM_LLAMA_CUDA_INDEX', 'AI_DAM_LLAMA_VERBOSE',
+    'AI_DAM_MODELS_DIR', 'AI_DAM_NEAR_DUP_DISTANCE', 'AI_DAM_ORT_PROVIDERS',
+    'AI_DAM_SEGMENTER_BACKEND', 'AI_DAM_SEMANTIC_BACKEND', 'AI_DAM_SIMILAR_K',
+    'AI_DAM_TENSOR_SPLIT', 'AI_DAM_VECTOR_GPU', 'AI_DAM_VISION_FA',
+    'AI_DAM_VISION_GPU', 'AI_DAM_VISUAL_BACKEND', 'AI_DAM_WORKER_BATCH',
+    'AI_DAM_WORKER_POLL', 'BASE_INPUT_PATH', 'BASE_MODELS_PATH',
+    'BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BATCH_SIZE',
+    'CHECKPOINTS_PATH', 'COMFYUI_MAX_UPLOAD_MB', 'COMFYUI_SERVER_URL',
+    'DELETE_TO', 'ENABLE_AI_DAM', 'ENABLE_AI_SEARCH', 'FFPROBE_MANUAL_PATH',
+    'GENERATE_THUMBNAILS', 'GENERATE_WAVEFORMS', 'GENPARAMS_BACKFILL',
+    'LLAMA_CPP_LIB_PATH', 'LORAS_PATH', 'MAX_PARALLEL_WORKERS',
+    'OMNIQUERY_FALLBACK_GGUF', 'OMNIQUERY_FALLBACK_GPU_LAYERS',
+    'OMNIQUERY_NL2SQL_GGUF', 'PAGE_SIZE', 'SECRET_KEY', 'SERVER_PORT',
+    'STREAM_THRESHOLD_MB', 'THUMBNAIL_WIDTH', 'UNET_PATH', 'WEBP_ANIMATED_FPS',
+)
+
+
+def find_misspelt_env_vars(environ=None, known=KNOWN_ENV_VARS, cutoff=0.88):
+    """Environment variables that closely resemble a setting but are not one.
+
+    A misspelt NAME is the quietest way to configure nothing: the variable
+    is simply never read, the default applies, and there is no error to
+    notice. `BASE_OUTPUT_PATH` typed with one letter missing shows the
+    default folder instead of the library, which reads as "the gallery
+    cannot see my files".
+
+    Only close matches are reported. Warning on everything that merely
+    starts with a familiar prefix would fire on other programs' variables
+    -- ComfyUI's own COMFYUI_* among them -- and a warning that cries wolf
+    is worth less than none.
+
+    The cutoff was measured rather than guessed. Real slips of our own
+    names score 0.889 and above (DELETE_T0 is the closest call); an
+    unrelated PAI_MODEL_DIR found on a live machine scored 0.800 against
+    AI_DAM_MODELS_DIR, and AI_MODELS_DIR scores 0.867. 0.88 keeps every
+    true slip and drops those. It errs towards saying nothing: a missed
+    warning costs what the situation already cost, while a wrong one
+    teaches people to ignore the next.
+
+    Returns a list of (name_found, nearest_known).
+    """
+    import difflib
+
+    env = os.environ if environ is None else environ
+    known_set = set(known)
+    hits = []
+    for name in sorted(env):
+        if name in known_set:
+            continue
+        near = difflib.get_close_matches(name, list(known), n=1, cutoff=cutoff)
+        if near:
+            hits.append((name, near[0]))
+    return hits
+
+
+def warn_about_misspelt_env_vars():
+    """Print a warning for each near-miss. Never fatal: the documented
+    contract is that nothing in the environment stops the app starting."""
+    for name, suggestion in find_misspelt_env_vars():
+        print(f"{Colors.YELLOW}WARNING: environment variable {name} is not a "
+              f"SmartGallery setting -- did you mean {suggestion}? "
+              f"It is being ignored.{Colors.RESET}")
+
+
 def print_configuration():
     """Prints the current configuration in a neat, aligned table."""
     print(f"\n{Colors.HEADER}{Colors.BOLD}--- CURRENT CONFIGURATION ---{Colors.RESET}")
@@ -12293,6 +12366,10 @@ if __name__ == '__main__':
     
     check_for_updates()
     print_configuration()
+    # After the table, so a near-miss is read next to the value it failed to
+    # set -- "Base Output Path: C:/ComfyUI/output" above the warning explains
+    # itself in a way the warning alone does not.
+    warn_about_misspelt_env_vars()
 
     # --- CHECK: CRITICAL OUTPUT PATH CHECK (Blocking) ---
     if not os.path.exists(BASE_OUTPUT_PATH):
