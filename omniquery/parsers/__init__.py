@@ -53,12 +53,12 @@ class ParserOutcome:
 
     ast: Optional[dict]  # validated JSON-compatible AST; None when the parse failed
     confidence: Optional[float]  # backend's self-reported confidence in [0, 1]; None when the backend emits none; not comparable across backends
-    backend: str  # registry name of the producing backend ("router" for aggregate outcomes)
+    backend: str  # registry name of the producing backend
     unsupported: bool = False  # True: no usable AST was produced; `reason` says why
     reason: Optional[str] = None  # failure diagnostics; on success, soft warnings (e.g. literals the AST missed)
     coverage: Optional[float] = None  # literal/keyword coverage fraction in [0, 1]; None when not computed
     latency_ms: Optional[float] = None  # wall-clock parse duration in milliseconds
-    raw: Optional[dict] = None  # backend-specific debug payload (engine response, raw generation, router flags)
+    raw: Optional[dict] = None  # backend-specific debug payload (interpretation chips, raw generation, ...)
 
 
 class ParserBackend(ABC):

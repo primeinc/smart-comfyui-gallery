@@ -1,7 +1,7 @@
 """Typed SmartGallery query AST.
 
 This module is the contract between the NL parsers, the validator, and the
-SQL compiler. Parsers (model-backed or heuristic) produce a JSON object; it
+SQL compiler. Parsers (rules-based or model-backed) produce a JSON object; it
 is parsed here into typed nodes with strict structural checks. Field-level
 semantics (does the field exist, which operators/values it accepts, who may
 query it) are enforced by omniquery.validation — not here.

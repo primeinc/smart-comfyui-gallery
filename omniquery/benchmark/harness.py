@@ -282,7 +282,7 @@ def _peak_rss_kb() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Backend / router runners
+# Backend runners
 # ---------------------------------------------------------------------------
 
 def _run_backend(backend: ParserBackend, entries: List[dict], engine: OmniQueryEngine,

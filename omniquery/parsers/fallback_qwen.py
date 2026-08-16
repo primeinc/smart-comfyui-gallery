@@ -319,8 +319,8 @@ class FallbackQwenBackend(ParserBackend):
                                   latency_ms=latency_ms, raw={"raw_content": content})
 
         # This backend emits no confidence signal at all (grammar-constrained
-        # decoding produces none); the router leans entirely on `coverage`
-        # for it -- see router.py's fallback acceptance rule.
+        # decoding produces none); consumers -- today only the benchmark
+        # harness -- judge its answers by `coverage` and execution results.
         return ParserOutcome(ast=query.to_dict(), confidence=None, backend=self.name,
                               unsupported=False, reason=("; ".join(missing) or None),
                               coverage=coverage, latency_ms=latency_ms, raw={"raw_content": content})

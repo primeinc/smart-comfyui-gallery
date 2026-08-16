@@ -1,7 +1,7 @@
 """Tests for smartgallery_ai.worker.AIWorker: hashing + embedding rows appear
 for real on-disk PNGs, staleness recompute on mtime change, clean stop(),
 and resilience to an unreadable file (never crashes, logs once, counts an
-error). Only 'stub' backends are used -- never needle2/llama/real weights.
+error). Only 'stub' backends are used -- never llama/real model weights.
 """
 
 from __future__ import annotations

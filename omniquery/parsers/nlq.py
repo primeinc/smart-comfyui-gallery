@@ -19,9 +19,9 @@ them) join into one phrase, so "photos of trees" searches the phrase
 
 The outcome's raw payload carries `interpretation` -- humanized chips like
 "type = image" / "text ~ trees" -- for UIs that must explain the parse
-without ever showing SQL, and `text_terms`, which the escalation layer in
-`omniquery.parsers.parse_search` uses to decide whether a local nl2sql
-model should take a second look at structurally-ambiguous phrasing.
+without ever showing SQL, and `text_terms`, which the app's fusion
+endpoint uses to decide whether the local nl2sql model (parsers/nl2sql,
+through the sqlexec sandbox) should answer instead of the rules.
 """
 
 from __future__ import annotations

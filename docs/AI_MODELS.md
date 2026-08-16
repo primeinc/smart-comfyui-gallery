@@ -134,8 +134,7 @@ Alternative critics evaluated against WI-31's licensing stop condition:
 | Library | Version | License | Used for |
 |---|---|---|---|
 | `argon2-cffi` | 25.1.0 | MIT | Argon2id password hashing (`sg_auth.py`) |
-| `llama-cpp-python` | 0.3.x | MIT | Grammar-constrained fallback parser |
-| `cactus-needle` | 2.0.4 | Apache-2.0 | Needle2 engine |
+| `llama-cpp-python` | 0.3.x | MIT | nl2sql answerer + qwen-vl critic runtime |
 | `sqlite-vec` | — | MIT/Apache-2.0 | **Evaluated, not adopted**: pre-v1 API churn; numpy brute-force cosine is sufficient and dependency-free at personal-gallery scale (~10⁵ vectors). Decision can be revisited behind the `VectorStore` interface. |
 
 ## Runtime verification record (2026-08-15, CPU-only sandbox)
