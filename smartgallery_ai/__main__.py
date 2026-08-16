@@ -20,8 +20,7 @@ from smartgallery_ai import schema
 
 def _connect(db_path: str) -> sqlite3.Connection:
     """Open the gallery SQLite database with name-addressable rows."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = schema.connect(db_path)
     return conn
 
 

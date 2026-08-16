@@ -33,7 +33,7 @@ from smartgallery_ai import (
     SPACE_SEMANTIC,
     SPACE_VISUAL,
 )
-from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, runner, vectors
+from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, runner, schema, vectors
 from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
     _MTIME_EPSILON,
@@ -85,8 +85,7 @@ _RENDERABLE_TYPES = tuple(hashing.IMAGE_FILE_TYPES | hashing.VIDEO_FILE_TYPES)
 
 def _connect(config: AIConfig) -> sqlite3.Connection:
     """Open a fresh SQLite connection to the gallery DB with name-addressable rows."""
-    conn = sqlite3.connect(config.db_path)
-    conn.row_factory = sqlite3.Row
+    conn = schema.connect(config.db_path)
     return conn
 
 

@@ -274,7 +274,7 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
     selected = parse_steps(steps)
     yield _event("run", "start", file_id=file_id, steps=list(selected))
 
-    opener = connect or (lambda: sqlite3.connect(config.db_path, timeout=30))
+    opener = connect or (lambda: schema.connect(config.db_path))
     conn = opener()
     # The worker migrates on every cycle; this runner reaches a database
     # through its own connection and may be the FIRST thing to touch it

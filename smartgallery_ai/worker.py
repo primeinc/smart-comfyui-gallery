@@ -705,8 +705,7 @@ class AIWorker:
         when a review measures slow, and the full review batch runs when
         everything else is idle — bounded progress always, starvation
         never. Ends with the orphaned-mask sweep."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = schema.connect(self.db_path)
         with self._lock:
             stats_before = dict(self.stats)
         skips: dict = {}

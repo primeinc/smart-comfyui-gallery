@@ -13,7 +13,36 @@ Conventions:
     is decidable without opening the media file (see invalidation.py)
 """
 
+import sqlite3
+
 AI_SCHEMA_VERSION = 1  # structural version of the ai_* tables
+
+# How long a connection waits for another writer before giving up.
+#
+# The gallery and the AI worker write to the same file. In WAL a reader
+# never waits, but a writer waits for a writer, and how long it waits is
+# this. Python's default is five seconds, which a scan's bulk insert
+# passes without trying -- measured against a write held for eight
+# seconds, a default connection raised "database is locked" after 5.6s
+# while runner.py's timeout=30 connection waited 2.4s and wrote.
+#
+# The worker's failures land in broad `except Exception` handlers, so
+# what a lock costs is not an error anybody sees: it is files that
+# quietly never get indexed, on exactly the libraries big enough for the
+# scan to hold the lock that long.
+#
+# Sixty seconds, the same as the gallery's own connection, because there
+# is no reason for two writers to the one database to disagree about it.
+DB_TIMEOUT_SECONDS = 60
+
+
+def connect(db_path, row_factory=sqlite3.Row, **kwargs):
+    """Open the gallery database the way everything else opens it."""
+    kwargs.setdefault("timeout", DB_TIMEOUT_SECONDS)
+    conn = sqlite3.connect(db_path, **kwargs)
+    if row_factory is not None:
+        conn.row_factory = row_factory
+    return conn
 
 # Idempotent statements executed in order by init_schema().
 DDL = [

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+
+from smartgallery_ai import schema
 import threading
 import time
 from dataclasses import dataclass
@@ -117,7 +119,8 @@ class VectorStore:
             self._conn_factory = db
         else:
             db_path = db
-            self._conn_factory = lambda: sqlite3.connect(db_path)
+            self._conn_factory = lambda: schema.connect(db_path,
+                                                         row_factory=None)
         self.cache_dir = cache_dir
         self.ephemeral = ephemeral
 
