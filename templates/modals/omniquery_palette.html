@@ -3,9 +3,10 @@
 <!-- OmniQuery search palette: Ctrl/Cmd+P (or Alt+P) command-prompt overlay.
      Live results on every keystroke through the deterministic parser
      (POST /galleryout/api/omniquery/nlq, live:true -- sub-ms parse, no DB
-     writes); Enter commits (the nl2sql refiner may run) and navigates the
-     gallery to the result session. Shows interpretation chips, a count,
-     and a thumbnail strip. Never shows SQL. -->
+     writes); a typing pause or Enter runs the deep answer (the nl2sql
+     model through the read-only sandbox) and Enter navigates the gallery
+     to the result session. Shows interpretation chips, a count, and a
+     natural-ratio masonry. Never shows SQL. -->
 <style>
     #omni-palette-overlay {
         position: fixed; inset: 0; z-index: 11000; display: none;
