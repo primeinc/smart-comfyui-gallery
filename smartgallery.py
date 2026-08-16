@@ -2990,6 +2990,10 @@ def initialize_gallery_fast_no_db_check():
     FFPROBE_EXECUTABLE_PATH = find_ffprobe_path()
     os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
     os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
+    # See initialize_gallery: sweep tmp_* strandings from killed encoders.
+    for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, 'tmp_*')):
+        try: os.remove(stale)
+        except OSError: pass
     
     with get_db_connection() as conn:
         try:
@@ -3158,6 +3162,12 @@ def initialize_gallery():
     os.makedirs(CLEAN_CACHE_DIR, exist_ok=True)
     os.makedirs(os.path.join(BASE_SMARTGALLERY_PATH, '.collection_notes'), exist_ok=True)
     os.makedirs(IMPORTED_WORKFLOWS_DIR, exist_ok=True)
+    # Thumbnail/waveform encoders write tmp_* then os.replace() into place;
+    # a hard process kill can strand the tmp_ file. Sweep leftovers here --
+    # nothing references them, and their hashes retry naturally.
+    for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, 'tmp_*')):
+        try: os.remove(stale)
+        except OSError: pass
     
     with get_db_connection() as conn:
         try:
