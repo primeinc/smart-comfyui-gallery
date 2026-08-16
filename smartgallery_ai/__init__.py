@@ -19,14 +19,47 @@ Design invariants:
     feature reports itself as disabled instead of raising.
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+_logger = logging.getLogger(__name__)
+
 
 def _env_bool(name: str, default: str = "false") -> bool:
-    """Truthy-string environment flag: "1"/"true"/"yes"/"on" (any case) is True."""
-    return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
+    """Truthy-string environment flag: "1"/"true"/"yes"/"on" (any case) is True.
+
+    A blank value falls back to `default`: `set "ENABLE_AI_DAM="` defines
+    the variable as "", which would otherwise read as False and silently
+    disable the whole layer.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        raw = default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_str(name: str, default: str) -> str:
+    """Environment value, or `default` when unset OR blank. A blank is a
+    fallback, not a value -- `os.environ.get(name, default)` returns ""
+    for `set "X="`, which the default would never override."""
+    raw = os.environ.get(name)
+    return default if raw is None or not raw.strip() else raw.strip()
+
+
+def _env_num(name: str, default, cast=int):
+    """Numeric environment value, or `default` when unset, blank, or
+    unparseable. A mistyped tuning knob must cost that knob, never the
+    startup of the whole AI layer."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return cast(raw.strip())
+    except (TypeError, ValueError):
+        _logger.warning("%s=%r is not a valid number; using %s", name, raw, default)
+        return default
 
 
 @dataclass
@@ -86,17 +119,8 @@ class AIConfig:
     def from_env(cls, base_path: str, db_path: str) -> "AIConfig":
         """Build a config from AI_DAM_* environment variables, defaulting the
         cache and models directories to hidden folders under `base_path`."""
-        # A blank is a fallback, not a value: `set "AI_DAM_MODELS_DIR="`
-        # and an empty Docker/Unraid template field both define the
-        # variable as "", which os.environ.get returns AS the value and
-        # would scatter the cache and multi-GB weights into the working
-        # directory.
-        def _dir(name: str, default: str) -> str:
-            value = os.environ.get(name)
-            return default if value is None or not value.strip() else value.strip()
-
-        cache_dir = _dir("AI_DAM_CACHE_DIR", os.path.join(base_path, ".ai_cache"))
-        models_dir = _dir("AI_DAM_MODELS_DIR", os.path.join(base_path, ".AImodels"))
+        cache_dir = _env_str("AI_DAM_CACHE_DIR", os.path.join(base_path, ".ai_cache"))
+        models_dir = _env_str("AI_DAM_MODELS_DIR", os.path.join(base_path, ".AImodels"))
         return cls(
             enabled=_env_bool("ENABLE_AI_DAM", "true"),
             base_path=base_path,
@@ -105,22 +129,21 @@ class AIConfig:
             cache_dir=cache_dir,
             ephemeral_index=_env_bool("AI_DAM_EPHEMERAL_INDEX"),
             auto_provision=_env_bool("AI_DAM_AUTO_PROVISION", "true"),
-            semantic_backend=os.environ.get("AI_DAM_SEMANTIC_BACKEND", "auto"),
-            visual_backend=os.environ.get("AI_DAM_VISUAL_BACKEND", "auto"),
-            face_backend=os.environ.get("AI_DAM_FACE_BACKEND", "auto"),
-            critic_backend=os.environ.get("AI_DAM_CRITIC_BACKEND", "auto"),
-            segmenter_backend=os.environ.get("AI_DAM_SEGMENTER_BACKEND", "auto"),
-            near_dup_max_distance=int(os.environ.get("AI_DAM_NEAR_DUP_DISTANCE", "8")),
-            face_cluster_threshold=(
-                float(os.environ["AI_DAM_FACE_CLUSTER_THRESHOLD"])
-                if "AI_DAM_FACE_CLUSTER_THRESHOLD" in os.environ else None
-            ),
-            face_min_px=int(os.environ.get("AI_DAM_FACE_MIN_PX", "24")),
-            face_detect_max_side=int(
-                os.environ.get("AI_DAM_FACE_DETECT_MAX_SIDE", "1600")
-            ),
-            face_embedder=os.environ.get("AI_DAM_FACE_EMBEDDER", "auto"),
-            similar_default_k=int(os.environ.get("AI_DAM_SIMILAR_K", "24")),
+            semantic_backend=_env_str("AI_DAM_SEMANTIC_BACKEND", "auto"),
+            visual_backend=_env_str("AI_DAM_VISUAL_BACKEND", "auto"),
+            face_backend=_env_str("AI_DAM_FACE_BACKEND", "auto"),
+            critic_backend=_env_str("AI_DAM_CRITIC_BACKEND", "auto"),
+            segmenter_backend=_env_str("AI_DAM_SEGMENTER_BACKEND", "auto"),
+            near_dup_max_distance=_env_num("AI_DAM_NEAR_DUP_DISTANCE", 8),
+            # None keeps the per-embedder default; a blank value must mean
+            # that too, not float('') -- membership in os.environ is true
+            # for `set "AI_DAM_FACE_CLUSTER_THRESHOLD="`.
+            face_cluster_threshold=_env_num(
+                "AI_DAM_FACE_CLUSTER_THRESHOLD", None, float),
+            face_min_px=_env_num("AI_DAM_FACE_MIN_PX", 24),
+            face_detect_max_side=_env_num("AI_DAM_FACE_DETECT_MAX_SIDE", 1600),
+            face_embedder=_env_str("AI_DAM_FACE_EMBEDDER", "auto"),
+            similar_default_k=_env_num("AI_DAM_SIMILAR_K", 24),
         )
 
 

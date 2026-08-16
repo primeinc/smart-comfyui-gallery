@@ -42,9 +42,30 @@ from omniquery.parsers import ParserBackend, ParserOutcome, coverage_guard, try_
 # ENV_MODEL_PATH environment variable, then DEFAULT_MODEL_PATH -- the
 # provisioned nl2sql GGUF inside the AI models directory (AI_DAM_MODELS_DIR
 # env, .AImodels fallback; provision.py's 'omniquery' group downloads it).
+def _env_str(name: str, default: str) -> str:
+    """Environment value, or `default` when unset OR blank. `set "X="`
+    defines the variable as "", which os.environ.get returns as the value."""
+    raw = os.environ.get(name)
+    return default if raw is None or not raw.strip() else raw.strip()
+
+
+def _env_num(name: str, default, cast=int):
+    """Numeric environment value, or `default` when unset, blank, or
+    unparseable -- a mistyped knob must not break model loading."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return cast(raw.strip())
+    except (TypeError, ValueError):
+        logging.getLogger(__name__).warning(
+            "%s=%r is not a valid number; using %s", name, raw, default)
+        return default
+
+
 DEFAULT_MODEL_FILENAME = "distil-qwen3-4b-text2sql-4bit.gguf"
 DEFAULT_MODEL_PATH = os.path.join(
-    os.environ.get("AI_DAM_MODELS_DIR", ".AImodels"), DEFAULT_MODEL_FILENAME)
+    _env_str("AI_DAM_MODELS_DIR", ".AImodels"), DEFAULT_MODEL_FILENAME)
 ENV_MODEL_PATH = "OMNIQUERY_FALLBACK_GGUF"  # name of the env var, not a path itself
 
 # (llama_instance, grammar_instance), keyed by resolved model path -- loaded
@@ -71,7 +92,7 @@ def _resolve_model_path(model_path: Optional[str]) -> str:
     $OMNIQUERY_FALLBACK_GGUF, then DEFAULT_MODEL_PATH."""
     if model_path:
         return model_path
-    return os.environ.get(ENV_MODEL_PATH, DEFAULT_MODEL_PATH)
+    return _env_str(ENV_MODEL_PATH, DEFAULT_MODEL_PATH)
 
 
 def _prepare_dll_path() -> None:
@@ -193,7 +214,7 @@ def load_canaried_llama(model_path: str, n_ctx: int, n_threads: int) -> Any:
 
     # Full GPU offload by default: a CUDA build uses it, a CPU-only build
     # ignores every GPU knob, so this is safe everywhere.
-    gpu_layers = int(os.environ.get("OMNIQUERY_FALLBACK_GPU_LAYERS", "-1"))
+    gpu_layers = _env_num("OMNIQUERY_FALLBACK_GPU_LAYERS", -1)
     llama = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
                   n_gpu_layers=gpu_layers, verbose=False)
     if not _decode_canary(llama):

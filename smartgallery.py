@@ -169,6 +169,26 @@ def env_or(name, default):
     return default if value is None or not value.strip() else value.strip()
 
 
+def env_num(name, default, cast=int):
+    """Numeric environment value, or `default` when unset, blank, or
+    unparseable.
+
+    Most of these are read at module scope, so `int(os.environ.get(...))`
+    turned a blank or fat-fingered value into a ValueError during import:
+    the gallery refused to start, with a traceback that never named the
+    variable at fault. A bad number should cost you that setting, not the
+    whole application.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return cast(raw.strip())
+    except (TypeError, ValueError):
+        print(f"WARNING: {name}={raw!r} is not a valid number; using {default}.")
+        return default
+
+
 # Path to the ComfyUI 'output' folder.
 # Common locations:
 #   Windows: C:/ComfyUI/output or C:/Users/YourName/ComfyUI/output
@@ -206,20 +226,20 @@ FFPROBE_MANUAL_PATH = env_or('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
 # Port on which the gallery web server will run. 
 # Must be different from the ComfyUI port (usually 8188).
 # The gallery does not require ComfyUI to be running; it works independently.
-SERVER_PORT = int(env_or('SERVER_PORT', '8189'))
+SERVER_PORT = env_num('SERVER_PORT', 8189)
 
 # Width (in pixels) of the generated thumbnails.
-THUMBNAIL_WIDTH = int(os.environ.get('THUMBNAIL_WIDTH', 300))
+THUMBNAIL_WIDTH = env_num('THUMBNAIL_WIDTH', 300)
 
 # Assumed frame rate for animated WebP files.  
 # Many tools, including ComfyUI, generate WebP animations at ~16 FPS.  
 # Adjust this value if your WebPs use a different frame rate,  
 # so that animation durations are calculated correctly.
-WEBP_ANIMATED_FPS = float(os.environ.get('WEBP_ANIMATED_FPS', 16.0))
+WEBP_ANIMATED_FPS = env_num('WEBP_ANIMATED_FPS', 16.0, float)
 
 # Maximum number of files to load initially before showing a "Load more" button.  
 # Use a very large number (e.g., 9999999) for "infinite" loading.
-PAGE_SIZE = int(os.environ.get('PAGE_SIZE', 100))
+PAGE_SIZE = env_num('PAGE_SIZE', 100)
 
 # Names of special folders (e.g., 'video', 'audio').  
 # These folders will appear in the menu only if they exist inside BASE_OUTPUT_PATH.  
@@ -229,12 +249,12 @@ SPECIAL_FOLDERS = ['video', 'audio']
 # Number of files to process at once during database sync. 
 # Higher values use more memory but may be faster. 
 # Lower this if you run out of memory.
-BATCH_SIZE = int(os.environ.get('BATCH_SIZE', 500))
+BATCH_SIZE = env_num('BATCH_SIZE', 500)
 
 # Threshold (in MB) above which videos will be streamed (transcoded) 
 # instead of loaded natively in the gallery grid preview.
 # Default: 50 MB. Set to 0 to force streaming for all supported videos.
-STREAM_THRESHOLD_MB = int(os.environ.get('STREAM_THRESHOLD_MB', 20))
+STREAM_THRESHOLD_MB = env_num('STREAM_THRESHOLD_MB', 20)
 STREAM_THRESHOLD_BYTES = STREAM_THRESHOLD_MB * 1024 * 1024
 
 # Number of parallel processes to use for thumbnail and metadata generation.
@@ -9230,7 +9250,7 @@ import urllib.error
 import urllib.parse
 
 # Increase max request body size to handle large workflow JSON payloads (if users manually upload them, though we now read from disk)
-app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('COMFYUI_MAX_UPLOAD_MB', 2000)) * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = env_num('COMFYUI_MAX_UPLOAD_MB', 2000) * 1024 * 1024
 
 
 # Experimental Remix API Module
@@ -11738,8 +11758,8 @@ if __name__ == '__main__':
         try:
             ai_dam_worker = AIWorker(
                 AI_CONFIG, DATABASE_FILE,
-                poll_interval=float(os.environ.get("AI_DAM_WORKER_POLL", "25")),
-                batch_size=int(os.environ.get("AI_DAM_WORKER_BATCH", "150")),
+                poll_interval=env_num("AI_DAM_WORKER_POLL", 25.0, float),
+                batch_size=env_num("AI_DAM_WORKER_BATCH", 150),
             )
             ai_dam_worker.start()
             ai_dam_service.set_worker(ai_dam_worker)

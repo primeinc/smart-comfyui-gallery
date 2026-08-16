@@ -55,6 +55,7 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 
+from smartgallery_ai import _env_num
 from smartgallery_ai.embedders import BackendUnavailable, SemanticEmbedder
 from smartgallery_ai.review import FINDING_TYPES, CriticBackend
 
@@ -344,7 +345,7 @@ class QwenVlCritic(CriticBackend):
         if device == "cpu":
             gpu_kwargs["n_gpu_layers"] = 0
         else:
-            gpu_kwargs["n_gpu_layers"] = int(os.environ.get("AI_DAM_GPU_LAYERS", "-1"))
+            gpu_kwargs["n_gpu_layers"] = _env_num("AI_DAM_GPU_LAYERS", -1)
             if device.startswith("cuda:"):
                 gpu_kwargs["main_gpu"] = int(device.split(":", 1)[1])
         split = os.environ.get("AI_DAM_TENSOR_SPLIT", "").strip()

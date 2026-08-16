@@ -37,6 +37,7 @@ from smartgallery_ai import (
     RUBRIC_VERSION,
     SPACE_SEMANTIC,
     SPACE_VISUAL,
+    _env_num,
 )
 from smartgallery_ai import embedders, faces, hashing, invalidation, review, schema, vectors
 from smartgallery_ai import provision as provisioning
@@ -1026,7 +1027,7 @@ class AIWorker:
             conn, wanted, limit, allowed_types=_VISUAL_TYPES
         )
         store = vectors.VectorStore(cache_dir=self.config.cache_dir, ephemeral=self.config.ephemeral_index)
-        chunk_size = max(1, int(os.environ.get("AI_DAM_EMBED_BATCH", "16")))
+        chunk_size = max(1, _env_num("AI_DAM_EMBED_BATCH", 16))
         for start in range(0, len(candidates), chunk_size):
             chunk = candidates[start : start + chunk_size]
             # A user is waiting on priority files; serve them between chunks

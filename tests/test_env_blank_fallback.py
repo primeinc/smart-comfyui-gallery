@@ -118,3 +118,68 @@ def test_launcher_template_points_at_ffprobe():
                 if value:
                     assert "ffprobe" in value.lower(), (
                         f"FFPROBE_MANUAL_PATH points at {value!r}, not ffprobe")
+
+
+# --- numeric knobs --------------------------------------------------------
+# These are read at module scope, so int('') used to raise ValueError during
+# import: the gallery refused to start, with a traceback that never named
+# the offending variable.
+
+@pytest.mark.parametrize("attr,name,default", [
+    ("THUMBNAIL_WIDTH", "THUMBNAIL_WIDTH", 300),
+    ("PAGE_SIZE", "PAGE_SIZE", 100),
+    ("BATCH_SIZE", "BATCH_SIZE", 500),
+    ("STREAM_THRESHOLD_MB", "STREAM_THRESHOLD_MB", 20),
+    ("SERVER_PORT", "SERVER_PORT", 8189),
+])
+def test_numeric_knobs_survive_blank_and_garbage(smartgallery_app, monkeypatch,
+                                                  attr, name, default):
+    del attr  # the constant is already bound; env_num is what we exercise
+    for bad in ("", "   ", "not-a-number", "12abc"):
+        monkeypatch.setenv(name, bad)
+        assert smartgallery_app.env_num(name, default) == default
+    monkeypatch.setenv(name, " 42 ")
+    assert smartgallery_app.env_num(name, default) == 42
+    monkeypatch.delenv(name)
+    assert smartgallery_app.env_num(name, default) == default
+
+
+def test_env_num_supports_floats(smartgallery_app, monkeypatch):
+    monkeypatch.setenv("WEBP_ANIMATED_FPS", "")
+    assert smartgallery_app.env_num("WEBP_ANIMATED_FPS", 16.0, float) == 16.0
+    monkeypatch.setenv("WEBP_ANIMATED_FPS", "23.5")
+    assert smartgallery_app.env_num("WEBP_ANIMATED_FPS", 16.0, float) == 23.5
+
+
+def test_ai_config_numeric_knobs_survive_blanks(monkeypatch, tmp_path):
+    from smartgallery_ai import AIConfig
+
+    for name in ("AI_DAM_NEAR_DUP_DISTANCE", "AI_DAM_FACE_MIN_PX",
+                 "AI_DAM_SIMILAR_K", "AI_DAM_FACE_DETECT_MAX_SIDE",
+                 "AI_DAM_FACE_CLUSTER_THRESHOLD"):
+        monkeypatch.setenv(name, "")
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert (cfg.near_dup_max_distance, cfg.face_min_px, cfg.similar_default_k,
+            cfg.face_detect_max_side) == (8, 24, 24, 1600)
+    # None means "use the embedder's own default" -- a blank must mean that
+    # too, not float('').
+    assert cfg.face_cluster_threshold is None
+
+
+def test_ai_config_blank_backend_selector_stays_auto(monkeypatch, tmp_path):
+    """A blank selector must not become "", which resolves to no backend."""
+    from smartgallery_ai import AIConfig
+
+    monkeypatch.setenv("AI_DAM_SEMANTIC_BACKEND", "")
+    monkeypatch.setenv("AI_DAM_CRITIC_BACKEND", "   ")
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.semantic_backend == "auto" and cfg.critic_backend == "auto"
+
+
+def test_enable_ai_dam_blank_does_not_silently_disable_the_layer(monkeypatch, tmp_path):
+    from smartgallery_ai import AIConfig
+
+    monkeypatch.setenv("ENABLE_AI_DAM", "")
+    assert AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite")).enabled is True
+    monkeypatch.setenv("ENABLE_AI_DAM", "false")
+    assert AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite")).enabled is False
