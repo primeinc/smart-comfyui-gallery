@@ -12,7 +12,7 @@ OmniQuery parse path, and assert every request succeeds. Inside the
 namespace any attempted egress fails at the kernel level (ENETUNREACH), so
 a functioning server IS the evidence of local-only operation.
 
-Run AFTER model provisioning (the needle engine cache and any local model
+Run AFTER model provisioning (any local model
 files must already exist). Exit code 0 = PASS.
 
 Usage: sudo python3 probes/egress_probe.py
