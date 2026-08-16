@@ -3900,7 +3900,14 @@ def initialize_gallery_fast_no_db_check():
     for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, 'tmp_*')):
         try: os.remove(stale)
         except OSError: pass
-    
+    # Prepared downloads are full copies of what went into them, and their
+    # only sweep ran at the end of building another one -- so one download
+    # and no more left that copy in the gallery folder for good.
+    _removed_zips, _forgotten_jobs = prune_zip_cache()
+    if _removed_zips:
+        print(f"INFO: Cleared {_removed_zips} prepared download(s) older "
+              f"than {ZIP_RETENTION_SECONDS // 3600} hours.")
+
     with get_db_connection() as conn:
         try:
             init_db(conn) 
@@ -4074,7 +4081,14 @@ def initialize_gallery():
     for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, 'tmp_*')):
         try: os.remove(stale)
         except OSError: pass
-    
+    # Prepared downloads are full copies of what went into them, and their
+    # only sweep ran at the end of building another one -- so one download
+    # and no more left that copy in the gallery folder for good.
+    _removed_zips, _forgotten_jobs = prune_zip_cache()
+    if _removed_zips:
+        print(f"INFO: Cleared {_removed_zips} prepared download(s) older "
+              f"than {ZIP_RETENTION_SECONDS // 3600} hours.")
+
     with get_db_connection() as conn:
         try:
             init_db(conn) 
@@ -6541,6 +6555,62 @@ def zip_entry_names(rows):
 
 
 zip_jobs = {}
+
+# A prepared download is a second copy of everything that went into it,
+# sitting in the gallery folder -- which is often a synced drive or the
+# same disk the library is on. A day is long enough to click the link.
+ZIP_RETENTION_SECONDS = 24 * 3600
+
+
+def prune_zip_cache(now=None):
+    """Delete prepared downloads past their day, and forget the jobs.
+
+    This used to run only at the end of building a zip, so a gallery where
+    somebody prepared one download and never prepared another kept that
+    copy for good. It now also runs at startup, which is the one moment
+    every gallery reaches.
+
+    The job entries are pruned with the files. Nothing removed them
+    before, so `zip_jobs` grew for the life of the process and, worse,
+    outlived what it described: after the file was deleted the entry still
+    said ready, check_zip_status still handed out a download link, and
+    following it returned an HTML 404 page.
+
+    Returns (files removed, jobs forgotten).
+    """
+    now = time.time() if now is None else now
+    removed = 0
+    try:
+        for entry in os.listdir(ZIP_CACHE_DIR):
+            path = os.path.join(ZIP_CACHE_DIR, entry)
+            try:
+                if os.path.isfile(path) and \
+                        os.stat(path).st_mtime < now - ZIP_RETENTION_SECONDS:
+                    os.remove(path)
+                    removed += 1
+            except OSError:
+                pass  # being written, held open, or already gone
+    except FileNotFoundError:
+        pass  # no downloads have been prepared yet
+    except OSError as exc:
+        print(f"Zip Cleanup: could not read {ZIP_CACHE_DIR}: {exc}")
+
+    forgotten = []
+    for job_id, job in list(zip_jobs.items()):
+        if job.get('status') == 'processing':
+            continue  # still being built; its file does not exist yet
+        filename = job.get('filename')
+        if filename:
+            if not os.path.exists(os.path.join(ZIP_CACHE_DIR, filename)):
+                forgotten.append(job_id)
+        elif now - job.get('created', now) > ZIP_RETENTION_SECONDS:
+            forgotten.append(job_id)  # a failure, with no file to check
+    for job_id in forgotten:
+        zip_jobs.pop(job_id, None)
+
+    return removed, len(forgotten)
+
+
 def background_zip_task(job_id, file_ids):
     try:
         if not os.path.exists(ZIP_CACHE_DIR):
@@ -6548,7 +6618,8 @@ def background_zip_task(job_id, file_ids):
                 os.makedirs(ZIP_CACHE_DIR, exist_ok=True)
             except Exception as e:
                 print(f"ERROR: Could not create zip directory: {e}")
-                zip_jobs[job_id] = {'status': 'error', 'message': f'Server permission error: {e}'}
+                zip_jobs[job_id] = {'status': 'error', 'created': time.time(),
+                                    'message': f'Server permission error: {e}'}
                 return
         
         zip_filename = f"smartgallery_{job_id}.zip"
@@ -6560,7 +6631,8 @@ def background_zip_task(job_id, file_ids):
             files_to_zip = conn.execute(query, file_ids).fetchall()
 
         if not files_to_zip:
-            zip_jobs[job_id] = {'status': 'error', 'message': 'No valid files found.'}
+            zip_jobs[job_id] = {'status': 'error', 'created': time.time(),
+                                'message': 'No valid files found.'}
             return
 
         entry_names = zip_entry_names([(row['path'], row['name'])
@@ -6575,23 +6647,17 @@ def background_zip_task(job_id, file_ids):
         
         # Job completed succesfully
         zip_jobs[job_id] = {
-            'status': 'ready', 
-            'filename': zip_filename
+            'status': 'ready',
+            'filename': zip_filename,
+            'created': time.time()
         }
-        
-        # Clean automatic: delete zip older than 24 hours
-        try:
-            now = time.time()
-            for f in os.listdir(ZIP_CACHE_DIR):
-                fp = os.path.join(ZIP_CACHE_DIR, f)
-                if os.path.isfile(fp) and os.stat(fp).st_mtime < now - 86400:
-                    os.remove(fp)
-        except Exception: 
-            pass
+
+        prune_zip_cache()
 
     except Exception as e:
         print(f"Zip Error: {e}")
-        zip_jobs[job_id] = {'status': 'error', 'message': str(e)}
+        zip_jobs[job_id] = {'status': 'error', 'message': str(e),
+                            'created': time.time()}
         
 @app.route('/galleryout/prepare_batch_zip', methods=['POST'])
 @management_api_only
@@ -6602,7 +6668,7 @@ def prepare_batch_zip():
         return jsonify({'status': 'error', 'message': 'No files specified.'}), 400
 
     job_id = str(uuid.uuid4())
-    zip_jobs[job_id] = {'status': 'processing'}
+    zip_jobs[job_id] = {'status': 'processing', 'created': time.time()}
     
     thread = threading.Thread(target=background_zip_task, args=(job_id, file_ids))
     thread.daemon = True
@@ -6615,11 +6681,22 @@ def prepare_batch_zip():
 def check_zip_status(job_id):
     job = zip_jobs.get(job_id)
     if not job:
-        return jsonify({'status': 'error', 'message': 'Job not found'}), 404
+        return jsonify({'status': 'error',
+                        'message': 'That download is no longer available. '
+                                   'Please prepare it again.'}), 404
     response_data = job.copy()
+    response_data.pop('created', None)
     if job['status'] == 'ready' and 'filename' in job:
+        # Prepared downloads are cleared after a day, and the entry saying
+        # so was never cleared with them: this answered ready and handed
+        # out a link that returned an HTML 404. Ask the disk, not the note.
+        if not os.path.exists(os.path.join(ZIP_CACHE_DIR, job['filename'])):
+            zip_jobs.pop(job_id, None)
+            return jsonify({'status': 'error',
+                            'message': 'That download has expired and been '
+                                       'cleared. Please prepare it again.'}), 404
         response_data['download_url'] = url_for('serve_zip_file', filename=job['filename'])
-        
+
     return jsonify(response_data)
     
 @app.route('/galleryout/serve_zip/<filename>')
