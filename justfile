@@ -18,7 +18,8 @@ test:
 # setting a layer underneath silently caps, a subprocess that can hang, a
 # pipe read with no clock on it, output that cannot carry the names it
 # prints, a guard stricter than the thing it guards, one writer to the
-# database giving up on another sooner than the rest, a misspelt setting
+# database giving up on another sooner than the rest, a cache bounded in
+# count while what it holds grows with the library, a misspelt setting
 # name, a documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
@@ -49,6 +50,7 @@ audit:
         tests/test_console_carries_any_filename.py \
         tests/test_port_check_matches_the_server.py \
         tests/test_ai_writes_wait_for_the_scan.py \
+        tests/test_view_snapshots_are_bounded_by_size.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
         tests/test_env_var_typos.py \

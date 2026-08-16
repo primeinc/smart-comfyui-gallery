@@ -981,21 +981,49 @@ class ViewSnapshotStore:
     /api/current_view_ids look the snapshot up by that token. Concurrent
     tabs and users therefore can never be served each other's views (the
     previous single process-wide cache was overwritten by whichever render
-    happened last, from any session). Capacity is a bounded LRU; a missing
-    token signals the client that its view snapshot expired and the page
-    must re-render.
+    happened last, from any session). A missing token signals the client
+    that its view snapshot expired and the page must re-render.
+
+    The LRU is bounded twice over, because counting snapshots bounds
+    nothing: a snapshot holds one row per file in the view, and a view can
+    be the whole library. Measured at 2278 bytes per file over 26 fields,
+    of which workflow_prompt and workflow_files are half:
+
+        10,000 files    21.7 MB per snapshot      695 MB at 32 snapshots
+        50,000 files   108.6 MB per snapshot     3475 MB at 32 snapshots
+       200,000 files   434.4 MB per snapshot    13902 MB at 32 snapshots
+
+    One snapshot of a large library is what paging through it costs and
+    cannot be avoided here. Keeping thirty-two of them is what turns a
+    large library into running out of memory, so there is a ceiling on
+    rows held as well as on snapshot count, and whichever bites first
+    wins.
+
+    The newest snapshot is never evicted, whatever its size: it is the one
+    the caller is about to page through, and dropping it would leave a
+    library above the ceiling unable to page at all.
     """
 
-    def __init__(self, capacity=32):
+    # ~100k rows is about 230 MB at the size measured above. Small
+    # libraries never reach it and keep the full thirty-two; a big one
+    # keeps fewer; a single view larger than this keeps just itself.
+    def __init__(self, capacity=32, max_rows=100_000):
         self._lock = threading.Lock()
         self._snapshots = OrderedDict()  # token -> (owner, files)
         self._capacity = capacity
+        self._max_rows = max_rows
+
+    def _rows_held(self):
+        return sum(len(files) for _owner, files in self._snapshots.values())
 
     def put(self, owner, files):
         token = secrets.token_urlsafe(16)
         with self._lock:
             self._snapshots[token] = (owner, files)
             while len(self._snapshots) > self._capacity:
+                self._snapshots.popitem(last=False)
+            # Oldest first, and never the one just stored.
+            while len(self._snapshots) > 1 and self._rows_held() > self._max_rows:
                 self._snapshots.popitem(last=False)
         return token
 
