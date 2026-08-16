@@ -341,13 +341,18 @@ def json_schema(field_names: Optional[List[str]] = None,
                 operator_names: Optional[List[str]] = None) -> dict:
     """JSON Schema for the AST. When field/operator vocabularies are given
     (from omniquery.fields), they are embedded as enums so constrained
-    decoders can only emit valid vocabulary."""
+    decoders can only emit valid vocabulary.
+
+    `value` mirrors omniquery.validation's accepted shapes: scalars, arrays
+    of scalars, {days_ago}/{hours_ago} relative dates, and {file_id, k}
+    similarity refs. Anything looser lets grammar-constrained decoders emit
+    object-wrapped scalars ({"number": 42}) that validation then rejects."""
     cond: dict = {
         "type": "object",
         "properties": {
             "field": {"type": "string"},
             "op": {"type": "string"},
-            "value": {},
+            "value": {"$ref": "#/$defs/value"},
         },
         "required": ["field", "op"],
         "additionalProperties": False,
@@ -390,6 +395,38 @@ def json_schema(field_names: Optional[List[str]] = None,
         "required": ["target"],
         "additionalProperties": False,
         "$defs": {
+            "scalar": {"type": ["string", "number", "boolean"]},
+            "value": {
+                "anyOf": [
+                    {"$ref": "#/$defs/scalar"},
+                    {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"$ref": "#/$defs/scalar"},
+                    },
+                    {
+                        "type": "object",
+                        "properties": {"days_ago": {"type": "number", "minimum": 0}},
+                        "required": ["days_ago"],
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {"hours_ago": {"type": "number", "minimum": 0}},
+                        "required": ["hours_ago"],
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "file_id": {"type": "string"},
+                            "k": {"type": "integer", "minimum": 1},
+                        },
+                        "required": ["file_id"],
+                        "additionalProperties": False,
+                    },
+                ]
+            },
             "cond": cond,
             "not": {
                 "type": "object",

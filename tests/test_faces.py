@@ -673,7 +673,7 @@ def test_get_face_backend_auto_prefers_insightface(tmp_path, monkeypatch):
 
     class _FakeInsight(F.FaceBackend):
         model_id = "insightface/antelopev2"
-        model_version = "scrfd10g+glintr100-v2"
+        model_version = "scrfd10g+glintr100-v1"
 
         def __init__(self, models_dir, min_det_score, min_face_px):
             pass

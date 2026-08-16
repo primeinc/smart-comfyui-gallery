@@ -377,7 +377,7 @@ class InsightFaceBackend(FaceBackend):
     (deepinsight/insightface)."""
 
     model_id = "insightface/antelopev2"
-    model_version = "scrfd10g+glintr100-v2"  # v2: genderage attributes stored per face
+    model_version = "scrfd10g+glintr100-v1"  # attributes fill in place; embeddings are version-stable
     # Pairwise F1 is 0.995-0.999 across 0.35-0.50 on the labeled A/B;
     # 0.40 keeps P 1.000 with F1 0.998.
     default_cluster_threshold = 0.40
@@ -544,7 +544,7 @@ def installed_pipelines(config: AIConfig) -> list:
 
     return [
         _entry("scrfd+glintr100",
-               "insightface/antelopev2", "scrfd10g+glintr100-v2",
+               "insightface/antelopev2", "scrfd10g+glintr100-v1",
                [os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2",
                              "scrfd_10g_bnkps.onnx"), _ARCFACE_FILENAME],
                "AI_DAM_FACE_BACKEND=insightface"),

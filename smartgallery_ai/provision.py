@@ -134,11 +134,14 @@ def torch_cuda_index() -> str:
     return _TORCH_CUDA_INDEX_BLACKWELL_FALLBACK
 
 
-# Official prebuilt CUDA wheels for llama-cpp-python (the critic's
-# runtime). Coverage is narrower than torch's: CPython 3.10-3.12 only as
-# of 2026-08 — the swap is attempted best-effort and the CPU build stays
-# when no wheel matches. AI_DAM_LLAMA_CUDA_INDEX overrides.
+# Official prebuilt CUDA builds of llama-cpp-python (the critic's
+# runtime). Primary source: GitHub RELEASE wheels — py3-none tagged (any
+# CPython) and current (v0.3.34-cu132/cu130 verified 2026-08, Windows +
+# manylinux). The abetlen.github.io cu124 INDEX is a stale fallback
+# (caps at 0.3.4, cp312). AI_DAM_LLAMA_CUDA_INDEX overrides everything.
 _LLAMA_CUDA_INDEX_DEFAULT = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
+# (min driver CUDA, release tag suffix), newest first.
+_LLAMA_CUDA_RELEASE_TAGS = ((13.2, "cu132"), (13.0, "cu130"))
 _llama_gpu_cache: list = []  # memoized [bool-or-None]
 
 
@@ -146,6 +149,32 @@ def llama_cuda_index() -> str:
     """The prebuilt-CUDA wheel index for llama-cpp-python."""
     return (os.environ.get("AI_DAM_LLAMA_CUDA_INDEX", "").strip()
             or _LLAMA_CUDA_INDEX_DEFAULT)
+
+
+def llama_cuda_release_wheel() -> Optional[str]:
+    """Direct URL of the official release wheel matching this machine's
+    driver, the running platform, and the INSTALLED llama-cpp-python
+    version — or None (callers then fall back to the index). Release
+    wheels are py3-none, so any CPython works."""
+    driver_cuda = _driver_cuda_version()
+    if driver_cuda is None:
+        return None
+    tag = next((t for minimum, t in _LLAMA_CUDA_RELEASE_TAGS
+                if driver_cuda >= minimum), None)
+    if tag is None:
+        return None
+    try:
+        version = importlib.metadata.version("llama-cpp-python")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    if sys.platform == "win32":
+        plat = "win_amd64"
+    elif sys.platform.startswith("linux"):
+        plat = "manylinux_2_35_x86_64"
+    else:
+        return None
+    return ("https://github.com/abetlen/llama-cpp-python/releases/download/"
+            f"v{version}-{tag}/llama_cpp_python-{version}-py3-none-{plat}.whl")
 
 
 def _llama_supports_gpu():
@@ -788,19 +817,39 @@ def provision(
                 log("  ! llama-cpp-python is loaded in this process but is a "
                     "CPU-only build; restart the app to attempt the CUDA swap")
             else:
+                # Prefer the official GitHub release wheel (py3-none, any
+                # CPython, current CUDA); the stale cu124 index is the
+                # fallback. Release wheels lack sm_120 (Blackwell)
+                # kernels as of 0.3.34: on such GPUs pin offloading to a
+                # pre-Blackwell card (CUDA_VISIBLE_DEVICES / AI_DAM_DEVICE)
+                # or build from source per docs/FAISS_GPU_WINDOWS.md notes.
+                wheel = llama_cuda_release_wheel()
                 index = llama_cuda_index()
-                cuda_tag = index.rstrip("/").rsplit("/", 1)[-1]
+                cuda_tag = (wheel.rsplit("-", 4)[0].rsplit("-", 1)[-1]
+                            if wheel else index.rstrip("/").rsplit("/", 1)[-1])
                 log(f"  ~ trying prebuilt CUDA llama-cpp-python ({cuda_tag}) "
                     "for GPU reviews")
+                cap = _cuda_compute_capability()
+                if wheel and cap is not None and cap >= 12.0:
+                    log("  ! this rig has a compute>=12.0 GPU; official CUDA "
+                        "wheels ship no sm_120 kernels — pin offloading to a "
+                        "pre-Blackwell card or the CUDA path will crash")
                 try:
-                    (pip_runner or _default_pip_runner)(
-                        ["--force-reinstall", "--no-deps", "llama-cpp-python",
-                         "--index-url", index])
-                    if sys.platform == "win32":
-                        # The prebuilt cu12x wheel links cudart64_12/cublas64_12,
+                    if wheel:
+                        (pip_runner or _default_pip_runner)(
+                            ["--force-reinstall", "--no-deps", wheel])
+                    else:
+                        (pip_runner or _default_pip_runner)(
+                            ["--force-reinstall", "--no-deps", "llama-cpp-python",
+                             "--index-url", index])
+                    if wheel is None and sys.platform == "win32":
+                        # The cu12x INDEX wheel links cudart64_12/cublas64_12,
                         # which nothing else provides on a torch-cu13 box —
                         # without these the swap ships a build that cannot even
                         # import (observed live: critic dead post-swap).
+                        # Release wheels bundle their CUDA runtime (verified
+                        # live: v0.3.34-cu132 imports and offloads with no
+                        # extra DLL install).
                         (pip_runner or _default_pip_runner)(
                             ["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"])
                     importlib.invalidate_caches()
@@ -809,12 +858,11 @@ def provision(
                     log("  + llama-cpp-python CUDA build installed — the "
                         "critic will offload to GPU")
                 except ProvisionError as exc:
-                    log("  ! no prebuilt CUDA llama-cpp-python wheel matches "
-                        "this Python/OS (official wheels cover CPython "
-                        "3.10-3.12); the critic stays on CPU (~90s/review). "
-                        "Fastest fix: recreate the venv on Python 3.12 "
-                        "(uv venv -p 3.12) and restart — everything "
-                        f"reinstalls itself. Details: {str(exc)[-160:]}")
+                    log("  ! no prebuilt CUDA llama-cpp-python build worked "
+                        "on this Python/OS; the critic stays on CPU "
+                        "(~90s/review). Release wheels are py3-none; check "
+                        "the driver's CUDA version or build from source. "
+                        f"Details: {str(exc)[-160:]}")
         # ORT GPU self-heal, BEST-EFFORT: the faces group ships CPU
         # onnxruntime; on an NVIDIA box swap it for onnxruntime-gpu so
         # the insightface pipeline's sessions get CUDAExecutionProvider

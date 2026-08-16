@@ -6,10 +6,10 @@ so "the fallback might drift from the real AST shape" is not a failure mode
 that needs separate handling here.
 
 The grammar guarantees *shape* (valid JSON matching the schema: known
-field/op enums, well-formed and/or/not nesting, no unknown keys) but not
-*semantics* -- a 0.5B model can still legally emit
-`{"field": "is_favorite", "op": "contains", "value": {"x": 1}}`, which is
-syntactically permitted by the grammar (value is untyped) but will fail
+field/op enums, typed values, well-formed and/or/not nesting, no unknown
+keys) but not *semantics* -- a small model can still legally emit
+`{"field": "is_favorite", "op": "eq", "value": "yes"}`: a schema-legal
+scalar of the wrong kind for the field, which will fail
 `omniquery.validation.validate`. That's expected and handled the same way
 as every other backend failure: a failed ParserOutcome, never a raised
 exception and never an unvalidated AST returned to the caller.
@@ -132,7 +132,11 @@ def _load_model(model_path: str, n_ctx: int, n_threads: int) -> Tuple[Any, Any]:
     _prepare_dll_path()
     from llama_cpp import Llama, LlamaGrammar  # local import: optional runtime
 
-    llama = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads, verbose=False)
+    # Full GPU offload by default: a CUDA build uses it, a CPU-only build
+    # ignores every GPU knob, so this is safe everywhere.
+    llama = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
+                  n_gpu_layers=int(os.environ.get("OMNIQUERY_FALLBACK_GPU_LAYERS", "-1")),
+                  verbose=False)
     schema = ast_module.json_schema(field_names=fields.field_names(), operator_names=fields.all_ops())
     grammar = LlamaGrammar.from_json_schema(json.dumps(schema))
     _MODEL_CACHE[model_path] = (llama, grammar)

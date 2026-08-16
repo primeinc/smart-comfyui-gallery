@@ -1169,11 +1169,11 @@ def test_llama_cuda_reinstall_needed_matrix(monkeypatch):
     assert P.llama_cuda_reinstall_needed() is False  # macOS builds use Metal
 
 
-def test_provision_swaps_cpu_llama_for_cuda_build(tmp_path, monkeypatch):
+def test_provision_swaps_cpu_llama_for_cuda_release_wheel(tmp_path, monkeypatch):
     """With a CPU-only llama build, CUDA hardware, and llama_cpp not yet
-    imported, provision() force-reinstalls llama-cpp-python (--no-deps)
-    from the prebuilt CUDA index and drops the memoized CPU verdict so
-    the next probe sees the new build."""
+    imported, provision() installs the official GitHub release wheel
+    matching the driver's CUDA (py3-none, bundled runtime — no cu12
+    DLL chaser) and drops the memoized CPU verdict."""
     from types import SimpleNamespace
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
     monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
@@ -1182,9 +1182,40 @@ def test_provision_swaps_cpu_llama_for_cuda_build(tmp_path, monkeypatch):
     monkeypatch.setattr(P.importlib.util, "find_spec",
                         lambda _name: SimpleNamespace(origin="stub.py"))
     monkeypatch.setattr(P, "_llama_gpu_cache", [False])
+    monkeypatch.setattr(P, "_driver_cuda_cache", [13.2])
+    monkeypatch.setattr(P.importlib.metadata, "version", lambda _n: "0.3.34")
 
     installs = []
     result = P.provision(
+        str(tmp_path), ["critic"], log=lambda _m: None,
+        downloaders=_fake_downloaders({}),
+        pip_runner=lambda args: installs.append(args),
+    )
+    plat = "win_amd64" if P.sys.platform == "win32" else "manylinux_2_35_x86_64"
+    expected = [["--force-reinstall", "--no-deps",
+                 "https://github.com/abetlen/llama-cpp-python/releases/"
+                 f"download/v0.3.34-cu132/llama_cpp_python-0.3.34-py3-none-{plat}.whl"]]
+    assert installs == expected
+    assert "llama-cpp-python (CUDA)" in result["installed"]
+    assert P._llama_gpu_cache == []
+
+
+def test_provision_llama_swap_index_fallback_keeps_cu12_dlls(tmp_path, monkeypatch):
+    """No driver CUDA version detectable: the swap falls back to the
+    cu124 index and, on Windows, chases the cu12 runtime DLL wheels the
+    index wheel links against."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
+    monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
+    monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
+    monkeypatch.setattr(P.importlib.util, "find_spec",
+                        lambda _name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P, "_llama_gpu_cache", [False])
+    monkeypatch.setattr(P, "_driver_cuda_cache", [None])
+
+    installs = []
+    P.provision(
         str(tmp_path), ["critic"], log=lambda _m: None,
         downloaders=_fake_downloaders({}),
         pip_runner=lambda args: installs.append(args),
@@ -1193,18 +1224,15 @@ def test_provision_swaps_cpu_llama_for_cuda_build(tmp_path, monkeypatch):
                  "--index-url",
                  "https://abetlen.github.io/llama-cpp-python/whl/cu124"]]
     if P.sys.platform == "win32":
-        # The cu12x wheel links cudart64_12/cublas64_12; shipping it without
-        # its runtime wheels produced a build that could not import.
         expected.append(["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"])
     assert installs == expected
-    assert "llama-cpp-python (CUDA)" in result["installed"]
-    assert P._llama_gpu_cache == []
 
 
 def test_provision_llama_swap_failure_is_best_effort_with_advisory(tmp_path, monkeypatch):
-    """No matching CUDA wheel (official coverage stops at CPython 3.12):
-    provisioning must still SUCCEED on the working CPU build, and the log
-    must name the fastest fix -- a Python 3.12 venv."""
+    """The CUDA wheel install fails: provisioning must still SUCCEED on
+    the working CPU build, and the log must say the critic stays on CPU
+    and point at the actual unblock levers (release wheels are py3-none,
+    so the levers are the driver's CUDA version or a source build)."""
     from types import SimpleNamespace
     monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
     monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
@@ -1220,7 +1248,8 @@ def test_provision_llama_swap_failure_is_best_effort_with_advisory(tmp_path, mon
         str(tmp_path), ["critic"], log=lines.append,
         downloaders=_fake_downloaders({}), pip_runner=runner,
     )
-    assert any("uv venv -p 3.12" in line for line in lines)
+    assert any("the critic stays on CPU" in line for line in lines)
+    assert any("py3-none" in line for line in lines)
     assert "llama-cpp-python (CUDA)" not in result["installed"]
 
 
