@@ -670,10 +670,70 @@ def test_extract_prompt_elements_is_deterministic_and_verbatim():
               "soft window light,\na cat sleeping, a red cube on a table")
     els = extract_prompt_elements(prompt)
     assert els == extract_prompt_elements(prompt)  # deterministic
-    assert "a red cube on a table" in els          # verbatim slice
+    assert "a red cube on a table" in els
     assert "a cat sleeping" in els
     assert els.count("a red cube on a table") == 1  # deduped
-    assert not any("lora" in e or ":1.2" in e for e in els)  # syntax stripped
+    # The user's own syntax is preserved, not rewritten: scoring adherence
+    # to a prompt requires showing the prompt that was actually issued.
+    assert "(masterpiece:1.2)" in els
+
+
+def test_every_extracted_element_is_a_true_substring_of_the_prompt():
+    """The contract, stated as the thing that used to be false: collapsing
+    whitespace and deleting mid-segment lora tags produced text that
+    appeared nowhere in the user's prompt, and the panel displayed it."""
+    from smartgallery_ai.critic_qwen import extract_prompt_elements
+
+    for prompt in (
+        "a  red   cube,  neon glow",
+        "a <lora:detail:0.8> red cube, a blue sphere",
+        "(masterpiece:1.4), [blurry:0.2] BREAK cinematic lighting",
+        "trailing junk. , ; - , a real ask",
+    ):
+        for element in extract_prompt_elements(prompt):
+            assert element in prompt, f"{element!r} is not in {prompt!r}"
+
+
+def test_short_asks_are_kept_so_the_score_denominator_is_honest():
+    """`8k` is an ask. The old three-character floor dropped it, which also
+    silently shrank the total the adherence fraction is computed over."""
+    from smartgallery_ai.critic_qwen import extract_prompt_elements
+
+    els = extract_prompt_elements("masterpiece, 8k, 4k, hd, a red cube")
+    assert els == ["masterpiece", "8k", "4k", "hd", "a red cube"]
+
+
+def test_punctuation_only_segments_are_not_asks():
+    from smartgallery_ai.critic_qwen import extract_prompt_elements
+
+    assert extract_prompt_elements("a cube, . , ; -, ()") == ["a cube"]
+
+
+def test_truncation_is_reported_not_silent():
+    """A shortened element list shortens the score's denominator; a caller
+    that cannot tell would report a complete-looking verdict on a prompt it
+    only partly checked."""
+    from smartgallery_ai.critic_qwen import (
+        _ALIGN_MAX_ELEMENTS, extract_prompt_elements_report)
+
+    few, truncated = extract_prompt_elements_report("a, b, c")
+    assert truncated is False and len(few) == 3
+
+    many = ", ".join(f"thing{i}" for i in range(_ALIGN_MAX_ELEMENTS + 5))
+    elements, truncated = extract_prompt_elements_report(many)
+    assert truncated is True
+    assert len(elements) == _ALIGN_MAX_ELEMENTS
+
+
+def test_negative_prompt_exclusion_sees_through_weight_syntax():
+    """Comparison normalizes; storage does not. `(blurry:1.3)` in the
+    positive is still the `blurry` the negative asked to be absent."""
+    from smartgallery_ai.critic_qwen import extract_prompt_elements
+
+    els = extract_prompt_elements("a castle, (blurry:1.3), a knight",
+                                  negative="blurry, watermark")
+    assert not any("blurry" in e for e in els)
+    assert els == ["a castle", "a knight"]
 
 
 def test_extract_prompt_elements_excludes_negative_terms():

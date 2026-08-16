@@ -95,34 +95,91 @@ _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
 _LOCALIZABLE_TYPES = frozenset(
     {"anatomy", "artifact", "text_render", "detail_loss", "other"})
 
-_ALIGN_MAX_ELEMENTS = 12
+# Upper bound on ALIGN elements. Each one costs a schema slot and tokens in
+# a single fixed-length reply, so an unbounded prompt cannot be allowed to
+# set the reply size. When it bites, `extract_prompt_elements_report` says
+# so -- the score is satisfied/total, and a silently shortened total is a
+# score computed over a set the user never saw.
+_ALIGN_MAX_ELEMENTS = 24
+
+# Segment separators. Split by INDEX so each element can be sliced out of
+# the ORIGINAL string rather than out of a rewritten copy.
+_SEGMENT_RE = re.compile(r",|\n|\bBREAK\b")
+
+# Comparison-only normalization: lora tags, weights, weight brackets and
+# runs of whitespace. Used to dedupe and to test negative-prompt membership.
+# NEVER used to produce the text handed to the model or stored in the DB --
+# that text is always the user's own.
+_NORM_STRIP = (
+    re.compile(r"<[^>]*>"),          # <lora:name:0.8>
+    re.compile(r":\d+(?:\.\d+)?"),   # :1.2
+    re.compile(r"[()\[\]{}]"),       # weight brackets
+)
+
+
+def _norm_for_match(text: str) -> str:
+    """Normalized form of one element, for dedupe and negative-prompt
+    matching ONLY. Two spellings of the same ask should not both be
+    scored, and `(blurry:1.3)` in the positive should still be recognised
+    as the `blurry` the negative excluded."""
+    for pattern in _NORM_STRIP:
+        text = pattern.sub(" ", text)
+    return " ".join(text.lower().split()).strip(" .;:-")
+
+
+def extract_prompt_elements_report(prompt: Optional[str],
+                                   negative: Optional[str] = None) -> tuple:
+    """`(elements, truncated)` for the ALIGN step.
+
+    Every element is a TRUE substring of `prompt` -- sliced out by index
+    and stripped only of surrounding whitespace. The model is shown, and
+    the database stores, exactly what the user wrote: `(masterpiece:1.4)`
+    stays `(masterpiece:1.4)`. Rewriting the ask before scoring adherence
+    to it means scoring adherence to a prompt nobody issued, and it made
+    the panel display text that appeared nowhere in the user's own prompt.
+
+    Dropped only when a segment has no alphanumeric content at all (pure
+    punctuation), when its normalized form repeats, or when the negative
+    prompt asked for it to be ABSENT. Short asks like `8k` are kept: the
+    old three-character floor silently discarded them, which also silently
+    shrank the denominator of the adherence score.
+
+    `truncated` is True when `_ALIGN_MAX_ELEMENTS` bit, so the caller can
+    say so instead of reporting a fraction of a set it quietly shortened.
+    """
+    raw = prompt or ""
+    neg = _norm_for_match(negative or "")
+    seen: set = set()
+    elements: list = []
+    truncated = False
+
+    start = 0
+    bounds = []
+    for match in _SEGMENT_RE.finditer(raw):
+        bounds.append((start, match.start()))
+        start = match.end()
+    bounds.append((start, len(raw)))
+
+    for begin, end in bounds:
+        segment = raw[begin:end].strip()
+        if not segment or not any(ch.isalnum() for ch in segment):
+            continue
+        key = _norm_for_match(segment)
+        if not key or key in seen:
+            continue
+        if neg and key in neg:
+            continue
+        seen.add(key)
+        if len(elements) >= _ALIGN_MAX_ELEMENTS:
+            truncated = True
+            break
+        elements.append(segment)
+    return elements, truncated
 
 
 def extract_prompt_elements(prompt: Optional[str], negative: Optional[str] = None) -> list:
-    """Deterministic expected-element extraction for the ALIGN step — the
-    expected-text guard: every element is a verbatim-derived slice of the
-    actual prompt (weight/lora syntax stripped; comma/newline/BREAK
-    segmentation), and any element whose text also appears in the
-    negative prompt is excluded (it was requested ABSENT). The VLM never
-    chooses what to expect."""
-    text = re.sub(r"<[^>]*>", " ", prompt or "")            # lora tags
-    text = re.sub(r":\d+(?:\.\d+)?", " ", text)             # :1.2 weights
-    text = re.sub(r"[()\[\]{}]", " ", text)                 # weight brackets
-    neg = " ".join((negative or "").lower().split())
-    seen: set = set()
-    elements: list = []
-    for seg in re.split(r"[,\n]|\bBREAK\b", text):
-        seg = " ".join(seg.split()).strip(" .;:-")
-        low = seg.lower()
-        if len(low) < 3 or low in seen:
-            continue
-        if neg and low in neg:
-            continue
-        seen.add(low)
-        elements.append(seg)
-        if len(elements) >= _ALIGN_MAX_ELEMENTS:
-            break
-    return elements
+    """The elements alone; see `extract_prompt_elements_report`."""
+    return extract_prompt_elements_report(prompt, negative)[0]
 
 
 def _align_schema(n: int) -> dict:
@@ -524,7 +581,8 @@ class QwenVlCritic(CriticBackend):
         adherence_note = ""
         if prompt_text:
             self._emit("align", findings=len(findings))
-            expected = extract_prompt_elements(prompt_text, negative_text)
+            expected, truncated = extract_prompt_elements_report(
+                prompt_text, negative_text)
             if expected:
                 listing = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(expected))
                 try:
@@ -585,6 +643,13 @@ class QwenVlCritic(CriticBackend):
                         1 for e in alignment_elements if e["satisfied"])
                     adherence_note = (f" [adherence {satisfied_count}"
                                       f"/{len(alignment_elements)} prompt elements]")
+                    if truncated:
+                        # Say it. The score is satisfied/total, so a
+                        # quietly shortened total reads as a complete
+                        # verdict on a prompt that was never fully checked.
+                        adherence_note += (
+                            f" [only the first {_ALIGN_MAX_ELEMENTS} prompt "
+                            f"elements were checked]")
 
         # 5. ASSEMBLE (deterministic). Prompt-following is the fraction of
         # the user's own prompt the image actually delivered — countable,
