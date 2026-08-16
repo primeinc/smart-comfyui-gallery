@@ -7410,10 +7410,16 @@ def get_file_full_details(file_id):
                                 pass
                     file_data['generation_params'] = g
             try:
+                # Face rows are provenance-scoped per pipeline; serve the
+                # most recently computed model's rows (after a backend
+                # switch that is the active one) instead of mixing models.
                 face_rows = conn.execute(
-                    "SELECT face_id, det_score, age, sex, pose_pitch, "
+                    "SELECT face_id, model_id, det_score, age, sex, pose_pitch, "
                     "pose_yaw, pose_roll, cluster_id FROM ai_face_instances "
-                    "WHERE file_id = ? ORDER BY face_id", (file_id,)).fetchall()
+                    "WHERE file_id = ? AND model_id = ("
+                    "  SELECT model_id FROM ai_face_instances WHERE file_id = ? "
+                    "  ORDER BY computed_at DESC LIMIT 1) "
+                    "ORDER BY face_id", (file_id, file_id)).fetchall()
                 file_data['faces'] = [dict(r) for r in face_rows]
             except Exception:
                 file_data['faces'] = []

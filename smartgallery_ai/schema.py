@@ -164,12 +164,14 @@ DDL = [
     );
     """,
 
-    # --- scan bookkeeping: records that a (file, kind) was scanned with a
-    # given model at a given source mtime, INCLUDING zero-result scans
-    # (a file with no faces must not be re-scanned every cycle).
-    # kind 'masks' records the segmentation pass over a review's
-    # localizable findings as its own segmenter-keyed unit of work, so
-    # masks are retried when a segmenter is provisioned later ---
+    # --- scan bookkeeping: records that a (file, kind, model) was scanned
+    # at a given source mtime, INCLUDING zero-result scans (a file with no
+    # faces must not be re-scanned every cycle). `scanned_at` is the
+    # last-run stamp. The model is part of the key: each pipeline keeps its
+    # own run history, so switching backends never erases another model's
+    # bookkeeping. kind 'masks' records the segmentation pass over a
+    # review's localizable findings as its own segmenter-keyed unit of
+    # work, so masks are retried when a segmenter is provisioned later ---
     """
     CREATE TABLE IF NOT EXISTS ai_scan_log (
         file_id TEXT NOT NULL REFERENCES files(id)
@@ -180,7 +182,7 @@ DDL = [
         source_mtime REAL NOT NULL,
         scanned_at REAL NOT NULL,
         result_count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (file_id, kind)
+        PRIMARY KEY (file_id, kind, model_id, model_version)
     );
     """,
 
@@ -237,18 +239,23 @@ def _migrate_face_attributes(conn) -> None:
 
 
 def _migrate_scan_log_kinds(conn) -> None:
-    """Rebuild ai_scan_log in place, preserving rows, when its stored CHECK
-    does not admit kind 'masks'. SQLite cannot ALTER a CHECK, but the table
-    is derived bookkeeping, so a rename/copy/drop rebuild is safe. Detection
-    reads the stored DDL — deterministic, no probe writes."""
+    """Rebuild ai_scan_log in place, preserving rows, when its stored DDL
+    predates either the 'masks' kind or the model-scoped primary key
+    (file_id, kind, model_id, model_version). SQLite cannot ALTER a CHECK
+    or a PK, but the table is derived bookkeeping, so a rename/copy/drop
+    rebuild is safe. Detection reads the stored DDL — deterministic, no
+    probe writes."""
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'"
     ).fetchone()
-    if row is None or "'masks'" in row[0]:
+    if row is None:
         return
-    masks_ddl = next(s for s in DDL if "ai_scan_log" in s)
+    current = "'masks'" in row[0] and "kind, model_id, model_version" in row[0]
+    if current:
+        return
+    target_ddl = next(s for s in DDL if "ai_scan_log" in s)
     conn.execute("ALTER TABLE ai_scan_log RENAME TO ai_scan_log_old")
-    conn.execute(masks_ddl.replace("IF NOT EXISTS ", ""))
+    conn.execute(target_ddl.replace("IF NOT EXISTS ", ""))
     conn.execute("INSERT INTO ai_scan_log SELECT * FROM ai_scan_log_old")
     conn.execute("DROP TABLE ai_scan_log_old")
 

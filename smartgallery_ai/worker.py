@@ -207,19 +207,20 @@ def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
 
 def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
                 source_mtime: float, now: float, result_count: int) -> None:
-    """Upsert the single (file, kind) scan-log row recording an attempt at
-    (model, mtime); `result_count` of -1 marks a failed attempt. Shared by
-    the worker stages and the synchronous /index path so both mark work the
-    same way and neither re-scans the other's results."""
+    """Upsert the (file, kind, model) scan-log row recording an attempt at
+    `source_mtime`; `scanned_at` is the last-run stamp and `result_count`
+    of -1 marks a failed attempt. Model-scoped on purpose: each pipeline
+    keeps its own run history, so switching backends never erases another
+    model's bookkeeping. Shared by the worker stages and the synchronous
+    /index path so both mark work the same way and neither re-scans the
+    other's results."""
     conn.execute(
         """
         INSERT INTO ai_scan_log
             (file_id, kind, model_id, model_version, source_mtime,
              scanned_at, result_count)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (file_id, kind) DO UPDATE SET
-            model_id = excluded.model_id,
-            model_version = excluded.model_version,
+        ON CONFLICT (file_id, kind, model_id, model_version) DO UPDATE SET
             source_mtime = excluded.source_mtime,
             scanned_at = excluded.scanned_at,
             result_count = excluded.result_count
@@ -275,10 +276,12 @@ def indexing_totals(conn: sqlite3.Connection) -> dict:
             "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,)),
         "embeddings_visual": one(
             "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)),
+        # DISTINCT: scan rows are model-scoped, and progress means "files a
+        # detector has reached", not rows-per-pipeline.
         "faces_scanned": one(
-            "SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'faces'"),
+            "SELECT COUNT(DISTINCT file_id) FROM ai_scan_log WHERE kind = 'faces'"),
         "reviews_scanned": one(
-            "SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'review'"),
+            "SELECT COUNT(DISTINCT file_id) FROM ai_scan_log WHERE kind = 'review'"),
     }
 
 
@@ -1009,6 +1012,37 @@ class AIWorker:
         (model, mtime); `result_count` of -1 marks a failed attempt."""
         record_scan(conn, file_id, kind, backend, source_mtime, now, result_count)
 
+    def _ensure_faces_attr_backfill(self, conn: sqlite3.Connection, backend) -> None:
+        """One-time re-queue of files whose stored face rows predate
+        attribute persistence (attributes IS NULL under the CURRENT model).
+        Deleting their 'faces' scan-log rows re-enters them through normal
+        staleness: the same model re-detects, so embeddings are rewritten
+        with identical vectors and clusters stay put — only the attribute
+        columns gain data. Never a model_version bump (that would invalidate
+        every face row and force a full re-embed). Marker-guarded to run
+        once per (model_id, model_version)."""
+        marker = f"faces_attr_backfill:{backend.model_id}:{backend.model_version}"
+        if self._get_state(conn, marker) is not None:
+            return
+        cur = conn.execute(
+            """
+            DELETE FROM ai_scan_log WHERE kind = 'faces'
+              AND model_id = ? AND model_version = ?
+              AND file_id IN (
+                SELECT DISTINCT file_id FROM ai_face_instances
+                WHERE model_id = ? AND model_version = ?
+                  AND attributes IS NULL
+              )
+            """,
+            (backend.model_id, backend.model_version,
+             backend.model_id, backend.model_version))
+        self._set_state(conn, marker, "1")
+        if cur.rowcount:
+            _logger.info(
+                "[AIWorker] faces attribute backfill: re-queued %d files "
+                "(attributes fill in place; embeddings version-stable)",
+                cur.rowcount)
+
     def _process_faces(self, conn: sqlite3.Connection, backend, limit: int,
                        only_file_id: Optional[str] = None) -> int:
         """Face stage: detect and store faces per candidate, then recluster when
@@ -1016,6 +1050,7 @@ class AIWorker:
         candidates consumed, successful or not."""
         if limit <= 0:
             return 0
+        self._ensure_faces_attr_backfill(conn, backend)
         rows = self._scan_candidates(conn, "faces", backend, limit,
                                      only_file_id=only_file_id)
         now = time.time()

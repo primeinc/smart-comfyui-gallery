@@ -207,18 +207,25 @@ def test_get_face_backend_stub_uses_extra_source_mapping():
 # --- replace_faces_for_file ---------------------------------------------------
 
 
-def test_replace_faces_removes_rows_from_other_models_too():
-    """Replacement deletes ALL prior rows for the file, even ones from another model."""
+def test_replace_faces_keeps_other_models_rows():
+    """Replacement is scoped to (file, model_id, model_version): another
+    model's rows survive a different pipeline's run, and a version bump of
+    the SAME model replaces only that model's rows."""
     conn = make_conn()
     add_files(conn, ["f1"])
     replace_faces_for_file(conn, "f1", [detection(seed=1)], "old-model", "v0", 1000.0, 2000.0)
 
     replace_faces_for_file(conn, "f1", [detection(seed=2)], "new-model", "v1", 1000.0, 2001.0)
-
     rows = conn.execute(
-        "SELECT model_id, model_version FROM ai_face_instances WHERE file_id = ?", ("f1",)
-    ).fetchall()
-    assert rows == [("new-model", "v1")]
+        "SELECT model_id, model_version FROM ai_face_instances "
+        "WHERE file_id = ? ORDER BY model_id", ("f1",)).fetchall()
+    assert rows == [("new-model", "v1"), ("old-model", "v0")]
+
+    replace_faces_for_file(conn, "f1", [detection(seed=3)], "old-model", "v1", 1000.0, 2002.0)
+    rows = conn.execute(
+        "SELECT model_id, model_version FROM ai_face_instances "
+        "WHERE file_id = ? ORDER BY model_id, model_version", ("f1",)).fetchall()
+    assert rows == [("new-model", "v1"), ("old-model", "v0"), ("old-model", "v1")]
 
 
 def test_replace_faces_failure_mid_insert_rolls_back_prior_rows():

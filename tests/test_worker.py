@@ -564,6 +564,144 @@ def test_unavailable_backend_reprobed_after_retry_window(tmp_path):
     assert len(attempts) == 2  # success is cached for the lifetime
 
 
+def test_record_scan_is_model_scoped(tmp_path):
+    """Each pipeline keeps its own scan-log row: a second model's scan adds
+    a row instead of overwriting the first model's last-run bookkeeping;
+    re-scanning with the same model upserts in place."""
+    from smartgallery_ai.worker import record_scan
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    _add_file(db_path, "f1", str(tmp_path / "f1.png"), mtime=1000.0)
+
+    class _M1:
+        model_id, model_version = "m1", "v1"
+
+    class _M2:
+        model_id, model_version = "m2", "v1"
+
+    conn = sqlite3.connect(db_path)
+    record_scan(conn, "f1", "faces", _M1, 1000.0, 2000.0, 3)
+    record_scan(conn, "f1", "faces", _M2, 1000.0, 2001.0, 1)
+    rows = conn.execute(
+        "SELECT model_id, result_count, scanned_at FROM ai_scan_log "
+        "WHERE file_id = 'f1' ORDER BY model_id").fetchall()
+    assert [tuple(r) for r in rows] == [("m1", 3, 2000.0), ("m2", 1, 2001.0)]
+
+    record_scan(conn, "f1", "faces", _M1, 1000.0, 2002.0, 2)
+    rows = conn.execute(
+        "SELECT model_id, result_count, scanned_at FROM ai_scan_log "
+        "WHERE file_id = 'f1' ORDER BY model_id").fetchall()
+    assert [tuple(r) for r in rows] == [("m1", 2, 2002.0), ("m2", 1, 2001.0)]
+    conn.close()
+
+
+def test_scan_log_pk_migration_preserves_rows(tmp_path):
+    """A database whose ai_scan_log predates the model-scoped primary key
+    is rebuilt in place by init_schema with every row preserved, after
+    which two models' rows for one (file, kind) coexist."""
+    from smartgallery_ai.schema import init_schema
+    from smartgallery_ai.worker import record_scan
+
+    db_path = str(tmp_path / "g.sqlite")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, "
+        "mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT, "
+        "workflow_prompt TEXT DEFAULT '')")
+    conn.execute(
+        """
+        CREATE TABLE ai_scan_log (
+            file_id TEXT NOT NULL REFERENCES files(id)
+                ON DELETE CASCADE ON UPDATE CASCADE,
+            kind TEXT NOT NULL CHECK (kind IN ('faces', 'review', 'masks')),
+            model_id TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+            source_mtime REAL NOT NULL,
+            scanned_at REAL NOT NULL,
+            result_count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (file_id, kind)
+        )
+        """)
+    conn.execute(
+        "INSERT INTO files (id, path, mtime, name, type) "
+        "VALUES ('f1', 'p1', 1000.0, 'f1', 'image')")
+    conn.execute(
+        "INSERT INTO ai_scan_log VALUES ('f1', 'faces', 'm1', 'v1', 1000.0, 2000.0, 3)")
+    init_schema(conn)
+
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'"
+    ).fetchone()
+    assert "kind, model_id, model_version" in row[0]
+    assert conn.execute("SELECT COUNT(*) FROM ai_scan_log").fetchone()[0] == 1
+
+    class _M2:
+        model_id, model_version = "m2", "v1"
+
+    record_scan(conn, "f1", "faces", _M2, 1000.0, 2001.0, 1)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM ai_scan_log WHERE file_id = 'f1' AND kind = 'faces'"
+    ).fetchone()[0] == 2
+    conn.close()
+
+
+def test_faces_attribute_backfill_requeues_only_null_attribute_rows(tmp_path):
+    """Face rows written before attribute persistence (attributes NULL under
+    the current model) are re-queued exactly once — by deleting their scan
+    log rows, never by a version bump — while files whose rows already
+    carry attributes are left alone."""
+    from smartgallery_ai.faces import StubFaceBackend
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    for i in (1, 2):
+        img_path = str(tmp_path / f"img{i}.png")
+        Image.new("RGB", (16, 16), (10 * i, 10, 10)).save(img_path)
+        _add_file(db_path, f"bf{i}", img_path, mtime=1000.0)
+
+    def source_with_attrs(_img):
+        return [FaceDetection(
+            bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9,
+            embedding=np.ones(8, dtype=np.float32),
+            attributes={"age": 30, "landmark_2d_106": [[0.1, 0.2]]})]
+
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="stub", critic_backend="none",
+        extra={"face_stub_source": source_with_attrs},
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
+    backend = StubFaceBackend(source=source_with_attrs)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    assert worker._process_faces(conn, backend, 10) == 2
+
+    # Simulate rows written before attribute persistence on ONE file, and
+    # clear the marker so the backfill re-examines the table.
+    conn.execute(
+        "UPDATE ai_face_instances SET attributes = NULL, age = NULL "
+        "WHERE file_id = 'bf1'")
+    conn.execute(
+        "DELETE FROM ai_dam_state WHERE key LIKE 'faces_attr_backfill:%'")
+    conn.commit()
+
+    # Only bf1 re-enters the queue; re-processing restores its attributes.
+    assert worker._process_faces(conn, backend, 10) == 1
+    row = conn.execute(
+        "SELECT attributes, age FROM ai_face_instances WHERE file_id = 'bf1'"
+    ).fetchone()
+    assert row["attributes"] is not None
+    assert row["age"] == 30
+
+    # Marker set: a further cycle re-queues nothing.
+    assert worker._process_faces(conn, backend, 10) == 0
+    conn.close()
+
+
 def test_face_clustering_retried_after_failure(tmp_path, monkeypatch):
     """Face scans commit before clustering runs, so a clustering failure
     must leave persistent pending state: the next cycle (with zero new

@@ -661,16 +661,21 @@ def replace_faces_for_file(
     source_mtime: float,
     now: float,
 ) -> list:
-    """Transactionally replace all `ai_face_instances` rows for `file_id`.
+    """Transactionally replace THIS MODEL's `ai_face_instances` rows for
+    `file_id`.
 
-    Deletes every existing row for this file (regardless of the model that
-    produced it) then inserts one row per detection, so a multi-face asset
-    yields multiple rows and re-running with a different detection count
-    leaves exactly that many rows behind. Returns the new `face_id`s in
-    insertion order.
+    Rows are provenance-scoped: deleting is limited to (file_id, model_id,
+    model_version), so switching `AI_DAM_FACE_BACKEND` (or running a second
+    pipeline) never destroys another model's stored faces and embeddings —
+    each pipeline owns its own rows and clusters. Re-running the same model
+    with a different detection count leaves exactly that many rows behind.
+    Returns the new `face_id`s in insertion order.
     """
     try:
-        conn.execute("DELETE FROM ai_face_instances WHERE file_id = ?", (file_id,))
+        conn.execute(
+            "DELETE FROM ai_face_instances "
+            "WHERE file_id = ? AND model_id = ? AND model_version = ?",
+            (file_id, model_id, model_version))
         cur = conn.cursor()
         face_ids = []
         for det in detections:

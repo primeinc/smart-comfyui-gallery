@@ -145,6 +145,34 @@ def test_replace_faces_for_file_rerun_with_fewer_detections_leaves_exact_count()
     assert len(rows) == 2
 
 
+def test_replace_faces_for_file_is_model_scoped_never_clobbers_other_pipeline():
+    """Switching the face backend must not destroy another pipeline's data:
+    the replace deletes only (file, model_id, model_version) rows, so each
+    model's detections and embeddings coexist, and re-running one model
+    leaves the other's rows byte-identical."""
+    conn = make_conn()
+    add_files(conn, ["f1"])
+    replace_faces_for_file(conn, "f1", [detection(seed=1), detection(seed=2)],
+                           "insightface/antelopev2", "v1", 1000.0, 2000.0)
+    other_before = [tuple(r) for r in conn.execute(
+        "SELECT face_id, embedding FROM ai_face_instances "
+        "WHERE model_id = 'insightface/antelopev2' ORDER BY face_id").fetchall()]
+
+    replace_faces_for_file(conn, "f1", [detection(seed=9)],
+                           "opencv/yunet+sface", "v2", 1000.0, 2001.0)
+    by_model = dict(conn.execute(
+        "SELECT model_id, COUNT(*) FROM ai_face_instances "
+        "WHERE file_id = 'f1' GROUP BY model_id").fetchall())
+    assert by_model == {"insightface/antelopev2": 2, "opencv/yunet+sface": 1}
+
+    replace_faces_for_file(conn, "f1", [detection(seed=10), detection(seed=11)],
+                           "opencv/yunet+sface", "v2", 1000.0, 2002.0)
+    other_after = [tuple(r) for r in conn.execute(
+        "SELECT face_id, embedding FROM ai_face_instances "
+        "WHERE model_id = 'insightface/antelopev2' ORDER BY face_id").fetchall()]
+    assert other_after == other_before
+
+
 def test_replace_faces_for_file_multi_face_asset_multiple_rows():
     conn = make_conn()
     add_files(conn, ["group_photo"])

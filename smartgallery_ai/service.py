@@ -408,8 +408,18 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "embeddings_visual": conn.execute(
                     "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)
                 ).fetchone()[0],
-                "face_instances": conn.execute("SELECT COUNT(*) FROM ai_face_instances").fetchone()[0],
-                "face_clusters": conn.execute("SELECT COUNT(*) FROM ai_face_clusters").fetchone()[0],
+                # Faces are provenance-scoped per pipeline; count the active
+                # model's rows so a backend switch doesn't double-count.
+                "face_instances": (
+                    conn.execute("SELECT COUNT(*) FROM ai_face_instances "
+                                 "WHERE model_id = ?", (face_model,)).fetchone()[0]
+                    if (face_model := _active_face_model()) else
+                    conn.execute("SELECT COUNT(*) FROM ai_face_instances").fetchone()[0]),
+                "face_clusters": (
+                    conn.execute("SELECT COUNT(*) FROM ai_face_clusters "
+                                 "WHERE model_id = ?", (face_model,)).fetchone()[0]
+                    if face_model else
+                    conn.execute("SELECT COUNT(*) FROM ai_face_clusters").fetchone()[0]),
                 "reviews": conn.execute("SELECT COUNT(*) FROM ai_reviews").fetchone()[0],
             }
             indexing = indexing_totals(conn)
@@ -513,18 +523,36 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                           for fid, score in neighbors if _visible(fid)],
         })
 
+    # -- faces read scoping ---------------------------------------------------------
+
+    def _active_face_model():
+        """model_id of the configured face pipeline, or None when no backend
+        resolves. Face rows, clusters, and scan logs are provenance-scoped
+        per model; read surfaces serve the ACTIVE pipeline's rows, so
+        switching AI_DAM_FACE_BACKEND changes what you see — never what any
+        other pipeline stored."""
+        try:
+            backend = faces.get_face_backend(config)
+        except Exception:
+            return None
+        return backend.model_id if backend is not None else None
+
     # -- GET /faces/<file_id> -----------------------------------------------------
 
     def faces_for_file(file_id: str):
         """Detected faces for one file: bounding boxes, landmarks, cluster assignments."""
         _check_file_access(file_id)
+        model_id = _active_face_model()
         conn = _connect(config)
         try:
             rows = conn.execute(
-                "SELECT face_id, bbox_x, bbox_y, bbox_w, bbox_h, landmarks, det_score, "
+                "SELECT face_id, model_id, bbox_x, bbox_y, bbox_w, bbox_h, "
+                "landmarks, det_score, "
                 "attributes, age, sex, pose_pitch, pose_yaw, pose_roll, cluster_id "
-                "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
-                (file_id,),
+                "FROM ai_face_instances WHERE file_id = ? "
+                + ("AND model_id = ? " if model_id else "")
+                + "ORDER BY face_id",
+                (file_id, model_id) if model_id else (file_id,),
             ).fetchall()
             # Zero faces means two very different things depending on whether
             # a detector has actually looked at this file yet.
@@ -535,6 +563,7 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         result = [
             {
                 "face_id": row["face_id"],
+                "model_id": row["model_id"],
                 "bbox": [row["bbox_x"], row["bbox_y"], row["bbox_w"], row["bbox_h"]],
                 "landmarks": json.loads(row["landmarks"]) if row["landmarks"] else [],
                 "det_score": row["det_score"],
@@ -553,11 +582,16 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # -- GET /faces/clusters -------------------------------------------------------
 
     def faces_clusters():
-        """All face clusters, each with up to four sample file ids."""
+        """The active pipeline's face clusters, each with up to four sample
+        file ids (all models' clusters when no backend resolves)."""
+        model_id = _active_face_model()
         conn = _connect(config)
         try:
             cluster_rows = conn.execute(
-                "SELECT cluster_id, label, size FROM ai_face_clusters ORDER BY cluster_id"
+                "SELECT cluster_id, label, size FROM ai_face_clusters "
+                + ("WHERE model_id = ? " if model_id else "")
+                + "ORDER BY cluster_id",
+                (model_id,) if model_id else (),
             ).fetchall()
             clusters = []
             for crow in cluster_rows:
@@ -646,12 +680,15 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     def faces_recent():
         """The most recently scanned files that contain faces — the
         dashboard's picker for the detector-compare tool."""
+        model_id = _active_face_model()
         conn = _connect(config)
         try:
             rows = conn.execute(
                 "SELECT file_id, MAX(face_id) AS latest, COUNT(*) AS faces "
-                "FROM ai_face_instances GROUP BY file_id "
-                "ORDER BY latest DESC LIMIT 24").fetchall()
+                "FROM ai_face_instances "
+                + ("WHERE model_id = ? " if model_id else "")
+                + "GROUP BY file_id ORDER BY latest DESC LIMIT 24",
+                (model_id,) if model_id else ()).fetchall()
         finally:
             conn.close()
         return jsonify({"enabled": True, "files": [
