@@ -8071,6 +8071,34 @@ body.sidebar-minimized .sidebar-user-row {
     margin-bottom: 8px;
     font-variant-numeric: tabular-nums;
 }
+/* Lightbox "More" overflow menu: items are the ORIGINAL toolbar elements
+   (ids and listeners intact); their title attribute doubles as the label. */
+#lb-more-wrap { position: relative; display: inline-flex; }
+#lb-more-menu {
+    display: none;
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 10600;
+    flex-direction: column; gap: 2px; min-width: 250px; padding: 6px;
+    background: var(--surface-color); border: 1px solid var(--border-color);
+    border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+#lb-more-wrap.open #lb-more-menu { display: flex; }
+#lb-more-menu > button, #lb-more-menu > a {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; min-width: 0 !important; height: auto !important;
+    justify-content: flex-start !important;
+    padding: 7px 10px !important; border: none !important; background: transparent;
+    border-radius: 6px; color: var(--text-color); font-size: 0.9rem !important;
+    text-decoration: none; cursor: pointer; text-align: left; white-space: nowrap;
+    backdrop-filter: none;
+}
+#lb-more-menu > button:hover, #lb-more-menu > a:hover { background: var(--surface-hover); }
+#lb-more-menu > button::after, #lb-more-menu > a::after { content: attr(title); }
+@media (max-width: 1024px) {
+    /* The mobile toolbar clips/rearranges its children; the menu escapes
+       as a fixed sheet under the header instead. */
+    #lb-more-menu { position: fixed; top: 64px; right: 8px; left: auto; max-height: 70vh; overflow-y: auto; }
+}
+
 body.sidebar-minimized .sidebar-ai-hub { display: none; }
 .sidebar.nav-collapsed .sidebar-ai-hub { display: none; }
 

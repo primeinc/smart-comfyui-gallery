@@ -1261,30 +1261,38 @@ document.addEventListener('focusout', function(e) {
                 <div id="lightbox-folder-name" style="margin-top:0.2rem;"></div>
             </div>
             
+            <!-- Five actions earn a visible button; everything else lives in
+                 More (same elements moved, so ids, listeners, and dynamic
+                 show/hide keep working; labels come from title via CSS). -->
             <div id="lightbox-toolbar">
                 <button id="lightbox-help-btn" title="Menu Actions & Shortcuts (/)" style="font-size: 0.9rem; font-weight: bold; padding: 0 12px !important; min-width: auto !important; letter-spacing: 0.5px;">/&nbsp;MENU</button>
-                <button id="lightbox-zoom-out" title="Zoom Out">-</button>
-                <button id="lightbox-zoom-in" title="Zoom In">+</button>
-                <button id="lightbox-rotate-btn" title="Rotate Media (T)" onclick="rotateLightbox()">🔄</button>
-                {% if enable_ai_search %}
-                <button id="lightbox-index-btn" class="lb-hide-mobile" title="Force AI Re-Indexing" onclick="indexCurrentLightboxFile()" style="border-color:var(--ai-color); color:var(--ai-color);">⚡</button>
-                <button id="lightbox-reset-ai-btn" class="lb-hide-mobile" title="Erase AI Data Only" onclick="resetAiDataCurrentLightbox()" style="border-color:var(--danger-color); color:var(--danger-color); display:none;">❌</button>
-                {% endif %}
                 {% if enable_ai_dam %}
                 <button id="lightbox-aidam-btn" class="lb-hide-mobile" title="Similar / Faces / Review (AI)" onclick="openAidamPanel()" style="border-color:var(--ai-color); color:var(--ai-color);">AI</button>
                 {% endif %}
-                <a id="lightbox-download" class="lb-hide-mobile" href="#" title="Download Original File">💾</a>
-                <button id="lightbox-clean-export" class="lb-hide-mobile" title="Clean Export (Remove Metadata)" onclick="downloadCleanedFile(currentLightboxFile.id, currentLightboxFile.name)" style="color:var(--success-color); border-color:var(--success-color);">🛡️</button>
-                <button id="lightbox-rename-btn" class="lb-hide-mobile" title="Rename File">✏️</button>
-                <button id="lightbox-summary-btn" class="lb-hide-mobile" title="Node Summary">📝</button>
-                <button id="lightbox-remix-btn" class="lb-hide-mobile" title="Remix Workflow (B)" onclick="openRemixModal()" style="display:none; color:var(--favorite-color); border-color:var(--favorite-color);">🪄</button>
                 <button id="lightbox-comments-btn" class="dam-only lb-hide-mobile" title="Manage Ratings & Comments (G)" onclick="openFileInfoPanel(currentLightboxFile.id)" style="padding: 0 6px; letter-spacing: -1px;"><span style="font-size:0.9em;">⭐</span>💬</button>
-                <button id="lightbox-caption-icon" class="lb-hide-mobile" title="View AI Caption" style="display:none;">🧠</button>
-                <a id="lightbox-workflow" href="#" class="workflow-btn lb-hide-mobile" title="Download Workflow">⚙️</a>
-                <button id="lightbox-filmstrip-btn" class="lb-hide-mobile" title="Generate Storyboard" onclick="openStoryboard(null)" style="display:none;">🎞️</button>
-                <button id="lightbox-copy-json" class="lb-hide-mobile" title="Copy Workflow to Clipboard" style="display:none;">📋</button>
+                <a id="lightbox-download" class="lb-hide-mobile" href="#" title="Download Original File">💾</a>
                 <button id="lightbox-delete-btn" title="Delete File">🗑️</button>
-                <a id="lightbox-new-tab" class="lb-hide-mobile" href="#" target="_blank" title="Open in New Tab">↗️</a>
+                <span id="lb-more-wrap">
+                    <button id="lb-more-btn" title="More actions" onclick="toggleLbMore(event)">&#8943;</button>
+                    <span id="lb-more-menu">
+                        <button id="lightbox-zoom-out" title="Zoom Out">-</button>
+                        <button id="lightbox-zoom-in" title="Zoom In">+</button>
+                        <button id="lightbox-rotate-btn" title="Rotate Media (T)" onclick="rotateLightbox()">🔄</button>
+                        <a id="lightbox-new-tab" class="lb-hide-mobile" href="#" target="_blank" title="Open in New Tab">↗️</a>
+                        <button id="lightbox-rename-btn" class="lb-hide-mobile" title="Rename File">✏️</button>
+                        <button id="lightbox-clean-export" class="lb-hide-mobile" title="Clean Export (Remove Metadata)" onclick="downloadCleanedFile(currentLightboxFile.id, currentLightboxFile.name)">🛡️</button>
+                        <a id="lightbox-workflow" href="#" class="workflow-btn lb-hide-mobile" title="Download Workflow">⚙️</a>
+                        <button id="lightbox-copy-json" class="lb-hide-mobile" title="Copy Workflow to Clipboard" style="display:none;">📋</button>
+                        <button id="lightbox-summary-btn" class="lb-hide-mobile" title="Node Summary">📝</button>
+                        <button id="lightbox-remix-btn" class="lb-hide-mobile" title="Remix Workflow (B)" onclick="openRemixModal()" style="display:none;">🪄</button>
+                        <button id="lightbox-caption-icon" class="lb-hide-mobile" title="View AI Caption" style="display:none;">🧠</button>
+                        <button id="lightbox-filmstrip-btn" class="lb-hide-mobile" title="Generate Storyboard" onclick="openStoryboard(null)" style="display:none;">🎞️</button>
+                        {% if enable_ai_search %}
+                        <button id="lightbox-index-btn" class="lb-hide-mobile" title="Force AI Re-Indexing" onclick="indexCurrentLightboxFile()">⚡</button>
+                        <button id="lightbox-reset-ai-btn" class="lb-hide-mobile" title="Erase AI Data Only" onclick="resetAiDataCurrentLightbox()" style="display:none;">❌</button>
+                        {% endif %}
+                    </span>
+                </span>
                 <button class="close-btn" onclick="closeLightbox()" title="Close">×</button>
             </div>
         </div>
@@ -2797,6 +2805,22 @@ document.addEventListener('focusout', function(e) {
         
         // --- FOLDER TREE MANAGEMENT FUNCTIONS ---
         
+        // Lightbox "More" overflow: the toolbar shows five actions; the
+        // rest live here. Clicking an item (or anywhere else) closes it.
+        function toggleLbMore(e) {
+            e.stopPropagation();
+            const wrap = document.getElementById('lb-more-wrap');
+            if (wrap) wrap.classList.toggle('open');
+        }
+        document.addEventListener('click', (e) => {
+            const wrap = document.getElementById('lb-more-wrap');
+            if (!wrap || !wrap.classList.contains('open')) return;
+            const menu = document.getElementById('lb-more-menu');
+            if (e.target === wrap || e.target.id === 'lb-more-btn') return;
+            if (menu && menu.contains(e.target)) { wrap.classList.remove('open'); return; }
+            if (!wrap.contains(e.target)) wrap.classList.remove('open');
+        });
+
         // Utility for notifications with custom duration support
         function showNotification(message, type = 'info', duration = 5000) { 
             const container = document.getElementById('notification-container'); 
