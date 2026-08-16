@@ -10766,12 +10766,16 @@ document.addEventListener('focusout', function(e) {
                     // --- update badge in the tab ---
                     const badge = document.getElementById('fi-rating-badge');
                     if (badge) {
-                        badge.textContent = data.vote_count > 0 ? `★ ${data.new_average.toFixed(1)} (${data.vote_count})` : '';
+                        // Blind rating withholds the crowd figures, so there may
+                        // be nothing to show -- and nothing to call toFixed on.
+                        const hasCrowd = data.new_average !== null && data.new_average !== undefined;
+                        badge.textContent = (hasCrowd && data.vote_count > 0)
+                            ? `★ ${data.new_average.toFixed(1)} (${data.vote_count})` : '';
                     }
-                    
+
                     // Also update the global file data cache so sorting works without reload
                     const fileData = allFilesData.find(f => f.id === currentFiFileId);
-                    if (fileData) {
+                    if (fileData && data.new_average !== null && data.new_average !== undefined) {
                         fileData.avg_rating = data.new_average;
                         fileData.vote_count = data.vote_count;
                     }

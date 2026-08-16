@@ -108,6 +108,64 @@ def test_opting_into_blindness_needs_no_privilege(smartgallery_app, client):
         assert session.get("my_ratings_only") is True
 
 
+def _rate(smartgallery_app, file_id, role="GUEST", **session_values):
+    client = smartgallery_app.app.test_client()
+    with client.session_transaction() as session:
+        session["user_id"] = 7
+        session["role"] = role
+        session.update(session_values)
+    return client.post("/galleryout/api/exhibition/rate",
+                       json={"file_id": file_id, "rating": 4})
+
+
+@pytest.fixture()
+def rated_file(smartgallery_app):
+    """A file already carrying somebody else's vote, so there is a crowd
+    average to leak."""
+    conn = smartgallery_app.get_db_connection()
+    try:
+        conn.execute("INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
+                     "VALUES ('blindf1', '/x/b.png', 1.0, 'b.png', 'image', 1)")
+        conn.execute("INSERT OR REPLACE INTO file_ratings "
+                     "(file_id, client_uuid, rating, created_at) "
+                     "VALUES ('blindf1', 'someone_else', 2, 1.0)")
+        conn.commit()
+    finally:
+        conn.close()
+    yield "blindf1"
+    conn = smartgallery_app.get_db_connection()
+    try:
+        conn.execute("DELETE FROM files WHERE id = 'blindf1'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_the_reply_to_a_vote_withholds_the_crowd_average(blind_server, rated_file):
+    """The interface honoured blind rating and the reply did not: the
+    average came back in the JSON on every vote, readable from the network
+    tab. A guarantee that holds only in the markup is not one."""
+    body = _rate(blind_server, rated_file).get_json()
+
+    assert body.get("status") == "success", body
+    assert body.get("new_average") is None, (
+        f"the crowd average was returned to a blind rater: {body}")
+
+
+def test_the_reply_still_carries_the_average_when_not_blind(smartgallery_app,
+                                                            rated_file, monkeypatch):
+    """The counterpart: with blind rating off the badge needs those figures,
+    so withholding them always would break the ordinary gallery."""
+    monkeypatch.setattr(smartgallery_app, "BLIND_RATING", False)
+    monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
+    monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
+
+    body = _rate(smartgallery_app, rated_file, role="ADMIN").get_json()
+
+    assert body.get("new_average") is not None, body
+    assert body.get("vote_count") == 2, body
+
+
 def test_per_rater_detail_stays_behind_the_management_gate(smartgallery_app, client):
     """rating_details returns every individual rating with names. That is a
     moderation view, and a rater reaching it would defeat the flag by

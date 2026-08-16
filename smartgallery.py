@@ -9040,8 +9040,16 @@ def exhibition_rate_file():
             avg = result[0] if result[0] is not None else 0.0
             vote_count = result[1] if result[1] is not None else 0
             
+        # Blind rating exists so a rater is not anchored by the crowd. The
+        # interface honoured that and the reply did not: the average came back
+        # in the JSON on every vote, where anyone with the network tab open
+        # could read it. A guarantee that holds only in the markup is not one.
+        if is_effectively_blind():
+            return jsonify({'status': 'success', 'new_average': None,
+                            'vote_count': None})
+
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'new_average': avg,
             'vote_count': vote_count
         })

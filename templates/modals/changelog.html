@@ -22,6 +22,7 @@
 
 ### 🐛 Fixes
 
+* **Blind rating no longer sends the average to the rater.** With blind rating on, the screen correctly hid what everyone else had scored a picture — but the reply to each vote still contained the average, where it could be read from a browser's network tab. The figures are now withheld from anyone who is rating blind, and still sent to everyone else.
 * **Searching by prompt works again.** Any prompt search from a folder view — including the `model:`, `seed:` and `steps:` filters — returned a server error, every time, for everyone. The same search from a collection worked, so the feature appeared to work or not depending on which page you were on.
 * **Search ignores capitals in every language, not just English.** Searching `CAFÉ` found nothing while `café` found the file, and `РИСУНОК` never matched `рисунок` — so for anyone whose filenames are not plain English, search worked only if the capitals happened to match, and otherwise looked like an empty library.
 * **Uploads keep filenames that are not written in English.** A Chinese, Korean or Cyrillic filename was stripped down to nothing usable — `测试.png` became `png`, which the gallery then refused as having no recognised type, so the upload failed with an error naming a file you had never seen. Japanese and accented names quietly lost characters instead. Names are now kept as they are, with only what is genuinely unsafe removed, and the same applies to images sent to Remix.
