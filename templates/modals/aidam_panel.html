@@ -32,6 +32,15 @@
     .aidam-badge-near { position:absolute; top:4px; right:4px; background:#e67e22; color:#fff; font-size:0.65rem; font-weight:bold; padding:1px 6px; border-radius:4px; }
 
     .aidam-status-msg { padding:24px 16px; text-align:center; color:var(--text-muted); font-size:0.9rem; background:rgba(255,255,255,0.03); border:1px dashed #444; border-radius:10px; }
+    .aidam-progress-rows { margin:14px auto 0; max-width:520px; text-align:left; }
+    .aidam-progress-row { display:flex; align-items:center; gap:10px; margin-top:6px; }
+    .aidam-progress-label { width:72px; text-align:right; font-size:0.75rem; color:var(--text-muted); flex:none; }
+    .aidam-progress-track { flex:1; height:6px; border-radius:3px; background:rgba(255,255,255,0.08); overflow:hidden; }
+    .aidam-progress-fill { display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,#9b59b6,#e0b0ff); transition:width 0.6s ease; }
+    .aidam-progress-count { flex:none; min-width:112px; font-size:0.75rem; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+    .aidam-working-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#e0b0ff; margin-right:8px; vertical-align:1px; animation:aidam-pulse 1.6s ease-in-out infinite; }
+    @keyframes aidam-pulse { 0%,100% { opacity:0.35; } 50% { opacity:1; } }
+    @media (prefers-reduced-motion: reduce) { .aidam-working-dot { animation:none; } }
     .aidam-status-error { color:#ff6b6b; border-color:#e74c3c; background:rgba(231,76,60,0.1); }
 
     .aidam-preview-wrap { position:relative; width:100%; max-width:380px; margin:0 auto 16px auto; border-radius:10px; overflow:hidden; background:#000; }
@@ -337,7 +346,7 @@
         const current = prov.current
             ? `<div style="margin-top:8px; color:#fff;">${escapeAidamHtml(prov.current)}</div><div style="color:var(--ai-color); font-weight:700;">${escapeAidamHtml(prov.detail || 'starting…')}</div>`
             : '';
-        return `<div class="aidam-status-msg" id="aidam-provision-progress">⏳ Setting up the AI layer (${escapeAidamHtml((prov.groups || []).join(', '))}) — ${doneCount} item${doneCount === 1 ? '' : 's'} done.${current}<div style="margin-top:8px; font-size:0.78rem;">This tab activates automatically when it finishes.</div></div>`;
+        return `<div class="aidam-status-msg" id="aidam-provision-progress"><span class="aidam-working-dot"></span>Setting up the AI layer (${escapeAidamHtml((prov.groups || []).join(', '))}) — ${doneCount} item${doneCount === 1 ? '' : 's'} done.${current}<div style="margin-top:8px; font-size:0.78rem;">This tab activates automatically when it finishes.</div></div>`;
     }
 
     function aidamStartProvisionPoll() {
@@ -395,23 +404,33 @@
         }
     }
 
+    function aidamProgressBar(label, done, total) {
+        const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+        return `<div class="aidam-progress-row">` +
+            `<span class="aidam-progress-label">${escapeAidamHtml(label)}</span>` +
+            `<span class="aidam-progress-track"><span class="aidam-progress-fill" style="width:${pct}%"></span></span>` +
+            `<span class="aidam-progress-count">${Number(done).toLocaleString()}/${Number(total).toLocaleString()} · ${pct}%</span></div>`;
+    }
+
     function aidamIndexingProgressLine(status) {
         const ix = (status || {}).indexing || {};
         if (!ix.files_total) return '';
-        const parts = [`${ix.hashed}/${ix.files_total} hashed`];
+        let bars = aidamProgressBar('hashed', ix.hashed, ix.files_total);
         if (ix.visual_files_total) {
-            parts.push(`${ix.embeddings_semantic}/${ix.visual_files_total} semantic`);
-            parts.push(`${ix.embeddings_visual}/${ix.visual_files_total} visual`);
-            parts.push(`${ix.faces_scanned}/${ix.visual_files_total} faces`);
+            bars += aidamProgressBar('semantic', ix.embeddings_semantic, ix.visual_files_total);
+            bars += aidamProgressBar('visual', ix.embeddings_visual, ix.visual_files_total);
+            bars += aidamProgressBar('faces', ix.faces_scanned, ix.visual_files_total);
         }
         const devices = (status || {}).devices || {};
         const devParts = Object.entries(devices)
             .filter(([, dev]) => dev)
             .map(([key, dev]) => `${escapeAidamHtml(key)} on ${escapeAidamHtml(dev)}`);
+        const pace = ((status || {}).worker || {}).review_seconds;
+        if (pace) devParts.push(`reviews measured at ${Math.round(pace)}s/image`);
         const devLine = devParts.length
-            ? `<div style="margin-top:4px; font-size:0.78rem; color:var(--text-muted);">Compute: ${devParts.join(' · ')}</div>`
+            ? `<div style="margin-top:10px; font-size:0.78rem; color:var(--text-muted);">${devParts.join(' · ')}</div>`
             : '';
-        return `<div style="margin-top:8px; font-size:0.78rem; color:var(--text-muted);">Gallery indexing: ${parts.join(' · ')}</div>${devLine}`;
+        return `<div class="aidam-progress-rows">${bars}</div>${devLine}`;
     }
 
     async function aidamPendingMsg(section, what) {
@@ -419,7 +438,7 @@
         aidamRequestIndex();
         aidamStartIndexPoll();
         const status = await aidamFetchStatus();
-        return `<div class="aidam-status-msg">${escapeAidamHtml(what)} — indexing this file now; results appear here automatically.${aidamIndexingProgressLine(status)}</div>`;
+        return `<div class="aidam-status-msg"><span class="aidam-working-dot"></span>${escapeAidamHtml(what)} — indexing this file now; results appear here automatically.${aidamIndexingProgressLine(status)}</div>`;
     }
 
     let aidamIndexPollTicks = 0;
@@ -1078,7 +1097,7 @@
                 }
                 if (data.pending && (status.backends || {}).critic !== false) {
                     box.innerHTML = await aidamPendingMsg('review',
-                        'No review yet — the critic is working through the queue (a review takes minutes per image on CPU)');
+                        'No review yet — the critic is working through the queue');
                     return;
                 }
                 aidamMarkPending('review', false);

@@ -1552,23 +1552,31 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
     suffix = f"_{amp}" if amp != 1.0 else ""
     cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}_wave{suffix}.png")
     if os.path.exists(cache_path): return cache_path
-    
+    # ffmpeg renders to a tmp_ path, promoted only on success: a timeout
+    # kill or disk-full must never leave a partial PNG at the final name,
+    # which the existence check above would then serve forever.
+    tmp_path = os.path.join(THUMBNAIL_CACHE_DIR, f"tmp_{file_hash}_wave{suffix}.png")
+
     try:
         ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
         ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
         if not os.path.exists(ffmpeg_bin): ffmpeg_bin = ffmpeg_name
-        
+
         # Generates a white waveform on black background
         cmd =[
             ffmpeg_bin, '-y', '-i', filepath,
             '-filter_complex', f'volume={amp},showwavespic=s=1000x120:colors=white',
-            '-frames:v', '1', '-c:v', 'png', cache_path
+            '-frames:v', '1', '-c:v', 'png', tmp_path
         ]
         cf = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, creationflags=cf)
-        if os.path.exists(cache_path): return cache_path
+        if os.path.exists(tmp_path):
+            os.replace(tmp_path, cache_path)
+            return cache_path
     except Exception:
         pass # Silently fail if corrupted or timeout
+    try: os.remove(tmp_path)
+    except OSError: pass
     return None
 
 # Site setting cache for thumbnail_generation_enabled(); per-process, short
@@ -1604,45 +1612,58 @@ def create_thumbnail(filepath, file_hash, file_type):
     Image.MAX_IMAGE_PIXELS = None
     
     # --- IMAGES / ANIMATIONS ---
+    # All encoders write to a tmp_ path and os.replace() into place: a save
+    # that dies mid-write (disk full, process kill) must never leave a
+    # partial file at the final name -- the caller's existence check would
+    # treat the corrupt thumbnail as done forever. tmp_ does not match the
+    # caller's f"{file_hash}.*" glob.
     if file_type in ['image', 'animated_image']:
+        tmp_path = None
         try:
             with Image.open(filepath) as img:
                 fmt = 'gif' if img.format == 'GIF' else 'webp' if img.format == 'WEBP' else 'jpeg'
                 cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.{fmt}")
-                
+                tmp_path = os.path.join(THUMBNAIL_CACHE_DIR, f"tmp_{file_hash}.{fmt}")
+
                 # Handle Animations (Animated WebP / GIF)
                 if file_type == 'animated_image' and getattr(img, 'is_animated', False):
                     frames = [fr.copy() for fr in ImageSequence.Iterator(img)]
                     if frames:
-                        for frame in frames: 
+                        for frame in frames:
                             frame.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                        
+
                         processed_frames = [frame.convert('RGBA').convert('RGB') for frame in frames]
                         if processed_frames:
                             processed_frames[0].save(
-                                cache_path, 
-                                save_all=True, 
-                                append_images=processed_frames[1:], 
-                                duration=img.info.get('duration', 100), 
-                                loop=img.info.get('loop', 0), 
+                                tmp_path,
+                                save_all=True,
+                                append_images=processed_frames[1:],
+                                duration=img.info.get('duration', 100),
+                                loop=img.info.get('loop', 0),
                                 optimize=True
                             )
+                            os.replace(tmp_path, cache_path)
                             return cache_path
-                
+
                 # Handle Static Images
                 else:
                     img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
                     if img.mode != 'RGB': img = img.convert('RGB')
-                    img.save(cache_path, 'JPEG', quality=85)
+                    img.save(tmp_path, 'JPEG', quality=85)
+                    os.replace(tmp_path, cache_path)
                     return cache_path
-                    
-        except Exception as e: 
+
+        except Exception as e:
             print(f"ERROR (Pillow): Thumbnail failed for {os.path.basename(filepath)}: {e}")
+            if tmp_path:
+                try: os.remove(tmp_path)
+                except OSError: pass
 
     # --- VIDEOS (MP4, MOV, MKV, AVI, etc.) ---
     elif file_type == 'video':
         cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.jpeg")
-        
+        tmp_path = os.path.join(THUMBNAIL_CACHE_DIR, f"tmp_{file_hash}.jpeg")
+
         # Method A: Try OpenCV first (Fastest)
         try:
             cap = cv2.VideoCapture(filepath)
@@ -1653,10 +1674,13 @@ def create_thumbnail(filepath, file_hash, file_type):
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     img = Image.fromarray(frame_rgb)
                     img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                    img.save(cache_path, 'JPEG', quality=80)
+                    img.save(tmp_path, 'JPEG', quality=80)
+                    os.replace(tmp_path, cache_path)
                     return cache_path
-        except Exception: 
-            pass # Fallback silently to FFmpeg
+        except Exception:
+            try: os.remove(tmp_path)
+            except OSError: pass
+            # Fallback silently to FFmpeg
 
         # Method B: Fallback to FFmpeg (Most Robust for MKV/AVI/ProRes)
         if FFPROBE_EXECUTABLE_PATH:
@@ -1664,24 +1688,27 @@ def create_thumbnail(filepath, file_hash, file_type):
                 ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
                 ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
                 if not os.path.exists(ffmpeg_bin): ffmpeg_bin = ffmpeg_name
-                
+
                 cmd = [
-                    ffmpeg_bin, '-y', 
-                    '-i', filepath, 
+                    ffmpeg_bin, '-y',
+                    '-i', filepath,
                     '-ss', '00:00:00', # Seek to start
                     '-vframes', '1',   # Grab 1 frame
                     '-vf', f'scale={THUMBNAIL_WIDTH}:-1', # Resize directly
                     '-q:v', '2',       # High Quality
-                    cache_path
+                    tmp_path
                 ]
-                
+
                 creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, creationflags=creation_flags)
-                
-                if os.path.exists(cache_path):
+
+                if os.path.exists(tmp_path):
+                    os.replace(tmp_path, cache_path)
                     return cache_path
             except Exception as e:
                 print(f"ERROR (FFmpeg): Thumbnail failed for {os.path.basename(filepath)}: {e}")
+                try: os.remove(tmp_path)
+                except OSError: pass
 
     return None
     
