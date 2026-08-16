@@ -179,6 +179,54 @@ def test_a_filter_answers_the_same_in_both(smartgallery_app, both_views, query):
         f"{sorted(folder_files)}, the album shows {sorted(album_files)}")
 
 
+@pytest.mark.parametrize("query", _FILTERS)
+def test_the_album_answers_the_same_in_json(smartgallery_app, both_views, query):
+    """The visitor's copy, which the comparison above does not reach.
+
+    The exhibition portal does not read the album page: it asks the same
+    address with `Accept: application/json` and builds the grid from the
+    file list that comes back. So there is a third answer to every filter,
+    and it is the one every visitor actually sees -- while the tests above
+    only ever looked at the page.
+
+    It agrees today. The point is that it keeps agreeing, since a filter
+    fixed in one branch and not the other would look correct to the owner
+    and wrong to the client."""
+    ids, coll_id = both_views
+    client = smartgallery_app.app.test_client()
+    url = f"/galleryout/collection/{coll_id}?{query}"
+
+    page = client.get(url)
+    as_page = frozenset(name for name, file_id in ids.items()
+                        if file_id in page.get_data(as_text=True))
+
+    payload = client.get(url, headers={"Accept": "application/json"})
+    assert payload.status_code == 200, payload.status_code
+    listed = (payload.get_json() or {}).get("files") or []
+    by_id = {file_id: name for name, file_id in ids.items()}
+    as_json = frozenset(by_id[f["id"]] for f in listed if f.get("id") in by_id)
+
+    assert as_page == as_json, (
+        f"{query}: the page shows {sorted(as_page)} and the visitor's list "
+        f"holds {sorted(as_json)}")
+
+
+def test_the_json_listing_is_really_being_read(smartgallery_app, both_views):
+    """Control for the parity above: if the JSON branch answered with no
+    files at all, every comparison would be empty against empty for the
+    filters that match nothing, and pass."""
+    ids, coll_id = both_views
+
+    payload = smartgallery_app.app.test_client().get(
+        f"/galleryout/collection/{coll_id}",
+        headers={"Accept": "application/json"})
+
+    assert payload.status_code == 200
+    body = payload.get_json() or {}
+    assert isinstance(body.get("files"), list), body.keys()
+    assert len(body["files"]) == len(ids), body["files"]
+
+
 def test_the_filters_are_actually_filtering(smartgallery_app, both_views):
     """The control that makes the sweep worth running. If every filter
     returned all three files, the two views would agree about nothing in
