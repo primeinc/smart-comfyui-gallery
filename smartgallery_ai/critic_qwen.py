@@ -277,16 +277,19 @@ class QwenVlCritic(CriticBackend):
         split = os.environ.get("AI_DAM_TENSOR_SPLIT", "").strip()
         if split and device != "cpu":
             gpu_kwargs["tensor_split"] = [float(p) for p in split.split(",")]
-        # Upstream hardcodes the mtmd vision encoder onto GPU
-        # (llama_chat_format.py Llava15ChatHandler._init_mtmd_context:
-        # `ctx_params.use_gpu = True  # TODO: Make this configurable`).
-        # On this CUDA-13 build, GPU image-slice encoding faults with a
-        # null read ("access violation reading 0x0" during
-        # "encoding image slice..."), killing every review. Subclass to
-        # make it configurable; vision preprocessing runs on CPU unless
-        # AI_DAM_VISION_GPU=1. Text generation stays fully on GPU either
-        # way.
-        vision_gpu = os.environ.get("AI_DAM_VISION_GPU", "0") == "1"
+        # GPU vision encode without flash attention crashes on images
+        # larger than the vendored warmup reservation (2116 image tokens):
+        # llama.cpp's grow-on-bigger-graph path overflows a compute-buffer
+        # chunk (GGML_ASSERT ggml-backend.cpp:2000; under VRAM pressure a
+        # failed re-reserve is ignored at ggml-backend.cpp:1531 and the
+        # null buffer deref surfaces as "access violation reading 0x0").
+        # With flash attention the same grow path succeeds across the full
+        # legal 4096-token range, so the vision context runs on GPU with
+        # FA enabled. Upstream's handler hardcodes use_gpu=True and only
+        # inherits FA from the text model, hence this override.
+        # AI_DAM_VISION_GPU=0 / AI_DAM_VISION_FA=0 opt out.
+        vision_gpu = os.environ.get("AI_DAM_VISION_GPU", "1") == "1"
+        vision_fa = os.environ.get("AI_DAM_VISION_FA", "1") == "1"
 
         def _init_mtmd_cpu_capable(handler_self, llama_model):
             if handler_self.mtmd_ctx is not None:
@@ -297,9 +300,7 @@ class QwenVlCritic(CriticBackend):
             ctx_params.print_timings = handler_self.verbose
             ctx_params.n_threads = llama_model.n_threads
             ctx_params.flash_attn_type = (
-                llama_cpp.LLAMA_FLASH_ATTN_TYPE_ENABLED
-                if (llama_model.context_params.flash_attn_type
-                    == llama_cpp.LLAMA_FLASH_ATTN_TYPE_ENABLED)
+                llama_cpp.LLAMA_FLASH_ATTN_TYPE_ENABLED if vision_fa
                 else llama_cpp.LLAMA_FLASH_ATTN_TYPE_DISABLED
             )
             handler_self.mtmd_ctx = mtmd_cpp.mtmd_init_from_file(

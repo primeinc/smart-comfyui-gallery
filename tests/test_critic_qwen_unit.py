@@ -549,6 +549,103 @@ def test_llama_cuda_pin_and_tensor_split_and_partial_layers(tmp_path, monkeypatc
     assert recorded["n_gpu_layers"] == 20
 
 
+# --- mtmd vision context params (large-image GPU encode crash) ----------------
+
+
+FA_ENABLED = 11
+FA_DISABLED = 22
+
+
+def _install_fake_llama_with_mtmd(monkeypatch, mtmd_recorded: dict):
+    """Fake llama_cpp whose chat handler carries a recording _mtmd_cpp, so
+    the critic binds its _init_mtmd_context override onto it."""
+
+    class _CtxParams:
+        pass
+
+    class _FakeMtmdCpp:
+        @staticmethod
+        def mtmd_context_params_default():
+            return _CtxParams()
+
+        @staticmethod
+        def mtmd_init_from_file(_path, _model, ctx_params):
+            mtmd_recorded["use_gpu"] = ctx_params.use_gpu
+            mtmd_recorded["flash_attn_type"] = ctx_params.flash_attn_type
+            return object()
+
+        @staticmethod
+        def mtmd_support_vision(_ctx):
+            return True
+
+        @staticmethod
+        def mtmd_free(_ctx):
+            pass
+
+    class _FakeHandler:
+        def __init__(self, clip_model_path, verbose):
+            self.clip_model_path = clip_model_path
+            self.verbose = verbose
+            self.mtmd_ctx = None
+            self._mtmd_cpp = _FakeMtmdCpp()
+
+            class _Stack:
+                @staticmethod
+                def callback(_fn):
+                    pass
+
+            self._exit_stack = _Stack()
+
+    class _FakeLlama:
+        def __init__(self, **kwargs):
+            self.n_threads = 4
+            self.model = object()
+            # upstream initializes the mtmd context lazily on first chat;
+            # invoke eagerly so the test observes the recorded params
+            kwargs["chat_handler"]._init_mtmd_context(self)
+
+    fake_fmt = types.ModuleType("llama_cpp.llama_chat_format")
+    fake_fmt.Qwen25VLChatHandler = _FakeHandler
+    fake = types.ModuleType("llama_cpp")
+    fake.Llama = _FakeLlama
+    fake.llama_chat_format = fake_fmt
+    fake.LLAMA_FLASH_ATTN_TYPE_ENABLED = FA_ENABLED
+    fake.LLAMA_FLASH_ATTN_TYPE_DISABLED = FA_DISABLED
+    monkeypatch.setitem(sys.modules, "llama_cpp", fake)
+    monkeypatch.setitem(sys.modules, "llama_cpp.llama_chat_format", fake_fmt)
+
+
+def test_vision_ctx_defaults_to_gpu_with_flash_attention(tmp_path, monkeypatch):
+    """Regression for the review crash on large images ("access violation
+    reading 0x0" / GGML_ASSERT ggml-backend.cpp:2000 during "encoding image
+    slice..."): GPU vision encode without flash attention overflows the
+    compute buffer on any image over the 2116-token warmup reservation.
+    The vision context must default to use_gpu=True with FA ENABLED."""
+    _touch_qwen_weights(tmp_path)
+    for var in ("AI_DAM_VISION_GPU", "AI_DAM_VISION_FA"):
+        monkeypatch.delenv(var, raising=False)
+    recorded: dict = {}
+    _install_fake_llama_with_mtmd(monkeypatch, recorded)
+
+    QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert recorded["use_gpu"] is True
+    assert recorded["flash_attn_type"] == FA_ENABLED
+
+
+def test_vision_ctx_env_optouts(tmp_path, monkeypatch):
+    """AI_DAM_VISION_GPU=0 moves vision encode to CPU; AI_DAM_VISION_FA=0
+    disables flash attention for the vision context."""
+    _touch_qwen_weights(tmp_path)
+    monkeypatch.setenv("AI_DAM_VISION_GPU", "0")
+    monkeypatch.setenv("AI_DAM_VISION_FA", "0")
+    recorded: dict = {}
+    _install_fake_llama_with_mtmd(monkeypatch, recorded)
+
+    QwenVlCritic(str(tmp_path), semantic_embedder=object())
+    assert recorded["use_gpu"] is False
+    assert recorded["flash_attn_type"] == FA_DISABLED
+
+
 def test_llama_native_logging_is_silenced_unless_opted_in(tmp_path, monkeypatch):
     """The ctor installs a no-op llama.cpp log callback (native logs leak
     full prompts to the console) and keeps a reference on self;
