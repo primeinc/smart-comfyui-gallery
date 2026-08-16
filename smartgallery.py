@@ -1354,18 +1354,28 @@ def safe_delete_tree(folder_path):
     else:
         shutil.rmtree(folder_path)
 
-_GUEST_UUID_RE = re.compile(r'^guest_[0-9a-f]{8,64}$')
+# Two identity shapes a returning guest may legitimately present, both
+# unguessable: the `guest_<hex>` this server mints (secrets.token_hex), and
+# the RFC-4122 UUID the browser generates for itself when it has never been
+# issued one (templates/exhibition.html, templates/index.html both use
+# crypto.randomUUID and store it under `sg_exh_uuid`).
+_GUEST_ID_RE = re.compile(
+    r'^(guest_[0-9a-f]{8,64}'
+    r'|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$')
 
 
 def _is_guest_uuid(value):
-    """True only for an id this server would have minted for a guest.
+    """True only for an identity that cannot be guessed.
 
-    Guest ids are `guest_<hex>` (secrets.token_hex). Accepting any other
-    shape from the request body would let a passwordless guest claim a
-    real account's user_id, and with it ownership of that account's
-    comments and ratings.
+    The guest login accepts a caller-supplied id so a returning visitor
+    keeps their own ratings and comments. Ownership is decided by matching
+    that id against a row's client_uuid, so the shape check is what keeps
+    a passwordless guest from claiming a REAL account: user ids are small
+    integers and the admin writes comments as the literal 'admin', all
+    trivially guessable. The two accepted shapes each carry 64+ bits of
+    entropy, which makes presenting one proof of having been issued it.
     """
-    return bool(_GUEST_UUID_RE.match(str(value or '').strip().lower()))
+    return bool(_GUEST_ID_RE.match(str(value or '').strip().lower()))
 
 
 def _is_ffprobe(path_or_name):

@@ -9,8 +9,16 @@ session id against a row's `client_uuid`.
 Before the fix a guest could log in -- no password -- claiming any
 identity at all, including a real account's user_id, and inherit that
 account's comments and ratings. Verified by deleting another user's
-comment through the API. Guest ids are now only accepted in the shape this
-server mints (`guest_<hex>`); anything else is discarded and a fresh id
+comment through the API.
+
+The line drawn is GUESSABLE versus not. Account ids are small integers and
+the admin comments as the literal 'admin'; those may never be claimed. The
+two accepted shapes each carry 64+ bits of entropy, so presenting one is
+itself evidence of having been issued it: `guest_<hex>` as minted by this
+server, and the RFC-4122 UUID a browser generates for itself with
+crypto.randomUUID (both templates do this and store it under the same key
+the login sends, so rejecting that shape would silently orphan every
+existing visitor's ratings). Anything else is discarded and a fresh id
 issued.
 
 Each test runs a fresh interpreter, because the flags come from argv at
@@ -129,8 +137,9 @@ print('SAFE')
 @pytest.mark.parametrize("claimed", [
     "41", "admin", "1", "guest", "GUEST_ABC", "guest_", "guest_zzzz",
     "guest_dead beef", "../guest_deadbeef", "guest_deadbeef' OR '1'='1",
+    "3f2b1c4d-aaaa-bbbb", "not-a-uuid-at-all",
 ])
-def test_only_well_formed_guest_ids_are_accepted(gallery_env, claimed):
+def test_guessable_identities_are_never_accepted(gallery_env, claimed):
     script = _BOOT + """
 issued = client.post('/galleryout/login',
                      json={'username': 'guest', 'provided_uuid': %r})
@@ -142,6 +151,27 @@ print('MINTED')
     proc = _run(script, gallery_env)
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "MINTED" in proc.stdout
+
+
+def test_a_browser_generated_uuid_is_honoured(gallery_env):
+    """The exhibition and main templates mint their own identity with
+    crypto.randomUUID when they have never been issued one, and store it
+    under the same key the guest login sends. Rejecting that shape would
+    silently orphan every existing visitor's ratings, so a well-formed
+    UUID -- unguessable, and never colliding with an integer account id --
+    is accepted as-is."""
+    script = _BOOT + """
+existing = '3f2b1c4d-9e7a-4b21-8f6c-1a2b3c4d5e6f'
+issued = client.post('/galleryout/login',
+                     json={'username': 'guest', 'provided_uuid': existing})
+identity = issued.get_json()['client_uuid']
+assert identity == existing, (
+    f'a browser-generated identity was discarded: {identity}')
+print('HONOURED')
+"""
+    proc = _run(script, gallery_env)
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "HONOURED" in proc.stdout
 
 
 def test_a_returning_guest_keeps_their_own_id(gallery_env):
