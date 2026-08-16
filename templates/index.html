@@ -757,7 +757,7 @@ document.addEventListener('focusout', function(e) {
             {% endif %}
             
             <!-- Mobile Tools Button -->
-            <button class="glass-btn mobile-only push-right" type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="AI-Powered SQL Queries" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
+            <button class="glass-btn mobile-only push-right" type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="Search (Ctrl+P)" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
                 ⚡ OmniQuery 
                 {% if is_omniquery %}
                     <span class="filter-reset-icon filter-reset-badge" style="margin-left:8px; background:rgba(255,255,255,0.2);" onclick="event.stopPropagation(); window.location.href='{{ url_for('gallery_view', folder_key=current_folder_key) }}'" title="Reset OmniQuery">✕</span>
@@ -779,7 +779,7 @@ document.addEventListener('focusout', function(e) {
             
             <!-- OmniQuery Button -->
             {% if not current_folder_info.is_collection %}
-            <button type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="AI-Powered SQL Queries" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
+            <button type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="Search (Ctrl+P)" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
                 ⚡ OmniQuery {% if is_omniquery %}<span class="filter-reset-icon filter-reset-badge" style="margin-left:8px; background:rgba(255,255,255,0.2);" onclick="event.stopPropagation(); window.location.href='{{ url_for('gallery_view', folder_key=current_folder_key) }}'" title="Reset OmniQuery">✕</span>{% endif %}
             </button>
             {% endif %}
@@ -2482,7 +2482,7 @@ document.addEventListener('focusout', function(e) {
     </div>
     {% include 'modals/user_manager_module.html' %}
     {% include 'modals/remix_modal.html' %}
-    {% include 'modals/omniquery_modal.html' %}
+    {% include 'modals/omniquery_palette.html' %}
     {% if enable_ai_dam %}
     {% include 'modals/aidam_panel.html' %}
     {% endif %}
@@ -11793,22 +11793,22 @@ async function openShareModal(e, collId, collName) {
         
 
     <script>
-    // UX Mutua Esclusività Dialog
+    // The OmniQuery button opens the search palette (Ctrl/Cmd+P / Alt+P).
     window.handleOmniQueryClick = async function(e) {
         if (e) e.stopPropagation();
         if (e && e.target && e.target.classList.contains('filter-reset-icon')) return;
 
         if (typeof activeFiltersCount !== 'undefined' && activeFiltersCount > 0) {
             const confirmed = await smartConfirm(
-                "⚠️ Active Filters Detected", 
-                "Opening OmniQuery will automatically reset your currently active filters.\n\nContinue?", 
+                "Active Filters Detected",
+                "Opening search will automatically reset your currently active filters.\n\nContinue?",
                 false
             );
             if (!confirmed) return;
             window.location.href = "{{ url_for('gallery_view', folder_key=current_folder_key) }}?auto_open_omniquery=true";
             return;
         }
-        openOmniQueryModal();
+        openOmniPalette();
     };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -11816,7 +11816,7 @@ async function openShareModal(e, collId, collName) {
         
         if (urlParams.get('auto_open_omniquery') === 'true') {
             window.history.replaceState({}, document.title, window.location.pathname);
-            setTimeout(openOmniQueryModal, 300);
+            setTimeout(openOmniPalette, 300);
         }
         
         if (urlParams.get('auto_open_filters') === 'true') {

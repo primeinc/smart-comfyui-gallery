@@ -1253,6 +1253,50 @@ def test_provision_llama_swap_failure_is_best_effort_with_advisory(tmp_path, mon
     assert "llama-cpp-python (CUDA)" not in result["installed"]
 
 
+def test_llama_cuda_group_skipped_off_windows_or_no_cuda(tmp_path, monkeypatch):
+    """The official-binaries payload is Windows CUDA zips: explicit
+    requests on other machines are skipped with a log line, never
+    downloaded."""
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
+    written = {}
+    lines = []
+    P.provision(str(tmp_path), ["llama-cuda"], log=lines.append,
+                downloaders=_fake_downloaders(written),
+                pip_runner=lambda args: None)
+    assert any("llama-cuda skipped" in line for line in lines)
+    assert not any("llama-cpp-cuda" in dest for dest in written)
+
+
+def test_llama_cuda_group_auto_added_on_blackwell(tmp_path, monkeypatch):
+    """compute >= 12.0 plus any llama-consuming group pulls the official
+    binaries in automatically -- the wheels ship no sm_120 kernels."""
+    monkeypatch.setattr(P.sys, "platform", "win32")
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
+    written = {}
+    P.provision(str(tmp_path), ["omniquery"], log=lambda _m: None,
+                downloaders=_fake_downloaders(written),
+                pip_runner=lambda args: None)
+    assert any("llama-cpp-cuda" in dest for dest in written)
+
+
+def test_llama_cuda_group_not_added_pre_blackwell(tmp_path, monkeypatch):
+    """Pre-Blackwell CUDA machines keep using the wheel's own kernels: the
+    official binaries are not auto-downloaded."""
+    monkeypatch.setattr(P.sys, "platform", "win32")
+    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
+    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 8.6)
+    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
+    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
+    written = {}
+    P.provision(str(tmp_path), ["omniquery"], log=lambda _m: None,
+                downloaders=_fake_downloaders(written),
+                pip_runner=lambda args: None)
+    assert not any("llama-cpp-cuda" in dest for dest in written)
+
+
 def test_provision_llama_swap_deferred_while_llama_loaded(tmp_path, monkeypatch):
     """A loaded llama_cpp pins its shared library (Windows locks the
     file), so provision() logs a restart advisory instead of replacing it

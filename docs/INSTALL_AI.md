@@ -39,8 +39,12 @@ each capability lights up as its pieces land.
 | visual | Similar tab (visual space) | DINOv2-small | 90 MB |
 | segmenter | Defect masks for review findings | MobileSAM | 40 MB |
 | critic | Review tab (scores + typed findings) | Qwen2.5-VL-7B Q4_K_M + mmproj | 5.5 GB |
+| omniquery (opt-in) | Search palette nl2sql refinement | distil-qwen3-4b-text2sql GGUF | 2.5 GB |
+| llama-cuda (auto on Blackwell) | Official llama.cpp CUDA binaries, every GPU arch | ggml-org b9976 win-cuda zips | 640 MB |
 
-Total ~6.7 GB. Licenses, exact repos, and SHA-256 digests:
+Total ~6.7 GB for the zero-step default set; `omniquery` is explicit
+opt-in and `llama-cuda` joins automatically only on Windows machines with
+a compute >= 12.0 GPU. Licenses, exact repos, and SHA-256 digests:
 [AI_MODELS.md](AI_MODELS.md). One flag: the antelopev2 pack is
 **non-commercial research** licensed (insightface); every other weight is
 MIT/Apache-2.0. `AI_DAM_FACE_BACKEND=opencv` keeps face detection on the
@@ -69,10 +73,21 @@ to the air-gapped host with `AI_DAM_AUTO_PROVISION=false`.
   `abetlen.github.io` cu124 index (needs CPython <= 3.12) plus the
   `nvidia-cuda-runtime-cu12`/`nvidia-cublas-cu12` DLL packages.
 - **Blackwell (RTX 50-series, compute capability 12.x)**: release wheels
-  v0.3.34 ship **no sm_120 kernels** — the critic crashes with a CUDA
-  error if it offloads to such a card. On mixed rigs pin offloading to a
-  pre-Blackwell card (`CUDA_VISIBLE_DEVICES=0`), or build
-  `llama-cpp-python` from source with `CMAKE_CUDA_ARCHITECTURES=120`.
+  v0.3.34 ship no sm_120 kernels, so on such GPUs provisioning
+  automatically adds the `llama-cuda` group — the **official
+  ggml-org/llama.cpp CUDA binaries** (b9976, the exact llama.cpp commit
+  the wheel's bindings target, ~640 MB, covering every current GPU
+  architecture). The runtime loads them via the binding's documented
+  `LLAMA_CPP_LIB_PATH` override and registers their dynamic compute
+  backends. No compiler, no source build; also installable explicitly
+  with `python -m smartgallery_ai provision llama-cuda` (Windows CUDA
+  machines only). Verified on this matrix: CPU, RTX 3070 Ti (sm_86), and
+  RTX 5060 Ti (sm_120) all decode (`probes/hardware_matrix_probe.py`).
+- **Model loads are canaried**: a GPU llama build that cannot actually
+  decode (garbage logits, sampler crash) reloads CPU-only with a logged
+  warning; a decode canary also catches silently corrupted GGUF files —
+  if you see it fire on a freshly provisioned model, verify the file's
+  sha256 and your disk health.
 - **faiss GPU**: Windows CUDA builds of faiss are vendored in
   `vendor/faiss-gpu-win64/` and used automatically; see
   [FAISS_GPU_WINDOWS.md](FAISS_GPU_WINDOWS.md). `AI_DAM_FAISS_GPU=0`
@@ -86,16 +101,27 @@ to the air-gapped host with `AI_DAM_AUTO_PROVISION=false`.
   images can demand a multi-GB compute buffer and crash upstream
   llama.cpp (bug reproduced on master; fix pending upstream).
 
-## OmniQuery fallback parser (optional, off by default)
+## Search palette (Ctrl/Cmd+P, Alt+P)
 
-Natural-language search works out of the box (deterministic heuristic +
-needle2 router). The grammar-constrained GGUF fallback is opt-in:
+Natural-language search works out of the box with zero downloads: the
+deterministic nlq parser answers every query (recognized structure parses
+into typed predicates; every leftover term becomes a full-text search
+across filename, path, prompt, caption, model, and LoRA names). Live
+results as you type; no SQL anywhere.
+
+Optional: the nl2sql refiner — a grammar-constrained local GGUF consulted
+only for structurally-ambiguous phrasing:
 
 ```bash
-OMNIQUERY_ENABLE_FALLBACK=true
-OMNIQUERY_FALLBACK_GGUF=/path/to/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf
-OMNIQUERY_FALLBACK_GPU_LAYERS=-1   # full GPU offload when llama-cpp-python is a CUDA build
+python -m smartgallery_ai provision omniquery   # 2.5 GB, Apache-2.0
+# or point at your own qwen3-family GGUF:
+OMNIQUERY_NL2SQL_GGUF=/path/to/model.gguf
+OMNIQUERY_FALLBACK_GPU_LAYERS=-1   # full GPU offload; 0 forces CPU decode
 ```
+
+Model loads are canaried: a GPU build that cannot actually decode
+(garbage logits, sampler crash) reloads CPU-only with a logged warning
+instead of failing.
 
 ## Verify
 

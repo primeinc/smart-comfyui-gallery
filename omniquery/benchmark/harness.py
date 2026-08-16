@@ -28,13 +28,14 @@ per backend:
 `search` additionally reports refinement stats: which backend ultimately
 answered each entry, and what fraction of entries consulted the model.
 
-CLI: `python -m omniquery.benchmark.harness --backends nlq,nl2sql,search --out report.json`
+CLI: `python -m omniquery.benchmark.harness --backends nlq,sqlsearch --out report.json`
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 
@@ -51,9 +52,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from omniquery.ast import canonicalize
 from omniquery.benchmark.fixtures import ANCHOR_EPOCH, FIXTURE_BASE_PATH, build_fixture_db
 from omniquery.engine import OmniQueryEngine
-from omniquery.parsers import (
-    ParserBackend, ParserOutcome, SearchParser, get_backend, try_validate,
-)
+from omniquery.parsers import ParserBackend, ParserOutcome, get_backend, try_validate
 from omniquery.validation import AuthContext
 
 _DEFAULT_CORPUS_PATH = Path(__file__).with_name("corpus.jsonl")
@@ -300,28 +299,47 @@ def _run_backend(backend: ParserBackend, entries: List[dict], engine: OmniQueryE
     return _aggregate(records, latencies)
 
 
-def _run_search(search: SearchParser, entries: List[dict], engine: OmniQueryEngine,
-                 now_epoch: float) -> Dict[str, Any]:
-    """Like _run_backend but through SearchParser.parse(), adding
-    refinement stats: which backend ultimately answered each entry, and
-    how often the nl2sql model was consulted (trace longer than one hop)."""
+def _run_sqlsearch(entries: List[dict], engine: OmniQueryEngine,
+                    now_epoch: float) -> Dict[str, Any]:
+    """Measure the nl2sql SQL path (omniquery.parsers.nl2sql.SqlSearch):
+    the model's agentic generate/execute/read-results loop runs against
+    the fixture DB, and its id set is compared with the expected AST's
+    engine result. exec-match is the only meaningful metric here (there is
+    no AST to compare); COUNT answers match when the count equals the
+    expected id-set size."""
+    from omniquery.parsers.nl2sql import SqlSearch
+
+    search = SqlSearch(db_path=engine.db_path)
     records: List[_EntryRecord] = []
     latencies: List[float] = []
-    winner_counts: Counter = Counter()
-    consulted_model = 0
+    fail_reasons: Counter = Counter()
     for entry in entries:
+        expected = entry["expected"]
+        expected_query, _ = try_validate(expected["ast"])
+        want = _exec_result(engine, expected_query, now_epoch)
+
         t0 = time.monotonic()
-        outcome, trace = search.parse(entry["nl"], now_epoch)
+        ids, sql, err = search.search(entry["nl"])
         latencies.append((time.monotonic() - t0) * 1000.0)
-        records.append(_score_entry(entry["expected"], outcome, engine, now_epoch))
-        winner_counts[outcome.backend] += 1
-        if len(trace) > 1:
-            consulted_model += 1
+
+        exec_match = False
+        if ids is not None and want is not None:
+            if sql and re.match(r"\s*SELECT\s+COUNT", sql, re.IGNORECASE):
+                got_count = int(ids[0]) if ids else 0
+                want_count = want[1] if want[0] == "count" else len(want[1])
+                exec_match = got_count == want_count
+            else:
+                got: Any = frozenset(ids)
+                want_set = want[1] if want[0] == "ids" else None
+                exec_match = want_set is not None and got == want_set
+        if ids is None:
+            fail_reasons[(err or "unknown")[:60]] += 1
+        records.append(_EntryRecord(
+            expected_unsupported=False, produced_ast=ids is not None,
+            valid=ids is not None, ast_exact=False, exec_match=exec_match,
+            confidence=None))
     metrics = _aggregate(records, latencies)
-    metrics["refinement"] = {
-        "winner_counts": dict(winner_counts),
-        "model_consulted_rate": consulted_model / max(len(entries), 1),
-    }
+    metrics["sql_fail_reasons"] = dict(fail_reasons)
     return metrics
 
 
@@ -332,7 +350,7 @@ def _run_search(search: SearchParser, entries: List[dict], engine: OmniQueryEngi
 def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_PATH,
                    out_path: Optional[str] = None, now_epoch: float = ANCHOR_EPOCH) -> Dict[str, Any]:
     """Run each of `backend_names` (any of 'nlq', 'nl2sql',
-    'fallback_qwen', 'search') against the corpus at `corpus_path`. Writes a
+    'fallback_qwen', 'sqlsearch') against the corpus at `corpus_path`. Writes a
     JSON report to `out_path` if given, and always returns the report dict.
     """
     entries = load_corpus(Path(corpus_path))
@@ -340,7 +358,7 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     engine = _build_fixture_engine()
 
     instances: Dict[str, ParserBackend] = {
-        name: get_backend(name) for name in backend_names if name != "search"
+        name: get_backend(name) for name in backend_names if name != "sqlsearch"
     }
 
     report: Dict[str, Any] = {
@@ -351,12 +369,8 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     }
 
     for name in backend_names:
-        if name == "search":
-            search = SearchParser(
-                nlq=instances.get("nlq") or get_backend("nlq"),
-                model=instances.get("nl2sql") or get_backend("nl2sql"),
-            )
-            report["backends"]["search"] = _run_search(search, entries, engine, now_epoch)
+        if name == "sqlsearch":
+            report["backends"]["sqlsearch"] = _run_sqlsearch(entries, engine, now_epoch)
         else:
             report["backends"][name] = _run_backend(instances[name], entries, engine, now_epoch)
 

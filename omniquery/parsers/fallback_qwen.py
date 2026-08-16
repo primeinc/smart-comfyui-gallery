@@ -22,6 +22,7 @@ file exists -- it never triggers the load.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from typing import Any, Dict, Optional, Tuple
@@ -43,6 +44,20 @@ ENV_MODEL_PATH = "OMNIQUERY_FALLBACK_GGUF"  # name of the env var, not a path it
 # once per process no matter how many FallbackQwenBackend instances exist.
 _MODEL_CACHE: Dict[str, Tuple[Any, Any]] = {}
 
+# Qwen3-family recommended sampling (model card: greedy decoding degrades
+# quantized qwen3 into repetition; presence_penalty 1.5 suppresses it).
+# The grammar still constrains SHAPE; these only pick among grammar-legal
+# tokens.
+_SAMPLING: Dict[str, Any] = {
+    "temperature": 0.6,
+    "top_k": 20,
+    "top_p": 0.95,
+    "min_p": 0.0,
+    "presence_penalty": 1.5,
+    "repeat_penalty": 1.0,
+    "stop": ["<|im_start|>", "<|im_end|>"],
+}
+
 
 def _resolve_model_path(model_path: Optional[str]) -> str:
     """Apply the model-path precedence: explicit argument, then
@@ -61,6 +76,18 @@ def _prepare_dll_path() -> None:
     try:
         from smartgallery_ai.llama_runtime import prepare_llama_runtime
         prepare_llama_runtime()
+    except ImportError:
+        pass
+
+
+def _activate_backends() -> None:
+    """When running on official upstream llama.cpp binaries
+    (LLAMA_CPP_LIB_PATH), compute backends load dynamically and must be
+    registered after `import llama_cpp` — or zero devices exist and every
+    model load fails. No-op on the wheel's own (static) build."""
+    try:
+        from smartgallery_ai.llama_runtime import activate_llama_backends
+        activate_llama_backends()
     except ImportError:
         pass
 
@@ -123,24 +150,76 @@ def _build_system_prompt() -> str:
     return "\n".join(lines)
 
 
-def _load_model(model_path: str, n_ctx: int, n_threads: int) -> Tuple[Any, Any]:
-    """Return the process-wide (llama, grammar) pair for `model_path`,
-    loading and caching on first use. The grammar is built from
-    omniquery.ast.json_schema(), so decoding is constrained to the real
-    AST shape by construction."""
-    cached = _MODEL_CACHE.get(model_path)
+def _decode_canary(llama: Any) -> bool:
+    """One tiny ungated generation proving the (build, device) pair
+    actually decodes. Broken GPU paths fail in two observed ways: garbage
+    logits (all-'!' output -- seen live on a CUDA context wedged by an
+    earlier driver-level crash) or a C++ exception out of the sampler.
+    Both must never reach a real parse."""
+    try:
+        r = llama.create_completion(prompt="Say OK.", max_tokens=4, temperature=0.0)
+        text = r["choices"][0]["text"]
+        return any(c.isalnum() for c in text)
+    except Exception:
+        return False
+
+
+_LLAMA_CACHE: Dict[str, Any] = {}  # model path -> canaried llama instance
+
+
+def load_canaried_llama(model_path: str, n_ctx: int, n_threads: int) -> Any:
+    """Process-wide canaried llama instance for `model_path` (shared by the
+    JSON-grammar backend here and the SQL refiner in nl2sql.py).
+
+    Every load is canaried (_decode_canary): a GPU-offloaded build that
+    cannot decode -- garbage logits or a sampler exception -- is torn down
+    and reloaded CPU-only, loudly, instead of crashing or silently ruining
+    every parse. A CPU build that fails the canary is a hard load error."""
+    cached = _LLAMA_CACHE.get(model_path)
     if cached is not None:
         return cached
     if not os.path.isfile(model_path):
-        raise FileNotFoundError(f"fallback GGUF model not found at {model_path}")
+        raise FileNotFoundError(f"GGUF model not found at {model_path}")
     _prepare_dll_path()
-    from llama_cpp import Llama, LlamaGrammar  # local import: optional runtime
+    from llama_cpp import Llama  # local import: optional runtime
+    _activate_backends()
 
     # Full GPU offload by default: a CUDA build uses it, a CPU-only build
     # ignores every GPU knob, so this is safe everywhere.
+    gpu_layers = int(os.environ.get("OMNIQUERY_FALLBACK_GPU_LAYERS", "-1"))
     llama = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
-                  n_gpu_layers=int(os.environ.get("OMNIQUERY_FALLBACK_GPU_LAYERS", "-1")),
-                  verbose=False)
+                  n_gpu_layers=gpu_layers, verbose=False)
+    if not _decode_canary(llama):
+        if gpu_layers == 0:
+            raise RuntimeError(
+                f"decode canary failed for {model_path} on CPU -- model or "
+                "runtime is broken")
+        logging.getLogger(__name__).warning(
+            "[OmniQuery] GPU decode canary FAILED for %s (garbage logits or "
+            "sampler crash); reloading CPU-only. Check the CUDA driver state "
+            "and CUDA_VISIBLE_DEVICES.", os.path.basename(model_path))
+        try:
+            llama.close()
+        except Exception:
+            pass
+        llama = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
+                      n_gpu_layers=0, verbose=False)
+        if not _decode_canary(llama):
+            raise RuntimeError(
+                f"decode canary failed for {model_path} on both GPU and CPU")
+    _LLAMA_CACHE[model_path] = llama
+    return llama
+
+
+def _load_model(model_path: str, n_ctx: int, n_threads: int) -> Tuple[Any, Any]:
+    """(llama, grammar) for `model_path`, both cached per process. The
+    grammar is built from omniquery.ast.json_schema(), so decoding is
+    constrained to the real AST shape by construction."""
+    cached = _MODEL_CACHE.get(model_path)
+    if cached is not None:
+        return cached
+    llama = load_canaried_llama(model_path, n_ctx, n_threads)
+    from llama_cpp import LlamaGrammar
     schema = ast_module.json_schema(field_names=fields.field_names(), operator_names=fields.all_ops())
     grammar = LlamaGrammar.from_json_schema(json.dumps(schema))
     _MODEL_CACHE[model_path] = (llama, grammar)
@@ -157,6 +236,9 @@ class FallbackQwenBackend(ParserBackend):
     module docstring states the shape-vs-semantics contract."""
 
     name = "fallback_qwen"
+    # Class-level so model-specific subclasses can follow THEIR model's
+    # documented decode settings (nl2sql.py overrides per the distil card).
+    sampling: Dict[str, Any] = _SAMPLING
 
     def __init__(self, model_path: Optional[str] = None, n_ctx: int = 2048,
                  n_threads: int = 4, max_tokens: int = 512):
@@ -166,7 +248,17 @@ class FallbackQwenBackend(ParserBackend):
         self.n_ctx = n_ctx
         self.n_threads = n_threads
         self.max_tokens = max_tokens
-        self._system_prompt = _build_system_prompt()
+        self._system_prompt = self._build_system_prompt()
+
+    def _build_system_prompt(self) -> str:
+        """Generic instruct-model framing; subclasses override to match
+        their model's own documented prompt contract."""
+        return _build_system_prompt()
+
+    def _user_content(self, text: str) -> str:
+        """The user-turn payload for `text`; subclasses override to match
+        their model's trained input shape."""
+        return text
 
     def available(self) -> bool:
         """True when llama_cpp imports and the model file exists;
@@ -195,11 +287,11 @@ class FallbackQwenBackend(ParserBackend):
             resp = llama.create_chat_completion(
                 messages=[
                     {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": text},
+                    {"role": "user", "content": self._user_content(text)},
                 ],
                 grammar=grammar,
-                temperature=0.0,
                 max_tokens=self.max_tokens,
+                **self.sampling,
             )
             content = resp["choices"][0]["message"]["content"]
             ast_dict = json.loads(content)

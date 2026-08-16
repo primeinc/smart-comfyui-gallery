@@ -47,54 +47,38 @@ Backends and request handlers never download; inference is always local.
 Licenses were verified against the primary sources on 2026-08-14/15
 (links inline).
 
-## OmniQuery v2
+## OmniQuery search
 
-| Role | Exact identifier | License | Size / RAM | Notes |
+The search contract: **every query answers**. The deterministic `nlq`
+parser (`omniquery/parsers/nlq.py`, dependency-free) consumes recognized
+structure with rules and turns every leftover term into a full-text
+condition on the universal `text` field (filename, path, workflow prompt,
+AI caption, generation prompt, model, LoRA names in one OR). There is no
+router, no confidence thresholds, and no "unsupported" outcome; a
+model-produced AST replaces the deterministic parse only when it passes
+`coverage_guard` at full coverage.
+
+| Role | Exact identifier | License | Size | Notes |
 |---|---|---|---|---|
-| Primary intent parser | `Cactus-Compute/needle2` via PyPI **`cactus-needle==2.0.4`** (import `needle`) | Apache-2.0 ([HF model card](https://huggingface.co/Cactus-Compute/needle2)) | 14 MB engine, ~30–35 MB peak RAM (measured) | 45M-param tool-calling model, byte-level grammar-constrained decoding, calibrated-confidence head. Engine binary caches to `~/.cache/cactus-needle/<ver>/` on first use; fully offline afterwards. |
-| Fallback (single, optional) | `Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF`, file `qwen2.5-coder-0.5b-instruct-q4_k_m.gguf` | Apache-2.0 ([HF](https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct)) | 469 MB file | Run via **llama-cpp-python** (MIT). Output is GBNF-grammar-constrained to the exact typed AST JSON schema — it cannot emit SQL or free text. |
+| Parser (always) | `nlq` — deterministic rules + universal text fallthrough | — (in-repo) | 0 | Measured on the 98-entry corpus (2026-08-16): **100% execution match**, 0% invalid, parse p50 0.157 ms / p95 0.224 ms; live endpoint (parse+validate+compile+execute+JSON) p50 1.37 ms / p95 2.26 ms. |
+| nl2sql refiner (optional) | `distil-labs/distil-qwen3-4b-text2sql-gguf-4bit`, file `model.gguf` (provision group `omniquery`) | Apache-2.0 | 2.5 GB | Grammar-constrained to the typed AST schema — it cannot emit SQL or free text. Consulted only when nlq's leftover text carries structural vocabulary; qwen3-tuned sampling (temp 0.6, top-k 20, top-p 0.95, presence 1.5). Decode canary at load: a GPU build producing garbage logits or sampler crashes reloads CPU-only, loudly. |
 
-Measured Needle2 behavior on this corpus (see `omniquery/benchmark/`):
-small flat tool schemas parse well; wide schemas cause hallucinated filler
-values and token-budget exhaustion; multi-constraint queries can silently
-drop constraints while the confidence head reports high confidence
-(observed 0.73 on a constraint-dropping parse vs 0.20 on a correct one).
-Consequently confidence is **only one routing input**: a deterministic
-term-coverage guard (numbers, quoted strings, and keyword classes must be
-reflected in the AST) gates acceptance, and thresholds in
-`omniquery/parsers/routing_defaults.json` are set from benchmark
-measurements, not from the model's self-report.
+Refiner candidate bench (standalone, grammar-constrained, GPU, 2026-08-16
+— the typed-value `ast.json_schema` fix first raised the 0.5B from 3.9%):
 
-Full-corpus results (83 entries, `benchmarks/results/`):
-
-| Backend | Execution match | False-confident | Latency p50 | Peak RSS |
-|---|---|---|---|---|
-| heuristic (deterministic) | **67.1%** | 24% accepting all parses; ~6–7% at coverage ≥ 0.7 | 0.13 ms | 21 MB |
-| needle2 standalone | 21.1% | 0% at confidence ≥ 0.7; 33–75% below | 504 ms | 56 MB |
-| **router (tuned)** | 64.5% | **7.5%** | 0.24 ms (p95 5.4 s on escalation) | — |
-
-Grammar-constrained GGUF fallback candidates, measured 2026-08-16 on GPU
-(CUDA llama-cpp-python, device-pinned) with the typed-value schema —
-`ast.json_schema` now types condition values exactly as validation
-accepts them; before that fix the grammar legally emitted object-wrapped
-scalars and the 0.5B model scored 3.9%:
-
-| Fallback GGUF | Execution match | AST exact | Latency p50 |
+| GGUF | Execution match | AST exact | Latency p50 |
 |---|---|---|---|
-| distil-qwen3-0.6b-text2sql 4B (`distil-t2s-4b`) | **43.4%** | 30.3% | 0.87 s |
+| distil-qwen3-4b-text2sql (**shipped**) | **43.4%** | 30.3% | 0.87 s |
 | Qwen3-1.7B Q8_0 | 40.8% | 17.1% | 1.5 s |
 | Qwen2.5-Coder-0.5B Q4_K_M | 21.1% | 9.2% | 1.1 s |
 | Qwen3-0.6B Q8_0 | 19.7% | 5.3% | 1.5 s |
 | SS-350M-SQL-Strict Q8_0 | 1.3% | 1.3% | 0.8 s |
 
-The tuned router trades ~2.6 points of raw accuracy vs. the
-accept-everything heuristic for a 3× lower false-confident rate and 100%
-unsupported-precision: out-of-scope queries get an explicit "unsupported"
-with per-backend reasons instead of silently wrong results. No measured
-GGUF fallback beats the router (best: 43.4% vs 64.5%), so the fallback
-stays **disabled by default** (`OMNIQUERY_ENABLE_FALLBACK=true`
-re-enables; point `OMNIQUERY_FALLBACK_GGUF` at the distil-t2s-4b file for
-the best measured fallback).
+Superseded (removed 2026-08-16): the needle2/cactus-needle intent parser
+and the four-threshold router — measured 21.1% standalone with
+confidently-wrong parses on constraint drops, and the router contract
+("Couldn't confidently parse") failed the search box's job on bare terms
+like "girlnextdoor" / "photos of trees".
 
 ## Similarity / faces / review
 

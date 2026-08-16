@@ -94,7 +94,6 @@ class ParserBackend(ABC):
 
 _BACKEND_PATHS: Dict[str, str] = {  # backend name -> dotted class path, imported lazily by get_backend
     "nlq": "omniquery.parsers.nlq.NlqParser",
-    "nl2sql": "omniquery.parsers.nl2sql.Nl2SqlBackend",
     "fallback_qwen": "omniquery.parsers.fallback_qwen.FallbackQwenBackend",
 }
 
@@ -117,39 +116,14 @@ def get_backend(name: str, **kwargs: Any) -> ParserBackend:
     return cls(**kwargs)
 
 
-class SearchParser:
-    """The app-facing parser: nlq always answers; the nl2sql model refines
-    hinted queries when allowed. Construct once and reuse (the nlq instance
-    is stateless; the model instance caches its loaded GGUF)."""
-
-    def __init__(self, nlq: Optional[ParserBackend] = None,
-                 model: Optional[ParserBackend] = None):
-        self.nlq = nlq or get_backend("nlq")
-        self.model = model if model is not None else get_backend("nl2sql")
-
-    def parse(self, text: str, now_epoch: float,
-              allow_model: bool = True) -> Tuple[ParserOutcome, List[ParserOutcome]]:
-        """(chosen outcome, trace). `allow_model=False` is the live-typing
-        path: deterministic only, sub-millisecond, never touches a model."""
-        base = self.nlq.parse(text, now_epoch)
-        trace: List[ParserOutcome] = [base]
-        wants_model = bool((base.raw or {}).get("model_hint"))
-        if (allow_model and wants_model and base.ast is not None
-                and self.model is not None and self.model.available()):
-            refined = self.model.parse(text, now_epoch)
-            trace.append(refined)
-            if refined.ast is not None and not refined.unsupported:
-                coverage, _missing = coverage_guard(text, refined.ast)
-                if coverage >= 1.0:
-                    return refined, trace
-        return base, trace
-
-
-def make_search_parser() -> SearchParser:
-    """The standard SearchParser: deterministic nlq plus the local nl2sql
-    refiner (consulted only for hinted queries, and only when its runtime
-    and weights are actually present)."""
-    return SearchParser()
+def make_search_parser() -> ParserBackend:
+    """The deterministic search parser (nlq): sub-millisecond, always
+    answers. The nl2sql model layer lives ABOVE the parser contract -- it
+    speaks SQL, not ASTs (omniquery.parsers.nl2sql.SqlSearch), and the
+    endpoint fuses the two: rules answer what they fully consume, the
+    model answers the linguistic remainder, model failure falls back to
+    the rules result."""
+    return get_backend("nlq")
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +399,6 @@ __all__ = [
     "ParserOutcome",
     "ParserBackend",
     "get_backend",
-    "SearchParser",
     "make_search_parser",
     "try_validate",
     "contains_not_node",

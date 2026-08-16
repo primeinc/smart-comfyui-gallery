@@ -1,32 +1,49 @@
-"""Tests for the local OmniQuery NLQ endpoint:
-POST /galleryout/api/omniquery/nlq -- natural language -> SearchParser ->
-typed AST -> validated -> compiled read-only SELECT. The commit path
-persists into omniquery_sessions/omniquery_results; the live path writes
-nothing.
+"""Tests for the local OmniQuery search endpoint:
+POST /galleryout/api/omniquery/nlq -- the fusion of the deterministic nlq
+parser (instant, exact for fully-consumed queries) and the nl2sql model's
+SQL search (free language). The commit path persists into
+omniquery_sessions/omniquery_results; the live path writes nothing.
 
-Every test pins the endpoint's lazily-built parser singleton to an
-nlq-only SearchParser (model=None) so results are deterministic and the
-suite never loads a model runtime. The contract under test: every query
-answers (no 'unsupported' outcome exists), the response carries
-interpretation chips, and it NEVER carries SQL or the AST.
+Every test pins the endpoint's model singleton to a scripted stand-in so
+the suite never loads a model runtime. The contract under test: every
+query answers, results classify into cards (tiles/stat/spotlight/empty),
+and the response NEVER carries SQL or an AST.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from omniquery.parsers import SearchParser
-
 _NLQ_URL = "/galleryout/api/omniquery/nlq"
 _EXEC_URL = "/galleryout/api/omniquery/execute"
 
 
+class _NoModel:
+    """SqlSearch stand-in: not available (rules answer everything)."""
+
+    def available(self):
+        return False
+
+
+class _ScriptedModel:
+    """SqlSearch stand-in returning a fixed (ids, sql, err) triple."""
+
+    def __init__(self, ids=None, sql=None, err=None):
+        self._result = (ids, sql, err)
+        self.calls = []
+
+    def available(self):
+        return True
+
+    def search(self, question):
+        self.calls.append(question)
+        return self._result
+
+
 @pytest.fixture()
 def nlq_parser(smartgallery_app, monkeypatch):
-    """Force the endpoint's module-level parser singleton to an nlq-only
-    SearchParser for deterministic, model-free tests."""
-    monkeypatch.setattr(smartgallery_app, "_omniquery_parser",
-                        SearchParser(model=None))
+    """Model-free endpoint: the nlq rules answer everything."""
+    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", _NoModel())
     return smartgallery_app
 
 
@@ -79,6 +96,7 @@ def test_favorite_videos_success_persists_session(smartgallery_app, nlq_parser, 
     assert data["backend"] == "nlq"
     assert data["session_id"]
     assert data["count"] == 2
+    assert data["card"] == "tiles"
     assert any("favorite" in c["label"] for c in data["interpretation"])
 
     with smartgallery_app.get_db_connection() as conn:
@@ -118,6 +136,7 @@ def test_bare_term_finds_prompt_match(smartgallery_app, nlq_parser, seeded_files
     data = resp.get_json()
     assert data["status"] == "success"
     assert data["count"] == 1
+    assert data["card"] == "spotlight"  # exactly one hit gets the stage
     with smartgallery_app.get_db_connection() as conn:
         result_rows = conn.execute(
             "SELECT file_id FROM omniquery_results WHERE session_id = ?", (data["session_id"],)
@@ -134,6 +153,7 @@ def test_count_query(smartgallery_app, nlq_parser, seeded_files):
 
     assert data["status"] == "success"
     assert data["kind"] == "count"
+    assert data["card"] == "stat"
     assert data["count"] == 2
     assert data["backend"] == "nlq"
     assert "session_id" not in data
@@ -153,8 +173,9 @@ def test_live_mode_returns_previews_and_writes_nothing(smartgallery_app, nlq_par
     data = resp.get_json()
     assert data["status"] == "success"
     assert data["count"] == 2
+    assert data["card"] == "tiles"
     assert set(data["preview_ids"]) == {"nlqtest-vid-fav-1", "nlqtest-vid-fav-2"}
-    assert "session_id" not in data
+    assert data["session_id"] is None  # live never writes a session
 
     with smartgallery_app.get_db_connection() as conn:
         sessions_after = conn.execute("SELECT COUNT(*) FROM omniquery_sessions").fetchone()[0]
@@ -171,6 +192,106 @@ def test_every_query_answers(smartgallery_app, nlq_parser, seeded_files):
         data = client.post(_NLQ_URL, json={"query": q, "live": True}).get_json()
         assert data["status"] == "success", q
         assert "count" in data
+
+
+def test_live_mode_latency_budget(smartgallery_app, nlq_parser, seeded_files):
+    """Measured, not asserted-by-vibes: the live keystroke path (parse +
+    validate + compile + execute + JSON) must stay comfortably inside an
+    interactive budget. The assertion bound is deliberately loose for slow
+    CI machines; the measured numbers print with -s."""
+    import time as _time
+    del nlq_parser, seeded_files
+    client = smartgallery_app.app.test_client()
+    queries = ["girlnextdoor", "favorite videos", "photos of trees",
+               "seed 424242", "how many images"]
+    lat = []
+    for _ in range(10):
+        for q in queries:
+            t0 = _time.perf_counter()
+            resp = client.post(_NLQ_URL, json={"query": q, "live": True})
+            lat.append((_time.perf_counter() - t0) * 1000.0)
+            assert resp.get_json()["status"] == "success"
+    lat.sort()
+    p50, p95 = lat[len(lat) // 2], lat[int(len(lat) * 0.95)]
+    print(f"\nlive nlq endpoint latency: p50={p50:.2f}ms p95={p95:.2f}ms")
+    assert p95 < 250.0, f"live path too slow for typing: p95={p95:.1f}ms"
+
+
+# ---------------------------------------------------------------------------
+# Fusion: rules answer what they fully consume; the model answers free
+# language; model failure falls back to the rules result.
+# ---------------------------------------------------------------------------
+
+def test_fully_structured_query_never_consults_the_model(smartgallery_app, monkeypatch, seeded_files):
+    del seeded_files
+    model = _ScriptedModel(ids=["nlqtest-img-fav"], sql="SELECT ...")
+    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    client = smartgallery_app.app.test_client()
+    data = client.post(_NLQ_URL, json={"query": "favorite videos"}).get_json()
+    assert data["backend"] == "nlq"
+    assert model.calls == []
+
+
+def test_free_language_query_is_answered_by_the_model(smartgallery_app, monkeypatch, seeded_files):
+    del seeded_files
+    model = _ScriptedModel(
+        ids=["nlqtest-img-plain", "nlqtest-img-fav"],
+        sql="SELECT DISTINCT files.id FROM files WHERE ...")
+    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    client = smartgallery_app.app.test_client()
+    data = client.post(_NLQ_URL, json={"query": "girlnextdoor"}).get_json()
+    assert data["status"] == "success"
+    assert data["backend"] == "nl2sql"
+    assert data["card"] == "tiles"
+    assert data["count"] == 2
+    assert any(c["label"] == "ai search" for c in data["interpretation"])
+    assert model.calls == ["girlnextdoor"]
+    with smartgallery_app.get_db_connection() as conn:
+        stored = conn.execute(
+            "SELECT file_id FROM omniquery_results WHERE session_id = ?",
+            (data["session_id"],)).fetchall()
+    assert {r["file_id"] for r in stored} == {"nlqtest-img-plain", "nlqtest-img-fav"}
+
+
+def test_model_count_answer_becomes_a_stat_card(smartgallery_app, monkeypatch, seeded_files):
+    del seeded_files
+    model = _ScriptedModel(ids=["7"], sql="SELECT COUNT(*) FROM files WHERE ...")
+    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    client = smartgallery_app.app.test_client()
+    data = client.post(_NLQ_URL, json={"query": "roughly how much girlnextdoor stuff"}).get_json()
+    assert data["kind"] == "count" and data["card"] == "stat"
+    assert data["count"] == 7
+
+
+def test_model_failure_falls_back_to_the_rules_answer(smartgallery_app, monkeypatch, seeded_files):
+    del seeded_files
+    model = _ScriptedModel(ids=None, err="generation error: engine died")
+    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    client = smartgallery_app.app.test_client()
+    data = client.post(_NLQ_URL, json={"query": "girlnextdoor"}).get_json()
+    assert data["status"] == "success"
+    assert data["backend"] == "nlq"  # the deterministic text search stood
+    assert data["count"] == 1
+    assert model.calls == ["girlnextdoor"]
+
+
+def test_live_mode_never_consults_the_model(smartgallery_app, monkeypatch, seeded_files):
+    del seeded_files
+    model = _ScriptedModel(ids=["nlqtest-img-fav"], sql="SELECT ...")
+    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    client = smartgallery_app.app.test_client()
+    data = client.post(_NLQ_URL, json={"query": "girlnextdoor", "live": True}).get_json()
+    assert data["status"] == "success"
+    assert model.calls == []
+
+
+def test_zero_hit_query_is_an_empty_card(smartgallery_app, nlq_parser, seeded_files):
+    del nlq_parser, seeded_files
+    client = smartgallery_app.app.test_client()
+    data = client.post(_NLQ_URL, json={"query": "zebra unicorn nonsense", "live": True}).get_json()
+    assert data["status"] == "success"
+    assert data["card"] == "empty"
+    assert data["count"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +350,20 @@ def _get_gallery_html(client):
     resp = client.get("/galleryout/", follow_redirects=True)
     assert resp.status_code == 200
     return resp.get_data(as_text=True)
+
+
+def test_gallery_view_ships_palette_and_no_sql_surface(smartgallery_app):
+    """The search palette (Ctrl/Cmd+P, Alt+P) is the OmniQuery UI, and no
+    user-facing SQL surface remains on the page."""
+    client = smartgallery_app.app.test_client()
+    html = _get_gallery_html(client)
+    assert "omni-palette-overlay" in html
+    assert "openOmniPalette" in html
+    assert "Alt" in html and "+P" in html or "Ctrl" in html
+    # The old modal's SQL-facing surfaces are gone.
+    assert "Advanced (manual SQL)" not in html
+    assert "omniquery-overlay" not in html
+    assert "AI-Powered SQL Queries" not in html
 
 
 def test_gallery_view_hides_aidam_surfaces_when_disabled(smartgallery_app, monkeypatch):

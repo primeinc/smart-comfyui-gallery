@@ -1,5 +1,5 @@
 """Model-free unit tests for the optional-runtime GGUF parser backends,
-fallback_qwen.FallbackQwenBackend and nl2sql.Nl2SqlBackend: availability
+fallback_qwen.FallbackQwenBackend: availability
 checks, model-path resolution, and the never-raise parse() contract --
 exercised through injected fake engines only.
 
@@ -20,7 +20,6 @@ import types
 from omniquery import fields
 from omniquery.parsers import fallback_qwen as fallback_module
 from omniquery.parsers.fallback_qwen import DEFAULT_MODEL_PATH, FallbackQwenBackend, _example_for
-from omniquery.parsers.nl2sql import Nl2SqlBackend
 
 NOW = 1735689600.0  # unused by the backends, but required by the interface
 
@@ -43,11 +42,11 @@ class FakeLlama:
         self._content = content
         self._exc = exc
 
-    def create_chat_completion(self, messages, grammar=None, temperature=None,
-                               max_tokens=None):
-        # all four accepted only for create_chat_completion()'s call-signature
-        # compatibility (the real call passes each of them by keyword).
-        del messages, grammar, temperature, max_tokens
+    def create_chat_completion(self, messages, grammar=None, max_tokens=None,
+                               **sampling):
+        # signature mirrors the real call: messages/grammar/max_tokens plus
+        # the qwen3-tuned sampling kwargs (fallback_qwen._SAMPLING).
+        del messages, grammar, max_tokens, sampling
         if self._exc is not None:
             raise self._exc
         return {"choices": [{"message": {"content": self._content}}]}
@@ -80,26 +79,6 @@ def test_fallback_model_path_resolution_order(monkeypatch, tmp_path):
     assert FallbackQwenBackend(model_path=explicit).model_path == explicit
 
 
-def test_nl2sql_model_path_resolution_order(monkeypatch, tmp_path):
-    """Nl2SqlBackend resolves explicit arg over OMNIQUERY_NL2SQL_GGUF over
-    OMNIQUERY_FALLBACK_GGUF (shared install) over the built-in default --
-    and reports as its own backend name."""
-    monkeypatch.delenv("OMNIQUERY_NL2SQL_GGUF", raising=False)
-    monkeypatch.delenv("OMNIQUERY_FALLBACK_GGUF", raising=False)
-    assert Nl2SqlBackend().model_path == DEFAULT_MODEL_PATH
-    assert Nl2SqlBackend.name == "nl2sql"
-
-    shared = str(tmp_path / "shared.gguf")
-    monkeypatch.setenv("OMNIQUERY_FALLBACK_GGUF", shared)
-    assert Nl2SqlBackend().model_path == shared
-
-    own = str(tmp_path / "nl2sql.gguf")
-    monkeypatch.setenv("OMNIQUERY_NL2SQL_GGUF", own)
-    assert Nl2SqlBackend().model_path == own
-
-    explicit = str(tmp_path / "explicit.gguf")
-    assert Nl2SqlBackend(model_path=explicit).model_path == explicit
-
 
 def test_fallback_available_false_when_model_file_absent(monkeypatch, tmp_path):
     """available() is False when the GGUF file is missing, even with the runtime importable."""
@@ -126,14 +105,6 @@ def test_fallback_available_false_when_runtime_missing_despite_model_file(monkey
     assert backend.available() is False
 
 
-def test_nl2sql_availability_follows_same_contract(monkeypatch, tmp_path):
-    """Nl2SqlBackend inherits the runtime+file availability contract."""
-    monkeypatch.setitem(sys.modules, "llama_cpp", types.ModuleType("llama_cpp"))
-    assert Nl2SqlBackend(model_path=str(tmp_path / "missing.gguf")).available() is False
-    model = tmp_path / "model.gguf"
-    model.write_bytes(b"not really a gguf")
-    assert Nl2SqlBackend(model_path=str(model)).available() is True
-
 
 # ---------------------------------------------------------------------------
 # 2. _example_for's exhaustive-over-Kind fallback branch
@@ -147,6 +118,94 @@ def test_example_for_unrecognized_kind_falls_through_to_ellipsis():
     spec = fields.FieldSpec(name="bogus", kind="not_a_real_kind",
                              ops=frozenset(), strategy=fields.Strategy.COLUMN)
     assert _example_for(spec) == "..."
+
+
+# ---------------------------------------------------------------------------
+# 2b. Decode canary: a broken GPU path reloads CPU-only instead of crashing
+# ---------------------------------------------------------------------------
+
+def _fake_llama_module(behaviors):
+    """A scripted llama_cpp module whose Llama() consumes `behaviors` in
+    construction order: 'garbage' decodes to '!!!!', 'raise' throws from
+    create_completion, 'ok' decodes normally."""
+    mod = types.ModuleType("llama_cpp")
+    constructed = []
+
+    class Llama:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.behavior = behaviors[len(constructed)]
+            constructed.append(self)
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+        def create_completion(self, prompt=None, max_tokens=None, temperature=None):
+            if self.behavior == "raise":
+                raise OSError(22, "Windows Error 0xe06d7363")
+            text = "!!!!" if self.behavior == "garbage" else " OK"
+            return {"choices": [{"text": text}]}
+
+    class LlamaGrammar:
+        @staticmethod
+        def from_json_schema(_s):
+            return object()
+
+    mod.Llama = Llama
+    mod.LlamaGrammar = LlamaGrammar
+    mod._constructed = constructed
+    return mod
+
+
+def _canary_backend(monkeypatch, tmp_path, behaviors, gpu_layers="-1"):
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"not really a gguf")
+    monkeypatch.setenv("OMNIQUERY_FALLBACK_GPU_LAYERS", gpu_layers)
+    mod = _fake_llama_module(behaviors)
+    monkeypatch.setitem(sys.modules, "llama_cpp", mod)
+    return FallbackQwenBackend(model_path=str(model)), mod
+
+
+def test_canary_garbage_gpu_reloads_cpu_only(monkeypatch, tmp_path):
+    """GPU build decodes garbage ('!!!!' logits) -> torn down, reloaded
+    with n_gpu_layers=0, and the CPU build passes its own canary."""
+    backend, mod = _canary_backend(monkeypatch, tmp_path, ["garbage", "ok"])
+    llama, grammar = fallback_module._load_model(backend.model_path, 2048, 4)
+    assert len(mod._constructed) == 2
+    assert mod._constructed[0].kwargs["n_gpu_layers"] == -1
+    assert mod._constructed[0].closed is True
+    assert mod._constructed[1].kwargs["n_gpu_layers"] == 0
+    assert llama is mod._constructed[1]
+
+
+def test_canary_sampler_exception_reloads_cpu_only(monkeypatch, tmp_path):
+    """The observed live failure (C++ exception out of the sampler) takes
+    the same CPU-reload path as garbage logits."""
+    backend, mod = _canary_backend(monkeypatch, tmp_path, ["raise", "ok"])
+    llama, _ = fallback_module._load_model(backend.model_path, 2048, 4)
+    assert mod._constructed[1].kwargs["n_gpu_layers"] == 0
+    assert llama is mod._constructed[1]
+
+
+def test_canary_failing_on_both_paths_is_a_load_error_outcome(monkeypatch, tmp_path):
+    """GPU and CPU canaries both failing surface as a 'model load error'
+    parse outcome -- never a raised exception."""
+    backend, mod = _canary_backend(monkeypatch, tmp_path, ["garbage", "garbage"])
+    out = backend.parse("favorite images", NOW)
+    assert out.unsupported is True
+    assert out.reason is not None and out.reason.startswith("model load error:")
+    assert "canary" in out.reason
+
+
+def test_canary_explicit_cpu_failure_is_hard_load_error(monkeypatch, tmp_path):
+    """With GPU offload explicitly disabled, a failing canary means the
+    model/runtime is broken: no silent second attempt, a load error."""
+    backend, mod = _canary_backend(monkeypatch, tmp_path, ["garbage"], gpu_layers="0")
+    out = backend.parse("favorite images", NOW)
+    assert out.unsupported is True
+    assert out.reason is not None and "canary" in out.reason
+    assert len(mod._constructed) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -531,7 +531,7 @@ def run_integrity_check():
         'templates/exhibition_login.html',
         'templates/modals/user_manager_module.html',
         'templates/modals/remix_modal.html',
-        'templates/modals/omniquery_modal.html',
+        'templates/modals/omniquery_palette.html',
         'templates/css/index.css',
         'templates/collections.html',
         'templates/list_view.html',
@@ -8739,39 +8739,19 @@ def execute_omniquery():
     if not raw_sql:
         return jsonify({'status': 'error', 'message': 'SQL query cannot be empty.'}), 400
         
-    # Security 1: Strict Prefix Check (Ensure it's a SELECT)
-    import re
-    # Remove leading comments and whitespace to check the actual command
-    clean_sql = re.sub(r'(/\*.*?\*/)|(--.*?\n)', '', raw_sql, flags=re.DOTALL).strip()
-    if not re.match(r'^SELECT\b', clean_sql, re.IGNORECASE):
-        return jsonify({'status': 'error', 'message': 'Security Block: Only SELECT statements are allowed.'}), 403
+    # The ONE sandboxed SQL gate (omniquery.sqlexec): SELECT-prefix check,
+    # true read-only URI connection, and the C-engine authorizer. The
+    # nl2sql model's generated queries run through this exact function too.
+    from omniquery.sqlexec import run_readonly_select
 
     import uuid
     session_id = str(uuid.uuid4())
-    result_ids = []
-    
-    # Security 2: True Read-Only Connection via URI + SQLite Engine Authorizer
-    db_uri = f"file:{os.path.abspath(DATABASE_FILE)}?mode=ro"
-    try:
-        def query_authorizer(action, arg1, arg2, dbname, source):
-            # 21 = SQLITE_SELECT, 20 = SQLITE_READ, 31 = SQLITE_FUNCTION
-            # This completely blocks PRAGMA, ATTACH, INSERT, DELETE at the C-engine level
-            if action in (21, 20, 31):
-                return sqlite3.SQLITE_OK
-            return sqlite3.SQLITE_DENY
 
-        with sqlite3.connect(db_uri, uri=True) as ro_conn:
-            ro_conn.set_authorizer(query_authorizer)
-            cursor = ro_conn.execute(raw_sql)
-            rows = cursor.fetchall()
-            # Try to extract the first column assuming it contains the ID
-            result_ids = [str(row[0]) for row in rows if row]
-            
-            # Remove duplicates safely
-            result_ids = list(dict.fromkeys(result_ids))
-            
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f"SQL Execution Error: {str(e)}"}), 400
+    exec_result = run_readonly_select(DATABASE_FILE, raw_sql)
+    if not exec_result.ok:
+        status = 403 if "only SELECT" in (exec_result.error or "") else 400
+        return jsonify({'status': 'error', 'message': exec_result.error}), status
+    result_ids = exec_result.ids
         
     if not result_ids:
         return jsonify({'status': 'success', 'session_id': None, 'message': 'Query executed successfully, but returned 0 results.'})
@@ -8794,63 +8774,48 @@ def execute_omniquery():
     except Exception as e:
         return jsonify({'status': 'error', 'message': f"Database Error: {str(e)}"}), 500
 
-# --- OMNIQUERY LOCAL NLQ (WI-31 wave 3) ---
-# Natural language -> parser router -> typed AST -> validated -> compiled
-# read-only SELECT (see omniquery/engine.py). No model in this path ever
-# emits SQL. This is now the PRIMARY OmniQuery UX; execute_omniquery() above
-# remains untouched as the demoted "Advanced / manual SQL" path.
+# --- OMNIQUERY SEARCH (the LLM pretending to be a search field) ---
+# Fusion of two answerers, each used where it is strong:
+#   - the deterministic nlq parser (sub-ms): exact for queries whose every
+#     term its rules consume, and the instant live-typing path
+#   - the nl2sql model (SqlSearch): natural language -> SQL, run in an
+#     agentic generate/execute/read-results loop -- for queries that carry
+#     free language. Its SQL executes ONLY through the same sandbox as the
+#     manual endpoint (omniquery.sqlexec).
+# Model failure falls back to the deterministic answer; no response ever
+# carries SQL or an AST.
 _omniquery_parser = None
-_omniquery_parser_lock = threading.Lock()
+_omniquery_sqlsearch = None
+_omniquery_lock = threading.Lock()
 
 def _get_omniquery_parser():
-    """Lazy, thread-safe module-level singleton for the search parser.
-    Built once: the nlq backend is zero-dependency/always available, and
-    the nl2sql refiner self-reports unavailable instead of raising when
-    its optional runtime or weights are missing, so this is safe to
-    construct even if those extras aren't installed."""
+    """Lazy singleton for the deterministic nlq parser (zero-dependency,
+    always available)."""
     global _omniquery_parser
     if _omniquery_parser is None:
-        with _omniquery_parser_lock:
+        with _omniquery_lock:
             if _omniquery_parser is None:
                 import omniquery.parsers as omniquery_parsers
                 _omniquery_parser = omniquery_parsers.make_search_parser()
     return _omniquery_parser
 
 
-@app.route('/galleryout/api/omniquery/nlq', methods=['POST'])
-@management_api_only
-def omniquery_nlq():
-    """The search palette's engine: parse + execute in one round trip.
+def _get_omniquery_sqlsearch():
+    """Lazy singleton for the nl2sql model search. Constructing never
+    loads the model; available() is re-checked per request so weights
+    provisioned mid-session start working without a restart."""
+    global _omniquery_sqlsearch
+    if _omniquery_sqlsearch is None:
+        with _omniquery_lock:
+            if _omniquery_sqlsearch is None:
+                from omniquery.parsers.nl2sql import SqlSearch
+                _omniquery_sqlsearch = SqlSearch(db_path=DATABASE_FILE)
+    return _omniquery_sqlsearch
 
-    Every query answers -- the nlq parser turns unrecognized terms into
-    full-text searches, so there is no 'unsupported' outcome. Two modes:
 
-      live=true  -- keystroke path: deterministic parse only (sub-ms, no
-                    model), no DB writes; returns count, interpretation
-                    chips, and the first page of ids for inline preview.
-      live=false -- commit path (Enter): the nl2sql refiner may improve
-                    structurally-ambiguous phrasing; results land in an
-                    omniquery session for gallery navigation.
-
-    The response never carries SQL or the AST; the interpretation chips
-    ARE the user-facing explanation of what ran.
-    """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({'status': 'error', 'message': 'Request body must be JSON.'}), 400
-
-    query_text = str(data.get('query', '') or '').strip()
-    if not query_text:
-        return jsonify({'status': 'error', 'message': 'Query text cannot be empty.'}), 400
-    live = bool(data.get('live'))
-
-    parser = _get_omniquery_parser()
-    outcome, _trace = parser.parse(query_text, time.time(), allow_model=not live)
-
-    if outcome.ast is None:
-        return jsonify({'status': 'error',
-                        'message': outcome.reason or 'parse failed'}), 500
-
+def _omniquery_run_ast(ast_dict, query_text):
+    """Execute a validated AST through the typed engine; returns
+    (ids_or_None, count_or_None, error)."""
     from omniquery.engine import OmniQueryEngine
     from omniquery.validation import AuthContext
 
@@ -8861,60 +8826,129 @@ def omniquery_nlq():
     role = session.get('role', 'ADMIN' if not (FORCE_LOGIN or IS_EXHIBITION_MODE) else 'GUEST')
     user_id = session.get('user_id')
     ctx = AuthContext(role=role, user_id=user_id, client_uuid=user_id, ai_enabled=AI_CONFIG.enabled)
-
     engine = OmniQueryEngine(
         DATABASE_FILE, BASE_OUTPUT_PATH,
         ai_resolvers=ai_dam_service.create_ai_resolvers(AI_CONFIG),
     )
     try:
-        result = engine.run(outcome.ast, ctx)
+        result = engine.run(ast_dict, ctx)
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
+        return None, None, str(e)
     if not result.ok:
-        return jsonify({'status': 'error', 'message': result.error}), 400
-
-    chips = (outcome.raw or {}).get('interpretation', [])
-    base = {
-        'status': 'success', 'backend': outcome.backend,
-        'interpretation': chips, 'query': query_text,
-    }
-
+        return None, None, result.error
     if result.kind == 'count':
-        return jsonify({**base, 'kind': 'count', 'count': result.count})
+        return None, result.count, None
+    return (result.ids or []), None, None
 
-    result_ids = result.ids or []
-    if live:
-        # Keystroke path: no session, no writes -- just enough for the
-        # palette to render a live preview strip and a count.
-        return jsonify({**base, 'kind': 'ids', 'count': len(result_ids),
-                        'preview_ids': result_ids[:24]})
 
-    if not result_ids:
-        return jsonify({**base, 'kind': 'ids', 'session_id': None, 'count': 0,
-                        'message': 'No results.'})
-
+def _omniquery_store_session(query_text, result_ids, bookkeeping_sql):
+    """Persist a result set as an omniquery session for gallery
+    navigation; returns the session id."""
     session_id = str(uuid.uuid4())
-    # The session's stored SQL is diagnostic bookkeeping for the results
-    # view; the NL text rides along in a sanitized single-line comment.
     safe_nl_text = query_text.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
-    raw_sql = f"-- OmniQuery local: {safe_nl_text}\n{result.sql}"
+    raw_sql = f"-- OmniQuery: {safe_nl_text}\n{bookkeeping_sql}"
+    with get_db_connection() as rw_conn:
+        rw_conn.execute("DELETE FROM omniquery_sessions WHERE created_at < ?", (time.time() - 7200,))
+        rw_conn.execute(
+            "INSERT INTO omniquery_sessions (session_id, raw_sql, created_at) VALUES (?, ?, ?)",
+            (session_id, raw_sql, time.time()),
+        )
+        rw_conn.executemany(
+            "INSERT INTO omniquery_results (session_id, file_id) VALUES (?, ?)",
+            [(session_id, fid) for fid in result_ids])
+        rw_conn.commit()
+    return session_id
 
-    try:
-        with get_db_connection() as rw_conn:
-            rw_conn.execute("DELETE FROM omniquery_sessions WHERE created_at < ?", (time.time() - 7200,))
-            rw_conn.execute(
-                "INSERT INTO omniquery_sessions (session_id, raw_sql, created_at) VALUES (?, ?, ?)",
-                (session_id, raw_sql, time.time()),
-            )
-            records = [(session_id, fid) for fid in result_ids]
-            rw_conn.executemany("INSERT INTO omniquery_results (session_id, file_id) VALUES (?, ?)", records)
-            rw_conn.commit()
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f"Database Error: {str(e)}"}), 500
 
-    return jsonify({**base, 'kind': 'ids', 'session_id': session_id,
-                    'count': len(result_ids), 'preview_ids': result_ids[:24]})
+@app.route('/galleryout/api/omniquery/nlq', methods=['POST'])
+@management_api_only
+def omniquery_nlq():
+    """The search palette's engine: question in, tiles out.
+
+      live=true  -- keystroke path: deterministic parse only (sub-ms, no
+                    model, no DB writes); instant approximate tiles.
+      live=false -- the real answer: rules when they consume the whole
+                    query (exact), else the nl2sql model's agentic SQL
+                    loop; results land in an omniquery session.
+
+    The response never carries SQL or an AST; interpretation chips are
+    the only explanation surface.
+    """
+    import re as _re
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'Request body must be JSON.'}), 400
+
+    query_text = str(data.get('query', '') or '').strip()
+    if not query_text:
+        return jsonify({'status': 'error', 'message': 'Query text cannot be empty.'}), 400
+    live = bool(data.get('live'))
+
+    outcome = _get_omniquery_parser().parse(query_text, time.time())
+    if outcome.ast is None:
+        return jsonify({'status': 'error',
+                        'message': outcome.reason or 'parse failed'}), 500
+    raw = outcome.raw or {}
+    chips = list(raw.get('interpretation', []))
+    base = {'status': 'success', 'backend': outcome.backend,
+            'interpretation': chips, 'query': query_text}
+
+    def _card_payload(ids=None, stat_value=None, session_id=None):
+        """Classify a result into one of the palette's result cards:
+        stat (aggregate value), spotlight (single hit), empty, or tiles."""
+        if stat_value is not None:
+            return {'kind': 'count', 'card': 'stat', 'count': stat_value}
+        ids = ids or []
+        payload = {'kind': 'ids', 'count': len(ids),
+                   'preview_ids': ids[:24], 'session_id': session_id}
+        if not ids:
+            payload['card'] = 'empty'
+        elif len(ids) == 1:
+            payload['card'] = 'spotlight'
+        else:
+            payload['card'] = 'tiles'
+        return payload
+
+    _AGG_RE = _re.compile(r'\s*SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(', _re.IGNORECASE)
+
+    # The model answers when the query carries free language the rules
+    # could not type precisely -- and only on the non-live path.
+    rules_exact = not raw.get('text_terms')
+    if not live and not rules_exact:
+        sqlsearch = _get_omniquery_sqlsearch()
+        if sqlsearch.available():
+            ids, model_sql, err = sqlsearch.search(query_text)
+            if ids is not None:
+                base['backend'] = 'nl2sql'
+                base['interpretation'] = chips + [{'label': 'ai search', 'field': None}]
+                if model_sql and _AGG_RE.match(model_sql):
+                    value = float(ids[0]) if ids else 0
+                    value = int(value) if value == int(value) else value
+                    return jsonify({**base, **_card_payload(stat_value=value)})
+                session_id = None
+                if ids:
+                    try:
+                        session_id = _omniquery_store_session(query_text, ids, model_sql)
+                    except Exception as e:
+                        return jsonify({'status': 'error',
+                                        'message': f"Database Error: {str(e)}"}), 500
+                return jsonify({**base, **_card_payload(ids=ids, session_id=session_id)})
+            # Model produced nothing usable: the deterministic answer stands.
+
+    result_ids, count, err = _omniquery_run_ast(outcome.ast, query_text)
+    if err is not None:
+        return jsonify({'status': 'error', 'message': err}), 400
+    if count is not None:
+        return jsonify({**base, **_card_payload(stat_value=count)})
+    session_id = None
+    if not live and result_ids:
+        try:
+            session_id = _omniquery_store_session(
+                query_text, result_ids, 'typed-engine result set')
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': f"Database Error: {str(e)}"}), 500
+    return jsonify({**base, **_card_payload(ids=result_ids, session_id=session_id)})
 
 # --- ADMIN BLIND RATING OVERRIDE ---
 def is_effectively_blind():

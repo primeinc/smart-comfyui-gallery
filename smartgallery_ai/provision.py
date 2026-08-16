@@ -189,15 +189,18 @@ def _llama_supports_gpu():
         try:
             proc = subprocess.run(
                 [sys.executable, "-c",
-                 # Inline PATH bootstrap (mirrors smartgallery_ai.llama_runtime,
-                 # dependency-free for the child): the prebuilt CUDA wheel loads
-                 # its DLLs via the legacy PATH search, so the pip-installed
-                 # NVIDIA runtime bins must be prepended first.
-                 "import glob, os, sysconfig; "
-                 "[os.environ.__setitem__('PATH', d + os.pathsep + os.environ['PATH']) "
-                 "for d in glob.glob(os.path.join(sysconfig.get_paths()['purelib'], 'nvidia', '*', 'bin'))]; "
-                 "import llama_cpp; print(int(llama_cpp.llama_supports_gpu_offload()))"],
-                capture_output=True, text=True, timeout=120)
+                 # The full runtime bootstrap: PATH for the wheel's NVIDIA
+                 # DLLs, LLAMA_CPP_LIB_PATH for provisioned official
+                 # binaries, and dynamic backend registration after import
+                 # (official builds report zero devices without it).
+                 "from smartgallery_ai.llama_runtime import "
+                 "prepare_llama_runtime, activate_llama_backends; "
+                 "prepare_llama_runtime(); "
+                 "import llama_cpp; "
+                 "activate_llama_backends(); "
+                 "print(int(llama_cpp.llama_supports_gpu_offload()))"],
+                capture_output=True, text=True, timeout=120,
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             if proc.returncode == 0:
                 value = proc.stdout.strip() == "1"
         except (OSError, subprocess.SubprocessError, ValueError):
@@ -377,6 +380,33 @@ GROUPS = (
                 hf_repo="dhkim2810/MobileSAM",
                 hf_filename="mobile_sam.pt",
                 sha256="6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f",
+            ),
+        ),
+    ),
+    Group(
+        name="llama-cuda",
+        enables="llama.cpp official CUDA binaries (every GPU architecture "
+                "incl. sm_120/Blackwell, which the pip wheels do not ship)",
+        # Build b9976 == the llama.cpp commit (e3546c79) vendored by
+        # llama-cpp-python v0.3.34, so the ctypes bindings match the DLL
+        # ABI exactly. Bump BOTH together. smartgallery_ai.llama_runtime
+        # points LLAMA_CPP_LIB_PATH here and registers the dynamic
+        # backends; Windows-only payload (the wheels cover other OSes).
+        artifacts=(
+            Artifact(
+                dest="llama-cpp-cuda",
+                approx_size="240 MB zip", license="MIT",
+                url=("https://github.com/ggml-org/llama.cpp/releases/download/"
+                     "b9976/llama-b9976-bin-win-cuda-13.3-x64.zip"),
+                unzip_all=True,
+            ),
+            Artifact(
+                dest="llama-cpp-cuda-cudart",
+                approx_size="400 MB zip",
+                license="NVIDIA CUDA EULA (redistributable runtime)",
+                url=("https://github.com/ggml-org/llama.cpp/releases/download/"
+                     "b9976/cudart-llama-bin-win-cuda-13.3-x64.zip"),
+                unzip_all=True,
             ),
         ),
     ),
@@ -794,6 +824,24 @@ def provision(
             progress(event)
 
     groups = resolve_groups(group_names)
+    # The official-binaries payload is Windows CUDA zips: meaningless
+    # elsewhere, so 'all' never drags it onto Linux/mac or CPU-only boxes.
+    # Conversely, a Blackwell-class GPU (compute >= 12.0) NEEDS it — the
+    # pip wheels ship no sm_120 kernels — so any llama-consuming group
+    # pulls it in automatically there.
+    llama_cuda_ok = sys.platform == "win32" and cuda_hardware_present()
+    if not llama_cuda_ok and any(g.name == "llama-cuda" for g in groups):
+        log("  = llama-cuda skipped (Windows CUDA machines only)")
+        groups = [g for g in groups if g.name != "llama-cuda"]
+    if (llama_cuda_ok
+            and _GROUPS_BY_NAME["llama-cuda"] not in groups
+            and any(req.startswith("llama-cpp-python")
+                    for g in groups for _, req in g.runtime)):
+        cap = _cuda_compute_capability()
+        if cap is not None and cap >= 12.0:
+            log("  ~ compute >= 12.0 GPU detected: adding official llama.cpp "
+                "CUDA binaries (pip wheels ship no sm_120 kernels)")
+            groups.append(_GROUPS_BY_NAME["llama-cuda"])
     installed: list = []
     if install_packages:
         # GPU self-heal: a torch build that cannot use this machine's GPU
@@ -836,9 +884,10 @@ def provision(
                 # Prefer the official GitHub release wheel (py3-none, any
                 # CPython, current CUDA); the stale cu124 index is the
                 # fallback. Release wheels lack sm_120 (Blackwell)
-                # kernels as of 0.3.34: on such GPUs pin offloading to a
-                # pre-Blackwell card (CUDA_VISIBLE_DEVICES / AI_DAM_DEVICE)
-                # or build from source per docs/FAISS_GPU_WINDOWS.md notes.
+                # kernels as of 0.3.34: the 'llama-cuda' group (auto-added
+                # above on compute >= 12.0) provides the official llama.cpp
+                # binaries that cover every architecture, and
+                # smartgallery_ai.llama_runtime loads them.
                 wheel = llama_cuda_release_wheel()
                 index = llama_cuda_index()
                 cuda_tag = (wheel.rsplit("-", 4)[0].rsplit("-", 1)[-1]
@@ -847,9 +896,9 @@ def provision(
                     "for GPU reviews")
                 cap = _cuda_compute_capability()
                 if wheel and cap is not None and cap >= 12.0:
-                    log("  ! this rig has a compute>=12.0 GPU; official CUDA "
-                        "wheels ship no sm_120 kernels — pin offloading to a "
-                        "pre-Blackwell card or the CUDA path will crash")
+                    log("  ~ compute>=12.0 GPU: the wheel ships no sm_120 "
+                        "kernels; the 'llama-cuda' official binaries (added "
+                        "to this run) cover it via LLAMA_CPP_LIB_PATH")
                 try:
                     if wheel:
                         (pip_runner or _default_pip_runner)(
