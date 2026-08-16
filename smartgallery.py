@@ -7662,8 +7662,11 @@ def check_metadata(file_id):
             'has_ai_caption': bool(row['ai_caption']),
             'ai_caption': row['ai_caption'] or "",
             'ai_last_scanned': row['ai_last_scanned'] or 0,
-            # Send real_path only if it's actually different (a link)
-            'real_path': real_path_resolved if is_different else None
+            # Send real_path only if it's actually different (a link), and
+            # never to someone who is not meant to know where the library
+            # lives on disk.
+            'real_path': (real_path_resolved
+                          if is_different and not should_strip_metadata() else None)
         })
     except Exception as e:
         print(f"Metadata Check Error: {e}")
@@ -8249,6 +8252,19 @@ def get_file_full_details(file_id):
                     for item in file_data['workflow_files'].split(' ||| '):
                         if item.strip():
                             models_used.append(os.path.basename(item.strip()))
+
+            # This one answer carried everything the mode exists to hide:
+            # the prompt and model names out of the file row, the workflow's
+            # node pipeline, and the file's path on the server. Stripping the
+            # picture, the album listing and the cluster views achieves
+            # nothing while this hands it over on request. The panel still
+            # gets its ratings, comments and collections.
+            if should_strip_metadata():
+                file_data = redact_file_listing([file_data])[0]
+                real_path = None
+                is_link = False
+                nodes_pipeline = []
+                models_used = []
 
             return jsonify({
                 'status': 'success',
