@@ -123,14 +123,23 @@ def schema_block(db_path: str) -> str:
     return block
 
 
+_JUNK_RE = re.compile(r"<\||\[INST\]|\[ERROR\]|```")
+
+
 def _extract_sql(content: str) -> str:
     """The statement itself: fenced block if the model added one, else the
-    raw text, cut at the first statement terminator -- observed live: the
-    model sometimes free-runs past its answer ('; [INST] ...'), and the
-    sandbox rightly refuses multi-statement text."""
+    raw text, cut at the first statement terminator or junk marker.
+    Observed live (and at 27/98 in the corpus bench): the model free-runs
+    past its answer into chat-template fragments ('; [INST] ...',
+    '<|im...'). '<|' can never occur in valid SQLite, so cutting there is
+    lossless; a bare '<' is a legal comparison and stays."""
     m = _SQL_FENCE_RE.search(content)
     sql = m.group(1) if m else content
-    return sql.split(";", 1)[0].strip()
+    sql = sql.split(";", 1)[0]
+    junk = _JUNK_RE.search(sql)
+    if junk:
+        sql = sql[:junk.start()]
+    return sql.strip()
 
 
 class SqlSearch:
@@ -166,7 +175,7 @@ class SqlSearch:
             # fine-tune, unlike base qwen3, is documented greedy-safe).
             temperature=0.0,
             max_tokens=self.max_tokens,
-            stop=["<|im_start|>", "<|im_end|>", ";", "[INST]"],
+            stop=["<|", ";", "[INST]", "\n\n"],
         )
         return resp["choices"][0]["message"]["content"]
 

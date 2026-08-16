@@ -49,36 +49,44 @@ Licenses were verified against the primary sources on 2026-08-14/15
 
 ## OmniQuery search
 
-The search contract: **every query answers**. The deterministic `nlq`
-parser (`omniquery/parsers/nlq.py`, dependency-free) consumes recognized
-structure with rules and turns every leftover term into a full-text
-condition on the universal `text` field (filename, path, workflow prompt,
-AI caption, generation prompt, model, LoRA names in one OR). There is no
-router, no confidence thresholds, and no "unsupported" outcome; a
-model-produced AST replaces the deterministic parse only when it passes
-`coverage_guard` at full coverage.
+The search field is an LLM. Two answerers, fused per query in the
+endpoint (`smartgallery.py omniquery_nlq`), and **every query answers**:
 
-| Role | Exact identifier | License | Size | Notes |
+- **`nlq`** (`omniquery/parsers/nlq.py`, dependency-free): deterministic
+  rules consume recognized structure; every leftover term becomes a
+  full-text condition on the universal `text` field (filename, path,
+  workflow prompt, AI caption, generation prompt, model, LoRA names in
+  one OR). It answers exactly when it consumes the whole query, and it is
+  the only path live typing ever touches.
+- **`SqlSearch`** (`omniquery/parsers/nl2sql.py`): the nl2sql model doing
+  its documented text2sql job — the LIVE schema from `sqlite_master`
+  (with data-driven value hints) plus the question, SQL out, prompt per
+  the distil model card at temperature 0. It runs an agentic loop:
+  generate, execute, READ the outcome — execution errors go back for
+  repair, zero rows offer broaden-or-confirm (identical SQL asserts
+  emptiness), rows are accepted. It answers queries carrying free
+  language; any failure falls back to the nlq result.
+
+Model SQL is data, never trusted code: every statement executes through
+`omniquery/sqlexec.py`, the single sandboxed gate (SELECT-prefix check,
+read-only URI connection, C-engine authorizer permitting only
+SELECT/READ/FUNCTION) shared with the manual Advanced endpoint. Answers
+classify into result cards — tiles / stat / spotlight / empty — one
+vocabulary for both answerers; responses never carry SQL or any IR.
+
+| Role | Exact identifier | License | Size | Measured |
 |---|---|---|---|---|
-| Parser (always) | `nlq` — deterministic rules + universal text fallthrough | — (in-repo) | 0 | Measured on the 98-entry corpus (2026-08-16): **100% execution match**, 0% invalid, parse p50 0.157 ms / p95 0.224 ms; live endpoint (parse+validate+compile+execute+JSON) p50 1.37 ms / p95 2.26 ms. |
-| nl2sql refiner (optional) | `distil-labs/distil-qwen3-4b-text2sql-gguf-4bit`, file `model.gguf` (provision group `omniquery`) | Apache-2.0 | 2.5 GB | Grammar-constrained to the typed AST schema — it cannot emit SQL or free text. Consulted only when nlq's leftover text carries structural vocabulary; qwen3-tuned sampling (temp 0.6, top-k 20, top-p 0.95, presence 1.5). Decode canary at load: a GPU build producing garbage logits or sampler crashes reloads CPU-only, loudly. |
+| Rules answerer | `nlq` (in-repo) | — | 0 | 98-entry corpus, 2026-08-16: **100% execution match**, parse p50 0.157 ms; live endpoint round trip p50 1.37 ms / p95 2.26 ms. |
+| **Fusion (the shipped path)** | endpoint policy over both | — | — | 98-entry corpus, GPU, 2026-08-16: **95.9% execution match** (rules exact on 81 fully-consumed queries; model correct on 13 of 17 free-language queries; every model hard-failure fell back to the rules answer). |
+| nl2sql answerer | `distil-labs/distil-qwen3-4b-text2sql-gguf-4bit`, `model.gguf` (provision group `omniquery`) | Apache-2.0 | 2.5 GB | Best of five GGUF candidates screened 2026-08-16 (43.4% vs Qwen3-1.7B 40.8%, 0.5B-class ≤21%, SS-350M 1.3%). Loop latency ~0.4–3 s/query on GPU. Decode canary at load: garbage logits or sampler crashes reload CPU-only, loudly — also catches silently corrupted GGUF files. |
 
-Refiner candidate bench (standalone, grammar-constrained, GPU, 2026-08-16
-— the typed-value `ast.json_schema` fix first raised the 0.5B from 3.9%):
-
-| GGUF | Execution match | AST exact | Latency p50 |
-|---|---|---|---|
-| distil-qwen3-4b-text2sql (**shipped**) | **43.4%** | 30.3% | 0.87 s |
-| Qwen3-1.7B Q8_0 | 40.8% | 17.1% | 1.5 s |
-| Qwen2.5-Coder-0.5B Q4_K_M | 21.1% | 9.2% | 1.1 s |
-| Qwen3-0.6B Q8_0 | 19.7% | 5.3% | 1.5 s |
-| SS-350M-SQL-Strict Q8_0 | 1.3% | 1.3% | 0.8 s |
-
-Superseded (removed 2026-08-16): the needle2/cactus-needle intent parser
-and the four-threshold router — measured 21.1% standalone with
-confidently-wrong parses on constraint drops, and the router contract
-("Couldn't confidently parse") failed the search box's job on bare terms
-like "girlnextdoor" / "photos of trees".
+Superseded (removed 2026-08-16): the needle2/cactus-needle intent parser,
+the four-threshold router, and the NL→JSON-AST middle layer for the
+model path — the router contract ("Couldn't confidently parse") failed
+the search box's job on bare terms like "girlnextdoor", and the AST
+grammar throttled a text2sql-tuned model into a foreign output format.
+The typed AST/validation/compiler pipeline remains as the rules
+answerer's execution path and the API's typed query surface.
 
 ## Similarity / faces / review
 

@@ -103,25 +103,27 @@ to the air-gapped host with `AI_DAM_AUTO_PROVISION=false`.
 
 ## Search palette (Ctrl/Cmd+P, Alt+P)
 
-Natural-language search works out of the box with zero downloads: the
-deterministic nlq parser answers every query (recognized structure parses
-into typed predicates; every leftover term becomes a full-text search
-across filename, path, prompt, caption, model, and LoRA names). Live
-results as you type; no SQL anywhere.
+A search field over your living library: open it and the newest files are
+already there as a masonry; type and it morphs live (sub-millisecond
+rules path); pause and the AI answer swaps in. No SQL is ever shown.
 
-Optional: the nl2sql refiner — a grammar-constrained local GGUF consulted
-only for structurally-ambiguous phrasing:
+Works out of the box with zero downloads via the deterministic rules
+answerer. The AI answerer — the nl2sql model that reads your actual
+database schema and writes read-only queries in an agentic
+execute-and-refine loop — is one download:
 
 ```bash
 python -m smartgallery_ai provision omniquery   # 2.5 GB, Apache-2.0
-# or point at your own qwen3-family GGUF:
+# or point at your own text2sql GGUF:
 OMNIQUERY_NL2SQL_GGUF=/path/to/model.gguf
 OMNIQUERY_FALLBACK_GPU_LAYERS=-1   # full GPU offload; 0 forces CPU decode
 ```
 
-Model loads are canaried: a GPU build that cannot actually decode
-(garbage logits, sampler crash) reloads CPU-only with a logged warning
-instead of failing.
+Model-generated SQL executes only through the same sandbox as the manual
+Advanced endpoint (SELECT-only, read-only connection, engine-level
+authorizer). Model loads are canaried: a GPU build that cannot actually
+decode reloads CPU-only with a logged warning, and any model failure
+falls back to the rules answer — search never breaks.
 
 ## Verify
 
