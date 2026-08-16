@@ -493,12 +493,23 @@ def _copy_with_progress(reader, writer, total: Optional[int],
             progress(done, total)
 
 
+# Seconds a download may go without receiving a single byte. This is a
+# per-read timeout, not a budget for the whole transfer, so a slow link
+# still finishes a multi-gigabyte model as long as something keeps
+# arriving. Without it a connection that is accepted and then goes silent
+# -- a stalled mirror, a captive portal, a firewall that black-holes
+# instead of refusing -- blocks the provisioning thread for ever: the AI
+# layer never arrives, and nothing reports an error because nothing failed.
+DOWNLOAD_STALL_TIMEOUT = 60
+
+
 def _download_url(url: str, dest_path: str,
                   progress: Optional[Callable[[int, Optional[int]], None]] = None) -> None:
     """Stream one direct URL to dest_path via a temp file, reporting byte
     progress as it goes."""
     tmp = dest_path + ".part"
-    with urllib.request.urlopen(url) as resp, open(tmp, "wb") as out:
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, \
+            open(tmp, "wb") as out:
         length = resp.headers.get("Content-Length")
         _copy_with_progress(resp, out, int(length) if length else None, progress)
     os.replace(tmp, dest_path)
