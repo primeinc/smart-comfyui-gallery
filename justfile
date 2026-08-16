@@ -10,6 +10,10 @@ test:
 # Benchmarks through the production pipeline with live load context (bench.just)
 mod bench
 
+# AI/ML debug surfaces: hardware matrix, decode canaries, search probes,
+# acceptance benchmarks (ai.just)
+mod ai
+
 # Which faiss the app selects at runtime: the vendored GPU build
 # (vendor/faiss-gpu-win64, CUDA DLLs from the nvidia wheels) on
 # Windows+NVIDIA, else the installed faiss-cpu. AI_DAM_FAISS_GPU=0

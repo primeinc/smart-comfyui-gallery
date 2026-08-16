@@ -99,6 +99,13 @@ def test_schema_block_never_includes_bookkeeping_tables(db):
     # Observed live: free-running past the answer.
     ("SELECT id FROM files; [INST] SELECT 1", "SELECT id FROM files"),
     ("  SELECT id FROM files;  ", "SELECT id FROM files"),
+    # Observed live: chat-template tokens as literal trailing text.
+    ("SELECT id FROM files WHERE x < 5 <tool_call><s>",
+     "SELECT id FROM files WHERE x < 5"),
+    ("SELECT id FROM files <|im_end|>", "SELECT id FROM files"),
+    # Legal comparisons survive: '<' before space/digit/'='/'>' is SQL.
+    ("SELECT id FROM files WHERE a < 5 AND b <= 2 AND c <> 'x'",
+     "SELECT id FROM files WHERE a < 5 AND b <= 2 AND c <> 'x'"),
 ])
 def test_extract_sql(content, expected):
     assert _extract_sql(content) == expected

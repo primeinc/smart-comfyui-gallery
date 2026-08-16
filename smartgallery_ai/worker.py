@@ -258,6 +258,13 @@ def app_git_ref(root: Optional[str] = None) -> Optional[str]:
         return None
 
 
+# Review pacing: a review measuring slower than this (seconds per file)
+# doubles the pacing interval, up to the max; a fast review resets to
+# every-cycle. Bounded progress on CPU critics, full throughput on GPU.
+_REVIEW_SLOW_SECONDS = 30.0
+_REVIEW_MAX_INTERVAL = 16
+
+
 def indexing_totals(conn: sqlite3.Connection) -> dict:
     """Backlog progress snapshot: how many files exist vs. how many each
     stage has covered so far. Approximate BY DESIGN (a model-version bump
@@ -375,6 +382,12 @@ class AIWorker:
         # True after a cycle that exhausted a budget: the loop skips its
         # between-cycle sleep and continues the crawl immediately.
         self._backlog_remaining = False
+        # Review pacing state (measured backoff; see _run_cycle): reviews
+        # ride along every `_review_interval` cycles while the crawl is
+        # busy, and the interval adapts to the measured per-review cost.
+        self._review_interval = 1
+        self._cycles_since_review = 10 ** 9  # first cycle always eligible
+        self._last_review_seconds: Optional[float] = None
         # True while auto-provisioning intends to (or is about to) swap a
         # CPU-build torch for CUDA wheels: torch-dependent backends must
         # not import torch in the meantime -- an imported torch pins its
@@ -641,12 +654,15 @@ class AIWorker:
         first, then hashing against its own budget (milliseconds per file;
         a shared budget would starve the model stages for hours on a large
         hash backlog), then the FAST model stages — semantic, visual,
-        faces — against an EVEN split of the shared budget (a fixed order
-        would let the first stage starve the rest for the whole first
-        index), then masks from the leftovers. Backlog reviews (minutes
-        per file on CPU) run only when every fast stage found nothing, so
-        they never throttle the crawl; priority requests still review
-        immediately. Ends with the orphaned-mask sweep."""
+        faces — through the two-pass fair scheduler (_run_fast_stages:
+        even quotas first, then leftover budget re-offered to the stages
+        that are still hungry, so a drained stage's share is never
+        wasted), then masks from the leftovers. Backlog reviews run EVERY
+        cycle under measured pacing: one review rides along while the
+        crawl is busy, backing off exponentially (up to 1-per-16-cycles)
+        when a review measures slow, and the full review batch runs when
+        everything else is idle — bounded progress always, starvation
+        never. Ends with the orphaned-mask sweep."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         with self._lock:
@@ -684,11 +700,7 @@ class AIWorker:
             budget = self.batch_size
             fast_consumed = 0
             if fast_stages and budget > 0:
-                quota = max(1, budget // len(fast_stages))
-                for _name, run_stage in fast_stages:
-                    fast_consumed += run_stage(min(quota, budget - fast_consumed))
-                    if fast_consumed >= budget:
-                        break
+                fast_consumed = self._run_fast_stages(fast_stages, budget)
             budget -= fast_consumed
 
             if budget > 0:
@@ -699,16 +711,32 @@ class AIWorker:
                 else:
                     self._note_skip(skips, "masks", self.config.segmenter_backend)
 
-            if fast_consumed == 0:
-                critic_backend = self._backend("critic",
-                                               review.get_critic_backend)
-                if critic_backend is not None:
-                    self._process_reviews(conn, critic_backend,
-                                          max(1, self.batch_size // 10))
-                else:
-                    self._note_skip(skips, "reviews", self.config.critic_backend)
+            self._cycles_since_review += 1
+            critic_backend = self._backend("critic",
+                                           review.get_critic_backend)
+            if critic_backend is None:
+                self._note_skip(skips, "reviews", self.config.critic_backend)
+            elif (fast_consumed == 0
+                    or self._cycles_since_review >= self._review_interval):
+                n = max(1, self.batch_size // 10) if fast_consumed == 0 else 1
+                t0 = time.monotonic()
+                reviewed = self._process_reviews(conn, critic_backend, n)
+                if reviewed:
+                    per_review = (time.monotonic() - t0) / reviewed
+                    self._last_review_seconds = per_review
+                    if per_review > _REVIEW_SLOW_SECONDS:
+                        self._review_interval = min(
+                            max(2, self._review_interval * 2),
+                            _REVIEW_MAX_INTERVAL)
+                    else:
+                        self._review_interval = 1
+                    self._cycles_since_review = 0
             elif self.config.critic_backend not in ("none", "stub"):
-                skips.setdefault("reviews", "queued behind the faster stages")
+                last = (f"{self._last_review_seconds:.0f}s/review"
+                        if self._last_review_seconds else "unmeasured")
+                skips.setdefault(
+                    "reviews",
+                    f"paced 1 per {self._review_interval} cycles ({last})")
 
             self._sweep_orphaned_masks(conn)
             self._log_cycle_progress(conn, stats_before, skips)
@@ -722,6 +750,42 @@ class AIWorker:
 
         with self._lock:
             self.stats["cycles"] += 1
+
+    @staticmethod
+    def _run_fast_stages(stages, budget: int) -> int:
+        """Two-pass fair scheduler over (name, run(limit) -> consumed)
+        stages sharing `budget` items.
+
+        Pass 1 gives every stage an even quota (fairness during a fresh
+        index, when every backlog is deep). Pass 2 re-offers the leftover
+        budget, round-robin, to the stages that consumed their FULL quota
+        — a drained stage's share flows to the ones still hungry instead
+        of being wasted (observed live: semantic/visual complete, faces
+        crawling at a third of throughput on their dead quotas). Returns
+        total items consumed."""
+        consumed = 0
+        quota = max(1, budget // len(stages))
+        hungry = []
+        for name, run_stage in stages:
+            take = min(quota, budget - consumed)
+            if take <= 0:
+                break
+            got = run_stage(take)
+            consumed += got
+            if got >= take:
+                hungry.append((name, run_stage))
+        while consumed < budget and hungry:
+            still_hungry = []
+            for name, run_stage in hungry:
+                take = min(quota, budget - consumed)
+                if take <= 0:
+                    break
+                got = run_stage(take)
+                consumed += got
+                if got >= take:
+                    still_hungry.append((name, run_stage))
+            hungry = still_hungry
+        return consumed
 
     def _note_skip(self, skips: dict, stage: str, selector: str) -> None:
         """Record WHY a configured stage produced nothing this cycle so the

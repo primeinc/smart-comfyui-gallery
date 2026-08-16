@@ -299,6 +299,55 @@ def _run_backend(backend: ParserBackend, entries: List[dict], engine: OmniQueryE
     return _aggregate(records, latencies)
 
 
+def _run_fusion(entries: List[dict], engine: OmniQueryEngine,
+                 now_epoch: float) -> Dict[str, Any]:
+    """Measure the SHIPPED endpoint policy: nlq answers entries it fully
+    consumes (no leftover text terms); free-language entries go to the
+    SqlSearch agentic loop, and a model failure falls back to the nlq
+    answer. This is the product's acceptance number."""
+    from omniquery.parsers.nl2sql import SqlSearch
+    from omniquery.parsers.nlq import NlqParser
+
+    nlq = NlqParser()
+    search = SqlSearch(db_path=engine.db_path)
+    records: List[_EntryRecord] = []
+    latencies: List[float] = []
+    model_used = model_correct = 0
+    for entry in entries:
+        expected_query, _ = try_validate(entry["expected"]["ast"])
+        want = _exec_result(engine, expected_query, now_epoch)
+
+        def _rules_ok() -> bool:
+            query, err = try_validate(out.ast)
+            got = _exec_result(engine, query, now_epoch) if err is None else None
+            return got is not None and got == want
+
+        t0 = time.monotonic()
+        out = nlq.parse(entry["nl"], now_epoch)
+        if not (out.raw or {}).get("text_terms"):
+            ok = _rules_ok()  # fully consumed: the rules answer is final
+        else:
+            model_used += 1
+            ids, sql, _err = search.search(entry["nl"])
+            if ids is None:
+                ok = _rules_ok()  # model hard-failed: rules answer stands
+            elif sql and re.match(r"\s*SELECT\s+(COUNT|SUM|AVG|MIN|MAX)", sql, re.IGNORECASE):
+                got_count = int(float(ids[0])) if ids else 0
+                want_count = want[1] if want[0] == "count" else len(want[1])
+                ok = got_count == want_count
+                model_correct += int(ok)
+            else:
+                ok = want is not None and want[0] == "ids" and frozenset(ids) == want[1]
+                model_correct += int(ok)
+        latencies.append((time.monotonic() - t0) * 1000.0)
+        records.append(_EntryRecord(
+            expected_unsupported=False, produced_ast=True, valid=True,
+            ast_exact=False, exec_match=ok, confidence=None))
+    metrics = _aggregate(records, latencies)
+    metrics["fusion"] = {"model_used": model_used, "model_correct": model_correct}
+    return metrics
+
+
 def _run_sqlsearch(entries: List[dict], engine: OmniQueryEngine,
                     now_epoch: float) -> Dict[str, Any]:
     """Measure the nl2sql SQL path (omniquery.parsers.nl2sql.SqlSearch):
@@ -358,7 +407,8 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     engine = _build_fixture_engine()
 
     instances: Dict[str, ParserBackend] = {
-        name: get_backend(name) for name in backend_names if name != "sqlsearch"
+        name: get_backend(name) for name in backend_names
+        if name not in ("sqlsearch", "fusion")
     }
 
     report: Dict[str, Any] = {
@@ -371,6 +421,8 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     for name in backend_names:
         if name == "sqlsearch":
             report["backends"]["sqlsearch"] = _run_sqlsearch(entries, engine, now_epoch)
+        elif name == "fusion":
+            report["backends"]["fusion"] = _run_fusion(entries, engine, now_epoch)
         else:
             report["backends"][name] = _run_backend(instances[name], entries, engine, now_epoch)
 

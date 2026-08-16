@@ -564,6 +564,129 @@ def test_unavailable_backend_reprobed_after_retry_window(tmp_path):
     assert len(attempts) == 2  # success is cached for the lifetime
 
 
+def _stage(backlog: int):
+    """A scripted fast stage with `backlog` items: consumes min(limit,
+    remaining) per call and records every limit it was offered."""
+    state = {"remaining": backlog, "offers": []}
+
+    def run(limit):
+        state["offers"].append(limit)
+        got = min(limit, state["remaining"])
+        state["remaining"] -= got
+        return got
+
+    return state, run
+
+
+def test_fast_scheduler_redistributes_drained_stage_quotas():
+    """The production pathology: two stages fully indexed, one deep
+    backlog. The drained stages' quotas must flow to the hungry stage —
+    with budget 9 across 3 stages, faces gets 9, not 3."""
+    sem, run_sem = _stage(0)
+    vis, run_vis = _stage(0)
+    fac, run_fac = _stage(1000)
+    consumed = AIWorker._run_fast_stages(
+        [("semantic", run_sem), ("visual", run_vis), ("faces", run_fac)], 9)
+    assert consumed == 9
+    assert 1000 - fac["remaining"] == 9
+
+
+def test_fast_scheduler_is_fair_when_every_backlog_is_deep():
+    """Fresh index: every stage hungry — the budget splits evenly."""
+    a, run_a = _stage(1000)
+    b, run_b = _stage(1000)
+    c, run_c = _stage(1000)
+    consumed = AIWorker._run_fast_stages(
+        [("a", run_a), ("b", run_b), ("c", run_c)], 9)
+    assert consumed == 9
+    assert [1000 - s["remaining"] for s in (a, b, c)] == [3, 3, 3]
+
+
+def test_fast_scheduler_stops_when_all_backlogs_drain():
+    """Total backlog under budget: consume it all, never loop forever."""
+    a, run_a = _stage(2)
+    b, run_b = _stage(1)
+    consumed = AIWorker._run_fast_stages([("a", run_a), ("b", run_b)], 50)
+    assert consumed == 3
+    assert a["remaining"] == 0 and b["remaining"] == 0
+
+
+def test_review_pacing_rides_along_and_backs_off(tmp_path, monkeypatch):
+    """Reviews are never starved by a busy crawl: one review rides along
+    each cycle, and a slow review (measured) backs the interval off
+    exponentially instead of blocking the crawl."""
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="stub",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
+
+    review_calls = []
+    monkeypatch.setattr(worker, "_maybe_retry_provision", lambda: None)
+    monkeypatch.setattr(worker, "_process_hashes", lambda *a, **k: 0)
+    monkeypatch.setattr(worker, "_process_masks", lambda *a, **k: 0)
+    monkeypatch.setattr(worker, "_sweep_orphaned_masks", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "_backend", lambda key, resolver: object())
+
+    # A busy crawl (fast_consumed > 0) with a SLOW critic: pacing must
+    # still run a review, then back off 2 -> 4 -> ... on repeats.
+    clock = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+
+    def slow_review(conn, backend, n, only_file_id=None):
+        review_calls.append(n)
+        clock[0] += 100.0  # 100s per review: far over the slow threshold
+        return 1
+
+    monkeypatch.setattr(worker, "_process_reviews", slow_review)
+    # Simulate "crawl busy" by patching the fast scheduler.
+    monkeypatch.setattr(worker, "_run_fast_stages", lambda stages, budget: 1)
+
+    worker._run_cycle()
+    assert review_calls == [1]          # rode along despite the busy crawl
+    assert worker._review_interval == 2  # slow -> backed off
+
+    worker._run_cycle()                  # cycles_since_review=1 < 2: paced out
+    assert review_calls == [1]
+    worker._run_cycle()                  # interval reached: reviews again
+    assert review_calls == [1, 1]
+    assert worker._review_interval == 4  # still slow -> further backoff
+
+
+def test_review_pacing_resets_when_reviews_are_fast(tmp_path, monkeypatch):
+    """A fast critic (GPU-class) keeps reviews at every cycle."""
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path,
+        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True, semantic_backend="none", visual_backend="none",
+        face_backend="none", critic_backend="stub",
+    )
+    worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
+    worker._review_interval = 8  # pretend an earlier slow phase
+    worker._cycles_since_review = 8
+
+    review_calls = []
+    monkeypatch.setattr(worker, "_maybe_retry_provision", lambda: None)
+    monkeypatch.setattr(worker, "_process_hashes", lambda *a, **k: 0)
+    monkeypatch.setattr(worker, "_process_masks", lambda *a, **k: 0)
+    monkeypatch.setattr(worker, "_sweep_orphaned_masks", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "_run_fast_stages", lambda stages, budget: 1)
+    monkeypatch.setattr(worker, "_backend", lambda key, resolver: object())
+    monkeypatch.setattr(worker, "_process_reviews",
+                        lambda conn, backend, n, only_file_id=None:
+                        (review_calls.append(n), 1)[1])
+
+    worker._run_cycle()
+    assert review_calls == [1]
+    assert worker._review_interval == 1  # fast review resets to every cycle
+
+
 def test_record_scan_is_model_scoped(tmp_path):
     """Each pipeline keeps its own scan-log row: a second model's scan adds
     a row instead of overwriting the first model's last-run bookkeeping;

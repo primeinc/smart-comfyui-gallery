@@ -228,11 +228,19 @@
         }
     }
 
+    // Adaptive auto-deep: on hardware where the model answers in a few
+    // seconds (GPU), the deep search fires by itself on a typing pause;
+    // after two consecutive slow rounds (CPU-class decode) it stops
+    // auto-firing and waits for Enter instead. Measured, not configured.
+    let slowRounds = 0;
+    let autoDeep = true;
+
     // The real answer: fires by itself once typing pauses. Instant tiles
     // stay on screen and are seamlessly replaced when this lands.
     async function deepQuery() {
         const q = input.value.trim();
         if (!q) return;
+        const t0 = performance.now();
         if (deepInflight) deepInflight.abort();
         deepInflight = new AbortController();
         statusEl.textContent = 'thinking...';
@@ -244,6 +252,12 @@
                 signal: deepInflight.signal,
             });
             const data = await resp.json();
+            if (performance.now() - t0 > 4000) {
+                slowRounds += 1;
+                if (slowRounds >= 2) autoDeep = false;
+            } else {
+                slowRounds = 0;
+            }
             if (input.value.trim() !== q) return;  // stale: user kept typing
             statusEl.textContent = '';
             if (data.status !== 'success') return; // instant tiles stand
@@ -295,7 +309,7 @@
         clearTimeout(deepTimer);
         if (deepInflight) deepInflight.abort();
         debounceTimer = setTimeout(liveQuery, 120);
-        deepTimer = setTimeout(deepQuery, 700);
+        if (autoDeep) deepTimer = setTimeout(deepQuery, 700);
     });
 
     input.addEventListener('keydown', (e) => {

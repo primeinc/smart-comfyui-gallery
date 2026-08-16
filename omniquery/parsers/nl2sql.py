@@ -123,16 +123,18 @@ def schema_block(db_path: str) -> str:
     return block
 
 
-_JUNK_RE = re.compile(r"<\||\[INST\]|\[ERROR\]|```")
+# Chat-template detritus the model can free-run into after its answer:
+# '<|im...', '<tool_call>', '<s>', '</s>', '[INST]', '[ERROR]', fences.
+# '<' followed by '|', a letter, or '/' can never occur in valid SQLite
+# (real comparisons are '< 5', '<=', '<>'), so cutting there is lossless.
+_JUNK_RE = re.compile(r"<[|A-Za-z/]|\[INST\]|\[ERROR\]|```")
 
 
 def _extract_sql(content: str) -> str:
     """The statement itself: fenced block if the model added one, else the
-    raw text, cut at the first statement terminator or junk marker.
-    Observed live (and at 27/98 in the corpus bench): the model free-runs
-    past its answer into chat-template fragments ('; [INST] ...',
-    '<|im...'). '<|' can never occur in valid SQLite, so cutting there is
-    lossless; a bare '<' is a legal comparison and stays."""
+    raw text, cut at the first statement terminator or junk marker (see
+    _JUNK_RE; observed live: '; [INST] ...' free-runs and a trailing
+    '<tool_call><s>' that broke 27/98 bench queries)."""
     m = _SQL_FENCE_RE.search(content)
     sql = m.group(1) if m else content
     sql = sql.split(";", 1)[0]
