@@ -10,6 +10,7 @@ SmartGallery works fully offline and does **not** require ComfyUI to be running.
 
 - [Requirements](#requirements)
 - [Installation & Update](#installation--update)
+- [AI Layer (Faces / Similar / Review / OmniQuery): INSTALL_AI.md](INSTALL_AI.md)
 - [FFmpeg / FFprobe Notes](#ffmpeg--ffprobe-notes)
 - [First Launch & Performance Notes](#first-launch--performance)
 - [Docker Deployment (from 'Installation & Update' -> select 'Docker')](#installation--update)
@@ -20,9 +21,11 @@ SmartGallery works fully offline and does **not** require ComfyUI to be running.
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - ffmpeg / ffprobe recommended for video workflow extraction
 - Works on Windows, Linux, macOS
+- The AI layer (on by default) provisions itself on first start; see
+  [INSTALL_AI.md](INSTALL_AI.md) for what it downloads and the GPU story
 
 ---
 
