@@ -334,7 +334,7 @@ function renderSidebarTreeHTML(parentId = '_root_', isSearching = false, visible
                 <span class="col-toggle-btn ${!hasChildren ? 'empty' : ''}"></span>
                 <a href="/galleryout/collection/${c.id}" class="folder-link navigation-link" style="display:flex; align-items:center; flex-grow:1;">
                     <span class="col-icon">📚</span>
-                    <span class="col-name" title="${c.name}" style="${c.note_count > 0 ? 'color:var(--favorite-color) !important; font-weight:bold;' : ''}">${escapeHTML(c.name)}</span>
+                    <span class="col-name" title="${escapeHTML(c.name)}" style="${c.note_count > 0 ? 'color:var(--favorite-color) !important; font-weight:bold;' : ''}">${escapeHTML(c.name)}</span>
                     ${Number(c.file_count) > 0 ? `<span class="collection-count" title="${c.file_count} directly tagged files">${c.file_count}</span>` : ''}
                     ${hasChildren && !isExpanded && Number(c.descendant_file_count) > 0 ? `<span class="collection-count collection-count-descendant" title="${c.descendant_file_count} unique files in sub-collections">+${c.descendant_file_count}</span>` : ''}
                     ${publicIcon}
@@ -371,7 +371,7 @@ function renderSidebarCollections() {
             const shortcutBadge = (index < 5) ? `<span class="col-shortcut-hint">${index + 1}</span>` : '';
             const isActive = (typeof currentFolderInfo !== 'undefined' && c.id == currentFolderInfo.collection_id) ? 'active' : '';
             return `<a href="/galleryout/collection/${c.id}" class="col-item navigation-link ${isActive}">
-                        <div class="col-dot" style="background-color:${c.color}"></div>${shortcutBadge}<span class="col-name">${c.name}</span>
+                        <div class="col-dot" style="background-color:${c.color}"></div>${shortcutBadge}<span class="col-name">${escapeHTML(c.name)}</span>
                     </a>`;
         }).join('');
 
@@ -700,7 +700,7 @@ function renderTagManagerTreeHTML(parentId = '_root_', isSearching = false) {
                 <span class="col-toggle-btn ${!hasChildren ? 'empty' : ''}"></span>
                 <div class="tag-col-info folder-link" style="margin-left: 25px; flex-grow:1;">
                     <span class="tag-col-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 150px; display:inline-block; vertical-align:middle; ${isOriginal && !pendingAction ? 'color: var(--success-color); font-weight: bold;' : ''}">
-                        ${c.is_public ? '👁️ ' : ''}${c.name}
+                        ${c.is_public ? '👁️ ' : ''}${escapeHTML(c.name)}
                     </span>
                     ${Number(c.file_count) > 0 ? `<span class="collection-count" title="${c.file_count} directly tagged files">${c.file_count}</span>` : ''}
                     ${hasChildren && !isExpanded && Number(c.descendant_file_count) > 0 ? `<span class="collection-count collection-count-descendant" title="${c.descendant_file_count} unique files in sub-collections">+${c.descendant_file_count}</span>` : ''}
@@ -760,7 +760,7 @@ function renderTagManagerStatus() {
     if (collectionsData.flags) {
         html += collectionsData.flags.map(c => {
             const isSelected = (tmState.pendingStatus === c.id);
-            return `<div class="status-chip ${isSelected ? 'selected' : ''}" onclick="stageStatusChange(${c.id})"><div style="width:12px; height:12px; border-radius:50%; background:${c.color}; box-shadow:0 0 5px ${c.color};"></div><span style="font-size:0.85rem; font-weight:500;">${c.name}</span></div>`;
+            return `<div class="status-chip ${isSelected ? 'selected' : ''}" onclick="stageStatusChange(${c.id})"><div style="width:12px; height:12px; border-radius:50%; background:${c.color}; box-shadow:0 0 5px ${c.color};"></div><span style="font-size:0.85rem; font-weight:500;">${escapeHTML(c.name)}</span></div>`;
         }).join('');
     }
     container.innerHTML = html;

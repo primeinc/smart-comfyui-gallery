@@ -3591,7 +3591,7 @@ document.addEventListener('focusout', function(e) {
             if (file.type === 'audio') {
                 mediaHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:4rem;color:#1ed760;">🎵</div>`;
             } else if (['image', 'animated_image'].includes(file.type)) {
-                mediaHTML = `<img class="lazy" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E" data-src="/galleryout/thumbnail/${file.id}" alt="${file.name}" loading="lazy">`;
+                mediaHTML = `<img class="lazy" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E" data-src="/galleryout/thumbnail/${file.id}" alt="${escapeHTML(file.name)}" loading="lazy">`;
             } else if (file.type === 'document') {
                 mediaEl = document.createElement('div');
                 mediaEl.className = 'theater-document-reader';
@@ -3790,14 +3790,14 @@ document.addEventListener('focusout', function(e) {
                 <!-- Make the entire bottom info area clickable to select/deselect the file -->
                 <div class="item-info" onclick="if(!event.target.closest('.item-actions') && !event.target.closest('a') && !event.target.closest('button')) { toggleSelection(event, '${file.id}', this.closest('.gallery-item')); }" style="cursor: pointer;" title="Click to select/deselect">
                     <div class="grid-view-only">
-                        <p title="${file.name}"><strong>${file.name}</strong></p>
+                        <p title="${escapeHTML(file.name)}"><strong>${escapeHTML(file.name)}</strong></p>
                         ${metadataHTML}
                         ${scannedHTML}
                     </div>
                     <!-- Data strictly used by the new List View -->
                     <div class="list-view-only-cols">
                         <div class="list-col-index"></div>
-                        <div class="list-col-name" title="${file.name}" style="display:flex; align-items:center;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0;">${file.name}</span>${file.type === 'audio' ? ` <button class="inline-audio-btn" onclick="playInlineAudio(event, '${file.id}', this)" title="Play Audio">▶</button>` : ''}</div>
+                        <div class="list-col-name" title="${escapeHTML(file.name)}" style="display:flex; align-items:center;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0;">${escapeHTML(file.name)}</span>${file.type === 'audio' ? ` <button class="inline-audio-btn" onclick="playInlineAudio(event, '${file.id}', this)" title="Play Audio">▶</button>` : ''}</div>
                         <div class="list-col-rating list-hide-mob">${(typeof ENABLE_DAM_MODE !== 'undefined' && ENABLE_DAM_MODE && file.avg_rating > 0) ? '★ ' + file.avg_rating.toFixed(1) : '-'}</div>
                         <div class="list-col-comments list-hide-mob">${file.comment_count > 0 ? '💬 ' + file.comment_count : '-'}</div>
                         <div class="list-col-size list-hide-mob">${typeof formatBytes === 'function' && file.size ? formatBytes(file.size) : '-'}</div>
@@ -4200,7 +4200,7 @@ document.addEventListener('focusout', function(e) {
             const commStr = commNum > 0 ? `💬 ${commNum}` : '';
 
             bar.innerHTML = `
-                <div class="fsb-item fsb-name" title="${file.name}">📄 <span style="color:var(--success-color)">${file.name}</span></div>
+                <div class="fsb-item fsb-name" title="${escapeHTML(file.name)}">📄 <span style="color:var(--success-color)">${escapeHTML(file.name)}</span></div>
                 ${favStr ? `<div class="fsb-item" style="padding-right:5px;">${favStr}</div>` : ''}
                 ${rateStr ? `<div class="fsb-item">${rateStr}</div>` : ''}
                 ${commStr ? `<div class="fsb-item">${commStr}</div>` : ''}
@@ -5854,7 +5854,7 @@ document.addEventListener('focusout', function(e) {
         function showUploadModal() { resetUploadModal(); uploadDestinationText.textContent = currentFolderInfo.display_name; document.body.classList.add('modal-open'); uploadOverlay.classList.add('visible'); }
         function closeUploadModal() { document.body.classList.remove('modal-open'); uploadOverlay.classList.remove('visible'); }
         function handleFiles(files) { const allowed = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp', '.gif', '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv', '.mts', '.ts', '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.json', '.txt']; const validFiles = Array.from(files).filter(f => { const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase(); return allowed.includes(ext); }); const invalidCount = files.length - validFiles.length; if (invalidCount > 0) showNotification(invalidCount + ' file(s) ignored (unsupported extension).', 'warning'); filesToUpload = [...filesToUpload, ...validFiles]; renderFileList(); }
-        function renderFileList() { fileList.innerHTML = ''; filesToUpload.forEach(file => { const li = document.createElement('li'); const sizeKB = (file.size / 1024).toFixed(1); li.innerHTML = `<span>${file.name}</span> <span class="file-size">${sizeKB} KB</span>`; fileList.appendChild(li); }); }
+        function renderFileList() { fileList.innerHTML = ''; filesToUpload.forEach(file => { const li = document.createElement('li'); const sizeKB = (file.size / 1024).toFixed(1); li.innerHTML = `<span>${escapeHTML(file.name)}</span> <span class="file-size">${sizeKB} KB</span>`; fileList.appendChild(li); }); }
         function performUpload() {
             if (filesToUpload.length === 0) {
                 showNotification('Please select files to upload.', 'warning');
@@ -6580,7 +6580,7 @@ document.addEventListener('focusout', function(e) {
                     const iconClass = item.is_drive ? 'fs-drive-icon' : 'fs-icon';
                     const iconChar = item.is_drive ? '💽' : '📁';
                     
-                    li.innerHTML = `<span class="${iconClass}">${iconChar}</span> <span>${item.name}</span>`;
+                    li.innerHTML = `<span class="${iconClass}">${iconChar}</span> <span>${escapeHTML(item.name)}</span>`;
                     
                     // Click to navigate INTO
                     li.onclick = () => fsNavigate(item.path);
