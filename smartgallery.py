@@ -3621,6 +3621,29 @@ def should_strip_metadata():
     return active
 
 
+# Fields a visitor has no business reading: how the picture was made, and
+# where it lives on the server. The exhibition interface uses none of them.
+_HIDDEN_FROM_GUESTS = (
+    'path', 'workflow_prompt', 'workflow_files',
+    'workflow_hash', 'prompt_hash', 'models_hash', 'ai_embedding',
+)
+
+
+def redact_file_listing(files):
+    """Strip generation details out of a file listing bound for a guest.
+
+    Serving each file through a rewritten copy is only half the job: the
+    listing that describes those files is JSON the same visitor can read,
+    and it carried workflow_prompt verbatim. Cleaning the file while
+    publishing its prompt beside it protects nothing.
+    """
+    if not should_strip_metadata():
+        return files
+    return [{key: value for key, value in dict(row).items()
+             if key not in _HIDDEN_FROM_GUESTS}
+            for row in files]
+
+
 def strip_media_metadata(input_path, output_path, file_type):
     """
     Strips metadata. 
@@ -6034,7 +6057,8 @@ def load_more():
         return jsonify({'files': [], 'stale': True})
     offset = request.args.get('offset', 0, type=int)
     if offset >= len(snapshot): return jsonify(files=[])
-    return jsonify(files=snapshot[offset:offset + PAGE_SIZE])
+    # Same rows as the album listing, so the same audience rule applies.
+    return jsonify(files=redact_file_listing(snapshot[offset:offset + PAGE_SIZE]))
 
 def get_file_info_from_db(file_id, column='*'):
     with get_db_connection() as conn:
@@ -8153,6 +8177,18 @@ def collection_view(coll_id):
                                enable_guest_login=ENABLE_GUEST_LOGIN if IS_EXHIBITION_MODE else False,
                                admin_side=is_management_side)
     
+    # Decided once, because several of the query builders below read them.
+    # is_privileged used to be set only inside the branch that handles a
+    # PRIVATE collection, and read whenever a specific album is rendered --
+    # so opening a public album, which is what exhibition mode is for,
+    # reached that read with the name unbound and answered 500. `not
+    # is_privileged` is evaluated as soon as exhibition mode is on, so staff
+    # were locked out of albums as thoroughly as visitors.
+    user_role = session.get('role', 'GUEST')
+    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
+    is_privileged = is_local_admin or (user_role in ['ADMIN', 'MANAGER', 'STAFF'])
+    safe_uid = _current_client_identity().replace("'", "''")
+
     # 1. Handle Virtual "All Categories" vs Specific Collection
     coll_info = None
     is_all_mode = (coll_id == 'all')
@@ -8721,7 +8757,7 @@ def collection_view(coll_id):
         return jsonify({
             'status': 'success',
             'collection_name': coll_info['name'],
-            'files': final_files,
+            'files': redact_file_listing(final_files),
             'total_count': total_folder_files,
             'has_notes': has_notes,
             'note_files': note_files,
