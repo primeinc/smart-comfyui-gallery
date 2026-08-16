@@ -39,6 +39,7 @@ __all__ = [
     "Finding",
     "ReviewResult",
     "ReviewSchemaError",
+    "normalize_prompt_pair",
     "resolve_prompt_texts",
     "validate_review_payload",
     "CriticBackend",
@@ -81,35 +82,53 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
                for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
 
 
+def normalize_prompt_pair(traced_positive, workflow_positive, traced_negative) -> tuple:
+    """Reduce the three raw prompt surfaces to the (positive, negative) pair
+    the critic actually scores against.
+
+    Pure, so the row-by-row reader (`resolve_prompt_texts`) and the
+    set-based staleness query can share ONE definition. They must: the
+    staleness key is a digest of this output, so a reader and a query that
+    normalize differently produce different keys for the same file, and the
+    file either re-reviews every cycle forever or never re-reviews again.
+
+    The traced `generation_params.positive_prompt` wins; `files.workflow_prompt`
+    is the fallback (a broad keyword blob for ComfyUI files). Blank strings
+    are None -- the DB defaults both columns to '', so emptiness is the
+    common case, not an error.
+    """
+    positive = (traced_positive or "").strip() or None
+    if positive is None:
+        positive = (workflow_positive or "").strip() or None
+    negative = (traced_negative or "").strip() or None
+    return positive, negative
+
+
 def resolve_prompt_texts(conn: sqlite3.Connection, file_id: str) -> tuple:
     """The (positive, negative) generation prompts to score `file_id`
     against, as `(str | None, str | None)`.
 
     The ONE definition of "does this file have a prompt": the worker scores
     alignment against exactly this, the panel explains a null score from
-    exactly this, and the re-review sweep re-queues on exactly this. Three
-    callers reading three different surfaces is how a file ends up with a
-    prompt, a null alignment score, and a panel insisting no prompt exists.
+    exactly this, and the staleness key digests exactly this. Three callers
+    reading three different surfaces is how a file ends up with a prompt, a
+    null alignment score, and a panel insisting no prompt exists.
 
-    The traced `generation_params.positive_prompt` wins; `files.workflow_prompt`
-    is the fallback (a broad keyword blob for ComfyUI files). Blank strings
-    are None -- the DB defaults both columns to '', so emptiness is the
-    common case, not an error. Absent table/column reads as no prompt.
+    Absent table/column reads as no prompt.
     """
-    positive = negative = None
+    traced_positive = traced_negative = workflow_positive = None
     if _has_column(conn, "generation_params", "positive_prompt"):
         row = conn.execute(
             "SELECT positive_prompt, negative_prompt FROM generation_params "
             "WHERE file_id = ?", (file_id,)).fetchone()
         if row is not None:
-            positive = (row[0] or "").strip() or None
-            negative = (row[1] or "").strip() or None
-    if positive is None and _has_column(conn, "files", "workflow_prompt"):
+            traced_positive, traced_negative = row[0], row[1]
+    if _has_column(conn, "files", "workflow_prompt"):
         row = conn.execute(
             "SELECT workflow_prompt FROM files WHERE id = ?", (file_id,)).fetchone()
         if row is not None:
-            positive = (row[0] or "").strip() or None
-    return positive, negative
+            workflow_positive = row[0]
+    return normalize_prompt_pair(traced_positive, workflow_positive, traced_negative)
 
 
 @dataclass

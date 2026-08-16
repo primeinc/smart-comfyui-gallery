@@ -16,6 +16,7 @@ logged once per file so a bad file cannot spam the log every cycle.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -206,28 +207,54 @@ def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
         "1")
 
 
+def stage_input_key(*parts: Optional[str]) -> str:
+    """Stable digest of a stage's non-file, non-model inputs.
+
+    `source_mtime` already covers the pixels and model_id/model_version the
+    model, so this carries everything else the result depends on -- for a
+    review, the generation prompt, the negative prompt, and the rubric.
+    Anything a stage consumes but does not key on is a value that can change
+    while staleness reports 'current', which is how a review ends up frozen
+    against a prompt that arrived after it ran.
+
+    Parts are joined with a separator that cannot occur inside them, so
+    ('a', 'bc') and ('ab', 'c') never collide. Stages with no extra inputs
+    call this with nothing and get '' -- unchanged behavior.
+    """
+    if not parts:
+        return ""
+    joined = "\x00".join("" if p is None else p for p in parts)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:32]
+
+
 def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
-                source_mtime: float, now: float, result_count: int) -> None:
+                source_mtime: float, now: float, result_count: int,
+                input_key: str = "") -> None:
     """Upsert the (file, kind, model) scan-log row recording an attempt at
-    `source_mtime`; `scanned_at` is the last-run stamp and `result_count`
-    of -1 marks a failed attempt. Model-scoped on purpose: each pipeline
-    keeps its own run history, so switching backends never erases another
-    model's bookkeeping. Shared by the worker stages and the synchronous
-    /index path so both mark work the same way and neither re-scans the
-    other's results."""
+    `source_mtime` under `input_key`; `scanned_at` is the last-run stamp and
+    `result_count` of -1 marks a failed attempt. Model-scoped on purpose:
+    each pipeline keeps its own run history, so switching backends never
+    erases another model's bookkeeping. Shared by the worker stages and the
+    synchronous /index path so both mark work the same way and neither
+    re-scans the other's results.
+
+    `input_key` MUST be the same value `_scan_candidates` filters on for
+    this stage -- recording one key while querying another means either
+    permanent re-scanning or permanent staleness."""
     conn.execute(
         """
         INSERT INTO ai_scan_log
             (file_id, kind, model_id, model_version, source_mtime,
-             scanned_at, result_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             scanned_at, result_count, input_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (file_id, kind, model_id, model_version) DO UPDATE SET
             source_mtime = excluded.source_mtime,
             scanned_at = excluded.scanned_at,
-            result_count = excluded.result_count
+            result_count = excluded.result_count,
+            input_key = excluded.input_key
         """,
         (file_id, kind, backend.model_id, backend.model_version,
-         source_mtime, now, result_count),
+         source_mtime, now, result_count, input_key),
     )
     conn.commit()
 
@@ -1084,18 +1111,28 @@ class AIWorker:
 
     def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
                          limit: int, extra_cols: str = "",
-                         only_file_id: Optional[str] = None) -> list:
+                         only_file_id: Optional[str] = None,
+                         input_key_sql: str = "''", input_key_params: tuple = (),
+                         joins: str = "") -> list:
         """Files needing a (re-)scan for `kind`: no ai_scan_log row for the
-        current model at the current source mtime. Zero-result scans are
-        logged too, so a file with no faces is scanned exactly once per
-        (model, mtime) instead of every cycle. `only_file_id` restricts the
-        scan to that file (priority requests)."""
+        current model, at the current source mtime, UNDER THE CURRENT INPUT
+        KEY. Zero-result scans are logged too, so a file with no faces is
+        scanned exactly once per (model, mtime, inputs) instead of every
+        cycle. `only_file_id` restricts the scan to that file (priority
+        requests).
+
+        `input_key_sql` is an expression evaluating to the key the stage
+        WOULD record for each row right now; a stored key that differs means
+        an input changed since the scan and the file is stale. Stages
+        without extra inputs pass the default "''" and behave as before.
+        The expression is composed here, never from caller data."""
         type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
         only_clause = "AND f.id = ?" if only_file_id is not None else ""
         only_params = (only_file_id,) if only_file_id is not None else ()
         return conn.execute(
             f"""
             SELECT f.id, f.path, f.mtime, f.type{extra_cols} FROM files f
+            {joins}
             WHERE f.type IN ({type_placeholders})
               {only_clause}
               AND NOT EXISTS (
@@ -1103,20 +1140,23 @@ class AIWorker:
                 WHERE sl.file_id = f.id AND sl.kind = ?
                   AND sl.model_id = ? AND sl.model_version = ?
                   AND ABS(sl.source_mtime - f.mtime) <= ?
+                  AND sl.input_key = {input_key_sql}
               )
             ORDER BY f.mtime DESC, f.id ASC
             LIMIT ?
             """,
             (*_VISUAL_TYPES, *only_params, kind, backend.model_id,
-             backend.model_version, _MTIME_EPSILON, limit),
+             backend.model_version, _MTIME_EPSILON, *input_key_params, limit),
         ).fetchall()
 
     @staticmethod
     def _log_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
-                  source_mtime: float, now: float, result_count: int) -> None:
+                  source_mtime: float, now: float, result_count: int,
+                  input_key: str = "") -> None:
         """Upsert the single (file, kind) scan-log row recording an attempt at
-        (model, mtime); `result_count` of -1 marks a failed attempt."""
-        record_scan(conn, file_id, kind, backend, source_mtime, now, result_count)
+        (model, mtime, inputs); `result_count` of -1 marks a failed attempt."""
+        record_scan(conn, file_id, kind, backend, source_mtime, now,
+                    result_count, input_key)
 
     def _ensure_faces_attr_backfill(self, conn: sqlite3.Connection, backend) -> None:
         """One-time re-queue of files whose stored face rows predate
@@ -1291,6 +1331,38 @@ class AIWorker:
         conn.execute("DELETE FROM ai_dam_state WHERE key = ?", (key,))
         conn.commit()
 
+    @staticmethod
+    def _review_key_sql(conn: sqlite3.Connection) -> tuple:
+        """(expression, params, joins) computing each candidate row's CURRENT
+        review input key in SQL.
+
+        Registers `sg_review_key` on this connection so the query runs the
+        SAME code as the writer -- review.normalize_prompt_pair then
+        stage_input_key. Reimplementing the prompt fallback as COALESCE/NULLIF
+        here would be a second definition of "this file's prompt", and the
+        two would drift; that drift is exactly the bug this key exists to
+        kill, so it must not be reintroduced in the fix for it.
+
+        Degrades by surface: a DB without generation_params or without
+        files.workflow_prompt keys on whatever it does have. The key is
+        stable for a given schema, so degrading does not cause churn."""
+        def _key(traced_pos, workflow_pos, traced_neg, rubric):
+            positive, negative = review.normalize_prompt_pair(
+                traced_pos, workflow_pos, traced_neg)
+            return stage_input_key(positive, negative, rubric)
+
+        conn.create_function("sg_review_key", 4, _key, deterministic=True)
+
+        has_gp = _has_column(conn, "generation_params", "positive_prompt")
+        has_wf = _has_column(conn, "files", "workflow_prompt")
+        joins = ("LEFT JOIN generation_params gp ON gp.file_id = f.id"
+                 if has_gp else "")
+        traced_pos = "gp.positive_prompt" if has_gp else "NULL"
+        traced_neg = "gp.negative_prompt" if has_gp else "NULL"
+        workflow_pos = "f.workflow_prompt" if has_wf else "NULL"
+        expr = (f"sg_review_key({traced_pos}, {workflow_pos}, {traced_neg}, ?)")
+        return expr, (RUBRIC_VERSION,), joins
+
     def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int,
                          only_file_id: Optional[str] = None) -> int:
         """Review stage: run the critic per candidate, store the review, and
@@ -1298,8 +1370,11 @@ class AIWorker:
         consumed, successful or not."""
         if limit <= 0:
             return 0
+        key_sql, key_params, joins = self._review_key_sql(conn)
         rows = self._scan_candidates(conn, "review", backend, limit,
-                                     only_file_id=only_file_id)
+                                     only_file_id=only_file_id,
+                                     input_key_sql=key_sql,
+                                     input_key_params=key_params, joins=joins)
         segmenter = self._backend("segmenter", review.get_segmenter_backend)
         now = time.time()
         for row in rows:
@@ -1310,12 +1385,15 @@ class AIWorker:
             if img is None:
                 self._note_error(f"review:{file_id}", f"review: could not read {path}")
                 continue
+            # Resolved OUTSIDE the try: the failure path logs this same key,
+            # and a key left unbound by an early exception would record ''
+            # and re-queue the file every cycle forever.
+            prompt_text, negative_text = review.resolve_prompt_texts(conn, file_id)
+            # This key MUST match what _review_key_sql computes for this row,
+            # or the file re-reviews forever / never again. Both digest the
+            # same normalized pair via review.normalize_prompt_pair.
+            input_key = stage_input_key(prompt_text, negative_text, RUBRIC_VERSION)
             try:
-                # review.resolve_prompt_texts is the single definition of
-                # this file's prompts; the panel and the re-review sweep
-                # read the same one. The negative prompt feeds the ALIGN
-                # step's expected-text guard.
-                prompt_text, negative_text = review.resolve_prompt_texts(conn, file_id)
                 payload = backend.review(img, prompt_text, RUBRIC_VERSION,
                                          negative_text=negative_text)
                 result = review.validate_review_payload(payload)
@@ -1329,7 +1407,7 @@ class AIWorker:
                     self._log_masks_if_complete(conn, file_id, review_id,
                                                 segmenter, mtime, now, generated)
                 self._log_scan(conn, file_id, "review", backend, mtime, now,
-                               len(result.findings))
+                               len(result.findings), input_key)
             except Exception as exc:
                 self._note_error(f"review:{file_id}", f"review: failed for {path}: {exc}")
                 # Record the FAILED attempt too (result_count = -1): a
@@ -1339,7 +1417,7 @@ class AIWorker:
                 # changes (normal staleness), or on rebuild.
                 try:
                     self._log_scan(conn, file_id, "review", backend, mtime,
-                                   now, -1)
+                                   now, -1, input_key)
                 except sqlite3.Error:
                     pass
                 continue

@@ -85,6 +85,25 @@ def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.02) -> bool
     return predicate()
 
 
+def _add_generation_params(db_path: str, file_id: str, positive: str,
+                           negative: str = "") -> None:
+    """Plant a traced generation_params row, creating the table if the test
+    DB has none (these DBs are AI-only; the host app owns that schema)."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS generation_params ("
+        "file_id TEXT PRIMARY KEY, positive_prompt TEXT NOT NULL DEFAULT '', "
+        "negative_prompt TEXT NOT NULL DEFAULT '')")
+    conn.execute(
+        "INSERT INTO generation_params (file_id, positive_prompt, negative_prompt) "
+        "VALUES (?, ?, ?) ON CONFLICT(file_id) DO UPDATE SET "
+        "positive_prompt=excluded.positive_prompt, "
+        "negative_prompt=excluded.negative_prompt",
+        (file_id, positive, negative))
+    conn.commit()
+    conn.close()
+
+
 def _config(tmp_path, db_path, **overrides) -> AIConfig:
     kwargs = dict(
         enabled=True, base_path=str(tmp_path), db_path=db_path,
@@ -369,6 +388,76 @@ def test_review_failed_file_requeued_on_mtime_change(tmp_path):
         conn.close()
 
 
+def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
+    """THE regression this key exists for.
+
+    A file reviewed before its prompt was traced holds a null alignment
+    score. When the genparams backfill later lands the prompt, NOTHING about
+    the file or the model has changed -- mtime, model_id and model_version
+    are all identical -- so a staleness check keyed only on those reports
+    'current' and the review stays frozen at null forever. That is exactly
+    how every reviewed file in a real gallery ended up showing 'n/a'.
+
+    The prompt is part of the key, so the same file re-enters the queue on
+    its own: no marker, no one-shot sweep, no manual rebuild.
+    """
+    from smartgallery_ai.review import StubCritic
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img_path = _save_png(tmp_path, "img.png")
+    _add_file(db_path, "late", img_path, 1000.0)
+
+    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"), db_path)
+    conn = _open(db_path)
+    try:
+        # 1. reviewed with no prompt anywhere -> honest null alignment
+        assert worker._process_reviews(conn, StubCritic(), 10) == 1
+        assert conn.execute(
+            "SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'"
+        ).fetchone()[0] is None
+
+        # 2. nothing changed -> not a candidate
+        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+
+        # 3. the prompt lands afterwards. mtime and model are untouched.
+        _add_generation_params(db_path, "late", "a red cube, a blue sphere")
+
+        # 4. the file MUST come back as a candidate and gain a real score
+        assert worker._process_reviews(conn, StubCritic(), 10) == 1, (
+            "a prompt that arrived after the review left it stale; the "
+            "staleness key is not covering the prompt")
+        assert conn.execute(
+            "SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'"
+        ).fetchone()[0] is not None
+
+        # 5. and it settles -- re-keying must not cause permanent churn
+        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+    finally:
+        conn.close()
+
+
+def test_changing_only_the_negative_prompt_re_queues_the_review(tmp_path):
+    """The negative prompt feeds ALIGN's expected-text guard, so it changes
+    which elements are expected -- it is an input, and must be keyed."""
+    from smartgallery_ai.review import StubCritic
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    _add_file(db_path, "neg", _save_png(tmp_path, "n.png"), 1000.0)
+    _add_generation_params(db_path, "neg", "a red cube")
+
+    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"), db_path)
+    conn = _open(db_path)
+    try:
+        assert worker._process_reviews(conn, StubCritic(), 10) == 1
+        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+        _add_generation_params(db_path, "neg", "a red cube", negative="blurry")
+        assert worker._process_reviews(conn, StubCritic(), 10) == 1
+    finally:
+        conn.close()
+
+
 def test_review_success_stores_scores_findings_and_masks(tmp_path):
     """A successful stub review persists the review row (with prompt
     alignment from workflow_prompt), its localizable finding, a mask PNG,
@@ -416,6 +505,10 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
         assert review_log["result_count"] == 1
         assert masks_log["result_count"] == 1
         assert worker.stats["reviewed"] == 1
+
+        # A second pass with nothing changed must NOT re-review: the input
+        # key is stable, so a stale-detector keyed on it cannot churn.
+        assert worker._process_reviews(conn, StubCritic(), 10) == 0
     finally:
         conn.close()
 

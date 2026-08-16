@@ -317,8 +317,9 @@ def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path):
                    "{}", 1000.0, 1.0)
     # Mark the review scan as done (so only the mask stage has work).
     conn.execute(
-        "INSERT INTO ai_scan_log VALUES ('mf1', 'review', 'critic-x', 'v1',"
-        " 1000.0, 1.0, 1)")
+        "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version,"
+        " source_mtime, scanned_at, result_count)"
+        " VALUES ('mf1', 'review', 'critic-x', 'v1', 1000.0, 1.0, 1)")
     conn.commit()
     assert conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
     conn.close()
@@ -378,7 +379,10 @@ def test_scan_log_check_migration_admits_masks(tmp_path):
     # Old row preserved, new kind admitted.
     rows = conn.execute("SELECT kind, result_count FROM ai_scan_log").fetchall()
     assert ("faces", 2) in rows
-    conn.execute("INSERT INTO ai_scan_log VALUES ('f1','masks','m','v',0,0,1)")
+    conn.execute(
+        "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version,"
+        " source_mtime, scanned_at, result_count)"
+        " VALUES ('f1','masks','m','v',0,0,1)")
     conn.commit()
 
 
@@ -482,8 +486,9 @@ def test_failed_mask_generation_is_retried_not_logged_complete(tmp_path):
     R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION,
                    "{}", 1000.0, 1.0)
     conn.execute(
-        "INSERT INTO ai_scan_log VALUES ('mf1', 'review', 'critic-x', 'v1',"
-        " 1000.0, 1.0, 1)")
+        "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version,"
+        " source_mtime, scanned_at, result_count)"
+        " VALUES ('mf1', 'review', 'critic-x', 'v1', 1000.0, 1.0, 1)")
     conn.commit()
 
     config = AIConfig(

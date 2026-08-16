@@ -214,6 +214,14 @@ DDL = [
         source_mtime REAL NOT NULL,
         scanned_at REAL NOT NULL,
         result_count INTEGER NOT NULL DEFAULT 0,
+        -- Digest of the stage's NON-FILE, NON-MODEL inputs (worker.stage_input_key).
+        -- source_mtime covers the pixels and model_id/model_version cover the
+        -- model, but a review also depends on the generation prompt and the
+        -- rubric. Those used to sit outside the key entirely, so a prompt that
+        -- was traced AFTER a file was reviewed changed nothing the staleness
+        -- check could see, and that review stayed frozen -- with a null
+        -- alignment score -- forever. Stages with no such inputs record ''.
+        input_key TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (file_id, kind, model_id, model_version)
     );
     """,
@@ -252,8 +260,24 @@ def init_schema(conn) -> None:
     for stmt in DDL:
         conn.execute(stmt)
     _migrate_scan_log_kinds(conn)
+    _migrate_scan_log_input_key(conn)
     _migrate_face_attributes(conn)
     conn.commit()
+
+
+def _migrate_scan_log_input_key(conn) -> None:
+    """Add `input_key` to databases whose ai_scan_log predates it.
+
+    Existing rows keep '' while the current code computes a real digest, so
+    every previously-scanned file mismatches once and re-enters the queue.
+    That is the intended effect, not a side effect: those rows were recorded
+    under a key that could not see the prompt, so none of them can be
+    trusted to be current."""
+    cols = {row[1] for row in conn.execute(
+        "PRAGMA table_info(ai_scan_log)").fetchall()}
+    if "input_key" not in cols:
+        conn.execute(
+            "ALTER TABLE ai_scan_log ADD COLUMN input_key TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_face_attributes(conn) -> None:
@@ -289,7 +313,20 @@ def _migrate_scan_log_kinds(conn) -> None:
     target_ddl = next(s for s in DDL if "ai_scan_log" in s)
     conn.execute("ALTER TABLE ai_scan_log RENAME TO ai_scan_log_old")
     conn.execute(target_ddl.replace("IF NOT EXISTS ", ""))
-    conn.execute("INSERT INTO ai_scan_log SELECT * FROM ai_scan_log_old")
+    # Columns named explicitly, never SELECT *: the old table has whatever
+    # column set its vintage had, and a positional copy breaks the moment
+    # the target gains one (it did, with input_key). Carried columns are
+    # the ones every vintage shares; input_key intentionally defaults to ''
+    # so migrated rows read as stale and re-scan under a real key.
+    conn.execute(
+        """
+        INSERT INTO ai_scan_log
+            (file_id, kind, model_id, model_version, source_mtime,
+             scanned_at, result_count)
+        SELECT file_id, kind, model_id, model_version, source_mtime,
+               scanned_at, result_count
+        FROM ai_scan_log_old
+        """)
     conn.execute("DROP TABLE ai_scan_log_old")
 
 
