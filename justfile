@@ -36,6 +36,7 @@ audit:
         tests/test_container_entrypoint.py \
         tests/test_static_assets.py \
         tests/test_every_route_is_classified.py \
+        tests/test_ai_routes_are_classified.py \
         tests/test_exhibition_leak_sweep.py \
         tests/test_file_id_changes_carry_their_data.py \
         tests/test_configuration_doc_matches_code.py \

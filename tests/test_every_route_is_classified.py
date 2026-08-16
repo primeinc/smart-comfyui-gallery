@@ -19,9 +19,13 @@ OPEN is not forbidden -- a login form has to be open -- but it has to be
 listed here deliberately. A route added without a gate fails, and the
 message says what the options are.
 
-The AI blueprint is not covered: its routes are registered through
+The AI blueprint is not covered here: its routes are registered through
 add_url_rule with an explicit guarded/per-file policy of its own, stated in
-create_ai_blueprint's docstring and tested separately.
+create_ai_blueprint's docstring. That exclusion is enforced rather than
+promised -- test_ai_routes_are_classified.py sorts those twenty endpoints
+the same way and fails on an OPEN one. Endpoints Flask registers that no
+source-level audit can see (its own /static/) are covered by
+test_static_assets.py.
 """
 
 from __future__ import annotations
