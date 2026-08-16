@@ -41,19 +41,10 @@
 // VIRTUAL COLLECTIONS HIERARCHICAL LOGIC
 // ==========================================
 
-// For a value that lands inside a single-quoted JavaScript string which is
-// itself inside a double-quoted HTML attribute: the browser decodes the
-// attribute first, then reads the result as JavaScript, so it has to be
-// escaped for both, in that order.
-function jsInAttr(value) {
-    return String(value === null || value === undefined ? '' : value)
-        .replace(/\\/g, '\\\\')
-        .replace(/'/g, "\\'")
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
+// jsInAttr and escapeHTML come from index.html, which is the only page
+// this file is included into. Defining a second copy here put two
+// identical functions in one scope, where the later declaration wins and
+// the other is dead -- so a fix applied to the wrong one would do nothing.
 
 let colSortState = JSON.parse(localStorage.getItem('galleryColSortState') || '{"key":"name","dir":"asc"}'); 
 let colSearchTerm = '';

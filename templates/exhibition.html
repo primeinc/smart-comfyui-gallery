@@ -2711,64 +2711,10 @@
     </div>
 
 
-<!-- INJECTED SORT LOGIC FOR EXHIBITION -->
-<script>
-    function showExhSortMenu(e, menuId) {
-        e.stopPropagation(); 
-        e.preventDefault();
-        document.querySelectorAll('.sort-popover.visible').forEach(m => m.classList.remove('visible'));
-        
-        const menu = document.getElementById(menuId);
-        if (!menu) return;
-
-        const rect = e.currentTarget.getBoundingClientRect();
-        let left = rect.left;
-        let top = rect.bottom + 5;
-        
-        // Adjust for right screen edge to prevent the menu from being cut off
-        if (left + 230 > window.innerWidth) {
-            left = window.innerWidth - 240;
-        }
-        
-        menu.style.top = top + 'px';
-        menu.style.left = left + 'px';
-        menu.classList.add('visible');
-        
-        // Update active class dynamically
-        menu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        const activeId = 'btn-sort-' + (typeof activeSortCriteria !== 'undefined' ? activeSortCriteria : '') + '-' + (typeof activeSortOrder !== 'undefined' ? activeSortOrder : '');
-        const activeBtn = document.getElementById(activeId);
-        if (activeBtn) activeBtn.classList.add('active');
-    }
-
-    document.addEventListener('click', () => {
-        document.querySelectorAll('.sort-popover.visible').forEach(m => m.classList.remove('visible'));
-    });
-
-    document.addEventListener('scroll', () => {
-        document.querySelectorAll('.sort-popover.visible').forEach(m => m.classList.remove('visible'));
-    }, { passive: true });
-
-    function applyExhSpecificSort(by, order) {
-        if (typeof activeSortCriteria !== 'undefined') {
-            activeSortCriteria = by;
-            activeSortOrder = order;
-            
-            if (typeof updateSortUI === 'function') updateSortUI();
-            
-            const mobileSelect = document.getElementById('sort-select');
-            if (mobileSelect) mobileSelect.value = by + '_' + order;
-            
-            const collId = (typeof currentCollectionId !== 'undefined' && currentCollectionId) ? currentCollectionId : 'all';
-            const titleEl = document.getElementById('page-title');
-            const pageTitle = titleEl ? titleEl.textContent : 'Gallery';
-            
-            if (typeof loadGalleryInternal === 'function') {
-                loadGalleryInternal(collId, pageTitle);
-            }
-        }
-    }
-</script>
+<!-- The INJECTED SORT LOGIC block that stood here was a byte-identical
+     copy of the one further down. Both declared showExhSortMenu and
+     applyExhSpecificSort in the same scope, where the later one wins,
+     so this copy never ran. Removed; the surviving one is unchanged. -->
 
 
     <!-- EXHIBITION FILTER PANEL -->

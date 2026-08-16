@@ -1073,29 +1073,23 @@
     let remixTargetFile = null;
     let activeTextareaId = null;
 
-    // For a value that lands inside a single-quoted JavaScript string which
-    // is itself inside a double-quoted HTML attribute. escapeHTML below is
-    // not a substitute: it turns ' into &#39;, the browser decodes the
-    // attribute BEFORE JavaScript reads it, and the apostrophe comes
-    // straight back -- so a template called "Bob's workflow" ended its own
-    // string and Select, Rename and Delete all threw.
-    function jsInAttr(value) {
-        return String(value === null || value === undefined ? '' : value)
-            .replace(/\\/g, '\\\\')
-            .replace(/'/g, "\\'")
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
+    // jsInAttr comes from index.html, the only page this file is included
+    // into. It is what the onclick handlers below use for a name, because
+    // escapeHTML is not a substitute there: it turns ' into &#39;, the
+    // browser decodes the attribute BEFORE JavaScript reads it, and the
+    // apostrophe comes straight back -- which is how a template called
+    // "Bob's workflow" ended its own string and broke Select, Rename and
+    // Delete. A second copy here would sit in the same scope as that one,
+    // with only the later declaration alive.
 
-    function escapeHTML(str) {
-        if (!str) return '';
-        return String(str).replace(/[&<>'"]/g, 
-            tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag] || tag)
-        );
-    }
-    
+    // escapeHTML also comes from index.html. A copy stood here, but
+    // index.html declares its own further down the rendered page, and the
+    // later declaration is the one that runs -- so this one never did.
+    // Measured before removing it: the surviving definition is at rendered
+    // line 12546, this one was at 5475. Its calls have therefore always
+    // been running index.html's version, which differs for null (it
+    // answers "<em>null</em>" rather than an empty string).
+
     function toggleRemixInfo() {
         const overlay = document.getElementById('remix-help-overlay');
         if (overlay) {

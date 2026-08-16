@@ -103,9 +103,7 @@ console.log(JSON.stringify(out));
     return json.loads(done.stdout)
 
 
-@pytest.mark.parametrize("template", ["index.html", "exhibition.html",
-                                      "collections.html",
-                                      "modals/remix_modal.html"])
+@pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
 def test_every_name_survives_both_parsers(template):
     """The whole contract: what goes in is what the handler receives."""
     results = _round_trip(template, _CASES)
@@ -115,9 +113,7 @@ def test_every_name_survives_both_parsers(template):
         assert result["parsed"] == original, (original, result)
 
 
-@pytest.mark.parametrize("template", ["index.html", "exhibition.html",
-                                      "collections.html",
-                                      "modals/remix_modal.html"])
+@pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
 def test_nothing_can_close_the_attribute(template):
     """The security half. A bare double quote ends onclick=" and whatever
     follows becomes attributes on the tag."""
@@ -128,9 +124,7 @@ def test_nothing_can_close_the_attribute(template):
         assert "<" not in result["escaped"], (original, result["escaped"])
 
 
-@pytest.mark.parametrize("template", ["index.html", "exhibition.html",
-                                      "collections.html",
-                                      "modals/remix_modal.html"])
+@pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
 def test_the_check_would_notice_an_unescaped_value(template):
     """Control. Without it the two tests above could be passing because the
     round trip is lenient rather than because the escaping works, so the
@@ -157,6 +151,24 @@ console.log(JSON.stringify(out));
         f"only {len(broke)} of the cases misbehave unescaped, so this set is "
         f"too gentle to prove the escaping does anything: {broke}")
     assert "Bob's renders" in broke, broke
+
+
+@pytest.mark.parametrize("partial", ["collections.html", "modals/remix_modal.html"])
+def test_the_partials_use_the_helper_they_do_not_define(partial):
+    """These two are included into index.html and share its scope, so they
+    call its jsInAttr rather than carrying one of their own.
+
+    They did carry one, briefly -- I added it to all three files, which put
+    the same function in a single scope three times over with two copies
+    dead. The round trip above therefore runs the two real definitions;
+    what has to hold here is that the partials still reach one."""
+    source = (_TEMPLATES / partial).read_text(encoding="utf-8")
+
+    assert "jsInAttr(" in source, f"{partial} no longer escapes names at all"
+    assert "function jsInAttr" not in source, (
+        f"{partial} defines its own jsInAttr again; index.html already "
+        f"declares one in the same scope and the later declaration wins, so "
+        f"one of the two would be dead")
 
 
 def test_an_html_entity_escaper_is_never_used_inside_a_javascript_string():
