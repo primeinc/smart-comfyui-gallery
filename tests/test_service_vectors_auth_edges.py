@@ -466,7 +466,14 @@ def test_corrupt_disk_cache_falls_back_to_sqlite_and_repairs(tmp_path):
     assert cache_file.exists()
     cache_file.write_bytes(b"this is definitely not a zip archive")
 
-    store2 = VectorStore(cache_dir=str(tmp_path), ephemeral=False)  # empty memory
+    # Simulate a fresh process: generations are process-global, so a new
+    # store instance alone no longer implies a cold cache.
+    from smartgallery_ai import vectors as vectors_mod
+
+    with vectors_mod._GEN_LOCK:
+        vectors_mod._GENERATIONS.clear()
+
+    store2 = VectorStore(cache_dir=str(tmp_path), ephemeral=False)
     got = store2.topk(conn, "semantic", query, k=4)
 
     assert got == expected

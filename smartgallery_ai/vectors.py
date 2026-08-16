@@ -26,6 +26,33 @@ import numpy as np
 
 _VECTOR_DTYPE = "<f4"  # little-endian float32, per schema.py contract
 
+# Process-wide generation registry: one immutable _SpaceMatrix per space,
+# shared by every VectorStore instance (service blueprint and worker hold
+# separate stores over the same DB). Faiss's own concurrency contract
+# (wiki Threads-and-asynchronous-calls) allows concurrent reads on an
+# immutable index but requires external exclusion for mutation — so
+# mutation here is a whole-generation swap: the single writer (the
+# ingest worker) rebuilds off the request path and swaps the pointer
+# atomically; searches only ever see complete generations.
+_GEN_LOCK = threading.Lock()
+_GENERATIONS: dict = {}  # space -> _SpaceMatrix
+_WRITER_ACTIVE = threading.Event()
+
+
+def set_writer_active(active: bool) -> None:
+    """Declare a single-writer (the ingest worker) present in this process.
+
+    With a writer active, searches serve the current generation without
+    checking SQLite staleness — the writer refreshes generations after
+    ingest batches (bounded staleness, no request-path rebuilds). Without
+    one (tests, CLI, no-worker deployments), searches keep the strict
+    stamp check and rebuild inline when stale.
+    """
+    if active:
+        _WRITER_ACTIVE.set()
+    else:
+        _WRITER_ACTIVE.clear()
+
 
 def _l2_normalize_rows(matrix: np.ndarray) -> np.ndarray:
     """Row-wise L2 normalization; all-zero rows pass through unchanged (their
@@ -73,7 +100,6 @@ class VectorStore:
             self._conn_factory = lambda: sqlite3.connect(db_path)
         self.cache_dir = cache_dir
         self.ephemeral = ephemeral
-        self._memory: dict[str, _SpaceMatrix] = {}
 
     # -- connection handling -------------------------------------------------
 
@@ -137,7 +163,10 @@ class VectorStore:
         finally:
             if owns_conn:
                 conn.close()
-        self._memory.pop(space, None)
+        # No cache pop: generations are immutable and replaced wholesale by
+        # the writer's refresh() (or the strict stamp check when no writer
+        # is active); popping here made every search during ingest rebuild
+        # the full matrix on the request path.
 
     # -- reads -----------------------------------------------------------------
 
@@ -226,8 +255,10 @@ class VectorStore:
         return [(sm.ids[i], float(sims[i])) for i in candidates[:k]]
 
     def invalidate(self, space: str) -> None:
-        """Drop the in-memory and on-disk cache for `space` (SQLite untouched)."""
-        self._memory.pop(space, None)
+        """Drop the current generation and on-disk cache for `space`
+        (SQLite untouched)."""
+        with _GEN_LOCK:
+            _GENERATIONS.pop(space, None)
         vectors_dir = os.path.join(self.cache_dir, "vectors")
         if not os.path.isdir(vectors_dir):
             return
@@ -265,35 +296,59 @@ class VectorStore:
         safe_version = model_version.replace(os.sep, "_").replace("/", "_")
         return os.path.join(self.cache_dir, "vectors", f"{space}__{safe_version}.npz")
 
+    def refresh(self, conn: sqlite3.Connection, space: str) -> None:
+        """Single-writer generation rebuild: load the space fresh from SQLite
+        and atomically swap it into the process-wide registry. Called by the
+        ingest worker after embedding batches; searches never rebuild while
+        a writer is active."""
+        model_version = self._active_model_version(conn, space)
+        if model_version is None:
+            with _GEN_LOCK:
+                _GENERATIONS.pop(space, None)
+            return
+        fresh = self._load_from_sqlite(conn, space, model_version)
+        with _GEN_LOCK:
+            _GENERATIONS[space] = fresh
+        if fresh.row_count > 0 and not self.ephemeral:
+            self._save_disk_cache(space, fresh)
+
     def _get_matrix(self, conn: sqlite3.Connection, space: str,
                     model_version: Optional[str] = None) -> Optional[_SpaceMatrix]:
-        """Current matrix for `space`: memory first, then disk mirror, then a
-        rebuild from SQLite. `model_version` defaults to the most recently
-        computed one; None means the space holds no rows for any version."""
+        """Current generation for `space`: registry first, then disk mirror,
+        then a rebuild from SQLite. `model_version` defaults to the most
+        recently computed one; None means the space holds no rows.
+
+        With an active single writer, a registry generation of the right
+        model_version is served as-is (bounded staleness; the writer swaps
+        in fresh generations off the request path). Without a writer the
+        strict SQLite stamp check decides, rebuilding inline when stale."""
         if model_version is None:
             model_version = self._active_model_version(conn, space)
         if model_version is None:
-            self._memory.pop(space, None)
+            with _GEN_LOCK:
+                _GENERATIONS.pop(space, None)
             return None
 
-        row_count, max_computed_at = self._db_stamp(conn, space, model_version)
-        cached = self._memory.get(space)
-        if (
-            cached is not None
-            and cached.model_version == model_version
-            and cached.row_count == row_count
-            and cached.max_computed_at == max_computed_at
-        ):
-            return cached
+        with _GEN_LOCK:
+            cached = _GENERATIONS.get(space)
+        if cached is not None and cached.model_version == model_version:
+            if _WRITER_ACTIVE.is_set():
+                return cached
+            row_count, max_computed_at = self._db_stamp(conn, space, model_version)
+            if cached.row_count == row_count and cached.max_computed_at == max_computed_at:
+                return cached
 
+        row_count, max_computed_at = self._db_stamp(conn, space, model_version)
         if not self.ephemeral:
             disk = self._load_disk_cache(space, model_version)
             if disk is not None and disk.row_count == row_count and disk.max_computed_at == max_computed_at:
-                self._memory[space] = disk
+                with _GEN_LOCK:
+                    _GENERATIONS[space] = disk
                 return disk
 
         fresh = self._load_from_sqlite(conn, space, model_version)
-        self._memory[space] = fresh
+        with _GEN_LOCK:
+            _GENERATIONS[space] = fresh
         if fresh.row_count > 0 and not self.ephemeral:
             self._save_disk_cache(space, fresh)
         return fresh

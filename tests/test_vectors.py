@@ -259,7 +259,14 @@ def test_stale_stamp_triggers_rebuild_even_on_a_fresh_store_instance(tmp_path):
     assert cache_file.exists()
     os.remove(cache_file)
 
-    store2 = VectorStore(cache_dir=str(tmp_path), ephemeral=False)  # empty memory
+    # Simulate a fresh process: generations are process-global, so a new
+    # store instance alone no longer implies a cold cache.
+    from smartgallery_ai import vectors as vectors_mod
+
+    with vectors_mod._GEN_LOCK:
+        vectors_mod._GENERATIONS.clear()
+
+    store2 = VectorStore(cache_dir=str(tmp_path), ephemeral=False)
     rebuilt = store2.topk(conn, "semantic", query, k=4)
     assert rebuilt == expected
     assert cache_file.exists()  # rebuild re-persists the cache
@@ -275,11 +282,15 @@ def test_invalidate_drops_memory_and_disk_cache(tmp_path):
 
     cache_file = tmp_path / "vectors" / "semantic__v1.npz"
     assert cache_file.exists()
-    assert "semantic" in store._memory
+    from smartgallery_ai import vectors as vectors_mod
+
+    with vectors_mod._GEN_LOCK:
+        assert "semantic" in vectors_mod._GENERATIONS
 
     store.invalidate("semantic")
     assert not cache_file.exists()
-    assert "semantic" not in store._memory
+    with vectors_mod._GEN_LOCK:
+        assert "semantic" not in vectors_mod._GENERATIONS
 
 
 def test_topk_pins_model_version_during_migration():

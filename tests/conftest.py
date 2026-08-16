@@ -35,6 +35,23 @@ for _var in ('BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BASE_INPUT_PATH'):
     os.makedirs(os.environ[_var], exist_ok=True)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_vector_generations():
+    """The vector-store generation registry is process-global (shared by
+    service and worker instances); tests use throwaway DBs, so leak a
+    generation across tests and a same-stamp collision serves another
+    test's vectors."""
+    from smartgallery_ai import vectors
+
+    with vectors._GEN_LOCK:
+        vectors._GENERATIONS.clear()
+    vectors.set_writer_active(False)
+    yield
+    with vectors._GEN_LOCK:
+        vectors._GENERATIONS.clear()
+    vectors.set_writer_active(False)
+
+
 @pytest.fixture(scope="session")
 def smartgallery_app():
     """Import smartgallery, initialize its database, and return the module."""

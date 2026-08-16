@@ -416,6 +416,10 @@ class AIWorker:
             # twice (observed live). We own this logger's console output.
             pkg_logger.propagate = False
         self._stop_event.clear()
+        # This worker is the single index writer: searches serve the
+        # current vector-store generation and this thread swaps in fresh
+        # ones after ingest batches (vectors.refresh).
+        vectors.set_writer_active(True)
         ref = app_git_ref()
         if ref:
             _logger.info("[AI] running %s", ref)
@@ -582,6 +586,7 @@ class AIWorker:
             thread.join(timeout=timeout)
             if not thread.is_alive():
                 self._thread = None
+        vectors.set_writer_active(False)
 
     # -- on-demand indexing ------------------------------------------------------
 
@@ -961,6 +966,11 @@ class AIWorker:
                 )
                 with self._lock:
                     self.stats["embedded"] += 1
+        if candidates:
+            # Single-writer generation swap: rebuild the space off the
+            # request path and swap it in atomically, so searches never
+            # rebuild while ingest is running (vectors.set_writer_active).
+            store.refresh(conn, space)
         return len(candidates)
 
     def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
