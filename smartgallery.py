@@ -8972,6 +8972,11 @@ def exhibition_rate_file():
 
 @app.route('/galleryout/api/exhibition/rate_batch', methods=['POST'])
 def exhibition_rate_batch():
+    # The single-file route has always checked this; the batch one did not,
+    # so an unauthenticated caller could write or clear ratings in bulk under
+    # any identity it named.
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
     data = request.json
     file_ids = data.get('file_ids', [])
     
@@ -9170,6 +9175,13 @@ def exhibition_post_comment():
         
 @app.route('/galleryout/api/exhibition/delete_comment', methods=['POST'])
 def exhibition_delete_comment():
+    # Ownership below is decided by comparing the row's client_uuid against
+    # one taken from the request body, which is only meaningful once we know
+    # a caller. Without this, an anonymous request supplied both halves --
+    # and comment ids are AUTOINCREMENT integers, so they can be counted
+    # through until one matches the identity being claimed.
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
     data = request.json
     comment_id = data.get('comment_id')
     current_user_id = session.get('user_id')
@@ -9197,6 +9209,10 @@ def exhibition_delete_comment():
         
 @app.route('/galleryout/api/exhibition/edit_comment', methods=['POST'])
 def exhibition_edit_comment():
+    # Same as delete: ownership is checked against an identity supplied by
+    # the caller, so there has to be a caller.
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
     data = request.json
     comment_id = data.get('comment_id')
     new_text = data.get('new_text', '').strip()
