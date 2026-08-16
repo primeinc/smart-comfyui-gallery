@@ -307,3 +307,58 @@ print('OK')
     assert proc.returncode == 0, (
         f"DELETE_TO first-run path failed:\n{proc.stdout}\n{proc.stderr}")
     assert "OK" in proc.stdout
+
+
+def test_delete_to_covers_folder_deletion_too(tmp_path):
+    """Deleting a FOLDER used to call shutil.rmtree unconditionally, so an
+    install configured for recoverable deletes still lost a whole directory
+    of media permanently. A link is still only unlinked -- that destroys
+    nothing and must not relocate its target."""
+    import subprocess
+    import sys
+
+    trash_root = tmp_path / "trash"
+    trash_root.mkdir()
+    gallery = tmp_path / "gallery"
+    gallery.mkdir()
+
+    script = """
+import os, sys
+sys.argv = ['smartgallery.py']
+import smartgallery as sg
+
+album = os.path.join(sg.BASE_OUTPUT_PATH, 'album')
+os.makedirs(album)
+for name in ('a.png', 'b.png'):
+    open(os.path.join(album, name), 'wb').write(b'x')
+
+sg.safe_delete_tree(album)
+assert not os.path.exists(album), 'folder was not removed from the gallery'
+
+entries = os.listdir(sg.TRASH_FOLDER)
+assert len(entries) == 1, f'expected one trashed folder, found {entries}'
+recovered = os.path.join(sg.TRASH_FOLDER, entries[0])
+assert sorted(os.listdir(recovered)) == ['a.png', 'b.png'], 'contents were lost'
+
+# Without DELETE_TO the old behaviour stands: gone for good.
+sg.DELETE_TO = None
+sg.TRASH_FOLDER = None
+album2 = os.path.join(sg.BASE_OUTPUT_PATH, 'album2')
+os.makedirs(album2)
+open(os.path.join(album2, 'c.png'), 'wb').write(b'x')
+sg.safe_delete_tree(album2)
+assert not os.path.exists(album2)
+assert len(os.listdir(os.path.dirname(recovered))) == 1, 'unexpected new trash entry'
+print('OK')
+"""
+    env = dict(os.environ,
+               DELETE_TO=str(trash_root),
+               BASE_OUTPUT_PATH=str(gallery),
+               BASE_SMARTGALLERY_PATH=str(gallery),
+               ENABLE_AI_DAM="false",
+               AI_DAM_AUTO_PROVISION="false")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    proc = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
+                          capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "OK" in proc.stdout

@@ -1314,24 +1314,45 @@ def safe_delete_file(filepath):
     """
     if DELETE_TO and TRASH_FOLDER:
         # Move to trash (folder already validated at startup)
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        filename = os.path.basename(filepath)
-        trash_filename = f"{timestamp}_{filename}"
-        trash_path = os.path.join(TRASH_FOLDER, trash_filename)
-        
-        # Handle duplicate filenames in trash
-        counter = 1
-        while os.path.exists(trash_path):
-            name_without_ext, ext = os.path.splitext(filename)
-            trash_filename = f"{timestamp}_{name_without_ext}_{counter}{ext}"
-            trash_path = os.path.join(TRASH_FOLDER, trash_filename)
-            counter += 1
-        
+        trash_path = _trash_destination(os.path.basename(filepath))
         shutil.move(filepath, trash_path)
         print(f"INFO: Moved file to trash: {trash_path}")
     else:
         # Permanently delete
         os.remove(filepath)
+
+
+def _trash_destination(name):
+    """A free `<timestamp>_<name>` path inside TRASH_FOLDER, disambiguated
+    with a counter so same-second deletes never overwrite each other."""
+    timestamp = time.strftime('%Y%m%d_%H%M%S')
+    candidate = os.path.join(TRASH_FOLDER, f"{timestamp}_{name}")
+    counter = 1
+    while os.path.exists(candidate):
+        stem, ext = os.path.splitext(name)
+        candidate = os.path.join(TRASH_FOLDER, f"{timestamp}_{stem}_{counter}{ext}")
+        counter += 1
+    return candidate
+
+
+def safe_delete_tree(folder_path):
+    """Delete a real directory, honouring DELETE_TO the way file deletion
+    does.
+
+    Deleting a folder used to call shutil.rmtree unconditionally, so an
+    install configured for recoverable deletes still lost an entire
+    directory of media permanently -- the safety net covered the smallest
+    destructive action and not the largest. With DELETE_TO set the folder
+    is moved into the trash instead; without it, the previous behaviour is
+    unchanged. Links and junctions are the caller's business: unlinking one
+    destroys nothing and must not relocate the target.
+    """
+    if DELETE_TO and TRASH_FOLDER:
+        destination = _trash_destination(os.path.basename(folder_path.rstrip(os.sep)) or 'folder')
+        shutil.move(folder_path, destination)
+        print(f"INFO: Moved folder to trash: {destination}")
+    else:
+        shutil.rmtree(folder_path)
 
 def _is_ffprobe(path_or_name):
     """True only when `-version` runs AND identifies itself as ffprobe.
@@ -5770,7 +5791,11 @@ def delete_folder(folder_key):
             
             conn.commit()
             
-        # 3. Physical deletion (Safe for Symlinks/Junctions)
+        # 3. Physical deletion (Safe for Symlinks/Junctions). A link is only
+        # unlinked -- that destroys nothing, so it never goes to the trash;
+        # a real folder full of media is relocated when DELETE_TO is set
+        # (safe_delete_tree), because the safety net has to cover the most
+        # destructive action, not just the least.
         if os.path.islink(folder_path):
             os.unlink(folder_path)
         elif os.name == 'nt' and os.path.isdir(folder_path) and not os.path.exists(os.path.join(folder_path, '..')):
@@ -5778,14 +5803,14 @@ def delete_folder(folder_key):
             try:
                 os.rmdir(folder_path)
             except OSError:
-                shutil.rmtree(folder_path)
+                safe_delete_tree(folder_path)
         else:
             try:
                 # Extra check: if it's a junction, rmtree throws an error in some python versions.
                 # Let's try rmdir first for junctions, fallback to rmtree for real folders.
                 os.rmdir(folder_path)
             except OSError:
-                shutil.rmtree(folder_path)
+                safe_delete_tree(folder_path)
         
         get_dynamic_folder_config(force_refresh=True)
         return jsonify({'status': 'success', 'message': 'Folder deleted/unlinked.'})
