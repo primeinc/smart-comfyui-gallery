@@ -6851,11 +6851,19 @@ def serve_thumbnail(file_id):
     file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
     existing_thumbnails = glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*"))
     if existing_thumbnails: return send_file(existing_thumbnails[0])
-    if not thumbnail_generation_enabled() and info['type'] in ('image', 'animated_image'):
+    if (not thumbnail_generation_enabled() and info['type'] in ('image', 'animated_image')
+            and not should_strip_metadata()):
         # Site setting says no thumbnail compute: serve the original and let
         # the browser downscale. Videos fall through — a raw video file can't
         # act as an <img> tile, so a single poster frame is still rendered
         # on demand.
+        #
+        # Not for a caller who is owed a cleaned copy. This is the route every
+        # tile in the grid asks for, so with the setting off it handed a
+        # visitor the original of every picture, prompt and all, without them
+        # opening any of it. They fall through instead and get a thumbnail,
+        # which is re-encoded from pixels and carries no metadata; the setting
+        # exists to save CPU, and that does not outrank the guarantee.
         if os.path.exists(filepath):
             return send_file(filepath)
         abort(404)

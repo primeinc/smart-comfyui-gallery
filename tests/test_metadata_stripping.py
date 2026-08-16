@@ -162,6 +162,56 @@ def test_a_guest_cannot_download_what_could_not_be_cleaned(
     assert resp.status_code != 200, resp.status_code
 
 
+def _drop_cached_thumbnail(smartgallery_app):
+    """A cached thumbnail short-circuits the route before the branch under
+    test, so a probe that leaves one in place proves nothing."""
+    import glob
+    import hashlib
+
+    conn = smartgallery_app.get_db_connection()
+    try:
+        row = conn.execute("SELECT path, mtime FROM files WHERE name = ?",
+                           (f"{_PREFIX}pic.png",)).fetchone()
+    finally:
+        conn.close()
+    digest = hashlib.md5((row[0] + str(row[1])).encode()).hexdigest()
+    for cached in glob.glob(os.path.join(smartgallery_app.THUMBNAIL_CACHE_DIR,
+                                         f"{digest}.*")):
+        os.remove(cached)
+
+
+def test_thumbnails_do_not_become_a_way_round_the_stripping(
+        smartgallery_app, guarded, monkeypatch):
+    """With server-side thumbnails switched off, the thumbnail route serves
+    the original file and lets the browser downscale it. That is the route
+    every tile in the grid asks for, so with that setting a visitor was
+    handed the prompt for each picture without opening any of them."""
+    monkeypatch.setattr(smartgallery_app, "thumbnail_generation_enabled",
+                        lambda: False)
+    _drop_cached_thumbnail(smartgallery_app)
+    client = _as(smartgallery_app, "CUSTOMER")
+
+    resp = client.get(f"/galleryout/thumbnail/{guarded}")
+
+    assert _SECRET.encode() not in resp.get_data(), (
+        "the thumbnail route handed a visitor the original, prompt and all")
+
+
+def test_thumbnails_still_reach_staff_with_generation_off(
+        smartgallery_app, guarded, monkeypatch):
+    """The counterpart: with generation off the original IS the thumbnail,
+    and staff are entitled to it."""
+    monkeypatch.setattr(smartgallery_app, "thumbnail_generation_enabled",
+                        lambda: False)
+    _drop_cached_thumbnail(smartgallery_app)
+    client = _as(smartgallery_app, "ADMIN")
+
+    resp = client.get(f"/galleryout/thumbnail/{guarded}")
+
+    assert resp.status_code == 200, resp.status_code
+    assert _SECRET.encode() in resp.get_data()
+
+
 def test_the_workflow_itself_stays_behind_its_own_gate(smartgallery_app, guarded):
     """Not a regression -- a check that the obvious way round the whole
     thing is already shut, since stripping the file would be pointless if
