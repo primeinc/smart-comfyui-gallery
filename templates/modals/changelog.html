@@ -21,6 +21,8 @@
 
 ### 🐛 Fixes
 
+* **Uploads keep filenames that are not written in English.** A Chinese, Korean or Cyrillic filename was stripped down to nothing usable — `测试.png` became `png`, which the gallery then refused as having no recognised type, so the upload failed with an error naming a file you had never seen. Japanese and accented names quietly lost characters instead. Names are now kept as they are, with only what is genuinely unsafe removed, and the same applies to images sent to Remix.
+
 * **The Quality score in the AI panel was always full.** Every reviewed image displayed 100%, whatever it actually scored; a 3/10 and an 8/10 looked identical. Quality now reads `8.0 / 10` with a matching bar, and Prompt Following stays a percentage.
 * **Your library is indexed even where parallel processing is unavailable.** On systems that cannot start worker processes the scan reported "completed" having indexed nothing, blaming file corruption. It now finishes the work one file at a time and says so.
 * **Blank settings mean "use the default".** Clearing a value in `run_smartgallery.bat` (or a Docker/Unraid field) previously meant an empty value: a blank number stopped the app from starting at all, a blank `GENERATE_THUMBNAILS` silently disabled thumbnails, and a blank `ENABLE_AI_DAM` switched the whole AI layer off. A mistyped value now warns and falls back instead of failing.

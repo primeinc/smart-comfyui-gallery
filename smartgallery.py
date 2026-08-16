@@ -5357,7 +5357,7 @@ def upload_files():
     ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp', '.gif', '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv', '.mts', '.ts', '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.json', '.txt', '.md'}
     for file in uploaded_files:
         if file and file.filename:
-            filename = secure_filename(file.filename)
+            filename = safe_media_filename(file.filename)
             ext = os.path.splitext(filename)[1].lower()
             if ext not in ALLOWED_EXTENSIONS:
                 errors[filename] = "Security Policy: File extension not allowed."
@@ -6080,6 +6080,49 @@ def get_file_info_from_db(file_id, column='*'):
         row = conn.execute(f"SELECT {column} FROM files WHERE id = ?", (file_id,)).fetchone()
     if not row: abort(404)
     return dict(row) if column == '*' else row[0]
+
+# Path separators, control characters, and the characters Windows forbids
+# in a name. Everything else -- including every non-Latin script -- is a
+# legitimate part of a filename.
+_UNSAFE_NAME_CHARS = re.compile(r'[\x00-\x1f<>:"/\\|?*]')
+_WINDOWS_DEVICE_NAMES = (
+    {'CON', 'PRN', 'AUX', 'NUL'}
+    | {f'COM{i}' for i in range(1, 10)} | {f'LPT{i}' for i in range(1, 10)}
+)
+
+
+def safe_media_filename(filename, fallback='upload'):
+    """Make a filename safe to write while keeping the name the user gave it.
+
+    secure_filename() transliterates to ASCII and drops whatever will not
+    convert, which is fine for a token and wrong for someone's media: it
+    turns "测试.png" into "png" -- no extension left, so the upload is then
+    refused as an unsupported type -- and quietly shortens "한글_0001_.png"
+    to "0001_.png". Chinese, Korean, Japanese, Cyrillic, Greek, Hebrew and
+    Arabic names all lose part or all of themselves.
+
+    What is actually dangerous is removed instead: any directory part, the
+    characters Windows forbids, control characters, the trailing dots and
+    spaces Windows silently strips, and the reserved device names (CON,
+    COM1, ...) which are not usable as files even with an extension.
+    """
+    raw = str(filename or '').replace('\\', '/')
+    name = os.path.basename(raw.rstrip('/'))
+    name = _UNSAFE_NAME_CHARS.sub('_', name).strip()
+    # Only TRAILING dots and spaces: Windows drops them silently, so a name
+    # ending in one never round-trips. A leading dot is left alone -- it is
+    # how a hidden file is spelled, and stripping it would recreate the very
+    # bug this function exists to fix.
+    name = name.rstrip('. ')
+    # Whatever is left must be more than dots: "." and ".." are directories.
+    if not name.strip('.'):
+        return fallback
+
+    stem, ext = os.path.splitext(name)
+    if stem.upper() in _WINDOWS_DEVICE_NAMES:
+        stem = f'_{stem}'
+    return f'{stem}{ext}'
+
 
 def _get_unique_filepath(destination_folder, filename):
     """
@@ -10834,7 +10877,7 @@ def _register_remix_routes_inline():
                 if 'image_upload' in request.files and modifications.get('image_node_id'):
                     img_file = request.files['image_upload']
                     if img_file.filename:
-                        filename = secure_filename("remix_" + img_file.filename)
+                        filename = safe_media_filename("remix_" + img_file.filename)
                         # Never clobber an input already queued for another
                         # generation: two remixes of same-named sources would
                         # otherwise overwrite each other's bytes, and ComfyUI
@@ -10875,7 +10918,7 @@ def _register_remix_routes_inline():
                 if 'image_upload' in request.files and modifications.get('image_node_id'):
                     img_file = request.files['image_upload']
                     if img_file.filename:
-                        filename = secure_filename("remix_" + img_file.filename)
+                        filename = safe_media_filename("remix_" + img_file.filename)
                         # Never clobber an input already queued for another
                         # generation: two remixes of same-named sources would
                         # otherwise overwrite each other's bytes, and ComfyUI
