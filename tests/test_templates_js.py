@@ -86,3 +86,53 @@ def test_raw_template_scripts_parse(relpath):
     assert blocks, f"{relpath} has no executable script blocks -- probe broken?"
     errors = [err for body in blocks if (err := _node_check(body))]
     assert not errors, f"{relpath}: script fails to parse:\n" + "\n".join(e[:500] for e in errors)
+
+
+# Exhibition mode (`python smartgallery.py --exhibition`) swaps in its own
+# top-level templates. The mode is chosen from CLI args at import time, so
+# the test client cannot reach them -- they are rendered directly instead.
+# Undefined values interpolate as JS `null` so bare `{{ var }}` inside a
+# script stays syntactically valid; `| tojson` values need real data and
+# are listed explicitly (a NEW tojson variable makes this test fail loudly
+# with instructions rather than silently skipping coverage).
+_EXHIBITION_TEMPLATES = ["exhibition.html", "exhibition_login.html"]
+_EXHIBITION_TOJSON_CONTEXT = {"ffmpeg_available": False, "available_extensions": []}
+
+
+def _render_standalone(app, template_name: str) -> str:
+    from jinja2 import ChainableUndefined
+
+    class _JsNull(ChainableUndefined):
+        """Renders as JS `null`, so an unsupplied variable interpolated
+        into a script does not produce `const x = ;`."""
+
+        def __str__(self):
+            return "null"
+
+        def __html__(self):
+            return "null"
+
+    env = app.jinja_env.overlay(undefined=_JsNull)
+    with app.test_request_context("/galleryout/"):
+        return env.get_template(template_name).render(**_EXHIBITION_TOJSON_CONTEXT)
+
+
+@pytest.mark.skipif(_NODE is None, reason="node is not installed")
+@pytest.mark.parametrize("template_name", _EXHIBITION_TEMPLATES)
+def test_exhibition_template_scripts_parse(smartgallery_app, template_name):
+    try:
+        html = _render_standalone(smartgallery_app.app, template_name)
+    except TypeError as exc:  # a `| tojson` value that Undefined cannot satisfy
+        pytest.fail(
+            f"{template_name} could not render for the JS check ({exc}). A new "
+            f"`| tojson` variable likely needs a value in "
+            f"_EXHIBITION_TOJSON_CONTEXT.")
+    blocks = list(_executable_blocks(html))
+    assert blocks, f"{template_name} has no executable script blocks -- probe broken?"
+    errors = []
+    for i, body in enumerate(blocks):
+        err = _node_check(body)
+        if err:
+            errors.append(f"block {i}: {err[:500]}")
+    assert not errors, (f"{template_name}: {len(errors)} script block(s) fail to "
+                        f"parse:\n" + "\n".join(errors))
