@@ -76,8 +76,8 @@ vocabulary for both answerers; responses never carry SQL or any IR.
 
 | Role | Exact identifier | License | Size | Measured |
 |---|---|---|---|---|
-| Rules answerer | `nlq` (in-repo) | — | 0 | 98-entry corpus, 2026-08-16: **100% execution match**, parse p50 0.157 ms; live endpoint round trip p50 1.37 ms / p95 2.26 ms. |
-| **Fusion (the shipped path)** | endpoint policy over both | — | — | 98-entry corpus, GPU, 2026-08-16, reproducible via `just ai bench-fusion`: **94.9% execution match** (rules exact on the 81 fully-consumed queries; model correct on 11 of 17 free-language queries, several of which are vague/adversarial entries with debatable ground truth; model hard-failures fall back to the rules answer). |
+| Rules answerer | `nlq` (in-repo) | — | 0 | 100-entry corpus, 2026-08-16: **100% execution match**, parse p50 0.16 ms; live endpoint round trip p50 1.37 ms / p95 2.26 ms. |
+| **Fusion (the shipped path)** | endpoint policy over both | — | — | 100-entry corpus, GPU, 2026-08-16, reproducible via `just ai bench-fusion`: **95.0% execution match** (rules exact on the 83 fully-consumed queries; model correct on 11 of 17 free-language queries, several of which are vague/adversarial entries with debatable ground truth; model hard-failures fall back to the rules answer). |
 | nl2sql answerer | `distil-labs/distil-qwen3-4b-text2sql-gguf-4bit`, `model.gguf` (provision group `omniquery`) | Apache-2.0 | 2.5 GB | Best of five GGUF candidates screened 2026-08-16 (43.4% vs Qwen3-1.7B 40.8%, 0.5B-class ≤21%, SS-350M 1.3%). Loop latency ~0.4–3 s/query on GPU. Decode canary at load: garbage logits or sampler crashes reload CPU-only, loudly — also catches silently corrupted GGUF files. |
 
 Superseded (removed 2026-08-16): the needle2/cactus-needle intent parser,

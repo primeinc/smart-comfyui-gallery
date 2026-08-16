@@ -53,6 +53,40 @@ _TYPE_SYNONYMS: Dict[str, str] = {
     "documents": "document", "document": "document", "pdfs": "document", "pdf": "document",
 }
 
+# Surface word -> filename suffixes: "pngs" means files whose name ends
+# .png. Families with two spellings on disk carry both suffixes. gif and
+# pdf stay type synonyms above (the broader semantic).
+_EXT_SYNONYMS: Dict[str, Tuple[str, ...]] = {
+    "pngs": (".png",), "png": (".png",),
+    "jpgs": (".jpg", ".jpeg"), "jpg": (".jpg", ".jpeg"),
+    "jpegs": (".jpg", ".jpeg"), "jpeg": (".jpg", ".jpeg"),
+    "webps": (".webp",), "webp": (".webp",),
+    "heics": (".heic",), "heic": (".heic",),
+    "bmps": (".bmp",), "bmp": (".bmp",),
+    "svgs": (".svg",), "svg": (".svg",),
+    "tiffs": (".tif", ".tiff"), "tiff": (".tif", ".tiff"),
+    "tifs": (".tif", ".tiff"), "tif": (".tif", ".tiff"),
+    "mp4s": (".mp4",), "mp4": (".mp4",),
+    "webms": (".webm",), "webm": (".webm",),
+    "mkvs": (".mkv",), "mkv": (".mkv",),
+    "movs": (".mov",), "mov": (".mov",),
+    "avi": (".avi",),
+    "mp3s": (".mp3",), "mp3": (".mp3",),
+    "wavs": (".wav",), "wav": (".wav",),
+    "flacs": (".flac",), "flac": (".flac",),
+}
+
+
+def _ext_condition(key: str) -> Optional[dict]:
+    """The AST condition for one extension word: a single name-suffix test,
+    or an 'or' group when the family has two on-disk spellings."""
+    suffixes = _EXT_SYNONYMS.get(key)
+    if not suffixes:
+        return None
+    conds = [{"field": "name", "op": "suffix", "value": s} for s in suffixes]
+    return conds[0] if len(conds) == 1 else {"op": "or", "children": conds}
+
+
 # Surface phrase -> AST status_flag value (canonical capitalization).
 _STATUS_SYNONYMS: Dict[str, str] = {
     "needs review": "Review", "in review": "Review",
@@ -89,7 +123,7 @@ STOPWORDS = frozenset({
     "file", "items", "item", "everything", "things", "thing", "let", "lets",
     "there", "have", "has", "had", "do", "does", "did", "containing",
     "contains", "about", "featuring", "whose", "media", "either", "first",
-    "not", "except", "without", "excluding",
+    "not", "but", "except", "without", "excluding",
     "more", "less", "better", "above", "below", "over", "under",
 })
 
@@ -107,6 +141,7 @@ def _build_alternation(mapping: Dict[str, str]) -> re.Pattern:
 
 
 _TYPE_RE = _build_alternation(_TYPE_SYNONYMS)
+_EXT_RE = _build_alternation(_EXT_SYNONYMS)
 _STATUS_RE = _build_alternation(_STATUS_SYNONYMS)
 _FAVORITE_RE = re.compile(r"\bfavou?rite[sd]?\b|\bfaves?\b", re.I)
 _UNFAVORITED_RE = re.compile(r"\bun-?favou?rited\b", re.I)
@@ -306,6 +341,12 @@ def _chip(cond: dict) -> Optional[dict]:
         if inner is None:
             return None
         return {"label": "not " + inner["label"], "field": inner.get("field")}
+    if cond.get("op") == "or":
+        inners = [c for ch in (cond.get("children") or []) if (c := _chip(ch)) is not None]
+        if not inners:
+            return None
+        return {"label": " or ".join(c["label"] for c in inners),
+                "field": inners[0].get("field")}
     field = cond.get("field")
     label = _CHIP_LABELS.get(field, field)
     op = _CHIP_OPS.get(cond.get("op"), cond.get("op"))
@@ -600,6 +641,8 @@ class NlqParser(ParserBackend):
             return None if value is None else {"field": "type", "op": "eq", "value": value}
 
         spanned_conds += _apply_rule(working, consumed, _TYPE_RE, _type_builder)
+        spanned_conds += _apply_rule(working, consumed, _EXT_RE,
+                                      lambda m: _ext_condition(m.group(1).lower()))
 
         def _status_builder(m: re.Match) -> Optional[dict]:
             key = re.sub(r"\s+", " ", m.group(1).lower())
@@ -715,6 +758,11 @@ def _match_predicate_at_start(s: str) -> Optional[Tuple[dict, int]]:
         value = _TYPE_SYNONYMS.get(re.sub(r"\s+", " ", m.group(1).lower()))
         if value is not None:
             return {"field": "type", "op": "eq", "value": value}, m.end()
+    m = _EXT_RE.match(s)
+    if m:
+        cond = _ext_condition(m.group(1).lower())
+        if cond is not None:
+            return cond, m.end()
     m = _STATUS_RE.match(s)
     if m:
         value = _STATUS_SYNONYMS.get(re.sub(r"\s+", " ", m.group(1).lower()))

@@ -545,3 +545,71 @@ def test_text_field_compiles_and_matches_all_surfaces():
                  "'[{\"name\": \"girlnextdoor\", \"weight\": 0.8}]')")
     got = sorted(r[0] for r in conn.execute(cq.sql, cq.params))
     assert got == ["by_caption", "by_lora", "by_name", "by_prompt"]
+
+
+# ---------------------------------------------------------------------------
+# 8. Extension words: "pngs" is a name-suffix test, not a text search
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("nl,suffixes", [
+    ("pngs", [".png"]),
+    ("3 star pngs", [".png"]),
+    ("webp files", [".webp"]),
+    ("mp4s from last week", [".mp4"]),
+    ("jpegs", [".jpeg", ".jpg"]),
+    ("jpgs", [".jpeg", ".jpg"]),
+    ("tiffs", [".tif", ".tiff"]),
+])
+def test_extension_words_become_name_suffix(nl, suffixes):
+    out = p.parse(nl, NOW)
+    conds = [c for c in _iter_conds(out.ast["where"])
+             if c.get("field") == "name" and c.get("op") == "suffix"]
+    assert sorted(c["value"] for c in conds) == suffixes, out.ast
+    assert not any(
+        c.get("field") == "text"
+        and c.get("value") in {"pngs", "webp", "mp4s", "jpegs", "jpgs", "tiffs"}
+        for c in _iter_conds(out.ast["where"])
+        if isinstance(c.get("value"), str))
+
+
+def test_jpeg_family_is_a_single_or_group():
+    out = p.parse("jpegs", NOW)
+    w = out.ast["where"]
+    assert w["op"] == "or", out.ast
+    assert sorted(c["value"] for c in w["children"]) == [".jpeg", ".jpg"]
+
+
+def test_negated_extension_and_but_is_scaffolding():
+    out = p.parse("favorites but not pngs", NOW)
+    nots = [n for n in _iter_all_nodes(out.ast["where"]) if n.get("op") == "not"]
+    assert len(nots) == 1, out.ast
+    assert nots[0]["child"] == {"field": "name", "op": "suffix", "value": ".png"}
+    assert not any(c.get("field") == "text" for c in _iter_conds(out.ast["where"])), out.ast
+
+
+def test_extension_or_group_renders_one_chip():
+    out = p.parse("jpegs", NOW)
+    assert [c["label"] for c in out.raw["interpretation"]] == \
+        ["name ends .jpg or name ends .jpeg"]
+
+
+def test_extension_suffix_compiles_and_matches():
+    import sqlite3 as _sqlite3
+
+    from omniquery.compiler import CompileParams, compile as compile_query
+    from omniquery.validation import AuthContext, validate
+
+    ctx = AuthContext(role="ADMIN", user_id="t", client_uuid="t", ai_enabled=True)
+    out = p.parse("jpegs", NOW)
+    vq = validate(parse_query(out.ast), ctx)
+    cq = compile_query(vq, CompileParams(now_epoch=NOW, base_path="/g"))
+
+    conn = _sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, name TEXT, path TEXT, mtime REAL)")
+    conn.executemany("INSERT INTO files VALUES (?, ?, ?, 1.0)", [
+        ("by_jpg", "a.jpg", "/g/a.jpg"),
+        ("by_jpeg_upper", "b.JPEG", "/g/b.JPEG"),
+        ("no_match", "c.png", "/g/c.png"),
+    ])
+    got = sorted(r[0] for r in conn.execute(cq.sql, cq.params))
+    assert got == ["by_jpeg_upper", "by_jpg"]

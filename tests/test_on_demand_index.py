@@ -739,10 +739,11 @@ def test_model_stages_share_the_budget_evenly(tmp_path):
     assert by_space.get(SPACE_VISUAL, 0) == 2
 
 
-def test_backlog_reviews_wait_for_the_fast_stages(tmp_path, monkeypatch):
-    """While embeddings/faces still have backlog, the review stage is not
-    offered backlog work (minutes per file would throttle the crawl); once
-    the fast stages find nothing, reviews run."""
+def test_backlog_reviews_ride_along_never_starved(tmp_path, monkeypatch):
+    """While embeddings/faces still have backlog, reviews are paced, not
+    held: exactly one review rides along per eligible cycle (measured
+    backoff may stretch the interval; it never reaches zero). Reviews keep
+    running after the fast stages go idle."""
     cfg = _cfg(tmp_path)
     conn = _make_db(cfg.db_path)
     for i in range(3):
@@ -762,15 +763,16 @@ def test_backlog_reviews_wait_for_the_fast_stages(tmp_path, monkeypatch):
 
     monkeypatch.setattr(AIWorker, "_process_reviews", _fake_process_reviews)
 
-    worker._run_cycle()   # embedding backlog present -> reviews held
-    assert review_calls == []
+    worker._run_cycle()   # embedding backlog present -> one ride-along review
+    assert review_calls == [1]
 
     while True:           # drain the fast-stage backlog
         before = dict(worker.stats)
         worker._run_cycle()
         if worker.stats["embedded"] == before["embedded"]:
             break
-    assert review_calls, "reviews never ran after the fast stages went idle"
+    assert len(review_calls) > 1, "reviews stopped running during/after the crawl"
+    assert all(n >= 1 for n in review_calls)
 
 
 def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):

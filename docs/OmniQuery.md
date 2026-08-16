@@ -17,6 +17,7 @@ captions, filenames, models, and LoRA names:
 |---|---|
 | `girlnextdoor` | every file whose prompt, LoRA, caption, name, or path carries the term |
 | `favorite videos` | starred files of one media type |
+| `pngs over 20 MB` | file formats by extension (png, jpg, webp, mp4, ...) |
 | `4+ star images from last week` | ratings and calendar words combined |
 | `not approved images` | status flags, including negations |
 | `seed 424242` / `images with 30 steps cfg 7.5` | exact generation settings |
