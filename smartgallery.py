@@ -2196,6 +2196,22 @@ def upsert_generation_params(conn, gen_rows, gen_deletes):
         conn.executemany(_GENPARAMS_UPSERT, gen_rows)
 
 
+def _unicode_lower(value):
+    """Fold case for comparison, in every script rather than just ASCII.
+
+    SQLite folds case for ASCII only, so LIKE matched CAFE against cafe but
+    not CAFÉ against café, and never РИСУНОК against рисунок. Searching by
+    name quietly worked in English and failed for everyone else, and it
+    fails by returning nothing -- which reads as an empty library rather
+    than a broken comparison.
+
+    casefold rather than lower: lower() leaves the German ß alone, so
+    STRASSE would still miss straße. casefold is the operation meant for
+    caseless matching and maps the pair together.
+    """
+    return value.casefold() if isinstance(value, str) else value
+
+
 def get_db_connection():
     # Timeout increased to 60s to be patient with the Indexer
     conn = sqlite3.connect(DATABASE_FILE, timeout=60)
@@ -2205,8 +2221,10 @@ def get_db_connection():
     conn.execute('PRAGMA synchronous=NORMAL;') 
     # --- CRITICAL FOR DATA CONSISTENCY ---
     # Enables cascading updates/deletes for Categories/Collections
-    conn.execute('PRAGMA foreign_keys = ON;') 
-    
+    conn.execute('PRAGMA foreign_keys = ON;')
+    # Case folding that covers every script, for the search conditions.
+    conn.create_function('ulower', 1, _unicode_lower, deterministic=True)
+
     return conn
     
 def _file_id_tables(conn):
@@ -4898,7 +4916,7 @@ def gallery_view(folder_key):
             conditions, params = ["f.type != 'document' AND LOWER(f.name) NOT LIKE '%.txt' AND LOWER(f.name) NOT LIKE '%.md'"], []
 
             if search_term:
-                conditions.append("name LIKE ?")
+                conditions.append("ulower(name) LIKE ulower(?)")
                 params.append(f"%{search_term}%")
             
             if wf_files:
@@ -8410,10 +8428,10 @@ def collection_view(coll_id):
                 if not s: continue
                 
                 if s.startswith('"') and s.endswith('"') and len(s) > 2:
-                    cond_str = f"f.name {'NOT LIKE' if is_not else 'LIKE'} ?"
+                    cond_str = f"ulower(f.name) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
                     param_val = f"%{s[1:-1]}%"
                 else:
-                    cond_str = f"f.name {'NOT LIKE' if is_not else 'LIKE'} ?"
+                    cond_str = f"ulower(f.name) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
                     param_val = f"%{s}%"
                     
                 if is_not:

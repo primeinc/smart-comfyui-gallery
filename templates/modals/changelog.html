@@ -21,6 +21,7 @@
 
 ### 🐛 Fixes
 
+* **Search ignores capitals in every language, not just English.** Searching `CAFÉ` found nothing while `café` found the file, and `РИСУНОК` never matched `рисунок` — so for anyone whose filenames are not plain English, search worked only if the capitals happened to match, and otherwise looked like an empty library.
 * **Uploads keep filenames that are not written in English.** A Chinese, Korean or Cyrillic filename was stripped down to nothing usable — `测试.png` became `png`, which the gallery then refused as having no recognised type, so the upload failed with an error naming a file you had never seen. Japanese and accented names quietly lost characters instead. Names are now kept as they are, with only what is genuinely unsafe removed, and the same applies to images sent to Remix.
 
 * **The Quality score in the AI panel was always full.** Every reviewed image displayed 100%, whatever it actually scored; a 3/10 and an 8/10 looked identical. Quality now reads `8.0 / 10` with a matching bar, and Prompt Following stays a percentage.
