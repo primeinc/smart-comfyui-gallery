@@ -62,7 +62,12 @@ probes/                  # runtime evidence scripts (egress, media read-only)
   Masks are PNGs in the derived cache — source media is never written.
 - **Worker** (`worker.py`): background thread/process separate from request
   handling; consumes the indexing queue; the Flask UI never blocks on
-  inference.
+  inference. Load is self-measured, never configured: every stage's
+  seconds/item is timed as real work happens (no benchmark runs), cycle
+  quotas are whatever fits each stage's time slice at that measured pace
+  (12s cycle target), and reviews back off exponentially when they
+  measure slow — on busy or weak hardware the worker's footprint shrinks
+  automatically. `/status` exposes the live pace per stage.
 
 ## OmniQuery (`omniquery`)
 
