@@ -525,6 +525,9 @@ CLEAN_CACHE_FOLDER_NAME = '.clean_cache'
 CLEAN_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, CLEAN_CACHE_FOLDER_NAME)
 DATABASE_FILE = os.path.join(SQLITE_CACHE_DIR, DATABASE_FILENAME)
 ENCRYPTION_KEY_FILE = os.path.join(SQLITE_CACHE_DIR, 'system.key')
+# Written beside the cache, never inside it, so it survives whatever
+# removed the database and can tell a first run from a lost library.
+LIBRARY_MARKER_FILE = os.path.join(BASE_SMARTGALLERY_PATH, '.smartgallery_library')
 ZIP_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, ZIP_CACHE_FOLDER_NAME)
 IMPORTED_WORKFLOWS_FOLDER_NAME = '.imported_workflows'
 IMPORTED_WORKFLOWS_DIR = os.path.join(BASE_SMARTGALLERY_PATH, IMPORTED_WORKFLOWS_FOLDER_NAME)
@@ -2530,9 +2533,94 @@ def _unicode_lower(value):
     return value.casefold() if isinstance(value, str) else value
 
 
+def check_library_continuity(is_new_database):
+    """Say so when a library that existed has been replaced by an empty one.
+
+    sqlite3.connect CREATES the file when it is missing, so losing
+    gallery_cache.sqlite -- an antivirus quarantine, a sync conflict, a
+    tidy-up of a folder named cache -- raises nothing at all. The gallery
+    builds a fresh schema, rescans the pictures, and looks exactly like a
+    new install. The pictures are all still there, which is what makes it
+    convincing; every rating, comment, album, collection and tag is not,
+    and nothing said a word.
+
+    A marker beside the cache rather than inside it separates the two
+    cases. A genuinely first run has no marker and is told nothing. A
+    folder that has held a library before, now holding an empty database,
+    is told plainly and early, while restoring a backup is still an option.
+
+    Returns True when it warned, so the tests can assert on the decision
+    rather than on console text.
+    """
+    try:
+        had_library = os.path.exists(LIBRARY_MARKER_FILE)
+    except OSError:
+        return False
+
+    replaced = bool(is_new_database and had_library)
+    if replaced:
+        print(f"\n{Colors.RED}{Colors.BOLD}WARNING: This gallery folder has held "
+              f"a library before, but the database is empty.{Colors.RESET}")
+        print(f"{Colors.RED}{DATABASE_FILE} was missing, so a new empty one has "
+              f"been created.{Colors.RESET}")
+        print(f"{Colors.YELLOW}Your picture files are untouched. Ratings, "
+              f"comments, albums, collections and tags lived in that database "
+              f"and are not in the new one.{Colors.RESET}")
+        print(f"{Colors.YELLOW}If you have a backup of it, stop the gallery and "
+              f"put it back before browsing; a scan will refill the new "
+              f"database and there is nothing to merge afterwards.{Colors.RESET}\n")
+
+    if not had_library:
+        try:
+            with open(LIBRARY_MARKER_FILE, 'w', encoding='utf-8') as marker:
+                marker.write(
+                    "This file records that a SmartGallery library was created "
+                    "here.\nIt lets the gallery tell a first run apart from a "
+                    "database that has gone missing.\nDeleting it is harmless; "
+                    "it only costs you that warning.\n")
+        except OSError:
+            pass  # a read-only gallery folder must not stop the gallery
+
+    return replaced
+
+
+def ensure_sqlite_cache_dir():
+    """Put the database folder back if something removed it.
+
+    Only inside a gallery root that still exists, for the same reason as
+    the thumbnail cache and the trash: an unplugged drive leaves a
+    writable empty mount point, and building the tree there would start a
+    second, invisible library on the wrong filesystem.
+    """
+    if os.path.isdir(SQLITE_CACHE_DIR):
+        return True
+    if not os.path.isdir(BASE_SMARTGALLERY_PATH):
+        return False
+    try:
+        os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
+    except OSError:
+        return False
+    # Only news if a library was here. On a first start this folder is
+    # simply being made, and telling someone it "had gone" would be a
+    # false alarm on their very first run.
+    if os.path.exists(LIBRARY_MARKER_FILE):
+        print(f"{Colors.YELLOW}INFO: The database folder had gone; it has been "
+              f"recreated at {SQLITE_CACHE_DIR}.{Colors.RESET}")
+    return True
+
+
 def get_db_connection():
     # Timeout increased to 60s to be patient with the Indexer
-    conn = sqlite3.connect(DATABASE_FILE, timeout=60)
+    try:
+        conn = sqlite3.connect(DATABASE_FILE, timeout=60)
+    except sqlite3.OperationalError:
+        # "unable to open database file" is what a removed .sqlite_cache
+        # looks like, and it would otherwise be the answer to every
+        # request for the rest of the session. Retried once, and only
+        # once: a genuine problem still raises.
+        if not ensure_sqlite_cache_dir():
+            raise
+        conn = sqlite3.connect(DATABASE_FILE, timeout=60)
     conn.row_factory = sqlite3.Row
     # CONCURRENCY OPTIMIZATION:
     conn.execute('PRAGMA journal_mode=WAL;') 
@@ -2942,6 +3030,14 @@ def init_db(conn=None):
             print(f"WARNING: Could not initialize AI DAM schema: {e}")
 
         conn.commit()
+
+        # The schema is now sound, so an empty one here is a real answer
+        # rather than a half-built database: either this folder is new, or
+        # a library that was here has gone.
+        try:
+            check_library_continuity(is_new_database)
+        except Exception as e:
+            print(f"WARNING: Could not check library continuity: {e}")
 
     except Exception as e:
         print(f"CRITICAL DATABASE ERROR: {e}")
