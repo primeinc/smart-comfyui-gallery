@@ -81,5 +81,8 @@ def smartgallery_app():
     # init_db() opens DATABASE_FILE directly; normally the SQLITE_CACHE_DIR
     # parent is created by initialize_gallery() before init_db() ever runs.
     os.makedirs(smartgallery.SQLITE_CACHE_DIR, exist_ok=True)
+    # Same reason: without it every scan in the suite logs a thumbnail
+    # failure, which is noise a real thumbnail regression would hide in.
+    os.makedirs(smartgallery.THUMBNAIL_CACHE_DIR, exist_ok=True)
     smartgallery.init_db()
     return smartgallery

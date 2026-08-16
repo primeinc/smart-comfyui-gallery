@@ -20,6 +20,7 @@
 * **Blank settings mean "use the default".** Clearing a value in `run_smartgallery.bat` (or a Docker/Unraid field) previously meant an empty value: a blank number stopped the app from starting at all, a blank `GENERATE_THUMBNAILS` silently disabled thumbnails, and a blank `ENABLE_AI_DAM` switched the whole AI layer off. A mistyped value now warns and falls back instead of failing.
 * **ffprobe is verified.** Pointing `FFPROBE_MANUAL_PATH` at `ffmpeg.exe` — an easy slip, and what the template shipped — was accepted and then failed every video metadata read. The wrong tool is now detected and the system `PATH` is used instead.
 * **Notifications moved off the toolbar.** Toasts appeared over the top-right buttons; they now rise from the bottom centre.
+* **Your own star ratings are findable again.** On a standard install with no login, ratings were saved under one identity and looked up under another, so **My Ratings Only** showed an empty gallery and the **Unrated** queue handed back images you had already rated. Existing ratings were never lost and reappear on their own — nothing to re-rate.
 
 ### ✨ Improvements
 

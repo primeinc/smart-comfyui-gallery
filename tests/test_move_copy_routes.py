@@ -72,16 +72,29 @@ def _cleanup(smartgallery_app):
     yield
     conn = smartgallery_app.get_db_connection()
     try:
-        for (path,) in conn.execute(
-                f"SELECT path FROM files WHERE name LIKE '{_PREFIX}%'").fetchall():
-            try:
-                os.remove(path)
-            except OSError:
-                pass
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
     finally:
         conn.close()
+
+    # Sweep the disk, not the rows. The collision test writes a file that
+    # deliberately has no row of its own, and the destination folder outlives
+    # the fixture that made it -- so anything missed here is left in the
+    # gallery for the next test that runs a real scan to index as a genuine
+    # file, and that test then counts one image too many.
+    root = smartgallery_app.BASE_OUTPUT_PATH
+    for dirpath, _dirs, names in os.walk(root, topdown=False):
+        for name in names:
+            if name.startswith(_PREFIX):
+                try:
+                    os.remove(os.path.join(dirpath, name))
+                except OSError:
+                    pass
+        if os.path.basename(dirpath).startswith(_PREFIX):
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass
 
 
 def test_move_relocates_the_file_and_follows_it_in_the_database(

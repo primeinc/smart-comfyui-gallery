@@ -3871,7 +3871,7 @@ def api_search_options():
     
     exts, pfxs, limit_reached = [], [], False
     user_role = session.get('role', 'GUEST')
-    safe_uid = str(session.get('user_id', '')).replace("'", "''")
+    safe_uid = _current_client_identity().replace("'", "''")
     is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
     is_privileged = is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']
 
@@ -4395,6 +4395,23 @@ def ai_indexing_control():
     return jsonify({'status': 'success', 'message': f'Queue {action}d'})
     
 
+def _current_client_identity():
+    """The client_uuid this caller's ratings and comments are stored under.
+
+    It has to agree with what the page sends, or a rating written through
+    the API cannot be found again by the queries that build the grid. The
+    templates mint the fixed identity 'admin' whenever there is no login to
+    take one from (see index.html), so the default single-user install must
+    resolve to that and not to the empty string.
+    """
+    user_id = session.get('user_id')
+    if user_id:
+        return str(user_id)
+    if not FORCE_LOGIN and not IS_EXHIBITION_MODE:
+        return 'admin'
+    return ''
+
+
 def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope):
     if not cluster_mode:
         return current_files
@@ -4425,7 +4442,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 
     if cluster_scope == 'global':
         with get_db_connection() as conn_target:
-            safe_uuid = str(session.get('user_id', '')).replace("'", "''")
+            safe_uuid = _current_client_identity().replace("'", "''")
             user_role = session.get('role', 'GUEST')
             is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
             
@@ -4647,7 +4664,7 @@ def gallery_view(folder_key):
                 if session_info:
                     is_omniquery = True
                     omniquery_sql = session_info['raw_sql']
-                    safe_uuid = str(session.get('user_id', '')).replace("'", "''")
+                    safe_uuid = _current_client_identity().replace("'", "''")
                     rows = conn.execute(f'''
                         SELECT f.*,
                         (SELECT c.color FROM collections c JOIN collection_files cf2 ON c.id = cf2.collection_id WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
@@ -4951,7 +4968,7 @@ def gallery_view(folder_key):
             
             # --- COMMENT VISIBILITY FILTER FOR SORTING ---
             user_role = session.get('role', 'GUEST')
-            safe_uuid = str(session.get('user_id', '')).replace("'", "''")
+            safe_uuid = _current_client_identity().replace("'", "''")
             
             # Allow Local Admin (no force login) to see all comments during sort
             is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
@@ -8014,7 +8031,7 @@ def collection_view(coll_id):
         sub_query = "SELECT id FROM collections WHERE type='user_album'"
         if IS_EXHIBITION_MODE:
             user_role = session.get('role', 'GUEST')
-            safe_uid = str(session.get('user_id', '')).replace("'", "''")
+            safe_uid = _current_client_identity().replace("'", "''")
             is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
             
             if is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']:
@@ -8032,7 +8049,7 @@ def collection_view(coll_id):
             active_filters_count += 1
         if is_recursive:
             user_role = session.get('role', 'GUEST')
-            safe_uid = str(session.get('user_id', '')).replace("'", "''")
+            safe_uid = _current_client_identity().replace("'", "''")
             is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
             
             sub_query = f"""
@@ -8297,7 +8314,7 @@ def collection_view(coll_id):
         if p_cond: conditions.append(f"({' OR '.join(p_cond)})")
 
     # --- SORTING LOGIC ---
-    safe_uuid = str(session.get('user_id', '')).replace("'", "''")
+    safe_uuid = _current_client_identity().replace("'", "''")
     if req_sort_by == 'name':
         order_clause = f"f.name {req_sort_order}"
     elif req_sort_by == 'rating':
@@ -8353,7 +8370,7 @@ def collection_view(coll_id):
             count_subquery = "SELECT id FROM collections WHERE type='user_album'"
             if IS_EXHIBITION_MODE: 
                 user_role = session.get('role', 'GUEST')
-                safe_uid = str(session.get('user_id', '')).replace("'", "''")
+                safe_uid = _current_client_identity().replace("'", "''")
                 if user_role in['ADMIN', 'MANAGER', 'STAFF']:
                     count_subquery += " AND (is_public = 1 OR shared_users != '')"
                 else:
@@ -8388,7 +8405,7 @@ def collection_view(coll_id):
         
         # We use DISTINCT to avoid showing the same file twice if it's in multiple albums
         user_role = session.get('role', 'GUEST')
-        safe_uuid = str(session.get('user_id', '')).replace("'", "''")
+        safe_uuid = _current_client_identity().replace("'", "''")
         
         # Allow Local Admin (no force login) to see all comments during sort
         is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
@@ -8483,7 +8500,7 @@ def collection_view(coll_id):
             count_subquery = "SELECT id FROM collections WHERE type='user_album'"
             if IS_EXHIBITION_MODE: 
                 user_role = session.get('role', 'GUEST')
-                safe_uid = str(session.get('user_id', '')).replace("'", "''")
+                safe_uid = _current_client_identity().replace("'", "''")
                 is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
                 if is_local_admin or user_role in['ADMIN', 'MANAGER', 'STAFF']:
                     count_subquery += " AND (is_public = 1 OR shared_users != '')"
