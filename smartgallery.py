@@ -3991,7 +3991,13 @@ def ai_check_status(session_id):
         return jsonify({'status': row['status']})
 
 @app.route('/galleryout/sync_status/<string:folder_key>')
+@management_api_only
 def sync_status(folder_key):
+    # This does not report on a scan, it runs one: it walks the folder,
+    # processes what changed and writes to the database, naming each file in
+    # the stream as it goes. With no gate at all, an unidentified caller on a
+    # login-protected gallery could set that going as often as they liked and
+    # read the filenames back.
     # --- FIX: SILENT RESPONSE FOR VIRTUAL COLLECTIONS ---
     if folder_key.startswith('collection_'):
         # Return a dummy SSE stream that does nothing but prevents 404
@@ -7664,10 +7670,16 @@ def get_collections():
         })
 
 @app.route('/galleryout/api/sidebar_state')
+@management_api_only
 def get_sidebar_state():
-    """Returns the current state of folders and collections for real-time sync."""
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    """Returns the current state of folders and collections for real-time sync.
+
+    Asking only for a session was not enough: this lists every album without
+    regard to who is asking, private ones included, and resolves shared_users
+    into the full names of the people each was shared with. It belongs to the
+    management sidebar (collections.html, included only by index.html), so it
+    is management-only.
+    """
     folders = get_dynamic_folder_config(force_refresh=True)
     with get_db_connection() as conn:
         flags = conn.execute("SELECT * FROM collections WHERE type='system_flag' ORDER BY id").fetchall()
