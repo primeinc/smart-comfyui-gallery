@@ -14,14 +14,16 @@ test:
 # a class of bug comes back rather than when one instance of it is noticed:
 # a route added without deciding who may call it, a prompt reaching a
 # visitor, an id change that leaves its ratings behind, a documented setting
-# nothing reads, a subprocess that can hang, a misspelt setting name.
+# nothing reads, a subprocess that can hang, a misspelt setting name, a
+# documented way of running the suite that does not work.
 # `just test` runs these too; this is for running them alone.
 #
 # --list shows only a comment's LAST line, which turns an explanation into a
 # fragment, so the summary is stated explicitly.
-[doc('Structural checks alone: route gating, prompt leaks, id changes, settings, timeouts')]
+[doc('Structural checks alone: route gating, prompt leaks, id changes, settings, timeouts, runnability')]
 audit:
     {{ python }} -m pytest -q \
+        tests/test_suite_is_runnable.py \
         tests/test_every_route_is_classified.py \
         tests/test_exhibition_leak_sweep.py \
         tests/test_file_id_changes_carry_their_data.py \
