@@ -1514,9 +1514,52 @@ def _descendant_filter(column, folder_path):
     return f"REPLACE({column}, '\\', '/') LIKE ? ESCAPE '!'", escaped + '/%'
 
 
+def ensure_trash_folder():
+    """Put the trash folder back if something removed it.
+
+    It is made once, at startup, and every delete from then on assumes it
+    is still there. It is a folder called SmartGallery inside whatever the
+    person set DELETE_TO to -- somewhere they chose precisely because they
+    empty it from time to time. Once it was gone, every delete failed with
+    "The system cannot find the path specified", the screen said only
+    "Failed to delete N files", and it went on failing that way until the
+    next restart.
+
+    Only recreated inside a DELETE_TO that still exists. If that has gone
+    as well -- an unplugged drive, a share that stopped answering -- this
+    returns False and the caller must refuse the delete. Creating the tree
+    on top of an empty mount point would put the one copy of somebody's
+    deleted files somewhere they will never think to look.
+    """
+    if not TRASH_FOLDER:
+        return False
+    if os.path.isdir(TRASH_FOLDER):
+        return True
+    if not os.path.isdir(DELETE_TO or ''):
+        return False
+    try:
+        os.makedirs(TRASH_FOLDER, exist_ok=True)
+    except OSError:
+        return False
+    print(f"{Colors.YELLOW}INFO: The trash folder had gone; it has been "
+          f"recreated at {TRASH_FOLDER}.{Colors.RESET}")
+    return True
+
+
 def _trash_destination(name):
     """A free `<timestamp>_<name>` path inside TRASH_FOLDER, disambiguated
-    with a counter so same-second deletes never overwrite each other."""
+    with a counter so same-second deletes never overwrite each other.
+
+    Raises when the trash is unreachable, which both callers let
+    propagate. That refusal is the point: deletions are configured to be
+    recoverable here, so a delete that cannot be recovered must not
+    happen. Neither caller may ever fall back to os.remove or rmtree.
+    """
+    if not ensure_trash_folder():
+        raise OSError(
+            f"the trash folder {TRASH_FOLDER} is missing and cannot be "
+            f"recreated because {DELETE_TO} is not there either; nothing "
+            f"was deleted")
     timestamp = time.strftime('%Y%m%d_%H%M%S')
     candidate = os.path.join(TRASH_FOLDER, f"{timestamp}_{name}")
     counter = 1
