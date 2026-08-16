@@ -1,6 +1,7 @@
 # Optional AI DAM layer. NOT required for core SmartGallery.
-# Kept in sync with pyproject.toml extras 'ai' / 'ai-models'
-# (uv users: `uv sync --extra ai` / `--extra ai-models`).
+# Kept in sync with pyproject.toml dependency groups 'ai' / 'ai-models'
+# (uv users need no flags: both groups install by default with `uv sync`;
+# opt out with `--no-group ai-models` / `--no-default-groups`).
 # Install only when enabling ENABLE_AI_DAM / the OmniQuery local NL path.
 # Model weights land in .AImodels/ via `python -m smartgallery_ai provision`
 # or the worker's async auto-provisioning (AI_DAM_AUTO_PROVISION, default on);
@@ -16,11 +17,12 @@ huggingface_hub              # cached/resumable weight downloads for
                              #   `python -m smartgallery_ai provision` and the
                              #   worker's async auto-provisioning
 
-# --- OmniQuery local natural-language parsing ---
-# The deterministic nlq parser is dependency-free. llama-cpp-python powers
-# the optional grammar-constrained nl2sql refiner (weights via provisioning).
+# --- OmniQuery local natural-language search ---
+# The deterministic nlq rules parser is dependency-free. llama-cpp-python
+# runs the search palette's nl2sql answerer: free-language questions become
+# SQL executed only through the read-only sandbox (weights via provisioning).
 faiss-cpu>=1.15             # Meta FAISS similarity index (MIT); vectors + face clustering
-llama-cpp-python>=0.3.0      # grammar-constrained nl2sql refiner (MIT)
+llama-cpp-python>=0.3.0      # nl2sql answerer + qwen-vl critic runtime (MIT)
 
 # --- semantic / visual embedding + critic + segmentation backends ---
 # Uncomment to enable the real model backends; then provision weights per

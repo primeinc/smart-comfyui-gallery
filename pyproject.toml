@@ -1,12 +1,13 @@
 # uv-native install path. Mirrors requirements.txt (core) and
 # requirements-ai.txt (optional AI layer) -- keep the three in sync.
 #
-#   uv sync                        core app + test tooling -> ./.venv
-#   uv sync --extra ai             + OmniQuery natural-language parsing
-#   uv sync --extra ai-models      + real embedding/critic/segmentation
-#                                    runtimes (CPU torch; weights are
-#                                    provisioned separately, see
-#                                    docs/AI_MODELS.md)
+#   uv sync                        everything -> ./.venv: core app, test
+#                                    tooling, and the AI layer (dev/ai/
+#                                    ai-models are default groups; CPU
+#                                    torch -- weights are provisioned
+#                                    separately, see docs/AI_MODELS.md)
+#   uv sync --no-group ai-models   skip the heavy model runtimes
+#   uv sync --no-default-groups    core app only
 #   uv run python smartgallery.py  run the gallery
 #   uv run pytest tests/           run the model-free suite
 
