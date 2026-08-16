@@ -936,6 +936,10 @@ app.register_blueprint(
     ai_dam_service.create_ai_blueprint(
         AI_CONFIG, guard=management_api_only,
         file_access_check=lambda fid: is_file_accessible(fid),
+        # Seeing a picture and being told how it was made are different
+        # permissions here: the same rule that strips prompts out of the
+        # files and the listings decides whether a review may quote them.
+        generation_metadata_visible=lambda: not should_strip_metadata(),
     ),
     url_prefix='/galleryout/api/aidam',
 )

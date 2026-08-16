@@ -279,6 +279,7 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
 
 def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                         file_access_check: Optional[Callable[[str], bool]] = None,
+                        generation_metadata_visible: Optional[Callable[[], bool]] = None,
                         ) -> Blueprint:
     """Build the AI DAM Flask blueprint.
 
@@ -292,8 +293,19 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     finding's file) with the host app's per-file visibility policy (e.g.
     `is_file_accessible`), so restricted-mode viewers cannot read derived
     AI metadata for files the normal gallery routes would refuse to serve.
-    Inaccessible files answer 404, indistinguishable from nonexistent."""
+    Inaccessible files answer 404, indistinguishable from nonexistent.
+
+    `generation_metadata_visible() -> bool`, if given, says whether THIS
+    caller may see how a picture was made. Seeing a picture and being told
+    the prompt behind it are different permissions: a review's alignment
+    elements are verbatim slices of the positive prompt, so a host that
+    hides prompts from its visitors would otherwise publish them here, one
+    element at a time, for every file those visitors are allowed to see.
+    Absent, everything is visible."""
     bp = Blueprint("aidam", __name__)
+
+    def _may_see_generation_metadata() -> bool:
+        return generation_metadata_visible is None or bool(generation_metadata_visible())
 
     def _requires_enabled(view_func: Callable) -> Callable:
         """Decorator: short-circuit to the disabled response while the layer is off."""
@@ -796,8 +808,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                     )
             findings.append(entry)
 
+        # Each element's text is a verbatim slice of the positive prompt, so
+        # a caller who may not read prompts may not read these -- the scores
+        # and the findings, which describe the picture rather than quote the
+        # request, still go out.
+        show_prompt = _may_see_generation_metadata()
+
         alignment = []
-        for arow in alignment_rows:
+        for arow in alignment_rows if show_prompt else []:
             satisfied = bool(arow["satisfied"])
             entry = {
                 "element_id": arow["element_id"],
@@ -822,7 +840,9 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "prompt_alignment": review_row["prompt_alignment_score"],
             },
             "alignment": alignment,
-            "summary": review_row["summary"],
+            # The critic writes the summary about the picture, but it is free
+            # prose and quotes the prompt when explaining a mismatch.
+            "summary": review_row["summary"] if show_prompt else None,
             "model": {
                 "id": review_row["model_id"],
                 "version": review_row["model_version"],
