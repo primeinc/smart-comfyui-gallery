@@ -6493,6 +6493,53 @@ def browse_filesystem():
     
    
 # --- ZIP BACKGROUND JOB MANAGEMENT ---
+def zip_entry_names(rows):
+    """One name per file, none of them repeated, in the order given.
+
+    Every file went into the zip under its bare name, and a zip holding
+    two entries with one name is not an error: both are written, and
+    whoever opens it keeps whichever came last. ComfyUI numbers its
+    output per folder, so ComfyUI_00001_.png exists once in every folder
+    somebody has, and selecting across folders is the ordinary way to use
+    this. Measured on three folders holding that name: three entries went
+    in, one file came out, and the job reported ready.
+
+    A name nothing else in the selection shares is kept exactly as it is,
+    so downloading from a single folder is unchanged. A name that repeats
+    is qualified on EVERY copy, not on the second onwards -- otherwise one
+    arbitrary file keeps the bare name and there is no telling which
+    folder that one came from. The qualifier is the containing folder,
+    which is both the reason for the clash and the thing worth knowing;
+    where that still is not enough, a number.
+    """
+    seen = {}
+    for _path, name in rows:
+        seen[name] = seen.get(name, 0) + 1
+    repeated = {name for name, count in seen.items() if count > 1}
+
+    taken = set()
+    names = []
+    for path, name in rows:
+        stem, extension = os.path.splitext(name)
+        candidates = []
+        if name in repeated:
+            folder = os.path.basename(os.path.dirname(path))
+            if folder:
+                candidates.append(f"{stem} ({folder}){extension}")
+        else:
+            candidates.append(name)
+
+        chosen = next((c for c in candidates if c not in taken), None)
+        if chosen is None:
+            counter = 2
+            while f"{stem} ({counter}){extension}" in taken:
+                counter += 1
+            chosen = f"{stem} ({counter}){extension}"
+        taken.add(chosen)
+        names.append(chosen)
+    return names
+
+
 zip_jobs = {}
 def background_zip_task(job_id, file_ids):
     try:
@@ -6516,11 +6563,12 @@ def background_zip_task(job_id, file_ids):
             zip_jobs[job_id] = {'status': 'error', 'message': 'No valid files found.'}
             return
 
+        entry_names = zip_entry_names([(row['path'], row['name'])
+                                       for row in files_to_zip])
         with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for file_row in files_to_zip:
+            for file_row, file_name in zip(files_to_zip, entry_names):
                 file_path = file_row['path']
-                file_name = file_row['name']
-                # Check the file esists 
+                # Check the file esists
                 if os.path.exists(file_path):
                     # Add file to zip
                     zf.write(file_path, file_name)
