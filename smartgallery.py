@@ -1924,8 +1924,47 @@ def analyze_file_metadata(filepath):
     if total_duration_sec > 0: details['duration'] = format_duration(total_duration_sec)
     return details
 
+def ensure_thumbnail_cache_dir():
+    """Put the thumbnail cache back if something removed it, and say so.
+
+    The directory is made once at startup, and everything that writes a
+    thumbnail then assumes it is still there. It is called
+    `.thumbnails_cache`, it lives wherever the person pointed
+    BASE_SMARTGALLERY_PATH -- frequently a synced folder or a second drive
+    -- and disk cleaners go looking for exactly that name. Once it was
+    gone, every thumbnail failed for the rest of the process's life, and
+    the only sign was one console line per file quoting a temporary
+    filename that says nothing about a missing folder. Restarting fixed
+    it, which is not something anyone would guess.
+
+    Only ever recreated INSIDE an existing gallery root. If the root
+    itself is missing -- an unplugged drive, a share that stopped
+    answering -- makedirs would cheerfully build the tree on whatever
+    filesystem the empty mount point sits on, and thumbnails would pile up
+    somewhere the gallery will never look again.
+    """
+    if os.path.isdir(THUMBNAIL_CACHE_DIR):
+        return True
+    if not os.path.isdir(BASE_SMARTGALLERY_PATH):
+        print(f"{Colors.YELLOW}WARNING: The gallery folder {BASE_SMARTGALLERY_PATH} "
+              f"is not there, so no thumbnail can be written. Nothing has been "
+              f"created in its place.{Colors.RESET}")
+        return False
+    try:
+        os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
+    except OSError as exc:
+        print(f"{Colors.YELLOW}WARNING: Could not recreate the thumbnail cache "
+              f"{THUMBNAIL_CACHE_DIR}: {exc}{Colors.RESET}")
+        return False
+    print(f"{Colors.YELLOW}INFO: The thumbnail cache folder had gone; it has been "
+          f"recreated at {THUMBNAIL_CACHE_DIR}. Thumbnails will be rebuilt as "
+          f"files are viewed.{Colors.RESET}")
+    return True
+
+
 def create_waveform(filepath, file_hash, file_type, amp=1.0):
     if not GENERATE_WAVEFORMS or not FFPROBE_EXECUTABLE_PATH: return None
+    if not ensure_thumbnail_cache_dir(): return None
     suffix = f"_{amp}" if amp != 1.0 else ""
     cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}_wave{suffix}.png")
     if os.path.exists(cache_path): return cache_path
@@ -1989,6 +2028,11 @@ def create_thumbnail(filepath, file_hash, file_type):
     # The pixel ceiling is set once at import (MAX_DECODED_PIXELS). It used
     # to be cleared here, which switched the guard off process-wide the
     # first time any thumbnail was made.
+
+    # Startup made this folder; a cleaner or a sync client may have taken
+    # it away since. Every branch below writes into it.
+    if not ensure_thumbnail_cache_dir():
+        return None
 
     # --- IMAGES / ANIMATIONS ---
     # All encoders write to a tmp_ path and os.replace() into place: a save
