@@ -5306,6 +5306,18 @@ def gallery_view(folder_key):
             if coll_id_raw == 'all' or coll_id_raw.isdigit():
                 # FIX: Convert MultiDict to dict with lists to preserve multi-select filters
                 args_dict = request.args.to_dict(flat=False)
+                # A search answers with a list of files from across the
+                # library, and the collection view cannot show one: it
+                # reads neither omniquery_id nor ai_session_id. Forwarding
+                # a search there dropped it without a word -- the person
+                # got their album back exactly as it was, as though
+                # nothing had been searched for. Searching from inside an
+                # album is the ordinary way to arrive here, because the
+                # palette navigates to whichever key the page is showing
+                # and a collection's key is `collection_<id>`.
+                if 'omniquery_id' in args_dict or 'ai_session_id' in args_dict:
+                    return redirect(url_for('gallery_view', folder_key='_root_',
+                                            **args_dict))
                 return redirect(url_for('collection_view', coll_id=coll_id_raw, **args_dict))
         except IndexError:
             pass
