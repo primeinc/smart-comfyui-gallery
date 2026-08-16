@@ -5161,7 +5161,13 @@ def upload_files():
                 errors[filename] = "Security Policy: File extension not allowed."
                 continue
             try:
-                file.save(os.path.join(destination_path, filename))
+                # Never overwrite: an upload whose name collides with a file
+                # already in the folder used to replace it silently and
+                # still report success, destroying media the user never
+                # chose to delete. The move path has always renamed instead
+                # (_get_unique_filepath -> "name(1).png"); uploads do the
+                # same, so the two ways a file can arrive in a folder agree.
+                file.save(_get_unique_filepath(destination_path, filename))
                 success_count += 1
             except Exception as e: errors[filename] = str(e)
     if success_count > 0: sync_folder_on_demand(destination_path)
