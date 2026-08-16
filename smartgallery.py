@@ -189,6 +189,28 @@ def env_num(name, default, cast=int):
         return default
 
 
+def env_flag(name, default=False):
+    """Boolean environment flag, or `default` when unset or blank.
+
+    `"1"/"true"/"yes"/"on"` (any case) are True; `"0"/"false"/"no"/"off"`
+    are False. Comparing `os.environ.get(name, "true").lower() == "true"`
+    made a BLANK read as False, so clearing GENERATE_THUMBNAILS in the
+    launcher silently turned thumbnails off rather than restoring the
+    documented default. An unrecognized word says so and keeps the default
+    instead of quietly meaning False.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    token = raw.strip().lower()
+    if token in ("1", "true", "yes", "on"):
+        return True
+    if token in ("0", "false", "no", "off"):
+        return False
+    print(f"WARNING: {name}={raw!r} is not a yes/no value; using {default}.")
+    return default
+
+
 # Path to the ComfyUI 'output' folder.
 # Common locations:
 #   Windows: C:/ComfyUI/output or C:/Users/YourName/ComfyUI/output
@@ -261,9 +283,9 @@ STREAM_THRESHOLD_BYTES = STREAM_THRESHOLD_MB * 1024 * 1024
 # - None or empty string: use all available CPU cores (fastest, recommended)
 # - 1: disable parallel processing (slowest, like in previous versions)
 # - Specific number (e.g., 4): limit CPU usage on multi-core machines
-MAX_PARALLEL_WORKERS = os.environ.get('MAX_PARALLEL_WORKERS', None)
-if MAX_PARALLEL_WORKERS is not None and MAX_PARALLEL_WORKERS != "":
-    MAX_PARALLEL_WORKERS = int(MAX_PARALLEL_WORKERS)
+MAX_PARALLEL_WORKERS = env_num('MAX_PARALLEL_WORKERS', None)
+if MAX_PARALLEL_WORKERS is not None:
+    pass  # explicit worker count honored as given
 else:
     # OS-Specific Safety Defaults
     # macOS (darwin) often crashes with BrokenProcessPool or runs out of file descriptors 
@@ -277,7 +299,7 @@ else:
 # Flask secret key
 # You can set it in the environment variable SECRET_KEY
 # If not set, it will be generated randomly
-SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+SECRET_KEY = env_or('SECRET_KEY', secrets.token_hex(32))
 
 # Maximum number of items allowed in the "Prefix" dropdown to prevent UI lag.
 MAX_PREFIX_DROPDOWN_ITEMS = 100
@@ -288,7 +310,7 @@ MAX_PREFIX_DROPDOWN_ITEMS = 100
 # If not set (None or empty string), files will be permanently deleted as before.
 # The path MUST exist and be writable, or the application will exit with an error.
 # Example: /path/to/trash or C:/Trash
-DELETE_TO = os.environ.get('DELETE_TO', None)
+DELETE_TO = env_or('DELETE_TO', None)
 if DELETE_TO and DELETE_TO.strip():
     DELETE_TO = DELETE_TO.strip()
     TRASH_FOLDER = os.path.join(DELETE_TO, 'SmartGallery')
@@ -364,12 +386,12 @@ IS_EXHIBITION_MODE = False
 #   Linux / Mac: export ENABLE_AI_SEARCH=false
 #   Docker:      -e ENABLE_AI_SEARCH=false
 #
-ENABLE_AI_SEARCH = os.environ.get('ENABLE_AI_SEARCH', 'false').lower() == 'true'
-GENERATE_WAVEFORMS = os.environ.get('GENERATE_WAVEFORMS', 'false').lower() == 'true'
+ENABLE_AI_SEARCH = env_flag('ENABLE_AI_SEARCH', False)
+GENERATE_WAVEFORMS = env_flag('GENERATE_WAVEFORMS', False)
 # Default for server-side thumbnail generation; a runtime toggle stored in
 # the DB (Tools menu / POST /galleryout/api/site_settings) overrides it.
-GENERATE_THUMBNAILS = os.environ.get('GENERATE_THUMBNAILS', 'true').lower() == 'true'
-COMFYUI_SERVER_URL = os.environ.get('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
+GENERATE_THUMBNAILS = env_flag('GENERATE_THUMBNAILS', True)
+COMFYUI_SERVER_URL = env_or('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
 
 
 # ============================================================================
@@ -413,7 +435,7 @@ FORCE_LOGIN = _args.force_login
 BLIND_RATING = _args.blind_rating
 
 # Priority: CLI Param > Environment Variable
-ADMIN_PASS_INPUT = _args.admin_pass or os.environ.get('ADMIN_PASSWORD')
+ADMIN_PASS_INPUT = _args.admin_pass or env_or('ADMIN_PASSWORD', None)
 
 # If an admin password is provided, automatically enforce login
 if ADMIN_PASS_INPUT:
@@ -10998,7 +11020,7 @@ def ensure_genparams_backfill_async(conn):
     the generation_params table existed. Marker-gated like the cluster
     hash migration: recorded only on completion, so an interrupted run
     resumes next startup (already-written rows are skipped by query)."""
-    if os.environ.get('GENPARAMS_BACKFILL', '1') == '0':
+    if not env_flag('GENPARAMS_BACKFILL', True):
         print("INFO: [GenParams] Backfill disabled by GENPARAMS_BACKFILL=0; "
               "new scans still track parameters.")
         return

@@ -183,3 +183,61 @@ def test_enable_ai_dam_blank_does_not_silently_disable_the_layer(monkeypatch, tm
     assert AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite")).enabled is True
     monkeypatch.setenv("ENABLE_AI_DAM", "false")
     assert AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite")).enabled is False
+
+
+# --- yes/no flags ---------------------------------------------------------
+# `os.environ.get(name, "true").lower() == "true"` made a BLANK read as
+# False, so clearing GENERATE_THUMBNAILS in the launcher silently turned
+# thumbnails off instead of restoring the documented default.
+
+@pytest.mark.parametrize("default", [True, False])
+def test_env_flag_blank_keeps_the_default(smartgallery_app, monkeypatch, default):
+    for blank in ("", "   "):
+        monkeypatch.setenv("SG_FLAG_PROBE", blank)
+        assert smartgallery_app.env_flag("SG_FLAG_PROBE", default) is default
+    monkeypatch.delenv("SG_FLAG_PROBE")
+    assert smartgallery_app.env_flag("SG_FLAG_PROBE", default) is default
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("1", True), ("true", True), ("TRUE", True), ("Yes", True), ("on", True),
+    ("0", False), ("false", False), ("No", False), ("off", False),
+    (" true ", True),
+])
+def test_env_flag_recognized_words(smartgallery_app, monkeypatch, value, expected):
+    monkeypatch.setenv("SG_FLAG_PROBE", value)
+    assert smartgallery_app.env_flag("SG_FLAG_PROBE", not expected) is expected
+
+
+def test_env_flag_unrecognized_word_keeps_default(smartgallery_app, monkeypatch):
+    """A typo must not silently mean False."""
+    monkeypatch.setenv("SG_FLAG_PROBE", "maybe")
+    assert smartgallery_app.env_flag("SG_FLAG_PROBE", True) is True
+
+
+def test_env_num_none_default_for_optional_settings(smartgallery_app, monkeypatch):
+    """MAX_PARALLEL_WORKERS documents "leave empty for all cores"; blank and
+    garbage must both reach the auto path rather than raising."""
+    for value in ("", "   ", "lots"):
+        monkeypatch.setenv("MAX_PARALLEL_WORKERS", value)
+        assert smartgallery_app.env_num("MAX_PARALLEL_WORKERS", None) is None
+    monkeypatch.setenv("MAX_PARALLEL_WORKERS", "4")
+    assert smartgallery_app.env_num("MAX_PARALLEL_WORKERS", None) == 4
+
+
+def test_configuration_doc_covers_the_user_facing_env_vars():
+    """docs/CONFIGURATION.md is the reference; a setting users can set must
+    appear in it. Derived from the source so a new knob is caught here."""
+    import re
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    doc = open(os.path.join(root, "docs", "CONFIGURATION.md"),
+               encoding="utf-8").read()
+    src = open(os.path.join(root, "smartgallery.py"), encoding="utf-8").read()
+    pattern = re.compile(
+        r"""\b(?:env_or|env_num|env_flag)\s*\(\s*['"]([A-Z][A-Z0-9_]{2,})['"]""")
+    # PATH/DISPLAY-style environment probes are not settings; everything the
+    # app reads through its own config helpers is.
+    referenced = set(pattern.findall(src))
+    missing = sorted(v for v in referenced if v not in doc)
+    assert not missing, f"undocumented settings in docs/CONFIGURATION.md: {missing}"

@@ -10,6 +10,7 @@ SmartGallery works fully offline and does **not** require ComfyUI to be running.
 
 - [Requirements](#requirements)
 - [Installation & Update](#installation--update)
+- [Configuration Reference (every environment variable)](CONFIGURATION.md)
 - [AI Layer (Faces / Similar / Review / OmniQuery): INSTALL_AI.md](INSTALL_AI.md)
 - [FFmpeg / FFprobe Notes](#ffmpeg--ffprobe-notes)
 - [First Launch & Performance Notes](#first-launch--performance)
