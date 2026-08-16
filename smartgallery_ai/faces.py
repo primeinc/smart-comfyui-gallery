@@ -26,6 +26,7 @@ import json
 import os
 import sqlite3
 import time
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Mapping, Optional, Sequence, Union
@@ -36,6 +37,15 @@ from PIL import Image
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai.embedders import BackendUnavailable
+
+# insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate()
+# API; skimage 0.26 deprecates it with a FutureWarning that fires on
+# EVERY alignment. Silence exactly that warning at its source module —
+# every other warning stays visible.
+warnings.filterwarnings(
+    "ignore", category=FutureWarning,
+    module=r"insightface\.utils\.face_align",
+    message=r".*`estimate` is deprecated.*")
 
 __all__ = [
     "BackendUnavailable",
