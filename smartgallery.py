@@ -4853,7 +4853,11 @@ def gallery_view(folder_key):
                         files_list.append(d)
                     
                     # --- FIX: Apply UI Sorting ONLY if query doesn't have custom ORDER BY ---
-                    import re
+                    # `re` is imported at module level. Importing it again HERE
+                    # made the name local to the whole of gallery_view, and this
+                    # branch only runs for an OmniQuery request -- so every
+                    # ordinary prompt search reached the re.match below with the
+                    # name unbound and answered 500.
                     has_custom_order = False
                     if omniquery_sql:
                         has_custom_order = bool(re.search(r'\bORDER\s+BY\b', omniquery_sql, re.IGNORECASE))
@@ -5009,10 +5013,10 @@ def gallery_view(folder_key):
                         elif s.startswith('"') and s.endswith('"') and len(s) > 2:
                             clean_s = s[1:-1]
                             col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(workflow_prompt, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')"
-                            cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
+                            cond_str = f"ulower({col_expr}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
                             param_val = f"% {clean_s} %"
                         else:
-                            cond_str = f"workflow_prompt {'NOT LIKE' if is_not else 'LIKE'} ?"
+                            cond_str = f"ulower(workflow_prompt) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
                             param_val = f"%{s}%"
                             
                         if is_not:
@@ -5048,10 +5052,10 @@ def gallery_view(folder_key):
                         if s.startswith('"') and s.endswith('"') and len(s) > 2:
                             clean_s = s[1:-1]
                             col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(comment_text, ',', ' '), '?', ' '), '.', ' '), '!', ' '), char(10), ' ') || ' ')"
-                            cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE {col_expr} LIKE ?)"
+                            cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower({col_expr}) LIKE ulower(?))"
                             param_val = f"% {clean_s} %"
                         else:
-                            cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE comment_text LIKE ?)"
+                            cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower(comment_text) LIKE ulower(?))"
                             param_val = f"%{s}%"
                             
                         if is_not:
@@ -8514,10 +8518,10 @@ def collection_view(coll_id):
                 if s.startswith('"') and s.endswith('"') and len(s) > 2:
                     clean_s = s[1:-1]
                     col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(f.workflow_prompt, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')"
-                    cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
+                    cond_str = f"ulower({col_expr}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
                     param_val = f"% {clean_s} %"
                 else:
-                    cond_str = f"f.workflow_prompt {'NOT LIKE' if is_not else 'LIKE'} ?"
+                    cond_str = f"ulower(f.workflow_prompt) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
                     param_val = f"%{s}%"
                     
                 if is_not:
@@ -8555,10 +8559,10 @@ def collection_view(coll_id):
                 if s.startswith('"') and s.endswith('"') and len(s) > 2:
                     clean_s = s[1:-1]
                     col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(comment_text, ',', ' '), '?', ' '), '.', ' '), '!', ' '), char(10), ' ') || ' ')"
-                    cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE {col_expr} LIKE ?)"
+                    cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower({col_expr}) LIKE ulower(?))"
                     param_val = f"% {clean_s} %"
                 else:
-                    cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE comment_text LIKE ?)"
+                    cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower(comment_text) LIKE ulower(?))"
                     param_val = f"%{s}%"
                     
                 if is_not:

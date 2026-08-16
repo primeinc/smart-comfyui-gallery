@@ -128,3 +128,51 @@ def test_ascii_search_still_folds(smartgallery_app, library):
 def test_a_search_that_matches_nothing_still_matches_nothing(smartgallery_app, library):
     """Folding must not turn every search into a match."""
     assert _search(smartgallery_app, library, "zzz_no_such_file") == []
+
+
+def _filtered(smartgallery_app, library, query):
+    client = smartgallery_app.app.test_client()
+    html = client.get(f"/galleryout/view/_root_?{query}").get_data(as_text=True)
+    return sorted(name for name, fid in library.items() if fid and fid in html)
+
+
+@pytest.fixture()
+def annotated(smartgallery_app, library):
+    """The Greek file carries a comment and a prompt, both non-English."""
+    conn = smartgallery_app.get_db_connection()
+    try:
+        file_id = library[_FILES["greek"]]
+        conn.execute("INSERT INTO file_comments (file_id, client_uuid, author_name, "
+                     "comment_text, target_audience, created_at) "
+                     "VALUES (?, 'admin', 'Me', 'Καλημέρα κόσμε', 'public', 1.0)",
+                     (file_id,))
+        conn.execute("UPDATE files SET workflow_prompt = ? WHERE id = ?",
+                     ("портрет девушки", file_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return library
+
+
+@pytest.mark.parametrize("term", ["κόσμε", "ΚΌΣΜΕ", "Κόσμε"])
+def test_comment_search_folds_case_too(smartgallery_app, annotated, term):
+    """Comments are prose, so they are the likeliest thing in the gallery
+    not to be written in English."""
+    found = _filtered(smartgallery_app, annotated, f"comment_search={term}")
+
+    assert found == [_FILES["greek"]], f"searching comments for {term!r} found {found}"
+
+
+@pytest.mark.parametrize("term", ["портрет", "ПОРТРЕТ"])
+def test_prompt_search_folds_case_too(smartgallery_app, annotated, term):
+    found = _filtered(smartgallery_app, annotated, f"workflow_prompt={term}")
+
+    assert found == [_FILES["greek"]], f"searching prompts for {term!r} found {found}"
+
+
+def test_comment_search_still_excludes_what_it_should(smartgallery_app, annotated):
+    """The negation form has to keep working: folding both sides must not
+    turn a NOT LIKE into a match-everything."""
+    found = _filtered(smartgallery_app, annotated, "comment_search=ΚΌΣΜΕ")
+    assert _FILES["french"] not in found, (
+        "a file with no such comment came back from a comment search")
