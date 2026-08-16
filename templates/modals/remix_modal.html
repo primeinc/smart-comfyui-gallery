@@ -1073,6 +1073,22 @@
     let remixTargetFile = null;
     let activeTextareaId = null;
 
+    // For a value that lands inside a single-quoted JavaScript string which
+    // is itself inside a double-quoted HTML attribute. escapeHTML below is
+    // not a substitute: it turns ' into &#39;, the browser decodes the
+    // attribute BEFORE JavaScript reads it, and the apostrophe comes
+    // straight back -- so a template called "Bob's workflow" ended its own
+    // string and Select, Rename and Delete all threw.
+    function jsInAttr(value) {
+        return String(value === null || value === undefined ? '' : value)
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     function escapeHTML(str) {
         if (!str) return '';
         return String(str).replace(/[&<>'"]/g, 
@@ -1470,7 +1486,7 @@
                 };
                 
                 const getPinBtn = (isCust, id, key, idx, label) => {
-                    return `<button class="glass-btn pin-btn ${isCust ? 'pinned' : ''}" onclick="toggleCustomPin(this, '${id}', '${key||''}', '${idx!==undefined?idx:''}', '${escapeHTML(label)}')" title="Pin to Custom View">${isCust ? '⭐' : '📌'}</button>`;
+                    return `<button class="glass-btn pin-btn ${isCust ? 'pinned' : ''}" onclick="toggleCustomPin(this, '${id}', '${key||''}', '${idx!==undefined?idx:''}', '${jsInAttr(label)}')" title="Pin to Custom View">${isCust ? '⭐' : '📌'}</button>`;
                 };
 
                 if (currentRemixData.texts.length > 0) {
@@ -3508,7 +3524,7 @@ function closeRemixModal() {
                 : `<div style="width:44px; height:44px; border-radius:6px; background:#222; flex-shrink:0; border:1px solid #444; margin-right:12px; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">📄</div>`;
 
             html += `
-                <div class="remix-library-item ${isSelected ? 'selected' : ''}" onclick="selectWorkflow('${escapeHTML(w.name)}')">
+                <div class="remix-library-item ${isSelected ? 'selected' : ''}" onclick="selectWorkflow('${jsInAttr(w.name)}')">
                     ${thumbHtml}
                     <div style="flex:1; overflow:hidden;">
                         <div style="display:flex; align-items:center; margin-bottom:4px;">
@@ -3518,8 +3534,8 @@ function closeRemixModal() {
                         <div style="font-size:0.75rem; color:#666;">Template created: ${dateStr}</div>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <button class="glass-btn" onclick="event.stopPropagation(); renameWorkflow('${escapeHTML(w.name)}')" style="padding:4px 8px; font-size:0.8rem; color:#fff;" title="Rename">✏️</button>
-                        <button class="glass-btn" onclick="event.stopPropagation(); deleteWorkflow('${escapeHTML(w.name)}')" style="padding:4px 8px; font-size:0.8rem; border-color:var(--danger-color); color:#ff6666;" title="Delete">🗑️</button>
+                        <button class="glass-btn" onclick="event.stopPropagation(); renameWorkflow('${jsInAttr(w.name)}')" style="padding:4px 8px; font-size:0.8rem; color:#fff;" title="Rename">✏️</button>
+                        <button class="glass-btn" onclick="event.stopPropagation(); deleteWorkflow('${jsInAttr(w.name)}')" style="padding:4px 8px; font-size:0.8rem; border-color:var(--danger-color); color:#ff6666;" title="Delete">🗑️</button>
                     </div>
                 </div>
             `;

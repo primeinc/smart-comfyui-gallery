@@ -41,6 +41,20 @@
 // VIRTUAL COLLECTIONS HIERARCHICAL LOGIC
 // ==========================================
 
+// For a value that lands inside a single-quoted JavaScript string which is
+// itself inside a double-quoted HTML attribute: the browser decodes the
+// attribute first, then reads the result as JavaScript, so it has to be
+// escaped for both, in that order.
+function jsInAttr(value) {
+    return String(value === null || value === undefined ? '' : value)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 let colSortState = JSON.parse(localStorage.getItem('galleryColSortState') || '{"key":"name","dir":"asc"}'); 
 let colSearchTerm = '';
 let colNonEmptyOnly = localStorage.getItem('galleryColNonEmptyOnly') === 'true';
@@ -300,7 +314,10 @@ function renderSidebarTreeHTML(parentId = '_root_', isSearching = false, visible
         }
         
         let isActive = (typeof currentFolderInfo !== 'undefined' && c.id == currentFolderInfo.collection_id) ? 'active' : '';
-        let jsSafeName = c.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        // Escaped for the JavaScript string AND the HTML attribute around
+        // it, in that order. The previous pair handled both quotes but not
+        // the backslash before them.
+        let jsSafeName = jsInAttr(c.name);
         let toggleBtnText = c.is_public ? '🚫 Remove from Exhibition Ready Public' : '👁️ Set as Exhibition Ready Public';
 
         // NOTE: the "Upload Note" trigger button and its hidden file input no longer use

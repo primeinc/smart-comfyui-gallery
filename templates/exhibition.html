@@ -5551,7 +5551,7 @@ function renderMarkdownText(text) {
                 let hasChildren = !isSearching && childCollections.length > 0;
                 let isExpanded = exhColExpandedState.has(col.id) || isSearching;
                 
-                const safeName = escapeHtml(col.name).replace(/'/g, "\\\'").replace(/"/g, "&quot;");
+                const safeName = jsInAttr(col.name);
                 
                 let iconStr = col.restricted_access ? "🔒" : (col.is_shared_access ? "👥" : "📚");
                 // Add tooltip for ADMIN users to see who the collection is shared with

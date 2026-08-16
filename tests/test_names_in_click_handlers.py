@@ -66,10 +66,17 @@ def _node():
 def _extract(template: str) -> str:
     """The jsInAttr function, exactly as the browser will run it."""
     source = (_TEMPLATES / template).read_text(encoding="utf-8")
-    match = re.search(r"function jsInAttr\(value\) \{.*?\n {4,8}\}",
+    # The closing brace sits at whatever column the enclosing script uses --
+    # column 0 in collections.html, four or eight elsewhere. Requiring an
+    # indent captured a truncated chunk there and blamed the template.
+    match = re.search(r"function jsInAttr\(value\) \{.*?\n {0,8}\}",
                       source, re.DOTALL)
     assert match, f"{template} has no jsInAttr; the escaping has gone"
-    return match.group(0)
+    extracted = match.group(0)
+    assert extracted.count("replace(") == 6, (
+        f"{template}: extracted {extracted.count('replace(')} replace calls, "
+        f"expected 6 -- the function was cut short:\n{extracted}")
+    return extracted
 
 
 def _round_trip(template: str, values):
@@ -96,7 +103,9 @@ console.log(JSON.stringify(out));
     return json.loads(done.stdout)
 
 
-@pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
+@pytest.mark.parametrize("template", ["index.html", "exhibition.html",
+                                      "collections.html",
+                                      "modals/remix_modal.html"])
 def test_every_name_survives_both_parsers(template):
     """The whole contract: what goes in is what the handler receives."""
     results = _round_trip(template, _CASES)
@@ -106,7 +115,9 @@ def test_every_name_survives_both_parsers(template):
         assert result["parsed"] == original, (original, result)
 
 
-@pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
+@pytest.mark.parametrize("template", ["index.html", "exhibition.html",
+                                      "collections.html",
+                                      "modals/remix_modal.html"])
 def test_nothing_can_close_the_attribute(template):
     """The security half. A bare double quote ends onclick=" and whatever
     follows becomes attributes on the tag."""
@@ -117,7 +128,9 @@ def test_nothing_can_close_the_attribute(template):
         assert "<" not in result["escaped"], (original, result["escaped"])
 
 
-@pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
+@pytest.mark.parametrize("template", ["index.html", "exhibition.html",
+                                      "collections.html",
+                                      "modals/remix_modal.html"])
 def test_the_check_would_notice_an_unescaped_value(template):
     """Control. Without it the two tests above could be passing because the
     round trip is lenient rather than because the escaping works, so the
@@ -144,6 +157,28 @@ console.log(JSON.stringify(out));
         f"only {len(broke)} of the cases misbehave unescaped, so this set is "
         f"too gentle to prove the escaping does anything: {broke}")
     assert "Bob's renders" in broke, broke
+
+
+def test_an_html_entity_escaper_is_never_used_inside_a_javascript_string():
+    """The mistake that made the Remix library look protected.
+
+    escapeHTML turns ' into &#39;, which is right for text between tags and
+    useless here: the browser decodes the attribute BEFORE JavaScript reads
+    it, so the apostrophe comes back and ends the string. Proven with node
+    -- "Bob's workflow" became Bob&#39;s workflow, decoded to Bob's
+    workflow, and threw Unexpected identifier 's'.
+
+    Deferred in the previous commit on the grounds that those sites "at
+    least pass through an escaper". They did; it was the wrong one."""
+    offenders = []
+    for template in _TEMPLATES.rglob("*.html"):
+        for line in template.read_text(encoding="utf-8").splitlines():
+            if re.search(r"'\$\{escapeHTML\(|'\$\{escapeHtml\(", line):
+                offenders.append(f"{template.name}: {line.strip()[:70]}")
+
+    assert not offenders, (
+        f"{len(offenders)} site(s) put an HTML-entity-escaped value inside a "
+        f"JavaScript string; use jsInAttr: {offenders[:3]}")
 
 
 def test_the_folder_menu_uses_the_escaped_name():
