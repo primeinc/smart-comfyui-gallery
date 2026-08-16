@@ -11,6 +11,12 @@ that exactly like leaving it unset. Values are trimmed, an unparseable
 number or yes/no word warns on the console and falls back to the default,
 and nothing here can stop the app from starting.
 
+Numbers that parse but cannot work — a zero or a negative where a count or
+a size is wanted — do the same. `BATCH_SIZE=0` warns and uses 500 rather
+than stopping the scan. Where zero is meaningful it is kept:
+`STREAM_THRESHOLD_MB=0` streams everything, and in the AI layer
+`AI_DAM_FACE_DETECT_MAX_SIDE=0` disables the cap.
+
 Yes/no settings accept `1 / true / yes / on` and `0 / false / no / off`, in
 any case.
 

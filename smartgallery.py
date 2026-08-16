@@ -187,21 +187,34 @@ def env_or(name, default):
     return default if value is None or not value.strip() else value.strip()
 
 
-def env_num(name, default, cast=int):
-    """Numeric environment value, or `default` when unset, blank, or
-    unparseable.
+def env_num(name, default, cast=int, minimum=None):
+    """Numeric environment value, or `default` when unset, blank,
+    unparseable, or below `minimum`.
 
     Most of these are read at module scope, so `int(os.environ.get(...))`
     turned a blank or fat-fingered value into a ValueError during import:
     the gallery refused to start, with a traceback that never named the
     variable at fault. A bad number should cost you that setting, not the
     whole application.
+
+    `minimum` extends that to numbers which parse perfectly and then break
+    something further off, where the traceback names Python rather than the
+    setting. A zero is the easy slip and every one of these was fatal:
+
+        BATCH_SIZE=0            range() arg 3 must not be zero -- no scan
+        MAX_PARALLEL_WORKERS=0  max_workers must be greater than 0 -- no scan
+        THUMBNAIL_WIDTH=0       ZeroDivisionError on every thumbnail
     """
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
         return default
     try:
-        return cast(raw.strip())
+        value = cast(raw.strip())
+        if minimum is not None and value < minimum:
+            print(f"WARNING: {name}={raw!r} is below the minimum of {minimum}; "
+                  f"using {default}.")
+            return default
+        return value
     except (TypeError, ValueError):
         print(f"WARNING: {name}={raw!r} is not a valid number; using {default}.")
         return default
@@ -266,20 +279,20 @@ FFPROBE_MANUAL_PATH = env_or('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
 # Port on which the gallery web server will run. 
 # Must be different from the ComfyUI port (usually 8188).
 # The gallery does not require ComfyUI to be running; it works independently.
-SERVER_PORT = env_num('SERVER_PORT', 8189)
+SERVER_PORT = env_num('SERVER_PORT', 8189, minimum=1)
 
 # Width (in pixels) of the generated thumbnails.
-THUMBNAIL_WIDTH = env_num('THUMBNAIL_WIDTH', 300)
+THUMBNAIL_WIDTH = env_num('THUMBNAIL_WIDTH', 300, minimum=1)
 
 # Assumed frame rate for animated WebP files.  
 # Many tools, including ComfyUI, generate WebP animations at ~16 FPS.  
 # Adjust this value if your WebPs use a different frame rate,  
 # so that animation durations are calculated correctly.
-WEBP_ANIMATED_FPS = env_num('WEBP_ANIMATED_FPS', 16.0, float)
+WEBP_ANIMATED_FPS = env_num('WEBP_ANIMATED_FPS', 16.0, float, minimum=0.1)
 
 # Maximum number of files to load initially before showing a "Load more" button.  
 # Use a very large number (e.g., 9999999) for "infinite" loading.
-PAGE_SIZE = env_num('PAGE_SIZE', 100)
+PAGE_SIZE = env_num('PAGE_SIZE', 100, minimum=1)
 
 # Names of special folders (e.g., 'video', 'audio').  
 # These folders will appear in the menu only if they exist inside BASE_OUTPUT_PATH.  
@@ -289,19 +302,19 @@ SPECIAL_FOLDERS = ['video', 'audio']
 # Number of files to process at once during database sync. 
 # Higher values use more memory but may be faster. 
 # Lower this if you run out of memory.
-BATCH_SIZE = env_num('BATCH_SIZE', 500)
+BATCH_SIZE = env_num('BATCH_SIZE', 500, minimum=1)
 
 # Threshold (in MB) above which videos will be streamed (transcoded) 
 # instead of loaded natively in the gallery grid preview.
 # Default: 50 MB. Set to 0 to force streaming for all supported videos.
-STREAM_THRESHOLD_MB = env_num('STREAM_THRESHOLD_MB', 20)
+STREAM_THRESHOLD_MB = env_num('STREAM_THRESHOLD_MB', 20, minimum=0)
 STREAM_THRESHOLD_BYTES = STREAM_THRESHOLD_MB * 1024 * 1024
 
 # Number of parallel processes to use for thumbnail and metadata generation.
 # - None or empty string: use all available CPU cores (fastest, recommended)
 # - 1: disable parallel processing (slowest, like in previous versions)
 # - Specific number (e.g., 4): limit CPU usage on multi-core machines
-MAX_PARALLEL_WORKERS = env_num('MAX_PARALLEL_WORKERS', None)
+MAX_PARALLEL_WORKERS = env_num('MAX_PARALLEL_WORKERS', None, minimum=1)
 if MAX_PARALLEL_WORKERS is not None:
     pass  # explicit worker count honored as given
 else:
@@ -9947,7 +9960,7 @@ import urllib.error
 import urllib.parse
 
 # Increase max request body size to handle large workflow JSON payloads (if users manually upload them, though we now read from disk)
-app.config['MAX_CONTENT_LENGTH'] = env_num('COMFYUI_MAX_UPLOAD_MB', 2000) * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = env_num('COMFYUI_MAX_UPLOAD_MB', 2000, minimum=1) * 1024 * 1024
 
 
 # Experimental Remix API Module
