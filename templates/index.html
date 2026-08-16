@@ -751,7 +751,7 @@ document.addEventListener('focusout', function(e) {
             {% endif %}
             
             <!-- Mobile Tools Button -->
-            <button class="glass-btn mobile-only push-right" type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="Search (Ctrl+P)" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
+            <button type="button" onclick="handleOmniQueryClick(event)" class="glass-btn mobile-only push-right {% if is_omniquery %}active-fuxia{% endif %}" title="Search (Ctrl+P)" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
                 ⚡ OmniQuery 
                 {% if is_omniquery %}
                     <span class="filter-reset-icon filter-reset-badge" style="margin-left:8px; background:rgba(255,255,255,0.2);" onclick="event.stopPropagation(); window.location.href='{{ url_for('gallery_view', folder_key=current_folder_key) }}'" title="Reset OmniQuery">✕</span>
