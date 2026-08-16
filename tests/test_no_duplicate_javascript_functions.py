@@ -114,6 +114,23 @@ def test_no_function_is_declared_twice_on_the_exhibition_page(smartgallery_app,
     assert not unexpected, unexpected
 
 
+def test_no_function_is_declared_twice_on_the_ai_dashboard(management_page,
+                                                           smartgallery_app,
+                                                           monkeypatch):
+    """The third page. It is a separate template that neither of the other
+    two includes, so nothing here is implied by them."""
+    monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
+    monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
+    response = smartgallery_app.app.test_client().get("/galleryout/aidam")
+    assert response.status_code == 200, response.status_code
+
+    dupes, total = _duplicates(response.get_data(as_text=True))
+
+    assert total > 5, f"only {total} declarations found on the dashboard"
+    unexpected = {name: n for name, n in dupes.items() if name not in _ACCEPTED}
+    assert not unexpected, unexpected
+
+
 def test_the_accepted_list_is_still_describing_something_real():
     """An allowlist that outlives its entry is a lie in a test file. If the
     duplicate is resolved, this fails and the entry goes."""

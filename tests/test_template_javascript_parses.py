@@ -126,6 +126,21 @@ def test_the_exhibition_page_ships_parseable_javascript(smartgallery_app,
     assert not errors, errors
 
 
+def test_the_ai_dashboard_ships_parseable_javascript(client, tmp_path):
+    """The third page, and the one this check did not reach for two
+    commits. It carries the newest code in the project, which is where a
+    syntax error is most likely and where nothing would have reported it."""
+    response = client.get("/galleryout/aidam")
+    assert response.status_code == 200, response.status_code
+
+    blocks = _executable_blocks(response.get_data(as_text=True))
+    assert blocks, "no script found on the dashboard"
+
+    errors = _syntax_errors(blocks, tmp_path)
+
+    assert not errors, errors
+
+
 def test_a_script_that_is_not_javascript_is_left_alone():
     """The changelog travels inside a script tag as text/markdown. Browsers
     do not run it and neither does this, or every release note would have
