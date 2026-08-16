@@ -381,3 +381,16 @@ def test_gallery_view_shows_aidam_surfaces_when_enabled(smartgallery_app, monkey
     assert "lightbox-aidam-btn" in html
     assert "aidam-overlay" in html
     assert "openAidamPanel()" in html
+
+
+def test_models_dir_env_published_for_env_reading_consumers(smartgallery_app):
+    """smartgallery_ai.llama_runtime and the omniquery model defaults
+    resolve the models dir from AI_DAM_MODELS_DIR; startup publishes the
+    config's resolved gallery-root-anchored path so a foreign process CWD
+    (ComfyUI plugin deployments) cannot point them at a directory
+    provisioning never writes to. A user's own env value wins, and in both
+    branches the invariant holds: env == config."""
+    import os
+
+    assert os.path.abspath(os.environ["AI_DAM_MODELS_DIR"]) == \
+        os.path.abspath(smartgallery_app.AI_CONFIG.models_dir)

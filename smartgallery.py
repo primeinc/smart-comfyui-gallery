@@ -426,6 +426,12 @@ PROTECTED_FOLDER_KEYS.add('_root_')
 # Opt out entirely:            ENABLE_AI_DAM=false
 # Opt out of downloads only:   AI_DAM_AUTO_PROVISION=false
 AI_CONFIG = smartgallery_ai.AIConfig.from_env(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
+# Env-reading consumers (smartgallery_ai.llama_runtime, the omniquery model
+# defaults) must resolve the SAME models directory provisioning writes to.
+# The config anchors it at the gallery root; the process CWD may be
+# elsewhere (ComfyUI plugin deployments), so publish the resolved path --
+# a user's own AI_DAM_MODELS_DIR still wins.
+os.environ.setdefault("AI_DAM_MODELS_DIR", os.path.abspath(AI_CONFIG.models_dir))
 
 
 # --- CONSOLE STYLING ---
