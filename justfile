@@ -17,8 +17,8 @@ test:
 # nothing reads, a setting the server honours that never reaches the page, a
 # setting a layer underneath silently caps, a subprocess that can hang, a
 # pipe read with no clock on it, output that cannot carry the names it
-# prints, a misspelt setting name, a
-# documented way of running the suite that does not work, a password
+# prints, a guard stricter than the thing it guards, a misspelt setting
+# name, a documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
 # imports, someone's own launch script shipped in the repository, a
@@ -46,6 +46,7 @@ audit:
         tests/test_comfyui_address_reaches_the_page.py \
         tests/test_upload_limit_is_the_configured_one.py \
         tests/test_console_carries_any_filename.py \
+        tests/test_port_check_matches_the_server.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
         tests/test_env_var_typos.py \

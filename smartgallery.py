@@ -10501,8 +10501,28 @@ def check_port_available(port):
     """
     Checks if the specified port is available on the host machine.
     Returns True if available, False if already in use.
+
+    It binds the way the server is about to bind, which is the only thing
+    that makes the answer worth having. waitress calls set_reuse_addr()
+    on its listening socket before binding it, and werkzeug's server sets
+    allow_reuse_address as well, so both ask for SO_REUSEADDR. A check
+    that binds without it is stricter than the server it stands in front
+    of, and the gap is not hypothetical: on POSIX a port still holding
+    connections from a crashed run refuses a plain bind and accepts the
+    server's. Refusing there means the gallery announces PORT ALREADY IN
+    USE and waits for a keypress, over a port it could have listened on.
+
+    Matching the server also means this cannot drift the other way. It
+    asks for exactly what the server asks for, so whatever the option
+    means on a given system, both get the same answer.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
+                         s.getsockopt(socket.SOL_SOCKET,
+                                      socket.SO_REUSEADDR) | 1)
+        except OSError:
+            pass  # same tolerance waitress has; the bind is what matters
         try:
             s.bind(('0.0.0.0', port))
             return True
@@ -13118,17 +13138,15 @@ if __name__ == '__main__':
         
     print(f"   (Press CTRL+C to stop)")
 
-    # --- FORCE SOCKET REUSE (LINUX/TMUX FIX) ---
-    # This tells the OS kernel: "If the server crashes, don't lock the port in TIME_WAIT. Let me reuse it immediately."
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, 'SO_REUSEPORT'): # Linux/macOS specific
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        s.close()
-    except Exception:
-        pass
+    # Socket reuse is the server's own doing and needs nothing here.
+    # waitress calls set_reuse_addr() on its listening socket before
+    # binding it; werkzeug's server sets allow_reuse_address. There was a
+    # block here that made a socket of its own, set SO_REUSEADDR and
+    # SO_REUSEPORT on it, and closed it again without ever binding it --
+    # options belong to a socket, not to the kernel, so it changed
+    # nothing about the one the server went on to open. What it was
+    # reaching for was real, and it belongs in check_port_available,
+    # which is the thing that was refusing to start.
 
     if WAITRESS_AVAILABLE:
         # PRODUCTION MODE: Launching with Waitress WSGI Server
