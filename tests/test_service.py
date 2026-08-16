@@ -666,3 +666,34 @@ def test_faces_compare_nonrenderable_422(fixture):
     res = fixture.client.get(f"{_PREFIX}/faces/compare/dup_target")
     assert res.status_code == 422
     assert "renderable" in res.get_json()["error"]
+
+
+# --- /faces/recent + cluster attribute aggregates ------------------------------
+
+
+def test_faces_recent_lists_scanned_files(fixture):
+    """Recent-faces picker: files with face rows, newest scan first."""
+    res = fixture.client.get(f"{_PREFIX}/faces/recent")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["enabled"] is True
+    assert isinstance(data["files"], list)
+    for entry in data["files"]:
+        assert set(entry) == {"file_id", "faces"} and entry["faces"] >= 1
+
+
+def test_faces_cluster_detail_reports_attribute_aggregates(fixture):
+    """Cluster detail carries typed attribute aggregates and per-member
+    age/sex/pose so the dashboard can describe the bucket."""
+    clusters = fixture.client.get(f"{_PREFIX}/faces/clusters").get_json()["clusters"]
+    if not clusters:
+        import pytest
+        pytest.skip("fixture has no clusters")
+    detail = fixture.client.get(
+        f"{_PREFIX}/faces/clusters/{clusters[0]['cluster_id']}").get_json()
+    assert "attributes" in detail
+    agg = detail["attributes"]
+    assert {"with_age", "age_min", "age_max", "age_avg",
+            "male", "female", "yaw_abs_avg"} <= set(agg)
+    for member in detail["members"]:
+        assert {"age", "sex", "pose_yaw"} <= set(member)
