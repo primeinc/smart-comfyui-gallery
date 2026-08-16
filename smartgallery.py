@@ -1493,6 +1493,67 @@ def _is_under(path, root):
     return candidate.startswith(parent + '/')
 
 
+# The typed operators a prompt search understands, and the generation_params
+# column each text one looks in.
+_PROMPT_SEARCH_OPERATOR = re.compile(
+    r'^(neg|tool|model|sampler|scheduler|seed|steps|cfg):(.*)$', re.IGNORECASE)
+_PROMPT_SEARCH_TEXT_COLUMNS = {'neg': 'negative_prompt', 'tool': 'tool',
+                               'model': 'model', 'sampler': 'sampler',
+                               'scheduler': 'scheduler'}
+
+
+def prompt_search_condition(term, is_not, prompt_column):
+    """One term of a `workflow_prompt=` search as (sql, parameter).
+
+    Shared by the folder view and the collection view because they had a
+    copy each and the copies drifted: only the folder one learned the
+    typed operators, so `seed:12345` found the picture in a folder and
+    found nothing at all inside an album -- which reads as "there are none
+    of those here" rather than as a missing feature.
+
+    `prompt_column` is how the caller spells the column (`workflow_prompt`
+    or `f.workflow_prompt`); the typed operators join generation_params
+    against `f.id`, which both queries alias the same way.
+
+    Returns None for a term with nothing left in it.
+    """
+    if not term:
+        return None
+
+    typed = _PROMPT_SEARCH_OPERATOR.match(term)
+    if typed:
+        name = typed.group(1).lower()
+        value = typed.group(2).strip().strip('"')
+        if not value:
+            return None
+        if name in _PROMPT_SEARCH_TEXT_COLUMNS:
+            inner = (f"SELECT 1 FROM generation_params gp "
+                     f"WHERE gp.file_id = f.id "
+                     f"AND gp.{_PROMPT_SEARCH_TEXT_COLUMNS[name]} LIKE ?")
+            parameter = f"%{value}%"
+        else:
+            try:
+                parameter = float(value) if name == 'cfg' else int(value)
+            except ValueError:
+                return None
+            inner = (f"SELECT 1 FROM generation_params gp "
+                     f"WHERE gp.file_id = f.id AND gp.{name} = ?")
+        return f"{'NOT ' if is_not else ''}EXISTS ({inner})", parameter
+
+    if term.startswith('"') and term.endswith('"') and len(term) > 2:
+        # A quoted phrase matches whole words, so the separators become
+        # spaces and the comparison is padded on both sides.
+        spaced = (f"(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                  f"REPLACE(REPLACE(REPLACE(REPLACE({prompt_column}, ',', ' '), "
+                  f"'|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), "
+                  f"')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')")
+        return (f"ulower({spaced}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)",
+                f"% {term[1:-1]} %")
+
+    return (f"ulower({prompt_column}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)",
+            f"%{term}%")
+
+
 def _descendant_filter(column, folder_path):
     """SQL condition and parameter selecting everything stored under
     `folder_path`, however deep.
@@ -5525,43 +5586,11 @@ def gallery_view(folder_key):
                             s = s[1:].strip()
                         if not s: continue
                         
-                        # Typed generation_params operators: neg:, tool:,
-                        # model:, sampler:, scheduler: (LIKE) and seed:,
-                        # steps:, cfg: (typed equality). '!' negation applies.
-                        gp_match = re.match(
-                            r'^(neg|tool|model|sampler|scheduler|seed|steps|cfg):(.*)$',
-                            s, re.IGNORECASE)
-                        if gp_match:
-                            op_name = gp_match.group(1).lower()
-                            op_val = gp_match.group(2).strip().strip('"')
-                            if not op_val: continue
-                            _GP_TEXT = {'neg': 'negative_prompt', 'tool': 'tool',
-                                        'model': 'model', 'sampler': 'sampler',
-                                        'scheduler': 'scheduler'}
-                            if op_name in _GP_TEXT:
-                                inner = (f"SELECT 1 FROM generation_params gp "
-                                         f"WHERE gp.file_id = f.id AND gp.{_GP_TEXT[op_name]} LIKE ?")
-                                param_val = f"%{op_val}%"
-                            else:
-                                if op_name == 'cfg':
-                                    try: typed_val = float(op_val)
-                                    except ValueError: continue
-                                else:
-                                    try: typed_val = int(op_val)
-                                    except ValueError: continue
-                                inner = (f"SELECT 1 FROM generation_params gp "
-                                         f"WHERE gp.file_id = f.id AND gp.{op_name} = ?")
-                                param_val = typed_val
-                            cond_str = f"{'NOT ' if is_not else ''}EXISTS ({inner})"
-                        elif s.startswith('"') and s.endswith('"') and len(s) > 2:
-                            clean_s = s[1:-1]
-                            col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(workflow_prompt, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')"
-                            cond_str = f"ulower({col_expr}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
-                            param_val = f"% {clean_s} %"
-                        else:
-                            cond_str = f"ulower(workflow_prompt) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
-                            param_val = f"%{s}%"
-                            
+                        built = prompt_search_condition(s, is_not, 'workflow_prompt')
+                        if built is None:
+                            continue
+                        cond_str, param_val = built
+
                         if is_not:
                             not_conds.append((cond_str, param_val))
                         else:
@@ -9100,15 +9129,11 @@ def collection_view(coll_id):
                     s = s[1:].strip()
                 if not s: continue
                 
-                if s.startswith('"') and s.endswith('"') and len(s) > 2:
-                    clean_s = s[1:-1]
-                    col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(f.workflow_prompt, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')"
-                    cond_str = f"ulower({col_expr}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
-                    param_val = f"% {clean_s} %"
-                else:
-                    cond_str = f"ulower(f.workflow_prompt) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)"
-                    param_val = f"%{s}%"
-                    
+                built = prompt_search_condition(s, is_not, 'f.workflow_prompt')
+                if built is None:
+                    continue
+                cond_str, param_val = built
+
                 if is_not:
                     not_conds.append((cond_str, param_val))
                 else:
