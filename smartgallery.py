@@ -4034,6 +4034,38 @@ def genparams_summary():
     })
 
 
+def account_expired_on(user_row):
+    """When this account's access lapsed, or None if it has not.
+
+    `expiry_date` is written by the user manager and drawn there in red,
+    with an hourglass, once the date has passed -- and nothing ever read it
+    back. An operator handing a client access until Friday saw the account
+    marked expired on Saturday and it still logged in, which is the worst
+    arrangement: the interface asserts a rule the server does not keep.
+
+    A value that cannot be read as a date is treated as no expiry and said
+    so on the console. Locking someone out of their own gallery over a
+    malformed field is a worse failure than the one being fixed, and the
+    field is optional to begin with.
+    """
+    try:
+        raw = (user_row['expiry_date'] or '').strip()
+    except (KeyError, IndexError, TypeError):
+        return None
+    if not raw:
+        return None
+    try:
+        when = datetime.fromisoformat(raw)
+    except ValueError:
+        try:
+            when = datetime.strptime(raw[:10], '%Y-%m-%d')
+        except ValueError:
+            print(f"WARNING: user {user_row['username']!r} has an unreadable "
+                  f"expiry_date ({raw!r}); treating the account as never expiring.")
+            return None
+    return when if when < datetime.now() else None
+
+
 @app.route('/galleryout/login', methods=['POST'])
 def exhibition_login():
     import secrets # <--- FIX CRITICO: Import a livello di funzione prima di usarlo
@@ -4093,6 +4125,24 @@ def exhibition_login():
             # against a decoy so login latency does not reveal whether the
             # username exists (account-enumeration mitigation).
             sg_auth.dummy_verify()
+
+        # Checked only after the password has been verified, so a wrong
+        # password still gets the same generic answer as an unknown user and
+        # nothing here tells a stranger which accounts exist.
+        #
+        # The admin's env/CLI password is exempt. That credential belongs to
+        # whoever controls the machine rather than to the account, and it is
+        # the documented way back in; letting an expiry date disable it would
+        # mean an operator who put a date on their own admin account had no
+        # route to their gallery except editing the database by hand.
+        if user and is_valid:
+            expired_on = account_expired_on(user)
+            if expired_on and not (username == 'admin' and ADMIN_PASS_INPUT):
+                return jsonify({
+                    'status': 'error',
+                    'message': f"This account expired on "
+                               f"{expired_on.strftime('%Y-%m-%d %H:%M')}. "
+                               f"Ask an administrator to extend it."}), 403
 
         if user and is_valid:
             try:
