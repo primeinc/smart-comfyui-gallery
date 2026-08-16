@@ -4465,6 +4465,21 @@ def exhibition_logout():
     session.clear()
     return redirect(url_for('gallery_view', folder_key='_root_'))
 
+def _user_write_error(exc):
+    """What went wrong with a user, said so somebody can act on it.
+
+    The database enforces both of these, and the raw text it raises --
+    "UNIQUE constraint failed: users.username" -- is not something to show
+    a person who has just typed a name that is already taken.
+    """
+    text = str(exc)
+    if 'users.username' in text:
+        return 'That username is already taken.'
+    if 'role IN' in text:
+        return 'That is not a role this gallery knows.'
+    return text
+
+
 @app.route('/galleryout/api/admin/users', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def admin_manage_users():
     user_role = session.get('role')
@@ -4511,31 +4526,38 @@ def admin_manage_users():
                 conn.commit()
                 return jsonify({'status': 'success'})
             except Exception as e:
-                return jsonify({'status': 'error', 'message': str(e)}), 400
+                return jsonify({'status': 'error', 'message': _user_write_error(e)}), 400
 
         if request.method == 'PUT':
             # EDIT (empty password = keep the currently stored hash)
+            # The same guard as creating one. Without it, renaming somebody
+            # to a username that already exists -- an ordinary slip -- came
+            # back as a 500 with no body at all, so the screen could not
+            # even say what was wrong.
             user_id = data.get('user_id')
-            if password_input:
-                conn.execute("""
-                    UPDATE users SET
-                        username=?, password=?, full_name=?, role=?, email=?,
-                        phone_number=?, expiry_date=?, is_active=?
-                    WHERE user_id=? AND username != 'admin'
-                """, (data['username'], sg_auth.hash_password(password_input),
-                      data['full_name'], data['role'],
-                      data.get('email'), data.get('phone_number'),
-                      data.get('expiry_date'), data.get('is_active'), user_id))
-            else:
-                conn.execute("""
-                    UPDATE users SET
-                        username=?, full_name=?, role=?, email=?,
-                        phone_number=?, expiry_date=?, is_active=?
-                    WHERE user_id=? AND username != 'admin'
-                """, (data['username'], data['full_name'], data['role'],
-                      data.get('email'), data.get('phone_number'),
-                      data.get('expiry_date'), data.get('is_active'), user_id))
-            conn.commit()
+            try:
+                if password_input:
+                    conn.execute("""
+                        UPDATE users SET
+                            username=?, password=?, full_name=?, role=?, email=?,
+                            phone_number=?, expiry_date=?, is_active=?
+                        WHERE user_id=? AND username != 'admin'
+                    """, (data['username'], sg_auth.hash_password(password_input),
+                          data['full_name'], data['role'],
+                          data.get('email'), data.get('phone_number'),
+                          data.get('expiry_date'), data.get('is_active'), user_id))
+                else:
+                    conn.execute("""
+                        UPDATE users SET
+                            username=?, full_name=?, role=?, email=?,
+                            phone_number=?, expiry_date=?, is_active=?
+                        WHERE user_id=? AND username != 'admin'
+                    """, (data['username'], data['full_name'], data['role'],
+                          data.get('email'), data.get('phone_number'),
+                          data.get('expiry_date'), data.get('is_active'), user_id))
+                conn.commit()
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': _user_write_error(e)}), 400
             return jsonify({'status': 'success'})
         
         if request.method == 'DELETE':
