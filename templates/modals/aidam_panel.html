@@ -736,10 +736,18 @@
     // --- REVIEW ---
     const _AIDAM_SEVERITY_COLORS = { low: '#3498db', medium: '#f1c40f', high: '#e67e22', critical: '#e74c3c' };
 
-    function aidamMeter(label, value) {
+    // The two review scores do NOT share a scale: quality_score is 0..10,
+    // prompt_alignment_score is 0..1 (a satisfied/total fraction). `max` is
+    // the value's native ceiling -- assuming 0..1 for both made every
+    // quality >= 1.0 render as a full bar.
+    function aidamMeter(label, value, max) {
+        const ceiling = max || 1;
         const hasValue = value !== null && value !== undefined;
-        const pct = hasValue ? Math.max(0, Math.min(100, Math.round(value * 100))) : 0;
-        const shown = hasValue ? pct + '%' : 'n/a';
+        const fraction = hasValue ? Math.max(0, Math.min(1, value / ceiling)) : 0;
+        const pct = Math.round(fraction * 100);
+        const shown = !hasValue ? 'n/a'
+            : (ceiling === 1 ? pct + '%'
+                             : `${Number(value).toFixed(1)} / ${ceiling}`);
         return `
             <div class="aidam-meter">
                 <div class="aidam-meter-label"><span>${escapeAidamHtml(label)}</span><span>${shown}</span></div>
@@ -840,8 +848,8 @@
             </div>`;
 
             html += `<div class="aidam-meter-row">
-                ${aidamMeter('Quality', review.scores ? review.scores.quality : null)}
-                ${aidamMeter('Prompt Alignment', review.scores ? review.scores.prompt_alignment : null)}
+                ${aidamMeter('Quality', review.scores ? review.scores.quality : null, 10)}
+                ${aidamMeter('Prompt Alignment', review.scores ? review.scores.prompt_alignment : null, 1)}
             </div>`;
 
             const alignmentMissing = !review.scores || review.scores.prompt_alignment === null

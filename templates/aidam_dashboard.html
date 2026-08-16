@@ -567,7 +567,9 @@ async function loadReviews() {
             return;
         }
         box.innerHTML = '<div class="thumb-grid">' + reviews.map(rv => {
-            const q = (rv.quality === null || rv.quality === undefined) ? 'n/a' : Math.round(rv.quality * 10) + '/10';
+            // quality_score is already 0..10; multiplying by 10 rendered an 8 as "80/10".
+            const q = (rv.quality === null || rv.quality === undefined)
+                ? 'n/a' : Number(rv.quality).toFixed(1) + '/10';
             const tag = `${rv.finding_count > 0 ? rv.finding_count + ' · ' : ''}${q}`;
             return `<div class="thumb-tile" title="${esc(rv.summary || '')}" onclick="window.open('/galleryout/file/${encodeURIComponent(rv.file_id)}', '_blank')">
                 <img src="${thumb(rv.file_id)}" alt="">
