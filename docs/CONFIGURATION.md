@@ -25,7 +25,7 @@ any case.
 | `BASE_SMARTGALLERY_PATH` | same as `BASE_OUTPUT_PATH` | Where service folders live (database, thumbnail cache, zips). Point it off your output folder to keep system files out of the gallery. |
 | `BASE_MODELS_PATH` | `<parent of output>/models` | ComfyUI models root, for Remix model pickers. |
 | `LORAS_PATH` / `CHECKPOINTS_PATH` / `UNET_PATH` | `<models>/loras`, `/checkpoints`, `/unet` | Override individually for split model layouts (Stability Matrix, `extra_model_paths.yaml`). |
-| `DELETE_TO` | unset (permanent delete) | When set, deletes move files to `DELETE_TO/SmartGallery/<timestamp>_<name>` instead of removing them. |
+| `DELETE_TO` | unset (permanent delete) | When set, deletes move files **and folders** to `DELETE_TO/SmartGallery/<timestamp>_<name>` instead of removing them, so a mistake is recoverable. Links and shortcuts are only unlinked, never relocated. The folder is created on first start; point it at a path the app can write to. |
 | `FFPROBE_MANUAL_PATH` | `C:/ffmpeg/bin/ffprobe.exe` | Full path to **ffprobe** (not ffmpeg — the app verifies which one it is and falls back to your `PATH` if it is the wrong tool). |
 
 ## Server and access

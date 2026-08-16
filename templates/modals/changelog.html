@@ -2,6 +2,33 @@
 <script id="changelog-data" type="text/markdown">
 # Changelog
 
+### **[Unreleased]**
+
+### 🛡️ Data Safety
+
+* **Renaming a file now works.** Every rename previously failed with a server error, from both the toolbar and the <kbd>R</kbd> shortcut.
+* **Uploads no longer overwrite.** Uploading a file whose name matched one already in the folder replaced it silently and still reported success. The arriving file is now saved alongside as `name(1).png`, matching what moving a file has always done.
+* **Trash (`DELETE_TO`) is usable again.** Setting it prevented the app from starting unless its folder already existed — so the one setting that makes deletions recoverable could not be turned on.
+* **Deleting a folder respects the trash.** With `DELETE_TO` set, folder deletion permanently destroyed everything inside instead of relocating it. Links and shortcuts are still only unlinked, never moved.
+* **Thumbnails are never left half-written.** A full disk or an interrupted render could leave a truncated file that the gallery then served as that image forever.
+* **Remix inputs no longer collide.** Two remixes of same-named source images overwrote each other's uploads, so a queued generation could render the wrong picture.
+
+### 🐛 Fixes
+
+* **The Quality score in the AI panel was always full.** Every reviewed image displayed 100%, whatever it actually scored; a 3/10 and an 8/10 looked identical. Quality now reads `8.0 / 10` with a matching bar, and Prompt Following stays a percentage.
+* **Your library is indexed even where parallel processing is unavailable.** On systems that cannot start worker processes the scan reported "completed" having indexed nothing, blaming file corruption. It now finishes the work one file at a time and says so.
+* **Blank settings mean "use the default".** Clearing a value in `run_smartgallery.bat` (or a Docker/Unraid field) previously meant an empty value: a blank number stopped the app from starting at all, a blank `GENERATE_THUMBNAILS` silently disabled thumbnails, and a blank `ENABLE_AI_DAM` switched the whole AI layer off. A mistyped value now warns and falls back instead of failing.
+* **ffprobe is verified.** Pointing `FFPROBE_MANUAL_PATH` at `ffmpeg.exe` — an easy slip, and what the template shipped — was accepted and then failed every video metadata read. The wrong tool is now detected and the system `PATH` is used instead.
+* **Notifications moved off the toolbar.** Toasts appeared over the top-right buttons; they now rise from the bottom centre.
+
+### ✨ Improvements
+
+* **One AI surface per job.** The lightbox AI panel now answers only about the image you have open (Similar / Faces / Review). Everything gallery-wide — status, face clusters, duplicates, reviews, meaning search, detector compare — lives on the AI dashboard, and <kbd>Ctrl</kbd>+<kbd>P</kbd> is the search. Detector compare runs inside the panel instead of navigating away.
+* **A calmer lightbox.** Opening an image showed twenty controls; it now shows five, with the rest in a labelled **⋯ More** menu. Every keyboard shortcut is unchanged.
+* **Search understands file formats.** `pngs`, `jpgs`, `mp4s` and friends now filter by file type instead of being treated as words to search for — `3 star pngs from last week` works as written.
+
+---
+
 ### **[2.22] - 2026-08-12**
 
 ### 📁 Folder File Count Badges & Dynamic Tree Collapse
