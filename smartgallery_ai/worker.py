@@ -1103,7 +1103,23 @@ class AIWorker:
                 self._note_error(f"review:{file_id}", f"review: could not read {path}")
                 continue
             try:
-                payload = backend.review(img, row["workflow_prompt"], RUBRIC_VERSION)
+                # Prefer the traced positive prompt from the first-class
+                # generation_params row (the workflow_prompt column is a
+                # broad keyword blob for ComfyUI files); its negative
+                # prompt feeds the ALIGN step's expected-text guard.
+                prompt_text, negative_text = row["workflow_prompt"], None
+                try:
+                    gp = conn.execute(
+                        "SELECT positive_prompt, negative_prompt "
+                        "FROM generation_params WHERE file_id = ?",
+                        (file_id,)).fetchone()
+                    if gp is not None:
+                        prompt_text = gp["positive_prompt"] or prompt_text
+                        negative_text = gp["negative_prompt"] or None
+                except sqlite3.OperationalError:
+                    pass  # host DB without the table (pure-AI test DBs)
+                payload = backend.review(img, prompt_text, RUBRIC_VERSION,
+                                         negative_text=negative_text)
                 result = review.validate_review_payload(payload)
                 review_id = review.store_review(
                     conn, file_id, result, backend.model_id, backend.model_version,

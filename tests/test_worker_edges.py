@@ -109,7 +109,7 @@ class _RaisingCritic(CriticBackend):
     def __init__(self):
         self.calls = 0
 
-    def review(self, _img, _prompt_text, _rubric_version):
+    def review(self, _img, _prompt_text, _rubric_version, negative_text=None):
         self.calls += 1
         raise RuntimeError("VLM exploded")
 
@@ -123,7 +123,7 @@ class _RecordingCritic(CriticBackend):
     def __init__(self):
         self.prompts = []
 
-    def review(self, _img, prompt_text, _rubric_version):
+    def review(self, _img, prompt_text, _rubric_version, negative_text=None):
         self.prompts.append(prompt_text)
         return {"quality_score": 7.0, "prompt_alignment_score": None,
                 "summary": "recorded", "findings": []}

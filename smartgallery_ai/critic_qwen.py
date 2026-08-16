@@ -11,14 +11,22 @@ Protocol per image:
                  same image by a margin, else CriticGroundingError. This
                  filters the description stage only; per-finding
                  verification happens in step 4/5.
-  3. ASSESS    — one JSON-schema-constrained call: quality score + up to
-                 3 defects (type from the fixed vocabulary, severity,
-                 confidence, coarse region enum).
+  3. ASSESS    — one JSON-schema-constrained call: quality score + every
+                 defect the model can actually see (type from the fixed
+                 vocabulary, severity, confidence, coarse region enum;
+                 deliberately no numeric cap in prompt or schema — a cap
+                 anchors the model into inventing exactly that many).
   4. LOCALIZE  — only for defects whose type is inherently spatial and
                  whose region is not whole-image: one schema-constrained
                  bbox call. Localizable requires a geometrically valid
                  model-emitted box; otherwise the finding stays GLOBAL.
                  There are no region-rectangle fallbacks.
+  4.5 ALIGN    — when a prompt exists: expected elements are extracted
+                 DETERMINISTICALLY from the prompt (verbatim slices;
+                 negative-prompt terms excluded), and one fixed-length
+                 schema call answers present/absent per element.
+                 Confidently-absent elements become prompt_mismatch
+                 findings; the VLM never chooses what to expect.
   5. ASSEMBLE  — deterministic payload assembly; prompt_alignment_score is
                  CLIPScore(prompt, image) mapped to 0-10
                  (min(10, 25*max(cos,0))), computed outside the VLM. The
@@ -36,6 +44,7 @@ import base64
 import io
 import json
 import os
+import re
 from typing import Optional
 
 import numpy as np
@@ -80,6 +89,60 @@ _REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
 _LOCALIZABLE_TYPES = frozenset(
     {"anatomy", "artifact", "text_render", "detail_loss", "other"})
 
+_ALIGN_MAX_ELEMENTS = 12
+
+
+def extract_prompt_elements(prompt: Optional[str], negative: Optional[str] = None) -> list:
+    """Deterministic expected-element extraction for the ALIGN step — the
+    expected-text guard: every element is a verbatim-derived slice of the
+    actual prompt (weight/lora syntax stripped; comma/newline/BREAK
+    segmentation), and any element whose text also appears in the
+    negative prompt is excluded (it was requested ABSENT). The VLM never
+    chooses what to expect."""
+    text = re.sub(r"<[^>]*>", " ", prompt or "")            # lora tags
+    text = re.sub(r":\d+(?:\.\d+)?", " ", text)             # :1.2 weights
+    text = re.sub(r"[()\[\]{}]", " ", text)                 # weight brackets
+    neg = " ".join((negative or "").lower().split())
+    seen: set = set()
+    elements: list = []
+    for seg in re.split(r"[,\n]|\bBREAK\b", text):
+        seg = " ".join(seg.split()).strip(" .;:-")
+        low = seg.lower()
+        if len(low) < 3 or low in seen:
+            continue
+        if neg and low in neg:
+            continue
+        seen.add(low)
+        elements.append(seg)
+        if len(elements) >= _ALIGN_MAX_ELEMENTS:
+            break
+    return elements
+
+
+def _align_schema(n: int) -> dict:
+    """Grammar schema for the ALIGN reply: one verdict per element, in
+    order, fixed length."""
+    return {
+        "type": "object",
+        "properties": {
+            "elements": {
+                "type": "array",
+                "minItems": n,
+                "maxItems": n,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "present": {"type": "boolean"},
+                        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                    "required": ["present", "confidence"],
+                },
+            },
+        },
+        "required": ["elements"],
+    }
+
+
 # JSON schema enforced (via llama.cpp grammar decoding) on the ASSESS reply.
 _ASSESS_SCHEMA = {
     "type": "object",
@@ -87,7 +150,10 @@ _ASSESS_SCHEMA = {
         "quality_score": {"type": "number"},
         "defects": {
             "type": "array",
-            "maxItems": 3,
+            # Unbounded on purpose: a numeric cap in the schema (like a
+            # number in the prompt) anchors the model into producing
+            # exactly that many. An honest empty list must cost nothing.
+            "maxItems": 16,
             "items": {
                 "type": "object",
                 "properties": {
@@ -366,11 +432,11 @@ class QwenVlCritic(CriticBackend):
     # -- protocol ------------------------------------------------------------
 
     def review(self, img: Image.Image, prompt_text: Optional[str],
-               _rubric_version: str) -> dict:
-        """Run the DESCRIBE/GROUND/ASSESS/LOCALIZE/ASSEMBLE protocol and
-        return the RAW payload dict for `validate_review_payload`. Raises
-        `CriticGroundingError` when the description fails the gate --
-        nothing is stored for that image."""
+               _rubric_version: str, negative_text: Optional[str] = None) -> dict:
+        """Run the DESCRIBE/GROUND/ASSESS/ALIGN/LOCALIZE/ASSEMBLE protocol
+        and return the RAW payload dict for `validate_review_payload`.
+        Raises `CriticGroundingError` when the description fails the gate
+        -- nothing is stored for that image."""
         img = img.convert("RGB")
         # Keep the vision token budget bounded and deterministic.
         if max(img.size) > 768:
@@ -392,16 +458,16 @@ class QwenVlCritic(CriticBackend):
         assess_raw = self._chat(
             uri,
             "You are reviewing an AI-generated image for defects. "
-            "Report overall technical quality 0-10 and up to 3 concrete "
-            "defects you can actually see (empty list if none). For each "
-            "defect give its category, severity, your confidence 0-1, the "
-            "region where it is, and a few words describing it.",
-            schema=_ASSESS_SCHEMA, max_tokens=400)
+            "Report overall technical quality 0-10 and list every concrete "
+            "defect you can actually see — the list may well be empty. For "
+            "each defect give its category, severity, your confidence 0-1, "
+            "the region where it is, and a few words describing it.",
+            schema=_ASSESS_SCHEMA, max_tokens=900)
         assess = json.loads(assess_raw)
 
         findings = []
         dropped_unverified = 0
-        for defect in (assess.get("defects") or [])[:3]:
+        for defect in (assess.get("defects") or []):
             region = defect.get("region", "whole-image")
             # Localizable requires all of: an inherently spatial finding
             # type, a valid model-emitted bbox, and passing crop
@@ -435,6 +501,47 @@ class QwenVlCritic(CriticBackend):
                 finding["bbox"] = list(bbox)
             findings.append(finding)
 
+        # 4.5 ALIGN — per-element prompt adherence. Elements come from the
+        # deterministic expected-text guard (verbatim prompt slices,
+        # negative-prompt terms excluded); the VLM only answers
+        # present/absent per element, so a mismatch finding can never
+        # describe content the prompt did not actually request. Every
+        # confidently-absent element becomes a finding — no cap.
+        adherence_note = ""
+        if prompt_text:
+            elements = extract_prompt_elements(prompt_text, negative_text)
+            if elements:
+                listing = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(elements))
+                try:
+                    align_raw = self._chat(
+                        uri,
+                        "This image was generated from a prompt requesting "
+                        "the following elements:\n" + listing + "\n"
+                        "For each element, in order, say whether it is "
+                        "visibly present in the image and your confidence 0-1.",
+                        schema=_align_schema(len(elements)),
+                        max_tokens=30 * len(elements) + 40)
+                    verdicts = json.loads(align_raw).get("elements") or []
+                except Exception:
+                    verdicts = []  # ALIGN failure never sinks the review
+                if len(verdicts) == len(elements):
+                    missing = [
+                        (element, v) for element, v in zip(elements, verdicts)
+                        if not v.get("present")
+                        and float(v.get("confidence", 0)) >= 0.5
+                    ]
+                    for element, v in missing:
+                        findings.append({
+                            "type": "prompt_mismatch",
+                            "severity": "medium",
+                            "confidence": v.get("confidence", 0.5),
+                            "localizable": False,
+                            "description": f'requested "{element[:120]}" is not visible',
+                        })
+                    adherence_note = (
+                        f" [adherence {len(elements) - len(missing)}"
+                        f"/{len(elements)} prompt elements]")
+
         # 5. ASSEMBLE (deterministic; alignment computed outside the VLM).
         # The embedder is mandatory, so a prompt-bearing review always gets
         # a real alignment score; None means only "no prompt available".
@@ -448,6 +555,7 @@ class QwenVlCritic(CriticBackend):
         if dropped_unverified:
             summary += (f" [{dropped_unverified} finding(s) dropped: region "
                         f"verification failed]")
+        summary += adherence_note
 
         return {
             # Not clamped: validate_review_payload rejects out-of-range

@@ -286,9 +286,13 @@ class CriticBackend(ABC):
     model_version: str  # provenance tag stored with every review row
 
     @abstractmethod
-    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str,
+               negative_text: Optional[str] = None) -> dict:
         """Return a RAW payload dict; the caller must validate it via
-        `validate_review_payload` before it touches the database."""
+        `validate_review_payload` before it touches the database.
+        `negative_text` (the generation's negative prompt, when tracked)
+        feeds ALIGN's expected-text guard: a prompt element that was also
+        requested ABSENT is never treated as expected content."""
 
 
 class StubCritic(CriticBackend):
@@ -309,7 +313,8 @@ class StubCritic(CriticBackend):
     _RED_MIN_R = 180  # red-channel floor (0-255) for the artifact-rectangle mask
     _RED_MAX_GB = 80  # green/blue ceiling (0-255) for the artifact-rectangle mask
 
-    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str) -> dict:
+    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str,
+               negative_text: Optional[str] = None) -> dict:
         """Apply the two stub heuristics and emit a raw payload dict; the
         quality score drops 2 points per finding."""
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)
@@ -440,7 +445,8 @@ class SmolVlmCritic(CriticBackend):
         self._torch = torch
         self._max_new_tokens = max_new_tokens
 
-    def review(self, img: Image.Image, prompt_text: Optional[str], _rubric_version: str) -> dict:
+    def review(self, img: Image.Image, prompt_text: Optional[str], _rubric_version: str,
+               negative_text: Optional[str] = None) -> dict:
         """Single greedy-decoded image+instruction turn; returns the first
         JSON object in the reply (ValueError when there is none)."""
         instruction = _CRITIC_INSTRUCTION

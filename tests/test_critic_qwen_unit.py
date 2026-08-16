@@ -670,3 +670,80 @@ def test_llama_native_logging_is_silenced_unless_opted_in(tmp_path, monkeypatch)
     QwenVlCritic(str(tmp_path), semantic_embedder=object())
     assert log_sets == []
 
+
+
+# --- ALIGN: deterministic expected-text guard + adherence findings ------------
+
+
+def test_extract_prompt_elements_is_deterministic_and_verbatim():
+    from smartgallery_ai.critic_qwen import extract_prompt_elements
+
+    prompt = ("(masterpiece:1.2), a red cube on a table, <lora:detail:0.8> "
+              "soft window light,\na cat sleeping, a red cube on a table")
+    els = extract_prompt_elements(prompt)
+    assert els == extract_prompt_elements(prompt)  # deterministic
+    assert "a red cube on a table" in els          # verbatim slice
+    assert "a cat sleeping" in els
+    assert els.count("a red cube on a table") == 1  # deduped
+    assert not any("lora" in e or ":1.2" in e for e in els)  # syntax stripped
+
+
+def test_extract_prompt_elements_excludes_negative_terms():
+    from smartgallery_ai.critic_qwen import extract_prompt_elements
+
+    els = extract_prompt_elements("a castle, heavy fog, a knight",
+                                  negative="heavy fog, blurry")
+    assert "heavy fog" not in els
+    assert "a castle" in els and "a knight" in els
+
+
+def test_assess_defect_list_is_not_numerically_anchored():
+    """No 'up to N' in the prompt and a generous schema bound: a numeric
+    cap anchors the model into inventing exactly that many defects."""
+    from smartgallery_ai.critic_qwen import _ASSESS_SCHEMA
+
+    assert _ASSESS_SCHEMA["properties"]["defects"]["maxItems"] >= 16
+
+
+def test_align_absent_elements_become_prompt_mismatch_findings(monkeypatch):
+    align_reply = json.dumps({"elements": [
+        {"present": True, "confidence": 0.9},
+        {"present": False, "confidence": 0.8},
+    ]})
+    emb = VecEmbedder({"a red cube, a blue sphere": (1.0, 0.0, 0.0)},
+                      image_vec=(1.0, 0.0, 0.0))
+    critic, calls = _bare_critic(monkeypatch, [
+        "A red cube.",
+        _assess([], quality=9.0),
+        align_reply,
+    ], embedder=emb)
+    payload = critic.review(solid_color_image(), "a red cube, a blue sphere", "rubric-1")
+    mismatches = [f for f in payload["findings"] if f["type"] == "prompt_mismatch"]
+    assert len(mismatches) == 1
+    assert 'requested "a blue sphere" is not visible' == mismatches[0]["description"]
+    assert mismatches[0]["localizable"] is False
+    assert "[adherence 1/2 prompt elements]" in payload["summary"]
+    # the ALIGN call listed the deterministic elements verbatim
+    assert "1. a red cube" in calls[-1]["text"] and "2. a blue sphere" in calls[-1]["text"]
+
+
+def test_align_all_present_adds_no_findings(monkeypatch):
+    align_reply = json.dumps({"elements": [{"present": True, "confidence": 0.9}]})
+    emb = VecEmbedder({"a red cube": (1.0, 0.0, 0.0)}, image_vec=(1.0, 0.0, 0.0))
+    critic, _calls = _bare_critic(monkeypatch, [
+        "A red cube.", _assess([], quality=9.0), align_reply,
+    ], embedder=emb)
+    payload = critic.review(solid_color_image(), "a red cube", "rubric-1")
+    assert payload["findings"] == []
+    assert "[adherence 1/1 prompt elements]" in payload["summary"]
+
+
+def test_align_failure_never_sinks_the_review(monkeypatch):
+    """An exhausted/failing ALIGN call degrades to no adherence data."""
+    emb = VecEmbedder({"a red cube": (1.0, 0.0, 0.0)}, image_vec=(1.0, 0.0, 0.0))
+    critic, _calls = _bare_critic(monkeypatch, [
+        "A red cube.", _assess([], quality=9.0),
+    ], embedder=emb)
+    payload = critic.review(solid_color_image(), "a red cube", "rubric-1")
+    assert payload["findings"] == []
+    assert "adherence" not in payload["summary"]
