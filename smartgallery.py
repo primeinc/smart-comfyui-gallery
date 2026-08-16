@@ -1354,6 +1354,20 @@ def safe_delete_tree(folder_path):
     else:
         shutil.rmtree(folder_path)
 
+_GUEST_UUID_RE = re.compile(r'^guest_[0-9a-f]{8,64}$')
+
+
+def _is_guest_uuid(value):
+    """True only for an id this server would have minted for a guest.
+
+    Guest ids are `guest_<hex>` (secrets.token_hex). Accepting any other
+    shape from the request body would let a passwordless guest claim a
+    real account's user_id, and with it ownership of that account's
+    comments and ratings.
+    """
+    return bool(_GUEST_UUID_RE.match(str(value or '').strip().lower()))
+
+
 def _is_ffprobe(path_or_name):
     """True only when `-version` runs AND identifies itself as ffprobe.
 
@@ -3622,12 +3636,24 @@ def exhibition_login():
     # Guest Login Logic
     if ENABLE_GUEST_LOGIN and username and str(username).lower() == 'guest':
         session.permanent = False
-        
-        if provided_uuid and str(provided_uuid).lower() not in ['null', 'undefined', 'none', '']:
-            guest_uuid = str(provided_uuid)
+
+        # A returning guest may carry their previous id so their own
+        # ratings and comments stay theirs -- but the value is supplied by
+        # the caller, so it may only ever be a GUEST id.
+        #
+        # Without this check a guest could log in (no password) claiming
+        # any identity, including a real account's user_id: ownership of
+        # comments and ratings is decided by comparing that session id to
+        # the row's client_uuid, so claiming "41" handed a stranger the
+        # power to edit and delete user 41's comments and overwrite their
+        # ratings. Anything that is not a well-formed guest id is ignored
+        # and a fresh one is minted instead.
+        candidate = str(provided_uuid) if provided_uuid is not None else ''
+        if _is_guest_uuid(candidate):
+            guest_uuid = candidate
         else:
             guest_uuid = f"guest_{secrets.token_hex(8)}"
-            
+
         session['user_id'] = guest_uuid
         session['username'] = 'guest'
         session['role'] = 'GUEST'
