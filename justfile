@@ -21,8 +21,9 @@ test:
 # database giving up on another sooner than the rest, a cache bounded in
 # count while what it holds grows with the library, an export that drops
 # what it collides with, a cache tidied only as a side effect of using it
-# again, a misspelt setting name, a documented way of running the suite that
-# does not work, a password
+# again, an instruction from the launcher overwritten by the thing it was
+# protecting, a misspelt setting name, a documented way of running the
+# suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
 # imports, someone's own launch script shipped in the repository, a
@@ -55,6 +56,7 @@ audit:
         tests/test_view_snapshots_are_bounded_by_size.py \
         tests/test_zip_download_keeps_every_file.py \
         tests/test_prepared_downloads_expire_honestly.py \
+        tests/test_shutdown_signals_respect_the_launcher.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
         tests/test_env_var_typos.py \

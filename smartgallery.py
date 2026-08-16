@@ -10650,6 +10650,49 @@ def show_ffmpeg_warning():
         print(f"{Colors.YELLOW}{msg}{Colors.RESET}")
         print(f"{Colors.YELLOW}{Colors.BOLD}" + "="*70 + f"{Colors.RESET}\n")
         
+def install_shutdown_signals(handler, names=None):
+    """Take the shutdown signals, except any the launcher told us to ignore.
+
+    nohup is `signal (SIGHUP, SIG_IGN); execvp (...)` -- coreutils
+    src/nohup.c -- so a gallery started that way inherits an ignored
+    SIGHUP, which is the whole point of starting it that way. Installing a
+    handler replaces the ignore, and this handler kills the process group,
+    so `nohup python smartgallery.py &` over SSH died the moment the
+    session ended: the one arrangement made specifically to survive that.
+
+    A shell that backgrounds a job without job control ignores SIGINT for
+    it in the same way, for the same reason.
+
+    getsignal returns SIG_IGN when "the signal was previously ignored"
+    (Doc/library/signal.rst), so the ones to leave alone can simply be
+    asked for. Nothing here decides which signals matter -- whoever
+    started the gallery already did.
+
+    Returns (installed, left alone), by name.
+    """
+    import signal
+
+    if names is None:
+        names = ['SIGINT', 'SIGTERM']
+        if os.name != 'nt':
+            names.append('SIGHUP')
+
+    installed, left_alone = [], []
+    for name in names:
+        number = getattr(signal, name, None)
+        if number is None:
+            continue  # SIGHUP does not exist on Windows
+        try:
+            if signal.getsignal(number) == signal.SIG_IGN:
+                left_alone.append(name)
+                continue
+            signal.signal(number, handler)
+            installed.append(name)
+        except Exception as exc:
+            print(f"WARN: Could not bind {name}: {exc}")
+    return installed, left_alone
+
+
 def check_port_available(port):
     """
     Checks if the specified port is available on the host machine.
@@ -13125,13 +13168,10 @@ if __name__ == '__main__':
         # 2. Absolute final fallback
         os._exit(0)
 
-    try:
-        signal.signal(signal.SIGINT, force_hard_kill)  # Ctrl+C
-        signal.signal(signal.SIGTERM, force_hard_kill) # System kill/Docker stop
-        if os.name != 'nt':
-            signal.signal(signal.SIGHUP, force_hard_kill)  # Terminal/Tmux window closed
-    except Exception as e:
-        print(f"WARN: Could not bind shutdown signals: {e}")
+    _installed, _left_alone = install_shutdown_signals(force_hard_kill)
+    if _left_alone:
+        print(f"INFO: Leaving {', '.join(_left_alone)} as the launcher set "
+              f"it; the gallery keeps running when the terminal closes.")
     # ---------------------------------------------------------
 
 
