@@ -2846,6 +2846,22 @@
 .theater-document-reader pre { white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 1.05rem; line-height: 1.7; margin:0; }
 </style>
 <script>
+// Only these schemes may reach an href or a src. The note text is
+// HTML-escaped before the markdown rules run, so an attribute cannot be
+// closed from here -- what was left unguarded is the scheme itself, and
+// [click me](javascript:...) produced a live javascript: link.
+//
+// Browsers strip control characters and spaces before reading a scheme, so
+// "java<tab>script:" is javascript: to them. The test is done on what they
+// will see, not on what was typed.
+function markdownSafeUrl(url) {
+    const value = String(url === null || url === undefined ? '' : url).trim();
+    const probe = value.replace(/[\u0000-\u0020]/g, '');
+    const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(probe);
+    if (!scheme) return value;          // relative, #anchor, //host
+    return /^(https?|ftp|mailto)$/i.test(scheme[1]) ? value : '#';
+}
+
 function renderMarkdownText1(text) {
     if (!text) return '';
     let html = (typeof escapeHTML === 'function') ? escapeHTML(text) : (typeof escapeHtml === 'function' ? escapeHtml(text) : text);
@@ -2923,15 +2939,15 @@ function renderMarkdownText(text) {
 
         // Images: ![alt](url "title")
         s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_, alt, url, title) =>
-            `<img src="${url}" alt="${alt}" title="${title || alt}" style="max-width:100%; border-radius:6px; margin:6px 0; display:block;">`);
+            `<img src="${markdownSafeUrl(url)}" alt="${alt}" title="${title || alt}" style="max-width:100%; border-radius:6px; margin:6px 0; display:block;">`);
 
         // Links: [text](url "title")
         s = s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_, txt, url, title) =>
-            `<a href="${url}" title="${title || ''}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${txt}</a>`);
+            `<a href="${markdownSafeUrl(url)}" title="${title || ''}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${txt}</a>`);
 
         // Autolinks: <https://example.com>  (note: source is already HTML-escaped, so < > became &lt; &gt;)
         s = s.replace(/&lt;((?:https?|ftp):\/\/[^\s&]+)&gt;/g, (_, url) =>
-            `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${url}</a>`);
+            `<a href="${markdownSafeUrl(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${url}</a>`);
 
         // Bold + italic: ***text*** or ___text___
         s = s.replace(/(\*\*\*|___)([^*_]+?)\1/g, '<strong><em>$2</em></strong>');
