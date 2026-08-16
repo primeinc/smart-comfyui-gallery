@@ -28,22 +28,40 @@ _VENDOR_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "vendor", "faiss-gpu-win64")
 
+# Directories already handed to the DLL loader and prepended to PATH.
+_REGISTERED_DLL_DIRS: set = set()
+
 
 def _register_cuda_dll_dirs() -> int:
     """Register every nvidia wheel bin dir with the DLL loader; returns
-    how many dirs were registered."""
+    how many dirs were registered.
+
+    Repeat calls add nothing. import_faiss runs this whenever faiss is not
+    already imported, so on a machine where BOTH the vendored GPU build and
+    faiss-cpu fail to import it ran again on every similarity query -- and
+    each run prepended the same directories to PATH again. PATH is the
+    environment every child process inherits, and Windows caps that block
+    at about 32k characters: a few dozen repeats and ffmpeg stops being
+    spawnable at all, which reads as video breaking rather than as faiss
+    being missing.
+    """
     purelib = sysconfig.get_paths().get("purelib") or ""
     registered = 0
     for pattern in ("bin", os.path.join("bin", "x86_64")):
         for d in sorted(glob.glob(os.path.join(purelib, "nvidia", "*", pattern))):
             if not os.path.isdir(d):
                 continue
+            if d in _REGISTERED_DLL_DIRS:
+                continue
+            _REGISTERED_DLL_DIRS.add(d)
             try:
                 os.add_dll_directory(d)
                 registered += 1
             except OSError:
                 pass
-            os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+            current = os.environ.get("PATH", "")
+            if d not in current.split(os.pathsep):
+                os.environ["PATH"] = d + os.pathsep + current
     return registered
 
 
