@@ -1591,16 +1591,43 @@ def _is_ffprobe(path_or_name):
     return banner.startswith("ffprobe")
 
 
+_FFPROBE_ANNOUNCED = False
+
+
+def _announce_ffprobe(message):
+    """Say which ffprobe is in use, once per run.
+
+    The configuration table prints FFPROBE_MANUAL_PATH, which is what was
+    ASKED for. When that file is absent the app quietly uses whatever is on
+    PATH instead, so the table names a tool that is not the one running --
+    and someone whose video thumbnails are missing reads that table first.
+    Only the failures used to be reported, which left "it is configured, so
+    it must be working" as the reasonable conclusion.
+    """
+    global _FFPROBE_ANNOUNCED
+    if _FFPROBE_ANNOUNCED:
+        return
+    _FFPROBE_ANNOUNCED = True
+    print(message)
+
+
 def find_ffprobe_path():
     if FFPROBE_MANUAL_PATH and os.path.isfile(FFPROBE_MANUAL_PATH):
         if _is_ffprobe(FFPROBE_MANUAL_PATH):
+            _announce_ffprobe(f"INFO: ffprobe: {FFPROBE_MANUAL_PATH}")
             return FFPROBE_MANUAL_PATH
         print(f"WARNING: FFPROBE_MANUAL_PATH does not point at ffprobe "
               f"({FFPROBE_MANUAL_PATH}); falling back to PATH.")
     base_name = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
     if _is_ffprobe(base_name):
+        found = shutil.which(base_name) or base_name
+        _announce_ffprobe(f"INFO: ffprobe: {found} (found on PATH, not at "
+                          f"FFPROBE_MANUAL_PATH)")
         return base_name
-    print("WARNING: ffprobe not found. Video metadata analysis will be disabled.")
+    print(f"{Colors.YELLOW}WARNING: ffprobe not found. Video duration and "
+          f"dimensions, video thumbnails, waveforms and video metadata "
+          f"stripping are all unavailable. Install ffmpeg, or set "
+          f"FFPROBE_MANUAL_PATH to the folder holding ffprobe.{Colors.RESET}")
     return None
 
 def _validate_and_get_workflow(json_string):
