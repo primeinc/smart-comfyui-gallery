@@ -24,7 +24,7 @@ import json
 import os
 import sqlite3
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -35,9 +35,11 @@ from smartgallery_ai.embedders import BackendUnavailable
 
 __all__ = [
     "FINDING_TYPES",
+    "AlignmentElement",
     "Finding",
     "ReviewResult",
     "ReviewSchemaError",
+    "resolve_prompt_texts",
     "validate_review_payload",
     "CriticBackend",
     "StubCritic",
@@ -69,6 +71,44 @@ _TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findin
 _FINDING_KEYS = {"type", "severity", "confidence", "localizable", "description", "bbox", "points"}
 
 
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """True when `table` has a column named `column`; a missing table reads
+    as no columns."""
+    return any(row[1] == column
+               for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+
+
+def resolve_prompt_texts(conn: sqlite3.Connection, file_id: str) -> tuple:
+    """The (positive, negative) generation prompts to score `file_id`
+    against, as `(str | None, str | None)`.
+
+    The ONE definition of "does this file have a prompt": the worker scores
+    alignment against exactly this, the panel explains a null score from
+    exactly this, and the re-review sweep re-queues on exactly this. Three
+    callers reading three different surfaces is how a file ends up with a
+    prompt, a null alignment score, and a panel insisting no prompt exists.
+
+    The traced `generation_params.positive_prompt` wins; `files.workflow_prompt`
+    is the fallback (a broad keyword blob for ComfyUI files). Blank strings
+    are None -- the DB defaults both columns to '', so emptiness is the
+    common case, not an error. Absent table/column reads as no prompt.
+    """
+    positive = negative = None
+    if _has_column(conn, "generation_params", "positive_prompt"):
+        row = conn.execute(
+            "SELECT positive_prompt, negative_prompt FROM generation_params "
+            "WHERE file_id = ?", (file_id,)).fetchone()
+        if row is not None:
+            positive = (row[0] or "").strip() or None
+            negative = (row[1] or "").strip() or None
+    if positive is None and _has_column(conn, "files", "workflow_prompt"):
+        row = conn.execute(
+            "SELECT workflow_prompt FROM files WHERE id = ?", (file_id,)).fetchone()
+        if row is not None:
+            positive = (row[0] or "").strip() or None
+    return positive, negative
+
+
 @dataclass
 class Finding:
     """One typed defect/observation within a review. Geometry is normalized
@@ -84,15 +124,38 @@ class Finding:
 
 
 @dataclass
+class AlignmentElement:
+    """One thing the generation prompt asked for, and whether the image
+    delivered it.
+
+    `text` is always a verbatim slice of the user's own positive prompt --
+    the model judges elements, it never invents them. `bbox` is where the
+    element was found, permitted only when `satisfied` is True: an element
+    that is absent has no location, and a satisfied element the model could
+    not localize (style, mood, lighting) stays whole-image with bbox None.
+    """
+
+    ordinal: int  # position in the prompt
+    text: str
+    satisfied: bool
+    confidence: float  # 0..1
+    bbox: Optional[tuple] = None  # (x, y, w, h), normalized -- satisfied only
+
+
+@dataclass
 class ReviewResult:
     """Validated critique of one asset -- the only shape `store_review`
     accepts. Construct via `validate_review_payload`, never by hand from
     raw model output."""
 
     quality_score: float  # 0..10
-    prompt_alignment_score: Optional[float]  # 0..10, or None if not applicable
+    # Prompt-following, 0..1 (the panel shows it as a percentage). None
+    # means the file carries no generation prompt to follow -- the one
+    # honest reason for an unscored review.
+    prompt_alignment_score: Optional[float]
     summary: str
     findings: list  # list[Finding]
+    alignment: list = field(default_factory=list)  # list[AlignmentElement]
 
 
 class ReviewSchemaError(ValueError):

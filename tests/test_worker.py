@@ -939,3 +939,102 @@ def test_fast_scheduler_time_deadline_stops_reoffers(monkeypatch):
     assert consumed == a["offers"][0]
     # ...and the measurement was recorded for the next cycle's quota.
     assert host._stage_pace["a"] > 0
+
+
+# --- review alignment re-queue -------------------------------------------
+# review.resolve_prompt_texts made prompt resolution single-sourced; files
+# reviewed BEFORE their traced prompt landed keep a null alignment score
+# that ordinary staleness never revisits (same file, same model). The
+# worker sweeps them once per model version.
+
+def _review_env(tmp_path, workflow_prompt="a red square"):
+    """DB + stub critic + worker, with one file carrying `workflow_prompt`."""
+    from smartgallery_ai import review as R
+
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    img = str(tmp_path / "a.png")
+    Image.new("RGB", (16, 16), (200, 10, 10)).save(img)
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO files (id, path, mtime, name, type, workflow_prompt) "
+                 "VALUES ('f1', ?, 1000.0, 'a.png', 'image', ?)", (img, workflow_prompt))
+    conn.commit()
+    conn.close()
+    cfg = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
+                   models_dir=str(tmp_path / "m"), cache_dir=str(tmp_path / "c"),
+                   critic_backend="stub", semantic_backend="none",
+                   visual_backend="none", face_backend="none")
+    worker = AIWorker(cfg, db_path, poll_interval=999.0, batch_size=5)
+    return db_path, worker, R.get_critic_backend(cfg)
+
+
+def _seed_reviewed_without_alignment(conn, backend):
+    """A completed review with a NULL alignment score, plus the scan-log
+    row that keeps the file from being re-reviewed."""
+    conn.execute(
+        "INSERT INTO ai_reviews (file_id, rubric_version, model_id, model_version, "
+        "quality_score, prompt_alignment_score, summary, raw_response, source_mtime, "
+        "computed_at) VALUES ('f1', 'r1', ?, ?, 8.0, NULL, 's', '{}', 1000.0, 1.0)",
+        (backend.model_id, backend.model_version))
+    conn.execute(
+        "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
+        "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
+        "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+    conn.commit()
+
+
+def _scan_rows(conn) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'review'").fetchone()[0]
+
+
+def test_review_path_runs_without_crashing(tmp_path):
+    """The whole point: _process_reviews must complete. It called a helper
+    that did not exist, so every real review cycle raised AttributeError
+    before scoring anything."""
+    db_path, worker, backend = _review_env(tmp_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        assert worker._process_reviews(conn, backend, 5) == 1
+        row = conn.execute("SELECT quality_score, prompt_alignment_score "
+                           "FROM ai_reviews WHERE file_id = 'f1'").fetchone()
+        assert row is not None and row["quality_score"] is not None
+    finally:
+        conn.close()
+
+
+def test_alignment_requeue_clears_scan_log_once(tmp_path):
+    db_path, worker, backend = _review_env(tmp_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        _seed_reviewed_without_alignment(conn, backend)
+        assert _scan_rows(conn) == 1
+        worker._ensure_review_alignment_requeue(conn, backend)
+        assert _scan_rows(conn) == 0, "null-alignment review with a prompt not re-queued"
+
+        # Marker-guarded: a second sweep must not fire again (a fresh scan
+        # row from the re-review survives).
+        conn.execute(
+            "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
+            "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
+            "1000.0, 2.0, 1)", (backend.model_id, backend.model_version))
+        conn.commit()
+        worker._ensure_review_alignment_requeue(conn, backend)
+        assert _scan_rows(conn) == 1, "sweep re-fired; the marker guard is not holding"
+    finally:
+        conn.close()
+
+
+def test_alignment_requeue_leaves_promptless_files_alone(tmp_path):
+    """No prompt resolves -> a null alignment score is correct, not stale."""
+    db_path, worker, backend = _review_env(tmp_path, workflow_prompt="")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        _seed_reviewed_without_alignment(conn, backend)
+        worker._ensure_review_alignment_requeue(conn, backend)
+        assert _scan_rows(conn) == 1, "re-queued a file that still has no prompt"
+    finally:
+        conn.close()

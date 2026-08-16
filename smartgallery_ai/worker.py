@@ -1148,6 +1148,58 @@ class AIWorker:
                 "(attributes fill in place; embeddings version-stable)",
                 cur.rowcount)
 
+    def _ensure_review_alignment_requeue(self, conn: sqlite3.Connection, backend) -> None:
+        """One-time re-queue of reviews scored with no prompt that would
+        resolve one today (review.resolve_prompt_texts).
+
+        Alignment is null whenever the critic had no prompt to score
+        against. Before prompt resolution was unified, a file whose traced
+        `generation_params.positive_prompt` landed after its review kept
+        that null forever: nothing about the file or the model changed, so
+        normal staleness never re-queued it. Deleting those 'review'
+        scan-log rows re-enters them through the ordinary path -- same
+        model, same rubric -- and the UNIQUE (file_id, rubric_version,
+        model_id) row is overwritten in place. Marker-guarded to run once
+        per (model_id, model_version), like the faces attribute backfill."""
+        marker = f"review_alignment_requeue:{backend.model_id}:{backend.model_version}"
+        if self._get_state(conn, marker) is not None:
+            return
+        has_genparams = _has_column(conn, "generation_params", "positive_prompt")
+        has_workflow_prompt = _has_column(conn, "files", "workflow_prompt")
+        if not (has_genparams or has_workflow_prompt):
+            self._set_state(conn, marker, "1")
+            return
+        # "A prompt resolves today" == exactly what resolve_prompt_texts
+        # would find: the traced positive prompt, else files.workflow_prompt.
+        sources = []
+        if has_genparams:
+            sources.append(
+                "SELECT file_id FROM generation_params "
+                "WHERE TRIM(COALESCE(positive_prompt, '')) <> ''")
+        if has_workflow_prompt:
+            sources.append(
+                "SELECT id FROM files "
+                "WHERE TRIM(COALESCE(workflow_prompt, '')) <> ''")
+        cur = conn.execute(
+            f"""
+            DELETE FROM ai_scan_log WHERE kind = 'review'
+              AND model_id = ? AND model_version = ?
+              AND file_id IN (
+                SELECT file_id FROM ai_reviews
+                WHERE model_id = ? AND model_version = ?
+                  AND prompt_alignment_score IS NULL
+                  AND file_id IN ({' UNION '.join(sources)})
+              )
+            """,
+            (backend.model_id, backend.model_version,
+             backend.model_id, backend.model_version))
+        self._set_state(conn, marker, "1")
+        if cur.rowcount:
+            _logger.info(
+                "[AIWorker] review alignment re-queue: %d file(s) reviewed "
+                "without a prompt now resolve one and will be re-scored",
+                cur.rowcount)
+
     def _process_faces(self, conn: sqlite3.Connection, backend, limit: int,
                        only_file_id: Optional[str] = None) -> int:
         """Face stage: detect and store faces per candidate, then recluster when
@@ -1228,9 +1280,7 @@ class AIWorker:
         consumed, successful or not."""
         if limit <= 0:
             return 0
-        prompt_expr = ", f.workflow_prompt" if _has_column(conn, "files", "workflow_prompt") else ", NULL AS workflow_prompt"
         rows = self._scan_candidates(conn, "review", backend, limit,
-                                     extra_cols=prompt_expr,
                                      only_file_id=only_file_id)
         segmenter = self._backend("segmenter", review.get_segmenter_backend)
         now = time.time()
@@ -1243,21 +1293,11 @@ class AIWorker:
                 self._note_error(f"review:{file_id}", f"review: could not read {path}")
                 continue
             try:
-                # Prefer the traced positive prompt from the first-class
-                # generation_params row (the workflow_prompt column is a
-                # broad keyword blob for ComfyUI files); its negative
-                # prompt feeds the ALIGN step's expected-text guard.
-                prompt_text, negative_text = row["workflow_prompt"], None
-                try:
-                    gp = conn.execute(
-                        "SELECT positive_prompt, negative_prompt "
-                        "FROM generation_params WHERE file_id = ?",
-                        (file_id,)).fetchone()
-                    if gp is not None:
-                        prompt_text = gp["positive_prompt"] or prompt_text
-                        negative_text = gp["negative_prompt"] or None
-                except sqlite3.OperationalError:
-                    pass  # host DB without the table (pure-AI test DBs)
+                # review.resolve_prompt_texts is the single definition of
+                # this file's prompts; the panel and the re-review sweep
+                # read the same one. The negative prompt feeds the ALIGN
+                # step's expected-text guard.
+                prompt_text, negative_text = review.resolve_prompt_texts(conn, file_id)
                 payload = backend.review(img, prompt_text, RUBRIC_VERSION,
                                          negative_text=negative_text)
                 result = review.validate_review_payload(payload)
