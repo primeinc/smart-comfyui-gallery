@@ -75,7 +75,7 @@
         <div id="omni-palette-input-row">
             <span id="omni-palette-glyph">&#9889;</span>
             <input id="omni-palette-input" type="text" autocomplete="off" spellcheck="false"
-                   placeholder="Search anything: girlnextdoor, favorite videos, seed 424242, photos of trees...">
+                   placeholder="Search your gallery...">
             <span id="omni-palette-count"></span>
         </div>
         <div id="omni-palette-chips"></div>
@@ -112,16 +112,64 @@
         return d.innerHTML;
     }
 
+    // Ghost hints: the "ways you can search", cycling inside the field
+    // itself -- the only place they live. No cards.
+    const HINTS = [
+        'girlnextdoor', 'favorite videos', 'seed 424242', 'photos of trees',
+        'lora girlnextdoor', 'model flux', '4+ star images from last week',
+        'not approved images', 'videos longer than 2 minutes',
+        'images with faces', 'face cluster 1', 'how many favorites',
+        'images with 30 steps cfg 7.5', 'that steampunk dragon thing',
+        'files rated at least 4 by more than one person',
+    ];
+    let hintIdx = Math.floor(Math.random() * HINTS.length);
+    let hintTimer = null;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function cycleHint() {
+        input.placeholder = HINTS[hintIdx % HINTS.length];
+        hintIdx += 1;
+    }
+
+    // Empty state: the library itself, newest first, as the live masonry.
+    async function showLibrary() {
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+        try {
+            const resp = await fetch('/galleryout/api/omniquery/nlq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: 'newest first', live: true }),
+                signal: inflight.signal,
+            });
+            const data = await resp.json();
+            if (input.value.trim()) return;  // user already typed
+            if (data.status === 'success') {
+                renderResults(data.preview_ids);
+                countEl.textContent = '';
+                chipsEl.innerHTML = '';
+            }
+        } catch (err) { /* empty state is best-effort */ }
+    }
+
     window.openOmniPalette = function () {
         overlay.classList.add('open');
         input.focus();
         input.select();
+        cycleHint();
+        if (!reducedMotion) {
+            clearInterval(hintTimer);
+            hintTimer = setInterval(cycleHint, 2600);
+        }
         if (input.value.trim()) liveQuery();
+        else showLibrary();
     };
 
     window.closeOmniPalette = function () {
         overlay.classList.remove('open');
+        clearInterval(hintTimer);
         if (inflight) inflight.abort();
+        if (deepInflight) deepInflight.abort();
     };
 
     function renderChips(chips) {
@@ -153,8 +201,9 @@
     async function liveQuery() {
         const q = input.value.trim();
         if (!q) {
-            chipsEl.innerHTML = ''; resultsEl.innerHTML = '';
-            countEl.textContent = ''; statusEl.textContent = '';
+            chipsEl.innerHTML = ''; countEl.textContent = '';
+            statusEl.textContent = '';
+            showLibrary();  // emptying the field returns to the library
             return;
         }
         if (inflight) inflight.abort();
