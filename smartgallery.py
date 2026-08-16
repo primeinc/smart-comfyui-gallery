@@ -7537,8 +7537,17 @@ def get_collections():
             flag.pop('file_count', None)
         
         filtered_albums = []
-        
-        if IS_EXHIBITION_MODE and user_role not in ['ADMIN', 'MANAGER', 'STAFF']:
+
+        # Who is asking, not which mode the server is in. This filtering was
+        # written as a property of exhibition mode, so the same non-staff
+        # account under --force-login fell through to the branch that returns
+        # every album, its file counts, and the shared_users list naming who
+        # each private album is shared with. With no login configured there is
+        # one person and they own the library, so they are privileged.
+        is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
+        is_privileged = is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']
+
+        if not is_privileged:
             explicit_access_ids = set()
             album_dict = {c['id']: c for c in albums}
             
@@ -7571,7 +7580,7 @@ def get_collections():
                     c['restricted_access'] = True
                     filtered_albums.append(c)
                     
-        elif IS_EXHIBITION_MODE and user_role in ['ADMIN', 'MANAGER', 'STAFF']:
+        elif IS_EXHIBITION_MODE:
             for c in albums:
                 shared_raw = str(c.get('shared_users', '')).split(',')
                 shared_list = [str(uid).strip() for uid in shared_raw if uid.strip()]
@@ -7585,7 +7594,9 @@ def get_collections():
                 c['restricted_access'] = False
             filtered_albums = albums
 
-        if IS_EXHIBITION_MODE:
+        if not is_privileged:
+            # Ancestors are listed so the tree can be drawn, but their
+            # contents are not this caller's to count.
             count_album_ids = [
                 c['id'] for c in filtered_albums
                 if not c.get('restricted_access') and (c.get('is_public') or c.get('is_shared_access'))
