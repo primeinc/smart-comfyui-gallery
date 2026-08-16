@@ -7341,8 +7341,21 @@ def get_storyboard(file_id):
 
 @app.route('/galleryout/storyboard_frame/<string:file_hash>/<string:filename>')
 def serve_storyboard_frame(file_hash, filename):
+    # send_from_directory guards the filename but takes the directory on
+    # trust, and the default converter matches any segment without a slash
+    # -- `..` included. That made this route read the gallery root, which is
+    # where the pictures are, for a caller with no session at all.
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+        abort(403, description="Access Denied.")
+    if not re.fullmatch(r'[0-9a-f]{32}', file_hash or ''):
+        abort(404)
+
     safe_name = secure_filename(filename)
     directory = os.path.join(THUMBNAIL_CACHE_DIR, file_hash)
+    # Belt and braces: whatever the segment was, the folder it names has to
+    # sit inside the frame cache.
+    if not _is_under(os.path.realpath(directory), os.path.realpath(THUMBNAIL_CACHE_DIR)):
+        abort(404)
     return send_from_directory(directory, safe_name)
 # Route to serve the cached frames
 

@@ -6,6 +6,8 @@
 
 ### 🛡️ Data Safety
 
+* **Closed a hole that let anyone read files from your gallery folder.** One address used for video storyboard frames took a folder name straight from the URL, so a request containing `..` reached the gallery folder itself and returned whatever was named — with no login, on a server started with `--force-login` or `--exhibition`. Anyone who could reach the gallery over the network could read pictures by name, past the login and past the prompt hiding. If your gallery has ever been reachable beyond your own machine, update.
+
 * **Renaming a file now works.** Every rename previously failed with a server error, from both the toolbar and the <kbd>R</kbd> shortcut.
 * **Uploads no longer overwrite.** Uploading a file whose name matched one already in the folder replaced it silently and still reported success. The arriving file is now saved alongside as `name(1).png`, matching what moving a file has always done.
 * **Trash (`DELETE_TO`) is usable again.** Setting it prevented the app from starting unless its folder already existed — so the one setting that makes deletions recoverable could not be turned on.
