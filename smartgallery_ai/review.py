@@ -430,6 +430,27 @@ class CriticBackend(ABC):
     model_id: str  # stable identifier of the underlying model (e.g. HF repo id)
     model_version: str  # provenance tag stored with every review row
 
+    # Optional live-progress sink, `fn(stage: str, detail: dict)`. The
+    # interactive runner installs one so a ~200s review reports each protocol
+    # stage as it lands instead of being one opaque block; background
+    # indexing leaves it None and emits nothing. Never load-bearing: a
+    # backend that ignores it is still correct.
+    progress = None
+
+    def _emit(self, stage: str, **detail) -> None:
+        """Report one protocol stage to the progress sink, if any.
+
+        Swallows sink failures on purpose: a disconnected SSE client or a
+        slow consumer must never abort a review that is otherwise fine.
+        Observation must not be able to break the thing observed."""
+        sink = self.progress
+        if sink is None:
+            return
+        try:
+            sink(stage, detail)
+        except Exception:
+            pass
+
     @abstractmethod
     def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str,
                negative_text: Optional[str] = None) -> dict:

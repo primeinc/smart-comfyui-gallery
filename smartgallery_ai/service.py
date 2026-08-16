@@ -15,6 +15,7 @@ plain function resolving a field's raw AST value to a list of file ids.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import sqlite3
@@ -32,7 +33,7 @@ from smartgallery_ai import (
     SPACE_SEMANTIC,
     SPACE_VISUAL,
 )
-from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, vectors
+from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, runner, vectors
 from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
     _MTIME_EPSILON,
@@ -872,6 +873,50 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         """Serve one satisfied prompt element's highlight mask PNG."""
         return _serve_mask("ai_review_alignment", "element_id", element_id)
 
+    # -- GET /review/run/<file_id> (SSE) -------------------------------------------
+
+    def review_run(file_id: str):
+        """Stream an interactive review of one file as server-sent events.
+
+        Answers the question background indexing cannot: what is the critic
+        doing RIGHT NOW on THIS image. Each pipeline step and each VLM
+        protocol stage arrives as its own event, so a ~200s review is
+        legible while it runs instead of only after it ends.
+
+        `?steps=resolve,load,critic` runs a prefix -- inspect a payload
+        without writing anything. 409 when another run holds the critic:
+        an interactive action silently queued behind a 200s job is a worse
+        answer than saying so.
+        """
+        _check_file_access(file_id)
+        try:
+            events = runner.run_review(config, file_id,
+                                       steps=request.args.get("steps"))
+            first = next(events)
+        except runner.RunnerBusy as exc:
+            return jsonify({"enabled": True, "error": str(exc)}), 409
+
+        def stream():
+            # `first` is already drawn; re-emit it before draining the rest.
+            try:
+                for event in itertools.chain([first], events):
+                    yield f"data: {json.dumps(event)}\n\n"
+            except GeneratorExit:
+                # Client hung up. Closing the generator releases the run
+                # lock via its finally block; without this the lock would
+                # be held until process exit and every later run would 409.
+                events.close()
+                raise
+            except Exception as exc:  # a stream must end, not hang
+                yield f"data: {json.dumps({'step': 'run', 'status': 'error', 'detail': {'error': str(exc)}})}\n\n"
+
+        return Response(stream(), mimetype="text/event-stream", headers={
+            "Cache-Control": "no-cache",
+            # Long-lived streams die behind proxies that buffer; this is the
+            # conventional opt-out and is inert when no proxy is present.
+            "X-Accel-Buffering": "no",
+        })
+
     # -- POST /review/feedback (guarded) / GET /review/feedback/export --------------
 
     def review_feedback_post():
@@ -1137,6 +1182,9 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     bp.add_url_rule(
         "/review/alignment/mask/<int:element_id>", "review_alignment_mask",
         _wrap(review_alignment_mask), methods=["GET"]
+    )
+    bp.add_url_rule(
+        "/review/run/<file_id>", "review_run", _wrap(review_run), methods=["GET"]
     )
     bp.add_url_rule(
         "/review/feedback", "review_feedback_post",

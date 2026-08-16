@@ -453,16 +453,19 @@ class QwenVlCritic(CriticBackend):
         uri = _data_uri(img)
 
         # 1. DESCRIBE (free text; nothing schema-shaped to parrot)
+        self._emit("describe")
         description = self._chat(
             uri, "Describe this image factually in two short sentences.",
             schema=None, max_tokens=120).strip()
 
         # 2. GROUND — deterministic anti-fabrication gate (embedder is a
         # constructor-enforced hard dependency; this can never be skipped)
+        self._emit("ground", description=description)
         grounding_margin = check_grounding(self._embedder, description, img,
                                         self._grounding_min_cos)
 
         # 3. ASSESS (grammar-constrained)
+        self._emit("assess", grounding_margin=round(grounding_margin, 3))
         assess_raw = self._chat(
             uri,
             "You are reviewing an AI-generated image for defects. "
@@ -520,6 +523,7 @@ class QwenVlCritic(CriticBackend):
         alignment_elements: list = []
         adherence_note = ""
         if prompt_text:
+            self._emit("align", findings=len(findings))
             expected = extract_prompt_elements(prompt_text, negative_text)
             if expected:
                 listing = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(expected))
@@ -591,6 +595,9 @@ class QwenVlCritic(CriticBackend):
             alignment_score = (sum(1 for e in alignment_elements if e["satisfied"])
                                / len(alignment_elements))
 
+        self._emit("assemble", findings=len(findings),
+                   alignment=len(alignment_elements),
+                   alignment_score=alignment_score)
         summary = f"{description[:260]} [grounding margin {grounding_margin:.2f}]"
         if dropped_unverified:
             summary += (f" [{dropped_unverified} finding(s) dropped: region "

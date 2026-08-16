@@ -89,6 +89,23 @@
 
     /* Prompt-following breakdown: one chip per element of the generation
        prompt, colored to match the region it highlights on the image. */
+    /* Live review runner: streamed step log. */
+    .aidam-run-bar { display:flex; gap:6px; margin:0 0 10px 0; }
+    .aidam-run-bar button { background:transparent; border:1px solid #444; color:#ccc;
+        border-radius:4px; padding:4px 10px; font-size:0.76rem; cursor:pointer; }
+    .aidam-run-bar button:hover { border-color:#666; color:#fff; }
+    .aidam-run-bar button:disabled { opacity:0.5; cursor:default; }
+    .aidam-run-log { max-height:190px; overflow-y:auto; margin:0 0 14px 0;
+        padding:8px 10px; background:#111; border:1px solid #2a2a2a; border-radius:4px;
+        font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.72rem;
+        line-height:1.55; }
+    .aidam-run-line { white-space:pre-wrap; word-break:break-word; }
+    .aidam-run-ok { color:#8fd18f; }
+    .aidam-run-info { color:#9ab; }
+    .aidam-run-wait { color:#777; font-style:italic; }
+    .aidam-run-err { color:#e88; }
+    .aidam-run-meta { color:#777; }
+
     .aidam-align-block { margin:-4px 0 16px 0; }
     .aidam-align-head { display:flex; align-items:center; justify-content:space-between;
         gap:8px; margin-bottom:6px; font-size:0.78rem; color:var(--text-muted); }
@@ -777,6 +794,87 @@
             </div>`;
     }
 
+    // --- live review runner ---------------------------------------------------
+    // A review is a ~200s block of work. Streaming its steps is the difference
+    // between "working" and "hung": without per-stage events the two look
+    // identical from here.
+
+    let aidamRunSource = null;
+
+    const AIDAM_RUN_LABELS = {
+        'critic:describe': 'Describing the image',
+        'critic:ground': 'Checking the description is about THIS image',
+        'critic:assess': 'Looking for defects',
+        'critic:align': 'Checking the prompt element by element',
+        'critic:assemble': 'Assembling the review',
+    };
+
+    function aidamRunStop() {
+        if (aidamRunSource) {
+            aidamRunSource.close();   // releases the server-side run lock
+            aidamRunSource = null;
+        }
+        const btn = document.getElementById('aidam-run-btn');
+        if (btn) { btn.textContent = 'Run review now'; btn.disabled = false; }
+    }
+
+    function aidamRunLine(ev) {
+        const d = ev.detail || {};
+        const label = AIDAM_RUN_LABELS[ev.step] || d.label || ev.step;
+        if (ev.status === 'waiting') {
+            return `<div class="aidam-run-line aidam-run-wait">… ${escapeAidamHtml(label)} (${d.seconds}s)</div>`;
+        }
+        if (ev.status === 'error') {
+            return `<div class="aidam-run-line aidam-run-err">✕ ${escapeAidamHtml(label)} — ${escapeAidamHtml(d.error || '')}</div>`;
+        }
+        if (ev.status === 'start') return '';
+        const bits = [];
+        if (d.seconds !== undefined) bits.push(`${d.seconds}s`);
+        if (d.has_prompt !== undefined) bits.push(d.has_prompt ? 'prompt found' : 'no prompt');
+        if (d.quality !== undefined) bits.push(`quality ${d.quality}`);
+        if (d.prompt_alignment !== undefined && d.prompt_alignment !== null) {
+            bits.push(`following ${Math.round(d.prompt_alignment * 100)}%`);
+        }
+        if (d.generated !== undefined) bits.push(`${d.generated} masks`);
+        if (d.skipped) bits.push(escapeAidamHtml(d.skipped));
+        const cls = ev.status === 'info' ? 'aidam-run-info' : 'aidam-run-ok';
+        const mark = ev.status === 'info' ? '·' : '✓';
+        return `<div class="aidam-run-line ${cls}">${mark} ${escapeAidamHtml(label)}`
+             + (bits.length ? ` <span class="aidam-run-meta">${bits.join(' · ')}</span>` : '')
+             + `</div>`;
+    }
+
+    function aidamRunReview(steps) {
+        const log = document.getElementById('aidam-run-log');
+        const btn = document.getElementById('aidam-run-btn');
+        if (!log || !aidamCurrentFileId) return;
+        if (aidamRunSource) { aidamRunStop(); return; }
+
+        log.innerHTML = '';
+        log.style.display = 'block';
+        if (btn) { btn.textContent = 'Stop'; }
+
+        const qs = steps ? `?steps=${encodeURIComponent(steps)}` : '';
+        const url = `/galleryout/api/aidam/review/run/${encodeURIComponent(aidamCurrentFileId)}${qs}`;
+        aidamRunSource = new EventSource(url);
+
+        aidamRunSource.onmessage = (msg) => {
+            let ev;
+            try { ev = JSON.parse(msg.data); } catch (e) { return; }
+            const html = aidamRunLine(ev);
+            if (html) log.insertAdjacentHTML('beforeend', html);
+            log.scrollTop = log.scrollHeight;
+            if (ev.step === 'run' && (ev.status === 'done' || ev.status === 'error')) {
+                aidamRunStop();
+                // Re-read the stored review so the panel shows what just landed.
+                if (ev.status === 'done') aidamLoadReview();
+            }
+        };
+        // An SSE error fires on normal stream close too; the run/done event
+        // above is what actually signals success, so this only cleans up.
+        aidamRunSource.onerror = () => aidamRunStop();
+    }
+
     // One stable hue per prompt element, so a chip and the region it
     // highlights are the same color. Golden-angle spacing keeps adjacent
     // elements far apart in hue even for long prompts.
@@ -931,6 +1029,13 @@
                             -webkit-mask-size:100% 100%; mask-size:100% 100%;"></div>`).join('')}
                 </div>
             </div>`;
+
+            html += `<div class="aidam-run-bar">
+                <button type="button" id="aidam-run-btn" onclick="aidamRunReview()">Run review now</button>
+                <button type="button" class="aidam-run-dry" onclick="aidamRunReview('resolve,load,critic,validate')"
+                    title="Run the critic and show the result without writing to the database">Dry run</button>
+            </div>
+            <div id="aidam-run-log" class="aidam-run-log" style="display:none;"></div>`;
 
             html += `<div class="aidam-meter-row">
                 ${aidamMeter('Quality', review.scores ? review.scores.quality : null, 10)}
