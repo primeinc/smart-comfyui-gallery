@@ -8071,22 +8071,6 @@ body.sidebar-minimized .sidebar-user-row {
     margin-bottom: 8px;
     font-variant-numeric: tabular-nums;
 }
-.ai-hub-actions { display: flex; gap: 6px; }
-.ai-hub-btn {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--glass-border);
-    color: #ddd;
-    border-radius: 8px;
-    padding: 5px 8px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-}
-.ai-hub-btn:hover { border-color: var(--ai-color); color: #fff; background: rgba(255, 0, 255, 0.1); }
-
 body.sidebar-minimized .sidebar-ai-hub { display: none; }
 .sidebar.nav-collapsed .sidebar-ai-hub { display: none; }
 

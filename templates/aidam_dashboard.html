@@ -150,6 +150,8 @@
         <button class="glass-btn" data-view="generation" onclick="switchView('generation')">Generation</button>
         <button class="glass-btn" data-view="faces" onclick="switchView('faces')">Faces</button>
         <button class="glass-btn" data-view="dupes" onclick="switchView('dupes')">Duplicates</button>
+        <button class="glass-btn" data-view="reviews" onclick="switchView('reviews')">Reviews</button>
+        <button class="glass-btn" data-view="search" onclick="switchView('search')">Meaning search</button>
         <button class="glass-btn" data-view="compare" onclick="switchView('compare')">Detector compare</button>
     </nav>
     <span class="spacer"></span>
@@ -191,6 +193,33 @@
         <h2>Exact duplicates</h2>
         <p class="lede">Byte-identical groups, largest reclaimable space first. Keep one copy of each group.</p>
         <div id="dupes-content"></div>
+    </section>
+
+    <section id="view-reviews">
+        <h2>Reviews</h2>
+        <p class="lede">Every critic-reviewed file, sortable by what needs attention first. Click a tile to open the file.</p>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <span class="muted" id="reviews-total" style="font-size:0.85rem;"></span>
+            <select id="reviews-sort" onchange="loadReviews()"
+                    style="background:var(--surface-hover); color:var(--text-color); border:1px solid var(--border-color); border-radius:8px; padding:5px 9px; font-size:0.8rem;">
+                <option value="quality_asc" selected>Worst quality first</option>
+                <option value="quality_desc">Best quality first</option>
+                <option value="alignment_asc">Least prompt-aligned first</option>
+                <option value="newest">Newest reviews first</option>
+            </select>
+        </div>
+        <div id="reviews-content"></div>
+    </section>
+
+    <section id="view-search">
+        <h2>Meaning search</h2>
+        <p class="lede">The query text and every image live in the same CLIP embedding space — describe what you're looking for. (Ctrl+P in the gallery searches names, prompts, ratings, and more.)</p>
+        <div style="display:flex; gap:8px; margin-bottom:14px; max-width:640px;">
+            <input type="text" id="search-q" placeholder="e.g. a red car at night" style="flex:1;"
+                   onkeydown="if (event.key === 'Enter') searchRun();">
+            <button class="glass-btn" onclick="searchRun()">Search</button>
+        </div>
+        <div id="search-content"></div>
     </section>
 
     <section id="view-compare">
@@ -517,9 +546,77 @@ async function cmpRun() {
     }
 }
 
+// ---- reviews ----
+async function loadReviews() {
+    const box = document.getElementById('reviews-content');
+    box.innerHTML = '<div class="status-msg">Loading…</div>';
+    const sort = document.getElementById('reviews-sort').value;
+    try {
+        const r = await fetch(`${API}/reviews?sort=${encodeURIComponent(sort)}&limit=120`);
+        const d = await r.json();
+        document.getElementById('reviews-total').textContent =
+            `${d.total || 0} reviewed file${(d.total || 0) === 1 ? '' : 's'}`;
+        const reviews = d.reviews || [];
+        if (!reviews.length) {
+            box.innerHTML = '<div class="status-msg">No reviews yet — the critic works through the queue when the fast stages are idle, and any image opened in the gallery gets reviewed with priority.</div>';
+            return;
+        }
+        box.innerHTML = '<div class="thumb-grid">' + reviews.map(rv => {
+            const q = (rv.quality === null || rv.quality === undefined) ? 'n/a' : Math.round(rv.quality * 10) + '/10';
+            const tag = `${rv.finding_count > 0 ? rv.finding_count + ' · ' : ''}${q}`;
+            return `<div class="thumb-tile" title="${esc(rv.summary || '')}" onclick="window.open('/galleryout/file/${encodeURIComponent(rv.file_id)}', '_blank')">
+                <img src="${thumb(rv.file_id)}" alt="">
+                <span class="tag">${esc(tag)}</span>
+            </div>`;
+        }).join('') + '</div>';
+    } catch (e) {
+        box.innerHTML = '<div class="status-msg">Failed to load reviews.</div>';
+    }
+}
+
+// ---- meaning search (CLIP) ----
+let searchRanFromUrl = false;
+function loadSearchView() {
+    const q = new URLSearchParams(location.search).get('q');
+    if (q && !searchRanFromUrl) {
+        searchRanFromUrl = true;
+        document.getElementById('search-q').value = q;
+        searchRun();
+        return;
+    }
+    const box = document.getElementById('search-content');
+    if (!box.innerHTML) box.innerHTML = '<div class="status-msg">Describe an image to search the embedding space.</div>';
+}
+
+async function searchRun() {
+    const q = document.getElementById('search-q').value.trim();
+    const box = document.getElementById('search-content');
+    if (!q) return;
+    box.innerHTML = '<div class="status-msg">Searching…</div>';
+    try {
+        const r = await fetch(`${API}/search/semantic?q=${encodeURIComponent(q)}&k=48`);
+        const d = await r.json();
+        if (d.enabled === false) { box.innerHTML = '<div class="status-msg">The AI layer is disabled on this server.</div>'; return; }
+        if (d.note) { box.innerHTML = `<div class="status-msg">${esc(d.note)}</div>`; return; }
+        const results = d.results || [];
+        if (!results.length) {
+            box.innerHTML = `<div class="status-msg">Nothing close to "${esc(q)}" yet — results grow as embedding indexing progresses (see Status).</div>`;
+            return;
+        }
+        box.innerHTML = '<div class="thumb-grid">' + results.map(res => `
+            <div class="thumb-tile" onclick="window.open('/galleryout/file/${encodeURIComponent(res.file_id)}', '_blank')">
+                <img src="${thumb(res.file_id)}" alt="">
+                <span class="tag">${Number(res.score).toFixed(2)}</span>
+            </div>`).join('') + '</div>';
+    } catch (e) {
+        box.innerHTML = '<div class="status-msg">Search failed.</div>';
+    }
+}
+
 // ---- view switching ----
 const LOADERS = { status: loadStatus, generation: loadGeneration, faces: loadFaces,
-                  dupes: loadDupes, compare: loadRecentFaces };
+                  dupes: loadDupes, reviews: loadReviews, search: loadSearchView,
+                  compare: loadRecentFaces };
 function switchView(view) {
     if (!LOADERS[view]) view = 'status';
     document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === 'view-' + view));

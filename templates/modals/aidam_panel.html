@@ -1,10 +1,12 @@
-<!-- AI DAM PANEL: Similar / Faces / Review (WI-31 wave 3) -->
-<!-- Version: 2.22 - August 12, 2026 -->
-<!-- Self-contained lightbox overlay for the optional derived-AI layer. Every
-     fetch here hits /galleryout/api/aidam/* (see smartgallery_ai/service.py),
-     which always no-ops to {"enabled": false} when the AI layer is off --
-     this file just has to render that gracefully. Included only when
-     enable_ai_dam is true (see index.html). -->
+<!-- AI DAM PANEL: the PER-FILE AI surface (Similar / Faces / Review). -->
+<!-- Version: 2.23 - August 16, 2026 -->
+<!-- Scope contract: this modal answers questions about ONE file — the one
+     open in the lightbox. Everything gallery-wide (status, clusters,
+     duplicate sweep, reviews browser, meaning search) lives on the AI
+     dashboard page (/galleryout/aidam); search lives in the Ctrl+P
+     palette. Every fetch hits /galleryout/api/aidam/* (see
+     smartgallery_ai/service.py), which no-ops to {"enabled": false} when
+     the AI layer is off. Included only when enable_ai_dam is true. -->
 
 <style>
     #aidam-overlay { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:10550; display:none; justify-content:center; align-items:center; opacity:0; transition:opacity 0.2s; }
@@ -103,8 +105,8 @@
 
         <!-- Header -->
         <div class="aidam-header-container">
-            <h3 style="margin:0; font-size:1.25rem; color:white; display:flex; align-items:center; gap:10px;">AI DAM <span style="font-size:0.75rem; background:var(--ai-color); color:#1a001a; padding:2px 6px; border-radius:4px;">Similar &middot; Faces &middot; Review &middot; Status</span>
-                <a href="/galleryout/aidam" target="_blank" style="font-size:0.72rem; color:var(--ai-color); text-decoration:none; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Open dashboard</a></h3>
+            <h3 style="margin:0; font-size:1.25rem; color:white; display:flex; align-items:center; gap:10px;">This file's AI
+                <a href="/galleryout/aidam" target="_blank" style="font-size:0.72rem; color:var(--ai-color); text-decoration:none; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Gallery-wide dashboard</a></h3>
             <button onclick="closeAidamPanel()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
         </div>
 
@@ -113,22 +115,20 @@
             <button type="button" id="aidam-tab-btn-similar" class="aidam-tab-btn aidam-tab-active" onclick="aidamSwitchTab('similar')">Similar</button>
             <button type="button" id="aidam-tab-btn-faces" class="aidam-tab-btn" onclick="aidamSwitchTab('faces')">Faces</button>
             <button type="button" id="aidam-tab-btn-review" class="aidam-tab-btn" onclick="aidamSwitchTab('review')">Review</button>
-            <button type="button" id="aidam-tab-btn-search" class="aidam-tab-btn" onclick="aidamSwitchTab('search')">Search</button>
-            <button type="button" id="aidam-tab-btn-status" class="aidam-tab-btn" onclick="aidamSwitchTab('status')">Status</button>
         </div>
 
         <!-- Body -->
         <div class="aidam-body">
 
-            <!-- SIMILAR TAB (global mode: gallery-wide duplicate sweep) -->
+            <!-- SIMILAR TAB -->
             <div id="aidam-tab-similar" class="aidam-tab-panel" style="display:flex;">
-                <div class="aidam-toggle-group" id="aidam-similar-chrome-toggle">
+                <div class="aidam-toggle-group">
                     <button type="button" id="aidam-space-semantic-btn" class="aidam-toggle-btn aidam-toggle-active" onclick="aidamSetSimilarSpace('semantic')">Semantic</button>
                     <button type="button" id="aidam-space-visual-btn" class="aidam-toggle-btn" onclick="aidamSetSimilarSpace('visual')">Visual</button>
                 </div>
                 <div id="aidam-similar-content"></div>
 
-                <span class="aidam-section-title" id="aidam-similar-chrome-dup-title">Duplicates</span>
+                <span class="aidam-section-title">Duplicates</span>
                 <div id="aidam-duplicates-content"></div>
             </div>
 
@@ -140,22 +140,6 @@
             <!-- REVIEW TAB -->
             <div id="aidam-tab-review" class="aidam-tab-panel">
                 <div id="aidam-review-content"></div>
-            </div>
-
-            <!-- SEARCH TAB: free-text semantic image search (gallery-wide) -->
-            <div id="aidam-tab-search" class="aidam-tab-panel">
-                <div style="display:flex; gap:8px; margin-bottom:14px;">
-                    <input type="search" id="aidam-search-input" placeholder="Describe what you're looking for — e.g. 'a red car at night'"
-                           style="flex:1; background:#111; border:1px solid #444; border-radius:8px; color:#fff; padding:8px 12px; font-size:0.9rem;"
-                           onkeydown="if (event.key === 'Enter') aidamRunSemanticSearch();">
-                    <button type="button" class="glass-btn" style="padding:8px 16px;" onclick="aidamRunSemanticSearch()">Search</button>
-                </div>
-                <div id="aidam-search-content"></div>
-            </div>
-
-            <!-- STATUS TAB: live ingest/backlog dashboard -->
-            <div id="aidam-tab-status" class="aidam-tab-panel">
-                <div id="aidam-status-content"></div>
             </div>
 
         </div>
@@ -182,30 +166,9 @@
         aidamSwitchTab('similar');
     }
 
-    // Global entry (sidebar AI hub): no file context. Every tab shows its
-    // gallery-wide counterpart -- Status, Clusters, the duplicate sweep,
-    // the reviews browser, and semantic search.
-    function openAidamPanelGlobal(tab, searchQuery) {
-        aidamCurrentFileId = null;
-        aidamLoadedFor = {};
-        aidamStatusCache = null;
-
-        const overlay = document.getElementById('aidam-overlay');
-        overlay.style.display = 'flex';
-        setTimeout(() => overlay.style.opacity = '1', 10);
-        document.body.classList.add('modal-open');
-
-        aidamSwitchTab(tab || 'status');
-        if (tab === 'search' && searchQuery) {
-            const input = document.getElementById('aidam-search-input');
-            if (input) { input.value = searchQuery; aidamRunSemanticSearch(); }
-        }
-    }
-
     function closeAidamPanel() {
         aidamStopProvisionPoll();
         aidamStopIndexPoll();
-        aidamStopStatusPoll();
         const overlay = document.getElementById('aidam-overlay');
         overlay.style.opacity = '0';
         setTimeout(() => {
@@ -226,7 +189,7 @@
             overlay.addEventListener('click', () => closeAidamPanel());
         }
         // Sidebar AI hub: a compact always-on pulse of the ingest state,
-        // refreshed every 30s (the panel's Status tab is the deep view).
+        // refreshed every 30s (the dashboard's Status view is the deep view).
         if (document.getElementById('ai-hub-stats')) {
             aidamHubRefresh();
             setInterval(aidamHubRefresh, 30000);
@@ -271,37 +234,17 @@
 
     function aidamSwitchTab(tab) {
         aidamActiveTab = tab;
-        ['similar', 'faces', 'review', 'search', 'status'].forEach(t => {
+        ['similar', 'faces', 'review'].forEach(t => {
             const panel = document.getElementById('aidam-tab-' + t);
             const btn = document.getElementById('aidam-tab-btn-' + t);
             if (panel) panel.style.display = (t === tab) ? 'flex' : 'none';
             if (btn) btn.classList.toggle('aidam-tab-active', t === tab);
         });
-        if (tab !== 'status') aidamStopStatusPoll();
         aidamEnsureTabLoaded(tab);
     }
 
-    function aidamSetSimilarChrome(perFile) {
-        // The space toggle and Duplicates header only make sense per-file;
-        // global mode replaces the pane with the duplicate sweep.
-        const toggle = document.getElementById('aidam-similar-chrome-toggle');
-        const dupTitle = document.getElementById('aidam-similar-chrome-dup-title');
-        if (toggle) toggle.style.display = perFile ? 'inline-flex' : 'none';
-        if (dupTitle) dupTitle.style.display = perFile ? 'block' : 'none';
-    }
-
     function aidamEnsureTabLoaded(tab) {
-        if (tab === 'status') { aidamLoadStatusTab(); return; }
-        if (tab === 'search') { aidamRenderSearchTab(); return; }
-        if (!aidamCurrentFileId) {
-            // Global mode: every tab shows its gallery-wide counterpart.
-            aidamSetSimilarChrome(false);
-            if (tab === 'faces') { aidamBrowseAllClusters(); return; }
-            if (tab === 'similar') { aidamLoadDuplicatesOverview(); return; }
-            if (tab === 'review') { aidamLoadReviewsBrowser(); return; }
-            return;
-        }
-        aidamSetSimilarChrome(true);
+        if (!aidamCurrentFileId) return;  // this modal is per-file by contract
         if (aidamLoadedFor[tab] === aidamCurrentFileId) return;
         aidamLoadedFor[tab] = aidamCurrentFileId;
         if (tab === 'similar') { aidamLoadSimilar(); aidamLoadDuplicates(); }
@@ -462,153 +405,6 @@
             aidamLoadedFor = {};       // force a real re-fetch of the open tab
             aidamEnsureTabLoaded(aidamActiveTab);
         }, 4000);
-    }
-
-    // --- STATUS TAB: live ingest/backlog dashboard --------------------------
-    // Polls /status every 2s while visible; rates and ETA come from the
-    // deltas between successive samples, so they reflect what the worker
-    // is ACTUALLY doing right now, not an average since startup.
-    let aidamStatusPoll = null;
-    let aidamStatusPrevSample = null;   // {t, indexing} from the previous tick
-    let aidamStatusRates = {};          // stage -> smoothed files/sec
-
-    function aidamStopStatusPoll() {
-        if (aidamStatusPoll !== null) { clearInterval(aidamStatusPoll); aidamStatusPoll = null; }
-        aidamStatusPrevSample = null;
-        aidamStatusRates = {};
-    }
-
-    function aidamLoadStatusTab() {
-        aidamRenderStatusTick();
-        if (aidamStatusPoll === null) {
-            aidamStatusPoll = setInterval(aidamRenderStatusTick, 2000);
-        }
-    }
-
-    function aidamRateFor(stage, done, now) {
-        // Exponential smoothing over per-tick deltas keeps the number
-        // readable while still reacting within a few seconds.
-        if (aidamStatusPrevSample) {
-            const dt = (now - aidamStatusPrevSample.t) / 1000;
-            const prev = aidamStatusPrevSample.indexing[stage];
-            if (dt > 0 && prev !== undefined && done >= prev) {
-                const instant = (done - prev) / dt;
-                const old = aidamStatusRates[stage] || 0;
-                aidamStatusRates[stage] = old * 0.6 + instant * 0.4;
-            }
-        }
-        return aidamStatusRates[stage] || 0;
-    }
-
-    function aidamEta(remaining, perSec) {
-        if (remaining <= 0) return 'done';
-        if (!perSec || perSec <= 0) return '&mdash;';
-        const s = Math.round(remaining / perSec);
-        if (s < 90) return `~${s}s`;
-        if (s < 5400) return `~${Math.round(s / 60)}m`;
-        return `~${(s / 3600).toFixed(1)}h`;
-    }
-
-    function aidamStageBar(label, done, total, rateKey, now) {
-        const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
-        const rate = aidamRateFor(rateKey, done, now);
-        const rateTxt = rate > 0.05 ? ` &middot; ${(rate * 60).toFixed(0)}/min` : '';
-        const eta = total > 0 ? ` &middot; ETA ${aidamEta(total - done, rate)}` : '';
-        return `
-            <div class="aidam-meter">
-                <div class="aidam-meter-label"><span>${label}</span><span>${done.toLocaleString()} / ${total.toLocaleString()} (${pct}%)${rateTxt}${eta}</span></div>
-                <div class="aidam-meter-track"><div class="aidam-meter-fill" style="width:${pct}%;"></div></div>
-            </div>`;
-    }
-
-    async function aidamRenderStatusTick() {
-        const box = document.getElementById('aidam-status-content');
-        if (!box) return;
-        let status = {};
-        try {
-            status = await (await fetch('/galleryout/api/aidam/status')).json();
-        } catch (e) {
-            box.innerHTML = aidamErrorMsg('Cannot reach the server.');
-            return;
-        }
-        if (status.enabled === false) { aidamStopStatusPoll(); box.innerHTML = aidamDisabledMsg(); return; }
-        const now = Date.now();
-        const ix = status.indexing || {};
-        const worker = status.worker || {};
-        const stats = worker.stats || {};
-        const prov = worker.provisioning || {};
-        const devices = status.devices || {};
-        const backends = status.backends || {};
-
-        let html = '';
-
-        if (prov.state === 'downloading') {
-            html += aidamProvisionProgressHtml(prov);
-        } else if (String(prov.state || '').startsWith('failed')) {
-            html += `<div class="aidam-status-msg aidam-status-error">Auto-setup failed: ${escapeAidamHtml(String(prov.state).slice(8, 300))}</div>`;
-        }
-
-        html += '<span class="aidam-section-title">Ingest backlog</span><div class="aidam-meter-row">';
-        html += aidamStageBar('Hashes / duplicates', ix.hashed || 0, ix.files_total || 0, 'hashed', now);
-        html += aidamStageBar('Semantic embeddings', ix.embeddings_semantic || 0, ix.visual_files_total || 0, 'embeddings_semantic', now);
-        html += aidamStageBar('Visual embeddings', ix.embeddings_visual || 0, ix.visual_files_total || 0, 'embeddings_visual', now);
-        html += aidamStageBar('Face scans', ix.faces_scanned || 0, ix.visual_files_total || 0, 'faces_scanned', now);
-        html += aidamStageBar('Reviews', ix.reviews_scanned || 0, ix.visual_files_total || 0, 'reviews_scanned', now);
-        html += '</div>';
-
-        const gpu = status.gpu;
-        if (gpu) {
-            html += '<span class="aidam-section-title">GPU</span><div style="color:#ddd; font-size:0.85rem; line-height:1.7;">';
-            (gpu.gpus || []).forEach((card, idx) => {
-                const active = devices && Object.values(devices).some(d => d === ('cuda:' + idx))
-                    || ((gpu.gpus || []).length === 1 && Object.values(devices || {}).some(d => d === 'cuda'));
-                // Live VRAM occupancy; flag pressure so an OOM-in-waiting
-                // (ComfyUI holding the card) is visible at a glance.
-                let vramTxt = escapeAidamHtml(card.vram || '?');
-                if (card.vram_used) {
-                    const usedMiB = parseFloat(card.vram_used);
-                    const totalMiB = parseFloat(card.vram);
-                    const hot = totalMiB > 0 && usedMiB / totalMiB > 0.85;
-                    vramTxt = `${escapeAidamHtml(card.vram_used)} used / ${escapeAidamHtml(card.vram)}`
-                        + (hot ? ' <b style="color:#ff6b6b;">VRAM pressure</b>' : '');
-                }
-                html += `GPU${idx}: ${escapeAidamHtml(card.name || '?')} &middot; compute ${escapeAidamHtml(card.compute_capability || '?')} &middot; ${vramTxt}${active ? ' &middot; <b style="color:var(--ai-color);">in use</b>' : ''}<br>`;
-            });
-            html += `driver ${escapeAidamHtml(gpu.driver || '?')} (CUDA ${escapeAidamHtml(gpu.driver_cuda || '?')}) &middot; wheels ${escapeAidamHtml(String(gpu.torch_index || '').split('/').pop() || '?')}</div>`;
-        }
-
-        html += '<span class="aidam-section-title">Backends</span><div style="display:flex; flex-wrap:wrap; gap:8px;">';
-        Object.keys(backends).sort().forEach(key => {
-            const up = backends[key];
-            const dev = devices[key];
-            const chip = up
-                ? `<span class="aidam-dot" style="background:#34db98;"></span>${escapeAidamHtml(key)}${dev ? ' on ' + escapeAidamHtml(dev) : ''}`
-                : `<span class="aidam-dot" style="background:#555;"></span>${escapeAidamHtml(key)}`;
-            html += `<span style="background:#151515; border:1px solid #333; border-radius:8px; padding:5px 10px; font-size:0.8rem; color:${up ? '#ddd' : 'var(--text-muted)'};">${chip}</span>`;
-        });
-        html += '</div>';
-
-        html += `<span class="aidam-section-title">Worker</span>
-            <div style="color:#ddd; font-size:0.85rem; line-height:1.7;">
-                ${worker.running ? '<span class="aidam-dot" style="background:#34db98;"></span>running' : '<span class="aidam-dot" style="background:#e74c3c;"></span>not running'}
-                &middot; cycles ${stats.cycles || 0}
-                &middot; priority queue ${worker.priority_queued || 0}
-                &middot; errors ${stats.errors || 0}
-                ${status.app_git_ref ? '&middot; build ' + escapeAidamHtml(status.app_git_ref) : ''}
-            </div>`;
-
-        const errs = worker.recent_errors || [];
-        if (errs.length) {
-            html += '<span class="aidam-section-title">Recent errors</span><div style="display:flex; flex-direction:column; gap:6px;">';
-            errs.slice(-8).reverse().forEach(err => {
-                const when = err.at ? new Date(err.at * 1000).toLocaleTimeString() : '';
-                html += `<div style="background:rgba(231,76,60,0.08); border:1px solid #5c2b24; border-radius:8px; padding:6px 10px; font-size:0.78rem; color:#e8a19a;">${escapeAidamHtml(when)} &middot; ${escapeAidamHtml(err.message || '')}</div>`;
-            });
-            html += '</div>';
-        }
-
-        box.innerHTML = html;
-        aidamStatusPrevSample = { t: now, indexing: { ...ix } };
     }
 
     // Empty state that says WHY: backend missing -> live download progress,
@@ -839,7 +635,7 @@
                 return;
             }
             const members = data.members || [];
-            let html = aidamBackButton(aidamCurrentFileId ? 'aidamLoadFaces' : 'aidamBrowseAllClusters');
+            let html = aidamBackButton('aidamLoadFaces');
             html += `<h5 style="margin:0 0 10px 0; color:#fff;">${escapeAidamHtml(data.cluster.label || ('Cluster #' + data.cluster.cluster_id))}
                 <span style="color:var(--text-muted); font-weight:normal; font-size:0.8rem;">(${data.cluster.size} face${data.cluster.size === 1 ? '' : 's'})</span>
                 <button type="button" class="glass-btn" style="padding:2px 8px; font-size:0.75rem; margin-left:6px;"
@@ -865,39 +661,6 @@
             });
             if (res.ok) aidamViewCluster(clusterId);
         } catch (e) { /* rename is best-effort; the view simply keeps the old name */ }
-    }
-
-    async function aidamBrowseAllClusters() {
-        const box = document.getElementById('aidam-faces-content');
-        box.innerHTML = aidamSpinner();
-        try {
-            const res = await fetch('/galleryout/api/aidam/faces/clusters');
-            const data = await res.json();
-            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
-            const clusters = data.clusters || [];
-            // Back leads to the per-file faces view; in global mode there
-            // is no file to go back to.
-            let html = aidamCurrentFileId ? aidamBackButton('aidamLoadFaces') : '';
-            if (clusters.length === 0) {
-                html += aidamEmptyMsg('No face clusters yet.');
-                box.innerHTML = html;
-                return;
-            }
-            html += '<div class="aidam-cluster-grid">';
-            clusters.forEach(c => {
-                const sample = (c.sample_file_ids && c.sample_file_ids.length > 0) ? c.sample_file_ids[0] : null;
-                html += `
-                    <div class="aidam-cluster-card" onclick="aidamViewCluster(${c.cluster_id})">
-                        ${sample ? `<img src="/galleryout/thumbnail/${encodeURIComponent(sample)}" loading="lazy" alt="">` : '<div class="aidam-cluster-noimg">&mdash;</div>'}
-                        <div class="aidam-cluster-label">${escapeAidamHtml(c.label || ('Cluster #' + c.cluster_id))}</div>
-                        <div class="aidam-cluster-size">${c.size} face${c.size === 1 ? '' : 's'}</div>
-                    </div>`;
-            });
-            html += '</div>';
-            box.innerHTML = html;
-        } catch (e) {
-            box.innerHTML = aidamErrorMsg('Failed to load clusters.');
-        }
     }
 
     // --- REVIEW ---
@@ -928,115 +691,6 @@
             overlay.style.display = 'block';
             overlay.dataset.maskUrl = maskUrl;
             if (btnEl) btnEl.textContent = 'Hide mask';
-        }
-    }
-
-    // --- SEMANTIC SEARCH (gallery-wide) ---
-    let aidamSearchLastHtml = null;  // survives tab switches within a panel session
-
-    function aidamRenderSearchTab() {
-        const box = document.getElementById('aidam-search-content');
-        if (!box) return;
-        box.innerHTML = aidamSearchLastHtml !== null
-            ? aidamSearchLastHtml
-            : aidamEmptyMsg('Search your gallery by MEANING: the query text and every image live in the same CLIP embedding space. Try "close-up portrait, dramatic lighting".');
-    }
-
-    async function aidamRunSemanticSearch() {
-        const input = document.getElementById('aidam-search-input');
-        const box = document.getElementById('aidam-search-content');
-        const query = (input && input.value || '').trim();
-        if (!query || !box) return;
-        box.innerHTML = aidamSpinner();
-        try {
-            const res = await fetch(`/galleryout/api/aidam/search/semantic?q=${encodeURIComponent(query)}&k=48`);
-            const data = await res.json();
-            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
-            if (data.note) {
-                box.innerHTML = await aidamBackendAwareEmpty('semantic', 'semantic', data.note);
-            } else if (!data.results || data.results.length === 0) {
-                box.innerHTML = aidamEmptyMsg(`Nothing close to "${escapeAidamHtml(query)}" yet — results grow as embedding indexing progresses (see Status).`);
-            } else {
-                box.innerHTML = `<div class="aidam-thumb-grid">${data.results.map(r => aidamThumbCard(r.file_id, aidamFormatScore(r.score))).join('')}</div>`;
-            }
-            aidamSearchLastHtml = box.innerHTML;
-        } catch (e) {
-            box.innerHTML = aidamErrorMsg('Search failed.');
-        }
-    }
-
-    // --- GLOBAL DUPLICATE SWEEP (Similar tab without a file) ---
-    function aidamFormatBytes(n) {
-        if (!n || n <= 0) return '0 B';
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
-        return (n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
-    }
-
-    async function aidamLoadDuplicatesOverview() {
-        const box = document.getElementById('aidam-similar-content');
-        const dup = document.getElementById('aidam-duplicates-content');
-        if (dup) dup.innerHTML = '';
-        if (!box) return;
-        box.innerHTML = aidamSpinner();
-        try {
-            const res = await fetch('/galleryout/api/aidam/duplicates');
-            const data = await res.json();
-            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
-            const groups = data.groups || [];
-            if (groups.length === 0) {
-                box.innerHTML = aidamEmptyMsg('No exact duplicates in the gallery (among hashed files — see Status for hashing progress).');
-                return;
-            }
-            let html = `<div style="color:#ddd; font-size:0.9rem; margin-bottom:12px;">
-                <b>${data.group_count}</b> duplicate group${data.group_count === 1 ? '' : 's'} ·
-                <b>${data.redundant_files}</b> redundant file${data.redundant_files === 1 ? '' : 's'} ·
-                <b>${aidamFormatBytes(data.total_bytes_reclaimable)}</b> reclaimable (keep one copy of each)
-            </div>`;
-            groups.forEach(g => {
-                html += `<span class="aidam-section-title">${g.count} copies · ${aidamFormatBytes(g.bytes_reclaimable)} reclaimable</span>`;
-                html += `<div class="aidam-thumb-grid">${g.file_ids.map(fid => aidamThumbCard(fid, null)).join('')}</div>`;
-            });
-            box.innerHTML = html;
-        } catch (e) {
-            box.innerHTML = aidamErrorMsg('Failed to load the duplicate sweep.');
-        }
-    }
-
-    // --- GLOBAL REVIEWS BROWSER (Review tab without a file) ---
-    let aidamReviewsSort = 'quality_asc';
-
-    async function aidamLoadReviewsBrowser() {
-        const box = document.getElementById('aidam-review-content');
-        if (!box) return;
-        box.innerHTML = aidamSpinner();
-        try {
-            const res = await fetch(`/galleryout/api/aidam/reviews?sort=${encodeURIComponent(aidamReviewsSort)}&limit=60`);
-            const data = await res.json();
-            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
-            let html = `<div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-                <span style="color:var(--text-muted); font-size:0.85rem;">${data.total || 0} reviewed file${(data.total || 0) === 1 ? '' : 's'}</span>
-                <select onchange="aidamReviewsSort = this.value; aidamLoadReviewsBrowser();"
-                        style="background:#111; color:#fff; border:1px solid #444; border-radius:8px; padding:4px 8px; font-size:0.8rem;">
-                    <option value="quality_asc" ${aidamReviewsSort === 'quality_asc' ? 'selected' : ''}>Worst quality first</option>
-                    <option value="quality_desc" ${aidamReviewsSort === 'quality_desc' ? 'selected' : ''}>Best quality first</option>
-                    <option value="alignment_asc" ${aidamReviewsSort === 'alignment_asc' ? 'selected' : ''}>Least prompt-aligned first</option>
-                    <option value="newest" ${aidamReviewsSort === 'newest' ? 'selected' : ''}>Newest reviews first</option>
-                </select>
-            </div>`;
-            const reviews = data.reviews || [];
-            if (reviews.length === 0) {
-                html += aidamEmptyMsg('No reviews yet — the critic works through the queue when the fast stages are idle, and any image you open gets reviewed with priority.');
-            } else {
-                html += `<div class="aidam-thumb-grid">${reviews.map(r => {
-                    const q = (r.quality === null || r.quality === undefined) ? 'n/a' : Math.round(r.quality * 10) + '/10';
-                    const badge = `<span class="aidam-badge-near" title="${escapeAidamHtml(r.summary || '')}">${r.finding_count > 0 ? r.finding_count + ' · ' : ''}${q}</span>`;
-                    return aidamThumbCard(r.file_id, null, badge);
-                }).join('')}</div>`;
-            }
-            box.innerHTML = html;
-        } catch (e) {
-            box.innerHTML = aidamErrorMsg('Failed to load the reviews browser.');
         }
     }
 
