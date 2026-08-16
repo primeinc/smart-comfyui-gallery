@@ -55,7 +55,10 @@ probes/                  # runtime evidence scripts (egress, media read-only)
   recurring generated identities by cosine threshold. Cluster labels are
   user nicknames, never real-world identity claims.
 - **Review**: the critic emits JSON validated against a strict schema:
-  quality score, prompt-alignment score, and typed findings with
+  quality score, prompt-following score with its per-element breakdown
+  (`ai_review_alignment`: verbatim prompt slices, satisfied/absent, and a
+  bbox only where a satisfied element was actually located), and typed
+  findings with
   `type/severity/confidence/localizable`. Only `localizable=true` findings
   may carry bbox/point grounding and a segmentation mask (enforced by a
   SQL CHECK and by code); global findings are never given fake masks.
@@ -110,15 +113,14 @@ the critic from first principles rather than by relabeling:
   monolithic SmolVLM2 critics measured 0/7 image-grounded (schema-valid
   fabrication) and remain opt-in-only. The shipped default is the
   **decomposed Qwen2.5-VL-7B critic** (`critic_qwen.py`): the model only
-  answers small grammar-constrained questions (describe → assess →
-  localize), deterministic code assembles the typed payload, prompt
-  alignment is CLIPScore computed outside the VLM, and a deterministic
-  CLIP grounding gate aborts any review whose description does not match
-  the image — the exact measured fabrication failure mode, verified
-  rejected on negative cases. Measured **4/4 schema-valid image-grounded
-  reviews** on the calibration suite (planted defect detected and
-  localized; mismatched-prompt noise correctly scored 0.0 quality / 3.0
-  alignment). `critic_backend='auto'` resolves to it only when
+  answers small grammar-constrained questions (describe → assess → align
+  → localize), deterministic code assembles the typed payload, and a
+  deterministic CLIP grounding gate aborts any review whose description
+  does not match the image — the exact measured fabrication failure mode,
+  verified rejected on negative cases. Measured **4/4 schema-valid
+  image-grounded reviews** on the calibration suite (planted defect
+  detected and localized; mismatched-prompt noise correctly scored 0.0
+  quality). `critic_backend='auto'` resolves to it only when
   `_auto_critic_measurement_passed()` accepts the committed, hash-pinned
   calibration evidence (`benchmarks/results/grounding_calibration.json`);
   without that evidence in bounds, `auto` yields no critic.
