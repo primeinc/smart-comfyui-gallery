@@ -1,0 +1,177 @@
+"""The shipped scripts must still run after the checkout that delivered them.
+
+docker_init.bash is COPYed into the image and is the container's command.
+Git for Windows installs with core.autocrlf=true, so a clone made there --
+which is most of them, this being a ComfyUI companion -- rewrites text
+files to CRLF. There was no .gitattributes, so nothing said otherwise.
+Measured, cloning this repository the way Git is configured by default on
+Windows:
+
+    docker_init.bash    CRLF=225  bareLF=0   first line: b'#!/bin/bash\\r'
+
+Linux ends the interpreter name at the newline and trims only spaces and
+tabs -- fs/binfmt_script.c takes strnchr(buf, size, '\\n') and then
+`while (spacetab(i_end[-1])) i_end--` -- so the carriage return stays part
+of the path. /bin/bash\\r does not exist, and an image built from that
+clone has a container that cannot start.
+
+The .bat files have the opposite requirement and had the same absence of
+one: checked out anywhere but Windows they arrive with bare LF.
+
+So the requirement is not "LF" or "CRLF", it is that each script gets what
+it needs whoever checks it out. These check both worlds -- the Windows
+default that converts everything, and the default everywhere else that
+converts nothing -- and each has a control proving that mode is really in
+force, because otherwise a checkout that did nothing at all would satisfy
+half the file.
+
+Nothing committed here held a CRLF, so declaring the policy changed no
+content. What it changes is what a checkout does with it.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import shutil
+import subprocess
+
+import pytest
+
+import smartgallery
+
+_ROOT = pathlib.Path(smartgallery.__file__).resolve().parent
+
+_MUST_BE_LF = ["docker_init.bash"]
+_MUST_BE_CRLF = ["sample_run_smartgallery.bat", "sample_run_exhibition.bat"]
+
+# Follows whatever the checkout does, so it says which mode is in force.
+_BELLWETHER = "smartgallery.py"
+
+
+def _git(*args, cwd=None):
+    return subprocess.run(["git", *args], cwd=str(cwd or _ROOT),
+                          capture_output=True, timeout=900)
+
+
+def _endings(path):
+    data = pathlib.Path(path).read_bytes()
+    crlf = data.count(b"\r\n")
+    bare = data.count(b"\n") - crlf
+    return crlf, bare
+
+
+@pytest.fixture(scope="module")
+def checkouts(tmp_path_factory):
+    """The repository as each kind of machine lays it on disk.
+
+    checkout-index runs the same conversion a checkout does, without the
+    cost of cloning.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("git is not on PATH")
+
+    made = {}
+    for autocrlf in ("true", "false"):
+        target = tmp_path_factory.mktemp(f"co_{autocrlf}")
+        result = _git("-c", f"core.autocrlf={autocrlf}", "checkout-index",
+                      "-a", "-f", f"--prefix={target}/")
+        if result.returncode != 0:
+            pytest.skip(result.stderr.decode(errors="replace")[:200])
+        made[autocrlf] = target
+    return made
+
+
+@pytest.mark.parametrize("autocrlf,expect_crlf", [("true", True),
+                                                  ("false", False)])
+def test_the_checkout_is_really_in_that_mode(checkouts, autocrlf, expect_crlf):
+    """Control, one per mode, and the thing the rest of the file rests on.
+
+    Every check below says a file was NOT converted, or WAS. Either is
+    free if the checkout is not converting anything, so a file with no
+    rule of its own has to follow the setting."""
+    crlf, bare = _endings(checkouts[autocrlf] / _BELLWETHER)
+
+    if expect_crlf:
+        assert crlf > 0 and bare == 0, (
+            f"with core.autocrlf=true a file with no rule came out with "
+            f"{bare} bare newlines; this checkout is not converting, so the "
+            f"checks here would pass against no policy at all")
+    else:
+        assert bare > 0 and crlf == 0, (
+            f"with core.autocrlf=false a file with no rule came out with "
+            f"{crlf} CRLF; this checkout is converting on its own, so the "
+            f"CRLF checks below would pass without any policy")
+
+
+@pytest.mark.parametrize("autocrlf", ["true", "false"])
+@pytest.mark.parametrize("name", _MUST_BE_LF)
+def test_a_script_that_runs_on_linux_keeps_bare_newlines(checkouts, autocrlf,
+                                                          name):
+    """The bug: checked out on Windows, the container's own command
+    arrived with a carriage return in its shebang."""
+    data = (checkouts[autocrlf] / name).read_bytes()
+
+    assert b"\r" not in data, (
+        f"with core.autocrlf={autocrlf}, {name} has carriage returns; its "
+        f"first line is {data.split(b'\n')[0]!r} and Linux will look for an "
+        f"interpreter with that in the name")
+
+
+@pytest.mark.parametrize("autocrlf", ["true", "false"])
+@pytest.mark.parametrize("name", _MUST_BE_CRLF)
+def test_a_launcher_that_runs_on_windows_gets_windows_newlines(checkouts,
+                                                               autocrlf, name):
+    """The other half, and the one a Windows machine cannot show on its
+    own: checked out anywhere else these came with bare LF."""
+    crlf, bare = _endings(checkouts[autocrlf] / name)
+
+    assert crlf > 0, f"with core.autocrlf={autocrlf}, {name} has no CRLF"
+    assert bare == 0, (
+        f"with core.autocrlf={autocrlf}, {name} has {bare} bare newlines "
+        f"mixed in with its CRLF")
+
+
+@pytest.mark.parametrize("autocrlf", ["true", "false"])
+def test_the_shebang_is_exactly_what_it_should_be(checkouts, autocrlf):
+    """Named rather than inferred, because this one line is the whole
+    difference between a container that starts and one that does not."""
+    first = (checkouts[autocrlf] / "docker_init.bash").read_bytes().split(b"\n")[0]
+
+    assert first == b"#!/bin/bash", first
+
+
+def test_nothing_committed_holds_a_carriage_return():
+    """The repository's own side of it. A file committed with CRLF is
+    handed out that way to everyone, whatever their checkout does."""
+    listed = _git("ls-files", "-z")
+    assert listed.returncode == 0, listed.stderr.decode(errors="replace")
+
+    offenders = []
+    for raw in listed.stdout.split(b"\x00"):
+        if not raw:
+            continue
+        name = raw.decode("utf-8")
+        blob = _git("show", f"HEAD:{name}")
+        if blob.returncode != 0 or b"\x00" in blob.stdout:
+            continue  # not in HEAD yet, or binary
+        if b"\r\n" in blob.stdout:
+            offenders.append(name)
+
+    assert offenders == [], (
+        f"committed with CRLF: {offenders}. Everyone gets those bytes "
+        f"whatever their own Git is set to.")
+
+
+def test_the_policy_travels_with_the_repository():
+    """core.autocrlf is a setting on somebody else's machine, and the
+    default there is not the one this needs."""
+    assert (_ROOT / ".gitattributes").exists(), (
+        "no .gitattributes, so what a checkout does to these scripts is "
+        "whatever the person cloning happens to have configured")
+
+    for name, expected in ([(n, "lf") for n in _MUST_BE_LF] +
+                           [(n, "crlf") for n in _MUST_BE_CRLF]):
+        result = _git("check-attr", "eol", "--", name)
+        assert result.returncode == 0, result.stderr.decode(errors="replace")
+        line = result.stdout.decode("utf-8", "replace").strip()
+        assert line.endswith(f"eol: {expected}"), line

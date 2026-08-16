@@ -1,0 +1,47 @@
+# Line endings decide whether the shipped scripts run at all, and the
+# default on Windows is to change them.
+#
+# Git for Windows installs with core.autocrlf=true, so a clone made there
+# rewrites text files to CRLF on checkout. docker_init.bash is COPYed into
+# the image and is the container's command. Linux ends the interpreter
+# name at the newline and trims only spaces and tabs
+# (linux/fs/binfmt_script.c: strnchr for '\n', then `while
+# (spacetab(i_end[-1])) i_end--`), so a carriage return stays part of the
+# path -- and /bin/bash\r does not exist. Cloned with the Windows default,
+# the file's first line is exactly `#!/bin/bash\r`, and an image built
+# from that clone has a container that cannot start.
+#
+# The .bat files have the opposite requirement and the same lack of a
+# guarantee: cloned anywhere but Windows they arrive with bare LF.
+#
+# Nothing committed here holds a CRLF, so declaring this changes no
+# existing content -- it fixes what a checkout does with it.
+
+* text=auto
+
+# Runs on Linux, whatever it was checked out on.
+*.bash text eol=lf
+*.sh   text eol=lf
+
+# Runs on Windows, whatever it was checked out on.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Never to be touched. text=auto detects these, but a file that is only
+# mostly binary is exactly the one detection gets wrong.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.dll  binary
+*.pyd  binary
+*.so   binary
+*.exe  binary
+*.zip  binary
+*.gguf binary
+*.onnx binary
+*.safetensors binary
