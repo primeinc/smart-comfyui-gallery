@@ -9,6 +9,12 @@ Both fail silently if broken -- the gallery still works perfectly for the
 owner, who is logged in and would never notice. That is exactly the shape
 of bug worth a test.
 
+Note the two states, which behave differently and are both covered:
+without an admin password the app enters a LOCKDOWN (403 everywhere,
+since login was demanded but no credential exists), and with one it serves
+its login page (200) while still withholding the library. Testing only the
+first would leave the configuration real deployments use unexercised.
+
 Each test runs a fresh interpreter, because the mode is decided from argv
 at import time.
 """
@@ -53,7 +59,7 @@ def gallery_env(tmp_path):
     return {"BASE_OUTPUT_PATH": str(output), "BASE_SMARTGALLERY_PATH": str(gallery)}
 
 
-def test_anonymous_visitor_gets_the_login_page_not_the_library(gallery_env):
+def test_login_demanded_without_a_password_locks_everything_down(gallery_env):
     script = """
 import os, sys
 sys.argv = ['smartgallery.py', '--force-login']
