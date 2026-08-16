@@ -2593,6 +2593,24 @@ document.addEventListener('focusout', function(e) {
                 briefContent.dataset.parsed = "true";
             }
         });
+        // A value that ends up inside a single-quoted JavaScript string which is
+        // itself inside a double-quoted HTML attribute passes through two parsers:
+        // the browser decodes the attribute first, then reads the result as
+        // JavaScript. Escaping for one and not the other is why a folder called
+        // "Bob's renders" broke its own menu, and why a name holding a double
+        // quote could close the attribute and add another of its own.
+        // JavaScript escaping first, then HTML, so the decode leaves exactly the
+        // JavaScript the browser is meant to read.
+        function jsInAttr(value) {
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
         function escapeHTML(value) {
             if (value === null || typeof value === 'undefined') {
                 return '<em>null</em>';
@@ -2943,6 +2961,9 @@ document.addEventListener('focusout', function(e) {
 
             const isActive = !isMovePanel && folderKey === currentFolderKey;
             const folderDisplayName = folder.display_name;
+            // Folder names come from the filesystem, so apostrophes are
+            // ordinary. This one is handed to onclick handlers below.
+            const folderNameForHandler = jsInAttr(folderDisplayName);
             
             // --- NEW: Custom Tooltip for Root/Main Folder ---
             let tooltipText = folderDisplayName;
@@ -3015,9 +3036,9 @@ document.addEventListener('focusout', function(e) {
                     // --- MOUNT POINT BUTTON LOGIC ---
                     let deleteOption = '';
                     if (folder.is_mount) {
-                        deleteOption = `<button onclick="unmountFolder(event, '${folderKey}', '${folderDisplayName}')" style="color:#ff6b6b; border-top:1px solid rgba(255,255,255,0.1);">⛓️ Unmount</button>`;
+                        deleteOption = `<button onclick="unmountFolder(event, '${folderKey}', '${folderNameForHandler}')" style="color:#ff6b6b; border-top:1px solid rgba(255,255,255,0.1);">⛓️ Unmount</button>`;
                     } else {
-                        deleteOption = `<button onclick="deleteFolder(event, '${folderKey}', '${folderDisplayName}')" style="color:#ff6b6b;">🗑️ Delete</button>`;
+                        deleteOption = `<button onclick="deleteFolder(event, '${folderKey}', '${folderNameForHandler}')" style="color:#ff6b6b;">🗑️ Delete</button>`;
                     }
 
                     actionsHTML = `
@@ -3026,7 +3047,7 @@ document.addEventListener('focusout', function(e) {
                             <div class="folder-dropdown">
                                 <button onclick="showFolderInfo(event, '${folderKey}')">ℹ️ Info</button>
                                 ${aiBtn}
-                                ${!folder.is_mount ? `<button onclick="renameFolder(event, '${folderKey}', '${folderDisplayName}')">✏️ Rename</button>` : ''}
+                                ${!folder.is_mount ? `<button onclick="renameFolder(event, '${folderKey}', '${folderNameForHandler}')">✏️ Rename</button>` : ''}
                                 ${deleteOption}
                                 <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:4px 0;">
                                 <button onclick="event.stopPropagation(); closeAllFolderMenus(event);" style="color:var(--text-muted); justify-content:center; font-weight:bold;">✕ Cancel</button>
@@ -10608,7 +10629,7 @@ document.addEventListener('focusout', function(e) {
                         `;
 
                         // Make author name clickable for Quick Reply
-                        const safeAuthorStr = escapeHTML(c.author_name).replace(/'/g, "\\'");
+                        const safeAuthorStr = jsInAttr(c.author_name);
                         const canReplyDirectly = isPrivilegedSession || isAdminAuthor;
                         
                         let authorSpanHtml = `<span>${isAdminAuthor ? '🛡️ STAFF' : escapeHTML(c.author_name)} ${isMine ? '(You)' : ''}</span>`;

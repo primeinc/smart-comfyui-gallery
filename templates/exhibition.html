@@ -4880,7 +4880,7 @@ function renderMarkdownText(text) {
                     });
 
                     // Make author name clickable for Quick Reply
-                    const safeAuthorStr = escapeHtml(c.author_name).replace(/'/g, "\\'");
+                    const safeAuthorStr = jsInAttr(c.author_name);
                     
                     // We only make it clickable if the viewer has the permission to reply directly, 
                     // OR if the author is an Admin (anyone can reply to admin via 'internal')
@@ -5795,6 +5795,24 @@ function renderMarkdownText(text) {
         }
     }
     
+    // A value that ends up inside a single-quoted JavaScript string which is
+    // itself inside a double-quoted HTML attribute passes through two parsers:
+    // the browser decodes the attribute first, then reads the result as
+    // JavaScript. Escaping for one and not the other is why a folder called
+    // "Bob's renders" broke its own menu, and why a name holding a double
+    // quote could close the attribute and add another of its own.
+    // JavaScript escaping first, then HTML, so the decode leaves exactly the
+    // JavaScript the browser is meant to read.
+    function jsInAttr(value) {
+        return String(value === null || value === undefined ? '' : value)
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     function escapeHtml(text) { 
         const div = document.createElement('div'); 
         div.textContent = text; 
