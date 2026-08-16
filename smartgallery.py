@@ -3942,6 +3942,7 @@ def admin_manage_users():
             
 # AI QUEUE SUBMISSION ROUTE
 @app.route('/galleryout/ai_queue', methods=['POST'])
+@management_api_only
 def ai_queue_search():
     """
     Receives a search query from the frontend and adds it to the DB queue.
@@ -3978,6 +3979,7 @@ def ai_queue_search():
         
 # AI STATUS CHECK ROUTE (POLLING)
 @app.route('/galleryout/ai_check/<session_id>', methods=['GET'])
+@management_api_only
 def ai_check_status(session_id):
     """Checks the status of a specific search session."""
     with get_db_connection() as conn:
@@ -4477,6 +4479,7 @@ def ai_watched_folders():
         return jsonify({'folders': res})
         
 @app.route('/galleryout/ai_indexing/status')
+@management_api_only
 def ai_indexing_status():
     if not ENABLE_AI_SEARCH: return jsonify({})
     try:
@@ -5503,6 +5506,7 @@ def rescan_folder():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/galleryout/check_rescan_status/<job_id>')
+@management_api_only
 def check_rescan_status(job_id):
     job = rescan_jobs.get(job_id)
     if not job:
@@ -5847,6 +5851,7 @@ def prepare_batch_zip():
     return jsonify({'status': 'success', 'job_id': job_id, 'message': 'Zip generation started.'})
 
 @app.route('/galleryout/check_zip_status/<job_id>')
+@management_api_only
 def check_zip_status(job_id):
     job = zip_jobs.get(job_id)
     if not job:
@@ -5858,7 +5863,11 @@ def check_zip_status(job_id):
     return jsonify(response_data)
     
 @app.route('/galleryout/serve_zip/<filename>')
+@management_api_only
 def serve_zip_file(filename):
+    # A zip holds the original files, prompts and all. Only staff can make
+    # one, so only staff may fetch one; the unguessable name was the whole
+    # of the protection before.
     return send_from_directory(ZIP_CACHE_DIR, filename, as_attachment=True)
 
 @app.route('/galleryout/rename_folder/<string:folder_key>', methods=['POST'])
