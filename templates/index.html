@@ -2296,7 +2296,7 @@ document.addEventListener('focusout', function(e) {
     <div id="full-file-details-overlay" class="modal-overlay" onclick="if(event.target === this) closeFullDetailsModal();">
         <div class="full-details-panel" onclick="event.stopPropagation();">
             <div class="full-details-header">
-                <h3>📋 Full Asset Details</h3>
+                <h3>Full Asset Details</h3>
                 <button class="close-btn" onclick="event.stopPropagation(); closeFullDetailsModal();" title="Close (Esc)">&times;</button>
             </div>
             <div id="full-details-content" class="full-details-body">
@@ -12263,8 +12263,8 @@ function renderMarkdownText(text) {
 
                 content.innerHTML = `
                     <div class="fd-tab-bar">
-                        <button type="button" class="fd-tab-btn active" id="fd-tab-btn-overview" tabindex="0" onclick="switchFdTab('overview')">📋 Overview & Paths</button>
-                        <button type="button" class="fd-tab-btn" id="fd-tab-btn-cluster" tabindex="0" onclick="switchFdTab('cluster')">🧬 Architecture & Cluster</button>
+                        <button type="button" class="fd-tab-btn active" id="fd-tab-btn-overview" tabindex="0" onclick="switchFdTab('overview')">Overview & Paths</button>
+                        <button type="button" class="fd-tab-btn" id="fd-tab-btn-cluster" tabindex="0" onclick="switchFdTab('cluster')">Architecture & Cluster</button>
                     </div>
 
                     <div class="fd-tab-pane active" id="fd-tab-pane-overview">
@@ -12283,30 +12283,30 @@ function renderMarkdownText(text) {
 
                         <div class="fd-grid">
                             <div class="fd-card">
-                                <span class="fd-card-label">📐 Dimensions</span>
+                                <span class="fd-card-label">Dimensions</span>
                                 <span class="fd-card-val">${resStr}</span>
                             </div>
                             <div class="fd-card">
-                                <span class="fd-card-label">💾 File Size</span>
+                                <span class="fd-card-label">File Size</span>
                                 <span class="fd-card-val">${sizeStr}</span>
                             </div>
                             <div class="fd-card">
-                                <span class="fd-card-label">📅 Modified Date</span>
+                                <span class="fd-card-label">Modified Date</span>
                                 <span class="fd-card-val">${dateStr}</span>
                             </div>
                             <div class="fd-card">
-                                <span class="fd-card-label">🔍 Last Scanned</span>
+                                <span class="fd-card-label">Last Scanned</span>
                                 <span class="fd-card-val">${scanStr}</span>
                             </div>
                             ${f.duration ? `
                             <div class="fd-card">
-                                <span class="fd-card-label">⏱️ Duration</span>
+                                <span class="fd-card-label">Duration</span>
                                 <span class="fd-card-val">${f.duration}</span>
                             </div>` : ''}
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">⭐ Rating & Activity</div>
+                            <div class="fd-section-title">Rating & Activity</div>
                             <div class="fd-stats-row">
                                 <div class="fd-stat-box">
                                     <span class="fd-stat-num">★ ${avgRating}</span>
@@ -12325,12 +12325,12 @@ function renderMarkdownText(text) {
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">📁 Folder Tree Location</div>
+                            <div class="fd-section-title">Folder Tree Location</div>
                             <div class="fd-chain-row">${folderHierarchyHtml}</div>
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">📍 Physical Disk Path</div>
+                            <div class="fd-section-title">Physical Disk Path</div>
                             <div class="fd-path-box">
                                 <code>${escapeHTML(f.path)}</code>
                                 ${isLink && realPath ? `<div class="fd-link-source">🔗 <strong>Real Target:</strong> <code>${escapeHTML(realPath)}</code></div>` : ''}
@@ -12338,20 +12338,78 @@ function renderMarkdownText(text) {
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">📚 Collections & Sub-collections</div>
+                            <div class="fd-section-title">Collections & Sub-collections</div>
                             <div class="fd-collections-box">${collectionsHtml}</div>
                         </div>
 
                         ${f.ai_caption ? `
                         <div class="fd-section">
-                            <div class="fd-section-title">🧠 AI Caption</div>
+                            <div class="fd-section-title">AI Caption</div>
                             <div class="fd-caption-box">${formatAiCaptionText(f.ai_caption)}</div>
+                        </div>` : ''}
+
+                        ${(() => {
+                            const g = f.generation_params;
+                            if (!g) return '';
+                            const cards = [
+                                ['Model', g.model], ['Model hash', g.model_hash],
+                                ['Sampler', g.sampler], ['Scheduler', g.scheduler],
+                                ['Seed', g.seed], ['Steps', g.steps], ['CFG', g.cfg],
+                                ['Size', (g.width && g.height) ? `${g.width}x${g.height}` : null],
+                                ['Denoise', g.denoise], ['Clip skip', g.clip_skip],
+                                ['Version', g.version],
+                            ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+                            const loras = Array.isArray(g.loras) ? g.loras : [];
+                            const extras = g.extra && typeof g.extra === 'object' ? Object.entries(g.extra) : [];
+                            return `
+                        <div class="fd-section">
+                            <div class="fd-section-title">Generation Parameters
+                                <span class="fd-badge type" style="margin-left:8px;">${escapeHTML(g.tool)}</span>
+                                <span style="color:var(--text-muted); font-size:0.7rem; font-weight:400; margin-left:6px;">${escapeHTML(g.detection)}</span>
+                            </div>
+                            <div class="fd-grid">
+                                ${cards.map(([k, v]) => `
+                                <div class="fd-card">
+                                    <span class="fd-card-label">${k}</span>
+                                    <span class="fd-card-val" style="word-break:break-all;">${escapeHTML(String(v))}</span>
+                                </div>`).join('')}
+                            </div>
+                            ${g.negative_prompt ? `
+                            <div class="fd-path-box" style="margin-top:10px;">
+                                <strong style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:1px;">Negative prompt</strong>
+                                <div><code>${escapeHTML(g.negative_prompt)}</code></div>
+                            </div>` : ''}
+                            ${loras.length ? `
+                            <div style="margin-top:10px;">${loras.map(l =>
+                                `<span class="fd-pill folder" style="font-size:0.8rem;">${escapeHTML(l.name || '?')}${l.weight !== undefined ? ' &middot; ' + escapeHTML(String(l.weight)) : ''}</span>`).join(' ')}
+                            </div>` : ''}
+                            ${extras.length ? `
+                            <details style="margin-top:10px;">
+                                <summary style="cursor:pointer; color:var(--text-muted); font-size:0.8rem;">${extras.length} additional tool parameter${extras.length === 1 ? '' : 's'}</summary>
+                                <div class="fd-genmeta-box" style="margin-top:6px;">${extras.map(([k, v]) =>
+                                    `${escapeHTML(k)}: ${escapeHTML(typeof v === 'object' ? JSON.stringify(v) : String(v))}`).join('\n')}</div>
+                            </details>` : ''}
+                        </div>`;
+                        })()}
+
+                        ${(f.faces && f.faces.length) ? `
+                        <div class="fd-section">
+                            <div class="fd-section-title">Faces
+                                <a href="/galleryout/aidam?view=compare&file=${f.id}" target="_blank" style="margin-left:8px; font-size:0.72rem; color:var(--ai-color); text-decoration:none; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Detector compare</a>
+                            </div>
+                            <div>${f.faces.map(fc => {
+                                const bits = [`det ${Math.round((fc.det_score || 0) * 100)}%`];
+                                if (fc.sex) bits.push(`${fc.sex} ${fc.age ?? ''}`.trim());
+                                if (fc.pose_yaw !== null && fc.pose_yaw !== undefined) bits.push(`yaw ${Math.round(fc.pose_yaw)}`);
+                                if (fc.cluster_id !== null && fc.cluster_id !== undefined) bits.push(`cluster #${fc.cluster_id}`);
+                                return `<span class="fd-pill folder" style="font-size:0.8rem;">${escapeHTML(bits.join(' &middot; ')).replace(/&amp;middot;/g, '&middot;')}</span>`;
+                            }).join(' ')}</div>
                         </div>` : ''}
 
                         ${f.generation_metadata ? `
                         <div class="fd-section">
-                            <div class="fd-section-title">🖼️ Generation Metadata</div>
-                            <button class="fd-genmeta-copy" onclick="copyGenerationMetadataToClipboard(this)">📋 Copy</button>
+                            <div class="fd-section-title">Raw Generation Metadata</div>
+                            <button class="fd-genmeta-copy" onclick="copyGenerationMetadataToClipboard(this)">Copy</button>
                             <div class="fd-genmeta-box">${escapeHTML(f.generation_metadata)}</div>
                         </div>` : ''}
                     </div>

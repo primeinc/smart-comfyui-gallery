@@ -5,187 +5,243 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI DAM — SmartGallery</title>
 <style>
-    /* Instrument-desk tokens: dark ground, mono data voice, one green
-       data accent; amber/green are the detector lane colors shared with
-       the per-file modal. */
+    /* The gallery's own design system (templates/css/index.css tokens),
+       so the dashboard reads as the same app, not a foreign page. */
     :root {
-        --ground: #0b0c0e; --panel: #141518; --panel-2: #1a1c20;
-        --line: #26282c; --ink: #e8e6e2; --muted: #8a8d93;
-        --data: #41d6a3; --lane-b: #e6a23c; --alert: #e05252;
-        --identity: #c73fd4;
+        --bg-color: #0a0a0a;
+        --surface-color: #1a1a1a;
+        --surface-hover: #252525;
+        --primary-color: #007bff;
+        --text-color: #f8f9fa;
+        --text-muted: #adb5bd;
+        --border-color: #343a40;
+        --ai-color: #ff00ff;
+        --glass-border: rgba(255,255,255,0.18);
+        --lane-a: #e6a23c;   /* opencv/yunet lane */
+        --lane-b: #34db98;   /* insightface/scrfd lane */
         --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--ground); color: var(--ink);
-           font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
-    a { color: var(--data); text-decoration: none; }
+    body { margin: 0; background: var(--bg-color); color: var(--text-color);
+           font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+    a { color: var(--ai-color); text-decoration: none; }
 
-    .shell { display: grid; grid-template-columns: 210px 1fr; min-height: 100vh; }
-    @media (max-width: 760px) { .shell { grid-template-columns: 1fr; } .rail { position: static; height: auto; } }
+    .glass-btn { background: transparent; border: 1px solid var(--glass-border);
+        color: var(--text-muted); border-radius: 8px; padding: 6px 14px;
+        font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .glass-btn:hover { background: var(--surface-hover); color: #fff; border-color: var(--text-muted); }
+    .glass-btn.active { background: var(--ai-color); color: #1a001a; border-color: var(--ai-color); }
 
-    .rail { border-right: 1px solid var(--line); padding: 20px 0; position: sticky; top: 0; height: 100vh; }
-    .rail h1 { font-size: 0.95rem; letter-spacing: 2px; text-transform: uppercase;
-               margin: 0 0 4px 0; padding: 0 20px; }
-    .rail .sub { color: var(--muted); font-size: 0.72rem; padding: 0 20px; margin-bottom: 22px; }
-    .rail a.nav { display: block; padding: 9px 20px; color: var(--muted);
-                  border-left: 3px solid transparent; font-weight: 600; font-size: 0.85rem; }
-    .rail a.nav:hover { color: var(--ink); background: rgba(255,255,255,0.03); }
-    .rail a.nav.active { color: var(--ink); border-left-color: var(--data); background: rgba(65,214,163,0.06); }
-    .rail .back { margin-top: 26px; }
+    .topbar { display: flex; align-items: center; gap: 16px; padding: 12px 22px;
+        background: var(--surface-color); border-bottom: 1px solid var(--border-color);
+        position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+    .topbar h1 { margin: 0; font-size: 1rem; }
+    .topbar h1 span { color: var(--ai-color); }
+    .topbar nav { display: flex; gap: 6px; flex-wrap: wrap; }
+    .topbar .spacer { flex: 1; }
 
-    main { padding: 26px 30px 60px 30px; max-width: 1200px; }
+    main { padding: 22px; max-width: 1240px; margin: 0 auto; }
     section { display: none; }
     section.active { display: block; }
     h2 { font-size: 1.05rem; margin: 0 0 4px 0; }
-    .lede { color: var(--muted); font-size: 0.82rem; margin: 0 0 20px 0; }
+    .lede { color: var(--text-muted); font-size: 0.83rem; margin: 0 0 18px 0; }
 
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 22px; }
-    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
-    .card .k { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
-    .card .v { font-family: var(--mono); font-size: 1.45rem; margin-top: 2px; }
-    .card .v small { font-size: 0.75rem; color: var(--muted); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px 16px; }
+    .card .k { color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
+    .card .v { font-family: var(--mono); font-size: 1.4rem; margin-top: 2px; }
+    .card .v small { font-size: 0.75rem; color: var(--text-muted); }
 
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-             padding: 16px 18px; margin-bottom: 18px; }
-    .panel h3 { margin: 0 0 12px 0; font-size: 0.75rem; text-transform: uppercase;
-                letter-spacing: 1.5px; color: var(--muted); }
+    .panel { background: var(--surface-color); border: 1px solid var(--border-color);
+             border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+    .panel h3 { margin: 0 0 12px 0; font-size: 0.74rem; text-transform: uppercase;
+                letter-spacing: 1.5px; color: var(--text-muted); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
 
-    /* the signature: every aggregate is a data-bar row */
-    .bar-row { display: grid; grid-template-columns: minmax(90px, 1fr) 3fr 64px;
+    .bar-row { display: grid; grid-template-columns: minmax(90px, 1fr) 3fr 60px;
                gap: 10px; align-items: center; padding: 3px 0; font-size: 0.82rem; }
-    .bar-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-row .bar { height: 10px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
-    .bar-row .bar i { display: block; height: 100%; background: var(--data); }
-    .bar-row .n { font-family: var(--mono); text-align: right; color: var(--muted); }
+    .bar-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+    .bar-row .bar { height: 10px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+    .bar-row .bar i { display: block; height: 100%; background: var(--ai-color); opacity: 0.8; }
+    .bar-row .n { font-family: var(--mono); text-align: right; color: var(--text-muted); }
 
     .meter { margin: 8px 0; }
     .meter .mk { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 3px; }
     .meter .mk b { font-family: var(--mono); font-weight: 400; }
-    .meter .track { height: 8px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
-    .meter .track i { display: block; height: 100%; background: var(--data); }
-
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    .meter .track { height: 8px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+    .meter .track i { display: block; height: 100%; background: var(--ai-color); opacity: 0.85; }
 
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
     .mono { font-family: var(--mono); }
-    .muted { color: var(--muted); }
-    .btn { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
-           border-radius: 6px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
-    .btn:hover { border-color: var(--data); }
-    .btn.active { background: var(--data); color: #06231a; border-color: var(--data); }
-    input[type="text"] { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
-           border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; }
+    .muted { color: var(--text-muted); }
+    input[type="text"] { background: var(--surface-hover); border: 1px solid var(--border-color);
+        color: var(--text-color); border-radius: 8px; padding: 7px 10px; font-size: 0.85rem; }
 
-    /* faces / clusters */
-    .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
-    .cluster-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
-                    overflow: hidden; cursor: pointer; text-align: center; }
-    .cluster-card:hover { border-color: var(--data); }
-    .cluster-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
-    .cluster-card .cl { font-size: 0.78rem; padding: 6px 6px 2px 6px; font-weight: 600; }
-    .cluster-card .cs { font-size: 0.7rem; color: var(--muted); padding-bottom: 8px; }
+    /* clusters */
+    .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    .cluster-card { background: var(--surface-color); border: 1px solid var(--border-color);
+        border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
+    .cluster-card:hover { border-color: var(--ai-color); }
+    .mosaic { display: grid; grid-template-columns: 1fr 1fr; aspect-ratio: 1/1; gap: 1px; background: var(--border-color); }
+    .mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .mosaic .one { grid-column: span 2; grid-row: span 2; }
+    .cluster-card .cl { font-size: 0.82rem; font-weight: 600; padding: 8px 10px 2px 10px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cluster-card .cs { font-size: 0.72rem; color: var(--text-muted); padding: 0 10px 8px 10px; }
+
     .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
-    .thumb-grid img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 6px;
-                      border: 1px solid var(--line); display: block; }
+    .thumb-tile { position: relative; border-radius: 8px; overflow: hidden;
+        border: 1px solid var(--border-color); cursor: pointer; aspect-ratio: 1/1; background: var(--surface-hover); }
+    .thumb-tile:hover { border-color: var(--ai-color); }
+    .thumb-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-tile .tag { position: absolute; left: 4px; bottom: 4px; background: rgba(0,0,0,0.75);
+        font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; font-family: var(--mono); }
+
+    /* dupes */
+    .dupe-group { display: flex; gap: 10px; align-items: center; background: var(--surface-color);
+        border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; flex-wrap: wrap; }
+    .dupe-group .thumbs { display: flex; gap: 6px; }
+    .dupe-group .thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px;
+        border: 1px solid var(--border-color); display: block; }
+    .dupe-group .meta { font-size: 0.82rem; }
 
     /* compare */
-    .preview { position: relative; border-radius: 8px; overflow: hidden; background: #000; }
+    .preview { position: relative; border-radius: 10px; overflow: hidden; background: #000; }
     .preview img { width: 100%; display: block; }
     .bbox { position: absolute; border: 2px solid; border-radius: 2px; pointer-events: none; }
     .bbox.miss { border-style: dashed; }
     .kp { position: absolute; width: 4px; height: 4px; border-radius: 50%; margin: -2px 0 0 -2px; pointer-events: none; }
     .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     @media (max-width: 900px) { .cmp-grid { grid-template-columns: 1fr; } }
-    .lane { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+    .lane { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 10px;
             padding: 12px; border-top: 3px solid var(--lane-color, #666); }
     .lane .ln { color: var(--lane-color); font-weight: 800; font-size: 0.75rem;
                 text-transform: uppercase; letter-spacing: 1px; }
-    .lane .lm { color: var(--muted); font-size: 0.72rem; margin: 2px 0 10px 0; word-break: break-all; }
-    .chip { font-size: 0.72rem; background: var(--panel); border: 1px solid var(--line);
+    .lane .lm { color: var(--text-muted); font-size: 0.72rem; margin: 2px 0 10px 0; word-break: break-all; }
+    .chip { font-size: 0.72rem; background: var(--surface-hover); border: 1px solid var(--border-color);
             border-radius: 6px; padding: 2px 8px; margin: 2px 4px 0 0; display: inline-block; font-family: var(--mono); }
     .chip.miss { border-style: dashed; }
-    .strip { margin-top: 14px; padding: 10px 14px; background: var(--panel-2); border: 1px solid var(--line);
-             border-radius: 8px; font-size: 0.85rem; display: flex; gap: 18px; flex-wrap: wrap; }
-    .status-msg { padding: 22px; text-align: center; color: var(--muted); border: 1px dashed var(--line);
-                  border-radius: 8px; font-size: 0.9rem; }
+    .strip { margin-top: 14px; padding: 10px 14px; background: var(--surface-color); border: 1px solid var(--border-color);
+             border-radius: 10px; font-size: 0.85rem; display: flex; gap: 18px; flex-wrap: wrap; }
+    .status-msg { padding: 22px; text-align: center; color: var(--text-muted);
+        border: 1px dashed var(--border-color); border-radius: 10px; font-size: 0.9rem; }
     .lane-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
                      padding: 8px 0; font-size: 0.82rem; }
-    @media (prefers-reduced-motion: no-preference) {
-        section.active { animation: rise 0.18s ease-out; }
-        @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
-    }
+
+    /* compare legend + how-to */
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.8rem;
+        background: var(--surface-color); border: 1px solid var(--border-color);
+        border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+    .legend .li { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+    .legend .box { width: 22px; height: 14px; border: 2px solid var(--lane-b); border-radius: 2px; }
+    .legend .box.dashed { border-style: dashed; border-color: var(--lane-a); }
+    .legend .pt { width: 5px; height: 5px; border-radius: 50%; background: var(--lane-b); }
+    .legend .pt.small { width: 3px; height: 3px; opacity: 0.7; }
+    ol.howto { margin: 8px 0 0 0; padding-left: 20px; color: var(--text-muted); font-size: 0.85rem; }
+    ol.howto li { margin-bottom: 4px; }
 </style>
 </head>
 <body>
-<div class="shell">
-    <nav class="rail">
-        <h1>AI DAM</h1>
-        <div class="sub">machine-tracked gallery data</div>
-        <a class="nav" href="#status" data-view="status">Status</a>
-        <a class="nav" href="#generation" data-view="generation">Generation</a>
-        <a class="nav" href="#faces" data-view="faces">Faces</a>
-        <a class="nav" href="#compare" data-view="compare">Detector compare</a>
-        <a class="nav back" href="/galleryout/">Back to gallery</a>
+<header class="topbar">
+    <h1><span>AI</span> DAM dashboard</h1>
+    <nav>
+        <button class="glass-btn" data-view="status" onclick="switchView('status')">Status</button>
+        <button class="glass-btn" data-view="generation" onclick="switchView('generation')">Generation</button>
+        <button class="glass-btn" data-view="faces" onclick="switchView('faces')">Faces</button>
+        <button class="glass-btn" data-view="dupes" onclick="switchView('dupes')">Duplicates</button>
+        <button class="glass-btn" data-view="compare" onclick="switchView('compare')">Detector compare</button>
     </nav>
-    <main>
-        <section id="view-status">
-            <h2>Pipeline status</h2>
-            <p class="lede">Indexing progress, backends, and hardware as the worker reports them.</p>
-            <div class="cards" id="status-cards"></div>
-            <div class="grid2">
-                <div class="panel"><h3>Indexing</h3><div id="status-meters"></div></div>
-                <div class="panel"><h3>Backends and hardware</h3><div id="status-backends" class="mono" style="font-size:0.82rem;"></div></div>
-            </div>
-        </section>
+    <span class="spacer"></span>
+    <a class="glass-btn" href="/galleryout/" style="text-decoration:none;">Back to gallery</a>
+</header>
+<main>
+    <section id="view-status">
+        <h2>Pipeline status</h2>
+        <p class="lede">Indexing progress, backends, and hardware as the worker reports them.</p>
+        <div class="cards" id="status-cards"></div>
+        <div class="grid2">
+            <div class="panel"><h3>Indexing</h3><div id="status-meters"></div></div>
+            <div class="panel"><h3>Backends and hardware</h3><div id="status-backends" class="mono" style="font-size:0.82rem;"></div></div>
+        </div>
+    </section>
 
-        <section id="view-generation">
-            <h2>Generation parameters</h2>
-            <p class="lede">First-class typed metadata imported from every generator's first-party shape. Search operators: <span class="mono">neg: tool: model: sampler: scheduler: seed: steps: cfg:</span></p>
-            <div class="cards" id="gen-cards"></div>
-            <div class="grid2">
-                <div class="panel"><h3>By tool</h3><div id="gen-tools"></div></div>
-                <div class="panel"><h3>Top models</h3><div id="gen-models"></div></div>
-                <div class="panel"><h3>Samplers</h3><div id="gen-samplers"></div></div>
-                <div class="panel"><h3>Steps</h3><div id="gen-steps"></div></div>
-                <div class="panel"><h3>CFG</h3><div id="gen-cfg"></div></div>
-                <div class="panel"><h3>Native sizes</h3><div id="gen-sizes"></div></div>
-            </div>
-        </section>
+    <section id="view-generation">
+        <h2>Generation parameters</h2>
+        <p class="lede">Typed metadata imported from every generator's first-party shape.
+            Filter the gallery with <span class="mono">neg: tool: model: sampler: scheduler: seed: steps: cfg:</span> in prompt search.</p>
+        <div class="cards" id="gen-cards"></div>
+        <div class="grid2">
+            <div class="panel"><h3>By tool</h3><div id="gen-tools"></div></div>
+            <div class="panel"><h3>Top models</h3><div id="gen-models"></div></div>
+            <div class="panel"><h3>Samplers</h3><div id="gen-samplers"></div></div>
+            <div class="panel"><h3>Steps</h3><div id="gen-steps"></div></div>
+            <div class="panel"><h3>CFG</h3><div id="gen-cfg"></div></div>
+            <div class="panel"><h3>Native sizes</h3><div id="gen-sizes"></div></div>
+        </div>
+    </section>
 
-        <section id="view-faces">
-            <h2>Face clusters</h2>
-            <p class="lede">Similarity clusters of generated faces — browsing convenience, never identity claims.</p>
-            <div id="faces-content"></div>
-        </section>
+    <section id="view-faces">
+        <h2>Face clusters</h2>
+        <p class="lede">Similarity clusters of generated faces — browsing convenience, never identity claims. Click a cluster for members and attributes; click a member to run detector compare on it.</p>
+        <div id="faces-content"></div>
+    </section>
 
-        <section id="view-compare">
-            <h2>Detector comparison</h2>
-            <p class="lede">Every installed pipeline over one frame. Solid box: all lanes agree (IoU &ge; 0.5). Dashed: one lane alone sees it.</p>
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
-                <input type="text" id="cmp-file" placeholder="file id" style="width:280px;" value="{{ file_id }}">
-                <button class="btn" onclick="cmpRun()">Run</button>
-                <span style="flex:1"></span>
-                <span id="cmp-mode-group">
-                    <button class="btn" id="cmp-mode-overlay" onclick="cmpSetMode('overlay')">Overlay</button>
-                    <button class="btn" id="cmp-mode-lanes" onclick="cmpSetMode('lanes')">Lanes</button>
-                </span>
+    <section id="view-dupes">
+        <h2>Exact duplicates</h2>
+        <p class="lede">Byte-identical groups, largest reclaimable space first. Keep one copy of each group.</p>
+        <div id="dupes-content"></div>
+    </section>
+
+    <section id="view-compare">
+        <h2>Detector comparison</h2>
+        <p class="lede">Runs every installed face pipeline live on one image and overlays their raw detections. Nothing is saved.</p>
+        <div class="legend">
+            <span class="li"><span class="box"></span>solid box: every lane found this face (IoU &ge; 0.5)</span>
+            <span class="li"><span class="box dashed"></span>dashed box: only one lane sees it</span>
+            <span class="li"><span class="pt"></span>5-pt landmarks</span>
+            <span class="li"><span class="pt small"></span>dense 106-pt landmarks</span>
+            <span class="li"><b style="color:var(--lane-a);">yunet</b>&nbsp;opencv lane</span>
+            <span class="li"><b style="color:var(--lane-b);">scrfd</b>&nbsp;insightface lane</span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+            <input type="text" id="cmp-file" placeholder="file id" style="width:280px;" value="{{ file_id }}">
+            <button class="glass-btn" onclick="cmpRun()">Run comparison</button>
+            <span style="flex:1"></span>
+            <span>
+                <button class="glass-btn" id="cmp-mode-overlay" onclick="cmpSetMode('overlay')">Overlay</button>
+                <button class="glass-btn" id="cmp-mode-lanes" onclick="cmpSetMode('lanes')">Side by side</button>
+            </span>
+        </div>
+        <div class="panel">
+            <h3>Pick a recent face image</h3>
+            <div id="cmp-recent" class="thumb-grid"><div class="status-msg" style="grid-column:1/-1;">Loading recent faces…</div></div>
+        </div>
+        <div id="cmp-content">
+            <div class="panel">
+                <h3>How to use</h3>
+                <ol class="howto">
+                    <li>Click any image above (or paste a file id) — the comparison runs immediately.</li>
+                    <li><b>Overlay</b> stacks every lane's boxes on one image; use each lane's checkbox and opacity slider to isolate it.</li>
+                    <li><b>Side by side</b> shows one image per lane with its model identity and timing.</li>
+                    <li>Dashed boxes are disagreements — faces one detector finds and the other misses.</li>
+                </ol>
             </div>
-            <div id="cmp-content"><div class="status-msg">Enter a file id (or open this page from a file's Faces tab) and run the comparison.</div></div>
-        </section>
-    </main>
-</div>
+        </div>
+    </section>
+</main>
 
 <script>
 const API = '/galleryout/api/aidam';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+const thumb = id => `/galleryout/thumbnail/${encodeURIComponent(id)}`;
 
 function barRows(el, items, labelKey) {
     const max = Math.max(1, ...items.map(i => i.n));
     el.innerHTML = items.length ? items.map(i => `
         <div class="bar-row">
-            <span class="label mono" title="${esc(i[labelKey])}">${esc(i[labelKey])}</span>
+            <span class="label" title="${esc(i[labelKey])}">${esc(i[labelKey])}</span>
             <span class="bar"><i style="width:${Math.max(2, i.n / max * 100)}%"></i></span>
             <span class="n">${i.n}</span>
         </div>`).join('') : '<div class="status-msg">No tracked rows yet — the startup backfill fills this table.</div>';
@@ -199,7 +255,7 @@ async function loadStatus() {
         <div class="card"><div class="k">Files</div><div class="v">${ix.files_total ?? '—'}</div></div>
         <div class="card"><div class="k">Hashed</div><div class="v">${pct(ix.hashed, ix.files_total)}<small>%</small></div></div>
         <div class="card"><div class="k">Faces scanned</div><div class="v">${pct(ix.faces_scanned, ix.visual_files_total)}<small>%</small></div></div>
-        <div class="card"><div class="k">Worker</div><div class="v" style="font-size:1rem;">${(d.worker || {}).running ? '<span class="dot" style="background:var(--data)"></span>running' : '<span class="dot" style="background:var(--alert)"></span>stopped'}</div></div>`;
+        <div class="card"><div class="k">Worker</div><div class="v" style="font-size:1rem;">${(d.worker || {}).running ? '<span class="dot" style="background:var(--lane-b)"></span>running' : '<span class="dot" style="background:#e74c3c"></span>stopped'}</div></div>`;
     const meters = [
         ['Hashing', ix.hashed, ix.files_total],
         ['Semantic embeddings', ix.embeddings_semantic, ix.visual_files_total],
@@ -213,7 +269,7 @@ async function loadStatus() {
     const gpus = d.gpus || [];
     document.getElementById('status-backends').innerHTML =
         Object.entries(be).map(([k, v]) =>
-            `<div><span class="dot" style="background:${v ? 'var(--data)' : '#555'}"></span>${esc(k)}</div>`).join('')
+            `<div><span class="dot" style="background:${v ? 'var(--lane-b)' : '#555'}"></span>${esc(k)}</div>`).join('')
         + gpus.map((g, i) => `<div style="margin-top:6px;">GPU${i}: ${esc(g.name || '?')} <span class="muted">${esc(g.vram || '')}</span></div>`).join('');
 }
 
@@ -234,17 +290,21 @@ async function loadGeneration() {
 }
 
 // ---- faces ----
+function mosaic(ids) {
+    if (!ids || !ids.length) return '<div class="mosaic"><div class="one"></div></div>';
+    if (ids.length < 4) return `<div class="mosaic"><img class="one" src="${thumb(ids[0])}" alt=""></div>`;
+    return '<div class="mosaic">' + ids.slice(0, 4).map(id => `<img src="${thumb(id)}" alt="">`).join('') + '</div>';
+}
+
 async function loadFaces() {
     const box = document.getElementById('faces-content');
     box.innerHTML = '<div class="status-msg">Loading…</div>';
     const r = await fetch(`${API}/faces/clusters`); const d = await r.json();
     const clusters = d.clusters || [];
-    if (!clusters.length) { box.innerHTML = '<div class="status-msg">No clusters yet.</div>'; return; }
+    if (!clusters.length) { box.innerHTML = '<div class="status-msg">No clusters yet — they appear as face scanning and clustering progress (see Status).</div>'; return; }
     box.innerHTML = '<div class="cluster-grid">' + clusters.map(c => `
         <div class="cluster-card" onclick="openCluster(${c.cluster_id})">
-            ${c.sample_file_ids && c.sample_file_ids.length
-                ? `<img src="/galleryout/thumbnail/${encodeURIComponent(c.sample_file_ids[0])}" loading="lazy" alt="">`
-                : '<div style="aspect-ratio:1/1"></div>'}
+            ${mosaic(c.sample_file_ids)}
             <div class="cl">${esc(c.label || ('Cluster #' + c.cluster_id))}</div>
             <div class="cs">${c.size} face${c.size === 1 ? '' : 's'}</div>
         </div>`).join('') + '</div>';
@@ -254,23 +314,87 @@ async function openCluster(id) {
     const box = document.getElementById('faces-content');
     box.innerHTML = '<div class="status-msg">Loading…</div>';
     const r = await fetch(`${API}/faces/clusters/${id}`); const d = await r.json();
+    const cluster = d.cluster || {};
     const members = d.members || [];
-    box.innerHTML = `<button class="btn" onclick="loadFaces()" style="margin-bottom:14px;">Back</button>
-        <h3 style="margin:0 0 12px 0;">${esc((d.cluster || {}).label || ('Cluster #' + id))}
-        <span class="muted" style="font-weight:400; font-size:0.8rem;">${(d.cluster || {}).size ?? members.length} faces</span></h3>
-        <div class="thumb-grid">` + members.map(m => `
-            <a href="/galleryout/aidam?view=compare&file=${encodeURIComponent(m.file_id)}" onclick="return cmpJump('${esc(m.file_id)}')">
-            <img src="/galleryout/thumbnail/${encodeURIComponent(m.file_id)}" loading="lazy" alt=""></a>`).join('') + '</div>';
+    const a = d.attributes || {};
+    const attrBits = [];
+    if (a.with_age) {
+        attrBits.push(`age ${a.age_min}–${a.age_max} (avg ${a.age_avg})`);
+        attrBits.push(`${a.female || 0} F / ${a.male || 0} M`);
+    }
+    if (a.yaw_abs_avg !== null && a.yaw_abs_avg !== undefined) attrBits.push(`avg |yaw| ${a.yaw_abs_avg}°`);
+    box.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+            <button class="glass-btn" onclick="loadFaces()">Back</button>
+            <h3 style="margin:0;" id="cluster-title">${esc(cluster.label || ('Cluster #' + id))}</h3>
+            <span class="muted" style="font-size:0.8rem;">${cluster.size ?? members.length} faces</span>
+            <button class="glass-btn" onclick="renameCluster(${id})">Rename</button>
+            ${attrBits.length ? `<span class="chip">${esc(attrBits.join(' · '))}</span>` : ''}
+        </div>
+        <div class="thumb-grid">` + members.map(m => {
+            const tag = [m.sex ? `${m.sex}${m.age ?? ''}` : null,
+                         (m.pose_yaw !== null && m.pose_yaw !== undefined) ? `y${Math.round(m.pose_yaw)}` : null]
+                        .filter(Boolean).join(' ');
+            return `<div class="thumb-tile" title="Run detector compare on this image" onclick="cmpJump('${esc(m.file_id)}')">
+                <img src="${thumb(m.file_id)}" alt="">
+                ${tag ? `<span class="tag">${esc(tag)}</span>` : ''}
+            </div>`;
+        }).join('') + '</div>';
+}
+
+async function renameCluster(id) {
+    const current = document.getElementById('cluster-title').textContent;
+    const label = prompt('Cluster label (empty clears):', current.startsWith('Cluster #') ? '' : current);
+    if (label === null) return;
+    await fetch(`${API}/faces/clusters/${id}/label`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({label: label.trim()})});
+    openCluster(id);
+}
+
+// ---- dupes ----
+async function loadDupes() {
+    const box = document.getElementById('dupes-content');
+    box.innerHTML = '<div class="status-msg">Loading…</div>';
+    const r = await fetch(`${API}/duplicates`); const d = await r.json();
+    const groups = d.groups || [];
+    const mb = b => (b / 1048576).toFixed(1);
+    if (!groups.length) { box.innerHTML = '<div class="status-msg">No exact duplicates among hashed files.</div>'; return; }
+    box.innerHTML = `<div class="cards">
+        <div class="card"><div class="k">Groups</div><div class="v">${d.group_count}</div></div>
+        <div class="card"><div class="k">Redundant files</div><div class="v">${d.redundant_files}</div></div>
+        <div class="card"><div class="k">Reclaimable</div><div class="v">${mb(d.total_bytes_reclaimable)}<small> MB</small></div></div>
+    </div>` + groups.map(g => `
+        <div class="dupe-group">
+            <div class="thumbs">${g.file_ids.slice(0, 4).map(id => `<img src="${thumb(id)}" alt="">`).join('')}</div>
+            <div class="meta"><b class="mono">${g.count}</b> copies &middot; <span class="mono">${mb(g.bytes_reclaimable)} MB</span> reclaimable</div>
+        </div>`).join('');
 }
 
 // ---- compare ----
-const LANE_COLORS = { yunet: 'var(--lane-b)', scrfd: 'var(--data)' };
+const LANE_COLORS = { yunet: 'var(--lane-a)', scrfd: 'var(--lane-b)' };
 let cmpState = null;
+
+async function loadRecentFaces() {
+    const el = document.getElementById('cmp-recent');
+    try {
+        const r = await fetch(`${API}/faces/recent`); const d = await r.json();
+        const files = d.files || [];
+        el.innerHTML = files.length ? files.map(f => `
+            <div class="thumb-tile" onclick="cmpJump('${esc(f.file_id)}')" title="Run comparison">
+                <img src="${thumb(f.file_id)}" alt="">
+                <span class="tag">${f.faces} face${f.faces === 1 ? '' : 's'}</span>
+            </div>`).join('')
+            : '<div class="status-msg" style="grid-column:1/-1;">No scanned faces yet — the picker fills as face scanning progresses.</div>';
+    } catch (e) {
+        el.innerHTML = '<div class="status-msg" style="grid-column:1/-1;">Could not load recent faces.</div>';
+    }
+}
 
 function cmpJump(fileId) {
     document.getElementById('cmp-file').value = fileId;
-    switchView('compare'); cmpRun();
-    return false;
+    switchView('compare');
+    cmpRun();
 }
 
 function cmpIou(a, b) {
@@ -314,12 +438,12 @@ function cmpRender() {
     const { data, mode, cfg } = cmpState;
     const lanes = data.lanes || {};
     const names = Object.keys(lanes);
-    const img = `/galleryout/thumbnail/${encodeURIComponent(data.file_id)}`;
+    const img = thumb(data.file_id);
     document.getElementById('cmp-mode-overlay').classList.toggle('active', mode === 'overlay');
     document.getElementById('cmp-mode-lanes').classList.toggle('active', mode === 'lanes');
     let html = '';
     if (mode === 'overlay') {
-        html += `<div class="preview" style="max-width:760px;"><img src="${img}" alt="">`
+        html += `<div class="preview" style="max-width:780px;"><img src="${img}" alt="">`
             + names.map(n => lanes[n].faces ? cmpLayer(n, LANE_COLORS[n] || '#3498db', lanes[n].faces, cfg[n]) : '').join('')
             + '</div>';
         html += names.map(n => {
@@ -332,7 +456,7 @@ function cmpRender() {
                 </label>
                 <span class="muted mono" style="font-size:0.75rem;">${lane.faces.length} faces &middot; ${lane.elapsed_ms} ms</span>
                 <input type="range" min="0.15" max="1" step="0.05" value="${cfg[n].alpha}"
-                       oninput="cmpSetLane('${n}', 'alpha', this.value)" title="opacity">
+                       oninput="cmpSetLane('${n}', 'alpha', this.value)" title="Overlay opacity">
                 <span>${lane.faces.map(f => cmpChip(f, color)).join('')}</span>
             </div>`;
         }).join('');
@@ -361,7 +485,7 @@ function cmpRender() {
     if (inv.length) {
         html += '<div class="panel" style="margin-top:16px;"><h3>Installed pipelines</h3>'
             + inv.map(p => `<div class="bar-row" style="grid-template-columns: 1fr 2fr 1fr;">
-                <span>${esc(p.name)}${p.active ? ' <b style="color:var(--identity); font-size:0.68rem; letter-spacing:1px;">ACTIVE</b>' : ''}</span>
+                <span>${esc(p.name)}${p.active ? ' <b style="color:var(--ai-color); font-size:0.68rem; letter-spacing:1px;">ACTIVE</b>' : ''}</span>
                 <span class="muted mono" style="font-size:0.72rem;">${p.weights_present ? esc(p.model_version) : 'weights not installed'}</span>
                 <span class="muted mono" style="font-size:0.7rem;">${esc(p.selector)}</span>
             </div>`).join('') + '</div>';
@@ -373,7 +497,7 @@ async function cmpRun() {
     const fileId = document.getElementById('cmp-file').value.trim();
     if (!fileId) return;
     const box = document.getElementById('cmp-content');
-    box.innerHTML = '<div class="status-msg">Running every installed lane…</div>';
+    box.innerHTML = '<div class="status-msg">Running every installed lane… (a few seconds per pipeline)</div>';
     try {
         const r = await fetch(`${API}/faces/compare/${encodeURIComponent(fileId)}`);
         const d = await r.json();
@@ -389,25 +513,23 @@ async function cmpRun() {
         cmpState = { data: d, mode: (cmpState || {}).mode || 'overlay', cfg };
         cmpRender();
     } catch (e) {
-        box.innerHTML = '<div class="status-msg">Comparison failed.</div>';
+        box.innerHTML = '<div class="status-msg">Comparison failed — check the server log.</div>';
     }
 }
 
 // ---- view switching ----
-const LOADERS = { status: loadStatus, generation: loadGeneration, faces: loadFaces, compare: () => {} };
+const LOADERS = { status: loadStatus, generation: loadGeneration, faces: loadFaces,
+                  dupes: loadDupes, compare: loadRecentFaces };
 function switchView(view) {
     if (!LOADERS[view]) view = 'status';
-    document.querySelectorAll('section').forEach(s => s.classList.toggle('active', s.id === 'view-' + view));
-    document.querySelectorAll('.rail a.nav').forEach(a => a.classList.toggle('active', a.dataset.view === view));
+    document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === 'view-' + view));
+    document.querySelectorAll('.topbar nav .glass-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     history.replaceState(null, '', '#' + view);
     LOADERS[view]();
 }
-document.querySelectorAll('.rail a.nav[data-view]').forEach(a => {
-    a.addEventListener('click', e => { e.preventDefault(); switchView(a.dataset.view); });
-});
 const initialView = '{{ view }}' || (location.hash || '#status').slice(1);
-switchView(initialView);
-if ('{{ file_id }}') cmpRun();
+switchView(initialView === 'status' && location.hash ? location.hash.slice(1) : initialView);
+if ('{{ file_id }}') { switchView('compare'); cmpRun(); }
 </script>
 </body>
 </html>

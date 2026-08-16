@@ -7392,6 +7392,32 @@ def get_file_full_details(file_id):
             file_data['generation_metadata'] = generation_metadata_text
             file_data['generation_tool'] = generation_tool
 
+            # First-class stored data: the typed generation_params row and
+            # per-face attributes, so the details modal reflects what is
+            # actually tracked instead of only a live re-parse.
+            file_data['generation_params'] = None
+            if not should_strip_metadata():
+                gen_row = conn.execute(
+                    "SELECT * FROM generation_params WHERE file_id = ?",
+                    (file_id,)).fetchone()
+                if gen_row:
+                    g = dict(gen_row)
+                    for k in ('loras', 'extra'):
+                        if g.get(k):
+                            try:
+                                g[k] = json.loads(g[k])
+                            except Exception:
+                                pass
+                    file_data['generation_params'] = g
+            try:
+                face_rows = conn.execute(
+                    "SELECT face_id, det_score, age, sex, pose_pitch, "
+                    "pose_yaw, pose_roll, cluster_id FROM ai_face_instances "
+                    "WHERE file_id = ? ORDER BY face_id", (file_id,)).fetchall()
+                file_data['faces'] = [dict(r) for r in face_rows]
+            except Exception:
+                file_data['faces'] = []
+
             folders_config = get_dynamic_folder_config()
             abs_path = file_data['path']
             real_path = os.path.realpath(abs_path).replace('\\', '/')
@@ -10830,6 +10856,10 @@ def ensure_genparams_backfill_async(conn):
     the generation_params table existed. Marker-gated like the cluster
     hash migration: recorded only on completion, so an interrupted run
     resumes next startup (already-written rows are skipped by query)."""
+    if os.environ.get('GENPARAMS_BACKFILL', '1') == '0':
+        print("INFO: [GenParams] Backfill disabled by GENPARAMS_BACKFILL=0; "
+              "new scans still track parameters.")
+        return
     stored = conn.execute(
         "SELECT value FROM ai_metadata WHERE key = 'genparams_schema'"
     ).fetchone()

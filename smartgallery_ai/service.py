@@ -589,10 +589,23 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             if crow is None:
                 return jsonify({"enabled": True, "cluster": None, "members": []}), 404
             member_rows = conn.execute(
-                "SELECT face_id, file_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score "
+                "SELECT face_id, file_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score, "
+                "age, sex, pose_yaw "
                 "FROM ai_face_instances WHERE cluster_id = ? ORDER BY face_id",
                 (cluster_id,),
             ).fetchall()
+            # Attribute aggregates over the typed per-face columns, so the
+            # cluster UI can say who this bucket looks like without the
+            # client re-deriving it.
+            agg = conn.execute(
+                "SELECT COUNT(age) AS with_age, MIN(age) AS age_min, "
+                "MAX(age) AS age_max, ROUND(AVG(age), 1) AS age_avg, "
+                "SUM(CASE WHEN sex = 'M' THEN 1 ELSE 0 END) AS male, "
+                "SUM(CASE WHEN sex = 'F' THEN 1 ELSE 0 END) AS female, "
+                "ROUND(AVG(ABS(pose_yaw)), 1) AS yaw_abs_avg "
+                "FROM ai_face_instances WHERE cluster_id = ?",
+                (cluster_id,),
+            ).fetchone()
         finally:
             conn.close()
         members = [
@@ -601,11 +614,15 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
                 "file_id": row["file_id"],
                 "bbox": [row["bbox_x"], row["bbox_y"], row["bbox_w"], row["bbox_h"]],
                 "det_score": row["det_score"],
+                "age": row["age"],
+                "sex": row["sex"],
+                "pose_yaw": row["pose_yaw"],
             }
             for row in member_rows
         ]
         cluster = {"cluster_id": crow["cluster_id"], "label": crow["label"], "size": crow["size"]}
-        return jsonify({"enabled": True, "cluster": cluster, "members": members})
+        return jsonify({"enabled": True, "cluster": cluster, "members": members,
+                        "attributes": dict(agg) if agg else None})
 
     # -- POST /faces/recluster (guarded) --------------------------------------------
 
@@ -623,6 +640,23 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         finally:
             conn.close()
         return jsonify({"enabled": True, "clusters": len(new_cluster_ids)})
+
+    # -- GET /faces/recent (guarded) ------------------------------------------------
+
+    def faces_recent():
+        """The most recently scanned files that contain faces — the
+        dashboard's picker for the detector-compare tool."""
+        conn = _connect(config)
+        try:
+            rows = conn.execute(
+                "SELECT file_id, MAX(face_id) AS latest, COUNT(*) AS faces "
+                "FROM ai_face_instances GROUP BY file_id "
+                "ORDER BY latest DESC LIMIT 24").fetchall()
+        finally:
+            conn.close()
+        return jsonify({"enabled": True, "files": [
+            {"file_id": r["file_id"], "faces": r["faces"]}
+            for r in rows if _visible(r["file_id"])]})
 
     # -- GET /faces/compare/<file_id> (guarded) -------------------------------------
 
@@ -1010,6 +1044,9 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         "/faces/clusters/<int:cluster_id>", "faces_cluster_detail",
         _wrap(faces_cluster_detail, guarded=True), methods=["GET"],
     )
+    bp.add_url_rule(
+        "/faces/recent", "faces_recent",
+        _wrap(faces_recent, guarded=True), methods=["GET"])
     bp.add_url_rule(
         "/faces/compare/<file_id>", "faces_compare",
         _wrap(faces_compare, guarded=True), methods=["GET"])
