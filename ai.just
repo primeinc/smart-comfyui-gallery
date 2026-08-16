@@ -4,7 +4,8 @@
 
 set positional-arguments
 
-py := "./.venv/Scripts/python.exe"
+# venv interpreter path differs by OS: Scripts/ on Windows, bin/ elsewhere
+py := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
 
 # bare `just ai` lists instead of executing
 default:

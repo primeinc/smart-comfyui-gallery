@@ -9,7 +9,8 @@ set export
 set positional-arguments
 set script-interpreter := ['bash', '-euo', 'pipefail']
 
-python := './.venv/Scripts/python.exe'
+# venv interpreter path differs by OS: Scripts/ on Windows, bin/ elsewhere
+python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
 omp := '8'
 corpus := 'C:/Users/will/dev/sg-lab/hf-datasets'
 models := 'C:/Users/will/dev/sg-lab/models'

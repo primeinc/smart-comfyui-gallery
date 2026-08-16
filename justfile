@@ -3,9 +3,12 @@
 set positional-arguments
 set windows-shell := ["bash", "-cu"]
 
+# venv interpreter path differs by OS: Scripts/ on Windows, bin/ elsewhere
+python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
+
 # Full test suite in the dev venv
 test:
-    ./.venv/Scripts/python.exe -m pytest tests/ -q
+    {{ python }} -m pytest tests/ -q
 
 # Benchmarks through the production pipeline with live load context (bench.just)
 mod bench
@@ -19,4 +22,4 @@ mod ai
 # Windows+NVIDIA, else the installed faiss-cpu. AI_DAM_FAISS_GPU=0
 # forces the fallback.
 faiss-verify:
-    ./.venv/Scripts/python.exe -c "from smartgallery_ai.faiss_runtime import import_faiss; f = import_faiss(); print(f.__file__); print('faiss GPUs:', f.get_num_gpus())"
+    {{ python }} -c "from smartgallery_ai.faiss_runtime import import_faiss; f = import_faiss(); print(f.__file__); print('faiss GPUs:', f.get_num_gpus())"
