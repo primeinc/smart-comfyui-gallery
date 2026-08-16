@@ -1209,8 +1209,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         "/review/alignment/mask/<int:element_id>", "review_alignment_mask",
         _wrap(review_alignment_mask), methods=["GET"]
     )
+    # Guarded despite being a GET. The guard was applied to the "mutating"
+    # endpoints, and this one reads as a read -- but it runs the critic for
+    # minutes, holds the run lock while it does, and writes a review at the
+    # end. Left open it is both a way to make the machine work on demand and
+    # a way to watch the prompt arrive element by element in the stream.
     bp.add_url_rule(
-        "/review/run/<file_id>", "review_run", _wrap(review_run), methods=["GET"]
+        "/review/run/<file_id>", "review_run", _wrap(review_run, guarded=True),
+        methods=["GET"]
     )
     bp.add_url_rule(
         "/review/feedback", "review_feedback_post",

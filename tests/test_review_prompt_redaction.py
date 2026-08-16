@@ -113,6 +113,47 @@ def test_a_visitor_still_gets_the_verdict(smartgallery_app, reviewed_file):
     assert body["findings"][0]["description"] == "an extra finger"
 
 
+def test_a_visitor_cannot_set_the_critic_running(smartgallery_app, reviewed_file):
+    """The live runner is a GET, so it escaped the guard put on the mutating
+    endpoints -- but it occupies the critic for minutes, writes a review at
+    the end, and streams the prompt element by element while it works.
+
+    Being able to make someone else's machine do that, on demand and as
+    often as you like, is the larger half."""
+    resp = _as(smartgallery_app, "CUSTOMER").get(
+        f"/galleryout/api/aidam/review/run/{reviewed_file}")
+
+    assert resp.status_code == 403, (
+        f"a visitor could start a review run ({resp.status_code})")
+    assert _PROMPT_SLICE not in resp.get_data(as_text=True)
+
+
+def test_staff_can_still_run_a_review(smartgallery_app, reviewed_file, monkeypatch):
+    """The counterpart: this is the AI panel's live review button.
+
+    Tested on the management side, because the panel only exists there --
+    an exhibition instance refuses this to everyone, staff included, which
+    is what every other guarded route in the blueprint already does."""
+    monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
+    monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
+
+    resp = _as(smartgallery_app, "ADMIN").get(
+        f"/galleryout/api/aidam/review/run/{reviewed_file}?steps=resolve")
+
+    assert resp.status_code != 403, resp.get_data(as_text=True)[:200]
+
+
+def test_a_customer_cannot_run_a_review_on_the_management_side_either(
+        smartgallery_app, reviewed_file, monkeypatch):
+    monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
+    monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
+
+    resp = _as(smartgallery_app, "CUSTOMER").get(
+        f"/galleryout/api/aidam/review/run/{reviewed_file}")
+
+    assert resp.status_code == 403, resp.status_code
+
+
 def test_the_default_local_install_sees_everything(smartgallery_app, reviewed_file,
                                                     monkeypatch):
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
