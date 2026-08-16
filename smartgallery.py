@@ -3467,13 +3467,19 @@ def full_sync_database(conn):
                         models_hash = excluded.models_hash,
                         hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
 
-                        -- CONDITIONAL LOGIC:
-                        is_favorite = CASE 
-                            WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0  
-                            ELSE files.is_favorite                     
-                        END,
-                        
-                        ai_caption = CASE 
+                        -- CONDITIONAL LOGIC: everything below is DERIVED from
+                        -- the file's content, so a changed mtime invalidates
+                        -- it. is_favorite is not derived from anything -- it
+                        -- is what the person chose -- and used to be cleared
+                        -- here with them. Ratings, comments, albums and tags
+                        -- all survive a rescan; the favourite was the only
+                        -- one that did not, because it sits in this block
+                        -- rather than in a table of its own. mtime moves for
+                        -- reasons that have nothing to do with content: a
+                        -- restored backup, a copy to another drive, a sync
+                        -- client rewriting files. Any of those wiped every
+                        -- favourite in the library at once, silently.
+                        ai_caption = CASE
                             WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL 
                             ELSE files.ai_caption                        
                         END,
@@ -3647,13 +3653,11 @@ def sync_folder_on_demand(folder_path):
                         models_hash = excluded.models_hash,
                             hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
 
-                            -- CONDITIONAL LOGIC:
-                            is_favorite = CASE 
-                                WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0  
-                                ELSE files.is_favorite                     
-                            END,
-                            
-                            ai_caption = CASE 
+                            -- CONDITIONAL LOGIC: derived-from-content fields
+                            -- only. is_favorite is the person's own choice
+                            -- and is left alone (see the note on the same
+                            -- statement in the full scan).
+                            ai_caption = CASE
                                 WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL 
                                 ELSE files.ai_caption                        
                             END,
@@ -5984,7 +5988,9 @@ def background_rescan_worker(job_id, files_to_process):
                         prompt_hash = excluded.prompt_hash,
                         models_hash = excluded.models_hash,
                         hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
-                        is_favorite = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.is_favorite END,
+                        -- is_favorite is deliberately absent: it is the
+                        -- person's own choice, not derived from the file
+                        -- (see the note on the same statement in the full scan).
                         ai_caption = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_caption END,
                         ai_embedding = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_embedding END,
                         ai_last_scanned = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.ai_last_scanned END,
