@@ -107,7 +107,7 @@ def load_source_image(path: str, file_type: str) -> Optional[Image.Image]:
 _PROVISION_MAP = (
     ("semantic_backend", ("auto", "open_clip"), "semantic"),
     ("visual_backend", ("auto", "dinov2"), "visual"),
-    ("face_backend", ("auto", "opencv"), "faces"),
+    ("face_backend", ("auto", "opencv", "insightface"), "faces"),
     ("segmenter_backend", ("auto", "mobilesam"), "segmenter"),
     ("critic_backend", ("auto", "qwen-vl"), "critic"),
 )
@@ -1048,8 +1048,9 @@ class AIWorker:
             self._set_state(conn, pending_key, "1")
         if rows or self._get_state(conn, pending_key) is not None:
             try:
-                faces.cluster_faces(conn, backend.model_id, backend.model_version,
-                                    self.config.face_cluster_threshold)
+                faces.cluster_faces(
+                    conn, backend.model_id, backend.model_version,
+                    faces.resolve_cluster_threshold(self.config, backend))
                 self._clear_state(conn, pending_key)
             except Exception as exc:
                 self._note_error("faces:cluster", f"face clustering failed: {exc}")

@@ -10,10 +10,11 @@ who (if anyone real) a face resembles.
 
 `StubFaceBackend` is a TEST/DEV stub: it returns pre-programmed detections
 and does not look at pixels at all. `OpenCVFaceBackend` is the only real
-backend wired up here, built on OpenCV's bundled YuNet detector and SFace
-recognizer (both ONNX, loaded only from local files under `models_dir`,
-never downloaded). It self-reports `BackendUnavailable` instead of raising
-when the runtime or weights are missing.
+backend wired up here: OpenCV's YuNet detector plus one of two per-face
+recognizers -- ArcFace glintr100 (default when present) or OpenCV SFace --
+all ONNX, loaded only from local files under `models_dir`, never
+downloaded. It self-reports `BackendUnavailable` instead of raising when
+the runtime or weights are missing.
 """
 
 from __future__ import annotations
@@ -46,6 +47,56 @@ __all__ = [
 
 _YUNET_FILENAME = "face_detection_yunet_2023mar.onnx"  # detector ONNX, expected directly under models_dir
 _SFACE_FILENAME = "face_recognition_sface_2021dec.onnx"  # recognizer ONNX, expected directly under models_dir
+# glintr100 lives inside the provisioned antelopev2 pack (FaceAnalysis
+# layout: <models_dir>/insightface/models/antelopev2/); the cv2 arcface
+# embedder reads it from there so the weights exist exactly once.
+_INSIGHTFACE_ROOT = "insightface"  # models_dir-relative FaceAnalysis root
+_ARCFACE_FILENAME = os.path.join(
+    _INSIGHTFACE_ROOT, "models", "antelopev2", "glintr100.onnx")
+
+# ArcFace canonical 112x112 5-landmark template
+# (insightface python-package/insightface/utils/face_align.py: arcface_dst).
+_ARCFACE_DST = np.array(
+    [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+     [41.5493, 92.3655], [70.7299, 92.2041]],
+    dtype=np.float32)
+
+
+def _umeyama_similarity(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+    """Least-squares similarity transform (Umeyama 1991) mapping `src`
+    points onto `dst`, as a 2x3 affine matrix. Matches
+    skimage.transform.SimilarityTransform.estimate — the estimator
+    insightface's norm_crop uses — to ~1e-6 (verified over 200 random
+    landmark sets) without a scikit-image dependency."""
+    src = np.asarray(src, dtype=np.float64)
+    dst = np.asarray(dst, dtype=np.float64)
+    n, d = src.shape
+    src_mean = src.mean(axis=0)
+    dst_mean = dst.mean(axis=0)
+    src_c = src - src_mean
+    dst_c = dst - dst_mean
+    cov = dst_c.T @ src_c / n
+    u, s, vt = np.linalg.svd(cov)
+    sign = np.ones(d)
+    if np.linalg.det(cov) < 0:
+        sign[-1] = -1
+    rot = u @ np.diag(sign) @ vt
+    var_src = (src_c ** 2).sum() / n
+    scale = (s * sign).sum() / var_src
+    t = dst_mean - scale * (rot @ src_mean)
+    m = np.zeros((2, 3))
+    m[:, :2] = scale * rot
+    m[:, 2] = t
+    return m
+
+
+def _arcface_norm_crop(bgr: np.ndarray, landmarks_px: np.ndarray) -> np.ndarray:
+    """Warp the face to the canonical ArcFace 112x112 crop from its five
+    detector landmarks (insightface face_align.norm_crop)."""
+    m = _umeyama_similarity(landmarks_px, _ARCFACE_DST)
+    return cv2.warpAffine(bgr, m, (112, 112), borderValue=0.0)
+
+
 _SIM_CHUNK_SIZE = 256  # rows per similarity block; caps clustering memory at O(chunk * n)
 _LABEL_MATCH_THRESHOLD = 0.9  # min centroid cosine for a recomputed cluster to inherit an old label
 
@@ -76,10 +127,21 @@ class FaceBackend(ABC):
 
     model_id: str  # provenance recorded on every ai_face_instances row
     model_version: str  # scopes stored instances and clusters; versions never mix
+    default_cluster_threshold: float = 0.55  # per-embedder operating point
 
     @abstractmethod
     def detect(self, img: Image.Image) -> list:
         """Detect faces in `img`. Returns a list of `FaceDetection`."""
+
+
+def resolve_cluster_threshold(config: AIConfig, backend: FaceBackend) -> float:
+    """The clustering threshold to use: the explicit config value when set
+    (AI_DAM_FACE_CLUSTER_THRESHOLD), else the backend's per-embedder
+    default — embedders occupy different cosine scales, so one global
+    number cannot serve both."""
+    if config.face_cluster_threshold is not None:
+        return config.face_cluster_threshold
+    return getattr(backend, "default_cluster_threshold", 0.55)
 
 
 class StubFaceBackend(FaceBackend):
@@ -126,15 +188,21 @@ def _pil_to_bgr(img: Image.Image) -> np.ndarray:
 
 
 class OpenCVFaceBackend(FaceBackend):
-    """YuNet detector + SFace recognizer, both from OpenCV's `objdetect`
-    module, loaded only from local ONNX files under `models_dir`.
+    """YuNet detector + a per-face recognizer, all through OpenCV, loaded
+    only from local ONNX files under `models_dir`.
+
+    Recognizers ('embedder'):
+      - 'arcface' — antelopev2 glintr100 (ResNet100@Glint360K, 512-d),
+        aligned via the canonical 5-landmark Umeyama warp. Best of the
+        three-way labeled A/B (benchmarks/results/face_embedder_ab.json);
+        weights are non-commercial research license
+        (deepinsight/insightface).
+      - 'sface'   — OpenCV FaceRecognizerSF (128-d), its own alignCrop.
+      - 'auto'    — arcface when its weights are present, else sface.
 
     Raises `BackendUnavailable` (never crashes) when the cv2 build lacks
     these APIs or the model files are not present.
     """
-
-    model_id = "opencv/yunet+sface"
-    model_version = "yunet-2023mar+sface-2021dec-v2-ms1600"
 
     def __init__(
         self,
@@ -142,27 +210,52 @@ class OpenCVFaceBackend(FaceBackend):
         min_det_score: float = 0.5,
         min_face_px: int = 24,
         detect_max_side: int = 1600,
+        embedder: str = "auto",
     ):
-        """Load both ONNX models. `min_det_score` is the minimum detector
-        confidence for a face to be reported; `min_face_px` is the minimum
-        face box side in detect-input pixels — YuNet detects down to ~10px,
-        and detections near that floor are featureless, embed into one
-        generic SFace region, and chain unrelated clusters together.
-        `detect_max_side` caps the detection input: images larger than N px
-        on their longest side are downscaled first, keeping large faces
-        inside YuNet's ~10-300px training band (measured: >=300px-face
-        recall 55%->97%, false positives 7x down, detection 3.7x faster —
-        docs/FACE_CLUSTERING.md). 0 disables the cap."""
+        """Load the detector and the selected recognizer. `min_det_score`
+        is the minimum detector confidence for a face to be reported;
+        `min_face_px` is the minimum face box side in detect-input pixels —
+        YuNet detects down to ~10px, and detections near that floor are
+        featureless, embed into one generic region, and chain unrelated
+        clusters together. `detect_max_side` caps the detection input:
+        images larger than N px on their longest side are downscaled first,
+        keeping large faces inside YuNet's ~10-300px training band
+        (measured: >=300px-face recall 55%->97%, false positives 7x down,
+        detection 3.7x faster — docs/FACE_CLUSTERING.md). 0 disables the
+        cap. A forced `embedder` whose weights are missing raises instead
+        of silently falling back."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise BackendUnavailable(
                 "this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF"
             )
         detector_path = os.path.join(models_dir, _YUNET_FILENAME)
         recognizer_path = os.path.join(models_dir, _SFACE_FILENAME)
+        arcface_path = os.path.join(models_dir, _ARCFACE_FILENAME)
         if not os.path.isfile(detector_path):
             raise BackendUnavailable(f"YuNet model not found at {detector_path}")
-        if not os.path.isfile(recognizer_path):
-            raise BackendUnavailable(f"SFace model not found at {recognizer_path}")
+        if embedder == "auto":
+            embedder = "arcface" if os.path.isfile(arcface_path) else "sface"
+        if embedder == "arcface":
+            if not os.path.isfile(arcface_path):
+                raise BackendUnavailable(
+                    f"ArcFace model not found at {arcface_path}")
+        elif embedder == "sface":
+            if not os.path.isfile(recognizer_path):
+                raise BackendUnavailable(
+                    f"SFace model not found at {recognizer_path}")
+        else:
+            raise ValueError(f"unknown face embedder: {embedder!r}")
+        self._embedder = embedder
+        self.model_id = f"opencv/yunet+{embedder}"
+        self.model_version = (
+            "yunet-2023mar+arcface-glintr100-ms1600" if embedder == "arcface"
+            else "yunet-2023mar+sface-2021dec-v2-ms1600")
+        # Operating points from the labeled three-way A/B sweep
+        # (benchmarks/face_embedder_ab.py, 175 faces / 31 identities):
+        # glintr100 pairwise-F1 is flat 0.926-0.933 across 0.30-0.50; 0.48
+        # keeps near-peak F1 (0.931) at the sweep's best precision (0.968).
+        # sface peaks narrowly near 0.45-0.55.
+        self.default_cluster_threshold = 0.48 if embedder == "arcface" else 0.55
         # Model creation logs native "setPreferableTarget ... not supported"
         # WARNs from inside OpenCV on some builds; not actionable, so hold
         # cv2's native log level at ERROR just for the create calls.
@@ -178,7 +271,12 @@ class OpenCVFaceBackend(FaceBackend):
             self._detector = cv2.FaceDetectorYN.create(
                 detector_path, "", (320, 320), score_threshold=min_det_score
             )
-            self._recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+            if embedder == "arcface":
+                self._recognizer = None
+                self._arcface = cv2.dnn.readNetFromONNX(arcface_path)
+            else:
+                self._recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+                self._arcface = None
         except Exception as exc:
             raise BackendUnavailable(f"failed to load face models: {exc}") from exc
         finally:
@@ -218,8 +316,20 @@ class OpenCVFaceBackend(FaceBackend):
             if min(bw, bh) < self._min_face_px:
                 continue
             landmarks_px = row[4:14].reshape(5, 2)
-            aligned = self._recognizer.alignCrop(bgr, row)
-            feature = self._recognizer.feature(aligned)
+            if self._arcface is not None:
+                # ArcFace contract (insightface arcface_onnx.py get_feat):
+                # canonical 112x112 norm_crop, then blob with mean/std
+                # 127.5 and BGR->RGB swap; 512-d output, cosine-ready
+                # after normalization downstream.
+                aligned = _arcface_norm_crop(bgr, landmarks_px)
+                blob = cv2.dnn.blobFromImage(
+                    aligned, 1.0 / 127.5, (112, 112),
+                    (127.5, 127.5, 127.5), swapRB=True)
+                self._arcface.setInput(blob)
+                feature = self._arcface.forward()
+            else:
+                aligned = self._recognizer.alignCrop(bgr, row)
+                feature = self._recognizer.feature(aligned)
             embedding = np.asarray(feature, dtype=np.float32).reshape(-1)
             bbox = (
                 _clamp01(x / w),
@@ -241,14 +351,178 @@ class OpenCVFaceBackend(FaceBackend):
         return detections
 
 
+class InsightFaceBackend(FaceBackend):
+    """insightface's own pipeline (FaceAnalysis over the provisioned
+    antelopev2 pack): SCRFD-10GF joint 128+640 detection, upstream
+    5-landmark alignment, glintr100 (ResNet100@Glint360K, 512-d)
+    embedding. On the labeled A/B this is near-perfect
+    (pairwise F1 0.999, P 1.000/R 0.998 at threshold 0.35-0.40 —
+    benchmarks/results/face_embedder_ab.json); the gap over YuNet-based
+    pipelines is detection + landmark-alignment quality, not the
+    recognizer. Weights are non-commercial research license
+    (deepinsight/insightface)."""
+
+    model_id = "insightface/antelopev2"
+    model_version = "scrfd10g+glintr100-v1"
+    # Pairwise F1 is 0.995-0.999 across 0.35-0.50 on the labeled A/B;
+    # 0.40 keeps P 1.000 with F1 0.998.
+    default_cluster_threshold = 0.40
+
+    def __init__(self, models_dir: str, min_det_score: float = 0.5,
+                 min_face_px: int = 24):
+        """`min_det_score` re-filters detections (FaceAnalysis is prepared
+        at the same threshold); `min_face_px` drops noise-floor boxes by
+        native-pixel side, same junk gate as the OpenCV backend."""
+        self._app = get_insightface_app(models_dir)
+        self._min_det_score = min_det_score
+        self._min_face_px = min_face_px
+
+    def detect(self, img: Image.Image) -> list:
+        bgr = _pil_to_bgr(img)
+        h, w = bgr.shape[:2]
+        if h == 0 or w == 0:
+            return []
+        detections = []
+        for face in self._app.get(bgr):
+            score = float(face.det_score)
+            if score < self._min_det_score:
+                continue
+            x1, y1, x2, y2 = (float(v) for v in face.bbox)
+            if min(x2 - x1, y2 - y1) < self._min_face_px:
+                continue
+            embedding = np.asarray(face.embedding, dtype=np.float32).reshape(-1)
+            bbox = (_clamp01(x1 / w), _clamp01(y1 / h),
+                    _clamp01((x2 - x1) / w), _clamp01((y2 - y1) / h))
+            landmarks = ([(_clamp01(float(px) / w), _clamp01(float(py) / h))
+                          for px, py in face.kps]
+                         if face.kps is not None else [])
+            detections.append(FaceDetection(
+                bbox=bbox, landmarks=landmarks, det_score=score,
+                embedding=embedding))
+        return detections
+
+
+_insightface_apps: dict = {}  # models_dir -> FaceAnalysis (cached; models stay loaded)
+
+
+def get_insightface_app(models_dir: str):
+    """insightface's own pipeline (FaceAnalysis, detection + recognition)
+    over the provisioned antelopev2 pack, cached per models_dir. Raises
+    `BackendUnavailable` when the package or the pack is missing."""
+    if models_dir in _insightface_apps:
+        return _insightface_apps[models_dir]
+    pack_dir = os.path.join(models_dir, _INSIGHTFACE_ROOT, "models", "antelopev2")
+    if not os.path.isdir(pack_dir):
+        raise BackendUnavailable(f"antelopev2 pack not found at {pack_dir}")
+    try:
+        from insightface.app import FaceAnalysis
+    except Exception as exc:
+        raise BackendUnavailable(f"insightface unavailable: {exc}") from exc
+    try:
+        app = FaceAnalysis(
+            name="antelopev2",
+            root=os.path.join(models_dir, _INSIGHTFACE_ROOT),
+            allowed_modules=["detection", "recognition"],
+            providers=["CPUExecutionProvider"],
+        )
+        app.prepare(ctx_id=0)  # Auto det-size: joint 128x128 + 640x640
+    except Exception as exc:
+        raise BackendUnavailable(f"FaceAnalysis failed to load: {exc}") from exc
+    _insightface_apps[models_dir] = app
+    return app
+
+
+def installed_pipelines(config: AIConfig) -> list:
+    """Inventory of every face pipeline this install can run: identity,
+    whether its weights are on disk, and whether it is the pipeline the
+    `auto`/configured selector resolves to right now."""
+    models_dir = config.models_dir
+    active = None
+    try:
+        backend = get_face_backend(config)
+        if backend is not None:
+            active = (backend.model_id, backend.model_version)
+    except (BackendUnavailable, ValueError):
+        pass
+
+    def _entry(name, model_id, model_version, weight_paths, selector):
+        present = all(os.path.isfile(os.path.join(models_dir, p))
+                      for p in weight_paths)
+        return {
+            "name": name,
+            "model_id": model_id,
+            "model_version": model_version,
+            "weights_present": present,
+            "selector": selector,
+            "active": active == (model_id, model_version),
+        }
+
+    return [
+        _entry("scrfd+glintr100",
+               "insightface/antelopev2", "scrfd10g+glintr100-v1",
+               [os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2",
+                             "scrfd_10g_bnkps.onnx"), _ARCFACE_FILENAME],
+               "AI_DAM_FACE_BACKEND=insightface"),
+        _entry("yunet+arcface",
+               "opencv/yunet+arcface", "yunet-2023mar+arcface-glintr100-ms1600",
+               [_YUNET_FILENAME, _ARCFACE_FILENAME],
+               "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=arcface"),
+        _entry("yunet+sface",
+               "opencv/yunet+sface", "yunet-2023mar+sface-2021dec-v2-ms1600",
+               [_YUNET_FILENAME, _SFACE_FILENAME],
+               "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=sface"),
+    ]
+
+
+def compare_detectors(img: Image.Image, config: AIConfig) -> dict:
+    """Run every installed face pipeline on one image and report raw
+    detections side by side — a diagnostic, never persisted. Returns
+    {"lanes": {name: {model, elapsed_ms, faces|error}},
+     "installed": installed_pipelines(...)} with normalized coords and
+    per-face landmarks. Lanes are the distinct DETECTION stacks (the two
+    opencv embedder variants share YuNet boxes, so one opencv lane runs
+    with the configured embedder); pipelines are constructed explicitly,
+    never via the `auto` selector, so the comparison always shows every
+    lane whichever one production uses."""
+
+    def _run(make_backend):
+        backend = make_backend()
+        t0 = time.perf_counter()
+        dets = backend.detect(img)
+        return {
+            "model": f"{backend.model_id} ({backend.model_version})",
+            "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "faces": [{"bbox": list(d.bbox), "landmarks": d.landmarks,
+                       "det_score": d.det_score} for d in dets],
+        }
+
+    lanes: dict = {}
+    lane_makers = {
+        "yunet": lambda: OpenCVFaceBackend(
+            config.models_dir, config.face_min_det_score, config.face_min_px,
+            config.face_detect_max_side, config.face_embedder),
+        "scrfd": lambda: InsightFaceBackend(
+            config.models_dir, config.face_min_det_score, config.face_min_px),
+    }
+    for lane, make_backend in lane_makers.items():
+        try:
+            lanes[lane] = _run(make_backend)
+        except (BackendUnavailable, ValueError) as exc:
+            lanes[lane] = {"model": lane, "error": str(exc)}
+    return {"lanes": lanes, "installed": installed_pipelines(config)}
+
+
 def get_face_backend(config: AIConfig) -> Optional[FaceBackend]:
     """Resolve `config.face_backend` to a backend instance, or None.
 
     'none' -> None. 'stub' -> StubFaceBackend, sourced from
     `config.extra["face_stub_source"]` (defaults to always-empty, since a
     real per-test source can't be expressed through AIConfig alone).
-    'opencv' -> OpenCVFaceBackend, raising if unavailable (explicit ask).
-    'auto' -> OpenCVFaceBackend if available, else None (never the stub).
+    'insightface' -> InsightFaceBackend, raising if unavailable.
+    'opencv' -> OpenCVFaceBackend, raising if unavailable.
+    'auto' -> InsightFaceBackend when available (best measured pipeline,
+    benchmarks/results/face_embedder_ab.json), else OpenCVFaceBackend,
+    else None (never the stub).
     """
     name = config.face_backend
     if name == "none":
@@ -256,20 +530,36 @@ def get_face_backend(config: AIConfig) -> Optional[FaceBackend]:
     if name == "stub":
         source = config.extra.get("face_stub_source", lambda _img: [])
         return StubFaceBackend(source)
+    if name == "insightface":
+        return InsightFaceBackend(
+            config.models_dir,
+            config.face_min_det_score,
+            config.face_min_px,
+        )
     if name == "opencv":
         return OpenCVFaceBackend(
             config.models_dir,
             config.face_min_det_score,
             config.face_min_px,
             config.face_detect_max_side,
+            config.face_embedder,
         )
     if name == "auto":
+        try:
+            return InsightFaceBackend(
+                config.models_dir,
+                config.face_min_det_score,
+                config.face_min_px,
+            )
+        except BackendUnavailable:
+            pass
         try:
             return OpenCVFaceBackend(
                 config.models_dir,
                 config.face_min_det_score,
                 config.face_min_px,
                 config.face_detect_max_side,
+                config.face_embedder,
             )
         except BackendUnavailable:
             return None

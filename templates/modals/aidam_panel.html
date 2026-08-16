@@ -42,6 +42,24 @@
     .aidam-face-row { display:flex; align-items:center; gap:10px; background:#151515; border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; color:#ddd; }
     .aidam-face-swatch { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
 
+    /* Detector comparison: two deployed pipelines over one frame.
+       Solid box = the other lane found this face too (IoU >= 0.5);
+       dashed box = only this lane sees it — disagreement is readable
+       before any number is. */
+    .aidam-cmp-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    @media (max-width:640px) { .aidam-cmp-grid { grid-template-columns:1fr; } }
+    .aidam-cmp-lane { background:#111; border:1px solid #333; border-radius:10px; padding:12px; border-top:3px solid var(--lane-color, #666); }
+    .aidam-cmp-lane-name { color:var(--lane-color, #fff); font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:1px; }
+    .aidam-cmp-lane-meta { color:var(--text-muted); font-size:0.72rem; margin:2px 0 10px 0; word-break:break-all; }
+    .aidam-cmp-lane .aidam-preview-wrap { max-width:none; margin-bottom:10px; }
+    .aidam-bbox--miss { border-style:dashed; }
+    .aidam-cmp-kp { position:absolute; width:4px; height:4px; border-radius:50%; margin:-2px 0 0 -2px; pointer-events:none; }
+    .aidam-cmp-strip { margin-top:14px; padding:10px 14px; background:#151515; border:1px solid #333; border-radius:8px; color:#ddd; font-size:0.85rem; display:flex; gap:18px; flex-wrap:wrap; }
+    .aidam-cmp-strip b { font-weight:800; }
+    .aidam-cmp-scores { display:flex; flex-wrap:wrap; gap:6px; }
+    .aidam-cmp-chip { font-size:0.72rem; color:#ddd; background:#1b1b1b; border:1px solid #333; border-radius:6px; padding:2px 8px; }
+    .aidam-cmp-chip--miss { border-style:dashed; }
+
     .aidam-cluster-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; }
     .aidam-cluster-card { cursor:pointer; background:#151515; border:1px solid #333; border-radius:10px; overflow:hidden; text-align:center; transition:border-color 0.15s; }
     .aidam-cluster-card:hover { border-color:var(--ai-color); }
@@ -287,10 +305,10 @@
         return div.innerHTML;
     }
 
-    function aidamSpinner() { return '<div class="aidam-status-msg">⏳ Loading…</div>'; }
+    function aidamSpinner() { return '<div class="aidam-status-msg">Loading…</div>'; }
     function aidamDisabledMsg() { return '<div class="aidam-status-msg">🚫 The AI layer is disabled on this server. Ask an administrator to enable it (ENABLE_AI_DAM).</div>'; }
     function aidamEmptyMsg(msg) { return `<div class="aidam-status-msg">🌙 ${escapeAidamHtml(msg || 'No data yet.')}</div>`; }
-    function aidamErrorMsg(msg) { return `<div class="aidam-status-msg aidam-status-error">⚠️ ${escapeAidamHtml(msg)}</div>`; }
+    function aidamErrorMsg(msg) { return `<div class="aidam-status-msg aidam-status-error">${escapeAidamHtml(msg)}</div>`; }
 
     // One /status fetch per panel open, shared by every tab's empty state.
     let aidamStatusCache = null;
@@ -696,6 +714,182 @@
         return `<div class="aidam-bbox" style="left:${(x * 100).toFixed(2)}%; top:${(y * 100).toFixed(2)}%; width:${(w * 100).toFixed(2)}%; height:${(h * 100).toFixed(2)}%; border-color:${aidamFaceColor(idx)};"></div>`;
     }
 
+    // --- Detector comparison -------------------------------------------------
+    // Every installed detection lane over one frame. Overlay mode stacks all
+    // lanes on a single image with per-lane visibility and opacity; Lanes mode
+    // shows one image per lane. Solid box = matched in every other lane
+    // (IoU >= 0.5); dashed = this lane alone sees it.
+
+    const _AIDAM_CMP_LANE_COLORS = { yunet: '#e6a23c', scrfd: '#41d6a3' };
+    const _AIDAM_CMP_FALLBACK_COLORS = ['#3498db', '#e74c3c', '#9b59b6'];
+    let aidamCmpState = null;
+
+    function aidamCmpLaneColor(lane, idx) {
+        return _AIDAM_CMP_LANE_COLORS[lane] || _AIDAM_CMP_FALLBACK_COLORS[idx % _AIDAM_CMP_FALLBACK_COLORS.length];
+    }
+
+    function aidamCmpIou(a, b) {
+        const ax2 = a[0] + a[2], ay2 = a[1] + a[3], bx2 = b[0] + b[2], by2 = b[1] + b[3];
+        const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(a[0], b[0]));
+        const iy = Math.max(0, Math.min(ay2, by2) - Math.max(a[1], b[1]));
+        const inter = ix * iy;
+        const union = a[2] * a[3] + b[2] * b[3] - inter;
+        return union > 0 ? inter / union : 0;
+    }
+
+    function aidamCmpMarkConsensus(lanes) {
+        const names = Object.keys(lanes).filter(n => lanes[n].faces);
+        names.forEach(name => {
+            (lanes[name].faces || []).forEach(f => {
+                f.consensus = names.every(other => {
+                    if (other === name) return true;
+                    return (lanes[other].faces || []).some(g => aidamCmpIou(f.bbox, g.bbox) >= 0.5);
+                });
+            });
+        });
+        return names;
+    }
+
+    function aidamCmpOverlayLayer(lane, color, faces, cfg) {
+        const boxes = faces.map(f => {
+            const [x, y, w, h] = f.bbox;
+            const cls = f.consensus ? 'aidam-bbox' : 'aidam-bbox aidam-bbox--miss';
+            const kps = (f.landmarks || []).map(pt =>
+                `<div class="aidam-cmp-kp" style="left:${(pt[0] * 100).toFixed(2)}%; top:${(pt[1] * 100).toFixed(2)}%; background:${color};"></div>`).join('');
+            return `<div class="${cls}" style="left:${(x * 100).toFixed(2)}%; top:${(y * 100).toFixed(2)}%; width:${(w * 100).toFixed(2)}%; height:${(h * 100).toFixed(2)}%; border-color:${color};"></div>${kps}`;
+        }).join('');
+        const style = `opacity:${cfg.alpha}; display:${cfg.on ? 'block' : 'none'};`;
+        return `<div class="aidam-cmp-layer" data-lane="${lane}" style="position:absolute; inset:0; pointer-events:none; ${style}">${boxes}</div>`;
+    }
+
+    function aidamCmpSetLane(lane, prop, value) {
+        const cfg = aidamCmpState.cfg[lane];
+        if (prop === 'on') cfg.on = value;
+        if (prop === 'alpha') cfg.alpha = value;
+        document.querySelectorAll(`.aidam-cmp-layer[data-lane="${lane}"]`).forEach(el => {
+            el.style.opacity = cfg.alpha;
+            el.style.display = cfg.on ? 'block' : 'none';
+        });
+    }
+
+    function aidamCmpSetMode(mode) {
+        aidamCmpState.mode = mode;
+        aidamCmpRender();
+    }
+
+    function aidamCmpRender() {
+        const box = document.getElementById('aidam-faces-content');
+        const { data, mode, cfg } = aidamCmpState;
+        const lanes = data.lanes || {};
+        const laneNames = Object.keys(lanes);
+        const img = `/galleryout/thumbnail/${encodeURIComponent(aidamCurrentFileId)}`;
+
+        let html = aidamBackButton('aidamLoadFaces');
+        html += `<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <h5 style="margin:0; color:#fff;">Detector comparison</h5>
+            <div class="aidam-toggle-group" style="margin:0;">
+                <button type="button" class="aidam-toggle-btn ${mode === 'overlay' ? 'aidam-toggle-active' : ''}" onclick="aidamCmpSetMode('overlay')">Overlay</button>
+                <button type="button" class="aidam-toggle-btn ${mode === 'lanes' ? 'aidam-toggle-active' : ''}" onclick="aidamCmpSetMode('lanes')">Lanes</button>
+            </div>
+        </div>`;
+
+        const laneHead = (name, i) => {
+            const lane = lanes[name];
+            const color = aidamCmpLaneColor(name, i);
+            if (lane.error) {
+                return `<div class="aidam-cmp-lane" style="--lane-color:${color};">
+                    <span class="aidam-cmp-lane-name">${escapeAidamHtml(name)}</span>
+                    <div class="aidam-status-msg aidam-status-error" style="margin-top:8px;">${escapeAidamHtml(lane.error)}</div>
+                </div>`;
+            }
+            return null;
+        };
+
+        if (mode === 'overlay') {
+            html += `<div class="aidam-preview-wrap" style="max-width:none;">
+                <img src="${img}" alt="">
+                ${laneNames.map((n, i) => lanes[n].faces
+                    ? aidamCmpOverlayLayer(n, aidamCmpLaneColor(n, i), lanes[n].faces, cfg[n]) : '').join('')}
+            </div>`;
+            html += laneNames.map((n, i) => {
+                const lane = lanes[n];
+                const color = aidamCmpLaneColor(n, i);
+                if (lane.error) return laneHead(n, i);
+                const count = lane.faces.length;
+                return `<div class="aidam-face-row" style="border-left:3px solid ${color};">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" ${cfg[n].on ? 'checked' : ''} onchange="aidamCmpSetLane('${n}', 'on', this.checked)">
+                        <span class="aidam-cmp-lane-name" style="--lane-color:${color};">${escapeAidamHtml(n)}</span>
+                    </label>
+                    <span style="color:var(--text-muted); font-size:0.75rem;">${count} face${count === 1 ? '' : 's'} - ${lane.elapsed_ms} ms</span>
+                    <input type="range" min="0.15" max="1" step="0.05" value="${cfg[n].alpha}" style="margin-left:auto; width:110px;"
+                           oninput="aidamCmpSetLane('${n}', 'alpha', this.value)" title="Overlay opacity">
+                </div>`;
+            }).join('');
+        } else {
+            html += `<div class="aidam-cmp-grid">` + laneNames.map((n, i) => {
+                const lane = lanes[n];
+                const color = aidamCmpLaneColor(n, i);
+                if (lane.error) return laneHead(n, i);
+                const chips = lane.faces.map(f =>
+                    `<span class="aidam-cmp-chip ${f.consensus ? '' : 'aidam-cmp-chip--miss'}" style="border-color:${color};">${Math.round(f.det_score * 100)}%</span>`).join('');
+                return `<div class="aidam-cmp-lane" style="--lane-color:${color};">
+                    <span class="aidam-cmp-lane-name">${escapeAidamHtml(n)}</span>
+                    <div class="aidam-cmp-lane-meta">${escapeAidamHtml(lane.model)} - ${lane.faces.length} face${lane.faces.length === 1 ? '' : 's'} - ${lane.elapsed_ms} ms</div>
+                    <div class="aidam-preview-wrap">
+                        <img src="${img}" alt="">
+                        ${aidamCmpOverlayLayer(n, color, lane.faces, { on: true, alpha: 1 })}
+                    </div>
+                    <div class="aidam-cmp-scores">${chips}</div>
+                </div>`;
+            }).join('') + `</div>`;
+        }
+
+        const okLanes = laneNames.filter(n => lanes[n].faces);
+        if (okLanes.length > 1) {
+            const agreed = (lanes[okLanes[0]].faces || []).filter(f => f.consensus).length;
+            const only = okLanes.map(n => {
+                const solo = lanes[n].faces.filter(f => !f.consensus).length;
+                return solo ? `<span><b>${solo}</b> only ${escapeAidamHtml(n)}</span>` : '';
+            }).join('');
+            html += `<div class="aidam-cmp-strip"><span><b>${agreed}</b> agreed by all lanes</span>${only}</div>`;
+        }
+
+        const inv = data.installed || [];
+        if (inv.length) {
+            html += `<span class="aidam-section-title">Installed pipelines</span><div class="aidam-face-list">`;
+            html += inv.map(p => `
+                <div class="aidam-face-row" style="justify-content:space-between; flex-wrap:wrap;">
+                    <span style="font-weight:700;">${escapeAidamHtml(p.name)}${p.active ? ' <span style="color:var(--ai-color); font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:1px;">active</span>' : ''}</span>
+                    <span style="color:var(--text-muted); font-size:0.72rem;">${p.weights_present ? escapeAidamHtml(p.model_version) : 'weights not installed'}</span>
+                    <span style="color:var(--text-muted); font-size:0.7rem; font-family:monospace;">${escapeAidamHtml(p.selector)}</span>
+                </div>`).join('');
+            html += `</div>`;
+        }
+        box.innerHTML = html;
+    }
+
+    async function aidamCompareDetectors() {
+        const box = document.getElementById('aidam-faces-content');
+        box.innerHTML = aidamSpinner();
+        try {
+            const res = await fetch(`/galleryout/api/aidam/faces/compare/${encodeURIComponent(aidamCurrentFileId)}`);
+            const data = await res.json();
+            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
+            if (data.error) {
+                box.innerHTML = aidamBackButton('aidamLoadFaces') + aidamErrorMsg(escapeAidamHtml(data.error));
+                return;
+            }
+            aidamCmpMarkConsensus(data.lanes || {});
+            const cfg = {};
+            Object.keys(data.lanes || {}).forEach(n => { cfg[n] = { on: true, alpha: 1 }; });
+            aidamCmpState = { data, mode: 'overlay', cfg };
+            aidamCmpRender();
+        } catch (e) {
+            box.innerHTML = aidamBackButton('aidamLoadFaces') + aidamErrorMsg('Detector comparison failed.');
+        }
+    }
+
     async function aidamLoadFaces() {
         const box = document.getElementById('aidam-faces-content');
         box.innerHTML = aidamSpinner();
@@ -719,9 +913,12 @@
             }
             aidamMarkPending('faces', false);
 
-            let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:6px;">
                 <span style="color:var(--text-muted); font-size:0.85rem;">${faces.length} face${faces.length === 1 ? '' : 's'} detected</span>
-                <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamBrowseAllClusters()">🗂️ Browse all clusters</button>
+                <span style="display:flex; gap:6px;">
+                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamCompareDetectors()">Compare detectors</button>
+                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamBrowseAllClusters()">Browse all clusters</button>
+                </span>
             </div>`;
 
             html += `<div class="aidam-preview-wrap" id="aidam-faces-preview">

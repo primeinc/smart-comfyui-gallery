@@ -242,6 +242,8 @@ class Artifact:
     hf_filename: Optional[str] = None  # None with hf_repo => full snapshot
     url: Optional[str] = None
     sha256: Optional[str] = None
+    unzip_member: Optional[str] = None  # with url: extract this member of the downloaded zip as dest
+    unzip_all: bool = False  # with url: extract the whole zip under dest (a directory)
 
 
 @dataclass(frozen=True)
@@ -263,10 +265,14 @@ class Group:
 GROUPS = (
     Group(
         name="faces",
-        enables="Faces tab (detection + clustering); ~3 MB",
+        enables="Faces tab (detection + clustering + detector compare)",
         # OpenCV ships with the core app; faiss accelerates the clustering
         # similarity graph (exact IndexFlatIP; NumPy fallback exists).
-        runtime=(("faiss", "faiss-cpu"),),
+        # insightface + onnxruntime power the SCRFD pipeline used by the
+        # detector-compare endpoint (and FaceAnalysis generally).
+        runtime=(("faiss", "faiss-cpu"),
+                 ("insightface", "insightface"),
+                 ("onnxruntime", "onnxruntime")),
         artifacts=(
             Artifact(
                 dest="face_detection_yunet_2023mar.onnx",
@@ -281,6 +287,22 @@ GROUPS = (
                 url=("https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
                      "models/face_recognition_sface/face_recognition_sface_2021dec.onnx"),
                 sha256="0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+            ),
+            # insightface antelopev2 pack (official release asset), laid
+            # out for FaceAnalysis(name='antelopev2', root=<models>/insightface):
+            # SCRFD-10GF detector, glintr100 recognizer (ResNet100@Glint360K,
+            # 512-d — best of the labeled A/B in
+            # benchmarks/results/face_embedder_ab.json), landmark and
+            # attribute heads. glintr100 also feeds the cv2 arcface embedder
+            # directly from this pack. License is non-commercial research
+            # per deepinsight/insightface README.
+            Artifact(
+                dest="insightface/models/antelopev2",
+                approx_size="407 MB (344 MB zip)",
+                license="non-commercial research (insightface)",
+                url=("https://github.com/deepinsight/insightface/releases/"
+                     "download/v0.7/antelopev2.zip"),
+                unzip_all=True,
             ),
         ),
     ),
@@ -404,6 +426,54 @@ def _download_url(url: str, dest_path: str,
         length = resp.headers.get("Content-Length")
         _copy_with_progress(resp, out, int(length) if length else None, progress)
     os.replace(tmp, dest_path)
+
+
+def _download_zip_member(url_dl, url: str, member: str, dest_path: str) -> None:
+    """Download a zip via `url_dl` and keep exactly one member as
+    dest_path; the zip itself is always removed."""
+    import zipfile
+
+    zip_tmp = dest_path + ".zip"
+    url_dl(url, zip_tmp)
+    try:
+        with zipfile.ZipFile(zip_tmp) as zf, \
+                zf.open(member) as src, \
+                open(dest_path + ".part", "wb") as out:
+            shutil.copyfileobj(src, out)
+        os.replace(dest_path + ".part", dest_path)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(zip_tmp)
+
+
+def _download_zip_all(url_dl, url: str, dest_dir: str) -> None:
+    """Download a zip via `url_dl` and extract every member under
+    dest_dir, stripping one shared top-level directory when the zip has
+    one (release packs nest a single '<name>/' folder); the zip itself is
+    always removed."""
+    import zipfile
+
+    os.makedirs(dest_dir, exist_ok=True)
+    zip_tmp = os.path.join(dest_dir, "_download.zip")
+    url_dl(url, zip_tmp)
+    try:
+        with zipfile.ZipFile(zip_tmp) as zf:
+            names = [n for n in zf.namelist() if not n.endswith("/")]
+            roots = {n.split("/", 1)[0] for n in names}
+            strip = (len(roots) == 1 and all("/" in n for n in names))
+            for name in names:
+                rel = name.split("/", 1)[1] if strip else name
+                target = os.path.join(dest_dir, *rel.split("/"))
+                if not os.path.abspath(target).startswith(
+                        os.path.abspath(dest_dir) + os.sep):
+                    raise ProvisionError(f"zip member escapes dest: {name}")
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with zf.open(name) as src, open(target + ".part", "wb") as out:
+                    shutil.copyfileobj(src, out)
+                os.replace(target + ".part", target)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(zip_tmp)
 
 
 @contextlib.contextmanager
@@ -594,7 +664,7 @@ def artifact_present(models_dir: str, artifact: Artifact) -> bool:
     """Whether the artifact already exists at its expected location
     (snapshot directories count as present when non-empty)."""
     path = os.path.join(models_dir, artifact.dest)
-    if artifact.hf_repo is not None and artifact.hf_filename is None:
+    if (artifact.hf_repo is not None and artifact.hf_filename is None) or artifact.unzip_all:
         return os.path.isdir(path) and bool(os.listdir(path))
     return os.path.isfile(path)
 
@@ -780,7 +850,12 @@ def provision(
                 return (_hub_bars_silenced if progress is not None
                         and fn is default else contextlib.nullcontext)
             try:
-                if artifact.url is not None:
+                if artifact.url is not None and artifact.unzip_all:
+                    _download_zip_all(url_dl, artifact.url, dest_path)
+                elif artifact.url is not None and artifact.unzip_member is not None:
+                    _download_zip_member(
+                        url_dl, artifact.url, artifact.unzip_member, dest_path)
+                elif artifact.url is not None:
                     url_dl(artifact.url, dest_path)
                 elif artifact.hf_filename is not None:
                     with hf_quiet(dl["hf_file"], _download_hf_file)():

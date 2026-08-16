@@ -6,24 +6,75 @@ real-world identity recognition.
 ## Pipeline
 
 ```
-image -> YuNet detect -> SFace embed (128-d) -> L2 normalize
+image -> detect + 5-pt landmarks -> aligned per-face embed -> L2 normalize
       -> cosine-threshold graph (CSR) -> Chinese Whispers -> ai_face_clusters
 ```
 
-## Models
+Two deployed, config-swappable pipelines (MINIMUM-REQ: every AI component
+keeps at least two maintained implementations; distinct
+`model_id`/`model_version` per pipeline keep their outputs unmixed):
 
-| Stage | Model | File | License |
-|---|---|---|---|
-| Detect | YuNet 2023mar | `face_detection_yunet_2023mar.onnx` | MIT |
-| Embed | SFace 2021dec | `face_recognition_sface_2021dec.onnx` | Apache-2.0 |
+| Pipeline | Selector | Detect | Embed | License |
+|---|---|---|---|---|
+| insightface (default in `auto`) | `AI_DAM_FACE_BACKEND=insightface` | SCRFD-10GF, joint 128+640 multi-scale | glintr100 (ResNet100@Glint360K, 512-d) | non-commercial research (insightface) |
+| opencv | `AI_DAM_FACE_BACKEND=opencv` | YuNet 2023mar (ms1600 policy) | `AI_DAM_FACE_EMBEDDER`: arcface glintr100 via cv2.dnn (default when present) \| sface 128-d | MIT/Apache with sface — the ship-safe commercial lane |
+
+The insightface lane is upstream's own FaceAnalysis (SCRFD detection,
+upstream landmark alignment, pack recognizer) over the provisioned
+antelopev2 pack at `<models>/insightface/models/antelopev2/`. The opencv
+lane runs entirely on cv2: YuNet detection with the ms1600 policy, and
+for arcface the canonical insightface alignment contract re-implemented
+in numpy (Umeyama similarity transform onto the 112x112 `arcface_dst`
+template, matches `skimage...estimate` to ~1e-6; cv2.dnn inference
+verified bit-equal to onnxruntime, max abs diff 5e-6). glintr100 weights
+exist once — both lanes read them from the pack.
+
+A forced backend/embedder whose weights are missing raises; `auto` falls
+back insightface -> opencv -> None.
 
 Constraints (opencv_zoo model cards):
 
 - YuNet detects faces of **~10x10 to ~300x300 pixels**. Faces outside that
   band produce degenerate boxes (partial-face crops on close-ups, blur/noise
-  detections at the small end).
+  detections at the small end); the ms1600 policy below exists for this.
+  SCRFD's joint multi-scale pass needs no such cap.
 - OpenCV's SFace samples decide same-identity at cosine >= **0.363**
   (`opencv/samples/dnn/face_detect.py:113`).
+
+## Pipeline A/B (labeled)
+
+Four variants on 175-177 faces / 31 identities (KYC ID-card+selfie pairs +
+BPFR identity folders); machine-readable record in
+`benchmarks/results/face_embedder_ab.json`, reproduce with
+`just bench face-ab`.
+
+| variant | verification best-F1 | cluster peak F1 | P/R at shipped threshold |
+|---|---|---|---|
+| yunet+sface (128-d) | 0.878 @ 0.38 | 0.897 @ 0.45 | 1.000/0.759 @ 0.55 |
+| yunet+arcface w600k_r50 | 0.923 @ 0.27 | 0.932 @ 0.30 | — |
+| yunet+arcface glintr100 | 0.933 @ 0.33 | 0.933 @ 0.30-0.35 | 0.968/0.896 @ 0.48 |
+| **scrfd+glintr100 (FaceAnalysis)** | **0.997 @ 0.35** | **0.999 @ 0.35** | **1.000/0.995 @ 0.40** |
+
+Same recognizer in the last two rows — the gap is SCRFD's detection and
+landmark-alignment quality (genuine-pair p05 cosine 0.042 -> 0.490; the
+only variant whose genuine/impostor distributions fully separate). It
+also detected every corpus face (0 skipped vs 2).
+
+Clustering threshold resolution: explicit `AI_DAM_FACE_CLUSTER_THRESHOLD`
+wins; otherwise the backend's per-pipeline default (insightface 0.40,
+opencv/arcface 0.48, opencv/sface 0.55) — the embedding spaces have
+different cosine scales, so one global number cannot serve all.
+
+## Detector comparison (in-app)
+
+`GET /faces/compare/<file_id>` (guarded) live-runs every installed lane
+on one file — nothing persisted — and reports per-lane detections
+(normalized bbox + 5-pt landmarks + score), model identity, timing, and
+the installed-pipeline inventory with swap selectors. The AI panel's
+Faces tab surfaces it ("Compare detectors"): overlay mode stacks all
+lanes on one image with per-lane visibility and opacity controls; lanes
+mode shows them side by side. Solid box = matched in every other lane
+(IoU >= 0.5); dashed = that lane alone sees it.
 
 ## Neighbor graph backends
 

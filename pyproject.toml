@@ -40,6 +40,8 @@ ai = [
     "faiss-cpu>=1.15",
     "llama-cpp-python>=0.3.0",
     "huggingface_hub",
+    "insightface>=1.0.1",  # FaceAnalysis pipeline (SCRFD + glintr100)
+    "onnxruntime",
 ]
 # Real model backends: semantic/visual embeddings, the qwen-vl critic's
 # grounding gate, and MobileSAM segmentation. torch resolves to CPU wheels

@@ -628,3 +628,41 @@ def test_review_reports_prompt_availability(fixture):
 
     after = fixture.client.get(f"{_PREFIX}/review/review_file").get_json()
     assert after["prompt_available"] is True
+
+
+# --- /faces/compare/<file_id> -------------------------------------------------
+
+
+def test_faces_compare_reports_lanes_and_inventory(fixture, monkeypatch):
+    """The endpoint renders the file and answers every lane plus the
+    installed-pipeline inventory; a lane that cannot load reports its
+    error in place instead of failing the request."""
+    from smartgallery_ai import faces as F
+
+    def fake_compare(img, config):
+        assert img.size == (32, 32)
+        return {"lanes": {"yunet": {"model": "opencv/yunet+sface (v)",
+                                    "elapsed_ms": 1.2, "faces": []},
+                          "scrfd": {"model": "scrfd",
+                                    "error": "antelopev2 pack not found"}},
+                "installed": [{"name": "yunet+sface", "weights_present": False,
+                               "active": False}]}
+
+    monkeypatch.setattr(F, "compare_detectors", fake_compare)
+    res = fixture.client.get(f"{_PREFIX}/faces/compare/index_target")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["lanes"]["yunet"]["faces"] == []
+    assert "error" in data["lanes"]["scrfd"]
+    assert data["installed"][0]["name"] == "yunet+sface"
+
+
+def test_faces_compare_unknown_file_404(fixture):
+    assert fixture.client.get(f"{_PREFIX}/faces/compare/nope").status_code == 404
+
+
+def test_faces_compare_nonrenderable_422(fixture):
+    """A file whose path cannot be rendered answers 422, not a crash."""
+    res = fixture.client.get(f"{_PREFIX}/faces/compare/dup_target")
+    assert res.status_code == 422
+    assert "renderable" in res.get_json()["error"]

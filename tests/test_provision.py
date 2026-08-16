@@ -62,6 +62,16 @@ def _fake_downloaders(written: dict, content: bytes = b"weights"):
 
     def url(u, dest):
         written[dest] = ("url", u)
+        if dest.endswith(".zip"):
+            # unzip_member artifacts fetch a zip and keep one member; serve
+            # a real zip holding every member any registry artifact names
+            import zipfile
+
+            with zipfile.ZipFile(dest, "w") as zf:
+                for member in {a.unzip_member for g in P.GROUPS
+                               for a in g.artifacts if a.unzip_member}:
+                    zf.writestr(member, content)
+            return
         with open(dest, "wb") as fh:
             fh.write(content)
 
@@ -89,12 +99,16 @@ def test_provision_dispatches_by_source_kind_and_skips_present(tmp_path):
     # verification), so pre-place them to exercise the skip path instead.
     (tmp_path / "face_detection_yunet_2023mar.onnx").write_bytes(b"x")
     (tmp_path / "face_recognition_sface_2021dec.onnx").write_bytes(b"x")
+    pack = tmp_path / "insightface" / "models" / "antelopev2"
+    pack.mkdir(parents=True)
+    (pack / "glintr100.onnx").write_bytes(b"x")
 
     result = P.provision(str(tmp_path), ["faces", "visual"], log=lambda _m: None,
                          downloaders=_fake_downloaders(written))
 
     assert result["skipped"] == ["face_detection_yunet_2023mar.onnx",
-                                 "face_recognition_sface_2021dec.onnx"]
+                                 "face_recognition_sface_2021dec.onnx",
+                                 "insightface/models/antelopev2"]
     assert result["downloaded"] == ["dinov2-small"]
     dest = str(tmp_path / "dinov2-small")
     assert written[dest] == ("hf_snapshot", "facebook/dinov2-small")
@@ -167,6 +181,9 @@ def test_provision_groups_for_omits_groups_already_on_disk(tmp_path):
     os.makedirs(models)
     (models / "face_detection_yunet_2023mar.onnx").write_bytes(b"x")
     (models / "face_recognition_sface_2021dec.onnx").write_bytes(b"x")
+    pack = models / "insightface" / "models" / "antelopev2"
+    pack.mkdir(parents=True)
+    (pack / "glintr100.onnx").write_bytes(b"x")
     cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
                face_backend="auto", segmenter_backend="none", critic_backend="none")
     assert provision_groups_for(cfg) == []
@@ -1275,3 +1292,28 @@ def test_provision_groups_for_includes_llama_swap_groups(tmp_path, monkeypatch):
 
     monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
     assert provision_groups_for(cfg) == ["critic"]
+
+
+def test_download_zip_member_extracts_one_file(tmp_path):
+    """unzip_member artifacts: the zip is fetched, exactly the named
+    member lands at dest, and the zip is removed."""
+    import zipfile
+    from smartgallery_ai.provision import _download_zip_member
+
+    src_zip = tmp_path / "pack.zip"
+    with zipfile.ZipFile(src_zip, "w") as zf:
+        zf.writestr("keep.onnx", b"weights-bytes")
+        zf.writestr("drop.onnx", b"other")
+    dest = tmp_path / "out" / "keep.onnx"
+    dest.parent.mkdir()
+
+    def fake_dl(url, path):
+        assert url == "https://example.test/pack.zip"
+        import shutil as _sh
+        _sh.copyfile(src_zip, path)
+
+    _download_zip_member(fake_dl, "https://example.test/pack.zip",
+                         "keep.onnx", str(dest))
+    assert dest.read_bytes() == b"weights-bytes"
+    assert not (tmp_path / "out" / "keep.onnx.zip").exists()
+    assert not (tmp_path / "out" / "keep.onnx.part").exists()

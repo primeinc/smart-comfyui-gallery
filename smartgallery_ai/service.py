@@ -610,11 +610,41 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         conn = _connect(config)
         try:
             new_cluster_ids = faces.cluster_faces(
-                conn, backend.model_id, backend.model_version, config.face_cluster_threshold
+                conn, backend.model_id, backend.model_version,
+                faces.resolve_cluster_threshold(config, backend),
             )
         finally:
             conn.close()
         return jsonify({"enabled": True, "clusters": len(new_cluster_ids)})
+
+    # -- GET /faces/compare/<file_id> (guarded) -------------------------------------
+
+    def faces_compare(file_id: str):
+        """Run BOTH deployed face pipelines (opencv YuNet lane and
+        insightface SCRFD lane) live on one file and answer their raw
+        detections side by side, with per-pipeline model identity and
+        timing. Pure diagnostic: nothing is persisted, stored instances
+        are untouched. Compute-heavy, hence guarded."""
+        _check_file_access(file_id)
+        conn = _connect(config)
+        try:
+            row = conn.execute(
+                "SELECT path, type FROM files WHERE id = ?", (file_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            abort(404)
+        from smartgallery_ai.worker import load_source_image
+        img = load_source_image(row["path"], row["type"])
+        if img is None:
+            return jsonify({"enabled": True,
+                            "error": "file has no renderable frame"}), 422
+        try:
+            result = faces.compare_detectors(img, config)
+        finally:
+            img.close()
+        return jsonify({"enabled": True, "file_id": file_id, **result})
 
     # -- GET /review/<file_id> -----------------------------------------------------
 
@@ -973,6 +1003,9 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
         "/faces/clusters/<int:cluster_id>", "faces_cluster_detail",
         _wrap(faces_cluster_detail, guarded=True), methods=["GET"],
     )
+    bp.add_url_rule(
+        "/faces/compare/<file_id>", "faces_compare",
+        _wrap(faces_compare, guarded=True), methods=["GET"])
     bp.add_url_rule(
         "/faces/recluster", "faces_recluster",
         _wrap(faces_recluster, guarded=True), methods=["POST"],

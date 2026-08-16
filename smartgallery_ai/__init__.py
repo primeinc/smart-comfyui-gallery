@@ -21,6 +21,7 @@ Design invariants:
 
 import os
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 def _env_bool(name: str, default: str = "false") -> bool:
@@ -65,13 +66,18 @@ class AIConfig:
 
     # Tunables (documented in docs/AI_MODELS.md; override via env)
     near_dup_max_distance: int = 8      # max Hamming distance on phash64
-    face_cluster_threshold: float = 0.55  # cosine similarity threshold
+    face_cluster_threshold: Optional[float] = None  # cosine similarity threshold;
+                                        #   None = the face backend's per-embedder
+                                        #   default (faces.resolve_cluster_threshold)
     face_min_det_score: float = 0.5     # min detection confidence [0,1] to keep a face
     face_min_px: int = 24               # min face box side in detect-input pixels; smaller
                                         #   detections sit at YuNet's ~10px noise floor and
                                         #   embed as junk (docs/FACE_CLUSTERING.md)
     face_detect_max_side: int = 1600    # cap detection input; keeps large faces inside
                                         #   YuNet's ~10-300px band (0 disables)
+    face_embedder: str = "auto"         # 'arcface' (buffalo_l w600k_r50, 512-d) |
+                                        #   'sface' (128-d) | 'auto' (arcface when
+                                        #   its weights are present)
     similar_default_k: int = 24         # default neighbor count for similarity queries
 
     extra: dict = field(default_factory=dict)  # free-form backend-specific options
@@ -100,13 +106,15 @@ class AIConfig:
             critic_backend=os.environ.get("AI_DAM_CRITIC_BACKEND", "auto"),
             segmenter_backend=os.environ.get("AI_DAM_SEGMENTER_BACKEND", "auto"),
             near_dup_max_distance=int(os.environ.get("AI_DAM_NEAR_DUP_DISTANCE", "8")),
-            face_cluster_threshold=float(
-                os.environ.get("AI_DAM_FACE_CLUSTER_THRESHOLD", "0.55")
+            face_cluster_threshold=(
+                float(os.environ["AI_DAM_FACE_CLUSTER_THRESHOLD"])
+                if "AI_DAM_FACE_CLUSTER_THRESHOLD" in os.environ else None
             ),
             face_min_px=int(os.environ.get("AI_DAM_FACE_MIN_PX", "24")),
             face_detect_max_side=int(
                 os.environ.get("AI_DAM_FACE_DETECT_MAX_SIDE", "1600")
             ),
+            face_embedder=os.environ.get("AI_DAM_FACE_EMBEDDER", "auto"),
             similar_default_k=int(os.environ.get("AI_DAM_SIMILAR_K", "24")),
         )
 

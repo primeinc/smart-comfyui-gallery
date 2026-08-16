@@ -86,3 +86,4 @@ run_smartgallery.bat
 !benchmarks/results/face_detection_recall_ms1600.json
 # Vendored Windows GPU faiss build ships its extension module
 !vendor/faiss-gpu-win64/faiss/*.pyd
+!benchmarks/results/face_embedder_ab.json

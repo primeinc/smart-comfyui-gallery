@@ -24,6 +24,35 @@ The cosine-threshold neighbor graph runs on the best available backend and recor
 * `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)
 * `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes; `just faiss-gpu-install` swaps the venv's faiss-cpu for the local Windows GPU build (build recipe in docs/FAISS_GPU_WINDOWS.md)
 
+### 🙂 Face Pipelines: insightface FaceAnalysis Default + In-App Detector Comparison
+
+Two full face pipelines are now deployed and config-swappable
+(`AI_DAM_FACE_BACKEND=insightface|opencv`; MINIMUM-REQ two-implementation
+bar). The new default (`auto`) is insightface's own FaceAnalysis over the
+provisioned antelopev2 pack — SCRFD-10GF joint 128+640 detection,
+upstream landmark alignment, glintr100 (ResNet100@Glint360K, 512-d)
+embedding. On the labeled identity A/B it is near-perfect: pairwise
+cluster F1 0.999 (P 1.000/R 0.995 at the shipped threshold 0.40) vs
+0.897 for the previous yunet+sface pipeline; the gap is detection and
+landmark-alignment quality, not the recognizer
+(benchmarks/results/face_embedder_ab.json, `just bench face-ab`). The
+opencv lane stays fully maintained: YuNet + `AI_DAM_FACE_EMBEDDER`
+arcface (same glintr100 via cv2.dnn + numpy Umeyama alignment, verified
+bit-equal to onnxruntime) or sface — the MIT/Apache ship-safe option.
+Cluster thresholds resolve per pipeline (insightface 0.40, opencv/arcface
+0.48, opencv/sface 0.55; `AI_DAM_FACE_CLUSTER_THRESHOLD` overrides).
+Each pipeline is a distinct `model_version` — switching re-embeds and
+re-clusters without mixing spaces.
+
+**Detector comparison, in-app:** the AI panel's Faces tab gained
+"Compare detectors" — `GET /faces/compare/<file_id>` live-runs every
+installed lane on the file (nothing persisted) and the view shows them
+as a single-image overlay with per-lane visibility and opacity controls,
+or side-by-side lanes; solid boxes are detections every lane agrees on
+(IoU ≥ 0.5), dashed boxes are seen by one lane only, landmarks drawn as
+dots, with per-lane model identity and timing plus the
+installed-pipeline inventory and its swap selectors.
+
 ### 🔍 Detection Policy: Large-Face Recall 55% → 97%
 
 Face detection input is capped at `face_detect_max_side` (default 1600px, env `AI_DAM_FACE_DETECT_MAX_SIDE`): images are downscaled before YuNet and boxes scaled back. YuNet's 10–300px training band means faces larger than ~300px at native resolution are systematically missed; measured on a labeled 500-image harness, ≥300px recall went 55.3% → 97.1%, precision 66% → 94%, false positives 0.41 → 0.06/image, detect time 62ms → 33ms. `benchmarks/face_detection_recall.py` (`just bench face-recall`) reproduces the recall-by-band table; policy tables and reproduce commands in docs/FACE_CLUSTERING.md.

@@ -554,3 +554,196 @@ def test_aiconfig_face_min_px_env(monkeypatch, tmp_path):
 def test_aiconfig_face_min_px_default(tmp_path):
     cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
     assert cfg.face_min_px == 24
+
+
+def test_aiconfig_face_embedder_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_DAM_FACE_EMBEDDER", "sface")
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_embedder == "sface"
+
+
+def test_aiconfig_face_embedder_default(tmp_path):
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_embedder == "auto"
+
+
+# --- ArcFace alignment (insightface norm_crop contract) -----------------------
+
+
+def test_umeyama_matches_skimage_fixture():
+    """The numpy Umeyama estimator must reproduce
+    skimage.transform.SimilarityTransform.estimate — insightface's
+    estimator — on a captured fixture (skimage 0.26.0, verified to ~1e-6
+    over 200 random landmark sets)."""
+    from smartgallery_ai.faces import _ARCFACE_DST, _umeyama_similarity
+
+    lmk = np.array([[210.5, 180.25], [312.75, 178.0], [260.0, 240.5],
+                    [222.25, 300.75], [305.5, 298.0]])
+    expected = np.array([
+        [3.41340034e-01, -5.51772644e-03, -3.21517002e+01],
+        [5.51772644e-03, 3.41340034e-01, -1.12969063e+01]])
+    m = _umeyama_similarity(lmk, _ARCFACE_DST)
+    # fixture repr carries 8 significant digits; translation terms are
+    # O(30), so equality holds to ~2e-6 absolute
+    assert np.abs(m - expected).max() < 5e-6
+
+
+def test_umeyama_identity_when_landmarks_match_template():
+    from smartgallery_ai.faces import _ARCFACE_DST, _umeyama_similarity
+
+    m = _umeyama_similarity(_ARCFACE_DST, _ARCFACE_DST)
+    assert np.abs(m - np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])).max() < 1e-6
+
+
+def test_arcface_norm_crop_shape_and_identity_warp():
+    """Landmarks already on the template warp the image onto itself."""
+    from smartgallery_ai.faces import _ARCFACE_DST, _arcface_norm_crop
+
+    rng = np.random.default_rng(3)
+    img = rng.integers(0, 256, (112, 112, 3), dtype=np.uint8)
+    warped = _arcface_norm_crop(img, _ARCFACE_DST.copy())
+    assert warped.shape == (112, 112, 3)
+    assert np.abs(warped.astype(int) - img.astype(int)).mean() < 1.0
+
+
+# --- embedder selection ------------------------------------------------------
+
+
+def test_opencv_backend_rejects_unknown_embedder(tmp_path):
+    from smartgallery_ai.faces import OpenCVFaceBackend, _YUNET_FILENAME
+
+    (tmp_path / _YUNET_FILENAME).write_bytes(b"")
+    with pytest.raises(ValueError, match="unknown face embedder"):
+        OpenCVFaceBackend(str(tmp_path), embedder="bogus")
+
+
+def test_opencv_backend_forced_arcface_missing_raises(tmp_path):
+    from smartgallery_ai.embedders import BackendUnavailable
+    from smartgallery_ai.faces import OpenCVFaceBackend, _YUNET_FILENAME
+
+    (tmp_path / _YUNET_FILENAME).write_bytes(b"")
+    with pytest.raises(BackendUnavailable, match="ArcFace model not found"):
+        OpenCVFaceBackend(str(tmp_path), embedder="arcface")
+
+
+def test_opencv_backend_auto_falls_back_to_sface_version(tmp_path):
+    """auto with only sface weights resolves to the sface identity; the
+    load then fails on the empty file, proving resolution happened first."""
+    from smartgallery_ai.embedders import BackendUnavailable
+    from smartgallery_ai.faces import (OpenCVFaceBackend, _SFACE_FILENAME,
+                                       _YUNET_FILENAME)
+
+    (tmp_path / _YUNET_FILENAME).write_bytes(b"")
+    (tmp_path / _SFACE_FILENAME).write_bytes(b"")
+    with pytest.raises(BackendUnavailable, match="failed to load face models"):
+        OpenCVFaceBackend(str(tmp_path), embedder="auto")
+
+
+def test_resolve_cluster_threshold_explicit_config_wins(tmp_path):
+    from smartgallery_ai.faces import StubFaceBackend, resolve_cluster_threshold
+
+    cfg = AIConfig(face_cluster_threshold=0.7)
+    assert resolve_cluster_threshold(cfg, StubFaceBackend({})) == 0.7
+
+
+def test_resolve_cluster_threshold_backend_default_when_unset():
+    from smartgallery_ai.faces import StubFaceBackend, resolve_cluster_threshold
+
+    cfg = AIConfig()
+    backend = StubFaceBackend({})
+    assert resolve_cluster_threshold(cfg, backend) == 0.55
+    backend.default_cluster_threshold = 0.40
+    assert resolve_cluster_threshold(cfg, backend) == 0.40
+
+
+def test_aiconfig_cluster_threshold_env_and_unset(monkeypatch, tmp_path):
+    monkeypatch.delenv("AI_DAM_FACE_CLUSTER_THRESHOLD", raising=False)
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_cluster_threshold is None
+    monkeypatch.setenv("AI_DAM_FACE_CLUSTER_THRESHOLD", "0.62")
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_cluster_threshold == 0.62
+
+
+# --- InsightFaceBackend selection / inventory / compare -----------------------
+
+
+def test_get_face_backend_auto_prefers_insightface(tmp_path, monkeypatch):
+    import smartgallery_ai.faces as F
+
+    class _FakeInsight(F.FaceBackend):
+        model_id = "insightface/antelopev2"
+        model_version = "scrfd10g+glintr100-v1"
+
+        def __init__(self, models_dir, min_det_score, min_face_px):
+            pass
+
+        def detect(self, img):
+            return []
+
+    monkeypatch.setattr(F, "InsightFaceBackend", _FakeInsight)
+    cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
+    assert isinstance(get_face_backend(cfg), _FakeInsight)
+
+
+def test_get_face_backend_auto_falls_back_when_insightface_missing(tmp_path):
+    """No antelopev2 pack and no opencv weights: auto resolves to None
+    (insightface raises internally, opencv raises internally, no crash)."""
+    cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
+    assert get_face_backend(cfg) is None
+
+
+def test_get_face_backend_forced_insightface_missing_raises(tmp_path):
+    from smartgallery_ai.embedders import BackendUnavailable
+
+    cfg = AIConfig(face_backend="insightface", models_dir=str(tmp_path))
+    with pytest.raises(BackendUnavailable, match="antelopev2 pack not found"):
+        get_face_backend(cfg)
+
+
+def test_installed_pipelines_inventory(tmp_path):
+    """Three pipelines, weight presence per file, nothing active when no
+    weights exist."""
+    from smartgallery_ai.faces import installed_pipelines
+
+    cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
+    inv = installed_pipelines(cfg)
+    assert [p["name"] for p in inv] == [
+        "scrfd+glintr100", "yunet+arcface", "yunet+sface"]
+    assert all(p["weights_present"] is False for p in inv)
+    assert all(p["active"] is False for p in inv)
+    versions = {p["model_version"] for p in inv}
+    assert len(versions) == 3  # distinct model_versions never mix outputs
+
+
+def test_compare_detectors_reports_every_lane(tmp_path, monkeypatch):
+    """Both lanes answer; an unavailable lane carries its error while the
+    other still reports detections, and the inventory rides along."""
+    import smartgallery_ai.faces as F
+    from PIL import Image
+
+    det = FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2),
+                        landmarks=[(0.15, 0.15)], det_score=0.9,
+                        embedding=np.ones(4, dtype=np.float32))
+
+    class _FakeCv(F.FaceBackend):
+        model_id = "opencv/yunet+sface"
+        model_version = "v-cv"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def detect(self, img):
+            return [det]
+
+    def _boom(*a, **k):
+        raise F.BackendUnavailable("antelopev2 pack not found")
+
+    monkeypatch.setattr(F, "OpenCVFaceBackend", _FakeCv)
+    monkeypatch.setattr(F, "InsightFaceBackend", _boom)
+    cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
+    out = F.compare_detectors(Image.new("RGB", (10, 10)), cfg)
+    assert out["lanes"]["yunet"]["faces"][0]["det_score"] == 0.9
+    assert out["lanes"]["yunet"]["faces"][0]["landmarks"] == [(0.15, 0.15)]
+    assert "antelopev2" in out["lanes"]["scrfd"]["error"]
+    assert len(out["installed"]) == 3
