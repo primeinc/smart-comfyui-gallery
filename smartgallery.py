@@ -9606,7 +9606,17 @@ def exhibition_rate_file():
     
     if rating is not None and rating != 0 and not (1 <= rating <= 5):
         return jsonify({'status': 'error', 'message': 'Invalid rating'}), 400
-        
+
+    # Rating asked only whether the file existed, never whether this caller
+    # was allowed to see it -- so a visitor could score a picture that was
+    # never shared with them, and the owner's average for a private
+    # picture was set by someone who had never laid eyes on it. The reply
+    # is the same as for a file that is not there at all, so that the two
+    # cannot be told apart: answering 404 for one and 200 for the other let
+    # a visitor discover which ids exist.
+    if not is_file_accessible(file_id):
+        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
     try:
         with get_db_connection() as conn:
             if not conn.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
@@ -9675,12 +9685,28 @@ def exhibition_rate_batch():
     if rating is not None and rating != 0 and not (1 <= rating <= 5):
         return jsonify({'status': 'error', 'message': 'Invalid rating'}), 400
         
+    # The same rule as the single-file route above, and for the same
+    # reason. Also the reason this route no longer answers with a raw
+    # database error: it used to hand whatever ids it was given straight to
+    # the insert, so one that did not exist came back as a 500 quoting
+    # "FOREIGN KEY constraint failed".
+    allowed = [fid for fid in file_ids if is_file_accessible(fid)]
+    if not allowed:
+        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
     try:
         with get_db_connection() as conn:
+            placeholders = ','.join(['?'] * len(allowed))
+            present = {row[0] for row in conn.execute(
+                f"SELECT id FROM files WHERE id IN ({placeholders})", allowed).fetchall()}
+            file_ids = [fid for fid in allowed if fid in present]
+            if not file_ids:
+                return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
             if rating is None or rating == 0:
                 placeholders = ','.join(['?'] * len(file_ids))
                 query = f"""
-                    DELETE FROM file_ratings 
+                    DELETE FROM file_ratings
                     WHERE file_id IN ({placeholders}) AND client_uuid = ?
                 """
                 params = file_ids + [client_uuid]
@@ -9688,7 +9714,7 @@ def exhibition_rate_batch():
             else:
                 current_time = time.time()
                 records = [(fid, client_uuid, rating, current_time) for fid in file_ids]
-                
+
                 conn.executemany("""
                     INSERT INTO file_ratings (file_id, client_uuid, rating, created_at)
                     VALUES (?, ?, ?, ?)

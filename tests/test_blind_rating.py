@@ -129,6 +129,16 @@ def rated_file(smartgallery_app):
         conn.execute("INSERT OR REPLACE INTO file_ratings "
                      "(file_id, client_uuid, rating, created_at) "
                      "VALUES ('blindf1', 'someone_else', 2, 1.0)")
+        # In a public album, so a visitor is allowed to rate it. Rating now
+        # refuses a file the caller may not see, and a picture in no album
+        # at all is one nobody could have reached to vote on.
+        conn.execute("DELETE FROM collections WHERE name = 'Blind Album'")
+        conn.execute("INSERT INTO collections (name, type, is_public) "
+                     "VALUES ('Blind Album', 'user_album', 1)")
+        album = conn.execute("SELECT id FROM collections WHERE name = 'Blind Album'"
+                             ).fetchone()[0]
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
+                     "VALUES (?, 'blindf1')", (album,))
         conn.commit()
     finally:
         conn.close()
@@ -136,15 +146,27 @@ def rated_file(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute("DELETE FROM files WHERE id = 'blindf1'")
+        conn.execute("DELETE FROM collections WHERE name = 'Blind Album'")
         conn.commit()
     finally:
         conn.close()
 
 
-def test_the_reply_to_a_vote_withholds_the_crowd_average(blind_server, rated_file):
+def test_the_reply_to_a_vote_withholds_the_crowd_average(blind_server, rated_file,
+                                                         monkeypatch):
     """The interface honoured blind rating and the reply did not: the
     average came back in the JSON on every vote, readable from the network
-    tab. A guarantee that holds only in the markup is not one."""
+    tab. A guarantee that holds only in the markup is not one.
+
+    Exhibition rather than the blind_server fixture's --force-login,
+    because the rater here is a GUEST and a guest under --force-login is
+    not a rater at all: that mode admits only ADMIN, MANAGER and STAFF to
+    the interface, so such a session can reach no file and never could
+    have voted. Exhibition with the picture in a public album is the
+    journey this describes."""
+    monkeypatch.setattr(blind_server, "FORCE_LOGIN", False)
+    monkeypatch.setattr(blind_server, "IS_EXHIBITION_MODE", True)
+
     body = _rate(blind_server, rated_file).get_json()
 
     assert body.get("status") == "success", body
