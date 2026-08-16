@@ -78,7 +78,9 @@ The AI layer is **on by default** and provisions itself; see
 | `AI_DAM_GPU_LAYERS` | `-1` (all) | Critic layers offloaded to GPU. |
 | `AI_DAM_TENSOR_SPLIT` | unset | Proportions for splitting the critic across GPUs, e.g. `0.6,0.4`. |
 | `AI_DAM_EPHEMERAL_INDEX` | `false` | Keep the vector index in memory only. |
-| `OMNIQUERY_FALLBACK_GGUF` | provisioned model | Override the search palette's nl2sql model file. |
+| `OMNIQUERY_NL2SQL_GGUF` | provisioned model | Override the model the search palette uses to turn a question into SQL. |
+| `OMNIQUERY_FALLBACK_GGUF` | provisioned model | Override the model behind the palette's plain-language fallback. Also used for nl2sql when `OMNIQUERY_NL2SQL_GGUF` is unset, so setting this alone changes both. |
+| `OMNIQUERY_FALLBACK_GPU_LAYERS` | `-1` (all) | Layers of the fallback model offloaded to GPU. |
 
 ### `ENABLE_AI_SEARCH` is inert
 
