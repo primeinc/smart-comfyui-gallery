@@ -305,16 +305,16 @@ Download: [https://ffmpeg.org/](https://ffmpeg.org/)
 
 ## Reverse Proxy Setup
 
-Point your proxy to:
+Every URL the app serves and fetches is an absolute path under
+`/galleryout/`, so the public path on your proxy **must also be
+`/galleryout/`** — a different prefix (e.g. `/gallery/`) loads the first
+page and then 404s every asset and API call.
 
-```
-http://127.0.0.1:8189/galleryout
-```
 <details>
 <summary><strong>Nginx</strong></summary>
 
 ```nginx
-location /gallery/ {
+location /galleryout/ {
     proxy_pass http://127.0.0.1:8189/galleryout/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -330,7 +330,7 @@ location /gallery/ {
 Ensure that `mod_proxy` and `mod_proxy_http` modules are enabled.
 
 ```apache
-<Location "/gallery/">
+<Location "/galleryout/">
     ProxyPreserveHost On
     ProxyPass http://127.0.0.1:8189/galleryout/
     ProxyPassReverse http://127.0.0.1:8189/galleryout/
