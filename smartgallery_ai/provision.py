@@ -771,6 +771,49 @@ def artifact_present(models_dir: str, artifact: Artifact) -> bool:
     return os.path.isfile(path)
 
 
+# Conservative parse of Artifact.approx_size for the disk preflight: every
+# figure in the string is summed ("407 MB (344 MB zip)" needs the archive
+# and the extraction on disk at the same time).
+_SIZE_TOKEN_RE = re.compile(r"([\d.]+)\s*(KB|MB|GB)", re.I)
+_SIZE_UNITS = {"KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3}
+# Headroom the preflight insists on beyond the artifact bytes: caches,
+# thumbnails, and SQLite growth share the volume, and filling a system
+# drive to zero takes the whole machine down, not just this app.
+_DISK_HEADROOM_BYTES = 1024 ** 3
+
+
+def _approx_bytes(size_text: str) -> int:
+    """Byte estimate of an approx_size string; 0 when nothing parses."""
+    return sum(int(float(num) * _SIZE_UNITS[unit.upper()])
+               for num, unit in _SIZE_TOKEN_RE.findall(size_text))
+
+
+def _check_disk_space(models_dir: str, artifacts) -> None:
+    """Refuse to start downloads that cannot fit: the missing artifacts'
+    declared sizes plus headroom vs the target volume's free bytes. An
+    unprobeable volume falls through to the download attempt."""
+    needed = sum(_approx_bytes(a.approx_size) for a in artifacts)
+    if not needed:
+        return
+    probe = os.path.abspath(models_dir)
+    while probe and not os.path.isdir(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break
+        probe = parent
+    try:
+        free = shutil.disk_usage(probe).free
+    except OSError:
+        return
+    if free < needed + _DISK_HEADROOM_BYTES:
+        raise ProvisionError(
+            f"not enough disk space for the requested weights: "
+            f"~{needed // 1024 ** 2} MB to download plus "
+            f"{_DISK_HEADROOM_BYTES // 1024 ** 2} MB headroom, but only "
+            f"{free // 1024 ** 2} MB free on the volume of {probe}. Free up "
+            "space or point AI_DAM_MODELS_DIR at a roomier drive.")
+
+
 def resolve_groups(names) -> list:
     """Expand CLI group names ('all' included) into Group objects; unknown
     names raise ValueError listing the valid ones."""
@@ -994,6 +1037,10 @@ def provision(
             for requirement in ensure_runtime(group, log=log, pip_runner=pip_runner):
                 installed.append(requirement)
                 emit({"kind": "runtime", "phase": "done", "item": requirement})
+
+    _check_disk_space(models_dir, [
+        a for g in groups for a in g.artifacts
+        if force or not artifact_present(models_dir, a)])
 
     downloaded: list = []
     skipped: list = []

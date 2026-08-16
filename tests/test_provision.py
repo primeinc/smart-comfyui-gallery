@@ -19,6 +19,15 @@ from smartgallery_ai.schema import init_schema
 from smartgallery_ai.worker import AIWorker, provision_groups_for
 
 
+@pytest.fixture(autouse=True)
+def _plentiful_disk(monkeypatch):
+    """provision()'s disk preflight reads the real volume; the suite must
+    not depend on this machine's free space. Preflight tests re-patch."""
+    monkeypatch.setattr(
+        P.shutil, "disk_usage",
+        lambda _p: type("U", (), {"free": 200 * 1024 ** 3})())
+
+
 # --- group resolution / plan --------------------------------------------------
 
 
@@ -1390,3 +1399,59 @@ def test_download_zip_member_extracts_one_file(tmp_path):
     assert dest.read_bytes() == b"weights-bytes"
     assert not (tmp_path / "out" / "keep.onnx.zip").exists()
     assert not (tmp_path / "out" / "keep.onnx.part").exists()
+
+
+# ---------------------------------------------------------------------------
+# Disk-space preflight: downloads that cannot fit are refused up front
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,expected_mb", [
+    ("232 KB", 0),                    # rounds below 1 MB; still nonzero bytes
+    ("37 MB", 37),
+    ("2.5 GB", 2560),
+    ("407 MB (344 MB zip)", 751),     # archive + extraction coexist on disk
+    ("see notes", 0),                 # unparseable -> 0 (no false refusal)
+])
+def test_approx_bytes_parses_declared_sizes(text, expected_mb):
+    assert P._approx_bytes(text) // (1024 ** 2) == expected_mb
+
+
+def _fake_artifact(size_text):
+    return P.Artifact(dest="x.bin", approx_size=size_text, license="MIT",
+                      url="https://example.invalid/x.bin")
+
+
+def test_disk_preflight_refuses_when_weights_cannot_fit(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        P.shutil, "disk_usage",
+        lambda _p: type("U", (), {"free": 500 * 1024 ** 2})())
+    with pytest.raises(P.ProvisionError) as exc:
+        P._check_disk_space(str(tmp_path), [_fake_artifact("2.5 GB")])
+    assert "not enough disk space" in str(exc.value)
+    assert "AI_DAM_MODELS_DIR" in str(exc.value)
+
+
+def test_disk_preflight_passes_with_room_and_skips_when_nothing_missing(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        P.shutil, "disk_usage",
+        lambda _p: type("U", (), {"free": 200 * 1024 ** 3})())
+    P._check_disk_space(str(tmp_path), [_fake_artifact("2.5 GB")])  # no raise
+    # Nothing missing -> never even stats the volume.
+    monkeypatch.setattr(P.shutil, "disk_usage",
+                        lambda _p: (_ for _ in ()).throw(AssertionError))
+    P._check_disk_space(str(tmp_path), [])
+
+
+def test_provision_surfaces_disk_refusal_before_any_download(tmp_path, monkeypatch):
+    """The full provision() path refuses before its download loop runs."""
+    monkeypatch.setattr(
+        P.shutil, "disk_usage",
+        lambda _p: type("U", (), {"free": 10 * 1024 ** 2})())
+    calls = []
+    dl = {k: (lambda *a, **k2: calls.append(k)) for k in
+          ("url", "hf_file", "hf_snapshot")}
+    with pytest.raises(P.ProvisionError, match="not enough disk space"):
+        P.provision(str(tmp_path / "models"), ["faces"],
+                    install_packages=False, downloaders=dl)
+    assert calls == []

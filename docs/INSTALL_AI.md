@@ -60,6 +60,12 @@ python -m smartgallery_ai provision all         # or any of: faces semantic visu
 Run it on a connected staging box, then ship the venv plus `.AImodels/`
 to the air-gapped host with `AI_DAM_AUTO_PROVISION=false`.
 
+Downloads are preflighted against free disk space (declared artifact
+sizes plus 1 GB headroom for caches and the database). A fit that is
+impossible fails up front with an actionable message — point
+`AI_DAM_MODELS_DIR` at a roomier volume — instead of filling the drive
+mid-download.
+
 ## GPU notes
 
 - **torch**: a CPU-build torch on CUDA hardware is swapped for CUDA wheels
