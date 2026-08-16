@@ -22,15 +22,35 @@ import sys
 import pytest
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_ARGV = "'--force-login', '--admin-pass', 'correct-horse-battery'"
+# Exhibition rather than --force-login: the callers below are a CUSTOMER
+# and a GUEST, and --force-login admits only ADMIN, MANAGER and STAFF to
+# the interface, so neither could reach a picture there to read comments
+# on. Exhibition is where those roles exist. Both modes require a session,
+# so the anonymous case is unchanged.
+_ARGV = "'--exhibition', '--admin-pass', 'correct-horse-battery'"
+
+
+def _spawn(argv, script, env_extra, timeout=300):
+    env = dict(os.environ, ENABLE_AI_DAM="false", AI_DAM_AUTO_PROVISION="false",
+               **env_extra)
+    full = f"import sys\nsys.argv = ['smartgallery.py'{argv}]\n" + script
+    return subprocess.run([sys.executable, "-c", full], cwd=_ROOT, env=env,
+                          capture_output=True, text=True, timeout=timeout)
 
 
 def _run(script, env_extra, timeout=300):
-    env = dict(os.environ, ENABLE_AI_DAM="false", AI_DAM_AUTO_PROVISION="false",
-               **env_extra)
-    full = f"import sys\nsys.argv = ['smartgallery.py', {_ARGV}]\n" + script
-    return subprocess.run([sys.executable, "-c", full], cwd=_ROOT, env=env,
-                          capture_output=True, text=True, timeout=timeout)
+    """Seed with no flags, then assert under --exhibition.
+
+    Exhibition refuses to start without a database, and says so itself:
+    "You must run the standard gallery AT LEAST ONCE before using
+    Exhibition Mode." That is the documented order, so the seeding gets its
+    own run exactly as a real install would do it, and only the assertions
+    see the exhibition process.
+    """
+    seeded = _spawn("", _SEED, env_extra, timeout)
+    if seeded.returncode != 0 or "SEEDED" not in seeded.stdout:
+        return seeded
+    return _spawn(", " + _ARGV, _CLIENT + script, env_extra, timeout)
 
 
 @pytest.fixture()
@@ -58,11 +78,26 @@ rows = [
     ('admin', 'Staff', 'private note for user 77', 'user:77'),
     ('77', 'Bob', 'bob wrote this', 'public'),
 ]
+# In a public album, so a visitor may see the picture at all: reading
+# comments now refuses a file the caller has no access to, and these
+# tests are about which comments they then get, not about that.
+conn.execute("INSERT INTO collections (name, type, is_public) "
+             "VALUES ('Shown', 'user_album', 1)")
+_album = conn.execute("SELECT id FROM collections WHERE name='Shown'").fetchone()[0]
+conn.execute("INSERT INTO collection_files (collection_id, file_id) "
+             "VALUES (?, 'f1')", (_album,))
 for uuid_, author, text, audience in rows:
     conn.execute("INSERT INTO file_comments (file_id, client_uuid, author_name, "
                  "comment_text, target_audience, created_at) "
                  "VALUES ('f1', ?, ?, ?, ?, 1.0)", (uuid_, author, text, audience))
 conn.commit(); conn.close()
+print('SEEDED')
+"""
+
+# Runs in the second process, which imports the module again under
+# --exhibition and so needs its own client.
+_CLIENT = """
+import smartgallery as sg
 client = sg.app.test_client()
 
 def texts(resp):
@@ -74,7 +109,7 @@ def texts(resp):
 def test_a_user_cannot_read_notes_addressed_to_someone_else(gallery_env):
     """The parameter is ignored in favour of the session, so asking for
     another user's id does not hand over their messages."""
-    script = _SEED + """
+    script = """
 with client.session_transaction() as s:
     s['user_id'] = 41
     s['role'] = 'CUSTOMER'
@@ -94,7 +129,7 @@ print('SCOPED')
 
 
 def test_staff_see_everything(gallery_env):
-    script = _SEED + """
+    script = """
 with client.session_transaction() as s:
     s['user_id'] = 1
     s['role'] = 'ADMIN'
@@ -112,7 +147,7 @@ print('FULL')
 
 def test_an_anonymous_caller_is_refused_entirely(gallery_env):
     """With logins in play the query parameter is never even reached."""
-    script = _SEED + """
+    script = """
 resp = client.get('/galleryout/api/exhibition/comments?file_id=f1&client_uuid=41')
 assert resp.status_code == 401, resp.status_code
 body = resp.get_data(as_text=True)
@@ -125,7 +160,7 @@ print('REFUSED')
 
 
 def test_a_guest_sees_only_public_and_their_own(gallery_env):
-    script = _SEED + """
+    script = """
 with client.session_transaction() as s:
     s['user_id'] = 'guest_deadbeefdeadbeef'
     s['role'] = 'GUEST'

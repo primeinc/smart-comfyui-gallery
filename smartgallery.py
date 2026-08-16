@@ -9740,9 +9740,17 @@ def exhibition_get_comments():
     current_role = session.get('role', 'GUEST')
     client_uuid = str(current_user_id) if current_user_id else request.args.get('client_uuid', '')
     
-    if not file_id: 
+    if not file_id:
         return jsonify({'status': 'error', 'message': 'File ID missing'}), 400
-    
+
+    # Reading comments asked only for a session, never whether this caller
+    # may see the picture the comments are about -- so a visitor given one
+    # album could read the owner's notes on every other picture in the
+    # library, including ones the gallery refuses to send them. The answer
+    # matches a file that is not there, so the two cannot be told apart.
+    if not is_file_accessible(file_id):
+        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
     with get_db_connection() as conn:
         # --- FIX: LOCAL ADMIN EQUIVALENCE ---
         # If FORCE_LOGIN is False and we are in the main interface, the user is implicitly Admin
@@ -9825,6 +9833,14 @@ def exhibition_post_comment():
     data = request.json
     file_id = data.get('file_id')
     text = data.get('text', '').strip()
+
+    # The same rule as reading them: a visitor may only write about a
+    # picture that was actually shared with them. Without this, a comment
+    # could be attached to any picture in the library by anyone who had
+    # been given a single album.
+    if file_id and not is_file_accessible(file_id):
+        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
     target_audience = data.get('target_audience', 'public').strip()
     if not target_audience:
         # Se sono un Admin "locale" (non force_login), default = internal
