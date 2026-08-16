@@ -41,8 +41,8 @@ any case.
 | `SERVER_PORT` | `8189` | Web server port. Must differ from ComfyUI's (usually 8188). |
 | `ADMIN_PASSWORD` | unset | Sets or resets the admin password at startup; equivalent to `--admin-pass`. |
 | `SECRET_KEY` | random per start | Flask session signing key. Set a fixed value to keep users logged in across restarts. |
-| `COMFYUI_SERVER_URL` | `http://127.0.0.1:8188` | ComfyUI API used by Remix to queue generations. |
-| `COMFYUI_MAX_UPLOAD_MB` | `2000` | Maximum upload size in MB. |
+| `COMFYUI_SERVER_URL` | `http://127.0.0.1:8188` | Where ComfyUI is. Used by Remix to queue generations, and by the page for the ComfyUI and LoRA Manager links. |
+| `COMFYUI_MAX_UPLOAD_MB` | `2000` | Maximum upload size in MB. The web server's own ceiling is derived from this, so values above 2048 take effect. |
 
 ## Media handling and performance
 

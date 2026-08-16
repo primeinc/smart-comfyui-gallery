@@ -10487,7 +10487,36 @@ import urllib.error
 import urllib.parse
 
 # Increase max request body size to handle large workflow JSON payloads (if users manually upload them, though we now read from disk)
-app.config['MAX_CONTENT_LENGTH'] = env_num('COMFYUI_MAX_UPLOAD_MB', 2000, minimum=1) * 1024 * 1024
+MAX_UPLOAD_MB = env_num('COMFYUI_MAX_UPLOAD_MB', 2000, minimum=1)
+app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
+
+# The web server in front of Flask keeps its own ceiling, and refuses a
+# request before Flask ever sees it. That ceiling was written in as a fixed
+# 2 GiB, so raising COMFYUI_MAX_UPLOAD_MB past 2048 did nothing at all: the
+# app agreed to a 4 GB video and the server underneath it refused one at
+# 2048 MB, with a message naming a number the setting does not contain.
+#
+# It sits above the app's limit rather than level with it, for two reasons.
+# An upload is a multipart body, so it is bigger than the file inside it by
+# the boundaries and headers; and waitress refuses at >= its ceiling while
+# Flask refuses above its own. Keeping the transport limit clear of both
+# means the app is always the one that decides, and can say so in words.
+MAX_REQUEST_BODY_BYTES = app.config['MAX_CONTENT_LENGTH'] + 32 * 1024 * 1024
+
+
+@app.errorhandler(413)
+def _upload_too_large(error):
+    """Say which limit was hit and what it is set to.
+
+    Without this the reply is an HTML error page, and the upload screen has
+    nothing to show but the number 413.
+    """
+    return jsonify({
+        'status': 'error',
+        'message': (f'That file is larger than this gallery accepts. The '
+                    f'limit is {MAX_UPLOAD_MB} MB, and is set by '
+                    f'COMFYUI_MAX_UPLOAD_MB.')
+    }), 413
 
 
 # Experimental Remix API Module
@@ -13063,7 +13092,7 @@ if __name__ == '__main__':
         # threads=8 allows handling multiple concurrent requests (images/video thumbnails)
         # channel_timeout avoids drops during heavy video streaming
         print(f"{Colors.GREEN}INFO: Starting Production WSGI Server (Waitress)...{Colors.RESET}")
-        serve(app, host='0.0.0.0', port=SERVER_PORT, threads=8, connection_limit=150, channel_timeout=120, asyncore_use_poll=True, max_request_body_size=2147483648, _quiet=True)
+        serve(app, host='0.0.0.0', port=SERVER_PORT, threads=8, connection_limit=150, channel_timeout=120, asyncore_use_poll=True, max_request_body_size=MAX_REQUEST_BODY_BYTES, _quiet=True)
     else:
         # DEVELOPMENT MODE: Falling back to Flask built-in server
         print(f"{Colors.YELLOW}WARNING: 'waitress' not found. Using Flask development server.{Colors.RESET}")
