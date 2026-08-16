@@ -27,12 +27,33 @@ os.environ.setdefault('AI_DAM_AUTO_PROVISION', 'false')
 # call their implementations directly (the torch one in a subprocess).
 os.environ.setdefault('AI_DAM_FACE_GRAPH_BACKEND', 'numpy')
 
-os.environ.setdefault('BASE_OUTPUT_PATH', os.path.join(_SESSION_TMP_DIR, 'output'))
-os.environ.setdefault('BASE_SMARTGALLERY_PATH', os.path.join(_SESSION_TMP_DIR, 'gallery'))
-os.environ.setdefault('BASE_INPUT_PATH', os.path.join(_SESSION_TMP_DIR, 'input'))
+# The gallery paths are FORCED to this session's temp directory, never
+# merely defaulted. Anyone who runs the gallery has BASE_OUTPUT_PATH
+# exported (run_smartgallery.bat sets it), and with setdefault the suite
+# inherited it and operated on their real library: tests create files in
+# the gallery root, scan it end to end, and delete rows. A test run must
+# never be able to touch a real collection, whatever the shell says.
+os.environ['BASE_OUTPUT_PATH'] = os.path.join(_SESSION_TMP_DIR, 'output')
+os.environ['BASE_SMARTGALLERY_PATH'] = os.path.join(_SESSION_TMP_DIR, 'gallery')
+os.environ['BASE_INPUT_PATH'] = os.path.join(_SESSION_TMP_DIR, 'input')
+# DELETE_TO decides whether deletions are recoverable; inheriting a real
+# one would scatter test files through the developer's trash folder.
+os.environ.pop('DELETE_TO', None)
 
 for _var in ('BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BASE_INPUT_PATH'):
     os.makedirs(os.environ[_var], exist_ok=True)
+
+# Belt and braces: if a future edit ever reintroduces an inherited path,
+# fail at collection with an explanation rather than quietly writing into
+# somebody's library.
+_TMP_ROOT = os.path.realpath(tempfile.gettempdir())
+for _var in ('BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BASE_INPUT_PATH'):
+    _resolved = os.path.realpath(os.environ[_var])
+    if not _resolved.startswith(_TMP_ROOT):
+        raise RuntimeError(
+            f"refusing to run the test suite against {_var}={_resolved!r}: it is "
+            f"outside the temp directory ({_TMP_ROOT}). Tests create, scan and "
+            f"delete files under these paths.")
 
 
 @pytest.fixture(autouse=True)

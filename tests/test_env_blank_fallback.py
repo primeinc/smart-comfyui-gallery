@@ -362,3 +362,31 @@ print('OK')
                           capture_output=True, text=True, timeout=300)
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "OK" in proc.stdout
+
+
+# --- test-suite safety ----------------------------------------------------
+
+def test_suite_paths_are_confined_to_a_temp_directory(smartgallery_app):
+    """The suite creates files in the gallery root, scans it end to end,
+    and deletes rows. conftest used to `setdefault` these paths, so anyone
+    with BASE_OUTPUT_PATH exported -- which is everyone who runs the
+    gallery, since run_smartgallery.bat sets it -- had the tests operate on
+    their real library. They are forced to a temp directory now."""
+    import tempfile
+
+    tmp_root = os.path.realpath(tempfile.gettempdir())
+    for attr in ("BASE_OUTPUT_PATH", "BASE_SMARTGALLERY_PATH", "BASE_INPUT_PATH"):
+        resolved = os.path.realpath(getattr(smartgallery_app, attr))
+        assert resolved.startswith(tmp_root), (
+            f"{attr} points outside the temp directory ({resolved}); a test "
+            f"run could modify a real collection")
+
+
+def test_suite_does_not_inherit_a_real_trash_folder(smartgallery_app):
+    """An inherited DELETE_TO would scatter deleted test files through the
+    developer's trash instead of the temp tree."""
+    configured = smartgallery_app.DELETE_TO
+    if configured:
+        import tempfile
+        assert os.path.realpath(configured).startswith(
+            os.path.realpath(tempfile.gettempdir()))
