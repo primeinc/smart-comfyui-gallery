@@ -71,15 +71,30 @@ Full-corpus results (83 entries, `benchmarks/results/`):
 |---|---|---|---|---|
 | heuristic (deterministic) | **67.1%** | 24% accepting all parses; ~6–7% at coverage ≥ 0.7 | 0.13 ms | 21 MB |
 | needle2 standalone | 21.1% | 0% at confidence ≥ 0.7; 33–75% below | 504 ms | 56 MB |
-| fallback (Qwen 0.5B, grammar) | 0% | n/a (no confidence signal) | 1.8 s | ~870 MB |
 | **router (tuned)** | 64.5% | **7.5%** | 0.24 ms (p95 5.4 s on escalation) | — |
+
+Grammar-constrained GGUF fallback candidates, measured 2026-08-16 on GPU
+(CUDA llama-cpp-python, device-pinned) with the typed-value schema —
+`ast.json_schema` now types condition values exactly as validation
+accepts them; before that fix the grammar legally emitted object-wrapped
+scalars and the 0.5B model scored 3.9%:
+
+| Fallback GGUF | Execution match | AST exact | Latency p50 |
+|---|---|---|---|
+| distil-qwen3-0.6b-text2sql 4B (`distil-t2s-4b`) | **43.4%** | 30.3% | 0.87 s |
+| Qwen3-1.7B Q8_0 | 40.8% | 17.1% | 1.5 s |
+| Qwen2.5-Coder-0.5B Q4_K_M | 21.1% | 9.2% | 1.1 s |
+| Qwen3-0.6B Q8_0 | 19.7% | 5.3% | 1.5 s |
+| SS-350M-SQL-Strict Q8_0 | 1.3% | 1.3% | 0.8 s |
 
 The tuned router trades ~2.6 points of raw accuracy vs. the
 accept-everything heuristic for a 3× lower false-confident rate and 100%
 unsupported-precision: out-of-scope queries get an explicit "unsupported"
-with per-backend reasons instead of silently wrong results. The fallback
-model is retained but **disabled by default** — the measured evidence does
-not justify invoking it (`OMNIQUERY_ENABLE_FALLBACK=true` re-enables).
+with per-backend reasons instead of silently wrong results. No measured
+GGUF fallback beats the router (best: 43.4% vs 64.5%), so the fallback
+stays **disabled by default** (`OMNIQUERY_ENABLE_FALLBACK=true`
+re-enables; point `OMNIQUERY_FALLBACK_GGUF` at the distil-t2s-4b file for
+the best measured fallback).
 
 ## Similarity / faces / review
 
