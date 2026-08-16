@@ -2658,6 +2658,19 @@ def get_dynamic_folder_config(force_refresh=False):
         all_folders = {}
         for dirpath, dirnames, _ in os.walk(BASE_OUTPUT_PATH, followlinks=True):
             dirnames[:] = [d for d in dirnames if (not d.startswith('.') or d == '.collection_notes') and d not in [THUMBNAIL_CACHE_FOLDER_NAME, SQLITE_CACHE_FOLDER_NAME, ZIP_CACHE_FOLDER_NAME, AI_MODELS_FOLDER_NAME]]
+            # The trash is excluded by PATH, not by name, because DELETE_TO can
+            # be anywhere -- and pointing it inside the gallery is a reasonable
+            # thing to do when you want deletions to stay on the same drive.
+            # Indexing it put every deleted file straight back in the gallery
+            # under its timestamped trash name, with the ratings and comments
+            # gone, since the new path means a new id.
+            if DELETE_TO:
+                dirnames[:] = [
+                    d for d in dirnames
+                    if not _is_under(os.path.join(dirpath, d) + '/', DELETE_TO)
+                    and _std_path(os.path.join(dirpath, d)).rstrip('/').lower()
+                    != _std_path(DELETE_TO).rstrip('/').lower()
+                ]
             for dirname in dirnames:
                 full_path = os.path.normpath(os.path.join(dirpath, dirname)).replace('\\', '/')
                 relative_path = os.path.relpath(full_path, BASE_OUTPUT_PATH).replace('\\', '/')
