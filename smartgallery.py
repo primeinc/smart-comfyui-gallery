@@ -891,10 +891,41 @@ def management_api_only(f):
     return decorated_function
 
 # --- FLASK APP INITIALIZATION ---
+# The templates directory doubles as the static folder, so every template is
+# also downloadable under /static/.
 app = Flask(__name__, static_folder='templates', static_url_path='/static')
 app.secret_key = SECRET_KEY
 folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
+
+
+@app.before_request
+def restrict_static_to_signed_in_callers():
+    """`/static/` is Flask's own route, not one of ours, so none of the
+    per-route decisions applied to it and nothing listed it as needing any.
+
+    That made the whole templates directory readable without signing in:
+    on a server started with --force-login, /static/index.html returned the
+    entire management interface, and /static/modals/user_manager_module.html
+    the user manager, to a caller who had never logged in. No gallery data
+    goes out that way -- the files are served unrendered, and every endpoint
+    the markup calls is gated separately -- but it hands out the shape of
+    the whole management side, and it contradicts what --force-login says
+    it does.
+
+    The rule is the one gallery_view already applies. Where no login is
+    configured nothing changes, which is the common local case. The login
+    page and the exhibition portal reference no static asset at all, so
+    only index.html's two stylesheets come through here, and only for a
+    session that has already signed in to be shown index.html.
+    """
+    if request.endpoint != 'static':
+        return None
+    if not (IS_EXHIBITION_MODE or FORCE_LOGIN):
+        return None
+    if 'user_id' in session:
+        return None
+    abort(403)
 
 
 class ViewSnapshotStore:
