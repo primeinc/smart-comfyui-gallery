@@ -445,6 +445,34 @@ _parser.add_argument('--blind-rating', action='store_true', help="Hide global av
 
 _args, _unknown = _parser.parse_known_args()
 
+# A mistyped flag used to disappear. parse_known_args collects what it does
+# not recognise and the leftovers were dropped without a word, so
+# `--forcelogin` or `--force_login` started a gallery with no login at all
+# while the operator believed it was shut. The same silence applied to
+# --exhibition and --blind-rating: the mode simply did not happen.
+#
+# Only when this file is the program being run. Imported -- by the tests, or
+# by anything embedding the gallery -- argv belongs to the host, and its
+# arguments are none of our business.
+_LAUNCHED_DIRECTLY = os.path.basename(str(sys.argv[0] or '')).lower() in (
+    'smartgallery.py', 'smartgallery')
+_STRAY_FLAGS = [a for a in _unknown if a.startswith('-')]
+if _STRAY_FLAGS and _LAUNCHED_DIRECTLY:
+    import difflib
+    # argparse exposes no public accessor for the flags it knows.
+    _KNOWN_FLAGS = sorted({s for a in _parser._actions for s in a.option_strings})
+    print(f"{Colors.RED}{Colors.BOLD}Unrecognised option(s): "
+          f"{' '.join(_STRAY_FLAGS)}{Colors.RESET}")
+    for _flag in _STRAY_FLAGS:
+        _near = difflib.get_close_matches(_flag, _KNOWN_FLAGS, n=1, cutoff=0.6)
+        if _near:
+            print(f"  {_flag}  ->  did you mean {Colors.YELLOW}{_near[0]}{Colors.RESET}?")
+    print(f"\nValid options: {', '.join(_KNOWN_FLAGS)}")
+    print(f"{Colors.YELLOW}Refusing to start: a misspelt --force-login or "
+          f"--exhibition would leave the gallery open to anyone who can reach "
+          f"it.{Colors.RESET}")
+    sys.exit(2)
+
 IS_EXHIBITION_MODE = _args.exhibition
 if _args.port:
     SERVER_PORT = _args.port
