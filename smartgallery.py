@@ -2765,6 +2765,29 @@ def get_dynamic_folder_config(force_refresh=False):
     return dynamic_config
     
 # --- BACKGROUND WATCHER THREAD ---
+QUEUE_STALE_SECONDS = 3 * 86400
+
+
+def sweep_stale_index_queue(conn, now=None):
+    """Drop indexing-queue rows older than three days. Returns the count.
+
+    'pending' is swept as well as 'completed' because nothing in the
+    gallery drains this queue any more -- the AI layer indexes straight
+    from the library (see the ENABLE_AI_SEARCH section of
+    docs/CONFIGURATION.md). Sweeping only 'completed', a status nothing
+    ever sets, left a row per file for ever.
+
+    Dropping a stale row costs nothing: the scan re-queues on conflict, so
+    anything still wanted comes back on the next pass.
+    """
+    cutoff = (now if now is not None else time.time()) - QUEUE_STALE_SECONDS
+    cur = conn.execute(
+        "DELETE FROM ai_indexing_queue WHERE status IN ('completed', 'pending') "
+        "AND created_at < ?", (cutoff,))
+    conn.commit()
+    return cur.rowcount
+
+
 def background_watcher_task():
     """
     Periodically scans watched folders.
@@ -2778,8 +2801,7 @@ def background_watcher_task():
         try:
             if ENABLE_AI_SEARCH:
                 with get_db_connection() as conn:
-                    # 1. Cleanup very old jobs to keep table light (> 3 days)
-                    conn.execute("DELETE FROM ai_indexing_queue WHERE status='completed' AND created_at < ?", (time.time() - 259200,))
+                    sweep_stale_index_queue(conn)
                     
                     watched = conn.execute("SELECT path, recursive FROM ai_watched_folders").fetchall()
                     

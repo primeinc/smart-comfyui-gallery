@@ -61,7 +61,7 @@ The AI layer is **on by default** and provisions itself; see
 | Variable | Default | What it does |
 |---|---|---|
 | `ENABLE_AI_DAM` | `true` | Master switch for Similar / Faces / Review / the search palette. |
-| `ENABLE_AI_SEARCH` | `false` | The separate legacy AI Search box and AI Manager panel. |
+| `ENABLE_AI_SEARCH` | `false` | Shows the legacy AI Search box and AI Manager panel. **Leave this off.** See below. |
 | `AI_DAM_AUTO_PROVISION` | `true` | Download missing weights and install missing runtimes on startup. Set false for strict no-egress hosts. |
 | `AI_DAM_MODELS_DIR` | `<gallery>/.AImodels` | Where model weights live. |
 | `AI_DAM_CACHE_DIR` | `<gallery>/.ai_cache` | Derived caches (vector index, masks). |
@@ -79,6 +79,23 @@ The AI layer is **on by default** and provisions itself; see
 | `AI_DAM_TENSOR_SPLIT` | unset | Proportions for splitting the critic across GPUs, e.g. `0.6,0.4`. |
 | `AI_DAM_EPHEMERAL_INDEX` | `false` | Keep the vector index in memory only. |
 | `OMNIQUERY_FALLBACK_GGUF` | provisioned model | Override the search palette's nl2sql model file. |
+
+### `ENABLE_AI_SEARCH` is inert
+
+Turning it on adds the old AI Search box and AI Manager panel to the
+interface, and the gallery then writes to two queues — one of searches, one
+of files to index. **Nothing processes either of them.** The component that
+did was replaced by the AI layer above (`ENABLE_AI_DAM`), which indexes
+directly from the library and needs no queue.
+
+What you see if you enable it anyway: a search that stays on "pending" and
+never returns a result, an indexing count that only ever grows, and one
+queue row per file written on every scan. Nothing breaks, and nothing
+happens.
+
+Semantic search over your library is the search palette
+(<kbd>Ctrl</kbd>+<kbd>P</kbd>) and the Similar view, both part of the AI
+layer, which is on by default.
 
 Additional low-level switches (`AI_DAM_VISION_GPU`, `AI_DAM_VISION_FA`,
 `AI_DAM_FAISS_GPU`, `AI_DAM_VECTOR_GPU`, `AI_DAM_ORT_PROVIDERS`,
