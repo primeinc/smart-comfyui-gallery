@@ -51,6 +51,11 @@ class SemanticEmbedder(ABC):
         """Map an image into this space: float32, length `dim`, unit L2 norm."""
         ...
 
+    def embed_images(self, imgs: list) -> list:
+        """Batch form of `embed_image`; backends with real batched inference
+        override this. Same output per element as embed_image."""
+        return [self.embed_image(img) for img in imgs]
+
     @abstractmethod
     def embed_text(self, text: str) -> np.ndarray:
         """Map text into the same space as images, so image/text cosine is meaningful."""
@@ -68,6 +73,11 @@ class VisualEmbedder(ABC):
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """Map an image into this space: float32, length `dim`, unit L2 norm."""
         ...
+
+    def embed_images(self, imgs: list) -> list:
+        """Batch form of `embed_image`; backends with real batched inference
+        override this. Same output per element as embed_image."""
+        return [self.embed_image(img) for img in imgs]
 
 
 def _l2_normalize(vec: np.ndarray) -> np.ndarray:
@@ -246,11 +256,18 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """CLIP image feature, unit-normalized so image/text cosine works."""
-        tensor = self._preprocess(img.convert("RGB")).unsqueeze(0).to(self._device)
+        return self.embed_images([img])[0]
+
+    def embed_images(self, imgs: list) -> list:
+        """One batched forward for the whole list — the throughput path the
+        worker feeds decoded chunks into."""
+        batch = self._torch.stack(
+            [self._preprocess(img.convert("RGB")) for img in imgs]
+        ).to(self._device)
         with self._infer_lock:
             with self._torch.no_grad():
-                features = self._model.encode_image(tensor)
-        return _l2_normalize(features.squeeze(0).cpu().numpy())
+                features = self._model.encode_image(batch)
+        return [_l2_normalize(f.cpu().numpy()) for f in features]
 
     def embed_text(self, text: str) -> np.ndarray:
         """CLIP text feature, unit-normalized so image/text cosine works."""
@@ -312,12 +329,19 @@ class Dinov2VisualEmbedder(VisualEmbedder):
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """DINOv2 global image descriptor (CLS token), unit-normalized."""
-        inputs = self._processor(images=img.convert("RGB"), return_tensors="pt")
+        return self.embed_images([img])[0]
+
+    def embed_images(self, imgs: list) -> list:
+        """One batched forward for the whole list (the processor natively
+        accepts image lists)."""
+        inputs = self._processor(
+            images=[img.convert("RGB") for img in imgs], return_tensors="pt"
+        )
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         with self._torch.no_grad():
             outputs = self._model(**inputs)
-        cls_token = outputs.last_hidden_state[:, 0, :]  # position 0 is the CLS summary token
-        return _l2_normalize(cls_token.squeeze(0).cpu().numpy())
+        cls_tokens = outputs.last_hidden_state[:, 0, :]  # position 0 is the CLS summary token
+        return [_l2_normalize(t.cpu().numpy()) for t in cls_tokens]
 
 
 def get_semantic_backend(config: AIConfig) -> Optional[SemanticEmbedder]:

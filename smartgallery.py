@@ -11329,7 +11329,11 @@ if __name__ == '__main__':
     # entirely, so normal startup/browsing is completely unchanged.
     if AI_CONFIG.enabled and not IS_EXHIBITION_MODE:
         try:
-            ai_dam_worker = AIWorker(AI_CONFIG, DATABASE_FILE)
+            ai_dam_worker = AIWorker(
+                AI_CONFIG, DATABASE_FILE,
+                poll_interval=float(os.environ.get("AI_DAM_WORKER_POLL", "25")),
+                batch_size=int(os.environ.get("AI_DAM_WORKER_BATCH", "150")),
+            )
             ai_dam_worker.start()
             ai_dam_service.set_worker(ai_dam_worker)
             print(f"{Colors.BLUE}INFO: AI DAM background worker started.{Colors.RESET}")

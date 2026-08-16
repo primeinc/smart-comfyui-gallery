@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 import shutil
 import sqlite3
 import sys
@@ -912,26 +913,54 @@ class AIWorker:
             conn, wanted, limit, allowed_types=_VISUAL_TYPES
         )
         store = vectors.VectorStore(cache_dir=self.config.cache_dir, ephemeral=self.config.ephemeral_index)
-        for row in candidates:
-            # A user is waiting on priority files; serve them between items
+        chunk_size = max(1, int(os.environ.get("AI_DAM_EMBED_BATCH", "16")))
+        for start in range(0, len(candidates), chunk_size):
+            chunk = candidates[start : start + chunk_size]
+            # A user is waiting on priority files; serve them between chunks
             # so panel requests never queue behind a long crawl batch.
             if only_file_id is None:
                 self._process_priority_requests(conn)
-            file_id, path, mtime, file_type = row["id"], row["path"], row["mtime"], row["type"]
-            img = load_source_image(path, file_type)
-            if img is None:
-                self._note_error(f"embed:{space}:{file_id}", f"embed[{space}]: could not read {path}")
+            # Decode in threads (PIL releases the GIL in its codecs) so the
+            # GPU gets a full batch instead of idling behind one decode.
+            with ThreadPoolExecutor(max_workers=min(4, len(chunk))) as pool:
+                images = list(
+                    pool.map(lambda r: load_source_image(r["path"], r["type"]), chunk)
+                )
+            loaded = []
+            for row, img in zip(chunk, images):
+                if img is None:
+                    self._note_error(
+                        f"embed:{space}:{row['id']}",
+                        f"embed[{space}]: could not read {row['path']}",
+                    )
+                else:
+                    loaded.append((row, img))
+            if not loaded:
                 continue
             try:
-                vec = backend.embed_image(img)
-                store.add(conn, file_id, space, backend.model_id, backend.model_version, vec, mtime)
-            except Exception as exc:
-                self._note_error(
-                    f"embed:{space}:{file_id}", f"embed[{space}]: failed for {path}: {exc}"
+                vecs = backend.embed_images([img for _row, img in loaded])
+            except Exception:
+                # A poisoned image inside the batch: fall back to singles so
+                # one bad file costs one file, not the chunk.
+                vecs = []
+                for row, img in loaded:
+                    try:
+                        vecs.append(backend.embed_image(img))
+                    except Exception as exc:
+                        self._note_error(
+                            f"embed:{space}:{row['id']}",
+                            f"embed[{space}]: failed for {row['path']}: {exc}",
+                        )
+                        vecs.append(None)
+            for (row, _img), vec in zip(loaded, vecs):
+                if vec is None:
+                    continue
+                store.add(
+                    conn, row["id"], space, backend.model_id,
+                    backend.model_version, vec, row["mtime"],
                 )
-                continue
-            with self._lock:
-                self.stats["embedded"] += 1
+                with self._lock:
+                    self.stats["embedded"] += 1
         return len(candidates)
 
     def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
