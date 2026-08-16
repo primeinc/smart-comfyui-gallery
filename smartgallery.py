@@ -2209,6 +2209,55 @@ def get_db_connection():
     
     return conn
     
+def _file_id_tables(conn):
+    """Every table carrying a `file_id` that points at `files(id)`."""
+    names = [row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%'").fetchall()]
+    tables = []
+    for name in names:
+        columns = [row[1] for row in conn.execute(f'PRAGMA table_info("{name}")').fetchall()]
+        if 'file_id' in columns:
+            tables.append(name)
+    return tables
+
+
+def _reassign_file_ids(conn, pairs):
+    """Move everything belonging to a file onto its new id.
+
+    A file's id is the md5 of its path, so renaming a file -- or the folder
+    above it -- gives it a new one. Nine tables declare a foreign key onto
+    files(id) with ON DELETE CASCADE and no ON UPDATE clause, so changing
+    files.id on its own raises "FOREIGN KEY constraint failed": renaming
+    anything failed outright once a file inside had been rated or commented
+    on. Six more tables hold a file_id with no constraint at all, and would
+    have been quietly orphaned instead.
+
+    Both are handled by moving the children first, under deferred foreign
+    keys so the pair of updates is judged as one at commit. Discovery is by
+    column rather than by a hand-kept list, so a table added later comes
+    along on its own.
+
+    `UPDATE OR REPLACE` covers the case where the destination id already has
+    a row for the same key -- a rating by the same user, say -- which would
+    otherwise collide on the primary key.
+    """
+    pairs = [(old, new) for old, new in pairs if old != new]
+    if not pairs:
+        return
+    # The deferral lasts until the transaction ends, and is cleared by every
+    # commit -- so there has to be a transaction for it to belong to. A caller
+    # that has only read so far is still in autocommit, where the setting
+    # would be dropped again before the updates ran.
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    conn.execute('PRAGMA defer_foreign_keys = ON')
+    moves = [(new, old) for old, new in pairs]
+    for table in _file_id_tables(conn):
+        conn.executemany(f'UPDATE OR REPLACE "{table}" SET file_id = ? WHERE file_id = ?',
+                         moves)
+
+
 def init_db(conn=None):
     close_conn = False
     if conn is None:
@@ -5867,12 +5916,18 @@ def rename_folder(folder_key):
                 placeholders = ','.join(['?'] * len(ids_to_clean_collisions))
                 conn.execute(f"DELETE FROM files WHERE id IN ({placeholders})", ids_to_clean_collisions)
 
+            # Atomic DB Update. The rows move first and the folder second, so
+            # a failure on either side leaves both untouched: the physical
+            # rename used to run first, and when the database update then hit
+            # a foreign key it left the folder renamed on disk while every row
+            # still pointed at the old path -- entries the next scan treats as
+            # deleted, taking their ratings and comments with them.
+            if update_data:
+                _reassign_file_ids(conn, [(row[2], row[0]) for row in update_data])
+                conn.executemany("UPDATE files SET id = ?, path = ? WHERE id = ?", update_data)
+
             # Physical Rename (Use normpath for OS call to be safe)
             os.rename(os.path.normpath(old_folder_path), os.path.normpath(new_folder_path))
-            
-            # Atomic DB Update
-            if update_data: 
-                conn.executemany("UPDATE files SET id = ?, path = ? WHERE id = ?", update_data)
             
             # Update Watch List
             watched_folders = conn.execute("SELECT path FROM ai_watched_folders").fetchall()
@@ -6416,8 +6471,6 @@ def rename_file(file_id):
             new_id = hashlib.md5(new_path.encode()).hexdigest()
             existing_db = conn.execute("SELECT id FROM files WHERE id = ?", (new_id,)).fetchone()
 
-            os.rename(old_path, new_path)
-
             if existing_db:
                 # MERGE SCENARIO
                 query_merge = """
@@ -6440,11 +6493,21 @@ def rename_file(file_id):
                     meta['workflow_hash'], meta['prompt_hash'], meta['models_hash'],
                     new_id
                 ))
+                # The ratings, comments and album membership belong to the
+                # file being renamed, so they move onto the row that survives
+                # -- deleting the old row cascades them away otherwise.
+                _reassign_file_ids(conn, [(file_id, new_id)])
                 conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
             else:
                 # STANDARD SCENARIO
-                conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?", 
+                _reassign_file_ids(conn, [(file_id, new_id)])
+                conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?",
                             (new_id, new_path, final_new_name, file_id))
+
+            # The file moves last: if this raises, the rows roll back with it
+            # rather than leaving the database describing a file that is no
+            # longer at that path.
+            os.rename(old_path, new_path)
 
             conn.commit()
 
