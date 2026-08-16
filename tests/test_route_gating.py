@@ -40,6 +40,10 @@ _ROUTES = [
     # resolved shared_users into the full names of the people it was shared
     # with. Asking only for a session was not enough.
     ("GET", "/galleryout/api/sidebar_state"),
+    # A probe, sometimes a transcode, and eleven ffmpeg frame extractions per
+    # call. Only the management page asks for it, but any visitor who could
+    # see a video could set it going, for every video they could see.
+    ("GET", "/galleryout/storyboard/whatever-file"),
 ]
 
 

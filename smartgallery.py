@@ -7112,7 +7112,12 @@ def serve_thumbnail(file_id):
 
 # --- STORYBOARD (GRID SYSTEM) - FAST + SMART CORRUPTION DETECTION ---
 @app.route('/galleryout/storyboard/<string:file_id>')
+@management_api_only
 def get_storyboard(file_id):
+    # One request here is a probe, sometimes a transcode, and eleven ffmpeg
+    # frame extractions. It is a management-side tool -- only index.html
+    # asks for it -- but it was reachable by anyone who could see the video,
+    # who could walk an album and set that going for every file in it.
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
     # 1. Validation
