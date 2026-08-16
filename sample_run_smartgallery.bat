@@ -41,14 +41,12 @@ set "SERVER_PORT=8189"
 ::
 :: ----------------------------------------------------------------------
 :: 🌐 OPTIONAL: HOW TO RUN EXHIBITION MODE
-:: Exhibition Mode is completely optional. It is a safe, read-only portal 
+:: Exhibition Mode is completely optional. It is a safe, read-only portal
 :: designed specifically to share your work with family, friends, or clients.
-:: If you want to run it alongside your main gallery:
-::
-:: 1. Copy this file and rename it to "run_exhibition.bat"
-:: 2. Open it and change the SERVER_PORT variable above to 8190
-:: 3. Change the python command at the bottom of the file to look like this:
-::    ..\python\python.exe smartgallery.py --port %SERVER_PORT% --exhibition --admin-pass yourpassword
+:: To run it alongside your main gallery, use the file next to this one:
+:: rename "sample_run_exhibition.bat" to "run_exhibition.bat" and set your
+:: paths and admin password in it. It already uses its own port, so both
+:: can run at the same time.
 :: ----------------------------------------------------------------------
 
 

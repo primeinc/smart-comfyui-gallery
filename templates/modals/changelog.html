@@ -6,6 +6,8 @@
 
 ### 🛡️ Data Safety
 
+* **The Exhibition launcher no longer ships with a password in it.** `sample_run_exhibition.bat` — the file whose own instructions tell you to rename it and run it — set the admin password to a word written into the file, and therefore the same word for everyone who downloaded SmartGallery. Exhibition is the mode you hand to family, friends and clients. **If you started Exhibition from that sample without changing the last line, treat that password as public and set your own now.** The sample now has an `ADMIN_PASSWORD` line near the top for you to fill in, and Exhibition refuses to start until you do, rather than falling back to anything. It also told you to rename it to `run_smartgallery.bat`, which would have replaced your main launcher; it now names `run_exhibition.bat`.
+
 * **Account expiry dates now actually expire the account.** Setting an expiry on a visitor's account did nothing: the user manager showed it in red with an hourglass once the date passed, and the account went on signing in indefinitely. If you have ever given someone temporary access this way, they still have it — check your user list. Expired accounts are now refused with a message saying when they lapsed. Signing in as the administrator with the password from your launcher still works regardless, so you cannot lock yourself out.
 
 * **The AI status report now requires sign-in.** It reports on the whole library, and the recent-error list quotes the location on disk of any file that failed processing — so on a gallery protected by a login, someone who never signed in could read folder paths out of it. It still reports while the AI features are switched off, which is how the panel knows to say so.
