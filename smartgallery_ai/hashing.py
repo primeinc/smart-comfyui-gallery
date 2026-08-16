@@ -258,7 +258,8 @@ def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
     pairs: list[tuple[str, str, int]] = []
 
     try:
-        import faiss
+        from smartgallery_ai.faiss_runtime import import_faiss
+        faiss = import_faiss()
     except ImportError:
         faiss = None
     if faiss is not None:

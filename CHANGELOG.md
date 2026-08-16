@@ -22,7 +22,23 @@ The cosine-threshold neighbor graph runs on the best available backend and recor
 * Near-duplicate sweep (`near_duplicate_pairs`) runs on FAISS `IndexBinaryFlat` when installed — Hamming via native popcount instead of a Python-loop XOR sweep; identical pair sets verified against the numpy fallback
 * FAISS (`faiss-cpu`) added to the `ai` extras and auto-provisioning
 * `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)
-* `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes
+* `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes; `just faiss-gpu-install` swaps the venv's faiss-cpu for the local Windows GPU build (build recipe in docs/FAISS_GPU_WINDOWS.md)
+
+### 🔍 Detection Policy: Large-Face Recall 55% → 97%
+
+Face detection input is capped at `face_detect_max_side` (default 1600px, env `AI_DAM_FACE_DETECT_MAX_SIDE`): images are downscaled before YuNet and boxes scaled back. YuNet's 10–300px training band means faces larger than ~300px at native resolution are systematically missed; measured on a labeled 500-image harness, ≥300px recall went 55.3% → 97.1%, precision 66% → 94%, false positives 0.41 → 0.06/image, detect time 62ms → 33ms. `benchmarks/face_detection_recall.py` (`just bench face-recall`) reproduces the recall-by-band table; policy tables and reproduce commands in docs/FACE_CLUSTERING.md.
+
+### ⚡ Worker Ingestion Throughput
+
+Embedding spaces process in batches instead of per-file: threaded image decode (4 decoders) feeding batched GPU inference (`embed_images` on all embedder backends; OpenCLIP runs one stacked forward, DINOv2 one processor call). Chunk size `AI_DAM_EMBED_BATCH` (16), worker budgets raised (`AI_DAM_WORKER_BATCH` 150, `AI_DAM_WORKER_POLL` 25). A poisoned batch falls back to singles so one bad file cannot sink its chunk.
+
+### 🧠 Vector Store: Single-Writer Generation Swap
+
+Vector search never rebuilds an index mid-request while ingest is running. The worker owns index builds: matrices live in a process-global generation registry, the worker refreshes a space's generation after each batch (`store.refresh`), and searches serve the current generation without stamp checks (bounded staleness ≤ one batch). Without a worker, the strict stamp + inline-rebuild path is unchanged.
+
+### 🩹 Fixed: VLM Review Crash on Large Images
+
+Reviews of images over ~2116 vision tokens crashed the critic ("access violation reading 0x0" / `GGML_ASSERT ggml-backend.cpp:2000` during "encoding image slice..."). Root cause: llama.cpp reserves the vision compute buffer at a 46×46-token warmup while Qwen2.5-VL legally emits up to 4096 tokens, and the scheduler's buffer-grow path overflows without flash attention. The vision context now runs on GPU with flash attention enabled by default (`AI_DAM_VISION_GPU=0` / `AI_DAM_VISION_FA=0` opt out); verified on the production 7B weights with a deterministic repro. Backend status probes also no longer construct model backends (no more multi-GB loads just to report availability booleans).
 
 ### **[2.23] - 2026-08-15**
 

@@ -27,6 +27,7 @@ download-free process. Invoke:
 from __future__ import annotations
 
 import contextlib
+import glob
 import hashlib
 import importlib
 import importlib.metadata
@@ -36,6 +37,7 @@ import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -717,6 +719,30 @@ def provision(
                         "Fastest fix: recreate the venv on Python 3.12 "
                         "(uv venv -p 3.12) and restart — everything "
                         f"reinstalls itself. Details: {str(exc)[-160:]}")
+        # Vendored GPU faiss (vendor/faiss-gpu-win64) links the CUDA-13
+        # runtime DLLs, which are not vendored (GitHub's 100MB file cap);
+        # the nvidia wheels carry them (nvidia/<pkg>/bin/x86_64/). Install
+        # them whenever the vendored build is usable on this box so
+        # faiss_runtime.import_faiss() can select it; faiss-cpu stays the
+        # installed fallback either way.
+        if (sys.platform == "win32" and cuda_hardware_present()
+                and any(req.startswith("faiss")
+                        for g in groups for _, req in g.runtime)):
+            from smartgallery_ai.faiss_runtime import vendored_faiss_dir
+            purelib = sysconfig.get_paths().get("purelib") or ""
+            cu13_present = bool(glob.glob(os.path.join(
+                purelib, "nvidia", "*", "bin", "x86_64", "cublasLt64_13.dll")))
+            if os.path.isdir(vendored_faiss_dir()) and not cu13_present:
+                log("  ~ installing CUDA runtime wheels for the vendored "
+                    "GPU faiss build")
+                emit({"kind": "runtime", "phase": "start",
+                      "item": "nvidia CUDA runtime (faiss GPU)"})
+                (pip_runner or _default_pip_runner)(
+                    ["nvidia-cublas~=13.0", "nvidia-cuda-runtime~=13.0",
+                     "nvidia-nvjitlink~=13.0"])
+                installed.append("nvidia CUDA runtime (faiss GPU)")
+                emit({"kind": "runtime", "phase": "done",
+                      "item": "nvidia CUDA runtime (faiss GPU)"})
         _ensure_hub(
             any(a.hf_repo is not None for g in groups for a in g.artifacts
                 if force or not artifact_present(models_dir, a)),

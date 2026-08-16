@@ -211,7 +211,8 @@ class VectorStore:
 
         excluded = set(exclude)
         try:
-            import faiss
+            from smartgallery_ai.faiss_runtime import import_faiss
+            faiss = import_faiss()
         except ImportError:
             faiss = None
         if faiss is not None:

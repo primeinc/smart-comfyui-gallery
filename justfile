@@ -10,11 +10,9 @@ test:
 # Benchmarks through the production pipeline with live load context (bench.just)
 mod bench
 
-# Swap the venv's faiss-cpu wheel for the local Windows GPU faiss build
-# (docs/FAISS_GPU_WINDOWS.md; package dir carries its DLLs). `uv sync`
-# restores faiss-cpu; rerun this to restore the GPU build.
-faiss-gpu-install src='C:/Users/will/dev/sg-lab/faiss-pkg/faiss':
-    -uv pip uninstall faiss-cpu --python ./.venv/Scripts/python.exe
-    rm -rf ./.venv/Lib/site-packages/faiss
-    cp -r "$1" ./.venv/Lib/site-packages/faiss
-    ./.venv/Scripts/python.exe -c "import faiss; print('faiss GPUs:', faiss.get_num_gpus())"
+# Which faiss the app selects at runtime: the vendored GPU build
+# (vendor/faiss-gpu-win64, CUDA DLLs from the nvidia wheels) on
+# Windows+NVIDIA, else the installed faiss-cpu. AI_DAM_FAISS_GPU=0
+# forces the fallback.
+faiss-verify:
+    ./.venv/Scripts/python.exe -c "from smartgallery_ai.faiss_runtime import import_faiss; f = import_faiss(); print(f.__file__); print('faiss GPUs:', f.get_num_gpus())"

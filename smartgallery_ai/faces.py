@@ -395,7 +395,8 @@ def _neighbor_graph_faiss(normed: np.ndarray, threshold: float) -> tuple:
     filtered out, vectorized. Raises ImportError when faiss is not
     installed.
     """
-    import faiss
+    from smartgallery_ai.faiss_runtime import import_faiss
+    faiss = import_faiss()
 
     n = normed.shape[0]
     index = faiss.IndexFlatIP(int(normed.shape[1]))
