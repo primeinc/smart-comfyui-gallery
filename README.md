@@ -971,28 +971,24 @@ Open the full-screen Lightbox with `V` or `Enter`.
 
 **Dynamic Audio Waveforms:** Real-time visual waveforms (🌊) with an amplitude slider to adjust height without re-rendering media.
 
-**Toolbar Buttons:**
+**Toolbar:** five buttons stay visible — `/ MENU`, `AI` (this file's Similar / Faces / Review), `⭐💬 Ratings & Comments` (`G`), `💾 Download` (`S`), `🗑️ Delete` (`Del`) — plus `⋯ More` holding every other action as a labeled list, and `×` to exit. Every action also lives in the `/ MENU` overlay and keeps its keyboard shortcut:
 
-| Button | Key | Description |
+| Action | Key | Description |
 |---|---|---|
-| / MENU | `/` | Touch-friendly list of all commands |
 | − / + | `-` / `+` | Zoom out / Zoom in |
 | 🔄 Rotate | `T` | Rotate 90° (non-destructive) |
-| 💾 Download | `S` | Download original file |
 | 🛡 Clean Export | `Shift+W` | Download with all metadata stripped (prompts, nodes, EXIF) |
 | ✏️ Rename | `R` | Rename file on disk |
 | 📋 Asset Details | `I` | Open Full Asset Details Panel (2 tabs: Overview & Architecture) |
 | 🧬 Clusterize | `Shift+C` | Open Smart Asset Clustering modal for this file |
 | 📝 Node Summary | `N` | Open ComfyUI generation dashboard |
 | ✦ Remix Workflow | `B` | Edit workflow parameters and queue new generations |
-| ⭐💬 Ratings & Comments | `G` | Open side panel for ratings and messages |
 | ⚙️ Workflow JSON | `W` | Download raw ComfyUI `.json` workflow |
 | 📋 Copy JSON | `C` | Copy workflow to clipboard |
 | 🎞 Storyboard | `E` | Generate 11-frame video overview |
 | 📁 Move File | `M` | Open the Move File dialog |
 | 👁 Hide Toolbar | `H` | "Clean View" — hides all chrome |
 | ↗️ Open in New Tab | `O` | Full-resolution in a new browser tab |
-| 🗑️ Delete | `Del` | Delete the file |
 | × Exit | `Esc` | Return to Grid View |
 
 ---

@@ -587,8 +587,7 @@
                         <button type="button" class="aidam-toggle-btn ${aidamFacesLmk === 'kps' ? 'aidam-toggle-active' : ''}" onclick="aidamFacesSetLmk('kps')">5-pt</button>
                         ${hasDense ? `<button type="button" class="aidam-toggle-btn ${aidamFacesLmk === 'dense' ? 'aidam-toggle-active' : ''}" onclick="aidamFacesSetLmk('dense')">Dense</button>` : ''}
                     </span>
-                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="window.open('/galleryout/aidam?view=compare&file=' + encodeURIComponent(aidamCurrentFileId), '_blank')">Compare detectors</button>
-                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="window.open('/galleryout/aidam#faces', '_blank')">AI dashboard</button>
+                    <button type="button" class="glass-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="aidamCompareDetectors()">Compare detectors</button>
                 </span>
             </div>`;
 
@@ -620,6 +619,77 @@
             box.innerHTML = html;
         } catch (e) {
             box.innerHTML = aidamErrorMsg('Failed to load faces.');
+        }
+    }
+
+    // In-panel detector comparison: every installed face pipeline runs
+    // live on THIS file and the lanes render side by side right here —
+    // never a navigation away from the image. Nothing is saved.
+    function aidamCmpIou(a, b) {
+        const ix = Math.max(0, Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0]));
+        const iy = Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]));
+        const inter = ix * iy, union = a[2] * a[3] + b[2] * b[3] - inter;
+        return union > 0 ? inter / union : 0;
+    }
+
+    const _AIDAM_LANE_COLORS = { yunet: '#e6a23c', scrfd: '#34db98' };
+
+    async function aidamCompareDetectors() {
+        const box = document.getElementById('aidam-faces-content');
+        box.innerHTML = aidamBackButton('aidamLoadFaces')
+            + aidamEmptyMsg('Running every installed pipeline on this image… (a few seconds per lane)');
+        try {
+            const res = await fetch(`/galleryout/api/aidam/faces/compare/${encodeURIComponent(aidamCurrentFileId)}`);
+            const data = await res.json();
+            if (data.enabled === false) { box.innerHTML = aidamDisabledMsg(); return; }
+            if (data.error) {
+                box.innerHTML = aidamBackButton('aidamLoadFaces') + aidamErrorMsg(data.error);
+                return;
+            }
+            const lanes = data.lanes || {};
+            const names = Object.keys(lanes);
+            const withFaces = names.filter(n => lanes[n].faces);
+            withFaces.forEach(n => lanes[n].faces.forEach(f => {
+                f.consensus = withFaces.every(o => o === n
+                    || lanes[o].faces.some(g => aidamCmpIou(f.bbox, g.bbox) >= 0.5));
+            }));
+            let html = aidamBackButton('aidamLoadFaces');
+            html += '<div class="aidam-cmp-grid">' + names.map(n => {
+                const lane = lanes[n];
+                const color = _AIDAM_LANE_COLORS[n] || '#3498db';
+                if (lane.error) {
+                    return `<div class="aidam-cmp-lane" style="--lane-color:${color};">
+                        <span class="aidam-cmp-lane-name">${escapeAidamHtml(n)}</span>
+                        <div class="aidam-status-msg" style="margin-top:8px;">${escapeAidamHtml(lane.error)}</div></div>`;
+                }
+                const overlays = lane.faces.map(f => {
+                    const [x, y, w, h] = f.bbox;
+                    let s = `<div class="aidam-bbox ${f.consensus ? '' : 'aidam-bbox--miss'}" style="left:${(x * 100).toFixed(2)}%; top:${(y * 100).toFixed(2)}%; width:${(w * 100).toFixed(2)}%; height:${(h * 100).toFixed(2)}%; border-color:${color};"></div>`;
+                    (f.landmarks || []).forEach(pt => {
+                        s += `<div class="aidam-cmp-kp" style="left:${(pt[0] * 100).toFixed(2)}%; top:${(pt[1] * 100).toFixed(2)}%; background:${color};"></div>`;
+                    });
+                    return s;
+                }).join('');
+                const chips = lane.faces.map(f =>
+                    `<span class="aidam-cmp-chip ${f.consensus ? '' : 'aidam-cmp-chip--miss'}" style="border-color:${color};">${Math.round((f.det_score || 0) * 100)}%</span>`).join('');
+                return `<div class="aidam-cmp-lane" style="--lane-color:${color};">
+                    <span class="aidam-cmp-lane-name">${escapeAidamHtml(n)}</span>
+                    <div class="aidam-cmp-lane-meta">${escapeAidamHtml(lane.model || '')} &middot; ${lane.faces.length} face${lane.faces.length === 1 ? '' : 's'} &middot; ${lane.elapsed_ms} ms</div>
+                    <div class="aidam-preview-wrap"><img src="/galleryout/thumbnail/${encodeURIComponent(aidamCurrentFileId)}" alt="">${overlays}</div>
+                    <div class="aidam-cmp-scores">${chips}</div>
+                </div>`;
+            }).join('') + '</div>';
+            if (withFaces.length > 1) {
+                const agreed = lanes[withFaces[0]].faces.filter(f => f.consensus).length;
+                const only = withFaces.map(n => {
+                    const solo = lanes[n].faces.filter(f => !f.consensus).length;
+                    return solo ? `<span><b>${solo}</b> only ${escapeAidamHtml(n)}</span>` : '';
+                }).join('');
+                html += `<div class="aidam-cmp-strip"><span><b>${agreed}</b> agreed by every lane (solid boxes; dashed = disagreement)</span>${only}</div>`;
+            }
+            box.innerHTML = html;
+        } catch (e) {
+            box.innerHTML = aidamBackButton('aidamLoadFaces') + aidamErrorMsg('Comparison failed.');
         }
     }
 

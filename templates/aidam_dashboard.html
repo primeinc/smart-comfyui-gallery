@@ -185,7 +185,7 @@
 
     <section id="view-faces">
         <h2>Face clusters</h2>
-        <p class="lede">Similarity clusters of generated faces — browsing convenience, never identity claims. Click a cluster for members and attributes; click a member to run detector compare on it.</p>
+        <p class="lede">Similarity clusters of generated faces — browsing convenience, never identity claims. Click a cluster for members and attributes; click a member to open the file.</p>
         <div id="faces-content"></div>
     </section>
 
@@ -242,8 +242,8 @@
                 <button class="glass-btn" id="cmp-mode-lanes" onclick="cmpSetMode('lanes')">Side by side</button>
             </span>
         </div>
-        <div class="panel">
-            <h3>Pick a recent face image</h3>
+        <div class="panel" id="cmp-picker">
+            <h3>Run it on a recent face image</h3>
             <div id="cmp-recent" class="thumb-grid"><div class="status-msg" style="grid-column:1/-1;">Loading recent faces…</div></div>
         </div>
         <div id="cmp-content">
@@ -364,7 +364,7 @@ async function openCluster(id) {
             const tag = [m.sex ? `${m.sex}${m.age ?? ''}` : null,
                          (m.pose_yaw !== null && m.pose_yaw !== undefined) ? `y${Math.round(m.pose_yaw)}` : null]
                         .filter(Boolean).join(' ');
-            return `<div class="thumb-tile" title="Run detector compare on this image" onclick="cmpJump('${esc(m.file_id)}')">
+            return `<div class="thumb-tile" title="Open file" onclick="window.open('/galleryout/file/${encodeURIComponent(m.file_id)}', '_blank')">
                 <img src="${thumb(m.file_id)}" alt="">
                 ${tag ? `<span class="tag">${esc(tag)}</span>` : ''}
             </div>`;
@@ -405,6 +405,8 @@ const LANE_COLORS = { yunet: 'var(--lane-a)', scrfd: 'var(--lane-b)' };
 let cmpState = null;
 
 async function loadRecentFaces() {
+    const picker = document.getElementById('cmp-picker');
+    if (picker) picker.style.display = '';
     const el = document.getElementById('cmp-recent');
     try {
         const r = await fetch(`${API}/faces/recent`); const d = await r.json();
@@ -541,6 +543,9 @@ async function cmpRun() {
         Object.keys(lanes).forEach(n => { cfg[n] = { on: true, alpha: 1 }; });
         cmpState = { data: d, mode: (cmpState || {}).mode || 'overlay', cfg };
         cmpRender();
+        // A running comparison is the content; the picker steps aside.
+        const picker = document.getElementById('cmp-picker');
+        if (picker) picker.style.display = 'none';
     } catch (e) {
         box.innerHTML = '<div class="status-msg">Comparison failed — check the server log.</div>';
     }
