@@ -2318,6 +2318,27 @@ def process_single_file(filepath):
         if not workflow_prompt_content and parsed_meta and parsed_meta.positive:
             workflow_prompt_content = parsed_meta.positive
 
+        # The same backfill for the models, which was missing. workflow_files
+        # is what the Models search box and the "models used" list read, and
+        # only the ComfyUI branch above ever filled it -- so an A1111 or Forge
+        # picture was searchable by its prompt and invisible to a search for
+        # the checkpoint that made it, while `model:` in the prompt box found
+        # it through generation_params. One idea, two fields, two answers.
+        #
+        # Clustering is unaffected: the foreign hashes come from the parsed
+        # metadata, never from this field.
+        if not workflow_files_content and parsed_meta:
+            foreign_models = []
+            model_name = str(parsed_meta.params.get('model') or '').strip()
+            if model_name:
+                foreign_models.append(model_name)
+            for lora in re.finditer(r'<lora:([^:>]+)', parsed_meta.positive or ''):
+                name = lora.group(1).strip()
+                if name and name not in foreign_models:
+                    foreign_models.append(name)
+            if foreign_models:
+                workflow_files_content = ' ||| '.join(foreign_models)
+
         # First-class typed generation parameters (metaparse.typed):
         # ComfyUI graphs go through the sampler-tracing parser; every
         # other tool through its metaparse adapter.
