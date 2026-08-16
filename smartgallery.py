@@ -2746,29 +2746,52 @@ def full_sync_database(conn):
         print(f"INFO: Processing {len(files_to_process)} files in parallel using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores...")
         
         results = []
-        # --- CORRECT BLOCK FOR PROGRESS BAR ---
-        with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
-            # Submit all jobs to the pool and get future objects
-            futures = {executor.submit(process_single_file, path): path for path in files_to_process}
-            
-            # Create the progress bar with the correct total
-            with tqdm(total=len(files_to_process), desc="Processing files") as pbar:
-                # Iterate over the jobs as they are COMPLETED
-                for future in concurrent.futures.as_completed(futures):
-                    # --- FAULT TOLERANCE FIX ---
-                    # If a single file causes a C-level segfault (e.g. OpenCV/Pillow on corrupted media), 
-                    # it throws a BrokenProcessPool exception. We catch it to save the rest of the gallery.
+        attempted = set()
+        pool_failure = None
+        # A single corrupted file can take a worker down with a C-level
+        # segfault (OpenCV/Pillow), which surfaces as BrokenProcessPool on
+        # EVERY pending future -- so one bad file must not cost the scan.
+        # The pool can also be unusable outright (frozen builds, sandboxes
+        # and containers that forbid process spawning, memory pressure);
+        # that used to be reported as "likely a corrupted file" while the
+        # scan indexed nothing and still announced completion, leaving an
+        # empty gallery with no actionable message. Either way, whatever
+        # the pool did not finish is processed in this process below.
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
+                futures = {executor.submit(process_single_file, path): path for path in files_to_process}
+
+                with tqdm(total=len(files_to_process), desc="Processing files") as pbar:
+                    for future in concurrent.futures.as_completed(futures):
+                        file_path = futures[future]
+                        try:
+                            result = future.result()
+                            if result:
+                                results.append(result)
+                            attempted.add(file_path)
+                        except concurrent.futures.process.BrokenProcessPool as e:
+                            pool_failure = e
+                            break  # the pool is gone; the rest runs sequentially
+                        except Exception as e:
+                            attempted.add(file_path)  # tried and failed on its own merits
+                            print(f"\nWARNING: Unhandled error processing {os.path.basename(file_path)}: {e}")
+                        pbar.update(1)
+        except Exception as e:  # pool creation, or shutdown after a break
+            pool_failure = pool_failure or e
+
+        leftover = [p for p in files_to_process if p not in attempted]
+        if pool_failure is not None and leftover:
+            print(f"\nWARNING: parallel processing stopped ({type(pool_failure).__name__}: "
+                  f"{pool_failure}). Processing the remaining {len(leftover)} file(s) "
+                  f"one at a time -- slower, but nothing is skipped.")
+            with tqdm(total=len(leftover), desc="Processing files (sequential)") as pbar:
+                for path in leftover:
                     try:
-                        result = future.result()
+                        result = process_single_file(path)
                         if result:
                             results.append(result)
-                    except concurrent.futures.process.BrokenProcessPool as e:
-                        print(f"\nWARNING: A worker process crashed (likely due to a corrupted file). Recovering... Error: {e}")
                     except Exception as e:
-                        file_path_failed = futures[future]
-                        print(f"\nWARNING: Unhandled error processing {os.path.basename(file_path_failed)}: {e}")
-                    
-                    # Update the bar by 1 step for each completed job
+                        print(f"\nWARNING: Unhandled error processing {os.path.basename(path)}: {e}")
                     pbar.update(1)
 
         if results:
