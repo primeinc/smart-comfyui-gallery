@@ -1522,6 +1522,20 @@ def _is_guest_uuid(value):
     return bool(_GUEST_ID_RE.match(str(value or '').strip().lower()))
 
 
+# No external tool may block a request, a scan, or startup indefinitely.
+# ffmpeg and ffprobe hang readily on a truncated or malformed file, on a
+# path that has gone away mid-read, and on network storage that stops
+# answering -- and each of these runs somewhere a person is waiting: the
+# version check runs before the app starts, the metadata read inside the
+# scan, and the strip inside a request a visitor is waiting on.
+#
+# subprocess.run kills the child when the timeout expires, and every caller
+# below already treats a failure as "no metadata" or "no thumbnail", so a
+# timeout costs that one file rather than the operation around it.
+FFPROBE_TIMEOUT = 30    # version check and metadata reads
+FFMPEG_TIMEOUT = 300    # thumbnail extraction and metadata stripping
+
+
 def _is_ffprobe(path_or_name):
     """True only when `-version` runs AND identifies itself as ffprobe.
 
@@ -1535,6 +1549,7 @@ def _is_ffprobe(path_or_name):
     try:
         proc = subprocess.run(
             [path_or_name, "-version"], capture_output=True, check=True,
+            timeout=FFPROBE_TIMEOUT,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     except Exception:
         return False
@@ -1677,7 +1692,7 @@ def extract_workflow(filepath, target_type='ui'):
         if current_ffprobe_path:
             try:
                 cmd = [current_ffprobe_path, '-v', 'quiet', '-print_format', 'json', '-show_format', filepath]
-                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', check=True, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', check=True, timeout=FFPROBE_TIMEOUT, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
                 data = json.loads(result.stdout)
                 if 'format' in data and 'tags' in data['format']:
                     for value in data['format']['tags'].values():
@@ -1970,7 +1985,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                 ]
 
                 creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, creationflags=creation_flags)
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=FFMPEG_TIMEOUT, creationflags=creation_flags)
 
                 if os.path.exists(tmp_path):
                     os.replace(tmp_path, cache_path)
@@ -3860,7 +3875,8 @@ def strip_media_metadata(input_path, output_path, file_type):
             ]
             
             cf = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=cf)
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    timeout=FFMPEG_TIMEOUT, creationflags=cf)
             
             if result.returncode == 0 and os.path.exists(output_path):
                 return True
@@ -5741,7 +5757,9 @@ def mount_folder():
             cmd_junction = f'mklink /J "{win_link}" "{win_target}"'
             
             # Use subprocess.run to capture the specific error message from Windows
-            result = subprocess.run(cmd_junction, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # Linking a target on unreachable network storage can sit there;
+            # the caller is a request waiting on the answer.
+            result = subprocess.run(cmd_junction, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=FFPROBE_TIMEOUT)
             
             if result.returncode != 0:
                 # Capture the actual error (e.g. "Local volumes are required...")
@@ -5753,7 +5771,7 @@ def mount_folder():
                 # Necessary for Network Shares, Virtual Drives, or Cross-Volume links.
                 # NOTE: This usually requires Developer Mode enabled OR running ComfyUI as Administrator.
                 cmd_symlink = f'mklink /D "{win_link}" "{win_target}"'
-                result_sym = subprocess.run(cmd_symlink, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                result_sym = subprocess.run(cmd_symlink, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=FFPROBE_TIMEOUT)
                 
                 if result_sym.returncode != 0:
                     err_sym = result_sym.stderr.strip() or result_sym.stdout.strip()
