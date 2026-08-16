@@ -1,7 +1,8 @@
-"""OmniQuery v2 NL parser backends: shared types, registry, and helpers.
+"""OmniQuery NL parser backends: shared types, registry, and the search
+entry point.
 
-Every backend under this package (heuristic, needle2, fallback_qwen) speaks
-the same contract:
+Every backend under this package (nlq, nl2sql, fallback_qwen) speaks the
+same contract:
 
     ParserBackend.parse(text, now_epoch) -> ParserOutcome
 
@@ -9,15 +10,25 @@ the same contract:
 usable query) or a plain JSON-compatible dict that already round-tripped
 through :func:`omniquery.ast.parse_query` and
 :func:`omniquery.validation.validate` -- backends must never hand back an
-AST that hasn't been validated. ``router.py`` combines backends according
-to its documented routing policy; ``get_backend``/``make_default_router`` below are the
-convenience entry points the rest of the app (and the benchmark harness)
-use instead of importing individual backend modules directly.
+AST that hasn't been validated.
+
+``parse_search`` below is the app's single entry point and encodes the
+whole policy -- there is no router, no thresholds file, no confidence
+theater:
+
+  1. `nlq` (deterministic, sub-millisecond) parses EVERY query: structural
+     rules consume what they recognize; every leftover term is a full-text
+     search. It cannot return "unsupported".
+  2. When nlq's leftover text contains structural vocabulary (digits,
+     units, comparatives, month names -- its `model_hint` flag) and the
+     local nl2sql GGUF is available, the model gets one grammar-constrained
+     attempt; its AST REPLACES the deterministic one only when it validates
+     and passes coverage_guard at full coverage. Anything less and the
+     deterministic parse stands.
 
 This module also hosts ``coverage_guard``, the model-free "did the AST
 actually keep every literal number/quoted string/recognized keyword in the
-query" check shared by needle2.py and fallback_qwen.py -- the two backends
-whose output isn't already guaranteed complete by construction.
+query" check that gates every model-produced AST.
 """
 
 from __future__ import annotations
@@ -26,13 +37,11 @@ import importlib
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from omniquery.ast import ASTError, Query, parse_query
 from omniquery.validation import AuthContext, ValidationError, validate
 
-if TYPE_CHECKING:
-    from omniquery.parsers.router import Router
 
 # A maximally-permissive AuthContext used by parsers to self-check their own
 # output before returning it. Real authorization happens again, for real,
@@ -74,8 +83,8 @@ class ParserBackend(ABC):
     def available(self) -> bool:
         """True when this backend can be used right now. The default
         (zero-dependency) implementation is always available; backends with
-        an optional runtime (Needle2, the grammar-constrained Qwen
-        fallback) override this to check their runtime/weights."""
+        an optional runtime (the grammar-constrained GGUF backends)
+        override this to check their runtime/weights."""
         return True
 
 
@@ -84,8 +93,8 @@ class ParserBackend(ABC):
 # ---------------------------------------------------------------------------
 
 _BACKEND_PATHS: Dict[str, str] = {  # backend name -> dotted class path, imported lazily by get_backend
-    "heuristic": "omniquery.parsers.heuristic.HeuristicBackend",
-    "needle2": "omniquery.parsers.needle2.Needle2Backend",
+    "nlq": "omniquery.parsers.nlq.NlqParser",
+    "nl2sql": "omniquery.parsers.nl2sql.Nl2SqlBackend",
     "fallback_qwen": "omniquery.parsers.fallback_qwen.FallbackQwenBackend",
 }
 
@@ -94,7 +103,7 @@ def get_backend(name: str, **kwargs: Any) -> ParserBackend:
     """Construct a fresh backend instance by name.
 
     Submodules are imported lazily (only on request) so asking for
-    'heuristic' never pulls in `needle` or `llama_cpp`, and constructing a
+    'nlq' never pulls in `llama_cpp`, and constructing a
     backend never itself touches an optional runtime -- only calling
     `.available()`/`.parse()` on it does.
     """
@@ -108,23 +117,39 @@ def get_backend(name: str, **kwargs: Any) -> ParserBackend:
     return cls(**kwargs)
 
 
-def make_default_router(config: Optional[Dict[str, Any]] = None) -> Router:
-    """Convenience: build the standard heuristic/needle2/fallback Router
-    with thresholds loaded from routing_defaults.json, optionally overridden
-    by `config`. Backend runtimes that are unavailable are still handed to
-    the Router (it checks `.available()` itself before ever calling them)."""
-    from omniquery.parsers.router import Router, fallback_enabled, load_thresholds
+class SearchParser:
+    """The app-facing parser: nlq always answers; the nl2sql model refines
+    hinted queries when allowed. Construct once and reuse (the nlq instance
+    is stateless; the model instance caches its loaded GGUF)."""
 
-    heuristic = get_backend("heuristic")
-    primary = get_backend("needle2")
-    # Benchmark-measured default: the 0.5B fallback adds no accuracy on the
-    # SmartGallery corpus, so it only joins the route when explicitly enabled
-    # (routing_defaults.json "fallback_enabled" or OMNIQUERY_ENABLE_FALLBACK).
-    fallback = get_backend("fallback_qwen") if fallback_enabled() else None
-    thresholds = load_thresholds()
-    if config:
-        thresholds.update(config)
-    return Router(primary=primary, fallback=fallback, heuristic=heuristic, thresholds=thresholds)
+    def __init__(self, nlq: Optional[ParserBackend] = None,
+                 model: Optional[ParserBackend] = None):
+        self.nlq = nlq or get_backend("nlq")
+        self.model = model if model is not None else get_backend("nl2sql")
+
+    def parse(self, text: str, now_epoch: float,
+              allow_model: bool = True) -> Tuple[ParserOutcome, List[ParserOutcome]]:
+        """(chosen outcome, trace). `allow_model=False` is the live-typing
+        path: deterministic only, sub-millisecond, never touches a model."""
+        base = self.nlq.parse(text, now_epoch)
+        trace: List[ParserOutcome] = [base]
+        wants_model = bool((base.raw or {}).get("model_hint"))
+        if (allow_model and wants_model and base.ast is not None
+                and self.model is not None and self.model.available()):
+            refined = self.model.parse(text, now_epoch)
+            trace.append(refined)
+            if refined.ast is not None and not refined.unsupported:
+                coverage, _missing = coverage_guard(text, refined.ast)
+                if coverage >= 1.0:
+                    return refined, trace
+        return base, trace
+
+
+def make_search_parser() -> SearchParser:
+    """The standard SearchParser: deterministic nlq plus the local nl2sql
+    refiner (consulted only for hinted queries, and only when its runtime
+    and weights are actually present)."""
+    return SearchParser()
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +196,8 @@ def _walk_conds(node: Any) -> Iterator[dict]:
 
 def contains_not_node(node: Any) -> bool:
     """True if `node` (a dict-shaped where-tree, possibly None) contains a
-    'not' node anywhere. Used by needle2.py: if the model detected negation
-    but the frame-expanded AST has no 'not' node, the frame lost it."""
+    'not' node anywhere: a model that detected negation but returned an
+    AST with no 'not' node has lost it."""
     if not isinstance(node, dict):
         return False
     if node.get("op") == "not":
@@ -211,9 +236,9 @@ def _all_ast_values(ast_dict: dict) -> List[Any]:
 
 
 # ---------------------------------------------------------------------------
-# coverage_guard: model-free "did the AST keep every literal" check, shared
-# by needle2.py (checking its frame-expanded AST) and fallback_qwen.py
-# (checking its grammar-constrained-but-still-hallucination-prone output).
+# coverage_guard: model-free "did the AST keep every literal" check that
+# gates every model-produced AST (grammar-constrained decoding guarantees
+# shape, not completeness -- a model can still silently drop a constraint).
 # ---------------------------------------------------------------------------
 
 _QUOTED_RE = re.compile(r"[\"']([^\"']+)[\"']")  # either quote style; no escape handling inside
@@ -317,7 +342,7 @@ def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
 
     This is deliberately NOT a semantic checker (it can't tell "not
     approved" from "approved" -- that's the negation check next to it in
-    needle2.py) -- it only catches one specific failure mode: constraints
+    a negation check) -- it only catches one specific failure mode: constraints
     silently DROPPED from the parse.  coverage == 1.0 when there is
     nothing to check (an empty/trivial query).
     """
@@ -400,7 +425,8 @@ __all__ = [
     "ParserOutcome",
     "ParserBackend",
     "get_backend",
-    "make_default_router",
+    "SearchParser",
+    "make_search_parser",
     "try_validate",
     "contains_not_node",
     "coverage_guard",

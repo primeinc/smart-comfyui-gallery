@@ -1,7 +1,8 @@
-"""OmniQuery v2 NL-parser accuracy/latency benchmark harness.
+"""OmniQuery NL-parser accuracy/latency benchmark harness.
 
-Runs one or more parser backends (plus, optionally, the full `router`
-policy) against `corpus.jsonl` and reports, per backend:
+Runs one or more parser backends (plus, optionally, the full `search`
+policy -- nlq with nl2sql refinement) against `corpus.jsonl` and reports,
+per backend:
 
   - ast_exact_rate: canonicalized-AST equality against the corpus's
     expected AST (over entries expected to be supported).
@@ -24,11 +25,10 @@ policy) against `corpus.jsonl` and reports, per backend:
   - peak_rss_kb: process-wide peak resident set size in KB, sampled after
     the backend's entries all ran (getrusage on POSIX, psapi on Windows).
 
-`router` additionally reports escalation stats: which backend ultimately
-answered each entry, and what fraction of entries needed to escalate past
-the heuristic's outright-accept rule.
+`search` additionally reports refinement stats: which backend ultimately
+answered each entry, and what fraction of entries consulted the model.
 
-CLI: `python -m omniquery.benchmark.harness --backends heuristic,needle2,fallback_qwen,router --out report.json`
+CLI: `python -m omniquery.benchmark.harness --backends nlq,nl2sql,search --out report.json`
 """
 
 from __future__ import annotations
@@ -51,8 +51,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from omniquery.ast import canonicalize
 from omniquery.benchmark.fixtures import ANCHOR_EPOCH, FIXTURE_BASE_PATH, build_fixture_db
 from omniquery.engine import OmniQueryEngine
-from omniquery.parsers import ParserBackend, ParserOutcome, get_backend, try_validate
-from omniquery.parsers.router import Router, load_thresholds
+from omniquery.parsers import (
+    ParserBackend, ParserOutcome, SearchParser, get_backend, try_validate,
+)
 from omniquery.validation import AuthContext
 
 _DEFAULT_CORPUS_PATH = Path(__file__).with_name("corpus.jsonl")
@@ -299,28 +300,27 @@ def _run_backend(backend: ParserBackend, entries: List[dict], engine: OmniQueryE
     return _aggregate(records, latencies)
 
 
-def _run_router(router: Router, entries: List[dict], engine: OmniQueryEngine,
+def _run_search(search: SearchParser, entries: List[dict], engine: OmniQueryEngine,
                  now_epoch: float) -> Dict[str, Any]:
-    """Like _run_backend but through router.route(), adding escalation
-    stats: which backend ultimately answered each entry, and how often the
-    heuristic's outright-accept rule did not settle it (trace longer than
-    one hop)."""
+    """Like _run_backend but through SearchParser.parse(), adding
+    refinement stats: which backend ultimately answered each entry, and
+    how often the nl2sql model was consulted (trace longer than one hop)."""
     records: List[_EntryRecord] = []
     latencies: List[float] = []
     winner_counts: Counter = Counter()
-    escalated_past_heuristic = 0
+    consulted_model = 0
     for entry in entries:
         t0 = time.monotonic()
-        outcome, trace = router.route(entry["nl"], now_epoch)
+        outcome, trace = search.parse(entry["nl"], now_epoch)
         latencies.append((time.monotonic() - t0) * 1000.0)
         records.append(_score_entry(entry["expected"], outcome, engine, now_epoch))
         winner_counts[outcome.backend] += 1
         if len(trace) > 1:
-            escalated_past_heuristic += 1
+            consulted_model += 1
     metrics = _aggregate(records, latencies)
-    metrics["escalation"] = {
+    metrics["refinement"] = {
         "winner_counts": dict(winner_counts),
-        "escalated_past_heuristic_rate": escalated_past_heuristic / max(len(entries), 1),
+        "model_consulted_rate": consulted_model / max(len(entries), 1),
     }
     return metrics
 
@@ -331,8 +331,8 @@ def _run_router(router: Router, entries: List[dict], engine: OmniQueryEngine,
 
 def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_PATH,
                    out_path: Optional[str] = None, now_epoch: float = ANCHOR_EPOCH) -> Dict[str, Any]:
-    """Run each of `backend_names` (any of 'heuristic', 'needle2',
-    'fallback_qwen', 'router') against the corpus at `corpus_path`. Writes a
+    """Run each of `backend_names` (any of 'nlq', 'nl2sql',
+    'fallback_qwen', 'search') against the corpus at `corpus_path`. Writes a
     JSON report to `out_path` if given, and always returns the report dict.
     """
     entries = load_corpus(Path(corpus_path))
@@ -340,7 +340,7 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     engine = _build_fixture_engine()
 
     instances: Dict[str, ParserBackend] = {
-        name: get_backend(name) for name in backend_names if name != "router"
+        name: get_backend(name) for name in backend_names if name != "search"
     }
 
     report: Dict[str, Any] = {
@@ -351,14 +351,12 @@ def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_P
     }
 
     for name in backend_names:
-        if name == "router":
-            router = Router(
-                primary=instances.get("needle2") or get_backend("needle2"),
-                fallback=instances.get("fallback_qwen") or get_backend("fallback_qwen"),
-                heuristic=instances.get("heuristic") or get_backend("heuristic"),
-                thresholds=load_thresholds(),
+        if name == "search":
+            search = SearchParser(
+                nlq=instances.get("nlq") or get_backend("nlq"),
+                model=instances.get("nl2sql") or get_backend("nl2sql"),
             )
-            report["backends"]["router"] = _run_router(router, entries, engine, now_epoch)
+            report["backends"]["search"] = _run_search(search, entries, engine, now_epoch)
         else:
             report["backends"][name] = _run_backend(instances[name], entries, engine, now_epoch)
 
@@ -373,8 +371,8 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """CLI argument parsing; `argv=None` reads sys.argv."""
     parser = argparse.ArgumentParser(description="OmniQuery v2 NL-parser benchmark")
     parser.add_argument(
-        "--backends", type=str, default="heuristic",
-        help="comma-separated backend names, e.g. heuristic,needle2,fallback_qwen,router",
+        "--backends", type=str, default="nlq",
+        help="comma-separated backend names, e.g. nlq,nl2sql,search",
     )
     parser.add_argument("--corpus", type=str, default=str(_DEFAULT_CORPUS_PATH))
     parser.add_argument("--out", type=str, default=None)

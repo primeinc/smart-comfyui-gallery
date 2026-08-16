@@ -3,8 +3,8 @@ omniquery/benchmark/corpus.jsonl must parse, validate (permissive ctx), and
 execute cleanly against the deterministic fixture DB; every `file_ref`
 literal id it names must actually exist in the fixture; unsupported entries
 must be excluded from execution. Also a fast smoke test of the benchmark
-harness itself, restricted to the heuristic backend so nothing here loads
-needle2/llama_cpp.
+harness itself, restricted to the nlq backend so nothing here loads a
+model runtime.
 """
 
 from __future__ import annotations
@@ -78,23 +78,24 @@ def test_corpus_covers_required_categories(corpus):
     for entry in corpus:
         all_tags.update(entry["tags"])
     required = {"simple", "boolean", "negation", "disjunction", "join", "count",
-                "privileged", "date", "duration", "ambiguous", "adversarial"}
+                "privileged", "date", "duration", "text-search", "adversarial",
+                "genparams"}
     missing = required - all_tags
     assert not missing, f"corpus is missing tag categories: {missing}"
 
 
-def test_corpus_has_unsupported_entries_for_ambiguous_and_adversarial(corpus):
-    ambiguous = [e for e in corpus if "ambiguous" in e["tags"]]
-    adversarial = [e for e in corpus if "adversarial" in e["tags"]]
-    assert ambiguous and all(e["expected"].get("unsupported") for e in ambiguous)
-    # adversarial has a mix: SQL-injection-as-literal (supported, escaped as
-    # a plain value) and instruction-injection (unsupported).
-    assert any(e["expected"].get("unsupported") for e in adversarial)
-    assert any("ast" in e["expected"] for e in adversarial)
+def test_corpus_has_no_unsupported_entries(corpus):
+    """The search contract: every query answers. Vague and adversarial
+    phrasings carry expected text-search ASTs instead of an 'unsupported'
+    marker -- injection text is inert search data, never an instruction."""
+    assert all("ast" in e["expected"] for e in corpus)
+    text_search = [e for e in corpus if "text-search" in e["tags"]]
+    assert len(text_search) >= 10
 
 
 def test_corpus_adversarial_sql_literals_land_as_plain_text_values(corpus):
-    sql_entries = [e for e in corpus if "adversarial" in e["tags"] and "ast" in e["expected"]]
+    sql_entries = [e for e in corpus
+                   if "adversarial" in e["tags"] and "sql" in e["id"]]
     assert sql_entries
     for entry in sql_entries:
         query = parse_query(entry["expected"]["ast"])
@@ -142,7 +143,8 @@ def test_every_supported_entry_parses_validates_and_executes(corpus, engine):
         out = engine.run(query, PERM_CTX, now_epoch=ANCHOR_EPOCH)
         assert out.ok, f"{entry['id']}: execution failed: {out.error}"
 
-    assert n_supported > 0 and n_unsupported > 0
+    assert n_supported > 0
+    assert n_unsupported == 0  # the search contract: every query answers
 
 
 def test_file_ref_literal_ids_exist_in_fixture(corpus):
@@ -164,18 +166,18 @@ def test_file_ref_literal_ids_exist_in_fixture(corpus):
 
 
 # ---------------------------------------------------------------------------
-# Harness smoke test (heuristic backend only -- model-free, fast)
+# Harness smoke test (nlq backend only -- model-free, fast)
 # ---------------------------------------------------------------------------
 
-def test_harness_smoke_heuristic_only(tmp_path):
+def test_harness_smoke_nlq_only(tmp_path):
     out_path = str(tmp_path / "report.json")
-    report = run_benchmark(["heuristic"], corpus_path=str(CORPUS_PATH), out_path=out_path)
+    report = run_benchmark(["nlq"], corpus_path=str(CORPUS_PATH), out_path=out_path)
 
     assert Path(out_path).exists()
     assert report["corpus_size"] >= 60
-    assert "heuristic" in report["backends"]
+    assert "nlq" in report["backends"]
 
-    metrics = report["backends"]["heuristic"]
+    metrics = report["backends"]["nlq"]
     for key in ("ast_exact_rate", "execution_match_rate", "invalid_rate",
                 "unsupported_correct", "unsupported_incorrect", "unsupported_correct_rate",
                 "false_confident_rate", "latency_ms", "peak_rss_kb",
@@ -185,7 +187,7 @@ def test_harness_smoke_heuristic_only(tmp_path):
     assert 0.0 <= metrics["ast_exact_rate"] <= 1.0
     assert 0.0 <= metrics["execution_match_rate"] <= 1.0
     assert 0.0 <= metrics["invalid_rate"] <= 1.0
-    assert metrics["invalid_rate"] == 0.0  # heuristic must never emit an invalid AST
+    assert metrics["invalid_rate"] == 0.0  # nlq must never emit an invalid AST
     assert metrics["n_entries"] == report["corpus_size"]
 
     assert set(metrics["false_confident_rate"]) == {
@@ -195,6 +197,6 @@ def test_harness_smoke_heuristic_only(tmp_path):
     assert metrics["peak_rss_kb"] > 0
 
 
-def test_harness_router_not_requested_means_no_router_key():
-    report = run_benchmark(["heuristic"], corpus_path=str(CORPUS_PATH))
-    assert "router" not in report["backends"]
+def test_harness_search_not_requested_means_no_search_key():
+    report = run_benchmark(["nlq"], corpus_path=str(CORPUS_PATH))
+    assert "search" not in report["backends"]

@@ -17,9 +17,10 @@ huggingface_hub              # cached/resumable weight downloads for
                              #   worker's async auto-provisioning
 
 # --- OmniQuery local natural-language parsing ---
-cactus-needle>=2.0.4        # Needle2 primary intent parser (Apache-2.0)
+# The deterministic nlq parser is dependency-free. llama-cpp-python powers
+# the optional grammar-constrained nl2sql refiner (weights via provisioning).
 faiss-cpu>=1.15             # Meta FAISS similarity index (MIT); vectors + face clustering
-llama-cpp-python>=0.3.0      # optional constrained fallback parser (MIT); off by default
+llama-cpp-python>=0.3.0      # grammar-constrained nl2sql refiner (MIT)
 
 # --- semantic / visual embedding + critic + segmentation backends ---
 # Uncomment to enable the real model backends; then provision weights per

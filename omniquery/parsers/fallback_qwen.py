@@ -31,8 +31,12 @@ from omniquery import fields
 from omniquery.parsers import ParserBackend, ParserOutcome, coverage_guard, try_validate
 
 # Model file resolution precedence: constructor argument, then the
-# ENV_MODEL_PATH environment variable, then DEFAULT_MODEL_PATH.
-DEFAULT_MODEL_PATH = "/home/user/smart-comfyui-gallery/.AImodels/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf"
+# ENV_MODEL_PATH environment variable, then DEFAULT_MODEL_PATH -- the
+# provisioned nl2sql GGUF inside the AI models directory (AI_DAM_MODELS_DIR
+# env, .AImodels fallback; provision.py's 'omniquery' group downloads it).
+DEFAULT_MODEL_FILENAME = "distil-qwen3-4b-text2sql-4bit.gguf"
+DEFAULT_MODEL_PATH = os.path.join(
+    os.environ.get("AI_DAM_MODELS_DIR", ".AImodels"), DEFAULT_MODEL_FILENAME)
 ENV_MODEL_PATH = "OMNIQUERY_FALLBACK_GGUF"  # name of the env var, not a path itself
 
 # (llama_instance, grammar_instance), keyed by resolved model path -- loaded
@@ -200,7 +204,7 @@ class FallbackQwenBackend(ParserBackend):
             content = resp["choices"][0]["message"]["content"]
             ast_dict = json.loads(content)
         except Exception as exc:
-            # Same rationale as needle2.py: a truncated/malformed generation
+            # A truncated/malformed generation
             # must never propagate as an exception out of parse().
             return ParserOutcome(ast=None, confidence=None, backend=self.name, unsupported=True,
                                   reason=f"generation error: {exc}", latency_ms=_ms(t0),

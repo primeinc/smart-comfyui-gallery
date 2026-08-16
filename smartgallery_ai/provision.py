@@ -381,6 +381,22 @@ GROUPS = (
         ),
     ),
     Group(
+        name="omniquery",
+        enables="Search palette nl2sql refinement (structurally-ambiguous phrasing)",
+        runtime=(("llama_cpp", "llama-cpp-python>=0.3.0"),),
+        artifacts=(
+            # Best measured of five GGUF candidates on the 98-entry corpus
+            # (43.4% standalone execution match, 2026-08-16); consulted only
+            # when the deterministic nlq parse flags structural leftovers.
+            Artifact(
+                dest="distil-qwen3-4b-text2sql-4bit.gguf",
+                approx_size="2.5 GB", license="Apache-2.0",
+                hf_repo="distil-labs/distil-qwen3-4b-text2sql-gguf-4bit",
+                hf_filename="model.gguf",
+            ),
+        ),
+    ),
+    Group(
         name="critic",
         enables="Review tab (quality/alignment scores + typed findings); needs 'semantic' too",
         runtime=(("llama_cpp", "llama-cpp-python>=0.3.0"),

@@ -150,19 +150,20 @@ def stage2() -> int:
                 ok = False
 
         # Local OmniQuery parse path (no server round-trip needed): the
-        # heuristic parser and validator/compiler must work with zero egress.
+        # deterministic nlq parser and validator/compiler must work with
+        # zero egress.
         sys.path.insert(0, REPO)
         try:
-            from omniquery.parsers.heuristic import HeuristicBackend
-            outcome = HeuristicBackend().parse(
+            from omniquery.parsers.nlq import NlqParser
+            outcome = NlqParser().parse(
                 "favorite videos from the last 7 days", now_epoch=time.time())
-            evidence["omniquery_heuristic"] = {
+            evidence["omniquery_nlq"] = {
                 "ast_produced": outcome.ast is not None,
                 "confidence": outcome.confidence,
             }
             ok = ok and outcome.ast is not None
         except Exception as exc:
-            evidence["omniquery_heuristic"] = {"error": str(exc)}
+            evidence["omniquery_nlq"] = {"error": str(exc)}
             ok = False
 
         print(json.dumps(evidence, indent=2))

@@ -169,6 +169,31 @@ _CORE_DDL = [
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS generation_params (
+        file_id TEXT PRIMARY KEY REFERENCES files(id)
+            ON DELETE CASCADE ON UPDATE CASCADE,
+        tool TEXT NOT NULL,
+        detection TEXT NOT NULL,
+        positive_prompt TEXT NOT NULL DEFAULT '',
+        negative_prompt TEXT NOT NULL DEFAULT '',
+        model TEXT,
+        model_hash TEXT,
+        sampler TEXT,
+        scheduler TEXT,
+        seed INTEGER,
+        steps INTEGER,
+        cfg REAL,
+        width INTEGER,
+        height INTEGER,
+        denoise REAL,
+        clip_skip INTEGER,
+        version TEXT,
+        loras TEXT,
+        extra TEXT,
+        parsed_at REAL NOT NULL
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
@@ -336,6 +361,33 @@ def _generate(seed: int) -> Dict[str, Any]:
                 "cluster_id": cluster_id,
             })
 
+    # Typed generation parameters for every workflow-bearing file. The
+    # FIRST row is pinned (seed/steps/cfg/model/lora) so corpus entries can
+    # target known values; the "girlnextdoor" LoRA also lands on every
+    # third gp row, giving bare-term text searches a real multi-file match.
+    genparams: List[Dict[str, Any]] = []
+    for f in files:
+        if not f["has_workflow"]:
+            continue
+        i = len(genparams)
+        genparams.append({
+            "file_id": f["id"], "tool": "comfyui", "detection": "workflow",
+            "positive_prompt": f["workflow_prompt"],
+            "negative_prompt": "blurry, lowres, watermark",
+            "model": ["flux1-dev-fp8", "sdxl_base_1.0", "dreamshaper_8"][i % 3],
+            "sampler": ["euler", "dpmpp_2m"][i % 2],
+            "scheduler": "normal",
+            "seed": rng.randint(1, 2**31), "steps": [20, 25, 30][i % 3],
+            "cfg": [4.0, 7.0, 7.5][i % 3],
+            "width": f["width"], "height": f["height"],
+            "loras": ('[{"name": "girlnextdoor", "weight": 0.8}]' if i % 3 == 0
+                      else '[{"name": "detail-tweaker", "weight": 0.6}]' if i % 3 == 1
+                      else "[]"),
+            "parsed_at": f["mtime"] + 3.0,
+        })
+    if genparams:
+        genparams[0].update(seed=424242, steps=30, cfg=7.5, model="flux1-dev-fp8")
+
     review_candidates = files[::4][:15]
     reviews: List[Dict[str, Any]] = []
     for f in review_candidates:
@@ -362,7 +414,7 @@ def _generate(seed: int) -> Dict[str, Any]:
         "files": files, "ratings": ratings, "comments": comments,
         "membership": membership, "hashes": hashes, "embeddings": embeddings,
         "face_clusters": face_clusters, "face_instances": face_instances,
-        "reviews": reviews, "findings": findings,
+        "reviews": reviews, "findings": findings, "genparams": genparams,
     }
 
 
@@ -399,6 +451,18 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
               f["dimensions"], f["has_workflow"], f["is_favorite"], f["size"],
               f["workflow_files"], f["workflow_prompt"], f["ai_caption"])
              for f in data["files"]],
+        )
+
+        conn.executemany(
+            "INSERT INTO generation_params (file_id, tool, detection, "
+            "positive_prompt, negative_prompt, model, sampler, scheduler, "
+            "seed, steps, cfg, width, height, loras, parsed_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(g["file_id"], g["tool"], g["detection"], g["positive_prompt"],
+              g["negative_prompt"], g["model"], g["sampler"], g["scheduler"],
+              g["seed"], g["steps"], g["cfg"], g["width"], g["height"],
+              g["loras"], g["parsed_at"])
+             for g in data["genparams"]],
         )
 
         collection_ids: Dict[Tuple[str, str], int] = {}

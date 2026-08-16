@@ -189,6 +189,25 @@ def _build_text(spec: fields.FieldSpec, op: str, value: Any,
     if spec.strategy == fields.Strategy.COLUMN:
         return _like_clause(spec.column, op, value)
 
+    if spec.strategy == fields.Strategy.ANY_TEXT:
+        # One term against every text surface: OR over the direct files
+        # columns plus a single EXISTS probing the generation_params text
+        # columns. NULL columns simply fail their LIKE; the OR survives.
+        parts: List[str] = []
+        binds: List[Any] = []
+        for column in fields.ANY_TEXT_COLUMNS:
+            csql, cparams = _like_clause(column, "contains", value)
+            parts.append(csql)
+            binds.extend(cparams)
+        gp_parts: List[str] = []
+        for column in fields.ANY_TEXT_GP_COLUMNS:
+            csql, cparams = _like_clause(column, "contains", value)
+            gp_parts.append(csql)
+            binds.extend(cparams)
+        parts.append("EXISTS (SELECT 1 FROM generation_params gp "
+                     "WHERE gp.file_id = f.id AND (" + " OR ".join(gp_parts) + "))")
+        return "(" + " OR ".join(parts) + ")", binds
+
     if spec.strategy == fields.Strategy.FOLDER:
         return _build_folder(op, value, params)
 

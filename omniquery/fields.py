@@ -45,6 +45,7 @@ class Strategy(str, Enum):
     EXISTS_NUMERIC = "exists_numeric"    # EXISTS ... inner numeric column match
     EXISTS_ENUM = "exists_enum"          # EXISTS ... inner enum/text column match
     FILE_REF = "file_ref"                # resolved externally to an id list
+    ANY_TEXT = "any_text"                # OR over every text-bearing surface
 
 
 _TEXT_FULL = frozenset({"eq", "ne", "contains", "prefix", "suffix"})
@@ -151,8 +152,22 @@ def _f(**kwargs) -> FieldSpec:
     return FieldSpec(**kwargs)
 
 
+# Text surfaces the universal `text` field fans out over: direct files
+# columns, plus generation_params columns probed through one EXISTS.
+# Deliberately excludes gen_negative_prompt: a term someone searches FOR
+# must not match files that were generated explicitly WITHOUT it.
+ANY_TEXT_COLUMNS: tuple = ("f.name", "f.path", "f.workflow_prompt", "f.ai_caption")
+ANY_TEXT_GP_COLUMNS: tuple = ("gp.positive_prompt", "gp.model", "gp.loras")
+
 # Registry source of truth: one spec per queryable field.
 _SPECS: List[FieldSpec] = [
+    # Universal free-text search: one term matched (contains) against every
+    # text surface at once -- filename, path, workflow prompt, AI caption,
+    # generation prompt, model name, LoRA names. This is the field bare
+    # search-box terms compile to; a query like "girlnextdoor" must always
+    # find the files whose prompt/LoRA carries it.
+    _f(name="text", kind=Kind.TEXT, ops=_TEXT_CONTAINS, strategy=Strategy.ANY_TEXT,
+       correlated=True),
     _f(name="name", kind=Kind.TEXT, ops=_TEXT_FULL, strategy=Strategy.COLUMN,
        column="f.name", orderable=True, order_expr="f.name"),
     _f(name="path", kind=Kind.TEXT, ops=_TEXT_FULL, strategy=Strategy.COLUMN,
@@ -245,6 +260,9 @@ _SPECS: List[FieldSpec] = [
     _f(name="gen_scheduler", kind=Kind.TEXT, ops=frozenset({"eq", "contains"}),
        strategy=Strategy.EXISTS_TEXT, table="generation_params", alias="gp",
        inner_column="gp.scheduler", correlated=True),
+    _f(name="gen_lora", kind=Kind.TEXT, ops=_TEXT_CONTAINS,
+       strategy=Strategy.EXISTS_TEXT, table="generation_params", alias="gp",
+       inner_column="gp.loras", correlated=True),
     _f(name="gen_positive_prompt", kind=Kind.TEXT, ops=_TEXT_CONTAINS,
        strategy=Strategy.EXISTS_TEXT, table="generation_params", alias="gp",
        inner_column="gp.positive_prompt", correlated=True),
