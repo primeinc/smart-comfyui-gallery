@@ -38,7 +38,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Optional
 
-from smartgallery_ai import RUBRIC_VERSION, AIConfig, review as review_mod
+from smartgallery_ai import RUBRIC_VERSION, AIConfig, review as review_mod, schema
 from smartgallery_ai.worker import load_source_image, record_scan, stage_input_key
 
 __all__ = ["STEPS", "RunnerBusy", "RunContext", "run_review", "parse_steps"]
@@ -276,6 +276,13 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
 
     opener = connect or (lambda: sqlite3.connect(config.db_path, timeout=30))
     conn = opener()
+    # The worker migrates on every cycle; this runner reaches a database
+    # through its own connection and may be the FIRST thing to touch it
+    # after an upgrade. Without this, storing dies on a table the running
+    # process has never created -- observed live as
+    # "no such table: ai_review_alignment" after a ~90s review had already
+    # been computed and was then thrown away.
+    schema.init_schema(conn)
     try:
         if critic is None:
             critic = review_mod.get_critic_backend(config)
