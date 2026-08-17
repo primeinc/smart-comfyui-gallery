@@ -940,8 +940,68 @@ def management_api_only(f):
 # also downloadable under /static/.
 app = Flask(__name__, static_folder='templates', static_url_path='/static')
 app.secret_key = SECRET_KEY
+
+# Flask leaves SameSite unset by default ("Default: None", docs/config.rst,
+# where 'Lax' is the recommended value), which hands the decision to the
+# browser: Chrome treats an unset cookie as Lax, Firefox does not. Whether
+# a signed-in visitor's cookie rides along with somebody else's form post
+# should not depend on which browser they opened. Lax rather than Strict
+# so that following a link into the gallery still arrives signed in.
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# Already Flask's default; stated so that it stays true.
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
 folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
+
+
+@app.before_request
+def refuse_writes_started_by_another_site():
+    """A page you are visiting must not be able to act on your gallery.
+
+    Six routes that change something need no request body at all, so a
+    plain form on any web page reaches them -- a form cannot set a JSON
+    content type, which is what happens to protect the other thirty-four.
+    Two of the six delete things, and neither needs anything guessed:
+    delete_folder takes a folder key that is only
+    base64(relative path), so a folder called `videos` is `dmlkZW9z`.
+
+    In the default local mode there is no login, so there is no cookie to
+    withhold and nothing else stands in the way. The browser will not let
+    the other page read the answer, but it does send the request, and the
+    folder is gone either way.
+
+    Browsers say where a request came from. Per the Fetch Metadata spec, a
+    form submission arrives with Sec-Fetch-Site set to same-origin,
+    same-site or cross-site "as appropriate", and something the person did
+    themselves -- an address bar, a bookmark -- arrives as `none`, which
+    servers may "treat as trusted". Anything not a browser sends no such
+    header, so scripts and curl are unaffected.
+
+    Only `cross-site` is refused. `same-site` would mean another subdomain
+    of the gallery's own domain, which a reverse proxy can legitimately
+    produce, and this compares nothing itself: the browser worked out the
+    relationship, so putting a proxy in front changes nothing here.
+
+    What this does not cover, stated rather than implied: the spec asserts
+    the request URL is "a potentially trustworthy URL" before setting
+    these headers, so a gallery reached over plain http at a LAN address
+    -- which the startup banner offers -- gets no Sec-Fetch-Site at all.
+    localhost is potentially trustworthy and is covered. Comparing Origin
+    against Host would reach the LAN case, and would also refuse the
+    proxied setups where those legitimately differ, so it is not done
+    here.
+    """
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return None
+    if request.headers.get('Sec-Fetch-Site') != 'cross-site':
+        return None
+    return jsonify({
+        'status': 'error',
+        'message': ('This request came from another website, so the gallery '
+                    'refused it. If you meant to do this, do it from the '
+                    'gallery itself.')
+    }), 403
 
 
 @app.before_request
