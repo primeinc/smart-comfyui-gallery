@@ -11354,10 +11354,30 @@ def check_for_updates():
         
 # --- STARTUP CHECKS AND MAIN ENTRY POINT ---
 def show_config_error_and_exit(path):
-    """Shows a critical error message and exits the program."""
+    """Shows a critical error message and exits the program.
+
+    The message says which of the two mistakes it is, because "does not
+    exist" is untrue for the second one and sends people looking for a
+    folder that is sitting right where they put it.
+    """
+    if os.path.exists(path):
+        # Reached because the check asks isdir, not exists. A file passes
+        # exists and then nothing works: the scan walks it, finds nothing,
+        # and the gallery comes up empty with everything looking normal.
+        # "Copy as path" on a file rather than its folder is one keystroke
+        # away, and the FFPROBE setting directly below this one in the
+        # launcher IS a file, which makes it an easy line to copy.
+        what = (f"❌ CRITICAL ERROR: BASE_OUTPUT_PATH is a file, not a folder:"
+                f"\n\n👉 {path}\n\n"
+                f"The gallery shows the contents of a folder, so this needs "
+                f"to be the folder your images are in -- most likely the one "
+                f"containing the file above.\n\n")
+    else:
+        what = (f"❌ CRITICAL ERROR: The specified path does not exist or is "
+                f"not accessible:\n\n👉 {path}\n\n")
+
     msg = (
-        f"❌ CRITICAL ERROR: The specified path does not exist or is not accessible:\n\n"
-        f"👉 {path}\n\n"
+        f"{what}"
         f"INSTRUCTIONS:\n"
         f"1. If you are launching via a script (e.g., .bat file), please edit it and set the correct 'BASE_OUTPUT_PATH' variable.\n"
         f"2. Or edit 'smartgallery.py' (USER CONFIGURATION section) and ensure the path points to an existing folder.\n\n"
@@ -14069,11 +14089,12 @@ if __name__ == '__main__':
     warn_about_misspelt_env_vars()
 
     # --- CHECK: CRITICAL OUTPUT PATH CHECK (Blocking) ---
-    if not os.path.exists(BASE_OUTPUT_PATH):
+    # isdir, not exists: a file passes exists and then nothing works.
+    if not os.path.isdir(BASE_OUTPUT_PATH):
         show_config_error_and_exit(BASE_OUTPUT_PATH)
 
     # --- CHECK: INPUT PATH CHECK (Non-Blocking / Warning) ---
-    if not os.path.exists(BASE_INPUT_PATH):
+    if not os.path.isdir(BASE_INPUT_PATH):
         print(f"{Colors.YELLOW}{Colors.BOLD}WARNING: Input Path not found!{Colors.RESET}")
         print(f"{Colors.YELLOW}   The path '{BASE_INPUT_PATH}' does not exist.{Colors.RESET}")
         print(f"{Colors.YELLOW}   > Source media visualization in Node Summary will be DISABLED.{Colors.RESET}")
