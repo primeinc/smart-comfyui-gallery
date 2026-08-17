@@ -36,7 +36,16 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest",
-    "ruff>=0.16.3",
+    # Banded, matching [tool.ruff].required-version: ruff refuses to run
+    # when the installed version falls outside that specifier, so an
+    # unbounded floor here would resolve a build the config then rejects.
+    "ruff>=0.16.3,<0.17",
+    # [tool.pyright] has been configured in this file since before the
+    # linter work and was never installed, so nothing has ever run it. It
+    # is the half ruff cannot do: ruff does no cross-module type
+    # inference, which is why it stays silent on the possibly-unbound
+    # names and argument-type mismatches pyright reports.
+    "pyright",
 ]
 # OmniQuery local natural-language parsing + weight provisioning.
 ai = [
@@ -112,41 +121,284 @@ url = "https://download.pytorch.org/whl/cu132"
 explicit = true
 
 [tool.ruff]
-# extend-exclude, not exclude: exclude REPLACES ruff's default ignore list
-# (.git, .venv, build, dist, node_modules, ...), extend-exclude "adds
-# additional files and directories on top of those already excluded"
-# (ruff configuration.md). vendor/ is the prebuilt faiss GPU build --
-# third-party sources whose diagnostics are not ours to fix.
-extend-exclude = ["vendor"]
-target-version = "py310"  # matches project.requires-python
+# No `target-version`. Upstream: "If you're already using a
+# `pyproject.toml` file, we recommend `project.requires-python` instead, as
+# it's based on Python packaging standards, and will be respected by other
+# tools" (ruff_workspace/src/options.rs:362-364). With a [tool.ruff] table
+# present, an omitted target-version is inferred from requires-python
+# (configuration.md:307-313). One source of truth, at pyproject.toml's
+# `requires-python`, which pyright and uv also read.
+#
+# Caveat: inference is skipped when a config file is passed explicitly --
+# "If a configuration file is passed directly, Ruff does not attempt to
+# infer a missing `target-version`" (configuration.md:310) -- and the
+# compiled default applies instead. That default is py310, identical to
+# this project's floor, so the two coincide today and diverge the moment
+# requires-python moves off 3.10.
+
+# extend-exclude, not exclude: exclude REPLACES ruff's default ignore list,
+# extend-exclude "adds additional files and directories on top of those
+# already excluded" (configuration.md:684-686). That default list is
+# `.bzr .direnv .eggs .git .git-rewrite .hg .ipynb_checkpoints .mypy_cache
+# .nox .pants.d .pyenv .pytest_cache .pytype .ruff_cache .svn .tox .venv
+# .vscode __pypackages__ _build buck-out dist node_modules site-packages
+# venv` (workspace/src/settings.rs:118-144). Note `_build` and `dist` but
+# NOT `build` -- upstream's own configuration.md:39-43 prints `build`, and
+# the code disagrees with the doc. A `build/` directory here is skipped
+# only by .gitignore, via respect-gitignore below.
+#
+# vendor/ is the prebuilt faiss GPU build -- third-party sources whose
+# diagnostics are not ours to fix. The trailing slash is load-bearing: a
+# slashless pattern is a single-path pattern matching "any directory named
+# `vendor` in the tree" (options.rs:198-211), which would silently unlint a
+# future first-party directory of that name at any depth.
+#
+# "*.md" is the formatter's business, not the linter's. Ruff's default
+# `include` carries "*.md" (settings.rs:146-154) and `ruff format` rewrites
+# Python inside fenced blocks by default (formatter.md:228-248). Without
+# this entry the formatter owns 22 Markdown documents -- docs/ and the
+# README among them -- and would reflow code samples inside the project's
+# own written record. formatter.md:312-328 names this exact opt-out.
+extend-exclude = ["vendor/", "*.md"]
+
+# extend-exclude only governs the directory walk: "Files that are passed to
+# `ruff` directly are always analyzed, regardless of the above criteria,
+# unless `force-exclude` is also enabled" (configuration.md:344-346).
+# Without this, `ruff check vendor` reports 1742 diagnostics in prebuilt
+# faiss -- including fixable RUF100s that would strip suppression comments
+# out of third-party source -- and any editor "check this file", any
+# pre-commit hook and any `ruff check <path>` in a script takes that path.
+force-exclude = true
+
+# Pinned to a band, not a floor. The risk is a NEWER ruff: preview
+# promotions move rules into the already-selected prefixes and change
+# formatter defaults. A bare `>=` admits every future release and so
+# defends against nothing -- validate_required_version only errors when the
+# running version falls OUTSIDE the specifier (options.rs:609-619), and an
+# open floor excludes only the older builds that cannot add rules.
+required-version = ">=0.16.3,<0.17"
+
+# Pinned because lint coverage currently depends on it: `build/` is absent
+# from ruff's built-in exclude list and is skipped here solely because
+# .gitignore names it. Inheriting that silently would make the walked set a
+# property of a file ruff does not own.
+respect-gitignore = true
+
+# Measured on the 204 files ruff actually walks. Ruff's default 88 is
+# Black's, and reports 1909 long lines here; this code's own p99 is 103 and
+# p99.9 is 164. At 120 exactly 281 lines remain, which are genuinely too
+# long to read.
+#
+# This is not only an E501 knob: line-length is also where "isort and the
+# formatter prefer to wrap lines", so it sets the shape of the whole tree
+# and not just the 281-line tail. That is intended -- one width for both
+# halves of the tool. Splitting them is possible via
+# `lint.pycodestyle.max-line-length` and is deliberately not done.
+line-length = 120
+
+# Pinned on the same grounds as the [tool.ruff.format] siblings below: an
+# upstream default change should not be able to rewrite the tree. (It is
+# NOT pinned for the E111/E114 formatter-conflict gate at
+# commands/format.rs:1159-1167 -- that gate needs those rules enabled, and
+# `preview = false` below means they never are.)
+indent-width = 4
+
+# Pinned so rule reachability is a property of this file rather than of the
+# installed build: several pycodestyle rules are preview-gated, and a
+# promotion would otherwise enable them here without any config change.
+preview = false
 
 [tool.ruff.lint]
-# Ruff's own default set, stated explicitly: upstream recommends "prefer
-# lint.select over lint.extend-select to make your rule set explicit" and
-# "use ALL with discretion" (ruff linter.md). E4 imports, E7 statements,
-# E9 syntax/IO errors, F pyflakes (unused imports and names, undefined
-# names, f-string and comparison mistakes).
+# ON: families that report a defect, or a simplification a reviewer could
+# apply without calling a project-wide style vote.
+# OFF: families that need such a vote -- how to quote, how much to
+# document, how much to annotate -- or that police a construct this
+# application uses on purpose.
+# Upstream asks for an explicit `select` over `extend-select`, and for
+# `ALL` to be used with discretion because it enables new rules silently on
+# upgrade (linter.md:60-66).
 #
-# Style and modernisation families (UP, B, SIM, I) are deliberately NOT
-# on: they would rewrite thousands of lines nobody is reviewing today and
-# bury the correctness findings this is here to surface.
-select = ["E4", "E7", "E9", "F"]
+# Every prefix ruff ships is accounted for below. Out, with the reason:
+#   Q     quote style          -- `ruff format` owns it; 5761 findings of
+#                                 ' vs " assert nothing about behaviour
+#                                 (Q000 5739, Q001 21, Q002 1)
+#   D/DOC docstring style      -- documentation policy
+#   ANN   annotation coverage  -- typing policy; pyright judges the types
+#                                 themselves, which is the part that bites
+#   COM   trailing commas      -- formatter's job, and COM812 is one of the
+#                                 only two unconditional formatter
+#                                 conflicts in ruff (formatter.md:438,
+#                                 commands/format.rs:1087-1103)
+#   T20   print()              -- this is a console application; print is
+#                                 the user interface, not a leftover
+#   ERA   commented-out code   -- cannot tell a note from a corpse
+#   EM    exception messages   -- phrasing
+#   CPY   copyright headers    -- policy: a per-file header is not wanted.
+#                                 The project banner lives once, at
+#                                 smartgallery.py:2; CPY001 would ask for
+#                                 one in all 203 walked files.
+#   PTH   pathlib migration    -- os.path is not wrong, just older
+#   ARG/SLF/N   unused args, private access, naming -- design opinions
+#   INP   missing __init__.py  -- tests/, benchmarks/ and probes/ hold no
+#                                 __init__.py on purpose: pytest collects
+#                                 them via rootdir, and making them
+#                                 packages would change import resolution
+#                                 for 160 files to satisfy a linter.
+#   C90   cyclomatic complexity -- a threshold is a vote (88 would fire)
+#   FBT   boolean trap         -- an API-design vote (92 would fire:
+#                                 FBT003 40, FBT002 35, FBT001 17)
+#   TC    typing-only imports  -- import-time policy, not a defect
+#   TD/FIX  todo formatting    -- comment style
+#   PYI   stub-file rules      -- the only .pyi in the tree is vendored and
+#                                 excluded; the non-stub members of the
+#                                 family find nothing here
+#   AIR/FAST/DJ/PD             -- airflow, fastapi, django and pandas are
+#                                 absent from the dependency list
+#   FA    future annotations   -- every FA rule is gated below py39/py310
+#                                 (checkers/ast/analyze/expression.rs:38,
+#                                 :76, :318, :440, :1575). At this
+#                                 project's 3.10 floor the selector cannot
+#                                 fire; one that asserts nothing is worse
+#                                 than an absent one.
+#
+# Five selected rules are inert for the opposite reason -- they need a
+# companion setting this file deliberately does not supply, so they are
+# recorded here rather than left to look enforced: W505 (needs
+# lint.pycodestyle.max-doc-length), TID251 and TID253 (need
+# flake8-tidy-imports banned-api / banned-module-level-imports), ICN002 and
+# ICN003 (need flake8-import-conventions banned-aliases / banned-from).
+# Their families are selected for their live members -- W291/W293, TID252,
+# ICN001 -- and each of those does fire.
+#
+# On formatter conflicts: no warning path is reachable under these
+# settings, which is what was measured, and is a narrower claim than "no
+# conflict". Ruff's only UNCONDITIONAL conflicts are COM812 and D203
+# (format.rs:1087-1103), neither selected. W191 warns solely when
+# indent-style is tab (it is "space"); E111/E114 solely when indent-width
+# != 4 (it is 4) AND those rules are enabled (they are preview-gated, so
+# they are not); ISC002 solely when ISC001 is disabled AND allow-multiline
+# is false (ISC001 is selected, allow-multiline defaults true); E117
+# appears in no warning path at all.
+#
+# This is a deliberate departure from formatter.md:447-449, which
+# recommends disabling those rules "or their parent categories" -- `W` and
+# `E` are selected here regardless, because the recommendation is written
+# for the tab-indent and non-4-width configurations that make the conflict
+# real, and neither applies. Verified against a positive control:
+# `ruff format --check` is silent as configured, and emits the conflict
+# warning the moment COM812 is force-selected.
+select = [
+    "F", "E", "W",          # pyflakes, pycodestyle
+    "I",                    # import order
+    "UP",                   # constructs outdated at the requires-python floor
+    "B",                    # bugbear: real bug patterns
+    "S",                    # bandit: this app builds SQL, spawns
+                            # subprocesses and opens URLs
+    "A",                    # shadowed builtins
+    "C4",                   # comprehension misuse
+    "DTZ",                  # naive datetimes -- timestamps are stored
+    "T10",                  # a debugger left in the source
+    "EXE", "FLY", "ICN", "INT", "ISC", "LOG", "G",
+    "PIE", "PT", "RSE", "RET", "SLOT", "SIM", "TID", "YTT",
+    "PERF", "FURB", "ASYNC",
+    "NPY",                  # numpy is a core dependency and the installed
+                            # numpy is 2.x; NPY201 is the numpy-2.0 removal
+                            # check and NPY001 catches aliases deleted in
+                            # 1.24 -- AttributeError at runtime, not style
+    "PGH",                  # PGH004 blanket-suppression is the companion
+                            # to RUF100 below: an unqualified suppression
+                            # comment silently defeats every rule in this
+                            # list on the line it sits on
+    "TRY",                  # tryceratops. TRY003 is phrasing and is
+                            # ignored below; TRY004 and TRY400 are not --
+                            # TRY400 catches logging.error where
+                            # logging.exception was meant, which throws
+                            # the traceback away
+    "PLC", "PLE", "PLW",    # pylint's convention/error/warning
+    # PLR's thresholds and magic numbers are a vote (PLR0911, PLR0912,
+    # PLR0913, PLR0915, PLR0917, PLR2004 -- all off). Every other stable
+    # member is listed here, so the carve-out is exhaustive rather than
+    # illustrative.
+    "PLR0124",              # comparison-with-itself
+    "PLR0133",              # comparison-of-constant
+    "PLR0206",              # property-with-parameters: uninvokable
+    "PLR0402",              # manual-from-import
+    # PLR1701 (repeated-isinstance-calls) is not listed: ruff warns that it
+    # "has been remapped to SIM101", which the SIM prefix above already
+    # selects. Naming it would add a startup warning and nothing else.
+    "PLR1704",              # redefined-argument-from-local
+    # PLR1706 (and-or-ternary) belongs in this list by kind and cannot be
+    # selected: ruff rejects the config outright with "Rule `PLR1706` was
+    # removed". Its `ruff rule` metadata still reports removed=None, so the
+    # selector is the only honest test.
+    "PLR1708",              # stop-iteration-return: PEP 479 RuntimeError
+    "PLR1711",              # useless-return
+    "PLR1714",              # repeated-equality-comparison
+    "PLR1716",              # boolean-chained-comparison
+    "PLR1722",              # sys-exit-alias
+    "PLR1730",              # if-stmt-min-max
+    "PLR1733",              # unnecessary-dict-index-lookup
+    "PLR1736",              # unnecessary-list-index-lookup
+    "PLR2044",              # empty-comment
+    "PLR5501",              # collapsible-else-if
+    "BLE",                  # a bare `except Exception` still hides faults
+    "RUF",
+]
+
+ignore = [
+    # The one member of TRY that is about wording rather than behaviour.
+    "TRY003",  # raise-vanilla-args: long messages inside a raise
+]
 
 [tool.ruff.lint.per-file-ignores]
-# smartgallery.py is the pre-existing monolith and carries 560 findings of
-# these five kinds. They are baselined, not forgiven: everything else in
-# the repo is clean, so `ruff check` is a working gate for new code today,
-# and this list shrinks as the monolith is broken up. Nothing else may be
-# added here -- fix the finding instead.
+# The one scoping rule in this file, and it is not a suppression: S101
+# exists because `assert` is stripped under `python -O`, so it must not
+# carry a security check. Inside pytest, `assert` IS the assertion API --
+# the rule's premise does not hold there. Nothing else belongs in this
+# table; fix the finding instead.
+"tests/**" = ["S101"]
+
+[tool.ruff.format]
+# The half that was missing. `ruff format` is the other entrypoint of the
+# same tool and it owns whitespace, quoting and compound statements. The
+# tree has never been formatted, and Q000 alone stands at 5739.
 #
-#   E701 multiple statements on one line (colon)      415
-#   E402 module import not at top of file              47
-#   E722 bare except                                   37
-#   F541 f-string without placeholders                 35
-#   F841 unused local variable                         14
-#   E741 ambiguous variable name / E702 / E401         12
-"smartgallery.py" = ["E701", "E702", "E401", "E402", "E722", "E741",
-                     "F541", "F811", "F841"]
+# The formatter and the linter walk the same set now. They did not before:
+# ruff's default `include` carries "*.md", so `ruff format` saw 225 files
+# where `ruff check --show-files` saw 204 -- the 21-file gap was Markdown,
+# now excluded at [tool.ruff].extend-exclude above.
+#
+# line-ending is the load-bearing key. Ruff's default is "auto": "The
+# newline style is detected automatically on a file per file basis. Files
+# with mixed line endings will be converted to the first detected line
+# ending" (options.rs:4004). On Windows one tool that writes CRLF converts
+# a file permanently and silently, and this repository has been corrupted
+# that way before. Every file ruff walks is LF today -- the single CRLF
+# file in the tree is vendor/faiss-gpu-win64/faiss/swigfaiss.py, which is
+# excluded -- and "lf" makes that an invariant the formatter enforces
+# rather than a property someone has to remember.
+line-ending = "lf"
+
+# Pinned rather than inherited, so an upstream default change cannot
+# quietly rewrite the tree. These are ruff 0.16.3's current defaults.
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+# `nested-string-quote-style` is deliberately NOT pinned here: it "has no
+# effect when targeting Python versions below 3.12" (options.rs:3963) and
+# this project resolves to 3.10, so pinning it would be the same dead
+# assertion the FA selector was dropped for.
+
+# The one formatter default upstream has announced it intends to change:
+# "This is currently disabled by default, but it is planned for this to be
+# opt-out in the future" (configuration.md:79-84). Left unpinned, the flip
+# would start reformatting Python inside every docstring in the tree --
+# precisely the outcome the pinning above exists to prevent.
+# `docstring-code-line-length` is not pinned alongside it: it "only has an
+# effect when the `docstring-code-format` setting is enabled"
+# (options.rs:4104), which the line above turns off.
+docstring-code-format = false
 
 # Resolve imports against ./.venv. Without this pyright falls back to the
 # default shell interpreter (import-resolution.md:41) and reports every

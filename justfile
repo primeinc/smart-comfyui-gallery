@@ -10,6 +10,21 @@ python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { '.
 test:
     {{ python }} -m pytest tests/ -q
 
+# Ruff lint over the whole tree
+lint:
+    {{ python }} -m ruff check .
+
+# Ruff format in report-only mode; never rewrites
+fmt-check:
+    {{ python }} -m ruff format --check .
+
+# Pyright type check
+types:
+    {{ python }} -m pyright
+
+# Everything: lint, format, types, tests
+check: lint fmt-check types test
+
 # The structural checks, on their own and in a few seconds. Each fails when
 # a class of bug comes back rather than when one instance of it is noticed:
 # a route added without deciding who may call it, a prompt reaching a
