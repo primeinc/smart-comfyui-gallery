@@ -7,6 +7,7 @@
 # Contact: biagiomaf@gmail.com
 # GitHub: https://github.com/biagiomaf/smart-comfyui-gallery
 
+import errno
 import os
 import sys
 
@@ -6860,9 +6861,19 @@ def upload_files():
                 # same, so the two ways a file can arrive in a folder agree.
                 file.save(_get_unique_filepath(destination_path, filename))
                 success_count += 1
-            except Exception as e: errors[filename] = str(e)
+            except Exception as e:
+                print(f"ERROR: Upload of {filename} failed: {e}")
+                errors[filename] = e
     if success_count > 0: sync_folder_on_demand(destination_path)
-    if errors: return jsonify({'status': 'partial_success', 'message': f'Successfully uploaded {success_count} files. The following files failed: {", ".join(errors.keys())}'}), 207
+    if errors:
+        # It named which files failed and never said why: the reason was
+        # collected here and then dropped.
+        said = f'Successfully uploaded {success_count} files. The following files failed: {", ".join(errors.keys())}'
+        why = next((explain_a_refused_write(e, destination_path)
+                    for e in errors.values()
+                    if explain_a_refused_write(e, destination_path)), None)
+        return jsonify({'status': 'partial_success',
+                        'message': f'{said} {why}' if why else said}), 207
     return jsonify({'status': 'success', 'message': f'Successfully uploaded {success_count} files.'})
 
 # Global dictionary to track active background jobs
@@ -7033,7 +7044,9 @@ def create_folder():
         sync_folder_on_demand(parent_path)
         return jsonify({'status': 'success', 'message': f'Folder "{folder_name}" created successfully.'})
     except FileExistsError: return jsonify({'status': 'error', 'message': 'Folder already exists.'}), 400
-    except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
+    except Exception as e:
+        said = explain_a_refused_write(e, new_folder_path)
+        return jsonify({'status': 'error', 'message': said or str(e)}), 500
 
 @app.route('/galleryout/mount_folder', methods=['POST'])
 @management_api_only
@@ -7627,7 +7640,8 @@ def rename_folder(folder_key):
         
     except Exception as e: 
         print(f"Rename Error: {e}")
-        return jsonify({'status': 'error', 'message': f'Error: {e}'}), 500
+        said = explain_a_refused_write(e)
+        return jsonify({'status': 'error', 'message': said or f'Error: {e}'}), 500
         
 @app.route('/galleryout/delete_folder/<string:folder_key>', methods=['POST'])
 @management_api_only
@@ -7676,7 +7690,8 @@ def delete_folder(folder_key):
         return jsonify({'status': 'success', 'message': 'Folder deleted/unlinked.'})
     except Exception as e: 
         print(f"Delete Folder Error: {e}")
-        return jsonify({'status': 'error', 'message': f'Error: {e}'}), 500
+        said = explain_a_refused_write(e)
+        return jsonify({'status': 'error', 'message': said or f'Error: {e}'}), 500
     
 
 @app.route('/galleryout/api/current_view_ids')
@@ -7709,6 +7724,38 @@ def get_file_info_from_db(file_id, column='*'):
     # is a real one, the picture behind it is not.
     if not row: abort(404, description="That file is not in the gallery.")
     return dict(row) if column == '*' else row[0]
+
+
+def explain_a_refused_write(error, path=None):
+    """Say what a failed write means, or hand back None to say nothing.
+
+    Being unable to write to the pictures folder is one of the ordinary
+    ways this program is set up wrong, not a rare accident: the folder
+    mounted read-only, which people do on purpose; a container running as
+    a different user than the one that owns the files, which is why the
+    supplied compose file carries WANTED_UID and FORCE_CHOWN at all; a
+    share that has gone away; a file another program still has open.
+
+    All of it arrived as `Error: [Errno 13] Permission denied:
+    'C:/.../output\\picture.png'`, which says nothing to somebody who has
+    not met errno before, and the same for every one of the six actions
+    that touch the folder.
+
+    Only permission and read-only failures are put into words. Anything
+    else is left exactly as it was rather than dressed up as something it
+    might not be.
+    """
+    if not isinstance(error, OSError):
+        return None
+    if error.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
+        return None
+    where = path or getattr(error, 'filename', None)
+    folder = os.path.dirname(str(where)) if where else None
+    return (
+        ("The gallery is not allowed to change %s."
+         % (('anything in ' + folder) if folder else 'that file'))
+        + " The folder may be mounted read-only, or owned by a different"
+          " user than the one the gallery runs as. Nothing was changed.")
 
 
 def answer_an_abort_readably(stop):
@@ -8166,7 +8213,9 @@ def delete_file(file_id):
         except OSError as e:
             # A real OS error occurred (e.g., permissions).
             print(f"ERROR: Could not delete file {filepath} from disk: {e}")
-            return jsonify({'status': 'error', 'message': f'Could not delete file from disk: {e}'}), 500
+            said = explain_a_refused_write(e, filepath)
+            return jsonify({'status': 'error',
+                            'message': said or f'Could not delete file from disk: {e}'}), 500
 
         # Whether the file was deleted now or was already gone, we clean up the DB.
         conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
@@ -8297,7 +8346,8 @@ def rename_file(file_id):
 
     except Exception as e:
         print(f"ERROR: Rename failed: {e}")
-        return jsonify({'status': 'error', 'message': f'Error: {e}'}), 500
+        said = explain_a_refused_write(e)
+        return jsonify({'status': 'error', 'message': said or f'Error: {e}'}), 500
 
 @app.route('/galleryout/file_clean/<string:file_id>')
 def serve_cleaned_file(file_id):

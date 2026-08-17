@@ -33,7 +33,8 @@ test:
 # rather than what it is, a search that reduces the two sides of its own
 # comparison by two different rules, a day measured on a different clock
 # from the one that labelled it, a route that catches its own refusal and
-# reports it as a fault, a misspelt
+# reports it as a fault, a setup mistake reported in error numbers, a
+# misspelt
 # setting name, a
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
@@ -85,6 +86,7 @@ audit:
         tests/test_a_model_is_found_by_its_own_name.py \
         tests/test_a_day_means_the_viewers_day.py \
         tests/test_a_missing_picture_is_said_to_be_missing.py \
+        tests/test_a_folder_it_cannot_write_to.py \
         tests/test_ffprobe_reporting.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
