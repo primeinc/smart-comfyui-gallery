@@ -4777,26 +4777,24 @@ def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
         
         target_norm = safe_path_norm(folder_path)
 
+        # FILTERING LOGIC (Same as Gallery View), and normalising the same
+        # way it does: only what the branch taken actually reads. In global
+        # scope no path is looked at at all, and outside the strict-local
+        # branch the directory never is -- both were computed for every
+        # row regardless.
+        recursive_prefix = target_norm + '/'
         for row in cursor:
-            f_path_raw = row['path']
             f_name = row['name']
-            
-            # NORMALIZATION STEP
-            f_path_norm = safe_path_norm(f_path_raw)
-            f_dir_norm = safe_path_norm(os.path.dirname(f_path_norm))
 
-            # FILTERING LOGIC (Same as Gallery View)
-            show_file = False
             if scope == 'global':
                 show_file = True
             elif recursive:
                 # Check if it's inside the target folder tree
-                if f_path_norm.startswith(target_norm + '/'):
-                    show_file = True
+                show_file = safe_path_norm(row['path']).startswith(recursive_prefix)
             else:
                 # Strict local: must be in this exact folder
-                if f_dir_norm == target_norm:
-                    show_file = True
+                f_path_norm = safe_path_norm(row['path'])
+                show_file = safe_path_norm(os.path.dirname(f_path_norm)) == target_norm
 
             if show_file:
                 # 1. Extensions
@@ -6557,20 +6555,25 @@ def gallery_view(folder_key):
 
             target_norm = safe_path_norm(folder_path)
             
+            # Both norms used to be computed for every row before anything
+            # looked at them, and only one branch of three uses the second.
+            # Same decisions, same results; the work each branch does not
+            # need is simply not done. At 100,000 files this loop and its
+            # twin in get_filter_options_from_db called safe_path_norm
+            # 200,001 times per page load.
+            recursive_prefix = target_norm + '/'
             for row in rows:
                 f_data = dict(row)
                 if 'ai_embedding' in f_data: del f_data['ai_embedding']
-                
-                f_path_norm = safe_path_norm(f_data['path'])
-                f_dir_norm = safe_path_norm(os.path.dirname(f_path_norm))
-                
+
                 if is_global_search:
                     final_files.append(f_data)
                 elif is_recursive:
-                    if f_path_norm.startswith(target_norm + '/'):
+                    if safe_path_norm(f_data['path']).startswith(recursive_prefix):
                         final_files.append(f_data)
                 else:
-                    if f_dir_norm == target_norm:
+                    f_path_norm = safe_path_norm(f_data['path'])
+                    if safe_path_norm(os.path.dirname(f_path_norm)) == target_norm:
                         final_files.append(f_data)
             
             view_files = final_files
