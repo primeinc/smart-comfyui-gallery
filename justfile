@@ -23,8 +23,9 @@ test:
 # what it collides with, a cache tidied only as a side effect of using it
 # again, an instruction from the launcher overwritten by the thing it was
 # protecting, a script the download itself rewrites so it cannot run, a
-# transfer that stops early and is kept anyway, a misspelt setting name, a
-# documented way of running the suite that does not work, a password
+# transfer that stops early and is kept anyway, a cache with no way for its
+# size to come down, a misspelt setting name, a documented way of running
+# the suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
 # imports, someone's own launch script shipped in the repository, a
@@ -60,6 +61,7 @@ audit:
         tests/test_shutdown_signals_respect_the_launcher.py \
         tests/test_line_endings_survive_the_clone.py \
         tests/test_download_stops_early.py \
+        tests/test_thumbnail_cache_is_reclaimed.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
         tests/test_env_var_typos.py \

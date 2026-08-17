@@ -2153,6 +2153,78 @@ def ensure_thumbnail_cache_dir():
     return True
 
 
+_THUMBNAIL_KEY = re.compile(r'^[0-9a-f]{32}')
+
+
+def prune_thumbnail_cache(conn):
+    """Drop cache entries belonging to files the library no longer has.
+
+    A thumbnail is named for md5(path + str(mtime)), so it is tied to one
+    version of one file. Nothing ever removed one. Deleting a picture left
+    its thumbnail behind, and -- the part that adds up -- so did anything
+    that changed a file's mtime, since that is a different name and the
+    old one is simply never asked for again. An edit, a sync tool, a
+    metadata strip: each one leaves a thumbnail nothing will collect.
+
+    Measured on six pictures, browsed so every thumbnail existed, then
+    three deleted and one touched:
+
+        after browsing 6 pics: 6 cache entries
+        after deleting 3     : 6 cache entries   files in library: 3
+        after touching 1     : 7 cache entries   files in library: 3
+
+    Every name in the cache -- `<key>.jpeg`, `<key>_wave.png`,
+    `<key>_wave_1.5.png`, and the `<key>/` directory of storyboard frames
+    -- begins with that key, so one rule covers them all.
+
+    An empty library means nothing is removed. A database with no rows is
+    indistinguishable from one that has not been read yet, and the cost of
+    guessing wrong is every thumbnail in the gallery.
+
+    Returns (files removed, directories removed).
+    """
+    if not os.path.isdir(THUMBNAIL_CACHE_DIR):
+        return 0, 0
+
+    try:
+        rows = conn.execute("SELECT path, mtime FROM files").fetchall()
+    except sqlite3.DatabaseError as exc:
+        print(f"Thumbnail Cleanup: could not read the library: {exc}")
+        return 0, 0
+
+    if not rows:
+        return 0, 0
+
+    live = {hashlib.md5((row['path'] + str(row['mtime'])).encode()).hexdigest()
+            for row in rows}
+
+    removed_files = removed_dirs = 0
+    try:
+        entries = os.listdir(THUMBNAIL_CACHE_DIR)
+    except OSError as exc:
+        print(f"Thumbnail Cleanup: could not read {THUMBNAIL_CACHE_DIR}: {exc}")
+        return 0, 0
+
+    for entry in entries:
+        if entry.startswith('tmp_'):
+            continue  # a render in flight; swept on its own at startup
+        match = _THUMBNAIL_KEY.match(entry)
+        if not match or match.group(0) in live:
+            continue
+        target = os.path.join(THUMBNAIL_CACHE_DIR, entry)
+        try:
+            if os.path.isdir(target):
+                shutil.rmtree(target)
+                removed_dirs += 1
+            else:
+                os.remove(target)
+                removed_files += 1
+        except OSError:
+            pass  # in use, or already gone; it will be offered again
+
+    return removed_files, removed_dirs
+
+
 def create_waveform(filepath, file_hash, file_type, amp=1.0):
     if not GENERATE_WAVEFORMS or not FFPROBE_EXECUTABLE_PATH: return None
     if not ensure_thumbnail_cache_dir(): return None
@@ -4127,7 +4199,16 @@ def initialize_gallery():
                       f"{migration_report['failed']} failed (unusable, needs admin reset), "
                       f"key file deleted: {migration_report['key_deleted']}{Colors.RESET}")
             ensure_admin_user(conn)
-            
+
+            # After full_sync_database, the library rows are what is on
+            # disk -- which is the only moment the leftovers below can be
+            # told apart from the thumbnails still in use.
+            gone, gone_dirs = prune_thumbnail_cache(conn)
+            if gone or gone_dirs:
+                print(f"{Colors.BLUE}INFO: Cleared {gone + gone_dirs} thumbnail "
+                      f"cache entries for files the library no longer has."
+                      f"{Colors.RESET}")
+
             # Pre-generate clean files for Exhibition Mode (safe cross-platform call)
             pregenerate_exhibition_cache()
 
