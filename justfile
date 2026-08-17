@@ -25,7 +25,8 @@ test:
 # protecting, a script the download itself rewrites so it cannot run, a
 # transfer that stops early and is kept anyway, a cache with no way for its
 # size to come down, a write another website can start, a name the disk
-# will not keep recorded as though it did, a misspelt setting name, a
+# will not keep recorded as though it did, a library discarded because it
+# was reached by another name, a misspelt setting name, a
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
 # do not match its own instructions, a container missing a module the app
@@ -65,6 +66,7 @@ audit:
         tests/test_thumbnail_cache_is_reclaimed.py \
         tests/test_another_site_cannot_act_on_the_gallery.py \
         tests/test_folder_rename_name_survives.py \
+        tests/test_a_renamed_root_keeps_the_library.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \
         tests/test_env_var_typos.py \

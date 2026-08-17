@@ -3614,6 +3614,25 @@ def background_watcher_task():
             
         time.sleep(10) # Faster check cycle (10s instead of 60s) to feel responsive
         
+def looks_like_a_renamed_root(db_paths, to_delete, to_add):
+    """True when the library is the same and only its address changed.
+
+    Every row would be deleted, and the very same filenames have just
+    turned up. Matching the SET OF NAMES rather than the count is what
+    keeps this away from a genuine wholesale replacement -- and if
+    somebody really did replace every file with one of the same name,
+    keeping the ratings is right anyway.
+
+    An empty database is not a renamed root, and neither is a library
+    where anything at all still lines up: one row in common means the
+    address is the one on record and the missing files are missing.
+    """
+    if not db_paths or to_delete != db_paths:
+        return False
+    return ({os.path.basename(p) for p in to_delete}
+            == {os.path.basename(p) for p in to_add})
+
+
 def full_sync_database(conn):
     print("INFO: Starting full file scan...")
     start_time = time.time()
@@ -3664,6 +3683,57 @@ def full_sync_database(conn):
     
     to_delete = db_paths - disk_paths
     to_add = disk_paths - db_paths
+
+    # A file is identified by its path, so a library reached by a
+    # different spelling of the same folder is a library of strangers.
+    # Every row is missing and every picture is new, and the scan does
+    # exactly what it is told: deletes all the rows, which cascades the
+    # ratings, comments, album membership and tags away, then indexes the
+    # same pictures again as if they had just arrived.
+    #
+    # Measured on three rated pictures, restarting with only the case of
+    # BASE_OUTPUT_PATH changed and then changed back:
+    #
+    #     forward  seed   3 files, 3 favourites, 3 ratings
+    #     forward  check  3 files, 3 favourites, 3 ratings
+    #     upper    check  3 files, 0 favourites, 0 ratings
+    #     forward  check  3 files, 0 favourites, 0 ratings
+    #
+    # One start under the other spelling, and putting the setting back
+    # does not bring any of it back. Nothing looks wrong afterwards: the
+    # pictures are all there, which is what makes it convincing.
+    #
+    # The existing guard above covers a root that is not THERE. This one
+    # is reachable and full; only the name it is reached by has changed --
+    # a Docker mount moved, a library copied to another drive, a path
+    # retyped in another case on Windows, where both spellings open the
+    # same folder.
+    #
+    # The signature is unmistakable: every row would go, and the very same
+    # filenames just arrived. Matching on the set of names rather than the
+    # count is what keeps this from firing on a genuine wholesale
+    # replacement -- and if somebody really did replace every file with
+    # one of the same name, keeping the ratings is right anyway.
+    if looks_like_a_renamed_root(db_paths, to_delete, to_add):
+        was = os.path.dirname(sorted(to_delete)[0])
+        now = os.path.dirname(sorted(to_add)[0])
+        print(f"\n{Colors.RED}{Colors.BOLD}WARNING: every file in the library "
+              f"is at a different address than the one recorded.{Colors.RESET}")
+        print(f"{Colors.RED}recorded: {was}{Colors.RESET}")
+        print(f"{Colors.RED}found   : {now}{Colors.RESET}")
+        print(f"{Colors.YELLOW}The same {len(to_add)} file(s) are all there, so "
+              f"this is the folder being reached by a different name rather "
+              f"than anything being deleted -- a changed mount, a moved "
+              f"library, or the same path typed in another case.{Colors.RESET}")
+        print(f"{Colors.YELLOW}Nothing has been removed. Ratings, comments, "
+              f"albums and tags are keyed to the recorded address, so they "
+              f"would all have gone. Point BASE_OUTPUT_PATH back at the "
+              f"recorded spelling to see them again.{Colors.RESET}")
+        print(f"{Colors.YELLOW}Until then the gallery lists both sets, so "
+              f"every picture appears twice. That is the cost of keeping "
+              f"them; it goes away as soon as the address matches."
+              f"{Colors.RESET}\n")
+        to_delete = set()
     to_check = disk_paths & db_paths
     to_update = {path for path in to_check if int(disk_files.get(path, 0)) > int(db_files.get(path, 0))}
     
