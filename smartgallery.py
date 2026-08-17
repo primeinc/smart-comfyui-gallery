@@ -6854,9 +6854,31 @@ def rename_folder(folder_key):
     if folder_key in PROTECTED_FOLDER_KEYS: return jsonify({'status': 'error', 'message': 'This folder cannot be renamed.'}), 403
     
     raw_name = request.json.get('new_name', '').strip()
+    # Separators and the rest of what Windows forbids come out here; the
+    # test above this route pins that, because what matters is that a
+    # rename cannot land outside the gallery.
     new_name = re.sub(r'[\\/:*?"<>|]', '', raw_name)
-    
-    if not new_name or new_name in ['.', '..']: 
+    # What was missing is the other kind: the characters Windows does not
+    # refuse but silently removes. .strip() above catches a plain trailing
+    # space; a trailing dot got through, and so did "holiday. ",
+    # "holiday.." and "holiday  .". Windows then creates the folder
+    # without the dot while the rows are written with it:
+    #
+    #     database says : holiday./ComfyUI_00001_.png
+    #     disk actually : holiday/ComfyUI_00001_.png
+    #
+    # A file's id is its path, so those are different files. The next scan
+    # walks the disk, finds a picture with no row and a row with no
+    # picture, and deletes the row -- taking its ratings, comments and
+    # album membership with it. The rename reported success.
+    #
+    # safe_media_filename is deliberately NOT used whole here: it takes a
+    # basename, which is right for an upload arriving as a path and wrong
+    # for someone typing a folder name, where it would turn "a/b" into "b"
+    # and quietly drop half of what they typed.
+    new_name = strip_what_windows_drops(new_name)
+
+    if not new_name:
         return jsonify({'status': 'error', 'message': 'Invalid name.'}), 400
         
     folders = get_dynamic_folder_config()
@@ -7063,6 +7085,25 @@ _WINDOWS_DEVICE_NAMES = (
 )
 
 
+def strip_what_windows_drops(name):
+    """Remove the trailing dots and spaces Windows silently removes itself.
+
+    These are the characters that do not FAIL, which is what makes them
+    worth a function. Windows creates `holiday.` as `holiday`, so anything
+    that records the name it asked for ends up describing a path that is
+    not there -- and here a path is a file's identity, so the next scan
+    sees a picture with no row and a row with no picture, and deletes the
+    row with its ratings and comments.
+
+    Only trailing. A leading dot is how a hidden file is spelled.
+
+    os.path.exists will not show you this: Windows resolves `holiday.` to
+    `holiday` when asked whether it exists, so a lookup agrees and only a
+    directory listing disagrees. Scans list.
+    """
+    return str(name or '').rstrip('. ')
+
+
 def safe_media_filename(filename, fallback='upload'):
     """Make a filename safe to write while keeping the name the user gave it.
 
@@ -7085,7 +7126,7 @@ def safe_media_filename(filename, fallback='upload'):
     # ending in one never round-trips. A leading dot is left alone -- it is
     # how a hidden file is spelled, and stripping it would recreate the very
     # bug this function exists to fix.
-    name = name.rstrip('. ')
+    name = strip_what_windows_drops(name)
     # Whatever is left must be more than dots: "." and ".." are directories.
     if not name.strip('.'):
         return fallback
