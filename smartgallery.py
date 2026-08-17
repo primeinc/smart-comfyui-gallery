@@ -88,6 +88,7 @@ from typing import Dict, List, Any, Optional, Union
 from functools import wraps
 import sg_auth
 import contextlib
+import math
 import urllib.request
 import secrets
 from typing import Dict, List, Any, Optional, Union # Added for type hinting in new tools
@@ -536,6 +537,50 @@ FFMPEG_FOLDER_NAME = '.ffmpeg'
 # collection note, which is a file and is meant for it.
 COMMENT_MAX_CHARS = 4000
 COMMENT_AUTHOR_MAX_CHARS = 80
+
+
+def parse_rating(value):
+    """(rating, error): a whole 1..5, None to clear, or a reason to refuse.
+
+    The check was `1 <= rating <= 5` against whatever JSON supplied, which
+    is two faults at once on a route a visitor reaches.
+
+    Anything not a number raised. Measured -- a rating of "3", "abc", [3]
+    or {} answered 500 with an HTML page, so the caller's res.json() got
+    nothing it could read:
+
+        TypeError: '<=' not supported between instances of 'int' and 'str'
+
+    And anything that happened to compare was taken. SQLite stores what it
+    is handed, so a fraction went into an INTEGER column and passed the
+    CHECK(rating >= 1 AND rating <= 5):
+
+        alice   stored 3.5   sqlite type real
+        bob     stored 2.25  sqlite type real
+        carol   stored 1     sqlite type integer   (sent true)
+        average everyone sees: 2.25
+
+    A boolean is not a rating either; True == 1 in Python, so `true`
+    quietly became one star, and isinstance(True, int) is why bool is
+    turned away before the number check rather than after it.
+
+    3.0 IS accepted as 3: a JSON client that has only one number type is
+    not making a mistake, and this is the same principle as taking a path
+    in whatever form somebody writes it.
+    """
+    if value is None:
+        return None, None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None, 'A rating has to be a whole number from 1 to 5.'
+    if isinstance(value, float):
+        if not math.isfinite(value) or value != int(value):
+            return None, 'A rating has to be a whole number from 1 to 5.'
+    number = int(value)
+    if number == 0:
+        return None, None          # clearing a rating
+    if not 1 <= number <= 5:
+        return None, 'A rating has to be from 1 to 5.'
+    return number, None
 
 
 def comment_length_error(text, what='comment'):
@@ -10553,8 +10598,9 @@ def exhibition_rate_file():
     if not all([file_id, client_uuid]):
         return jsonify({'status': 'error', 'message': 'Missing data'}), 400
     
-    if rating is not None and rating != 0 and not (1 <= rating <= 5):
-        return jsonify({'status': 'error', 'message': 'Invalid rating'}), 400
+    rating, rating_error = parse_rating(rating)
+    if rating_error:
+        return jsonify({'status': 'error', 'message': rating_error}), 400
 
     # Rating asked only whether the file existed, never whether this caller
     # was allowed to see it -- so a visitor could score a picture that was
@@ -10631,8 +10677,9 @@ def exhibition_rate_batch():
     if not file_ids or not client_uuid:
         return jsonify({'status': 'error', 'message': 'Missing data'}), 400
     
-    if rating is not None and rating != 0 and not (1 <= rating <= 5):
-        return jsonify({'status': 'error', 'message': 'Invalid rating'}), 400
+    rating, rating_error = parse_rating(rating)
+    if rating_error:
+        return jsonify({'status': 'error', 'message': rating_error}), 400
         
     # The same rule as the single-file route above, and for the same
     # reason. Also the reason this route no longer answers with a raw
