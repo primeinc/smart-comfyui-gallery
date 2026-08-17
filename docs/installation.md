@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 Create a new file named `run_smartgallery.bat` inside the folder and paste this content.
 
-**⚠️ IMPORTANT:** Replace the example paths with your real paths. Use forward slashes `/` even on Windows.
+**⚠️ IMPORTANT:** Replace the example paths with your real paths. Write them however you like — backslashes, forward slashes, a trailing slash, `~`, or the quotes Explorer's "Copy as path" adds are all accepted.
 ```bat
 @echo off
 cd /d %~dp0
@@ -74,7 +74,7 @@ call venv\Scripts\activate.bat
 
 :: --- CONFIGURATION ---
 :: REPLACE these paths with your actual folders.
-:: NOTE: Use forward slashes (/) for paths (e.g., C:/ComfyUI/output)
+:: NOTE: Backslashes or forward slashes, either is fine
 
 set "BASE_OUTPUT_PATH=C:/Path/To/ComfyUI/output"
 set "BASE_INPUT_PATH=C:/Path/To/ComfyUI/input"

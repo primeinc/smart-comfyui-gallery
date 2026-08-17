@@ -19,6 +19,7 @@ lists what stops working.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -81,13 +82,47 @@ def test_resolution_is_announced_once(tmp_path):
         f"resolution said nothing at all:\n{proc.stdout}")
 
 
-def test_a_wrong_manual_path_still_warns(tmp_path):
-    """Pointing FFPROBE_MANUAL_PATH at the wrong tool is the documented
-    trap; it must keep saying so."""
+def test_a_manual_path_with_no_ffprobe_anywhere_near_it_still_warns(tmp_path):
+    """Pointing FFPROBE_MANUAL_PATH somewhere with no ffprobe in it must
+    keep saying so, rather than falling silent."""
     decoy = tmp_path / "ffmpeg.exe"
     decoy.write_text("not a real binary", encoding="utf-8")
 
     proc = _startup({"FFPROBE_MANUAL_PATH": str(decoy)}, tmp_path)
 
     assert proc.returncode == 0, proc.stderr
-    assert "does not point at ffprobe" in proc.stdout, proc.stdout
+    assert "FFPROBE_MANUAL_PATH" in proc.stdout, proc.stdout
+    assert "falling back to PATH" in proc.stdout, proc.stdout
+
+
+@pytest.mark.parametrize("point_at", ["the ffmpeg beside it", "the folder"])
+def test_a_manual_path_aimed_at_the_install_finds_ffprobe(tmp_path, point_at):
+    """Nobody installs "ffprobe" -- they install ffmpeg. Aiming the
+    setting at the ffmpeg program, or at the folder both live in, used to
+    be refused with "does not point at ffprobe" even though the install
+    was perfectly good; on a machine with nothing on PATH that meant no
+    video features at all.
+
+    Uses the real ffprobe from this machine, because the check that
+    decides runs the program and reads its banner."""
+    real = shutil.which("ffprobe") or shutil.which("ffprobe.exe")
+    if not real:
+        pytest.skip("no ffprobe on PATH to copy")
+
+    bin_dir = tmp_path / "ffmpeg_install" / "bin"
+    bin_dir.mkdir(parents=True)
+    copied = bin_dir / os.path.basename(real)
+    shutil.copy2(real, copied)
+    beside = bin_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    beside.write_text("not a real binary", encoding="utf-8")
+
+    setting = str(beside) if point_at == "the ffmpeg beside it" else str(bin_dir)
+    proc = _startup({"FFPROBE_MANUAL_PATH": setting}, tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "falling back to PATH" not in proc.stdout, proc.stdout
+    assert "INFO: ffprobe:" in proc.stdout, proc.stdout
+    assert str(bin_dir).replace(os.sep, "/").lower() in \
+        proc.stdout.replace(os.sep, "/").lower(), (
+        f"resolved to something outside the install it was pointed at:\n"
+        f"{proc.stdout}")

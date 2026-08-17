@@ -176,8 +176,9 @@ except ImportError:
 #
 #
 # IMPORTANT NOTES:
-# - Even on Windows, always use forward slashes (/) in paths, 
-#   not backslashes (\), to ensure compatibility.
+# - Write paths however you like. Backslashes or forward slashes, with or
+#   without a trailing slash, a leading ~, or the quotes Explorer's "Copy
+#   as path" wraps around them -- normalize_configured_path handles it.
 # - Use QUOTES around paths containing spaces to avoid errors.
 # - Replace example paths (C:/ComfyUI/, $HOME/ComfyUI/) with YOUR actual paths!
 # - Set MAX_PARALLEL_WORKERS="" (empty string) to use all available CPU cores.
@@ -227,6 +228,51 @@ def env_or(name, default):
     """
     value = os.environ.get(name)
     return default if value is None or not value.strip() else value.strip()
+
+
+def normalize_configured_path(raw):
+    """One spelling for a path, whatever the person typed.
+
+    Every way of writing the same folder used to be a different setting
+    to look at, and the docs carried a rule to work around it: "Use
+    forward slashes even on Windows." That is the wrong way round -- a
+    Windows user copying a path out of Explorer gets backslashes, and
+    Explorer's own "Copy as path" wraps it in quotes. Neither should have
+    to be corrected by hand.
+
+    So all of these become the same thing:
+
+        C:/ComfyUI/output          C:\\ComfyUI\\output
+        C:/ComfyUI/output/         C:\\ComfyUI\\output\\
+        "C:\\ComfyUI\\output"        C:/ComfyUI//output
+        C:/ComfyUI/sub/../output   ~/ComfyUI/output
+
+    This lands on exactly the string the folder scan already computed for
+    itself (os.path.normpath then forward slashes), which is what makes
+    it safe: a file is identified by its path, so a canonical form that
+    differed by one character would re-identify every file in the library
+    and take its ratings with it. Checked against every form above.
+
+    Case is deliberately left alone. On Windows two spellings open the
+    same folder, but the rows were written with whichever one was
+    configured, so folding it here would re-identify the library of
+    anyone whose setting does not match the disk -- the exact damage this
+    is meant to avoid. looks_like_a_renamed_root covers that instead.
+    """
+    text = str(raw or '').strip()
+    # Explorer's "Copy as path" hands you the path inside double quotes,
+    # and a .bat written as set "X=%~dp0" can leave one behind.
+    while len(text) >= 2 and text[0] == text[-1] and text[0] in '"\'':
+        text = text[1:-1].strip()
+    if not text:
+        return ''
+    # normpath('') is '.', so the emptiness check above is load-bearing.
+    return os.path.normpath(os.path.expanduser(text)).replace('\\', '/')
+
+
+def env_path(name, default):
+    """A path setting, read like any other and then written one way."""
+    return normalize_configured_path(env_or(name, default))
 
 
 def env_num(name, default, cast=int, minimum=None):
@@ -288,17 +334,17 @@ def env_flag(name, default=False):
 # Common locations:
 #   Windows: C:/ComfyUI/output or C:/Users/YourName/ComfyUI/output
 #   Linux/Mac: /home/username/ComfyUI/output or ~/ComfyUI/output
-BASE_OUTPUT_PATH = env_or('BASE_OUTPUT_PATH', 'C:/ComfyUI/output')
+BASE_OUTPUT_PATH = env_path('BASE_OUTPUT_PATH', 'C:/ComfyUI/output')
 
 # Path to the ComfyUI 'input' folder
-BASE_INPUT_PATH = env_or('BASE_INPUT_PATH', 'C:/ComfyUI/input')
+BASE_INPUT_PATH = env_path('BASE_INPUT_PATH', 'C:/ComfyUI/input')
 
 # --- Granular Paths for Advanced Setups (Docker, Stability Matrix, extra_model_paths.yaml) ---
 # If not set, they fallback to the standard ComfyUI relative structure
-BASE_MODELS_PATH = env_or('BASE_MODELS_PATH', os.path.join(os.path.dirname(os.path.normpath(BASE_OUTPUT_PATH)), 'models'))
-LORAS_PATH = env_or('LORAS_PATH', os.path.join(BASE_MODELS_PATH, 'loras'))
-CHECKPOINTS_PATH = env_or('CHECKPOINTS_PATH', os.path.join(BASE_MODELS_PATH, 'checkpoints'))
-UNET_PATH = env_or('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
+BASE_MODELS_PATH = env_path('BASE_MODELS_PATH', os.path.join(os.path.dirname(os.path.normpath(BASE_OUTPUT_PATH)), 'models'))
+LORAS_PATH = env_path('LORAS_PATH', os.path.join(BASE_MODELS_PATH, 'loras'))
+CHECKPOINTS_PATH = env_path('CHECKPOINTS_PATH', os.path.join(BASE_MODELS_PATH, 'checkpoints'))
+UNET_PATH = env_path('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
 
 
 # Path for service folders (database, cache, zip files). 
@@ -307,7 +353,7 @@ UNET_PATH = env_or('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
 # Change this if you want the cache stored separately for better performance
 # or to keep system files separate from gallery content.
 # Leave as-is if you are unsure. 
-BASE_SMARTGALLERY_PATH = env_or('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
+BASE_SMARTGALLERY_PATH = env_path('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
 
 # Path to ffprobe executable (part of ffmpeg).
 # Common locations:
@@ -316,7 +362,7 @@ BASE_SMARTGALLERY_PATH = env_or('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
 #   Mac: /usr/local/bin/ffprobe or /opt/homebrew/bin/ffprobe
 # Required for extracting workflows from .mp4 files.
 # NOTE: A full ffmpeg installation is highly recommended.
-FFPROBE_MANUAL_PATH = env_or('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
+FFPROBE_MANUAL_PATH = env_path('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
 
 # Port on which the gallery web server will run. 
 # Must be different from the ComfyUI port (usually 8188).
@@ -384,6 +430,10 @@ MAX_PREFIX_DROPDOWN_ITEMS = 100
 # The path MUST exist and be writable, or the application will exit with an error.
 # Example: /path/to/trash or C:/Trash
 DELETE_TO = env_or('DELETE_TO', None)
+# Normalised like the rest, but only when there is one: unset stays None,
+# which is what the startup banner distinguishes from a configured trash.
+if DELETE_TO:
+    DELETE_TO = normalize_configured_path(DELETE_TO)
 if DELETE_TO and DELETE_TO.strip():
     DELETE_TO = DELETE_TO.strip()
     TRASH_FOLDER = os.path.join(DELETE_TO, 'SmartGallery')
@@ -1893,12 +1943,67 @@ def _announce_ffprobe(message):
     print(message)
 
 
+def ffprobe_candidates_for(setting):
+    """Every place ffprobe could be, given what someone pointed at.
+
+    Nobody installs "ffprobe" -- they install ffmpeg, and ffprobe is one
+    of the programs in it. So the setting gets aimed at whatever is to
+    hand: ffmpeg.exe, the bin folder, the folder the download unpacked
+    to. All of those are the right install, and refusing them because the
+    filename is not the expected one is the gallery being difficult about
+    something it can work out. The old message even told people to point
+    it at "the folder holding ffprobe", which the check then rejected for
+    not being a file.
+
+    So all of these find it:
+
+        C:/ffmpeg/bin/ffprobe.exe    the exact program
+        C:/ffmpeg/bin/ffmpeg.exe     its neighbour
+        C:/ffmpeg/bin                the folder
+        C:/ffmpeg                    the install, via bin/
+
+    Order matters: the named file is tried first, so pointing straight at
+    ffprobe never runs anything else.
+    """
+    if not setting:
+        return []
+    names = ('ffprobe.exe', 'ffprobe') if sys.platform == 'win32' else ('ffprobe',)
+
+    candidates = []
+    if os.path.isfile(setting):
+        candidates.append(setting)
+
+    folder = setting if os.path.isdir(setting) else os.path.dirname(setting)
+    for base in (folder, os.path.join(folder, 'bin')):
+        if not base:
+            continue
+        for name in names:
+            candidate = os.path.join(base, name)
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
+def resolve_ffprobe_from(setting):
+    """The first candidate that exists and really is ffprobe, or None."""
+    for candidate in ffprobe_candidates_for(setting):
+        if os.path.isfile(candidate) and _is_ffprobe(candidate):
+            return candidate
+    return None
+
+
 def find_ffprobe_path():
-    if FFPROBE_MANUAL_PATH and os.path.isfile(FFPROBE_MANUAL_PATH):
-        if _is_ffprobe(FFPROBE_MANUAL_PATH):
-            _announce_ffprobe(f"INFO: ffprobe: {FFPROBE_MANUAL_PATH}")
-            return FFPROBE_MANUAL_PATH
-        print(f"WARNING: FFPROBE_MANUAL_PATH does not point at ffprobe "
+    if FFPROBE_MANUAL_PATH:
+        found = resolve_ffprobe_from(FFPROBE_MANUAL_PATH)
+        if found:
+            same = (os.path.normcase(os.path.abspath(found))
+                    == os.path.normcase(os.path.abspath(FFPROBE_MANUAL_PATH)))
+            _announce_ffprobe(
+                f"INFO: ffprobe: {found}" if same else
+                f"INFO: ffprobe: {found} (found from FFPROBE_MANUAL_PATH="
+                f"{FFPROBE_MANUAL_PATH})")
+            return found
+        print(f"WARNING: no ffprobe at or beside FFPROBE_MANUAL_PATH "
               f"({FFPROBE_MANUAL_PATH}); falling back to PATH.")
     base_name = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
     if _is_ffprobe(base_name):
@@ -1908,8 +2013,9 @@ def find_ffprobe_path():
         return base_name
     print(f"{Colors.YELLOW}WARNING: ffprobe not found. Video duration and "
           f"dimensions, video thumbnails, waveforms and video metadata "
-          f"stripping are all unavailable. Install ffmpeg, or set "
-          f"FFPROBE_MANUAL_PATH to the folder holding ffprobe.{Colors.RESET}")
+          f"stripping are all unavailable. Install ffmpeg, then point "
+          f"FFPROBE_MANUAL_PATH at it -- the ffprobe program, the ffmpeg "
+          f"program beside it, or the folder either lives in.{Colors.RESET}")
     return None
 
 def _validate_and_get_workflow(json_string):

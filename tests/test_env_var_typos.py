@@ -78,6 +78,7 @@ def test_the_known_list_matches_what_the_code_reads():
     root = pathlib.Path(smartgallery.__file__).resolve().parent
     pattern = re.compile(
         r"""(?:os\.environ\.get\(|os\.getenv\(|env_or\(|env_num\(|env_flag\(
+            |env_path\(
             |_env_str\(|_env_num\(|_env_bool\(|ENV_MODEL_PATH\s*=\s*)
             ["']([A-Z][A-Z0-9_]{2,})["']""",
         re.VERBOSE)

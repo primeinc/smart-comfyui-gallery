@@ -125,14 +125,61 @@ def test_no_shipped_file_carries_a_real_password(path):
         f"guesses at English is one that misses secrets.")
 
 
-def test_the_exhibition_sample_asks_for_a_password_without_supplying_one():
+def _launch_lines(text):
+    """The lines that actually start the app.
+
+    Identified by invoking the interpreter, not by being the first line
+    that mentions smartgallery.py -- the launchers now check where the
+    app is before running it, and `if exist "smartgallery.py"` is not a
+    launch line. Picking by position quietly read that one instead.
+    """
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("::") or stripped.startswith("#"):
+            continue
+        if "smartgallery.py" not in stripped:
+            continue
+        if "%PYTHON%" in stripped or "$PYTHON" in stripped:
+            lines.append(stripped)
+    return lines
+
+
+@pytest.mark.parametrize("name", ["sample_run_exhibition.bat",
+                                  "sample_run_exhibition.sh"])
+def test_the_exhibition_sample_asks_for_a_password_without_supplying_one(name):
     """The specific shape of the fix: exhibition needs an admin account, so
     the sample has to prompt for one -- and must not put it on the command
     line, where other programs on the machine can read it."""
-    text = (_REPO_ROOT / "sample_run_exhibition.bat").read_text(encoding="utf-8")
-    start_line = next(line for line in text.splitlines()
-                      if "smartgallery.py" in line and not line.strip().startswith("::"))
+    path = _REPO_ROOT / name
+    assert path.exists(), f"{name} is not shipped"
+    text = path.read_text(encoding="utf-8")
 
-    assert 'set "ADMIN_PASSWORD="' in text, text
-    assert "--admin-pass" not in start_line, start_line
-    assert "--exhibition" in start_line, start_line
+    launch = _launch_lines(text)
+    assert launch, f"no launch line found in {name}"
+
+    assert 'ADMIN_PASSWORD=' in text, text
+    for line in launch:
+        assert "--admin-pass" not in line, line
+    assert any("--exhibition" in line for line in launch), launch
+
+
+@pytest.mark.parametrize("name", ["sample_run_smartgallery.bat",
+                                  "sample_run_smartgallery.sh",
+                                  "sample_run_exhibition.bat",
+                                  "sample_run_exhibition.sh"])
+def test_every_sample_launcher_looks_for_an_environment_first(name):
+    """A launcher that runs the wrong interpreter fails in a way nobody can
+    read. Each one has to look for .venv and venv, and say what to do when
+    there is neither -- both ways of making one, since the project ships a
+    uv.lock as well as a requirements.txt."""
+    path = _REPO_ROOT / name
+    assert path.exists(), f"{name} is not shipped"
+    text = path.read_text(encoding="utf-8")
+
+    assert ".venv" in text, f"{name} never looks for .venv"
+    assert "venv" in text, f"{name} never looks for venv"
+    assert "uv sync" in text, f"{name} does not mention the uv route"
+    assert "requirements.txt" in text, f"{name} does not mention the pip route"
+    assert "astral.sh/uv/install" in text, (
+        f"{name} tells people to run uv without saying how to get it")

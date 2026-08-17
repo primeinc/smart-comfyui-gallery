@@ -343,7 +343,7 @@ This version includes a fully self-contained environment. You do not need to ins
 **2. Configure and Run**
 * **Read First:** Before launching, open the `00_START_HERE.txt` file included in the root folder for essential setup instructions.
 * **Customize:** Rename `sample_run_smartgallery.bat` to `run_smartgallery.bat`, right-click it, and select **Edit**.
-* **Setup Paths:** Update the `CONFIGURATION` section to point to your specific ComfyUI folders (ensure you use forward slashes `/`).
+* **Setup Paths:** Update the `CONFIGURATION` section to point to your specific ComfyUI folders. Write the paths however you like — backslashes, forward slashes, a trailing slash or the quotes Explorer adds are all normalised.
 * **Launch:** Save the file and double-click `run_smartgallery.bat` to launch the server!
 
 **3. Updating to a Newer Version**
@@ -392,7 +392,7 @@ cd /d %~dp0
 call venv\Scripts\activate.bat
 
 :: --- CONFIGURATION: replace with your real paths ---
-:: Use forward slashes (/) even on Windows
+:: Backslashes or forward slashes, both fine
 set "BASE_OUTPUT_PATH=C:/Path/To/ComfyUI/output"
 set "BASE_INPUT_PATH=C:/Path/To/ComfyUI/input"
 set "BASE_SMARTGALLERY_PATH=C:/Path/To/ComfyUI/output"
