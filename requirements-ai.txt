@@ -22,11 +22,11 @@ insightface>=1.0.1           # FaceAnalysis pipeline (weights via provisioning)
 onnxruntime                  # ONNX inference for insightface / YuNet / SFace
 
 # --- OmniQuery local natural-language search ---
-# The deterministic nlq rules parser is dependency-free. llama-cpp-python
-# runs the search palette's nl2sql answerer: free-language questions become
-# SQL executed only through the read-only sandbox (weights via provisioning).
+# The deterministic nlq rules parser is dependency-free. The search
+# palette's nl2sql answerer runs on transformers (below): free-language
+# questions become SQL executed only through the read-only sandbox
+# (weights via provisioning).
 faiss-cpu>=1.15             # Meta FAISS similarity index (MIT); vectors + face clustering
-llama-cpp-python>=0.3.0      # nl2sql answerer + qwen-vl critic runtime (MIT)
 
 # --- semantic / visual embedding + critic + segmentation backends ---
 # Uncomment to enable the real model backends; then provision weights per

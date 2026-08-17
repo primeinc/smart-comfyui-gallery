@@ -1,7 +1,7 @@
 """OmniQuery NL parser backends: shared types and the registry.
 
 Every AST-emitting backend here (nlq, and the benchmark-only
-fallback_qwen) speaks the same contract:
+nlq) speaks the same contract:
 
     ParserBackend.parse(text, now_epoch) -> ParserOutcome
 
@@ -75,8 +75,7 @@ class ParserBackend(ABC):
     def available(self) -> bool:
         """True when this backend can be used right now. The default
         (zero-dependency) implementation is always available; backends with
-        an optional runtime (the grammar-constrained GGUF backends)
-        override this to check their runtime/weights."""
+        an optional runtime override this to check their runtime/weights."""
         return True
 
 
@@ -86,7 +85,6 @@ class ParserBackend(ABC):
 
 _BACKEND_PATHS: Dict[str, str] = {  # backend name -> dotted class path, imported lazily by get_backend
     "nlq": "omniquery.parsers.nlq.NlqParser",
-    "fallback_qwen": "omniquery.parsers.fallback_qwen.FallbackQwenBackend",
 }
 
 
@@ -94,8 +92,8 @@ def get_backend(name: str, **kwargs: Any) -> ParserBackend:
     """Construct a fresh backend instance by name.
 
     Submodules are imported lazily (only on request) so asking for
-    'nlq' never pulls in `llama_cpp`, and constructing a
-    backend never itself touches an optional runtime -- only calling
+    'nlq' never pulls in a model runtime, and constructing a backend
+    never itself touches an optional runtime -- only calling
     `.available()`/`.parse()` on it does.
     """
     try:

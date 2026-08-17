@@ -24,7 +24,6 @@ tell nobody what broke.
 
 from __future__ import annotations
 
-import pytest
 
 
 def _count_connections_for(smartgallery_app, monkeypatch, root, folder_count):

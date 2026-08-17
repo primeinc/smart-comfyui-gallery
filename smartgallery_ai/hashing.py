@@ -80,7 +80,7 @@ def phash64(img: Image.Image) -> int:
     median, per the classic pHash refinement) -> bit = 1 iff coefficient
     >= median, including the DC coefficient itself in the output bits.
     """
-    gray = img.convert("L").resize((32, 32), Image.LANCZOS)
+    gray = img.convert("L").resize((32, 32), Image.Resampling.LANCZOS)
     pixels = np.asarray(gray, dtype=np.float64)
     dct = _DCT32 @ pixels @ _DCT32.T
     block = dct[:8, :8].flatten()
@@ -92,7 +92,7 @@ def phash64(img: Image.Image) -> int:
 
 def dhash64(img: Image.Image) -> int:
     """64-bit difference hash: 9x8 horizontal gradient, LEFT > RIGHT -> bit."""
-    gray = img.convert("L").resize((9, 8), Image.LANCZOS)
+    gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
     pixels = np.asarray(gray, dtype=np.int16)  # shape (8, 9)
     diff = (pixels[:, :-1] > pixels[:, 1:]).astype(np.uint8).flatten()  # (8,8)
     return to_signed64(_bits_to_int(diff))

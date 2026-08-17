@@ -14,7 +14,6 @@ file reappears on the next scan.
 from __future__ import annotations
 
 import os
-import sqlite3
 
 import pytest
 from PIL import Image

@@ -6,10 +6,10 @@ C++ exception).
 
 Components x devices:
 
-  llama  llama-cpp-python decode canary (tiny generation, alnum check)
-  torch  matmul verified against the CPU result (garbage detection)
-  ort    onnxruntime inference on a provisioned ONNX model, finite check
-  faiss  top-k neighbors verified against brute-force numpy
+  generate  transformers decode canary (tiny generation, alnum check)
+  torch     matmul verified against the CPU result (garbage detection)
+  ort       onnxruntime inference on a provisioned ONNX model, finite check
+  faiss     top-k neighbors verified against brute-force numpy
 
 Every (component, device) cell runs in a SUBPROCESS with
 CUDA_VISIBLE_DEVICES pinned, so a hard crash (access violation, sm
@@ -18,7 +18,7 @@ killing the probe. Missing runtimes/models are honest SKIPs, never
 passes.
 
 Usage:
-    python probes/hardware_matrix_probe.py [--gguf PATH] [--out report.json]
+    python probes/hardware_matrix_probe.py [--model REF] [--out report.json]
 
 Exit code 0 when no cell FAILed (SKIPs allowed), 1 otherwise.
 """
@@ -36,23 +36,23 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Each snippet prints one JSON line {"status": "PASS"|"FAIL"|"SKIP",
 # "detail": ...} and exits 0; any other termination is a FAIL.
 
-_LLAMA_SNIPPET = r"""
+_GENERATE_SNIPPET = r"""
 import json, os, sys
-gguf = os.environ["PROBE_GGUF"]
-if not os.path.isfile(gguf):
-    print(json.dumps({"status": "SKIP", "detail": f"no GGUF at {gguf}"})); sys.exit(0)
+sys.path.insert(0, os.environ["PROBE_REPO"])
 try:
-    sys.path.insert(0, os.environ["PROBE_REPO"])
-    from smartgallery_ai.llama_runtime import activate_llama_backends, prepare_llama_runtime
-    prepare_llama_runtime()
-    from llama_cpp import Llama
-    activate_llama_backends()
+    from smartgallery_ai import models as ai_models
 except Exception as exc:
-    print(json.dumps({"status": "SKIP", "detail": f"llama_cpp unavailable: {exc}"})); sys.exit(0)
-n_gpu = int(os.environ["PROBE_GPU_LAYERS"])
-llama = Llama(model_path=gguf, n_ctx=512, n_threads=4, n_gpu_layers=n_gpu, verbose=False)
-r = llama.create_completion(prompt="Say OK.", max_tokens=4, temperature=0.0)
-text = r["choices"][0]["text"]
+    print(json.dumps({"status": "SKIP", "detail": f"runtime unavailable: {exc}"})); sys.exit(0)
+ref, models_dir = os.environ["PROBE_MODEL"], os.environ["PROBE_MODELS_DIR"]
+if not ai_models.is_provisioned(ref, models_dir):
+    print(json.dumps({"status": "SKIP",
+                      "detail": f"{ref} not provisioned under {models_dir}"})); sys.exit(0)
+try:
+    chat = ai_models.Chat(ref, models_dir=models_dir,
+                          device=os.environ["PROBE_DEVICE"])
+    text = chat.ask("Say OK.", max_new_tokens=8)
+except Exception as exc:
+    print(json.dumps({"status": "FAIL", "detail": f"generate raised: {exc}"})); sys.exit(0)
 ok = any(c.isalnum() for c in text)
 print(json.dumps({"status": "PASS" if ok else "FAIL",
                   "detail": f"decoded {text!r}" + ("" if ok else " (garbage logits)")}))
@@ -161,9 +161,10 @@ def _run_cell(snippet: str, env_extra: dict, timeout: int = 300) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="AI/ML hardware matrix probe")
-    parser.add_argument("--gguf", default=os.environ.get(
-        "OMNIQUERY_NL2SQL_GGUF",
-        os.path.join(REPO, ".AImodels", "distil-qwen3-4b-text2sql-4bit.gguf")))
+    parser.add_argument("--model", default=os.environ.get(
+        "OMNIQUERY_NL2SQL_MODEL", "distil-labs/distil-qwen3-4b-text2sql"))
+    parser.add_argument("--models-dir", default=os.environ.get(
+        "AI_DAM_MODELS_DIR", os.path.join(REPO, ".AImodels")))
     parser.add_argument("--onnx", default=os.path.join(
         REPO, ".AImodels", "insightface", "models", "antelopev2", "glintr100.onnx"))
     parser.add_argument("--out", default=None)
@@ -177,9 +178,12 @@ def main(argv=None) -> int:
         is_cpu = dev == "cpu"
         pin = {"CUDA_VISIBLE_DEVICES": ""} if is_cpu else {"CUDA_VISIBLE_DEVICES": dev}
 
-        results[f"llama/{name}"] = _run_cell(_LLAMA_SNIPPET, {
-            **pin, "PROBE_GGUF": args.gguf,
-            "PROBE_GPU_LAYERS": "0" if is_cpu else "-1"}, timeout=600)
+        results[f"generate/{name}"] = _run_cell(_GENERATE_SNIPPET, {
+            **pin, "PROBE_MODEL": args.model,
+            "PROBE_MODELS_DIR": args.models_dir,
+            # CUDA_VISIBLE_DEVICES is already pinned to this card, so the
+            # child process sees exactly one GPU and it is index 0.
+            "PROBE_DEVICE": "cpu" if is_cpu else "cuda:0"}, timeout=600)
         results[f"torch/{name}"] = _run_cell(_TORCH_SNIPPET, {
             **pin, "PROBE_DEVICE": "cpu" if is_cpu else "cuda:0"})
         results[f"ort/{name}"] = _run_cell(_ORT_SNIPPET, {

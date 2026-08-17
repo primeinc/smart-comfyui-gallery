@@ -33,7 +33,7 @@ Two answerers cooperate per query:
 
 - A **deterministic rules engine** handles everything it fully
   recognizes. It is exact, instant, and what live typing always uses.
-- The **local nl2sql model** (a 2.5 GB text2sql GGUF, Apache-2.0) handles
+- The **local nl2sql model** (an 8.1 GB text2sql checkpoint, Apache-2.0) handles
   free language: it reads your database's actual schema, writes a
   read-only query, **looks at what came back**, and refines before
   answering — broadening a search that found nothing, repairing its own

@@ -309,7 +309,7 @@ class OpenCVFaceBackend(FaceBackend):
             f = self._detect_max_side / max(img.size)
             img = img.resize(
                 (max(1, round(img.size[0] * f)), max(1, round(img.size[1] * f))),
-                Image.LANCZOS,
+                Image.Resampling.LANCZOS,
             )
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]

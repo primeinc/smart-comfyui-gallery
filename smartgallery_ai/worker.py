@@ -111,7 +111,7 @@ _PROVISION_MAP = (
     ("visual_backend", ("auto", "dinov2"), "visual"),
     ("face_backend", ("auto", "opencv", "insightface"), "faces"),
     ("segmenter_backend", ("auto", "mobilesam"), "segmenter"),
-    ("critic_backend", ("auto", "qwen-vl"), "critic"),
+    ("critic_backend", ("auto", "vlm"), "critic"),
 )
 
 
@@ -134,14 +134,7 @@ def provision_groups_for(config: AIConfig) -> list:
         weights_missing = any(
             not provisioning.artifact_present(config.models_dir, a)
             for a in group.artifacts)
-        needs_cuda_swap = (
-            any(req == "torch" for _, req in group.runtime)
-            and provisioning.torch_cuda_reinstall_needed())
-        needs_llama_swap = (
-            any(req.startswith("llama-cpp-python") for _, req in group.runtime)
-            and provisioning.llama_cuda_reinstall_needed())
-        if (weights_missing or needs_cuda_swap or needs_llama_swap
-                or provisioning.runtime_missing(group)):
+        if weights_missing or provisioning.runtime_missing(group):
             missing.append(group.name)
     return missing
 
@@ -429,11 +422,6 @@ class AIWorker:
         # stage -> smoothed seconds/item, measured passively from real
         # cycle work (see _CYCLE_TARGET_SECONDS above).
         self._stage_pace: dict = {}
-        # True while auto-provisioning intends to (or is about to) swap a
-        # CPU-build torch for CUDA wheels: torch-dependent backends must
-        # not import torch in the meantime -- an imported torch pins its
-        # files and would force a second restart to finish the swap.
-        self._hold_torch_backends = False
         # Retry bookkeeping for FAILED provisioning runs: a transient
         # network stall must not disable self-provisioning until restart.
         self._provision_started_at = 0.0
@@ -540,14 +528,6 @@ class AIWorker:
         if not missing:
             self.provision_state = {"state": "done", "groups": []}
             return
-        # A planned CUDA swap uninstalls torch: hold every torch-dependent
-        # backend un-imported until provisioning finishes, or the crawl
-        # would import (and pin) the CPU build first and the swap would
-        # need a second restart. Set BEFORE the cycle thread exists.
-        try:
-            self._hold_torch_backends = provisioning.torch_cuda_reinstall_needed()
-        except Exception:  # detection is best-effort
-            self._hold_torch_backends = False
         self._provision_started_at = time.monotonic()
         self.provision_state = {"state": "downloading", "groups": list(missing)}
         self._provision_thread = threading.Thread(
@@ -606,10 +586,9 @@ class AIWorker:
                 "state": "done", "groups": list(groups),
                 "done": self.provision_state.get("done", []),
             }
-            _logger.info("[AIWorker] provisioning complete: %d installed, "
-                         "%d downloaded, %d already present",
-                         len(result["installed"]), len(result["downloaded"]),
-                         len(result["skipped"]))
+            _logger.info("[AIWorker] provisioning complete: %d downloaded, "
+                         "%d already present",
+                         len(result["downloaded"]), len(result["skipped"]))
         except Exception as exc:  # downloads may fail; never fatal
             self.provision_state = {
                 "state": f"failed: {exc}", "groups": list(groups),
@@ -617,11 +596,6 @@ class AIWorker:
             }
             self._note_error("provision:download", f"auto-provision failed: {exc}")
             return
-        finally:
-            # Success or failure, backends may resolve again (a held torch
-            # import either finds the CUDA build now or fails cleanly into
-            # the bounded re-probe).
-            self._hold_torch_backends = False
         with self._lock:
             # Drop cached misses and their retry timestamps: the next cycle
             # re-resolves every backend against the freshly landed weights.
@@ -758,7 +732,7 @@ class AIWorker:
 
             self._cycles_since_review += 1
             critic_backend = self._backend("critic",
-                                           review.get_critic_backend)
+                                           review.get_reviewer)
             if critic_backend is None:
                 self._note_skip(skips, "reviews", self.config.critic_backend)
             elif (fast_consumed == 0
@@ -860,10 +834,7 @@ class AIWorker:
         cycle log can say it; deliberately-off stages stay silent."""
         if selector in ("none", "stub"):
             return
-        if self._hold_torch_backends and stage != "faces":
-            minutes = (time.monotonic() - self._provision_started_at) / 60.0
-            skips[stage] = f"CUDA swap in progress ({minutes:.0f} min)"
-        elif str(self.provision_state.get("state", "")).startswith("failed"):
+        if str(self.provision_state.get("state", "")).startswith("failed"):
             skips[stage] = "provisioning failed (see Status tab); will retry"
         elif self.provision_state.get("state") == "downloading":
             skips[stage] = "provisioning still downloading"
@@ -887,7 +858,7 @@ class AIWorker:
             face_backend = self._backend("face", faces.get_face_backend)
             if face_backend is not None:
                 self._process_faces(conn, face_backend, 1, only_file_id=file_id)
-            critic = self._backend("critic", review.get_critic_backend)
+            critic = self._backend("critic", review.get_reviewer)
             if critic is not None:
                 self._process_reviews(conn, critic, 1, only_file_id=file_id)
 
@@ -969,11 +940,6 @@ class AIWorker:
         Resolution must stay OUTSIDE self._lock: _note_error acquires the
         same non-reentrant lock. Only the worker thread resolves backends,
         so the unlocked window cannot double-load."""
-        # While a CUDA swap is pending, torch-dependent backends stay
-        # unresolved (importing torch now would pin the CPU build mid-swap
-        # and force a restart). Faces are cv2-only and keep working.
-        if self._hold_torch_backends and key != "face":
-            return None
         now = time.monotonic()
         with self._lock:
             if key in self._backend_cache:

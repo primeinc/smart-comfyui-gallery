@@ -1,6 +1,6 @@
 """Tests for smartgallery_ai.review: strict payload validation (acceptance +
 rejection cases), store_review upsert + the live ai_review_findings CHECK
-constraint, StubCritic heuristics, and generate_finding_mask (including the
+constraint, StubReviewer heuristics, and generate_finding_mask (including the
 path-traversal guard and source-file untouched guarantee)."""
 
 import os
@@ -15,10 +15,10 @@ from smartgallery_ai.review import (
     MaskNotAllowedError,
     ReviewResult,
     ReviewSchemaError,
-    StubCritic,
+    StubReviewer,
     StubSegmenter,
     generate_finding_mask,
-    get_critic_backend,
+    get_reviewer,
     store_review,
     validate_review_payload,
 )
@@ -420,11 +420,11 @@ def test_review_findings_check_constraint_is_live_for_direct_sql():
         )
 
 
-# --- StubCritic ----------------------------------------------------------
+# --- StubReviewer ----------------------------------------------------------
 
 
 def test_stub_critic_dark_image_yields_validated_global_lighting_finding():
-    critic = StubCritic()
+    critic = StubReviewer()
     img = solid_color_image(color=(5, 5, 5))
     raw = critic.review(img, prompt_text=None, rubric_version="review-rubric-v1")
     result = validate_review_payload(raw)
@@ -436,7 +436,7 @@ def test_stub_critic_dark_image_yields_validated_global_lighting_finding():
 
 
 def test_stub_critic_red_square_yields_localizable_artifact_overlapping_square():
-    critic = StubCritic()
+    critic = StubReviewer()
     size = (64, 64)
     square = (24, 24, 16, 16)  # x, y, w, h in pixels; 16*16=256 = 1/16 of 4096
     img = image_with_red_square(size=size, square=square)
@@ -460,16 +460,16 @@ def test_stub_critic_red_square_yields_localizable_artifact_overlapping_square()
     assert result.prompt_alignment_score == 1.0
 
 
-def test_get_critic_backend_stub_explicit_only():
-    assert get_critic_backend(AIConfig(critic_backend="none")) is None
+def test_get_reviewer_stub_explicit_only():
+    assert get_reviewer(AIConfig(critic_backend="none")) is None
     # 'auto' with a default (empty) models_dir: the qwen-vl critic is
     # unavailable because neither the OpenCLIP grounding dependency nor its
     # own weights resolve — this asserts the POST-flip fail-closed
     # behavior on an unprovisioned system, not the old always-None policy.
-    assert get_critic_backend(AIConfig(critic_backend="auto")) is None
-    assert isinstance(get_critic_backend(AIConfig(critic_backend="stub")), StubCritic)
+    assert get_reviewer(AIConfig(critic_backend="auto")) is None
+    assert isinstance(get_reviewer(AIConfig(critic_backend="stub")), StubReviewer)
     with pytest.raises(ValueError):
-        get_critic_backend(AIConfig(critic_backend="bogus"))
+        get_reviewer(AIConfig(critic_backend="bogus"))
 
 
 # --- generate_finding_mask ----------------------------------------------------
@@ -567,26 +567,26 @@ def test_qwen_critic_requires_semantic_embedder():
     import pytest as _pytest
 
     from smartgallery_ai import AIConfig
-    from smartgallery_ai.critic_qwen import QwenVlCritic
+    from smartgallery_ai.reviewer import Reviewer
     from smartgallery_ai.embedders import BackendUnavailable
-    from smartgallery_ai.review import get_critic_backend
+    from smartgallery_ai.review import get_reviewer
 
     # Class-level invariant: embedder=None is rejected before anything else
     # (no weights needed for this check to fire).
     with _pytest.raises(BackendUnavailable, match="grounding"):
-        QwenVlCritic("/nonexistent", semantic_embedder=None)
+        Reviewer("/nonexistent", semantic_embedder=None)
 
     # Factory 'auto': no semantic backend available -> critic unavailable
     # (returns None), never a gate-less critic.
     cfg = AIConfig(enabled=True, models_dir="/nonexistent",
                    semantic_backend="none", critic_backend="auto")
-    assert get_critic_backend(cfg) is None
+    assert get_reviewer(cfg) is None
 
     # Factory explicit 'qwen-vl': surfaces the configuration error.
     cfg2 = AIConfig(enabled=True, models_dir="/nonexistent",
-                    semantic_backend="none", critic_backend="qwen-vl")
+                    semantic_backend="none", critic_backend="vlm")
     with _pytest.raises(BackendUnavailable):
-        get_critic_backend(cfg2)
+        get_reviewer(cfg2)
 
 
 # --- store_review replacement vs. mask files ---------------------------------
@@ -651,7 +651,7 @@ def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
     import json as _json
 
     from smartgallery_ai import review as REV
-    from smartgallery_ai.critic_qwen import DEFAULT_GROUNDING_MIN_MARGIN
+    from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN
     from smartgallery_ai.review import _auto_critic_measurement_passed
 
     with open(REV._CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
@@ -720,30 +720,37 @@ def test_qwen_critic_summary_survives_rejected_last_finding(monkeypatch):
     """When the final defect fails crop verification, the summary must keep
     quoting the step-1 (grounded) description; the rejected defect text must
     not appear anywhere in the payload."""
-    import json as _json
+    from smartgallery_ai import reviewer as CQ
 
-    from smartgallery_ai import critic_qwen as CQ
+    reviewer = object.__new__(CQ.Reviewer)
+    reviewer._embedder = object()  # patched functions below never touch it
+    reviewer._grounding_min_cos = CQ.DEFAULT_GROUNDING_MIN_COS
+    reviewer._models_dir, reviewer._device = "", "cpu"
+    reviewer.model_id = "fake/model"
 
-    critic = object.__new__(CQ.QwenVlCritic)
-    critic._embedder = object()  # patched functions below never touch it
-    critic._grounding_min_cos = CQ.DEFAULT_GROUNDING_MIN_COS
+    class _ScriptedChat:
+        """One conversation with scripted answers, keyed by tool name.
 
-    chats = iter([
-        "A cat sitting on a red sofa. The room is bright.",              # DESCRIBE
-        _json.dumps({"quality_score": 7.0, "defects": [
-            {"type": "artifact", "severity": "low", "confidence": 0.9,
-             "region": "bottom-right", "what": "fabricated glitch text"}]}),  # ASSESS
-        _json.dumps({"x": 0.6, "y": 0.6, "w": 0.2, "h": 0.2}),           # LOCALIZE
-    ])
-    def _fake_chat(_self, _uri, _text, schema, max_tokens):
-        del schema, max_tokens  # accepted only for _chat's call-signature compatibility (kwarg call)
-        return next(chats)
+        `ask_json` returns PARSED objects, because the real one already
+        parsed the tool call. Every protocol step is a tool call --
+        including describe."""
 
-    monkeypatch.setattr(CQ.QwenVlCritic, "_chat", _fake_chat)
+        def ask_json(self, _prompt, name="", max_new_tokens=512, attempts=2):
+            del _prompt, max_new_tokens, attempts
+            if name == "describe":
+                return {"description":
+                        "A cat sitting on a red sofa. The room is bright."}
+            if name == "assess":
+                return {"quality_score": 7.0, "defects": [
+                    {"type": "artifact", "severity": "low", "confidence": 0.9,
+                     "region": "bottom-right", "what": "fabricated glitch text"}]}
+            return {"x": 0.6, "y": 0.6, "w": 0.2, "h": 0.2}  # locate
+
+    monkeypatch.setattr(CQ.ai_models, "Chat", lambda *_a, **_k: _ScriptedChat())
     monkeypatch.setattr(CQ, "check_grounding", lambda *_a, **_k: 0.12)
     monkeypatch.setattr(CQ, "verify_finding_region", lambda *_a, **_k: False)
 
-    payload = critic.review(solid_color_image(size=(64, 64)), None, "rubric-1")
+    payload = reviewer.review(solid_color_image(size=(64, 64)), None, "rubric-1")
     assert payload["findings"] == []
     assert payload["summary"].startswith("A cat sitting on a red sofa.")
     assert "fabricated glitch text" not in payload["summary"]

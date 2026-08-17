@@ -1,8 +1,8 @@
 # AI Models, Licenses, and Parameters (WI-31)
 
 Everything below runs **locally**. No cloud inference, no telemetry. Model
-weights live in `.AImodels/` (env `AI_DAM_MODELS_DIR` /
-`OMNIQUERY_FALLBACK_GGUF`) and arrive one of two ways — both driven by
+weights live in `.AImodels/` (env `AI_DAM_MODELS_DIR`) and arrive one
+of two ways — both driven by
 `smartgallery_ai/provision.py`, which pins destinations to the exact paths
 the backends load and verifies SHA-256 digests for single-file artifacts:
 
@@ -20,18 +20,12 @@ the backends load and verifies SHA-256 digests for single-file artifacts:
   app can). If torch was already imported when the swap ran, one restart
   finishes it — the console says so. Loaded backends log their device
   (`[AI] <model> on device cuda`), `/status` reports `devices`, and the
-  panel shows "Compute: … on cuda" while indexing. The qwen-vl critic
-  offloads all layers to GPU when the installed `llama-cpp-python` is a
-  CUDA build (`AI_DAM_GPU_LAYERS` tunes partial offload; the default PyPI
-  wheel is CPU-only and ignores the setting).
-  **Multi-GPU**: the default device is the card with the most total VRAM
-  (bare `cuda` would mean PCI enumeration order). `AI_DAM_DEVICE=cuda:1`
-  pins everything to one card (the critic maps it to llama.cpp's
-  `main_gpu`); per-backend pins `AI_DAM_SEMANTIC_DEVICE` /
-  `AI_DAM_VISUAL_DEVICE` / `AI_DAM_SEGMENTER_DEVICE` spread the small
-  models across cards. The critic — the only model big enough to be worth
-  splitting — layer-splits across all visible GPUs natively (llama.cpp
-  default); `AI_DAM_TENSOR_SPLIT=0.6,0.4` sets the proportions, and
+  panel shows "Compute: … on cuda" while indexing. Every generative
+  model loads through `smartgallery_ai/models.py`, which places it on the
+  GPU with the most free memory unless `AI_DAM_DEVICE` says otherwise.
+  **Multi-GPU**: `AI_DAM_DEVICE=cuda:1` pins everything to one card;
+  per-backend pins `AI_DAM_SEMANTIC_DEVICE` / `AI_DAM_VISUAL_DEVICE` /
+  `AI_DAM_SEGMENTER_DEVICE` spread the small models across cards, and
   `CUDA_VISIBLE_DEVICES` remains the universal override. Cycles are never
   blocked; freshly landed runtimes/weights activate through the worker's
   backend re-probe without a restart, and torch backends place models on
@@ -39,7 +33,7 @@ the backends load and verifies SHA-256 digests for single-file artifacts:
   the attempt fails fast and the layer degrades exactly as if nothing had
   been provisioned.
 - **Explicit:** `python -m smartgallery_ai provision [--list] [groups]`
-  (groups: `faces semantic visual segmenter omniquery critic llama-cuda`,
+  (groups: `faces semantic visual segmenter omniquery critic`,
   or `all`) — for
   pre-provisioning, air-gapped staging, or `AI_DAM_AUTO_PROVISION=false`
   strict no-egress deployments.
@@ -79,7 +73,7 @@ vocabulary for both answerers; responses never carry SQL or any IR.
 |---|---|---|---|---|
 | Rules answerer | `nlq` (in-repo) | — | 0 | 100-entry corpus, 2026-08-16: **100% execution match**, parse p50 0.16 ms; live endpoint round trip p50 1.37 ms / p95 2.26 ms. |
 | **Fusion (the shipped path)** | endpoint policy over both | — | — | 100-entry corpus, GPU, 2026-08-16, reproducible via `just ai bench-fusion`: **95.0% execution match** (rules exact on the 83 fully-consumed queries; model correct on 11 of 17 free-language queries, several of which are vague/adversarial entries with debatable ground truth; model hard-failures fall back to the rules answer). |
-| nl2sql answerer | `distil-labs/distil-qwen3-4b-text2sql-gguf-4bit`, `model.gguf` (provision group `omniquery`) | Apache-2.0 | 2.5 GB | Best of five GGUF candidates screened 2026-08-16 (43.4% vs Qwen3-1.7B 40.8%, 0.5B-class ≤21%, SS-350M 1.3%). Loop latency ~0.4–3 s/query on GPU. Decode canary at load: garbage logits or sampler crashes reload CPU-only, loudly — also catches silently corrupted GGUF files. |
+| nl2sql answerer | `distil-labs/distil-qwen3-4b-text2sql` (provision group `omniquery`) | Apache-2.0 | 8.1 GB | Best of five candidates screened 2026-08-16 (43.4% vs Qwen3-1.7B 40.8%, 0.5B-class ≤21%, SS-350M 1.3%). That screening ran the 4-bit GGUF quantization of **this same checkpoint**, so the prompt contract and the corpus result still describe it; the safetensors weights are larger and unquantized, and the loop latency has not been re-measured since the move. The agentic loop is one `models.Chat`, so the schema block — the bulk of the prompt, identical every round — is encoded once and each retry reuses its KV cache. |
 
 Superseded (removed 2026-08-16): the needle2/cactus-needle intent parser,
 the four-threshold router, and the NL→JSON-AST middle layer for the
@@ -101,8 +95,8 @@ answerer's execution path and the API's typed query surface.
 | Detector compare | all installed pipelines above, side by side | — | — | `/galleryout/aidam` dashboard tool; per-pipeline detections, landmarks, and attributes on any picked file. |
 | Semantic embedding (**runtime-verified**) | OpenCLIP (`mlfoundations/open_clip`, MIT) with `laion/CLIP-ViT-B-32-laion2B-s34b-b79k`, file `open_clip/ViT-B-32_laion2b_s34b_b79k.bin` | MIT (code + weights per model card) | 512 | Joint image/text space (`space='semantic'`). Measured on CPU: load 5.6s, ~40 ms/image, ~24 ms/text; text→image retrieval verified (correct caption ranks its image above unrelated caption and above noise). `auto` never substitutes stubs. |
 | Visual embedding (**runtime-verified**) | `facebook/dinov2-small`, snapshot dir `dinov2-small/` | Apache-2.0 | 384 | Image-only self-supervised space (`space='visual'`). Measured on CPU: load 8s, ~59 ms/image; same-image edit cosine 0.988 vs unrelated −0.03. Kept strictly separate from the semantic space. |
-| Review critic (**runtime-verified, default via `auto`**) | `QwenVlCritic`: `Qwen/Qwen2.5-VL-7B-Instruct` (Apache-2.0, verified on model card), official `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` Q4_K_M (4.68 GB) or Q8_0 + mmproj, via `llama-cpp-python` `Qwen25VLChatHandler` | Apache-2.0 | — | **Decomposed architecture** (`critic_qwen.py`): describe → CLIP grounding gate → grammar-constrained assess → grammar-constrained prompt-element alignment (deterministic verbatim slices from `generation_params`, unbounded mismatch findings) → grammar-constrained localize → deterministic assembly; the prompt-following score is **satisfied/total over those elements, on 0..1** — the fraction of the user's own prompt the image delivered, explained element by element in `ai_review_alignment` (each row a verbatim prompt slice with satisfied/absent, confidence, and a bbox only where a satisfied element was located) rather than asserted as a similarity number. `null` means only that the file carries no generation prompt to follow. **Measured 2026-08-15 (CPU, ~200 s/review): 4/4 schema-valid reviews with description-level grounding** — clean image scored 8.0; the planted red-square defect (the one finding with ground truth) detected and localized; dark image still grounded; noise image with mismatched prompt correctly got quality 0.0. **Gate v2 (post-oracle):** the v1 absolute-cosine gate (0.20) was shown by adversarial review to accept vacuous and example-parroting descriptions (27% FAR); v2 additionally requires a calibrated **contrastive margin ≥ 0.09** over a generic-baseline text (FAR 3.1% / FRR 25% on the committed calibration set, `probes/grounding_calibration.py` → `benchmarks/results/grounding_calibration.json`), and localizable findings must additionally pass **topical crop verification** (finding text beats baseline on its own bbox crop) or be dropped. Scope: these are layered deterministic filters over description- and region-level grounding — they verify that named content is visually present, not the truth of subjective quality judgments; ~11 of ~12 findings in the calibration run had no ground truth to check. Finding lists are de-anchored: the assess prompt asks for every concrete defect (schema cap 16, "may well be empty") instead of a numeric ask that begets exactly-N outputs. |
-| Review critic (superseded attempts, opt-in only) | `SmolVlmCritic` for `HuggingFaceTB/SmolVLM2-2.2B-Instruct` / `SmolVLM2-500M-Video-Instruct` | Apache-2.0 | — | **Measured unfit: 0/7 image-grounded** (example parroting / truncation — the failure mode the grounding gate now catches). Reachable only via explicit `'smolvlm'`. |
+| Image reviewer (**default via `auto`**) | `Reviewer` over `AI_DAM_CRITIC_MODEL`, default `Qwen/Qwen3-VL-2B-Instruct` (Apache-2.0), loaded by `smartgallery_ai/models.py` through `AutoProcessor` + `AutoModelForImageTextToText` | Apache-2.0 | 4.4 GB | **Decomposed protocol** (`reviewer.py`): describe -> CLIP grounding gate -> assess -> prompt-element alignment (deterministic verbatim slices from `generation_params`, unbounded mismatch findings) -> localize -> deterministic assembly. The prompt-following score is **satisfied/total over those elements, on 0..1** - the fraction of the user's own prompt the image delivered, explained element by element in `ai_review_alignment` (each row a verbatim prompt slice with satisfied/absent, confidence, and a bbox only where a satisfied element was located) rather than asserted as a similarity number. `null` means only that the file carries no generation prompt to follow. The whole protocol runs in ONE `models.Chat`, so the image is encoded once and every later step reuses its KV cache. **Grounding gate (unchanged, still calibrated):** an absolute CLIP cosine floor plus a contrastive **margin >= 0.09** over a generic-baseline text (FAR 3.1% / FRR 25% on the committed calibration set, `probes/grounding_calibration.py` -> `benchmarks/results/grounding_calibration.json`). That report is bound to the OpenCLIP backend's identity, not the reviewer's, so the move off llama.cpp did not invalidate it. Localizable findings must additionally pass **topical crop verification** (finding text beats baseline on its own bbox crop) or be dropped. Scope: these are layered deterministic filters over description- and region-level grounding - they verify that named content is visually present, not the truth of subjective quality judgments. Finding lists are de-anchored: the assess contract asks for every concrete defect (cap 16, "may well be empty") instead of a numeric ask that begets exactly-N outputs. **NOT YET RE-MEASURED:** the 4/4 schema-valid result below was taken on the retired Qwen2.5-VL-7B GGUF stack under llama.cpp grammar decoding. Decoding here is prompted through the model's own tool-calling contract and is NOT schema-constrained, so replies are read defensively and a malformed defect is dropped rather than indexed into. Re-run the review probe before quoting a quality number for this stack. |
+| Image reviewer (retired) | `Qwen/Qwen2.5-VL-7B-Instruct` Q4_K_M + mmproj via `llama-cpp-python`; `HuggingFaceTB/SmolVLM2-*` before it | Apache-2.0 | - | The 7B GGUF critic **measured 4/4 schema-valid reviews with description-level grounding (2026-08-15, CPU, ~200 s/review)**. It was removed because loading llama.cpp's LLVM OpenMP into a process that already held torch's Intel OpenMP aborted the whole gallery (exit 3), and the grounding gate makes torch co-residency structural. SmolVLM2 **measured unfit: 0/7 image-grounded** (example parroting / truncation). Neither needs a class today: any transformers image-text-to-text checkpoint - SmolVLM2 included - is reachable by setting `AI_DAM_CRITIC_MODEL`. |
 | Defect segmentation (**runtime-verified**) | `MobileSamSegmenter`: `ChaoningZhang/MobileSAM` vit_t, weights `mobile_sam.pt` (40 MB) | Apache-2.0 | — | Box/point-prompted; **measured: IoU 0.998** vs ground truth on a planted defect with a loose box prompt, 3.6 s CPU. The worker segments every localizable finding of a fresh review; `generate_finding_mask` still forbids masks for global findings. |
 | Segmentation (interface ready; candidates, none shipped) | `facebookresearch/segment-anything-2` (SAM 2); `ChaoningZhang/MobileSAM`; `yunyangx/EfficientSAM` | Apache-2.0 (code + weights) | — | Box/point-prompted masks for **localizable** findings only. |
 
@@ -112,13 +106,15 @@ The measured SmolVLM2 failure is the known sub-3B pathology of **visual
 token neglect**: under few-shot structured-output prompting, small
 language backbones over-attend the text tokens (including any example
 payload) and bypass cross-attention to the visual embeddings — producing
-schema-valid text that ignores the image. The shipped critic implements
-the standard mitigations, which is why it measures 4/4 grounded:
-grammar masks at sampling time instead of an in-context example payload
-to parrot (llama.cpp GBNF via `response_format`), zero-shot structural
-directives only, a describe-first stage with a deterministic CLIP
-grounding gate, and decomposed atomic questions (the same VQA-
-decomposition idea as TIFA/DSG applied to defect review).
+schema-valid text that ignores the image. The shipped reviewer implements
+the standard mitigations: the model's own tool-calling contract carries the
+required shape instead of an in-context example payload to parrot,
+zero-shot structural directives only, a describe-first stage with a
+deterministic CLIP grounding gate, and decomposed atomic questions (the
+same VQA-decomposition idea as TIFA/DSG applied to defect review). The
+4/4-grounded figure was measured on the retired GGUF stack, where a GBNF
+grammar masked at sampling time; nothing constrains decoding here, so the
+reply is parsed and retried instead, and the figure needs re-measuring.
 
 Alternative critics evaluated against WI-31's licensing stop condition:
 
@@ -135,7 +131,7 @@ Alternative critics evaluated against WI-31's licensing stop condition:
 | Library | Version | License | Used for |
 |---|---|---|---|
 | `argon2-cffi` | 25.1.0 | MIT | Argon2id password hashing (`sg_auth.py`) |
-| `llama-cpp-python` | 0.3.x | MIT | nl2sql answerer + qwen-vl critic runtime |
+| `transformers` | 5.x | Apache-2.0 | every generative model: the reviewer and the nl2sql answerer |
 | `sqlite-vec` | — | MIT/Apache-2.0 | **Evaluated, not adopted**: pre-v1 API churn; numpy brute-force cosine is sufficient and dependency-free at personal-gallery scale (~10⁵ vectors). Decision can be revisited behind the `VectorStore` interface. |
 
 ## Runtime verification record (2026-08-15, CPU-only sandbox)

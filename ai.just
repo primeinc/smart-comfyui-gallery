@@ -11,19 +11,19 @@ py := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.ve
 default:
     @just --list ai
 
-# Every AI runtime (llama, torch, onnxruntime, faiss) exercised on CPU
-# and on EACH GPU, crash-contained per cell, with output verification.
-# GGUF/ONNX paths default to the provisioned artifacts.
-[doc('Exercise llama/torch/ort/faiss on CPU and each GPU, verified')]
+# Every AI runtime (transformers, torch, onnxruntime, faiss) exercised on
+# CPU and on EACH GPU, crash-contained per cell, with output verification.
+# Model/ONNX paths default to the provisioned artifacts.
+[doc('Exercise generate/torch/ort/faiss on CPU and each GPU, verified')]
 hardware-matrix out="hw_matrix.json":
     {{ py }} probes/hardware_matrix_probe.py --out "$1"
 
 # One tiny generation on the resolved nl2sql model: proves the (build,
 # device) pair actually decodes. CUDA_VISIBLE_DEVICES selects the GPU;
-# OMNIQUERY_FALLBACK_GPU_LAYERS=0 forces CPU decode.
+# AI_DAM_DEVICE=cpu forces CPU decode.
 [doc('One tiny decode on the resolved nl2sql model (device via env)')]
 nl2sql-canary:
-    {{ py }} -c "from omniquery.parsers.nl2sql import SqlSearch; from omniquery.parsers.fallback_qwen import load_canaried_llama; s = SqlSearch(db_path=':memory:'); print('model:', s.model_path); llama = load_canaried_llama(s.model_path, 512, 4); r = llama.create_completion(prompt='Say OK.', max_tokens=4, temperature=0.0); print('decoded:', repr(r['choices'][0]['text']))"
+    {{ py }} -c "from omniquery.parsers.nl2sql import SqlSearch; from smartgallery_ai import models; s = SqlSearch(db_path=':memory:'); print('model:', s.model_ref, '| provisioned:', s.available()); chat = models.Chat(s.model_ref, models_dir=s.models_dir); print('decoded:', repr(chat.ask('Say OK.', max_new_tokens=8)))"
 
 # The full agentic loop for one question against the deterministic
 # fixture DB: generated SQL, execution outcome, refinement rounds.

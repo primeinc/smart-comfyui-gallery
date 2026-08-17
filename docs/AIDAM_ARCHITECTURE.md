@@ -85,7 +85,7 @@ RULES  NL -> nlq parser (deterministic; leftovers become universal
           -> deterministic compiler: parameterized read-only SELECT
           -> mode=ro connection + SQLite authorizer
 
-MODEL  NL + live schema (sqlite_master) -> text2sql GGUF -> SQL
+MODEL  NL + live schema (sqlite_master) -> text2sql model -> SQL
           -> sqlexec.run_readonly_select: the ONE sandboxed gate
              (SELECT prefix, mode=ro URI, C-engine authorizer)
 ```
@@ -112,7 +112,8 @@ the critic from first principles rather than by relabeling:
 - **Generation review (AC6) — MET, by measurement.** The earlier
   monolithic SmolVLM2 critics measured 0/7 image-grounded (schema-valid
   fabrication) and remain opt-in-only. The shipped default is the
-  **decomposed Qwen2.5-VL-7B critic** (`critic_qwen.py`): the model only
+  **decomposed reviewer** (`reviewer.py`), over any transformers
+  image-text-to-text checkpoint: the model only
   answers small grammar-constrained questions (describe → assess → align
   → localize), deterministic code assembles the typed payload, and a
   deterministic CLIP grounding gate aborts any review whose description

@@ -27,7 +27,6 @@ download-free process. Invoke:
 from __future__ import annotations
 
 import contextlib
-import glob
 import hashlib
 import importlib
 import importlib.metadata
@@ -36,35 +35,9 @@ import os
 import re
 import shutil
 import subprocess
-import sys
-import sysconfig
-import time
 import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Optional
-
-# torch wheel selection: an NVIDIA GPU (detected via nvidia-smi on PATH)
-# gets CUDA-capable wheels — PyPI's Linux torch bundles CUDA, Windows CUDA
-# builds live only on a cu-index. Without a GPU the CPU index avoids the
-# multi-GB CUDA payload. macOS torch on PyPI is already CPU/MPS.
-# AI_DAM_DEVICE=cpu forces the CPU wheel regardless of hardware.
-#
-# The cu-index must match the GPU GENERATION: cu126 wheels carry no
-# kernels for Blackwell-and-newer cards (compute capability >= 10) — the
-# install "succeeds" and then every kernel launch dies with
-# cudaErrorNoKernelImageForDevice. AI_DAM_CUDA_INDEX overrides the choice.
-_TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
-_TORCH_CUDA_INDEX_DEFAULT = "https://download.pytorch.org/whl/cu126"
-# Blackwell-and-newer (sm_120+) kernel builds of current torch, newest
-# first with the minimum driver-side CUDA version each requires (torch's
-# own unsupported-GPU warning names exactly these three for 2.13).
-_TORCH_CUDA_BLACKWELL_CHOICES = (
-    (13.2, "https://download.pytorch.org/whl/cu132"),
-    (13.0, "https://download.pytorch.org/whl/cu130"),
-    (12.9, "https://download.pytorch.org/whl/cu129"),
-)
-_TORCH_CUDA_INDEX_BLACKWELL_FALLBACK = "https://download.pytorch.org/whl/cu130"
-
 
 def cuda_hardware_present() -> bool:
     """Whether an NVIDIA driver is installed (nvidia-smi on PATH) — the
@@ -113,113 +86,6 @@ def _driver_cuda_version():
     return value
 
 
-def torch_cuda_index() -> str:
-    """The CUDA wheel index matching this machine's GPU generation and
-    driver: pre-Blackwell cards keep cu126; Blackwell-and-newer (compute
-    capability >= 10) get the newest sm_120 build the driver can run.
-    AI_DAM_CUDA_INDEX overrides for hardware this table doesn't know.
-    (Mixed rigs pair the newest card's index — it still carries kernels
-    for every generation back to Turing.)"""
-    override = os.environ.get("AI_DAM_CUDA_INDEX", "").strip()
-    if override:
-        return override
-    cap = _cuda_compute_capability()
-    if cap is None or cap < 10.0:
-        return _TORCH_CUDA_INDEX_DEFAULT
-    driver_cuda = _driver_cuda_version()
-    if driver_cuda is not None:
-        for minimum, index in _TORCH_CUDA_BLACKWELL_CHOICES:
-            if driver_cuda >= minimum:
-                return index
-    return _TORCH_CUDA_INDEX_BLACKWELL_FALLBACK
-
-
-# Official prebuilt CUDA builds of llama-cpp-python (the critic's
-# runtime). Primary source: GitHub RELEASE wheels — py3-none tagged (any
-# CPython) and current (v0.3.34-cu132/cu130 verified 2026-08, Windows +
-# manylinux). The abetlen.github.io cu124 INDEX is a stale fallback
-# (caps at 0.3.4, cp312). AI_DAM_LLAMA_CUDA_INDEX overrides everything.
-_LLAMA_CUDA_INDEX_DEFAULT = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
-# (min driver CUDA, release tag suffix), newest first.
-_LLAMA_CUDA_RELEASE_TAGS = ((13.2, "cu132"), (13.0, "cu130"))
-_llama_gpu_cache: list = []  # memoized [bool-or-None]
-
-
-def llama_cuda_index() -> str:
-    """The prebuilt-CUDA wheel index for llama-cpp-python."""
-    return (os.environ.get("AI_DAM_LLAMA_CUDA_INDEX", "").strip()
-            or _LLAMA_CUDA_INDEX_DEFAULT)
-
-
-def llama_cuda_release_wheel() -> Optional[str]:
-    """Direct URL of the official release wheel matching this machine's
-    driver, the running platform, and the INSTALLED llama-cpp-python
-    version — or None (callers then fall back to the index). Release
-    wheels are py3-none, so any CPython works."""
-    driver_cuda = _driver_cuda_version()
-    if driver_cuda is None:
-        return None
-    tag = next((t for minimum, t in _LLAMA_CUDA_RELEASE_TAGS
-                if driver_cuda >= minimum), None)
-    if tag is None:
-        return None
-    try:
-        version = importlib.metadata.version("llama-cpp-python")
-    except importlib.metadata.PackageNotFoundError:
-        return None
-    if sys.platform == "win32":
-        plat = "win_amd64"
-    elif sys.platform.startswith("linux"):
-        plat = "manylinux_2_35_x86_64"
-    else:
-        return None
-    return ("https://github.com/abetlen/llama-cpp-python/releases/download/"
-            f"v{version}-{tag}/llama_cpp_python-{version}-py3-none-{plat}.whl")
-
-
-def _llama_supports_gpu():
-    """Whether the installed llama-cpp-python build can offload to GPU,
-    probed in a CHILD process — importing it here would load (and on
-    Windows lock) the DLL a swap needs to replace. None when the package
-    is absent or the probe fails. Memoized."""
-    if _llama_gpu_cache:
-        return _llama_gpu_cache[0]
-    value = None
-    if importlib.util.find_spec("llama_cpp") is not None:
-        try:
-            proc = subprocess.run(
-                [sys.executable, "-c",
-                 # The full runtime bootstrap: PATH for the wheel's NVIDIA
-                 # DLLs, LLAMA_CPP_LIB_PATH for provisioned official
-                 # binaries, and dynamic backend registration after import
-                 # (official builds report zero devices without it).
-                 "from smartgallery_ai.llama_runtime import "
-                 "prepare_llama_runtime, activate_llama_backends; "
-                 "prepare_llama_runtime(); "
-                 "import llama_cpp; "
-                 "activate_llama_backends(); "
-                 "print(int(llama_cpp.llama_supports_gpu_offload()))"],
-                capture_output=True, text=True, timeout=120,
-                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            if proc.returncode == 0:
-                value = proc.stdout.strip() == "1"
-        except (OSError, subprocess.SubprocessError, ValueError):
-            value = None
-    _llama_gpu_cache.append(value)
-    return value
-
-
-def llama_cuda_reinstall_needed() -> bool:
-    """Whether the installed llama-cpp-python is a CPU-only build on CUDA
-    hardware (the critic then runs its 30s-per-image vision encoder on
-    CPU while the GPU idles). AI_DAM_DEVICE=cpu opts out."""
-    if sys.platform == "darwin" or not cuda_hardware_present():
-        return False
-    if os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu":
-        return False
-    return _llama_supports_gpu() is False
-
-
 def cuda_summary():
     """One-shot GPU inventory for boot logging and /status: EVERY card
     with its own name/compute capability/VRAM (a machine can mix
@@ -253,7 +119,6 @@ def cuda_summary():
         "driver": driver,
         "driver_cuda": _driver_cuda_version(),
         "compute_capability": _cuda_compute_capability(),
-        "torch_index": torch_cuda_index(),
     }
 
 
@@ -292,7 +157,7 @@ class Group:
 
 
 # Registry of everything the AI layer can load. dest paths mirror the
-# constants in embedders.py / faces.py / critic_qwen.py /
+# constants in embedders.py / faces.py / reviewer.py /
 # segmenter_mobilesam.py -- those modules are the source of truth.
 GROUPS = (
     Group(
@@ -384,67 +249,43 @@ GROUPS = (
         ),
     ),
     Group(
-        name="llama-cuda",
-        enables="llama.cpp official CUDA binaries (every GPU architecture "
-                "incl. sm_120/Blackwell, which the pip wheels do not ship)",
-        # Build b9976 == the llama.cpp commit (e3546c79) vendored by
-        # llama-cpp-python v0.3.34, so the ctypes bindings match the DLL
-        # ABI exactly. Bump BOTH together. smartgallery_ai.llama_runtime
-        # points LLAMA_CPP_LIB_PATH here and registers the dynamic
-        # backends; Windows-only payload (the wheels cover other OSes).
-        artifacts=(
-            Artifact(
-                dest="llama-cpp-cuda",
-                approx_size="240 MB zip", license="MIT",
-                url=("https://github.com/ggml-org/llama.cpp/releases/download/"
-                     "b9976/llama-b9976-bin-win-cuda-13.3-x64.zip"),
-                unzip_all=True,
-            ),
-            Artifact(
-                dest="llama-cpp-cuda-cudart",
-                approx_size="400 MB zip",
-                license="NVIDIA CUDA EULA (redistributable runtime)",
-                url=("https://github.com/ggml-org/llama.cpp/releases/download/"
-                     "b9976/cudart-llama-bin-win-cuda-13.3-x64.zip"),
-                unzip_all=True,
-            ),
-        ),
-    ),
-    Group(
         name="omniquery",
         enables="Search palette AI answerer (free-language questions via "
                 "read-only nl2sql)",
-        runtime=(("llama_cpp", "llama-cpp-python>=0.3.0"),),
+        # torchvision even though this checkpoint is text-only:
+        # smartgallery_ai.models imports it before transformers so the
+        # availability flag is set for the whole process, and a torch group
+        # without a paired torchvision resolves an unmatched PyPI build.
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
+                 ("transformers", "transformers")),
         artifacts=(
-            # Best measured of five GGUF candidates on the 98-entry corpus
-            # (43.4% standalone execution match, 2026-08-16); consulted only
+            # The safetensors source the previously-shipped 4-bit GGUF was
+            # quantized from, so the prompt contract and the 98-entry
+            # corpus measurement (43.4% standalone execution match,
+            # 2026-08-16) still describe this checkpoint. Consulted only
             # when the deterministic nlq parse flags structural leftovers.
             Artifact(
-                dest="distil-qwen3-4b-text2sql-4bit.gguf",
-                approx_size="2.5 GB", license="Apache-2.0",
-                hf_repo="distil-labs/distil-qwen3-4b-text2sql-gguf-4bit",
-                hf_filename="model.gguf",
+                dest="distil-qwen3-4b-text2sql",
+                approx_size="8.1 GB", license="Apache-2.0",
+                hf_repo="distil-labs/distil-qwen3-4b-text2sql",
             ),
         ),
     ),
     Group(
         name="critic",
         enables="Review tab (quality/alignment scores + typed findings); needs 'semantic' too",
-        runtime=(("llama_cpp", "llama-cpp-python>=0.3.0"),
-                 ("torch", "torch"), ("torchvision", "torchvision"),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
+                 ("transformers", "transformers"),
                  ("open_clip", "open_clip_torch")),
         artifacts=(
+            # A full snapshot, not a single file: transformers loads a
+            # checkpoint directory. The reviewer runs ANY image-text-to-text
+            # checkpoint (AI_DAM_CRITIC_MODEL), so this is the provisioned
+            # default rather than a hard-coded dependency.
             Artifact(
-                dest="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
-                approx_size="4.7 GB", license="Apache-2.0",
-                hf_repo="ggml-org/Qwen2.5-VL-7B-Instruct-GGUF",
-                hf_filename="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
-            ),
-            Artifact(
-                dest="mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
-                approx_size="845 MB", license="Apache-2.0",
-                hf_repo="ggml-org/Qwen2.5-VL-7B-Instruct-GGUF",
-                hf_filename="mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
+                dest="Qwen3-VL-2B-Instruct",
+                approx_size="4.4 GB", license="Apache-2.0",
+                hf_repo="Qwen/Qwen3-VL-2B-Instruct",
             ),
         ),
     ),
@@ -647,129 +488,6 @@ def _download_hf_snapshot(repo: str, dest_dir: str) -> None:
     snapshot_download(repo_id=repo, local_dir=dest_dir)
 
 
-def _run_pip_operation(pip_args: list, uv_args: list, timeout: int) -> None:
-    """Run one pip operation in THIS interpreter's environment, tolerating
-    environments that ship without pip (uv-created venvs do): try
-    `python -m pip` first, then `uv pip ... --python <this python>` when
-    uv is on PATH, else bootstrap pip once via ensurepip and retry.
-    Failure raises ProvisionError carrying the tail of stderr."""
-    proc = subprocess.run([sys.executable, "-m", "pip", *pip_args],
-                          capture_output=True, text=True, timeout=timeout)
-    if proc.returncode == 0:
-        return
-    err = proc.stderr or ""
-    if "No module named pip" in err:
-        uv = shutil.which("uv")
-        if uv is not None:
-            proc = subprocess.run(
-                [uv, "pip", *uv_args, "--python", sys.executable],
-                capture_output=True, text=True, timeout=timeout)
-            if proc.returncode == 0:
-                return
-            err = proc.stderr or err
-        else:
-            boot = subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"],
-                                  capture_output=True, text=True, timeout=600)
-            if boot.returncode == 0:
-                proc = subprocess.run([sys.executable, "-m", "pip", *pip_args],
-                                      capture_output=True, text=True, timeout=timeout)
-                if proc.returncode == 0:
-                    return
-                err = proc.stderr or err
-            else:
-                err = boot.stderr or err
-    raise ProvisionError(
-        f"pip {' '.join(pip_args)} failed: {err.strip()[-400:]}")
-
-
-_ort_gpu_cache: list = []  # memoized [bool-or-None]
-
-
-def _ort_cuda_reinstall_needed():
-    """Whether the installed onnxruntime build lacks the CUDA execution
-    provider, probed in a CHILD process (importing it here would lock the
-    DLLs the swap needs to replace). False when the package is absent or
-    the probe fails. Memoized."""
-    if _ort_gpu_cache:
-        return _ort_gpu_cache[0]
-    value = False
-    if importlib.util.find_spec("onnxruntime") is not None:
-        try:
-            proc = subprocess.run(
-                [sys.executable, "-c",
-                 "import onnxruntime; print(int('CUDAExecutionProvider' in "
-                 "onnxruntime.get_available_providers()))"],
-                capture_output=True, text=True, timeout=120)
-            if proc.returncode == 0:
-                value = proc.stdout.strip() == "0"
-        except (OSError, subprocess.SubprocessError, ValueError):
-            value = False
-    _ort_gpu_cache.append(value)
-    return value
-
-
-def _default_pip_runner(args: list) -> None:
-    """Install one requirement into the current interpreter's environment
-    (works in pip-less uv venvs too; see _run_pip_operation). uv spells
-    pip's --force-reinstall as --reinstall; translate for its fallback."""
-    uv_args = ["--reinstall" if arg == "--force-reinstall" else arg
-               for arg in args]
-    _run_pip_operation(["install", "--quiet", *args],
-                       ["install", "--quiet", *uv_args], timeout=3600)
-
-
-def _default_pip_uninstaller(packages: list) -> None:
-    """Uninstall packages from the current interpreter's environment
-    (works in pip-less uv venvs too; see _run_pip_operation)."""
-    _run_pip_operation(["uninstall", "--quiet", "-y", *packages],
-                       ["uninstall", "--quiet", *packages], timeout=600)
-
-
-def torch_cuda_reinstall_needed() -> bool:
-    """Whether the installed torch build cannot use this machine's GPU:
-    a CPU-index build on CUDA hardware, or (Windows) a CUDA build from
-    the WRONG generation's index — wrong-generation kernels install fine
-    and then fail at launch with cudaErrorNoKernelImageForDevice. The
-    static installers pin an index blind because package resolution
-    cannot see GPUs; only the running app can, so it swaps the pair at
-    startup. Metadata-only -- never imports torch. AI_DAM_DEVICE=cpu
-    opts out."""
-    if sys.platform == "darwin" or not cuda_hardware_present():
-        return False
-    if os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu":
-        return False
-    try:
-        version = importlib.metadata.version("torch")
-    except importlib.metadata.PackageNotFoundError:
-        return False
-    if "+cpu" in version:
-        return True
-    if sys.platform == "win32" and "+cu" in version:
-        installed_tag = version.split("+", 1)[1]
-        expected_tag = torch_cuda_index().rstrip("/").rsplit("/", 1)[-1]
-        return installed_tag != expected_tag
-    return False
-
-
-def _pip_args_for(requirement: str) -> list:
-    """pip arguments for one requirement. torch AND torchvision pick the
-    wheel index matching the hardware — they must come from the SAME index
-    or torchvision's compiled ops fail to register against the installed
-    torch (RuntimeError: operator torchvision::nms does not exist).
-    CUDA-capable with an NVIDIA driver present (unless AI_DAM_DEVICE=cpu),
-    CPU-index otherwise; macOS always uses PyPI."""
-    if requirement not in ("torch", "torchvision"):
-        return [requirement]
-    if sys.platform == "darwin":
-        return [requirement]
-    force_cpu = os.environ.get("AI_DAM_DEVICE", "").lower() == "cpu"
-    if not force_cpu and cuda_hardware_present():
-        if sys.platform == "win32":
-            return [requirement, "--index-url", torch_cuda_index()]
-        return [requirement]  # PyPI Linux wheels bundle CUDA
-    return [requirement, "--index-url", _TORCH_CPU_INDEX]
-
-
 def _module_installed(probe: str) -> bool:
     """Whether `probe` resolves to a real installed package. A bare
     directory on sys.path (e.g. in the working directory) materializes as
@@ -788,35 +506,6 @@ def runtime_missing(group: Group) -> list:
     imported right now, as (probe_module, pip_requirement) pairs."""
     return [(probe, req) for probe, req in group.runtime
             if not _module_installed(probe)]
-
-
-def ensure_runtime(group: Group, log: Callable[[str], None] = print,
-                   pip_runner: Optional[Callable[[list], None]] = None) -> list:
-    """Install the group's missing runtime packages into the running
-    environment and refresh import caches so they are importable in this
-    process immediately. Returns the pip requirements installed."""
-    runner = pip_runner or _default_pip_runner
-    installed = []
-    for probe, requirement in runtime_missing(group):
-        log(f"  + runtime {requirement} (provides '{probe}')")
-        started = time.time()
-        runner(_pip_args_for(requirement))
-        log(f"    {requirement} installed in {time.time() - started:.0f}s")
-        installed.append(requirement)
-    if installed:
-        importlib.invalidate_caches()
-    return installed
-
-
-def _ensure_hub(needed: bool, log: Callable[[str], None],
-                pip_runner: Optional[Callable[[list], None]]) -> None:
-    """Bootstrap huggingface_hub (the downloader itself) when any Hugging
-    Face artifact is about to be fetched and the hub is not importable."""
-    if not needed or _module_installed("huggingface_hub"):
-        return
-    log("  + runtime huggingface_hub (downloader)")
-    (pip_runner or _default_pip_runner)(["huggingface_hub"])
-    importlib.invalidate_caches()
 
 
 def artifact_present(models_dir: str, artifact: Artifact) -> bool:
@@ -890,24 +579,26 @@ def provision(
     force: bool = False,
     log: Callable[[str], None] = print,
     downloaders: Optional[dict] = None,
-    install_packages: bool = True,
-    pip_runner: Optional[Callable[[list], None]] = None,
     progress: Optional[Callable[[dict], None]] = None,
 ) -> dict:
-    """Make the requested groups fully loadable: install their missing
-    runtime packages (unless `install_packages` is False), then download
-    every missing weight artifact into `models_dir`. Returns
-    {'downloaded': [...], 'skipped': [...], 'installed': [...]}. `force`
-    re-downloads artifacts that already exist. `downloaders` overrides the
-    three fetch functions (keys 'url', 'hf_file', 'hf_snapshot') and
-    `pip_runner` the pip invocation -- the seams tests use to stay
-    network-free.
+    """Download every missing weight artifact for the requested groups
+    into `models_dir`. Returns {'downloaded': [...], 'skipped': [...]}.
+    `force` re-downloads artifacts that already exist; `downloaders`
+    overrides the three fetch functions (keys 'url', 'hf_file',
+    'hf_snapshot') -- the seam tests use to stay network-free.
+
+    This function does NOT install packages. uv owns dependency
+    management: the environment comes from `uv sync` against the
+    manifest, which is also where the torch CUDA index is pinned. A
+    second installer here meant two owners of the same decision, and the
+    one that guessed from a driver table kept overwriting the one that
+    was declared.
 
     `progress`, when given, receives structured events as work happens:
-    {'kind': 'runtime'|'artifact', 'phase': 'start'|'bytes'|'done',
-     'item': <requirement or dest>, ...} with 'bytes_done'/'bytes_total'
-    on byte events (direct-URL downloads only; Hugging Face transfers
-    report start/done)."""
+    {'kind': 'artifact', 'phase': 'start'|'bytes'|'done',
+     'item': <dest>, ...} with 'bytes_done'/'bytes_total' on byte events
+    (direct-URL downloads only; Hugging Face transfers report
+    start/done)."""
     if not models_dir:
         raise ProvisionError(
             "models_dir is required (an empty value would scatter weight "
@@ -925,176 +616,6 @@ def provision(
             progress(event)
 
     groups = resolve_groups(group_names)
-    # The official-binaries payload is Windows CUDA zips: meaningless
-    # elsewhere, so 'all' never drags it onto Linux/mac or CPU-only boxes.
-    # Conversely, a Blackwell-class GPU (compute >= 12.0) NEEDS it — the
-    # pip wheels ship no sm_120 kernels — so any llama-consuming group
-    # pulls it in automatically there.
-    llama_cuda_ok = sys.platform == "win32" and cuda_hardware_present()
-    if not llama_cuda_ok and any(g.name == "llama-cuda" for g in groups):
-        log("  = llama-cuda skipped (Windows CUDA machines only)")
-        groups = [g for g in groups if g.name != "llama-cuda"]
-    if (llama_cuda_ok
-            and _GROUPS_BY_NAME["llama-cuda"] not in groups
-            and any(req.startswith("llama-cpp-python")
-                    for g in groups for _, req in g.runtime)):
-        cap = _cuda_compute_capability()
-        if cap is not None and cap >= 12.0:
-            log("  ~ compute >= 12.0 GPU detected: adding official llama.cpp "
-                "CUDA binaries (pip wheels ship no sm_120 kernels)")
-            groups.append(_GROUPS_BY_NAME["llama-cuda"])
-    installed: list = []
-    if install_packages:
-        # GPU self-heal: a torch build that cannot use this machine's GPU
-        # is upgraded IN PLACE to the right wheels (PEP 440: +cu130 >
-        # +cu126 > +cpu, so --upgrade against the target index replaces
-        # it without an uninstall — a failed or interrupted download
-        # leaves the previous working build installed). Only safe while
-        # torch is unimported: an in-process torch pins its files (and
-        # locks DLLs on Windows), so then we can only advise.
-        if (any(req == "torch" for g in groups for _, req in g.runtime)
-                and torch_cuda_reinstall_needed()):
-            if "torch" in sys.modules:
-                log("  ! torch is loaded in this process but its build cannot "
-                    "use the GPU; restart the app to switch wheels "
-                    "(AI_DAM_DEVICE=cpu opts out)")
-            else:
-                steering = _pip_args_for("torch")[1:]
-                tag = (steering[-1].rstrip("/").rsplit("/", 1)[-1]
-                       if steering else "PyPI")
-                log(f"  ~ upgrading torch/torchvision in place to {tag} wheels")
-                emit({"kind": "runtime", "phase": "start",
-                      "item": f"torch ({tag} swap)"})
-                (pip_runner or _default_pip_runner)(
-                    ["--upgrade", "torch", "torchvision", *steering])
-                importlib.invalidate_caches()
-                installed.extend(["torch", "torchvision"])
-                emit({"kind": "runtime", "phase": "done",
-                      "item": f"torch ({tag} swap)"})
-        # Critic GPU self-heal, BEST-EFFORT: official prebuilt CUDA wheels
-        # for llama-cpp-python cover fewer Python versions than torch's,
-        # so a failed attempt keeps the working CPU build and says exactly
-        # what would unlock GPU reviews.
-        if (any(req.startswith("llama-cpp-python")
-                for g in groups for _, req in g.runtime)
-                and llama_cuda_reinstall_needed()):
-            if "llama_cpp" in sys.modules:
-                log("  ! llama-cpp-python is loaded in this process but is a "
-                    "CPU-only build; restart the app to attempt the CUDA swap")
-            else:
-                # Prefer the official GitHub release wheel (py3-none, any
-                # CPython, current CUDA); the stale cu124 index is the
-                # fallback. Release wheels lack sm_120 (Blackwell)
-                # kernels as of 0.3.34: the 'llama-cuda' group (auto-added
-                # above on compute >= 12.0) provides the official llama.cpp
-                # binaries that cover every architecture, and
-                # smartgallery_ai.llama_runtime loads them.
-                wheel = llama_cuda_release_wheel()
-                index = llama_cuda_index()
-                cuda_tag = (wheel.rsplit("-", 4)[0].rsplit("-", 1)[-1]
-                            if wheel else index.rstrip("/").rsplit("/", 1)[-1])
-                log(f"  ~ trying prebuilt CUDA llama-cpp-python ({cuda_tag}) "
-                    "for GPU reviews")
-                cap = _cuda_compute_capability()
-                if wheel and cap is not None and cap >= 12.0:
-                    log("  ~ compute>=12.0 GPU: the wheel ships no sm_120 "
-                        "kernels; the 'llama-cuda' official binaries (added "
-                        "to this run) cover it via LLAMA_CPP_LIB_PATH")
-                try:
-                    if wheel:
-                        (pip_runner or _default_pip_runner)(
-                            ["--force-reinstall", "--no-deps", wheel])
-                    else:
-                        (pip_runner or _default_pip_runner)(
-                            ["--force-reinstall", "--no-deps", "llama-cpp-python",
-                             "--index-url", index])
-                    if wheel is None and sys.platform == "win32":
-                        # The cu12x INDEX wheel links cudart64_12/cublas64_12,
-                        # which nothing else provides on a torch-cu13 box —
-                        # without these the swap ships a build that cannot even
-                        # import (observed live: critic dead post-swap).
-                        # Release wheels bundle their CUDA runtime (verified
-                        # live: v0.3.34-cu132 imports and offloads with no
-                        # extra DLL install).
-                        (pip_runner or _default_pip_runner)(
-                            ["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"])
-                    importlib.invalidate_caches()
-                    _llama_gpu_cache.clear()
-                    installed.append("llama-cpp-python (CUDA)")
-                    log("  + llama-cpp-python CUDA build installed — the "
-                        "critic will offload to GPU")
-                except ProvisionError as exc:
-                    log("  ! no prebuilt CUDA llama-cpp-python build worked "
-                        "on this Python/OS; the critic stays on CPU "
-                        "(~90s/review). Release wheels are py3-none; check "
-                        "the driver's CUDA version or build from source. "
-                        f"Details: {str(exc)[-160:]}")
-        # ORT GPU self-heal, BEST-EFFORT: the faces group ships CPU
-        # onnxruntime; on an NVIDIA box swap it for onnxruntime-gpu so
-        # the insightface pipeline's sessions get CUDAExecutionProvider
-        # (faces._ort_providers picks it up; ORT falls back to CPU
-        # per-session if the EP cannot initialize). The two packages
-        # provide the same module, so the CPU build is removed first.
-        if (cuda_hardware_present()
-                and any(req == "onnxruntime"
-                        for g in groups for _, req in g.runtime)
-                and _ort_cuda_reinstall_needed()):
-            if "onnxruntime" in sys.modules:
-                log("  ! onnxruntime is loaded in this process but is a "
-                    "CPU-only build; restart the app to attempt the CUDA swap")
-            else:
-                log("  ~ swapping onnxruntime for onnxruntime-gpu "
-                    "(insightface pipeline on GPU)")
-                emit({"kind": "runtime", "phase": "start",
-                      "item": "onnxruntime-gpu swap"})
-                try:
-                    _default_pip_uninstaller(["onnxruntime"])
-                    (pip_runner or _default_pip_runner)(["onnxruntime-gpu"])
-                    importlib.invalidate_caches()
-                    _ort_gpu_cache.clear()
-                    installed.append("onnxruntime-gpu")
-                    log("  + onnxruntime-gpu installed")
-                except ProvisionError as exc:
-                    log("  ! onnxruntime-gpu swap failed; restoring the CPU "
-                        f"build. Details: {str(exc)[-160:]}")
-                    (pip_runner or _default_pip_runner)(["onnxruntime"])
-                emit({"kind": "runtime", "phase": "done",
-                      "item": "onnxruntime-gpu swap"})
-        # Vendored GPU faiss (vendor/faiss-gpu-win64) links the CUDA-13
-        # runtime DLLs, which are not vendored (GitHub's 100MB file cap);
-        # the nvidia wheels carry them (nvidia/<pkg>/bin/x86_64/). Install
-        # them whenever the vendored build is usable on this box so
-        # faiss_runtime.import_faiss() can select it; faiss-cpu stays the
-        # installed fallback either way.
-        if (sys.platform == "win32" and cuda_hardware_present()
-                and any(req.startswith("faiss")
-                        for g in groups for _, req in g.runtime)):
-            from smartgallery_ai.faiss_runtime import vendored_faiss_dir
-            purelib = sysconfig.get_paths().get("purelib") or ""
-            cu13_present = bool(glob.glob(os.path.join(
-                purelib, "nvidia", "*", "bin", "x86_64", "cublasLt64_13.dll")))
-            if os.path.isdir(vendored_faiss_dir()) and not cu13_present:
-                log("  ~ installing CUDA runtime wheels for the vendored "
-                    "GPU faiss build")
-                emit({"kind": "runtime", "phase": "start",
-                      "item": "nvidia CUDA runtime (faiss GPU)"})
-                (pip_runner or _default_pip_runner)(
-                    ["nvidia-cublas~=13.0", "nvidia-cuda-runtime~=13.0",
-                     "nvidia-nvjitlink~=13.0"])
-                installed.append("nvidia CUDA runtime (faiss GPU)")
-                emit({"kind": "runtime", "phase": "done",
-                      "item": "nvidia CUDA runtime (faiss GPU)"})
-        _ensure_hub(
-            any(a.hf_repo is not None for g in groups for a in g.artifacts
-                if force or not artifact_present(models_dir, a)),
-            log, pip_runner)
-        for group in groups:
-            for _, requirement in runtime_missing(group):
-                emit({"kind": "runtime", "phase": "start", "item": requirement})
-            for requirement in ensure_runtime(group, log=log, pip_runner=pip_runner):
-                installed.append(requirement)
-                emit({"kind": "runtime", "phase": "done", "item": requirement})
-
     _check_disk_space(models_dir, [
         a for g in groups for a in g.artifacts
         if force or not artifact_present(models_dir, a)])
@@ -1150,7 +671,7 @@ def provision(
                     raise
             downloaded.append(artifact.dest)
             emit({"kind": "artifact", "phase": "done", "item": artifact.dest})
-    return {"downloaded": downloaded, "skipped": skipped, "installed": installed}
+    return {"downloaded": downloaded, "skipped": skipped}
 
 
 def format_plan(models_dir: str, group_names) -> str:

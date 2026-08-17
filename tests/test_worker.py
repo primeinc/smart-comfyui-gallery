@@ -1,7 +1,7 @@
 """Tests for smartgallery_ai.worker.AIWorker: hashing + embedding rows appear
 for real on-disk PNGs, staleness recompute on mtime change, clean stop(),
 and resilience to an unreadable file (never crashes, logs once, counts an
-error). Only 'stub' backends are used -- never llama/real model weights.
+error). Only 'stub' backends are used -- never real model weights.
 """
 
 from __future__ import annotations
@@ -970,7 +970,7 @@ def _review_env(tmp_path, workflow_prompt="a red square"):
                    critic_backend="stub", semantic_backend="none",
                    visual_backend="none", face_backend="none")
     worker = AIWorker(cfg, db_path, poll_interval=999.0, batch_size=5)
-    return db_path, worker, R.get_critic_backend(cfg)
+    return db_path, worker, R.get_reviewer(cfg)
 
 
 def _seed_reviewed_without_alignment(conn, backend):

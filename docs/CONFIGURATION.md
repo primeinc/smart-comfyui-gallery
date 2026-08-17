@@ -82,12 +82,9 @@ The AI layer is **on by default** and provisions itself; see
 | `AI_DAM_FACE_CLUSTER_THRESHOLD` | per-embedder default | Cosine similarity required to group two faces. |
 | `AI_DAM_FACE_MIN_PX` / `AI_DAM_FACE_DETECT_MAX_SIDE` | `24` / `1600` | Smallest kept face box, and the detection input cap. |
 | `AI_DAM_FACE_EMBEDDER` | `auto` | `arcface` (512-d) or `sface` (128-d). |
-| `AI_DAM_GPU_LAYERS` | `-1` (all) | Critic layers offloaded to GPU. |
-| `AI_DAM_TENSOR_SPLIT` | unset | Proportions for splitting the critic across GPUs, e.g. `0.6,0.4`. |
+| `AI_DAM_CRITIC_MODEL` | `Qwen/Qwen3-VL-2B-Instruct` | Which image-text-to-text checkpoint reviews images. Any transformers checkpoint works — a provisioned directory name or a Hugging Face repo id. |
 | `AI_DAM_EPHEMERAL_INDEX` | `false` | Keep the vector index in memory only. |
-| `OMNIQUERY_NL2SQL_GGUF` | provisioned model | Override the model the search palette uses to turn a question into SQL. |
-| `OMNIQUERY_FALLBACK_GGUF` | provisioned model | Override the model behind the palette's plain-language fallback. Also used for nl2sql when `OMNIQUERY_NL2SQL_GGUF` is unset, so setting this alone changes both. |
-| `OMNIQUERY_FALLBACK_GPU_LAYERS` | `-1` (all) | Layers of the fallback model offloaded to GPU. |
+| `OMNIQUERY_NL2SQL_MODEL` | `distil-labs/distil-qwen3-4b-text2sql` | Override the model the search palette uses to turn a question into SQL. |
 
 ### `ENABLE_AI_SEARCH` is inert
 
@@ -106,10 +103,8 @@ Semantic search over your library is the search palette
 (<kbd>Ctrl</kbd>+<kbd>P</kbd>) and the Similar view, both part of the AI
 layer, which is on by default.
 
-Additional low-level switches (`AI_DAM_VISION_GPU`, `AI_DAM_VISION_FA`,
-`AI_DAM_FAISS_GPU`, `AI_DAM_VECTOR_GPU`, `AI_DAM_ORT_PROVIDERS`,
-`AI_DAM_FACE_GRAPH_BACKEND`, `AI_DAM_CUDA_INDEX`,
-`AI_DAM_LLAMA_CUDA_INDEX`, `AI_DAM_LLAMA_VERBOSE`, `LLAMA_CPP_LIB_PATH`)
+Additional low-level switches (`AI_DAM_ATTN`, `AI_DAM_FAISS_GPU`,
+`AI_DAM_VECTOR_GPU`, `AI_DAM_ORT_PROVIDERS`, `AI_DAM_FACE_GRAPH_BACKEND`)
 exist for diagnosing hardware problems and are described in
 [INSTALL_AI.md](INSTALL_AI.md).
 

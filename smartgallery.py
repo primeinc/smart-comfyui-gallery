@@ -65,7 +65,6 @@ import sys
 import subprocess
 import base64
 import zipfile
-import io
 from flask import Flask, render_template, send_from_directory, abort, send_file, url_for, redirect, request, jsonify, Response, session
 from PIL import Image, ImageSequence
 import colorsys
@@ -85,7 +84,7 @@ except ImportError:
     # tkinter not available (e.g., in Docker containers) - will fall back to console output  
 TKINTER_AVAILABLE = False # forcing to false for cross-platform compatibility 
 import secrets
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, Any
 from functools import wraps
 import sg_auth
 import contextlib
@@ -99,7 +98,7 @@ import urllib.request
 # why HTTPException is handed straight back untouched.
 from werkzeug.exceptions import HTTPException, InternalServerError
 import secrets
-from typing import Dict, List, Any, Optional, Union # Added for type hinting in new tools
+from typing import Dict, Any # Added for type hinting in new tools
 import smartgallery_ai
 import smartgallery_ai.schema
 from smartgallery_ai import service as ai_dam_service
@@ -721,8 +720,8 @@ PROTECTED_FOLDER_KEYS.add('_root_')
 # Opt out entirely:            ENABLE_AI_DAM=false
 # Opt out of downloads only:   AI_DAM_AUTO_PROVISION=false
 AI_CONFIG = smartgallery_ai.AIConfig.from_env(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
-# Env-reading consumers (smartgallery_ai.llama_runtime, the omniquery model
-# defaults) must resolve the SAME models directory provisioning writes to.
+# Env-reading consumers (the omniquery model defaults) must resolve the
+# SAME models directory provisioning writes to.
 # The config anchors it at the gallery root; the process CWD may be
 # elsewhere (ComfyUI plugin deployments), so publish the resolved path --
 # a user's own AI_DAM_MODELS_DIR still wins.
@@ -785,8 +784,12 @@ MY REQUEST (I will use my native language):
             with open(dict_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception:
-            return final_prompt.replace("MY REQUEST:", dynamic_statuses + "\nMY REQUEST:")
-    return base_text
+            # An unreadable template falls back to the factory base -- the
+            # same thing every other path returns. This branch used to
+            # splice in a `dynamic_statuses` that no longer exists
+            # anywhere, so a read failure raised NameError instead of
+            # degrading.
+            return final_prompt
 
 def run_integrity_check():
     """
@@ -1013,24 +1016,23 @@ def normalize_smart_path(path_str):
 # cannot drift as settings are added.
 KNOWN_ENV_VARS = (
     'ADMIN_PASSWORD', 'AI_DAM_AUTO_PROVISION', 'AI_DAM_CACHE_DIR',
-    'AI_DAM_CRITIC_BACKEND', 'AI_DAM_CUDA_INDEX', 'AI_DAM_DEVICE',
+    'AI_DAM_CRITIC_BACKEND', 'AI_DAM_DEVICE',
     'AI_DAM_EMBED_BATCH', 'AI_DAM_EPHEMERAL_INDEX', 'AI_DAM_FACE_BACKEND',
     'AI_DAM_FACE_DETECT_MAX_SIDE', 'AI_DAM_FACE_EMBEDDER',
     'AI_DAM_FACE_GRAPH_BACKEND', 'AI_DAM_FACE_MIN_PX', 'AI_DAM_FAISS_GPU',
-    'AI_DAM_GPU_LAYERS', 'AI_DAM_LLAMA_CUDA_INDEX', 'AI_DAM_LLAMA_VERBOSE',
+    'AI_DAM_ATTN', 'AI_DAM_CRITIC_MODEL',
     'AI_DAM_MODELS_DIR', 'AI_DAM_NEAR_DUP_DISTANCE', 'AI_DAM_ORT_PROVIDERS',
     'AI_DAM_SEGMENTER_BACKEND', 'AI_DAM_SEMANTIC_BACKEND', 'AI_DAM_SIMILAR_K',
-    'AI_DAM_TENSOR_SPLIT', 'AI_DAM_VECTOR_GPU', 'AI_DAM_VISION_FA',
-    'AI_DAM_VISION_GPU', 'AI_DAM_VISUAL_BACKEND', 'AI_DAM_WORKER_BATCH',
+    'AI_DAM_VECTOR_GPU',
+    'AI_DAM_VISUAL_BACKEND', 'AI_DAM_WORKER_BATCH',
     'AI_DAM_WORKER_POLL', 'BASE_INPUT_PATH', 'BASE_MODELS_PATH',
     'BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BATCH_SIZE',
     'CHECKPOINTS_PATH', 'COMFYUI_MAX_UPLOAD_MB', 'COMFYUI_SERVER_URL',
     'DELETE_TO', 'ENABLE_AI_DAM', 'ENABLE_AI_SEARCH', 'FFMPEG_AUTO_DOWNLOAD',
     'FFPROBE_MANUAL_PATH',
     'GENERATE_THUMBNAILS', 'GENERATE_WAVEFORMS', 'GENPARAMS_BACKFILL',
-    'LLAMA_CPP_LIB_PATH', 'LORAS_PATH', 'MAX_PARALLEL_WORKERS',
-    'OMNIQUERY_FALLBACK_GGUF', 'OMNIQUERY_FALLBACK_GPU_LAYERS',
-    'OMNIQUERY_NL2SQL_GGUF', 'PAGE_SIZE', 'SECRET_KEY', 'SERVER_PORT',
+    'LORAS_PATH', 'MAX_PARALLEL_WORKERS',
+    'OMNIQUERY_NL2SQL_MODEL', 'PAGE_SIZE', 'SECRET_KEY', 'SERVER_PORT',
     'STREAM_THRESHOLD_MB', 'THUMBNAIL_WIDTH', 'UNET_PATH', 'WEBP_ANIMATED_FPS',
 )
 
@@ -14144,7 +14146,6 @@ def api_cluster_info(hash_type, hash_val):
 if __name__ == '__main__':
 
     # --- OS SIGNAL HANDLER FOR TMUX/LINUX/MAC PORT RELEASE ---
-    import signal
     import socket
     
     def force_hard_kill(signum, frame):

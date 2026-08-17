@@ -98,7 +98,7 @@ class StubSemanticEmbedder(SemanticEmbedder):
         """Pseudo-embedding seeded from a hash of the 8x8 quantized grayscale
         thumbnail: identical pixels give identical vectors, but visually
         similar images do not land near each other."""
-        small = img.convert("L").resize((8, 8), Image.LANCZOS)
+        small = img.convert("L").resize((8, 8), Image.Resampling.LANCZOS)
         quantized = (np.asarray(small, dtype=np.uint8) // 32).astype(np.uint8)
         digest = hashlib.sha256(quantized.tobytes()).digest()
         seed = int.from_bytes(digest[:8], "big")

@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import ast
 import io
-import os
 import pathlib
 import sqlite3
 import threading

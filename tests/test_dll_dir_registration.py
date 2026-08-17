@@ -12,8 +12,7 @@ environment every child process inherits, and Windows caps that block near
 The symptom is video and thumbnails failing on a machine whose actual
 problem is a missing faiss -- two subsystems apart from the cause.
 
-Its sibling, prepare_llama_runtime, has always guarded itself with a flag
-and says "Idempotent" in its docstring. This is the same property, tested.
+Idempotence is the property under test.
 """
 
 from __future__ import annotations

@@ -99,6 +99,11 @@ class AIConfig:
     visual_backend: str = "auto"
     face_backend: str = "auto"
     critic_backend: str = "auto"
+    # Which image-text-to-text checkpoint the reviewer runs; blank
+    # means reviewer.DEFAULT_REVIEW_MODEL. Any transformers
+    # checkpoint works -- this is why there is no per-model
+    # backend value.
+    critic_model: str = ""
     segmenter_backend: str = "auto"
 
     # True: the background worker installs missing runtime packages and
@@ -146,6 +151,7 @@ class AIConfig:
             visual_backend=_env_str("AI_DAM_VISUAL_BACKEND", "auto"),
             face_backend=_env_str("AI_DAM_FACE_BACKEND", "auto"),
             critic_backend=_env_str("AI_DAM_CRITIC_BACKEND", "auto"),
+            critic_model=_env_str("AI_DAM_CRITIC_MODEL", ""),
             segmenter_backend=_env_str("AI_DAM_SEGMENTER_BACKEND", "auto"),
             near_dup_max_distance=_env_num("AI_DAM_NEAR_DUP_DISTANCE", 8),
             # None keeps the per-embedder default; a blank value must mean

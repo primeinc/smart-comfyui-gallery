@@ -1,7 +1,7 @@
 """Tests for the nl2sql SQL search path: the sandboxed executor
 (omniquery.sqlexec) and SqlSearch's agentic generate/execute/read-results
 loop. Model-free: generations are scripted by monkeypatching
-SqlSearch._complete; every execution runs through the REAL sandbox
+SqlSearch._chat; every execution runs through the REAL sandbox
 against a real temp database."""
 
 from __future__ import annotations
@@ -84,7 +84,8 @@ def test_schema_block_is_live_ddl_with_value_hints(db):
 def test_schema_block_never_includes_bookkeeping_tables(db):
     conn = sqlite3.connect(db)
     conn.execute("CREATE TABLE omniquery_sessions (session_id TEXT)")
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
     nl2sql._SCHEMA_CACHE.clear()
     assert "omniquery_sessions" not in schema_block(db)
 
@@ -115,17 +116,30 @@ def test_extract_sql(content, expected):
 # SqlSearch.search: the agentic loop reads execution results
 # ---------------------------------------------------------------------------
 
+class _ScriptedChat:
+    """A models.Chat stand-in: replies in order, recording each prompt.
+
+    The real Chat keeps the conversation itself, so a round only ever
+    receives the NEW instruction -- which is exactly what `seen` records.
+    """
+
+    def __init__(self, generations, seen):
+        self._generations = generations
+        self._seen = seen
+
+    def ask(self, prompt, max_new_tokens=256):
+        del max_new_tokens
+        self._seen.append(prompt)
+        return self._generations[len(self._seen) - 1]
+
+
 def _scripted(monkeypatch, db, generations):
     """A SqlSearch whose model 'generations' are scripted in order; the
-    prompts each round received are recorded for assertions."""
+    prompt each round received is recorded for assertions."""
     s = SqlSearch(db_path=db)
     seen = []
-
-    def fake_complete(self, messages):
-        seen.append(messages)
-        return generations[len(seen) - 1]
-
-    monkeypatch.setattr(SqlSearch, "_complete", fake_complete)
+    monkeypatch.setattr(SqlSearch, "_chat",
+                        lambda self: _ScriptedChat(generations, seen))
     return s, seen
 
 
@@ -144,8 +158,8 @@ def test_execution_error_goes_back_for_repair(monkeypatch, db):
     ids, sql, err = s.search("videos")
     assert ids == ["f2"] and err is None
     # Round 2's prompt carried the engine error back to the model.
-    assert "failed with" in seen[1][-1]["content"]
-    assert "no such table" in seen[1][-1]["content"]
+    assert "failed with" in seen[1]
+    assert "no such table" in seen[1]
 
 
 def test_zero_rows_offers_broadening_and_broadened_query_wins(monkeypatch, db):
@@ -156,7 +170,7 @@ def test_zero_rows_offers_broadening_and_broadened_query_wins(monkeypatch, db):
     ])
     ids, sql, err = s.search("girlnextdoor")
     assert ids == ["f1"] and err is None
-    assert "0 rows" in seen[1][-1]["content"]
+    assert "0 rows" in seen[1]
 
 
 def test_repeating_the_same_query_asserts_empty_is_the_answer(monkeypatch, db):
@@ -189,9 +203,10 @@ def test_persistent_errors_fail_closed(monkeypatch, db):
 def test_generation_exception_never_raises(monkeypatch, db):
     s = SqlSearch(db_path=db)
 
-    def boom(self, messages):
-        raise RuntimeError("engine died")
+    class _Boom:
+        def ask(self, prompt, max_new_tokens=256):
+            raise RuntimeError("engine died")
 
-    monkeypatch.setattr(SqlSearch, "_complete", boom)
+    monkeypatch.setattr(SqlSearch, "_chat", lambda self: _Boom())
     ids, sql, err = s.search("anything")
     assert ids is None and "generation error" in err

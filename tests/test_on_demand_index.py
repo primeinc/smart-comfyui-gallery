@@ -620,60 +620,6 @@ def test_priority_request_served_mid_stage(tmp_path):
 # --- status page data + CUDA-swap hold -----------------------------------------
 
 
-def test_backend_resolution_held_during_pending_cuda_swap(tmp_path):
-    """While a CUDA swap is pending, torch-dependent backends are NOT
-    resolved (importing torch would pin the CPU build mid-swap); the
-    cv2-only face backend keeps resolving; the hold lifts afterwards."""
-    cfg = _cfg(tmp_path)
-    _make_db(cfg.db_path).close()
-    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
-
-    def must_not_resolve(_config):
-        raise AssertionError("torch-dependent backend resolved during swap hold")
-
-    worker._hold_torch_backends = True
-    assert worker._backend("semantic", must_not_resolve) is None
-    assert "semantic" not in worker._backend_cache  # not cached as a miss
-
-    face = object()
-    assert worker._backend("face", lambda _config: face) is face
-
-    worker._hold_torch_backends = False
-    resolved = object()
-    assert worker._backend("semantic", lambda _config: resolved) is resolved
-
-
-def test_auto_provision_holds_torch_backends_until_swap_completes(tmp_path, monkeypatch):
-    """When provisioning starts with a CUDA swap planned, the hold is set
-    before the provisioning thread runs and cleared when it finishes --
-    success or failure."""
-    from smartgallery_ai import worker as W
-    cfg = _cfg(tmp_path, semantic_backend="auto", auto_provision=True)
-    _make_db(cfg.db_path).close()
-    worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
-
-    monkeypatch.setattr(W, "provision_groups_for", lambda _config: ["semantic"])
-    monkeypatch.setattr(W.provisioning, "torch_cuda_reinstall_needed", lambda: True)
-
-    held_during_provision = []
-
-    def fake_provision(_models_dir, _groups, force=False, log=print,
-                       downloaders=None, progress=None):
-        # force/log/downloaders/progress accepted (log, progress kept named
-        # since the real call site passes them by keyword) only for
-        # provision()'s call-signature compatibility; this stub ignores them.
-        del force, log, downloaders, progress
-        held_during_provision.append(worker._hold_torch_backends)
-        return {"installed": [], "downloaded": [], "skipped": []}
-
-    monkeypatch.setattr(W.provisioning, "provision", fake_provision)
-
-    worker._maybe_start_auto_provision()
-    worker._provision_thread.join(timeout=10)
-    assert held_during_provision == [True]
-    assert worker._hold_torch_backends is False
-
-
 def test_note_error_feeds_recent_errors_once_per_key(tmp_path):
     """recent_errors records each distinct error key once (with timestamp
     and message); repeats bump the counter only."""
@@ -787,10 +733,9 @@ def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):
     worker._provision_started_at = time.monotonic() - 601.0
 
     monkeypatch.setattr(W, "provision_groups_for", lambda _config: ["semantic"])
-    monkeypatch.setattr(W.provisioning, "torch_cuda_reinstall_needed", lambda: False)
     monkeypatch.setattr(
         W.provisioning, "provision",
-        lambda *_a, **_k: {"installed": [], "downloaded": [], "skipped": []})
+        lambda *_a, **_k: {"downloaded": [], "skipped": []})
 
     worker._maybe_retry_provision()
     worker._provision_thread.join(timeout=10)
@@ -804,20 +749,21 @@ def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):
 
 def test_cycle_log_names_why_stages_are_waiting(tmp_path, caplog):
     """When a configured stage produced nothing, the cycle log says why --
-    e.g. the CUDA swap hold -- instead of a bare '+0 embedded'."""
+    e.g. a failed provisioning run -- instead of a bare '+0 embedded'."""
     cfg = _cfg(tmp_path, semantic_backend="auto", visual_backend="auto")
     conn = _make_db(cfg.db_path)
     _add_image_file(conn, tmp_path, "why_file")
     conn.close()
 
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=5)
-    worker._hold_torch_backends = True
+    worker.provision_state = {"state": "failed: connection reset",
+                              "groups": ["semantic", "visual"]}
     worker._provision_started_at = time.monotonic() - 120.0
 
     with caplog.at_level(logging.INFO, logger="smartgallery_ai.worker"):
         worker._run_cycle()
     lines = [r.getMessage() for r in caplog.records if "indexed:" in r.getMessage()]
-    assert lines and "CUDA swap in progress" in lines[0]
+    assert lines and "provisioning failed" in lines[0]
     assert "semantic" in lines[0] and "visual" in lines[0]
 
 

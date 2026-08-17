@@ -20,7 +20,7 @@ import pytest
 from PIL import Image
 
 from smartgallery_ai import AIConfig, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
-from smartgallery_ai.review import CriticBackend, StubSegmenter
+from smartgallery_ai.review import StubSegmenter
 from smartgallery_ai.schema import init_schema
 from smartgallery_ai.worker import (
     AIWorker,
@@ -121,7 +121,7 @@ def _save_png(tmp_path, name: str, color=(120, 120, 120), size=(16, 16)) -> str:
     return path
 
 
-class _RaisingCritic(CriticBackend):
+class _RaisingCritic:
     model_id = "raising-critic"
     model_version = "boom-v1"
 
@@ -133,7 +133,7 @@ class _RaisingCritic(CriticBackend):
         raise RuntimeError("VLM exploded")
 
 
-class _RecordingCritic(CriticBackend):
+class _RecordingCritic:
     """Returns a fixed valid payload and records the prompt it was given."""
 
     model_id = "recording-critic"
@@ -401,7 +401,7 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
     The prompt is part of the key, so the same file re-enters the queue on
     its own: no marker, no one-shot sweep, no manual rebuild.
     """
-    from smartgallery_ai.review import StubCritic
+    from smartgallery_ai.review import StubReviewer
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -412,19 +412,19 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
     conn = _open(db_path)
     try:
         # 1. reviewed with no prompt anywhere -> honest null alignment
-        assert worker._process_reviews(conn, StubCritic(), 10) == 1
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 1
         assert conn.execute(
             "SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'"
         ).fetchone()[0] is None
 
         # 2. nothing changed -> not a candidate
-        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 0
 
         # 3. the prompt lands afterwards. mtime and model are untouched.
         _add_generation_params(db_path, "late", "a red cube, a blue sphere")
 
         # 4. the file MUST come back as a candidate and gain a real score
-        assert worker._process_reviews(conn, StubCritic(), 10) == 1, (
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 1, (
             "a prompt that arrived after the review left it stale; the "
             "staleness key is not covering the prompt")
         assert conn.execute(
@@ -432,7 +432,7 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
         ).fetchone()[0] is not None
 
         # 5. and it settles -- re-keying must not cause permanent churn
-        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 0
     finally:
         conn.close()
 
@@ -440,7 +440,7 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
 def test_changing_only_the_negative_prompt_re_queues_the_review(tmp_path):
     """The negative prompt feeds ALIGN's expected-text guard, so it changes
     which elements are expected -- it is an input, and must be keyed."""
-    from smartgallery_ai.review import StubCritic
+    from smartgallery_ai.review import StubReviewer
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -450,10 +450,10 @@ def test_changing_only_the_negative_prompt_re_queues_the_review(tmp_path):
     worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"), db_path)
     conn = _open(db_path)
     try:
-        assert worker._process_reviews(conn, StubCritic(), 10) == 1
-        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 1
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 0
         _add_generation_params(db_path, "neg", "a red cube", negative="blurry")
-        assert worker._process_reviews(conn, StubCritic(), 10) == 1
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 1
     finally:
         conn.close()
 
@@ -467,7 +467,7 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
     img = Image.new("RGB", (64, 64), (200, 200, 200))
     for x in range(16, 48):
         for y in range(16, 48):
-            img.putpixel((x, y), (255, 0, 0))  # StubCritic's red artifact
+            img.putpixel((x, y), (255, 0, 0))  # StubReviewer's red artifact
     img_path = str(tmp_path / "red.png")
     img.save(img_path)
     _add_file(db_path, "ok1", img_path, 1000.0)
@@ -475,11 +475,11 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
     conn.execute("UPDATE files SET workflow_prompt = 'a castle' WHERE id = 'ok1'")
     conn.commit()
 
-    from smartgallery_ai.review import StubCritic
+    from smartgallery_ai.review import StubReviewer
     worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub",
                               segmenter_backend="stub"), db_path)
     try:
-        assert worker._process_reviews(conn, StubCritic(), 10) == 1
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 1
 
         review_row = conn.execute(
             "SELECT quality_score, prompt_alignment_score, rubric_version "
@@ -508,7 +508,7 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
 
         # A second pass with nothing changed must NOT re-review: the input
         # key is stable, so a stale-detector keyed on it cannot churn.
-        assert worker._process_reviews(conn, StubCritic(), 10) == 0
+        assert worker._process_reviews(conn, StubReviewer(), 10) == 0
     finally:
         conn.close()
 
@@ -685,7 +685,7 @@ def test_cycle_runs_review_stage_with_stub_critic(tmp_path):
     row = _query_one(db_path, "SELECT model_id, quality_score FROM ai_reviews "
                      "WHERE file_id = 'cy1'")
     assert row is not None
-    assert row[0] == "stub-critic"
+    assert row[0] == "stub-reviewer"
     assert 0.0 <= row[1] <= 10.0
     log = _query_one(db_path, "SELECT result_count FROM ai_scan_log "
                      "WHERE file_id='cy1' AND kind='review'")

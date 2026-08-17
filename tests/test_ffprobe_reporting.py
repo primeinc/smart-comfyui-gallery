@@ -74,8 +74,9 @@ def test_resolution_is_announced_once(tmp_path):
     proc = _startup({}, tmp_path, body)
 
     assert proc.returncode == 0, proc.stderr
-    announcements = [l for l in proc.stdout.splitlines() if l.startswith("INFO: ffprobe:")]
-    warnings = [l for l in proc.stdout.splitlines() if "ffprobe not found" in l]
+    lines = proc.stdout.splitlines()
+    announcements = [line for line in lines if line.startswith("INFO: ffprobe:")]
+    warnings = [line for line in lines if "ffprobe not found" in line]
 
     assert len(announcements) <= 1, f"announced more than once: {announcements}"
     assert announcements or warnings, (

@@ -159,7 +159,7 @@ class GenerationParams:
         gp.denoise = to_float(meta.pop("denoise", None))
         loras = meta.pop("loras", None)
         if isinstance(loras, list):
-            gp.loras = [l for l in loras if isinstance(l, dict)]
+            gp.loras = [entry for entry in loras if isinstance(entry, dict)]
         meta.pop("positive_prompt_clean", None)
         for key, value in meta.items():
             if value is None or value == "":

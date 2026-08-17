@@ -312,8 +312,10 @@ def test_cluster_faces_bridge_does_not_chain_cliques_together():
     bridge face is similar to members of both."""
     conn = make_conn()
     rng = np.random.default_rng(5)
-    base_a = np.zeros(16, dtype=np.float32); base_a[0] = 1.0
-    base_b = np.zeros(16, dtype=np.float32); base_b[1] = 1.0
+    base_a = np.zeros(16, dtype=np.float32)
+    base_a[0] = 1.0
+    base_b = np.zeros(16, dtype=np.float32)
+    base_b[1] = 1.0
     clique_a = [base_a + rng.standard_normal(16).astype(np.float32) * 0.02 for _ in range(4)]
     clique_b = [base_b + rng.standard_normal(16).astype(np.float32) * 0.02 for _ in range(4)]
     bridge = (base_a + base_b) / np.linalg.norm(base_a + base_b)  # ~0.71 cos to both cliques

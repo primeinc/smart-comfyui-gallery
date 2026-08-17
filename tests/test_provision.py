@@ -50,8 +50,11 @@ def test_registry_dests_match_backend_expectations():
     assert "open_clip/ViT-B-32_laion2b_s34b_b79k.bin" in dests
     assert "dinov2-small" in dests
     assert "mobile_sam.pt" in dests
-    assert "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf" in dests
-    assert "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf" in dests
+    # Checkpoint DIRECTORIES, not single files: transformers loads a
+    # snapshot, and smartgallery_ai.models resolves a model ref to one of
+    # these directory names under the models dir.
+    assert "Qwen3-VL-2B-Instruct" in dests
+    assert "distil-qwen3-4b-text2sql" in dests
 
 
 def test_format_plan_reports_missing_and_present(tmp_path):
@@ -172,7 +175,7 @@ def test_provision_groups_for_maps_backends_and_critic_pulls_semantic(tmp_path):
     the semantic (grounding-gate) weights; 'none'/'stub' map to nothing."""
     os.makedirs(tmp_path / "models", exist_ok=True)
     cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="none", segmenter_backend="none", critic_backend="qwen-vl")
+               face_backend="none", segmenter_backend="none", critic_backend="vlm")
     assert provision_groups_for(cfg) == ["critic", "semantic"]
 
     cfg2 = _cfg(tmp_path, semantic_backend="stub", visual_backend="stub",
@@ -374,52 +377,6 @@ def test_runtime_missing_reports_only_unimportable(monkeypatch):
     assert [req for _, req in P.runtime_missing(group)] == ["open_clip_torch"]
 
 
-def test_ensure_runtime_installs_missing_via_pip_runner(monkeypatch):
-    """ensure_runtime pip-installs exactly the missing requirements and
-    refreshes import caches afterwards."""
-    group = next(g for g in P.GROUPS if g.name == "visual")
-    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: None)
-    invalidated = []
-    monkeypatch.setattr(P.importlib, "invalidate_caches", lambda: invalidated.append(1))
-
-    calls = []
-    installed = P.ensure_runtime(group, log=lambda _m: None,
-                                 pip_runner=lambda args: calls.append(args))
-    assert installed == ["torch", "torchvision", "transformers"]
-    assert calls[2] == ["transformers"]
-    assert invalidated == [1]
-
-
-@pytest.mark.parametrize("requirement", ["torch", "torchvision"])
-def test_pip_args_steer_torch_by_hardware(monkeypatch, requirement):
-    """torch AND torchvision wheel choice: NVIDIA present -> CUDA-capable
-    (PyPI on Linux, cu-index on Windows); absent -> CPU index;
-    AI_DAM_DEVICE=cpu forces CPU even with hardware. Both must get the
-    SAME steering or torchvision's compiled ops fail to register against
-    the installed torch; other requirements pass through."""
-    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
-    monkeypatch.setattr(P.sys, "platform", "linux")
-
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
-    assert P._pip_args_for(requirement) == [
-        requirement, "--index-url", P._TORCH_CPU_INDEX]
-
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    assert P._pip_args_for(requirement) == [requirement]
-
-    monkeypatch.setattr(P.sys, "platform", "win32")
-    monkeypatch.setattr(P, "torch_cuda_index",
-                        lambda: "https://download.pytorch.org/whl/cuTEST")
-    assert P._pip_args_for(requirement) == [
-        requirement, "--index-url", "https://download.pytorch.org/whl/cuTEST"]
-
-    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
-    assert P._pip_args_for(requirement) == [
-        requirement, "--index-url", P._TORCH_CPU_INDEX]
-
-    assert P._pip_args_for("timm") == ["timm"]
-
-
 def test_every_torch_group_also_declares_torchvision():
     """Registry contract: any group whose runtime needs torch must install
     torchvision alongside it, and BEFORE packages that transitively depend
@@ -495,46 +452,6 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
     entered.clear()
     P.provision(str(tmp_path / "no_progress"), ["visual"], log=lambda _m: None)
     assert entered == []
-
-
-def test_provision_installs_runtime_before_weights(tmp_path, monkeypatch):
-    """provision() makes the group loadable end to end: missing runtime
-    packages install first, then weights download."""
-    events = []
-    from types import SimpleNamespace
-    monkeypatch.setattr(
-        P.importlib.util, "find_spec",
-        lambda name: None if name in ("torch", "torchvision", "transformers")
-        else SimpleNamespace(origin="stub.py"))
-
-    def runner(args):
-        events.append(("pip", tuple(args)))
-
-    downloaders = _fake_downloaders({})
-
-    def snapshot(repo, dest):
-        events.append(("weights", repo))
-        downloaders["hf_snapshot"](repo, dest)
-
-    result = P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
-                         downloaders={**downloaders, "hf_snapshot": snapshot},
-                         pip_runner=runner)
-    assert result["installed"] == ["torch", "torchvision", "transformers"]
-    assert [e[0] for e in events] == ["pip", "pip", "pip", "weights"]
-
-
-def test_provision_install_packages_false_skips_pip(tmp_path, monkeypatch):
-    """The opt-out: install_packages=False downloads weights only."""
-    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: None)
-
-    def must_not_run(args):
-        raise AssertionError(f"pip ran: {args}")
-
-    result = P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
-                         downloaders=_fake_downloaders({}),
-                         install_packages=False, pip_runner=must_not_run)
-    assert result["installed"] == []
-    assert result["downloaded"] == ["dinov2-small"]
 
 
 def test_provision_groups_for_includes_runtime_missing_groups(tmp_path, monkeypatch):
@@ -621,26 +538,20 @@ def test_copy_with_progress_reports_running_totals():
     assert seen == [(1000, 2500), (2000, 2500), (2500, 2500)]
 
 
-def test_provision_emits_structured_progress_events(tmp_path, monkeypatch):
-    """provision() narrates its work: runtime install start/done, then
-    artifact start/done, in execution order."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(
-        P.importlib.util, "find_spec",
-        lambda name: None if name == "transformers"
-        else SimpleNamespace(origin="stub.py"))
+def test_provision_emits_structured_progress_events(tmp_path):
+    """provision() narrates its work: artifact start/done, in execution
+    order. There are no runtime events -- it installs nothing. uv owns
+    dependency management; this owns model weights."""
     events = []
     P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
                 downloaders=_fake_downloaders({}),
-                pip_runner=lambda _args: None,
                 progress=events.append)
     assert [(e["kind"], e["phase"], e["item"]) for e in events] == [
-        ("runtime", "start", "transformers"),
-        ("runtime", "done", "transformers"),
         ("artifact", "start", "dinov2-small"),
         ("artifact", "done", "dinov2-small"),
     ]
-    assert events[2]["size"] == "90 MB"
+    assert events[0]["size"] == "90 MB"
+    assert not any(e["kind"] == "runtime" for e in events)
 
 
 def test_worker_folds_progress_events_into_served_state(tmp_path):
@@ -757,227 +668,6 @@ def test_provision_refuses_empty_models_dir():
 # --- GPU self-heal: CPU-build torch on CUDA hardware ---------------------------
 
 
-def test_torch_cuda_reinstall_needed_matrix(monkeypatch):
-    """The swap triggers only for a +cpu torch build on non-mac CUDA
-    hardware without the AI_DAM_DEVICE=cpu opt-out; absent torch or a
-    CUDA/plain build never triggers it."""
-    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
-    monkeypatch.setattr(P.sys, "platform", "linux")
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0+cpu")
-    assert P.torch_cuda_reinstall_needed() is True
-
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0+cu126")
-    assert P.torch_cuda_reinstall_needed() is False
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0")
-    assert P.torch_cuda_reinstall_needed() is False
-
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda _name: "2.13.0+cpu")
-    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
-    assert P.torch_cuda_reinstall_needed() is False
-    monkeypatch.delenv("AI_DAM_DEVICE")
-
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
-    assert P.torch_cuda_reinstall_needed() is False
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-
-    monkeypatch.setattr(P.sys, "platform", "darwin")
-    assert P.torch_cuda_reinstall_needed() is False  # macOS torch has no CUDA variant
-
-    monkeypatch.setattr(P.sys, "platform", "linux")
-
-    def _missing(name):
-        raise P.importlib.metadata.PackageNotFoundError(name)
-    monkeypatch.setattr(P.importlib.metadata, "version", _missing)
-    assert P.torch_cuda_reinstall_needed() is False
-
-
-def test_provision_swaps_wrong_torch_in_place_when_unimported(tmp_path, monkeypatch):
-    """With a GPU-unusable torch build and torch not yet imported,
-    provision() upgrades torch+torchvision IN PLACE (one --upgrade against
-    the steered index, no uninstall) so a failed download can never leave
-    the environment torch-less."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P.sys, "platform", "win32")
-    monkeypatch.setattr(P, "torch_cuda_index",
-                        lambda: "https://download.pytorch.org/whl/cu130")
-    monkeypatch.delitem(P.sys.modules, "torch", raising=False)
-    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-
-    installs = []
-    result = P.provision(
-        str(tmp_path), ["visual"], log=lambda _m: None,
-        downloaders=_fake_downloaders({}),
-        pip_runner=lambda args: installs.append(args),
-    )
-    assert installs == [["--upgrade", "torch", "torchvision", "--index-url",
-                         "https://download.pytorch.org/whl/cu130"]]
-    assert set(result["installed"]) == {"torch", "torchvision"}
-
-
-def test_provision_only_advises_when_torch_already_imported(tmp_path, monkeypatch):
-    """A loaded torch pins its files (locked DLLs on Windows), so the swap
-    must not replace it underneath: provision() logs a restart advisory
-    and leaves the packages alone."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
-    monkeypatch.setitem(P.sys.modules, "torch", SimpleNamespace())
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-
-    lines = []
-    result = P.provision(
-        str(tmp_path), ["visual"], log=lines.append,
-        downloaders=_fake_downloaders({}),
-        pip_runner=lambda _args: (_ for _ in ()).throw(AssertionError("no installs expected")),
-    )
-    assert any("restart the app to switch wheels" in line for line in lines)
-    assert result["installed"] == []
-
-
-def test_provision_groups_for_includes_cuda_swap_groups(tmp_path, monkeypatch):
-    """A fully-provisioned torch group still auto-provisions when the
-    installed torch is a CPU build on CUDA hardware -- that is how the
-    swap reaches machines with nothing else missing."""
-    from types import SimpleNamespace
-    _make_db(str(tmp_path / "g.sqlite"))
-    weights_dir = tmp_path / "models" / "dinov2-small"
-    weights_dir.mkdir(parents=True)
-    (weights_dir / "model.safetensors").write_bytes(b"w")
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="auto",
-               face_backend="none", segmenter_backend="none", critic_backend="none")
-
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    assert provision_groups_for(cfg) == []
-
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: True)
-    assert provision_groups_for(cfg) == ["visual"]
-
-
-# --- pip operations in pip-less (uv) environments ------------------------------
-
-
-def _pip_proc(returncode=0, stderr=""):
-    from types import SimpleNamespace
-    return SimpleNamespace(returncode=returncode, stderr=stderr, stdout="")
-
-
-def test_pip_runner_uses_python_m_pip_when_available(monkeypatch):
-    """The normal environment needs exactly one subprocess call."""
-    calls = []
-    monkeypatch.setattr(P.subprocess, "run",
-                        lambda cmd, **_kw: calls.append(cmd) or _pip_proc())
-    P._default_pip_runner(["timm"])
-    assert len(calls) == 1
-    assert calls[0][1:] == ["-m", "pip", "install", "--quiet", "timm"]
-
-
-def test_pip_runner_falls_back_to_uv_pip_in_pipless_venv(monkeypatch):
-    """A uv-created venv has no pip module; the runner retries the same
-    operation through `uv pip --python <this python>` (the user's exact
-    'No module named pip' failure)."""
-    calls = []
-
-    def fake_run(cmd, **_kw):
-        calls.append(cmd)
-        if cmd[1:3] == ["-m", "pip"]:
-            return _pip_proc(1, "python.exe: No module named pip")
-        return _pip_proc()
-
-    monkeypatch.setattr(P.subprocess, "run", fake_run)
-    monkeypatch.setattr(P.shutil, "which",
-                        lambda name: "/usr/bin/uv" if name == "uv" else None)
-    P._default_pip_uninstaller(["torch", "torchvision"])
-    assert calls[1][0] == "/usr/bin/uv"
-    assert calls[1][1:4] == ["pip", "uninstall", "--quiet"]
-    assert "--python" in calls[1]
-
-
-def test_pip_runner_bootstraps_ensurepip_without_uv(monkeypatch):
-    """No uv on PATH: bootstrap pip via ensurepip once, then retry."""
-    calls = []
-
-    def fake_run(cmd, **_kw):
-        calls.append(cmd)
-        if cmd[1:3] == ["-m", "pip"] and len(calls) == 1:
-            return _pip_proc(1, "No module named pip")
-        return _pip_proc()
-
-    monkeypatch.setattr(P.subprocess, "run", fake_run)
-    monkeypatch.setattr(P.shutil, "which", lambda _name: None)
-    P._default_pip_runner(["timm"])
-    assert calls[1][1:3] == ["-m", "ensurepip"]
-    assert calls[2][1:3] == ["-m", "pip"]
-
-
-def test_pip_runner_raises_when_every_fallback_fails(monkeypatch):
-    """All routes exhausted -> ProvisionError carrying stderr."""
-    monkeypatch.setattr(P.subprocess, "run",
-                        lambda _cmd, **_kw: _pip_proc(1, "No module named pip"))
-    monkeypatch.setattr(P.shutil, "which", lambda _name: None)
-    with pytest.raises(P.ProvisionError, match="No module named pip"):
-        P._default_pip_runner(["timm"])
-
-
-# --- CUDA wheel index by GPU generation ----------------------------------------
-
-
-def test_torch_cuda_index_picks_by_compute_cap_and_driver(monkeypatch):
-    """Pre-Blackwell cards keep cu126; Blackwell (cc >= 10) gets the
-    newest sm_120 build the driver supports; unknown driver falls back to
-    cu130; AI_DAM_CUDA_INDEX overrides everything."""
-    monkeypatch.delenv("AI_DAM_CUDA_INDEX", raising=False)
-
-    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 8.9)
-    assert P.torch_cuda_index().endswith("/cu126")
-    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: None)
-    assert P.torch_cuda_index().endswith("/cu126")
-
-    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
-    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.5)
-    assert P.torch_cuda_index().endswith("/cu132")
-    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.0)
-    assert P.torch_cuda_index().endswith("/cu130")
-    monkeypatch.setattr(P, "_driver_cuda_version", lambda: 12.9)
-    assert P.torch_cuda_index().endswith("/cu129")
-    monkeypatch.setattr(P, "_driver_cuda_version", lambda: None)
-    assert P.torch_cuda_index().endswith("/cu130")
-
-    monkeypatch.setenv("AI_DAM_CUDA_INDEX", "https://example.test/whl/custom")
-    assert P.torch_cuda_index() == "https://example.test/whl/custom"
-
-
-def test_reinstall_needed_for_wrong_generation_cuda_build(monkeypatch):
-    """A CUDA build from the wrong generation's index (kernels missing for
-    this GPU: cudaErrorNoKernelImageForDevice) counts as swap-needed on
-    Windows; the matching build does not; Linux CUDA builds are left
-    alone (they came from PyPI or the user's own choice)."""
-    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P.sys, "platform", "win32")
-    monkeypatch.setattr(P, "torch_cuda_index",
-                        lambda: "https://download.pytorch.org/whl/cu130")
-
-    monkeypatch.setattr(P.importlib.metadata, "version",
-                        lambda _name: "2.13.0+cu126")
-    assert P.torch_cuda_reinstall_needed() is True
-
-    monkeypatch.setattr(P.importlib.metadata, "version",
-                        lambda _name: "2.13.0+cu130")
-    assert P.torch_cuda_reinstall_needed() is False
-
-    monkeypatch.setattr(P.sys, "platform", "linux")
-    monkeypatch.setattr(P.importlib.metadata, "version",
-                        lambda _name: "2.13.0+cu126")
-    assert P.torch_cuda_reinstall_needed() is False
-
-
 def test_cuda_summary_absent_without_nvidia_driver(monkeypatch):
     """No nvidia-smi on PATH -> no GPU inventory (the boot log then says
     'no NVIDIA GPU detected')."""
@@ -993,8 +683,6 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
     monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.1)
     monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
-    monkeypatch.setattr(P, "torch_cuda_index",
-                        lambda: "https://download.pytorch.org/whl/cu130")
 
     def fake_run(cmd, **_kw):
         assert ("--query-gpu=name,driver_version,compute_cap,"
@@ -1012,7 +700,6 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
     assert summary["gpus"][1]["vram"] == "16384 MiB"
     assert summary["gpus"][1]["vram_used"] == "15020 MiB"
     assert summary["driver"] == "591.86"
-    assert summary["torch_index"].endswith("/cu130")
 
 
 def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, capsys):
@@ -1072,308 +759,6 @@ def test_worker_start_disables_propagation_to_a_late_root_logger(tmp_path):
         root.handlers, pkg.handlers = saved_root, saved_pkg
         pkg.setLevel(saved_level)
         pkg.propagate = saved_prop
-
-
-# --- llama-cpp-python CUDA self-heal (the critic's runtime) ---------------------
-
-
-def test_llama_cuda_index_default_and_env_override(monkeypatch):
-    """The prebuilt-CUDA wheel index defaults to the official abetlen
-    cu124 index; AI_DAM_LLAMA_CUDA_INDEX overrides it."""
-    monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
-    assert P.llama_cuda_index() == \
-        "https://abetlen.github.io/llama-cpp-python/whl/cu124"
-    monkeypatch.setenv("AI_DAM_LLAMA_CUDA_INDEX", "https://example.test/whl/cu130")
-    assert P.llama_cuda_index() == "https://example.test/whl/cu130"
-
-
-def test_llama_gpu_probe_runs_in_child_process_and_memoizes(monkeypatch):
-    """The GPU-offload probe imports llama_cpp in a CHILD process (an
-    in-process import would lock the very DLL a later swap must replace,
-    exactly the torch already-imported problem) and runs at most once."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "_llama_gpu_cache", [])
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    calls = []
-
-    def fake_run(cmd, **_kw):
-        calls.append(cmd)
-        return SimpleNamespace(returncode=0, stdout="1\n", stderr="")
-
-    monkeypatch.setattr(P.subprocess, "run", fake_run)
-    assert P._llama_supports_gpu() is True
-    assert calls[0][0] == P.sys.executable
-    assert "llama_supports_gpu_offload" in calls[0][2]
-    assert P._llama_supports_gpu() is True
-    assert len(calls) == 1
-
-
-def test_llama_gpu_probe_reports_cpu_build_as_false(monkeypatch):
-    """A probe that prints 0 is a working CPU-only build -> False (the
-    swap trigger), not None (unknown)."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "_llama_gpu_cache", [])
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    monkeypatch.setattr(P.subprocess, "run",
-                        lambda _cmd, **_kw: SimpleNamespace(returncode=0,
-                                                          stdout="0\n", stderr=""))
-    assert P._llama_supports_gpu() is False
-
-
-def test_llama_gpu_probe_absent_package_and_crash_yield_none(monkeypatch):
-    """No llama_cpp installed -> None without spawning a child at all; a
-    probe whose child dies (broken DLL) -> None. Neither may trigger a
-    swap -- there is nothing safe to replace."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "_llama_gpu_cache", [])
-    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: None)
-    monkeypatch.setattr(
-        P.subprocess, "run",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("no probe expected")))
-    assert P._llama_supports_gpu() is None
-
-    monkeypatch.setattr(P, "_llama_gpu_cache", [])
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    monkeypatch.setattr(P.subprocess, "run",
-                        lambda _cmd, **_kw: SimpleNamespace(returncode=3,
-                                                          stdout="", stderr="boom"))
-    assert P._llama_supports_gpu() is None
-
-    def _decode_error(*_a, **_k):
-        raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
-
-    monkeypatch.setattr(P, "_llama_gpu_cache", [])
-    monkeypatch.setattr(P.subprocess, "run", _decode_error)
-    assert P._llama_supports_gpu() is None
-
-
-def test_llama_cuda_reinstall_needed_matrix(monkeypatch):
-    """The swap triggers only for a CPU-only llama build on non-mac CUDA
-    hardware without the AI_DAM_DEVICE=cpu opt-out; an absent package or
-    a failed probe (None) never triggers it."""
-    monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
-    monkeypatch.setattr(P.sys, "platform", "linux")
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: False)
-    assert P.llama_cuda_reinstall_needed() is True
-
-    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: True)
-    assert P.llama_cuda_reinstall_needed() is False
-    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: None)
-    assert P.llama_cuda_reinstall_needed() is False
-
-    monkeypatch.setattr(P, "_llama_supports_gpu", lambda: False)
-    monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
-    assert P.llama_cuda_reinstall_needed() is False
-    monkeypatch.delenv("AI_DAM_DEVICE")
-
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
-    assert P.llama_cuda_reinstall_needed() is False
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-
-    monkeypatch.setattr(P.sys, "platform", "darwin")
-    assert P.llama_cuda_reinstall_needed() is False  # macOS builds use Metal
-
-
-def test_provision_swaps_cpu_llama_for_cuda_release_wheel(tmp_path, monkeypatch):
-    """With a CPU-only llama build, CUDA hardware, and llama_cpp not yet
-    imported, provision() installs the official GitHub release wheel
-    matching the driver's CUDA (py3-none, bundled runtime — no cu12
-    DLL chaser) and drops the memoized CPU verdict."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
-    monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
-    monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    monkeypatch.setattr(P, "_llama_gpu_cache", [False])
-    monkeypatch.setattr(P, "_driver_cuda_cache", [13.2])
-    monkeypatch.setattr(P.importlib.metadata, "version", lambda _n: "0.3.34")
-
-    installs = []
-    result = P.provision(
-        str(tmp_path), ["critic"], log=lambda _m: None,
-        downloaders=_fake_downloaders({}),
-        pip_runner=lambda args: installs.append(args),
-    )
-    plat = "win_amd64" if P.sys.platform == "win32" else "manylinux_2_35_x86_64"
-    expected = [["--force-reinstall", "--no-deps",
-                 "https://github.com/abetlen/llama-cpp-python/releases/"
-                 f"download/v0.3.34-cu132/llama_cpp_python-0.3.34-py3-none-{plat}.whl"]]
-    assert installs == expected
-    assert "llama-cpp-python (CUDA)" in result["installed"]
-    assert P._llama_gpu_cache == []
-
-
-def test_provision_llama_swap_index_fallback_keeps_cu12_dlls(tmp_path, monkeypatch):
-    """No driver CUDA version detectable: the swap falls back to the
-    cu124 index and, on Windows, chases the cu12 runtime DLL wheels the
-    index wheel links against."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
-    monkeypatch.delenv("AI_DAM_LLAMA_CUDA_INDEX", raising=False)
-    monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    monkeypatch.setattr(P, "_llama_gpu_cache", [False])
-    monkeypatch.setattr(P, "_driver_cuda_cache", [None])
-
-    installs = []
-    P.provision(
-        str(tmp_path), ["critic"], log=lambda _m: None,
-        downloaders=_fake_downloaders({}),
-        pip_runner=lambda args: installs.append(args),
-    )
-    expected = [["--force-reinstall", "--no-deps", "llama-cpp-python",
-                 "--index-url",
-                 "https://abetlen.github.io/llama-cpp-python/whl/cu124"]]
-    if P.sys.platform == "win32":
-        expected.append(["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"])
-    assert installs == expected
-
-
-def test_provision_llama_swap_failure_is_best_effort_with_advisory(tmp_path, monkeypatch):
-    """The CUDA wheel install fails: provisioning must still SUCCEED on
-    the working CPU build, and the log must say the critic stays on CPU
-    and point at the actual unblock levers (release wheels are py3-none,
-    so the levers are the driver's CUDA version or a source build)."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
-    monkeypatch.delitem(P.sys.modules, "llama_cpp", raising=False)
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-
-    def runner(_args):
-        raise P.ProvisionError("No matching distribution found for llama-cpp-python")
-
-    lines = []
-    result = P.provision(
-        str(tmp_path), ["critic"], log=lines.append,
-        downloaders=_fake_downloaders({}), pip_runner=runner,
-    )
-    assert any("the critic stays on CPU" in line for line in lines)
-    assert any("py3-none" in line for line in lines)
-    assert "llama-cpp-python (CUDA)" not in result["installed"]
-
-
-def test_llama_cuda_group_skipped_off_windows_or_no_cuda(tmp_path, monkeypatch):
-    """The official-binaries payload is Windows CUDA zips: explicit
-    requests on other machines are skipped with a log line, never
-    downloaded."""
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: False)
-    written = {}
-    lines = []
-    P.provision(str(tmp_path), ["llama-cuda"], log=lines.append,
-                downloaders=_fake_downloaders(written),
-                pip_runner=lambda args: None)
-    assert any("llama-cuda skipped" in line for line in lines)
-    assert not any("llama-cpp-cuda" in dest for dest in written)
-
-
-def test_llama_cuda_group_auto_added_on_blackwell(tmp_path, monkeypatch):
-    """compute >= 12.0 plus any llama-consuming group pulls the official
-    binaries in automatically -- the wheels ship no sm_120 kernels."""
-    monkeypatch.setattr(P.sys, "platform", "win32")
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
-    written = {}
-    P.provision(str(tmp_path), ["omniquery"], log=lambda _m: None,
-                downloaders=_fake_downloaders(written),
-                pip_runner=lambda args: None)
-    assert any("llama-cpp-cuda" in dest for dest in written)
-
-
-def test_llama_cuda_group_not_added_pre_blackwell(tmp_path, monkeypatch):
-    """Pre-Blackwell CUDA machines keep using the wheel's own kernels: the
-    official binaries are not auto-downloaded."""
-    monkeypatch.setattr(P.sys, "platform", "win32")
-    monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
-    monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 8.6)
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
-    written = {}
-    P.provision(str(tmp_path), ["omniquery"], log=lambda _m: None,
-                downloaders=_fake_downloaders(written),
-                pip_runner=lambda args: None)
-    assert not any("llama-cpp-cuda" in dest for dest in written)
-
-
-def test_provision_llama_swap_deferred_while_llama_loaded(tmp_path, monkeypatch):
-    """A loaded llama_cpp pins its shared library (Windows locks the
-    file), so provision() logs a restart advisory instead of replacing it
-    underneath the running critic."""
-    from types import SimpleNamespace
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
-    monkeypatch.setitem(P.sys.modules, "llama_cpp", SimpleNamespace())
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-
-    lines = []
-    result = P.provision(
-        str(tmp_path), ["critic"], log=lines.append,
-        downloaders=_fake_downloaders({}),
-        pip_runner=lambda _args: (_ for _ in ()).throw(
-            AssertionError("no installs expected")),
-    )
-    assert any("restart the app" in line for line in lines)
-    assert result["installed"] == []
-
-
-def test_pip_runner_translates_force_reinstall_for_uv(monkeypatch):
-    """uv pip spells pip's --force-reinstall as --reinstall; the pip-less
-    venv fallback must translate it or the llama CUDA swap dies with
-    'unexpected argument' in exactly the venvs that need it most."""
-    calls = []
-
-    def fake_run(cmd, **_kw):
-        calls.append(cmd)
-        if cmd[1:3] == ["-m", "pip"]:
-            return _pip_proc(1, "No module named pip")
-        return _pip_proc()
-
-    monkeypatch.setattr(P.subprocess, "run", fake_run)
-    monkeypatch.setattr(P.shutil, "which",
-                        lambda name: "/usr/bin/uv" if name == "uv" else None)
-    P._default_pip_runner(["--force-reinstall", "--no-deps", "llama-cpp-python"])
-    assert "--force-reinstall" in calls[0]
-    assert "--reinstall" in calls[1]
-    assert "--force-reinstall" not in calls[1]
-    assert "--no-deps" in calls[1]
-
-
-def test_provision_groups_for_includes_llama_swap_groups(tmp_path, monkeypatch):
-    """A fully-provisioned critic still auto-provisions when the installed
-    llama-cpp-python is a CPU-only build on CUDA hardware -- that is how
-    the GPU swap reaches machines with nothing else missing."""
-    from types import SimpleNamespace
-    _make_db(str(tmp_path / "g.sqlite"))
-    models = tmp_path / "models"
-    models.mkdir(parents=True)
-    (models / "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").write_bytes(b"w")
-    (models / "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf").write_bytes(b"w")
-    (models / "open_clip").mkdir()
-    (models / "open_clip" / "ViT-B-32_laion2b_s34b_b79k.bin").write_bytes(b"w")
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="none", segmenter_backend="none",
-               critic_backend="qwen-vl")
-
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
-    monkeypatch.setattr(P, "torch_cuda_reinstall_needed", lambda: False)
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: False)
-    assert provision_groups_for(cfg) == []
-
-    monkeypatch.setattr(P, "llama_cuda_reinstall_needed", lambda: True)
-    assert provision_groups_for(cfg) == ["critic"]
 
 
 def test_download_zip_member_extracts_one_file(tmp_path):
@@ -1453,5 +838,5 @@ def test_provision_surfaces_disk_refusal_before_any_download(tmp_path, monkeypat
           ("url", "hf_file", "hf_snapshot")}
     with pytest.raises(P.ProvisionError, match="not enough disk space"):
         P.provision(str(tmp_path / "models"), ["faces"],
-                    install_packages=False, downloaders=dl)
+                    downloaders=dl)
     assert calls == []

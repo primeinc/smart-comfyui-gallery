@@ -2,12 +2,12 @@
 (quality score, prompt-alignment score, and typed findings), plus optional
 per-finding segmentation masks.
 
-`validate_review_payload` is the ONLY door from raw model/backend JSON into
-a `ReviewResult`: any dict a `CriticBackend` returns, however it was
-produced, must pass through it before touching the database. It is strict
-by design -- unknown keys, wrong types, and out-of-range scores are
-rejected outright (never silently clamped or coerced) so a malformed or
-hallucinated payload fails loudly instead of writing garbage.
+`validate_review_payload` is the ONLY door from raw model JSON into a
+`ReviewResult`: any dict a reviewer returns, however it was produced, must
+pass through it before touching the database. It is strict by design --
+unknown keys, wrong types, and out-of-range scores are rejected outright
+(never silently clamped or coerced) so a malformed or hallucinated payload
+fails loudly instead of writing garbage.
 
 `localizable` findings may carry a bounding box and/or points and, later, a
 segmentation mask; `localizable=False` ("global") findings may carry none
@@ -19,7 +19,6 @@ outside this module.
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 import os
 import sqlite3
@@ -42,9 +41,8 @@ __all__ = [
     "normalize_prompt_pair",
     "resolve_prompt_texts",
     "validate_review_payload",
-    "CriticBackend",
-    "StubCritic",
-    "get_critic_backend",
+    "StubReviewer",
+    "get_reviewer",
     "store_review",
     "SegmenterBackend",
     "StubSegmenter",
@@ -54,7 +52,7 @@ __all__ = [
 ]
 
 # Closed vocabulary of finding categories; the DB CHECK constraint and every
-# critic prompt/schema reference exactly this set.
+# reviewer prompt/schema reference exactly this set.
 FINDING_TYPES = (
     "anatomy",
     "artifact",
@@ -84,7 +82,7 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 def normalize_prompt_pair(traced_positive, workflow_positive, traced_negative) -> tuple:
     """Reduce the three raw prompt surfaces to the (positive, negative) pair
-    the critic actually scores against.
+    the reviewer actually scores against.
 
     Pure, so the row-by-row reader (`resolve_prompt_texts`) and the
     set-based staleness query can share ONE definition. They must: the
@@ -422,58 +420,24 @@ def validate_review_payload(payload: dict) -> ReviewResult:
     )
 
 
-class CriticBackend(ABC):
-    """A model that critiques one image and emits a raw payload dict;
-    `model_id`/`model_version` are recorded as provenance with every
-    stored review."""
-
-    model_id: str  # stable identifier of the underlying model (e.g. HF repo id)
-    model_version: str  # provenance tag stored with every review row
-
-    # Optional live-progress sink, `fn(stage: str, detail: dict)`. The
-    # interactive runner installs one so a ~200s review reports each protocol
-    # stage as it lands instead of being one opaque block; background
-    # indexing leaves it None and emits nothing. Never load-bearing: a
-    # backend that ignores it is still correct.
-    progress = None
-
-    def _emit(self, stage: str, **detail) -> None:
-        """Report one protocol stage to the progress sink, if any.
-
-        Swallows sink failures on purpose: a disconnected SSE client or a
-        slow consumer must never abort a review that is otherwise fine.
-        Observation must not be able to break the thing observed."""
-        sink = self.progress
-        if sink is None:
-            return
-        try:
-            sink(stage, detail)
-        except Exception:
-            pass
-
-    @abstractmethod
-    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str,
-               negative_text: Optional[str] = None) -> dict:
-        """Return a RAW payload dict; the caller must validate it via
-        `validate_review_payload` before it touches the database.
-        `negative_text` (the generation's negative prompt, when tracked)
-        feeds ALIGN's expected-text guard: a prompt element that was also
-        requested ABSENT is never treated as expected content."""
-
-
-class StubCritic(CriticBackend):
+class StubReviewer:
     """TEST/DEV STUB -- derives a payload from crude image statistics.
 
-    Not a real generation critic. Two deliberately simple, deterministic
-    heuristics exist purely so tests can construct images that trigger a
-    known finding:
+    Not a real reviewer. Two deliberately simple, deterministic heuristics
+    exist purely so tests can construct images that trigger a known
+    finding:
       - mean brightness below a threshold -> one global ('lighting') finding
       - a solid, roughly-1/16th-image-area red rectangle -> one localizable
         ('artifact') finding whose bbox is the rectangle's bounding box
+
+    Carries `progress` so the interactive runner can install its sink on
+    any reviewer without asking what kind it is; this one reports nothing,
+    which is a legal way to honour that contract.
     """
 
-    model_id = "stub-critic"
+    model_id = "stub-reviewer"
     model_version = "stub-v1"
+    progress = None
 
     _DARK_MEAN_THRESHOLD = 40.0  # mean RGB (0-255) below this -> 'lighting' finding
     _RED_MIN_R = 180  # red-channel floor (0-255) for the artifact-rectangle mask
@@ -548,141 +512,7 @@ class StubCritic(CriticBackend):
         return (x0 / w, y0 / h, (x1 - x0) / w, (y1 - y0) / h)
 
 
-# Larger checkpoints win when several are provisioned side by side.
-_SMOLVLM_DIRNAMES = ("smolvlm2-2.2b", "smolvlm2-500m")
-# dirname -> (model_id, model_version) provenance recorded with reviews.
-_SMOLVLM_MODEL_IDS = {
-    "smolvlm2-2.2b": ("HuggingFaceTB/SmolVLM2-2.2B-Instruct", "smolvlm2-2.2b-instruct-v1"),
-    "smolvlm2-500m": ("HuggingFaceTB/SmolVLM2-500M-Video-Instruct", "smolvlm2-500m-video-instruct-v1"),
-}
-
-# Single-turn instruction for SmolVLM: demands one JSON object in the exact
-# review schema; `validate_review_payload` rejects any deviation downstream.
-_CRITIC_INSTRUCTION = """You are a strict image-generation quality reviewer. Reply with ONLY one JSON object, no other text.
-Required keys: quality_score (0-10), prompt_alignment_score (0-10, or null when no prompt given), summary (one sentence), findings (list, may be empty).
-EVERY finding must have ALL of these keys: type (one of anatomy, artifact, composition, lighting, text_render, prompt_mismatch, style, detail_loss, other), severity (low, medium or high), confidence (0-1), localizable (true or false), description (short text). Add bbox [x,y,w,h] (fractions 0-1) ONLY when localizable is true.
-Example of a complete, valid reply:
-{"quality_score": 6.5, "prompt_alignment_score": 7.0, "summary": "Good portrait with one artifact.", "findings": [{"type": "artifact", "severity": "high", "confidence": 0.9, "localizable": true, "description": "red square artifact", "bbox": [0.55, 0.6, 0.2, 0.2]}, {"type": "lighting", "severity": "low", "confidence": 0.6, "localizable": false, "description": "slightly flat lighting"}]}
-Keep the reply short: at most 3 findings."""
-
-
-class SmolVlmCritic(CriticBackend):
-    """EXPERIMENTAL local VLM critic via SmolVLM2 (Apache-2.0), loaded ONLY
-    from `models_dir/smolvlm2-2.2b` or `models_dir/smolvlm2-500m`
-    (local_files_only); this module never downloads.
-
-    Explicit 'smolvlm' opt-in only; 'auto' never resolves here (see
-    docs/AI_MODELS.md for the record behind that). Emits the RAW payload
-    dict; `validate_review_payload` remains the only gate into the
-    database. Validation cannot catch a schema-valid fabrication, which is
-    the failure mode that keeps this opt-in.
-    """
-
-    model_id = "HuggingFaceTB/SmolVLM2"  # refined per provisioned checkpoint
-    model_version = "smolvlm2-v1"
-
-    def __init__(self, models_dir: str, max_new_tokens: int = 640):
-        """Load processor + weights from the provisioned checkpoint dir;
-        raises `BackendUnavailable` when weights are absent or the
-        torch/transformers runtime is missing or fails to load them."""
-        # Weights check precedes the runtime import: resolution on an
-        # unprovisioned system must stay fast and side-effect-free.
-        weights_dir = None
-        for dirname in _SMOLVLM_DIRNAMES:
-            candidate = os.path.join(models_dir, dirname)
-            if os.path.isdir(candidate):
-                weights_dir = candidate
-                self.model_id, self.model_version = _SMOLVLM_MODEL_IDS[dirname]
-                break
-        if weights_dir is not None:
-            try:
-                import torch
-                # torchvision before transformers: transformers freezes its
-                # torchvision-availability flag at first import, and its
-                # processors hard-require torchvision -- importing it in a
-                # torchvision-less process would keep transformers backends
-                # dead until a restart (see embedders.Dinov2VisualEmbedder).
-                importlib.import_module("torchvision")
-                from transformers import AutoModelForImageTextToText, AutoProcessor
-            except Exception as exc:
-                raise BackendUnavailable(f"smolvlm critic unavailable: {exc}") from exc
-        if weights_dir is None:
-            raise BackendUnavailable(
-                f"smolvlm weights not found under {models_dir} "
-                f"(looked for {', '.join(_SMOLVLM_DIRNAMES)})")
-        try:
-            self._processor = AutoProcessor.from_pretrained(
-                weights_dir, local_files_only=True
-            )
-            self._model = AutoModelForImageTextToText.from_pretrained(
-                weights_dir, local_files_only=True, torch_dtype=torch.float32
-            )
-            self._model.eval()
-        except Exception as exc:
-            raise BackendUnavailable(f"failed to load smolvlm weights: {exc}") from exc
-        self._torch = torch
-        self._max_new_tokens = max_new_tokens
-
-    def review(self, img: Image.Image, prompt_text: Optional[str], _rubric_version: str,
-               negative_text: Optional[str] = None) -> dict:
-        """Single greedy-decoded image+instruction turn; returns the first
-        JSON object in the reply (ValueError when there is none)."""
-        instruction = _CRITIC_INSTRUCTION
-        if prompt_text:
-            instruction += f'\nGeneration prompt: "{prompt_text}"'
-        messages = [{
-            "role": "user",
-            "content": [{"type": "image", "image": img.convert("RGB")},
-                        {"type": "text", "text": instruction}],
-        }]
-        inputs = self._processor.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=True,
-            return_dict=True, return_tensors="pt",
-        )
-        with self._torch.no_grad():
-            generated = self._model.generate(
-                **inputs, do_sample=False, max_new_tokens=self._max_new_tokens
-            )
-        new_tokens = generated[0][inputs["input_ids"].shape[1]:]
-        text = self._processor.decode(new_tokens, skip_special_tokens=True)
-        return _extract_json_object(text)
-
-
-def _extract_json_object(text: str) -> dict:
-    """Pull the first balanced JSON object out of model output. Raises
-    ValueError when there is none -- the caller treats that as a failed
-    review, never as data.
-
-    Brace counting is string-aware: braces (and escaped quotes) inside
-    JSON string values do not affect nesting depth, so a summary
-    containing '}' still parses."""
-    start = text.find("{")
-    if start < 0:
-        raise ValueError(f"critic output contains no JSON object: {text[:120]!r}")
-    depth = 0
-    in_string = False
-    escaped = False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
-        elif ch == '"':
-            in_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return json.loads(text[start:i + 1])
-    raise ValueError("critic output has an unterminated JSON object")
-
-
-# 'auto' -> qwen-vl resolution requires the committed grounding-gate
+# 'auto' -> vlm resolution requires the committed grounding-gate
 # calibration report to meet these bounds at the shipped margin threshold.
 _CALIBRATION_REPORT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -709,7 +539,7 @@ def _sha256_of_file(path: str) -> str:
 def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
     """Whether the calibration report at `report_path` (default: the
     committed benchmarks/results/grounding_calibration.json, written by
-    probes/grounding_calibration.py) authorizes 'auto' critic resolution.
+    probes/grounding_calibration.py) authorizes 'auto' reviewer resolution.
 
     Acceptance is bound to the evidence's IDENTITY, not just its numbers.
     A report qualifies only when ALL hold:
@@ -725,7 +555,7 @@ def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
     Anything missing, malformed, mismatched, or out of bounds -> False.
     """
     try:
-        from smartgallery_ai.critic_qwen import (
+        from smartgallery_ai.reviewer import (
             DEFAULT_GROUNDING_MIN_MARGIN, GROUNDING_BASELINE_TEXT)
         from smartgallery_ai.embedders import OpenClipSemanticEmbedder
         with open(report_path or _CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
@@ -757,41 +587,46 @@ def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
         return False
 
 
-def get_critic_backend(config: AIConfig) -> Optional[CriticBackend]:
-    """Resolve `config.critic_backend`.
+def get_reviewer(config: AIConfig):
+    """Resolve `config.critic_backend` to something with a `review` method,
+    or None when reviews are off or unavailable.
 
-    'qwen-vl' loads the decomposed Qwen2.5-VL critic
-    (smartgallery_ai.critic_qwen). 'auto' resolves to it only when
+    'vlm' loads the decomposed reviewer (smartgallery_ai.reviewer) over
+    `config.critic_model` -- any transformers image-text-to-text
+    checkpoint. 'auto' resolves to it only when
     `_auto_critic_measurement_passed()` accepts the committed calibration
-    evidence. 'smolvlm' is explicit-opt-in; 'stub' is test-only and never
+    evidence, and degrades to None otherwise; 'vlm' raises instead, so an
+    explicit request never fails quietly. 'stub' is test-only and never
     reachable implicitly.
+
+    There is no per-model selector value. Choosing a different checkpoint
+    is `AI_DAM_CRITIC_MODEL`, not a different backend name.
     """
     name = config.critic_backend
     if name == "none":
         return None
-    if name in ("auto", "qwen-vl"):
+    if name in ("auto", "vlm"):
         if name == "auto" and not _auto_critic_measurement_passed():
             return None
         try:
-            from smartgallery_ai.critic_qwen import QwenVlCritic
-
             from smartgallery_ai.embedders import get_semantic_backend
-            # A missing semantic backend makes the critic unavailable;
-            # it must never run without its grounding gate.
+            from smartgallery_ai.reviewer import DEFAULT_REVIEW_MODEL, Reviewer
+
+            # A missing semantic backend makes the reviewer unavailable; it
+            # must never run without its grounding gate.
             embedder = get_semantic_backend(config)
             if embedder is None:
                 raise BackendUnavailable(
-                    "qwen-vl critic requires the semantic (OpenCLIP) backend "
+                    "the reviewer requires the semantic (OpenCLIP) backend "
                     "for grounding and prompt-alignment; it is unavailable")
-            return QwenVlCritic(config.models_dir, semantic_embedder=embedder)
+            return Reviewer(config.models_dir, semantic_embedder=embedder,
+                            model_ref=config.critic_model or DEFAULT_REVIEW_MODEL)
         except BackendUnavailable:
-            if name == "qwen-vl":
+            if name == "vlm":
                 raise
             return None
-    if name == "smolvlm":
-        return SmolVlmCritic(config.models_dir)
     if name == "stub":
-        return StubCritic()
+        return StubReviewer()
     raise ValueError(f"unknown critic_backend: {name!r}")
 
 

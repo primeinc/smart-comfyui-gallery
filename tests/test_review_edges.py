@@ -1,6 +1,6 @@
 """Edge-behavior tests for smartgallery_ai.review beyond tests/test_review.py:
 SmolVLM critic availability contracts (the weights check precedes any torch
-import), _extract_json_object error contracts, points-only findings through
+import), extract_json_object error contracts, points-only findings through
 store_review and generate_finding_mask, generate_finding_mask identity and
 containment error contracts, segmenter backend resolution, superseded-mask
 tolerance, StubSegmenter fallbacks, and the 'auto' critic calibration gate's
@@ -10,8 +10,6 @@ import copy
 import json
 import os
 import sqlite3
-import subprocess
-import sys
 
 import numpy as np
 import pytest
@@ -24,16 +22,15 @@ from smartgallery_ai.review import (
     Finding,
     MaskNotAllowedError,
     ReviewResult,
-    SmolVlmCritic,
-    StubCritic,
+    StubReviewer,
     StubSegmenter,
-    _extract_json_object,
     generate_finding_mask,
-    get_critic_backend,
+    get_reviewer,
     get_segmenter_backend,
     store_review,
     validate_review_payload,
 )
+from smartgallery_ai.models import extract_json_object
 from smartgallery_ai.schema import init_schema
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(REV.__file__)))
@@ -93,104 +90,33 @@ def _store_one_finding(conn, file_id, localizable, bbox=None, points=None):
     return finding_id
 
 
-# --- SmolVlmCritic availability contract -------------------------------------
 
-
-def test_smolvlm_missing_weights_raises_naming_dir_and_candidates(tmp_path):
-    """An unprovisioned models_dir raises BackendUnavailable naming the dir and both checkpoint dirnames."""
-    with pytest.raises(BackendUnavailable) as exc:
-        SmolVlmCritic(str(tmp_path))
-    msg = str(exc.value)
-    assert str(tmp_path) in msg
-    assert "smolvlm2-2.2b" in msg
-    assert "smolvlm2-500m" in msg
-
-
-def test_smolvlm_weights_check_does_not_import_torch(tmp_path):
-    """Resolution on an unprovisioned system is side-effect-free: the failed weights check must never pull torch in."""
-    script = (
-        "import sys\n"
-        "from smartgallery_ai.review import SmolVlmCritic\n"
-        "from smartgallery_ai.embedders import BackendUnavailable\n"
-        "try:\n"
-        "    SmolVlmCritic(sys.argv[1])\n"
-        "    print('outcome=CONSTRUCTED')\n"
-        "except BackendUnavailable:\n"
-        "    print('outcome=UNAVAILABLE')\n"
-        "except Exception as exc:\n"
-        "    print('outcome=WRONG-' + type(exc).__name__)\n"
-        "print('torch_loaded=%s' % ('torch' in sys.modules))\n"
-    )
-    proc = subprocess.run(
-        [sys.executable, "-c", script, str(tmp_path)],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "outcome=UNAVAILABLE" in proc.stdout
-    assert "torch_loaded=False" in proc.stdout
-
-
-def test_smolvlm_unloadable_checkpoint_dir_raises_backend_unavailable(tmp_path):
-    """A provisioned-looking but empty checkpoint dir yields BackendUnavailable,
-    never a raw loader exception. Run in a subprocess: this path imports
-    torch/transformers, which must not be pulled into the test process."""
-    script = (
-        "import sys\n"
-        "from smartgallery_ai.review import SmolVlmCritic\n"
-        "from smartgallery_ai.embedders import BackendUnavailable\n"
-        "try:\n"
-        "    SmolVlmCritic(sys.argv[1])\n"
-        "    print('outcome=CONSTRUCTED')\n"
-        "except BackendUnavailable as exc:\n"
-        "    print('outcome=UNAVAILABLE' if 'smolvlm' in str(exc) else 'outcome=WRONG-MESSAGE')\n"
-        "except Exception as exc:\n"
-        "    print('outcome=RAW-' + type(exc).__name__)\n"
-    )
-    (tmp_path / "smolvlm2-2.2b").mkdir()
-    proc = subprocess.run(
-        [sys.executable, "-c", script, str(tmp_path)],
-        cwd=REPO_ROOT, capture_output=True, text=True, timeout=300,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "outcome=UNAVAILABLE" in proc.stdout
-
-
-def test_get_critic_backend_smolvlm_propagates_backend_unavailable(tmp_path):
-    """Explicit critic_backend='smolvlm' surfaces BackendUnavailable instead of degrading to None."""
-    cfg = AIConfig(critic_backend="smolvlm", models_dir=str(tmp_path))
-    with pytest.raises(BackendUnavailable, match="smolvlm weights not found"):
-        get_critic_backend(cfg)
-
-
-# --- _extract_json_object -----------------------------------------------------
+# --- extract_json_object -----------------------------------------------------
 
 
 def test_extract_json_object_unterminated_raises_value_error():
-    """An opened-but-never-closed object raises ValueError naming the unterminated JSON object."""
-    with pytest.raises(ValueError, match="unterminated JSON object"):
-        _extract_json_object('prefix {"quality_score": 5, "findings": [')
+    """An opened-but-never-closed object raises ValueError reporting no usable JSON object."""
+    with pytest.raises(ValueError, match="no JSON object"):
+        extract_json_object('prefix {"quality_score": 5, "findings": [')
 
 
 def test_extract_json_object_without_any_object_raises_value_error():
     """Output with no '{' at all raises ValueError saying there is no JSON object."""
     with pytest.raises(ValueError, match="no JSON object"):
-        _extract_json_object("I could not produce a review, sorry.")
+        extract_json_object("I could not produce a review, sorry.")
 
 
 def test_extract_json_object_tolerates_prose_prefix_and_suffix():
     """The first balanced object is parsed even when wrapped in chatty prose, including nested braces."""
     text = 'Sure! Here it is: {"quality_score": 6, "meta": {"nested": true}} Hope that helps.'
-    assert _extract_json_object(text) == {"quality_score": 6, "meta": {"nested": True}}
+    assert extract_json_object(text) == {"quality_score": 6, "meta": {"nested": True}}
 
 
 def test_extract_json_object_braces_inside_string_values_parse():
     """Braces inside JSON string values do not affect nesting: the full
     object parses and the brace-bearing string survives intact."""
     text = 'noise {"summary": "brace } inside { here", "quality_score": 5} tail'
-    obj = _extract_json_object(text)
+    obj = extract_json_object(text)
     assert obj == {"summary": "brace } inside { here", "quality_score": 5}
 
 
@@ -198,16 +124,16 @@ def test_extract_json_object_escaped_quote_inside_string_parses():
     """An escaped quote inside a string value does not terminate the
     string, so a following brace is still treated as content."""
     text = r'{"summary": "she said \"}\" loudly", "quality_score": 4}'
-    obj = _extract_json_object(text)
+    obj = extract_json_object(text)
     assert obj == {"summary": 'she said "}" loudly', "quality_score": 4}
 
 
-# --- StubCritic heuristic branches -------------------------------------------
+# --- StubReviewer heuristic branches -------------------------------------------
 
 
-def test_stub_critic_clean_image_yields_no_findings_and_full_score():
+def test_stub_reviewer_clean_image_yields_no_findings_and_full_score():
     """A bright, red-free image triggers neither heuristic: zero findings and quality 10.0."""
-    critic = StubCritic()
+    critic = StubReviewer()
     raw = critic.review(
         solid_color_image(color=(200, 200, 200)), prompt_text=None, rubric_version="r-v1"
     )
@@ -218,11 +144,11 @@ def test_stub_critic_clean_image_yields_no_findings_and_full_score():
     assert "0 finding(s)" in result.summary
 
 
-def test_stub_critic_dark_image_with_red_square_yields_both_findings():
+def test_stub_reviewer_dark_image_with_red_square_yields_both_findings():
     """Both heuristics can fire on one image, and each finding costs 2 points: quality 6.0."""
     arr = np.full((64, 64, 3), (5, 5, 5), dtype=np.uint8)
     arr[24:40, 24:40] = (255, 0, 0)  # 16x16 = 1/16 of the image
-    raw = StubCritic().review(
+    raw = StubReviewer().review(
         Image.fromarray(arr, mode="RGB"), prompt_text="a dark scene", rubric_version="r-v1"
     )
     result = validate_review_payload(raw)
@@ -413,7 +339,7 @@ def test_get_segmenter_backend_stub_none_and_unknown():
 
 def test_auto_critic_gate_non_numeric_sweep_rates_fail_closed(tmp_path):
     """A sweep row whose rates are not numbers can never authorize 'auto', even with valid identity."""
-    from smartgallery_ai.critic_qwen import DEFAULT_GROUNDING_MIN_MARGIN
+    from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN
     from smartgallery_ai.review import _auto_critic_measurement_passed
 
     with open(REV._CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
@@ -438,18 +364,18 @@ def test_auto_critic_gate_non_numeric_sweep_rates_fail_closed(tmp_path):
 def test_get_critic_backend_auto_gate_is_the_deciding_factor(tmp_path, monkeypatch):
     """The calibration gate causally decides 'auto' resolution: with a
     constructible critic stubbed in, a rejecting gate yields None and an
-    accepting gate yields the critic — so None is attributable to the gate,
+    accepting gate yields the reviewer — so None is attributable to the gate,
     not to missing weights."""
-    import smartgallery_ai.critic_qwen as CQ
     import smartgallery_ai.embedders as EMB
+    import smartgallery_ai.reviewer as RV
 
     sentinel = object()
     monkeypatch.setattr(EMB, "get_semantic_backend", lambda _cfg: object())
-    monkeypatch.setattr(CQ, "QwenVlCritic", lambda *_a, **_k: sentinel)
+    monkeypatch.setattr(RV, "Reviewer", lambda *_a, **_k: sentinel)
     cfg = AIConfig(critic_backend="auto", models_dir=str(tmp_path))
 
     monkeypatch.setattr(REV, "_auto_critic_measurement_passed", lambda *_a: False)
-    assert get_critic_backend(cfg) is None
+    assert get_reviewer(cfg) is None
 
     monkeypatch.setattr(REV, "_auto_critic_measurement_passed", lambda *_a: True)
-    assert get_critic_backend(cfg) is sentinel
+    assert get_reviewer(cfg) is sentinel

@@ -35,7 +35,7 @@ installed lane live, side by side, with the inventory + swap selectors.
 |---|---|---|---|---|---|
 | 11 | Semantic embedder | open_clip ViT-B-32 laion2b — `embedders.py:195` | open_clip ViT-L or SigLIP | stub (test only) | **config** — `AI_DAM_SEMANTIC_BACKEND`; one real impl, second = new class |
 | 12 | Visual embedder | dinov2-small — `embedders.py:263` | dinov2-base/large | open_clip image tower | **config** — `AI_DAM_VISUAL_BACKEND`; one real impl |
-| 13 | Critic | qwen-vl — `review.py:587` | smolvlm — `review.py:606` | stub | **config** — two real backends today |
+| 13 | Reviewer | vlm — `review.py` `get_reviewer` | any checkpoint via `AI_DAM_CRITIC_MODEL` | stub | **config** — one code path, the model is a string |
 | 14 | Segmenter | MobileSAM — `review.py:623` | SAM / SAM2 | stub | **config** — one real impl |
 | 15 | Retrieval (topk) | faiss `IndexFlatIP` — `vectors.py:192` | numpy exact fallback (automatic when faiss absent) — `vectors.py:186` | faiss IVF (`IVF{4*sqrt(N)},Flat`) at ~1M vectors; GPU faiss | **runtime** — two paths live now |
 

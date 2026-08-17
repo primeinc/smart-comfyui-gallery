@@ -37,7 +37,6 @@ from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, r
 from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
     _MTIME_EPSILON,
-    _has_column,
     app_git_ref,
     indexing_totals,
     load_source_image,
@@ -347,16 +346,14 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
     # backend key -> (config selector attr, values that mean "real model",
     # provisioning group). The probe decides availability from weights on
     # disk + importable runtime — it must NEVER construct backends: doing so
-    # loads multi-GB models (the 7B critic included) just to compute a
-    # boolean, doubles every model load at startup, and the discarded
-    # critic's GC teardown trips a llama.cpp CUDA context-free fault
-    # (0xC000001D) on this build.
+    # loads multi-GB models just to compute a boolean and doubles every
+    # model load at startup.
     _PROBE_MAP = {
         "semantic": ("semantic_backend", ("auto", "open_clip"), "semantic"),
         "visual": ("visual_backend", ("auto", "dinov2"), "visual"),
         "face": ("face_backend", ("auto", "opencv"), "faces"),
         "segmenter": ("segmenter_backend", ("auto", "mobilesam"), "segmenter"),
-        "critic": ("critic_backend", ("auto", "qwen-vl", "smolvlm"), "critic"),
+        "critic": ("critic_backend", ("auto", "vlm"), "critic"),
     }
 
     def _cheap_available(key: str) -> bool:

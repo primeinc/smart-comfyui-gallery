@@ -21,11 +21,9 @@ start reported six schema updates and a version upgrade, which reads as
 from __future__ import annotations
 
 import os
-import sqlite3
 import subprocess
 import sys
 
-import pytest
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

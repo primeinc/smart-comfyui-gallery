@@ -399,7 +399,7 @@ def _run_sqlsearch(entries: List[dict], engine: OmniQueryEngine,
 def run_benchmark(backend_names: List[str], corpus_path: Any = _DEFAULT_CORPUS_PATH,
                    out_path: Optional[str] = None, now_epoch: float = ANCHOR_EPOCH) -> Dict[str, Any]:
     """Run each of `backend_names` (any of 'nlq', 'nl2sql',
-    'fallback_qwen', 'sqlsearch') against the corpus at `corpus_path`. Writes a
+    'sqlsearch') against the corpus at `corpus_path`. Writes a
     JSON report to `out_path` if given, and always returns the report dict.
     """
     entries = load_corpus(Path(corpus_path))

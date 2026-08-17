@@ -11,7 +11,6 @@ multi-GB model weights into whatever the working directory happened to be.
 
 from __future__ import annotations
 
-import importlib
 import os
 
 import pytest

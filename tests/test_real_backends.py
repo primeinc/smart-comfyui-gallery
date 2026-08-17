@@ -154,14 +154,14 @@ def test_segmenter_factory_resolution(tmp_path):
 
 
 def test_real_grounding_gate_negative_cases():
-    """The critic's anti-fabrication gate, proven on the REAL OpenCLIP
+    """The reviewer's anti-fabrication gate, proven on the REAL OpenCLIP
     space without loading the VLM: a grounded description passes, the
     previously-measured fabricated description and an unrelated one raise
-    CriticGroundingError."""
+    UngroundedReviewError."""
     if not os.path.isfile(os.path.join(
             MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         pytest.skip("open_clip weights not provisioned")
-    from smartgallery_ai.critic_qwen import CriticGroundingError, check_grounding
+    from smartgallery_ai.reviewer import UngroundedReviewError, check_grounding
     from smartgallery_ai.embedders import get_semantic_backend
 
     sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
@@ -169,20 +169,20 @@ def test_real_grounding_gate_negative_cases():
     margin = check_grounding(sem, "a plain solid red image", red)
     assert margin >= 0.09
     # Unrelated content: rejected.
-    with pytest.raises(CriticGroundingError):
+    with pytest.raises(UngroundedReviewError):
         check_grounding(sem, "a portrait photo of an astronaut in a spacesuit", red)
     # Empty: rejected.
-    with pytest.raises(CriticGroundingError):
+    with pytest.raises(UngroundedReviewError):
         check_grounding(sem, "", red)
     # Adversarial classes from the oracle review — v2's contrastive margin
     # rejects what the v1 absolute-cosine gate accepted:
     # (a) vacuous description == the baseline -> margin ~ 0
-    with pytest.raises(CriticGroundingError):
+    with pytest.raises(UngroundedReviewError):
         check_grounding(sem,
                         "This is an image. It contains some shapes and colors.",
                         red)
     # (b) the parroted schema example on an image it does not describe
-    with pytest.raises(CriticGroundingError):
+    with pytest.raises(UngroundedReviewError):
         check_grounding(sem,
                         "Good portrait with one artifact. The image shows a "
                         "red square artifact in the lower right and slightly "
@@ -191,13 +191,18 @@ def test_real_grounding_gate_negative_cases():
 
 
 def test_real_critic_to_mask_chain():
-    """FULL AC6+AC7 chain with zero stubs: real Qwen2.5-VL critic reviews a
+    """FULL AC6+AC7 chain with zero stubs: the real reviewer reviews a
     flawed image -> validated typed findings -> worker generates real
-    MobileSAM masks -> API serves them. ~5-10 minutes on CPU, so it needs
+    MobileSAM masks -> API serves them. Minutes, so it needs
     RUN_REAL_CRITIC_TESTS=1 on top of the suite's own opt-in."""
     if os.environ.get("RUN_REAL_CRITIC_TESTS") != "1":
         pytest.skip("critic chain test is a second-tier opt-in (RUN_REAL_CRITIC_TESTS=1)")
-    for f in ("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", "mobile_sam.pt",
+    from smartgallery_ai import models as ai_models
+    from smartgallery_ai.reviewer import DEFAULT_REVIEW_MODEL
+
+    if not ai_models.is_provisioned(DEFAULT_REVIEW_MODEL, MODELS_DIR):
+        pytest.skip(f"{DEFAULT_REVIEW_MODEL} not provisioned")
+    for f in ("mobile_sam.pt",
               os.path.join("open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         if not os.path.isfile(os.path.join(MODELS_DIR, f)):
             pytest.skip(f"{f} not provisioned")
@@ -238,7 +243,7 @@ def test_real_critic_to_mask_chain():
 
     cfg = _cfg(base_path=tmp, db_path=db, cache_dir=os.path.join(tmp, "cache"),
                semantic_backend="open_clip", visual_backend="none",
-               face_backend="none", critic_backend="qwen-vl",
+               face_backend="none", critic_backend="vlm",
                segmenter_backend="auto")
     worker = AIWorker(cfg, db, poll_interval=0.2)
     worker.start()
@@ -285,3 +290,103 @@ def test_real_critic_to_mask_chain():
             served += 1
     if localizable:
         assert served > 0, "no masks served through the API"
+
+
+# --- ai_models.Chat against real Qwen3-VL weights ---------------------------------
+#
+# The model-free counterparts are in tests/test_vlm_unit.py. These prove the
+# two claims that only real weights can settle: the vision budget actually
+# shrinks the encoded image, and a cached follow-up turn returns the same
+# answer as a full re-encode.
+
+CHAT_REF = os.environ.get("AI_DAM_VLM_MODEL", "Qwen/Qwen3-VL-2B-Instruct")
+
+
+def _chat_model_or_skip():
+    from smartgallery_ai import models as ai_models
+
+    try:
+        return ai_models, ai_models.load(CHAT_REF, models_dir=MODELS_DIR)
+    except ai_models.ModelUnavailable as exc:
+        pytest.skip(f"{CHAT_REF} not available: {exc}")
+
+
+def _shapes_image():
+    """A wide image with two unambiguous shapes, so a wrong answer is a
+    real regression rather than a judgement call."""
+    from PIL import ImageDraw
+
+    img = Image.new("RGB", (1920, 1080), (18, 22, 40))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([1300, 300, 1700, 700], fill=(250, 210, 60))
+    draw.rectangle([200, 600, 700, 950], fill=(200, 60, 60))
+    return img
+
+
+def test_real_vlm_vision_budget_shrinks_the_encoded_image():
+    ai_models, (processor, _model) = _chat_model_or_skip()
+    img = _shapes_image()
+
+    def image_tokens(**kwargs):
+        messages = [{"role": "user", "content": [
+            {"type": "image"}, {"type": "text", "text": "Describe."}]}]
+        text = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        out = processor(text=text, images=[img], return_tensors="pt", **kwargs)
+        ids = out["input_ids"][0]
+        return int((ids == processor.image_token_id).sum())
+
+    default_tokens = image_tokens()
+    budgeted_tokens = image_tokens(**ai_models.vision_budget(processor, 576))
+
+    # The budget must bite, and land on the requested count.
+    assert budgeted_tokens <= 576
+    assert budgeted_tokens < default_tokens
+
+    # `max_pixels` on its own is silently dropped by the image processor --
+    # this is the regression that made every review encode a full-size image.
+    assert image_tokens(max_pixels=576 * 1024) == default_tokens
+
+
+def test_real_vlm_cached_turns_answer_the_same_as_a_full_re_encode():
+    ai_models, _ = _chat_model_or_skip()
+    img = _shapes_image()
+    questions = ["What colour is the circle? One word.",
+                 "How many shapes are there? One word.",
+                 "Is the background dark or light? One word."]
+    system = "Answer in one short sentence."
+
+    # Cached: one Chat, image encoded once, three questions.
+    chat = ai_models.Chat(CHAT_REF, [img], models_dir=MODELS_DIR, system=system)
+    cached = [chat.ask(question, max_new_tokens=24) for question in questions]
+
+    # Re-encoded: a fresh Chat per question, image encoded three times.
+    fresh = [ai_models.Chat(CHAT_REF, [img], models_dir=MODELS_DIR,
+                      system=system).ask(question, max_new_tokens=24)
+             for question in questions]
+
+    assert all(answer.strip() for answer in cached)
+    # Greedy decoding plus an intact prefix means these must agree exactly.
+    # A mismatch says the cached sequence drifted out of alignment.
+    assert cached[0].lower().startswith(fresh[0].lower()[:6])
+    assert "yellow" in cached[0].lower()
+    assert "two" in cached[1].lower() or "2" in cached[1]
+    assert "dark" in cached[2].lower()
+
+
+def test_real_vlm_returns_a_parsed_tool_call():
+    ai_models, _ = _chat_model_or_skip()
+    schema = {"type": "object", "properties": {
+        "shapes": {"type": "integer", "description": "How many shapes"},
+        "dominant_colour": {"type": "string"}},
+        "required": ["shapes", "dominant_colour"]}
+    chat = ai_models.Chat(CHAT_REF, [_shapes_image()], models_dir=MODELS_DIR,
+                    system="You inspect images precisely.",
+                    tools=[ai_models.tool("report", "Report the image contents.",
+                                    schema)])
+
+    payload = chat.ask_json("Call report for this image.")
+
+    assert isinstance(payload, dict)
+    assert payload["shapes"] == 2
+    assert isinstance(payload["dominant_colour"], str)

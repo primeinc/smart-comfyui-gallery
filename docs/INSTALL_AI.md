@@ -8,12 +8,11 @@ Everything runs locally. No cloud inference, no telemetry.
 
 ## Requirements
 
-- Python **3.10+** (release CUDA wheels for `llama-cpp-python` are
-  `py3-none`, so no specific minor version is required).
-- ~7 GB free disk for model weights (see the download list below).
-- Optional NVIDIA GPU. The layer works CPU-only; a GPU makes the critic
-  ~40x faster. Driver with CUDA 13.0+ gets the prebuilt CUDA
-  `llama-cpp-python` wheel automatically.
+- Python **3.10+**.
+- ~12 GB free disk for model weights (see the download list below).
+- Optional NVIDIA GPU. The layer works CPU-only; a GPU makes reviews
+  dramatically faster. A CPU-build torch on CUDA hardware is swapped for
+  the CUDA wheels automatically.
 - Windows, Linux, macOS. (macOS: CPU/MPS only; the CUDA paths below are
   skipped.)
 
@@ -38,13 +37,11 @@ each capability lights up as its pieces land.
 | semantic | Similar tab (semantic space), critic grounding | OpenCLIP ViT-B-32 laion2b | 605 MB |
 | visual | Similar tab (visual space) | DINOv2-small | 90 MB |
 | segmenter | Defect masks for review findings | MobileSAM | 40 MB |
-| critic | Review tab (scores + typed findings) | Qwen2.5-VL-7B Q4_K_M + mmproj | 5.5 GB |
-| omniquery (opt-in) | Search palette nl2sql refinement | distil-qwen3-4b-text2sql GGUF | 2.5 GB |
-| llama-cuda (auto on Blackwell) | Official llama.cpp CUDA binaries, every GPU arch | ggml-org b9976 win-cuda zips | 640 MB |
+| critic | Review tab (scores + typed findings) | Qwen3-VL-2B-Instruct | 4.4 GB |
+| omniquery (opt-in) | Search palette nl2sql refinement | distil-qwen3-4b-text2sql | 8.1 GB |
 
-Total ~6.7 GB for the zero-step default set; `omniquery` is explicit
-opt-in and `llama-cuda` joins automatically only on Windows machines with
-a compute >= 12.0 GPU. Licenses, exact repos, and SHA-256 digests:
+Total ~5.6 GB for the zero-step default set; `omniquery` is explicit
+opt-in. Licenses, exact repos, and SHA-256 digests:
 [AI_MODELS.md](AI_MODELS.md). One flag: the antelopev2 pack is
 **non-commercial research** licensed (insightface); every other weight is
 MIT/Apache-2.0. `AI_DAM_FACE_BACKEND=opencv` keeps face detection on the
@@ -54,7 +51,7 @@ permissively-licensed YuNet+SFace stack only.
 
 ```bash
 python -m smartgallery_ai provision --list      # show groups and sizes
-python -m smartgallery_ai provision all         # or any of: faces semantic visual segmenter omniquery critic llama-cuda
+python -m smartgallery_ai provision all         # or any of: faces semantic visual segmenter omniquery critic
 ```
 
 Run it on a connected staging box, then ship the venv plus `.AImodels/`
@@ -68,32 +65,23 @@ mid-download.
 
 ## GPU notes
 
-- **torch**: a CPU-build torch on CUDA hardware is swapped for CUDA wheels
-  automatically, matched to the newest card's generation
-  (`AI_DAM_CUDA_INDEX` overrides the index; `AI_DAM_DEVICE=cpu` opts out).
-- **llama-cpp-python (the critic)**: the provisioner installs the official
-  GitHub release wheel matching the driver's CUDA version (cu132 for
-  driver CUDA >= 13.2, cu130 for >= 13.0). These wheels are `py3-none` and
-  bundle their CUDA runtime — no toolkit install, no compiler, no source
-  build. Machines whose driver predates CUDA 13.0 fall back to the
-  `abetlen.github.io` cu124 index (needs CPython <= 3.12) plus the
-  `nvidia-cuda-runtime-cu12`/`nvidia-cublas-cu12` DLL packages.
-- **Blackwell (RTX 50-series, compute capability 12.x)**: release wheels
-  v0.3.34 ship no sm_120 kernels, so on such GPUs provisioning
-  automatically adds the `llama-cuda` group — the **official
-  ggml-org/llama.cpp CUDA binaries** (b9976, the exact llama.cpp commit
-  the wheel's bindings target, ~640 MB, covering every current GPU
-  architecture). The runtime loads them via the binding's documented
-  `LLAMA_CPP_LIB_PATH` override and registers their dynamic compute
-  backends. No compiler, no source build; also installable explicitly
-  with `python -m smartgallery_ai provision llama-cuda` (Windows CUDA
-  machines only). Verified on this matrix: CPU, RTX 3070 Ti (sm_86), and
-  RTX 5060 Ti (sm_120) all decode (`probes/hardware_matrix_probe.py`).
-- **Model loads are canaried**: a GPU llama build that cannot actually
-  decode (garbage logits, sampler crash) reloads CPU-only with a logged
-  warning; a decode canary also catches silently corrupted GGUF files —
-  if you see it fire on a freshly provisioned model, verify the file's
-  sha256 and your disk health.
+- **torch**: uv installs it, from the CUDA index pinned in
+  `pyproject.toml` (`[tool.uv.sources]`). `uv sync` is the whole story —
+  nothing in the app installs or swaps packages. To move to a different
+  CUDA line, change that pin, or install directly with
+  `uv pip install --torch-backend=auto torch torchvision`, which picks the
+  index from your driver.
+- **Generative models (reviewer, nl2sql)**: every one loads through
+  `smartgallery_ai/models.py` on torch — whatever torch can use, they use.
+  Blackwell (RTX 50-series, sm_120) needs no special payload: a CUDA torch
+  build covers it. `AI_DAM_DEVICE=cuda:N` pins a card;
+  `AI_DAM_ATTN=kernels-community/flash-attn2` fetches a prebuilt
+  FlashAttention kernel from the Hub, which is the only route to it on a
+  machine with no compiler.
+- **Decode is verified per device**: `probes/hardware_matrix_probe.py`
+  exercises generation on CPU and on EACH GPU in a crash-contained
+  subprocess and checks the output is not garbage — "it loaded" proves
+  nothing.
 - **faiss GPU**: Windows CUDA builds of faiss are vendored in
   `vendor/faiss-gpu-win64/` and used automatically; see
   [FAISS_GPU_WINDOWS.md](FAISS_GPU_WINDOWS.md). `AI_DAM_FAISS_GPU=0`
@@ -102,10 +90,6 @@ mid-download.
   `onnxruntime-gpu`. Per-stage placement is measured-informed: detection
   runs on CPU (dynamic shapes), recognition on CUDA (4.4x faster).
   `AI_DAM_ORT_PROVIDERS=cpu` forces everything to CPU.
-- **Vision flash attention**: `AI_DAM_VISION_FA` toggles llama.cpp flash
-  attention for the critic. Leave it on (default): with FA off, large
-  images can demand a multi-GB compute buffer and crash upstream
-  llama.cpp (bug reproduced on master; fix pending upstream).
 
 ## Search palette (Ctrl/Cmd+P, Alt+P)
 
@@ -119,10 +103,10 @@ database schema and writes read-only queries in an agentic
 execute-and-refine loop — is one download:
 
 ```bash
-python -m smartgallery_ai provision omniquery   # 2.5 GB, Apache-2.0
-# or point at your own text2sql GGUF:
-OMNIQUERY_NL2SQL_GGUF=/path/to/model.gguf
-OMNIQUERY_FALLBACK_GPU_LAYERS=-1   # full GPU offload; 0 forces CPU decode
+python -m smartgallery_ai provision omniquery   # 8.1 GB, Apache-2.0
+# or point at your own text2sql checkpoint (a provisioned directory name
+# or a Hugging Face repo id):
+OMNIQUERY_NL2SQL_MODEL=my-org/my-text2sql
 ```
 
 Model-generated SQL executes only through the same sandbox as the manual

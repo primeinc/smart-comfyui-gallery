@@ -16,11 +16,12 @@ with one added rule the result pipeline needs: the first selected column
 must be files.id, because "a list of file ids" is the only thing the
 gallery ever asks SQL for.
 
-The model file resolves like every other optional GGUF: constructor arg,
-then $OMNIQUERY_NL2SQL_GGUF, then the provisioned default (provision
-group 'omniquery'). Loading shares fallback_qwen's canaried loader: a GPU
-build that decodes garbage or crashes the sampler reloads CPU-only,
-loudly, instead of poisoning results.
+The checkpoint resolves like every other model here: constructor argument,
+then $OMNIQUERY_NL2SQL_MODEL, then DEFAULT_MODEL -- and it loads through
+smartgallery_ai.models, the same loader the reviewer uses. The agentic
+loop below is ONE `Chat`, so the schema block (the bulk of the prompt, and
+identical every round) is encoded once and every retry reuses its keys and
+values instead of re-sending the whole conversation.
 """
 
 from __future__ import annotations
@@ -30,15 +31,15 @@ import os
 import re
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional, Tuple
-
-from omniquery.parsers.fallback_qwen import (
-    DEFAULT_MODEL_PATH, _prepare_dll_path, load_canaried_llama,
-)
+from typing import Dict, List, Optional, Tuple
 
 _logger = logging.getLogger(__name__)
 
-ENV_MODEL_PATH = "OMNIQUERY_NL2SQL_GGUF"
+#: The safetensors distil-labs text2sql checkpoint this module's prompt
+#: contract and sampling follow the card of. Any causal-LM checkpoint
+#: works -- choosing one is configuration, not code.
+DEFAULT_MODEL = "distil-labs/distil-qwen3-4b-text2sql"
+ENV_MODEL = "OMNIQUERY_NL2SQL_MODEL"
 
 # Tables worth the model's attention; internal bookkeeping (schema
 # versions, sessions, scan logs) only wastes prompt tokens and invites
@@ -145,41 +146,38 @@ def _extract_sql(content: str) -> str:
 
 
 class SqlSearch:
-    """NL -> SQL through the local text2sql GGUF. generate() never raises;
-    it returns (sql, None) or (None, reason)."""
+    """NL -> SQL through the local text2sql model. search() never raises;
+    it returns (ids, sql, None) or (None, sql, reason)."""
 
-    def __init__(self, db_path: str, model_path: Optional[str] = None,
-                 n_ctx: int = 4096, n_threads: int = 4, max_tokens: int = 256):
+    def __init__(self, db_path: str, model_ref: Optional[str] = None,
+                 models_dir: Optional[str] = None, max_tokens: int = 256):
         self.db_path = db_path
-        self.model_path = (model_path
-                           or os.environ.get(ENV_MODEL_PATH)
-                           or os.environ.get("OMNIQUERY_FALLBACK_GGUF")
-                           or DEFAULT_MODEL_PATH)
-        self.n_ctx = n_ctx
-        self.n_threads = n_threads
+        self.model_ref = model_ref or os.environ.get(ENV_MODEL) or DEFAULT_MODEL
+        self.models_dir = (models_dir
+                           or os.environ.get("AI_DAM_MODELS_DIR", ".AImodels"))
         self.max_tokens = max_tokens
 
     def available(self) -> bool:
-        """True when llama_cpp imports and the model file exists; never
-        triggers the (expensive) model load."""
+        """True when the runtime imports and the checkpoint is provisioned;
+        never triggers the (expensive) model load."""
         try:
-            _prepare_dll_path()
-            import llama_cpp
+            from smartgallery_ai import models as ai_models
         except Exception:
             return False
-        return bool(llama_cpp) and os.path.isfile(self.model_path)
+        return ai_models.is_provisioned(self.model_ref, self.models_dir)
 
-    def _complete(self, messages: List[Dict[str, str]]) -> str:
-        llama = load_canaried_llama(self.model_path, self.n_ctx, self.n_threads)
-        resp = llama.create_chat_completion(
-            messages=messages,
-            # The distil card's own example decodes at temperature 0 (the
-            # fine-tune, unlike base qwen3, is documented greedy-safe).
-            temperature=0.0,
-            max_tokens=self.max_tokens,
-            stop=["<|", ";", "[INST]", "\n\n"],
-        )
-        return resp["choices"][0]["message"]["content"]
+    def _chat(self):
+        """One conversation for a whole search.
+
+        Decoding is greedy: the distil card's own example runs at
+        temperature 0, and this fine-tune (unlike base qwen3) is documented
+        greedy-safe. There are no stop strings -- `_extract_sql` already
+        cuts the statement at the first terminator or template junk, and it
+        is the tested cut."""
+        from smartgallery_ai import models as ai_models
+
+        return ai_models.Chat(self.model_ref, models_dir=self.models_dir,
+                              system=_SYSTEM_PROMPT)
 
     def search(self, question: str, max_rounds: int = 3
                ) -> Tuple[Optional[List[str]], Optional[str], Optional[str]]:
@@ -201,17 +199,20 @@ class SqlSearch:
             schema = schema_block(self.db_path)
         except Exception as exc:
             return None, None, f"schema read error: {exc}"
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user",
-             "content": f"Schema:\n{schema}\n\nQuestion: {question}"},
-        ]
+        try:
+            chat = self._chat()
+        except Exception as exc:
+            return None, None, f"model load error: {exc}"
+        # The schema block is the bulk of the prompt and never changes, so
+        # it is encoded once on this first turn and every retry below
+        # reuses it from the cache.
+        turn = f"Schema:\n{schema}\n\nQuestion: {question}"
 
         last_sql: Optional[str] = None
         last_reason: Optional[str] = None
         for _round in range(max_rounds):
             try:
-                content = self._complete(messages)
+                content = chat.ask(turn, max_new_tokens=self.max_tokens)
             except Exception as exc:
                 return None, last_sql, f"generation error: {exc}"
             sql = _extract_sql(content)
@@ -226,23 +227,20 @@ class SqlSearch:
                 # IS the answer.
                 return [], sql, None
 
-            messages.append({"role": "assistant", "content": sql})
+            # The model's own reply is already in the chat's history, so
+            # only the next instruction has to be composed.
             if not result.ok:
                 last_reason = result.error
-                messages.append({
-                    "role": "user",
-                    "content": f"That query failed with: {result.error}\n"
-                               "Fix it. Output only the corrected SQL query."})
+                turn = (f"That query failed with: {result.error}\n"
+                        "Fix it. Output only the corrected SQL query.")
             else:
                 last_reason = "0 rows"
-                messages.append({
-                    "role": "user",
-                    "content": "That query ran but returned 0 rows. If the "
-                               "question could match differently (other text "
-                               "columns from the rules, looser LIKE patterns, "
-                               "fewer constraints), output a broadened SQL "
-                               "query. If 0 results is genuinely the correct "
-                               "answer, output the exact same query again."})
+                turn = ("That query ran but returned 0 rows. If the question "
+                        "could match differently (other text columns from the "
+                        "rules, looser LIKE patterns, fewer constraints), "
+                        "output a broadened SQL query. If 0 results is "
+                        "genuinely the correct answer, output the exact same "
+                        "query again.")
             last_sql = sql
 
         if last_sql is not None and last_reason == "0 rows":

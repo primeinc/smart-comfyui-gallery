@@ -285,7 +285,7 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
     schema.init_schema(conn)
     try:
         if critic is None:
-            critic = review_mod.get_critic_backend(config)
+            critic = review_mod.get_reviewer(config)
         if segmenter is None:
             segmenter = review_mod.get_segmenter_backend(config)
     except Exception as exc:

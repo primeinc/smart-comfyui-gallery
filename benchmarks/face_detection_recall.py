@@ -23,7 +23,6 @@ import os
 import sys
 import time
 
-import numpy as np
 
 
 def load_repo():

@@ -14,7 +14,7 @@ measurements, accepted; **REFUTED**: claim contradicted by code/measurement.
 
 | # | Finding (sev) | Disposition | Evidence at final head |
 |---|---|---|---|
-| 1 | `auto` critic ships with grounding gate silently disabled (critical) | **FIXED** | Fail-closed in `QwenVlCritic.__init__` AND the factory; `test_qwen_critic_requires_semantic_embedder`. |
+| 1 | `auto` critic ships with grounding gate silently disabled (critical) | **FIXED** | Fail-closed in `VlmCritic.__init__` AND the factory; `test_qwen_critic_requires_semantic_embedder`. |
 | 2 | 0.20 threshold false-accepts 27% incl. parroted example (critical) | **FIXED** | Contrastive gate v2 (`check_grounding`: floor + margin ≥ 0.09 over baseline); calibration artifact `benchmarks/results/grounding_calibration.json` (FAR 3.1%/FRR 25%); vacuous+parroted classes in `test_real_grounding_gate_negative_cases`. |
 | 3 | Gate never inspects findings; "0 fabrications" over ~11 unverified findings (high) | **FIXED** (mechanism) + **DOCUMENTED** (scope) | `verify_finding_region` crop check drops unverifiable localizable findings; every "image-grounded/0 fabrications" claim restated to description+region-level scope in `review.py` flag comment and `AI_MODELS.md`. |
 | 4 | Grounding rejection → no scan-log → 200s infinite retry (high) | **FIXED** | Failed reviews log `result_count=-1`; retry only on mtime/model change. |

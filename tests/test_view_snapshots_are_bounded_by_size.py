@@ -31,7 +31,6 @@ whichever bites first wins.
 
 from __future__ import annotations
 
-import pytest
 
 import smartgallery
 

@@ -19,10 +19,8 @@ thumbnail rather than costing the gallery.
 
 from __future__ import annotations
 
-import io
 import os
 
-import pytest
 from PIL import Image
 
 import smartgallery

@@ -12,7 +12,7 @@ Two answerers, fused per query by the app's search endpoint:
             Exact for fully-consumed queries; the only live-typing path.
 
     MODEL:  natural language + the LIVE schema (sqlite_master)
-              -> local text2sql GGUF (parsers/nl2sql.SqlSearch) -> SQL
+              -> local text2sql model (parsers/nl2sql.SqlSearch) -> SQL
               -> sqlexec.run_readonly_select, the ONE sandboxed gate
                  (SELECT prefix + read-only URI + C-engine authorizer)
             Agentic: the model executes, READS the outcome, and repairs /

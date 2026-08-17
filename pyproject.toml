@@ -34,11 +34,13 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+    "pytest",
+    "ruff>=0.16.3",
+]
 # OmniQuery local natural-language parsing + weight provisioning.
 ai = [
     "faiss-cpu>=1.15",
-    "llama-cpp-python>=0.3.0",
     "huggingface_hub",
     "insightface>=1.0.1",  # FaceAnalysis pipeline (SCRFD + glintr100)
     "onnxruntime",
@@ -68,18 +70,98 @@ package = false
 default-groups = ["dev", "ai", "ai-models"]
 
 [tool.uv.sources]
-# torch and torchvision must resolve from the SAME index: a CPU-index torch
-# paired with a PyPI torchvision fails at import with
-# "operator torchvision::nms does not exist".
-# CPU index on purpose: static resolution cannot see GPUs. On CUDA
-# hardware the app swaps the pair for CUDA wheels at startup
-# (AI_DAM_DEVICE=cpu opts out), so `uv sync` stays lean and safe
-# everywhere without costing GPU users anything.
-torch = [{ index = "pytorch-cpu" }]
-torchvision = [{ index = "pytorch-cpu" }]
+# CUDA, never CPU. This project exists to run models on the GPU; a CPU
+# torch here is a broken install, not a lean one.
+#
+# It has to be an index pin. uv CAN pick the index from the driver
+# itself, but only through `uv pip` -- "This setting is only respected by
+# `uv pip` commands" (uv crates/uv-settings/src/settings.rs,
+# `torch_backend`; same statement in docs/guides/integration/pytorch.md).
+# `uv sync` and `uv add` have no equivalent: unpinned, they take torch
+# from PyPI, which on Windows is the CPU build, and every sync silently
+# downgrades a working CUDA environment.
+#
+# torch and torchvision must come from the SAME index -- a CPU-index
+# torch paired with a PyPI torchvision fails at import with "operator
+# torchvision::nms does not exist".
+#
+# cu132 verified on this hardware: RTX 3070 Ti (sm_86) and RTX 5060 Ti
+# (sm_120), driver 591.86. nvidia-smi reports a CUDA 13.1 ceiling, which
+# a naive >=13.2 rule would read as "cu132 unsupported" -- CUDA minor
+# versions are compatible and it runs. Bump this when a newer line is
+# actually tested here, not when one ships.
+#
+# Marker-gated per uv's PyTorch guide: "PyTorch doesn't publish CUDA
+# builds for macOS. As such, we gate on sys_platform to instruct uv to
+# use the PyTorch index on Linux and Windows, but fall back to PyPI on
+# macOS." Without the marker a macOS resolve fails outright.
+torch = [
+  { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
 mobile-sam = { git = "https://github.com/ChaoningZhang/MobileSAM.git" }
 
+# explicit = true keeps this index to the packages pinned to it above, so
+# generic dependencies (jinja2, numpy, ...) still come from PyPI -- uv's
+# guide recommends exactly this.
 [[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true
+
+[tool.ruff]
+# extend-exclude, not exclude: exclude REPLACES ruff's default ignore list
+# (.git, .venv, build, dist, node_modules, ...), extend-exclude "adds
+# additional files and directories on top of those already excluded"
+# (ruff configuration.md). vendor/ is the prebuilt faiss GPU build --
+# third-party sources whose diagnostics are not ours to fix.
+extend-exclude = ["vendor"]
+target-version = "py310"  # matches project.requires-python
+
+[tool.ruff.lint]
+# Ruff's own default set, stated explicitly: upstream recommends "prefer
+# lint.select over lint.extend-select to make your rule set explicit" and
+# "use ALL with discretion" (ruff linter.md). E4 imports, E7 statements,
+# E9 syntax/IO errors, F pyflakes (unused imports and names, undefined
+# names, f-string and comparison mistakes).
+#
+# Style and modernisation families (UP, B, SIM, I) are deliberately NOT
+# on: they would rewrite thousands of lines nobody is reviewing today and
+# bury the correctness findings this is here to surface.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# smartgallery.py is the pre-existing monolith and carries 560 findings of
+# these five kinds. They are baselined, not forgiven: everything else in
+# the repo is clean, so `ruff check` is a working gate for new code today,
+# and this list shrinks as the monolith is broken up. Nothing else may be
+# added here -- fix the finding instead.
+#
+#   E701 multiple statements on one line (colon)      415
+#   E402 module import not at top of file              47
+#   E722 bare except                                   37
+#   F541 f-string without placeholders                 35
+#   F841 unused local variable                         14
+#   E741 ambiguous variable name / E702 / E401         12
+"smartgallery.py" = ["E701", "E702", "E401", "E402", "E722", "E741",
+                     "F541", "F811", "F841"]
+
+# Resolve imports against ./.venv. Without this pyright falls back to the
+# default shell interpreter (import-resolution.md:41) and reports every
+# third-party import as unresolved -- numpy, PIL, torch, transformers,
+# huggingface_hub -- which buries the real diagnostics in noise.
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+# Specifying exclude REPLACES pyright's defaults, so they are restated
+# (configuration.md: **/node_modules, **/__pycache__, **/.*). vendor/ is
+# the prebuilt faiss GPU build -- 25 third-party .py/.pyi files whose
+# diagnostics are not ours to fix and would drown the 205 that are.
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "vendor",
+]

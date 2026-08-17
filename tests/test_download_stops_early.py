@@ -16,7 +16,7 @@ does, and whatever arrived was moved into place as the artifact.
 
 Of the eleven artifacts, four pin a SHA-256 and four more come through
 huggingface_hub, which checks its own. Three do not: the insightface pack
-and the two llama.cpp CUDA archives, all fetched from a direct URL. Those
+fetched from a direct URL. Those
 three are zips, so today truncation does surface -- as BadZipFile, which
 describes the wrong thing. The file is not a broken zip, it is part of a
 zip, and the difference between those two messages is the difference
@@ -185,8 +185,6 @@ def test_every_artifact_has_something_checking_it():
 
     assert sorted(unchecked) == sorted([
         "insightface/models/antelopev2",
-        "llama-cpp-cuda",
-        "llama-cpp-cuda-cudart",
     ]), (
         f"the set of direct-URL artifacts with no pinned digest changed: "
         f"{sorted(unchecked)}. Each one has only the declared length "

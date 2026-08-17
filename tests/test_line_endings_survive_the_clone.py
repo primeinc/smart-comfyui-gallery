@@ -111,9 +111,14 @@ def test_a_script_that_runs_on_linux_keeps_bare_newlines(checkouts, autocrlf,
     arrived with a carriage return in its shebang."""
     data = (checkouts[autocrlf] / name).read_bytes()
 
+    # Sliced outside the f-string on purpose: a backslash inside an
+    # f-string expression is PEP 701, i.e. Python 3.12+, and this project
+    # declares requires-python >= 3.10. On 3.10/3.11 the module would not
+    # parse at all and every test in it would vanish.
+    first_line = data.split(b"\n")[0]
     assert b"\r" not in data, (
         f"with core.autocrlf={autocrlf}, {name} has carriage returns; its "
-        f"first line is {data.split(b'\n')[0]!r} and Linux will look for an "
+        f"first line is {first_line!r} and Linux will look for an "
         f"interpreter with that in the name")
 
 

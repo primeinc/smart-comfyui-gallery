@@ -12,7 +12,7 @@ import pytest
 from PIL import Image
 
 from smartgallery_ai import AIConfig, RUBRIC_VERSION, runner
-from smartgallery_ai.review import CriticBackend, StubCritic
+from smartgallery_ai.review import StubReviewer
 from smartgallery_ai.schema import init_schema
 
 
@@ -44,7 +44,7 @@ def env(tmp_path):
     img = Image.new("RGB", (64, 64), (200, 200, 200))
     for x in range(16, 48):
         for y in range(16, 48):
-            img.putpixel((x, y), (255, 0, 0))  # StubCritic's red artifact
+            img.putpixel((x, y), (255, 0, 0))  # StubReviewer's red artifact
     img.save(img_path)
     _add_file(db_path, "f1", img_path, prompt="a red cube, a blue sphere")
     config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
@@ -53,7 +53,7 @@ def env(tmp_path):
 
 
 def _drain(config, **kwargs):
-    return list(runner.run_review(config, "f1", critic=StubCritic(), **kwargs))
+    return list(runner.run_review(config, "f1", critic=StubReviewer(), **kwargs))
 
 
 def _steps_of(events):
@@ -121,7 +121,7 @@ def test_validate_reports_scores_and_alignment_elements(env):
     config, _ = env
     detail = _by(_drain(config), "validate", "ok")["detail"]
     assert detail["quality"] == pytest.approx(8.0)  # one finding
-    assert detail["prompt_alignment"] == pytest.approx(0.5)  # StubCritic: every other
+    assert detail["prompt_alignment"] == pytest.approx(0.5)  # StubReviewer: every other
     assert [e["text"] for e in detail["alignment"]] == ["a red cube", "a blue sphere"]
 
 
@@ -170,11 +170,22 @@ def test_a_step_missing_its_input_errors_and_halts_the_run(env):
 # --- live progress -----------------------------------------------------------
 
 
-class _EmittingCritic(CriticBackend):
-    """Reports protocol stages the way QwenVlCritic does."""
+class _EmittingCritic:
+    """Reports protocol stages the way Reviewer does: the runner installs
+    `progress`, and the reviewer calls it from inside its blocking run."""
 
-    model_id = "emitting-critic"
+    model_id = "emitting-reviewer"
     model_version = "emit-v1"
+    progress = None
+
+    def _emit(self, stage, **detail):
+        sink = self.progress
+        if sink is None:
+            return
+        try:
+            sink(stage, detail)
+        except Exception:
+            pass
 
     def review(self, img, prompt_text, rubric_version, negative_text=None):
         del img, prompt_text, rubric_version, negative_text
@@ -223,7 +234,7 @@ def test_a_second_concurrent_run_is_refused_not_queued(env):
     started = threading.Event()
     release = threading.Event()
 
-    class _BlockingCritic(CriticBackend):
+    class _BlockingCritic:
         model_id = "blocking"
         model_version = "v1"
 
@@ -242,7 +253,7 @@ def test_a_second_concurrent_run_is_refused_not_queued(env):
     try:
         assert started.wait(timeout=5), "first run never reached the critic"
         with pytest.raises(runner.RunnerBusy):
-            list(runner.run_review(config, "f1", critic=StubCritic()))
+            list(runner.run_review(config, "f1", critic=StubReviewer()))
     finally:
         release.set()
         thread.join(timeout=5)
@@ -255,7 +266,7 @@ def test_closing_the_generator_early_releases_the_lock(env):
     """A client that hangs up mid-stream must not wedge the runner: without
     release-on-close every later run would be refused until restart."""
     config, _ = env
-    gen = runner.run_review(config, "f1", critic=StubCritic())
+    gen = runner.run_review(config, "f1", critic=StubReviewer())
     next(gen)          # take the 'run start' event, leaving the lock held
     gen.close()
     assert _drain(config)[-1]["status"] == "done"
