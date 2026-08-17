@@ -299,6 +299,86 @@ def test_turning_it_off_downloads_nothing(offline, monkeypatch):
     assert smartgallery.find_ffprobe_path() is None
 
 
+# --- saying something while it downloads -----------------------------------
+
+class _Sink(io.StringIO):
+    def __init__(self, tty):
+        super().__init__()
+        self._tty = tty
+
+    def isatty(self):
+        return self._tty
+
+
+def _report_into(tty, steps=11):
+    sink = _Sink(tty)
+    real = smartgallery.sys.stdout
+    smartgallery.sys.stdout = sink
+    try:
+        report = smartgallery.download_progress_reporter(interval=0.0)
+        total = 170 * 1024 * 1024
+        for step in range(steps):
+            report(total * step // (steps - 1), total)
+    finally:
+        smartgallery.sys.stdout = real
+    return sink.getvalue()
+
+
+def test_a_download_says_how_it_is_going():
+    """The gallery blocks on this at startup. 170 MB with nothing on the
+    console is a startup that looks hung, which is the one thing that
+    makes people kill it."""
+    written = _report_into(tty=True)
+
+    assert written.strip(), "nothing was reported at all"
+    assert "%" in written
+    assert "170" in written
+
+
+def test_a_log_file_does_not_get_one_enormous_line():
+    """Where output is redirected -- a launcher keeping a log, a service
+    manager, ComfyUI starting the gallery -- a rewriting line turns into a
+    single line thousands of characters long."""
+    written = _report_into(tty=False)
+
+    assert "\r" not in written, "carriage returns went into a redirected stream"
+    assert written.count("\n") >= 5, written
+
+
+def test_a_terminal_gets_one_line_that_rewrites_itself():
+    """The other half: on a terminal this must not scroll a screenful."""
+    written = _report_into(tty=True)
+
+    assert "\r" in written
+    assert written.count("\n") <= 1, (
+        f"printed {written.count(chr(10))} lines instead of rewriting one")
+
+
+def test_the_reporter_is_actually_passed_to_the_download():
+    """The reporter existed before this and was not wired up, which is how
+    the silent version shipped. Checked in the source because the call is
+    on the path that downloads."""
+    import ast
+    import pathlib
+
+    source = pathlib.Path(smartgallery.__file__)
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+
+    fn = next((node for node in ast.walk(tree)
+               if isinstance(node, ast.FunctionDef)
+               and node.name == "find_ffprobe_path"), None)
+    assert fn is not None, "find_ffprobe_path is gone"
+
+    calls = [node for node in ast.walk(fn)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == "fetch_ffmpeg"]
+    assert calls, "nothing fetches ffmpeg any more"
+    for call in calls:
+        assert any(kw.arg == "progress" for kw in call.keywords), (
+            "fetch_ffmpeg is called without a progress reporter, so a "
+            "170 MB download says nothing between starting and finishing")
+
+
 def test_the_switch_is_a_documented_setting():
     """It has to be discoverable, or "stop downloading things" means
     reading the source."""

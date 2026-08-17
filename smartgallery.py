@@ -2075,6 +2075,51 @@ def _extract_ffmpeg_programs(archive_path, destination, programs, asset_name=Non
     return taken
 
 
+def download_progress_reporter(interval=1.0):
+    """Say how a download is going, in a way that suits where it is going.
+
+    The gallery blocks on this at startup, and the scan needs ffprobe, so
+    it has to block -- but a hundred and seventy megabytes with nothing on
+    the console is a startup that looks hung, which is the one thing that
+    makes people kill it. It was written that way and shipped that way
+    (7d8675d called fetch_ffmpeg with no reporter at all).
+
+    On a terminal the line rewrites itself with \\r. Where output is
+    redirected -- a launcher keeping a log, a service manager, ComfyUI
+    starting the gallery -- \\r produces one enormous line, so that case
+    gets an ordinary line every so often instead.
+    """
+    try:
+        interactive = bool(sys.stdout.isatty())
+    except Exception:
+        interactive = False
+
+    state = {'at': 0.0, 'shown': False}
+
+    def report(done, total):
+        now = time.monotonic()
+        finished = total and done >= total
+        if not finished and now - state['at'] < interval:
+            return
+        state['at'] = now
+        state['shown'] = True
+        megabytes = done / (1024 * 1024)
+        if total:
+            line = (f"      {100.0 * done / total:5.1f}%  "
+                    f"{megabytes:,.0f} of {total / (1024 * 1024):,.0f} MB")
+        else:
+            line = f"      {megabytes:,.0f} MB"
+        if interactive:
+            sys.stdout.write('\r' + line + '   ')
+            if finished:
+                sys.stdout.write('\n')
+            sys.stdout.flush()
+        else:
+            print(line)
+
+    return report
+
+
 def fetch_ffmpeg(progress=None):
     """Download the pinned ffmpeg and keep the two programs from it.
 
@@ -2233,7 +2278,10 @@ def find_ffprobe_path():
         return already
 
     if FFMPEG_AUTO_DOWNLOAD and ffmpeg_build_for_this_machine():
-        fetched = fetch_ffmpeg()
+        # With a reporter: this blocks startup, and the scan cannot index a
+        # video without it, so the wait is right -- being silent through it
+        # is not.
+        fetched = fetch_ffmpeg(progress=download_progress_reporter())
         if fetched:
             _announce_ffprobe(f"INFO: ffprobe: {fetched} (fetched by the gallery)")
             return fetched
