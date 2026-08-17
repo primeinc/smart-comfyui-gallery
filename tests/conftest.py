@@ -21,6 +21,11 @@ _SESSION_TMP_DIR = tempfile.mkdtemp(prefix="smartgallery_test_")
 os.environ.setdefault('ENABLE_AI_DAM', 'false')
 os.environ.setdefault('AI_DAM_AUTO_PROVISION', 'false')
 
+# Same reason, for the same kind of thing: a machine with no ffmpeg would
+# otherwise pull a ~170 MB build the first time anything resolved ffprobe.
+# The fetch has its own tests, which drive it through a fake response.
+os.environ.setdefault('FFMPEG_AUTO_DOWNLOAD', 'false')
+
 # Pin the face-graph backend: 'auto' would import torch into this process,
 # breaking the browsing-never-imports-torch guard, and would make clustering
 # tests depend on whatever accelerators the host has. Backend-specific tests

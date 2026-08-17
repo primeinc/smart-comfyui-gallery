@@ -33,6 +33,7 @@ any case.
 | `LORAS_PATH` / `CHECKPOINTS_PATH` / `UNET_PATH` | `<models>/loras`, `/checkpoints`, `/unet` | Override individually for split model layouts (Stability Matrix, `extra_model_paths.yaml`). |
 | `DELETE_TO` | unset (permanent delete) | When set, deletes move files **and folders** to `DELETE_TO/SmartGallery/<timestamp>_<name>` instead of removing them, so a mistake is recoverable. Links and shortcuts are only unlinked, never relocated. The folder is created on first start; point it at a path the app can write to. |
 | `FFPROBE_MANUAL_PATH` | `C:/ffmpeg/bin/ffprobe.exe` | Where your ffmpeg install is. Any of these works: the `ffprobe` program, the `ffmpeg` program beside it, or the folder either lives in — the app finds `ffprobe` from whichever you give it, and falls back to your `PATH` if it cannot. |
+| `FFMPEG_AUTO_DOWNLOAD` | `true` | When no ffmpeg can be found anywhere, fetch a pinned build into `<gallery>/.ffmpeg` and use that. Windows and Linux only; on macOS run `brew install ffmpeg`. The download is around 170 MB (Windows) or 125 MB (Linux) and happens once — it is checked against the size and SHA-256 the release publishes, and the program is run and made to identify itself before anything is kept. Set false on a metered or closed connection; video features then stay off until you install ffmpeg yourself. |
 
 ## Server and access
 

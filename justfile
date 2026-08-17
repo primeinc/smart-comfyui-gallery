@@ -69,6 +69,7 @@ audit:
         tests/test_folder_rename_name_survives.py \
         tests/test_a_renamed_root_keeps_the_library.py \
         tests/test_settings_take_what_you_type.py \
+        tests/test_ffmpeg_is_fetched_when_missing.py \
         tests/test_ffprobe_reporting.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \

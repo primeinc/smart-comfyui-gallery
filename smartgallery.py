@@ -87,6 +87,7 @@ import secrets
 from typing import Dict, List, Any, Optional, Union
 from functools import wraps
 import sg_auth
+import contextlib
 import urllib.request
 import secrets
 from typing import Dict, List, Any, Optional, Union # Added for type hinting in new tools
@@ -527,6 +528,7 @@ THUMBNAIL_CACHE_FOLDER_NAME = '.thumbnails_cache'
 SQLITE_CACHE_FOLDER_NAME = '.sqlite_cache'
 DATABASE_FILENAME = 'gallery_cache.sqlite'
 ZIP_CACHE_FOLDER_NAME = '.zip_downloads'
+FFMPEG_FOLDER_NAME = '.ffmpeg'
 AI_MODELS_FOLDER_NAME = '.AImodels'
 ENABLE_DAM_MODE = True
 
@@ -838,7 +840,8 @@ KNOWN_ENV_VARS = (
     'AI_DAM_WORKER_POLL', 'BASE_INPUT_PATH', 'BASE_MODELS_PATH',
     'BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BATCH_SIZE',
     'CHECKPOINTS_PATH', 'COMFYUI_MAX_UPLOAD_MB', 'COMFYUI_SERVER_URL',
-    'DELETE_TO', 'ENABLE_AI_DAM', 'ENABLE_AI_SEARCH', 'FFPROBE_MANUAL_PATH',
+    'DELETE_TO', 'ENABLE_AI_DAM', 'ENABLE_AI_SEARCH', 'FFMPEG_AUTO_DOWNLOAD',
+    'FFPROBE_MANUAL_PATH',
     'GENERATE_THUMBNAILS', 'GENERATE_WAVEFORMS', 'GENPARAMS_BACKFILL',
     'LLAMA_CPP_LIB_PATH', 'LORAS_PATH', 'MAX_PARALLEL_WORKERS',
     'OMNIQUERY_FALLBACK_GGUF', 'OMNIQUERY_FALLBACK_GPU_LAYERS',
@@ -1943,6 +1946,216 @@ def _announce_ffprobe(message):
     print(message)
 
 
+# --- FFMPEG, FETCHED WHEN THERE IS NONE ------------------------------------
+#
+# ffprobe is not something anyone installs on purpose, and without it the
+# gallery silently loses video duration and dimensions, video thumbnails,
+# waveforms and video metadata stripping. Telling somebody to go and
+# install ffmpeg is asking them to do work the gallery can do itself.
+#
+# Pinned to a month-end auto-build rather than the `latest` tag, which is
+# rolling: the file behind a name there changes, so a digest recorded
+# against it goes stale on the next rebuild. BtbN keeps one build per
+# month -- checked, an unbroken monthly series back to 2024-09 -- so a
+# month-end tag stays fetchable.
+#
+# GPL rather than LGPL is forced by what the gallery does with it: the
+# video stream route runs `-vcodec libx264`, and x264 is GPL, so an LGPL
+# build would download successfully and then fail every playback.
+#
+# Static rather than shared: one self-contained program, no libraries to
+# place beside it. It costs about twice the download and removes a whole
+# class of "it downloaded and still does not run".
+#
+# The sizes and digests below are the release's own published
+# checksums.sha256, read from the pinned tag.
+FFMPEG_AUTO_DOWNLOAD = env_flag('FFMPEG_AUTO_DOWNLOAD', True)
+
+# Seconds the download may go without receiving a byte. A per-read
+# timeout, not a budget for the whole transfer, so a slow connection
+# still finishes; without it a stalled mirror blocks startup for ever.
+FFMPEG_DOWNLOAD_STALL_TIMEOUT = 60
+
+FFMPEG_RELEASE_TAG = 'autobuild-2026-07-31-14-10'
+FFMPEG_BUILDS = {
+    'win32': {
+        'asset': 'ffmpeg-n8.1.2-34-g9b6c8969e0-win64-gpl-8.1.zip',
+        'bytes': 167405723,
+        'sha256': 'cc4156d51387566ea8ba653fc3a04897bdf812fddf652428d9030bbf7ae24835',
+        'programs': ('ffprobe.exe', 'ffmpeg.exe'),
+    },
+    'linux': {
+        'asset': 'ffmpeg-n8.1.2-34-g9b6c8969e0-linux64-gpl-8.1.tar.xz',
+        'bytes': 124917816,
+        'sha256': '09fc77be269c7053e438b7e96548e4af97604faf96a42c4a3c56a1ad74c22c0a',
+        'programs': ('ffprobe', 'ffmpeg'),
+    },
+    # No macOS build is published here. Rather than reach for a second,
+    # less verifiable source, macOS is told what to run instead -- see
+    # find_ffprobe_path.
+}
+
+FFMPEG_DOWNLOAD_BASE = ('https://github.com/BtbN/FFmpeg-Builds/releases/download/'
+                        f'{FFMPEG_RELEASE_TAG}/')
+
+
+def ffmpeg_build_for_this_machine():
+    """The pinned build for this platform, or None where none is published."""
+    if sys.platform.startswith('linux'):
+        return FFMPEG_BUILDS.get('linux')
+    return FFMPEG_BUILDS.get(sys.platform)
+
+
+def bundled_ffmpeg_dir():
+    """Where a fetched ffmpeg lives: beside the database, not in the library."""
+    return os.path.join(BASE_SMARTGALLERY_PATH, FFMPEG_FOLDER_NAME)
+
+
+def bundled_ffprobe_path():
+    """The fetched ffprobe, if one has already been fetched."""
+    build = ffmpeg_build_for_this_machine()
+    if not build:
+        return None
+    candidate = os.path.join(bundled_ffmpeg_dir(), build['programs'][0])
+    return candidate if os.path.isfile(candidate) else None
+
+
+def _extract_ffmpeg_programs(archive_path, destination, programs, asset_name=None):
+    """Take just the programs out of the archive, flat, into destination.
+
+    The archives nest everything under a versioned folder; only bin/ is
+    wanted, and only two files from it. Members are matched by basename
+    and written by a path this code builds, so nothing in the archive can
+    choose where it lands -- a tar member is allowed to say ../../ and
+    tarfile will honour it.
+    """
+    os.makedirs(destination, exist_ok=True)
+    wanted = {name.lower() for name in programs}
+    taken = {}
+
+    def _keep(name, reader):
+        base = os.path.basename(name).lower()
+        if base not in wanted or base in taken:
+            return
+        target = os.path.join(destination, os.path.basename(name))
+        with open(target + '.part', 'wb') as out:
+            shutil.copyfileobj(reader, out)
+        os.replace(target + '.part', target)
+        try:
+            os.chmod(target, 0o755)
+        except OSError:
+            pass
+        taken[base] = target
+
+    # The format comes from the ASSET name, not the path on disk: the
+    # download lands on `<asset>.part`, so asking the path whether it ends
+    # in .zip answered no for every Windows build and then tried to open a
+    # zip as tar.xz. Caught by test_a_good_download_is_kept.
+    looks_like = (asset_name or archive_path).lower()
+    if looks_like.endswith('.zip'):
+        with zipfile.ZipFile(archive_path) as archive:
+            for member in archive.namelist():
+                if member.endswith('/'):
+                    continue
+                with archive.open(member) as reader:
+                    _keep(member, reader)
+    else:
+        import tarfile
+        with tarfile.open(archive_path, 'r:xz') as archive:
+            for member in archive:
+                if not member.isfile():
+                    continue
+                reader = archive.extractfile(member)
+                if reader is not None:
+                    _keep(member.name, reader)
+
+    missing = sorted(wanted - set(taken))
+    if missing:
+        raise OSError(f"the ffmpeg archive did not contain {missing}")
+    return taken
+
+
+def fetch_ffmpeg(progress=None):
+    """Download the pinned ffmpeg and keep the two programs from it.
+
+    Verified three ways before anything is kept: the bytes that arrived
+    against the length the release publishes, the SHA-256 against the
+    digest in that release's checksums.sha256, and finally the extracted
+    program is run and has to identify itself as ffprobe. Nothing partial
+    is ever promoted -- the download lands on a .part and the archive is
+    removed either way.
+
+    Returns the ffprobe path, or None if it could not be done. Never
+    raises: no ffmpeg is a gallery without video features, not a gallery
+    that will not start.
+    """
+    build = ffmpeg_build_for_this_machine()
+    if not build:
+        return None
+
+    destination = bundled_ffmpeg_dir()
+    url = FFMPEG_DOWNLOAD_BASE + build['asset']
+    megabytes = build['bytes'] / (1024 * 1024)
+
+    print(f"{Colors.BLUE}INFO: no ffmpeg found. Fetching the pinned build "
+          f"({megabytes:.0f} MB) from {url}{Colors.RESET}")
+    print(f"{Colors.DIM}      Set FFMPEG_AUTO_DOWNLOAD=false to stop this "
+          f"and install ffmpeg yourself instead.{Colors.RESET}")
+
+    try:
+        os.makedirs(destination, exist_ok=True)
+    except OSError as exc:
+        print(f"{Colors.YELLOW}WARNING: cannot create {destination}: {exc}"
+              f"{Colors.RESET}")
+        return None
+
+    archive = os.path.join(destination, build['asset'] + '.part')
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with urllib.request.urlopen(url, timeout=FFMPEG_DOWNLOAD_STALL_TIMEOUT) as response, \
+                open(archive, 'wb') as out:
+            declared = response.headers.get('Content-Length')
+            expected = int(declared) if declared else build['bytes']
+            while True:
+                chunk = response.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                digest.update(chunk)
+                written += len(chunk)
+                if progress is not None:
+                    progress(written, expected)
+
+        if written != build['bytes']:
+            raise OSError(f"expected {build['bytes']:,} bytes, got {written:,} "
+                          f"-- the download stopped early or the pinned build "
+                          f"changed")
+        if digest.hexdigest() != build['sha256']:
+            raise OSError(f"SHA-256 mismatch: expected {build['sha256'][:16]}..., "
+                          f"got {digest.hexdigest()[:16]}...")
+
+        taken = _extract_ffmpeg_programs(archive, destination, build['programs'],
+                                         asset_name=build['asset'])
+        ffprobe = taken[build['programs'][0].lower()]
+        if not _is_ffprobe(ffprobe):
+            raise OSError("the program that came out of the archive does not "
+                          "identify itself as ffprobe")
+        print(f"{Colors.GREEN}SUCCESS: ffmpeg is ready at {destination}"
+              f"{Colors.RESET}")
+        return ffprobe
+    except Exception as exc:
+        print(f"{Colors.YELLOW}WARNING: could not fetch ffmpeg: {exc}"
+              f"{Colors.RESET}")
+        print(f"{Colors.YELLOW}Video features stay unavailable. Install "
+              f"ffmpeg yourself and point FFPROBE_MANUAL_PATH at it."
+              f"{Colors.RESET}")
+        return None
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(archive)
+
+
 def ffprobe_candidates_for(setting):
     """Every place ffprobe could be, given what someone pointed at.
 
@@ -2011,9 +2224,26 @@ def find_ffprobe_path():
         _announce_ffprobe(f"INFO: ffprobe: {found} (found on PATH, not at "
                           f"FFPROBE_MANUAL_PATH)")
         return base_name
+
+    # One this gallery fetched earlier. Checked before downloading again,
+    # so this costs a download once and nothing on every later start.
+    already = bundled_ffprobe_path()
+    if already and _is_ffprobe(already):
+        _announce_ffprobe(f"INFO: ffprobe: {already} (fetched by the gallery)")
+        return already
+
+    if FFMPEG_AUTO_DOWNLOAD and ffmpeg_build_for_this_machine():
+        fetched = fetch_ffmpeg()
+        if fetched:
+            _announce_ffprobe(f"INFO: ffprobe: {fetched} (fetched by the gallery)")
+            return fetched
+        return None
+
+    how = ("brew install ffmpeg" if sys.platform == "darwin" else
+           "install ffmpeg")
     print(f"{Colors.YELLOW}WARNING: ffprobe not found. Video duration and "
           f"dimensions, video thumbnails, waveforms and video metadata "
-          f"stripping are all unavailable. Install ffmpeg, then point "
+          f"stripping are all unavailable. Run `{how}`, then point "
           f"FFPROBE_MANUAL_PATH at it -- the ffprobe program, the ffmpeg "
           f"program beside it, or the folder either lives in.{Colors.RESET}")
     return None
