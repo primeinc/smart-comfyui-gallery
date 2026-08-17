@@ -159,6 +159,88 @@ def test_an_ordinary_name_is_fine(smartgallery_app, visitor, a_picture):
         assert response.status_code == 200, (name, response.get_json())
 
 
+def _comment_id(smartgallery_app, file_id):
+    conn = smartgallery_app.get_db_connection()
+    try:
+        row = conn.execute("SELECT id FROM file_comments WHERE file_id = ? "
+                           "ORDER BY id DESC LIMIT 1", (file_id,)).fetchone()
+    finally:
+        conn.close()
+    return row["id"] if row else None
+
+
+def test_editing_a_comment_cannot_walk_round_the_limit(smartgallery_app,
+                                                       visitor, a_picture):
+    """The hole in the first version of this cap, which shipped.
+
+    Posting was capped and editing was not, so the limit cost one extra
+    request to defeat: post something short, then edit it to anything.
+    Measured against that build --
+
+        post a short comment          -> 200
+        post one over the limit       -> 400  (the cap works)
+        EDIT it to 40,000,000 chars   -> 200  stored 40000000 chars
+    """
+    assert _post(visitor, a_picture, "short one").status_code == 200
+    comment_id = _comment_id(smartgallery_app, a_picture)
+    assert comment_id is not None
+
+    response = visitor.post("/galleryout/api/exhibition/edit_comment",
+                            json={"comment_id": comment_id,
+                                  "new_text": "y" * 5_000_000,
+                                  "client_uuid": "visitor"})
+
+    assert response.status_code == 400, response.status_code
+    assert _stored(smartgallery_app, a_picture) == len("short one"), (
+        "the edit was refused and written anyway")
+
+
+def test_an_ordinary_edit_still_works(smartgallery_app, visitor, a_picture):
+    """Over-reach guard: people fix typos in their own comments."""
+    assert _post(visitor, a_picture, "frist").status_code == 200
+    comment_id = _comment_id(smartgallery_app, a_picture)
+
+    response = visitor.post("/galleryout/api/exhibition/edit_comment",
+                            json={"comment_id": comment_id,
+                                  "new_text": "first",
+                                  "client_uuid": "visitor"})
+
+    assert response.status_code == 200, response.get_json()
+    assert _stored(smartgallery_app, a_picture) == len("first")
+
+
+def test_every_route_that_writes_a_comment_asks_the_same_rule():
+    """One idea in two places is how the first version came apart. The
+    column is written from three statements; each one's route has to have
+    asked."""
+    import ast
+    import io
+    import pathlib
+    import re
+
+    source = pathlib.Path(smartgallery.__file__)
+    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    writes_comment = re.compile(r"comment_text", re.I)
+
+    offenders = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+        sql = [n.value for n in ast.walk(fn)
+               if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        if not any(writes_comment.search(s)
+                   and re.search(r"\b(INSERT|UPDATE)\b", s, re.I) for s in sql):
+            continue
+        called = {n.func.id for n in ast.walk(fn)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        if "comment_length_error" not in called:
+            offenders.append(fn.name)
+
+    assert offenders == [], (
+        f"{offenders} write a comment without asking how long it may be, so "
+        f"the limit is whatever that route happens to allow")
+
+
 def test_the_limit_is_generous_enough_to_be_a_comment():
     """A cap tight enough to annoy people would get raised in a hurry and
     the bug would come back with it."""

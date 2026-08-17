@@ -536,6 +536,27 @@ FFMPEG_FOLDER_NAME = '.ffmpeg'
 # collection note, which is a file and is meant for it.
 COMMENT_MAX_CHARS = 4000
 COMMENT_AUTHOR_MAX_CHARS = 80
+
+
+def comment_length_error(text, what='comment'):
+    """None when it fits, otherwise the sentence to say back.
+
+    One rule in one place because the first version of this was not.
+    Posting a comment was capped and EDITING one was not, so the limit
+    took one extra request to walk around: post something short, then
+    edit it to anything at all. Measured against that build --
+
+        post a short comment          -> 200
+        post one over the limit       -> 400  (the cap works)
+        EDIT it to 40,000,000 chars   -> 200  stored 40000000 chars
+
+    -- which is the whole cap, undone, by the sibling route two hundred
+    lines further down. Every path that writes comment_text asks this.
+    """
+    if len(text) > COMMENT_MAX_CHARS:
+        return (f'That {what} is {len(text):,} characters. The limit is '
+                f'{COMMENT_MAX_CHARS:,}.')
+    return None
 AI_MODELS_FOLDER_NAME = '.AImodels'
 ENABLE_DAM_MODE = True
 
@@ -10770,12 +10791,9 @@ def exhibition_post_comment():
     # thousand characters of what somebody wrote is worse than telling
     # them it was too long. Long text about a collection has a place
     # already, which is the collection note.
-    if len(text) > COMMENT_MAX_CHARS:
-        return jsonify({
-            'status': 'error',
-            'message': (f'That comment is {len(text):,} characters. The limit '
-                        f'is {COMMENT_MAX_CHARS:,}.')
-        }), 400
+    too_long = comment_length_error(text)
+    if too_long:
+        return jsonify({'status': 'error', 'message': too_long}), 400
 
     # The same for the name shown beside it. Only a real visitor can set
     # this -- a signed-in user gets their account name and the local owner
@@ -10901,7 +10919,13 @@ def exhibition_edit_comment():
     
     if not all([comment_id, client_uuid, new_text]):
         return jsonify({'status': 'error', 'message': 'Missing data'}), 400
-        
+
+    # The same rule as posting one. Without this the cap on posting was a
+    # cap on nothing: post something short, then edit it to any size.
+    too_long = comment_length_error(new_text)
+    if too_long:
+        return jsonify({'status': 'error', 'message': too_long}), 400
+
     is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE) and not current_user_id
     is_privileged = is_local_admin or (current_role in ['ADMIN', 'MANAGER', 'STAFF'])
     
