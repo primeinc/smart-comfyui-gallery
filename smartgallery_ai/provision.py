@@ -479,9 +479,14 @@ def _verify(path: str, expected: Optional[str], label: str) -> None:
 
 def _copy_with_progress(reader, writer, total: Optional[int],
                         progress: Optional[Callable[[int, Optional[int]], None]],
-                        chunk_size: int = 1 << 20) -> None:
+                        chunk_size: int = 1 << 20) -> int:
     """Chunked stream copy that reports (bytes_done, bytes_total) after
-    every chunk; total may be None when the server sent no length."""
+    every chunk; total may be None when the server sent no length.
+
+    Returns the number of bytes copied, which is the only way the caller
+    can tell a finished download from an abandoned one -- see
+    _download_url.
+    """
     done = 0
     while True:
         chunk = reader.read(chunk_size)
@@ -491,6 +496,7 @@ def _copy_with_progress(reader, writer, total: Optional[int],
         done += len(chunk)
         if progress is not None:
             progress(done, total)
+    return done
 
 
 # Seconds a download may go without receiving a single byte. This is a
@@ -506,12 +512,52 @@ DOWNLOAD_STALL_TIMEOUT = 60
 def _download_url(url: str, dest_path: str,
                   progress: Optional[Callable[[int, Optional[int]], None]] = None) -> None:
     """Stream one direct URL to dest_path via a temp file, reporting byte
-    progress as it goes."""
+    progress as it goes.
+
+    A download that stops early does not raise. CPython says so in
+    http/client.py, where readinto returns 0 at a short body rather than
+    reporting it:
+
+        n = self.fp.readinto(b)
+        if not n and b:
+            # Ideally, we would raise IncompleteRead if the content-length
+            # wasn't satisfied, but it might break compatibility.
+            self._close_conn()
+
+    So a dropped connection ends the copy loop the same way a finished one
+    does, and what lands is however much arrived. These are weights of a
+    few hundred megabytes upwards, on whatever connection somebody has.
+    When the server said how many bytes to expect, that many have to have
+    arrived.
+
+    Every artifact fetched this way today happens to be a zip, so
+    truncation currently surfaces further along as BadZipFile -- loud, but
+    describing the wrong thing: the file is a zip, it is a piece of one.
+    Saying how much is missing is the difference between retrying and
+    going to look for a bad URL.
+
+    Nothing is left behind either way. The .part file is the download in
+    progress, and on any failure it was simply abandoned in the models
+    directory, where nothing looks for it again.
+    """
     tmp = dest_path + ".part"
-    with urllib.request.urlopen(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, \
-            open(tmp, "wb") as out:
-        length = resp.headers.get("Content-Length")
-        _copy_with_progress(resp, out, int(length) if length else None, progress)
+    try:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, \
+                open(tmp, "wb") as out:
+            length = resp.headers.get("Content-Length")
+            expected = int(length) if length else None
+            written = _copy_with_progress(resp, out, expected, progress)
+
+        if expected is not None and written != expected:
+            raise ProvisionError(
+                f"{os.path.basename(dest_path)}: the download stopped early "
+                f"-- {written:,} of {expected:,} bytes arrived from {url}. "
+                f"Nothing was kept; run provisioning again to retry.")
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
     os.replace(tmp, dest_path)
 
 
