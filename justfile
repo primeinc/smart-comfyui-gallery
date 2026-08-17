@@ -30,7 +30,8 @@ test:
 # what it wants, a visitor input with no size, work done per file that no
 # branch reads, a value checked for range but never for kind, a fault the
 # screen cannot read, a first-run check that asks whether something is there
-# rather than what it is, a misspelt
+# rather than what it is, a search that reduces the two sides of its own
+# comparison by two different rules, a misspelt
 # setting name, a
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
@@ -79,6 +80,7 @@ audit:
         tests/test_a_rating_is_a_whole_number.py \
         tests/test_an_unexpected_fault_is_still_readable.py \
         tests/test_the_library_path_must_be_a_folder.py \
+        tests/test_a_model_is_found_by_its_own_name.py \
         tests/test_ffprobe_reporting.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \

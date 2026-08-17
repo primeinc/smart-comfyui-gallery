@@ -890,9 +890,70 @@ def get_standardized_path(filepath):
         return str(filepath)
 
 def _normalize_fuzzy_string(s):
-    """Strips non-alphanumeric characters and lowercases for fuzzy matching."""
+    """Reduce a model name to its letters and digits, for loose matching.
+
+    Applied to BOTH sides of the model comparison -- see model_condition --
+    so what it keeps never has to agree with a second list somewhere else.
+
+    isalnum rather than [a-zA-Z0-9]: the old spelling dropped every letter
+    outside English, so a LoRA named in Russian or Greek reduced to nothing
+    at all. casefold rather than lower, so straße and STRASSE meet.
+    """
     if not s: return ""
-    return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower()
+    return ''.join(c for c in str(s).casefold() if c.isalnum())
+
+
+def _word_key(s):
+    """The same text as whole words, each padded with spaces.
+
+    Backs the quoted "exact word" form: searching for ' man ' inside
+    ' a woman here ' cannot match, which is what the quotes promise.
+    """
+    if not s: return " "
+    out, previous_was_word = [], False
+    for c in str(s).casefold():
+        if c.isalnum():
+            out.append(c)
+            previous_was_word = True
+        elif previous_was_word:
+            out.append(' ')
+            previous_was_word = False
+    return ' ' + ''.join(out).strip() + ' '
+
+
+def model_condition(typed, column, is_not):
+    """One term of the model/LoRA filter, as SQL plus its parameter.
+
+    Both sides of every comparison go through the same Python function, so
+    a name is found by the characters it has rather than by whether its
+    punctuation appears on two lists that were written separately. It was
+    two lists: the typed text kept only English letters and digits, the
+    column kept everything except ` . _ - / \\ ( ) [ ]`, and any character
+    in the gap -- a plus, an apostrophe, an at sign, a hash, an exclamation
+    mark, the German sharp s -- made the model unfindable by its own name.
+    The gallery offers those names in its own suggestion list, so the way
+    to meet this was to click what it suggested.
+
+    INSTR rather than LIKE, because LIKE reads `_` and `%` in the typed
+    text as wildcards: `"detail_tweaker_xl"` was matching `detail tweaker
+    xl` by accident, and a name containing `%` could not be searched for.
+    """
+    # A file made without any model still answers `!something`, so the
+    # column has to read as empty text rather than as nothing at all.
+    column = f"COALESCE({column}, '')"
+    exact = typed.startswith('"') and typed.endswith('"') and len(typed) > 2
+    if exact:
+        expression, needle = f"wordkey({column})", _word_key(typed[1:-1])
+    else:
+        folded = _normalize_fuzzy_string(typed)
+        if len(folded) >= 3:
+            expression, needle = f"fuzzykey({column})", folded
+        else:
+            # Too short to fold usefully, or punctuation only: compare the
+            # text as it stands, still folding case in every script.
+            expression, needle = f"ulower({column})", _unicode_lower(typed)
+    test = '= 0' if is_not else '> 0'
+    return f"INSTR({expression}, ?) {test}", needle
 
 def normalize_smart_path(path_str):
     """
@@ -3371,6 +3432,10 @@ def get_db_connection():
     conn.execute('PRAGMA foreign_keys = ON;')
     # Case folding that covers every script, for the search conditions.
     conn.create_function('ulower', 1, _unicode_lower, deterministic=True)
+    # The model/LoRA filter folds the stored name and the typed one with
+    # these same two functions, so the two sides cannot disagree.
+    conn.create_function('fuzzykey', 1, _normalize_fuzzy_string, deterministic=True)
+    conn.create_function('wordkey', 1, _word_key, deterministic=True)
 
     return conn
     
@@ -6335,22 +6400,9 @@ def gallery_view(folder_key):
                             s = s[1:].strip()
                         if not s: continue
                         
-                        # Check for exact word match wrapped in double quotes
-                        if s.startswith('"') and s.endswith('"') and len(s) > 2:
-                            clean_s = s[1:-1]
-                            col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(workflow_files, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' ') || ' ')"
-                            cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
-                            param_val = f"% {normalize_smart_path(clean_s)} %"
-                        else:
-                            norm_s = _normalize_fuzzy_string(s)
-                            if len(norm_s) >= 3:
-                                col_expr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(f.workflow_files), ' ', ''), '.', ''), '_', ''), '-', ''), '/', ''), '\\', ''), '(', ''), ')', ''), '[', ''), ']', '')"
-                                cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
-                                param_val = f"%{norm_s}%"
-                            else:
-                                cond_str = f"f.workflow_files {'NOT LIKE' if is_not else 'LIKE'} ?"
-                                param_val = f"%{normalize_smart_path(s)}%"
-                            
+                        cond_str, param_val = model_condition(
+                            s, 'f.workflow_files', is_not)
+
                         if is_not:
                             not_conds.append((cond_str, param_val))
                         else:
@@ -10083,21 +10135,9 @@ def collection_view(coll_id):
                     s = s[1:].strip()
                 if not s: continue
                 
-                if s.startswith('"') and s.endswith('"') and len(s) > 2:
-                    clean_s = s[1:-1]
-                    col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(f.workflow_files, ',', ' '), '|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' ') || ' ')"
-                    cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
-                    param_val = f"% {normalize_smart_path(clean_s)} %"
-                else:
-                    norm_s = _normalize_fuzzy_string(s)
-                    if len(norm_s) >= 3:
-                        col_expr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(f.workflow_files), ' ', ''), '.', ''), '_', ''), '-', ''), '/', ''), '\\', ''), '(', ''), ')', ''), '[', ''), ']', '')"
-                        cond_str = f"{col_expr} {'NOT LIKE' if is_not else 'LIKE'} ?"
-                        param_val = f"%{norm_s}%"
-                    else:
-                        cond_str = f"f.workflow_files {'NOT LIKE' if is_not else 'LIKE'} ?"
-                        param_val = f"%{normalize_smart_path(s)}%"
-                    
+                cond_str, param_val = model_condition(
+                    s, 'f.workflow_files', is_not)
+
                 if is_not:
                     not_conds.append((cond_str, param_val))
                 else:
