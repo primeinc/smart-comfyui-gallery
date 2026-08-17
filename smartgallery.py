@@ -529,6 +529,13 @@ SQLITE_CACHE_FOLDER_NAME = '.sqlite_cache'
 DATABASE_FILENAME = 'gallery_cache.sqlite'
 ZIP_CACHE_FOLDER_NAME = '.zip_downloads'
 FFMPEG_FOLDER_NAME = '.ffmpeg'
+
+# What a comment may be. Generous for a remark about a picture -- roughly
+# two pages -- and small enough that no one visitor can fill the database
+# or a reader's browser. Long writing about a collection belongs in the
+# collection note, which is a file and is meant for it.
+COMMENT_MAX_CHARS = 4000
+COMMENT_AUTHOR_MAX_CHARS = 80
 AI_MODELS_FOLDER_NAME = '.AImodels'
 ENABLE_DAM_MODE = True
 
@@ -10751,6 +10758,34 @@ def exhibition_post_comment():
     data = request.json
     file_id = data.get('file_id')
     text = data.get('text', '').strip()
+
+    # Nothing bounded this. Measured: a 40,000,000 character comment was
+    # accepted with a 200 and stored whole, and four posts put 45 MB into
+    # the database. In Exhibition mode -- the portal built to be handed to
+    # family, friends and clients, optionally with guest login -- that is
+    # a visitor, and whatever they send is then read back to everyone who
+    # opens that picture and rendered in their browser.
+    #
+    # Refused rather than truncated: quietly keeping the first few
+    # thousand characters of what somebody wrote is worse than telling
+    # them it was too long. Long text about a collection has a place
+    # already, which is the collection note.
+    if len(text) > COMMENT_MAX_CHARS:
+        return jsonify({
+            'status': 'error',
+            'message': (f'That comment is {len(text):,} characters. The limit '
+                        f'is {COMMENT_MAX_CHARS:,}.')
+        }), 400
+
+    # The same for the name shown beside it. Only a real visitor can set
+    # this -- a signed-in user gets their account name and the local owner
+    # gets "System Admin" -- so it is exactly the unauthenticated path.
+    if len(str(data.get('author', ''))) > COMMENT_AUTHOR_MAX_CHARS:
+        return jsonify({
+            'status': 'error',
+            'message': (f'That name is too long. The limit is '
+                        f'{COMMENT_AUTHOR_MAX_CHARS} characters.')
+        }), 400
 
     # The same rule as reading them: a visitor may only write about a
     # picture that was actually shared with them. Without this, a comment

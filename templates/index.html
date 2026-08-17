@@ -2400,7 +2400,7 @@ window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', tru
                 {% else %}
                 <input type="hidden" id="fi-target-audience" value="public">
                 {% endif %}
-                <textarea id="fi-admin-reply" placeholder="Write a comment..." rows="1"
+                <textarea id="fi-admin-reply" placeholder="Write a comment..." rows="1" maxlength="4000"
                           oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';"></textarea>
                 <button onclick="fiPostAdminReply()" class="glass-btn active-blue" style="width:100%; height:44px; font-weight:bold;">
                     🚀 Send Comment
@@ -10022,7 +10022,7 @@ window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', tru
                 // Admin Posting Area
                 html += `
                     <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border-color);">
-                        <textarea id="admin-comment-input" class="sd-text-input" placeholder="Post a comment as Administrator..." rows="2" style="margin-bottom:10px;"></textarea>
+                        <textarea id="admin-comment-input" class="sd-text-input" placeholder="Post a comment as Administrator..." rows="2" maxlength="4000" style="margin-bottom:10px;"></textarea>
                         <button onclick="adminPostComment()" class="glass-btn active-blue" style="width:100%; height:44px;">🚀 Post as Admin</button>
                     </div>
                 `;

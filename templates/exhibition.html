@@ -2078,7 +2078,7 @@
                     </div>
 
                 </div>
-                <textarea class="chat-input" id="comment-input" rows="3" placeholder="Write a comment..."></textarea>
+                <textarea class="chat-input" id="comment-input" rows="3" maxlength="4000" placeholder="Write a comment..."></textarea>
                 <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                     <button class="send-btn-premium" onclick="postComment()" style="flex: 1;">Post comment</button>
                     <!-- Close button hidden on mobile footer as it's in top toolbar now -->
@@ -5067,7 +5067,7 @@ function renderMarkdownText(text) {
         
         editUI.innerHTML = `
             <h3 style="margin:0 0 15px 0; color:white; font-size:1.1rem;">✏️ Edit Comment</h3>
-            <textarea id="edit-comment-textarea" class="chat-input" rows="5" style="width:100%; margin-bottom:15px; min-height:120px;">${escapeHtml(currentText)}</textarea>
+            <textarea id="edit-comment-textarea" class="chat-input" rows="5" maxlength="4000" style="width:100%; margin-bottom:15px; min-height:120px;">${escapeHtml(currentText)}</textarea>
             <div style="display:flex; gap:10px;">
                 <button onclick="saveEditedComment(${commentId}, '${safeOriginalText}');" class="send-btn-premium" style="flex:1;">💾 Save Changes</button>
                 <button onclick="closeEditComment();" class="send-btn-premium" style="flex:1; background:var(--surface-hover); border:1px solid var(--border-color);">✕ Cancel</button>
