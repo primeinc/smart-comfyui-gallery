@@ -5519,7 +5519,7 @@ def sync_status(folder_key):
 
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        abort(404)
+        abort(404, description="That folder is not in the gallery.")
     folder_path = folders[folder_key]['path']
     return Response(sync_folder_on_demand(folder_path), mimetype='text/event-stream')
 
@@ -7704,8 +7704,36 @@ def load_more():
 def get_file_info_from_db(file_id, column='*'):
     with get_db_connection() as conn:
         row = conn.execute(f"SELECT {column} FROM files WHERE id = ?", (file_id,)).fetchone()
-    if not row: abort(404)
+    # Said in words, because the default text for a 404 is "The requested
+    # URL was not found on the server", which is untrue here: the address
+    # is a real one, the picture behind it is not.
+    if not row: abort(404, description="That file is not in the gallery.")
     return dict(row) if column == '*' else row[0]
+
+
+def answer_an_abort_readably(stop):
+    """Hand back the refusal a route made about itself, not a fault.
+
+    A route that wraps its body in `except Exception` catches its own
+    abort() -- the 404 raised for a picture that is not there arrives as
+    an exception like any other and was answered as 500. Measured across
+    the 24 addresses that take a file id, asking for one that does not
+    exist: twelve said 404 and three said the server had failed.
+
+    That difference is the whole meaning of the answer. The page cannot
+    tell "this picture is gone" from "the gallery is broken", so it
+    reports a fault for something perfectly ordinary -- a stale tab, a
+    bookmarked picture since deleted -- and a real fault looks the same
+    as that.
+
+    Flask's docs say this outright (errorhandling.rst, "Generic Exception
+    Handlers"): a handler that catches everything must be written so it
+    does not lose the HTTP error.
+
+    In JSON, because every caller of these addresses reads JSON.
+    """
+    return jsonify({'status': 'error',
+                    'message': stop.description or stop.name}), stop.code
 
 # Path separators, control characters, and the characters Windows forbids
 # in a name. Everything else -- including every non-Latin script -- is a
@@ -8114,7 +8142,7 @@ def favorite_batch():
 def toggle_favorite(file_id):
     with get_db_connection() as conn:
         current = conn.execute("SELECT is_favorite FROM files WHERE id = ?", (file_id,)).fetchone()
-        if not current: abort(404)
+        if not current: abort(404, description="That file is not in the gallery.")
         new_status = 1 - current['is_favorite']
         conn.execute("UPDATE files SET is_favorite = ? WHERE id = ?", (new_status, file_id))
         conn.commit()
@@ -8409,7 +8437,7 @@ def download_workflow(file_id):
         new_filename = f"{base_name}.json"
         headers = {'Content-Disposition': f'attachment;filename="{new_filename}"'}
         return Response(workflow_json, mimetype='application/json', headers=headers)
-    abort(404)
+    abort(404, description="That file has no workflow saved in it.")
 
 @app.route('/galleryout/node_summary/<string:file_id>')
 def get_node_summary(file_id):
@@ -8511,6 +8539,10 @@ def get_node_summary(file_id):
             'meta': meta_data        
         })
         
+    except HTTPException as stop:
+        # Answered 200 with the 404's own text pasted into the message, so
+        # the page was told the request had succeeded.
+        return answer_an_abort_readably(stop)
     except Exception as e:
         print(f"ERROR generating node summary: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
@@ -8519,7 +8551,7 @@ def get_node_summary(file_id):
 def serve_waveform(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
-    if not GENERATE_WAVEFORMS: abort(404)
+    if not GENERATE_WAVEFORMS: abort(404, description="Waveforms are switched off in the settings.")
     info = get_file_info_from_db(file_id)
     filepath = info['path']
     file_type = info['type']
@@ -8543,7 +8575,7 @@ def serve_waveform(file_id):
         if new_cache_path and os.path.exists(new_cache_path):
             return send_file(new_cache_path, mimetype='image/png')
             
-    abort(404)
+    abort(404, description="No waveform could be made for that file.")
 
 @app.route('/galleryout/thumbnail/<string:file_id>')
 def serve_thumbnail(file_id):
@@ -8569,7 +8601,7 @@ def serve_thumbnail(file_id):
         # exists to save CPU, and that does not outrank the guarantee.
         if os.path.exists(filepath):
             return send_file(filepath)
-        abort(404)
+        abort(404, description="That thumbnail is not in the cache.")
     print(f"WARN: Thumbnail not found for {os.path.basename(filepath)}, generating...")
     cache_path = create_thumbnail(filepath, file_hash, info['type'])
     if cache_path and os.path.exists(cache_path): return send_file(cache_path)
@@ -9041,6 +9073,9 @@ def get_storyboard(file_id):
 
         return jsonify({'status': 'success', 'cached': False, 'frames': final_urls})
 
+    except HTTPException as stop:
+        # Its own 404 or 403, not a fault to report as one.
+        return answer_an_abort_readably(stop)
     except Exception as e:
         print(f"Storyboard error: {e}")
         import traceback
@@ -9056,7 +9091,7 @@ def serve_storyboard_frame(file_hash, filename):
     if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
         abort(403, description="Access Denied.")
     if not re.fullmatch(r'[0-9a-f]{32}', file_hash or ''):
-        abort(404)
+        abort(404, description="That is not the name of a stored frame.")
 
     # Frames are written by this app as frame_NN.jpg, so nothing is lost
     # here -- but the same helper is used everywhere a name becomes a
@@ -9067,7 +9102,7 @@ def serve_storyboard_frame(file_hash, filename):
     # Belt and braces: whatever the segment was, the folder it names has to
     # sit inside the frame cache.
     if not _is_under(os.path.realpath(directory), os.path.realpath(THUMBNAIL_CACHE_DIR)):
-        abort(404)
+        abort(404, description="That is not the name of a stored frame.")
     return send_from_directory(directory, safe_name)
 # Route to serve the cached frames
 
@@ -9116,7 +9151,7 @@ def serve_input_file(filename):
         # For all the other files, I let Flask guessing the mimetype, but disable the attachment, just a lil trick
         return send_from_directory(BASE_INPUT_PATH, filename, as_attachment=False)
     except Exception as e:
-        abort(404)
+        abort(404, description="That file is not in the input folder.")
 
 @app.route('/galleryout/check_metadata/<string:file_id>')
 def check_metadata(file_id):
@@ -12519,6 +12554,7 @@ def _register_remix_routes_inline():
             extract['raw_ui_json'] = raw_ui if raw_ui else ""
             if 'raw_json' in extract: del extract['raw_json']
             return jsonify({'status': 'success', 'data': extract})
+        except HTTPException as stop: return answer_an_abort_readably(stop)
         except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
 
     import struct
@@ -13039,6 +13075,7 @@ def _register_remix_routes_inline():
                                 return jsonify({'status': 'success', 'companion_path': companion_path, 'companion_name': companion_name})
                         except Exception: pass
             return jsonify({'status': 'error', 'message': 'No companion PNG found.'}), 404
+        except HTTPException as stop: return answer_an_abort_readably(stop)
         except Exception as e: return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @app.route('/galleryout/api/remix/autofix', methods=['POST'])
