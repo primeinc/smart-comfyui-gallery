@@ -1101,6 +1101,14 @@ window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', tru
                         <div style="flex: 1; min-width: 140px;"><label style="font-size: 0.7rem;">From:</label><input type="date" name="start_date" id="start-date" value="{{ request.args.get('start_date', '') }}"></div>
                         <div style="flex: 1; min-width: 140px;"><label style="font-size: 0.7rem;">To:</label><input type="date" name="end_date" id="end-date" value="{{ request.args.get('end_date', '') }}"></div>
                     </div>
+                    <!-- The date on every card is drawn from this browser's
+                         clock, so this browser is the only thing that knows
+                         which instants a chosen day covers. Filled in on
+                         submit; deliberately not carried back from the URL,
+                         so a reloaded page recomputes rather than reusing a
+                         boundary from wherever it was last submitted. -->
+                    <input type="hidden" name="start_ts" id="start-ts" value="">
+                    <input type="hidden" name="end_ts" id="end-ts" value="">
                 </div>
 
                 <div class="filter-group">
@@ -6916,6 +6924,22 @@ window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', tru
                      }
                 });
 
+                // A chosen day means midnight to midnight HERE, on the same
+                // clock that draws the date on every card. The server runs
+                // somewhere else -- in Docker, in UTC -- so it is told the
+                // instants rather than the day, and Date does the work,
+                // including the day the clocks change.
+                const localDayEdge = (value, nextDay) => {
+                    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+                    if (!parts) return '';
+                    const d = new Date(Number(parts[1]), Number(parts[2]) - 1,
+                                       Number(parts[3]) + (nextDay ? 1 : 0),
+                                       0, 0, 0, 0);
+                    const seconds = Math.floor(d.getTime() / 1000);
+                    if (!isFinite(seconds)) return '';
+                    return String(nextDay ? seconds - 1 : seconds);
+                };
+
                 // Form Submit Validation
                 filterForm.addEventListener('submit', (e) => {
                     const start = startDateInput.value;
@@ -6930,6 +6954,11 @@ window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', tru
                         }
                     }
                     // If only one is present, the backend will handle the >= or <= logic automatically
+
+                    const startTs = document.getElementById('start-ts');
+                    const endTs = document.getElementById('end-ts');
+                    if (startTs) startTs.value = localDayEdge(start, false);
+                    if (endTs) endTs.value = localDayEdge(end, true);
                 });
             }
             

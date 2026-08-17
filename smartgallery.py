@@ -58,7 +58,7 @@ import shutil
 import re
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import glob
 import sys
 import subprocess
@@ -919,6 +919,49 @@ def _word_key(s):
             out.append(' ')
             previous_was_word = False
     return ' ' + ''.join(out).strip() + ' '
+
+
+def day_bounds(typed_date, browser_ts, is_end):
+    """The first or last instant of a chosen day, as a timestamp.
+
+    A picture's date is drawn by the browser --
+    `new Date(mtime*1000).toLocaleString()` -- while the filter boundary
+    was worked out here, from a naive `strptime(...).timestamp()`, which
+    is the SERVER's midnight. The two machines are often not in the same
+    timezone: the shipped compose file leaves /etc/localtime commented
+    out, so the container is UTC while the person looking at it is not.
+    Filtering a single day from New Zealand then returned 11 of their 24
+    hours and 13 hours belonging to the day before.
+
+    So the browser sends the boundary it means, computed from the same
+    clock that wrote the label, and that is used when it arrives.
+
+    Without it -- a bookmark, a typed URL, a script -- this falls back to
+    reading the date here, as before, except that the end of the day is
+    now the next midnight rather than +86399 seconds. Those differ on the
+    day the clocks go back: a 25-hour day ended at 22:59:59 and lost its
+    last hour.
+    """
+    if browser_ts not in (None, ''):
+        try:
+            given = float(browser_ts)
+        except (TypeError, ValueError):
+            given = None            # not a number; fall back to the date
+        # float('NaN') and float('inf') both parse. A NaN boundary is worse
+        # than no boundary: every comparison against it is false, so the
+        # gallery empties with the filter still showing the date you asked
+        # for.
+        if given is not None and math.isfinite(given):
+            return given
+    if not typed_date:
+        return None
+    try:
+        midnight = datetime.strptime(typed_date, '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return None
+    if not is_end:
+        return midnight.timestamp()
+    return (midnight + timedelta(days=1)).timestamp() - 1
 
 
 def model_condition(typed, column, is_not):
@@ -6496,20 +6539,17 @@ def gallery_view(folder_key):
             if request.args.get('no_ai_caption') == 'true': 
                 conditions.append("(ai_caption IS NULL OR ai_caption = '')")
 
-            if start_date:
-                try: 
-                    ts = datetime.strptime(start_date, '%Y-%m-%d').timestamp()
-                    conditions.append("mtime >= ?")
-                    params.append(ts)
-                    active_filters_count += 1
-                except: pass
-            if end_date:
-                try: 
-                    ts = datetime.strptime(end_date, '%Y-%m-%d').timestamp() + 86399
-                    conditions.append("mtime <= ?")
-                    params.append(ts)
-                    active_filters_count += 1
-                except: pass
+            # Counted further down with the rest of them; active_filters_count
+            # does not exist yet here, and the bare `except: pass` this
+            # replaced was swallowing the UnboundLocalError that said so.
+            day_from = day_bounds(start_date, request.args.get('start_ts'), False)
+            if day_from is not None:
+                conditions.append("mtime >= ?")
+                params.append(day_from)
+            day_to = day_bounds(end_date, request.args.get('end_ts'), True)
+            if day_to is not None:
+                conditions.append("mtime <= ?")
+                params.append(day_to)
 
             if selected_rating_ranges:
                 r_conds = []
@@ -6687,8 +6727,11 @@ def gallery_view(folder_key):
     if wf_files: active_filters_count += 1
     if wf_prompt: active_filters_count += 1
     if request.args.get('comment_search', '').strip(): active_filters_count += 1
-    
-    
+    # A date range narrows the view like anything else here, and was the
+    # one filter the badge never counted.
+    if start_date: active_filters_count += 1
+    if end_date: active_filters_count += 1
+
     if selected_exts: active_filters_count += 1
     if selected_prefixes: active_filters_count += 1
     if selected_raters: active_filters_count += 1
@@ -10243,20 +10286,16 @@ def collection_view(coll_id):
         conditions.append("(f.ai_caption IS NULL OR f.ai_caption = '')")
         active_filters_count += 1
 
-    if start_date:
-        try: 
-            ts = datetime.strptime(start_date, '%Y-%m-%d').timestamp()
-            conditions.append("f.mtime >= ?")
-            params.append(ts)
-            active_filters_count += 1
-        except: pass
-    if end_date:
-        try: 
-            ts = datetime.strptime(end_date, '%Y-%m-%d').timestamp() + 86399
-            conditions.append("f.mtime <= ?")
-            params.append(ts)
-            active_filters_count += 1
-        except: pass
+    day_from = day_bounds(start_date, request.args.get('start_ts'), False)
+    if day_from is not None:
+        conditions.append("f.mtime >= ?")
+        params.append(day_from)
+        active_filters_count += 1
+    day_to = day_bounds(end_date, request.args.get('end_ts'), True)
+    if day_to is not None:
+        conditions.append("f.mtime <= ?")
+        params.append(day_to)
+        active_filters_count += 1
 
     if selected_rating_ranges:
         active_filters_count += 1
