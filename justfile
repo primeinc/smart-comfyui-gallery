@@ -28,7 +28,8 @@ test:
 # will not keep recorded as though it did, a library discarded because it
 # was reached by another name, a setting that only accepts one spelling of
 # what it wants, a visitor input with no size, work done per file that no
-# branch reads, a value checked for range but never for kind, a misspelt
+# branch reads, a value checked for range but never for kind, a fault the
+# screen cannot read, a misspelt
 # setting name, a
 # documented way of running the suite that does not work, a password
 # committed into something people download, a compose file whose variables
@@ -75,6 +76,7 @@ audit:
         tests/test_a_comment_has_a_size.py \
         tests/test_the_page_does_not_do_dead_work.py \
         tests/test_a_rating_is_a_whole_number.py \
+        tests/test_an_unexpected_fault_is_still_readable.py \
         tests/test_ffprobe_reporting.py \
         tests/test_media_tool_timeouts.py \
         tests/test_video_stream_stalls.py \

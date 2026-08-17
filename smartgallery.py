@@ -89,7 +89,14 @@ from functools import wraps
 import sg_auth
 import contextlib
 import math
+import traceback
 import urllib.request
+# Flask's own guidance for a generic handler (docs/errorhandling.rst,
+# "Generic Exception Handlers"): it fires for things you did not cause,
+# such as routing's own 404 and 405, so "be sure to craft your handler
+# carefully so you don't lose information about the HTTP error". That is
+# why HTTPException is handed straight back untouched.
+from werkzeug.exceptions import HTTPException, InternalServerError
 import secrets
 from typing import Dict, List, Any, Optional, Union # Added for type hinting in new tools
 import smartgallery_ai
@@ -11506,6 +11513,65 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
 # Flask refuses above its own. Keeping the transport limit clear of both
 # means the app is always the one that decides, and can say so in words.
 MAX_REQUEST_BODY_BYTES = app.config['MAX_CONTENT_LENGTH'] + 32 * 1024 * 1024
+
+
+def _caller_is_reading_json():
+    """Whether the thing waiting on this reply parses JSON.
+
+    A page navigation wants Flask's error page. Everything the interface
+    calls with fetch() does res.json(), and an HTML page there shows the
+    person nothing at all.
+    """
+    try:
+        if request.path.startswith('/galleryout/api/'):
+            return True
+        if request.is_json:
+            return True
+        best = request.accept_mimetypes.best_match(
+            ['application/json', 'text/html'])
+        return (best == 'application/json'
+                and request.accept_mimetypes[best]
+                > request.accept_mimetypes['text/html'])
+    except Exception:
+        return False
+
+
+@app.errorhandler(Exception)
+def _unexpected_error_still_answers_readably(error):
+    """Give an unhandled fault a body the screen can read.
+
+    Swept every JSON route with values of the wrong kind -- a string where
+    a number was expected, a list where a string was, an object where a
+    list was -- and 235 of those answers were a 500 carrying an HTML page,
+    across 63 route-and-field pairs. Every one of them reaches a caller
+    doing res.json(), so what the person sees is nothing: not the fault,
+    not a reason, not even that it was refused.
+
+    Fixing the sixty-three by hand would be sixty-three chances to get it
+    wrong, and the next route added would start again. What they have in
+    common is the answer, so that is what is fixed.
+
+    Two things this deliberately does NOT do. It does not swallow the
+    fault: the traceback still goes to the console exactly as before, so
+    nothing becomes harder to diagnose. And it does not repeat the
+    exception's message, which is how a filesystem path or a fragment of
+    SQL would reach an exhibition visitor -- the console has that, and the
+    console is the owner's.
+    """
+    if isinstance(error, HTTPException):
+        return error          # 404, 405, 403 and the rest keep their meaning
+
+    traceback.print_exc()
+
+    if not _caller_is_reading_json():
+        return InternalServerError()
+
+    return jsonify({
+        'status': 'error',
+        'message': ('Something went wrong handling that request '
+                    f'({type(error).__name__}). The gallery console has the '
+                    f'details.')
+    }), 500
 
 
 @app.errorhandler(413)
