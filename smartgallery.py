@@ -1112,6 +1112,34 @@ def _word_key(s):
     return " " + "".join(out).strip() + " "
 
 
+def with_id_placeholders(statement, ids):
+    """`statement` with its `{ids}` slot filled: one question mark per id.
+
+    SQLite binds values, never lists, so a list of n ids has to become n
+    placeholders in the statement text. One function does that, and all it
+    can ever insert is question marks -- anything else a call site wants in
+    its SQL still has to be written out where it can be seen.
+    """
+    return statement.format(ids=",".join("?" * len(ids)))
+
+
+# Two statements the AI routes run against a list of ids from four places
+# between them. Named because they were four copies, and copies drift.
+FORGET_AI_RESULTS = """
+    UPDATE files
+    SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
+    WHERE id IN ({ids})
+"""
+CANCEL_AI_JOBS = "DELETE FROM ai_indexing_queue WHERE file_id IN ({ids})"
+
+# Status flags are mutually exclusive, so setting one clears the others.
+CLEAR_STATUS_FLAGS = """
+    DELETE FROM collection_files
+    WHERE file_id IN ({ids})
+    AND collection_id IN (SELECT id FROM collections WHERE type='system_flag')
+"""
+
+
 def day_bounds(typed_date, browser_ts, is_end):
     """The first or last instant of a chosen day, as a timestamp.
 
@@ -6837,25 +6865,14 @@ def ai_indexing_reset():
                 chunk_size = 500
                 for i in range(0, len(ids_to_wipe), chunk_size):
                     chunk = ids_to_wipe[i : i + chunk_size]
-                    placeholders = ",".join(["?"] * len(chunk))
 
                     # 1. WIPE METADATA (Instant)
-                    conn.execute(
-                        f"""
-                        UPDATE files
-                        SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
-                        WHERE id IN ({placeholders})
-                    """,
-                        chunk,
-                    )
+                    conn.execute(with_id_placeholders(FORGET_AI_RESULTS, chunk), chunk)
 
                     # 2. REMOVE FROM PROCESSING QUEUE (Critical fix)
                     # We must delete pending jobs for these files to stop the worker from indexing them
                     conn.execute(
-                        f"""
-                        DELETE FROM ai_indexing_queue
-                        WHERE file_id IN ({placeholders})
-                    """,
+                        with_id_placeholders(CANCEL_AI_JOBS, chunk),
                         chunk,
                     )
 
@@ -6889,15 +6906,7 @@ def ai_indexing_add_files():
         # --- NEW: WIPE DATA IF FORCED ---
         if force_index and file_ids:
             # We must wipe database fields before queuing
-            placeholders = ",".join(["?"] * len(file_ids))
-            conn.execute(
-                f"""
-                UPDATE files
-                SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
-                WHERE id IN ({placeholders})
-            """,
-                file_ids,
-            )
+            conn.execute(with_id_placeholders(FORGET_AI_RESULTS, file_ids), file_ids)
 
         for fid in file_ids:
             # Check current status
@@ -7062,15 +7071,7 @@ def ai_indexing_add_folder():
                 chunk_size = 500
                 for i in range(0, len(ids_to_wipe), chunk_size):
                     chunk = ids_to_wipe[i : i + chunk_size]
-                    placeholders = ",".join(["?"] * len(chunk))
-                    conn.execute(
-                        f"""
-                        UPDATE files
-                        SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
-                        WHERE id IN ({placeholders})
-                    """,
-                        chunk,
-                    )
+                    conn.execute(with_id_placeholders(FORGET_AI_RESULTS, chunk), chunk)
 
             # 4. BATCH INSERT INTO QUEUE (UPSERT)
             if queue_entries:
@@ -7140,12 +7141,11 @@ def ai_watched_folders():
                             chunk = ids_to_wipe[i : i + chunk_size]
                             ph = ",".join(["?"] * len(chunk))
                             conn.execute(
-                                "UPDATE files SET ai_caption=NULL, ai_embedding=NULL,"
-                                f" ai_last_scanned=0, ai_error=NULL WHERE id IN ({ph})",
+                                with_id_placeholders(FORGET_AI_RESULTS, chunk),
                                 chunk,
                             )
                             # (Queue already cleared above by path, but redundant check by ID is safe)
-                            conn.execute(f"DELETE FROM ai_indexing_queue WHERE file_id IN ({ph})", chunk)
+                            conn.execute(with_id_placeholders(CANCEL_AI_JOBS, chunk), chunk)
 
                 conn.commit()
                 # --- FORCE CONFIG REFRESH TO UPDATE UI COLORS IMMEDIATELY ---
@@ -7396,9 +7396,10 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
             with get_db_connection() as conn_refresh:
                 for i in range(0, len(stale_ids), 500):
                     chunk = stale_ids[i : i + 500]
-                    placeholders = ",".join("?" * len(chunk))
                     for r in conn_refresh.execute(
-                        f"SELECT id, workflow_hash, prompt_hash, models_hash FROM files WHERE id IN ({placeholders})",
+                        with_id_placeholders(
+                            "SELECT id, workflow_hash, prompt_hash, models_hash FROM files WHERE id IN ({ids})", chunk
+                        ),
                         chunk,
                     ).fetchall():
                         fresh_hashes[r["id"]] = (r["workflow_hash"], r["prompt_hash"], r["models_hash"])
@@ -7853,8 +7854,11 @@ def gallery_view(folder_key):
                             expanded_raters.append(str(admin_id[0]))
                     except sqlite3.Error:
                         pass
-                placeholders = ",".join(["?"] * len(expanded_raters))
-                conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid IN ({placeholders}))")
+                conditions.append(
+                    with_id_placeholders(
+                        "f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid IN ({ids}))", expanded_raters
+                    )
+                )
                 params.extend(expanded_raters)
 
             if selected_exts:
@@ -8798,8 +8802,7 @@ def background_zip_task(job_id, file_ids):
         zip_filepath = os.path.join(ZIP_CACHE_DIR, zip_filename)
 
         with get_db_connection() as conn:
-            placeholders = ",".join(["?"] * len(file_ids))
-            query = f"SELECT path, name FROM files WHERE id IN ({placeholders})"
+            query = with_id_placeholders("SELECT path, name FROM files WHERE id IN ({ids})", file_ids)
             files_to_zip = conn.execute(query, file_ids).fetchall()
 
         if not files_to_zip:
@@ -8980,8 +8983,10 @@ def rename_folder(folder_key):
 
             # Cleanup Ghost records
             if ids_to_clean_collisions:
-                placeholders = ",".join(["?"] * len(ids_to_clean_collisions))
-                conn.execute(f"DELETE FROM files WHERE id IN ({placeholders})", ids_to_clean_collisions)
+                conn.execute(
+                    with_id_placeholders("DELETE FROM files WHERE id IN ({ids})", ids_to_clean_collisions),
+                    ids_to_clean_collisions,
+                )
 
             # Atomic DB Update. The rows move first and the folder second, so
             # a failure on either side leaves both untouched: the physical
@@ -9559,12 +9564,8 @@ def delete_batch():
         ids_to_remove_from_db = []
 
         with get_db_connection() as conn:
-            # 1. Generazione corretta e sicura dei placeholder SQL (?,?,?)
-            # Usiamo una lista esplicita per evitare errori di sintassi python
-            placeholders = ",".join(["?"] * len(file_ids))
-
             # Selezioniamo i file per verificare i percorsi
-            query_select = f"SELECT id, path FROM files WHERE id IN ({placeholders})"
+            query_select = with_id_placeholders("SELECT id, path FROM files WHERE id IN ({ids})", file_ids)
             files_to_delete = conn.execute(query_select, file_ids).fetchall()
 
             for row in files_to_delete:
@@ -9590,8 +9591,7 @@ def delete_batch():
             # 2. Pulizia Database (Massiva)
             if ids_to_remove_from_db:
                 # Generiamo nuovi placeholder solo per gli ID effettivamente cancellati
-                db_placeholders = ",".join(["?"] * len(ids_to_remove_from_db))
-                query_delete = f"DELETE FROM files WHERE id IN ({db_placeholders})"
+                query_delete = with_id_placeholders("DELETE FROM files WHERE id IN ({ids})", ids_to_remove_from_db)
                 conn.execute(query_delete, ids_to_remove_from_db)
                 conn.commit()
 
@@ -9627,8 +9627,10 @@ def favorite_batch():
     if not file_ids:
         return jsonify({"status": "error", "message": "No files selected"}), 400
     with get_db_connection() as conn:
-        placeholders = ",".join("?" * len(file_ids))
-        conn.execute(f"UPDATE files SET is_favorite = ? WHERE id IN ({placeholders})", [1 if status else 0, *file_ids])
+        conn.execute(
+            with_id_placeholders("UPDATE files SET is_favorite = ? WHERE id IN ({ids})", file_ids),
+            [1 if status else 0, *file_ids],
+        )
         conn.commit()
     return jsonify({"status": "success", "message": f"Updated favorites for {len(file_ids)} files."})
 
@@ -11064,9 +11066,11 @@ def get_collections():
 
         all_count = 0
         if count_album_ids:
-            placeholders = ",".join("?" for _ in count_album_ids)
             all_count = conn.execute(
-                f"SELECT COUNT(DISTINCT file_id) FROM collection_files WHERE collection_id IN ({placeholders})",
+                with_id_placeholders(
+                    "SELECT COUNT(DISTINCT file_id) FROM collection_files WHERE collection_id IN ({ids})",
+                    count_album_ids,
+                ),
                 count_album_ids,
             ).fetchone()[0]
 
@@ -11567,15 +11571,7 @@ def tag_batch():
             # --- CASE 1: REMOVE ALL STATUS (Shortcut '0') ---
             # This doesn't need a specific collection_id check, it targets all 'system_flag' types
             if action == "remove_all_status":
-                placeholders = ",".join(["?"] * len(file_ids))
-                conn.execute(
-                    f"""
-                    DELETE FROM collection_files
-                    WHERE file_id IN ({placeholders})
-                    AND collection_id IN (SELECT id FROM collections WHERE type='system_flag')
-                """,
-                    file_ids,
-                )
+                conn.execute(with_id_placeholders(CLEAR_STATUS_FLAGS, file_ids), file_ids)
 
                 for fid in file_ids:
                     results_map[fid] = "removed"
@@ -11636,15 +11632,7 @@ def tag_batch():
             else:
                 # If adding a system flag explicitly, still maintain mutual exclusivity
                 if coll_type == "system_flag" and action == "add":
-                    placeholders = ",".join(["?"] * len(file_ids))
-                    conn.execute(
-                        f"""
-                        DELETE FROM collection_files
-                        WHERE file_id IN ({placeholders})
-                        AND collection_id IN (SELECT id FROM collections WHERE type='system_flag')
-                    """,
-                        file_ids,
-                    )
+                    conn.execute(with_id_placeholders(CLEAR_STATUS_FLAGS, file_ids), file_ids)
 
                 for fid in file_ids:
                     if action == "add":
@@ -12048,8 +12036,11 @@ def collection_view(coll_id):
                         expanded_raters.append(str(admin_id[0]))
             except sqlite3.Error:
                 pass
-        placeholders = ",".join(["?"] * len(expanded_raters))
-        conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid IN ({placeholders}))")
+        conditions.append(
+            with_id_placeholders(
+                "f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid IN ({ids}))", expanded_raters
+            )
+        )
         params.extend(expanded_raters)
 
     if selected_exts:
@@ -12507,20 +12498,20 @@ def exhibition_rate_batch():
 
     try:
         with get_db_connection() as conn:
-            placeholders = ",".join(["?"] * len(allowed))
             present = {
-                row[0] for row in conn.execute(f"SELECT id FROM files WHERE id IN ({placeholders})", allowed).fetchall()
+                row[0]
+                for row in conn.execute(
+                    with_id_placeholders("SELECT id FROM files WHERE id IN ({ids})", allowed), allowed
+                ).fetchall()
             }
             file_ids = [fid for fid in allowed if fid in present]
             if not file_ids:
                 return jsonify({"status": "error", "message": "File not found"}), 404
 
             if rating is None or rating == 0:
-                placeholders = ",".join(["?"] * len(file_ids))
-                query = f"""
-                    DELETE FROM file_ratings
-                    WHERE file_id IN ({placeholders}) AND client_uuid = ?
-                """
+                query = with_id_placeholders(
+                    "DELETE FROM file_ratings WHERE file_id IN ({ids}) AND client_uuid = ?", file_ids
+                )
                 params = [*file_ids, client_uuid]
                 conn.execute(query, params)
             else:
