@@ -26,7 +26,6 @@ database with no rows reads exactly like one that has not been read yet.
 from __future__ import annotations
 
 import ast
-import hashlib
 import os
 
 import pytest
@@ -35,7 +34,7 @@ import smartgallery
 
 
 def _key(path, mtime):
-    return hashlib.md5((path + str(mtime)).encode()).hexdigest()
+    return smartgallery.content_digest(path + str(mtime))
 
 
 @pytest.fixture

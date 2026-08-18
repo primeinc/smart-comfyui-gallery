@@ -2334,6 +2334,71 @@ def _is_guest_uuid(value):
 FFPROBE_TIMEOUT = 30  # version check and metadata reads
 FFMPEG_TIMEOUT = 300  # thumbnail extraction and metadata stripping
 
+
+def content_digest(data):
+    """A short stable name for a piece of content. Not a security check.
+
+    File ids, thumbnail cache keys, prompt and workflow hashes are all "the
+    same bytes get the same name", and they are stored in the database, so
+    the digest must not change. MD5 is kept for that reason and declared
+    `usedforsecurity=False`, which says so and keeps the gallery working on
+    a FIPS-enforcing build, where an unmarked MD5 raises instead of hashing.
+
+    Accepts bytes, or str which is encoded as UTF-8 -- the call sites spelled
+    that out twenty-two different times, some with an explicit encoding and
+    some relying on the default.
+    """
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return hashlib.md5(data, usedforsecurity=False).hexdigest()
+
+
+def no_console_window():
+    """The creationflags every ffmpeg and ffprobe call needs on Windows.
+
+    Without it each call flashes a console window over whatever the person
+    is looking at, and a scan opens one per file. This was written out at
+    fourteen call sites -- thirteen as `sys.platform == "win32"` and one as
+    `os.name == "nt"` -- so the answer to "does this call raise a window"
+    depended on which copy you happened to read.
+    """
+    return subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+
+def run_media_tool(cmd, timeout, capture=True):
+    """Run ffmpeg or ffprobe the way every call site here needs it run.
+
+    `check=False` is stated rather than left to the default because it is a
+    decision, not an oversight: each caller reads `returncode` itself and
+    treats a failure as "no metadata" or "no thumbnail" for that one file.
+    Raising instead would turn a damaged file into a failed scan.
+
+    The timeout is required, not defaulted -- both tools hang readily, and
+    a hang here is a request or a scan that never returns.
+
+    `capture=False` discards the output rather than inheriting the console:
+    ffmpeg writes its progress to stderr, and a caller that does not read it
+    does not want it interleaved with the gallery's own messages.
+    """
+    if capture:
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            creationflags=no_console_window(),
+            check=False,
+        )
+    return subprocess.run(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=timeout,
+        creationflags=no_console_window(),
+        check=False,
+    )
+
+
 # Playing a video transcodes it as it goes, so it has no total run time to
 # bound -- a two hour film legitimately streams for two hours. What it must
 # not do is wait forever for a frame that is not coming.
@@ -2382,7 +2447,7 @@ def _is_ffprobe(path_or_name):
             capture_output=True,
             check=True,
             timeout=FFPROBE_TIMEOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            creationflags=no_console_window(),
         )
     except Exception:
         return False
@@ -2886,7 +2951,7 @@ def extract_workflow(filepath, target_type="ui"):
                     errors="ignore",
                     check=True,
                     timeout=FFPROBE_TIMEOUT,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                    creationflags=no_console_window(),
                 )
                 data = json.loads(result.stdout)
                 if "format" in data and "tags" in data["format"]:
@@ -3043,13 +3108,7 @@ def analyze_file_metadata(filepath):
                     filepath,
                 ]
 
-                res = subprocess.run(
-                    cmd_info,
-                    capture_output=True,
-                    text=True,
-                    timeout=3,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-                )
+                res = run_media_tool(cmd_info, timeout=3)
 
                 if res.stdout.strip():
                     total_duration_sec = float(res.stdout.strip())
@@ -3158,7 +3217,7 @@ def prune_thumbnail_cache(conn):
     if not rows:
         return 0, 0
 
-    live = {hashlib.md5((row["path"] + str(row["mtime"])).encode()).hexdigest() for row in rows}
+    live = {content_digest(row["path"] + str(row["mtime"])) for row in rows}
 
     removed_files = removed_dirs = 0
     try:
@@ -3221,8 +3280,7 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
             "png",
             tmp_path,
         ]
-        cf = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, creationflags=cf)
+        run_media_tool(cmd, timeout=20, capture=False)
         if os.path.exists(tmp_path):
             os.replace(tmp_path, cache_path)
             return cache_path
@@ -3368,7 +3426,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     tmp_path,
                 ]
 
-                creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                creation_flags = no_console_window()
                 subprocess.run(
                     cmd,
                     stdout=subprocess.DEVNULL,
@@ -3705,7 +3763,7 @@ def process_single_file(filepath):
     try:
         mtime = os.path.getmtime(filepath)
         metadata = analyze_file_metadata(filepath)
-        file_hash_for_thumbnail = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+        file_hash_for_thumbnail = content_digest(filepath + str(mtime))
 
         if thumbnail_generation_enabled() and not glob.glob(
             os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash_for_thumbnail}.*")
@@ -3715,7 +3773,7 @@ def process_single_file(filepath):
         if GENERATE_WAVEFORMS and metadata["type"] in ["video", "audio"]:
             create_waveform(filepath, file_hash_for_thumbnail, metadata["type"])
 
-        file_id = hashlib.md5(filepath.encode()).hexdigest()
+        file_id = content_digest(filepath)
         file_size = os.path.getsize(filepath)
 
         # Extract workflow data
@@ -5360,7 +5418,7 @@ def pregenerate_exhibition_cache():
 
             # CRITICAL: Calculate hash using the EXACT path string from the DB
             # to match the retrieval logic in serve_cleaned_file().
-            cache_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+            cache_hash = content_digest(filepath + str(mtime))
             _, ext = os.path.splitext(filepath)
             clean_path = os.path.join(CLEAN_CACHE_DIR, f"{cache_hash}{ext}")
 
@@ -5524,7 +5582,7 @@ def initialize_gallery():
                     for r in rows:
                         old_p = r["path"]
                         new_p = old_p.replace(old_notes_prefix, new_notes_prefix, 1)
-                        new_id = hashlib.md5(new_p.encode()).hexdigest()
+                        new_id = content_digest(new_p)
                         # Everything referencing the old id moves with it. Updating
                         # files.id first used to raise a foreign key error that this
                         # block's own except swallowed into a one-line notice, so the
@@ -5816,8 +5874,7 @@ def strip_media_metadata(input_path, output_path, file_type):
                 output_path,
             ]
 
-            cf = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT, creationflags=cf)
+            result = run_media_tool(cmd, timeout=FFMPEG_TIMEOUT)
 
             if result.returncode == 0 and os.path.exists(output_path):
                 return True
@@ -8056,12 +8113,20 @@ def mount_folder():
 
             # Attempt 1: Junction (/J)
             # Ideal for local drives, does not require Admin usually.
-            cmd_junction = f'mklink /J "{win_link}" "{win_target}"'
+            #
+            # mklink is a cmd builtin, so cmd has to run it -- but the
+            # arguments are passed as a list rather than pasted into one
+            # string. They used to be interpolated into
+            #   f'mklink /J "{win_link}" "{win_target}"'
+            # and handed to shell=True, and win_link is built from a folder
+            # name the caller supplies. A name containing a double quote
+            # closed the quoting and everything after it ran as its own
+            # command, as whoever the gallery runs as.
+            cmd_junction = ["cmd", "/c", "mklink", "/J", win_link, win_target]
 
-            # Use subprocess.run to capture the specific error message from Windows
             # Linking a target on unreachable network storage can sit there;
             # the caller is a request waiting on the answer.
-            result = subprocess.run(cmd_junction, shell=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT)
+            result = subprocess.run(cmd_junction, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT, check=False)
 
             if result.returncode != 0:
                 # Capture the actual error (e.g. "Local volumes are required...")
@@ -8072,9 +8137,9 @@ def mount_folder():
                 # Attempt 2: Symbolic Link (/D)
                 # Necessary for Network Shares, Virtual Drives, or Cross-Volume links.
                 # NOTE: This usually requires Developer Mode enabled OR running ComfyUI as Administrator.
-                cmd_symlink = f'mklink /D "{win_link}" "{win_target}"'
+                cmd_symlink = ["cmd", "/c", "mklink", "/D", win_link, win_target]
                 result_sym = subprocess.run(
-                    cmd_symlink, shell=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT
+                    cmd_symlink, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT, check=False
                 )
 
                 if result_sym.returncode != 0:
@@ -8551,7 +8616,7 @@ def rename_folder(folder_key):
                 new_file_path = os.path.join(new_dir, filename)
 
                 # 3. GENERATE ID
-                new_id = hashlib.md5(new_file_path.encode()).hexdigest()
+                new_id = content_digest(new_file_path)
 
                 update_data.append((new_id, new_file_path, row["id"]))
                 ids_to_clean_collisions.append(new_id)
@@ -8923,7 +8988,7 @@ def move_batch():
                     renamed_count += 1
 
                 # 3. Calculate New ID based on the NATIVE path
-                new_id = hashlib.md5(final_dest_path.encode()).hexdigest()
+                new_id = content_digest(final_dest_path)
 
                 # 4. DB Update / Merge Logic, then the file itself.
                 # A file's id is derived from its path, so moving one changes
@@ -9059,7 +9124,7 @@ def copy_batch():
                 shutil.copy2(source_path, final_dest_path)
 
                 # 4. Create DB Record
-                new_id = hashlib.md5(final_dest_path.encode()).hexdigest()
+                new_id = content_digest(final_dest_path)
                 new_mtime = time.time()  # New file gets new import time
 
                 # Logic for Favorites
@@ -9312,7 +9377,7 @@ def rename_file(file_id):
             if os.path.exists(new_path):
                 return jsonify({"status": "error", "message": f'File "{final_new_name}" already exists.'}), 409
 
-            new_id = hashlib.md5(new_path.encode()).hexdigest()
+            new_id = content_digest(new_path)
             existing_db = conn.execute("SELECT id FROM files WHERE id = ?", (new_id,)).fetchone()
 
             if existing_db:
@@ -9397,7 +9462,7 @@ def serve_cleaned_file(file_id):
     filepath, mtime, file_type = info["path"], info["mtime"], info["type"]
 
     # Calculate unique cache filename
-    cache_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+    cache_hash = content_digest(filepath + str(mtime))
     _, ext = os.path.splitext(filepath)
     clean_filename = f"{cache_hash}{ext}"
     clean_path = os.path.join(CLEAN_CACHE_DIR, clean_filename)
@@ -9480,7 +9545,7 @@ def download_file(file_id):
         info = get_file_info_from_db(file_id)
         filepath, mtime, file_type = info["path"], info["mtime"], info["type"]
 
-        cache_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+        cache_hash = content_digest(filepath + str(mtime))
         _, ext = os.path.splitext(filepath)
         clean_path = os.path.join(CLEAN_CACHE_DIR, f"{cache_hash}{ext}")
 
@@ -9677,7 +9742,7 @@ def serve_waveform(file_id):
     info = get_file_info_from_db(file_id)
     filepath = info["path"]
     file_type = info["type"]
-    file_hash = hashlib.md5((filepath + str(info["mtime"])).encode()).hexdigest()
+    file_hash = content_digest(filepath + str(info["mtime"]))
 
     try:
         amp = float(request.args.get("amp", "1.0"))
@@ -9707,7 +9772,7 @@ def serve_thumbnail(file_id):
         abort(403, description="Access Denied.")
     info = get_file_info_from_db(file_id)
     filepath, mtime = info["path"], info["mtime"]
-    file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+    file_hash = content_digest(filepath + str(mtime))
     existing_thumbnails = glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*"))
     if existing_thumbnails:
         return send_file(existing_thumbnails[0])
@@ -9762,7 +9827,7 @@ def get_storyboard(file_id):
         mtime = info["mtime"]
 
         # 2. Cache Strategy
-        file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+        file_hash = content_digest(filepath + str(mtime))
         cache_subdir = os.path.join(THUMBNAIL_CACHE_DIR, file_hash)
 
         # Return cached results immediately if available
@@ -9794,13 +9859,7 @@ def get_storyboard(file_id):
                     "csv=p=0",
                     filepath,
                 ]
-                res = subprocess.run(
-                    cmd_info,
-                    capture_output=True,
-                    text=True,
-                    timeout=3,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-                )
+                res = run_media_tool(cmd_info, timeout=3)
                 if res.stdout.strip():
                     parts = res.stdout.strip().split(",")
 
@@ -9849,13 +9908,7 @@ def get_storyboard(file_id):
                         "default=noprint_wrappers=1:nokey=1",
                         filepath,
                     ]
-                    res2 = subprocess.run(
-                        cmd_dur2,
-                        capture_output=True,
-                        text=True,
-                        timeout=3,
-                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-                    )
+                    res2 = run_media_tool(cmd_dur2, timeout=3)
                     if res2.stdout.strip():
                         duration = float(res2.stdout.strip())
                 except (OSError, subprocess.SubprocessError, ValueError):
@@ -9890,7 +9943,7 @@ def get_storyboard(file_id):
             # Test at 50% - faster seek and still detects corruption
             test_timestamp = duration * 0.5
 
-            creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            creation_flags = no_console_window()
 
             # Adaptive timeout based on duration
             test_timeout = min(20, max(8, int(duration / 100)))  # 8-20s range
@@ -9974,7 +10027,7 @@ def get_storyboard(file_id):
                     temp_transcoded,
                 ]
 
-                creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                creation_flags = no_console_window()
 
                 subprocess.run(cmd_transcode, capture_output=True, text=True, timeout=300, creationflags=creation_flags)
 
@@ -9996,13 +10049,7 @@ def get_storyboard(file_id):
                             "csv=p=0",
                             temp_transcoded,
                         ]
-                        res = subprocess.run(
-                            cmd_info,
-                            capture_output=True,
-                            text=True,
-                            timeout=2,
-                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-                        )
+                        res = run_media_tool(cmd_info, timeout=2)
                         if res.stdout.strip():
                             parts = res.stdout.strip().split(",")
 
@@ -10053,7 +10100,7 @@ def get_storyboard(file_id):
                     if not os.path.exists(ffmpeg_bin):
                         ffmpeg_bin = ffmpeg_name
 
-                    creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                    creation_flags = no_console_window()
 
                     # Fast extraction
                     cmd = [
@@ -10502,7 +10549,7 @@ def stream_video(file_id):
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            creationflags=no_console_window(),
         )
         return stream_media_process(process, os.path.basename(filepath or ""))
 
@@ -15135,7 +15182,7 @@ def upload_collection_note():
     try:
         file.save(dest_path)
         mtime = os.path.getmtime(dest_path)
-        file_id = hashlib.md5(dest_path.encode()).hexdigest()
+        file_id = content_digest(dest_path)
         file_size = os.path.getsize(dest_path)
 
         with get_db_connection() as conn:
@@ -15204,7 +15251,7 @@ def _foreign_cluster_hashes(parsed):
         return "", "", ""
     prompt_hash = ""
     if parsed.positive:
-        prompt_hash = hashlib.md5(parsed.positive.strip().lower().encode("utf-8")).hexdigest()
+        prompt_hash = content_digest(parsed.positive.strip().lower())
     loras = {m.group(1).strip().lower() for m in re.finditer(r"<lora:([^:>]+)", parsed.positive or "")}
     for key in ("loras", "used_loras", "lora_hashes", "Lora hashes", "used models"):
         value = parsed.extra.get(key)
@@ -15226,13 +15273,13 @@ def _foreign_cluster_hashes(parsed):
             {"keys": sorted(keys), "models": sorted(model_values), "loras": sorted(loras)},
             sort_keys=True,
         )
-        workflow_hash = hashlib.md5(identity.encode("utf-8")).hexdigest()
+        workflow_hash = content_digest(identity)
 
     models_hash = ""
     model = str(parsed.params.get("model") or "").strip().lower()
     if model:
         identity = json.dumps({"model": model, "loras": sorted(loras)}, sort_keys=True)
-        models_hash = hashlib.md5(identity.encode("utf-8")).hexdigest()
+        models_hash = content_digest(identity)
     return workflow_hash, prompt_hash, models_hash
 
 
@@ -15267,7 +15314,7 @@ def compute_workflow_hashes(filepath):
 
         data = json.loads(wf_json)
         prompt_text = extract_workflow_prompt_string(wf_json)
-        prompt_hash = hashlib.md5(prompt_text.strip().lower().encode("utf-8")).hexdigest() if prompt_text else ""
+        prompt_hash = content_digest(prompt_text.strip().lower()) if prompt_text else ""
 
         MODEL_EXTENSIONS = (
             ".safetensors",
@@ -15392,13 +15439,13 @@ def compute_workflow_hashes(filepath):
             return "", prompt_hash, ""
 
         struct_str = json.dumps(node_descriptors, sort_keys=True)
-        workflow_hash = hashlib.md5(struct_str.encode("utf-8")).hexdigest()
+        workflow_hash = content_digest(struct_str)
 
         # Coarse identity: just the set of model files the graph loads.
         all_models = sorted({m for d in node_descriptors for m in d["models"]})
         models_hash = ""
         if all_models:
-            models_hash = hashlib.md5(json.dumps(all_models).encode("utf-8")).hexdigest()
+            models_hash = content_digest(json.dumps(all_models))
 
         # prompt_hash stays empty when the workflow has no positive prompt:
         # prompt clusters mean "identical prompt text", and a synthesized
@@ -15550,13 +15597,7 @@ def backfill_audio_durations(conn=None):
                         "default=noprint_wrappers=1:nokey=1",
                         fpath,
                     ]
-                    res = subprocess.run(
-                        cmd_info,
-                        capture_output=True,
-                        text=True,
-                        timeout=3,
-                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-                    )
+                    res = run_media_tool(cmd_info, timeout=3)
                     if res.stdout.strip():
                         total_duration_sec = float(res.stdout.strip())
                         dur = format_duration(total_duration_sec)
@@ -15617,11 +15658,7 @@ def clear_synthetic_prompt_hashes(conn):
     rows = conn.execute(
         "SELECT id, workflow_hash, prompt_hash FROM files WHERE prompt_hash != '' AND workflow_hash != ''"
     ).fetchall()
-    synthetic = [
-        (r["id"],)
-        for r in rows
-        if r["prompt_hash"] == hashlib.md5((r["workflow_hash"] + "_prompt").encode("utf-8")).hexdigest()
-    ]
+    synthetic = [(r["id"],) for r in rows if r["prompt_hash"] == content_digest(r["workflow_hash"] + "_prompt")]
     if synthetic:
         conn.executemany("UPDATE files SET prompt_hash = '' WHERE id = ?", synthetic)
         conn.commit()

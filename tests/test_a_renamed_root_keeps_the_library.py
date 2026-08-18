@@ -162,7 +162,7 @@ def test_a_file_that_really_went_is_still_removed(smartgallery_app, a_library_of
         fh.write(b"x")
 
     vanished = os.path.join(folder, "deleted.png").replace(os.sep, "/")
-    ghost_id = __import__("hashlib").md5(vanished.encode()).hexdigest()
+    ghost_id = smartgallery.content_digest(vanished)
 
     conn = smartgallery_app.get_db_connection()
     try:
@@ -236,7 +236,7 @@ def test_the_library_survives_a_scan_at_the_new_address(smartgallery_app, a_libr
                 fh.write(b"x")
             # recorded under a spelling the scan will not produce
             recorded = target.replace(os.sep, "/").replace("rootmove_probe", "ROOTMOVE_PROBE")
-            file_id = __import__("hashlib").md5(recorded.encode()).hexdigest()
+            file_id = smartgallery.content_digest(recorded)
             ids.append(file_id)
             conn.execute(
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",

@@ -716,7 +716,11 @@ def test_compute_hashes_prompt_hash_is_normalized_md5_of_prompt(sg, tmp_path, mo
     _, prompt_hash, _ = sg.compute_workflow_hashes(str(f))
 
     # Assert: stripped + lowercased before hashing.
-    assert prompt_hash == hashlib.md5(b"a cyberpunk street").hexdigest()
+    # Computed here rather than through sg.content_digest: this is the
+    # assertion, and checking the app's hash against the app's own helper
+    # would only prove it is self-consistent. What is being checked is that
+    # the prompt was stripped and lowercased before it was hashed.
+    assert prompt_hash == hashlib.md5(b"a cyberpunk street", usedforsecurity=False).hexdigest()
 
 
 # --- clear_synthetic_prompt_hashes ------------------------------------------
@@ -724,7 +728,7 @@ def test_compute_hashes_prompt_hash_is_normalized_md5_of_prompt(sg, tmp_path, mo
 
 def test_clear_synthetic_prompt_hashes_removes_only_synthetic_values(sg):
     # Arrange: one legacy synthetic row, one genuine prompt hash.
-    synthetic_val = hashlib.md5(("wfLEG" + "_prompt").encode("utf-8")).hexdigest()
+    synthetic_val = sg.content_digest("wfLEG" + "_prompt")
     with sg.get_db_connection() as conn:
         _insert_file(conn, "syn", workflow_hash="wfLEG", prompt_hash=synthetic_val)
         _insert_file(conn, "real", workflow_hash="wfLEG2", prompt_hash="genuinehash")

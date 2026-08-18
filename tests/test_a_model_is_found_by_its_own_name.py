@@ -49,7 +49,6 @@ second rule that can disagree with the first -- so it is not there.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 
@@ -96,7 +95,7 @@ def a_library_of_models(smartgallery_app, tmp_path, monkeypatch):
             path = str(root / ("m%02d.png" % index))
             with open(path, "wb") as handle:
                 handle.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
-            fid = hashlib.md5(path.encode("utf-8")).hexdigest()
+            fid = smartgallery.content_digest(path)
             conn.execute(
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
                 "has_workflow, size, workflow_files, last_scanned) "
@@ -233,7 +232,7 @@ def test_a_file_made_without_any_model_answers_an_exclusion(smartgallery_app, a_
         path = os.path.join(sg.BASE_OUTPUT_PATH, "plain.png")
         with open(path, "wb") as handle:
             handle.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
-        fid = hashlib.md5(path.encode("utf-8")).hexdigest()
+        fid = smartgallery.content_digest(path)
         conn.execute(
             "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
             "has_workflow, size, workflow_files, last_scanned) "

@@ -127,7 +127,7 @@ def a_folder_with_a_picture(smartgallery_app, monkeypatch):
         fh.write(b"not really a png")
 
     stored = picture.replace(os.sep, "/")
-    file_id = __import__("hashlib").md5(stored.encode()).hexdigest()
+    file_id = smartgallery.content_digest(stored)
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(

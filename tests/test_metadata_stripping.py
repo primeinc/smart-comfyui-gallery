@@ -25,7 +25,6 @@ from __future__ import annotations
 import concurrent.futures
 import contextlib
 import glob
-import hashlib
 import os
 
 import pytest
@@ -164,7 +163,7 @@ def _drop_cached_thumbnail(smartgallery_app):
         row = conn.execute("SELECT path, mtime FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()
     finally:
         conn.close()
-    digest = hashlib.md5((row[0] + str(row[1])).encode()).hexdigest()
+    digest = smartgallery_app.content_digest(row[0] + str(row[1]))
     for cached in glob.glob(os.path.join(smartgallery_app.THUMBNAIL_CACHE_DIR, f"{digest}.*")):
         os.remove(cached)
 

@@ -53,7 +53,6 @@ counting was lost -- which is exactly why nobody noticed.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 from datetime import datetime, timedelta
@@ -87,7 +86,7 @@ def a_library_by_the_hour(smartgallery_app, tmp_path, monkeypatch):
             path = str(root / ("h%02d.png" % hour))
             with open(path, "wb") as handle:
                 handle.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
-            fid = hashlib.md5(path.encode("utf-8")).hexdigest()
+            fid = smartgallery.content_digest(path)
             conn.execute(
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
                 "has_workflow, size, last_scanned) VALUES (?,?,?,?,?,?,?,?)",

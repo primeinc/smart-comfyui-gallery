@@ -6,7 +6,6 @@ deleted, and re-enabling only generates what is actually missing (cache
 keys are md5(path+mtime), so only changed files ever regenerate).
 """
 
-import hashlib
 import os
 
 import pytest
@@ -68,7 +67,7 @@ def test_serve_thumbnail_falls_back_to_original_when_disabled(sg, tmp_path):
     # Arrange: an indexed image with no cached thumbnail.
     path = _make_png(tmp_path, "orig.png")
     mtime = os.path.getmtime(path)
-    file_id = hashlib.md5(path.encode()).hexdigest()
+    file_id = sg.content_digest(path)
     with sg.get_db_connection() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?, ?, ?, 'orig.png', 'image')",
@@ -85,7 +84,7 @@ def test_serve_thumbnail_falls_back_to_original_when_disabled(sg, tmp_path):
         assert resp.data == open(path, "rb").read()
         import glob as _glob
 
-        file_hash = hashlib.md5((path + str(mtime)).encode()).hexdigest()
+        file_hash = sg.content_digest(path + str(mtime))
         assert _glob.glob(os.path.join(sg.THUMBNAIL_CACHE_DIR, f"{file_hash}.*")) == []
     finally:
         with sg.get_db_connection() as conn:
