@@ -122,7 +122,8 @@ def test_first_party_discovery_finds_the_real_modules():
     names = _first_party_names()
 
     assert {"sg_auth", "smartgallery_ai", "metaparse", "omniquery"} <= names, names
-    assert "tests" not in names and "pytest" not in names, names
+    assert "tests" not in names, names
+    assert "pytest" not in names, names
 
 
 def _first_party_imports_under(root):

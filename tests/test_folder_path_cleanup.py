@@ -170,7 +170,8 @@ def test_unmounting_forgets_files_in_subfolders_of_the_mount(smartgallery_app, c
         assert resp.status_code == 200, resp.get_data(as_text=True)
 
         assert _rows(smartgallery_app) == [], f"rows survived the unmount: {_rows(smartgallery_app)}"
-        assert flat.exists() and deep.exists(), "unmounting deleted the files on the other drive"
+        assert flat.exists(), "unmounting deleted the files on the other drive"
+        assert deep.exists(), "unmounting deleted the files on the other drive"
     finally:
         link_path = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, link_name)
         if os.path.isdir(link_path):

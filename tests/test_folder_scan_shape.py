@@ -63,7 +63,8 @@ def test_the_cost_does_not_grow_with_the_number_of_folders(smartgallery_app, tmp
     small, small_found = _count_connections_for(smartgallery_app, monkeypatch, tmp_path / "small", 20)
     large, large_found = _count_connections_for(smartgallery_app, monkeypatch, tmp_path / "large", 400)
 
-    assert small_found == 21 and large_found == 401, (small_found, large_found)
+    assert small_found == 21, (small_found, large_found)
+    assert large_found == 401, (small_found, large_found)
     assert large <= small, (
         f"a scan of 400 folders opened {large} database connections against "
         f"{small} for 20. Something in the folder loop is querying per folder; "

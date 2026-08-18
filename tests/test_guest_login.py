@@ -132,7 +132,8 @@ def test_a_guest_cannot_overwrite_an_accounts_rating(guests_welcome, a_file):
         conn.close()
 
     victim = [r for r in rows if r[0] == "41"]
-    assert victim and victim[0][1] == 5, f"the account's rating was overwritten: {rows}"
+    assert victim, f"the account's rating was overwritten: {rows}"
+    assert victim[0][1] == 5, f"the account's rating was overwritten: {rows}"
 
 
 @pytest.mark.parametrize(

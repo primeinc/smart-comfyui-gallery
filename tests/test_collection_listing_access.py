@@ -84,9 +84,8 @@ def test_a_customer_does_not_learn_the_private_albums(smartgallery_app, albums, 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
     assert "cla_private" not in _names(resp), "a customer was told a private album exists"
     body = resp.get_data(as_text=True)
-    assert '"shared_users": "41"' not in body and "'shared_users': '41'" not in body, (
-        "the response named who a private album is shared with"
-    )
+    assert '"shared_users": "41"' not in body, "the response named who a private album is shared with"
+    assert "'shared_users': '41'" not in body, "the response named who a private album is shared with"
 
 
 def test_the_user_it_is_shared_with_still_sees_it(smartgallery_app, albums, monkeypatch):

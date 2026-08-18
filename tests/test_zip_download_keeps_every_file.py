@@ -138,7 +138,8 @@ def test_the_zip_that_gets_built_holds_them_all(smartgallery_app, tmp_path, monk
         smartgallery.background_zip_task("testjob", ids)
 
         status = smartgallery.zip_jobs.get("testjob")
-        assert status and status.get("status") == "ready", status
+        assert status, status
+        assert status.get("status") == "ready", status
 
         archive = os.path.join(smartgallery.ZIP_CACHE_DIR, status["filename"])
         with zipfile.ZipFile(archive) as zf:
@@ -195,7 +196,8 @@ def test_a_single_folder_zip_still_has_the_original_names(smartgallery_app, tmp_
     try:
         smartgallery.background_zip_task("testjob_one", ids)
         status = smartgallery.zip_jobs.get("testjob_one")
-        assert status and status.get("status") == "ready", status
+        assert status, status
+        assert status.get("status") == "ready", status
 
         archive = os.path.join(smartgallery.ZIP_CACHE_DIR, status["filename"])
         with zipfile.ZipFile(archive) as zf:

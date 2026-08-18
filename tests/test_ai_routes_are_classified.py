@@ -120,7 +120,8 @@ def test_it_can_tell_the_policies_apart(classified):
     satisfied without distinguishing anything."""
     kinds = set(classified.values())
 
-    assert "guarded" in kinds and "per-file" in kinds, classified
+    assert "guarded" in kinds, classified
+    assert "per-file" in kinds, classified
     assert classified["status"] == "guarded"
     assert classified["faces_clusters"] == "guarded"
     assert classified["similar"] == "per-file"

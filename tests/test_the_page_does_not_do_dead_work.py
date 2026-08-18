@@ -188,7 +188,8 @@ def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
         deep = client.get(f"/galleryout/view/{key}?recursive=true", follow_redirects=True).get_data(as_text=True)
         shallow = client.get(f"/galleryout/view/{key}?recursive=false", follow_redirects=True).get_data(as_text=True)
 
-        assert "top.png" in deep and "under.png" in deep, "a recursive view lost a file below the folder"
+        assert "top.png" in deep, "a recursive view lost a file below the folder"
+        assert "under.png" in deep, "a recursive view lost a file below the folder"
         assert "top.png" in shallow, "the folder's own file went missing"
         assert "under.png" not in shallow, "a non-recursive view listed a file from a folder below it"
     finally:

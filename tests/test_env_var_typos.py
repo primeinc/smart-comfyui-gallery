@@ -137,5 +137,6 @@ def test_the_warning_is_printed_and_not_fatal(capsys):
         del os.environ["BASE_OUTPUT_PAT"]
 
     out = capsys.readouterr().out
-    assert "BASE_OUTPUT_PAT" in out and "BASE_OUTPUT_PATH" in out, out
+    assert "BASE_OUTPUT_PAT" in out, out
+    assert "BASE_OUTPUT_PATH" in out, out
     assert "ignored" in out

@@ -153,7 +153,8 @@ def test_the_owner_can_work_on_their_library(smartgallery_app, local_gallery):
     finally:
         conn.close()
 
-    assert rating and rating[0] == 5, "the rating did not survive the rename"
+    assert rating, "the rating did not survive the rename"
+    assert rating[0] == 5, "the rating did not survive the rename"
     assert comments == 1, "the comment did not survive the rename"
 
 

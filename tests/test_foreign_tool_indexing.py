@@ -79,7 +79,8 @@ def test_the_prompt_is_read_out_of_the_infotext(smartgallery_app, a1111_file):
     finally:
         conn.close()
 
-    assert prompt and "photo of a cat" in prompt, repr(prompt)
+    assert prompt, repr(prompt)
+    assert "photo of a cat" in prompt, repr(prompt)
 
 
 def test_the_typed_parameters_reach_the_database(smartgallery_app, a1111_file):

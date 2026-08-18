@@ -139,7 +139,8 @@ def test_the_owner_can_run_their_gallery(smartgallery_app, team_gallery):
         rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?", (row[0],)).fetchone()
     finally:
         conn.close()
-    assert rating and rating[0] == 5, "the rating did not follow the move"
+    assert rating, "the rating did not follow the move"
+    assert rating[0] == 5, "the rating did not follow the move"
 
     # A zip of the remaining picture, through the whole three-step flow.
     second = team_gallery[f"{_PREFIX}two.png"]

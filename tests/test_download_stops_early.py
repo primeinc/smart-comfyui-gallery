@@ -80,7 +80,8 @@ def test_a_short_download_is_refused(serve, tmp_path):
         provision._download_url("https://example.invalid/weights.bin", str(dest))
 
     message = str(refused.value)
-    assert "400" in message and "1,000" in message, message
+    assert "400" in message, message
+    assert "1,000" in message, message
     assert not dest.exists(), "a partial download was kept as the artifact"
 
 

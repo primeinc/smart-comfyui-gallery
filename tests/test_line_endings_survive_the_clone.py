@@ -92,16 +92,18 @@ def test_the_checkout_is_really_in_that_mode(checkouts, autocrlf, expect_crlf):
     crlf, bare = _endings(checkouts[autocrlf] / _BELLWETHER)
 
     if expect_crlf:
-        assert crlf > 0 and bare == 0, (
-            f"with core.autocrlf=true a file with no rule came out with "
-            f"{bare} bare newlines; this checkout is not converting, so the "
-            f"checks here would pass against no policy at all"
+        assert crlf > 0, (
+            f"with core.autocrlf=true a file with no rule came out with {bare} bare newlines; this checkout is not converting, so the checks here would pass against no policy at all"
+        )
+        assert bare == 0, (
+            f"with core.autocrlf=true a file with no rule came out with {bare} bare newlines; this checkout is not converting, so the checks here would pass against no policy at all"
         )
     else:
-        assert bare > 0 and crlf == 0, (
-            f"with core.autocrlf=false a file with no rule came out with "
-            f"{crlf} CRLF; this checkout is converting on its own, so the "
-            f"CRLF checks below would pass without any policy"
+        assert bare > 0, (
+            f"with core.autocrlf=false a file with no rule came out with {crlf} CRLF; this checkout is converting on its own, so the CRLF checks below would pass without any policy"
+        )
+        assert crlf == 0, (
+            f"with core.autocrlf=false a file with no rule came out with {crlf} CRLF; this checkout is converting on its own, so the CRLF checks below would pass without any policy"
         )
 
 

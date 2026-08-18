@@ -51,7 +51,8 @@ def test_a_thumbnail_is_written_when_the_cache_is_there(smartgallery_app, pictur
 
     made = smartgallery_app.create_thumbnail(picture, "ctrl_present", "image")
 
-    assert made and os.path.isfile(made), made
+    assert made, made
+    assert os.path.isfile(made), made
 
 
 def test_the_folder_is_put_back_when_it_has_gone(smartgallery_app, picture):
@@ -63,7 +64,8 @@ def test_the_folder_is_put_back_when_it_has_gone(smartgallery_app, picture):
     made = smartgallery_app.create_thumbnail(picture, "recovered", "image")
 
     assert os.path.isdir(cache), "the cache folder was not put back"
-    assert made and os.path.isfile(made), made
+    assert made, made
+    assert os.path.isfile(made), made
 
 
 def test_it_is_not_recreated_outside_an_existing_gallery(smartgallery_app, picture, tmp_path, monkeypatch):

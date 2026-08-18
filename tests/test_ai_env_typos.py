@@ -47,7 +47,8 @@ def test_it_says_so(monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         smartgallery_ai._env_bool("ENABLE_AI_DAM", "true")
 
-    assert "ENABLE_AI_DAM" in caplog.text and "ture" in caplog.text, caplog.text
+    assert "ENABLE_AI_DAM" in caplog.text, caplog.text
+    assert "ture" in caplog.text, caplog.text
 
 
 @pytest.mark.parametrize(

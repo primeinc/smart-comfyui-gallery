@@ -63,7 +63,8 @@ def test_making_a_thumbnail_does_not_switch_the_guard_off(tmp_path):
     result = smartgallery.create_thumbnail(str(source), "ceilingprobe", "image")
 
     assert before == Image.MAX_IMAGE_PIXELS, "making a thumbnail changed the process-wide pixel ceiling"
-    assert result and os.path.exists(result), "the ordinary thumbnail stopped working"
+    assert result, "the ordinary thumbnail stopped working"
+    assert os.path.exists(result), "the ordinary thumbnail stopped working"
     os.remove(result)
 
 

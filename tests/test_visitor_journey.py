@@ -138,7 +138,8 @@ def test_a_visitor_can_do_the_whole_journey(smartgallery_app, exhibition):
         stored = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?", (file_id,)).fetchone()
     finally:
         conn.close()
-    assert stored and stored[0] == 4, "the visitor's rating was not recorded"
+    assert stored, "the visitor's rating was not recorded"
+    assert stored[0] == 4, "the visitor's rating was not recorded"
 
 
 def test_browsing_and_writing_need_a_session(smartgallery_app, exhibition):
