@@ -22,6 +22,7 @@ Format references (cloned under ../refs):
 import json
 import logging
 import re
+from typing import ClassVar
 from xml.dom import minidom
 
 from .containers import RawMetadata, load_raw
@@ -158,7 +159,7 @@ class FooocusAdapter:
     legacy builds used a bare `Comment`/`comment` JSON."""
 
     tool = "Fooocus"
-    _JSON_KEYS = {"prompt", "negative_prompt"}
+    _JSON_KEYS: ClassVar = {"prompt", "negative_prompt"}
 
     @staticmethod
     def _scheme_and_payload(raw: RawMetadata):
@@ -372,7 +373,7 @@ class EasyDiffusionAdapter:
 
     tool = "Easy Diffusion"
     # spaced-key variant -> snake variant (older vs newer exports)
-    _KEYS = {
+    _KEYS: ClassVar = {
         "Prompt": "prompt",
         "Negative Prompt": "negative_prompt",
         "Seed": "seed",

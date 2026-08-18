@@ -7,10 +7,10 @@ keys are md5(path+mtime), so only changed files ever regenerate).
 """
 
 import os
+import pathlib
 
 import pytest
 from PIL import Image
-import pathlib
 
 
 @pytest.fixture

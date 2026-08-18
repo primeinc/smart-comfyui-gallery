@@ -304,7 +304,7 @@ def test_cluster_faces_two_tight_groups_plus_outliers():
     sizes = sorted(c[1] for c in clusters)
     assert sizes == [5, 5]
 
-    for cluster_id, _size, centroid_blob, dim in clusters:
+    for _cluster_id, _size, centroid_blob, dim in clusters:
         centroid = np.frombuffer(centroid_blob, dtype="<f4")
         assert dim == 16
         assert centroid.shape == (16,)

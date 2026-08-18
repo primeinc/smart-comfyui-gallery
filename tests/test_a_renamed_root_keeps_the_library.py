@@ -116,8 +116,8 @@ def test_the_same_number_of_different_files_is_not_a_rename():
     """Over-reach guard, and why this matches names rather than counting.
     Two hundred pictures deleted and two hundred others added is a busy
     afternoon, not a moved folder."""
-    db = _paths(_OLD, ["old_%d.png" % i for i in range(200)])
-    disk = _paths(_OLD, ["new_%d.png" % i for i in range(200)])
+    db = _paths(_OLD, [f"old_{i}.png" for i in range(200)])
+    disk = _paths(_OLD, [f"new_{i}.png" for i in range(200)])
 
     assert not smartgallery.looks_like_a_renamed_root(db, db - disk, disk - db)
 

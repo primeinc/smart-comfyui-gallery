@@ -92,7 +92,7 @@ def a_library_of_models(smartgallery_app, tmp_path, monkeypatch):
         for index, (model, _what) in enumerate(MODELS):
             # exactly what the scan writes: normalize_smart_path
             stored = sg.normalize_smart_path(model)
-            path = str(root / ("m%02d.png" % index))
+            path = str(root / f"m{index:02d}.png")
             with open(path, "wb") as handle:
                 handle.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
             fid = smartgallery.content_digest(path)
@@ -100,7 +100,7 @@ def a_library_of_models(smartgallery_app, tmp_path, monkeypatch):
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
                 "has_workflow, size, workflow_files, last_scanned) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
-                (fid, path, 1.0, "m%02d.png" % index, "image", 1, 64, stored, 1.0),
+                (fid, path, 1.0, f"m{index:02d}.png", "image", 1, 64, stored, 1.0),
             )
             ids[model] = fid
         conn.commit()

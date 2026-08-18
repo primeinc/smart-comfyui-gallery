@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import contextlib
 import os
+import pathlib
 
 import pytest
 from PIL import Image
-import pathlib
 
 _PREFIX = "mvroute_"
 

@@ -26,6 +26,7 @@ import os
 import socket
 import threading
 import time
+from typing import ClassVar
 
 import pytest
 
@@ -85,7 +86,7 @@ def test_the_timeout_is_actually_passed_through(tmp_path, monkeypatch):
     seen = {}
 
     class _FakeResponse:
-        headers = {"Content-Length": "4"}
+        headers: ClassVar = {"Content-Length": "4"}
 
         def read(self, _n=None):
             return seen.pop("body", b"")

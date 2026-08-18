@@ -4688,7 +4688,7 @@ def get_dynamic_folder_config(force_refresh=False):
                 f_dir = os.path.normpath(os.path.dirname(r["path"])).replace("\\", "/").lower().rstrip("/")
                 dir_counts[f_dir] = dir_counts.get(f_dir, 0) + 1
 
-            for key, info in dynamic_config.items():
+            for info in dynamic_config.values():
                 info_path_norm = os.path.normpath(info["path"]).replace("\\", "/").lower().rstrip("/")
                 info["file_count"] = dir_counts.get(info_path_norm, 0)
 
@@ -15801,7 +15801,7 @@ def compute_workflow_hashes(filepath):
                             if any(base.endswith(ext) for ext in MODEL_EXTENSIONS):
                                 models.append(base)
                 elif isinstance(widgets, dict):
-                    for k, v in widgets.items():
+                    for v in widgets.values():
                         if isinstance(v, str) and v.strip():
                             v_clean = v.strip().replace(chr(92), "/")
                             base = os.path.basename(v_clean).lower()
@@ -15819,7 +15819,7 @@ def compute_workflow_hashes(filepath):
                     ntype = str(node.get("class_type", node.get("type", ""))).strip()
                     node_type_by_id[str(nid)] = ntype
 
-            for nid, node in data.items():
+            for node in data.values():
                 if not isinstance(node, dict):
                     continue
                 node_type = str(node.get("class_type", node.get("type", ""))).strip()

@@ -29,6 +29,7 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from typing import ClassVar
 
 import cv2
 from PIL import Image
@@ -163,7 +164,7 @@ class _ClickConsoleHandler(logging.Handler):
     plain stderr write instead of spewing a handleError traceback for
     every subsequent line."""
 
-    _LEVEL_COLORS = {
+    _LEVEL_COLORS: ClassVar = {
         logging.WARNING: "yellow",
         logging.ERROR: "red",
         logging.CRITICAL: "red",

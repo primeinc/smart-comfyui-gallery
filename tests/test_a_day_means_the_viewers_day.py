@@ -83,14 +83,14 @@ def a_library_by_the_hour(smartgallery_app, tmp_path, monkeypatch):
     with sg.get_db_connection() as conn:
         conn.execute("DELETE FROM files")
         for hour in hours:
-            path = str(root / ("h%02d.png" % hour))
+            path = str(root / f"h{hour:02d}.png")
             with open(path, "wb") as handle:
                 handle.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
             fid = smartgallery.content_digest(path)
             conn.execute(
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
                 "has_workflow, size, last_scanned) VALUES (?,?,?,?,?,?,?,?)",
-                (fid, path, base + hour * 3600, "h%02d.png" % hour, "image", 0, 64, 1.0),
+                (fid, path, base + hour * 3600, f"h{hour:02d}.png", "image", 0, 64, 1.0),
             )
             ids[hour] = fid
         conn.commit()

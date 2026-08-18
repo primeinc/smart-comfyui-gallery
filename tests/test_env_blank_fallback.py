@@ -12,6 +12,7 @@ multi-GB model weights into whatever the working directory happened to be.
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import tempfile
 from types import SimpleNamespace
@@ -19,7 +20,6 @@ from types import SimpleNamespace
 import pytest
 
 from smartgallery_ai import AIConfig
-import pathlib
 
 
 @pytest.mark.parametrize(
