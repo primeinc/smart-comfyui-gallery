@@ -89,13 +89,14 @@ def import_faiss():
         try:
             import faiss
 
-            return faiss
         except (Exception, SystemExit):
             # missing CUDA wheel DLLs, wrong arch, partial vendor dir --
             # purge the half-imported package and fall back to faiss-cpu
             for name in [m for m in sys.modules if m == "faiss" or m.startswith("faiss.")]:
                 del sys.modules[name]
             importlib.invalidate_caches()
+        else:
+            return faiss
         finally:
             with contextlib.suppress(ValueError):
                 sys.path.remove(_VENDOR_ROOT)

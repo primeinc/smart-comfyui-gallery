@@ -117,9 +117,10 @@ def _check_date_string(value: str, field_name: str) -> None:
     for fmt in (_ISO_DATE_FMT, _ISO_DATETIME_FMT):
         try:
             datetime.strptime(value, fmt)
-            return
         except ValueError:
             continue
+        else:
+            return
     raise ValidationError(
         f"field '{field_name}': invalid date string {value!r} (expected 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS')"
     )

@@ -731,10 +731,11 @@ def replace_faces_for_file(
             )
             face_ids.append(cur.lastrowid)
         conn.commit()
-        return face_ids
     except Exception:
         conn.rollback()
         raise
+    else:
+        return face_ids
 
 
 def _csr_from_edges(rows: np.ndarray, cols: np.ndarray, weights: np.ndarray, n: int) -> tuple:
@@ -1080,7 +1081,8 @@ def cluster_faces(
             )
 
         conn.commit()
-        return new_cluster_ids
     except Exception:
         conn.rollback()
         raise
+    else:
+        return new_cluster_ids

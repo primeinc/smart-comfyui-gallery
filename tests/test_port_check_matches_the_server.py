@@ -52,9 +52,10 @@ def _server_style_bind(port):
             )
         try:
             s.bind(("0.0.0.0", port))
-            return True
         except OSError:
             return False
+        else:
+            return True
 
 
 @pytest.fixture

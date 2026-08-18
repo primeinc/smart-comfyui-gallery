@@ -348,10 +348,11 @@ def env_num(name, default, cast=int, minimum=None):
         if minimum is not None and value < minimum:
             print(f"WARNING: {name}={raw!r} is below the minimum of {minimum}; using {default}.")
             return default
-        return value
     except (TypeError, ValueError):
         print(f"WARNING: {name}={raw!r} is not a valid number; using {default}.")
         return default
+    else:
+        return value
 
 
 def env_flag(name, default=False):
@@ -1064,11 +1065,12 @@ def get_standardized_path(filepath):
         # On Windows, filesystem is case-insensitive, so we lower for the DB unique key
         if os.name == "nt":
             return std_path.lower()
-        return std_path
     except (TypeError, ValueError, OSError):
         # abspath rejects a non-path argument, an embedded NUL, or a name the
         # platform cannot resolve. The raw text is still a usable queue key.
         return str(filepath)
+    else:
+        return std_path
 
 
 def _normalize_fuzzy_string(s):
@@ -2766,7 +2768,6 @@ def fetch_ffmpeg(progress=None):
         if not _is_ffprobe(ffprobe):
             raise OSError("the program that came out of the archive does not identify itself as ffprobe")
         print(f"{Colors.GREEN}SUCCESS: ffmpeg is ready at {destination}{Colors.RESET}")
-        return ffprobe
     except Exception as exc:
         _logger.debug("handled a failure in fetch_ffmpeg", exc_info=True)
         print(f"{Colors.YELLOW}WARNING: could not fetch ffmpeg: {exc}{Colors.RESET}")
@@ -2776,6 +2777,8 @@ def fetch_ffmpeg(progress=None):
             f"{Colors.RESET}"
         )
         return None
+    else:
+        return ffprobe
     finally:
         with contextlib.suppress(OSError):
             os.remove(archive)
@@ -6650,13 +6653,14 @@ def compare_files_api():
                 for p in node["params"]:
                     key = f"{node_type} > {p['name']}"
                     flat_params[key] = str(p["value"])
-            return flat_params
         except Exception:
             # Three helpers deep -- database, workflow extraction, node
             # summarising -- and the comparison view degrades to "no
             # parameters" for whatever any of them raises.
             _logger.debug("handled a failure in get_flat_params", exc_info=True)
             return {}
+        else:
+            return flat_params
 
     try:
         params_a = get_flat_params(id_a)
@@ -13306,9 +13310,10 @@ def check_port_available(port):
             pass  # same tolerance waitress has; the bind is what matters
         try:
             s.bind(("0.0.0.0", port))
-            return True
         except OSError:
             return False
+        else:
+            return True
 
 
 # --- OS FILE DESCRIPTOR BOOSTER (macOS/Linux) ---
@@ -15838,10 +15843,11 @@ def compute_workflow_hashes(filepath):
         # prompt_hash stays empty when the workflow has no positive prompt:
         # prompt clusters mean "identical prompt text", and a synthesized
         # value would group files that share no prompt at all.
-        return workflow_hash, prompt_hash, models_hash
     except Exception:
         _logger.debug("handled a failure in compute_workflow_hashes", exc_info=True)
         return "", "", ""
+    else:
+        return workflow_hash, prompt_hash, models_hash
 
 
 GENPARAMS_SCHEMA = "genparams-v1"
@@ -15868,9 +15874,10 @@ def _genparams_backfill_worker(item):
                     gp = candidate
         if gp is not None and gp.has_content:
             return file_id, gp.to_row(file_id, time.time())
-        return file_id, None
     except Exception:
         _logger.debug("handled a failure in _genparams_backfill_worker", exc_info=True)
+        return file_id, None
+    else:
         return file_id, None
 
 

@@ -187,10 +187,11 @@ class _ClickConsoleHandler(logging.Handler):
                 color = self._LEVEL_COLORS.get(record.levelno)
                 styled = click.style(message, fg=color) if color else message
                 click.echo(f"{click.style(stamp, dim=True)} {styled}")
-                return
             except Exception:  # broken console; fall to plain
                 _logger.debug("handled a failure in emit", exc_info=True)
                 self._plain = True
+            else:
+                return
         try:
             sys.stderr.write(f"{stamp} {message}\n")
         except Exception:  # logging must never crash the app

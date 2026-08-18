@@ -98,9 +98,10 @@ def stage2() -> int:
     try:
         urllib.request.urlopen("https://example.com", timeout=3)
         print("FAIL: egress unexpectedly possible inside the namespace")
-        return 2
     except Exception:
         _logger.debug("handled a failure in stage2", exc_info=True)
+    else:
+        return 2
         # good: no route out
 
     tmp = tempfile.mkdtemp(prefix="sg_egress_probe_")
