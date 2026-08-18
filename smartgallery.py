@@ -3425,9 +3425,11 @@ def create_thumbnail(filepath, file_hash, file_type):
                 # Handle Static Images
                 else:
                     img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                    if img.mode != "RGB":
-                        img = img.convert("RGB")
-                    img.save(tmp_path, "JPEG", quality=85)
+                    # Kept separate from `img`: rebinding the name the `with`
+                    # opened means the close on exit applies to the converted
+                    # copy, leaving the original file handle to the collector.
+                    frame = img.convert("RGB") if img.mode != "RGB" else img
+                    frame.save(tmp_path, "JPEG", quality=85)
                     os.replace(tmp_path, cache_path)
                     return cache_path
 
@@ -7620,11 +7622,9 @@ def gallery_view(folder_key):
 
                     or_conds = []
                     not_conds = []
-                    for s in sub_kws:
-                        is_not = False
-                        if s.startswith("!"):
-                            is_not = True
-                            s = s[1:].strip()
+                    for raw_term in sub_kws:
+                        is_not = raw_term.startswith("!")
+                        s = raw_term[1:].strip() if is_not else raw_term
                         if not s:
                             continue
 
@@ -7653,11 +7653,9 @@ def gallery_view(folder_key):
 
                     or_conds = []
                     not_conds = []
-                    for s in sub_kws:
-                        is_not = False
-                        if s.startswith("!"):
-                            is_not = True
-                            s = s[1:].strip()
+                    for raw_term in sub_kws:
+                        is_not = raw_term.startswith("!")
+                        s = raw_term[1:].strip() if is_not else raw_term
                         if not s:
                             continue
 
@@ -7689,11 +7687,9 @@ def gallery_view(folder_key):
 
                     or_conds = []
                     not_conds = []
-                    for s in sub_kws:
-                        is_not = False
-                        if s.startswith("!"):
-                            is_not = True
-                            s = s[1:].strip()
+                    for raw_term in sub_kws:
+                        is_not = raw_term.startswith("!")
+                        s = raw_term[1:].strip() if is_not else raw_term
                         if not s:
                             continue
 
@@ -11782,11 +11778,9 @@ def collection_view(coll_id):
 
             or_conds = []
             not_conds = []
-            for s in sub_kws:
-                is_not = False
-                if s.startswith("!"):
-                    is_not = True
-                    s = s[1:].strip()
+            for raw_term in sub_kws:
+                is_not = raw_term.startswith("!")
+                s = raw_term[1:].strip() if is_not else raw_term
                 if not s:
                     continue
 
@@ -11822,11 +11816,9 @@ def collection_view(coll_id):
 
             or_conds = []
             not_conds = []
-            for s in sub_kws:
-                is_not = False
-                if s.startswith("!"):
-                    is_not = True
-                    s = s[1:].strip()
+            for raw_term in sub_kws:
+                is_not = raw_term.startswith("!")
+                s = raw_term[1:].strip() if is_not else raw_term
                 if not s:
                     continue
 
@@ -11857,11 +11849,9 @@ def collection_view(coll_id):
 
             or_conds = []
             not_conds = []
-            for s in sub_kws:
-                is_not = False
-                if s.startswith("!"):
-                    is_not = True
-                    s = s[1:].strip()
+            for raw_term in sub_kws:
+                is_not = raw_term.startswith("!")
+                s = raw_term[1:].strip() if is_not else raw_term
                 if not s:
                     continue
 
@@ -11895,11 +11885,9 @@ def collection_view(coll_id):
 
             or_conds = []
             not_conds = []
-            for s in sub_kws:
-                is_not = False
-                if s.startswith("!"):
-                    is_not = True
-                    s = s[1:].strip()
+            for raw_term in sub_kws:
+                is_not = raw_term.startswith("!")
+                s = raw_term[1:].strip() if is_not else raw_term
                 if not s:
                     continue
 

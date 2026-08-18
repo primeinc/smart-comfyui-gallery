@@ -96,8 +96,8 @@ def collect_ground_truth(backend, root, limit):
         if len(sources) >= limit:
             break
         try:
-            with Image.open(path) as img:
-                img = img.convert("RGB")
+            with Image.open(path) as opened:
+                img = opened.convert("RGB")
                 w, h = img.size
                 f = min(1.0, 640 / max(w, h))
                 small = img.resize((max(1, int(w * f)), max(1, int(h * f))), Image.LANCZOS) if f < 1.0 else img
@@ -159,8 +159,8 @@ def main() -> None:
     rows = []
 
     for path, gt_boxes, tag in cases:
-        with Image.open(path) as img:
-            img = img.convert("RGB")
+        with Image.open(path) as opened:
+            img = opened.convert("RGB")
             scale = 1.0
             if tag.startswith("scale->"):
                 target = int(tag[len("scale->") : -2])

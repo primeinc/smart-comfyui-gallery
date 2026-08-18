@@ -40,7 +40,6 @@ import re
 
 import pytest
 from jinja2 import ChainableUndefined
-
 from node_runner import run_node
 
 pytestmark = pytest.mark.spawns  # every check here runs another program

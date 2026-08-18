@@ -87,10 +87,7 @@ def load_corpus(corpus_path: Path) -> list[dict]:
     """Parse a JSONL corpus: one entry per non-blank line, in file order."""
     entries: list[dict] = []
     with open(corpus_path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                entries.append(json.loads(line))
+        entries.extend(json.loads(text) for text in (raw.strip() for raw in fh) if text)
     return entries
 
 

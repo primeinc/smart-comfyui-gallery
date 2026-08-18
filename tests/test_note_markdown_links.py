@@ -38,7 +38,6 @@ import pathlib
 import re
 
 import pytest
-
 from node_runner import run_node
 
 pytestmark = pytest.mark.spawns  # every check here runs another program

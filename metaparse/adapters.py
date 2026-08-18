@@ -79,17 +79,17 @@ def parse_infotext(text: str, tool: str, detection: str = "marker") -> ParsedMet
         lastline = ""
 
     prompt, negative, in_negative = [], [], False
-    for line in lines:
-        line = line.strip()
-        if line.startswith("Negative prompt:"):
+    for raw_line in lines:
+        text = raw_line.strip()
+        if text.startswith("Negative prompt:"):
             in_negative = True
-            line = line[len("Negative prompt:") :].strip()
-        (negative if in_negative else prompt).append(line)
+            text = text[len("Negative prompt:") :].strip()
+        (negative if in_negative else prompt).append(text)
     result.positive = "\n".join(prompt).strip()
     result.negative = "\n".join(negative).strip()
 
-    for key, value in _RE_PARAM.findall(lastline):
-        key, value = key.strip(), _unquote(value.strip())
+    for raw_key, raw_value in _RE_PARAM.findall(lastline):
+        key, value = raw_key.strip(), _unquote(raw_value.strip())
         if not key or value == "":
             continue
         set_param(result, _INFOTEXT_CANONICAL.get(key, key), value)

@@ -56,8 +56,8 @@ def _expand(value):
 def _copies():
     """(source, destination) pairs the Dockerfile places under /app."""
     pairs = []
-    for source, dest in _COPY.findall(_DOCKERFILE.read_text(encoding="utf-8")):
-        source, dest = _expand(source), _expand(dest)
+    for raw_source, raw_dest in _COPY.findall(_DOCKERFILE.read_text(encoding="utf-8")):
+        source, dest = _expand(raw_source), _expand(raw_dest)
         if dest.startswith("/app/"):
             pairs.append((source.rstrip("/"), dest))
     return pairs
