@@ -33,12 +33,13 @@ import os
 import re
 import shutil
 import subprocess
-import urllib.request
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from huggingface_hub import hf_hub_download, snapshot_download
+
+from urlfetch import open_url
 
 _logger = logging.getLogger(__name__)
 
@@ -434,7 +435,7 @@ def _download_url(url: str, dest_path: str, progress: Callable[[int, int | None]
     """
     tmp = dest_path + ".part"
     try:
-        with urllib.request.urlopen(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, open(tmp, "wb") as out:
+        with open_url(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, open(tmp, "wb") as out:
             length = resp.headers.get("Content-Length")
             expected = int(length) if length else None
             written = _copy_with_progress(resp, out, expected, progress)

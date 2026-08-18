@@ -66,7 +66,7 @@ def serve(monkeypatch):
     """Answer the next urlopen with a given stream."""
 
     def _serve(stream):
-        monkeypatch.setattr(provision.urllib.request, "urlopen", lambda url, timeout=None: stream)
+        monkeypatch.setattr(provision, "open_url", lambda url, timeout=None: stream)
 
     return _serve
 

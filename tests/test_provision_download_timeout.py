@@ -103,7 +103,7 @@ def test_the_timeout_is_actually_passed_through(tmp_path, monkeypatch):
         seen["body"] = b"data"
         return _FakeResponse()
 
-    monkeypatch.setattr(provision.urllib.request, "urlopen", _fake_urlopen)
+    monkeypatch.setattr(provision, "open_url", _fake_urlopen)
     dest = str(tmp_path / "model.bin")
 
     provision._download_url("http://example.invalid/model.bin", dest)
@@ -133,7 +133,7 @@ def test_a_normal_download_still_completes(tmp_path, monkeypatch):
         def __exit__(self, *exc):
             return False
 
-    monkeypatch.setattr(provision.urllib.request, "urlopen", lambda url, timeout=None: _Response())
+    monkeypatch.setattr(provision, "open_url", lambda url, timeout=None: _Response())
     dest = str(tmp_path / "model.bin")
     seen_progress = []
 

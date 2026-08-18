@@ -198,13 +198,12 @@ def offline(tmp_path, monkeypatch):
 def test_a_good_download_is_kept(offline, tmp_path, monkeypatch):
     """Over-reach guard, and the whole point: when it works, it works.
 
-    Through monkeypatch, not a bare assignment. urllib.request.urlopen is
-    the real module's attribute, shared by everything in the process --
-    setting it directly left every later test in the session downloading
-    through this stub, and broke the AI provisioning timeout test six
-    files away."""
+    Through monkeypatch, not a bare assignment. open_url is a module
+    attribute shared by everything in the process -- setting it directly
+    left every later test in the session downloading through this stub,
+    and broke the AI provisioning timeout test six files away."""
     _build, payload = offline
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", lambda url, timeout=None: _Response(payload))
+    monkeypatch.setattr(smartgallery, "open_url", lambda url, timeout=None: _Response(payload))
 
     found = smartgallery.fetch_ffmpeg()
 
@@ -218,8 +217,8 @@ def test_a_short_download_is_thrown_away(offline, tmp_path, monkeypatch):
     than no ffmpeg: it is a program that starts and then fails."""
     _build, payload = offline
     monkeypatch.setattr(
-        smartgallery.urllib.request,
-        "urlopen",
+        smartgallery,
+        "open_url",
         lambda url, timeout=None: _Response(payload[: len(payload) // 2], declared=len(payload)),
     )
 
@@ -231,7 +230,7 @@ def test_a_download_with_the_wrong_digest_is_thrown_away(offline, monkeypatch):
     """The digest is the reason a pinned tag was worth finding."""
     build, payload = offline
     build["sha256"] = "0" * 64
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", lambda url, timeout=None: _Response(payload))
+    monkeypatch.setattr(smartgallery, "open_url", lambda url, timeout=None: _Response(payload))
 
     assert smartgallery.fetch_ffmpeg() is None
     assert os.listdir(smartgallery.bundled_ffmpeg_dir()) == []
@@ -241,7 +240,7 @@ def test_a_program_that_is_not_ffprobe_is_thrown_away(offline, monkeypatch):
     """Last check of the three: whatever came out has to answer as
     ffprobe. Size and digest only say the bytes are the expected bytes."""
     _build, payload = offline
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", lambda url, timeout=None: _Response(payload))
+    monkeypatch.setattr(smartgallery, "open_url", lambda url, timeout=None: _Response(payload))
     monkeypatch.setattr(smartgallery, "_is_ffprobe", lambda path: False)
 
     assert smartgallery.fetch_ffmpeg() is None
@@ -254,7 +253,7 @@ def test_a_connection_that_dies_is_not_an_exception(offline, monkeypatch):
     def _explode(url, timeout=None):
         raise ConnectionResetError("the connection went away")
 
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", _explode)
+    monkeypatch.setattr(smartgallery, "open_url", _explode)
 
     assert smartgallery.fetch_ffmpeg() is None
 
@@ -266,14 +265,14 @@ def test_an_already_fetched_ffmpeg_is_used_without_downloading_again(offline, mo
     """Fetching costs a large download once. Every later start has to find
     it sitting there."""
     _build, payload = offline
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", lambda url, timeout=None: _Response(payload))
+    monkeypatch.setattr(smartgallery, "open_url", lambda url, timeout=None: _Response(payload))
     first = smartgallery.fetch_ffmpeg()
     assert first is not None
 
     def _refuse(url, timeout=None):
         raise AssertionError("downloaded again instead of using what was there")
 
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", _refuse)
+    monkeypatch.setattr(smartgallery, "open_url", _refuse)
     monkeypatch.setattr(smartgallery, "FFPROBE_MANUAL_PATH", "")
     # Nothing on PATH -- only the copy that was fetched. The bare name is
     # rejected on purpose: a real ffprobe on PATH SHOULD win over a
@@ -291,7 +290,7 @@ def test_turning_it_off_downloads_nothing(offline, monkeypatch):
     def _refuse(url, timeout=None):
         raise AssertionError("downloaded despite FFMPEG_AUTO_DOWNLOAD=false")
 
-    monkeypatch.setattr(smartgallery.urllib.request, "urlopen", _refuse)
+    monkeypatch.setattr(smartgallery, "open_url", _refuse)
     monkeypatch.setattr(smartgallery, "FFMPEG_AUTO_DOWNLOAD", False)
     monkeypatch.setattr(smartgallery, "FFPROBE_MANUAL_PATH", "")
     monkeypatch.setattr(smartgallery, "_is_ffprobe", lambda path: False)

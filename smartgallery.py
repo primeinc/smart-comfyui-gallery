@@ -80,6 +80,7 @@ from omniquery.validation import AuthContext
 from smartgallery_ai import service as ai_dam_service
 from smartgallery_ai.worker import AIWorker
 from sqlbind import with_id_placeholders
+from urlfetch import HttpRequest, open_url
 
 # Same convention as smartgallery_ai.*, which has had one of these per
 # module all along; the monolith was the one place still throwing every
@@ -2815,7 +2816,7 @@ def fetch_ffmpeg(progress=None):
     digest = hashlib.sha256()
     written = 0
     try:
-        with urllib.request.urlopen(url, timeout=FFMPEG_DOWNLOAD_STALL_TIMEOUT) as response, open(archive, "wb") as out:
+        with open_url(url, timeout=FFMPEG_DOWNLOAD_STALL_TIMEOUT) as response, open(archive, "wb") as out:
             declared = response.headers.get("Content-Length")
             expected = int(declared) if declared else build["bytes"]
             while True:
@@ -10701,10 +10702,8 @@ def api_remix_object_info():
         target_url = request.json.get("target_url", COMFYUI_SERVER_URL).strip()
         if not target_url:
             target_url = COMFYUI_SERVER_URL
-        req = urllib.request.Request(
-            f"{target_url.rstrip('/')}/object_info", headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
+        req = HttpRequest(f"{target_url.rstrip('/')}/object_info", headers={"Content-Type": "application/json"})
+        with open_url(req, timeout=10) as r:
             return Response(r.read(), mimetype="application/json")
     except Exception as e:
         _logger.debug("handled a failure in api_remix_object_info", exc_info=True)
@@ -13135,7 +13134,7 @@ def check_for_updates():
     print("Checking for updates...", end=" ", flush=True)
     try:
         # Timeout (3s) not blocking start if no internet connection
-        with urllib.request.urlopen(GITHUB_RAW_URL, timeout=3) as response:
+        with open_url(GITHUB_RAW_URL, timeout=3) as response:
             content = response.read().decode("utf-8")
 
             # Regex modified to handle APP_VERSION="1.41" (string) or APP_VERSION=1.41 (number)
@@ -14638,11 +14637,11 @@ def _register_remix_routes_inline():
                             ui_data = json.loads(raw_ui)
                             object_info = {}
                             try:
-                                info_req = urllib.request.Request(
+                                info_req = HttpRequest(
                                     f"{target_comfy_url.rstrip('/')}/object_info",
                                     headers={"Content-Type": "application/json"},
                                 )
-                                with urllib.request.urlopen(info_req, timeout=3) as r:
+                                with open_url(info_req, timeout=3) as r:
                                     object_info = json.loads(r.read().decode("utf-8"))
                             except Exception:
                                 _logger.debug("ignored a failure in _get_unified_workflow", exc_info=True)
@@ -14800,10 +14799,10 @@ def _register_remix_routes_inline():
         try:
             # 1. Check History
             try:
-                req = urllib.request.Request(
+                req = HttpRequest(
                     f"{target_url.rstrip('/')}/history/{job_id}", headers={"Content-Type": "application/json"}
                 )
-                with urllib.request.urlopen(req, timeout=3) as response:
+                with open_url(req, timeout=3) as response:
                     data = json.loads(response.read().decode("utf-8"))
                     if job_id in data:
                         status_obj = data[job_id].get("status", {})
@@ -14824,10 +14823,8 @@ def _register_remix_routes_inline():
                 _logger.debug("ignored a failure in api_remix_job_status", exc_info=True)
 
             # 2. Check Queue (Using item[1] to match prompt_id correctly)
-            req_queue = urllib.request.Request(
-                f"{target_url.rstrip('/')}/queue", headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req_queue, timeout=3) as response:
+            req_queue = HttpRequest(f"{target_url.rstrip('/')}/queue", headers={"Content-Type": "application/json"})
+            with open_url(req_queue, timeout=3) as response:
                 q_data = json.loads(response.read().decode("utf-8"))
 
                 for item in q_data.get("queue_running", []):
@@ -14849,10 +14846,8 @@ def _register_remix_routes_inline():
     def api_remix_console_peek():
         target_url = request.json.get("target_url", COMFYUI_SERVER_URL).strip()
         try:
-            req = urllib.request.Request(
-                f"{target_url.rstrip('/')}/history", headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=3) as response:
+            req = HttpRequest(f"{target_url.rstrip('/')}/history", headers={"Content-Type": "application/json"})
+            with open_url(req, timeout=3) as response:
                 history_data = json.loads(response.read().decode("utf-8"))
 
             if not history_data:
@@ -15241,10 +15236,10 @@ def _register_remix_routes_inline():
                 if not target_comfy_url:
                     return jsonify({"status": "error", "message": "ComfyUI URL is required."}), 400
                 try:
-                    ping_req = urllib.request.Request(
+                    ping_req = HttpRequest(
                         f"{target_comfy_url.rstrip('/')}/system_stats", headers={"Content-Type": "application/json"}
                     )
-                    urllib.request.urlopen(ping_req, timeout=4)
+                    open_url(ping_req, timeout=4)
                 except urllib.error.URLError:
                     return jsonify({"status": "error", "message": f"Cannot reach ComfyUI at {target_comfy_url}."}), 502
                 except Exception:
@@ -15260,11 +15255,11 @@ def _register_remix_routes_inline():
                     ), 400
 
                 payload = json.dumps({"prompt": wf_data}).encode("utf-8")
-                req = urllib.request.Request(
+                req = HttpRequest(
                     f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={"Content-Type": "application/json"}
                 )
                 try:
-                    with urllib.request.urlopen(req, timeout=5) as response:
+                    with open_url(req, timeout=5) as response:
                         resp_data = json.loads(response.read().decode("utf-8"))
 
                         node_errors = resp_data.get("node_errors")
@@ -15435,10 +15430,10 @@ def _register_remix_routes_inline():
                 return jsonify({"status": "error", "message": "No workflow data found."}), 400
             object_info = {}
             try:
-                info_req = urllib.request.Request(
+                info_req = HttpRequest(
                     f"{target_comfy_url.rstrip('/')}/object_info", headers={"Content-Type": "application/json"}
                 )
-                with urllib.request.urlopen(info_req, timeout=5) as r:
+                with open_url(info_req, timeout=5) as r:
                     object_info = json.loads(r.read().decode("utf-8"))
             except Exception:
                 _logger.debug("ignored a failure in api_remix_autofix", exc_info=True)
@@ -15454,11 +15449,11 @@ def _register_remix_routes_inline():
             if request.form.get("debug") == "1":
                 return jsonify({"status": "debug", "converted": api_wf, "object_info_keys": list(object_info.keys())})
             payload = json.dumps({"prompt": api_wf}).encode("utf-8")
-            req = urllib.request.Request(
+            req = HttpRequest(
                 f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={"Content-Type": "application/json"}
             )
             try:
-                with urllib.request.urlopen(req, timeout=5) as response:
+                with open_url(req, timeout=5) as response:
                     resp_data = json.loads(response.read().decode("utf-8"))
                     job_id = resp_data.get("prompt_id", "Unknown")
                     return jsonify({"status": "success", "message": f"Autofix succeeded! Job ID: {job_id}"})
@@ -15504,11 +15499,11 @@ def _register_remix_routes_inline():
 
             clean_workflow_paths(api_wf)
             payload = json.dumps({"prompt": api_wf}).encode("utf-8")
-            req = urllib.request.Request(
+            req = HttpRequest(
                 f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={"Content-Type": "application/json"}
             )
             try:
-                with urllib.request.urlopen(req, timeout=5) as response:
+                with open_url(req, timeout=5) as response:
                     resp_data = json.loads(response.read().decode("utf-8"))
                     node_errors = resp_data.get("node_errors")
                     error_obj = resp_data.get("error")

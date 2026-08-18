@@ -30,7 +30,8 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
+
+from urlfetch import open_url
 
 _logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def wait_for(url: str, timeout: float = 60.0) -> None:
     def attempt():
         """None once the server answers, otherwise why it did not."""
         try:
-            with urllib.request.urlopen(url, timeout=2) as resp:
+            with open_url(url, timeout=2) as resp:
                 resp.read()
         except Exception as exc:
             _logger.debug("handled a failure in wait_for", exc_info=True)
@@ -91,7 +92,7 @@ def wait_for(url: str, timeout: float = 60.0) -> None:
 
 def get(url: str):
     """GET `url`, returning (HTTP status, body bytes)."""
-    with urllib.request.urlopen(url, timeout=15) as resp:
+    with open_url(url, timeout=15) as resp:
         return resp.status, resp.read()
 
 
@@ -103,7 +104,7 @@ def stage2() -> int:
     _loopback_up()
     # Prove the namespace actually denies egress before trusting anything.
     try:
-        urllib.request.urlopen("https://example.com", timeout=3)
+        open_url("https://example.com", timeout=3)
         print("FAIL: egress unexpectedly possible inside the namespace")
     except Exception:
         _logger.debug("handled a failure in stage2", exc_info=True)
