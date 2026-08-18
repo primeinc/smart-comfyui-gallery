@@ -16,6 +16,7 @@ import difflib
 import errno
 import glob
 import hashlib
+import importlib.util
 import json
 import logging
 import math
@@ -136,14 +137,17 @@ def make_output_carry_any_filename(streams=None):
     of the modules above it writes anything while loading, so it still
     runs before the first line of output the gallery produces.
     """
-    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            # Not every stream is reconfigurable -- a captured one, a
-            # replaced one, a plain file object. Nothing here is worth
-            # failing over; the point is to try before anything prints.
-            _logger.debug("ignored a failure in make_output_carry_any_filename", exc_info=True)
+    # Asked rather than attempted: not every stream is reconfigurable -- a
+    # captured one, a replaced one, a plain file object -- and that is the
+    # whole reason this was in a try. The try that remains is for a stream
+    # that has the method and still refuses, which nothing here is worth
+    # failing over; the point is to try before anything prints.
+    try:
+        for stream in streams if streams is not None else (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        _logger.debug("ignored a failure in make_output_carry_any_filename", exc_info=True)
 
 
 make_output_carry_any_filename()
@@ -981,10 +985,11 @@ def run_integrity_check():
         ("cryptography", "cryptography"),
     ]
 
+    # find_spec rather than __import__: this only asks whether the library is
+    # installed, so the check no longer executes every one of them -- and a
+    # library that imports but raises on import no longer reads as missing.
     for lib_imp, lib_name in required_libs:
-        try:
-            __import__(lib_imp)
-        except ImportError:
+        if importlib.util.find_spec(lib_imp) is None:
             print(f"\n{Colors.RED}❌ MISSING LIBRARY: {lib_name}{Colors.RESET}")
             issues_found = True
             critical_error = True
@@ -8197,19 +8202,26 @@ def background_rescan_worker(job_id, files_to_process):
             with scan_executor(total) as executor:
                 futures = {executor.submit(process_single_file, path): path for path in files_to_process}
 
-                for future in concurrent.futures.as_completed(futures):
+                def _finished(future):
+                    """(result, ok). One file that failed must not stop the
+                    rescan, so each future is resolved on its own."""
                     try:
-                        result = future.result()
-                        if result:
-                            results.append(result)
-
-                        processed_count += 1
-                        # UPDATE PROGRESS
-                        rescan_jobs[job_id]["current"] = processed_count
-
+                        return future.result(), True
                     except Exception as e:
                         _logger.debug("handled a failure in background_rescan_worker", exc_info=True)
                         print(f"ERROR: Worker failed for a file: {e}")
+                        return None, False
+
+                for future in concurrent.futures.as_completed(futures):
+                    result, ok = _finished(future)
+                    if not ok:
+                        continue
+                    if result:
+                        results.append(result)
+
+                    processed_count += 1
+                    # UPDATE PROGRESS
+                    rescan_jobs[job_id]["current"] = processed_count
 
             if results:
                 file_rows_3, gen_rows_3, gen_deletes_3 = split_file_results(results)
@@ -8585,16 +8597,24 @@ def browse_filesystem():
         current_path = os.path.normpath(current_path)
         items = []
 
+        def _visible_folder(entry):
+            """The entry as a listing row, or None if it is not one.
+
+            is_dir() is a syscall and raises on an entry the process cannot
+            stat, so the answer has to be attempted rather than looked up.
+            Asking one entry at a time is the point -- an unreadable folder
+            costs itself and not the rest of the listing.
+            """
+            try:
+                if entry.is_dir() and not entry.name.startswith("."):
+                    return {"name": entry.name, "path": entry.path, "is_drive": False}
+            except OSError:
+                _logger.debug("handled a failure in browse_filesystem", exc_info=True)
+            return None
+
         # Scandir is faster and allows skipping unreadable files individually
         with os.scandir(current_path) as it:
-            for entry in it:
-                try:
-                    if entry.is_dir() and not entry.name.startswith("."):
-                        items.append({"name": entry.name, "path": entry.path, "is_drive": False})
-                except Exception:
-                    # Skip individual unreadable folders without breaking the list
-                    _logger.debug("handled a failure in browse_filesystem", exc_info=True)
-                    continue
+            items = [row for row in map(_visible_folder, it) if row]
 
         items.sort(key=lambda x: x["name"].lower())
         response_data["folders"] = items
