@@ -2730,6 +2730,28 @@ def download_progress_reporter(interval=1.0):
     return report
 
 
+def _accept_ffmpeg_download(archive, destination, build, written, digest):
+    """The path to a usable ffprobe, or OSError saying what is wrong.
+
+    Three ways a download can arrive and still be useless: short, tampered
+    with, or an archive whose programs are not the ones named. Each raises
+    with which of the three it was.
+    """
+    if written != build["bytes"]:
+        raise OSError(
+            f"expected {build['bytes']:,} bytes, got {written:,} -- "
+            f"the download stopped early or the pinned build changed"
+        )
+    if digest.hexdigest() != build["sha256"]:
+        raise OSError(f"SHA-256 mismatch: expected {build['sha256'][:16]}..., got {digest.hexdigest()[:16]}...")
+
+    taken = _extract_ffmpeg_programs(archive, destination, build["programs"], asset_name=build["asset"])
+    ffprobe = taken[build["programs"][0].lower()]
+    if not _is_ffprobe(ffprobe):
+        raise OSError("the program that came out of the archive does not identify itself as ffprobe")
+    return ffprobe
+
+
 def fetch_ffmpeg(progress=None):
     """Download the pinned ffmpeg and keep the two programs from it.
 
@@ -2783,19 +2805,7 @@ def fetch_ffmpeg(progress=None):
                 if progress is not None:
                     progress(written, expected)
 
-        if written != build["bytes"]:
-            raise OSError(
-                f"expected {build['bytes']:,} bytes, got {written:,} "
-                f"-- the download stopped early or the pinned build "
-                f"changed"
-            )
-        if digest.hexdigest() != build["sha256"]:
-            raise OSError(f"SHA-256 mismatch: expected {build['sha256'][:16]}..., got {digest.hexdigest()[:16]}...")
-
-        taken = _extract_ffmpeg_programs(archive, destination, build["programs"], asset_name=build["asset"])
-        ffprobe = taken[build["programs"][0].lower()]
-        if not _is_ffprobe(ffprobe):
-            raise OSError("the program that came out of the archive does not identify itself as ffprobe")
+        ffprobe = _accept_ffmpeg_download(archive, destination, build, written, digest)
         print(f"{Colors.GREEN}SUCCESS: ffmpeg is ready at {destination}{Colors.RESET}")
     except Exception as exc:
         _logger.debug("handled a failure in fetch_ffmpeg", exc_info=True)
@@ -8392,6 +8402,61 @@ def create_folder():
         return jsonify({"status": "error", "message": said or str(e)}), 500
 
 
+def _link_folder_on_windows(link_full_path, target_path):
+    """Point `link_full_path` at `target_path`, junction first, symlink second.
+
+    A junction is enough for a local drive and needs no privileges;
+    network shares, virtual drives and cross-volume targets need a
+    symlink, which wants Developer Mode or Administrator. Raises OSError
+    carrying both attempts' errors when neither worked -- the same type
+    the POSIX branch gets from os.symlink.
+
+    mklink is a cmd builtin, so cmd has to run it -- but the arguments
+    are passed as a list rather than pasted into one string. They used to
+    be interpolated into a single mklink command line handed to
+    shell=True, and the link path is built from a folder name the caller
+    supplies. A name containing a double quote closed the quoting and
+    everything after it ran as its own command, as whoever the gallery
+    runs as.
+    """
+    # Backslashes throughout, for cmd.exe: mixed slashes are not understood.
+    win_link = link_full_path.replace("/", "\\")
+    win_target = target_path.replace("/", "\\")
+
+    # Linking a target on unreachable network storage can sit there; the
+    # caller is a request waiting on the answer.
+    junction = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", win_link, win_target],
+        capture_output=True,
+        text=True,
+        timeout=FFPROBE_TIMEOUT,
+        check=False,
+    )
+    if junction.returncode == 0:
+        return
+
+    err_junction = junction.stderr.strip() or junction.stdout.strip() or "Unknown Error"
+    print(f"WARN: Junction failed ({err_junction}). Trying Symlink fallback...")
+
+    symlink = subprocess.run(
+        ["cmd", "/c", "mklink", "/D", win_link, win_target],
+        capture_output=True,
+        text=True,
+        timeout=FFPROBE_TIMEOUT,
+        check=False,
+    )
+    if symlink.returncode == 0:
+        return
+
+    err_sym = symlink.stderr.strip() or symlink.stdout.strip()
+    raise OSError(
+        f"Failed to create link.\n\n"
+        f"Attempt 1 (Junction): {err_junction}\n"
+        f"Attempt 2 (Symlink): {err_sym}\n\n"
+        f"TIP: If using Virtual Drives or Network Shares, try running ComfyUI as Administrator."
+    )
+
+
 @app.route("/galleryout/mount_folder", methods=["POST"])
 @management_api_only
 def mount_folder():
@@ -8419,58 +8484,7 @@ def mount_folder():
 
     try:
         if os.name == "nt":
-            # --- WINDOWS ROBUST LOGIC ---
-
-            # 1. Force Windows-style backslashes for cmd.exe compatibility
-            # (Fixes issues with mixed slashes like Z:/path\folder)
-            win_link = link_full_path.replace("/", "\\")
-            win_target = target_path.replace("/", "\\")
-
-            # Attempt 1: Junction (/J)
-            # Ideal for local drives, does not require Admin usually.
-            #
-            # mklink is a cmd builtin, so cmd has to run it -- but the
-            # arguments are passed as a list rather than pasted into one
-            # string. They used to be interpolated into
-            #   f'mklink /J "{win_link}" "{win_target}"'
-            # and handed to shell=True, and win_link is built from a folder
-            # name the caller supplies. A name containing a double quote
-            # closed the quoting and everything after it ran as its own
-            # command, as whoever the gallery runs as.
-            cmd_junction = ["cmd", "/c", "mklink", "/J", win_link, win_target]
-
-            # Linking a target on unreachable network storage can sit there;
-            # the caller is a request waiting on the answer.
-            result = subprocess.run(cmd_junction, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT, check=False)
-
-            if result.returncode != 0:
-                # Capture the actual error (e.g. "Local volumes are required...")
-                err_junction = result.stderr.strip() or result.stdout.strip() or "Unknown Error"
-
-                print(f"WARN: Junction failed ({err_junction}). Trying Symlink fallback...")
-
-                # Attempt 2: Symbolic Link (/D)
-                # Necessary for Network Shares, Virtual Drives, or Cross-Volume links.
-                # NOTE: This usually requires Developer Mode enabled OR running ComfyUI as Administrator.
-                cmd_symlink = ["cmd", "/c", "mklink", "/D", win_link, win_target]
-                result_sym = subprocess.run(
-                    cmd_symlink, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT, check=False
-                )
-
-                if result_sym.returncode != 0:
-                    err_sym = result_sym.stderr.strip() or result_sym.stdout.strip()
-
-                    # Create a detailed error message for the user.
-                    # OSError is what the POSIX branch below raises from
-                    # os.symlink for the same failure, so both platforms
-                    # fail the same way here.
-                    raise OSError(
-                        f"Failed to create link.\n\n"
-                        f"Attempt 1 (Junction): {err_junction}\n"
-                        f"Attempt 2 (Symlink): {err_sym}\n\n"
-                        f"TIP: If using Virtual Drives or Network Shares, try running ComfyUI as Administrator."
-                    )
-
+            _link_folder_on_windows(link_full_path, target_path)
         else:
             # LINUX/MAC: Standard symlink
             os.symlink(target_path, link_full_path)
@@ -13076,9 +13090,8 @@ def is_effectively_blind():
     role = session.get("role", "GUEST")
     is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
     # Only the privileged get the override, and only if they turned it on.
-    if (is_local_admin or role in ["ADMIN", "MANAGER", "STAFF"]) and session.get("override_blind", False):
-        return False
-    return True
+    may_override = is_local_admin or role in ["ADMIN", "MANAGER", "STAFF"]
+    return not (may_override and session.get("override_blind", False))
 
 
 @app.route("/galleryout/api/exhibition/toggle_my_ratings", methods=["POST"])

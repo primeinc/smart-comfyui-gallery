@@ -584,6 +584,23 @@ def _auto_critic_measurement_passed(report_path: str | None = None) -> bool:
         return False
 
 
+def _build_reviewer(config):
+    """The reviewer, or BackendUnavailable saying what is missing."""
+    from smartgallery_ai.embedders import get_semantic_backend
+    from smartgallery_ai.reviewer import DEFAULT_REVIEW_MODEL, Reviewer
+
+    # A missing semantic backend makes the reviewer unavailable; it must
+    # never run without its grounding gate.
+    embedder = get_semantic_backend(config)
+    if embedder is None:
+        raise BackendUnavailable(
+            "the reviewer requires the semantic (OpenCLIP) backend for grounding and prompt-alignment; it is unavailable"
+        )
+    return Reviewer(
+        config.models_dir, semantic_embedder=embedder, model_ref=config.critic_model or DEFAULT_REVIEW_MODEL
+    )
+
+
 def get_reviewer(config: AIConfig):
     """Resolve `config.critic_backend` to something with a `review` method,
     or None when reviews are off or unavailable.
@@ -606,20 +623,7 @@ def get_reviewer(config: AIConfig):
         if name == "auto" and not _auto_critic_measurement_passed():
             return None
         try:
-            from smartgallery_ai.embedders import get_semantic_backend
-            from smartgallery_ai.reviewer import DEFAULT_REVIEW_MODEL, Reviewer
-
-            # A missing semantic backend makes the reviewer unavailable; it
-            # must never run without its grounding gate.
-            embedder = get_semantic_backend(config)
-            if embedder is None:
-                raise BackendUnavailable(
-                    "the reviewer requires the semantic (OpenCLIP) backend "
-                    "for grounding and prompt-alignment; it is unavailable"
-                )
-            return Reviewer(
-                config.models_dir, semantic_embedder=embedder, model_ref=config.critic_model or DEFAULT_REVIEW_MODEL
-            )
+            return _build_reviewer(config)
         except BackendUnavailable:
             if name == "vlm":
                 raise
@@ -975,3 +979,43 @@ def generate_finding_mask(
     )
     conn.commit()
     return mask_path
+
+
+_MISSING_FINDING_MASKS = (
+    "SELECT finding_id FROM ai_review_findings WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL"
+)
+_MISSING_ALIGNMENT_MASKS = (
+    "SELECT element_id FROM ai_review_alignment "
+    "WHERE review_id = ? AND satisfied = 1 AND bbox_x IS NOT NULL AND mask_path IS NULL"
+)
+
+
+def generate_review_masks(conn, cache_dir, img, file_id, review_id, segmenter, on_error) -> int:
+    """Every mask a review is still missing, and how many were made.
+
+    Its localizable findings first, then the located prompt elements it
+    satisfied -- the highlight layer showing WHERE the prompt was honored.
+    Ungrounded rows never reach the segmenter; the generate_* helpers above
+    enforce that.
+
+    A row that fails costs that row: `on_error(key, message)` is told why
+    and the remaining rows still run.
+    """
+
+    def _mask(make_mask, row_id, kind, key_prefix) -> bool:
+        try:
+            make_mask(conn, cache_dir, img, file_id, row_id, segmenter)
+        except Exception as exc:
+            _logger.debug("a mask failed; the review keeps the rest", exc_info=True)
+            on_error(f"{key_prefix}:{row_id}", f"mask: failed for {kind} {row_id}: {exc}")
+            return False
+        return True
+
+    generated = 0
+    for sql, make_mask, kind, key_prefix in (
+        (_MISSING_FINDING_MASKS, generate_finding_mask, "finding", "mask"),
+        (_MISSING_ALIGNMENT_MASKS, generate_alignment_mask, "prompt element", "alignmask"),
+    ):
+        rows = conn.execute(sql, (review_id,)).fetchall()
+        generated += sum(_mask(make_mask, r[0], kind, key_prefix) for r in rows)
+    return generated

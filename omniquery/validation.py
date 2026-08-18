@@ -112,6 +112,15 @@ def _check_enum_member(spec: fields.FieldSpec, value: Any) -> None:
         raise ValidationError(f"field '{spec.name}': invalid enum value {value!r}")
 
 
+def _parses_as(value: str, fmt: str) -> bool:
+    """Whether `value` matches `fmt` exactly."""
+    try:
+        time.strptime(value, fmt)
+    except ValueError:
+        return False
+    return True
+
+
 def _check_date_string(value: str, field_name: str) -> None:
     """Require 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS'.
 
@@ -120,13 +129,8 @@ def _check_date_string(value: str, field_name: str) -> None:
     where the value becomes an instant, and where the timezone question
     gets an answer.
     """
-    for fmt in (_ISO_DATE_FMT, _ISO_DATETIME_FMT):
-        try:
-            time.strptime(value, fmt)
-        except ValueError:
-            continue
-        else:
-            return
+    if any(_parses_as(value, fmt) for fmt in (_ISO_DATE_FMT, _ISO_DATETIME_FMT)):
+        return
     raise ValidationError(
         f"field '{field_name}': invalid date string {value!r} (expected 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS')"
     )

@@ -594,26 +594,30 @@ def parse_stealth_text(text: str) -> ParsedMetadata | None:
     return None
 
 
+def _claimed_by(adapter, raw: RawMetadata, match_attr: str) -> ParsedMetadata | None:
+    """What `adapter` makes of `raw`, or None if it does not claim it.
+
+    An adapter that raises yields None as well: one tool's parser tripping
+    over a file must not stop the rest of the cascade from being tried.
+    """
+    try:
+        if getattr(adapter, match_attr)(raw):
+            return adapter.parse(raw)
+    except Exception:
+        _logger.debug("adapter %r failed on this file", getattr(adapter, "tool", adapter), exc_info=True)
+    return None
+
+
 def parse_raw(raw: RawMetadata) -> ParsedMetadata | None:
     for adapter in MARKER_ADAPTERS:
-        try:
-            if adapter.match(raw):
-                result = adapter.parse(raw)
-                if result is not None:
-                    return result
-        except Exception:
-            _logger.debug("handled a failure in parse_raw", exc_info=True)
-            continue
+        result = _claimed_by(adapter, raw, "match")
+        if result is not None:
+            return result
     for adapter in HEURISTIC_ADAPTERS:
-        try:
-            if adapter.match_heuristic(raw):
-                result = adapter.parse(raw)
-                if result is not None:
-                    result.detection = "heuristic"
-                    return result
-        except Exception:
-            _logger.debug("handled a failure in parse_raw", exc_info=True)
-            continue
+        result = _claimed_by(adapter, raw, "match_heuristic")
+        if result is not None:
+            result.detection = "heuristic"
+            return result
     stealth_text = raw.stealth()
     if stealth_text:
         return parse_stealth_text(stealth_text)

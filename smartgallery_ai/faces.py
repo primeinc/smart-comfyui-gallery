@@ -595,11 +595,20 @@ def compare_detectors(img: Image.Image, config: AIConfig) -> dict:
         ),
         "scrfd": lambda: InsightFaceBackend(config.models_dir, config.face_min_det_score, config.face_min_px),
     }
-    for lane, make_backend in lane_makers.items():
+
+    def _lane(lane, make_backend):
+        """One lane's timings and detections, or why it could not run.
+
+        A lane whose weights are missing reports that and the comparison
+        still shows the others.
+        """
         try:
-            lanes[lane] = _run(make_backend)
+            return _run(make_backend)
         except (BackendUnavailable, ValueError) as exc:
-            lanes[lane] = {"model": lane, "error": str(exc)}
+            return {"model": lane, "error": str(exc)}
+
+    for lane, make_backend in lane_makers.items():
+        lanes[lane] = _lane(lane, make_backend)
     return {"lanes": lanes, "installed": installed_pipelines(config)}
 
 
@@ -951,6 +960,18 @@ def _match_preserved_labels(new_centroids: np.ndarray, old_rows: list) -> dict:
     return assigned
 
 
+def _single_dim(rows, model_version: str) -> int:
+    """The one embedding width every row shares.
+
+    Rows of two widths cannot go in one matrix, and the mixture means two
+    embedder versions wrote under the same name.
+    """
+    dims = {r[3] for r in rows}
+    if len(dims) > 1:
+        raise ValueError(f"inconsistent embedding dims for model_version={model_version!r}: {dims}")
+    return next(iter(dims))
+
+
 def cluster_faces(
     conn: sqlite3.Connection,
     model_id: str,
@@ -1013,10 +1034,7 @@ def cluster_faces(
             conn.commit()
             return []
 
-        dims = {r[3] for r in rows}
-        if len(dims) > 1:
-            raise ValueError(f"inconsistent embedding dims for model_version={model_version!r}: {dims}")
-        dim = next(iter(dims))
+        dim = _single_dim(rows, model_version)
         face_ids = [r[0] for r in rows]
         matrix = np.zeros((len(rows), dim), dtype=np.float32)
         for i, r in enumerate(rows):

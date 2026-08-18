@@ -70,15 +70,22 @@ def wait_for(url: str, timeout: float = 60.0) -> None:
     RuntimeError carrying the most recent connection error."""
     deadline = time.time() + timeout
     last = None
-    while time.time() < deadline:
+
+    def attempt():
+        """None once the server answers, otherwise why it did not."""
         try:
             with urllib.request.urlopen(url, timeout=2) as resp:
                 resp.read()
-                return
-        except Exception as exc:  # retry loop
+        except Exception as exc:
             _logger.debug("handled a failure in wait_for", exc_info=True)
-            last = exc
-            time.sleep(0.5)
+            return exc
+        return None
+
+    while time.time() < deadline:
+        last = attempt()
+        if last is None:
+            return
+        time.sleep(0.5)
     raise RuntimeError(f"server never came up: {last}")
 
 
@@ -154,16 +161,20 @@ def stage2() -> int:
             ("aidam_status", f"{base}/galleryout/api/aidam/status"),
         ]
         ok = True
-        for name, url in checks:
+
+        def _request(name, url):
+            """One check's record, plus whether it counts as a pass."""
             try:
                 status, body = get(url)
-                evidence["requests"].append({"name": name, "status": status, "bytes": len(body)})
-                if status != 200:
-                    ok = False
             except Exception as exc:
                 _logger.debug("handled a failure in stage2", exc_info=True)
-                evidence["requests"].append({"name": name, "error": str(exc)})
-                ok = False
+                return {"name": name, "error": str(exc)}, False
+            return {"name": name, "status": status, "bytes": len(body)}, status == 200
+
+        for name, url in checks:
+            record, passed = _request(name, url)
+            evidence["requests"].append(record)
+            ok = ok and passed
 
         # Local OmniQuery parse path (no server round-trip needed): the
         # deterministic nlq parser and validator/compiler must work with

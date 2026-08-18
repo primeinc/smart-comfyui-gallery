@@ -376,6 +376,21 @@ def _copy_with_progress(
 DOWNLOAD_STALL_TIMEOUT = 60
 
 
+def _refuse_short_download(dest_path: str, url: str, written: int, expected: int | None) -> None:
+    """Raise unless the whole file arrived.
+
+    Content-Length said how many bytes to expect; fewer means the transfer
+    was cut, and a truncated weights file loads as a corrupt model rather
+    than as an error.
+    """
+    if expected is not None and written != expected:
+        raise ProvisionError(
+            f"{os.path.basename(dest_path)}: the download stopped early "
+            f"-- {written:,} of {expected:,} bytes arrived from {url}. "
+            f"Nothing was kept; run provisioning again to retry."
+        )
+
+
 def _download_url(url: str, dest_path: str, progress: Callable[[int, int | None], None] | None = None) -> None:
     """Stream one direct URL to dest_path via a temp file, reporting byte
     progress as it goes.
@@ -413,12 +428,7 @@ def _download_url(url: str, dest_path: str, progress: Callable[[int, int | None]
             expected = int(length) if length else None
             written = _copy_with_progress(resp, out, expected, progress)
 
-        if expected is not None and written != expected:
-            raise ProvisionError(
-                f"{os.path.basename(dest_path)}: the download stopped early "
-                f"-- {written:,} of {expected:,} bytes arrived from {url}. "
-                f"Nothing was kept; run provisioning again to retry."
-            )
+        _refuse_short_download(dest_path, url, written, expected)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

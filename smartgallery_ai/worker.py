@@ -1060,23 +1060,26 @@ class AIWorker:
                     loaded.append((row, img))
             if not loaded:
                 continue
+
+            def _embed_one(row, img):
+                """One image's vector, or None after saying why not."""
+                try:
+                    return backend.embed_image(img)
+                except Exception as exc:
+                    _logger.debug("handled a failure in _process_embedding_space", exc_info=True)
+                    self._note_error(
+                        f"embed:{space}:{row['id']}",
+                        f"embed[{space}]: failed for {row['path']}: {exc}",
+                    )
+                    return None
+
             try:
                 vecs = backend.embed_images([img for _row, img in loaded])
             except Exception:
                 # A poisoned image inside the batch: fall back to singles so
                 # one bad file costs one file, not the chunk.
                 _logger.debug("handled a failure in _process_embedding_space", exc_info=True)
-                vecs = []
-                for row, img in loaded:
-                    try:
-                        vecs.append(backend.embed_image(img))
-                    except Exception as exc:
-                        _logger.debug("handled a failure in _process_embedding_space", exc_info=True)
-                        self._note_error(
-                            f"embed:{space}:{row['id']}",
-                            f"embed[{space}]: failed for {row['path']}: {exc}",
-                        )
-                        vecs.append(None)
+                vecs = [_embed_one(row, img) for row, img in loaded]
             for (row, _img), vec in zip(loaded, vecs, strict=False):
                 if vec is None:
                     continue
@@ -1442,39 +1445,9 @@ class AIWorker:
         prompt was honored). Ungrounded rows never reach the segmenter
         (the generate_* helpers enforce it); a per-row failure is logged,
         never fatal. Returns the number of masks successfully generated."""
-        finding_ids = [
-            r[0]
-            for r in conn.execute(
-                "SELECT finding_id FROM ai_review_findings "
-                "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
-                (review_id,),
-            ).fetchall()
-        ]
-        generated = 0
-        for finding_id in finding_ids:
-            try:
-                review.generate_finding_mask(conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
-                generated += 1
-            except Exception as exc:
-                _logger.debug("handled a failure in _generate_masks", exc_info=True)
-                self._note_error(f"mask:{finding_id}", f"mask: failed for finding {finding_id}: {exc}")
-        element_ids = [
-            r[0]
-            for r in conn.execute(
-                "SELECT element_id FROM ai_review_alignment "
-                "WHERE review_id = ? AND satisfied = 1 AND bbox_x IS NOT NULL "
-                "AND mask_path IS NULL",
-                (review_id,),
-            ).fetchall()
-        ]
-        for element_id in element_ids:
-            try:
-                review.generate_alignment_mask(conn, self.config.cache_dir, img, file_id, element_id, segmenter)
-                generated += 1
-            except Exception as exc:
-                _logger.debug("handled a failure in _generate_masks", exc_info=True)
-                self._note_error(f"alignmask:{element_id}", f"mask: failed for prompt element {element_id}: {exc}")
-        return generated
+        return review.generate_review_masks(
+            conn, self.config.cache_dir, img, file_id, review_id, segmenter, on_error=self._note_error
+        )
 
     def _process_masks(self, conn: sqlite3.Connection, segmenter, limit: int) -> int:
         """Standalone mask stage: covers reviews whose localizable findings

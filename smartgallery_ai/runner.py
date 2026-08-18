@@ -207,41 +207,16 @@ def _step_masks(ctx: RunContext) -> dict:
         raise LookupError("store did not run; nothing to segment")
     if ctx.segmenter is None:
         return {"skipped": "no segmenter backend"}
-    generated = 0
-    failures = []
-    finding_ids = [
-        r[0]
-        for r in ctx.conn.execute(
-            "SELECT finding_id FROM ai_review_findings WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
-            (ctx.review_id,),
-        )
-    ]
-    for finding_id in finding_ids:
-        try:
-            review_mod.generate_finding_mask(
-                ctx.conn, ctx.config.cache_dir, ctx.img, ctx.file_id, finding_id, ctx.segmenter
-            )
-            generated += 1
-        except Exception as exc:
-            _logger.debug("handled a failure in _step_masks", exc_info=True)
-            failures.append(f"finding {finding_id}: {exc}")
-    element_ids = [
-        r[0]
-        for r in ctx.conn.execute(
-            "SELECT element_id FROM ai_review_alignment WHERE review_id = ? "
-            "AND satisfied = 1 AND bbox_x IS NOT NULL AND mask_path IS NULL",
-            (ctx.review_id,),
-        )
-    ]
-    for element_id in element_ids:
-        try:
-            review_mod.generate_alignment_mask(
-                ctx.conn, ctx.config.cache_dir, ctx.img, ctx.file_id, element_id, ctx.segmenter
-            )
-            generated += 1
-        except Exception as exc:
-            _logger.debug("handled a failure in _step_masks", exc_info=True)
-            failures.append(f"element {element_id}: {exc}")
+    failures: list[str] = []
+    generated = review_mod.generate_review_masks(
+        ctx.conn,
+        ctx.config.cache_dir,
+        ctx.img,
+        ctx.file_id,
+        ctx.review_id,
+        ctx.segmenter,
+        on_error=lambda _key, message: failures.append(message),
+    )
     ctx.masks = generated
     return {"generated": generated, "failures": failures}
 
