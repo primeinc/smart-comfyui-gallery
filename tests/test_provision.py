@@ -91,8 +91,6 @@ def _fake_downloaders(written: dict, content: bytes = b"weights"):
         if dest.endswith(".zip"):
             # unzip_member artifacts fetch a zip and keep one member; serve
             # a real zip holding every member any registry artifact names
-            import zipfile
-
             with zipfile.ZipFile(dest, "w") as zf:
                 for member in {a.unzip_member for g in P.GROUPS for a in g.artifacts if a.unzip_member}:
                     zf.writestr(member, content)

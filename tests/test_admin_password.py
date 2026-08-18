@@ -22,6 +22,7 @@ function reads and calls it against the session database.
 
 from __future__ import annotations
 
+import ast
 import secrets
 
 import pytest
@@ -198,8 +199,6 @@ def test_the_environment_variable_works_like_the_flag(smartgallery_app, monkeypa
 def test_startup_still_derives_the_policy(gallery_tree):
     """The three settings were three statements at import once and could be
     again, leaving derive_login_policy correct and unused."""
-    import ast
-
     called = {
         node.func.id
         for node in ast.walk(gallery_tree)

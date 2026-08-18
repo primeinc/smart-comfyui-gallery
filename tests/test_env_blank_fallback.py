@@ -377,6 +377,4 @@ def test_suite_does_not_inherit_a_real_trash_folder(smartgallery_app):
     developer's trash instead of the temp tree."""
     configured = smartgallery_app.DELETE_TO
     if configured:
-        import tempfile
-
         assert os.path.realpath(configured).startswith(os.path.realpath(tempfile.gettempdir()))

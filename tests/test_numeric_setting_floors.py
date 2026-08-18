@@ -42,6 +42,7 @@ from __future__ import annotations
 import ast
 
 import pytest
+from PIL import Image
 
 import smartgallery
 
@@ -151,8 +152,6 @@ def test_a_scan_still_runs_with_a_zeroed_batch_size(smartgallery_app, tmp_path, 
     env_num would have produced, so the scan sees the same value a bad
     setting leaves behind."""
     monkeypatch.setattr(smartgallery_app, "BATCH_SIZE", smartgallery_app.env_num("BATCH_SIZE", 500, minimum=1))
-
-    from PIL import Image
 
     picture = tmp_path / "floor.png"
     Image.new("RGB", (16, 16)).save(picture)

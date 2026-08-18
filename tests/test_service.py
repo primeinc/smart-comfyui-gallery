@@ -850,8 +850,6 @@ def test_faces_cluster_detail_reports_attribute_aggregates(fixture):
     age/sex/pose so the dashboard can describe the bucket."""
     clusters = fixture.client.get(f"{_PREFIX}/faces/clusters").get_json()["clusters"]
     if not clusters:
-        import pytest
-
         pytest.skip("fixture has no clusters")
     detail = fixture.client.get(f"{_PREFIX}/faces/clusters/{clusters[0]['cluster_id']}").get_json()
     assert "attributes" in detail

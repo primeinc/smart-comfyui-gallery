@@ -29,6 +29,7 @@ which folder that one came from.
 from __future__ import annotations
 
 import os
+import warnings
 import zipfile
 
 import smartgallery
@@ -226,8 +227,6 @@ def test_a_duplicate_name_would_have_been_lost(tmp_path):
         files.append(str(target))
 
     archive = tmp_path / "old.zip"
-    import warnings
-
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with zipfile.ZipFile(archive, "w") as zf:

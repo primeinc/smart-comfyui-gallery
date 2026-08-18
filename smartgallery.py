@@ -16597,8 +16597,6 @@ if __name__ == "__main__":
         # 1. Kill the entire Process Group (terminates zombie Waitress threads and ProcessPools)
         try:
             if os.name != "nt":
-                import signal
-
                 os.killpg(os.getpgrp(), signal.SIGKILL)
         except Exception:
             # Best effort on the way out. If the group kill is unavailable or

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 import os
+import shutil
 
 import pytest
 
@@ -199,7 +200,5 @@ def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
             conn.commit()
         finally:
             conn.close()
-        import shutil
-
         shutil.rmtree(here, ignore_errors=True)
         smartgallery_app.folder_config_cache = None

@@ -6,6 +6,7 @@ deleted, and re-enabling only generates what is actually missing (cache
 keys are md5(path+mtime), so only changed files ever regenerate).
 """
 
+import glob as _glob
 import os
 import pathlib
 
@@ -83,7 +84,6 @@ def test_serve_thumbnail_falls_back_to_original_when_disabled(sg, tmp_path):
         # Assert: the ORIGINAL bytes come back and no thumbnail was created.
         assert resp.status_code == 200
         assert resp.data == pathlib.Path(path).read_bytes()
-        import glob as _glob
 
         file_hash = sg.content_digest(path + str(mtime))
         assert _glob.glob(os.path.join(sg.THUMBNAIL_CACHE_DIR, f"{file_hash}.*")) == []

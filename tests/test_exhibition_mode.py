@@ -22,6 +22,7 @@ capsys carry what the exit code and stdout used to
 
 from __future__ import annotations
 
+import ast
 import os
 import sqlite3
 
@@ -157,8 +158,6 @@ def test_the_preflight_says_nothing_when_the_mode_is_off(smartgallery_app, monke
 def test_startup_still_runs_the_preflight(gallery_tree):
     """The check is only worth anything if initialize_gallery still calls
     it before anything can create a database."""
-    import ast
-
     gallery_init = next(
         (
             node
