@@ -22,7 +22,6 @@ Design invariants:
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 _logger = logging.getLogger(__name__)
 

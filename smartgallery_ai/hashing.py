@@ -9,12 +9,12 @@ bit patterns internally; see `to_signed64`/`to_unsigned64`.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
 from PIL import Image
-import logging
 
 _logger = logging.getLogger(__name__)
 

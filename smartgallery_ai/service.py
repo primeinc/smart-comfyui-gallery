@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -52,7 +53,6 @@ from smartgallery_ai.worker import (
     mark_faces_cluster_pending,
     record_scan,
 )
-import logging
 
 _logger = logging.getLogger(__name__)
 

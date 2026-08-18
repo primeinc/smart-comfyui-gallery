@@ -11,9 +11,9 @@ Signatures:
 """
 
 import gzip
+import logging
 
 import numpy as np
-import logging
 
 _logger = logging.getLogger(__name__)
 

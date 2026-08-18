@@ -26,15 +26,13 @@ without a search still goes to the album, unchanged.
 from __future__ import annotations
 
 import ast
-import concurrent.futures
 import contextlib
 import os
 import uuid
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "collsearch_"
 

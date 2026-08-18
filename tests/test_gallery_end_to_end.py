@@ -11,14 +11,12 @@ worker processes (slow, and on Windows the child re-imports the test runner).
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "e2eprobe_"
 

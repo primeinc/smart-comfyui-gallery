@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -27,7 +28,6 @@ from PIL import Image
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai.faces import get_face_backend
-import logging
 
 _logger = logging.getLogger(__name__)
 

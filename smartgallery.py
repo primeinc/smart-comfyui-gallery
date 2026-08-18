@@ -576,9 +576,11 @@ else:
 # even if not actually used in the generation.
 # Add those specific strings here to prevent them from cluttering your search results.
 WORKFLOW_PROMPT_BLACKLIST = {
-    "The white dragon warrior stands still, eyes full of determination and "
-    "strength. The camera slowly moves closer or circles around the warrior, "
-    "highlighting the powerful presence and heroic spirit of the character.",
+    (
+        "The white dragon warrior stands still, eyes full of determination and "
+        "strength. The camera slowly moves closer or circles around the warrior, "
+        "highlighting the powerful presence and heroic spirit of the character."
+    ),
     "undefined",
     "null",
     "None",
@@ -11719,8 +11721,10 @@ def collection_view(coll_id):
 
     # 3. Build Dynamic Query Conditions
     conditions = [
-        "f.id IN (SELECT id FROM files WHERE type != 'document'"
-        " AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md')"
+        (
+            "f.id IN (SELECT id FROM files WHERE type != 'document'"
+            " AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md')"
+        )
     ]
     params = []
 

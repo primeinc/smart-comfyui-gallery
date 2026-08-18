@@ -17,14 +17,12 @@ for nothing more.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "cafl_"
 _JSON = {"Accept": "application/json"}

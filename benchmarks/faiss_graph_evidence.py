@@ -38,6 +38,7 @@ import time
 os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
 
 import ctypes
+import logging
 
 import numpy as np
 from datasets import load_dataset
@@ -46,7 +47,6 @@ from PIL import Image
 from smartgallery_ai import AIConfig
 from smartgallery_ai.faces import FaceDetection, cluster_faces, get_face_backend, replace_faces_for_file
 from smartgallery_ai.schema import init_schema
-import logging
 
 _logger = logging.getLogger(__name__)
 

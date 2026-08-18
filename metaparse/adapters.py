@@ -20,12 +20,12 @@ Format references (cloned under ../refs):
 """
 
 import json
+import logging
 import re
 from xml.dom import minidom
 
 from .containers import RawMetadata, load_raw
 from .model import ParsedMetadata, set_param, size_string
-import logging
 
 _logger = logging.getLogger(__name__)
 

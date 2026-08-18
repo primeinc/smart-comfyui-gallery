@@ -28,6 +28,7 @@ import contextlib
 import hashlib
 import importlib
 import importlib.util
+import logging
 import os
 import re
 import shutil
@@ -38,7 +39,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from huggingface_hub import hf_hub_download, snapshot_download
-import logging
 
 _logger = logging.getLogger(__name__)
 

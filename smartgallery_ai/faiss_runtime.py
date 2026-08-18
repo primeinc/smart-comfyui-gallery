@@ -20,11 +20,11 @@ the vendored import cannot load. AI_DAM_FAISS_GPU=0 opts out.
 import contextlib
 import glob
 import importlib
+import logging
 import os
 import shutil
 import sys
 import sysconfig
-import logging
 
 _logger = logging.getLogger(__name__)
 

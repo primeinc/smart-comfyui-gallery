@@ -26,14 +26,12 @@ to answer the question too.
 from __future__ import annotations
 
 import ast
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "cmtvis_"
 _MISSING_ID = "e" * 32

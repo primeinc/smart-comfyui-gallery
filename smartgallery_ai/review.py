@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 from abc import ABC, abstractmethod
@@ -31,7 +32,6 @@ from PIL import Image
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai.embedders import BackendUnavailable
-import logging
 
 _logger = logging.getLogger(__name__)
 

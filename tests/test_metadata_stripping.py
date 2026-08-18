@@ -22,15 +22,13 @@ A privacy control that cannot do its job has to refuse, not degrade.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import glob
 import os
 
 import pytest
-from PIL import Image, PngImagePlugin
-
 from inline_executor import InlineExecutor
+from PIL import Image, PngImagePlugin
 
 _PREFIX = "strip_"
 _SECRET = "a very secret prompt: nobody should read this"

@@ -9,14 +9,12 @@ and a delete must clear the rows it destroyed.
 
 from __future__ import annotations
 
-import concurrent.futures
 import os
 import shutil
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "fldroute_"
 

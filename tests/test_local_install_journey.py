@@ -16,14 +16,12 @@ different audience, is broken in a way no security test would notice.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
-from PIL import Image, PngImagePlugin
-
 from inline_executor import InlineExecutor
+from PIL import Image, PngImagePlugin
 
 _PREFIX = "local_"
 _PROMPT = "LOCALPROMPT a red barn at sunrise"

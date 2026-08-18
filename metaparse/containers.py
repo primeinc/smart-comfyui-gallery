@@ -5,12 +5,12 @@ snapshot, so detection never re-reads the file.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 
 from PIL import Image
 
 from .stealth import read_stealth_metadata
-import logging
 
 _logger = logging.getLogger(__name__)
 

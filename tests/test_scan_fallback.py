@@ -26,9 +26,8 @@ import contextlib
 import os
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 
 class _DeadPoolExecutor(InlineExecutor):

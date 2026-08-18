@@ -24,7 +24,6 @@ the whole Favourites view in one scan, without a word.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 import pathlib
@@ -32,9 +31,8 @@ import re
 import time
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _SOURCE = pathlib.Path(__file__).resolve().parent.parent / "smartgallery.py"
 _PREFIX = "favkeep_"

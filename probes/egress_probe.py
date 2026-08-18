@@ -21,6 +21,7 @@ Usage: sudo python3 probes/egress_probe.py
 import contextlib
 import fcntl
 import json
+import logging
 import os
 import shutil
 import socket
@@ -30,7 +31,6 @@ import sys
 import tempfile
 import time
 import urllib.request
-import logging
 
 _logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def stage2() -> int:
         return 2
     except Exception:
         _logger.debug("handled a failure in stage2", exc_info=True)
-        pass  # good: no route out
+        # good: no route out
 
     tmp = tempfile.mkdtemp(prefix="sg_egress_probe_")
     gallery = os.path.join(tmp, "gallery")

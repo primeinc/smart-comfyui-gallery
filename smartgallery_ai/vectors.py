@@ -16,6 +16,7 @@ model-version migration are naturally excluded until re-indexed.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import sqlite3
 import threading
@@ -26,7 +27,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from smartgallery_ai import schema
-import logging
 
 _logger = logging.getLogger(__name__)
 

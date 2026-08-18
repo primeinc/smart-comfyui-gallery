@@ -18,16 +18,14 @@ comment, and read the comments back. In order, as a person would.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
+from inline_executor import InlineExecutor
 from PIL import Image, PngImagePlugin
 
 import sg_auth
-
-from inline_executor import InlineExecutor
 
 _PREFIX = "journey_"
 _PROMPT = "JOURNEYPROMPT a lighthouse in fog"

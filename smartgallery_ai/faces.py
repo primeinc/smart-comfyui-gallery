@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import time
@@ -39,7 +40,6 @@ from PIL import Image
 from smartgallery_ai import AIConfig
 from smartgallery_ai.embedders import BackendUnavailable
 from smartgallery_ai.faiss_runtime import import_faiss
-import logging
 
 _logger = logging.getLogger(__name__)
 

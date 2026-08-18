@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import queue
 import sqlite3
 import threading
@@ -42,7 +43,6 @@ from dataclasses import dataclass, field
 from smartgallery_ai import RUBRIC_VERSION, AIConfig, schema
 from smartgallery_ai import review as review_mod
 from smartgallery_ai.worker import load_source_image, record_scan, stage_input_key
-import logging
 
 _logger = logging.getLogger(__name__)
 

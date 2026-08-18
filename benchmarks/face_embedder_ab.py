@@ -36,12 +36,13 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("AI_DAM_FACE_GRAPH_BACKEND", "numpy")
 
+import logging
+
 import cv2
 from insightface.app import FaceAnalysis
 from PIL import Image
 
 from smartgallery_ai.faces import OpenCVFaceBackend, _chinese_whispers, _neighbor_graph
-import logging
 
 _logger = logging.getLogger(__name__)
 

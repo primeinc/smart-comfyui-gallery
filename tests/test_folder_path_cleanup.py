@@ -19,14 +19,12 @@ rewrites nested files to a path they were never at.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "fpc_"
 _BOX = f"{_PREFIX}box"

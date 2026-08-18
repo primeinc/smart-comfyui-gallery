@@ -18,16 +18,14 @@ correct, so the gallery looks healthy right up until someone turns on
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
+from inline_executor import InlineExecutor
 from PIL import Image
 
 from smartgallery import get_db_connection
-
-from inline_executor import InlineExecutor
 
 _PREFIX = "ratingid_"
 

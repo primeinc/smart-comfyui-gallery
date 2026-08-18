@@ -18,14 +18,12 @@ every install has, and the one most likely to live on the external drive
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 
 import pytest
-from PIL import Image
-
 from inline_executor import InlineExecutor
+from PIL import Image
 
 _PREFIX = "offguard_"
 

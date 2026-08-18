@@ -8,6 +8,7 @@
 # as a general-purpose "decrypt this password" API.
 
 import contextlib
+import logging
 import os
 import secrets
 import sqlite3
@@ -15,7 +16,6 @@ import sqlite3
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error, InvalidHashError, VerificationError, VerifyMismatchError
 from cryptography.fernet import Fernet  # Lazy: only migration needs this.
-import logging
 
 _logger = logging.getLogger(__name__)
 

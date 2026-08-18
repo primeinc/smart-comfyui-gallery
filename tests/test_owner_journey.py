@@ -17,17 +17,15 @@ for the person who owns the library rather than the one visiting it.
 
 from __future__ import annotations
 
-import concurrent.futures
 import contextlib
 import os
 import time
 
 import pytest
+from inline_executor import InlineExecutor
 from PIL import Image
 
 import sg_auth
-
-from inline_executor import InlineExecutor
 
 _PREFIX = "owner_"
 _PASSWORD = "correct-horse-battery"
