@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 
 from smartgallery_ai import AIConfig
+import pathlib
 
 
 @pytest.mark.parametrize(
@@ -247,8 +248,8 @@ def test_configuration_doc_covers_the_user_facing_env_vars():
     appear in it. Derived from the source so a new knob is caught here."""
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    doc = open(os.path.join(root, "docs", "CONFIGURATION.md"), encoding="utf-8").read()
-    src = open(os.path.join(root, "smartgallery.py"), encoding="utf-8").read()
+    doc = pathlib.Path(root, "docs", "CONFIGURATION.md").read_text(encoding="utf-8")
+    src = pathlib.Path(root, "smartgallery.py").read_text(encoding="utf-8")
     pattern = re.compile(r"""\b(?:env_or|env_num|env_flag)\s*\(\s*['"]([A-Z][A-Z0-9_]{2,})['"]""")
     # PATH/DISPLAY-style environment probes are not settings; everything the
     # app reads through its own config helpers is.
@@ -269,7 +270,7 @@ def test_colors_is_defined_before_the_configuration_block_uses_it():
     """Ordering guard: the config block runs at import, so anything it
     references must already exist above it."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    src = open(os.path.join(root, "smartgallery.py"), encoding="utf-8").read()
+    src = pathlib.Path(root, "smartgallery.py").read_text(encoding="utf-8")
     definition = src.index("class Colors:")
     first_use = src.index("Colors.RED")
     assert definition < first_use, (
@@ -308,13 +309,13 @@ def test_delete_to_moves_files_to_trash_without_overwriting(recoverable_deletes)
     trash = gallery.TRASH_FOLDER
     victim = os.path.join(gallery.BASE_OUTPUT_PATH, "gone.png")
 
-    open(victim, "wb").write(b"first")
+    pathlib.Path(victim).write_bytes(b"first")
     gallery.safe_delete_file(victim)
 
     assert not os.path.exists(victim), "file was not removed from the gallery"
     assert len(os.listdir(trash)) == 1, "file did not arrive in the trash"
 
-    open(victim, "wb").write(b"second")
+    pathlib.Path(victim).write_bytes(b"second")
     gallery.safe_delete_file(victim)
 
     survivors = len(os.listdir(trash))
@@ -330,7 +331,7 @@ def test_delete_to_covers_folder_deletion_too(recoverable_deletes, monkeypatch):
     album = os.path.join(gallery.BASE_OUTPUT_PATH, "album")
     os.makedirs(album)
     for name in ("a.png", "b.png"):
-        open(os.path.join(album, name), "wb").write(b"x")
+        pathlib.Path(album, name).write_bytes(b"x")
 
     gallery.safe_delete_tree(album)
 
@@ -345,7 +346,7 @@ def test_delete_to_covers_folder_deletion_too(recoverable_deletes, monkeypatch):
     monkeypatch.setattr(gallery, "TRASH_FOLDER", None)
     album2 = os.path.join(gallery.BASE_OUTPUT_PATH, "album2")
     os.makedirs(album2)
-    open(os.path.join(album2, "c.png"), "wb").write(b"x")
+    pathlib.Path(album2, "c.png").write_bytes(b"x")
 
     gallery.safe_delete_tree(album2)
 

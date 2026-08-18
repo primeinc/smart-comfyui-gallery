@@ -113,7 +113,7 @@ def test_every_documented_setting_is_read_somewhere():
     ):
         path = _ROOT / name
         if path.exists():
-            non_python += open(path, encoding="utf-8", errors="replace").read()
+            non_python += path.read_text(encoding="utf-8", errors="replace")
 
     all_python = "\n".join(text for _p, text in _source_text())
 

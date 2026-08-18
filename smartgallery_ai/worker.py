@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 import os
+import pathlib
 import shutil
 import sqlite3
 import sys
@@ -272,17 +273,17 @@ def app_git_ref(root: str | None = None) -> str | None:
     strings, which are what actually drive re-indexing."""
     root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
-        head = open(os.path.join(root, ".git", "HEAD")).read().strip()
+        head = pathlib.Path(root, ".git", "HEAD").read_text().strip()
         if head.startswith("ref:"):
             ref = head.split(None, 1)[1]
             branch = ref.rsplit("/", 1)[-1]
             try:
-                sha = open(os.path.join(root, ".git", *ref.split("/"))).read().strip()
+                sha = pathlib.Path(root, ".git", *ref.split("/")).read_text().strip()
             except OSError:
                 sha = None
-                packed = os.path.join(root, ".git", "packed-refs")
-                if os.path.isfile(packed):
-                    for line in open(packed):
+                packed = pathlib.Path(root, ".git", "packed-refs")
+                if packed.is_file():
+                    for line in packed.read_text().splitlines():
                         if line.strip().endswith(ref):
                             sha = line.split()[0]
                             break

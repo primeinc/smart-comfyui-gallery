@@ -194,7 +194,7 @@ def test_nothing_in_the_ai_layer_opens_the_database_on_its_own():
 
     offenders = []
     for module in sorted(package.rglob("*.py")):
-        tree = ast.parse(open(module, encoding="utf-8").read())
+        tree = ast.parse(pathlib.Path(module).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not (
                 isinstance(node, ast.Call)

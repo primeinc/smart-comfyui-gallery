@@ -17,6 +17,7 @@ import os
 
 import pytest
 from PIL import Image
+import pathlib
 
 _PREFIX = "mvroute_"
 
@@ -117,7 +118,7 @@ def test_move_into_a_name_collision_never_overwrites(smartgallery_app, client, d
         fh.write(b"incumbent bytes that must survive")
 
     file_id, source_path = _seed(smartgallery_app, name)
-    original = open(source_path, "rb").read()
+    original = pathlib.Path(source_path).read_bytes()
 
     resp = client.post("/galleryout/move_batch", json={"file_ids": [file_id], "destination_folder": dest_key})
 

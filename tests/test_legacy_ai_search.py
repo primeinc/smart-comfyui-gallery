@@ -45,7 +45,7 @@ def test_nothing_claims_a_row_from_the_indexing_queue():
     inert."""
     setters = []
     for path in _source_files():
-        text = open(path, encoding="utf-8").read()
+        text = pathlib.Path(path).read_text(encoding="utf-8")
         if "ai_indexing_queue" not in text:
             continue
         for line_no, line in enumerate(text.splitlines(), 1):

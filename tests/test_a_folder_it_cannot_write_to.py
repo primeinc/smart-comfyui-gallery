@@ -167,8 +167,10 @@ def test_the_folder_really_does_refuse(a_folder_that_refuses_writes):
 
     with pytest.raises(PermissionError):
         os.makedirs(os.path.join(root, "nope"))
-    with pytest.raises(PermissionError):
-        builtins.open(os.path.join(root, "nope.txt"), "w")
+    # The open itself is what must raise, so the body never runs; written as
+    # a `with` so a build where it unexpectedly succeeds still closes it.
+    with pytest.raises(PermissionError), builtins.open(os.path.join(root, "nope.txt"), "w"):
+        pass
 
     # and somewhere else is still perfectly writable
     elsewhere = os.path.join(os.path.dirname(root), "elsewhere.txt")

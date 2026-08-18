@@ -10,6 +10,7 @@ import os
 
 import pytest
 from PIL import Image
+import pathlib
 
 
 @pytest.fixture
@@ -81,7 +82,7 @@ def test_serve_thumbnail_falls_back_to_original_when_disabled(sg, tmp_path):
 
         # Assert: the ORIGINAL bytes come back and no thumbnail was created.
         assert resp.status_code == 200
-        assert resp.data == open(path, "rb").read()
+        assert resp.data == pathlib.Path(path).read_bytes()
         import glob as _glob
 
         file_hash = sg.content_digest(path + str(mtime))
@@ -105,6 +106,6 @@ def test_toggle_never_touches_cached_thumbnails(sg):
         _set(sg, True)
 
         # Assert: the cache file is untouched.
-        assert open(cached, "rb").read() == b"cached-thumb"
+        assert pathlib.Path(cached).read_bytes() == b"cached-thumb"
     finally:
         os.remove(cached)
