@@ -351,6 +351,78 @@ select = [
 ignore = [
     # The one member of TRY that is about wording rather than behaviour.
     "TRY003",  # raise-vanilla-args: long messages inside a raise
+
+    # ---------------------------------------------------------------
+    # Three rules whose findings this codebase cannot act on, each
+    # replaced by a check that asserts what the rule was reaching for.
+    # Every other finding in this repository was fixed rather than
+    # listed here; these three were read in ruff's own source first, to
+    # establish that no edit clears them.
+    # ---------------------------------------------------------------
+
+    # S603 subprocess-without-shell-equals-true.
+    #
+    # Fires unless every element of the argv is a string literal or
+    # sys.executable (shell_injection.rs:311-331). A program that runs
+    # ffprobe over a file somebody dropped in a folder can never satisfy
+    # that -- the path is the point -- and resolving the executables
+    # properly ADDED five findings, because a resolved path is not a
+    # literal. Bandit calls B603 an audit check; there is no edit that
+    # clears it.
+    #
+    # Replaced by tests/test_programs_are_started_safely.py, which holds
+    # what actually matters and S603 cannot see: never a shell, always an
+    # argument list, always a timeout, always an explicit check=. S602,
+    # S604, S605 and S609 -- the shell rules -- stay selected.
+    "S603",
+
+    # S608 hardcoded-sql-expression.
+    #
+    # Fires on any f-string containing SELECT with an interpolation
+    # (hardcoded_sql_expression.rs:59-119). Every remaining one in this
+    # tree interpolates SHAPE -- a column name from a fixed registry, a
+    # WHERE clause built from literal fragments, an ORDER BY chosen from
+    # a map, a run of "?" -- and all 42 were read one by one to confirm
+    # it. Values are bound; sqlbind.with_id_placeholders is the only
+    # thing that writes into a statement, and all it can write is
+    # question marks.
+    #
+    # The rewrite that satisfies the rule is worse: it cannot see through
+    # NAME.format(...) or "".join([...]), so moving the templates to
+    # module constants would silence it permanently -- including for a
+    # value spliced in years from now.
+    #
+    # Replaced by tests/test_sql_is_built_from_structure_only.py, which
+    # knows the names. Every interpolation slot in every SQL string in
+    # the shipped source must be one that file has agreed carries
+    # structure, and the list has to stay exactly the set that is reached
+    # -- so a new name fails, and a stale one fails too. It is stricter
+    # than S608 in scope: S608 only reads strings matching its own
+    # SELECT/INSERT/UPDATE/DELETE regex.
+    "S608",
+
+    # PLC0415 import-outside-top-level.
+    #
+    # Wants every import at the top of its file. This codebase needs the
+    # opposite for one specific set: smartgallery_ai.faces imported torch
+    # at module scope and `import smartgallery` cost 2.67s; moving it
+    # into its function took that to 0.94s. provision.py importing
+    # huggingface_hub at module scope cost another 0.6s AND stopped the
+    # shipped container from starting, because the image installs
+    # requirements.txt and huggingface_hub is in the optional AI group.
+    # Obeying PLC0415 puts both back.
+    #
+    # The cheap first-party lazy imports were hoisted; what is left is
+    # torch, faiss, open_clip, transformers, insightface, onnxruntime,
+    # mobile_sam, huggingface_hub, and the two module cycles that a
+    # top-level import turns into an ImportError.
+    #
+    # Replaced by two checks that hold the property the rule is a proxy
+    # for: tests/test_the_heavy_layer_stays_lazy.py (none of those
+    # packages is reached while a module is read) and the import-time
+    # requirements check in tests/test_docker_image_contents.py (nothing
+    # reached at import time is missing from the core install).
+    "PLC0415",
 ]
 
 [tool.ruff.lint.per-file-ignores]

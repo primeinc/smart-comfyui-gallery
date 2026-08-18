@@ -40,6 +40,10 @@ PORT = 18911  # loopback-only port the probe's server listens on
 MARK = "SG_EGRESS_PROBE_STAGE2"  # env var whose presence means "this process is the stage-2 re-exec"
 
 
+# Whole-probe ceiling for the re-exec'd child.
+PROBE_TIMEOUT = 600
+
+
 def stage1() -> int:
     """Re-exec this script inside a fresh network namespace (unshare -n).
     Returns the child's exit code, or 2 when unshare is unavailable."""
@@ -49,8 +53,10 @@ def stage1() -> int:
     env = dict(os.environ, **{MARK: "1"})
     # -n: new network namespace (no interfaces but lo, which stage2 brings
     # up itself via ioctl -- the 'ip' binary may not exist on minimal hosts).
-    cmd = ["unshare", "-n", sys.executable, os.path.abspath(__file__)]
-    return subprocess.call(cmd, env=env)
+    cmd = [shutil.which("unshare") or "unshare", "-n", sys.executable, os.path.abspath(__file__)]
+    # The child runs the whole probe; generous, but not unbounded -- a
+    # probe that hangs is a probe that reports nothing.
+    return subprocess.call(cmd, env=env, timeout=PROBE_TIMEOUT)
 
 
 def _loopback_up() -> None:
