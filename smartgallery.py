@@ -1588,16 +1588,23 @@ def _view_owner():
     return str(session.get("user_id") or "")
 
 
+def _ai_file_access_check(file_id):
+    """The gallery's per-file visibility policy, for the AI read routes.
+
+    Restricted-mode viewers must not read derived AI metadata for files the
+    normal routes would refuse. The indirection is what makes this work:
+    is_file_accessible is defined further down the module, so the name is
+    resolved per request rather than at registration.
+    """
+    return is_file_accessible(file_id)
+
+
 # --- AI DAM BLUEPRINT (WI-31, optional; every route no-ops when disabled) ---
-# file_access_check applies the gallery's per-file visibility policy to the
-# AI read routes so restricted-mode viewers cannot read derived AI metadata
-# for files the normal routes would refuse (lambda: is_file_accessible is
-# defined later in this module and resolved at request time).
 app.register_blueprint(
     ai_dam_service.create_ai_blueprint(
         AI_CONFIG,
         guard=management_api_only,
-        file_access_check=lambda fid: is_file_accessible(fid),
+        file_access_check=_ai_file_access_check,
         # Seeing a picture and being told how it was made are different
         # permissions here: the same rule that strips prompts out of the
         # files and the listings decides whether a review may quote them.
@@ -2631,7 +2638,10 @@ def _extract_ffmpeg_programs(archive_path, destination, programs, asset_name=Non
             shutil.copyfileobj(reader, out)
         os.replace(target + ".part", target)
         with contextlib.suppress(OSError):
-            os.chmod(target, 0o755)
+            # Owner-only. The one account that runs the gallery is the one
+            # that runs these binaries; a private tools directory has no
+            # reason to hand group or world an execute bit.
+            os.chmod(target, 0o700)
         taken[base] = target
 
     # The format comes from the ASSET name, not the path on disk: the
@@ -3518,6 +3528,30 @@ def create_thumbnail(filepath, file_hash, file_type):
     return None
 
 
+def workflow_nodes(workflow_json_string):
+    """The nodes of a workflow, whichever shape it was saved in.
+
+    The UI writes {"nodes": [...]}, the API writes {"<id>": {...}}, and a bare
+    list turns up as well. Unparseable and empty input give an empty list, so
+    callers get one thing to iterate and nothing to guard.
+    """
+    if not workflow_json_string:
+        return []
+
+    try:
+        data = json.loads(workflow_json_string)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        if isinstance(data.get("nodes"), list):
+            return data["nodes"]
+        return list(data.values())
+    return []
+
+
 def extract_workflow_files_string(workflow_json_string):
     """
     Parses workflow and returns a normalized string containing ONLY filenames
@@ -3526,25 +3560,7 @@ def extract_workflow_files_string(workflow_json_string):
     Robust version: Handles both UI (widgets_values) and API (inputs) formats safely.
     Filters out prompts, settings, and comments based on extensions and path structure.
     """
-    if not workflow_json_string:
-        return ""
-
-    try:
-        data = json.loads(workflow_json_string)
-    except (json.JSONDecodeError, TypeError):
-        return ""
-
-    # Normalize structure (UI vs API format)
-    nodes = []
-    if isinstance(data, dict):
-        if "nodes" in data and isinstance(data["nodes"], list):
-            nodes = data["nodes"]  # UI Format
-        else:
-            # API Format fallback (Dict of nodes)
-            # We convert it to a list for uniform processing
-            nodes = list(data.values())
-    elif isinstance(data, list):
-        nodes = data  # Raw list format
+    nodes = workflow_nodes(workflow_json_string)
 
     # 1. Blocklist Nodes (Comments and structural nodes)
     ignored_types = {"Note", "NotePrimitive", "Reroute", "PrimitiveNode"}
@@ -3745,23 +3761,7 @@ def extract_workflow_prompt_string(workflow_json_string):
     This function scans ALL nodes to ensure keyword searches work as expected,
     while filtering out known UI noise and technical instructions.
     """
-    if not workflow_json_string:
-        return ""
-
-    try:
-        data = json.loads(workflow_json_string)
-    except (json.JSONDecodeError, TypeError):
-        return ""
-
-    # Normalize structure (UI vs API format)
-    nodes = []
-    if isinstance(data, dict):
-        if "nodes" in data and isinstance(data["nodes"], list):
-            nodes = data["nodes"]  # UI Format
-        else:
-            nodes = list(data.values())  # API Format
-    elif isinstance(data, list):
-        nodes = data
+    nodes = workflow_nodes(workflow_json_string)
 
     found_texts = set()
 
@@ -7081,12 +7081,10 @@ def ai_watched_folders():
         for r in rows:
             m = pmap.get(r["path"])
             rel = r["path"]
-            try:
+            # A watched folder on another Windows drive has no path relative
+            # to the output root. Show the absolute one.
+            with contextlib.suppress(TypeError, ValueError):
                 rel = os.path.relpath(r["path"], BASE_OUTPUT_PATH)
-            except (TypeError, ValueError):
-                # A watched folder on another Windows drive has no path
-                # relative to the output root. Show the absolute one.
-                pass
             if m:
                 res.append(
                     {
@@ -8448,14 +8446,16 @@ def mount_folder():
                 if result_sym.returncode != 0:
                     err_sym = result_sym.stderr.strip() or result_sym.stdout.strip()
 
-                    # Create a detailed error message for the user
-                    error_msg = (
+                    # Create a detailed error message for the user.
+                    # OSError is what the POSIX branch below raises from
+                    # os.symlink for the same failure, so both platforms
+                    # fail the same way here.
+                    raise OSError(
                         f"Failed to create link.\n\n"
                         f"Attempt 1 (Junction): {err_junction}\n"
                         f"Attempt 2 (Symlink): {err_sym}\n\n"
                         f"TIP: If using Virtual Drives or Network Shares, try running ComfyUI as Administrator."
                     )
-                    raise Exception(error_msg)
 
         else:
             # LINUX/MAC: Standard symlink
@@ -8623,8 +8623,9 @@ def browse_filesystem():
         # Calculate "Up" button (Parent)
         parent = os.path.dirname(current_path)
         if parent == current_path:
-            # If at drive root (e.g. C:\), parent is Computer list
-            parent = "" if os.name == "nt" else ""
+            # At a root -- a Windows drive letter or /. Up from there is the
+            # drive list, which the empty path selects.
+            parent = ""
 
         response_data["parent_path"] = parent
 
@@ -9580,11 +9581,16 @@ def delete_batch():
 def favorite_batch():
     data = request.json
     file_ids, status = data.get("file_ids", []), data.get("status", False)
+    if not isinstance(file_ids, list):
+        # A JSON string is iterable. Unpacked into the placeholders it would
+        # favourite the files with ids "a", "b" and "c" and report success,
+        # so the shape is checked before the count means anything.
+        return jsonify({"status": "error", "message": "file_ids must be a list"}), 400
     if not file_ids:
         return jsonify({"status": "error", "message": "No files selected"}), 400
     with get_db_connection() as conn:
         placeholders = ",".join("?" * len(file_ids))
-        conn.execute(f"UPDATE files SET is_favorite = ? WHERE id IN ({placeholders})", [1 if status else 0] + file_ids)
+        conn.execute(f"UPDATE files SET is_favorite = ? WHERE id IN ({placeholders})", [1 if status else 0, *file_ids])
         conn.commit()
     return jsonify({"status": "success", "message": f"Updated favorites for {len(file_ids)} files."})
 
@@ -13322,12 +13328,11 @@ def check_port_available(port):
     means on a given system, both get the same answer.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
+        # Same tolerance waitress has; the bind is what matters.
+        with contextlib.suppress(OSError):
             s.setsockopt(
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) | 1
             )
-        except OSError:
-            pass  # same tolerance waitress has; the bind is what matters
         try:
             s.bind(("0.0.0.0", port))
         except OSError:
@@ -14571,9 +14576,7 @@ def _register_remix_routes_inline():
                     linked_names.add(inp["name"])
 
             if isinstance(widgets_values, dict):
-                for k, v in widgets_values.items():
-                    if isinstance(v, (str, int, float, bool)):
-                        inputs[k] = v
+                inputs.update({k: v for k, v in widgets_values.items() if isinstance(v, (str, int, float, bool))})
             else:
                 param_names = NODE_PARAM_NAMES.get(node_type, [])
                 if param_names:
@@ -15348,9 +15351,7 @@ def _register_remix_routes_inline():
                     inputs[inp["name"]] = link_map[link_id]
                     linked_names.add(inp["name"])
             if isinstance(widgets_values, dict):
-                for k, v in widgets_values.items():
-                    if isinstance(v, (str, int, float, bool)):
-                        inputs[k] = v
+                inputs.update({k: v for k, v in widgets_values.items() if isinstance(v, (str, int, float, bool))})
             elif node_type in object_info:
                 node_def = object_info[node_type]
                 required = node_def.get("input", {}).get("required", {})

@@ -13,3 +13,4 @@ blinker
 cryptography
 waitress
 argon2-cffi
+defusedxml  # XMP is parsed out of files the gallery did not write

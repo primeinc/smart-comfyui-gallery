@@ -49,7 +49,7 @@ import tempfile
 from collections import Counter
 from ctypes import wintypes
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -98,7 +98,10 @@ def _date_placeholder_map(now_epoch: float) -> dict[str, str]:
     tokens and the harness resolves them with the calendar-boundary
     semantics the parsers are contractually required to implement:
     local-timezone days, ISO weeks starting Monday, calendar months."""
-    local_today = date.fromtimestamp(now_epoch)
+    # UTC first, then astimezone() into the running machine's zone: the
+    # contract is local calendar days, and date.fromtimestamp() reached
+    # the same answer without ever naming a zone.
+    local_today = datetime.fromtimestamp(now_epoch, tz=timezone.utc).astimezone().date()
     return {
         "<today>": local_today.isoformat(),
         "<yesterday>": (local_today - timedelta(days=1)).isoformat(),

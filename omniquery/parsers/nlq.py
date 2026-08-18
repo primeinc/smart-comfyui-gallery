@@ -30,7 +30,7 @@ import calendar
 import json
 import re
 import time
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from omniquery.parsers import ParserBackend, ParserOutcome, try_validate
@@ -795,7 +795,10 @@ class NlqParser(ParserBackend):
 
         spanned_conds += _apply_rule(working, consumed, _LAST_UNIT_RE, _last_unit_builder)
 
-        local_today = date.fromtimestamp(now_epoch)
+        # UTC first, then astimezone() into the running machine's zone: the
+        # contract is local calendar days, and date.fromtimestamp() reached
+        # the same answer without ever naming a zone.
+        local_today = datetime.fromtimestamp(now_epoch, tz=timezone.utc).astimezone().date()
         yesterday_iso = (local_today - timedelta(days=1)).isoformat()
         week_start = local_today - timedelta(days=local_today.weekday())
         week_start_iso = week_start.isoformat()

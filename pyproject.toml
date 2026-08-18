@@ -31,6 +31,9 @@ dependencies = [
     "cryptography",
     "waitress",
     "argon2-cffi",
+    # XMP is parsed out of image files the gallery did not write; expat
+    # expands entities, so a crafted file can exhaust memory during a scan.
+    "defusedxml",
 ]
 
 [dependency-groups]

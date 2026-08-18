@@ -13,8 +13,7 @@ import pytest
 
 from omniquery import compiler, fields
 from omniquery.ast import Cond, OrderSpec, parse_query
-from omniquery.compiler import CompileError, CompileParams, resolution_key
-from omniquery.compiler import compile as compile_query
+from omniquery.compiler import CompileError, CompileParams, compile_query, resolution_key
 from omniquery.validation import AuthContext, validate
 
 STAFF = AuthContext(role="STAFF", user_id="3", client_uuid="client-3", ai_enabled=True)
@@ -368,7 +367,7 @@ def test_similar_to_dict_value_resolution_key_distinguishes_k():
 
 
 def test_compile_rejects_non_validated_query_object():
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError, match="validated query"):
         compile_query("not a ValidatedQuery", CompileParams(now_epoch=NOW, base_path="/gallery"))
 
 

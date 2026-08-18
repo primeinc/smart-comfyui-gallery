@@ -180,9 +180,9 @@ def test_the_collection_view_still_ignores_these_parameters(gallery_tree, smartg
 
     assert read, "no request parameters found; the scan is not reaching the view"
     assert "sort_by" in read, read
-    assert "omniquery_id" not in read, (
-        "the collection view now reads a search parameter, so the redirect in gallery_view can send searches here instead"
+    reads_a_search_parameter = (
+        "the collection view now reads a search parameter, so the redirect in "
+        "gallery_view can send searches here instead"
     )
-    assert "ai_session_id" not in read, (
-        "the collection view now reads a search parameter, so the redirect in gallery_view can send searches here instead"
-    )
+    assert "omniquery_id" not in read, reads_a_search_parameter
+    assert "ai_session_id" not in read, reads_a_search_parameter

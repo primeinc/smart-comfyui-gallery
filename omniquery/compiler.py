@@ -55,11 +55,15 @@ class CompiledQuery:
     effective_limit: int  # row cap; bound as the LIMIT of "ids" queries
 
 
-def compile(vq: ValidatedQuery, params: CompileParams) -> CompiledQuery:
+def compile_query(vq: ValidatedQuery, params: CompileParams) -> CompiledQuery:
     """Compile a validated query into a single SELECT over DISTINCT file ids:
     'ids' queries carry ORDER BY and a bound LIMIT; 'count' queries wrap the
     id set in COUNT(*) and take neither."""
-    assert isinstance(vq, ValidatedQuery), "compile() requires a validated query"
+    if not isinstance(vq, ValidatedQuery):
+        # A raw Query would compile something -- validation is where field
+        # names, operators and limits are checked, so skipping it is how
+        # unchecked input reaches the SQL. Not an assert: -O would drop it.
+        raise TypeError("compile_query() requires a validated query")
     query = vq.query
 
     where_sql = ""

@@ -52,9 +52,9 @@ def caller(smartgallery_app, monkeypatch):
     return client
 
 
-# A real one from the sweep: file_ids is iterated as a list, and a string
-# is iterable, so it gets as far as the database and fails there.
-_A_FAULT = ("/galleryout/favorite_batch", {"file_ids": "abc", "status": True})
+# A real one from the sweep: the ids are bound straight into the statement,
+# and an object is not a value sqlite can bind, so it fails at the database.
+_A_FAULT = ("/galleryout/favorite_batch", {"file_ids": [{"not": "an id"}], "status": True})
 
 
 def test_an_unexpected_fault_answers_in_json(caller):
@@ -152,8 +152,11 @@ def test_the_fault_used_for_these_checks_is_a_real_one(smartgallery_app):
     _route, payload = _A_FAULT
     ids = payload["file_ids"]
 
-    # file_ids is iterated as a list of ids. A string is iterable, so it
-    # reaches the database as one-character ids rather than being refused.
-    assert isinstance(ids, str)
-    assert len(ids) > 1
-    assert list(ids) == ["a", "b", "c"], "the value used here is no longer the shape that provoked the fault"
+    # The list shape is checked by the route, so it gets past that and binds
+    # its contents. sqlite has no conversion for an object, and refusing to
+    # bind is what goes wrong.
+    assert isinstance(ids, list)
+    assert ids, "an empty list is refused before the database sees it"
+    assert not any(isinstance(i, (str, int, float, bytes, type(None))) for i in ids), (
+        "every id here is now something sqlite can bind, so the request no longer fails"
+    )

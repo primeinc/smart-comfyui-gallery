@@ -16,8 +16,7 @@ from datetime import datetime as _dt
 import pytest
 
 from omniquery.ast import canonicalize, parse_query
-from omniquery.compiler import CompileParams
-from omniquery.compiler import compile as compile_query
+from omniquery.compiler import CompileParams, compile_query
 from omniquery.parsers import contains_not_node, coverage_guard, try_validate
 from omniquery.parsers.nlq import NlqParser
 from omniquery.validation import AuthContext, validate

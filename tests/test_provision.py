@@ -11,6 +11,7 @@ import importlib.util as IU
 import io
 import logging
 import os
+import re
 import shutil as _sh
 import sqlite3
 import time
@@ -159,7 +160,7 @@ def test_provision_download_failure_names_artifact(tmp_path):
     def boom(_u, _dest):
         raise OSError("connection refused")
 
-    with pytest.raises(P.ProvisionError, match="face_detection_yunet_2023mar.onnx"):
+    with pytest.raises(P.ProvisionError, match=re.escape("face_detection_yunet_2023mar.onnx")):
         P.provision(str(tmp_path), ["faces"], log=lambda _m: None, downloaders={"url": boom})
 
 

@@ -24,7 +24,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _norm(name: str) -> str:
     """Canonical package name: the part before any version/extras/URL
     markers, lowercased, - and _ folded."""
-    base = re.split(r"[<>=!\[@; ]", name.strip(), 1)[0]
+    base = re.split(r"[<>=!\[@; ]", name.strip(), maxsplit=1)[0]
     return base.lower().replace("_", "-")
 
 

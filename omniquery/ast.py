@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Union
+from typing import Any
 
 AST_VERSION = 1  # wire-format version; parse_query rejects any other
 
@@ -89,7 +89,7 @@ class Group:
         return {"op": self.op, "children": [c.to_dict() for c in self.children]}
 
 
-Node = Union[Cond, Not, Group]
+Node = Cond | Not | Group
 
 
 @dataclass(frozen=True)

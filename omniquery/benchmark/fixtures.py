@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import hashlib
 import os
-import random
 import sqlite3
 import struct
 from collections import defaultdict
 from typing import Any
+
+import numpy as np
 
 from omniquery.fields import REVIEW_ISSUE_VALUES
 from smartgallery_ai import HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
@@ -230,7 +231,33 @@ def _generate(seed: int) -> dict[str, Any]:
     so equal seeds yield identical records; both the database rows and the
     ground-truth expectations derive from this single output.
     """
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
+
+    # numpy's generator, matching every other seeded stream in this repo
+    # (probes/, benchmarks/, embedders). Each helper hands back a plain
+    # Python value: numpy scalars reach sqlite3 as unbindable types and json
+    # as unserialisable ones, and both faults land far from here.
+    def draw_int(low, high):
+        """An integer in [low, high] -- both ends included."""
+        return int(rng.integers(low, high, endpoint=True))
+
+    def draw_float(low, high):
+        return float(rng.uniform(low, high))
+
+    def chance(probability):
+        return float(rng.random()) < probability
+
+    def pick(pool):
+        """One element, chosen by index so it keeps its own type."""
+        return pool[int(rng.integers(len(pool)))]
+
+    def draw_bits64():
+        """A full unsigned 64-bit draw, the shape a perceptual hash is."""
+        return int(rng.integers(0, np.iinfo(np.uint64).max, endpoint=True, dtype=np.uint64))
+
+    def take(pool, count):
+        """`count` distinct elements, in the order they were drawn."""
+        return [pool[int(i)] for i in rng.permutation(len(pool))[:count]]
 
     types = list(_TYPE_POOL)
     rng.shuffle(types)
@@ -243,36 +270,36 @@ def _generate(seed: int) -> dict[str, Any]:
         name = f"{ftype}_{idx:03d}{_EXT[ftype]}"
         path = f"{FIXTURE_BASE_PATH}/{folder}/{name}"
 
-        day_offset = rng.randint(0, 400)
-        hour_jitter = rng.randint(0, 86399)
+        day_offset = draw_int(0, 400)
+        hour_jitter = draw_int(0, 86399)
         mtime = ANCHOR_EPOCH - day_offset * 86400.0 - hour_jitter
 
-        size = rng.randint(15_000, 45_000_000)
+        size = draw_int(15_000, 45_000_000)
 
         duration = ""
         duration_seconds = None
         if ftype in ("video", "audio"):
-            secs = rng.randint(3, 3599)
+            secs = draw_int(3, 3599)
             duration = f"{secs // 60:02d}:{secs % 60:02d}"
             duration_seconds = secs
 
         dimensions = ""
         width = height = megapixels = None
         if ftype in ("image", "video", "animated_image"):
-            dimensions = rng.choice(_DIMENSIONS_POOL)
+            dimensions = pick(_DIMENSIONS_POOL)
             width, height = (int(p) for p in dimensions.split("x"))
             megapixels = width * height / 1_000_000.0
 
         has_workflow = 0
         workflow_prompt = ""
         workflow_files = ""
-        if ftype in ("image", "animated_image") and rng.random() < 0.6:
+        if ftype in ("image", "animated_image") and chance(0.6):
             has_workflow = 1
-            workflow_prompt = rng.choice(_PROMPT_POOL)
+            workflow_prompt = pick(_PROMPT_POOL)
             workflow_files = f"workflow_{fid}.json"
 
-        ai_caption = rng.choice(_CAPTION_POOL) if rng.random() < 0.5 else None
-        is_favorite = 1 if rng.random() < 0.25 else 0
+        ai_caption = pick(_CAPTION_POOL) if chance(0.5) else None
+        is_favorite = 1 if chance(0.25) else 0
 
         files.append(
             {
@@ -300,28 +327,28 @@ def _generate(seed: int) -> dict[str, Any]:
     ratings: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = []
     for f in files:
-        if rng.random() < 0.55:
-            n = rng.randint(1, 3)
+        if chance(0.55):
+            n = draw_int(1, 3)
             ratings.extend(
                 {
                     "file_id": f["id"],
                     "client_uuid": cu,
-                    "rating": rng.randint(1, 5),
+                    "rating": draw_int(1, 5),
                     "created_at": f["mtime"] + 10.0,
                 }
-                for cu in rng.sample(_RATING_CLIENT_POOL, k=n)
+                for cu in take(_RATING_CLIENT_POOL, n)
             )
-        if rng.random() < 0.4:
-            n = rng.randint(1, 2)
+        if chance(0.4):
+            n = draw_int(1, 2)
             comments.extend(
                 {
                     "file_id": f["id"],
                     "client_uuid": cu,
                     "author_name": _USERNAME_BY_UUID.get(cu, cu),
-                    "comment_text": rng.choice(_COMMENT_POOL),
+                    "comment_text": pick(_COMMENT_POOL),
                     "created_at": f["mtime"] + 20.0,
                 }
-                for cu in rng.sample(_COMMENT_CLIENT_POOL, k=n)
+                for cu in take(_COMMENT_CLIENT_POOL, n)
             )
 
     all_ids = [f["id"] for f in files]
@@ -334,14 +361,14 @@ def _generate(seed: int) -> dict[str, Any]:
         membership[(flag_name, flag_type)] = shuffled[cursor : cursor + chunk_size]
         cursor += chunk_size
     for album_name in USER_ALBUMS:
-        membership[(album_name, "user_album")] = rng.sample(all_ids, 15)
+        membership[(album_name, "user_album")] = take(all_ids, 15)
 
     hashes: list[dict[str, Any]] = []
     for f in files:
         phash = dhash = None
         if f["type"] in ("image", "video", "animated_image"):
-            phash = _signed64(rng.getrandbits(64))
-            dhash = _signed64(rng.getrandbits(64))
+            phash = _signed64(draw_bits64())
+            dhash = _signed64(draw_bits64())
         hashes.append(
             {
                 "file_id": f["id"],
@@ -358,7 +385,7 @@ def _generate(seed: int) -> dict[str, Any]:
     embed_candidates = [f for f in files if f["type"] in ("image", "animated_image")][:20]
     for f in embed_candidates:
         for space in (SPACE_SEMANTIC, SPACE_VISUAL):
-            vector = struct.pack("<8f", *(rng.uniform(-1, 1) for _ in range(8)))
+            vector = struct.pack("<8f", *(draw_float(-1, 1) for _ in range(8)))
             embeddings.append(
                 {
                     "file_id": f["id"],
@@ -387,12 +414,12 @@ def _generate(seed: int) -> dict[str, Any]:
             face_instances.append(
                 {
                     "file_id": f["id"],
-                    "bbox_x": round(rng.uniform(0.05, 0.5), 3),
-                    "bbox_y": round(rng.uniform(0.05, 0.5), 3),
-                    "bbox_w": round(rng.uniform(0.1, 0.4), 3),
-                    "bbox_h": round(rng.uniform(0.1, 0.4), 3),
-                    "det_score": round(rng.uniform(0.5, 0.99), 3),
-                    "embedding": struct.pack("<8f", *(rng.uniform(-1, 1) for _ in range(8))),
+                    "bbox_x": round(draw_float(0.05, 0.5), 3),
+                    "bbox_y": round(draw_float(0.05, 0.5), 3),
+                    "bbox_w": round(draw_float(0.1, 0.4), 3),
+                    "bbox_h": round(draw_float(0.1, 0.4), 3),
+                    "det_score": round(draw_float(0.5, 0.99), 3),
+                    "embedding": struct.pack("<8f", *(draw_float(-1, 1) for _ in range(8))),
                     "dim": 8,
                     "model_id": "stub-facenet",
                     "model_version": "v1",
@@ -421,7 +448,7 @@ def _generate(seed: int) -> dict[str, Any]:
                 "model": ["flux1-dev-fp8", "sdxl_base_1.0", "dreamshaper_8"][i % 3],
                 "sampler": ["euler", "dpmpp_2m"][i % 2],
                 "scheduler": "normal",
-                "seed": rng.randint(1, 2**31),
+                "seed": draw_int(1, 2**31),
                 "steps": [20, 25, 30][i % 3],
                 "cfg": [4.0, 7.0, 7.5][i % 3],
                 "width": f["width"],
@@ -448,8 +475,8 @@ def _generate(seed: int) -> dict[str, Any]:
                 "rubric_version": RUBRIC_VERSION,
                 "model_id": "stub-critic",
                 "model_version": "v1",
-                "quality_score": round(rng.uniform(1, 10), 2),
-                "prompt_alignment_score": round(rng.uniform(0, 1), 3),
+                "quality_score": round(draw_float(1, 10), 2),
+                "prompt_alignment_score": round(draw_float(0, 1), 3),
                 "summary": "",
                 "raw_response": "{}",
                 "source_mtime": f["mtime"],
@@ -466,8 +493,8 @@ def _generate(seed: int) -> dict[str, Any]:
                 "file_id": rv["file_id"],
                 "review_index": i,
                 "type": issue_type,
-                "severity": rng.choice(["low", "medium", "high"]),
-                "confidence": round(rng.uniform(0.5, 0.99), 2),
+                "severity": pick(["low", "medium", "high"]),
+                "confidence": round(draw_float(0.5, 0.99), 2),
                 "description": f"{issue_type} issue detected",
             }
         )

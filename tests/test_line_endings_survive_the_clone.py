@@ -92,19 +92,21 @@ def test_the_checkout_is_really_in_that_mode(checkouts, autocrlf, expect_crlf):
     crlf, bare = _endings(checkouts[autocrlf] / _BELLWETHER)
 
     if expect_crlf:
-        assert crlf > 0, (
-            f"with core.autocrlf=true a file with no rule came out with {bare} bare newlines; this checkout is not converting, so the checks here would pass against no policy at all"
+        not_converting = (
+            f"with core.autocrlf=true a file with no rule came out with {crlf} CRLF and {bare} bare "
+            f"newlines; this checkout is not converting, so the checks here would pass against no "
+            f"policy at all"
         )
-        assert bare == 0, (
-            f"with core.autocrlf=true a file with no rule came out with {bare} bare newlines; this checkout is not converting, so the checks here would pass against no policy at all"
-        )
+        assert crlf > 0, not_converting
+        assert bare == 0, not_converting
     else:
-        assert bare > 0, (
-            f"with core.autocrlf=false a file with no rule came out with {crlf} CRLF; this checkout is converting on its own, so the CRLF checks below would pass without any policy"
+        converting = (
+            f"with core.autocrlf=false a file with no rule came out with {crlf} CRLF and {bare} bare "
+            f"newlines; this checkout is converting on its own, so the CRLF checks below would pass "
+            f"without any policy"
         )
-        assert crlf == 0, (
-            f"with core.autocrlf=false a file with no rule came out with {crlf} CRLF; this checkout is converting on its own, so the CRLF checks below would pass without any policy"
-        )
+        assert bare > 0, converting
+        assert crlf == 0, converting
 
 
 @pytest.mark.parametrize("autocrlf", ["true", "false"])

@@ -19,8 +19,7 @@ from typing import Any
 
 from omniquery import fields
 from omniquery.ast import ASTError, Query, iter_conditions, parse_query
-from omniquery.compiler import CompileError, CompileParams, resolution_key
-from omniquery.compiler import compile as compile_query
+from omniquery.compiler import CompileError, CompileParams, compile_query, resolution_key
 from omniquery.validation import AuthContext, ValidationError, validate
 
 AiResolver = Callable[[Any], list[str]]  # validated file_ref value -> matching file ids

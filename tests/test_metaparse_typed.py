@@ -10,8 +10,7 @@ import sqlite3
 from metaparse.model import ParsedMetadata
 from metaparse.typed import ROW_COLUMNS, GenerationParams, split_size, to_float, to_int
 from omniquery.ast import parse_query
-from omniquery.compiler import CompileParams
-from omniquery.compiler import compile as compile_query
+from omniquery.compiler import CompileParams, compile_query
 from omniquery.validation import AuthContext, validate
 
 

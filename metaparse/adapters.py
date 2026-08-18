@@ -23,7 +23,8 @@ import json
 import logging
 import re
 from typing import ClassVar
-from xml.dom import minidom
+
+from defusedxml import minidom
 
 from .containers import RawMetadata, load_raw
 from .model import ParsedMetadata, set_param, size_string
