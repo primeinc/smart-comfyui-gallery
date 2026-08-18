@@ -28,13 +28,12 @@ the payloads, because that is the only way to know it does.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
-import shutil
-import subprocess
 
 import pytest
+
+from node_runner import run_node
 
 pytestmark = pytest.mark.spawns  # every check here runs another program
 
@@ -48,13 +47,6 @@ _PAYLOADS = [
     "plain.png",
     "Ordner-Größe.png",
 ]
-
-
-def _node():
-    found = shutil.which("node")
-    if found is None:
-        pytest.skip("node is not on PATH; the shipped escaper cannot be run")
-    return found
 
 
 def _escape_html_source():
@@ -81,9 +73,7 @@ const values = JSON.parse(process.argv[1]);
 console.log(JSON.stringify(values.map(v => escapeHTML(v))));
 """
     )
-    done = subprocess.run([_node(), "-e", script, json.dumps(values)], capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, done.stderr
-    return json.loads(done.stdout)
+    return run_node(script, values)
 
 
 def test_the_escaper_removes_everything_that_could_be_markup():

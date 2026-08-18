@@ -34,13 +34,12 @@ and it is checked directly below rather than through the markdown path.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
-import shutil
-import subprocess
 
 import pytest
+
+from node_runner import run_node
 
 pytestmark = pytest.mark.spawns  # every check here runs another program
 
@@ -62,13 +61,6 @@ _ALLOWED = [
     "#anchor",
     "//cdn.example.com/x.png",
 ]
-
-
-def _node():
-    found = shutil.which("node")
-    if found is None:
-        pytest.skip("node is not on PATH; the shipped renderer cannot be run")
-    return found
 
 
 def _function(source: str, name: str) -> str:
@@ -128,9 +120,7 @@ console.log(JSON.stringify(notes.map(n => {
 })));
 """
     )
-    done = subprocess.run([_node(), "-e", script, json.dumps(notes)], capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, done.stderr
-    return json.loads(done.stdout)
+    return run_node(script, notes)
 
 
 @pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
@@ -195,21 +185,10 @@ const values = JSON.parse(process.argv[1]);
 console.log(JSON.stringify(values.map(v => markdownSafeUrl(v))));
 """
     )
-    done = subprocess.run(
-        [
-            _node(),
-            "-e",
-            script,
-            json.dumps(
-                ["java\tscript:alert(1)", "java\nscript:alert(1)", " javascript:alert(1)", "https://example.com"]
-            ),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=300,
+    blocked_a, blocked_b, blocked_c, allowed = run_node(
+        script,
+        ["java\tscript:alert(1)", "java\nscript:alert(1)", " javascript:alert(1)", "https://example.com"],
     )
-    assert done.returncode == 0, done.stderr
-    blocked_a, blocked_b, blocked_c, allowed = json.loads(done.stdout)
 
     assert blocked_a == "#", blocked_a
     assert blocked_b == "#", blocked_b

@@ -35,14 +35,13 @@ batching is what removes the cost.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
-import shutil
-import subprocess
 
 import pytest
 from jinja2 import ChainableUndefined
+
+from node_runner import run_node
 
 pytestmark = pytest.mark.spawns  # every check here runs another program
 
@@ -71,13 +70,6 @@ process.stdout.write(JSON.stringify(files.map(function (file) {
 """
 
 
-def _node():
-    found = shutil.which("node")
-    if found is None:
-        pytest.skip("node is not on PATH; the shipped JavaScript cannot be parsed here")
-    return found
-
-
 def _executable_blocks(html: str):
     blocks = []
     for attrs, body in _TAG.findall(html):
@@ -101,10 +93,7 @@ def _syntax_errors(blocks, tmp_path):
         path.write_text(body, encoding="utf-8")
         paths.append(str(path))
 
-    done = subprocess.run([_node(), "-e", _PARSE_EACH, json.dumps(paths)], capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, f"the parser itself failed instead of reporting on the blocks:\n{done.stderr}"
-
-    results = json.loads(done.stdout)
+    results = run_node(_PARSE_EACH, paths)
     assert len(results) == len(blocks), f"asked about {len(blocks)} blocks, heard about {len(results)}"
 
     return [(index, message) for index, message in enumerate(results) if message is not None]

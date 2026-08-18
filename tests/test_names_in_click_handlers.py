@@ -29,13 +29,12 @@ thing that produced the bug.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
-import shutil
-import subprocess
 
 import pytest
+
+from node_runner import run_node
 
 pytestmark = pytest.mark.spawns  # every check here runs another program
 
@@ -55,13 +54,6 @@ _CASES = [
     "测试 folder",
     "",
 ]
-
-
-def _node():
-    found = shutil.which("node")
-    if found is None:
-        pytest.skip("node is not on PATH; the template's own function cannot be executed here")
-    return found
 
 
 def _extract(template: str) -> str:
@@ -101,9 +93,7 @@ const out = values.map(v => {
 console.log(JSON.stringify(out));
 """
     )
-    done = subprocess.run([_node(), "-e", script, json.dumps(values)], capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, done.stderr
-    return json.loads(done.stdout)
+    return run_node(script, values)
 
 
 @pytest.mark.parametrize("template", ["index.html", "exhibition.html"])
@@ -142,9 +132,7 @@ const out = values.map(v => {
 });
 console.log(JSON.stringify(out));
 """
-    done = subprocess.run([_node(), "-e", script, json.dumps(_CASES)], capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, done.stderr
-    raw = json.loads(done.stdout)
+    raw = run_node(script, _CASES)
 
     broke = [
         c
