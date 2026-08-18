@@ -136,12 +136,15 @@ def test_collection_view_includes_subcollections_by_default(sg):
         f_parent = _insert_file(conn, "cparent", direct_path)
         f_child = _insert_file(conn, "cchild", nested_path)
         cur = conn.execute(
-            "INSERT INTO collections (name, type, color, is_public, created_at) VALUES ('sfd_parent', 'user_album', '#fff', 1, ?)",
+            "INSERT INTO collections (name, type, color, is_public, created_at)"
+            " VALUES ('sfd_parent', 'user_album', '#fff', 1, ?)",
             (_time.time(),),
         )
         parent_id = cur.lastrowid
         cur = conn.execute(
-            "INSERT INTO collections (name, type, color, is_public, parent_id, created_at) VALUES ('sfd_child', 'user_album', '#fff', 1, ?, ?)",
+            "INSERT INTO collections"
+            " (name, type, color, is_public, parent_id, created_at)"
+            " VALUES ('sfd_child', 'user_album', '#fff', 1, ?, ?)",
             (parent_id, _time.time()),
         )
         child_id = cur.lastrowid

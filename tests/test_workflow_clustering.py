@@ -37,8 +37,10 @@ def _insert_file(conn, suffix, **overrides):
     }
     row.update(overrides)
     conn.execute(
-        """INSERT INTO files (id, path, mtime, name, type, has_workflow, workflow_hash, prompt_hash, models_hash, hash_failed)
-           VALUES (:id, :path, :mtime, :name, :type, :has_workflow, :workflow_hash, :prompt_hash, :models_hash, :hash_failed)""",
+        """INSERT INTO files (id, path, mtime, name, type, has_workflow,
+                              workflow_hash, prompt_hash, models_hash, hash_failed)
+           VALUES (:id, :path, :mtime, :name, :type, :has_workflow,
+                   :workflow_hash, :prompt_hash, :models_hash, :hash_failed)""",
         row,
     )
     conn.commit()
@@ -638,7 +640,9 @@ def test_backfill_marks_missing_and_unparseable_files_failed_once(sg, tmp_path):
         assert flags[_PREFIX + "gone"] == 1
         assert flags[_PREFIX + "noise"] == 1
         pending = conn.execute(
-            "SELECT COUNT(*) FROM files WHERE has_workflow = 1 AND (workflow_hash IS NULL OR workflow_hash = '') AND hash_failed = 0 AND id LIKE ?",
+            "SELECT COUNT(*) FROM files WHERE has_workflow = 1"
+            " AND (workflow_hash IS NULL OR workflow_hash = '')"
+            " AND hash_failed = 0 AND id LIKE ?",
             (_PREFIX + "%",),
         ).fetchone()[0]
         assert pending == 0

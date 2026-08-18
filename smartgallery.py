@@ -567,7 +567,9 @@ else:
 # even if not actually used in the generation.
 # Add those specific strings here to prevent them from cluttering your search results.
 WORKFLOW_PROMPT_BLACKLIST = {
-    "The white dragon warrior stands still, eyes full of determination and strength. The camera slowly moves closer or circles around the warrior, highlighting the powerful presence and heroic spirit of the character.",
+    "The white dragon warrior stands still, eyes full of determination and "
+    "strength. The camera slowly moves closer or circles around the warrior, "
+    "highlighting the powerful presence and heroic spirit of the character.",
     "undefined",
     "null",
     "None",
@@ -863,21 +865,35 @@ def get_omniquery_dictionary(reset=False):
     # --- FACTORY PROMPT BASE ---
     # Edit this variable to permanently alter the default prompt structure in the codebase.
     BA_OU_PA = BASE_OUTPUT_PATH.replace("\\", "/")
-    FACTORY_PROMPT_BASE = f"""You are an expert SQLite database administrator. I will give you a natural language request, and you must return a valid SQLite query.
+    # The backslashes below are line continuations inside the string: they
+    # emit nothing, so the prompt the model receives is unchanged while the
+    # source stays readable at a normal width.
+    FACTORY_PROMPT_BASE = f"""You are an expert SQLite database administrator. \
+I will give you a natural language request, and you must return a valid SQLite query.
 
 DATABASE SCHEMA:
-- files: id(TEXT), path(TEXT), mtime(REAL unix_ts), last_scanned(REAL unix_ts), name(TEXT), type(TEXT: video/image/animated_image/audio), size(INTEGER), dimensions(TEXT: are the pixels example '640x480'), is_favorite(INTEGER: 1/0), has_workflow(INTEGER: 1/0), workflow_files(TEXT), workflow_prompt(TEXT), duration(TEXT: example 03:19 minutes:seconds)
-- collections: id(INTEGER), name(TEXT), type(TEXT:'user_album'/'system_flag'), is_public(INTEGER 1/0), shared_users(TEXT: comma-separated user_ids), parent_id(INTEGER: Unary relationship identifier for nested sub-collections using id key)
+- files: id(TEXT), path(TEXT), mtime(REAL unix_ts), last_scanned(REAL unix_ts), \
+name(TEXT), type(TEXT: video/image/animated_image/audio), size(INTEGER), \
+dimensions(TEXT: are the pixels example '640x480'), is_favorite(INTEGER: 1/0), \
+has_workflow(INTEGER: 1/0), workflow_files(TEXT), workflow_prompt(TEXT), \
+duration(TEXT: example 03:19 minutes:seconds)
+- collections: id(INTEGER), name(TEXT), type(TEXT:'user_album'/'system_flag'), \
+is_public(INTEGER 1/0), shared_users(TEXT: comma-separated user_ids), \
+parent_id(INTEGER: Unary relationship identifier for nested sub-collections using id key)
 - collection_files: collection_id(INTEGER), file_id(TEXT)
-- users: user_id(INTEGER), username(TEXT), full_name(TEXT), role(TEXT:'ADMIN','MANAGER','STAFF','USER','CUSTOMER','GUEST'), is_active(INTEGER), email(TEXT), phone_number(TEXT), start_date(DATE), expiry_date(DATE), last_login(REAL unix_ts)
+- users: user_id(INTEGER), username(TEXT), full_name(TEXT), \
+role(TEXT:'ADMIN','MANAGER','STAFF','USER','CUSTOMER','GUEST'), is_active(INTEGER), \
+email(TEXT), phone_number(TEXT), start_date(DATE), expiry_date(DATE), last_login(REAL unix_ts)
 
 - file_ratings: file_id(TEXT), client_uuid(TEXT: matches user_id), rating(INTEGER 1-5)
-- file_comments: id(INTEGER), file_id(TEXT), client_uuid(TEXT: author), comment_text(TEXT), target_audience(TEXT: 'public'/'internal'/'user:{{id}}')
+- file_comments: id(INTEGER), file_id(TEXT), client_uuid(TEXT: author), \
+comment_text(TEXT), target_audience(TEXT: 'public'/'internal'/'user:{{id}}')
 
 STATUS FLAGS (SYSTEM FLAGS):
 Files can be assigned status tags. These are stored in the 'collections' table where type='system_flag'.
 To filter by a status, use a subquery or join on collection_files and collections.
-Example: SELECT f.id FROM files f JOIN collection_files cf ON f.id = cf.file_id JOIN collections c ON cf.collection_id = c.id WHERE c.name='Approved'
+Example: SELECT f.id FROM files f JOIN collection_files cf ON f.id = cf.file_id \
+JOIN collections c ON cf.collection_id = c.id WHERE c.name='Approved'
 
 CURRENT DATABASE STATUS FLAGS:
 - ID: 1 | Name: 'Approved' | Color: Green
@@ -888,11 +904,23 @@ CURRENT DATABASE STATUS FLAGS:
 
 RULES:
 1. You MUST return ONLY the raw SQL query. No markdown formatting (do not wrap in ```sql), no explanations.
-2. The query MUST be a SELECT statement returning ONLY the 'id' column from the 'files' table. Example: SELECT DISTINCT f.id FROM files f LEFT JOIN file_ratings r ON f.id = r.file_id WHERE r.rating = 5
+2. The query MUST be a SELECT statement returning ONLY the 'id' column from the \
+'files' table. Example: SELECT DISTINCT f.id FROM files f LEFT JOIN file_ratings r \
+ON f.id = r.file_id WHERE r.rating = 5
 3. Use standard SQLite syntax. Do not invent columns or tables.
-4. Case sensitivity: By default, assume searches (like folder or file names) are case-insensitive and use the standard SQLite LIKE operator (with %). However, if the user explicitly specifies that the search must be case-sensitive, you MUST use the GLOB operator instead of LIKE, and use asterisks (*) as wildcards (e.g., WHERE f.path GLOB '*{BA_OU_PA}/FolderName*').
-5. Path handling: The base directory on the disk is '{BA_OU_PA}'. In the database, the 'path' column contains the full absolute path starting with this prefix. When the user queries for a relative path or treats a folder as the root '/', you must map it to '{BA_OU_PA}'. For example, if the user asks for files in '/projects', look for paths LIKE '{BA_OU_PA}/projects%'.
-6. Megapixel calculation: To filter or calculate megapixels from the 'dimensions' field (format 'WIDTHxHEIGHT'), extract the width and height by splitting or parsing the string (e.g., using CAST(SUBSTR(...) AS INT)), multiply them, and divide by 1,000,000.
+4. Case sensitivity: By default, assume searches (like folder or file names) are \
+case-insensitive and use the standard SQLite LIKE operator (with %). However, if \
+the user explicitly specifies that the search must be case-sensitive, you MUST use \
+the GLOB operator instead of LIKE, and use asterisks (*) as wildcards (e.g., WHERE \
+f.path GLOB '*{BA_OU_PA}/FolderName*').
+5. Path handling: The base directory on the disk is '{BA_OU_PA}'. In the database, \
+the 'path' column contains the full absolute path starting with this prefix. When \
+the user queries for a relative path or treats a folder as the root '/', you must \
+map it to '{BA_OU_PA}'. For example, if the user asks for files in '/projects', \
+look for paths LIKE '{BA_OU_PA}/projects%'.
+6. Megapixel calculation: To filter or calculate megapixels from the 'dimensions' \
+field (format 'WIDTHxHEIGHT'), extract the width and height by splitting or parsing \
+the string (e.g., using CAST(SUBSTR(...) AS INT)), multiply them, and divide by 1,000,000.
 
 MY REQUEST (I will use my native language):
 """
@@ -3034,7 +3062,6 @@ def format_duration(seconds):
 def analyze_file_metadata(filepath):
     details = {"type": "unknown", "duration": "", "dimensions": "", "has_workflow": 0}
     ext_lower = os.path.splitext(filepath)[1].lower()
-    # https://aistudio.google.com/prompts/1uYTqxN6LAJZucWaoD5DlOlljhj0eB1uY#:~:text=function%20showItemAtIndex(index) = {'.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'animated_image', '.mp4': 'video', '.webm': 'video', '.mov': 'video', '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio'}
     # Extended Type Map for Professional Formats
     type_map = {
         # Images
@@ -4299,7 +4326,9 @@ def init_db(conn=None):
                 full_name TEXT NOT NULL,
                 email TEXT,                     -- Communication email
                 phone_number TEXT,              -- Optional contact
-                role TEXT CHECK(role IN ('USER', 'STAFF', 'MANAGER', 'CUSTOMER', 'FRIEND', 'GUEST', 'ADMIN')) DEFAULT 'GUEST',
+                role TEXT CHECK(role IN
+                    ('USER', 'STAFF', 'MANAGER', 'CUSTOMER', 'FRIEND', 'GUEST', 'ADMIN')
+                ) DEFAULT 'GUEST',
                 start_date DATE DEFAULT CURRENT_DATE,
                 expiry_date DATE,               -- Optional expiration date
                 is_active BOOLEAN DEFAULT 1     -- 1 = Active, 0 = Disabled
@@ -4352,7 +4381,9 @@ def init_db(conn=None):
             col_columns = {row["name"] for row in cursor_col.fetchall()}
             # Auto-fix existing txt/md files in database from unknown to document
             conn.execute(
-                "UPDATE files SET type = 'document' WHERE (type = 'unknown' OR type IS NULL OR type = '') AND (LOWER(name) LIKE '%.txt' OR LOWER(name) LIKE '%.md')"
+                "UPDATE files SET type = 'document'"
+                " WHERE (type = 'unknown' OR type IS NULL OR type = '')"
+                " AND (LOWER(name) LIKE '%.txt' OR LOWER(name) LIKE '%.md')"
             )
             if "is_public" not in col_columns:
                 if not is_new_database:
@@ -4386,7 +4417,8 @@ def init_db(conn=None):
             cleared = clear_synthetic_prompt_hashes(conn)
             if cleared:
                 print(
-                    f"INFO: Cleared {cleared} synthetic prompt hashes (promptless files no longer form fake prompt clusters)"
+                    f"INFO: Cleared {cleared} synthetic prompt hashes "
+                    f"(promptless files no longer form fake prompt clusters)"
                 )
         except Exception as e:
             print(f"WARNING: Could not clear synthetic prompt hashes: {e}")
@@ -4592,7 +4624,8 @@ def get_dynamic_folder_config(force_refresh=False):
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
-                "SELECT path FROM files WHERE type != 'document' AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md'"
+                "SELECT path FROM files WHERE type != 'document'"
+                " AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md'"
             ).fetchall()
             dir_counts = {}
             for r in rows:
@@ -4947,7 +4980,8 @@ def full_sync_database(conn):
     # debug if files_to_process: print(f"{Colors.YELLOW}DEBUG - File to process: {files_to_process}{Colors.RESET}")
     if files_to_process:
         print(
-            f"INFO: Processing {len(files_to_process)} files in parallel using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores..."
+            f"INFO: Processing {len(files_to_process)} files in parallel"
+            f" using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores..."
         )
 
         results = []
@@ -5008,7 +5042,10 @@ def full_sync_database(conn):
                 batch, gen_rows, gen_deletes = split_file_results(results[i : i + BATCH_SIZE])
                 conn.executemany(
                     """
-                    INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash)
+                    INSERT INTO files (
+                        id, path, mtime, name, type, duration, dimensions,
+                        has_workflow, size, last_scanned, workflow_files,
+                        workflow_prompt, workflow_hash, prompt_hash, models_hash)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         path = excluded.path,
@@ -5024,7 +5061,8 @@ def full_sync_database(conn):
                         workflow_hash = excluded.workflow_hash,
                         prompt_hash = excluded.prompt_hash,
                         models_hash = excluded.models_hash,
-                        hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
+                        hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1
+                                THEN 0 ELSE files.hash_failed END,
 
                         -- CONDITIONAL LOGIC: everything below is DERIVED from
                         -- the file's content, so a changed mtime invalidates
@@ -5105,7 +5143,8 @@ def full_sync_database(conn):
 
         if protected_count > 0:
             print(
-                f"{Colors.YELLOW}PROTECTION ACTIVE: Skipped deletion of {protected_count} files because their source drive appears offline.{Colors.RESET}"
+                f"{Colors.YELLOW}PROTECTION ACTIVE: Skipped deletion of {protected_count}"
+                f" files because their source drive appears offline.{Colors.RESET}"
             )
 
         # 3. Proceed with safe deletion (protecting collection notes from being purged)
@@ -5138,8 +5177,18 @@ def full_sync_database(conn):
     print(f"INFO: Full scan completed in {time.time() - start_time:.2f} seconds.")
 
 
+def sse(**payload):
+    """One server-sent event.
+
+    The `data: ` prefix and the blank-line terminator were written out at
+    every yield site; getting either wrong silently produces an event the
+    browser never delivers.
+    """
+    return f"data: {json.dumps(payload)}\n\n"
+
+
 def sync_folder_on_demand(folder_path):
-    yield f"data: {json.dumps({'message': 'Checking folder for changes...', 'current': 0, 'total': 1})}\n\n"
+    yield sse(message="Checking folder for changes...", current=0, total=1)
 
     try:
         with get_db_connection() as conn:
@@ -5187,14 +5236,18 @@ def sync_folder_on_demand(folder_path):
             }
 
             if not files_to_add and not files_to_update and not files_to_delete:
-                yield f"data: {json.dumps({'message': 'Folder is up-to-date.', 'status': 'no_changes', 'current': 1, 'total': 1})}\n\n"
+                yield sse(message="Folder is up-to-date.", status="no_changes", current=1, total=1)
                 return
 
             files_to_process = list(files_to_add.union(files_to_update))
             total_files = len(files_to_process)
 
             if total_files > 0:
-                yield f"data: {json.dumps({'message': f'Found {total_files} new/modified files. Processing...', 'current': 0, 'total': total_files})}\n\n"
+                yield sse(
+                    message=f"Found {total_files} new/modified files. Processing...",
+                    current=0,
+                    total=total_files,
+                )
 
                 data_to_upsert = []
                 processed_count = 0
@@ -5210,7 +5263,8 @@ def sync_folder_on_demand(folder_path):
                                 data_to_upsert.append(result)
                         except concurrent.futures.process.BrokenProcessPool as e:
                             print(
-                                f"\nWARNING: A worker process crashed (likely due to a corrupted file). Recovering... Error: {e}"
+                                f"\nWARNING: A worker process crashed (likely due to a"
+                                f" corrupted file). Recovering... Error: {e}"
                             )
                         except Exception as e:
                             file_path_failed = futures[future]
@@ -5223,13 +5277,16 @@ def sync_folder_on_demand(folder_path):
                             "current": processed_count,
                             "total": total_files,
                         }
-                        yield f"data: {json.dumps(progress_data)}\n\n"
+                        yield sse(**progress_data)
 
                 if data_to_upsert:
                     file_rows_2, gen_rows_2, gen_deletes_2 = split_file_results(data_to_upsert)
                     conn.executemany(
                         """
-                        INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash)
+                        INSERT INTO files (
+                        id, path, mtime, name, type, duration, dimensions,
+                        has_workflow, size, last_scanned, workflow_files,
+                        workflow_prompt, workflow_hash, prompt_hash, models_hash)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(id) DO UPDATE SET
                             path = excluded.path,
@@ -5245,7 +5302,8 @@ def sync_folder_on_demand(folder_path):
                             workflow_hash = excluded.workflow_hash,
                             prompt_hash = excluded.prompt_hash,
                         models_hash = excluded.models_hash,
-                            hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
+                            hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1
+                                THEN 0 ELSE files.hash_failed END,
 
                             -- CONDITIONAL LOGIC: derived-from-content fields
                             -- only. is_favorite is the person's own choice
@@ -5277,12 +5335,17 @@ def sync_folder_on_demand(folder_path):
                 conn.executemany("DELETE FROM files WHERE path IN (?)", [(p,) for p in files_to_delete])
 
             conn.commit()
-            yield f"data: {json.dumps({'message': 'Sync complete. Reloading...', 'status': 'reloading', 'current': total_files, 'total': total_files})}\n\n"
+            yield sse(
+                message="Sync complete. Reloading...",
+                status="reloading",
+                current=total_files,
+                total=total_files,
+            )
 
     except Exception as e:
         error_message = f"Error during sync: {e}"
         print(f"ERROR: {error_message}")
-        yield f"data: {json.dumps({'message': error_message, 'current': 1, 'total': 1, 'error': True})}\n\n"
+        yield sse(message=error_message, current=1, total=1, error=True)
 
 
 def scan_folder_and_extract_options(folder_path, recursive=True):
@@ -5443,7 +5506,8 @@ def pregenerate_exhibition_cache():
         return
 
     print(
-        f"INFO: Pre-generating {len(files_to_process)} clean files using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores..."
+        f"INFO: Pre-generating {len(files_to_process)} clean files"
+        f" using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores..."
     )
 
     success_count = 0
@@ -5468,7 +5532,8 @@ def pregenerate_exhibition_cache():
                 pbar.update(1)
 
     print(
-        f"{Colors.GREEN}INFO: Successfully pre-generated {success_count}/{len(files_to_process)} clean files.{Colors.RESET}"
+        f"{Colors.GREEN}INFO: Successfully pre-generated"
+        f" {success_count}/{len(files_to_process)} clean files.{Colors.RESET}"
     )
 
 
@@ -5524,10 +5589,12 @@ def check_exhibition_requirements():
             if accessible_colls == 0:
                 print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL ERROR: No Exhibition Collections Found{Colors.RESET}")
                 print(
-                    f"{Colors.RED}Exhibition Mode displays collections that are public or shared with at least one user.{Colors.RESET}"
+                    f"{Colors.RED}Exhibition Mode displays collections that are"
+                    f" public or shared with at least one user.{Colors.RESET}"
                 )
                 print(
-                    f"{Colors.RED}Currently, your database has no accessible Exhibition collections, so the Exhibition would be completely empty.{Colors.RESET}"
+                    f"{Colors.RED}Currently, your database has no accessible Exhibition"
+                    f" collections, so the Exhibition would be completely empty.{Colors.RESET}"
                 )
                 print(f"\n{Colors.CYAN}{Colors.BOLD}💡 HOW TO FIX IT:{Colors.RESET}")
                 print(f"1. Start the standard gallery: {Colors.YELLOW}python smartgallery.py{Colors.RESET}")
@@ -6317,7 +6384,7 @@ def sync_status(folder_key):
     if folder_key.startswith("collection_"):
         # Return a dummy SSE stream that does nothing but prevents 404
         def dummy_stream():
-            yield f"data: {json.dumps({'status': 'no_changes', 'message': 'Virtual collection'})}\n\n"
+            yield sse(status="no_changes", message="Virtual collection")
 
         return Response(dummy_stream(), mimetype="text/event-stream")
 
@@ -6326,6 +6393,23 @@ def sync_status(folder_key):
         abort(404, description="That folder is not in the gallery.")
     folder_path = folders[folder_key]["path"]
     return Response(sync_folder_on_demand(folder_path), mimetype="text/event-stream")
+
+
+def node_error_html(ctype, nid, err):
+    """One ComfyUI node failure, as a line for the error panel.
+
+    Built by hand at four call sites, each repeating the markup and the
+    colour; a fix to one of them reached the other three only by accident.
+    """
+    message = err.get("message", "")
+    return f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{message}</span>"
+
+
+# width * height, parsed out of the "WIDTHxHEIGHT" dimensions column.
+MEGAPIXELS_SQL = (
+    "(CAST(SUBSTR(f.dimensions, 1, INSTR(f.dimensions, 'x') - 1) AS INTEGER)"
+    " * CAST(SUBSTR(f.dimensions, INSTR(f.dimensions, 'x') + 1) AS INTEGER))"
+)
 
 
 def collections_in_scope(coll_id, recursive, visibility, identity):
@@ -6892,7 +6976,8 @@ def ai_watched_folders():
                             chunk = ids_to_wipe[i : i + chunk_size]
                             ph = ",".join(["?"] * len(chunk))
                             conn.execute(
-                                f"UPDATE files SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL WHERE id IN ({ph})",
+                                "UPDATE files SET ai_caption=NULL, ai_embedding=NULL,"
+                                f" ai_last_scanned=0, ai_error=NULL WHERE id IN ({ph})",
                                 chunk,
                             )
                             # (Queue already cleared above by path, but redundant check by ID is safe)
@@ -6953,7 +7038,8 @@ def ai_indexing_status():
 
             # Preview Next 10 files with PRIORITY INFO
             next_rows = conn.execute(
-                "SELECT file_path, force_index FROM ai_indexing_queue WHERE status='pending' ORDER BY force_index DESC, created_at ASC LIMIT 10"
+                "SELECT file_path, force_index FROM ai_indexing_queue"
+                " WHERE status='pending' ORDER BY force_index DESC, created_at ASC LIMIT 10"
             ).fetchall()
 
             avg = conn.execute("SELECT value FROM ai_metadata WHERE key='avg_processing_time'").fetchone()
@@ -7074,7 +7160,11 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
             if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
                 comment_sub_filter = ""
             else:
-                comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
+                comment_sub_filter = (
+                    f" AND (target_audience = 'public'"
+                    f" OR target_audience = 'user:{safe_uuid}'"
+                    f" OR client_uuid = '{safe_uuid}')"
+                )
 
             if cluster_target_id:
                 target_row = conn_target.execute(
@@ -7103,12 +7193,16 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                     rows = conn_target.execute(
                         f"""
                         SELECT DISTINCT f.*,
-                        (SELECT c.color FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
+                        (SELECT c.color FROM collections c
+                         JOIN collection_files cf ON c.id = cf.collection_id
+                         WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                         (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                         (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-                        (SELECT rating FROM file_ratings WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
+                        (SELECT rating FROM file_ratings
+                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
                         (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
-                        (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
+                        (SELECT MAX(created_at) FROM file_comments
+                         WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
                         FROM files f
                         WHERE {where_clause}
                     """,
@@ -7120,12 +7214,16 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
             else:
                 rows = conn_target.execute(f"""
                     SELECT DISTINCT f.*,
-                    (SELECT c.color FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
+                    (SELECT c.color FROM collections c
+                         JOIN collection_files cf ON c.id = cf.collection_id
+                         WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                     (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                     (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-                    (SELECT rating FROM file_ratings WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
+                    (SELECT rating FROM file_ratings
+                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
                     (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
-                    (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
+                    (SELECT MAX(created_at) FROM file_comments
+                         WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
                     FROM files f
                     WHERE f.{primary_hash_key} IS NOT NULL AND f.{primary_hash_key} != ''
                 """).fetchall()
@@ -7199,16 +7297,29 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 def gallery_view(folder_key):
     # 1. SECURITY LOCKDOWN CHECK
     if ADMIN_CONFIG_MISSING:
+        # f-string, not a plain one. The mode was interpolated here with
+        # {...} into a string carrying no f prefix, so the lockdown page
+        # printed the Python expression itself -- "python smartgallery.py
+        # { '--exhibition' if IS_EXHIBITION_MODE else '--force-login' }
+        # --admin-pass YOUR_PASSWORD" -- as the command to copy.
+        mode_flag = "--exhibition" if IS_EXHIBITION_MODE else "--force-login"
         return (
-            """
-        <body style="background:#0a0a0a; color:#eee; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; text-align:center;">
-            <div style="border:1px solid #dc3545; padding:40px; border-radius:16px; background:#1a1a1a; max-width:500px;">
+            f"""
+        <body style="background:#0a0a0a; color:#eee; font-family:sans-serif;
+                     display:flex; align-items:center; justify-content:center;
+                     height:100vh; text-align:center;">
+            <div style="border:1px solid #dc3545; padding:40px;
+                        border-radius:16px; background:#1a1a1a; max-width:500px;">
                 <h1 style="color:#dc3545;">🔒 Security Lockdown</h1>
-                <p>Restricted modes (--exhibition or --force-login) require an Administrator Password to start.</p>
-                <div style="background:#000; padding:15px; border-radius:8px; font-family:monospace; margin:20px 0;">
-                    python smartgallery.py { '--exhibition' if IS_EXHIBITION_MODE else '--force-login' } --admin-pass YOUR_PASSWORD
+                <p>Restricted modes (--exhibition or --force-login) require an
+                   Administrator Password to start.</p>
+                <div style="background:#000; padding:15px; border-radius:8px;
+                            font-family:monospace; margin:20px 0;">
+                    python smartgallery.py {mode_flag} --admin-pass YOUR_PASSWORD
                 </div>
-                <p style="color:#888; font-size:0.9rem;">Please restart the server with the password parameter or set the ADMIN_PASSWORD environment variable.</p>
+                <p style="color:#888; font-size:0.9rem;">Please restart the server
+                   with the password parameter or set the ADMIN_PASSWORD
+                   environment variable.</p>
             </div>
         </body>
         """,
@@ -7324,10 +7435,13 @@ def gallery_view(folder_key):
                     rows = conn.execute(
                         f"""
                         SELECT f.*,
-                        (SELECT c.color FROM collections c JOIN collection_files cf2 ON c.id = cf2.collection_id WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
+                        (SELECT c.color FROM collections c
+                         JOIN collection_files cf2 ON c.id = cf2.collection_id
+                         WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                         (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                         (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-                        (SELECT rating FROM file_ratings WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
+                        (SELECT rating FROM file_ratings
+                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
                         (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id) as comment_count,
                         (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id) as latest_comment_time
                         FROM omniquery_results r
@@ -7510,11 +7624,21 @@ def gallery_view(folder_key):
                         op_in = "NOT IN" if is_not else "IN"
                         if s.startswith('"') and s.endswith('"') and len(s) > 2:
                             clean_s = s[1:-1]
-                            col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(comment_text, ',', ' '), '?', ' '), '.', ' '), '!', ' '), char(10), ' ') || ' ')"
-                            cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower({col_expr}) LIKE ulower(?))"
+                            col_expr = (
+                                "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                                "comment_text, ',', ' '), '?', ' '), '.', ' '),"
+                                " '!', ' '), char(10), ' ') || ' ')"
+                            )
+                            cond_str = (
+                                f"f.id {op_in} (SELECT file_id FROM file_comments"
+                                f" WHERE ulower({col_expr}) LIKE ulower(?))"
+                            )
                             param_val = f"% {clean_s} %"
                         else:
-                            cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower(comment_text) LIKE ulower(?))"
+                            cond_str = (
+                                f"f.id {op_in} (SELECT file_id FROM file_comments"
+                                f" WHERE ulower(comment_text) LIKE ulower(?))"
+                            )
                             param_val = f"%{s}%"
 
                         if is_not:
@@ -7619,8 +7743,17 @@ def gallery_view(folder_key):
                 comment_exists_filter = "SELECT file_id FROM file_comments"
             else:
                 # Regular users only consider public comments or comments involving them
-                comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
-                comment_exists_filter = f"SELECT file_id FROM file_comments WHERE (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
+                comment_sub_filter = (
+                    f" AND (target_audience = 'public'"
+                    f" OR target_audience = 'user:{safe_uuid}'"
+                    f" OR client_uuid = '{safe_uuid}')"
+                )
+                comment_exists_filter = (
+                    f"SELECT file_id FROM file_comments"
+                    f" WHERE (target_audience = 'public'"
+                    f" OR target_audience = 'user:{safe_uuid}'"
+                    f" OR client_uuid = '{safe_uuid}')"
+                )
 
             if req_sort_by == "name":
                 order_clause = f"ulower(f.name) {sort_order}"
@@ -7644,7 +7777,7 @@ def gallery_view(folder_key):
                 order_clause = f"f.duration {sort_order}"
 
             elif req_sort_by == "dimensions":
-                order_clause = f"(CAST(SUBSTR(f.dimensions, 1, INSTR(f.dimensions, 'x') - 1) AS INTEGER) * CAST(SUBSTR(f.dimensions, INSTR(f.dimensions, 'x') + 1) AS INTEGER)) {sort_order}"
+                order_clause = f"{MEGAPIXELS_SQL} {sort_order}"
             elif req_sort_by == "unrated":
                 if is_effectively_blind():
                     conditions.append(
@@ -7687,7 +7820,8 @@ def gallery_view(folder_key):
                 (
                     SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id
                 ) as vote_count,
-            (SELECT rating FROM file_ratings WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
+            (SELECT rating FROM file_ratings
+                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
                 (
                     SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}
                 ) as comment_count,
@@ -8003,7 +8137,10 @@ def background_rescan_worker(job_id, files_to_process):
                 file_rows_3, gen_rows_3, gen_deletes_3 = split_file_results(results)
                 conn.executemany(
                     """
-                    INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash)
+                    INSERT INTO files (
+                        id, path, mtime, name, type, duration, dimensions,
+                        has_workflow, size, last_scanned, workflow_files,
+                        workflow_prompt, workflow_hash, prompt_hash, models_hash)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         path = excluded.path,
@@ -8019,13 +8156,17 @@ def background_rescan_worker(job_id, files_to_process):
                         workflow_hash = excluded.workflow_hash,
                         prompt_hash = excluded.prompt_hash,
                         models_hash = excluded.models_hash,
-                        hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.hash_failed END,
+                        hash_failed = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1
+                                THEN 0 ELSE files.hash_failed END,
                         -- is_favorite is deliberately absent: it is the
                         -- person's own choice, not derived from the file
                         -- (see the note on the same statement in the full scan).
-                        ai_caption = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_caption END,
-                        ai_embedding = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_embedding END,
-                        ai_last_scanned = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.ai_last_scanned END,
+                        ai_caption = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1
+                            THEN NULL ELSE files.ai_caption END,
+                        ai_embedding = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1
+                            THEN NULL ELSE files.ai_embedding END,
+                        ai_last_scanned = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1
+                            THEN 0 ELSE files.ai_last_scanned END,
                         mtime = excluded.mtime
                 """,
                     file_rows_3,
@@ -10672,7 +10813,11 @@ def get_collections():
         rows = conn.execute("""
             SELECT c.*,
                    (SELECT COUNT(*) FROM collection_files cf WHERE cf.collection_id = c.id) AS file_count,
-                   (SELECT COUNT(*) FROM collection_files cf JOIN files f ON cf.file_id = f.id WHERE cf.collection_id = c.id AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')) AS note_count
+                   (SELECT COUNT(*) FROM collection_files cf
+                        JOIN files f ON cf.file_id = f.id
+                        WHERE cf.collection_id = c.id
+                          AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt'
+                               OR LOWER(f.name) LIKE '%.md')) AS note_count
             FROM collections c
             ORDER BY ulower(c.name)
         """).fetchall()
@@ -10795,7 +10940,11 @@ def get_sidebar_state():
             albums = conn.execute("""
                 SELECT c.*,
                        (SELECT COUNT(*) FROM collection_files cf WHERE cf.collection_id = c.id) AS file_count,
-                       (SELECT COUNT(*) FROM collection_files cf JOIN files f ON cf.file_id = f.id WHERE cf.collection_id = c.id AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')) AS note_count
+                       (SELECT COUNT(*) FROM collection_files cf
+                        JOIN files f ON cf.file_id = f.id
+                        WHERE cf.collection_id = c.id
+                          AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt'
+                               OR LOWER(f.name) LIKE '%.md')) AS note_count
                 FROM collections c
                 WHERE c.type='user_album'
                 ORDER BY ulower(c.name)
@@ -10805,7 +10954,11 @@ def get_sidebar_state():
             albums = conn.execute("""
                 SELECT c.*,
                        (SELECT COUNT(*) FROM collection_files cf WHERE cf.collection_id = c.id) AS file_count,
-                       (SELECT COUNT(*) FROM collection_files cf JOIN files f ON cf.file_id = f.id WHERE cf.collection_id = c.id AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')) AS note_count
+                       (SELECT COUNT(*) FROM collection_files cf
+                        JOIN files f ON cf.file_id = f.id
+                        WHERE cf.collection_id = c.id
+                          AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt'
+                               OR LOWER(f.name) LIKE '%.md')) AS note_count
                 FROM collections c
                 WHERE c.type='user_album'
                 ORDER BY ulower(c.name)
@@ -10880,7 +11033,9 @@ def create_collection():
         with get_db_connection() as conn:
             # Execute insert and get the cursor to retrieve the lastrowid
             cursor = conn.execute(
-                "INSERT INTO collections (name, type, color, is_public, shared_users, parent_id, created_at) VALUES (?, 'user_album', '#ffffff', ?, ?, ?, ?)",
+                "INSERT INTO collections"
+                " (name, type, color, is_public, shared_users, parent_id, created_at)"
+                " VALUES (?, 'user_album', '#ffffff', ?, ?, ?, ?)",
                 (name, 1 if is_public else 0, shared_users, parent_id, time.time()),
             )
             new_id = cursor.lastrowid  # <--- Get the newly created ID
@@ -10984,8 +11139,12 @@ def get_file_full_details(file_id):
             row = conn.execute(
                 """
                 SELECT f.*,
-                (SELECT c.color FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
-                (SELECT c.name FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_name,
+                (SELECT c.color FROM collections c
+                         JOIN collection_files cf ON c.id = cf.collection_id
+                         WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
+                (SELECT c.name FROM collections c
+                         JOIN collection_files cf ON c.id = cf.collection_id
+                         WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_name,
                 (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                 (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
                 (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id) as comment_count
@@ -11462,7 +11621,8 @@ def collection_view(coll_id):
 
     # 3. Build Dynamic Query Conditions
     conditions = [
-        "f.id IN (SELECT id FROM files WHERE type != 'document' AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md')"
+        "f.id IN (SELECT id FROM files WHERE type != 'document'"
+        " AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md')"
     ]
     params = []
 
@@ -11632,7 +11792,11 @@ def collection_view(coll_id):
                 op_in = "NOT IN" if is_not else "IN"
                 if s.startswith('"') and s.endswith('"') and len(s) > 2:
                     clean_s = s[1:-1]
-                    col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(comment_text, ',', ' '), '?', ' '), '.', ' '), '!', ' '), char(10), ' ') || ' ')"
+                    col_expr = (
+                        "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                        "comment_text, ',', ' '), '?', ' '), '.', ' '),"
+                        " '!', ' '), char(10), ' ') || ' ')"
+                    )
                     cond_str = (
                         f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower({col_expr}) LIKE ulower(?))"
                     )
@@ -11781,7 +11945,7 @@ def collection_view(coll_id):
     elif req_sort_by == "duration":
         order_clause = f"f.duration {req_sort_order}"
     elif req_sort_by == "dimensions":
-        order_clause = f"(CAST(SUBSTR(f.dimensions, 1, INSTR(f.dimensions, 'x') - 1) AS INTEGER) * CAST(SUBSTR(f.dimensions, INSTR(f.dimensions, 'x') + 1) AS INTEGER)) {req_sort_order}"
+        order_clause = f"{MEGAPIXELS_SQL} {req_sort_order}"
     elif req_sort_by == "date" or req_sort_by == "mtime":
         order_clause = f"f.mtime {req_sort_order}"
     else:
@@ -11837,16 +12001,24 @@ def collection_view(coll_id):
         if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
             comment_sub_filter = ""
         else:
-            comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
+            comment_sub_filter = (
+                f" AND (target_audience = 'public'"
+                f" OR target_audience = 'user:{safe_uuid}'"
+                f" OR client_uuid = '{safe_uuid}')"
+            )
 
         query = f"""
             SELECT DISTINCT f.*,
-            (SELECT c.color FROM collections c JOIN collection_files cf2 ON c.id = cf2.collection_id WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
+            (SELECT c.color FROM collections c
+                         JOIN collection_files cf2 ON c.id = cf2.collection_id
+                         WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
             (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
             (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-            (SELECT rating FROM file_ratings WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
+            (SELECT rating FROM file_ratings
+                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
             (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
-            (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
+            (SELECT MAX(created_at) FROM file_comments
+                         WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
             FROM files f
             JOIN collection_files cf ON f.id = cf.file_id
             WHERE {where_clause}
@@ -12862,7 +13034,8 @@ def check_for_updates():
                     UPDATE_AVAILABLE = True
                     REMOTE_VERSION = remote_version_str  # Store the version string
                     print(
-                        f"\n{Colors.YELLOW}{Colors.BOLD}NOTICE: A new version ({remote_version_str}) is available!{Colors.RESET}"
+                        f"\n{Colors.YELLOW}{Colors.BOLD}NOTICE: A new version"
+                        f" ({remote_version_str}) is available!{Colors.RESET}"
                     )
                 else:
                     print("You are up to date.")
@@ -12901,8 +13074,10 @@ def show_config_error_and_exit(path):
     msg = (
         f"{what}"
         f"INSTRUCTIONS:\n"
-        f"1. If you are launching via a script (e.g., .bat file), please edit it and set the correct 'BASE_OUTPUT_PATH' variable.\n"
-        f"2. Or edit 'smartgallery.py' (USER CONFIGURATION section) and ensure the path points to an existing folder.\n\n"
+        "1. If you are launching via a script (e.g., .bat file), please edit it"
+        " and set the correct 'BASE_OUTPUT_PATH' variable.\n"
+        "2. Or edit 'smartgallery.py' (USER CONFIGURATION section) and ensure"
+        " the path points to an existing folder.\n\n"
         f"The program cannot continue and will now exit."
     )
 
@@ -13064,7 +13239,8 @@ def derive_upload_ceilings(max_upload_mb):
     return app_ceiling, app_ceiling + UPLOAD_TRANSPORT_HEADROOM_BYTES
 
 
-# Increase max request body size to handle large workflow JSON payloads (if users manually upload them, though we now read from disk)
+# Increase max request body size to handle large workflow JSON payloads (if users
+# manually upload them, though we now read from disk)
 MAX_UPLOAD_MB = env_num("COMFYUI_MAX_UPLOAD_MB", 2000, minimum=1)
 app.config["MAX_CONTENT_LENGTH"], MAX_REQUEST_BODY_BYTES = derive_upload_ceilings(MAX_UPLOAD_MB)
 
@@ -14472,7 +14648,11 @@ def _register_remix_routes_inline():
                             err_detail = "Execution Error"
                             for m in msgs:
                                 if m[0] == "execution_error":
-                                    err_detail = f"[Node {m[1].get('node_id')}] {m[1].get('exception_type')}: {m[1].get('exception_message')}"
+                                    err_detail = (
+                                        f"[Node {m[1].get('node_id')}]"
+                                        f" {m[1].get('exception_type')}:"
+                                        f" {m[1].get('exception_message')}"
+                                    )
                             return jsonify({"status": "error", "message": err_detail})
                         if status_obj.get("completed"):
                             return jsonify({"status": "completed"})
@@ -14522,7 +14702,11 @@ def _register_remix_routes_inline():
                 err_detail = "Unknown execution error."
                 for m in msgs:
                     if m[0] == "execution_error":
-                        err_detail = f"[Node {m[1].get('node_id')}] {m[1].get('exception_type')}: {m[1].get('exception_message')}"
+                        err_detail = (
+                            f"[Node {m[1].get('node_id')}]"
+                            f" {m[1].get('exception_type')}:"
+                            f" {m[1].get('exception_message')}"
+                        )
                 return jsonify({"status": "found_error", "message": err_detail})
 
             return jsonify({"status": "clean"})
@@ -14926,7 +15110,7 @@ def _register_remix_routes_inline():
                                     ctype = ndata.get("class_type", "Unknown Node")
                                     errs = ndata.get("errors", [{}])
                                     for err in errs:
-                                        err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
+                                        err_msg += node_error_html(ctype, nid, err)
                             elif error_obj:
                                 err_msg += (
                                     f" {error_obj.get('message', 'Unknown Error')}"
@@ -14950,7 +15134,10 @@ def _register_remix_routes_inline():
                         raw_body = e.read().decode("utf-8")
                         err_body = json.loads(raw_body)
                         if "error" in err_body or "node_errors" in err_body:
-                            err_msg = f"<strong>ComfyUI Validation Error:</strong> {err_body.get('error', {}).get('message', '')}"
+                            err_msg = (
+                                "<strong>ComfyUI Validation Error:</strong> "
+                                f"{err_body.get('error', {}).get('message', '')}"
+                            )
                             node_errors = err_body.get("node_errors") or err_body.get("error", {}).get(
                                 "node_errors", {}
                             )
@@ -14959,7 +15146,7 @@ def _register_remix_routes_inline():
                                     ctype = ndata.get("class_type", "Unknown Node")
                                     errs = ndata.get("errors", [{}])
                                     for err in errs:
-                                        err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
+                                        err_msg += node_error_html(ctype, nid, err)
                     except Exception:
                         pass
                     return jsonify({"status": "error", "message": err_msg}), 400
@@ -15165,7 +15352,7 @@ def _register_remix_routes_inline():
                                 ctype = ndata.get("class_type", "Unknown Node")
                                 errs = ndata.get("errors", [{}])
                                 for err in errs:
-                                    err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
+                                    err_msg += node_error_html(ctype, nid, err)
                         elif error_obj:
                             err_msg += (
                                 f" {error_obj.get('message', 'Unknown Error')}"
@@ -15179,7 +15366,10 @@ def _register_remix_routes_inline():
                         {
                             "status": "success",
                             "job_id": job_id,
-                            "message": f"Queued successfully! Job ID: {job_id}<br><small>Applied: {' | '.join(applied)}</small>",
+                            "message": (
+                                f"Queued successfully! Job ID: {job_id}"
+                                f"<br><small>Applied: {' | '.join(applied)}</small>"
+                            ),
                         }
                     )
             except urllib.error.HTTPError as e:
@@ -15197,7 +15387,7 @@ def _register_remix_routes_inline():
                                 ctype = ndata.get("class_type", "Unknown Node")
                                 errs = ndata.get("errors", [{}])
                                 for err in errs:
-                                    err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
+                                    err_msg += node_error_html(ctype, nid, err)
                 except Exception:
                     pass
                 return jsonify({"status": "error", "message": err_msg}), 400
@@ -15690,7 +15880,8 @@ def backfill_audio_durations(conn=None):
 
         print()
         print(
-            f"{Colors.GREEN}SUCCESS: [Audio] Successfully calculated durations for {len(results)}/{total_uncalc} files!{Colors.RESET}",
+            f"{Colors.GREEN}SUCCESS: [Audio] Successfully calculated durations"
+            f" for {len(results)}/{total_uncalc} files!{Colors.RESET}",
             flush=True,
         )
         return len(results)
@@ -15857,13 +16048,15 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
             prompt_rows = [(text, fid) for _, _, _, text, fid in results if text]
             for i in range(0, len(hash_rows), batch_size):
                 conn.executemany(
-                    "UPDATE files SET workflow_hash = ?, prompt_hash = ?, models_hash = ?, hash_failed = 0 WHERE id = ?",
+                    "UPDATE files SET workflow_hash = ?, prompt_hash = ?,"
+                    " models_hash = ?, hash_failed = 0 WHERE id = ?",
                     hash_rows[i : i + batch_size],
                 )
                 conn.commit()
             for i in range(0, len(prompt_rows), batch_size):
                 conn.executemany(
-                    "UPDATE files SET workflow_prompt = ? WHERE id = ? AND (workflow_prompt IS NULL OR workflow_prompt = '')",
+                    "UPDATE files SET workflow_prompt = ? WHERE id = ?"
+                    " AND (workflow_prompt IS NULL OR workflow_prompt = '')",
                     prompt_rows[i : i + batch_size],
                 )
                 conn.commit()
@@ -15878,7 +16071,8 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
 
         print()
         print(
-            f"{Colors.GREEN}SUCCESS: [Clustering] Successfully indexed {len(results)}/{total_unhashed} files!{Colors.RESET}",
+            f"{Colors.GREEN}SUCCESS: [Clustering] Successfully indexed"
+            f" {len(results)}/{total_unhashed} files!{Colors.RESET}",
             flush=True,
         )
         return len(results)
@@ -15974,13 +16168,15 @@ def check_and_update_workflow_hashes(conn):
         conn.execute("DELETE FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'")
         conn.commit()
         print(
-            f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities in the background...{Colors.RESET}"
+            f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all"
+            f" cluster identities in the background...{Colors.RESET}"
         )
         ensure_cluster_backfill_async(force_all=True, on_complete=_write_cluster_schema_marker)
         return
 
     sample = conn.execute(
-        "SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3"
+        "SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1"
+        " AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3"
     ).fetchall()
 
     needs_update = False
@@ -15994,7 +16190,8 @@ def check_and_update_workflow_hashes(conn):
 
     if needs_update:
         print(
-            f"{Colors.YELLOW}INFO: Workflow clustering algorithm updated. Re-indexing architectures in the background...{Colors.RESET}"
+            f"{Colors.YELLOW}INFO: Workflow clustering algorithm updated."
+            f" Re-indexing architectures in the background...{Colors.RESET}"
         )
         ensure_cluster_backfill_async(force_all=True)
     else:
@@ -16133,7 +16330,8 @@ def api_cluster_info(hash_type, hash_val):
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
-                f"SELECT id, name, path, type, mtime, dimensions, workflow_files, workflow_prompt FROM files WHERE {col_name} = ? ORDER BY mtime DESC",
+                "SELECT id, name, path, type, mtime, dimensions, workflow_files,"
+                f" workflow_prompt FROM files WHERE {col_name} = ? ORDER BY mtime DESC",
                 (hash_val,),
             ).fetchall()
 
@@ -16281,17 +16479,21 @@ if __name__ == "__main__":
         print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL SECURITY ERROR: Missing Admin Password{Colors.RESET}")
         if IS_EXHIBITION_MODE:
             print(
-                f"{Colors.RED}You started the server with '--exhibition', which requires an admin account.{Colors.RESET}"
+                f"{Colors.RED}You started the server with '--exhibition',"
+                f" which requires an admin account.{Colors.RESET}"
             )
         else:
             print(
-                f"{Colors.RED}You started the server with '--force-login', which requires an admin account.{Colors.RESET}"
+                f"{Colors.RED}You started the server with '--force-login',"
+                f" which requires an admin account.{Colors.RESET}"
             )
 
         print(f"\n{Colors.CYAN}{Colors.BOLD}💡 HOW TO FIX IT:{Colors.RESET}")
         print("Please restart the application and provide the password using one of these methods:")
         print(
-            f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py {'--exhibition' if IS_EXHIBITION_MODE else '--force-login'} --admin-pass YOUR_PASSWORD{Colors.RESET}"
+            f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py "
+            f"{'--exhibition' if IS_EXHIBITION_MODE else '--force-login'}"
+            f" --admin-pass YOUR_PASSWORD{Colors.RESET}"
         )
         print(
             f"  2. Environment Variable: Set {Colors.YELLOW}ADMIN_PASSWORD=YOUR_PASSWORD{Colors.RESET} before running."
@@ -16312,7 +16514,8 @@ if __name__ == "__main__":
     if ADMIN_PASS_TOO_SHORT:
         print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL SECURITY ERROR: Weak Admin Password{Colors.RESET}")
         print(
-            f"{Colors.RED}The provided admin password is too short. It must be at least 8 characters long.{Colors.RESET}"
+            f"{Colors.RED}The provided admin password is too short."
+            f" It must be at least 8 characters long.{Colors.RESET}"
         )
 
         print(f"\n{Colors.CYAN}{Colors.BOLD}💡 HOW TO FIX IT:{Colors.RESET}")
@@ -16320,10 +16523,14 @@ if __name__ == "__main__":
             "Please restart the application and provide a stronger password (8+ characters) using one of these methods:"
         )
         print(
-            f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py {'--exhibition' if IS_EXHIBITION_MODE else '--force-login'} --admin-pass YOUR_STRONG_PASSWORD{Colors.RESET}"
+            f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py "
+            f"{'--exhibition' if IS_EXHIBITION_MODE else '--force-login'}"
+            f" --admin-pass YOUR_STRONG_PASSWORD{Colors.RESET}"
         )
         print(
-            f"  2. Environment Variable: Set {Colors.YELLOW}ADMIN_PASSWORD=YOUR_STRONG_PASSWORD{Colors.RESET} before running."
+            f"  2. Environment Variable: Set"
+            f" {Colors.YELLOW}ADMIN_PASSWORD=YOUR_STRONG_PASSWORD{Colors.RESET}"
+            f" before running."
         )
         print("\nThe server cannot start in this state and will now exit.\n")
 
