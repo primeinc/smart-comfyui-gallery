@@ -40,6 +40,7 @@ any case.
 | Variable | Default | What it does |
 |---|---|---|
 | `SERVER_PORT` | `8189` | Web server port. Must differ from ComfyUI's (usually 8188). |
+| `SERVER_HOST` | `0.0.0.0` | Interface to listen on. The default answers on every address, so the gallery is reachable from other machines on the network; `127.0.0.1` answers only on this one. |
 | `ADMIN_PASSWORD` | unset | Sets or resets the admin password at startup; equivalent to `--admin-pass`. |
 | `SECRET_KEY` | random per start | Flask session signing key. Set a fixed value to keep users logged in across restarts. |
 | `COMFYUI_SERVER_URL` | `http://127.0.0.1:8188` | Where ComfyUI is. Used by Remix to queue generations, and by the page for the ComfyUI and LoRA Manager links. |

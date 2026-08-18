@@ -51,7 +51,7 @@ def _server_style_bind(port):
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) | 1
             )
         try:
-            s.bind(("0.0.0.0", port))
+            s.bind((smartgallery.SERVER_HOST, port))
         except OSError:
             return False
         else:
@@ -61,7 +61,7 @@ def _server_style_bind(port):
 @pytest.fixture
 def free_port():
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    probe.bind(("0.0.0.0", 0))
+    probe.bind((smartgallery.SERVER_HOST, 0))
     port = probe.getsockname()[1]
     probe.close()
     return port
@@ -71,7 +71,7 @@ def free_port():
 def busy_port():
     """A port with something actually listening on it."""
     holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    holder.bind(("0.0.0.0", 0))
+    holder.bind((smartgallery.SERVER_HOST, 0))
     holder.listen(1)
     yield holder.getsockname()[1]
     holder.close()

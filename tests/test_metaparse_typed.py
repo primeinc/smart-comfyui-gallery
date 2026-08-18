@@ -12,6 +12,7 @@ from metaparse.typed import ROW_COLUMNS, GenerationParams, split_size, to_float,
 from omniquery.ast import parse_query
 from omniquery.compiler import CompileParams, compile_query
 from omniquery.validation import AuthContext, validate
+from sqlbind import with_id_placeholders
 
 
 def test_to_int_strict():
@@ -117,7 +118,7 @@ def test_to_row_round_trips_through_sqlite_with_real_types():
     )
     row = gp.to_row("file-1", 1000.0)
     assert len(row) == len(ROW_COLUMNS)
-    conn.execute("INSERT INTO generation_params VALUES (" + ", ".join("?" * len(ROW_COLUMNS)) + ")", row)
+    conn.execute(with_id_placeholders("INSERT INTO generation_params VALUES ({ids})", ROW_COLUMNS), row)
     got = conn.execute(
         "SELECT seed, steps, cfg, width, negative_prompt FROM generation_params WHERE seed = 7"
     ).fetchone()

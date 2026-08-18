@@ -422,6 +422,10 @@ FFPROBE_MANUAL_PATH = env_path("FFPROBE_MANUAL_PATH", "C:/ffmpeg/bin/ffprobe.exe
 # Must be different from the ComfyUI port (usually 8188).
 # The gallery does not require ComfyUI to be running; it works independently.
 SERVER_PORT = env_num("SERVER_PORT", 8189, minimum=1)
+# The interface to listen on. Every address by default, because the
+# gallery is normally opened from a phone or another machine on the
+# same network; set it to 127.0.0.1 to answer only this one.
+SERVER_HOST = env_or("SERVER_HOST", "0.0.0.0")
 
 # Width (in pixels) of the generated thumbnails.
 THUMBNAIL_WIDTH = env_num("THUMBNAIL_WIDTH", 300, minimum=1)
@@ -1281,6 +1285,7 @@ KNOWN_ENV_VARS = (
     "PARALLEL_SCAN_MIN_FILES",
     "SECRET_KEY",
     "SERVER_PORT",
+    "SERVER_HOST",
     "STREAM_THRESHOLD_MB",
     "THUMBNAIL_WIDTH",
     "UNET_PATH",
@@ -13323,7 +13328,7 @@ def check_port_available(port):
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) | 1
             )
         try:
-            s.bind(("0.0.0.0", port))
+            s.bind((SERVER_HOST, port))
         except OSError:
             return False
         else:
@@ -16823,7 +16828,7 @@ if __name__ == "__main__":
         print(f"{Colors.GREEN}INFO: Starting Production WSGI Server (Waitress)...{Colors.RESET}")
         serve(
             app,
-            host="0.0.0.0",
+            host=SERVER_HOST,
             port=SERVER_PORT,
             threads=8,
             connection_limit=150,
@@ -16836,4 +16841,4 @@ if __name__ == "__main__":
         # DEVELOPMENT MODE: Falling back to Flask built-in server
         print(f"{Colors.YELLOW}WARNING: 'waitress' not found. Using Flask development server.{Colors.RESET}")
         print("INFO: For better performance, install it with: pip install waitress")
-        app.run(host="0.0.0.0", port=SERVER_PORT, debug=False)
+        app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False)
