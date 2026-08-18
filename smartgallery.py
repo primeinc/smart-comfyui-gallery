@@ -5753,13 +5753,18 @@ def is_file_accessible(file_id):
             WHERE cf.file_id = ?
             AND c.type = 'user_album'
         """
+        params = [file_id]
         if user_id:
-            safe_uid = user_id.replace("'", "''")
-            query += f" AND (c.is_public = 1 OR (',' || c.shared_users || ',') LIKE '%,{safe_uid},%')"
+            # Bound, not escaped by hand. This read `user_id.replace("'",
+            # "''")` pasted into the statement, which is correct only for as
+            # long as the value stays a plain string and nobody adds a
+            # second one beside it.
+            query += " AND (c.is_public = 1 OR (',' || c.shared_users || ',') LIKE ?)"
+            params.append(f"%,{user_id},%")
         else:
             query += " AND c.is_public = 1"
 
-        result = conn.execute(query, (file_id,)).fetchone()
+        result = conn.execute(query, params).fetchone()
         return bool(result)
 
 
@@ -6323,6 +6328,75 @@ def sync_status(folder_key):
     return Response(sync_folder_on_demand(folder_path), mimetype="text/event-stream")
 
 
+def collections_in_scope(coll_id, recursive, visibility, identity):
+    """(sql, params) selecting the collection ids a request covers.
+
+    `visibility` says who the answer is for, and is spelled out rather than
+    inferred so the caller's policy is visible at the call site:
+
+        "any"              every collection in scope
+        "public_or_mine"   public, or shared with `identity`
+        "public_or_shared" public, or shared with anyone
+
+    Every value is bound. This query was built twice by pasting values into
+    an f-string, and the caller's identity was made safe for that by hand:
+
+        # Raw, not escaped: it is bound as a parameter now, and doubling the
+    # quotes here would make an identity containing one fail to match.
+    client_identity = _current_client_identity()
+        ... LIKE '%,{safe_uid},%'
+
+    Doubling quotes is the job parameters already do, and it is only correct
+    for as long as nobody adds a second value that needs different
+    treatment. The identity is a bound parameter here and the LIKE pattern
+    is built around it in Python, so no caller-supplied text ever reaches
+    the statement.
+    """
+    shared_with_me = "(is_public = 1 OR (',' || shared_users || ',') LIKE ?)"
+    shared_with_anyone = "(is_public = 1 OR shared_users != '')"
+
+    if coll_id is None:
+        sql = "SELECT id FROM collections WHERE type='user_album'"
+        params = []
+        if visibility == "public_or_mine":
+            sql += f" AND {shared_with_me}"
+            params.append(f"%,{identity},%")
+        elif visibility == "public_or_shared":
+            sql += f" AND {shared_with_anyone}"
+        return sql, params
+
+    if not recursive:
+        return "SELECT ?", [int(coll_id)]
+
+    sql = """
+        WITH RECURSIVE children AS (
+            SELECT id, is_public, shared_users FROM collections WHERE id = ?
+            UNION ALL
+            SELECT c.id, c.is_public, c.shared_users
+            FROM collections c INNER JOIN children p ON c.parent_id = p.id
+        )
+        SELECT id FROM children
+    """
+    params = [int(coll_id)]
+    if visibility == "public_or_mine":
+        sql += f" WHERE {shared_with_me}"
+        params.append(f"%,{identity},%")
+    elif visibility == "public_or_shared":
+        sql += f" WHERE {shared_with_anyone}"
+    return sql, params
+
+
+def collection_file_names(conn, coll_id, recursive, visibility, identity):
+    """Every filename in the collections a request covers."""
+    scope_sql, params = collections_in_scope(coll_id, recursive, visibility, identity)
+    sql = (
+        "SELECT DISTINCT f.name FROM files f "
+        "JOIN collection_files cf ON f.id = cf.file_id "
+        f"WHERE cf.collection_id IN ({scope_sql})"
+    )
+    return conn.execute(sql, params).fetchall()
+
+
 @app.route("/galleryout/api/search_options")
 def api_search_options():
     scope = request.args.get("scope", "local")
@@ -6331,7 +6405,9 @@ def api_search_options():
 
     exts, pfxs, limit_reached = [], [], False
     user_role = session.get("role", "GUEST")
-    safe_uid = _current_client_identity().replace("'", "''")
+    # Raw, not escaped: it is bound as a parameter now, and doubling the
+    # quotes here would make an identity containing one fail to match.
+    client_identity = _current_client_identity()
     is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
     is_privileged = is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]
 
@@ -6342,35 +6418,28 @@ def api_search_options():
                 coll_id_str = "all"
 
             is_all_mode = coll_id_str == "all"
-            ext_query = "SELECT DISTINCT f.name FROM files f JOIN collection_files cf ON f.id = cf.file_id"
             if not is_all_mode and coll_id_str.isdigit():
-                coll_id_int = int(coll_id_str)
-                if is_rec:
-                    sub_query = f"""
-                        WITH RECURSIVE children AS (
-                            SELECT id, is_public, shared_users FROM collections WHERE id = {coll_id_int}
-                            UNION ALL
-                            SELECT c.id, c.is_public, c.shared_users FROM collections c INNER JOIN children p ON c.parent_id = p.id
-                        )
-                        SELECT id FROM children
-                    """
-                    if IS_EXHIBITION_MODE and not is_privileged:
-                        sub_query += f" WHERE (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
-                    ext_query += f" WHERE cf.collection_id IN ({sub_query})"
-                else:
-                    ext_query += f" WHERE cf.collection_id = {coll_id_int}"
+                # NOTE: this path applies the shared-with-me filter only in
+                # exhibition mode, while collection_view applies it whenever
+                # the caller is not privileged. The two were built by hand in
+                # two places and have drifted; the difference is preserved
+                # here rather than picked, because choosing one changes who
+                # can see which album.
+                visibility = "public_or_mine" if IS_EXHIBITION_MODE and not is_privileged else "any"
+                ext_rows = collection_file_names(conn, coll_id_str, is_rec, visibility, client_identity)
             elif is_all_mode:
-                sub_query = "SELECT id FROM collections WHERE type='user_album'"
-                if IS_EXHIBITION_MODE:
-                    if is_privileged:
-                        sub_query += " AND (is_public = 1 OR shared_users != '')"
-                    else:
-                        sub_query += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
-                ext_query += f" WHERE cf.collection_id IN ({sub_query})"
+                if not IS_EXHIBITION_MODE:
+                    visibility = "any"
+                elif is_privileged:
+                    visibility = "public_or_shared"
+                else:
+                    visibility = "public_or_mine"
+                ext_rows = collection_file_names(conn, None, is_rec, visibility, client_identity)
+            else:
+                ext_rows = []
 
             extensions = set()
             prefixes = set()
-            ext_rows = conn.execute(ext_query).fetchall()
             for r in ext_rows:
                 fname = r["name"]
                 if "." in fname:
@@ -11323,7 +11392,9 @@ def collection_view(coll_id):
     user_role = session.get("role", "GUEST")
     is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
     is_privileged = is_local_admin or (user_role in ["ADMIN", "MANAGER", "STAFF"])
-    safe_uid = _current_client_identity().replace("'", "''")
+    # Raw, not escaped: it is bound as a parameter now, and doubling the
+    # quotes here would make an identity containing one fail to match.
+    client_identity = _current_client_identity()
 
     # 1. Handle Virtual "All Categories" vs Specific Collection
     coll_info = None
@@ -11396,16 +11467,18 @@ def collection_view(coll_id):
     params = []
 
     if is_all_mode:
-        # Logic for "All Categories": Select files belonging to any user album
-        sub_query = "SELECT id FROM collections WHERE type='user_album'"
+        # Logic for "All Categories": Select files belonging to any user album.
+        # "all" must not become a way to read the albums a specific request
+        # would have been refused, in either mode.
         if not is_privileged:
-            # Applies in either mode: "all" must not become a way to read the
-            # albums a specific request would have been refused.
-            sub_query += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+            visibility = "public_or_mine"
         elif IS_EXHIBITION_MODE:
-            sub_query += " AND (is_public = 1 OR shared_users != '')"
-
-        conditions.append(f"cf.collection_id IN ({sub_query})")
+            visibility = "public_or_shared"
+        else:
+            visibility = "any"
+        scope_sql, scope_params = collections_in_scope(None, False, visibility, client_identity)
+        conditions.append(f"cf.collection_id IN ({scope_sql})")
+        params.extend(scope_params)
     else:
         # Sub-collections are included by default; only an explicit
         # recursive=false narrows to this collection alone (counted as a
@@ -11414,24 +11487,12 @@ def collection_view(coll_id):
         if not is_recursive:
             active_filters_count += 1
         if is_recursive:
-            user_role = session.get("role", "GUEST")
-            safe_uid = _current_client_identity().replace("'", "''")
-            is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
-
-            sub_query = f"""
-                WITH RECURSIVE children AS (
-                    SELECT id, is_public, shared_users FROM collections WHERE id = {int(coll_id)}
-                    UNION ALL
-                    SELECT c.id, c.is_public, c.shared_users FROM collections c INNER JOIN children p ON c.parent_id = p.id
-                )
-                SELECT id FROM children
-            """
             # Staff see all nested collections; nobody else sees one they
             # were not given, whichever mode the server is in.
-            if not is_privileged:
-                sub_query += f" WHERE (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
-
-            conditions.append(f"cf.collection_id IN ({sub_query})")
+            visibility = "any" if is_privileged else "public_or_mine"
+            scope_sql, scope_params = collections_in_scope(coll_id, True, visibility, client_identity)
+            conditions.append(f"cf.collection_id IN ({scope_sql})")
+            params.extend(scope_params)
         else:
             conditions.append("cf.collection_id = ?")
             params.append(int(coll_id))
@@ -11733,13 +11794,16 @@ def collection_view(coll_id):
     with get_db_connection() as conn:
         # Calculate total files in this view (without search/filters)
         if is_all_mode:
-            count_subquery = "SELECT id FROM collections WHERE type='user_album'"
             if not is_privileged:
-                count_subquery += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+                visibility = "public_or_mine"
             elif IS_EXHIBITION_MODE:
-                count_subquery += " AND (is_public = 1 OR shared_users != '')"
+                visibility = "public_or_shared"
+            else:
+                visibility = "any"
+            scope_sql, scope_params = collections_in_scope(None, False, visibility, client_identity)
             total_folder_files = conn.execute(
-                f"SELECT COUNT(DISTINCT file_id) FROM collection_files WHERE collection_id IN ({count_subquery})"
+                f"SELECT COUNT(DISTINCT file_id) FROM collection_files WHERE collection_id IN ({scope_sql})",
+                scope_params,
             ).fetchone()[0]
         elif is_recursive:
             sub_query = f"""
@@ -11842,31 +11906,19 @@ def collection_view(coll_id):
 
     # Extract all extensions independently from filters to populate the dropdowns fully
     with get_db_connection() as conn_ext:
-        ext_query = "SELECT DISTINCT f.name FROM files f JOIN collection_files cf ON f.id = cf.file_id"
         if not is_all_mode:
-            if is_recursive:
-                sub_query = f"""
-                    WITH RECURSIVE children AS (
-                        SELECT id, is_public, shared_users FROM collections WHERE id = {int(coll_id)}
-                        UNION ALL
-                        SELECT c.id, c.is_public, c.shared_users FROM collections c INNER JOIN children p ON c.parent_id = p.id
-                    )
-                    SELECT id FROM children
-                """
-                if not is_privileged:
-                    sub_query += f" WHERE (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
-                ext_query += f" WHERE cf.collection_id IN ({sub_query})"
-            else:
-                ext_query += f" WHERE cf.collection_id = {int(coll_id)}"
+            visibility = "any" if is_privileged else "public_or_mine"
+            ext_rows = collection_file_names(conn_ext, coll_id, is_recursive, visibility, client_identity)
         else:
-            count_subquery = "SELECT id FROM collections WHERE type='user_album'"
             if not is_privileged:
-                count_subquery += f" AND (is_public = 1 OR (',' || shared_users || ',') LIKE '%,{safe_uid},%')"
+                visibility = "public_or_mine"
             elif IS_EXHIBITION_MODE:
-                count_subquery += " AND (is_public = 1 OR shared_users != '')"
-            ext_query += f" WHERE cf.collection_id IN ({count_subquery})"
-
-        ext_rows = conn_ext.execute(ext_query).fetchall()
+                visibility = "public_or_shared"
+            else:
+                visibility = "any"
+            # No collection id, so there is nothing to recurse into --
+            # is_recursive is not even bound on this branch.
+            ext_rows = collection_file_names(conn_ext, None, False, visibility, client_identity)
         for r in ext_rows:
             fname = r["name"]
             if "." in fname:
