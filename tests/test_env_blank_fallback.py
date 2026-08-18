@@ -12,11 +12,16 @@ multi-GB model weights into whatever the working directory happened to be.
 from __future__ import annotations
 
 import os
+import re
+import tempfile
+from types import SimpleNamespace
 
 import pytest
 
+from smartgallery_ai import AIConfig
 
-@pytest.mark.parametrize("name,expected_default", [
+
+@pytest.mark.parametrize(("name", "expected_default"), [
     ("BASE_OUTPUT_PATH", "C:/ComfyUI/output"),
     ("BASE_INPUT_PATH", "C:/ComfyUI/input"),
     ("FFPROBE_MANUAL_PATH", "C:/ffmpeg/bin/ffprobe.exe"),
@@ -32,18 +37,10 @@ def test_env_or_treats_blank_as_unset(smartgallery_app, monkeypatch, name, expec
     assert smartgallery_app.env_or(name, expected_default) == expected_default
 
 
-def test_plain_environ_get_would_have_returned_blank(monkeypatch):
-    """The bug this guards, stated as a control: without the helper the
-    default is silently skipped."""
-    monkeypatch.setenv("SG_BLANK_PROBE", "")
-    assert os.environ.get("SG_BLANK_PROBE", "fallback") == ""
-
-
 def test_ai_config_blank_dirs_fall_back_under_base_path(monkeypatch, tmp_path):
     """Blank AI_DAM_* directories must land under the gallery root, not in
     the process working directory -- these hold the vector cache and
     multi-GB model weights."""
-    from smartgallery_ai import AIConfig
 
     monkeypatch.setenv("AI_DAM_MODELS_DIR", "")
     monkeypatch.setenv("AI_DAM_CACHE_DIR", "   ")
@@ -79,7 +76,6 @@ def test_launcher_template_has_no_personal_paths():
 # then failed every metadata call, because ffmpeg rejects ffprobe's args.
 
 def _fake_run(banner: bytes):
-    from types import SimpleNamespace
 
     def run(cmd, **kwargs):
         return SimpleNamespace(stdout=banner, stderr=b"", returncode=0)
@@ -124,7 +120,7 @@ def test_launcher_template_points_at_ffprobe():
 # import: the gallery refused to start, with a traceback that never named
 # the offending variable.
 
-@pytest.mark.parametrize("attr,name,default", [
+@pytest.mark.parametrize(("attr", "name", "default"), [
     ("THUMBNAIL_WIDTH", "THUMBNAIL_WIDTH", 300),
     ("PAGE_SIZE", "PAGE_SIZE", 100),
     ("BATCH_SIZE", "BATCH_SIZE", 500),
@@ -151,7 +147,6 @@ def test_env_num_supports_floats(smartgallery_app, monkeypatch):
 
 
 def test_ai_config_numeric_knobs_survive_blanks(monkeypatch, tmp_path):
-    from smartgallery_ai import AIConfig
 
     for name in ("AI_DAM_NEAR_DUP_DISTANCE", "AI_DAM_FACE_MIN_PX",
                  "AI_DAM_SIMILAR_K", "AI_DAM_FACE_DETECT_MAX_SIDE",
@@ -167,16 +162,15 @@ def test_ai_config_numeric_knobs_survive_blanks(monkeypatch, tmp_path):
 
 def test_ai_config_blank_backend_selector_stays_auto(monkeypatch, tmp_path):
     """A blank selector must not become "", which resolves to no backend."""
-    from smartgallery_ai import AIConfig
 
     monkeypatch.setenv("AI_DAM_SEMANTIC_BACKEND", "")
     monkeypatch.setenv("AI_DAM_CRITIC_BACKEND", "   ")
     cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
-    assert cfg.semantic_backend == "auto" and cfg.critic_backend == "auto"
+    assert cfg.semantic_backend == "auto"
+    assert cfg.critic_backend == "auto"
 
 
 def test_enable_ai_dam_blank_does_not_silently_disable_the_layer(monkeypatch, tmp_path):
-    from smartgallery_ai import AIConfig
 
     monkeypatch.setenv("ENABLE_AI_DAM", "")
     assert AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite")).enabled is True
@@ -198,7 +192,7 @@ def test_env_flag_blank_keeps_the_default(smartgallery_app, monkeypatch, default
     assert smartgallery_app.env_flag("SG_FLAG_PROBE", default) is default
 
 
-@pytest.mark.parametrize("value,expected", [
+@pytest.mark.parametrize(("value", "expected"), [
     ("1", True), ("true", True), ("TRUE", True), ("Yes", True), ("on", True),
     ("0", False), ("false", False), ("No", False), ("off", False),
     (" true ", True),
@@ -227,7 +221,6 @@ def test_env_num_none_default_for_optional_settings(smartgallery_app, monkeypatc
 def test_configuration_doc_covers_the_user_facing_env_vars():
     """docs/CONFIGURATION.md is the reference; a setting users can set must
     appear in it. Derived from the source so a new knob is caught here."""
-    import re
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     doc = open(os.path.join(root, "docs", "CONFIGURATION.md"),
@@ -261,106 +254,82 @@ def test_colors_is_defined_before_the_configuration_block_uses_it():
         "validation paths will raise NameError at import")
 
 
-def test_delete_to_moves_files_to_trash_without_overwriting(tmp_path):
-    """safe_delete_file must relocate rather than remove, and two files of
-    the same name deleted in the same second must both survive.
+@pytest.fixture
+def recoverable_deletes(smartgallery_app, monkeypatch, tmp_path):
+    """The gallery as DELETE_TO configures it.
 
-    Run in a subprocess: DELETE_TO is resolved at module scope, so this
-    needs a fresh interpreter with that environment -- and reimporting
-    smartgallery inside the test session would hand other tests a
-    different module object than the session fixture holds.
+    DELETE_TO is resolved at module scope and TRASH_FOLDER derived from it,
+    which is why this used to need a fresh interpreter. Both are plain
+    attributes that safe_delete_file and safe_delete_tree read when called,
+    so they are set here the way startup would -- TRASH_FOLDER is
+    DELETE_TO/SmartGallery, created if absent, exactly as the startup block
+    does it.
     """
-    import subprocess
-    import sys
-
     trash_root = tmp_path / "trash"
     trash_root.mkdir()
     gallery = tmp_path / "gallery"
     gallery.mkdir()
+    trash_folder = trash_root / "SmartGallery"
+    trash_folder.mkdir()
 
-    script = """
-import os, sys
-sys.argv = ['smartgallery.py']
-import smartgallery as sg
-assert sg.TRASH_FOLDER and os.path.isdir(sg.TRASH_FOLDER), 'trash folder missing'
-victim = os.path.join(sg.BASE_OUTPUT_PATH, 'gone.png')
-open(victim, 'wb').write(b'first')
-sg.safe_delete_file(victim)
-assert not os.path.exists(victim), 'file was not removed from the gallery'
-assert len(os.listdir(sg.TRASH_FOLDER)) == 1, 'file did not arrive in the trash'
-open(victim, 'wb').write(b'second')
-sg.safe_delete_file(victim)
-n = len(os.listdir(sg.TRASH_FOLDER))
-assert n == 2, f'a same-name delete overwrote the first ({n} file(s) in trash)'
-print('OK')
-"""
-    env = dict(os.environ,
-               DELETE_TO=str(trash_root),
-               BASE_OUTPUT_PATH=str(gallery),
-               BASE_SMARTGALLERY_PATH=str(gallery),
-               ENABLE_AI_DAM="false",
-               AI_DAM_AUTO_PROVISION="false")
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    proc = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
-                          capture_output=True, text=True, timeout=300)
-    assert proc.returncode == 0, (
-        f"DELETE_TO first-run path failed:\n{proc.stdout}\n{proc.stderr}")
-    assert "OK" in proc.stdout
+    monkeypatch.setattr(smartgallery_app, "DELETE_TO", str(trash_root))
+    monkeypatch.setattr(smartgallery_app, "TRASH_FOLDER", str(trash_folder))
+    monkeypatch.setattr(smartgallery_app, "BASE_OUTPUT_PATH", str(gallery))
+    return smartgallery_app
 
 
-def test_delete_to_covers_folder_deletion_too(tmp_path):
+def test_delete_to_moves_files_to_trash_without_overwriting(recoverable_deletes):
+    """safe_delete_file must relocate rather than remove, and two files of
+    the same name deleted in the same second must both survive."""
+    gallery = recoverable_deletes
+    trash = gallery.TRASH_FOLDER
+    victim = os.path.join(gallery.BASE_OUTPUT_PATH, "gone.png")
+
+    open(victim, "wb").write(b"first")
+    gallery.safe_delete_file(victim)
+
+    assert not os.path.exists(victim), "file was not removed from the gallery"
+    assert len(os.listdir(trash)) == 1, "file did not arrive in the trash"
+
+    open(victim, "wb").write(b"second")
+    gallery.safe_delete_file(victim)
+
+    survivors = len(os.listdir(trash))
+    assert survivors == 2, (
+        f"a same-name delete overwrote the first ({survivors} file(s) in trash)")
+
+
+def test_delete_to_covers_folder_deletion_too(recoverable_deletes, monkeypatch):
     """Deleting a FOLDER used to call shutil.rmtree unconditionally, so an
     install configured for recoverable deletes still lost a whole directory
     of media permanently. A link is still only unlinked -- that destroys
     nothing and must not relocate its target."""
-    import subprocess
-    import sys
+    gallery = recoverable_deletes
+    album = os.path.join(gallery.BASE_OUTPUT_PATH, "album")
+    os.makedirs(album)
+    for name in ("a.png", "b.png"):
+        open(os.path.join(album, name), "wb").write(b"x")
 
-    trash_root = tmp_path / "trash"
-    trash_root.mkdir()
-    gallery = tmp_path / "gallery"
-    gallery.mkdir()
+    gallery.safe_delete_tree(album)
 
-    script = """
-import os, sys
-sys.argv = ['smartgallery.py']
-import smartgallery as sg
+    assert not os.path.exists(album), "folder was not removed from the gallery"
+    entries = os.listdir(gallery.TRASH_FOLDER)
+    assert len(entries) == 1, f"expected one trashed folder, found {entries}"
+    recovered = os.path.join(gallery.TRASH_FOLDER, entries[0])
+    assert sorted(os.listdir(recovered)) == ["a.png", "b.png"], "contents were lost"
 
-album = os.path.join(sg.BASE_OUTPUT_PATH, 'album')
-os.makedirs(album)
-for name in ('a.png', 'b.png'):
-    open(os.path.join(album, name), 'wb').write(b'x')
+    # Without DELETE_TO the old behaviour stands: gone for good.
+    monkeypatch.setattr(gallery, "DELETE_TO", None)
+    monkeypatch.setattr(gallery, "TRASH_FOLDER", None)
+    album2 = os.path.join(gallery.BASE_OUTPUT_PATH, "album2")
+    os.makedirs(album2)
+    open(os.path.join(album2, "c.png"), "wb").write(b"x")
 
-sg.safe_delete_tree(album)
-assert not os.path.exists(album), 'folder was not removed from the gallery'
+    gallery.safe_delete_tree(album2)
 
-entries = os.listdir(sg.TRASH_FOLDER)
-assert len(entries) == 1, f'expected one trashed folder, found {entries}'
-recovered = os.path.join(sg.TRASH_FOLDER, entries[0])
-assert sorted(os.listdir(recovered)) == ['a.png', 'b.png'], 'contents were lost'
-
-# Without DELETE_TO the old behaviour stands: gone for good.
-sg.DELETE_TO = None
-sg.TRASH_FOLDER = None
-album2 = os.path.join(sg.BASE_OUTPUT_PATH, 'album2')
-os.makedirs(album2)
-open(os.path.join(album2, 'c.png'), 'wb').write(b'x')
-sg.safe_delete_tree(album2)
-assert not os.path.exists(album2)
-assert len(os.listdir(os.path.dirname(recovered))) == 1, 'unexpected new trash entry'
-print('OK')
-"""
-    env = dict(os.environ,
-               DELETE_TO=str(trash_root),
-               BASE_OUTPUT_PATH=str(gallery),
-               BASE_SMARTGALLERY_PATH=str(gallery),
-               ENABLE_AI_DAM="false",
-               AI_DAM_AUTO_PROVISION="false")
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    proc = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
-                          capture_output=True, text=True, timeout=300)
-    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "OK" in proc.stdout
+    assert not os.path.exists(album2)
+    assert len(os.listdir(os.path.dirname(recovered))) == 1, (
+        "unexpected new trash entry")
 
 
 # --- test-suite safety ----------------------------------------------------
@@ -371,7 +340,6 @@ def test_suite_paths_are_confined_to_a_temp_directory(smartgallery_app):
     with BASE_OUTPUT_PATH exported -- which is everyone who runs the
     gallery, since run_smartgallery.bat sets it -- had the tests operate on
     their real library. They are forced to a temp directory now."""
-    import tempfile
 
     tmp_root = os.path.realpath(tempfile.gettempdir())
     for attr in ("BASE_OUTPUT_PATH", "BASE_SMARTGALLERY_PATH", "BASE_INPUT_PATH"):

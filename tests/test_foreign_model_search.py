@@ -19,6 +19,7 @@ filling it in cannot move anybody's existing clusters.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -53,7 +54,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two foreign pictures from different checkpoints, one with a LoRA."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -91,10 +92,8 @@ def library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _search(smartgallery_app, ids, query):

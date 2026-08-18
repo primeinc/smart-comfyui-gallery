@@ -8,8 +8,11 @@ import json
 import sqlite3
 
 from metaparse.model import ParsedMetadata
-from metaparse.typed import (GenerationParams, ROW_COLUMNS, split_size,
-                             to_float, to_int)
+from metaparse.typed import ROW_COLUMNS, GenerationParams, split_size, to_float, to_int
+from omniquery.ast import parse_query
+from omniquery.compiler import CompileParams
+from omniquery.compiler import compile as compile_query
+from omniquery.validation import AuthContext, validate
 
 
 def test_to_int_strict():
@@ -47,9 +50,11 @@ def test_from_parsed_types_swarmui_stringified_values():
     })
     parsed.extra["automaticvae"] = "true"
     gp = GenerationParams.from_parsed(parsed)
-    assert gp.seed == 123456789 and isinstance(gp.seed, int)
+    assert gp.seed == 123456789
+    assert isinstance(gp.seed, int)
     assert gp.steps == 20
-    assert gp.cfg == 7.0 and isinstance(gp.cfg, float)
+    assert gp.cfg == 7.0
+    assert isinstance(gp.cfg, float)
     assert (gp.width, gp.height) == (1024, 1024)
     assert gp.negative_prompt == "dog"
     assert gp.extra["automaticvae"] == "true"  # verbatim, never dropped
@@ -59,9 +64,12 @@ def test_from_parsed_unmappable_value_stays_verbatim_in_extra():
     parsed = ParsedMetadata(tool="A1111 / Forge", positive="x")
     parsed.params.update({"seed": "12, 13", "cfg": "high", "size": "tall"})
     gp = GenerationParams.from_parsed(parsed)
-    assert gp.seed is None and gp.extra["seed"] == "12, 13"
-    assert gp.cfg is None and gp.extra["cfg"] == "high"
-    assert gp.width is None and gp.extra["size"] == "tall"
+    assert gp.seed is None
+    assert gp.extra["seed"] == "12, 13"
+    assert gp.cfg is None
+    assert gp.extra["cfg"] == "high"
+    assert gp.width is None
+    assert gp.extra["size"] == "tall"
 
 
 def test_from_comfy_typed_graph_values():
@@ -73,8 +81,10 @@ def test_from_comfy_typed_graph_values():
         "loras": [{"name": "detail", "weight": 0.8}],
         "positive_prompt_clean": "a red cube",
     })
-    assert gp.tool == "ComfyUI" and gp.detection == "graph"
-    assert gp.seed == 42 and gp.cfg == 4.5
+    assert gp.tool == "ComfyUI"
+    assert gp.detection == "graph"
+    assert gp.seed == 42
+    assert gp.cfg == 4.5
     assert gp.loras == [{"name": "detail", "weight": 0.8}]
     assert "positive_prompt_clean" not in gp.extra
 
@@ -96,7 +106,8 @@ def test_to_row_round_trips_through_sqlite_with_real_types():
         "SELECT seed, steps, cfg, width, negative_prompt "
         "FROM generation_params WHERE seed = 7").fetchone()
     assert got == (7, 25, 6.5, 512, "n")
-    assert isinstance(got[0], int) and isinstance(got[2], float)
+    assert isinstance(got[0], int)
+    assert isinstance(got[2], float)
 
 
 def test_extra_json_serializes():
@@ -110,9 +121,6 @@ def test_extra_json_serializes():
 
 def test_omniquery_gen_fields_compile():
     """gen_* fields ride the existing strategies into parameterized SQL."""
-    from omniquery.ast import parse_query
-    from omniquery.compiler import CompileParams, compile as compile_query
-    from omniquery.validation import AuthContext, validate
 
     ctx = AuthContext(role="STAFF", user_id="1", client_uuid="c", ai_enabled=False)
     vq = validate(parse_query({"where": {"op": "and", "children": [

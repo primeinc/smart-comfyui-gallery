@@ -25,6 +25,7 @@ database with no rows reads exactly like one that has not been read yet.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 
@@ -37,7 +38,7 @@ def _key(path, mtime):
     return hashlib.md5((path + str(mtime)).encode()).hexdigest()
 
 
-@pytest.fixture()
+@pytest.fixture
 def cache(smartgallery_app, tmp_path, monkeypatch):
     directory = tmp_path / "thumbs"
     directory.mkdir()
@@ -45,7 +46,7 @@ def cache(smartgallery_app, tmp_path, monkeypatch):
     return directory
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app):
     """Three files the library knows about, cleaned up afterwards."""
     rows = [(f"prune{i:027d}", f"/lib/pic_{i}.png", 1700000000.0 + i)
@@ -99,7 +100,8 @@ def test_touching_a_file_really_does_orphan_its_thumbnail():
         "a file's thumbnail name no longer changes with its mtime, so "
         "editing one does not leave the old one behind and there is "
         "nothing here to collect")
-    assert len(before) == 32 and before.isalnum()
+    assert len(before) == 32
+    assert before.isalnum()
 
 
 def test_a_thumbnail_whose_file_is_gone_is_removed(smartgallery_app, cache,
@@ -151,7 +153,9 @@ def test_every_kind_of_cache_entry_is_covered(smartgallery_app, cache, library):
 
     assert removed_files == 3, removed_files
     assert removed_dirs == 1, removed_dirs
-    assert not plain.exists() and not wave.exists() and not louder.exists()
+    assert not plain.exists()
+    assert not wave.exists()
+    assert not louder.exists()
     assert not frames.exists()
 
 
@@ -192,7 +196,8 @@ def test_anything_not_named_like_a_thumbnail_is_left_alone(smartgallery_app,
 
     _prune(smartgallery_app)
 
-    assert stranger.exists() and readme.exists()
+    assert stranger.exists()
+    assert readme.exists()
 
 
 def test_an_empty_library_removes_nothing(smartgallery_app, cache):
@@ -234,15 +239,11 @@ def test_a_missing_cache_directory_is_not_an_error(smartgallery_app, tmp_path,
     assert _prune(smartgallery_app) == (0, 0)
 
 
-def test_startup_runs_the_sweep():
+def test_startup_runs_the_sweep(gallery_tree):
     """It has to run somewhere, and after the scan is the only point where
     the rows describe what is on disk."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     start = next((node for node in ast.walk(tree)
                   if isinstance(node, ast.FunctionDef)

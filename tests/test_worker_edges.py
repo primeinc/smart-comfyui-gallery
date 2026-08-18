@@ -19,16 +19,17 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from smartgallery_ai import AIConfig, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
-from smartgallery_ai.review import StubSegmenter
+from smartgallery_ai import RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig
+from smartgallery_ai import review as R
+from smartgallery_ai.review import StubReviewer, StubSegmenter
 from smartgallery_ai.schema import init_schema
 from smartgallery_ai.worker import (
+    _VISUAL_TYPES,
     AIWorker,
     _fetch_candidates,
     _has_column,
     load_source_image,
 )
-
 
 # -- helpers (mirroring tests/test_worker.py conventions) ---------------------
 
@@ -105,12 +106,12 @@ def _add_generation_params(db_path: str, file_id: str, positive: str,
 
 
 def _config(tmp_path, db_path, **overrides) -> AIConfig:
-    kwargs = dict(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="none", segmenter_backend="none",
-    )
+    kwargs = {
+        "enabled": True, "base_path": str(tmp_path), "db_path": db_path,
+        "models_dir": str(tmp_path / "models"), "cache_dir": str(tmp_path / "cache"),
+        "ephemeral_index": True, "semantic_backend": "none", "visual_backend": "none",
+        "face_backend": "none", "critic_backend": "none", "segmenter_backend": "none",
+    }
     kwargs.update(overrides)
     return AIConfig(**kwargs)
 
@@ -184,7 +185,6 @@ def test_fetch_candidates_allowed_types_filters_nonvisual():
     conn.executemany("INSERT INTO files VALUES (?, ?, ?, ?)",
                      [(i, f"/x/{i}", m, t) for i, m, t in data])
 
-    from smartgallery_ai.worker import _VISUAL_TYPES
     rows = _fetch_candidates(conn, ["a", "b", "c", "d", "e"], limit=10,
                              allowed_types=_VISUAL_TYPES)
     assert [r["id"] for r in rows] == ["a", "c", "e"]
@@ -401,7 +401,6 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
     The prompt is part of the key, so the same file re-enters the queue on
     its own: no marker, no one-shot sweep, no manual rebuild.
     """
-    from smartgallery_ai.review import StubReviewer
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -440,7 +439,6 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
 def test_changing_only_the_negative_prompt_re_queues_the_review(tmp_path):
     """The negative prompt feeds ALIGN's expected-text guard, so it changes
     which elements are expected -- it is an input, and must be keyed."""
-    from smartgallery_ai.review import StubReviewer
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -475,7 +473,6 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
     conn.execute("UPDATE files SET workflow_prompt = 'a castle' WHERE id = 'ok1'")
     conn.commit()
 
-    from smartgallery_ai.review import StubReviewer
     worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub",
                               segmenter_backend="stub"), db_path)
     try:
@@ -614,7 +611,6 @@ def test_face_detect_failure_leaves_file_retryable(tmp_path):
 def test_mask_stage_skips_when_no_findings_lack_masks(tmp_path):
     """With only global (non-localizable) findings, the standalone mask
     stage selects nothing and writes no 'masks' scan-log row."""
-    from smartgallery_ai import review as R
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -641,7 +637,6 @@ def test_mask_stage_skips_when_no_findings_lack_masks(tmp_path):
 def test_mask_stage_unreadable_file_counts_error_stays_retryable(tmp_path):
     """A mask candidate whose source file is unreadable is counted as an
     error and left unlogged, so it stays selectable for retry."""
-    from smartgallery_ai import review as R
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -689,7 +684,8 @@ def test_cycle_runs_review_stage_with_stub_critic(tmp_path):
     assert 0.0 <= row[1] <= 10.0
     log = _query_one(db_path, "SELECT result_count FROM ai_scan_log "
                      "WHERE file_id='cy1' AND kind='review'")
-    assert log is not None and log[0] >= 0
+    assert log is not None
+    assert log[0] >= 0
 
 
 # -- orphaned-mask sweep ------------------------------------------------------
@@ -744,7 +740,9 @@ def test_load_source_image_video_first_frame(tmp_path):
     r, g, b = img.convert("RGB").getpixel((16, 12))
     # Red proves BOTH the BGR->RGB conversion AND that it was frame 0:
     # any later frame would read blue.
-    assert r > 200 and g < 60 and b < 60
+    assert r > 200
+    assert g < 60
+    assert b < 60
 
 
 def test_load_source_image_returns_none_for_unreadable_and_nonvisual(tmp_path):

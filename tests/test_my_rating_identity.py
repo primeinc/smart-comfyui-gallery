@@ -19,10 +19,13 @@ correct, so the gallery looks healthy right up until someone turns on
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
 from PIL import Image
+
+from smartgallery import get_db_connection
 
 _PREFIX = "ratingid_"
 
@@ -56,7 +59,7 @@ def _purge(smartgallery_app):
         conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two images in the gallery root, scanned in-process."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -82,14 +85,12 @@ def library(smartgallery_app, monkeypatch):
     yield ids
 
     for _name, path in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(path)
-        except OSError:
-            pass
     _purge(smartgallery_app)
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
@@ -108,7 +109,6 @@ def test_a_rating_is_stored_under_the_identity_the_page_uses(client, library):
     alpha = library[f"{_PREFIX}alpha.png"]
     _rate_as_browser(client, alpha, 5)
 
-    from smartgallery import get_db_connection
     conn = get_db_connection()
     try:
         rows = [(r[0], r[1]) for r in conn.execute(

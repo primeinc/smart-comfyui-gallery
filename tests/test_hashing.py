@@ -1,8 +1,10 @@
 """Tests for smartgallery_ai.hashing: sha256, phash64/dhash64, upsert, and
 exact/near-duplicate queries over a synthetic files+ai_file_hashes DB."""
 
+import hashlib
 import os
 import sqlite3
+import sys
 import time
 
 import numpy as np
@@ -24,7 +26,6 @@ from smartgallery_ai.hashing import (
     upsert_hashes,
 )
 from smartgallery_ai.schema import init_schema
-
 
 # --- fixtures / helpers -----------------------------------------------------
 
@@ -169,7 +170,6 @@ def test_signed_hash_round_trips_through_sqlite_integer():
 def test_sha256_file_matches_hashlib(tmp_path):
     path = tmp_path / "blob.bin"
     path.write_bytes(os.urandom(1 << 16) + b"\x00" * 100)
-    import hashlib
 
     expected = hashlib.sha256(path.read_bytes()).hexdigest()
     assert sha256_file(str(path), chunk_size=4096) == expected
@@ -327,12 +327,12 @@ def test_near_duplicate_pairs_full_sweep_matches_pairwise_hamming():
     expected = []
     for i in range(len(ids)):
         for j in range(i + 1, len(ids)):
-            d = bin(entries[ids[i]] ^ entries[ids[j]]).count("1")
+            d = (entries[ids[i]] ^ entries[ids[j]]).bit_count()
             if d <= 3:
-                expected.append(tuple(sorted((ids[i], ids[j]))) + (d,))
+                expected.append((*tuple(sorted((ids[i], ids[j]))), d))
     expected.sort(key=lambda t: (t[2], t[0], t[1]))
 
-    normalized = sorted((tuple(sorted((a, b))) + (d,) for a, b, d in pairs), key=lambda t: (t[2], t[0], t[1]))
+    normalized = sorted(((*tuple(sorted((a, b))), d) for a, b, d in pairs), key=lambda t: (t[2], t[0], t[1]))
     assert normalized == expected
 
 
@@ -350,7 +350,6 @@ def test_hamming64_every_single_bit_flip_is_distance_one():
     """Flipping any one of the 64 bit positions changes the Hamming
     distance by exactly 1 — including bit 63, whose flip crosses the
     signed/unsigned two's-complement boundary SQLite stores."""
-    from smartgallery_ai.hashing import hamming64, phash64, to_signed64
 
     # Arrange: one irregular synthetic pattern and one real image hash.
     bases = [0x5DEECE66DAB0FF1E, to_signed64(phash64(checkerboard()))]
@@ -367,7 +366,6 @@ def test_near_duplicate_query_is_per_bit_exact_at_the_threshold():
     """The near-duplicate predicate distinguishes every individual bit:
     all 64 one-bit neighbors are inside max_distance=1, none are inside
     max_distance=0, and a two-bit neighbor is excluded at 1."""
-    from smartgallery_ai.hashing import HashResult, find_near_duplicates, to_signed64, upsert_hashes
 
     conn = make_conn()
     target_phash = 0x0123456789ABCDEF
@@ -407,7 +405,6 @@ def test_near_duplicate_pairs_faiss_and_numpy_paths_agree(monkeypatch):
     """The IndexBinaryFlat sweep and the numpy XOR+popcount sweep must return
     the identical pair list, including the boundary distance (radius is
     exclusive in faiss range_search, inclusive in our contract)."""
-    import sys
 
     pytest.importorskip("faiss")
     entries = {

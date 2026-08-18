@@ -24,7 +24,7 @@ import pytest
 from smartgallery_ai import faiss_runtime
 
 
-@pytest.fixture()
+@pytest.fixture
 def fake_nvidia_dirs(tmp_path, monkeypatch):
     """A purelib layout with two nvidia wheel bin directories."""
     purelib = tmp_path / "site-packages"
@@ -78,7 +78,7 @@ def test_path_stays_a_sane_length_under_many_calls(fake_nvidia_dirs):
 def test_an_entry_already_present_is_not_added_again(fake_nvidia_dirs, monkeypatch):
     """Belt and braces: even with the memo cleared -- a fresh process that
     inherited a PATH already containing these -- the entry is not doubled."""
-    monkeypatch.setenv("PATH", os.pathsep.join(fake_nvidia_dirs + ["C:\\original"]))
+    monkeypatch.setenv("PATH", os.pathsep.join([*fake_nvidia_dirs, "C:\\original"]))
     monkeypatch.setattr(faiss_runtime, "_REGISTERED_DLL_DIRS", set())
 
     faiss_runtime._register_cuda_dll_dirs()

@@ -56,6 +56,7 @@ any case.
 | `PAGE_SIZE` | `100` | Files per page / infinite-scroll batch. |
 | `BATCH_SIZE` | `500` | Database batch size during scans. |
 | `MAX_PARALLEL_WORKERS` | auto (CPU count) | Parallel workers for scanning and thumbnailing. |
+| `PARALLEL_SCAN_MIN_FILES` | `12` | Scans smaller than this stay in one process. Starting workers costs about a second each time, which is longer than a small scan takes; above the bound the parallelism wins it back. |
 | `STREAM_THRESHOLD_MB` | `20` | Videos above this size stream with range requests instead of being sent whole. |
 | `GENPARAMS_BACKFILL` | `true` | Startup backfill of typed generation parameters. Set false to skip it on very large libraries. |
 

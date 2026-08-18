@@ -3,13 +3,20 @@ rejection cases), store_review upsert + the live ai_review_findings CHECK
 constraint, StubReviewer heuristics, and generate_finding_mask (including the
 path-traversal guard and source-file untouched guarantee)."""
 
+import copy
+import json as _json
 import os
 import sqlite3
 
 import numpy as np
 import pytest
+import pytest as _pytest
 from PIL import Image
 
+from smartgallery_ai import AIConfig
+from smartgallery_ai import review as REV
+from smartgallery_ai import reviewer as CQ
+from smartgallery_ai.embedders import BackendUnavailable
 from smartgallery_ai.review import (
     Finding,
     MaskNotAllowedError,
@@ -17,14 +24,14 @@ from smartgallery_ai.review import (
     ReviewSchemaError,
     StubReviewer,
     StubSegmenter,
+    _auto_critic_measurement_passed,
     generate_finding_mask,
     get_reviewer,
     store_review,
     validate_review_payload,
 )
+from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN, Reviewer
 from smartgallery_ai.schema import init_schema
-from smartgallery_ai import AIConfig
-
 
 # --- fixtures / helpers -----------------------------------------------------
 
@@ -455,7 +462,8 @@ def test_stub_critic_red_square_yields_localizable_artifact_overlapping_square()
     # bbox found by the stub must overlap the square we actually drew
     overlap_x = max(0.0, min(bx + bw, sx_n + sw_n) - max(bx, sx_n))
     overlap_y = max(0.0, min(by + bh, sy_n + sh_n) - max(by, sy_n))
-    assert overlap_x > 0.0 and overlap_y > 0.0
+    assert overlap_x > 0.0
+    assert overlap_y > 0.0
     # one prompt slice, satisfied -> the whole prompt was followed
     assert result.prompt_alignment_score == 1.0
 
@@ -487,10 +495,9 @@ def _store_one_finding(conn, file_id, localizable, bbox=None, points=None):
     )
     result = ReviewResult(quality_score=5.0, prompt_alignment_score=None, summary="s", findings=[finding])
     review_id = store_review(conn, file_id, result, "critic-x", "v1", "rubric-1", None, 1000.0, 2000.0)
-    finding_id = conn.execute(
+    return conn.execute(
         "SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)
     ).fetchone()[0]
-    return finding_id
 
 
 def test_generate_finding_mask_localizable_creates_png_source_untouched(tmp_path):
@@ -564,12 +571,7 @@ def test_qwen_critic_requires_semantic_embedder():
     """The CLIP grounding gate is the anti-fabrication mechanism the
     critic's measured record relies on: constructing the critic without an
     embedder must be impossible, in the class AND through the factory."""
-    import pytest as _pytest
 
-    from smartgallery_ai import AIConfig
-    from smartgallery_ai.reviewer import Reviewer
-    from smartgallery_ai.embedders import BackendUnavailable
-    from smartgallery_ai.review import get_reviewer
 
     # Class-level invariant: embedder=None is rejected before anything else
     # (no weights needed for this check to fire).
@@ -647,14 +649,9 @@ def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
     baseline text, and input manifest hashes matching this checkout — not
     merely in-bounds numbers. A synthetic numbers-only report must never
     enable 'auto'."""
-    import copy
-    import json as _json
 
-    from smartgallery_ai import review as REV
-    from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN
-    from smartgallery_ai.review import _auto_critic_measurement_passed
 
-    with open(REV._CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
+    with open(REV._CALIBRATION_REPORT_PATH, encoding="utf-8") as fh:
         real = _json.load(fh)
 
     # The committed evidence itself passes ('auto' ships on).
@@ -720,7 +717,6 @@ def test_qwen_critic_summary_survives_rejected_last_finding(monkeypatch):
     """When the final defect fails crop verification, the summary must keep
     quoting the step-1 (grounded) description; the rejected defect text must
     not appear anywhere in the payload."""
-    from smartgallery_ai import reviewer as CQ
 
     reviewer = object.__new__(CQ.Reviewer)
     reviewer._embedder = object()  # patched functions below never touch it

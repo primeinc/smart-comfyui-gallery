@@ -25,12 +25,16 @@ collection note, which is a file and is meant for it.
 
 from __future__ import annotations
 
+import ast
+import pathlib
+import re
+
 import pytest
 
 import smartgallery
 
 
-@pytest.fixture()
+@pytest.fixture
 def a_picture(smartgallery_app):
     """One file to comment on, cleaned up after."""
     file_id = "c" * 32
@@ -56,7 +60,7 @@ def a_picture(smartgallery_app):
         conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def visitor(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -209,18 +213,13 @@ def test_an_ordinary_edit_still_works(smartgallery_app, visitor, a_picture):
     assert _stored(smartgallery_app, a_picture) == len("first")
 
 
-def test_every_route_that_writes_a_comment_asks_the_same_rule():
+def test_every_route_that_writes_a_comment_asks_the_same_rule(gallery_tree):
     """One idea in two places is how the first version came apart. The
     column is written from three statements; each one's route has to have
     asked."""
-    import ast
-    import io
-    import pathlib
-    import re
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
-    writes_comment = re.compile(r"comment_text", re.I)
+    tree = gallery_tree
+    writes_comment = re.compile(r"comment_text", re.IGNORECASE)
 
     offenders = []
     for fn in ast.walk(tree):
@@ -229,7 +228,7 @@ def test_every_route_that_writes_a_comment_asks_the_same_rule():
         sql = [n.value for n in ast.walk(fn)
                if isinstance(n, ast.Constant) and isinstance(n.value, str)]
         if not any(writes_comment.search(s)
-                   and re.search(r"\b(INSERT|UPDATE)\b", s, re.I) for s in sql):
+                   and re.search(r"\b(INSERT|UPDATE)\b", s, re.IGNORECASE) for s in sql):
             continue
         called = {n.func.id for n in ast.walk(fn)
                   if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
@@ -251,7 +250,6 @@ def test_the_limit_is_generous_enough_to_be_a_comment():
 def test_the_box_says_so_before_anybody_types_past_it():
     """Being told after writing is worse than being stopped while typing.
     The server check is the real one; this is the courtesy."""
-    import pathlib
 
     root = pathlib.Path(smartgallery.__file__).resolve().parent
     for name in ("index.html", "exhibition.html"):

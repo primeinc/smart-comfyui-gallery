@@ -18,7 +18,6 @@ import io
 import logging
 import os
 import warnings
-from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -80,8 +79,8 @@ class MobileSamSegmenter(SegmenterBackend):
                     f"failed to load mobile_sam weights: {exc}") from exc
         self._torch = torch
 
-    def segment(self, img: Image.Image, bbox: Optional[tuple] = None,
-                points: Optional[list] = None) -> np.ndarray:
+    def segment(self, img: Image.Image, bbox: tuple | None = None,
+                points: list | None = None) -> np.ndarray:
         """Predict one boolean HxW mask from normalized-[0,1] prompts:
         `bbox` as (x, y, w, h), `points` as foreground clicks. At least
         one prompt is required; single-mask mode keeps output
@@ -104,7 +103,7 @@ class MobileSamSegmenter(SegmenterBackend):
                 point_coords = np.array(
                     [[px * w, py * h] for px, py in points], dtype=np.float32)
                 point_labels = np.ones(len(points), dtype=np.int32)
-            masks, scores, _ = self._predictor.predict(
+            masks, _scores, _ = self._predictor.predict(
                 point_coords=point_coords, point_labels=point_labels,
                 box=box_arr, multimask_output=False)
         return masks[0].astype(bool)

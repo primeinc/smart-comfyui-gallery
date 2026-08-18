@@ -31,7 +31,9 @@ import os
 import re
 import sqlite3
 import time
-from typing import Dict, List, Optional, Tuple
+
+from omniquery.sqlexec import run_readonly_select
+from smartgallery_ai import models as ai_models
 
 _logger = logging.getLogger(__name__)
 
@@ -75,7 +77,7 @@ _SYSTEM_PROMPT = (
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
 # (db_path, schema mtime-ish key) -> rendered schema block
-_SCHEMA_CACHE: Dict[str, Tuple[float, str]] = {}
+_SCHEMA_CACHE: dict[str, tuple[float, str]] = {}
 _SCHEMA_TTL_SECONDS = 300.0
 
 
@@ -99,7 +101,7 @@ def schema_block(db_path: str) -> str:
         # (observed miss: the model guessed type='photo' where the data
         # says 'image'). Sourced from the data itself, so they are right
         # for every install.
-        hints: List[str] = []
+        hints: list[str] = []
         try:
             types = [r[0] for r in conn.execute(
                 "SELECT DISTINCT type FROM files WHERE type IS NOT NULL "
@@ -149,8 +151,8 @@ class SqlSearch:
     """NL -> SQL through the local text2sql model. search() never raises;
     it returns (ids, sql, None) or (None, sql, reason)."""
 
-    def __init__(self, db_path: str, model_ref: Optional[str] = None,
-                 models_dir: Optional[str] = None, max_tokens: int = 256):
+    def __init__(self, db_path: str, model_ref: str | None = None,
+                 models_dir: str | None = None, max_tokens: int = 256):
         self.db_path = db_path
         self.model_ref = model_ref or os.environ.get(ENV_MODEL) or DEFAULT_MODEL
         self.models_dir = (models_dir
@@ -174,13 +176,12 @@ class SqlSearch:
         greedy-safe. There are no stop strings -- `_extract_sql` already
         cuts the statement at the first terminator or template junk, and it
         is the tested cut."""
-        from smartgallery_ai import models as ai_models
 
         return ai_models.Chat(self.model_ref, models_dir=self.models_dir,
                               system=_SYSTEM_PROMPT)
 
     def search(self, question: str, max_rounds: int = 3
-               ) -> Tuple[Optional[List[str]], Optional[str], Optional[str]]:
+               ) -> tuple[list[str] | None, str | None, str | None]:
         """The agentic loop: the model generates SQL, READS the sandboxed
         execution outcome, and acts on it before answering.
 
@@ -193,7 +194,6 @@ class SqlSearch:
         At most `max_rounds` generations; every execution goes through
         run_readonly_select and nothing else. Returns (ids, sql, None) on
         success or (None, last_sql, reason). Never raises."""
-        from omniquery.sqlexec import run_readonly_select
 
         try:
             schema = schema_block(self.db_path)
@@ -208,8 +208,8 @@ class SqlSearch:
         # reuses it from the cache.
         turn = f"Schema:\n{schema}\n\nQuestion: {question}"
 
-        last_sql: Optional[str] = None
-        last_reason: Optional[str] = None
+        last_sql: str | None = None
+        last_reason: str | None = None
         for _round in range(max_rounds):
             try:
                 content = chat.ask(turn, max_new_tokens=self.max_tokens)

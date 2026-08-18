@@ -133,7 +133,7 @@ def test_migrate_legacy_passwords(tmp_path):
 
 
 def test_migrate_legacy_passwords_is_idempotent(tmp_path):
-    conn, key_path, plaintexts = _make_legacy_db(str(tmp_path))
+    conn, key_path, _plaintexts = _make_legacy_db(str(tmp_path))
 
     first = sg_auth.migrate_legacy_passwords(conn, key_path)
     assert first["migrated"] == 3
@@ -320,14 +320,12 @@ def test_login_unknown_user_performs_decoy_verify(monkeypatch, smartgallery_app)
 def test_migration_gate_is_case_sensitive_glob(tmp_path):
     # A lowercase 'gaaaa...' value is NOT a real Fernet ciphertext and must
     # not, via a case-insensitive gate, cause the key file to be retained.
-    import sqlite3
     db = tmp_path / "m.sqlite"
     conn = sqlite3.connect(db)
     conn.execute("CREATE TABLE users (user_id INTEGER PRIMARY KEY, password TEXT)")
     conn.execute("INSERT INTO users (password) VALUES ('gaaaaNOTaToken')")
     conn.commit()
     key_file = tmp_path / "system.key"
-    from cryptography.fernet import Fernet
     key_file.write_bytes(Fernet.generate_key())
     report = sg_auth.migrate_legacy_passwords(conn, str(key_file))
     # The lowercase value is not legacy ciphertext, and the GLOB gate agrees:

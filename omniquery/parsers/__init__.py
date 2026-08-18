@@ -28,12 +28,12 @@ from __future__ import annotations
 import importlib
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from omniquery.ast import ASTError, Query, parse_query
 from omniquery.validation import AuthContext, ValidationError, validate
-
 
 # A maximally-permissive AuthContext used by parsers to self-check their own
 # output before returning it. Real authorization happens again, for real,
@@ -51,14 +51,14 @@ class ParserOutcome:
     signals, or a diagnosis of why no usable AST exists. Backends set
     ``ast`` only to a dict that already passed :func:`try_validate`."""
 
-    ast: Optional[dict]  # validated JSON-compatible AST; None when the parse failed
-    confidence: Optional[float]  # backend's self-reported confidence in [0, 1]; None when the backend emits none; not comparable across backends
+    ast: dict | None  # validated JSON-compatible AST; None when the parse failed
+    confidence: float | None  # backend's self-reported confidence in [0, 1]; None when the backend emits none; not comparable across backends
     backend: str  # registry name of the producing backend
     unsupported: bool = False  # True: no usable AST was produced; `reason` says why
-    reason: Optional[str] = None  # failure diagnostics; on success, soft warnings (e.g. literals the AST missed)
-    coverage: Optional[float] = None  # literal/keyword coverage fraction in [0, 1]; None when not computed
-    latency_ms: Optional[float] = None  # wall-clock parse duration in milliseconds
-    raw: Optional[dict] = None  # backend-specific debug payload (interpretation chips, raw generation, ...)
+    reason: str | None = None  # failure diagnostics; on success, soft warnings (e.g. literals the AST missed)
+    coverage: float | None = None  # literal/keyword coverage fraction in [0, 1]; None when not computed
+    latency_ms: float | None = None  # wall-clock parse duration in milliseconds
+    raw: dict | None = None  # backend-specific debug payload (interpretation chips, raw generation, ...)
 
 
 class ParserBackend(ABC):
@@ -83,7 +83,7 @@ class ParserBackend(ABC):
 # Registry
 # ---------------------------------------------------------------------------
 
-_BACKEND_PATHS: Dict[str, str] = {  # backend name -> dotted class path, imported lazily by get_backend
+_BACKEND_PATHS: dict[str, str] = {  # backend name -> dotted class path, imported lazily by get_backend
     "nlq": "omniquery.parsers.nlq.NlqParser",
 }
 
@@ -120,7 +120,7 @@ def make_search_parser() -> ParserBackend:
 # Shared validation helper
 # ---------------------------------------------------------------------------
 
-def try_validate(ast_dict: dict) -> Tuple[Optional[Query], Optional[str]]:
+def try_validate(ast_dict: dict) -> tuple[Query | None, str | None]:
     """Parse + validate an AST dict against PERMISSIVE_CTX.
 
     Every backend must call this (directly or via a wrapper) before
@@ -187,11 +187,11 @@ def _scalar_leaves(value: Any) -> Iterator[Any]:
         yield value
 
 
-def _all_ast_values(ast_dict: dict) -> List[Any]:
+def _all_ast_values(ast_dict: dict) -> list[Any]:
     """Every scalar literal the AST commits to (all condition values,
     flattened, plus `limit` when set) -- the pool coverage_guard matches
     the query text's literals against."""
-    values: List[Any] = []
+    values: list[Any] = []
     for cond in _walk_conds(ast_dict.get("where")):
         values.extend(_scalar_leaves(cond.get("value")))
     if ast_dict.get("limit") is not None:
@@ -215,13 +215,13 @@ _NUMBER_UNIT_RE = re.compile(
     r"(?:\s*(mb|megabytes?|gb|gigabytes?|kb|kilobytes?|"
     r"seconds?|secs?|minutes?|mins?|hours?|hrs?|"
     r"stars?|days?|weeks?|months?|megapixels?|mp))?\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 # unit word -> multipliers whose products with the raw number are each an
 # accepted AST encoding of it: sizes may be stored in MB or bytes, durations
 # in seconds, week/month counts in days; unitless kinds multiply by 1.
-_UNIT_MULTIPLIERS: Dict[str, Tuple[float, ...]] = {
+_UNIT_MULTIPLIERS: dict[str, tuple[float, ...]] = {
     "mb": (1.0, 1024.0 * 1024.0), "megabyte": (1.0, 1024.0 * 1024.0), "megabytes": (1.0, 1024.0 * 1024.0),
     "gb": (1024.0, 1024.0 ** 3), "gigabyte": (1024.0, 1024.0 ** 3), "gigabytes": (1024.0, 1024.0 ** 3),
     "kb": (1.0 / 1024.0, 1024.0), "kilobyte": (1.0 / 1024.0, 1024.0), "kilobytes": (1.0 / 1024.0, 1024.0),
@@ -237,11 +237,11 @@ _UNIT_MULTIPLIERS: Dict[str, Tuple[float, ...]] = {
 
 _MEDIA_TYPE_RE = re.compile(
     r"\b(photos?|pictures?|images?|videos?|clips?|movies?|gifs?|animated[ -]images?|"
-    r"sounds?|music|songs?|audio|documents?|pdfs?)\b", re.I,
+    r"sounds?|music|songs?|audio|documents?|pdfs?)\b", re.IGNORECASE,
 )
 # Normalized (singular, space-separated, lowercase) keyword -> AST enum value.
 # Kept in lockstep with the alternatives of _MEDIA_TYPE_RE above.
-_MEDIA_TYPE_NORMALIZE: Dict[str, str] = {
+_MEDIA_TYPE_NORMALIZE: dict[str, str] = {
     "photo": "image", "picture": "image", "image": "image",
     "video": "video", "clip": "video", "movie": "video",
     "gif": "animated_image", "animated image": "animated_image",
@@ -249,21 +249,21 @@ _MEDIA_TYPE_NORMALIZE: Dict[str, str] = {
     "document": "document", "pdf": "document",
 }
 _STATUS_WORD_RE = re.compile(
-    r"\b(approved|rejected|needs?\s+review|in\s+review|review|to\s+edit|selected|select)\b", re.I,
+    r"\b(approved|rejected|needs?\s+review|in\s+review|review|to\s+edit|selected|select)\b", re.IGNORECASE,
 )
 # Normalized keyword -> lowercased AST status_flag value ("To Edit" etc.).
-_STATUS_NORMALIZE: Dict[str, str] = {
+_STATUS_NORMALIZE: dict[str, str] = {
     "approved": "approved", "rejected": "rejected",
     "need review": "review", "needs review": "review", "in review": "review",
     "review": "review",
     "to edit": "to edit",
     "selected": "select", "select": "select",
 }
-_FAVORITE_WORD_RE = re.compile(r"\bfavou?rite[sd]?\b", re.I)  # both spellings, optional plural/past-tense suffix
-_COUNT_WORD_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.I)  # phrasings that demand result="count"
+_FAVORITE_WORD_RE = re.compile(r"\bfavou?rite[sd]?\b", re.IGNORECASE)  # both spellings, optional plural/past-tense suffix
+_COUNT_WORD_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.IGNORECASE)  # phrasings that demand result="count"
 
 
-def _number_candidates(raw: str, unit: Optional[str]) -> List[float]:
+def _number_candidates(raw: str, unit: str | None) -> list[float]:
     """Every numeric value an AST may legally carry for the literal `raw`:
     the number itself plus each unit-scaled variant from _UNIT_MULTIPLIERS."""
     n = float(raw)
@@ -273,7 +273,7 @@ def _number_candidates(raw: str, unit: Optional[str]) -> List[float]:
     return candidates
 
 
-def _normalize_keyword(word: str, table: Dict[str, str]) -> Optional[str]:
+def _normalize_keyword(word: str, table: dict[str, str]) -> str | None:
     """Look `word` up in `table` after lowercasing, collapsing whitespace/
     hyphens, and (if needed) stripping one plural 's'."""
     w = re.sub(r"[\s-]+", " ", word.lower().strip())
@@ -299,7 +299,7 @@ def _cond_values_for_field(ast_dict: dict, field: str) -> set:
     return out
 
 
-def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
+def coverage_guard(text: str, ast_dict: dict) -> tuple[float, list[str]]:
     """Model-free structural guard: does the AST plausibly reflect every
     literal number, every quoted string, and every recognized keyword class
     present in `text`? Returns (coverage_fraction, miss_descriptions).
@@ -316,7 +316,7 @@ def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
 
     total = 0
     ok = 0
-    missing: List[str] = []
+    missing: list[str] = []
 
     for m in _QUOTED_RE.finditer(text):
         literal = m.group(1)
@@ -330,9 +330,7 @@ def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
         raw, unit = m.group(1), m.group(2)
         total += 1
         candidates = _number_candidates(raw, unit)
-        if any(abs(v - c) < 1e-6 for v in numeric_values for c in candidates):
-            ok += 1
-        elif any(raw in s for s in string_values):
+        if any(abs(v - c) < 1e-6 for v in numeric_values for c in candidates) or any(raw in s for s in string_values):
             ok += 1
         else:
             missing.append(f"number {raw!r} not reflected in AST")
@@ -386,11 +384,11 @@ def coverage_guard(text: str, ast_dict: dict) -> Tuple[float, List[str]]:
 
 __all__ = [
     "PERMISSIVE_CTX",
-    "ParserOutcome",
     "ParserBackend",
+    "ParserOutcome",
+    "contains_not_node",
+    "coverage_guard",
     "get_backend",
     "make_search_parser",
     "try_validate",
-    "contains_not_node",
-    "coverage_guard",
 ]

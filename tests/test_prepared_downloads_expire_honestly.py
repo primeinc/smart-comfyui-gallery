@@ -35,6 +35,7 @@ panel already knows how to show.
 
 from __future__ import annotations
 
+import ast
 import os
 import time
 
@@ -43,7 +44,7 @@ import pytest
 import smartgallery
 
 
-@pytest.fixture()
+@pytest.fixture
 def zip_cache(smartgallery_app, tmp_path, monkeypatch):
     cache = tmp_path / "zips"
     cache.mkdir()
@@ -55,7 +56,7 @@ def zip_cache(smartgallery_app, tmp_path, monkeypatch):
     smartgallery_app.zip_jobs.update(before)
 
 
-@pytest.fixture()
+@pytest.fixture
 def staff(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -199,16 +200,12 @@ def test_the_link_would_have_answered_with_a_page(zip_cache, staff):
         "would no longer be the failure these checks are about")
 
 
-def test_startup_clears_what_it_finds():
+def test_startup_clears_what_it_finds(gallery_tree):
     """The sweep has to run somewhere other than the end of building a zip,
     or a gallery that prepared one download and stopped keeps it for good.
     Startup is the one moment every gallery reaches."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     starters = [node for node in ast.walk(tree)
                 if isinstance(node, ast.FunctionDef)

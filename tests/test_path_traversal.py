@@ -14,6 +14,7 @@ all-404 result is equally consistent with a broken test.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -43,7 +44,7 @@ _ROUTES = [
 ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def planted_secret(smartgallery_app):
     """A file one level above the input folder, guaranteed to be outside
     every directory any route is allowed to serve from."""
@@ -72,10 +73,8 @@ def planted_secret(smartgallery_app):
         if os.path.exists(decoy):
             os.remove(decoy)
     yield path
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def test_the_probe_can_see_a_genuine_serve(smartgallery_app):
@@ -91,10 +90,8 @@ def test_the_probe_can_see_a_genuine_serve(smartgallery_app):
         assert resp.status_code == 200
         assert _SECRET in resp.get_data(), "the probe cannot detect a real serve"
     finally:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(inside)
-        except OSError:
-            pass
 
 
 @pytest.mark.parametrize("route", _ROUTES)

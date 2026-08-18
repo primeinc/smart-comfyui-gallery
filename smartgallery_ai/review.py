@@ -18,13 +18,13 @@ outside this module.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import sqlite3
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -36,19 +36,19 @@ __all__ = [
     "FINDING_TYPES",
     "AlignmentElement",
     "Finding",
+    "MaskNotAllowedError",
     "ReviewResult",
     "ReviewSchemaError",
+    "SegmenterBackend",
+    "StubReviewer",
+    "StubSegmenter",
+    "generate_alignment_mask",
+    "generate_finding_mask",
+    "get_reviewer",
     "normalize_prompt_pair",
     "resolve_prompt_texts",
-    "validate_review_payload",
-    "StubReviewer",
-    "get_reviewer",
     "store_review",
-    "SegmenterBackend",
-    "StubSegmenter",
-    "MaskNotAllowedError",
-    "generate_finding_mask",
-    "generate_alignment_mask",
+    "validate_review_payload",
 ]
 
 # Closed vocabulary of finding categories; the DB CHECK constraint and every
@@ -139,8 +139,8 @@ class Finding:
     confidence: float  # 0..1
     localizable: bool  # True = tied to a specific image region; False = whole-image
     description: str
-    bbox: Optional[tuple] = None  # (x, y, w, h), normalized -- localizable only
-    points: Optional[list] = None  # list[(x, y)], normalized -- localizable only
+    bbox: tuple | None = None  # (x, y, w, h), normalized -- localizable only
+    points: list | None = None  # list[(x, y)], normalized -- localizable only
 
 
 @dataclass
@@ -159,7 +159,7 @@ class AlignmentElement:
     text: str
     satisfied: bool
     confidence: float  # 0..1
-    bbox: Optional[tuple] = None  # (x, y, w, h), normalized -- satisfied only
+    bbox: tuple | None = None  # (x, y, w, h), normalized -- satisfied only
 
 
 @dataclass
@@ -172,7 +172,7 @@ class ReviewResult:
     # Prompt-following, 0..1 (the panel shows it as a percentage). None
     # means the file carries no generation prompt to follow -- the one
     # honest reason for an unscored review.
-    prompt_alignment_score: Optional[float]
+    prompt_alignment_score: float | None
     summary: str
     findings: list  # list[Finding]
     alignment: list = field(default_factory=list)  # list[AlignmentElement]
@@ -443,8 +443,8 @@ class StubReviewer:
     _RED_MIN_R = 180  # red-channel floor (0-255) for the artifact-rectangle mask
     _RED_MAX_GB = 80  # green/blue ceiling (0-255) for the artifact-rectangle mask
 
-    def review(self, img: Image.Image, prompt_text: Optional[str], rubric_version: str,
-               negative_text: Optional[str] = None) -> dict:
+    def review(self, img: Image.Image, prompt_text: str | None, rubric_version: str,
+               negative_text: str | None = None) -> dict:
         """Apply the two stub heuristics and emit a raw payload dict; the
         quality score drops 2 points per finding."""
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)
@@ -496,7 +496,7 @@ class StubReviewer:
         }
 
     @classmethod
-    def _find_red_rectangle(cls, rgb: np.ndarray) -> Optional[tuple]:
+    def _find_red_rectangle(cls, rgb: np.ndarray) -> tuple | None:
         """Normalized (x, y, w, h) bounding box of all strongly-red pixels,
         or None when the image has none."""
         h, w = rgb.shape[:2]
@@ -536,7 +536,7 @@ def _sha256_of_file(path: str) -> str:
     return h.hexdigest()
 
 
-def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
+def _auto_critic_measurement_passed(report_path: str | None = None) -> bool:
     """Whether the calibration report at `report_path` (default: the
     committed benchmarks/results/grounding_calibration.json, written by
     probes/grounding_calibration.py) authorizes 'auto' reviewer resolution.
@@ -555,10 +555,9 @@ def _auto_critic_measurement_passed(report_path: Optional[str] = None) -> bool:
     Anything missing, malformed, mismatched, or out of bounds -> False.
     """
     try:
-        from smartgallery_ai.reviewer import (
-            DEFAULT_GROUNDING_MIN_MARGIN, GROUNDING_BASELINE_TEXT)
         from smartgallery_ai.embedders import OpenClipSemanticEmbedder
-        with open(report_path or _CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
+        from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN, GROUNDING_BASELINE_TEXT
+        with open(report_path or _CALIBRATION_REPORT_PATH, encoding="utf-8") as fh:
             report = json.load(fh)
 
         backend = report["backend"]
@@ -630,7 +629,7 @@ def get_reviewer(config: AIConfig):
     raise ValueError(f"unknown critic_backend: {name!r}")
 
 
-def get_segmenter_backend(config: AIConfig) -> Optional[SegmenterBackend]:
+def get_segmenter_backend(config: AIConfig) -> SegmenterBackend | None:
     """Resolve `config.segmenter_backend`.
 
     'auto'/'mobilesam' -> MobileSAM (smartgallery_ai.segmenter_mobilesam)
@@ -661,7 +660,7 @@ def store_review(
     model_id: str,
     model_version: str,
     rubric_version: str,
-    raw_response: Optional[str],
+    raw_response: str | None,
     source_mtime: float,
     now: float,
 ) -> int:
@@ -776,10 +775,8 @@ def store_review(
         conn.rollback()
         raise
     for old_mask in superseded_masks:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(old_mask)
-        except OSError:
-            pass
     return review_id
 
 
@@ -795,8 +792,8 @@ class SegmenterBackend(ABC):
     def segment(
         self,
         img: Image.Image,
-        bbox: Optional[tuple] = None,
-        points: Optional[list] = None,
+        bbox: tuple | None = None,
+        points: list | None = None,
     ) -> np.ndarray:
         """Return a boolean HxW mask (True = part of the finding); `bbox`
         and `points` are normalized to [0, 1]."""
@@ -816,8 +813,8 @@ class StubSegmenter(SegmenterBackend):
     def segment(
         self,
         img: Image.Image,
-        bbox: Optional[tuple] = None,
-        points: Optional[list] = None,
+        bbox: tuple | None = None,
+        points: list | None = None,
     ) -> np.ndarray:
         """Rasterize the normalized bbox (or the points' bounding box) onto
         an all-False HxW canvas."""
@@ -830,10 +827,10 @@ class StubSegmenter(SegmenterBackend):
             ys = [p[1] for p in points]
             bbox = (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
         x, y, bw, bh = bbox
-        x0 = max(0, min(w, int(round(x * w))))
-        y0 = max(0, min(h, int(round(y * h))))
-        x1 = max(0, min(w, int(round((x + bw) * w))))
-        y1 = max(0, min(h, int(round((y + bh) * h))))
+        x0 = max(0, min(w, round(x * w)))
+        y0 = max(0, min(h, round(y * h)))
+        x1 = max(0, min(w, round((x + bw) * w)))
+        y1 = max(0, min(h, round((y + bh) * h)))
         mask[y0:y1, x0:x1] = True
         return mask
 

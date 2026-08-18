@@ -30,18 +30,20 @@ action that silently waits behind a 200s job is a worse answer than "busy".
 
 from __future__ import annotations
 
+import contextlib
 import json
 import queue
 import sqlite3
 import threading
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Callable, Iterator, Optional
 
-from smartgallery_ai import RUBRIC_VERSION, AIConfig, review as review_mod, schema
+from smartgallery_ai import RUBRIC_VERSION, AIConfig, schema
+from smartgallery_ai import review as review_mod
 from smartgallery_ai.worker import load_source_image, record_scan, stage_input_key
 
-__all__ = ["STEPS", "RunnerBusy", "RunContext", "run_review", "parse_steps"]
+__all__ = ["STEPS", "RunContext", "RunnerBusy", "parse_steps", "run_review"]
 
 # Ordered pipeline. Each entry is (name, human label); the implementation is
 # `_step_<name>`. Order is a dependency order -- 'store' cannot precede
@@ -82,21 +84,21 @@ class RunContext:
     critic: object = None
     segmenter: object = None
 
-    path: Optional[str] = None
-    file_type: Optional[str] = None
-    mtime: Optional[float] = None
-    prompt_text: Optional[str] = None
-    negative_text: Optional[str] = None
+    path: str | None = None
+    file_type: str | None = None
+    mtime: float | None = None
+    prompt_text: str | None = None
+    negative_text: str | None = None
     input_key: str = ""
     img: object = None
-    payload: Optional[dict] = None
+    payload: dict | None = None
     result: object = None
-    review_id: Optional[int] = None
+    review_id: int | None = None
     masks: int = 0
     findings: list = field(default_factory=list)
 
 
-def parse_steps(spec: Optional[str]) -> tuple:
+def parse_steps(spec: str | None) -> tuple:
     """Resolve a comma-separated step spec into pipeline order.
 
     Unknown names are dropped rather than raising: the caller is a URL query
@@ -250,9 +252,9 @@ _IMPL = {
 }
 
 
-def run_review(config: AIConfig, file_id: str, steps: Optional[str] = None,
+def run_review(config: AIConfig, file_id: str, steps: str | None = None,
                critic=None, segmenter=None,
-               connect: Optional[Callable] = None) -> Iterator[dict]:
+               connect: Callable | None = None) -> Iterator[dict]:
     """Run the review pipeline over one file, yielding JSON-ready events.
 
     Raises `RunnerBusy` immediately if another run holds the critic. The
@@ -328,10 +330,8 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
         if critic is not None:
             critic.progress = None
         if ctx.img is not None:
-            try:
+            with contextlib.suppress(Exception):
                 ctx.img.close()
-            except Exception:
-                pass
         conn.close()
 
     yield _event("run", "done", review_id=ctx.review_id, masks=ctx.masks)

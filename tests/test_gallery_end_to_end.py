@@ -12,6 +12,7 @@ worker processes (slow, and on Windows the child re-imports the test runner).
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -48,7 +49,7 @@ def _purge(smartgallery_app):
         conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two images in the gallery root, scanned in-process."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -72,10 +73,8 @@ def library(smartgallery_app, monkeypatch):
     yield [name for name, _p in made]
 
     for _name, path in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(path)
-        except OSError:
-            pass
     _purge(smartgallery_app)
 
 

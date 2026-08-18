@@ -5,13 +5,14 @@ isolation. Only stub backends -- never real weights."""
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import threading
 
 import pytest
 from PIL import Image
 
-from smartgallery_ai import AIConfig, RUBRIC_VERSION, runner
+from smartgallery_ai import RUBRIC_VERSION, AIConfig, runner
 from smartgallery_ai.review import StubReviewer
 from smartgallery_ai.schema import init_schema
 
@@ -36,7 +37,7 @@ def _add_file(db_path: str, file_id: str, path: str, prompt: str = "") -> None:
     conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def env(tmp_path):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -90,8 +91,10 @@ def test_parse_steps_drops_unknown_names_rather_than_raising():
 def test_full_run_emits_every_step_in_order_and_stores(env):
     config, db_path = env
     events = _drain(config)
-    assert events[0]["step"] == "run" and events[0]["status"] == "start"
-    assert events[-1]["step"] == "run" and events[-1]["status"] == "done"
+    assert events[0]["step"] == "run"
+    assert events[0]["status"] == "start"
+    assert events[-1]["step"] == "run"
+    assert events[-1]["status"] == "done"
 
     ok_steps = [e["step"] for e in events if e["status"] == "ok"]
     assert ok_steps == ["resolve", "load", "critic", "validate", "store", "masks", "log"]
@@ -182,10 +185,8 @@ class _EmittingCritic:
         sink = self.progress
         if sink is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             sink(stage, detail)
-        except Exception:
-            pass
 
     def review(self, img, prompt_text, rubric_version, negative_text=None):
         del img, prompt_text, rubric_version, negative_text

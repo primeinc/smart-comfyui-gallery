@@ -61,9 +61,9 @@ table, or a chat handler.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
-from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -149,8 +149,8 @@ def _norm_for_match(text: str) -> str:
     return " ".join(text.lower().split()).strip(" .;:-")
 
 
-def extract_prompt_elements_report(prompt: Optional[str],
-                                   negative: Optional[str] = None) -> tuple:
+def extract_prompt_elements_report(prompt: str | None,
+                                   negative: str | None = None) -> tuple:
     """`(elements, truncated)` for the ALIGN step.
 
     Every element is a TRUE substring of `prompt` -- sliced out by index
@@ -199,8 +199,8 @@ def extract_prompt_elements_report(prompt: Optional[str],
     return elements, truncated
 
 
-def extract_prompt_elements(prompt: Optional[str],
-                            negative: Optional[str] = None) -> list:
+def extract_prompt_elements(prompt: str | None,
+                            negative: str | None = None) -> list:
     """The elements alone; see `extract_prompt_elements_report`."""
     return extract_prompt_elements_report(prompt, negative)[0]
 
@@ -379,7 +379,7 @@ def _align_tool(n: int) -> dict:
 # because grammar decoding guaranteed its shape; nothing does that here.
 
 
-def _as_defect(raw) -> Optional[dict]:
+def _as_defect(raw) -> dict | None:
     """One well-formed defect, or None. A malformed entry is dropped
     rather than repaired: an invented severity or type would be a claim
     the model never made."""
@@ -398,7 +398,7 @@ def _as_defect(raw) -> Optional[dict]:
             "what": str(raw.get("what") or "")[:300] or str(kind)}
 
 
-def _as_bbox(raw) -> Optional[tuple]:
+def _as_bbox(raw) -> tuple | None:
     """A geometrically coherent normalized (x, y, w, h), or None.
 
     A box the model cannot state coherently is a failed localization,
@@ -416,7 +416,7 @@ def _as_bbox(raw) -> Optional[tuple]:
     return (x, y, min(w, 1.0 - x), min(h, 1.0 - y))
 
 
-def _as_verdict(raw) -> Optional[dict]:
+def _as_verdict(raw) -> dict | None:
     """One well-formed ALIGN verdict, or None."""
     if not isinstance(raw, dict) or "present" not in raw:
         return None
@@ -445,7 +445,7 @@ class Reviewer:
     progress = None
 
     def __init__(self, models_dir: str,
-                 semantic_embedder: Optional[SemanticEmbedder] = None,
+                 semantic_embedder: SemanticEmbedder | None = None,
                  model_ref: str = DEFAULT_REVIEW_MODEL,
                  grounding_min_cos: float = DEFAULT_GROUNDING_MIN_COS,
                  device: str = ""):
@@ -482,14 +482,12 @@ class Reviewer:
         sink = self.progress
         if sink is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             sink(stage, detail)
-        except Exception:
-            pass
 
-    def review(self, img: Image.Image, prompt_text: Optional[str],
+    def review(self, img: Image.Image, prompt_text: str | None,
                rubric_version: str,
-               negative_text: Optional[str] = None) -> dict:
+               negative_text: str | None = None) -> dict:
         """Run the protocol and return the RAW payload dict for
         `validate_review_payload`. Raises `UngroundedReviewError` when the
         description fails the gate -- nothing is stored for that image.
@@ -673,7 +671,7 @@ class Reviewer:
             return []
 
         elements: list = []
-        for ordinal, (text, verdict) in enumerate(zip(expected, verdicts)):
+        for ordinal, (text, verdict) in enumerate(zip(expected, verdicts, strict=False)):
             if verdict is None:  # unreachable; narrows for the type checker
                 continue
             satisfied, confidence = verdict["present"], verdict["confidence"]
@@ -704,7 +702,7 @@ class Reviewer:
                 })
         return elements
 
-    def _locate(self, chat, what: str) -> Optional[tuple]:
+    def _locate(self, chat, what: str) -> tuple | None:
         """One normalized (x, y, w, h) for `what`, or None when the model
         cannot state a geometrically coherent box (the finding then stays
         global)."""

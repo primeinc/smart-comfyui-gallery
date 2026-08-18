@@ -32,7 +32,7 @@ import pytest
 from PIL import Image
 
 
-@pytest.fixture()
+@pytest.fixture
 def picture(smartgallery_app, tmp_path):
     path = tmp_path / "recover.png"
     Image.new("RGB", (64, 64), (30, 90, 140)).save(path)

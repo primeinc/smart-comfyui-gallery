@@ -62,7 +62,7 @@ class _NoLength(_Stream):
         self.headers = {}
 
 
-@pytest.fixture()
+@pytest.fixture
 def serve(monkeypatch):
     """Answer the next urlopen with a given stream."""
     def _serve(stream):

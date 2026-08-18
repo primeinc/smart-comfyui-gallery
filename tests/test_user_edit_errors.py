@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def admin(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)

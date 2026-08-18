@@ -22,14 +22,13 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from .model import ParsedMetadata
 
 _SIZE_RE = re.compile(r"^\s*(\d+)\s*x\s*(\d+)\s*$", re.IGNORECASE)
 
 
-def to_int(value) -> Optional[int]:
+def to_int(value) -> int | None:
     """Strict int coercion: ints, integral floats, and clean numeric
     strings; anything else is None (caller keeps the original in extra)."""
     if isinstance(value, bool) or value is None:
@@ -49,7 +48,7 @@ def to_int(value) -> Optional[int]:
         return int(number) if number.is_integer() else None
 
 
-def to_float(value) -> Optional[float]:
+def to_float(value) -> float | None:
     """Strict float coercion; None for anything non-numeric."""
     if isinstance(value, bool) or value is None:
         return None
@@ -79,27 +78,27 @@ class GenerationParams:
     detection: str                      # marker | heuristic | stealth | graph
     positive_prompt: str = ""
     negative_prompt: str = ""
-    model: Optional[str] = None
-    model_hash: Optional[str] = None
-    sampler: Optional[str] = None
-    scheduler: Optional[str] = None
-    seed: Optional[int] = None
-    steps: Optional[int] = None
-    cfg: Optional[float] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    denoise: Optional[float] = None
-    clip_skip: Optional[int] = None
-    version: Optional[str] = None
-    loras: List[dict] = field(default_factory=list)   # [{"name": ..., "weight": ...}]
-    extra: Dict[str, object] = field(default_factory=dict)  # unmapped keys, verbatim
+    model: str | None = None
+    model_hash: str | None = None
+    sampler: str | None = None
+    scheduler: str | None = None
+    seed: int | None = None
+    steps: int | None = None
+    cfg: float | None = None
+    width: int | None = None
+    height: int | None = None
+    denoise: float | None = None
+    clip_skip: int | None = None
+    version: str | None = None
+    loras: list[dict] = field(default_factory=list)   # [{"name": ..., "weight": ...}]
+    extra: dict[str, object] = field(default_factory=dict)  # unmapped keys, verbatim
 
     _INT_FIELDS = ("seed", "steps", "clip_skip")
     _FLOAT_FIELDS = ("cfg", "denoise")
     _STR_FIELDS = ("model", "model_hash", "sampler", "scheduler", "version")
 
     @classmethod
-    def from_parsed(cls, parsed: ParsedMetadata) -> "GenerationParams":
+    def from_parsed(cls, parsed: ParsedMetadata) -> GenerationParams:
         """Type a metaparse result. Canonical slots coerce to their real
         types; a slot that fails coercion moves to extra under its
         canonical key; every adapter-preserved extra key rides along."""
@@ -137,7 +136,7 @@ class GenerationParams:
         return gp
 
     @classmethod
-    def from_comfy(cls, meta: dict) -> "GenerationParams":
+    def from_comfy(cls, meta: dict) -> GenerationParams:
         """Type a ComfyUI graph-trace result (the gallery's
         ComfyMetadataParser.parse() dict). Graph values are native JSON
         types; coercion is a guard, not a translation."""

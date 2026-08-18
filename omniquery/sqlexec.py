@@ -24,7 +24,6 @@ import os
 import re
 import sqlite3
 from dataclasses import dataclass
-from typing import List, Optional
 
 _COMMENT_RE = re.compile(r"(/\*.*?\*/)|(--.*?(\n|$))", re.DOTALL)
 _SELECT_RE = re.compile(r"^SELECT\b", re.IGNORECASE)
@@ -34,8 +33,8 @@ _SELECT_RE = re.compile(r"^SELECT\b", re.IGNORECASE)
 class SqlExecResult:
     """Outcome of one sandboxed execution: ids on success, else `error`."""
 
-    ids: Optional[List[str]]  # first-column values, de-duplicated; None on failure
-    error: Optional[str] = None
+    ids: list[str] | None  # first-column values, de-duplicated; None on failure
+    error: str | None = None
 
     @property
     def ok(self) -> bool:

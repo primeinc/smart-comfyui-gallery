@@ -16,31 +16,37 @@ logged once per file so a bad file cannot spam the log every cycle.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
 import shutil
 import sqlite3
 import sys
 import threading
 import time
 from collections import deque
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 from PIL import Image
 
 from smartgallery_ai import (
-    AIConfig,
     HASH_ALGO_VERSION,
     RUBRIC_VERSION,
     SPACE_SEMANTIC,
     SPACE_VISUAL,
+    AIConfig,
     _env_num,
+    embedders,
+    faces,
+    hashing,
+    invalidation,
+    review,
+    schema,
+    vectors,
 )
-from smartgallery_ai import embedders, faces, hashing, invalidation, review, schema, vectors
 from smartgallery_ai import provision as provisioning
 
 __all__ = ["AIWorker", "load_source_image", "provision_groups_for"]
@@ -62,7 +68,7 @@ _VISUAL_TYPES = tuple(hashing.IMAGE_FILE_TYPES | hashing.VIDEO_FILE_TYPES)
 _MAX_VIDEO_FRAME_ATTEMPTS = 60
 
 
-def _first_video_frame(path: str) -> Optional[Image.Image]:
+def _first_video_frame(path: str) -> Image.Image | None:
     """First decodable video frame as a PIL image, or None. Never raises."""
     cap = cv2.VideoCapture(path)
     try:
@@ -80,7 +86,7 @@ def _first_video_frame(path: str) -> Optional[Image.Image]:
         cap.release()
 
 
-def load_source_image(path: str, file_type: str) -> Optional[Image.Image]:
+def load_source_image(path: str, file_type: str) -> Image.Image | None:
     """Load a read-only PIL frame for embedding/face/review backends.
 
     Images are opened directly via PIL; video uses its first decodable frame
@@ -200,7 +206,7 @@ def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
         "1")
 
 
-def stage_input_key(*parts: Optional[str]) -> str:
+def stage_input_key(*parts: str | None) -> str:
     """Stable digest of a stage's non-file, non-model inputs.
 
     `source_mtime` already covers the pixels and model_id/model_version the
@@ -252,7 +258,7 @@ def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
     conn.commit()
 
 
-def app_git_ref(root: Optional[str] = None) -> Optional[str]:
+def app_git_ref(root: str | None = None) -> str | None:
     """The running checkout's branch and short commit ("main@a1b2c3d"), or
     None outside a git checkout. Debug provenance for the boot log and
     /status — row-level provenance stays with the model/algo VERSION
@@ -327,7 +333,7 @@ def _fetch_candidates(
     conn: sqlite3.Connection,
     file_ids,
     limit: int,
-    allowed_types: Optional[tuple] = None,
+    allowed_types: tuple | None = None,
 ) -> list:
     """`files` rows for `file_ids`, newest-mtime first, capped at `limit`.
 
@@ -401,7 +407,7 @@ class AIWorker:
         # so provisioning weights later activates them without a restart.
         self._backend_failed_at: dict = {}
         self._backend_retry_seconds = 300.0
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         # On-demand indexing: file ids a user is actively looking at (the
         # AI panel requests them) jump the queue. Deduped FIFO, bounded so
@@ -418,7 +424,7 @@ class AIWorker:
         # busy, and the interval adapts to the measured per-review cost.
         self._review_interval = 1
         self._cycles_since_review = 10 ** 9  # first cycle always eligible
-        self._last_review_seconds: Optional[float] = None
+        self._last_review_seconds: float | None = None
         # stage -> smoothed seconds/item, measured passively from real
         # cycle work (see _CYCLE_TARGET_SECONDS above).
         self._stage_pace: dict = {}
@@ -432,7 +438,7 @@ class AIWorker:
         # downloads. state: 'idle' | 'downloading' | 'done' | 'failed: ...'
         # | 'disabled'; groups: the missing groups being (or last) fetched.
         self.provision_state: dict = {"state": "idle", "groups": []}
-        self._provision_thread: Optional[threading.Thread] = None
+        self._provision_thread: threading.Thread | None = None
         self._provision_next_log_pct = 10  # byte-progress log throttle
 
     # -- lifecycle -----------------------------------------------------------
@@ -608,7 +614,7 @@ class AIWorker:
         except Exception:  # status cache refresh is best-effort
             pass
 
-    def stop(self, timeout: Optional[float] = None) -> None:
+    def stop(self, timeout: float | None = None) -> None:
         """Signal the thread to stop and join it. Safe to call repeatedly."""
         self._stop_event.set()
         self._wake_event.set()  # break the between-cycle sleep immediately
@@ -863,7 +869,7 @@ class AIWorker:
                 self._process_reviews(conn, critic, 1, only_file_id=file_id)
 
     def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict,
-                            skips: Optional[dict] = None) -> None:
+                            skips: dict | None = None) -> None:
         """One INFO line per cycle that did work — what was indexed, how far
         the gallery backlog has progressed, and WHY any configured stage
         produced nothing — so a long first index is visibly alive (and its
@@ -976,7 +982,7 @@ class AIWorker:
     # -- stages ------------------------------------------------------------------
 
     def _process_hashes(self, conn: sqlite3.Connection, limit: int,
-                        only_file_id: Optional[str] = None) -> int:
+                        only_file_id: str | None = None) -> int:
         """Hash stage: (re)compute content hashes for missing/stale files. Returns
         candidates consumed -- charged against the budget even when hashing fails.
         `only_file_id` restricts the stage to that file (priority requests)."""
@@ -1003,7 +1009,7 @@ class AIWorker:
 
     def _process_embedding_space(
         self, conn: sqlite3.Connection, backend, space: str, limit: int,
-        only_file_id: Optional[str] = None,
+        only_file_id: str | None = None,
     ) -> int:
         """Embedding stage for one space: embed missing/stale renderable files.
         Returns candidates consumed, successful or not. `only_file_id`
@@ -1033,7 +1039,7 @@ class AIWorker:
                     pool.map(lambda r: load_source_image(r["path"], r["type"]), chunk)
                 )
             loaded = []
-            for row, img in zip(chunk, images):
+            for row, img in zip(chunk, images, strict=False):
                 if img is None:
                     self._note_error(
                         f"embed:{space}:{row['id']}",
@@ -1058,7 +1064,7 @@ class AIWorker:
                             f"embed[{space}]: failed for {row['path']}: {exc}",
                         )
                         vecs.append(None)
-            for (row, _img), vec in zip(loaded, vecs):
+            for (row, _img), vec in zip(loaded, vecs, strict=False):
                 if vec is None:
                     continue
                 store.add(
@@ -1076,7 +1082,7 @@ class AIWorker:
 
     def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
                          limit: int, extra_cols: str = "",
-                         only_file_id: Optional[str] = None,
+                         only_file_id: str | None = None,
                          input_key_sql: str = "''", input_key_params: tuple = (),
                          joins: str = "") -> list:
         """Files needing a (re-)scan for `kind`: no ai_scan_log row for the
@@ -1224,7 +1230,7 @@ class AIWorker:
                 cur.rowcount)
 
     def _process_faces(self, conn: sqlite3.Connection, backend, limit: int,
-                       only_file_id: Optional[str] = None) -> int:
+                       only_file_id: str | None = None) -> int:
         """Face stage: detect and store faces per candidate, then recluster when
         faces were indexed or a clustering attempt is still pending. Returns
         candidates consumed, successful or not."""
@@ -1329,7 +1335,7 @@ class AIWorker:
         return expr, (RUBRIC_VERSION,), joins
 
     def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int,
-                         only_file_id: Optional[str] = None) -> int:
+                         only_file_id: str | None = None) -> int:
         """Review stage: run the critic per candidate, store the review, and
         generate finding masks when a segmenter is available. Returns candidates
         consumed, successful or not."""
@@ -1380,11 +1386,9 @@ class AIWorker:
                 # ~200s VLM inference on infinite retry every cycle. The
                 # file re-enters the queue when its mtime or the model
                 # changes (normal staleness), or on rebuild.
-                try:
+                with contextlib.suppress(sqlite3.Error):
                     self._log_scan(conn, file_id, "review", backend, mtime,
                                    now, -1, input_key)
-                except sqlite3.Error:
-                    pass
                 continue
             with self._lock:
                 self.stats["reviewed"] += 1

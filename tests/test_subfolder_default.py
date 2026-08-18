@@ -7,11 +7,10 @@ import time as _time
 
 import pytest
 
-
 _PREFIX = "sfd:"
 
 
-@pytest.fixture()
+@pytest.fixture
 def sg(smartgallery_app):
     """Monolith module plus per-test cleanup of every sfd: row."""
     yield smartgallery_app

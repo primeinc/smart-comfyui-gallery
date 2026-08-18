@@ -15,7 +15,6 @@ from smartgallery_ai.feedback import (
 )
 from smartgallery_ai.schema import init_schema
 
-
 # --- fixtures / helpers -----------------------------------------------------
 
 

@@ -14,7 +14,6 @@ import metaparse
 from metaparse.containers import decode_user_comment
 from metaparse.model import ParsedMetadata
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -344,7 +343,8 @@ def test_stealth_uncompressed_variant(tmp_path):
     path = str(tmp_path / "stu.png")
     img.save(path)
     parsed = metaparse.parse_file(path, allow_stealth=True)
-    assert parsed is not None and parsed.params["seed"] == "12345"
+    assert parsed is not None
+    assert parsed.params["seed"] == "12345"
 
 
 # ---------------------------------------------------------------------------

@@ -33,7 +33,6 @@ The policies, as the code expresses them:
 from __future__ import annotations
 
 import ast
-import io
 import pathlib
 
 import pytest
@@ -109,7 +108,7 @@ def _classify(source: str):
 
 @pytest.fixture(scope="module")
 def classified():
-    return _classify(io.open(_SERVICE, encoding="utf-8").read())
+    return _classify(open(_SERVICE, encoding="utf-8").read())
 
 
 def test_the_classifier_sees_the_whole_blueprint(classified):

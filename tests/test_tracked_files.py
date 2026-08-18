@@ -29,6 +29,8 @@ import subprocess
 
 import pytest
 
+pytestmark = pytest.mark.spawns  # every check here runs another program
+
 _REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
 
 # What the README tells the reader to create for themselves.
@@ -41,9 +43,8 @@ _TEMPLATES = ("sample_run_smartgallery.bat", "sample_run_exhibition.bat")
 def _git(*args):
     if shutil.which("git") is None:
         pytest.skip("git is not on PATH; tracking cannot be inspected here")
-    done = subprocess.run(("git", *args), cwd=str(_REPO_ROOT),
+    return subprocess.run(("git", *args), cwd=str(_REPO_ROOT),
                           capture_output=True, text=True, timeout=120)
-    return done
 
 
 def _lines(done):

@@ -20,6 +20,7 @@ library lives.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -49,7 +50,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def shown_file(smartgallery_app, monkeypatch):
     """A file in a public album, carrying a prompt and a model name."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -89,10 +90,8 @@ def shown_file(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def _as(smartgallery_app, role):
@@ -155,4 +154,5 @@ def test_the_default_local_install_is_unaffected(smartgallery_app, shown_file,
     body = smartgallery_app.app.test_client().get(
         f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
 
-    assert _PROMPT in body and _MODEL in body
+    assert _PROMPT in body
+    assert _MODEL in body

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Union
+from typing import Any, Union
 
 AST_VERSION = 1  # wire-format version; parse_query rejects any other
 
@@ -69,7 +69,7 @@ class Cond:
 class Not:
     """Logical negation of a single child node."""
 
-    child: "Node"
+    child: Node
 
     def to_dict(self) -> dict:
         """JSON form parse_query accepts."""
@@ -110,9 +110,9 @@ class Query:
 
     target: str = "files"  # only "files" is supported
     result: str = "ids"  # "ids" | "count"
-    where: Optional[Node] = None  # None means "match every file"
+    where: Node | None = None  # None means "match every file"
     order_by: tuple = field(default_factory=tuple)  # tuple[OrderSpec, ...]
-    limit: Optional[int] = None  # None defers to validation's DEFAULT_LIMIT
+    limit: int | None = None  # None defers to validation's DEFAULT_LIMIT
     version: int = AST_VERSION
 
     def to_dict(self) -> dict:
@@ -268,7 +268,7 @@ def parse_query(obj: Any) -> Query:
     if where_obj is not None:
         where = _parse_node(where_obj, 1, counter, "where")
 
-    order_by: List[OrderSpec] = []
+    order_by: list[OrderSpec] = []
     ob = obj.get("order_by", [])
     if ob is not None:
         if not isinstance(ob, list) or len(ob) > 3:
@@ -296,7 +296,7 @@ def parse_query(obj: Any) -> Query:
                  order_by=tuple(order_by), limit=limit, version=version)
 
 
-def iter_conditions(node: Optional[Node]):
+def iter_conditions(node: Node | None):
     """Yield every Cond leaf under a node (depth-first)."""
     if node is None:
         return
@@ -337,8 +337,8 @@ def canonicalize(query: Query) -> dict:
 # JSON Schema (for constrained decoding / tool-call definitions)
 # ---------------------------------------------------------------------------
 
-def json_schema(field_names: Optional[List[str]] = None,
-                operator_names: Optional[List[str]] = None) -> dict:
+def json_schema(field_names: list[str] | None = None,
+                operator_names: list[str] | None = None) -> dict:
     """JSON Schema for the AST. When field/operator vocabularies are given
     (from omniquery.fields), they are embedded as enums so constrained
     decoders can only emit valid vocabulary.

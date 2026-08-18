@@ -22,14 +22,15 @@ missing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
 import time
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Callable, Mapping, Optional, Sequence, Union
 
 import cv2
 import numpy as np
@@ -37,6 +38,7 @@ from PIL import Image
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai.embedders import BackendUnavailable
+from smartgallery_ai.faiss_runtime import import_faiss
 
 # insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate()
 # API; skimage 0.26 deprecates it with a FutureWarning that fires on
@@ -49,13 +51,13 @@ warnings.filterwarnings(
 
 __all__ = [
     "BackendUnavailable",
-    "FaceDetection",
     "FaceBackend",
-    "StubFaceBackend",
+    "FaceDetection",
     "OpenCVFaceBackend",
+    "StubFaceBackend",
+    "cluster_faces",
     "get_face_backend",
     "replace_faces_for_file",
-    "cluster_faces",
 ]
 
 _YUNET_FILENAME = "face_detection_yunet_2023mar.onnx"  # detector ONNX, expected directly under models_dir
@@ -121,9 +123,9 @@ class FaceDetection:
     bbox: tuple  # (x, y, w, h), normalized
     landmarks: list  # list[(x, y)], normalized, may be empty
     det_score: float  # detector confidence; higher is more face-like
-    embedding: Optional[np.ndarray]  # float32 1-D, or None
-    dim: Optional[int] = None  # embedding length; derived from `embedding` when one is present
-    attributes: Optional[dict] = None  # per-face model attributes, e.g. {"age": 27, "sex": "M"}
+    embedding: np.ndarray | None  # float32 1-D, or None
+    dim: int | None = None  # embedding length; derived from `embedding` when one is present
+    attributes: dict | None = None  # per-face model attributes, e.g. {"age": 27, "sex": "M"}
 
     def __post_init__(self) -> None:
         """Coerce fields to plain floats / float32 and keep `dim` consistent
@@ -170,7 +172,7 @@ class StubFaceBackend(FaceBackend):
     model_id = "stub-face"
     model_version = "stub-v1"
 
-    def __init__(self, source: Union[Callable[[Image.Image], list], Mapping]):
+    def __init__(self, source: Callable[[Image.Image], list] | Mapping):
         self._source = source
 
     def detect(self, img: Image.Image) -> list:
@@ -184,7 +186,6 @@ class StubFaceBackend(FaceBackend):
 def image_key(img: Image.Image) -> str:
     """A deterministic key for an image's pixel content, for use with
     `StubFaceBackend`'s mapping form (content-based, not object identity)."""
-    import hashlib
 
     digest = hashlib.sha256(img.tobytes()).hexdigest()
     return f"{img.mode}:{img.size[0]}x{img.size[1]}:{digest}"
@@ -192,7 +193,7 @@ def image_key(img: Image.Image) -> str:
 
 def _clamp01(value: float) -> float:
     """Clamp to [0, 1], the normalized-coordinate range stored in the DB."""
-    return 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+    return 0.0 if value < 0.0 else (min(value, 1.0))
 
 
 def _pil_to_bgr(img: Image.Image) -> np.ndarray:
@@ -598,7 +599,7 @@ def compare_detectors(img: Image.Image, config: AIConfig) -> dict:
     return {"lanes": lanes, "installed": installed_pipelines(config)}
 
 
-def get_face_backend(config: AIConfig) -> Optional[FaceBackend]:
+def get_face_backend(config: AIConfig) -> FaceBackend | None:
     """Resolve `config.face_backend` to a backend instance, or None.
 
     'none' -> None. 'stub' -> StubFaceBackend, sourced from
@@ -757,6 +758,17 @@ def _neighbor_graph_torch_cuda(normed: np.ndarray, threshold: float) -> tuple:
 
     Raises (ImportError / RuntimeError) when torch or a CUDA device is
     absent; the dispatcher decides whether that is a hard error.
+
+    torch is imported here rather than at module scope because this is the
+    only function in the package that uses it, and importing it costs 1.7
+    seconds and several hundred megabytes -- paid by every process that
+    touched the gallery, including installs with the AI layer opted out,
+    which never reach this line. It also made the ImportError promised
+    above unreachable: a missing torch failed the whole package at import
+    rather than falling back to the faiss and numpy backends.
+
+    `import torch` alone binds both attributes used below -- torch/
+    __init__.py:2304,2306 import `backends` and `cuda` eagerly.
     """
     import torch
 
@@ -792,7 +804,6 @@ def _neighbor_graph_faiss(normed: np.ndarray, threshold: float) -> tuple:
     filtered out, vectorized. Raises ImportError when faiss is not
     installed.
     """
-    from smartgallery_ai.faiss_runtime import import_faiss
     faiss = import_faiss()
 
     n = normed.shape[0]
@@ -944,7 +955,7 @@ def cluster_faces(
     model_version: str,
     threshold: float,
     min_cluster_size: int = 2,
-    params_note: Optional[str] = None,
+    params_note: str | None = None,
 ) -> list:
     """Recompute `ai_face_clusters` for one (model_id, model_version).
 
@@ -1024,7 +1035,7 @@ def cluster_faces(
         cluster_components = [
             members for members in components.values() if len(members) >= min_cluster_size
         ]
-        cluster_components.sort(key=lambda members: min(members))
+        cluster_components.sort(key=min)
 
         centroids = np.zeros((len(cluster_components), dim), dtype=np.float32)
         for ci, members in enumerate(cluster_components):

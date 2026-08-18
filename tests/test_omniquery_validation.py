@@ -7,8 +7,15 @@ import pytest
 from omniquery import fields
 from omniquery.ast import parse_query
 from omniquery.validation import (
-    AuthContext, DEFAULT_LIMIT, MAX_CORRELATED_FIELDS, MAX_LIMIT,
-    PRIVILEGED_ROLES, ValidatedQuery, ValidationError, validate, _validate_value,
+    DEFAULT_LIMIT,
+    MAX_CORRELATED_FIELDS,
+    MAX_LIMIT,
+    PRIVILEGED_ROLES,
+    AuthContext,
+    ValidatedQuery,
+    ValidationError,
+    _validate_value,
+    validate,
 )
 
 GUEST = AuthContext(role="GUEST", user_id=None, client_uuid=None, ai_enabled=False)

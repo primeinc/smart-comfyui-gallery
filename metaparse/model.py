@@ -1,8 +1,6 @@
 """Normalized result model for generation-metadata parsing."""
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
-
 
 # Canonical parameter slots every adapter maps into. Anything a tool emits
 # beyond these lands in `extra` with its original key.
@@ -17,8 +15,8 @@ class ParsedMetadata:
     tool: str                       # display name, e.g. "SwarmUI", "A1111 / Forge"
     positive: str = ""
     negative: str = ""
-    params: Dict[str, str] = field(default_factory=dict)   # canonical keys only
-    extra: Dict[str, str] = field(default_factory=dict)    # tool-specific leftovers
+    params: dict[str, str] = field(default_factory=dict)   # canonical keys only
+    extra: dict[str, str] = field(default_factory=dict)    # tool-specific leftovers
     raw: str = ""                   # the embedded text as found (infotext or JSON)
     detection: str = "marker"       # "marker" | "heuristic" | "stealth"
 
@@ -41,7 +39,7 @@ def set_param(target: "ParsedMetadata", key: str, value) -> None:
         target.extra[key] = text
 
 
-def size_string(width, height) -> Optional[str]:
+def size_string(width, height) -> str | None:
     try:
         w, h = int(width), int(height)
     except (TypeError, ValueError):

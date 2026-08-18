@@ -62,7 +62,6 @@ import pytest
 
 import smartgallery
 
-
 DAY = "2026-08-15"
 
 
@@ -296,7 +295,7 @@ class TestThePageSendsThem:
         page = self._page()
 
         for field in ("start_ts", "end_ts"):
-            spot = page.index('name="%s"' % field)
+            spot = page.index(f'name="{field}"')
             line = page[spot:page.index(">", spot)]
             assert "request.args" not in line, \
                 f"{field} is refilled from the URL: {line}"

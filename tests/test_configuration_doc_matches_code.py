@@ -20,10 +20,10 @@ Both directions are covered:
 
 from __future__ import annotations
 
-import io
+import functools
+import os
 import pathlib
 import re
-
 
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -38,20 +38,34 @@ _READERS = re.compile(
     re.VERBOSE)
 
 
+_NOT_THE_APP = {".venv", "tests", "benchmarks", "probes", "vendor",
+                ".git", "__pycache__", ".AImodels"}
+
+
+@functools.cache
 def _source_text():
+    """(path, text) for every Python file that is part of the application.
+
+    Pruned during the walk and cached for the session. It used to rglob the
+    whole repository and drop the unwanted directories from the results, so
+    .venv and .AImodels were walked in full -- once per test in this file.
+    """
     parts = []
-    for path in _ROOT.rglob("*.py"):
-        if any(p in path.parts for p in (".venv", "tests", "benchmarks", "probes", "vendor")):
-            continue
-        parts.append((path, io.open(path, encoding="utf-8").read()))
+    for dirpath, dirnames, filenames in os.walk(_ROOT):
+        dirnames[:] = [d for d in dirnames if d not in _NOT_THE_APP]
+        for name in sorted(filenames):
+            if name.endswith(".py"):
+                path = pathlib.Path(dirpath) / name
+                parts.append((path, path.read_text(encoding="utf-8")))
     return parts
 
 
+@functools.cache
 def _doc_text():
     parts = []
-    for path in list((_ROOT / "docs").rglob("*.md")) + [_ROOT / "README.md"]:
+    for path in [*sorted((_ROOT / "docs").rglob("*.md")), _ROOT / "README.md"]:
         if path.exists():
-            parts.append((path, io.open(path, encoding="utf-8").read()))
+            parts.append((path, path.read_text(encoding="utf-8")))
     return parts
 
 
@@ -81,7 +95,8 @@ def test_the_audit_sees_something():
 
     assert len(documented) > 30, f"only {len(documented)} documented variables found"
     assert len(read) > 30, f"only {len(read)} variables read by the code"
-    assert "BASE_OUTPUT_PATH" in documented and "BASE_OUTPUT_PATH" in read
+    assert "BASE_OUTPUT_PATH" in documented
+    assert "BASE_OUTPUT_PATH" in read
 
 
 def test_every_documented_setting_is_read_somewhere():
@@ -91,7 +106,7 @@ def test_every_documented_setting_is_read_somewhere():
                  "Makefile", "Dockerfile", "run_smartgallery.bat"):
         path = _ROOT / name
         if path.exists():
-            non_python += io.open(path, encoding="utf-8", errors="replace").read()
+            non_python += open(path, encoding="utf-8", errors="replace").read()
 
     all_python = "\n".join(text for _p, text in _source_text())
 

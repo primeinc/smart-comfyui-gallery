@@ -1,10 +1,8 @@
 """Lazy acquisition of everything the AI layer needs to run.
 
-Makes a capability group fully loadable in two steps: pip-install its
-missing runtime packages into the current environment (CPU-only torch
-wheels; import caches refreshed so the running process picks them up),
-then download its model weights into `models_dir` (default `.AImodels/`)
-from their official Hugging Face repositories (via `huggingface_hub`'s
+Downloads a capability group's model weights into `models_dir` (default
+`.AImodels/`) from their official Hugging Face repositories (via
+`huggingface_hub`'s
 cached, resumable downloader) or, for the two OpenCV Zoo ONNX files,
 their upstream Git-LFS media URLs (raw.githubusercontent serves LFS
 pointer stubs, not content). Every artifact lands at the exact path the
@@ -29,15 +27,18 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import importlib
-import importlib.metadata
 import importlib.util
 import os
 import re
 import shutil
 import subprocess
 import urllib.request
+import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
+
+from huggingface_hub import hf_hub_download, snapshot_download
+
 
 def cuda_hardware_present() -> bool:
     """Whether an NVIDIA driver is installed (nvidia-smi on PATH) — the
@@ -135,11 +136,11 @@ class Artifact:
     dest: str  # models_dir-relative target path (file, or dir for snapshots)
     approx_size: str  # human-readable size, shown in the plan
     license: str  # SPDX-ish license of the weights, shown in the plan
-    hf_repo: Optional[str] = None
-    hf_filename: Optional[str] = None  # None with hf_repo => full snapshot
-    url: Optional[str] = None
-    sha256: Optional[str] = None
-    unzip_member: Optional[str] = None  # with url: extract this member of the downloaded zip as dest
+    hf_repo: str | None = None
+    hf_filename: str | None = None  # None with hf_repo => full snapshot
+    url: str | None = None
+    sha256: str | None = None
+    unzip_member: str | None = None  # with url: extract this member of the downloaded zip as dest
     unzip_all: bool = False  # with url: extract the whole zip under dest (a directory)
 
 
@@ -306,7 +307,7 @@ def _sha256_of(path: str) -> str:
     return digest.hexdigest()
 
 
-def _verify(path: str, expected: Optional[str], label: str) -> None:
+def _verify(path: str, expected: str | None, label: str) -> None:
     """Check a downloaded file against its pinned digest (no-op when the
     artifact carries none)."""
     if expected is None:
@@ -318,8 +319,8 @@ def _verify(path: str, expected: Optional[str], label: str) -> None:
             f"{actual[:16]}...); refusing to keep the file")
 
 
-def _copy_with_progress(reader, writer, total: Optional[int],
-                        progress: Optional[Callable[[int, Optional[int]], None]],
+def _copy_with_progress(reader, writer, total: int | None,
+                        progress: Callable[[int, int | None], None] | None,
                         chunk_size: int = 1 << 20) -> int:
     """Chunked stream copy that reports (bytes_done, bytes_total) after
     every chunk; total may be None when the server sent no length.
@@ -351,7 +352,7 @@ DOWNLOAD_STALL_TIMEOUT = 60
 
 
 def _download_url(url: str, dest_path: str,
-                  progress: Optional[Callable[[int, Optional[int]], None]] = None) -> None:
+                  progress: Callable[[int, int | None], None] | None = None) -> None:
     """Stream one direct URL to dest_path via a temp file, reporting byte
     progress as it goes.
 
@@ -405,7 +406,6 @@ def _download_url(url: str, dest_path: str,
 def _download_zip_member(url_dl, url: str, member: str, dest_path: str) -> None:
     """Download a zip via `url_dl` and keep exactly one member as
     dest_path; the zip itself is always removed."""
-    import zipfile
 
     zip_tmp = dest_path + ".zip"
     url_dl(url, zip_tmp)
@@ -425,7 +425,6 @@ def _download_zip_all(url_dl, url: str, dest_dir: str) -> None:
     dest_dir, stripping one shared top-level directory when the zip has
     one (release packs nest a single '<name>/' folder); the zip itself is
     always removed."""
-    import zipfile
 
     os.makedirs(dest_dir, exist_ok=True)
     zip_tmp = os.path.join(dest_dir, "_download.zip")
@@ -474,7 +473,6 @@ def _hub_bars_silenced():
 def _download_hf_file(repo: str, filename: str, dest_path: str) -> None:
     """Fetch one file from a Hugging Face repo into dest_path, using the
     hub's cache/resume machinery."""
-    from huggingface_hub import hf_hub_download
 
     cached = hf_hub_download(repo_id=repo, filename=filename)
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
@@ -483,7 +481,6 @@ def _download_hf_file(repo: str, filename: str, dest_path: str) -> None:
 
 def _download_hf_snapshot(repo: str, dest_dir: str) -> None:
     """Materialize a full Hugging Face repo snapshot at dest_dir."""
-    from huggingface_hub import snapshot_download
 
     snapshot_download(repo_id=repo, local_dir=dest_dir)
 
@@ -520,7 +517,7 @@ def artifact_present(models_dir: str, artifact: Artifact) -> bool:
 # Conservative parse of Artifact.approx_size for the disk preflight: every
 # figure in the string is summed ("407 MB (344 MB zip)" needs the archive
 # and the extraction on disk at the same time).
-_SIZE_TOKEN_RE = re.compile(r"([\d.]+)\s*(KB|MB|GB)", re.I)
+_SIZE_TOKEN_RE = re.compile(r"([\d.]+)\s*(KB|MB|GB)", re.IGNORECASE)
 _SIZE_UNITS = {"KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3}
 # Headroom the preflight insists on beyond the artifact bytes: caches,
 # thumbnails, and SQLite growth share the volume, and filling a system
@@ -578,8 +575,8 @@ def provision(
     group_names,
     force: bool = False,
     log: Callable[[str], None] = print,
-    downloaders: Optional[dict] = None,
-    progress: Optional[Callable[[dict], None]] = None,
+    downloaders: dict | None = None,
+    progress: Callable[[dict], None] | None = None,
 ) -> dict:
     """Download every missing weight artifact for the requested groups
     into `models_dir`. Returns {'downloaded': [...], 'skipped': [...]}.

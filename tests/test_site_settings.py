@@ -6,13 +6,14 @@ deleted, and re-enabling only generates what is actually missing (cache
 keys are md5(path+mtime), so only changed files ever regenerate).
 """
 
+import hashlib
 import os
 
 import pytest
 from PIL import Image
 
 
-@pytest.fixture()
+@pytest.fixture
 def sg(smartgallery_app):
     yield smartgallery_app
     with smartgallery_app.get_db_connection() as conn:
@@ -69,7 +70,6 @@ def test_serve_thumbnail_falls_back_to_original_when_disabled(sg, tmp_path):
     # Arrange: an indexed image with no cached thumbnail.
     path = _make_png(tmp_path, "orig.png")
     mtime = os.path.getmtime(path)
-    import hashlib
     file_id = hashlib.md5(path.encode()).hexdigest()
     with sg.get_db_connection() as conn:
         conn.execute(

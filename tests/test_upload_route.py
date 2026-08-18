@@ -9,13 +9,14 @@ sanitisation that keep the endpoint from writing anything it likes.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def upload_target(smartgallery_app):
     """(client, folder_key, folder_path) for the gallery root."""
     folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
@@ -36,10 +37,8 @@ def _upload(client, key, name, body=b"uploaded bytes"):
 
 def _cleanup(folder, *names):
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(folder, name))
-        except OSError:
-            pass
 
 
 def test_upload_writes_the_file_into_the_chosen_folder(upload_target):
@@ -99,10 +98,8 @@ def test_upload_sanitises_a_traversing_filename(upload_target):
         assert os.path.isfile(os.path.join(folder, "upl_escape.png"))
     finally:
         _cleanup(folder, "upl_escape.png")
-        try:
+        with contextlib.suppress(OSError):
             os.remove(escaped)
-        except OSError:
-            pass
 
 
 def test_upload_rejects_an_unknown_destination(smartgallery_app):

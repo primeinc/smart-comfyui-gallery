@@ -18,7 +18,7 @@ import pytest
 from PIL import Image
 
 
-@pytest.fixture()
+@pytest.fixture
 def cache_dir(smartgallery_app):
     os.makedirs(smartgallery_app.THUMBNAIL_CACHE_DIR, exist_ok=True)
     return smartgallery_app.THUMBNAIL_CACHE_DIR
@@ -34,7 +34,8 @@ def test_static_image_thumbnail_is_a_real_downscaled_jpeg(smartgallery_app, cach
 
     out = smartgallery_app.create_thumbnail(src, "t_static", "image")
 
-    assert out and os.path.isfile(out)
+    assert out
+    assert os.path.isfile(out)
     with Image.open(out) as im:
         assert im.format == "JPEG"
         # Bounded by THUMBNAIL_WIDTH, aspect ratio preserved.
@@ -51,7 +52,8 @@ def test_animated_gif_keeps_its_frames(smartgallery_app, cache_dir, tmp_path):
 
     out = smartgallery_app.create_thumbnail(src, "t_anim", "animated_image")
 
-    assert out and os.path.isfile(out)
+    assert out
+    assert os.path.isfile(out)
     with Image.open(out) as im:
         assert im.format == "GIF"
         assert getattr(im, "is_animated", False)
@@ -108,7 +110,8 @@ def test_retry_after_a_failed_encode_succeeds(smartgallery_app, cache_dir, tmp_p
 
     monkeypatch.setattr(Image.Image, "save", real_save)
     out = smartgallery_app.create_thumbnail(src, "t_retry", "image")
-    assert out and os.path.isfile(out)
+    assert out
+    assert os.path.isfile(out)
     with Image.open(out) as im:
         assert im.format == "JPEG"
 

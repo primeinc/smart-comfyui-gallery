@@ -23,7 +23,10 @@ visitor does.
 
 from __future__ import annotations
 
+import os
+
 import pytest
+from PIL import Image
 
 # (method, path) for each route that was open. GETs and one POST.
 _ROUTES = [
@@ -53,14 +56,14 @@ def _call(client, method, path):
     return client.get(path)
 
 
-@pytest.fixture()
+@pytest.fixture
 def locked(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     return smartgallery_app
 
 
-@pytest.mark.parametrize("method,path", _ROUTES)
+@pytest.mark.parametrize(("method", "path"), _ROUTES)
 def test_an_anonymous_caller_is_refused(locked, method, path):
     """The regression: each of these answered with data."""
     resp = _call(locked.app.test_client(), method, path)
@@ -69,7 +72,7 @@ def test_an_anonymous_caller_is_refused(locked, method, path):
         f"{path} answered {resp.status_code} to a caller with no session")
 
 
-@pytest.mark.parametrize("method,path", _ROUTES)
+@pytest.mark.parametrize(("method", "path"), _ROUTES)
 def test_a_logged_in_customer_is_refused(locked, method, path):
     """Authentication is not authorisation: these belong to the management
     interface, which a CUSTOMER may not use."""
@@ -84,7 +87,7 @@ def test_a_logged_in_customer_is_refused(locked, method, path):
         f"{path} answered a customer with {resp.status_code}")
 
 
-@pytest.mark.parametrize("method,path", _ROUTES)
+@pytest.mark.parametrize(("method", "path"), _ROUTES)
 def test_staff_still_reach_them(locked, method, path):
     """The counterpart. These are polled constantly by the management page,
     so a blanket denial would break the interface it belongs to -- and
@@ -104,9 +107,7 @@ def test_an_anonymous_caller_cannot_set_a_scan_going(locked):
     """Status codes are the symptom; this is the property. The sync route
     walks the folder and writes what it finds, so a refusal has to mean the
     work never happened -- not merely that the reply looked like a refusal."""
-    import os
 
-    from PIL import Image
 
     base = locked.BASE_OUTPUT_PATH
     path = os.path.join(base, "gating_unindexed.png")
@@ -138,7 +139,7 @@ def test_an_anonymous_caller_cannot_set_a_scan_going(locked):
         os.remove(path)
 
 
-@pytest.mark.parametrize("method,path", _ROUTES)
+@pytest.mark.parametrize(("method", "path"), _ROUTES)
 def test_the_default_local_install_reaches_them(smartgallery_app, monkeypatch,
                                                 method, path):
     """No login configured: one person, and the gallery is theirs."""

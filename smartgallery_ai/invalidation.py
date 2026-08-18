@@ -10,7 +10,6 @@ epsilon for floating-point round-tripping through SQLite REAL columns.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 _MTIME_EPSILON = 1e-6  # seconds; covers float64 round-tripping through REAL columns
 
@@ -68,7 +67,7 @@ def find_stale_embeddings(
     return stale
 
 
-def find_missing(conn, table: str, space: Optional[str] = None) -> list[str]:
+def find_missing(conn, table: str, space: str | None = None) -> list[str]:
     """file_ids with NO derived row at all in `table` (never computed, vs stale).
 
     `table` must be 'ai_file_hashes' or 'ai_embeddings'; the latter requires
@@ -115,4 +114,4 @@ def set_active_version(conn, key: str, value: str) -> None:
 def active_versions(conn) -> dict[str, str]:
     """All key/value pairs currently stored in `ai_dam_state`."""
     rows = conn.execute("SELECT key, value FROM ai_dam_state ORDER BY key").fetchall()
-    return {key: value for key, value in rows}
+    return dict(rows)

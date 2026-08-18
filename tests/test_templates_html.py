@@ -24,7 +24,7 @@ import pytest
 # Jinja is stripped before parsing so the remainder is HTML. Only
 # attribute NAMES are counted, so losing conditional value fragments
 # (`{% if x %}active{% endif %}` inside a class) is irrelevant.
-_JINJA_RE = re.compile(r"\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\}", re.S)
+_JINJA_RE = re.compile(r"\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\}", re.DOTALL)
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

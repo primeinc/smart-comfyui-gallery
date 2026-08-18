@@ -45,6 +45,7 @@ then rejected for not being a file.
 
 from __future__ import annotations
 
+import ast
 import os
 
 import pytest
@@ -144,14 +145,10 @@ def test_nothing_stays_nothing(blank):
     assert smartgallery.normalize_configured_path(blank) == ""
 
 
-def test_the_settings_actually_go_through_it():
+def test_the_settings_actually_go_through_it(gallery_tree):
     """The helper is only worth having if the settings use it."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     read_with = {}
     for node in ast.walk(tree):

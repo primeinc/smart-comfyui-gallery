@@ -14,15 +14,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from typing import Optional
 
 __all__ = [
     "TARGET_KINDS",
     "VERDICTS",
     "FeedbackValidationError",
-    "record_feedback",
-    "list_feedback",
     "export_feedback",
+    "list_feedback",
+    "record_feedback",
 ]
 
 # What a feedback row passes judgment on; mirrors the ai_feedback.target_kind CHECK.
@@ -54,11 +53,11 @@ def record_feedback(
     target_kind: str,
     target_id: str,
     verdict: str,
-    file_id: Optional[str] = None,
-    rating: Optional[int] = None,
-    note: Optional[str] = None,
-    created_by: Optional[str] = None,
-    now: Optional[float] = None,
+    file_id: str | None = None,
+    rating: int | None = None,
+    note: str | None = None,
+    created_by: str | None = None,
+    now: float | None = None,
 ) -> int:
     """Insert one feedback row after validating against the schema's enums.
 
@@ -74,9 +73,8 @@ def record_feedback(
         raise FeedbackValidationError("target_id is required")
     if verdict not in VERDICTS:
         raise FeedbackValidationError(f"verdict must be one of {VERDICTS}, got {verdict!r}")
-    if rating is not None:
-        if isinstance(rating, bool) or not isinstance(rating, int) or not (1 <= rating <= 5):
-            raise FeedbackValidationError(f"rating must be an integer 1..5 or None, got {rating!r}")
+    if rating is not None and (isinstance(rating, bool) or not isinstance(rating, int) or not (1 <= rating <= 5)):
+        raise FeedbackValidationError(f"rating must be an integer 1..5 or None, got {rating!r}")
 
     created_at = time.time() if now is None else now
     cur = conn.execute(
@@ -99,11 +97,11 @@ def list_feedback(conn: sqlite3.Connection, unexported_only: bool = False) -> li
         query += " WHERE exported_at IS NULL"
     query += " ORDER BY feedback_id"
     rows = conn.execute(query).fetchall()
-    return [dict(zip(_COLUMNS, row)) for row in rows]
+    return [dict(zip(_COLUMNS, row, strict=False)) for row in rows]
 
 
 def export_feedback(
-    conn: sqlite3.Connection, out_path: Optional[str] = None, mark: bool = True
+    conn: sqlite3.Connection, out_path: str | None = None, mark: bool = True
 ) -> str:
     """Export all feedback rows as JSONL (one canonical, sorted-key JSON
     object per row, including every column), optionally writing it to

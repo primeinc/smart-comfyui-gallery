@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from omniquery import fields
 from omniquery.ast import Query, iter_conditions
@@ -35,8 +35,8 @@ class AuthContext:
     outside any model. Validation trusts this object, never the query."""
 
     role: str  # caller's role name; gates privileged fields via PRIVILEGED_ROLES
-    user_id: Optional[str]  # authenticated user id, when known
-    client_uuid: Optional[str]  # per-device identity; keys 'my_rating' lookups
+    user_id: str | None  # authenticated user id, when known
+    client_uuid: str | None  # per-device identity; keys 'my_rating' lookups
     ai_enabled: bool  # whether AI-derived fields may be queried at all
 
 
@@ -53,7 +53,7 @@ class ValidatedQuery:
     """Immutable capability token: holding one is proof the wrapped Query
     passed validate() under the wrapped AuthContext."""
 
-    __slots__ = ("_query", "_effective_limit", "_ctx")
+    __slots__ = ("_ctx", "_effective_limit", "_query")
 
     def __init__(self, query: Query, effective_limit: int, ctx: AuthContext,
                  *, _sentinel: Any = None):

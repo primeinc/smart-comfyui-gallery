@@ -12,10 +12,9 @@ runs in a clean subprocess.
 from __future__ import annotations
 
 import builtins
+import logging
 import os
-import subprocess
 import sys
-import textwrap
 import types
 
 import numpy as np
@@ -31,13 +30,15 @@ from smartgallery_ai.embedders import (
     StubVisualEmbedder,
     get_semantic_backend,
     get_visual_backend,
+    pick_torch_device,
+    warn_if_vram_pressure,
 )
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _cfg(models_dir: str, **overrides) -> AIConfig:
-    base = dict(enabled=True, models_dir=models_dir)
+    base = {"enabled": True, "models_dir": models_dir}
     base.update(overrides)
     return AIConfig(**base)
 
@@ -110,7 +111,8 @@ def test_stub_semantic_embed_image_deterministic_and_input_sensitive():
     img_a = Image.fromarray((rng.random((32, 32, 3)) * 255).astype("uint8"))
     img_b = Image.new("RGB", (32, 32), (255, 255, 255))
     va1, va2, vb = emb.embed_image(img_a), emb.embed_image(img_a), emb.embed_image(img_b)
-    assert va1.shape == (64,) and va1.dtype == np.float32
+    assert va1.shape == (64,)
+    assert va1.dtype == np.float32
     assert np.linalg.norm(va1) == pytest.approx(1.0, abs=1e-5)
     assert np.array_equal(va1, va2)
     assert not np.array_equal(va1, vb)
@@ -154,32 +156,34 @@ def test_dinov2_ctor_missing_weights_names_expected_dir(tmp_path):
     assert expected in str(exc_info.value)
 
 
-def test_missing_weights_check_never_imports_heavy_runtimes(tmp_path):
-    """With no weights, neither ctor imports torch/open_clip/transformers
-    (checked in a clean subprocess so suite ordering can't mask a leak)."""
-    script = textwrap.dedent(
-        f"""
-        import sys
-        from smartgallery_ai.embedders import (
-            BackendUnavailable, Dinov2VisualEmbedder, OpenClipSemanticEmbedder,
-        )
-        for cls in (OpenClipSemanticEmbedder, Dinov2VisualEmbedder):
-            try:
-                cls({str(tmp_path)!r})
-            except BackendUnavailable:
-                pass
-            else:
-                sys.exit(cls.__name__ + " did not raise BackendUnavailable")
-        leaked = [m for m in ("torch", "open_clip", "transformers")
-                  if m in sys.modules]
-        sys.exit("heavy runtimes imported: %r" % leaked if leaked else 0)
-        """
-    )
-    proc = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
-    )
-    assert proc.returncode == 0, proc.stderr
+_HEAVY = ("torch", "open_clip", "transformers")
+
+
+@pytest.mark.parametrize("backend",
+                         [OpenClipSemanticEmbedder, Dinov2VisualEmbedder])
+def test_missing_weights_check_never_imports_heavy_runtimes(tmp_path, backend):
+    """With no weights, neither constructor pulls in torch, open_clip or
+    transformers -- the gallery has to start on a machine that has none of
+    them, and the weights check runs on every start.
+
+    Asked as "did this call import them", not "are they absent from the
+    process". The old form needed a clean interpreter precisely because the
+    absolute claim is false the moment any other test imports torch, which
+    made suite ordering part of the answer. The difference between
+    sys.modules before and after is the actual claim, it survives any
+    ordering, and it costs nothing.
+    """
+    before = set(sys.modules)
+
+    with pytest.raises(BackendUnavailable):
+        backend(str(tmp_path))
+
+    newly = set(sys.modules) - before
+    leaked = sorted(name for name in newly
+                    if name in _HEAVY or name.split(".")[0] in _HEAVY)
+    assert not leaked, (
+        f"{backend.__name__} imported {leaked} just to notice its weights "
+        f"were missing")
 
 
 def test_openclip_ctor_missing_runtime_raises_backend_unavailable(tmp_path, monkeypatch):
@@ -396,7 +400,6 @@ def _fake_torch_with_gpus(cards):
 def test_pick_torch_device_prefers_largest_vram_gpu(monkeypatch):
     """With several CUDA devices the largest-VRAM card is chosen explicitly
     (cuda:<i>), never bare 'cuda' (which means PCI enumeration order)."""
-    from smartgallery_ai.embedders import pick_torch_device
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     torch = _fake_torch_with_gpus([8 << 30, 24 << 30, 12 << 30])
     assert pick_torch_device(torch) == "cuda:1"
@@ -405,7 +408,6 @@ def test_pick_torch_device_prefers_largest_vram_gpu(monkeypatch):
 def test_pick_torch_device_single_gpu_stays_bare_cuda(monkeypatch):
     """One CUDA device needs no index; a failing enumeration degrades to
     bare 'cuda' instead of crashing device selection."""
-    from smartgallery_ai.embedders import pick_torch_device
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     assert pick_torch_device(_fake_torch_with_gpus([8 << 30])) == "cuda"
 
@@ -420,7 +422,6 @@ def test_pick_torch_device_role_override_beats_global(monkeypatch):
     """AI_DAM_<ROLE>_DEVICE pins one backend to one card even when the
     global AI_DAM_DEVICE says something else; other roles follow the
     global setting."""
-    from smartgallery_ai.embedders import pick_torch_device
     monkeypatch.setenv("AI_DAM_DEVICE", "cpu")
     monkeypatch.setenv("AI_DAM_VISUAL_DEVICE", "cuda:1")
     torch = _fake_torch_with_gpus([8 << 30])
@@ -433,7 +434,6 @@ def test_pick_torch_device_ties_go_to_the_newer_generation(monkeypatch):
     """Equal VRAM: the higher compute-capability card wins the tie, not
     whichever happens to enumerate first (mixed-generation rigs: an 8GB
     Ampere in slot 0 must not beat an 8GB Blackwell in slot 1)."""
-    from smartgallery_ai.embedders import pick_torch_device
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     torch = _fake_torch_with_gpus([(8 << 30, 8, 6), (8 << 30, 12, 0)])
     assert pick_torch_device(torch) == "cuda:1"
@@ -443,9 +443,7 @@ def test_vram_pressure_warns_only_when_the_chosen_card_is_nearly_full(caplog):
     """Loading onto a CUDA card with under ~2 GiB free logs a warning
     naming the device and the escape hatch; ample free VRAM, CPU devices,
     and torch builds without mem_get_info all stay silent."""
-    import logging
 
-    from smartgallery_ai.embedders import warn_if_vram_pressure
 
     def torch_with_free(free_bytes):
         cuda = types.SimpleNamespace(

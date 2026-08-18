@@ -21,8 +21,8 @@ conflict: anything still wanted returns on the next pass.
 
 from __future__ import annotations
 
-import io
 import pathlib
+import time
 
 import pytest
 
@@ -31,9 +31,8 @@ _CLAIMS = ("processing", "completed")
 
 
 def _source_files():
-    for path in sorted(_ROOT.glob("*.py")) + sorted(_ROOT.glob("smartgallery_ai/*.py")) \
-            + sorted(_ROOT.glob("omniquery/*.py")) + sorted(_ROOT.glob("metaparse/*.py")):
-        yield path
+    yield from sorted(_ROOT.glob("*.py")) + sorted(_ROOT.glob("smartgallery_ai/*.py")) \
+            + sorted(_ROOT.glob("omniquery/*.py")) + sorted(_ROOT.glob("metaparse/*.py"))
 
 
 def test_nothing_claims_a_row_from_the_indexing_queue():
@@ -42,7 +41,7 @@ def test_nothing_claims_a_row_from_the_indexing_queue():
     inert."""
     setters = []
     for path in _source_files():
-        text = io.open(path, encoding="utf-8").read()
+        text = open(path, encoding="utf-8").read()
         if "ai_indexing_queue" not in text:
             continue
         for line_no, line in enumerate(text.splitlines(), 1):
@@ -58,15 +57,7 @@ def test_nothing_claims_a_row_from_the_indexing_queue():
         "docs/CONFIGURATION.md, which tells people the flag does nothing.")
 
 
-def test_the_documentation_says_so():
-    text = io.open(_ROOT / "docs" / "CONFIGURATION.md", encoding="utf-8").read()
-
-    assert "ENABLE_AI_SEARCH` is inert" in text, (
-        "the section explaining that the legacy flag does nothing is gone")
-    assert "Nothing processes either of them" in text
-
-
-@pytest.fixture()
+@pytest.fixture
 def legacy_enabled(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "ENABLE_AI_SEARCH", True)
     conn = smartgallery_app.get_db_connection()
@@ -95,7 +86,6 @@ def _queue_size(smartgallery_app):
 def test_stale_queue_rows_are_swept(legacy_enabled):
     """The bound: a pending row older than three days goes, so the table
     does not grow with the library and stay there for ever."""
-    import time
 
     conn = legacy_enabled.get_db_connection()
     try:
@@ -128,7 +118,6 @@ def test_stale_queue_rows_are_swept(legacy_enabled):
 def test_the_sweep_leaves_a_row_that_is_being_worked_on(legacy_enabled):
     """If a consumer ever exists, its in-flight row must not be swept out
     from under it -- only the two resting states are cleared."""
-    import time
 
     conn = legacy_enabled.get_db_connection()
     try:

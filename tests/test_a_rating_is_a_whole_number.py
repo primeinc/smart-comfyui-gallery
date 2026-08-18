@@ -32,6 +32,8 @@ as insisting on forward slashes in a path.
 
 from __future__ import annotations
 
+import ast
+
 import pytest
 
 import smartgallery
@@ -40,7 +42,7 @@ _ROUTES = ["/galleryout/api/exhibition/rate",
            "/galleryout/api/exhibition/rate_batch"]
 
 
-@pytest.fixture()
+@pytest.fixture
 def a_picture(smartgallery_app):
     file_id = "r" * 32
     conn = smartgallery_app.get_db_connection()
@@ -62,7 +64,7 @@ def a_picture(smartgallery_app):
         conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def visitor(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -90,7 +92,7 @@ def _rows(smartgallery_app, file_id):
 
 # --- the rule on its own --------------------------------------------------
 
-@pytest.mark.parametrize("value,expected", [
+@pytest.mark.parametrize(("value", "expected"), [
     (1, 1), (3, 3), (5, 5),
     (3.0, 3),                 # a client with one number type
     (0, None), (None, None),  # clearing
@@ -173,15 +175,11 @@ def test_clearing_a_rating_still_works(smartgallery_app, visitor, a_picture,
     assert _rows(smartgallery_app, a_picture) == []
 
 
-def test_both_routes_ask_the_same_rule():
+def test_both_routes_ask_the_same_rule(gallery_tree):
     """The same line appeared in both, and fixing one of a pair is how the
     comment limit was walked round two cycles ago."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     for name in ("exhibition_rate_file", "exhibition_rate_batch"):
         fn = next((node for node in ast.walk(tree)

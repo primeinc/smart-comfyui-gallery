@@ -32,11 +32,10 @@ than against a remembered description of it.
 
 from __future__ import annotations
 
+import ast
 import os
 
 import pytest
-
-import smartgallery
 
 
 def _norm(p):
@@ -114,16 +113,12 @@ def test_a_sibling_folder_is_still_not_inside(smartgallery_app):
     assert _current_decision("C:/lib/sub/pic.png", target_norm, "folder", True)
 
 
-def test_neither_walk_normalises_what_it_does_not_read():
+def test_neither_walk_normalises_what_it_does_not_read(gallery_tree):
     """The change itself. Both loops used to compute the directory for
     every row and only one branch of three reads it; if that comes back,
     so does a walk of the whole library doing work nobody uses."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     for name in ("gallery_view", "get_filter_options_from_db"):
         fn = next((node for node in ast.walk(tree)

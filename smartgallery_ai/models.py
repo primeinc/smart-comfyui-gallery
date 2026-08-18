@@ -68,7 +68,8 @@ import importlib
 import json
 import logging
 import os
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ def resolve_device(explicit: str = "") -> str:
         return "cpu"
 
 
-def resolve_attn(explicit: str = "") -> Optional[str]:
+def resolve_attn(explicit: str = "") -> str | None:
     """The attention backend, or None to let transformers choose (sdpa).
 
     AI_DAM_ATTN takes a backend name. 'kernels-community/flash-attn2'
@@ -128,7 +129,7 @@ def _weights_location(model_ref: str, models_dir: str) -> tuple:
     offline; anything else is treated as a Hugging Face repo id."""
     if models_dir:
         for candidate in (os.path.join(models_dir, *model_ref.split("/")),
-                          os.path.join(models_dir, model_ref.split("/")[-1])):
+                          os.path.join(models_dir, model_ref.rsplit("/", maxsplit=1)[-1])):
             if os.path.isdir(candidate):
                 return candidate, True
     return model_ref, False
@@ -242,8 +243,8 @@ class Chat:
 
     def __init__(self, model_ref: str, images: Sequence = (), *,
                  models_dir: str = "", device: str = "", attn: str = "",
-                 system: Optional[str] = None,
-                 tools: Optional[list] = None,
+                 system: str | None = None,
+                 tools: list | None = None,
                  max_vision_tokens: int = DEFAULT_MAX_VISION_TOKENS):
         self._processor, self._model = load(model_ref, models_dir, device, attn)
         # AutoProcessor nests its tokenizer; AutoTokenizer IS one.

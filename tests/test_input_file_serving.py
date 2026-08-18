@@ -36,7 +36,7 @@ _NAMES = ["plain.png", "测试.png", "Ordner-Größe.png", "рисунок.png",
           "イラスト.png", "ЖУРНАЛ.png"]
 
 
-@pytest.fixture()
+@pytest.fixture
 def input_folder(smartgallery_app, monkeypatch):
     """Pictures in the ComfyUI input folder, plus something outside it that
     must stay unreachable."""

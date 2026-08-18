@@ -3,14 +3,18 @@ safety, and the file_ref resolution hand-off."""
 
 from __future__ import annotations
 
+import os as _os
 import sqlite3
 import time
+import time as _time
+from datetime import datetime
 
 import pytest
 
 from omniquery import compiler, fields
 from omniquery.ast import Cond, OrderSpec, parse_query
-from omniquery.compiler import CompileError, CompileParams, compile as compile_query, resolution_key
+from omniquery.compiler import CompileError, CompileParams, resolution_key
+from omniquery.compiler import compile as compile_query
 from omniquery.validation import AuthContext, validate
 
 STAFF = AuthContext(role="STAFF", user_id="3", client_uuid="client-3", ai_enabled=True)
@@ -89,8 +93,6 @@ def test_between_bare_dates_dst_transition_days():
     """A bare-date 'between' upper bound extends to the next local calendar
     midnight, which is 23h away on spring-forward day and 25h on fall-back
     day — never a fixed 86400s."""
-    import os as _os
-    import time as _time
 
     old_tz = _os.environ.get("TZ")
     _os.environ["TZ"] = "America/New_York"
@@ -278,7 +280,8 @@ def test_reordered_and_children_compile_to_different_but_stable_sql():
     cq_a1 = _compile(obj_a)
     cq_a2 = _compile(obj_a)
     cq_b = _compile(obj_b)
-    assert cq_a1.sql == cq_a2.sql and cq_a1.params == cq_a2.params
+    assert cq_a1.sql == cq_a2.sql
+    assert cq_a1.params == cq_a2.params
     assert cq_a1.sql != cq_b.sql  # compiler does not canonicalize child order
 
 
@@ -297,8 +300,6 @@ def test_hours_ago_resolves_against_injected_now_epoch():
 
 
 def test_bare_date_resolves_to_local_midnight():
-    import time
-    from datetime import datetime
     cq = _compile({"where": {"field": "mtime", "op": "ge", "value": "2025-06-15"}})
     expected = time.mktime(datetime(2025, 6, 15).timetuple())
     assert cq.params[0] == expected

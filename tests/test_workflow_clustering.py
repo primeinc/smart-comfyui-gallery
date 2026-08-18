@@ -7,10 +7,15 @@ that replaced the process-wide gallery_view_cache global together with
 its /load_more and /api/current_view_ids consumers."""
 
 import hashlib
+import json
 import re
+import threading
+import time as _t
+import time as _time
 
 import pytest
-
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 _PREFIX = "wfc:"
 
@@ -47,7 +52,7 @@ def _view_dict(row):
     return d
 
 
-@pytest.fixture()
+@pytest.fixture
 def sg(smartgallery_app, monkeypatch):
     """The monolith module plus per-test cleanup of every wfc: row.
 
@@ -258,8 +263,6 @@ _SUI_PARAMS_TMPL = (
 
 
 def _make_swarm_png(tmp_path, name, prompt, model):
-    from PIL import Image
-    from PIL.PngImagePlugin import PngInfo
     info = PngInfo()
     info.add_text("parameters", _SUI_PARAMS_TMPL % (prompt, model))
     path = tmp_path / name
@@ -268,9 +271,7 @@ def _make_swarm_png(tmp_path, name, prompt, model):
 
 
 def _make_swarm_png_params(tmp_path, name, params):
-    import json
-    from PIL import Image
-    from PIL.PngImagePlugin import PngInfo
+
     info = PngInfo()
     info.add_text("parameters", json.dumps({"sui_image_params": params}))
     path = tmp_path / name
@@ -289,7 +290,9 @@ def test_compute_hashes_swarmui_file_without_graph(sg, tmp_path):
 
     # Assert: all three identities without any ComfyUI graph; prompt is
     # shared, architecture and model set follow the model.
-    assert wf1 and pr1 and md1
+    assert wf1
+    assert pr1
+    assert md1
     assert pr1 == pr2
     assert wf1 != wf2
     assert md1 != md2
@@ -316,7 +319,8 @@ def test_workflow_identity_follows_param_shape(sg, tmp_path):
     wf3, _, md3 = sg.compute_workflow_hashes(p3)
 
     # Assert
-    assert wf1 and wf1 == wf2  # per-image knobs are not architecture
+    assert wf1
+    assert wf1 == wf2
     assert wf1 != wf3          # an extra pipeline stage is
     assert md1 == md2 == md3   # model set: same checkpoint, no lora change
 
@@ -336,7 +340,8 @@ def test_schema_bump_marker_written_only_on_completion(sg, monkeypatch):
 
         # Act: marker mismatch -> forced re-hash requested; marker NOT yet earned.
         sg.check_and_update_workflow_hashes(conn)
-        assert len(calls) == 1 and calls[0][0] is True
+        assert len(calls) == 1
+        assert calls[0][0] is True
         assert conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()[0] == 'stale'
 
         # The completion hook records it; the next check runs the normal backfill.
@@ -347,7 +352,6 @@ def test_schema_bump_marker_written_only_on_completion(sg, monkeypatch):
 
 
 def test_backfill_abort_suppresses_completion_hook(sg, monkeypatch):
-    import time as _time
 
     fired = []
 
@@ -406,7 +410,6 @@ def test_clustering_trigger_is_async_not_inline(sg, monkeypatch):
 
 
 def test_ensure_backfill_collapses_concurrent_runs(sg, monkeypatch):
-    import threading
     release = threading.Event()
     started = threading.Event()
 
@@ -425,7 +428,6 @@ def test_ensure_backfill_collapses_concurrent_runs(sg, monkeypatch):
     release.set()
 
     # The state flag clears once the thread finishes (poll briefly).
-    import time as _t
     for _ in range(100):
         if not sg._CLUSTER_BACKFILL_STATE['running']:
             break
@@ -444,7 +446,9 @@ def test_cluster_hash_status_endpoint(sg):
     # Assert
     assert data['status'] == 'success'
     assert data['pending'] >= 1
-    assert 'running' in data and 'done' in data and 'total' in data
+    assert 'running' in data
+    assert 'done' in data
+    assert 'total' in data
 
 
 def test_models_mode_global_clustering(sg):
@@ -569,7 +573,9 @@ def test_backfill_process_pool_path_end_to_end(sg, tmp_path, monkeypatch):
             "SELECT workflow_hash, prompt_hash, models_hash, workflow_prompt FROM files WHERE id = ?",
             (_PREFIX + 'procsw',),
         ).fetchone()
-        assert row['workflow_hash'] and row['prompt_hash'] and row['models_hash']
+        assert row['workflow_hash']
+        assert row['prompt_hash']
+        assert row['models_hash']
         assert row['workflow_prompt'] == "a comet over the sea"
 
 

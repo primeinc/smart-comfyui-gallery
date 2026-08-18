@@ -15,22 +15,26 @@ import numpy as np
 import pytest
 from PIL import Image
 
+import smartgallery_ai.embedders as EMB
+import smartgallery_ai.reviewer as RV
 from smartgallery_ai import AIConfig
 from smartgallery_ai import review as REV
 from smartgallery_ai.embedders import BackendUnavailable
+from smartgallery_ai.models import extract_json_object
 from smartgallery_ai.review import (
     Finding,
     MaskNotAllowedError,
     ReviewResult,
     StubReviewer,
     StubSegmenter,
+    _auto_critic_measurement_passed,
     generate_finding_mask,
     get_reviewer,
     get_segmenter_backend,
     store_review,
     validate_review_payload,
 )
-from smartgallery_ai.models import extract_json_object
+from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN
 from smartgallery_ai.schema import init_schema
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(REV.__file__)))
@@ -84,10 +88,9 @@ def _store_one_finding(conn, file_id, localizable, bbox=None, points=None):
     review_id = store_review(
         conn, file_id, result, "critic-x", "v1", "rubric-1", None, 1000.0, 2000.0
     )
-    finding_id = conn.execute(
+    return conn.execute(
         "SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)
     ).fetchone()[0]
-    return finding_id
 
 
 
@@ -339,10 +342,8 @@ def test_get_segmenter_backend_stub_none_and_unknown():
 
 def test_auto_critic_gate_non_numeric_sweep_rates_fail_closed(tmp_path):
     """A sweep row whose rates are not numbers can never authorize 'auto', even with valid identity."""
-    from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN
-    from smartgallery_ai.review import _auto_critic_measurement_passed
 
-    with open(REV._CALIBRATION_REPORT_PATH, "r", encoding="utf-8") as fh:
+    with open(REV._CALIBRATION_REPORT_PATH, encoding="utf-8") as fh:
         real = json.load(fh)
     # Arrange sanity: the committed evidence itself qualifies.
     assert _auto_critic_measurement_passed() is True
@@ -366,8 +367,6 @@ def test_get_critic_backend_auto_gate_is_the_deciding_factor(tmp_path, monkeypat
     constructible critic stubbed in, a rejecting gate yields None and an
     accepting gate yields the reviewer — so None is attributable to the gate,
     not to missing weights."""
-    import smartgallery_ai.embedders as EMB
-    import smartgallery_ai.reviewer as RV
 
     sentinel = object()
     monkeypatch.setattr(EMB, "get_semantic_backend", lambda _cfg: object())

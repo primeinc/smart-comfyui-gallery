@@ -21,6 +21,7 @@ slow download.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import socket
 import threading
@@ -31,7 +32,7 @@ import pytest
 from smartgallery_ai import provision
 
 
-@pytest.fixture()
+@pytest.fixture
 def silent_server():
     """A listener that accepts a connection and then never answers."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -55,10 +56,8 @@ def silent_server():
     yield port
 
     for conn in accepted:
-        try:
+        with contextlib.suppress(OSError):
             conn.close()
-        except OSError:
-            pass
     sock.close()
 
 
@@ -88,8 +87,7 @@ def test_the_timeout_is_actually_passed_through(tmp_path, monkeypatch):
         headers = {"Content-Length": "4"}
 
         def read(self, _n=None):
-            data = seen.pop("body", b"")
-            return data
+            return seen.pop("body", b"")
 
         def __enter__(self):
             return self

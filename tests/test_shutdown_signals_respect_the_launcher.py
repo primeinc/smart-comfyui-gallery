@@ -42,6 +42,7 @@ this one.
 
 from __future__ import annotations
 
+import ast
 import signal
 
 import pytest
@@ -53,7 +54,7 @@ def _handler(signum, frame):  # never actually delivered in these tests
     raise AssertionError("the test handler ran")
 
 
-@pytest.fixture()
+@pytest.fixture
 def restore_signals():
     """Put every handler back, whatever the test did."""
     names = [n for n in ("SIGINT", "SIGTERM", "SIGHUP")
@@ -145,16 +146,11 @@ def test_installing_a_handler_replaces_an_ignore(restore_signals):
         "was never at risk and these checks guard nothing")
 
 
-def test_the_startup_path_goes_through_the_guard():
+def test_the_startup_path_goes_through_the_guard(gallery_tree):
     """The handler is installed under `if __name__ == '__main__'`, which
     no test runs, so the wiring is checked in the source."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    text = io.open(source, encoding="utf-8").read()
-    tree = ast.parse(text)
+    tree = gallery_tree
 
     installs = [node for node in ast.walk(tree)
                 if isinstance(node, ast.Call)

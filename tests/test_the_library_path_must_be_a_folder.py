@@ -29,6 +29,7 @@ looking for a folder that is sitting exactly where they put it.
 
 from __future__ import annotations
 
+import ast
 import os
 
 import pytest
@@ -53,15 +54,11 @@ def test_a_file_is_not_a_folder(tmp_path):
 
 
 @pytest.mark.parametrize("setting", ["BASE_OUTPUT_PATH", "BASE_INPUT_PATH"])
-def test_the_startup_check_asks_whether_it_is_a_folder(setting):
+def test_the_startup_check_asks_whether_it_is_a_folder(gallery_tree, setting):
     """The bug: it asked whether something was there, not whether it was
     the kind of thing the gallery can show."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     asked = []
     for node in ast.walk(tree):

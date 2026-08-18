@@ -17,12 +17,11 @@ import random
 import sqlite3
 import struct
 from collections import defaultdict
-from typing import Any, Dict, FrozenSet, List, Tuple
-
-from smartgallery_ai import HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
-from smartgallery_ai.schema import DDL as _AI_DDL
+from typing import Any
 
 from omniquery.fields import REVIEW_ISSUE_VALUES
+from smartgallery_ai import HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
+from smartgallery_ai.schema import DDL as _AI_DDL
 
 FIXTURE_BASE_PATH = "/gallery"  # virtual gallery root prefixed onto every generated file path
 # A fixed instant (2025-01-01T00:00:00 local), not wall-clock "now" -- every
@@ -73,7 +72,7 @@ _COMMENT_POOL = [
 
 # (user_id, username, full_name, role) rows for the users table; one
 # account per role tier exercised by role-scoped queries.
-USERS: List[Tuple[int, str, str, str]] = [
+USERS: list[tuple[int, str, str, str]] = [
     (1, "alice", "Alice Anders", "USER"),
     (2, "bob", "Bob Baker", "GUEST"),
     (3, "carol", "Carol Chen", "STAFF"),
@@ -82,7 +81,7 @@ USERS: List[Tuple[int, str, str, str]] = [
 ]
 
 # (collection name, collection type, hex color) rows for system flags.
-STATUS_FLAGS: List[Tuple[str, str, str]] = [
+STATUS_FLAGS: list[tuple[str, str, str]] = [
     ("Approved", "system_flag", "#28a745"),
     ("Review", "system_flag", "#ffc107"),
     ("To Edit", "system_flag", "#17a2b8"),
@@ -221,7 +220,7 @@ def _make_id(idx: int) -> str:
     return f"f{idx:03d}"
 
 
-def _generate(seed: int) -> Dict[str, Any]:
+def _generate(seed: int) -> dict[str, Any]:
     """Build the complete in-memory fixture record set from `seed` alone.
 
     Every random draw comes from one seeded RNG consumed in a fixed order,
@@ -233,7 +232,7 @@ def _generate(seed: int) -> Dict[str, Any]:
     types = list(_TYPE_POOL)
     rng.shuffle(types)
 
-    files: List[Dict[str, Any]] = []
+    files: list[dict[str, Any]] = []
     for i, ftype in enumerate(types):
         idx = i + 1
         fid = _make_id(idx)
@@ -282,8 +281,8 @@ def _generate(seed: int) -> Dict[str, Any]:
             "ai_caption": ai_caption,
         })
 
-    ratings: List[Dict[str, Any]] = []
-    comments: List[Dict[str, Any]] = []
+    ratings: list[dict[str, Any]] = []
+    comments: list[dict[str, Any]] = []
     for f in files:
         if rng.random() < 0.55:
             n = rng.randint(1, 3)
@@ -306,15 +305,15 @@ def _generate(seed: int) -> Dict[str, Any]:
     shuffled = all_ids[:]
     rng.shuffle(shuffled)
 
-    membership: Dict[Tuple[str, str], List[str]] = {}
+    membership: dict[tuple[str, str], list[str]] = {}
     cursor = 0
-    for (flag_name, flag_type, _color), chunk_size in zip(STATUS_FLAGS, _FLAG_SIZES):
+    for (flag_name, flag_type, _color), chunk_size in zip(STATUS_FLAGS, _FLAG_SIZES, strict=False):
         membership[(flag_name, flag_type)] = shuffled[cursor:cursor + chunk_size]
         cursor += chunk_size
     for album_name in USER_ALBUMS:
         membership[(album_name, "user_album")] = rng.sample(all_ids, 15)
 
-    hashes: List[Dict[str, Any]] = []
+    hashes: list[dict[str, Any]] = []
     for f in files:
         phash = dhash = None
         if f["type"] in ("image", "video", "animated_image"):
@@ -326,7 +325,7 @@ def _generate(seed: int) -> Dict[str, Any]:
             "source_mtime": f["mtime"], "computed_at": f["mtime"] + 1.0,
         })
 
-    embeddings: List[Dict[str, Any]] = []
+    embeddings: list[dict[str, Any]] = []
     embed_candidates = [f for f in files if f["type"] in ("image", "animated_image")][:20]
     for f in embed_candidates:
         for space in (SPACE_SEMANTIC, SPACE_VISUAL):
@@ -341,7 +340,7 @@ def _generate(seed: int) -> Dict[str, Any]:
         {"cluster_id": 1, "label": "Character A", "model_id": "stub-facenet", "model_version": "v1"},
         {"cluster_id": 2, "label": "Character B", "model_id": "stub-facenet", "model_version": "v1"},
     ]
-    face_instances: List[Dict[str, Any]] = []
+    face_instances: list[dict[str, Any]] = []
     face_candidates = [f for f in files
                         if f["folder"] == "portraits" and f["type"] in ("image", "video", "animated_image")]
     for i, f in enumerate(face_candidates):
@@ -365,7 +364,7 @@ def _generate(seed: int) -> Dict[str, Any]:
     # FIRST row is pinned (seed/steps/cfg/model/lora) so corpus entries can
     # target known values; the "girlnextdoor" LoRA also lands on every
     # third gp row, giving bare-term text searches a real multi-file match.
-    genparams: List[Dict[str, Any]] = []
+    genparams: list[dict[str, Any]] = []
     for f in files:
         if not f["has_workflow"]:
             continue
@@ -389,7 +388,7 @@ def _generate(seed: int) -> Dict[str, Any]:
         genparams[0].update(seed=424242, steps=30, cfg=7.5, model="flux1-dev-fp8")
 
     review_candidates = files[::4][:15]
-    reviews: List[Dict[str, Any]] = []
+    reviews: list[dict[str, Any]] = []
     for f in review_candidates:
         reviews.append({
             "file_id": f["id"], "rubric_version": RUBRIC_VERSION, "model_id": "stub-critic",
@@ -400,7 +399,7 @@ def _generate(seed: int) -> Dict[str, Any]:
         })
 
     issue_values = sorted(REVIEW_ISSUE_VALUES)
-    findings: List[Dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
     for i, rv in enumerate(reviews[:10]):
         issue_type = issue_values[i % len(issue_values)]
         findings.append({
@@ -465,7 +464,7 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
              for g in data["genparams"]],
         )
 
-        collection_ids: Dict[Tuple[str, str], int] = {}
+        collection_ids: dict[tuple[str, str], int] = {}
         all_collections = STATUS_FLAGS + [(n, "user_album", "#888888") for n in USER_ALBUMS]
         for name, ctype, color in all_collections:
             cur = conn.execute(
@@ -536,7 +535,7 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
              for fi in data["face_instances"]],
         )
 
-        review_ids: List[int] = []
+        review_ids: list[int] = []
         for rv in data["reviews"]:
             cur = conn.execute(
                 "INSERT INTO ai_reviews "
@@ -567,13 +566,13 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
 # Ground-truth expectations, computed straight from the generated records
 # ---------------------------------------------------------------------------
 
-def _compute_expectations(data: Dict[str, Any]) -> Dict[str, FrozenSet[str]]:
+def _compute_expectations(data: dict[str, Any]) -> dict[str, frozenset[str]]:
     """Ground-truth answer sets, keyed by scenario name, each the frozenset
     of file ids satisfying that predicate. Computed from the in-memory
     records -- never via SQL -- so they can cross-check the compiler."""
     files = data["files"]
 
-    rating_totals: Dict[str, List[int]] = defaultdict(list)
+    rating_totals: dict[str, list[int]] = defaultdict(list)
     for r in data["ratings"]:
         rating_totals[r["file_id"]].append(r["rating"])
 
@@ -622,8 +621,8 @@ def _compute_expectations(data: Dict[str, Any]) -> Dict[str, FrozenSet[str]]:
 _DEFAULT_SEED = 42
 _DEFAULT_DATA = _generate(_DEFAULT_SEED)
 
-FIXTURE_FILES: List[Dict[str, Any]] = _DEFAULT_DATA["files"]
-FIXTURE_RATINGS: List[Dict[str, Any]] = _DEFAULT_DATA["ratings"]
-FIXTURE_COMMENTS: List[Dict[str, Any]] = _DEFAULT_DATA["comments"]
-FIXTURE_MEMBERSHIP: Dict[Tuple[str, str], List[str]] = _DEFAULT_DATA["membership"]
-FIXTURE_EXPECTATIONS: Dict[str, FrozenSet[str]] = _compute_expectations(_DEFAULT_DATA)
+FIXTURE_FILES: list[dict[str, Any]] = _DEFAULT_DATA["files"]
+FIXTURE_RATINGS: list[dict[str, Any]] = _DEFAULT_DATA["ratings"]
+FIXTURE_COMMENTS: list[dict[str, Any]] = _DEFAULT_DATA["comments"]
+FIXTURE_MEMBERSHIP: dict[tuple[str, str], list[str]] = _DEFAULT_DATA["membership"]
+FIXTURE_EXPECTATIONS: dict[str, frozenset[str]] = _compute_expectations(_DEFAULT_DATA)

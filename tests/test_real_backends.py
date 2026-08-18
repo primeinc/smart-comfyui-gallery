@@ -9,12 +9,24 @@ Run:  RUN_REAL_BACKEND_TESTS=1 python -m pytest tests/test_real_backends.py -v
 """
 
 import os
+import sqlite3
+import tempfile
+import time as _time
 
 import numpy as np
 import pytest
-from PIL import Image, ImageEnhance
+from flask import Flask
+from PIL import Image, ImageDraw, ImageEnhance
 
-from smartgallery_ai import AIConfig
+from smartgallery_ai import AIConfig, schema
+from smartgallery_ai import models as ai_models
+from smartgallery_ai.embedders import BackendUnavailable, get_semantic_backend, get_visual_backend
+from smartgallery_ai.faces import OpenCVFaceBackend
+from smartgallery_ai.review import StubSegmenter, get_segmenter_backend
+from smartgallery_ai.reviewer import DEFAULT_REVIEW_MODEL, UngroundedReviewError, check_grounding
+from smartgallery_ai.segmenter_mobilesam import MobileSamSegmenter
+from smartgallery_ai.service import create_ai_blueprint
+from smartgallery_ai.worker import AIWorker
 
 MODELS_DIR = os.environ.get(
     "AI_DAM_MODELS_DIR",
@@ -29,7 +41,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _cfg(**overrides) -> AIConfig:
-    base = dict(enabled=True, models_dir=MODELS_DIR)
+    base = {"enabled": True, "models_dir": MODELS_DIR}
     base.update(overrides)
     return AIConfig(**base)
 
@@ -56,10 +68,10 @@ def _cos(a, b):
 def test_real_visual_backend_dinov2_separates_similarity():
     if not os.path.isdir(os.path.join(MODELS_DIR, "dinov2-small")):
         pytest.skip("dinov2-small weights not provisioned")
-    from smartgallery_ai.embedders import get_visual_backend
 
     vis = get_visual_backend(_cfg(visual_backend="dinov2"))
-    assert vis is not None and vis.dim == 384
+    assert vis is not None
+    assert vis.dim == 384
     base, edited, gradient = _test_images()
     vb, ve, vg = vis.embed_image(base), vis.embed_image(edited), vis.embed_image(gradient)
     assert _cos(vb, ve) > 0.8
@@ -70,10 +82,10 @@ def test_real_semantic_backend_openclip_text_to_image():
     if not os.path.isfile(os.path.join(
             MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         pytest.skip("open_clip weights not provisioned")
-    from smartgallery_ai.embedders import get_semantic_backend
 
     sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
-    assert sem is not None and sem.dim == 512
+    assert sem is not None
+    assert sem.dim == 512
     # Text->image: a red image should match "a solid red image" over
     # unrelated text, and over a blue image for the same text.
     red = Image.new("RGB", (224, 224), (220, 20, 20))
@@ -90,7 +102,6 @@ def test_real_face_backend_yunet_sface():
               "face_recognition_sface_2021dec.onnx"):
         if not os.path.isfile(os.path.join(MODELS_DIR, f)):
             pytest.skip(f"{f} not provisioned")
-    from smartgallery_ai.faces import OpenCVFaceBackend
 
     backend = OpenCVFaceBackend(MODELS_DIR)
     assert backend.model_id == "opencv/yunet+sface"
@@ -106,13 +117,13 @@ def test_real_face_backend_yunet_sface():
         assert dets, "expected at least one face in REAL_FACE_TEST_IMAGE"
         d = dets[0]
         assert all(0.0 <= v <= 1.0 for v in d.bbox)
-        assert d.embedding is not None and d.embedding.shape == (128,)
+        assert d.embedding is not None
+        assert d.embedding.shape == (128,)
 
 
 def test_real_segmenter_mobilesam_box_prompt_iou():
     if not os.path.isfile(os.path.join(MODELS_DIR, "mobile_sam.pt")):
         pytest.skip("mobile_sam.pt not provisioned")
-    from smartgallery_ai.segmenter_mobilesam import MobileSamSegmenter
 
     seg = MobileSamSegmenter(MODELS_DIR)
     # Solid red square on a textured background; a loose box prompt around
@@ -121,7 +132,6 @@ def test_real_segmenter_mobilesam_box_prompt_iou():
     base = Image.fromarray(
         (rng.random((64, 64, 3)) * 255).astype("uint8")
     ).resize((512, 512), Image.LANCZOS)
-    from PIL import ImageDraw
     ImageDraw.Draw(base).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
     gt = np.zeros((512, 512), bool)
     gt[300:420, 300:420] = True
@@ -134,9 +144,6 @@ def test_real_segmenter_mobilesam_box_prompt_iou():
 def test_segmenter_factory_resolution(tmp_path):
     """Factory policy: 'auto' degrades to None without weights; 'mobilesam'
     raises; 'none'/'stub' behave as documented. Model-free (empty dir)."""
-    from smartgallery_ai import AIConfig
-    from smartgallery_ai.embedders import BackendUnavailable
-    from smartgallery_ai.review import StubSegmenter, get_segmenter_backend
 
     assert get_segmenter_backend(
         AIConfig(enabled=True, models_dir=str(tmp_path),
@@ -161,8 +168,6 @@ def test_real_grounding_gate_negative_cases():
     if not os.path.isfile(os.path.join(
             MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         pytest.skip("open_clip weights not provisioned")
-    from smartgallery_ai.reviewer import UngroundedReviewError, check_grounding
-    from smartgallery_ai.embedders import get_semantic_backend
 
     sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
     red = Image.new("RGB", (224, 224), (220, 20, 20))
@@ -197,8 +202,6 @@ def test_real_critic_to_mask_chain():
     RUN_REAL_CRITIC_TESTS=1 on top of the suite's own opt-in."""
     if os.environ.get("RUN_REAL_CRITIC_TESTS") != "1":
         pytest.skip("critic chain test is a second-tier opt-in (RUN_REAL_CRITIC_TESTS=1)")
-    from smartgallery_ai import models as ai_models
-    from smartgallery_ai.reviewer import DEFAULT_REVIEW_MODEL
 
     if not ai_models.is_provisioned(DEFAULT_REVIEW_MODEL, MODELS_DIR):
         pytest.skip(f"{DEFAULT_REVIEW_MODEL} not provisioned")
@@ -207,16 +210,8 @@ def test_real_critic_to_mask_chain():
         if not os.path.isfile(os.path.join(MODELS_DIR, f)):
             pytest.skip(f"{f} not provisioned")
 
-    import sqlite3
-    import tempfile
-    import time as _time
 
-    from flask import Flask
-    from PIL import ImageDraw
 
-    from smartgallery_ai import schema
-    from smartgallery_ai.service import create_ai_blueprint
-    from smartgallery_ai.worker import AIWorker
 
     tmp = tempfile.mkdtemp(prefix="sg_critic_chain_")
     media = os.path.join(tmp, "m")
@@ -281,12 +276,14 @@ def test_real_critic_to_mask_chain():
     app.register_blueprint(create_ai_blueprint(cfg), url_prefix="/aidam")
     client = app.test_client()
     body = client.get("/aidam/review/fc1").get_json()
-    assert body["review"] is not None and len(body["findings"]) == len(findings)
+    assert body["review"] is not None
+    assert len(body["findings"]) == len(findings)
     served = 0
     for f in body["findings"]:
         if f.get("mask_url"):
             resp = client.get(f["mask_url"].replace("/galleryout/api/aidam", "/aidam"))
-            assert resp.status_code == 200 and len(resp.data) > 100
+            assert resp.status_code == 200
+            assert len(resp.data) > 100
             served += 1
     if localizable:
         assert served > 0, "no masks served through the API"
@@ -303,7 +300,6 @@ CHAT_REF = os.environ.get("AI_DAM_VLM_MODEL", "Qwen/Qwen3-VL-2B-Instruct")
 
 
 def _chat_model_or_skip():
-    from smartgallery_ai import models as ai_models
 
     try:
         return ai_models, ai_models.load(CHAT_REF, models_dir=MODELS_DIR)
@@ -314,7 +310,6 @@ def _chat_model_or_skip():
 def _shapes_image():
     """A wide image with two unambiguous shapes, so a wrong answer is a
     real regression rather than a judgement call."""
-    from PIL import ImageDraw
 
     img = Image.new("RGB", (1920, 1080), (18, 22, 40))
     draw = ImageDraw.Draw(img)

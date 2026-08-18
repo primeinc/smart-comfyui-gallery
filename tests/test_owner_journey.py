@@ -18,6 +18,7 @@ for the person who owns the library rather than the one visiting it.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 import time
 
@@ -49,7 +50,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def team_gallery(smartgallery_app, monkeypatch):
     """A login-protected gallery with one admin and two pictures."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -91,15 +92,11 @@ def team_gallery(smartgallery_app, monkeypatch):
     for dirpath, _dirs, names in os.walk(base, topdown=False):
         for name in names:
             if name.startswith(_PREFIX):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(os.path.join(dirpath, name))
-                except OSError:
-                    pass
         if os.path.basename(dirpath).startswith(_PREFIX):
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
-            except OSError:
-                pass
 
 
 def _signed_in(smartgallery_app):

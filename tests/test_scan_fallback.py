@@ -11,11 +11,18 @@ this process instead.
 
 The executor is always substituted here: these tests must never spawn real
 processes (slow, and on Windows the child re-imports the test runner).
+
+A scan only reaches the pool when the batch is at least
+PARALLEL_SCAN_MIN_FILES, so the fixture below lowers that bound to 1. Three
+probe files are otherwise under it, and every check here would pass on the
+in-process path without the pool being touched at all -- including the two
+that exist to prove what happens when it collapses.
 """
 
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -53,6 +60,13 @@ class _DeadPoolExecutor(_InlineExecutor):
         return future
 
 
+@pytest.fixture(autouse=True)
+def always_reach_the_pool(smartgallery_app, monkeypatch):
+    """Three files is below the threshold that keeps a small scan in this
+    process, and every test in this file is about the pool."""
+    monkeypatch.setattr(smartgallery_app, "PARALLEL_SCAN_MIN_FILES", 1)
+
+
 def _purge_probe_rows(smartgallery_app):
     """The gallery database is session-scoped; a scan only processes files
     it does not already know, so each test must start with these absent."""
@@ -64,7 +78,7 @@ def _purge_probe_rows(smartgallery_app):
         conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def gallery_files(smartgallery_app):
     """Three uniquely named images inside the gallery root, cleaned up after."""
     root = smartgallery_app.BASE_OUTPUT_PATH
@@ -80,10 +94,8 @@ def gallery_files(smartgallery_app):
     _purge_probe_rows(smartgallery_app)
     yield made
     for path in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(path)
-        except OSError:
-            pass
     _purge_probe_rows(smartgallery_app)
 
 
@@ -153,3 +165,49 @@ def test_one_unreadable_file_does_not_cost_the_others(
     monkeypatch.setattr(smartgallery_app, "process_single_file", explode_on_b)
 
     assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_c.png"]
+
+
+def test_a_small_scan_never_starts_a_pool(smartgallery_app, gallery_files,
+                                          monkeypatch):
+    """The threshold, and the reason it exists: a pool worker has to import
+    this module before it can do anything, which costs about a second
+    whether the batch is three files or three thousand.
+
+    The bound is restored to its real value here -- the autouse fixture
+    lowers it for every other test in this file -- and any attempt to build
+    an executor fails the test rather than being quietly tolerated."""
+    monkeypatch.setattr(smartgallery_app, "PARALLEL_SCAN_MIN_FILES", 12)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError(
+            "a three-file scan reached for a process pool; each worker would "
+            "import the whole module before touching a single picture")
+
+    monkeypatch.setattr(smartgallery_app.concurrent.futures,
+                        "ProcessPoolExecutor", forbidden)
+
+    assert _scan(smartgallery_app) == [
+        "scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"], (
+        "the in-process path indexed a different set than the pool does")
+
+
+def test_a_large_enough_scan_still_uses_the_pool(smartgallery_app,
+                                                 gallery_files, monkeypatch):
+    """Control for the test above. A threshold that swallowed every scan
+    would satisfy it while quietly making the gallery single-threaded."""
+    monkeypatch.setattr(smartgallery_app, "PARALLEL_SCAN_MIN_FILES", 2)
+    built = []
+
+    class _Counted(_InlineExecutor):
+        def __init__(self, max_workers=None):
+            super().__init__(max_workers)
+            built.append(max_workers)
+
+    monkeypatch.setattr(smartgallery_app.concurrent.futures,
+                        "ProcessPoolExecutor", _Counted)
+
+    assert _scan(smartgallery_app) == [
+        "scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
+    assert built, (
+        "three files with a bound of two did not reach the pool, so the "
+        "threshold has turned scanning sequential at every size")

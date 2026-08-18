@@ -13,12 +13,19 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import time
 
 import numpy as np
 from PIL import Image
+
+from smartgallery_ai import HASH_ALGO_VERSION, RUBRIC_VERSION, AIConfig, schema
+from smartgallery_ai import review as R
+from smartgallery_ai.embedders import get_semantic_backend, get_visual_backend
+from smartgallery_ai.hashing import compute_hashes_for_file, upsert_hashes
+from smartgallery_ai.vectors import VectorStore
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root (parent of probes/)
 sys.path.insert(0, REPO)
@@ -54,13 +61,7 @@ def main() -> int:
         Image.fromarray((rng.random((96, 96, 3)) * 255).astype("uint8")).save(
             os.path.join(media, f"img{i}.png"))
 
-    import sqlite3
 
-    from smartgallery_ai import AIConfig, HASH_ALGO_VERSION, RUBRIC_VERSION, schema
-    from smartgallery_ai import review as R
-    from smartgallery_ai.embedders import get_semantic_backend, get_visual_backend
-    from smartgallery_ai.hashing import compute_hashes_for_file, upsert_hashes
-    from smartgallery_ai.vectors import VectorStore
 
     db = os.path.join(tmp, "probe.sqlite")
     conn = sqlite3.connect(db)

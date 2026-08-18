@@ -25,7 +25,6 @@ tell nobody what broke.
 from __future__ import annotations
 
 
-
 def _count_connections_for(smartgallery_app, monkeypatch, root, folder_count):
     """Open `folder_count` folders under `root`, then count the database
     connections one folder scan makes."""

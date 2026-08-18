@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import ast
 import os
-import pathlib
 
 import pytest
 
@@ -46,7 +45,7 @@ _NAMES = {
 }
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app, monkeypatch, tmp_path):
     """A gallery folder of this test's own: these routes write real files."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
@@ -159,7 +158,7 @@ def test_a_name_of_nothing_much_still_makes_one_ordinary_file(smartgallery_app,
     assert os.path.dirname(os.path.realpath(made)) == os.path.realpath(directory)
 
 
-def test_no_user_supplied_name_goes_through_secure_filename(smartgallery_app):
+def test_no_user_supplied_name_goes_through_secure_filename(gallery_tree, smartgallery_app):
     """Seventeen call sites had this fault, across saved prompts, saved
     queries and workflow templates. Reaching each through its own endpoint
     would need a real workflow payload for the template ones, and a test
@@ -171,8 +170,7 @@ def test_no_user_supplied_name_goes_through_secure_filename(smartgallery_app):
     safe_media_filename, which keeps the name and removes what is
     dangerous, and there is one rule to check rather than a judgement per
     site about whether that name could be someone's."""
-    source = pathlib.Path(smartgallery_app.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
+    tree = gallery_tree
 
     def _called(node):
         func = node.func

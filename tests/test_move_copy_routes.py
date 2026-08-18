@@ -12,6 +12,7 @@ these tests exercise the same lookup the UI does.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -20,12 +21,12 @@ from PIL import Image
 _PREFIX = "mvroute_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def dest_folder(smartgallery_app):
     """A real subfolder of the gallery, known to the folder config."""
     path = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, f"{_PREFIX}dest")
@@ -86,15 +87,11 @@ def _cleanup(smartgallery_app):
     for dirpath, _dirs, names in os.walk(root, topdown=False):
         for name in names:
             if name.startswith(_PREFIX):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(os.path.join(dirpath, name))
-                except OSError:
-                    pass
         if os.path.basename(dirpath).startswith(_PREFIX):
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
-            except OSError:
-                pass
 
 
 def test_move_relocates_the_file_and_follows_it_in_the_database(

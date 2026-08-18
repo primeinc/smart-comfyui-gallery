@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import builtins
 import errno
+import io as _io
 import json
 import os
 import shutil
@@ -134,7 +135,6 @@ def a_folder_that_refuses_writes(smartgallery_app, tmp_path, monkeypatch):
 
 
 def every_action(file_id, folder_key):
-    import io as _io
     return [
         ("rename a picture", "/galleryout/rename_file/" + file_id,
          {"json": {"new_name": "other.png"}}),
@@ -159,7 +159,7 @@ def post(client, url, kwargs):
 def test_the_folder_really_does_refuse(a_folder_that_refuses_writes):
     """Control. If the refusal were not in force every check below would
     pass by measuring an ordinary working gallery."""
-    sg, _client, _file_id, _folder_key, root, arm = a_folder_that_refuses_writes
+    _sg, _client, _file_id, _folder_key, root, arm = a_folder_that_refuses_writes
     arm()
 
     with pytest.raises(PermissionError):
@@ -176,21 +176,21 @@ def test_the_folder_really_does_refuse(a_folder_that_refuses_writes):
 def test_none_of_them_claims_to_have_worked(a_folder_that_refuses_writes):
     """Control that passes on both builds: this was already right, and
     the change must not break it."""
-    sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
+    _sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
     arm()
 
     lied = []
     for label, url, kwargs in every_action(file_id, folder_key):
         answer = post(client, url, kwargs)
         if answer.status_code == 200:
-            lied.append("%s -> 200 %s" % (label, answer.get_data(as_text=True)))
+            lied.append(f"{label} -> 200 {answer.get_data(as_text=True)}")
     assert not lied, "\n  ".join(lied)
 
 
 def test_the_library_still_matches_the_disk(a_folder_that_refuses_writes):
     """The other control that passes on both: a refused rename or delete
     must not be recorded as though it happened."""
-    sg, client, file_id, folder_key, root, arm = a_folder_that_refuses_writes
+    sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
     arm()
 
     for _label, url, kwargs in every_action(file_id, folder_key):
@@ -201,19 +201,19 @@ def test_the_library_still_matches_the_disk(a_folder_that_refuses_writes):
     assert rows, "the library forgot the picture that is still on the disk"
     for row in rows:
         assert os.path.exists(row["path"]), (
-            "the library points at %s, which is not on the disk" % row["path"])
+            "the library points at {}, which is not on the disk".format(row["path"]))
 
 
 def test_each_one_says_what_is_actually_wrong(a_folder_that_refuses_writes):
     """The defect. Every one of them answered with errno."""
-    sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
+    _sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
     arm()
 
     unhelpful = []
     for label, url, kwargs in every_action(file_id, folder_key):
         said = post(client, url, kwargs).get_data(as_text=True)
         if "not allowed to change" not in said:
-            unhelpful.append("%s said %s" % (label, said[:160]))
+            unhelpful.append(f"{label} said {said[:160]}")
 
     assert not unhelpful, (
         "did not say the gallery cannot write to the folder:\n  "
@@ -227,7 +227,7 @@ def test_none_of_them_hands_back_errno(a_folder_that_refuses_writes):
     folder to go and fix, and these are the management screens, where the
     library's own path is on display anyway. What has no business being
     there is `[Errno 13]` and a traceback."""
-    sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
+    _sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
     arm()
 
     machine_speak = []
@@ -236,15 +236,14 @@ def test_none_of_them_hands_back_errno(a_folder_that_refuses_writes):
         said = answer.get_data(as_text=True)
         for giveaway in ("Errno", "errno", "Traceback", "Permission denied"):
             if giveaway in said:
-                machine_speak.append("%s leaked %r: %s"
-                                     % (label, giveaway, said[:160]))
+                machine_speak.append(f"{label} leaked {giveaway!r}: {said[:160]}")
     assert not machine_speak, "\n  ".join(machine_speak)
 
 
 def test_an_upload_says_why_it_failed(a_folder_that_refuses_writes):
     """It named the files and never said why: the reason was collected
     and then dropped when the message was built."""
-    sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
+    _sg, client, file_id, folder_key, _root, arm = a_folder_that_refuses_writes
     arm()
 
     _label, url, kwargs = every_action(file_id, folder_key)[-1]
@@ -259,7 +258,7 @@ def test_everything_still_works_when_the_folder_is_writable(
         a_folder_that_refuses_writes):
     """Over-reach guard, and the case that matters most: none of this may
     make an ordinary gallery refuse or complain."""
-    sg, client, file_id, folder_key, root, _arm = a_folder_that_refuses_writes
+    _sg, client, file_id, _folder_key, root, _arm = a_folder_that_refuses_writes
     # deliberately not armed
 
     made = post(client, "/galleryout/create_folder",

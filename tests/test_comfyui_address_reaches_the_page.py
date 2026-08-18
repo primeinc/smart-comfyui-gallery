@@ -32,6 +32,9 @@ point it starts from.
 
 from __future__ import annotations
 
+import ast
+import pathlib
+
 import pytest
 
 _CONFIGURED = "http://192.168.1.50:8189"
@@ -42,7 +45,7 @@ _BUILTIN = "http://127.0.0.1:8188"
 _QUOTED = (f"'{_BUILTIN}'", f'"{_BUILTIN}"')
 
 
-@pytest.fixture()
+@pytest.fixture
 def viewer(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -172,7 +175,6 @@ def test_an_awkward_address_cannot_break_the_page(smartgallery_app, viewer,
 def test_no_template_keeps_its_own_copy_of_the_address():
     """The sweep that found this. A ninth copy added later is a ninth thing
     that ignores the setting, and it would look exactly like the eight."""
-    import pathlib
 
     root = pathlib.Path(__file__).resolve().parent.parent / "templates"
     offenders = []
@@ -193,17 +195,12 @@ def test_no_template_keeps_its_own_copy_of_the_address():
         f"Use window.SG_COMFY_URL, which carries COMFYUI_SERVER_URL.")
 
 
-def test_both_page_views_pass_the_address():
+def test_both_page_views_pass_the_address(gallery_tree):
     """Two views render the gallery template. One passing it and the other
     not would make this depend on how you arrived at the page."""
-    import ast
-    import io
-    import pathlib
 
-    import smartgallery
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     renders = [node for node in ast.walk(tree)
                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)

@@ -7,16 +7,31 @@ network-free: every downloader is injected or monkeypatched."""
 from __future__ import annotations
 
 import contextlib
+import importlib.util as IU
+import io
+import logging
 import os
+import shutil as _sh
 import sqlite3
 import time
+import zipfile
+from types import SimpleNamespace
+from unittest import mock
 
+import click
 import pytest
+from flask import Flask
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai import provision as P
+from smartgallery_ai import service as S
+from smartgallery_ai import worker as W
+from smartgallery_ai.__main__ import main
+from smartgallery_ai.embedders import pick_torch_device
+from smartgallery_ai.provision import _download_zip_member
 from smartgallery_ai.schema import init_schema
-from smartgallery_ai.worker import AIWorker, provision_groups_for
+from smartgallery_ai.service import create_ai_blueprint, set_worker
+from smartgallery_ai.worker import AIWorker, _ClickConsoleHandler, provision_groups_for
 
 
 @pytest.fixture(autouse=True)
@@ -152,11 +167,11 @@ def test_provision_download_failure_names_artifact(tmp_path):
 
 
 def _cfg(tmp_path, **overrides) -> AIConfig:
-    defaults = dict(
-        enabled=True, base_path=str(tmp_path), db_path=str(tmp_path / "g.sqlite"),
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True,
-    )
+    defaults = {
+        "enabled": True, "base_path": str(tmp_path), "db_path": str(tmp_path / "g.sqlite"),
+        "models_dir": str(tmp_path / "models"), "cache_dir": str(tmp_path / "cache"),
+        "ephemeral_index": True,
+    }
     defaults.update(overrides)
     return AIConfig(**defaults)
 
@@ -214,7 +229,6 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
     """start() kicks off ONE background provisioning attempt for exactly
     the missing groups, without blocking the worker; on success the cached
     backend misses are dropped so the next cycle re-probes immediately."""
-    from smartgallery_ai import worker as W
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
@@ -254,7 +268,6 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
 def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, monkeypatch):
     """A failing download (egress-denied host) leaves state 'failed: ...',
     counts one error, and the worker keeps cycling normally."""
-    from smartgallery_ai import worker as W
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
@@ -280,7 +293,6 @@ def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, mo
 def test_worker_auto_provision_disabled_never_downloads(tmp_path, monkeypatch):
     """AI_DAM_AUTO_PROVISION=false (config auto_provision=False) is the
     strict no-egress mode: no provisioning attempt is ever made."""
-    from smartgallery_ai import worker as W
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
@@ -304,9 +316,7 @@ def test_worker_auto_provision_disabled_never_downloads(tmp_path, monkeypatch):
 def test_worker_provision_state_exposed_by_status_endpoint(tmp_path):
     """/status reports the worker's provisioning state so the UI can show
     download progress instead of a bare empty tab."""
-    from flask import Flask
 
-    from smartgallery_ai.service import create_ai_blueprint, set_worker
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
@@ -328,7 +338,6 @@ def test_worker_provision_state_exposed_by_status_endpoint(tmp_path):
 def test_invalidate_backend_probe_cache_clears_registered_caches():
     """The worker's post-provision hook empties every blueprint's probe
     cache so /status re-probes instead of serving a stale False."""
-    from smartgallery_ai import service as S
 
     cache_before = list(S._PROBE_CACHES)
     try:
@@ -344,17 +353,16 @@ def test_invalidate_backend_probe_cache_clears_registered_caches():
 
 def test_cli_provision_list_prints_plan_without_downloading(tmp_path, capsys):
     """`provision --list` prints the plan and exits 0 with no downloads."""
-    from smartgallery_ai.__main__ import main
 
     rc = main(["provision", "faces", "--models-dir", str(tmp_path), "--list"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "MISSING" in out and "face_detection_yunet_2023mar.onnx" in out
+    assert "MISSING" in out
+    assert "face_detection_yunet_2023mar.onnx" in out
     assert not os.listdir(tmp_path)
 
 
 def test_cli_provision_unknown_group_exits_nonzero(tmp_path, capsys):
-    from smartgallery_ai.__main__ import main
 
     rc = main(["provision", "bogus", "--models-dir", str(tmp_path), "--list"])
     assert rc == 2
@@ -367,7 +375,6 @@ def test_cli_provision_unknown_group_exits_nonzero(tmp_path, capsys):
 def test_runtime_missing_reports_only_unimportable(monkeypatch):
     """Probes that import are never reinstalled; only genuinely missing
     modules produce install work."""
-    import importlib.util as IU
 
     group = next(g for g in P.GROUPS if g.name == "semantic")
     real_find = IU.find_spec
@@ -427,7 +434,6 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
     """With a structured progress callback the default HF downloaders run
     inside the hub-bar silencer (the caller owns console rendering); the
     bar-rendering CLI path -- no callback -- leaves the hub's bars on."""
-    from types import SimpleNamespace
     monkeypatch.setattr(P.importlib.util, "find_spec",
                         lambda _name: SimpleNamespace(origin="stub.py"))
     entered = []
@@ -461,7 +467,6 @@ def test_provision_groups_for_includes_runtime_missing_groups(tmp_path, monkeypa
     os.makedirs(models / "dinov2-small", exist_ok=True)
     (models / "dinov2-small" / "model.safetensors").write_bytes(b"x")
 
-    from smartgallery_ai import worker as W
 
     monkeypatch.setattr(W.provisioning, "runtime_missing",
                         lambda g: [("torch", "torch")] if g.name == "visual" else [])
@@ -472,7 +477,6 @@ def test_provision_groups_for_includes_runtime_missing_groups(tmp_path, monkeypa
 
 def test_format_plan_lists_runtime_rows(tmp_path, monkeypatch):
     """The plan shows runtime requirements with present/MISSING state."""
-    from types import SimpleNamespace
     monkeypatch.setattr(
         P.importlib.util, "find_spec",
         lambda name: None if name == "open_clip"
@@ -504,9 +508,7 @@ def test_ai_layer_enabled_by_default_from_env(monkeypatch):
 def test_pick_torch_device_prefers_cuda_then_cpu(monkeypatch):
     """Device selection: forced env wins, else CUDA when available, else
     CPU (MPS covered on mac hardware)."""
-    from types import SimpleNamespace
 
-    from smartgallery_ai.embedders import pick_torch_device
 
     fake_cuda = SimpleNamespace(
         cuda=SimpleNamespace(is_available=lambda: True),
@@ -527,7 +529,6 @@ def test_pick_torch_device_prefers_cuda_then_cpu(monkeypatch):
 
 def test_copy_with_progress_reports_running_totals():
     """Every chunk reports cumulative bytes against the total."""
-    import io
 
     src = io.BytesIO(b"x" * 2500)
     dst = io.BytesIO()
@@ -586,7 +587,6 @@ def test_worker_folds_progress_events_into_served_state(tmp_path):
 def test_worker_start_makes_info_logging_visible(tmp_path):
     """start() attaches a handler so provisioning progress reaches the
     console even though the host app never configures logging."""
-    import logging
 
     _make_db(str(tmp_path / "g.sqlite"))
     cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="none",
@@ -614,9 +614,7 @@ def test_worker_start_makes_info_logging_visible(tmp_path):
 def test_console_handler_prefixes_a_timestamp(capsys):
     """Every console line carries an HH:MM:SS timestamp so long indexing
     runs are readable; the message text follows unchanged."""
-    import logging
 
-    from smartgallery_ai.worker import _ClickConsoleHandler
 
     handler = _ClickConsoleHandler()
     record = logging.LogRecord(
@@ -635,7 +633,6 @@ def test_namespace_package_shadow_counts_as_missing():
     (spec.origin is None); the runtime probe must treat that as NOT
     installed, or a stray folder suppresses the install and the backend
     fails later."""
-    from types import SimpleNamespace
 
     group = next(g for g in P.GROUPS if g.name == "semantic")
     real = P.importlib.util.find_spec
@@ -645,7 +642,6 @@ def test_namespace_package_shadow_counts_as_missing():
             return SimpleNamespace(origin=None, submodule_search_locations=["/repo/open_clip"])
         return real(name)
 
-    import unittest.mock as mock
     with mock.patch.object(P.importlib.util, "find_spec", shadowed):
         assert ("open_clip", "open_clip_torch") in P.runtime_missing(group)
 
@@ -679,7 +675,6 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
     """A mixed-generation machine reports each card with its OWN name,
     compute capability, and VRAM -- never one card's name stitched to
     another card's capability."""
-    from types import SimpleNamespace
     monkeypatch.setattr(P, "cuda_hardware_present", lambda: True)
     monkeypatch.setattr(P, "_driver_cuda_version", lambda: 13.1)
     monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
@@ -706,11 +701,8 @@ def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, 
     """A broken Windows console handle (click raising OSError) permanently
     drops the handler to plain stderr writes: the line still lands, no
     handleError traceback, and click is not retried per line."""
-    import logging
 
-    import click
 
-    from smartgallery_ai.worker import _ClickConsoleHandler
 
     attempts = []
 
@@ -730,7 +722,8 @@ def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, 
     handler.emit(rec("[AIWorker] line two"))
 
     err = capsys.readouterr().err
-    assert "[AIWorker] line one" in err and "[AIWorker] line two" in err
+    assert "[AIWorker] line one" in err
+    assert "[AIWorker] line two" in err
     assert "Traceback" not in err
     assert attempts == [1]  # click tried once, then permanently plain
 
@@ -738,7 +731,6 @@ def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, 
 def test_worker_start_disables_propagation_to_a_late_root_logger(tmp_path):
     """After start() attaches its own console handler, a root logger
     configured LATER must not double-print every line (propagate off)."""
-    import logging
 
     _make_db(str(tmp_path / "g.sqlite"))
     cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="none",
@@ -764,8 +756,7 @@ def test_worker_start_disables_propagation_to_a_late_root_logger(tmp_path):
 def test_download_zip_member_extracts_one_file(tmp_path):
     """unzip_member artifacts: the zip is fetched, exactly the named
     member lands at dest, and the zip is removed."""
-    import zipfile
-    from smartgallery_ai.provision import _download_zip_member
+
 
     src_zip = tmp_path / "pack.zip"
     with zipfile.ZipFile(src_zip, "w") as zf:
@@ -776,7 +767,6 @@ def test_download_zip_member_extracts_one_file(tmp_path):
 
     def fake_dl(url, path):
         assert url == "https://example.test/pack.zip"
-        import shutil as _sh
         _sh.copyfile(src_zip, path)
 
     _download_zip_member(fake_dl, "https://example.test/pack.zip",
@@ -790,7 +780,7 @@ def test_download_zip_member_extracts_one_file(tmp_path):
 # Disk-space preflight: downloads that cannot fit are refused up front
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("text,expected_mb", [
+@pytest.mark.parametrize(("text", "expected_mb"), [
     ("232 KB", 0),                    # rounds below 1 MB; still nonzero bytes
     ("37 MB", 37),
     ("2.5 GB", 2560),

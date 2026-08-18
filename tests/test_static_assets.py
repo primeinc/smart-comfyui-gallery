@@ -28,7 +28,6 @@ that has already signed in.
 from __future__ import annotations
 
 import ast
-import io
 import pathlib
 
 import pytest
@@ -40,7 +39,7 @@ _USER_MANAGER = "/static/modals/user_manager_module.html"
 _STYLESHEET = "/static/css/index.css"
 
 
-@pytest.fixture()
+@pytest.fixture
 def local(smartgallery_app, monkeypatch):
     """No login configured -- the common case, and the one that must not
     change."""
@@ -49,14 +48,14 @@ def local(smartgallery_app, monkeypatch):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def locked(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def exhibition(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
@@ -111,7 +110,7 @@ def test_the_login_screen_needs_no_static_asset(locked):
     assert "/static/" not in body, body[:400]
 
 
-def test_only_the_static_endpoint_escapes_the_route_audit(smartgallery_app):
+def test_only_the_static_endpoint_escapes_the_route_audit(gallery_tree, smartgallery_app):
     """The structural hole behind this bug.
 
     test_every_route_is_classified reads the source and sorts @app.route
@@ -120,7 +119,7 @@ def test_only_the_static_endpoint_escapes_the_route_audit(smartgallery_app):
     unnoticed. Compare what Flask actually serves against what that audit
     can see, so the next add_url_rule has to be accounted for rather than
     silently unguarded."""
-    tree = ast.parse(io.open(_SOURCE, encoding="utf-8").read())
+    tree = gallery_tree
     from_source = {
         node.name for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)

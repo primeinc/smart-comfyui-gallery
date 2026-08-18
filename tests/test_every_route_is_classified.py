@@ -31,7 +31,6 @@ test_static_assets.py.
 from __future__ import annotations
 
 import ast
-import io
 import pathlib
 
 import pytest
@@ -50,10 +49,9 @@ _INTENTIONALLY_OPEN = {
 }
 
 
-def _classify():
-    src = io.open(_SOURCE, encoding="utf-8").read()
-    lines = src.splitlines()
-    tree = ast.parse(src)
+def _classify(gallery_source, gallery_tree):
+    lines = gallery_source.splitlines()
+    tree = gallery_tree
 
     found = {}
     for node in ast.walk(tree):
@@ -88,19 +86,19 @@ def _classify():
     return found
 
 
-def test_the_classifier_still_reads_the_file():
+def test_the_classifier_still_reads_the_file(gallery_source, gallery_tree):
     """Control: if the parsing breaks, every assertion below passes on an
     empty set. Two known routes are pinned by name and category."""
-    found = _classify()
+    found = _classify(gallery_source, gallery_tree)
 
     assert len(found) > 80, f"only {len(found)} routes found; the parser is broken"
     assert found["delete_folder"][0] == "management", found.get("delete_folder")
     assert found["serve_file"][0] == "per-file", found.get("serve_file")
 
 
-def test_no_route_is_open_by_accident():
+def test_no_route_is_open_by_accident(gallery_source, gallery_tree):
     """The regression this file exists for."""
-    found = _classify()
+    found = _classify(gallery_source, gallery_tree)
 
     unclassified = sorted(
         f"{name} ({route})" for name, (kind, route) in found.items()
@@ -115,10 +113,10 @@ def test_no_route_is_open_by_accident():
         "file with the reason.")
 
 
-def test_the_open_list_has_not_gone_stale():
+def test_the_open_list_has_not_gone_stale(gallery_source, gallery_tree):
     """A name left here after the route gained a gate, or after it was
     removed, would silently excuse a future route of the same name."""
-    found = _classify()
+    found = _classify(gallery_source, gallery_tree)
 
     missing = sorted(n for n in _INTENTIONALLY_OPEN if n not in found)
     assert missing == [], f"listed as open but no longer a route: {missing}"

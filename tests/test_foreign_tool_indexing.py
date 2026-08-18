@@ -21,6 +21,7 @@ it, scanned, stored, and then found by each typed operator.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -54,7 +55,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def a1111_file(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
                         "ProcessPoolExecutor", _InlineExecutor)
@@ -86,10 +87,8 @@ def a1111_file(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def test_the_prompt_is_read_out_of_the_infotext(smartgallery_app, a1111_file):

@@ -22,7 +22,6 @@ from PIL import Image
 
 from smartgallery_ai import models as ai_models
 
-
 # --- fixtures / helpers -----------------------------------------------------
 
 

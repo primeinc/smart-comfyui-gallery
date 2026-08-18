@@ -26,12 +26,9 @@ from __future__ import annotations
 
 import ast
 import io
-import os
-import pathlib
-import subprocess
-import sys
 
 import pytest
+from flask import Flask, request
 
 import smartgallery
 
@@ -39,11 +36,10 @@ _MIB = 1024 * 1024
 _OLD_LITERAL = 2147483648  # the fixed 2 GiB that used to be passed
 
 
-def test_the_transport_ceiling_is_not_written_in():
+def test_the_transport_ceiling_is_not_written_in(gallery_tree):
     """The regression as it was: a literal in the serve() call, which no
     setting can move."""
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     serves = [node for node in ast.walk(tree)
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
@@ -67,34 +63,23 @@ def test_the_transport_ceiling_clears_the_app_ceiling():
     the answer that cannot name the setting."""
     app_limit = smartgallery.app.config["MAX_CONTENT_LENGTH"]
 
-    assert smartgallery.MAX_REQUEST_BODY_BYTES > app_limit, (
+    assert app_limit < smartgallery.MAX_REQUEST_BODY_BYTES, (
         f"transport ceiling {smartgallery.MAX_REQUEST_BODY_BYTES} does not "
         f"clear the app ceiling {app_limit}")
 
 
-@pytest.mark.parametrize("configured", ["4000", "8000"])
+@pytest.mark.parametrize("configured", [4000, 8000, 2049])
 def test_a_setting_above_two_gigabytes_is_not_quietly_capped(configured):
     """The bug itself. It only shows up above 2048, which is why the
     default hid it: 2000 fits under the old literal.
 
-    Run in its own process because the setting is read at import."""
-    environment = dict(os.environ, COMFYUI_MAX_UPLOAD_MB=configured,
-                       PYTHONPATH=str(pathlib.Path(smartgallery.__file__).parent))
-    probe = (
-        "import sys; sys.argv=['smartgallery.py']\n"
-        "import smartgallery\n"
-        "print(smartgallery.app.config['MAX_CONTENT_LENGTH'])\n"
-        "print(smartgallery.MAX_REQUEST_BODY_BYTES)\n"
-    )
-    finished = subprocess.run([sys.executable, "-c", probe], env=environment,
-                              capture_output=True, text=True, timeout=300)
-    assert finished.returncode == 0, finished.stderr[-2000:]
+    Asked of derive_upload_ceilings directly. It needed its own interpreter
+    while the setting was read and turned into both limits at module scope;
+    the arithmetic is a function now, so any value can be put to it without
+    starting a gallery."""
+    app_limit, transport_limit = smartgallery.derive_upload_ceilings(configured)
 
-    numbers = [int(line) for line in finished.stdout.split() if line.isdigit()]
-    assert len(numbers) == 2, finished.stdout
-    app_limit, transport_limit = numbers
-
-    assert app_limit == int(configured) * _MIB
+    assert app_limit == configured * _MIB
     assert transport_limit > app_limit, (
         f"COMFYUI_MAX_UPLOAD_MB={configured} gives an app ceiling of "
         f"{app_limit // _MIB} MB and a transport ceiling of "
@@ -104,7 +89,18 @@ def test_a_setting_above_two_gigabytes_is_not_quietly_capped(configured):
         f"{configured} MB configured; uploads stop at the old fixed 2048 MB")
 
 
-@pytest.fixture()
+def test_the_shipped_ceilings_came_from_that_same_arithmetic():
+    """The function is only worth anything if startup still uses it -- the
+    two limits were derived inline once and could be again."""
+    expected = smartgallery.derive_upload_ceilings(smartgallery.MAX_UPLOAD_MB)
+
+    assert (smartgallery.app.config["MAX_CONTENT_LENGTH"],
+            smartgallery.MAX_REQUEST_BODY_BYTES) == expected, (
+        "the running ceilings do not match derive_upload_ceilings, so the "
+        "setting and the limits have parted company again")
+
+
+@pytest.fixture
 def uploader(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -172,14 +168,12 @@ def test_an_upload_within_the_limit_is_not_refused(smartgallery_app, uploader,
 def test_an_unhandled_413_would_not_be_json():
     """Control for the check above: Flask's own answer to a body over the
     ceiling is an HTML page, so finding JSON there means a handler ran."""
-    from flask import Flask
 
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 1024
 
     @app.route("/take", methods=["POST"])
     def _take():
-        from flask import request
         return str(len(request.form))
 
     response = app.test_client().post("/take", data={

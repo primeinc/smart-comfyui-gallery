@@ -12,6 +12,9 @@ and the response NEVER carries SQL or an AST.
 
 from __future__ import annotations
 
+import os
+import time as _time
+
 import pytest
 
 _NLQ_URL = "/galleryout/api/omniquery/nlq"
@@ -40,14 +43,14 @@ class _ScriptedModel:
         return self._result
 
 
-@pytest.fixture()
+@pytest.fixture
 def nlq_parser(smartgallery_app, monkeypatch):
     """Model-free endpoint: the nlq rules answer everything."""
     monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", _NoModel())
     return smartgallery_app
 
 
-@pytest.fixture()
+@pytest.fixture
 def seeded_files(smartgallery_app):
     """Seed files rows directly into the app's real DB: two favorited
     videos, one non-favorited video, one favorited image, one plain image
@@ -199,7 +202,6 @@ def test_live_mode_latency_budget(smartgallery_app, nlq_parser, seeded_files):
     validate + compile + execute + JSON) must stay comfortably inside an
     interactive budget. The assertion bound is deliberately loose for slow
     CI machines; the measured numbers print with -s."""
-    import time as _time
     del nlq_parser, seeded_files
     client = smartgallery_app.app.test_client()
     queries = ["girlnextdoor", "favorite videos", "photos of trees",
@@ -259,7 +261,8 @@ def test_model_count_answer_becomes_a_stat_card(smartgallery_app, monkeypatch, s
     monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
     client = smartgallery_app.app.test_client()
     data = client.post(_NLQ_URL, json={"query": "roughly how much girlnextdoor stuff"}).get_json()
-    assert data["kind"] == "count" and data["card"] == "stat"
+    assert data["kind"] == "count"
+    assert data["card"] == "stat"
     assert data["count"] == 7
 
 
@@ -359,7 +362,7 @@ def test_gallery_view_ships_palette_and_no_sql_surface(smartgallery_app):
     html = _get_gallery_html(client)
     assert "omni-palette-overlay" in html
     assert "openOmniPalette" in html
-    assert "Alt" in html and "+P" in html or "Ctrl" in html
+    assert ("Alt" in html and "+P" in html) or "Ctrl" in html
     # The old modal's SQL-facing surfaces are gone.
     assert "Advanced (manual SQL)" not in html
     assert "omniquery-overlay" not in html
@@ -390,7 +393,6 @@ def test_models_dir_env_published_for_env_reading_consumers(smartgallery_app):
     (ComfyUI plugin deployments) cannot point them at a directory
     provisioning never writes to. A user's own env value wins, and in both
     branches the invariant holds: env == config."""
-    import os
 
     assert os.path.abspath(os.environ["AI_DAM_MODELS_DIR"]) == \
         os.path.abspath(smartgallery_app.AI_CONFIG.models_dir)

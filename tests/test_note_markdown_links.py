@@ -42,6 +42,8 @@ import subprocess
 
 import pytest
 
+pytestmark = pytest.mark.spawns  # every check here runs another program
+
 _TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "templates"
 
 _BLOCKED = [
@@ -100,9 +102,9 @@ def _renderer(template: str) -> str:
              else _function(source, "markdownSafeUrl"))
     return "\n".join([
         # A stand-in for the page's own escaper, which lives elsewhere.
-        "function escapeHTML(v){ return String(v).replace(/[&<>\"']/g,"
+        ("function escapeHTML(v){ return String(v).replace(/[&<>\"']/g,"
         " m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"
-        "\"'\":'&#39;'}[m])); }",
+        "\"'\":'&#39;'}[m])); }"),
         guard,
         _function(source, "renderMarkdownText"),
     ])
@@ -130,7 +132,7 @@ def test_a_dangerous_scheme_never_reaches_a_link(template):
 
     results = _render(template, notes)
 
-    for url, result in zip(_BLOCKED, results):
+    for url, result in zip(_BLOCKED, results, strict=False):
         assert result["url"] == "#", (url, result["url"])
         assert "javascript:" not in result["html"], (url, result["html"])
         assert "vbscript:" not in result["html"], (url, result["html"])
@@ -144,7 +146,7 @@ def test_an_ordinary_link_still_works(template):
 
     results = _render(template, notes)
 
-    for url, result in zip(_ALLOWED, results):
+    for url, result in zip(_ALLOWED, results, strict=False):
         assert result["url"] == url, (url, result["url"])
 
 

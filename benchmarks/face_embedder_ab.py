@@ -35,9 +35,12 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("AI_DAM_FACE_GRAPH_BACKEND", "numpy")
 
+import cv2
+from insightface.app import FaceAnalysis
 from PIL import Image
-from smartgallery_ai.faces import (OpenCVFaceBackend, _chinese_whispers,
-                                   _neighbor_graph)
+
+from smartgallery_ai.faces import OpenCVFaceBackend, _chinese_whispers, _neighbor_graph
+
 
 def _required_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
@@ -104,8 +107,6 @@ def collect(embedder, models_dir=MODELS):
 def collect_insightface(pack, root):
     """insightface's own quickstart pipeline: SCRFD joint 128+640 detect,
     upstream landmark alignment, pack recognizer -- their code end to end."""
-    import cv2
-    from insightface.app import FaceAnalysis
 
     app = FaceAnalysis(name=pack, root=root,
                        allowed_modules=["detection", "recognition"],
@@ -188,7 +189,7 @@ for variant, run in VARIANTS.items():
         graph, _backend = _neighbor_graph(vecs, thr)
         pred = _chinese_whispers(graph)
         prec, rec, f1 = pairwise_f1(pred, labels)
-        sweep.append({"threshold": thr, "clusters": int(len(set(pred))),
+        sweep.append({"threshold": thr, "clusters": len(set(pred)),
                       "precision": round(prec, 4), "recall": round(rec, 4),
                       "f1": round(f1, 4)})
     results[embedder] = {

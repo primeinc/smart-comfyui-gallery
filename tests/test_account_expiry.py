@@ -33,7 +33,7 @@ import sg_auth
 _PASSWORD = "visitor-password-123"
 
 
-@pytest.fixture()
+@pytest.fixture
 def accounts(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)

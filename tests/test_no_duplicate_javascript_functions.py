@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import collections
 import re
+from pathlib import Path
 
 import pytest
 
@@ -64,7 +65,7 @@ def _duplicates(html: str):
     return {name: n for name, n in counted.items() if n > 1}, len(names)
 
 
-@pytest.fixture()
+@pytest.fixture
 def management_page(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -134,7 +135,6 @@ def test_no_function_is_declared_twice_on_the_ai_dashboard(management_page,
 def test_the_accepted_list_is_still_describing_something_real():
     """An allowlist that outlives its entry is a lie in a test file. If the
     duplicate is resolved, this fails and the entry goes."""
-    from pathlib import Path
 
     exhibition = (Path(__file__).resolve().parent.parent
                   / "templates" / "exhibition.html").read_text(encoding="utf-8")

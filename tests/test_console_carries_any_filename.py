@@ -27,6 +27,8 @@ would pass on a UTF-8 box while the bug sat untouched.
 
 from __future__ import annotations
 
+import ast
+import io
 import os
 import pathlib
 import subprocess
@@ -35,6 +37,8 @@ import sys
 import pytest
 
 import smartgallery
+
+pytestmark = pytest.mark.spawns  # every check here runs another program
 
 # Chinese, Japanese, Korean, Cyrillic, and a German name with an umlaut --
 # none of which cp1252 can hold, except the last, which it can.
@@ -69,49 +73,47 @@ def test_the_condition_is_real():
     assert b"UnicodeEncodeError" in finished.stderr, finished.stderr[-400:]
 
 
-@pytest.mark.parametrize("name", _NAMES)
-def test_a_name_can_be_printed_once_the_gallery_is_loaded(name):
-    """The symptom, through the real import."""
-    escaped = name.encode("unicode_escape").decode()
+def test_every_name_survives_a_real_redirected_pipe():
+    """The symptom, through the real import, on a real pipe.
+
+    One child rather than seven. Each name used to get its own interpreter
+    -- three seconds of process start and gallery loading apiece -- to
+    prove the same mechanism over again. The mechanism itself is checked in
+    this process by test_a_code_page_stream_stops_raising below; what only
+    a child can show is that it holds for a genuinely redirected stream on
+    a machine that has not opted into UTF-8, and one child shows that for
+    every name at once.
+
+    Three claims ride together because they share the child: the process
+    survives each name, the names arrive intact rather than as question
+    marks, and ordinary English is untouched.
+    """
+    printed = "".join(
+        "print('%s')\n" % name.encode("unicode_escape").decode()
+        for name in _NAMES)
     finished = _run(
         "import sys; sys.argv = ['smartgallery.py']\n"
         "import smartgallery\n"
-        f"print('{escaped}')\n"
+        + printed
+        + "print('INFO: Starting full file scan...')\n"
         "print('still running')\n"
     )
 
     assert finished.returncode == 0, (
-        f"printing {name} ended the process:\n"
-        f"{finished.stderr.decode('utf-8', 'replace')[-1500:]}")
+        "printing the names ended the process:\n"
+        + finished.stderr.decode("utf-8", "replace")[-1500:])
     assert b"still running" in finished.stdout, finished.stdout[-400:]
 
+    out = finished.stdout.decode("utf-8", "replace")
+    for name in _NAMES:
+        # Not raising is the requirement; arriving intact is the point. A
+        # stream that swallowed every such name into question marks would
+        # satisfy the return code and tell nobody which file was damaged.
+        assert name in out, f"{name} came back as something else:\n{out!r}"
 
-def test_the_name_arrives_readable():
-    """Not raising is the requirement; arriving intact is the point. A
-    stream that swallowed every such name into question marks would pass
-    the check above and tell nobody which file was damaged."""
-    finished = _run(
-        "import sys; sys.argv = ['smartgallery.py']\n"
-        "import smartgallery\n"
-        "print('\\u6d4b\\u8bd5\\u56fe\\u7247.png')\n"
-    )
-
-    assert finished.returncode == 0, finished.stderr[-800:]
-    assert "测试图片.png" in finished.stdout.decode("utf-8", "replace"), (
-        f"the name came back as {finished.stdout!r}")
-
-
-def test_ordinary_output_is_unchanged():
-    """Over-reach guard: the great majority of what this prints is plain
-    English, and it has to be exactly as it was."""
-    finished = _run(
-        "import sys; sys.argv = ['smartgallery.py']\n"
-        "import smartgallery\n"
-        "print('INFO: Starting full file scan...')\n"
-    )
-
-    assert finished.returncode == 0, finished.stderr[-800:]
-    assert b"INFO: Starting full file scan..." in finished.stdout
+    # Over-reach guard: the great majority of what this prints is plain
+    # English, and it has to be exactly as it was.
+    assert "INFO: Starting full file scan..." in out, out
 
 
 def test_a_stream_that_cannot_be_reconfigured_is_left_alone():
@@ -136,7 +138,6 @@ def test_a_stream_that_cannot_be_reconfigured_is_left_alone():
 def test_a_code_page_stream_stops_raising():
     """The mechanism on its own, without a subprocess: a stream that could
     not hold the name before can be written to afterwards."""
-    import io
 
     raw = io.BytesIO()
     stream = io.TextIOWrapper(raw, encoding="cp1252", newline="")
@@ -154,14 +155,11 @@ def test_a_code_page_stream_stops_raising():
     assert raw.getvalue().decode("utf-8") == "测试图片.png"
 
 
-def test_it_runs_before_anything_can_print():
+def test_it_runs_before_anything_can_print(gallery_tree):
     """Placement is the whole of it. A call made after the first print is
     a call made after the first chance to die."""
-    import ast
-    import io as _io
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(_io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     called_at = [node.lineno for node in ast.walk(tree)
                  if isinstance(node, ast.Call)

@@ -18,7 +18,8 @@ from flask import Flask
 from PIL import Image
 
 import sg_auth
-from smartgallery_ai import AIConfig, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
+from smartgallery_ai import RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig
+from smartgallery_ai import vectors as vectors_mod
 from smartgallery_ai.review import Finding, ReviewResult, store_review
 from smartgallery_ai.schema import init_schema
 from smartgallery_ai.service import (
@@ -66,19 +67,19 @@ def _add_file(conn, file_id, mtime=1000.0, file_type="image", path=None):
 def _make_config(tmp_path, **overrides) -> AIConfig:
     """Enabled config with every backend off unless a test opts in, so no
     'auto' probe can wander toward a real model runtime."""
-    defaults = dict(
-        enabled=True,
-        base_path=str(tmp_path),
-        db_path=str(tmp_path / "gallery.sqlite"),
-        models_dir=str(tmp_path / "models"),
-        cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True,
-        semantic_backend="none",
-        visual_backend="none",
-        face_backend="none",
-        critic_backend="none",
-        segmenter_backend="none",
-    )
+    defaults = {
+        "enabled": True,
+        "base_path": str(tmp_path),
+        "db_path": str(tmp_path / "gallery.sqlite"),
+        "models_dir": str(tmp_path / "models"),
+        "cache_dir": str(tmp_path / "cache"),
+        "ephemeral_index": True,
+        "semantic_backend": "none",
+        "visual_backend": "none",
+        "face_backend": "none",
+        "critic_backend": "none",
+        "segmenter_backend": "none",
+    }
     defaults.update(overrides)
     return AIConfig(**defaults)
 
@@ -325,7 +326,8 @@ def test_index_skips_fresh_embeddings_on_reindex(tmp_path):
     config = _make_config(tmp_path, semantic_backend="stub", visual_backend="stub")
     client = _client(config)
     first = client.post(f"{_PREFIX}/index/twice", json={}).get_json()
-    assert first["hashed"] is True and first["embedded"] == [SPACE_SEMANTIC, SPACE_VISUAL]
+    assert first["hashed"] is True
+    assert first["embedded"] == [SPACE_SEMANTIC, SPACE_VISUAL]
 
     second = client.post(f"{_PREFIX}/index/twice", json={}).get_json()
 
@@ -470,7 +472,6 @@ def test_corrupt_disk_cache_falls_back_to_sqlite_and_repairs(tmp_path):
 
     # Simulate a fresh process: generations are process-global, so a new
     # store instance alone no longer implies a cold cache.
-    from smartgallery_ai import vectors as vectors_mod
 
     with vectors_mod._GEN_LOCK:
         vectors_mod._GENERATIONS.clear()
@@ -496,7 +497,8 @@ def test_invalidate_removes_only_matching_space_cache_files(tmp_path):
     store.topk(conn, "visual", query, k=1)
     sem_cache = tmp_path / "vectors" / "semantic__v1.npz"
     vis_cache = tmp_path / "vectors" / "visual__v1.npz"
-    assert sem_cache.exists() and vis_cache.exists()
+    assert sem_cache.exists()
+    assert vis_cache.exists()
 
     store.invalidate("semantic")
 

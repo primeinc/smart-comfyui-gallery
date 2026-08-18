@@ -15,16 +15,17 @@ model-version migration are naturally excluded until re-indexed.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sqlite3
-
-from smartgallery_ai import schema
 import threading
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
+
+from smartgallery_ai import schema
 
 _VECTOR_DTYPE = "<f4"  # little-endian float32, per schema.py contract
 
@@ -96,9 +97,9 @@ class _SpaceMatrix:
     matrix: np.ndarray  # (n, dim), L2-normalized rows, float32
     row_count: int
     max_computed_at: float
-    faiss_index: Optional[object] = None  # lazy IndexFlatIP over `matrix`; rebuilt with it
+    faiss_index: object | None = None  # lazy IndexFlatIP over `matrix`; rebuilt with it
     faiss_gpu: bool = False  # True when faiss_index lives on a GPU (search needs the lock)
-    id_to_row: Optional[dict] = None  # lazy file_id -> row index; rebuilt with matrix
+    id_to_row: dict | None = None  # lazy file_id -> row index; rebuilt with matrix
 
 
 class VectorStore:
@@ -106,7 +107,7 @@ class VectorStore:
 
     def __init__(
         self,
-        db: Union[str, Callable[[], sqlite3.Connection], None] = None,
+        db: str | Callable[[], sqlite3.Connection] | None = None,
         cache_dir: str = "",
         ephemeral: bool = False,
     ):
@@ -114,7 +115,7 @@ class VectorStore:
         call must then supply its own connection). `ephemeral=True` keeps the
         cache purely in memory -- nothing is written under `cache_dir`."""
         if db is None:
-            self._conn_factory: Optional[Callable[[], sqlite3.Connection]] = None
+            self._conn_factory: Callable[[], sqlite3.Connection] | None = None
         elif callable(db):
             self._conn_factory = db
         else:
@@ -126,7 +127,7 @@ class VectorStore:
 
     # -- connection handling -------------------------------------------------
 
-    def _resolve_conn(self, conn: Optional[sqlite3.Connection]):
+    def _resolve_conn(self, conn: sqlite3.Connection | None):
         """Returns (conn, owns_it). Falls back to the configured factory."""
         if conn is not None:
             return conn, False
@@ -138,7 +139,7 @@ class VectorStore:
 
     def add(
         self,
-        conn: Optional[sqlite3.Connection],
+        conn: sqlite3.Connection | None,
         file_id: str,
         space: str,
         model_id: str,
@@ -195,12 +196,12 @@ class VectorStore:
 
     def topk(
         self,
-        conn: Optional[sqlite3.Connection],
+        conn: sqlite3.Connection | None,
         space: str,
         query_vec: np.ndarray,
         k: int,
         exclude: Sequence[str] = (),
-        model_version: Optional[str] = None,
+        model_version: str | None = None,
     ) -> list[tuple[str, float]]:
         """Top-k (file_id, cosine_similarity) neighbors of `query_vec` in `space`.
 
@@ -266,13 +267,13 @@ class VectorStore:
                 # nor k > 2048 (faiss wiki), and are not thread-safe even
                 # for reads: over-fetch by the exclusion count under the
                 # module lock, filter after.
-                fetch = min(sm.row_count, min(k + len(rows), 2048))
+                fetch = min(sm.row_count, k + len(rows), 2048)
                 with _FAISS_GPU_SEARCH_LOCK:
                     sims_f, ids_f = sm.faiss_index.search(
                         q[None, :].astype(np.float32), fetch)
                 pairs = [
                     (sm.ids[int(i)], float(s))
-                    for s, i in zip(sims_f[0], ids_f[0])
+                    for s, i in zip(sims_f[0], ids_f[0], strict=False)
                     if int(i) >= 0 and sm.ids[int(i)] not in excluded
                 ]
             else:
@@ -291,7 +292,7 @@ class VectorStore:
                 )
                 pairs = [
                     (sm.ids[int(i)], float(s))
-                    for s, i in zip(sims_f[0], ids_f[0])
+                    for s, i in zip(sims_f[0], ids_f[0], strict=False)
                     if int(i) >= 0
                 ]
             pairs.sort(key=lambda t: (-t[1], t[0]))
@@ -318,7 +319,7 @@ class VectorStore:
     # -- internals ---------------------------------------------------------
 
     @staticmethod
-    def _active_model_version(conn: sqlite3.Connection, space: str) -> Optional[str]:
+    def _active_model_version(conn: sqlite3.Connection, space: str) -> str | None:
         """The model_version of the most recently computed row in this space."""
         row = conn.execute(
             "SELECT model_version FROM ai_embeddings WHERE space = ? "
@@ -361,7 +362,7 @@ class VectorStore:
             self._save_disk_cache(space, fresh)
 
     def _get_matrix(self, conn: sqlite3.Connection, space: str,
-                    model_version: Optional[str] = None) -> Optional[_SpaceMatrix]:
+                    model_version: str | None = None) -> _SpaceMatrix | None:
         """Current generation for `space`: registry first, then disk mirror,
         then a rebuild from SQLite. `model_version` defaults to the most
         recently computed one; None means the space holds no rows.
@@ -450,12 +451,10 @@ class VectorStore:
             os.replace(tmp_path, path)
         finally:
             if os.path.exists(tmp_path):
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
 
-    def _load_disk_cache(self, space: str, model_version: str) -> Optional[_SpaceMatrix]:
+    def _load_disk_cache(self, space: str, model_version: str) -> _SpaceMatrix | None:
         """Read the .npz mirror; None when absent or unreadable -- any failure
         means fall back to SQLite, never raise."""
         path = self._cache_path(space, model_version)

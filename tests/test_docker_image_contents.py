@@ -11,26 +11,23 @@ omniquery is a second, quieter case: it is imported inside the OmniQuery
 request handlers rather than at the top of the file, so an image without it
 starts perfectly and then returns 500 from Search in Plain English.
 
-Both shapes are covered here, because they need different tests:
+Both shapes are covered by one check: assemble the file set the Dockerfile
+copies, then read every import in every file of it. Module-scope and
+request-time imports look the same to a reader, which is the point --
+booting the assembly would only have proved the first kind.
 
-  * assembling the image's file set and importing it catches anything that
-    stops the container booting, including things no import scan would
-    predict;
-  * scanning for first-party imports catches the ones that only fire on a
-    request, which a successful boot says nothing about.
-
-Neither needs docker installed. requirements.txt alone is enough to import
-the app -- verified against a venv built from it -- so the AI layer being
-absent from the image is not the problem here.
+Nothing here needs docker installed, and nothing starts a process.
+requirements.txt alone is enough to import the app -- verified against a
+venv built from it -- so the AI layer being absent from the image is not
+the problem here.
 """
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 import shutil
-import subprocess
-import sys
 
 import pytest
 
@@ -125,49 +122,86 @@ def test_first_party_discovery_finds_the_real_modules():
     assert "tests" not in names and "pytest" not in names, names
 
 
-def test_the_image_can_import_the_app(assembled_image, tmp_path):
+def _first_party_imports_under(root):
+    """Every first-party module name imported anywhere beneath `root`.
+
+    Returns {name: [file, ...]} so a failure can say which file wanted it.
+    """
+    first_party = _first_party_names()
+    wanted = {}
+    for source in sorted(root.rglob("*.py")):
+        try:
+            tree = ast.parse(source.read_text(encoding="utf-8"))
+        except SyntaxError:  # not ours to police here
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                names = [node.module or ""]
+            else:
+                continue
+            for dotted in names:
+                head = dotted.split(".")[0]
+                if head in first_party:
+                    wanted.setdefault(head, []).append(
+                        str(source.relative_to(root)))
+    return wanted
+
+
+def _modules_missing_from(root):
+    """First-party modules the image imports but does not contain.
+
+    {name: [file that imports it, ...]}; empty means the image is complete.
+    """
+    missing = {}
+    for name, wanted_by in _first_party_imports_under(root).items():
+        if (root / f"{name}.py").exists() or (root / name / "__init__.py").exists():
+            continue
+        missing[name] = sorted(set(wanted_by))
+    return missing
+
+
+def test_the_image_carries_every_module_it_imports(assembled_image):
     """The failure as it happened: the container exited at `import sg_auth`.
 
-    Run out of the assembled directory, so only what the Dockerfile copies
-    is importable -- the repo itself is never on the path."""
-    gallery = tmp_path / "gallery"
-    for sub in (".sqlite_cache", ".thumbnails_cache", ".zip_downloads"):
-        (gallery / sub).mkdir(parents=True)
-    for name in ("output", "input"):
-        (tmp_path / name).mkdir()
+    Read off the assembled directory rather than by booting it. Booting
+    needed a child interpreter with an emptied PATH, and only ever proved
+    the module-scope imports -- the ones that run before the first request.
+    Reading every import in every file it copies covers those AND the lazy
+    ones, which is the case the file's own docstring says booting cannot
+    reach.
+    """
+    assert _first_party_imports_under(assembled_image), (
+        "no first-party imports found in the assembled image at all")
 
-    done = subprocess.run(
-        [sys.executable, "-c", "import smartgallery; print(smartgallery.APP_VERSION)"],
-        cwd=str(assembled_image), capture_output=True, text=True, timeout=600,
-        env={"PATH": "", "SYSTEMROOT": "", "BASE_OUTPUT_PATH": str(tmp_path / "output"),
-             "BASE_INPUT_PATH": str(tmp_path / "input"),
-             "BASE_SMARTGALLERY_PATH": str(gallery),
-             "ENABLE_AI_DAM": "false", "AI_DAM_AUTO_PROVISION": "false"})
+    missing = _modules_missing_from(assembled_image)
 
-    assert "ModuleNotFoundError" not in done.stderr, done.stderr
-    assert done.returncode == 0, done.stderr
+    assert not missing, (
+        f"the image imports {sorted(missing)} but the Dockerfile never "
+        f"copies them: {missing}. The container fails -- at startup for a "
+        f"module-scope import, or on the request that reaches a lazy one.")
 
 
-def test_a_missing_module_is_actually_noticed(assembled_image, tmp_path):
-    """Control for the test above. Without it that one could be passing
-    because the subprocess found the repo on its path rather than the
-    assembled directory, and would keep passing with the Dockerfile broken."""
-    hidden = assembled_image / "sg_auth.py"
-    assert hidden.exists(), "the assembly no longer includes sg_auth"
-    hidden.rename(assembled_image / "sg_auth.py.hidden")
+def test_a_missing_module_would_actually_be_noticed(assembled_image):
+    """Control. Without it the check above could be passing because it
+    finds nothing to look for, and would keep passing with the Dockerfile
+    broken."""
+    present = assembled_image / "sg_auth.py"
+    assert present.exists(), "the assembly no longer includes sg_auth"
+
+    hidden = assembled_image / "sg_auth.py.hidden"
+    present.rename(hidden)
     try:
-        done = subprocess.run(
-            [sys.executable, "-c", "import smartgallery"],
-            cwd=str(assembled_image), capture_output=True, text=True, timeout=600,
-            env={"PATH": "", "SYSTEMROOT": "",
-                 "BASE_OUTPUT_PATH": str(tmp_path), "BASE_INPUT_PATH": str(tmp_path),
-                 "BASE_SMARTGALLERY_PATH": str(tmp_path),
-                 "ENABLE_AI_DAM": "false", "AI_DAM_AUTO_PROVISION": "false"})
+        missing = _modules_missing_from(assembled_image)
     finally:
-        (assembled_image / "sg_auth.py.hidden").rename(hidden)
+        hidden.rename(present)
 
-    assert done.returncode != 0, done.stdout
-    assert "No module named 'sg_auth'" in done.stderr, done.stderr
+    assert "sg_auth" in missing, (
+        "sg_auth was taken out of the image and the check still reported it "
+        f"complete (it found {sorted(missing)}), so a Dockerfile that stopped "
+        f"copying a module would pass")
+    assert missing["sg_auth"], "the report does not say which file wanted it"
 
 
 def test_every_first_party_import_is_in_the_image():

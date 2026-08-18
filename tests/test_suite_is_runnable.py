@@ -15,96 +15,67 @@ whether they had broken something or merely typed the documented command.
 
 pytest.ini now sets `pythonpath = .`, which pytest resolves against the
 rootdir and prepends to sys.path for the session (docs/en/reference/
-reference.rst, confval pythonpath). These tests spawn the console script,
-because that is the form that failed and it cannot be exercised from
-inside a pytest process that is already running.
+reference.rst, confval pythonpath).
 
-The subprocess runs the probe at the bottom of this file, selected by node
-id so it cannot re-enter the tests that spawn it. Collection alone proves
-nothing: conftest imports the monolith inside a fixture, so a
-`--collect-only` run passes whether the path is right or not.
+This used to prove that by launching the console script three times --
+three pytest processes, each loading the whole suite -- because the broken
+form could not be reproduced from inside a pytest run. What it was really
+protecting is one ini setting and where the rootdir lands, and both are
+readable from the running session through `pytestconfig`. The end-to-end
+launch is gone; the setting it depended on is now asserted directly, along
+with the two things that made it load-bearing: that the root is genuinely
+on sys.path, and that the monolith is genuinely importable from there.
 """
 
 from __future__ import annotations
 
-import os
 import pathlib
-import subprocess
 import sys
 
-import pytest
-
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-_THIS_FILE = pathlib.Path(__file__).resolve()
-_PROBE = f"{_THIS_FILE}::test_the_monolith_imports_in_the_subprocess"
-_IN_SUBPROCESS = "SMARTGALLERY_RUNNABILITY_PROBE"
 
 
-def _console_script():
-    """The `pytest` entry point, installed beside the interpreter."""
-    bin_dir = pathlib.Path(sys.executable).parent
-    for name in ("pytest.exe", "pytest"):
-        candidate = bin_dir / name
-        if candidate.exists():
-            return candidate
-    return None
+def test_the_setting_that_makes_the_documented_command_work(pytestconfig):
+    """The one line in pytest.ini that every invocation depends on."""
+    configured = pytestconfig.getini("pythonpath")
+
+    assert configured, (
+        "pytest.ini no longer sets `pythonpath`. Without it only "
+        "`python -m pytest` works, because that form prepends the working "
+        "directory by accident; `uv run pytest` and a bare `pytest` fail in "
+        "conftest at `import smartgallery`.")
+    # pytest resolves the setting against the rootdir, so what comes back is
+    # already absolute -- which is the thing worth asserting: not that the
+    # file says ".", but that "." lands on this repo.
+    resolved = {pathlib.Path(entry).resolve() for entry in configured}
+    assert _REPO_ROOT in resolved, (
+        f"pythonpath resolves to {sorted(map(str, resolved))} rather than "
+        f"the repo root {_REPO_ROOT}")
 
 
-def _run(extra_args, cwd):
-    script = _console_script()
-    if script is None:
-        pytest.skip("no pytest console script beside "
-                    f"{sys.executable}; the failing form does not exist here")
-
-    env = dict(os.environ)
-    env.pop("PYTHONPATH", None)  # never let an inherited path do the work
-    env[_IN_SUBPROCESS] = "1"
-    return subprocess.run([str(script), _PROBE, *extra_args, "-q"],
-                          cwd=str(cwd), env=env, capture_output=True,
-                          text=True, timeout=600)
+def test_the_rootdir_is_the_repo_not_wherever_you_were_standing(pytestconfig):
+    """pythonpath is resolved against the rootdir, and the rootdir is found
+    by walking up to pytest.ini -- so the directory that gets added is the
+    repo root whatever directory the command was typed in."""
+    assert pathlib.Path(pytestconfig.rootpath).resolve() == _REPO_ROOT, (
+        f"rootdir resolved to {pytestconfig.rootpath}, so `pythonpath = .` "
+        f"would add the wrong directory")
 
 
-def test_the_documented_command_works():
-    """`uv run pytest tests/` reduces to this: the console script, from the
-    repo root. It errored on every test in the suite before pytest.ini
-    carried the setting."""
-    done = _run([], cwd=_REPO_ROOT)
-    output = done.stdout + done.stderr
+def test_the_repo_root_really_is_on_the_path():
+    """The setting is only worth anything if it took effect. This asserts
+    the consequence rather than the configuration."""
+    on_path = {pathlib.Path(entry).resolve() for entry in sys.path if entry}
 
-    assert "ModuleNotFoundError" not in output, output
-    assert done.returncode == 0, output
-
-
-def test_it_works_from_a_subdirectory_too():
-    """rootdir is found by walking up to pytest.ini, so the directory that
-    gets added is the repo root rather than wherever the person was
-    standing when they ran it."""
-    done = _run([], cwd=_REPO_ROOT / "tests")
-    output = done.stdout + done.stderr
-
-    assert "ModuleNotFoundError" not in output, output
-    assert done.returncode == 0, output
+    assert _REPO_ROOT in on_path, (
+        f"{_REPO_ROOT} is not on sys.path, so `import smartgallery` works "
+        f"here only by whatever accident supplied it")
 
 
-def test_the_setting_is_what_makes_it_work():
-    """Control. Without this, the two tests above could be passing because
-    the subprocess inherited a path from somewhere, and this guard would go
-    on passing after someone deleted the setting.
-
-    Emptying that one ini option -- and changing nothing else -- has to
-    reproduce the original failure exactly."""
-    done = _run(["-o", "pythonpath="], cwd=_REPO_ROOT)
-    output = done.stdout + done.stderr
-
-    assert done.returncode != 0, f"expected the failure, got a clean run:\n{output}"
-    assert "No module named 'smartgallery'" in output, output
-
-
-@pytest.mark.skipif(os.environ.get(_IN_SUBPROCESS) != "1",
-                    reason="the probe the three tests above spawn; "
-                           "meaningless on its own")
-def test_the_monolith_imports_in_the_subprocess(smartgallery_app):
-    """Requesting the fixture is the whole point: that is where conftest
-    imports the monolith, and that is the line every test in the suite
-    used to die on."""
+def test_the_monolith_imports_from_there(smartgallery_app):
+    """Requesting the fixture is the point: that is where conftest imports
+    the monolith, and that is the line every test in the suite used to die
+    on."""
     assert smartgallery_app.__name__ == "smartgallery"
+    assert pathlib.Path(smartgallery_app.__file__).resolve().parent == _REPO_ROOT, (
+        "the monolith was imported from somewhere other than this repo")

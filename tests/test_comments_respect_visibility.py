@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import ast
 import concurrent.futures
+import contextlib
 import os
-import pathlib
 
 import pytest
 from PIL import Image
@@ -57,7 +57,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
                         "ProcessPoolExecutor", _InlineExecutor)
@@ -98,10 +98,8 @@ def library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _visitor(smartgallery_app, monkeypatch, role="GUEST"):
@@ -201,7 +199,7 @@ def test_a_local_gallery_is_untouched(smartgallery_app, library, monkeypatch):
     assert response.status_code == 200, response.get_json()
 
 
-def test_every_route_taking_a_file_id_decides_who_may_use_it():
+def test_every_route_taking_a_file_id_decides_who_may_use_it(gallery_tree):
     """The sweep that found this, and the ratings fault before it.
 
     A route that takes a file id and checks only that somebody is signed
@@ -213,8 +211,7 @@ def test_every_route_taking_a_file_id_decides_who_may_use_it():
       should_strip_metadata  refuses non-privileged callers outright
 
     Anything else has to justify itself here."""
-    source = pathlib.Path(__file__).resolve().parent.parent / "smartgallery.py"
-    tree = ast.parse(source.read_text(encoding="utf-8"))
+    tree = gallery_tree
     keys = {"file_id", "file_ids", "fileId"}
 
     def calls(node):

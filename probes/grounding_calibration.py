@@ -28,6 +28,9 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance
 
+from smartgallery_ai import AIConfig
+from smartgallery_ai.embedders import get_semantic_backend
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
@@ -67,8 +70,8 @@ VACUOUS = [
 ]
 # Parroted: restates the schema's worked example instead of the image.
 PARROTED = [
-    "Good portrait with one artifact. The image shows a red square artifact "
-    "in the lower right and slightly flat lighting.",
+    ("Good portrait with one artifact. The image shows a red square artifact "
+    "in the lower right and slightly flat lighting."),
     "A portrait with a red square artifact and slightly flat lighting.",
 ]
 # Unrelated: concrete, well-formed text about an entirely different scene.
@@ -144,8 +147,6 @@ def main() -> int:
                     default=os.path.join(REPO, ".AImodels"))
     args = ap.parse_args()
 
-    from smartgallery_ai import AIConfig
-    from smartgallery_ai.embedders import get_semantic_backend
 
     sem = get_semantic_backend(AIConfig(enabled=True, models_dir=args.models_dir,
                                         semantic_backend="open_clip"))
@@ -174,7 +175,7 @@ def main() -> int:
                          "margin": round(c - base_cos, 4)})
 
     sweep = []
-    for thr in [round(0.01 * t, 2) for t in range(0, 16)]:
+    for thr in [round(0.01 * t, 2) for t in range(16)]:
         far = [r for r in rows if r["class"] != "grounded" and r["margin"] >= thr]
         frr = [r for r in rows if r["class"] == "grounded" and r["margin"] < thr]
         n_bad = sum(1 for r in rows if r["class"] != "grounded")

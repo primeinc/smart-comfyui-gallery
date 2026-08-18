@@ -6,7 +6,6 @@ snapshot, so detection never re-reads the file.
 
 import json
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 from PIL import Image
 
@@ -21,7 +20,7 @@ _TAG_MAKER_NOTE = 0x927C  # Fooocus: metadata scheme name
 _IFD_EXIF = 0x8769
 
 
-def decode_user_comment(value) -> Optional[str]:
+def decode_user_comment(value) -> str | None:
     """Decode an EXIF UserComment payload (8-byte charset prefix + data)."""
     if value is None:
         return None
@@ -62,19 +61,19 @@ class RawMetadata:
     width: int = 0
     height: int = 0
     mode: str = ""
-    text: Dict[str, str] = field(default_factory=dict)  # PNG tEXt/iTXt + img.info strings
-    user_comment: Optional[str] = None
-    exif_make: Optional[str] = None
-    exif_model: Optional[str] = None
-    exif_software: Optional[str] = None
-    maker_note: Optional[str] = None
-    xmp: Optional[str] = None
-    gif_comment: Optional[str] = None
-    _stealth_text: Optional[str] = None
+    text: dict[str, str] = field(default_factory=dict)  # PNG tEXt/iTXt + img.info strings
+    user_comment: str | None = None
+    exif_make: str | None = None
+    exif_model: str | None = None
+    exif_software: str | None = None
+    maker_note: str | None = None
+    xmp: str | None = None
+    gif_comment: str | None = None
+    _stealth_text: str | None = None
     _stealth_checked: bool = False
     _img: object = None       # open PIL image, only while inside load_raw()
 
-    def stealth(self) -> Optional[str]:
+    def stealth(self) -> str | None:
         """Lazily decode stealth-pnginfo. Only valid inside load_raw()'s scope."""
         if not self._stealth_checked:
             self._stealth_checked = True
@@ -97,7 +96,7 @@ class RawMetadata:
         return parsed
 
 
-def _as_text(value) -> Optional[str]:
+def _as_text(value) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, bytes):
@@ -105,7 +104,7 @@ def _as_text(value) -> Optional[str]:
     return None
 
 
-def load_raw(filepath: str, want_stealth: bool = False) -> Optional[RawMetadata]:
+def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
     """Open an image and snapshot every metadata container we know about.
 
     When want_stealth is False the pixel data is never touched, so this stays

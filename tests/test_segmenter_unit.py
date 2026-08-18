@@ -13,9 +13,7 @@ opt-in real-backend suite (tests/test_real_backends.py).
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
-import textwrap
 import types
 import warnings
 
@@ -75,29 +73,32 @@ def test_ctor_missing_weights_names_expected_path(tmp_path):
     assert expected in str(exc_info.value)
 
 
+_HEAVY = ("torch", "mobile_sam")
+
+
 def test_missing_weights_check_never_imports_torch_or_mobile_sam(tmp_path):
-    """With no weights the ctor raises before importing torch/mobile_sam
-    (checked in a clean subprocess so suite ordering can't mask a leak)."""
-    script = textwrap.dedent(
-        f"""
-        import sys
-        from smartgallery_ai.embedders import BackendUnavailable
-        from smartgallery_ai.segmenter_mobilesam import MobileSamSegmenter
-        try:
-            MobileSamSegmenter({str(tmp_path)!r})
-        except BackendUnavailable:
-            pass
-        else:
-            sys.exit("MobileSamSegmenter did not raise BackendUnavailable")
-        leaked = [m for m in ("torch", "mobile_sam") if m in sys.modules]
-        sys.exit("heavy runtimes imported: %r" % leaked if leaked else 0)
-        """
-    )
-    proc = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
-    )
-    assert proc.returncode == 0, proc.stderr
+    """With no weights the ctor raises before importing torch or
+    mobile_sam -- the gallery has to start on a machine with neither, and
+    the weights check runs on every start.
+
+    Asked as "did this call import them", not "are they absent from the
+    process". The old form needed a clean interpreter precisely because the
+    absolute claim is false the moment any other test imports torch, which
+    made suite ordering part of the answer. The difference between
+    sys.modules before and after is the actual claim and survives any
+    ordering.
+    """
+    before = set(sys.modules)
+
+    with pytest.raises(BackendUnavailable):
+        MobileSamSegmenter(str(tmp_path))
+
+    newly = set(sys.modules) - before
+    leaked = sorted(name for name in newly
+                    if name in _HEAVY or name.split(".")[0] in _HEAVY)
+    assert not leaked, (
+        f"MobileSamSegmenter imported {leaked} just to notice its weights "
+        f"were missing")
 
 
 def test_ctor_missing_runtime_raises_backend_unavailable(tmp_path, monkeypatch):
@@ -144,8 +145,8 @@ def test_ctor_contains_third_party_warning_and_stderr_noise(tmp_path, monkeypatc
 
     def _noisy_build(checkpoint):
         del checkpoint  # accepted only for the registry's call-signature compatibility (kwarg call)
-        warnings.warn("Importing from timm.models.layers is deprecated", FutureWarning)
-        warnings.warn("Overwriting tiny_vit_5m_224 in registry", UserWarning)
+        warnings.warn("Importing from timm.models.layers is deprecated", FutureWarning, stacklevel=2)
+        warnings.warn("Overwriting tiny_vit_5m_224 in registry", UserWarning, stacklevel=2)
         print("Loading weights: 100%|#| 223/223", file=sys.stderr)
         return model
 

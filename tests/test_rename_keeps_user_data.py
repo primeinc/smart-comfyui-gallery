@@ -20,6 +20,7 @@ attached afterwards.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -47,12 +48,12 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def rated_file(smartgallery_app, monkeypatch):
     """One indexed image in a subfolder, rated, commented on, favourited
     and placed in an album."""
@@ -98,15 +99,11 @@ def rated_file(smartgallery_app, monkeypatch):
     for dirpath, _dirs, names in os.walk(base, topdown=False):
         for name in names:
             if name.startswith(_PREFIX):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(os.path.join(dirpath, name))
-                except OSError:
-                    pass
         if os.path.basename(dirpath).startswith(_PREFIX):
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
-            except OSError:
-                pass
 
 
 def _attached(smartgallery_app, name):

@@ -29,7 +29,6 @@ from smartgallery_ai.faces import (
 )
 from smartgallery_ai.schema import init_schema
 
-
 # --- fixtures / helpers (mirrors tests/test_faces.py) ------------------------
 
 
@@ -312,7 +311,9 @@ def test_cluster_faces_merged_clusters_keep_single_best_label():
     b_cluster = conn.execute(
         "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("b0",)
     ).fetchone()[0]
-    assert a_cluster is not None and b_cluster is not None and a_cluster != b_cluster
+    assert a_cluster is not None
+    assert b_cluster is not None
+    assert a_cluster != b_cluster
     conn.execute("UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?", ("Alice", a_cluster))
     conn.execute("UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?", ("Bob", b_cluster))
     conn.commit()

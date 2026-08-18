@@ -11,8 +11,8 @@ Everything runs locally. No cloud inference, no telemetry.
 - Python **3.10+**.
 - ~12 GB free disk for model weights (see the download list below).
 - Optional NVIDIA GPU. The layer works CPU-only; a GPU makes reviews
-  dramatically faster. A CPU-build torch on CUDA hardware is swapped for
-  the CUDA wheels automatically.
+  dramatically faster. Which torch you get is decided by `uv sync` and the
+  index pinned in `pyproject.toml`, not by the app — see GPU notes below.
 - Windows, Linux, macOS. (macOS: CPU/MPS only; the CUDA paths below are
   skipped.)
 

@@ -17,6 +17,7 @@ The exclusion is by path, since DELETE_TO can be anywhere.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -44,7 +45,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def gallery_with_inside_trash(smartgallery_app, monkeypatch):
     """A gallery whose trash folder sits inside it, holding one indexed file."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -78,18 +79,12 @@ def gallery_with_inside_trash(smartgallery_app, monkeypatch):
         conn.close()
     for dirpath, _dirs, files in os.walk(delete_to, topdown=False):
         for f in files:
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(os.path.join(dirpath, f))
-            except OSError:
-                pass
-        try:
+        with contextlib.suppress(OSError):
             os.rmdir(dirpath)
-        except OSError:
-            pass
-    try:
+    with contextlib.suppress(OSError):
         os.remove(os.path.join(base, name))
-    except OSError:
-        pass
 
 
 def _rescan(smartgallery_app):

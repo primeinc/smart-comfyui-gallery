@@ -22,6 +22,7 @@ ratings under any identity it named.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -49,7 +50,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def seeded(smartgallery_app, monkeypatch):
     """A file with a comment and a rating, both owned by 'admin'."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -88,10 +89,8 @@ def seeded(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def _comment(smartgallery_app, comment_id):

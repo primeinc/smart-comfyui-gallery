@@ -77,8 +77,8 @@ DDL = [
         PRIMARY KEY (file_id, space)
     );
     """,
-    "CREATE INDEX IF NOT EXISTS idx_ai_emb_space "
-    "ON ai_embeddings(space, model_id, model_version);",
+    ("CREATE INDEX IF NOT EXISTS idx_ai_emb_space "
+    "ON ai_embeddings(space, model_id, model_version);"),
 
     # --- face instances (one row per detected face; multi-face assets OK) ---
     """
@@ -122,8 +122,8 @@ DDL = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_ai_faces_file ON ai_face_instances(file_id);",
-    "CREATE INDEX IF NOT EXISTS idx_ai_faces_cluster "
-    "ON ai_face_instances(cluster_id);",
+    ("CREATE INDEX IF NOT EXISTS idx_ai_faces_cluster "
+    "ON ai_face_instances(cluster_id);"),
 
     # --- generation review (typed findings; masks only when localizable) ---
     """
@@ -172,8 +172,8 @@ DDL = [
                AND points IS NULL AND mask_path IS NULL))
     );
     """,
-    "CREATE INDEX IF NOT EXISTS idx_ai_findings_file "
-    "ON ai_review_findings(file_id, type);",
+    ("CREATE INDEX IF NOT EXISTS idx_ai_findings_file "
+    "ON ai_review_findings(file_id, type);"),
     """
     CREATE TABLE IF NOT EXISTS ai_review_alignment (
         element_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,8 +204,8 @@ DDL = [
                AND bbox_w IS NULL AND bbox_h IS NULL AND mask_path IS NULL))
     );
     """,
-    "CREATE INDEX IF NOT EXISTS idx_ai_alignment_review "
-    "ON ai_review_alignment(review_id, ordinal);",
+    ("CREATE INDEX IF NOT EXISTS idx_ai_alignment_review "
+    "ON ai_review_alignment(review_id, ordinal);"),
 
     # --- human feedback (exportable for reviewer tuning / LoRA work) ---
     """

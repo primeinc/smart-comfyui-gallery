@@ -24,6 +24,7 @@ the local admin can still moderate.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -32,12 +33,12 @@ from PIL import Image
 _PREFIX = "cmtroute_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def commented_file(smartgallery_app):
     """A file with two comments from two different anonymous visitors."""
     name = f"{_PREFIX}subject.png"
@@ -73,10 +74,8 @@ def commented_file(smartgallery_app):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def _comment_text(smartgallery_app, comment_id):

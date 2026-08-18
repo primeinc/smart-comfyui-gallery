@@ -49,7 +49,7 @@ def test_it_says_so(monkeypatch, caplog):
     assert "ENABLE_AI_DAM" in caplog.text and "ture" in caplog.text, caplog.text
 
 
-@pytest.mark.parametrize("value,expected", [
+@pytest.mark.parametrize(("value", "expected"), [
     ("1", True), ("true", True), ("TRUE", True), ("Yes", True), ("on", True),
     ("0", False), ("false", False), ("FALSE", False), ("no", False), ("off", False),
 ])

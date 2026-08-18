@@ -37,7 +37,7 @@ import shutil
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def trash(smartgallery_app, tmp_path, monkeypatch):
     """A configured DELETE_TO, which the suite otherwise runs without."""
     delete_to = tmp_path / "recycle"

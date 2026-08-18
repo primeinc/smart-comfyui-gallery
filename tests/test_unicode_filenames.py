@@ -17,6 +17,7 @@ and the reserved device names.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 
@@ -26,7 +27,7 @@ from PIL import Image
 _PREFIX = "uni_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def root_key(smartgallery_app):
     base = smartgallery_app.BASE_OUTPUT_PATH
     folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
@@ -39,10 +40,8 @@ def root_key(smartgallery_app):
 
     for name in os.listdir(base):
         if name.startswith(_PREFIX) or name in ("png", "upload.png"):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(os.path.join(base, name))
-            except OSError:
-                pass
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
@@ -91,7 +90,7 @@ def test_the_upload_still_refuses_a_disallowed_type(smartgallery_app, root_key):
     assert "Successfully uploaded 0 files" in body, body
 
 
-@pytest.mark.parametrize("hostile,expected", [
+@pytest.mark.parametrize(("hostile", "expected"), [
     ("../../etc/passwd", "passwd"),
     ("..\\..\\windows\\win.ini", "win.ini"),
     ("..", "upload"),

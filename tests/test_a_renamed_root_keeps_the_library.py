@@ -32,6 +32,7 @@ deletion was not.
 
 from __future__ import annotations
 
+import ast
 import os
 
 import pytest
@@ -46,7 +47,7 @@ def _paths(root, names):
     return {f"{root}/{name}" for name in names}
 
 
-@pytest.fixture()
+@pytest.fixture
 def a_library_of_its_own(smartgallery_app, tmp_path, monkeypatch):
     """A gallery root nothing else has touched.
 
@@ -199,15 +200,11 @@ def test_a_file_that_really_went_is_still_removed(smartgallery_app,
         smartgallery_app.get_dynamic_folder_config(force_refresh=True)
 
 
-def test_the_scan_asks_before_it_deletes():
+def test_the_scan_asks_before_it_deletes(gallery_tree):
     """Placement: the decision has to be made where to_delete is worked
     out, not after the rows have gone."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     fn = next((node for node in ast.walk(tree)
                if isinstance(node, ast.FunctionDef)
@@ -233,7 +230,7 @@ def test_the_library_survives_a_scan_at_the_new_address(smartgallery_app,
     ids = []
     conn = smartgallery_app.get_db_connection()
     try:
-        for index, name in enumerate(names):
+        for _index, name in enumerate(names):
             target = os.path.join(folder, name)
             with open(target, "wb") as fh:
                 fh.write(b"x")

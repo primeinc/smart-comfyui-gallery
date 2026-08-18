@@ -21,14 +21,15 @@ and `client.session_transaction()` to seed a session before a request
 from __future__ import annotations
 
 import pytest
+from flask import session
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def blind_server(smartgallery_app, monkeypatch):
     """A server started with --blind-rating, with logins in play so guests
     and staff are distinguishable (without FORCE_LOGIN every caller is the
@@ -41,7 +42,6 @@ def blind_server(smartgallery_app, monkeypatch):
 
 def _blind_with(smartgallery_app, **session_values):
     """is_effectively_blind() evaluated against a given session."""
-    from flask import session
 
     with smartgallery_app.app.test_request_context("/galleryout/"):
         session.update(session_values)
@@ -118,7 +118,7 @@ def _rate(smartgallery_app, file_id, role="GUEST", **session_values):
                        json={"file_id": file_id, "rating": 4})
 
 
-@pytest.fixture()
+@pytest.fixture
 def rated_file(smartgallery_app):
     """A file already carrying somebody else's vote, so there is a crowd
     average to leak."""

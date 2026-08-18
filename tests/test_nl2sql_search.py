@@ -15,7 +15,7 @@ from omniquery.parsers.nl2sql import SqlSearch, _extract_sql, schema_block
 from omniquery.sqlexec import run_readonly_select
 
 
-@pytest.fixture()
+@pytest.fixture
 def db(tmp_path):
     path = str(tmp_path / "g.sqlite")
     conn = sqlite3.connect(path)
@@ -42,7 +42,8 @@ def db(tmp_path):
 
 def test_sqlexec_select_returns_first_column_deduped(db):
     r = run_readonly_select(db, "SELECT id FROM files UNION ALL SELECT id FROM files")
-    assert r.ok and sorted(r.ids) == ["f1", "f2", "f3"]
+    assert r.ok
+    assert sorted(r.ids) == ["f1", "f2", "f3"]
 
 
 def test_sqlexec_rejects_non_select(db):
@@ -66,7 +67,8 @@ def test_sqlexec_blocks_writes_at_engine_level(db):
 
 def test_sqlexec_engine_error_is_reported_not_raised(db):
     r = run_readonly_select(db, "SELECT nope FROM files")
-    assert not r.ok and "no such column" in r.error
+    assert not r.ok
+    assert "no such column" in r.error
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +96,7 @@ def test_schema_block_never_includes_bookkeeping_tables(db):
 # _extract_sql: the model's raw text -> one statement
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("content,expected", [
+@pytest.mark.parametrize(("content", "expected"), [
     ("SELECT id FROM files", "SELECT id FROM files"),
     ("```sql\nSELECT id FROM files\n```", "SELECT id FROM files"),
     # Observed live: free-running past the answer.
@@ -145,7 +147,7 @@ def _scripted(monkeypatch, db, generations):
 
 def test_first_try_with_rows_is_accepted(monkeypatch, db):
     s, seen = _scripted(monkeypatch, db, ["SELECT id FROM files WHERE is_favorite = 1"])
-    ids, sql, err = s.search("favorites")
+    ids, _sql, err = s.search("favorites")
     assert (ids, err) == (["f1"], None)
     assert len(seen) == 1
 
@@ -155,8 +157,9 @@ def test_execution_error_goes_back_for_repair(monkeypatch, db):
         "SELECT id FROM files JOIN nope ON 1=1",
         "SELECT id FROM files WHERE type = 'video'",
     ])
-    ids, sql, err = s.search("videos")
-    assert ids == ["f2"] and err is None
+    ids, _sql, err = s.search("videos")
+    assert ids == ["f2"]
+    assert err is None
     # Round 2's prompt carried the engine error back to the model.
     assert "failed with" in seen[1]
     assert "no such table" in seen[1]
@@ -165,19 +168,21 @@ def test_execution_error_goes_back_for_repair(monkeypatch, db):
 def test_zero_rows_offers_broadening_and_broadened_query_wins(monkeypatch, db):
     s, seen = _scripted(monkeypatch, db, [
         "SELECT id FROM files WHERE name LIKE '%girlnextdoor%'",
-        "SELECT id FROM files WHERE name LIKE '%girlnextdoor%' "
-        "OR workflow_prompt LIKE '%girlnextdoor%'",
+        ("SELECT id FROM files WHERE name LIKE '%girlnextdoor%' "
+        "OR workflow_prompt LIKE '%girlnextdoor%'"),
     ])
-    ids, sql, err = s.search("girlnextdoor")
-    assert ids == ["f1"] and err is None
+    ids, _sql, err = s.search("girlnextdoor")
+    assert ids == ["f1"]
+    assert err is None
     assert "0 rows" in seen[1]
 
 
 def test_repeating_the_same_query_asserts_empty_is_the_answer(monkeypatch, db):
     same = "SELECT id FROM files WHERE name LIKE '%zebra%'"
     s, seen = _scripted(monkeypatch, db, [same, same])
-    ids, sql, err = s.search("zebra")
-    assert ids == [] and err is None
+    ids, _sql, err = s.search("zebra")
+    assert ids == []
+    assert err is None
     assert len(seen) == 2
 
 
@@ -187,17 +192,19 @@ def test_rounds_exhausted_while_broadening_returns_empty(monkeypatch, db):
         "SELECT id FROM files WHERE name LIKE '%zebra%' OR type = 'zebra'",
         "SELECT id FROM files WHERE workflow_prompt LIKE '%zebra%'",
     ])
-    ids, sql, err = s.search("zebra")
-    assert ids == [] and err is None
+    ids, _sql, err = s.search("zebra")
+    assert ids == []
+    assert err is None
 
 
 def test_persistent_errors_fail_closed(monkeypatch, db):
     s, _seen = _scripted(monkeypatch, db, [
         "SELECT nope FROM files", "SELECT nope2 FROM files", "SELECT nope3 FROM files",
     ])
-    ids, sql, err = s.search("anything")
+    ids, _sql, err = s.search("anything")
     assert ids is None
-    assert err is not None and "no such column" in err
+    assert err is not None
+    assert "no such column" in err
 
 
 def test_generation_exception_never_raises(monkeypatch, db):
@@ -208,5 +215,6 @@ def test_generation_exception_never_raises(monkeypatch, db):
             raise RuntimeError("engine died")
 
     monkeypatch.setattr(SqlSearch, "_chat", lambda self: _Boom())
-    ids, sql, err = s.search("anything")
-    assert ids is None and "generation error" in err
+    ids, _sql, err = s.search("anything")
+    assert ids is None
+    assert "generation error" in err

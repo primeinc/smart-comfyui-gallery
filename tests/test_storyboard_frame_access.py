@@ -21,6 +21,7 @@ stripping in one request.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -28,7 +29,7 @@ import pytest
 _PAYLOAD = "STORYBOARD_TRAVERSAL_PAYLOAD"
 
 
-@pytest.fixture()
+@pytest.fixture
 def victim_file(smartgallery_app):
     """A file sitting in the gallery root, one level above the cache."""
     gallery = smartgallery_app.BASE_SMARTGALLERY_PATH
@@ -39,13 +40,11 @@ def victim_file(smartgallery_app):
 
     yield "sbframe_secret.txt"
 
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
-@pytest.fixture()
+@pytest.fixture
 def real_frame(smartgallery_app):
     """A genuine cached frame, so the route is known to work at all."""
     cache = smartgallery_app.THUMBNAIL_CACHE_DIR

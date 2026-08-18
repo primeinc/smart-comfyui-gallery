@@ -25,7 +25,9 @@ without a search still goes to the album, unchanged.
 
 from __future__ import annotations
 
+import ast
 import concurrent.futures
+import contextlib
 import os
 import uuid
 
@@ -54,7 +56,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def album(smartgallery_app, monkeypatch):
     """Three files, an album holding one of them, and a stored search that
     answers with a different one."""
@@ -106,10 +108,8 @@ def album(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _shown(smartgallery_app, ids, url):
@@ -154,7 +154,7 @@ def test_the_same_holds_for_the_ai_search(smartgallery_app, album):
     everything -- including the album's own file, which is also in the
     root. What has to hold is where it arrives, so that is what is
     checked."""
-    ids, coll_id, _session = album
+    _ids, coll_id, _session = album
     client = smartgallery_app.app.test_client()
 
     response = client.get(
@@ -182,16 +182,13 @@ def test_going_to_the_album_without_a_search_is_unchanged(smartgallery_app, albu
     assert shown == {f"{_PREFIX}in_album.png"}, shown
 
 
-def test_the_collection_view_still_ignores_these_parameters(smartgallery_app):
+def test_the_collection_view_still_ignores_these_parameters(gallery_tree, smartgallery_app):
     """Why the fix is a redirect rather than new rendering: the collection
     view has no code for either parameter, so sending a search to it can
     only ever be silent. Stated here so that if someone teaches it to show
     one, this fails and the redirect can go."""
-    import ast
-    import pathlib
 
-    source = pathlib.Path(smartgallery_app.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
+    tree = gallery_tree
     view = next(node for node in ast.walk(tree)
                 if isinstance(node, ast.FunctionDef)
                 and node.name == "collection_view")

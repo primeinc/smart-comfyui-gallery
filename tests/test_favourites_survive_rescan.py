@@ -25,6 +25,7 @@ the whole Favourites view in one scan, without a word.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 import pathlib
 import re
@@ -56,7 +57,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def marked_file(smartgallery_app, monkeypatch):
     """One indexed picture the person has marked, rated and commented on."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -92,10 +93,8 @@ def marked_file(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def _rescan_after_touching(smartgallery_app, path):
@@ -168,7 +167,8 @@ def test_the_other_user_data_still_survives(smartgallery_app, marked_file):
     _rescan_after_touching(smartgallery_app, path)
 
     _files, rating, comments = _row(smartgallery_app, file_id)
-    assert rating is not None and rating["rating"] == 5
+    assert rating is not None
+    assert rating["rating"] == 5
     assert comments == 1
 
 

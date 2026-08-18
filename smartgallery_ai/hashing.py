@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -109,11 +108,11 @@ class HashResult:
     could be decoded (non-visual or corrupt content)."""
 
     sha256: str  # hex digest of the raw file bytes
-    phash64: Optional[int]  # signed 64-bit form (SQLite representation)
-    dhash64: Optional[int]  # signed 64-bit form (SQLite representation)
+    phash64: int | None  # signed 64-bit form (SQLite representation)
+    dhash64: int | None  # signed 64-bit form (SQLite representation)
 
 
-def _first_video_frame(path: str) -> Optional[Image.Image]:
+def _first_video_frame(path: str) -> Image.Image | None:
     """First decodable frame as an RGB PIL image, or None when the container
     cannot be opened or yields nothing within the attempt budget."""
     cap = cv2.VideoCapture(path)
@@ -140,7 +139,7 @@ def compute_hashes_for_file(path: str, file_type: str) -> HashResult:
     only (perceptual hashing is meaningless for non-visual content).
     """
     sha = sha256_file(path)
-    frame: Optional[Image.Image] = None
+    frame: Image.Image | None = None
     if file_type in IMAGE_FILE_TYPES:
         try:
             with Image.open(path) as img:
@@ -223,7 +222,7 @@ def find_near_duplicates(conn, file_id: str, max_distance: int) -> list[tuple[st
     return results
 
 
-_POPCOUNT_TABLE = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)  # set-bit count per byte value 0..255
+_POPCOUNT_TABLE = np.array([(i).bit_count() for i in range(256)], dtype=np.uint8)  # set-bit count per byte value 0..255
 
 
 def _popcount_u64(values: np.ndarray) -> np.ndarray:

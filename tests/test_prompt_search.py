@@ -16,6 +16,7 @@ These tests drive the folder view, since that is the one that crashed.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -43,7 +44,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def indexed(smartgallery_app, monkeypatch):
     """Two files: one with a prompt and generation parameters, one without."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -79,10 +80,8 @@ def indexed(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _view(smartgallery_app, query):

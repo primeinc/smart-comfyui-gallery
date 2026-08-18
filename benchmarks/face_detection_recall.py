@@ -23,6 +23,10 @@ import os
 import sys
 import time
 
+from PIL import Image
+
+from smartgallery_ai import AIConfig
+from smartgallery_ai.faces import get_face_backend
 
 
 def load_repo():
@@ -81,7 +85,6 @@ def collect_ground_truth(backend, root, limit):
     native-res policy already handles — exactly the bias the >=300 band
     exists to expose.
     """
-    from PIL import Image
 
     sources = []
     paths = []
@@ -112,10 +115,7 @@ def collect_ground_truth(backend, root, limit):
 
 def main() -> None:
     load_repo()
-    from PIL import Image
 
-    from smartgallery_ai import AIConfig
-    from smartgallery_ai.faces import get_face_backend
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dir", required=True, help="image corpus root")
@@ -167,8 +167,8 @@ def main() -> None:
                 target = int(tag[len("scale->"):-2])
                 scale = target / min(gt_boxes[0][2], gt_boxes[0][3])
             if scale != 1.0:
-                nw = max(1, int(round(img.size[0] * scale)))
-                nh = max(1, int(round(img.size[1] * scale)))
+                nw = max(1, round(img.size[0] * scale))
+                nh = max(1, round(img.size[1] * scale))
                 img = img.resize((nw, nh), Image.LANCZOS)
             gts = [tuple(v * scale for v in b) for b in gt_boxes]
             t0 = time.perf_counter()

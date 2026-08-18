@@ -13,6 +13,7 @@ file reappears on the next scan.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -21,7 +22,7 @@ from PIL import Image
 _PREFIX = "delroute_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
@@ -59,10 +60,8 @@ def _cleanup(smartgallery_app):
         rows = conn.execute(
             f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()
         for row in rows:
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(row[0])
-            except OSError:
-                pass
         conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
         conn.commit()
     finally:
@@ -77,7 +76,8 @@ def test_delete_batch_removes_files_from_disk_and_database(smartgallery_app, cli
 
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "success"
-    assert not os.path.exists(a_path) and not os.path.exists(b_path)
+    assert not os.path.exists(a_path)
+    assert not os.path.exists(b_path)
     assert not _row_exists(smartgallery_app, a_id)
     assert not _row_exists(smartgallery_app, b_id)
 
@@ -154,55 +154,49 @@ def test_toggle_favorite_on_unknown_file_is_404(client):
     assert client.post(f"/galleryout/toggle_favorite/{_PREFIX}nope").status_code == 404
 
 
-def test_delete_batch_route_honours_delete_to(tmp_path):
+def test_delete_batch_route_honours_delete_to(smartgallery_app, monkeypatch,
+                                             tmp_path):
     """The guarantee users actually rely on, through the endpoint the UI
     calls: with DELETE_TO configured, a batch delete must be recoverable.
-    Run in a subprocess because DELETE_TO is resolved at import."""
-    import subprocess
-    import sys
 
+    DELETE_TO is resolved at import and TRASH_FOLDER derived from it, which
+    is why this ran in its own interpreter. Both are attributes the delete
+    path reads when it runs, so they are set here the way startup would --
+    TRASH_FOLDER is DELETE_TO/SmartGallery, created if absent.
+    """
     trash_root = tmp_path / "trash"
-    trash_root.mkdir()
+    trash_folder = trash_root / "SmartGallery"
+    trash_folder.mkdir(parents=True)
     gallery = tmp_path / "gallery"
     gallery.mkdir()
+    monkeypatch.setattr(smartgallery_app, "DELETE_TO", str(trash_root))
+    monkeypatch.setattr(smartgallery_app, "TRASH_FOLDER", str(trash_folder))
+    monkeypatch.setattr(smartgallery_app, "BASE_OUTPUT_PATH", str(gallery))
 
-    script = """
-import os, sys
-sys.argv = ['smartgallery.py']
-import smartgallery as sg
+    victim = gallery / "batch_victim.png"
+    victim.write_bytes(b"pretend image bytes")
+    file_id = f"{_PREFIX}batch_victim"
+    conn = smartgallery_app.get_db_connection()
+    try:
+        conn.execute(
+            "INSERT INTO files (id, path, mtime, name, type, size) "
+            "VALUES (?, ?, 1000.0, 'batch_victim.png', 'image', 19)",
+            (file_id, str(victim)))
+        conn.commit()
+    finally:
+        conn.close()
 
-os.makedirs(sg.SQLITE_CACHE_DIR, exist_ok=True)
-sg.init_db()
+    resp = smartgallery_app.app.test_client().post(
+        "/galleryout/delete_batch", json={"file_ids": [file_id]})
 
-path = os.path.join(sg.BASE_OUTPUT_PATH, 'batch_victim.png')
-open(path, 'wb').write(b'pretend image bytes')
-conn = sg.get_db_connection()
-conn.execute("INSERT INTO files (id, path, mtime, name, type, size) "
-             "VALUES ('victim1', ?, 1000.0, 'batch_victim.png', 'image', 19)", (path,))
-conn.commit(); conn.close()
+    body = resp.get_json()
+    assert resp.status_code == 200, resp.status_code
+    assert body["status"] == "success", body
+    assert "trash" in body["message"], (
+        f"message does not mention the trash: {body['message']}")
 
-resp = sg.app.test_client().post('/galleryout/delete_batch',
-                                 json={'file_ids': ['victim1']})
-assert resp.status_code == 200, resp.status_code
-body = resp.get_json()
-assert body['status'] == 'success', body
-assert 'trash' in body['message'], f"message does not mention the trash: {body['message']}"
-
-assert not os.path.exists(path), 'file left in the gallery'
-recovered = os.listdir(sg.TRASH_FOLDER)
-assert len(recovered) == 1, f'expected the file in the trash, found {recovered}'
-assert open(os.path.join(sg.TRASH_FOLDER, recovered[0]), 'rb').read() == b'pretend image bytes', \
-    'the recovered file does not match what was deleted'
-print('OK')
-"""
-    env = dict(os.environ,
-               DELETE_TO=str(trash_root),
-               BASE_OUTPUT_PATH=str(gallery),
-               BASE_SMARTGALLERY_PATH=str(gallery),
-               ENABLE_AI_DAM="false",
-               AI_DAM_AUTO_PROVISION="false")
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    proc = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
-                          capture_output=True, text=True, timeout=300)
-    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "OK" in proc.stdout
+    assert not victim.exists(), "file left in the gallery"
+    recovered = list(trash_folder.iterdir())
+    assert len(recovered) == 1, f"expected the file in the trash, found {recovered}"
+    assert recovered[0].read_bytes() == b"pretend image bytes", (
+        "the recovered file does not match what was deleted")

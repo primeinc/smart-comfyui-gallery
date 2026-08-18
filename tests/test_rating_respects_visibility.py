@@ -32,6 +32,7 @@ all, which is most installs. Two tests below hold exactly that.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -60,7 +61,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """One picture in a public album, one deliberately left out."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -98,10 +99,8 @@ def library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _visitor(smartgallery_app, monkeypatch, role="GUEST"):
@@ -138,7 +137,7 @@ def test_a_visitor_can_rate_what_was_shared(smartgallery_app, library, monkeypat
     assert _stored(smartgallery_app, shared) == 5
 
 
-@pytest.mark.parametrize("route,payload_key", [
+@pytest.mark.parametrize(("route", "payload_key"), [
     ("/galleryout/api/exhibition/rate", "file_id"),
     ("/galleryout/api/exhibition/rate_batch", "file_ids"),
 ])
@@ -158,7 +157,7 @@ def test_a_visitor_cannot_rate_what_was_not_shared(smartgallery_app, library,
         "a score was recorded for a picture the visitor cannot even open")
 
 
-@pytest.mark.parametrize("route,payload_key", [
+@pytest.mark.parametrize(("route", "payload_key"), [
     ("/galleryout/api/exhibition/rate", "file_id"),
     ("/galleryout/api/exhibition/rate_batch", "file_ids"),
 ])

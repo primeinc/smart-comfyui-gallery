@@ -18,9 +18,13 @@ files must already exist). Exit code 0 = PASS.
 Usage: sudo python3 probes/egress_probe.py
 """
 
+import contextlib
+import fcntl
 import json
 import os
 import shutil
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -47,9 +51,6 @@ def stage1() -> int:
 
 def _loopback_up() -> None:
     """Bring 'lo' up inside the fresh namespace without the iproute2 tools."""
-    import fcntl
-    import socket
-    import struct
 
     SIOCSIFFLAGS = 0x8914
     IFF_UP, IFF_RUNNING = 0x1, 0x40
@@ -181,10 +182,8 @@ def stage2() -> int:
         os._exit(0 if ok else 1)
     except Exception as exc:
         print(f"FAIL: {exc}", flush=True)
-        try:
+        with contextlib.suppress(Exception):
             server.kill()
-        except Exception:
-            pass
         os._exit(1)
 
 

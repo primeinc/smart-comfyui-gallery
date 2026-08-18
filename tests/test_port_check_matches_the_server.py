@@ -35,8 +35,7 @@ to the one waitress then opened. It is gone; the last test keeps it gone.
 from __future__ import annotations
 
 import ast
-import io
-import pathlib
+import contextlib
 import socket
 
 import pytest
@@ -47,20 +46,18 @@ import smartgallery
 def _server_style_bind(port):
     """A bind performed the way waitress performs its own."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
+        with contextlib.suppress(OSError):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
                          s.getsockopt(socket.SOL_SOCKET,
                                       socket.SO_REUSEADDR) | 1)
-        except OSError:
-            pass
         try:
             s.bind(('0.0.0.0', port))
             return True
-        except socket.error:
+        except OSError:
             return False
 
 
-@pytest.fixture()
+@pytest.fixture
 def free_port():
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.bind(('0.0.0.0', 0))
@@ -69,7 +66,7 @@ def free_port():
     return port
 
 
-@pytest.fixture()
+@pytest.fixture
 def busy_port():
     """A port with something actually listening on it."""
     holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,7 +76,7 @@ def busy_port():
     holder.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def crashed_port():
     """A port the gallery was serving on when it died with a connection
     still open -- the case the removed block was aiming at."""
@@ -130,12 +127,11 @@ def test_the_check_agrees_with_the_server(case, request):
         f"stricter one the gallery refuses to start on a working port.")
 
 
-def test_the_check_asks_for_what_the_server_asks_for():
+def test_the_check_asks_for_what_the_server_asks_for(gallery_tree):
     """Source-level, because the differential above can only prove
     agreement in the cases this machine can build. On a system where the
     two would part company, the option is the reason."""
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     function = next((node for node in ast.walk(tree)
                      if isinstance(node, ast.FunctionDef)
@@ -150,13 +146,12 @@ def test_the_check_asks_for_what_the_server_asks_for():
     assert "bind" in attributes, "it no longer binds anything"
 
 
-def test_no_socket_options_are_set_on_a_socket_that_is_thrown_away():
+def test_no_socket_options_are_set_on_a_socket_that_is_thrown_away(gallery_tree):
     """The block that was removed: a socket built, configured and closed
     without ever being bound or handed to anything. It read as a fix for
     the restart problem and was not one, so the problem stayed while the
     code said otherwise."""
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     offenders = []
     for node in ast.walk(tree):

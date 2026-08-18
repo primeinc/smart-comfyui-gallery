@@ -3,13 +3,15 @@ independence, on-disk cache persistence/staleness, and ephemeral mode."""
 
 import os
 import sqlite3
+import sys
 
 import numpy as np
 import pytest
 
+from smartgallery_ai import vectors as V
+from smartgallery_ai import vectors as vectors_mod
 from smartgallery_ai.schema import init_schema
 from smartgallery_ai.vectors import VectorStore
-
 
 # --- fixtures / helpers -----------------------------------------------------
 
@@ -72,7 +74,7 @@ def test_topk_matches_numpy_reference(tmp_path):
     expected = numpy_reference_topk(vectors, query, k=4)
 
     assert [fid for fid, _ in got] == [fid for fid, _ in expected]
-    for (_, got_sim), (_, exp_sim) in zip(got, expected):
+    for (_, got_sim), (_, exp_sim) in zip(got, expected, strict=False):
         assert got_sim == pytest.approx(exp_sim, abs=1e-5)
 
 
@@ -261,7 +263,6 @@ def test_stale_stamp_triggers_rebuild_even_on_a_fresh_store_instance(tmp_path):
 
     # Simulate a fresh process: generations are process-global, so a new
     # store instance alone no longer implies a cold cache.
-    from smartgallery_ai import vectors as vectors_mod
 
     with vectors_mod._GEN_LOCK:
         vectors_mod._GENERATIONS.clear()
@@ -282,7 +283,6 @@ def test_invalidate_drops_memory_and_disk_cache(tmp_path):
 
     cache_file = tmp_path / "vectors" / "semantic__v1.npz"
     assert cache_file.exists()
-    from smartgallery_ai import vectors as vectors_mod
 
     with vectors_mod._GEN_LOCK:
         assert "semantic" in vectors_mod._GENERATIONS
@@ -320,7 +320,6 @@ def test_topk_faiss_and_numpy_paths_agree_with_exclusions(tmp_path, monkeypatch)
     """The faiss IDSelector exclusion path and the numpy fallback must return
     the same ids and similarities. sys.modules[name]=None makes the inline
     `import faiss` raise ImportError, forcing the fallback."""
-    import sys
 
     pytest.importorskip("faiss")
     conn = make_conn()
@@ -338,7 +337,7 @@ def test_topk_faiss_and_numpy_paths_agree_with_exclusions(tmp_path, monkeypatch)
     via_numpy = store.topk(conn, "semantic", query, k=5, exclude=("f3", "f7", "ghost"))
 
     assert [fid for fid, _ in via_faiss] == [fid for fid, _ in via_numpy]
-    for (_, a), (_, b) in zip(via_faiss, via_numpy):
+    for (_, a), (_, b) in zip(via_faiss, via_numpy, strict=False):
         assert a == pytest.approx(b, abs=1e-5)
 
 
@@ -347,7 +346,6 @@ def test_topk_gpu_and_cpu_paths_agree(monkeypatch):
     path's neighbors (exact search either way; exclusions honored via
     over-fetch+filter on GPU, IDSelector on CPU). On faiss-cpu builds
     both runs take the CPU path and the test still holds."""
-    from smartgallery_ai import vectors as V
 
     conn = make_conn()
     ids = [f"g{i:03d}" for i in range(200)]
@@ -366,5 +364,5 @@ def test_topk_gpu_and_cpu_paths_agree(monkeypatch):
     second = store.topk(conn, "semantic", q, 10, exclude=["g001", "g002"])
 
     assert [f for f, _ in first] == [f for f, _ in second]
-    assert max(abs(a - b) for (_, a), (_, b) in zip(first, second)) < 1e-5
+    assert max(abs(a - b) for (_, a), (_, b) in zip(first, second, strict=False)) < 1e-5
     assert all(f not in ("g001", "g002") for f, _ in first)

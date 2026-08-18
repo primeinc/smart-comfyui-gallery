@@ -39,9 +39,9 @@ import struct
 import zlib
 
 import pytest
+from werkzeug.exceptions import Forbidden, NotFound
 
 import smartgallery
-
 
 MISSING = "deadbeef" * 4          # the right shape, no such picture
 
@@ -112,8 +112,7 @@ def test_no_route_calls_a_missing_picture_a_server_fault(
     for method, template in file_id_routes(sg.app):
         answer = ask(client, method, template, MISSING)
         if answer.status_code >= 500:
-            faulted.append("%s %s -> %s" % (method, template,
-                                            answer.status_code))
+            faulted.append(f"{method} {template} -> {answer.status_code}")
 
     assert not faulted, (
         "asking for a picture that is not in the library was reported as "
@@ -134,8 +133,7 @@ def test_no_route_calls_a_missing_picture_a_success(a_gallery_with_one_picture):
             continue
         body = answer.get_json()
         if isinstance(body, dict) and body.get("status") == "error":
-            lying.append("%s %s -> 200 but %r"
-                         % (method, template, body.get("message")))
+            lying.append("{} {} -> 200 but {!r}".format(method, template, body.get("message")))
 
     assert not lying, (
         "answered 200 while its own body reported a failure:\n  "
@@ -159,8 +157,7 @@ def test_the_refusal_does_not_quote_the_machine(a_gallery_with_one_picture):
         for giveaway in ("Traceback", "SELECT ", "sqlite", ".py", "C:\\",
                          "/home/", "smartgallery."):
             if giveaway in text:
-                leaked.append("%s %s leaked %r: %s"
-                              % (method, template, giveaway, text[:120]))
+                leaked.append(f"{method} {template} leaked {giveaway!r}: {text[:120]}")
 
     assert not leaked, "\n  ".join(leaked)
 
@@ -183,7 +180,7 @@ def test_a_refusal_says_what_is_wrong_in_words(a_gallery_with_one_picture):
     for method, template in file_id_routes(sg.app):
         said = ask(client, method, template, MISSING).get_data(as_text=True)
         if "requested URL was not found" in said:
-            untrue.append("%s %s" % (method, template))
+            untrue.append(f"{method} {template}")
     assert not untrue, (
         "told somebody the address was wrong when the address was right "
         "and the picture was gone: " + ", ".join(untrue))
@@ -220,7 +217,6 @@ def test_the_picture_that_is_there_still_answers(a_gallery_with_one_picture):
 class TestTheHelperItself:
 
     def test_it_keeps_the_status(self):
-        from werkzeug.exceptions import Forbidden, NotFound
 
         with smartgallery.app.test_request_context("/"):
             _body, code = smartgallery.answer_an_abort_readably(NotFound())
@@ -229,7 +225,6 @@ class TestTheHelperItself:
             assert code == 403
 
     def test_it_says_something_when_there_is_no_description(self):
-        from werkzeug.exceptions import Forbidden
 
         with smartgallery.app.test_request_context("/"):
             body, _code = smartgallery.answer_an_abort_readably(Forbidden())

@@ -6,17 +6,24 @@ error). Only 'stub' backends are used -- never real model weights.
 
 from __future__ import annotations
 
+import os as _os
 import sqlite3
+import threading
 import time
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from smartgallery_ai import AIConfig, SPACE_SEMANTIC, SPACE_VISUAL
-from smartgallery_ai.faces import FaceDetection
+from smartgallery_ai import RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig
+from smartgallery_ai import faces as F
+from smartgallery_ai import review as R
+from smartgallery_ai import schema as S
+from smartgallery_ai import worker as W
+from smartgallery_ai.faces import FaceDetection, StubFaceBackend
+from smartgallery_ai.review import StubSegmenter
 from smartgallery_ai.schema import init_schema
-from smartgallery_ai.worker import AIWorker
+from smartgallery_ai.worker import AIWorker, record_scan
 
 
 def _make_db(db_path: str) -> None:
@@ -81,7 +88,7 @@ def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.02) -> bool
     return predicate()
 
 
-@pytest.fixture()
+@pytest.fixture
 def worker_env(tmp_path):
     db_path = str(tmp_path / "gallery.sqlite")
     _make_db(db_path)
@@ -117,7 +124,7 @@ def worker_env(tmp_path):
 
 
 def test_worker_hashes_and_embeds_real_files(worker_env):
-    db_path, config, worker, file_ids = worker_env
+    db_path, _config, worker, file_ids = worker_env
     worker.start()
     try:
         assert _wait_until(lambda: worker.stats["hashed"] >= 3, timeout=3.0)
@@ -149,7 +156,7 @@ def test_worker_hashes_and_embeds_real_files(worker_env):
 
 
 def test_worker_recomputes_on_mtime_staleness(worker_env):
-    db_path, config, worker, file_ids = worker_env
+    db_path, _config, worker, _file_ids = worker_env
     worker.start()
     try:
         assert _wait_until(lambda: worker.stats["hashed"] >= 3, timeout=3.0)
@@ -176,7 +183,7 @@ def test_worker_recomputes_on_mtime_staleness(worker_env):
 
 
 def test_worker_stop_joins_cleanly(worker_env):
-    db_path, config, worker, file_ids = worker_env
+    _db_path, _config, worker, _file_ids = worker_env
     worker.start()
     assert _wait_until(lambda: worker.stats["cycles"] >= 1, timeout=3.0)
     assert worker.is_running
@@ -186,7 +193,7 @@ def test_worker_stop_joins_cleanly(worker_env):
 
 
 def test_worker_never_raises_on_unreadable_path(worker_env):
-    db_path, config, worker, file_ids = worker_env
+    _db_path, _config, worker, _file_ids = worker_env
     worker.start()
     try:
         assert _wait_until(lambda: worker.stats["cycles"] >= 2, timeout=3.0)
@@ -296,7 +303,6 @@ def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path):
     """Oracle-confirmed fix: a review stored while NO segmenter was
     available must still get masks once a segmenter is provisioned — the
     'masks' scan-log unit is independent of the review row."""
-    from smartgallery_ai import RUBRIC_VERSION, review as R
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -348,15 +354,14 @@ def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path):
         "SELECT * FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()
     mask_path = conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
     conn.close()
-    import os as _os
-    assert log is not None and log["result_count"] == 1
+    assert log is not None
+    assert log["result_count"] == 1
     assert _os.path.isfile(mask_path)
 
 
 def test_scan_log_check_migration_admits_masks(tmp_path):
     """Old databases carry a CHECK without kind 'masks'; init_schema
     rebuilds the table in place, preserving rows."""
-    from smartgallery_ai import schema as S
 
     db_path = str(tmp_path / "old.sqlite")
     conn = sqlite3.connect(db_path)
@@ -389,7 +394,6 @@ def test_scan_log_check_migration_admits_masks(tmp_path):
 def test_worker_sweeps_orphaned_mask_dirs(tmp_path):
     """Deleting a files row cascades findings rows away but not mask PNGs;
     the worker's sweep removes mask directories for vanished file ids."""
-    import os as _os
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -422,7 +426,6 @@ def test_worker_sweeps_orphaned_mask_dirs(tmp_path):
 def test_backend_resolver_exception_cached_none_no_deadlock(tmp_path):
     """A raising resolver must record the error, cache None, and return —
     without re-acquiring the worker lock from inside the locked section."""
-    import threading
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -450,7 +453,8 @@ def test_backend_resolver_exception_cached_none_no_deadlock(tmp_path):
     t.start()
     t.join(timeout=5.0)
     assert not t.is_alive(), "worker._backend deadlocked on a raising resolver"
-    assert out["first"] is None and out["second"] is None
+    assert out["first"] is None
+    assert out["second"] is None
     assert len(calls) == 1  # the failure is cached, not re-probed
 
 
@@ -467,8 +471,6 @@ def test_failed_mask_generation_is_retried_not_logged_complete(tmp_path):
     """A cycle where every mask attempt fails must not record a 'masks'
     scan row; the file stays selectable and succeeds once the segmenter
     recovers."""
-    from smartgallery_ai import RUBRIC_VERSION, review as R
-    from smartgallery_ai.review import StubSegmenter
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -513,15 +515,16 @@ def test_failed_mask_generation_is_retried_not_logged_complete(tmp_path):
         "SELECT result_count FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'"
     ).fetchone()
     conn.close()
-    import os as _os
-    assert mask_path is not None and _os.path.isfile(mask_path)
-    assert log is not None and log[0] == 1
+    assert mask_path is not None
+    assert _os.path.isfile(mask_path)
+    assert log is not None
+    assert log[0] == 1
 
 
 def test_worker_clusters_faces_after_indexing(worker_env):
     """Indexing new face instances triggers clustering in the same cycle;
     the identical stub embeddings across files form one cluster."""
-    db_path, config, worker, file_ids = worker_env
+    db_path, _config, worker, _file_ids = worker_env
     worker.start()
     assert _wait_until(
         lambda: (_query_one(db_path, "SELECT COUNT(*) FROM ai_face_clusters") or (0,))[0] > 0,
@@ -595,8 +598,8 @@ def test_fast_scheduler_redistributes_drained_stage_quotas():
     """The production pathology: two stages fully indexed, one deep
     backlog. The drained stages' quotas must flow to the hungry stage —
     with budget 9 across 3 stages, faces gets 9, not 3."""
-    sem, run_sem = _stage(0)
-    vis, run_vis = _stage(0)
+    _sem, run_sem = _stage(0)
+    _vis, run_vis = _stage(0)
     fac, run_fac = _stage(1000)
     consumed = _pace_host()._run_fast_stages(
         [("semantic", run_sem), ("visual", run_vis), ("faces", run_fac)], 9)
@@ -621,7 +624,8 @@ def test_fast_scheduler_stops_when_all_backlogs_drain():
     b, run_b = _stage(1)
     consumed = _pace_host()._run_fast_stages([("a", run_a), ("b", run_b)], 50)
     assert consumed == 3
-    assert a["remaining"] == 0 and b["remaining"] == 0
+    assert a["remaining"] == 0
+    assert b["remaining"] == 0
 
 
 def test_review_pacing_rides_along_and_backs_off(tmp_path, monkeypatch):
@@ -704,7 +708,6 @@ def test_record_scan_is_model_scoped(tmp_path):
     """Each pipeline keeps its own scan-log row: a second model's scan adds
     a row instead of overwriting the first model's last-run bookkeeping;
     re-scanning with the same model upserts in place."""
-    from smartgallery_ai.worker import record_scan
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -736,8 +739,6 @@ def test_scan_log_pk_migration_preserves_rows(tmp_path):
     """A database whose ai_scan_log predates the model-scoped primary key
     is rebuilt in place by init_schema with every row preserved, after
     which two models' rows for one (file, kind) coexist."""
-    from smartgallery_ai.schema import init_schema
-    from smartgallery_ai.worker import record_scan
 
     db_path = str(tmp_path / "g.sqlite")
     conn = sqlite3.connect(db_path)
@@ -787,7 +788,6 @@ def test_faces_attribute_backfill_requeues_only_null_attribute_rows(tmp_path):
     the current model) are re-queued exactly once — by deleting their scan
     log rows, never by a version bump — while files whose rows already
     carry attributes are left alone."""
-    from smartgallery_ai.faces import StubFaceBackend
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -842,8 +842,6 @@ def test_face_clustering_retried_after_failure(tmp_path, monkeypatch):
     """Face scans commit before clustering runs, so a clustering failure
     must leave persistent pending state: the next cycle (with zero new
     face candidates) has to retry and succeed."""
-    from smartgallery_ai import faces as F
-    from smartgallery_ai.faces import StubFaceBackend
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -905,7 +903,8 @@ def test_paced_quota_shrinks_offers_for_measured_slow_stages():
     c, run_c = _stage(1000)
     host._run_fast_stages([("a", run_a), ("b", run_b), ("c", run_c)], 9)
     assert a["offers"][0] == 1
-    assert b["offers"][0] == 3 and c["offers"][0] == 3
+    assert b["offers"][0] == 3
+    assert c["offers"][0] == 3
 
 
 def test_note_pace_ema_and_first_measurement():
@@ -928,7 +927,6 @@ def test_fast_scheduler_time_deadline_stops_reoffers(monkeypatch):
     """When measured work has already blown the cycle's time target, the
     leftover budget is NOT re-offered — the cycle yields instead of
     grinding on (this is the load-adaptation contract)."""
-    from smartgallery_ai import worker as W
 
     clock = {"t": 0.0}
     monkeypatch.setattr(W.time, "monotonic", lambda: clock["t"])
@@ -954,7 +952,6 @@ def test_fast_scheduler_time_deadline_stops_reoffers(monkeypatch):
 
 def _review_env(tmp_path, workflow_prompt="a red square"):
     """DB + stub critic + worker, with one file carrying `workflow_prompt`."""
-    from smartgallery_ai import review as R
 
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
@@ -1004,7 +1001,8 @@ def test_review_path_runs_without_crashing(tmp_path):
         assert worker._process_reviews(conn, backend, 5) == 1
         row = conn.execute("SELECT quality_score, prompt_alignment_score "
                            "FROM ai_reviews WHERE file_id = 'f1'").fetchone()
-        assert row is not None and row["quality_score"] is not None
+        assert row is not None
+        assert row["quality_score"] is not None
     finally:
         conn.close()
 

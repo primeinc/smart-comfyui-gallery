@@ -21,7 +21,6 @@ Format references (cloned under ../refs):
 
 import json
 import re
-from typing import Optional
 from xml.dom import minidom
 
 from .containers import RawMetadata, load_raw
@@ -95,7 +94,7 @@ class SwarmUIAdapter:
     tool = "SwarmUI"
 
     @staticmethod
-    def _payload(raw: RawMetadata) -> Optional[str]:
+    def _payload(raw: RawMetadata) -> str | None:
         for candidate in (raw.text.get("parameters"), raw.user_comment, raw.exif_model):
             if candidate and "sui_image_params" in candidate:
                 return candidate
@@ -106,11 +105,11 @@ class SwarmUIAdapter:
         return cls._payload(raw) is not None
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         return cls.parse_text(cls._payload(raw))
 
     @classmethod
-    def parse_text(cls, payload: str, detection: str = "marker") -> Optional[ParsedMetadata]:
+    def parse_text(cls, payload: str, detection: str = "marker") -> ParsedMetadata | None:
         try:
             obj = json.loads(payload)
             params = dict(obj["sui_image_params"])
@@ -160,7 +159,7 @@ class FooocusAdapter:
                     obj = json.loads(value)
                 except Exception:
                     continue
-                if isinstance(obj, dict) and FooocusAdapter._JSON_KEYS <= set(obj):
+                if isinstance(obj, dict) and set(obj) >= FooocusAdapter._JSON_KEYS:
                     return "fooocus", value
         return None, None
 
@@ -172,7 +171,7 @@ class FooocusAdapter:
         return scheme is not None and bool(payload)
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         scheme, payload = cls._scheme_and_payload(raw)
         if not payload:
             return None
@@ -209,7 +208,7 @@ class InvokeAIAdapter:
         return any(k in raw.text for k in ("invokeai_metadata", "sd-metadata", "Dream"))
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         if "invokeai_metadata" in raw.text:
             return cls._parse_v3(raw.text["invokeai_metadata"])
         if "sd-metadata" in raw.text:
@@ -217,7 +216,7 @@ class InvokeAIAdapter:
         return cls._parse_dream(raw.text.get("Dream", ""))
 
     @classmethod
-    def _parse_v3(cls, payload: str) -> Optional[ParsedMetadata]:
+    def _parse_v3(cls, payload: str) -> ParsedMetadata | None:
         try:
             data = json.loads(payload)
         except Exception:
@@ -241,7 +240,7 @@ class InvokeAIAdapter:
         return result
 
     @classmethod
-    def _parse_v2(cls, payload: str) -> Optional[ParsedMetadata]:
+    def _parse_v2(cls, payload: str) -> ParsedMetadata | None:
         try:
             data = json.loads(payload)
             image = data.pop("image")
@@ -265,7 +264,7 @@ class InvokeAIAdapter:
         return result
 
     @classmethod
-    def _parse_dream(cls, payload: str) -> Optional[ParsedMetadata]:
+    def _parse_dream(cls, payload: str) -> ParsedMetadata | None:
         match = re.search(r'"(.*?)"\s*(.*?)$', payload)
         if not match:
             return None
@@ -298,7 +297,7 @@ class NovelAIAdapter:
         return raw.text.get("Software") == "NovelAI"
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         comment = raw.text_json("Comment") or {}
         result = ParsedMetadata(
             tool=cls.tool, detection="marker",
@@ -369,7 +368,7 @@ class EasyDiffusionAdapter:
         )
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         data = _json_or_none(raw.user_comment)
         if isinstance(data, dict):
             return cls._parse_dict(data, raw.user_comment, "heuristic")
@@ -406,7 +405,7 @@ class DrawThingsAdapter:
         return bool(raw.xmp) and "exif:UserComment" in raw.xmp
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         try:
             dom = minidom.parseString(raw.xmp)
             nodes = dom.getElementsByTagName("exif:UserComment")
@@ -456,17 +455,13 @@ class ComfyUIAdapter:
             isinstance(v, dict) and "class_type" in v for v in prompt.values()
         ):
             return True
-        for tag in (raw.exif_make, raw.exif_model):
-            if tag and (tag.startswith("workflow:{") or tag.startswith("prompt:{")):
-                return True
-        return False
+        return any(tag and tag.startswith(("workflow:{", "prompt:{")) for tag in (raw.exif_make, raw.exif_model))
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         params = raw.text.get("parameters")
         if params and looks_like_infotext(params):
-            result = parse_infotext(params, "ComfyUI (A1111-compatible)")
-            return result
+            return parse_infotext(params, "ComfyUI (A1111-compatible)")
         payload = raw.text.get("workflow") or raw.text.get("prompt") or ""
         return ParsedMetadata(tool=cls.tool, raw=payload, detection="marker")
 
@@ -477,7 +472,7 @@ class A1111Adapter:
     tool = "A1111 / Forge"
 
     @staticmethod
-    def _payload(raw: RawMetadata) -> Optional[str]:
+    def _payload(raw: RawMetadata) -> str | None:
         params = raw.text.get("parameters")
         if params and looks_like_infotext(params):
             return params
@@ -491,13 +486,10 @@ class A1111Adapter:
 
     @classmethod
     def match_heuristic(cls, raw: RawMetadata) -> bool:
-        for candidate in (raw.user_comment, raw.gif_comment):
-            if candidate and looks_like_infotext(candidate):
-                return True
-        return False
+        return any(candidate and looks_like_infotext(candidate) for candidate in (raw.user_comment, raw.gif_comment))
 
     @classmethod
-    def parse(cls, raw: RawMetadata) -> Optional[ParsedMetadata]:
+    def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         payload = cls._payload(raw)
         detection = "marker"
         if payload is None:
@@ -515,7 +507,7 @@ class A1111Adapter:
         return result
 
 
-def _json_or_none(text: Optional[str]):
+def _json_or_none(text: str | None):
     if not text or not text.lstrip().startswith("{"):
         return None
     try:
@@ -540,7 +532,7 @@ MARKER_ADAPTERS = (
 HEURISTIC_ADAPTERS = (A1111Adapter, EasyDiffusionAdapter)
 
 
-def parse_stealth_text(text: str) -> Optional[ParsedMetadata]:
+def parse_stealth_text(text: str) -> ParsedMetadata | None:
     """Classify a decoded stealth payload by content."""
     if not text:
         return None
@@ -561,7 +553,7 @@ def parse_stealth_text(text: str) -> Optional[ParsedMetadata]:
     return None
 
 
-def parse_raw(raw: RawMetadata) -> Optional[ParsedMetadata]:
+def parse_raw(raw: RawMetadata) -> ParsedMetadata | None:
     for adapter in MARKER_ADAPTERS:
         try:
             if adapter.match(raw):
@@ -585,7 +577,7 @@ def parse_raw(raw: RawMetadata) -> Optional[ParsedMetadata]:
     return None
 
 
-def parse_file(filepath: str, allow_stealth: bool = False) -> Optional[ParsedMetadata]:
+def parse_file(filepath: str, allow_stealth: bool = False) -> ParsedMetadata | None:
     """Parse generation metadata from an image file.
 
     allow_stealth enables the LSB pixel scan (detail views); keep it off in

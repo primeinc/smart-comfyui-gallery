@@ -9,7 +9,9 @@ and a delete must clear the rows it destroyed.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import shutil
 
 import pytest
 from PIL import Image
@@ -17,7 +19,7 @@ from PIL import Image
 _PREFIX = "fldroute_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
@@ -41,7 +43,6 @@ class _InlineExecutor:
         return False
 
     def submit(self, fn, *args, **kwargs):
-        import concurrent.futures
         future = concurrent.futures.Future()
         try:
             future.set_result(fn(*args, **kwargs))
@@ -80,7 +81,6 @@ def _make_folder(smartgallery_app, name, with_file=True, monkeypatch=None):
 @pytest.fixture(autouse=True)
 def _cleanup(smartgallery_app):
     yield
-    import shutil
     root = smartgallery_app.BASE_OUTPUT_PATH
     for entry in os.listdir(root):
         if entry.startswith(_PREFIX):
@@ -186,7 +186,7 @@ def test_rename_folder_rejects_empty_and_dot_names(smartgallery_app, client, bad
     assert os.path.isdir(path), "the folder changed despite an invalid name"
 
 
-@pytest.mark.parametrize("attempt,expected", [
+@pytest.mark.parametrize(("attempt", "expected"), [
     ("a/b", "ab"),
     ("a" + chr(92) + "b", "ab"),
     ("up:down", "updown"),
@@ -208,5 +208,4 @@ def test_rename_folder_strips_separators_instead_of_escaping(
     parent = os.path.abspath(os.path.join(smartgallery_app.BASE_OUTPUT_PATH, os.pardir))
     assert not os.path.exists(os.path.join(parent, expected)), (
         "the rename escaped the gallery root")
-    import shutil
     shutil.rmtree(landed, ignore_errors=True)

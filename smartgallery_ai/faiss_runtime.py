@@ -17,6 +17,7 @@ NVIDIA driver and falls back to the installed faiss-cpu package when
 the vendored import cannot load. AI_DAM_FAISS_GPU=0 opts out.
 """
 
+import contextlib
 import glob
 import importlib
 import os
@@ -95,9 +96,15 @@ def import_faiss():
                 del sys.modules[name]
             importlib.invalidate_caches()
         finally:
-            try:
+            with contextlib.suppress(ValueError):
                 sys.path.remove(_VENDOR_ROOT)
-            except ValueError:
-                pass
+
+    # Either the vendored build was not eligible or it failed to load. Both
+    # land here, on the installed faiss-cpu, and both need their own import:
+    # the one above binds `faiss` as a local, so reaching this line without
+    # it raised UnboundLocalError rather than importing anything. That is
+    # every install without the vendored GPU build -- all of Linux and
+    # macOS, any Windows box with no nvidia-smi, and anyone setting
+    # AI_DAM_FAISS_GPU=0 -- so the documented fallback never once happened.
     import faiss
     return faiss

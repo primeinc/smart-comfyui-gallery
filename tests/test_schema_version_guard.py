@@ -16,97 +16,99 @@ The same function also announced every migration step on a database it had
 just created, because they all run with IF NOT EXISTS: a new user's first
 start reported six schema updates and a version upgrade, which reads as
 "already out of date" rather than "created".
+
+Each case used to start a fresh interpreter and load the whole gallery to
+call one function against one database. init_db already takes the
+connection to work on, so the cases open their own throwaway file and pass
+it in; capsys reads back what the subprocess's stdout used to
+(pytest doc/en/how-to/capture-stdout-stderr.rst:112-142).
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
+import sqlite3
+
+import pytest
 
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+@pytest.fixture
+def fresh_database(smartgallery_app, tmp_path):
+    """A throwaway gallery database, opened the way the gallery opens one."""
+    path = tmp_path / "gallery_cache.sqlite"
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    yield conn
+    conn.close()
 
 
-def _run(env_extra, body, tmp_path):
-    gallery = tmp_path / "gallery"
-    output = tmp_path / "output"
-    gallery.mkdir(exist_ok=True)
-    output.mkdir(exist_ok=True)
-    env = dict(os.environ, ENABLE_AI_DAM="false", AI_DAM_AUTO_PROVISION="false",
-               BASE_OUTPUT_PATH=str(output), BASE_SMARTGALLERY_PATH=str(gallery),
-               **env_extra)
-    script = ("import sys, os\n"
-              "sys.argv = ['smartgallery.py']\n"
-              "import smartgallery as sg\n"
-              "os.makedirs(sg.SQLITE_CACHE_DIR, exist_ok=True)\n" + body)
-    return subprocess.run([sys.executable, "-c", script], cwd=_ROOT, env=env,
-                          capture_output=True, text=True, timeout=300)
+def _version(conn):
+    return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
-def test_a_first_run_does_not_announce_migrations(tmp_path):
+def test_a_first_run_does_not_announce_migrations(smartgallery_app, fresh_database,
+                                                  capsys):
     """The regression: six 'Updating Database Schema' lines on a database
     created a moment earlier."""
-    proc = _run({}, "sg.init_db()\nprint('DONE')\n", tmp_path)
+    smartgallery_app.init_db(fresh_database)
 
-    assert proc.returncode == 0, proc.stderr
-    assert "DONE" in proc.stdout
-    assert "Updating Database Schema" not in proc.stdout, (
-        f"a brand new database reported migrations:\n{proc.stdout}")
+    printed = capsys.readouterr().out
+    assert "Updating Database Schema" not in printed, (
+        f"a brand new database reported migrations:\n{printed}")
 
 
-def test_a_real_upgrade_still_announces_itself(tmp_path):
+def test_a_first_run_still_builds_the_schema(smartgallery_app, fresh_database):
+    """Silence must not mean it did nothing -- that would satisfy the test
+    above for ever."""
+    smartgallery_app.init_db(fresh_database)
+
+    tables = {row[0] for row in fresh_database.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+
+    assert "files" in tables, f"init_db created no files table: {sorted(tables)}"
+    assert _version(fresh_database) == smartgallery_app.DB_SCHEMA_VERSION
+
+
+def test_a_real_upgrade_still_announces_itself(smartgallery_app, fresh_database,
+                                               capsys):
     """The counterpart: silence on a fresh database must not mean silence
     on an actual migration, which is the one someone needs to see."""
-    body = ("sg.init_db()\n"
-            "conn = sg.get_db_connection()\n"
-            "conn.execute('PRAGMA user_version = 3')\n"
-            "conn.commit(); conn.close()\n"
-            "sg.init_db()\n"
-            "print('DONE')\n")
-    proc = _run({}, body, tmp_path)
+    smartgallery_app.init_db(fresh_database)
+    fresh_database.execute("PRAGMA user_version = 3")
+    fresh_database.commit()
+    capsys.readouterr()
 
-    assert proc.returncode == 0, proc.stderr
-    assert "Updating Database Schema Version: 3 ->" in proc.stdout, (
-        f"an upgrade from version 3 said nothing:\n{proc.stdout}")
+    smartgallery_app.init_db(fresh_database)
+
+    printed = capsys.readouterr().out
+    assert "Updating Database Schema Version: 3 ->" in printed, (
+        f"an upgrade from version 3 said nothing:\n{printed}")
 
 
-def test_a_newer_database_is_not_stamped_backwards(tmp_path):
+def test_a_newer_database_is_not_stamped_backwards(smartgallery_app,
+                                                   fresh_database):
     """The regression that matters: the marker recording that newer
     migrations ran must survive an older build opening the file."""
-    body = ("sg.init_db()\n"
-            "conn = sg.get_db_connection()\n"
-            "conn.execute('PRAGMA user_version = 999')\n"
-            "conn.commit(); conn.close()\n"
-            "sg.init_db()\n"
-            "conn = sg.get_db_connection()\n"
-            "print('VERSION=', conn.execute('PRAGMA user_version').fetchone()[0])\n")
-    proc = _run({}, body, tmp_path)
+    smartgallery_app.init_db(fresh_database)
+    fresh_database.execute("PRAGMA user_version = 999")
+    fresh_database.commit()
 
-    assert proc.returncode == 0, proc.stderr
-    assert "VERSION= 999" in proc.stdout, (
-        f"the version marker was rewritten downwards:\n{proc.stdout}")
+    smartgallery_app.init_db(fresh_database)
+
+    assert _version(fresh_database) == 999, (
+        "the version marker was rewritten downwards")
 
 
-def test_a_newer_database_says_so_loudly(tmp_path):
+def test_a_newer_database_says_so_loudly(smartgallery_app, fresh_database, capsys):
     """A silent refusal to downgrade would leave someone wondering why
     their newer data is missing."""
-    body = ("sg.init_db()\n"
-            "conn = sg.get_db_connection()\n"
-            "conn.execute('PRAGMA user_version = 999')\n"
-            "conn.commit(); conn.close()\n"
-            "sg.init_db()\n"
-            "print('DONE')\n")
-    proc = _run({}, body, tmp_path)
+    smartgallery_app.init_db(fresh_database)
+    fresh_database.execute("PRAGMA user_version = 999")
+    fresh_database.commit()
+    capsys.readouterr()
 
-    out = proc.stdout
-    assert "NEWER SmartGallery" in out, out
-    assert "999" in out and str(_current_build_version()) in out, out
+    smartgallery_app.init_db(fresh_database)
 
-
-def _current_build_version():
-    src = open(os.path.join(_ROOT, "smartgallery.py"), encoding="utf-8").read()
-    for line in src.splitlines():
-        if line.startswith("DB_SCHEMA_VERSION"):
-            return int(line.split("=")[1].strip())
-    raise AssertionError("DB_SCHEMA_VERSION not found")
+    printed = capsys.readouterr().out
+    assert "NEWER SmartGallery" in printed, printed
+    assert "999" in printed, printed
+    assert str(smartgallery_app.DB_SCHEMA_VERSION) in printed, printed

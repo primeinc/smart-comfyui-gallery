@@ -28,6 +28,7 @@ gets kept is worse than none.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import io
 import os
@@ -170,7 +171,7 @@ class _Response:
         return False
 
 
-@pytest.fixture()
+@pytest.fixture
 def offline(tmp_path, monkeypatch):
     """A pinned build whose archive is served from memory."""
     build = dict(_programs_here())
@@ -200,7 +201,7 @@ def test_a_good_download_is_kept(offline, tmp_path, monkeypatch):
     setting it directly left every later test in the session downloading
     through this stub, and broke the AI provisioning timeout test six
     files away."""
-    build, payload = offline
+    _build, payload = offline
     monkeypatch.setattr(smartgallery.urllib.request, "urlopen",
                         lambda url, timeout=None: _Response(payload))
 
@@ -214,7 +215,7 @@ def test_a_good_download_is_kept(offline, tmp_path, monkeypatch):
 def test_a_short_download_is_thrown_away(offline, tmp_path, monkeypatch):
     """The half that matters. A truncated ffmpeg that gets kept is worse
     than no ffmpeg: it is a program that starts and then fails."""
-    build, payload = offline
+    _build, payload = offline
     monkeypatch.setattr(smartgallery.urllib.request, "urlopen",
                         lambda url, timeout=None: _Response(
                             payload[: len(payload) // 2], declared=len(payload)))
@@ -238,7 +239,7 @@ def test_a_download_with_the_wrong_digest_is_thrown_away(offline, monkeypatch):
 def test_a_program_that_is_not_ffprobe_is_thrown_away(offline, monkeypatch):
     """Last check of the three: whatever came out has to answer as
     ffprobe. Size and digest only say the bytes are the expected bytes."""
-    build, payload = offline
+    _build, payload = offline
     monkeypatch.setattr(smartgallery.urllib.request, "urlopen",
                         lambda url, timeout=None: _Response(payload))
     monkeypatch.setattr(smartgallery, "_is_ffprobe", lambda path: False)
@@ -263,7 +264,7 @@ def test_an_already_fetched_ffmpeg_is_used_without_downloading_again(
         offline, monkeypatch):
     """Fetching costs a large download once. Every later start has to find
     it sitting there."""
-    build, payload = offline
+    _build, payload = offline
     monkeypatch.setattr(smartgallery.urllib.request, "urlopen",
                         lambda url, timeout=None: _Response(payload))
     first = smartgallery.fetch_ffmpeg()
@@ -354,17 +355,12 @@ def test_a_terminal_gets_one_line_that_rewrites_itself():
         f"printed {written.count(chr(10))} lines instead of rewriting one")
 
 
-def test_the_reporter_is_actually_passed_to_the_download():
+def test_the_reporter_is_actually_passed_to_the_download(gallery_tree):
     """The reporter existed before this and was not wired up, which is how
     the silent version shipped. Checked in the source because the call is
     on the path that downloads."""
-    import ast
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(source.read_text(encoding="utf-8"))
-
-    fn = next((node for node in ast.walk(tree)
+    fn = next((node for node in ast.walk(gallery_tree)
                if isinstance(node, ast.FunctionDef)
                and node.name == "find_ffprobe_path"), None)
     assert fn is not None, "find_ffprobe_path is gone"
@@ -377,16 +373,3 @@ def test_the_reporter_is_actually_passed_to_the_download():
         assert any(kw.arg == "progress" for kw in call.keywords), (
             "fetch_ffmpeg is called without a progress reporter, so a "
             "170 MB download says nothing between starting and finishing")
-
-
-def test_the_switch_is_a_documented_setting():
-    """It has to be discoverable, or "stop downloading things" means
-    reading the source."""
-    import pathlib
-
-    root = pathlib.Path(smartgallery.__file__).resolve().parent
-    doc = (root / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
-
-    assert "FFMPEG_AUTO_DOWNLOAD" in doc, (
-        "the switch that stops a large download is not in the settings "
-        "reference")

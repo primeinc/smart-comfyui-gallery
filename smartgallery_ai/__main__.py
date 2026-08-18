@@ -15,13 +15,14 @@ import argparse
 import sqlite3
 import sys
 
+from smartgallery_ai import provision as P
 from smartgallery_ai import schema
+from smartgallery_ai.provision import GROUPS  # stdlib-only import; registry drives the help
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
     """Open the gallery SQLite database with name-addressable rows."""
-    conn = schema.connect(db_path)
-    return conn
+    return schema.connect(db_path)
 
 
 def cmd_rebuild(args: argparse.Namespace) -> int:
@@ -59,7 +60,6 @@ def cmd_provision(args: argparse.Namespace) -> int:
     weights for the requested groups. The request path never downloads;
     besides this command, only the worker's async auto-provisioning
     (AI_DAM_AUTO_PROVISION, default on) fetches weights."""
-    from smartgallery_ai import provision as P
 
     try:
         print(P.format_plan(args.models_dir, args.groups))
@@ -101,7 +101,6 @@ def main(argv=None) -> int:
     p_status.add_argument("--db", required=True)
     p_status.set_defaults(fn=cmd_status)
 
-    from smartgallery_ai.provision import GROUPS  # stdlib-only import; registry drives the help
 
     p_prov = sub.add_parser(
         "provision",

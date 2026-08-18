@@ -23,7 +23,6 @@ bug, so the check has to see branches.
 from __future__ import annotations
 
 import ast
-import io
 import pathlib
 
 _SOURCE = pathlib.Path(__file__).resolve().parent.parent / "smartgallery.py"
@@ -49,10 +48,9 @@ def _calls_helper(stmt):
                for n in ast.walk(stmt))
 
 
-def _unprotected_id_changes():
+def _unprotected_id_changes(tree):
     """Every statement that rewrites files.id whose own block does not also
     call the helper. Returns [(line, enclosing function)]."""
-    tree = ast.parse(io.open(_SOURCE, encoding="utf-8").read())
 
     # Which function each node belongs to, for the failure message.
     owner = {}
@@ -76,20 +74,19 @@ def _unprotected_id_changes():
     return sorted(set(bad))
 
 
-def test_the_check_still_sees_the_known_sites():
+def test_the_check_still_sees_the_known_sites(gallery_tree):
     """Control: an empty world passes the real test for ever, so the four
     known id-changing statements are counted."""
-    tree = ast.parse(io.open(_SOURCE, encoding="utf-8").read())
-    sites = [n for n in ast.walk(tree) if _MARKER in _sql_of(n)]
+    sites = [n for n in ast.walk(gallery_tree) if _MARKER in _sql_of(n)]
 
     assert len(sites) >= 4, (
         f"only {len(sites)} statements rewrite files.id; the check has "
         f"stopped finding them, which would make it pass regardless.")
 
 
-def test_every_id_change_carries_the_files_data():
+def test_every_id_change_carries_the_files_data(gallery_tree):
     """The regression, for all four at once and for any fifth."""
-    unprotected = _unprotected_id_changes()
+    unprotected = _unprotected_id_changes(gallery_tree)
 
     assert unprotected == [], (
         "these rewrite files.id without their block calling "

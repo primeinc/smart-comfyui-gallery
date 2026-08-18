@@ -20,6 +20,7 @@ rewrites nested files to a path they were never at.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -66,7 +67,7 @@ def _key_for(smartgallery_app, suffix):
     pytest.skip(f"folder {suffix} is not exposed by the folder config")
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """A folder with a file in it and a file one level deeper, plus a
     sibling folder whose name starts with the same string."""
@@ -104,18 +105,14 @@ def library(smartgallery_app, monkeypatch):
     for dirpath, _dirs, names in os.walk(base, topdown=False):
         for name in names:
             if name.startswith(_PREFIX):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(os.path.join(dirpath, name))
-                except OSError:
-                    pass
         if os.path.basename(dirpath).startswith(_PREFIX) or dirpath.endswith("2026-08-15"):
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
-            except OSError:
-                pass
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
@@ -212,10 +209,8 @@ def test_unmounting_forgets_files_in_subfolders_of_the_mount(
     finally:
         link_path = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, link_name)
         if os.path.isdir(link_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(link_path)
-            except OSError:
-                pass
         conn = smartgallery_app.get_db_connection()
         try:
             conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")

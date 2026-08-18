@@ -31,6 +31,7 @@ content. What it changes is what a checkout does with it.
 
 from __future__ import annotations
 
+import functools
 import pathlib
 import shutil
 import subprocess
@@ -38,6 +39,8 @@ import subprocess
 import pytest
 
 import smartgallery
+
+pytestmark = pytest.mark.spawns  # every check here runs another program
 
 _ROOT = pathlib.Path(smartgallery.__file__).resolve().parent
 
@@ -81,7 +84,7 @@ def checkouts(tmp_path_factory):
     return made
 
 
-@pytest.mark.parametrize("autocrlf,expect_crlf", [("true", True),
+@pytest.mark.parametrize(("autocrlf", "expect_crlf"), [("true", True),
                                                   ("false", False)])
 def test_the_checkout_is_really_in_that_mode(checkouts, autocrlf, expect_crlf):
     """Control, one per mode, and the thing the rest of the file rests on.
@@ -145,22 +148,47 @@ def test_the_shebang_is_exactly_what_it_should_be(checkouts, autocrlf):
     assert first == b"#!/bin/bash", first
 
 
+@functools.cache
+def _committed_line_endings():
+    """{path: eolinfo} for the bytes in the index, straight from Git.
+
+    `git ls-files --eol` reports i/<eolinfo> -- the content identification
+    of what is stored, one of "-text", "none", "lf", "crlf", "mixed" or ""
+    (Documentation/git-ls-files.adoc:198-213). One process for the whole
+    repository; this used to run `git show HEAD:<path>` once per tracked
+    file and scan the bytes itself, which is several hundred processes to
+    ask Git something it already knows.
+    """
+    listed = _git("ls-files", "--eol")
+    assert listed.returncode == 0, listed.stderr.decode(errors="replace")
+
+    endings = {}
+    for line in listed.stdout.decode("utf-8", "replace").splitlines():
+        fields, _tab, path = line.partition("\t")
+        if not path:
+            continue
+        for field in fields.split():
+            if field.startswith("i/"):
+                endings[path] = field[2:]
+    return endings
+
+
+def test_the_index_reading_finds_the_text_files():
+    """Control. The check below is an absence, and an absence is also what
+    a parse that understood nothing would produce."""
+    endings = _committed_line_endings()
+
+    assert len(endings) > 100, f"only read {len(endings)} tracked files"
+    assert sum(1 for kind in endings.values() if kind == "lf") > 50, (
+        f"no committed file reads as lf: {sorted(set(endings.values()))}. "
+        f"The parse is not reaching the i/<eolinfo> field.")
+
+
 def test_nothing_committed_holds_a_carriage_return():
     """The repository's own side of it. A file committed with CRLF is
     handed out that way to everyone, whatever their checkout does."""
-    listed = _git("ls-files", "-z")
-    assert listed.returncode == 0, listed.stderr.decode(errors="replace")
-
-    offenders = []
-    for raw in listed.stdout.split(b"\x00"):
-        if not raw:
-            continue
-        name = raw.decode("utf-8")
-        blob = _git("show", f"HEAD:{name}")
-        if blob.returncode != 0 or b"\x00" in blob.stdout:
-            continue  # not in HEAD yet, or binary
-        if b"\r\n" in blob.stdout:
-            offenders.append(name)
+    offenders = sorted(path for path, kind in _committed_line_endings().items()
+                       if kind in {"crlf", "mixed"})
 
     assert offenders == [], (
         f"committed with CRLF: {offenders}. Everyone gets those bytes "

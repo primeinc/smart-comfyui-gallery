@@ -20,13 +20,13 @@ def render_report(parsed: ParsedMetadata, include_emojis: bool = True) -> str:
     """
     if parsed is None or not parsed.renderable:
         return None
-    emoji = _EMOJI if include_emojis else {k: "" for k in _EMOJI}
+    emoji = _EMOJI if include_emojis else dict.fromkeys(_EMOJI, "")
     params = parsed.params
     out = [f"=== {parsed.tool} Generation Parameters ===\n"]
 
     out.append(f"{emoji['models']} MODEL: {params.get('model', 'N/A')}\n")
     out.append(f"{emoji['prompts']} PROMPTS:\n")
-    out.append(f"  Positive:\n           {parsed.positive if parsed.positive else '(empty)'}\n")
+    out.append(f"  Positive:\n           {parsed.positive or '(empty)'}\n")
     if parsed.negative:
         out.append(f"  Negative:\n           {parsed.negative}")
     out.append("")

@@ -28,7 +28,7 @@ import pytest
 _STATUS = "/galleryout/api/aidam/status"
 
 
-@pytest.fixture()
+@pytest.fixture
 def locked(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)

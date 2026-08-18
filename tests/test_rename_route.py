@@ -15,6 +15,7 @@ useful answer.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -23,7 +24,7 @@ from PIL import Image
 _PREFIX = "rnroute_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
@@ -51,10 +52,8 @@ def _cleanup(smartgallery_app):
     root = smartgallery_app.BASE_OUTPUT_PATH
     for entry in os.listdir(root):
         if entry.startswith(_PREFIX):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(os.path.join(root, entry))
-            except OSError:
-                pass
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")

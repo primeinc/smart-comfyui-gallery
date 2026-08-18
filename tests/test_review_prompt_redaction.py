@@ -21,7 +21,7 @@ _PROMPT_SLICE = "a brass diving helmet"
 _SUMMARY = f"the image does not show {_PROMPT_SLICE}"
 
 
-@pytest.fixture()
+@pytest.fixture
 def reviewed_file(smartgallery_app, monkeypatch):
     """One file, in a public album, with a stored review that quotes the
     prompt in its alignment elements."""

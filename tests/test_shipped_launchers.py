@@ -20,6 +20,9 @@ ever committed again -- in any launcher, compose file, or document.
 
 from __future__ import annotations
 
+import fnmatch
+import functools
+import os
 import pathlib
 import re
 
@@ -52,15 +55,26 @@ def _is_placeholder(value: str) -> bool:
     return value.lower() in {"yourpassword", "your_password", "your-password"}
 
 
+@functools.cache
 def _shipped_files():
-    seen = []
-    for pattern in _SHIPPED_GLOBS:
-        for path in _REPO_ROOT.rglob(pattern):
-            if any(part in _SKIP_DIRS for part in path.relative_to(_REPO_ROOT).parts):
+    """Every file a person downloads, copies, or pastes from.
+
+    One walk that prunes as it goes. This used to rglob the repository
+    once per pattern and apply _SKIP_DIRS to the results, so the whole of
+    .venv, .git and .AImodels was walked nine times over to arrive at a
+    few dozen files -- eleven seconds, and paid twice, because the
+    parametrize below calls this at collection as well. Pruning is what
+    makes it cheap; the file set is unchanged.
+    """
+    found = []
+    for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        for name in filenames:
+            if name in _SKIP_DIRS:
                 continue
-            if path.is_file():
-                seen.append(path)
-    return sorted(set(seen))
+            if any(fnmatch.fnmatch(name, pattern) for pattern in _SHIPPED_GLOBS):
+                found.append(pathlib.Path(dirpath) / name)
+    return sorted(set(found))
 
 
 def _findings(text: str):
@@ -136,7 +150,7 @@ def _launch_lines(text):
     lines = []
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("::") or stripped.startswith("#"):
+        if stripped.startswith(("::", "#")):
             continue
         if "smartgallery.py" not in stripped:
             continue

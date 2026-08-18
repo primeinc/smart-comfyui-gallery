@@ -37,6 +37,8 @@ import subprocess
 
 import pytest
 
+pytestmark = pytest.mark.spawns  # every check here runs another program
+
 _TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "templates"
 
 # Names people really have, and names people really try.
@@ -108,7 +110,7 @@ def test_every_name_survives_both_parsers(template):
     """The whole contract: what goes in is what the handler receives."""
     results = _round_trip(template, _CASES)
 
-    for original, result in zip(_CASES, results):
+    for original, result in zip(_CASES, results, strict=False):
         assert result["threw"] is None, (original, result)
         assert result["parsed"] == original, (original, result)
 
@@ -119,7 +121,7 @@ def test_nothing_can_close_the_attribute(template):
     follows becomes attributes on the tag."""
     results = _round_trip(template, _CASES)
 
-    for original, result in zip(_CASES, results):
+    for original, result in zip(_CASES, results, strict=False):
         assert '"' not in result["escaped"], (original, result["escaped"])
         assert "<" not in result["escaped"], (original, result["escaped"])
 
@@ -144,7 +146,7 @@ console.log(JSON.stringify(out));
     assert done.returncode == 0, done.stderr
     raw = json.loads(done.stdout)
 
-    broke = [c for c, r in zip(_CASES, raw)
+    broke = [c for c, r in zip(_CASES, raw, strict=False)
              if r["threw"] is not None or r["parsed"] != c or '"' in r["escaped"]]
 
     assert len(broke) >= 5, (

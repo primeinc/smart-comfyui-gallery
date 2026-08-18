@@ -17,6 +17,7 @@ different audience, is broken in a way no security test would notice.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -46,7 +47,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def local_gallery(smartgallery_app, monkeypatch):
     """No login configured, one picture carrying a prompt."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -84,15 +85,11 @@ def local_gallery(smartgallery_app, monkeypatch):
     for dirpath, _dirs, names in os.walk(base, topdown=False):
         for name in names:
             if name.startswith(_PREFIX):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(os.path.join(dirpath, name))
-                except OSError:
-                    pass
         if os.path.basename(dirpath).startswith(_PREFIX):
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
-            except OSError:
-                pass
 
 
 def test_no_login_is_asked_for(smartgallery_app, local_gallery):

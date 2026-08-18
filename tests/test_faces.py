@@ -2,23 +2,36 @@
 cosine-threshold clustering (chinese whispers), cluster-label preservation across
 re-clustering, and multi-face-per-file cluster cardinality."""
 
-import os
+import json as _json
 import sqlite3
 
 import numpy as np
 import pytest
+from PIL import Image
 
+import smartgallery_ai.faces as F
 from smartgallery_ai import AIConfig
+from smartgallery_ai.embedders import BackendUnavailable
 from smartgallery_ai.faces import (
+    _ARCFACE_DST,
+    _SFACE_FILENAME,
+    _YUNET_FILENAME,
     FaceDetection,
+    OpenCVFaceBackend,
     StubFaceBackend,
+    _arcface_norm_crop,
+    _neighbor_graph,
+    _neighbor_graph_faiss,
+    _neighbor_graph_numpy,
+    _umeyama_similarity,
     cluster_faces,
     get_face_backend,
     image_key,
+    installed_pipelines,
     replace_faces_for_file,
+    resolve_cluster_threshold,
 )
 from smartgallery_ai.schema import init_schema
-
 
 # --- fixtures / helpers -----------------------------------------------------
 
@@ -114,7 +127,7 @@ def test_replace_faces_for_file_three_detections_round_trip():
     ).fetchall()
     assert len(rows) == 3
 
-    for row, det in zip(rows, dets):
+    for row, det in zip(rows, dets, strict=False):
         (
             _face_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score, embedding_blob, dim,
             model_id, model_version, source_mtime, computed_at,
@@ -201,7 +214,6 @@ def test_replace_faces_for_file_no_embedding_stores_null_blob():
 
 
 def test_stub_face_backend_callable_is_deterministic():
-    from PIL import Image
 
     img = Image.new("RGB", (32, 32), color=(1, 2, 3))
     dets = [detection(seed=0)]
@@ -211,7 +223,6 @@ def test_stub_face_backend_callable_is_deterministic():
 
 
 def test_stub_face_backend_mapping_keyed_by_image_content():
-    from PIL import Image
 
     img_a = Image.new("RGB", (16, 16), color=(10, 10, 10))
     img_b = Image.new("RGB", (16, 16), color=(200, 0, 0))
@@ -263,7 +274,7 @@ def test_cluster_faces_two_tight_groups_plus_outliers():
     file_ids = [f"f{i}" for i in range(len(all_vectors))]
     add_files(conn, file_ids)
     # one face per file, in one call each so every embedding is its own instance
-    for fid, vec in zip(file_ids, all_vectors):
+    for fid, vec in zip(file_ids, all_vectors, strict=False):
         _insert_instances(conn, fid, [vec])
 
     # sanity: intra-group cosine really is ~0.99+
@@ -283,7 +294,7 @@ def test_cluster_faces_two_tight_groups_plus_outliers():
     sizes = sorted(c[1] for c in clusters)
     assert sizes == [5, 5]
 
-    for cluster_id, size, centroid_blob, dim in clusters:
+    for cluster_id, _size, centroid_blob, dim in clusters:
         centroid = np.frombuffer(centroid_blob, dtype="<f4")
         assert dim == 16
         assert centroid.shape == (16,)
@@ -323,7 +334,7 @@ def test_cluster_faces_bridge_does_not_chain_cliques_together():
     all_vectors = clique_a + clique_b + [bridge.astype(np.float32)]
     file_ids = [f"br{i}" for i in range(len(all_vectors))]
     add_files(conn, file_ids)
-    for fid, vec in zip(file_ids, all_vectors):
+    for fid, vec in zip(file_ids, all_vectors, strict=False):
         _insert_instances(conn, fid, [vec])
 
     new_cluster_ids = cluster_faces(conn, "m1", "v1", threshold=0.6, min_cluster_size=2)
@@ -340,7 +351,7 @@ def test_cluster_faces_is_deterministic():
     vectors = [rng.standard_normal(16).astype(np.float32) for _ in range(30)]
     file_ids = [f"det{i}" for i in range(len(vectors))]
     add_files(conn, file_ids)
-    for fid, vec in zip(file_ids, vectors):
+    for fid, vec in zip(file_ids, vectors, strict=False):
         _insert_instances(conn, fid, [vec])
 
     def snapshot():
@@ -363,9 +374,9 @@ def test_cluster_faces_label_preserved_across_recluster():
     file_ids_a = [f"a{i}" for i in range(4)]
     file_ids_b = [f"b{i}" for i in range(4)]
     add_files(conn, file_ids_a + file_ids_b)
-    for fid, vec in zip(file_ids_a, group_a):
+    for fid, vec in zip(file_ids_a, group_a, strict=False):
         _insert_instances(conn, fid, [vec])
-    for fid, vec in zip(file_ids_b, group_b):
+    for fid, vec in zip(file_ids_b, group_b, strict=False):
         _insert_instances(conn, fid, [vec])
 
     cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=2)
@@ -395,18 +406,15 @@ def test_cluster_faces_label_preserved_across_recluster():
     new_cluster_ids = cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=2)
     assert len(new_cluster_ids) == 2
 
-    labels = {
-        cid: label
-        for cid, label in conn.execute(
+    labels = dict(conn.execute(
             "SELECT cluster_id, label FROM ai_face_clusters"
-        ).fetchall()
-    }
+        ).fetchall())
     assert "Alice" in labels.values()
-    labeled_cluster_id = [cid for cid, label in labels.items() if label == "Alice"][0]
+    labeled_cluster_id = next(cid for cid, label in labels.items() if label == "Alice")
 
     # every original group_a member (plus the new one) should now be in the
     # relabeled cluster
-    for fid in file_ids_a + ["a4"]:
+    for fid in [*file_ids_a, "a4"]:
         cid = conn.execute(
             "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
         ).fetchone()[0]
@@ -476,7 +484,7 @@ def _edge_set(graph):
     rows = np.repeat(np.arange(len(indptr) - 1), np.diff(indptr))
     return {
         (int(i), int(j), round(float(w), 4))
-        for i, j, w in zip(rows, cols, weights)
+        for i, j, w in zip(rows, cols, weights, strict=False)
     }
 
 
@@ -500,7 +508,6 @@ def _backend_fixture():
 def test_neighbor_graph_faiss_matches_numpy():
     faiss = pytest.importorskip("faiss")
     assert faiss is not None
-    from smartgallery_ai.faces import _neighbor_graph_faiss, _neighbor_graph_numpy
 
     m = _backend_fixture()
     assert _edge_set(_neighbor_graph_faiss(m, 0.6)) == _edge_set(
@@ -509,48 +516,37 @@ def test_neighbor_graph_faiss_matches_numpy():
 
 
 def test_neighbor_graph_torch_cuda_matches_numpy():
-    """Runs in a SUBPROCESS: importing torch in this process would poison
-    sys.modules and break test_normal_browsing_never_imports_torch's
-    process-level lazy-import guard."""
-    import subprocess
-    import sys
+    """The CUDA backend has to agree with the reference one, edge for edge.
 
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    script = (
-        "import importlib.util, sys\n"
-        f"sys.path.insert(0, {repo_root!r})\n"
-        "if importlib.util.find_spec('torch') is None:\n"
-        "    print('SKIP: torch not installed'); raise SystemExit(0)\n"
-        "import torch\n"
-        "if not torch.cuda.is_available():\n"
-        "    print('SKIP: no CUDA device'); raise SystemExit(0)\n"
-        "from tests.test_faces import _backend_fixture, _edge_set\n"
-        "from smartgallery_ai.faces import _neighbor_graph_numpy, _neighbor_graph_torch_cuda\n"
-        "m = _backend_fixture()\n"
-        "assert _edge_set(_neighbor_graph_torch_cuda(m, 0.6)) == _edge_set(\n"
-        "    _neighbor_graph_numpy(m, 0.6)\n"
-        ")\n"
-        "print('OK')\n"
+    Ran in its own interpreter because importing torch here used to trip
+    test_normal_browsing_never_imports_torch, which asserted torch was
+    absent from the whole process. That guard now asks whether BROWSING
+    imported torch, so this can import it and the guard still means what it
+    is for.
+    """
+    torch = pytest.importorskip("torch", reason="torch not installed")
+    if not torch.cuda.is_available():
+        pytest.skip("no CUDA device")
+
+    from smartgallery_ai.faces import _neighbor_graph_torch_cuda
+
+    m = _backend_fixture()
+
+    assert _edge_set(_neighbor_graph_torch_cuda(m, 0.6)) == _edge_set(
+        _neighbor_graph_numpy(m, 0.6)
     )
-    result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=300
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    if result.stdout.startswith("SKIP"):
-        pytest.skip(result.stdout.strip())
-    assert "OK" in result.stdout
 
 
 def test_neighbor_graph_threshold_boundary_inclusive():
     """sim == threshold exactly must be an edge (>= contract). d=4 with a
     single nonzero product term makes the float32 result exact in every
     backend: dot((1,0,0,0), (0.6, 0.8, 0, 0)) is the float32 literal 0.6."""
-    from smartgallery_ai.faces import _neighbor_graph_numpy
 
     m = np.array([[1, 0, 0, 0], [0.6, 0.8, 0, 0]], dtype=np.float32)
     thr = float(np.float32(0.6))
     at_indptr, at_cols, _ = _neighbor_graph_numpy(m, thr)
-    assert list(at_indptr) == [0, 1, 2] and list(at_cols) == [1, 0]
+    assert list(at_indptr) == [0, 1, 2]
+    assert list(at_cols) == [1, 0]
     above_indptr, _, _ = _neighbor_graph_numpy(
         m, float(np.nextafter(np.float32(0.6), np.float32(1)))
     )
@@ -560,7 +556,6 @@ def test_neighbor_graph_threshold_boundary_inclusive():
 def test_neighbor_graph_unknown_backend_request_raises(monkeypatch):
     """An explicit backend request that cannot be honored must fail loud,
     never silently fall back."""
-    from smartgallery_ai.faces import _neighbor_graph
 
     monkeypatch.setenv("AI_DAM_FACE_GRAPH_BACKEND", "quantum")
     with pytest.raises(ValueError):
@@ -568,7 +563,6 @@ def test_neighbor_graph_unknown_backend_request_raises(monkeypatch):
 
 
 def test_neighbor_graph_reports_backend_that_ran(monkeypatch):
-    from smartgallery_ai.faces import _neighbor_graph
 
     monkeypatch.setenv("AI_DAM_FACE_GRAPH_BACKEND", "numpy")
     _, backend = _neighbor_graph(_backend_fixture(), 0.6)
@@ -605,7 +599,6 @@ def test_umeyama_matches_skimage_fixture():
     skimage.transform.SimilarityTransform.estimate — insightface's
     estimator — on a captured fixture (skimage 0.26.0, verified to ~1e-6
     over 200 random landmark sets)."""
-    from smartgallery_ai.faces import _ARCFACE_DST, _umeyama_similarity
 
     lmk = np.array([[210.5, 180.25], [312.75, 178.0], [260.0, 240.5],
                     [222.25, 300.75], [305.5, 298.0]])
@@ -619,7 +612,6 @@ def test_umeyama_matches_skimage_fixture():
 
 
 def test_umeyama_identity_when_landmarks_match_template():
-    from smartgallery_ai.faces import _ARCFACE_DST, _umeyama_similarity
 
     m = _umeyama_similarity(_ARCFACE_DST, _ARCFACE_DST)
     assert np.abs(m - np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])).max() < 1e-6
@@ -627,7 +619,6 @@ def test_umeyama_identity_when_landmarks_match_template():
 
 def test_arcface_norm_crop_shape_and_identity_warp():
     """Landmarks already on the template warp the image onto itself."""
-    from smartgallery_ai.faces import _ARCFACE_DST, _arcface_norm_crop
 
     rng = np.random.default_rng(3)
     img = rng.integers(0, 256, (112, 112, 3), dtype=np.uint8)
@@ -640,7 +631,6 @@ def test_arcface_norm_crop_shape_and_identity_warp():
 
 
 def test_opencv_backend_rejects_unknown_embedder(tmp_path):
-    from smartgallery_ai.faces import OpenCVFaceBackend, _YUNET_FILENAME
 
     (tmp_path / _YUNET_FILENAME).write_bytes(b"")
     with pytest.raises(ValueError, match="unknown face embedder"):
@@ -648,8 +638,6 @@ def test_opencv_backend_rejects_unknown_embedder(tmp_path):
 
 
 def test_opencv_backend_forced_arcface_missing_raises(tmp_path):
-    from smartgallery_ai.embedders import BackendUnavailable
-    from smartgallery_ai.faces import OpenCVFaceBackend, _YUNET_FILENAME
 
     (tmp_path / _YUNET_FILENAME).write_bytes(b"")
     with pytest.raises(BackendUnavailable, match="ArcFace model not found"):
@@ -659,9 +647,6 @@ def test_opencv_backend_forced_arcface_missing_raises(tmp_path):
 def test_opencv_backend_auto_falls_back_to_sface_version(tmp_path):
     """auto with only sface weights resolves to the sface identity; the
     load then fails on the empty file, proving resolution happened first."""
-    from smartgallery_ai.embedders import BackendUnavailable
-    from smartgallery_ai.faces import (OpenCVFaceBackend, _SFACE_FILENAME,
-                                       _YUNET_FILENAME)
 
     (tmp_path / _YUNET_FILENAME).write_bytes(b"")
     (tmp_path / _SFACE_FILENAME).write_bytes(b"")
@@ -670,14 +655,12 @@ def test_opencv_backend_auto_falls_back_to_sface_version(tmp_path):
 
 
 def test_resolve_cluster_threshold_explicit_config_wins(tmp_path):
-    from smartgallery_ai.faces import StubFaceBackend, resolve_cluster_threshold
 
     cfg = AIConfig(face_cluster_threshold=0.7)
     assert resolve_cluster_threshold(cfg, StubFaceBackend({})) == 0.7
 
 
 def test_resolve_cluster_threshold_backend_default_when_unset():
-    from smartgallery_ai.faces import StubFaceBackend, resolve_cluster_threshold
 
     cfg = AIConfig()
     backend = StubFaceBackend({})
@@ -699,7 +682,6 @@ def test_aiconfig_cluster_threshold_env_and_unset(monkeypatch, tmp_path):
 
 
 def test_get_face_backend_auto_prefers_insightface(tmp_path, monkeypatch):
-    import smartgallery_ai.faces as F
 
     class _FakeInsight(F.FaceBackend):
         model_id = "insightface/antelopev2"
@@ -724,7 +706,6 @@ def test_get_face_backend_auto_falls_back_when_insightface_missing(tmp_path):
 
 
 def test_get_face_backend_forced_insightface_missing_raises(tmp_path):
-    from smartgallery_ai.embedders import BackendUnavailable
 
     cfg = AIConfig(face_backend="insightface", models_dir=str(tmp_path))
     with pytest.raises(BackendUnavailable, match="antelopev2 pack not found"):
@@ -734,7 +715,6 @@ def test_get_face_backend_forced_insightface_missing_raises(tmp_path):
 def test_installed_pipelines_inventory(tmp_path):
     """Three pipelines, weight presence per file, nothing active when no
     weights exist."""
-    from smartgallery_ai.faces import installed_pipelines
 
     cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
     inv = installed_pipelines(cfg)
@@ -749,8 +729,7 @@ def test_installed_pipelines_inventory(tmp_path):
 def test_compare_detectors_reports_every_lane(tmp_path, monkeypatch):
     """Both lanes answer; an unavailable lane carries its error while the
     other still reports detections, and the inventory rides along."""
-    import smartgallery_ai.faces as F
-    from PIL import Image
+
 
     det = FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2),
                         landmarks=[(0.15, 0.15)], det_score=0.9,
@@ -796,9 +775,9 @@ def test_replace_faces_round_trips_attributes():
         "SELECT attributes, age, sex, pose_pitch, pose_yaw, pose_roll "
         "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
         ("f1",)).fetchall()
-    import json as _json
     attrs, age, sex, pitch, yaw, roll = rows[0]
-    assert (age, sex) == (27, "F") and isinstance(age, int)
+    assert (age, sex) == (27, "F")
+    assert isinstance(age, int)
     assert (pitch, yaw, roll) == (-3.1, 12.5, 0.4)
     assert _json.loads(attrs) == {"landmark_2d_106": [[0.1, 0.2], [0.3, 0.4]]}
     assert rows[1] == (None, None, None, None, None, None)

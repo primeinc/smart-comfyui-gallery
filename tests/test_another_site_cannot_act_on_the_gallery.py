@@ -41,6 +41,9 @@ where the two legitimately differ.
 
 from __future__ import annotations
 
+import ast
+import re
+
 import pytest
 
 import smartgallery
@@ -55,7 +58,7 @@ _WRITES = [
 ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def owner(smartgallery_app, monkeypatch):
     """The default local mode, where there is no login to fall back on."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
@@ -63,7 +66,7 @@ def owner(smartgallery_app, monkeypatch):
     return smartgallery_app.app.test_client()
 
 
-@pytest.mark.parametrize("method,url", _WRITES,
+@pytest.mark.parametrize(("method", "url"), _WRITES,
                          ids=[u.split("/")[2] + ":" + u.split("/")[-1][:12]
                               for _m, u in _WRITES])
 def test_a_write_from_another_site_is_refused(owner, method, url):
@@ -146,17 +149,12 @@ def test_a_form_post_cannot_carry_a_json_body():
         "the JSON content type is not the protection it was taken for")
 
 
-def test_the_write_routes_are_the_ones_that_were_swept():
+def test_the_write_routes_are_the_ones_that_were_swept(gallery_tree):
     """The sweep, kept. A new route that changes something without needing
     a JSON body is a new one of these, and it would look like the six."""
-    import ast
-    import io
-    import pathlib
-    import re
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
-    write_sql = re.compile(r"\b(INSERT|UPDATE|DELETE)\b", re.I)
+    tree = gallery_tree
+    write_sql = re.compile(r"\b(INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
 
     def touches_state(fn):
         for node in ast.walk(fn):

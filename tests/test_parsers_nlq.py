@@ -9,11 +9,18 @@ token becomes a `text contains` phrase over the universal text field.
 
 from __future__ import annotations
 
+import sqlite3 as _sqlite3
+import time as _time
+from datetime import datetime as _dt
+
 import pytest
 
 from omniquery.ast import canonicalize, parse_query
-from omniquery.parsers import coverage_guard, contains_not_node, try_validate
+from omniquery.compiler import CompileParams
+from omniquery.compiler import compile as compile_query
+from omniquery.parsers import contains_not_node, coverage_guard, try_validate
 from omniquery.parsers.nlq import NlqParser
+from omniquery.validation import AuthContext, validate
 
 NOW = 1735689600.0  # fixed clock for reproducible calendar vocabulary
 
@@ -63,7 +70,7 @@ def _iter_all_nodes(node):
 # 1. Exact-AST coverage across the rule families
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("nl,field,op,value", [
+@pytest.mark.parametrize(("nl", "field", "op", "value"), [
     ("favorite photos", "is_favorite", "eq", True),
     ("videos rated 5", "rating_avg", "eq", 5),
     ("files over 20 MB", "size_mb", "gt", 20),
@@ -117,13 +124,6 @@ def test_rating_plus_form():
     _exact("4+ star videos", {"op": "and", "children": [
         {"field": "rating_avg", "op": "ge", "value": 4},
         {"field": "type", "op": "eq", "value": "video"},
-    ]})
-
-
-def test_rating_or_better_form():
-    _exact("5 stars or better images", {"op": "and", "children": [
-        {"field": "rating_avg", "op": "ge", "value": 5},
-        {"field": "type", "op": "eq", "value": "image"},
     ]})
 
 
@@ -244,7 +244,7 @@ def test_never_unsupported_over_a_query_battery():
         out = p.parse(nl, NOW)
         assert not out.unsupported, f"{nl!r}: {out.reason}"
         assert out.ast is not None
-        query, err = try_validate(out.ast)
+        _query, err = try_validate(out.ast)
         assert err is None, f"{nl!r} produced an invalid AST: {err}"
 
 
@@ -310,6 +310,8 @@ def test_or_disjunction_both_sides():
 
 
 def test_or_protects_idiom_containing_the_word_or():
+    """Also the rating "or better" form: the two were separate tests with
+    byte-identical bodies, so one assertion carries both concerns."""
     _exact("5 stars or better images", {"op": "and", "children": [
         {"field": "rating_avg", "op": "ge", "value": 5},
         {"field": "type", "op": "eq", "value": "image"},
@@ -355,7 +357,7 @@ def test_coverage_guard_quoted_string_present_is_satisfied():
     assert missing == []
 
 
-@pytest.mark.parametrize("nl,ast_value_field,ast_value", [
+@pytest.mark.parametrize(("nl", "ast_value_field", "ast_value"), [
     ("files over 100 MB", "size_mb", 100),
     ("files over 100 MB", "size_bytes", 104857600),
     ("recordings longer than 2 minutes", "duration_seconds", 120),
@@ -368,7 +370,7 @@ def test_coverage_guard_unit_scaling_accepts_either_representation(nl, ast_value
 
 def test_coverage_guard_unit_scaling_rejects_wrong_number():
     ast_dict = {"target": "files", "where": {"field": "size_mb", "op": "gt", "value": 5}}
-    coverage, missing = coverage_guard("files over 100 MB", ast_dict)
+    coverage, _missing = coverage_guard("files over 100 MB", ast_dict)
     assert coverage < 1.0
 
 
@@ -411,7 +413,7 @@ def test_coverage_guard_media_type_disjuncts_all_present():
 def test_coverage_guard_media_type_in_list_counts_as_present():
     ast_dict = {"target": "files", "result": "ids",
                 "where": {"field": "type", "op": "in", "value": ["image", "video"]}}
-    coverage, missing = coverage_guard("images or videos", ast_dict)
+    coverage, _missing = coverage_guard("images or videos", ast_dict)
     assert coverage == 1.0
 
 
@@ -436,7 +438,8 @@ def test_contains_not_node():
 def test_try_validate_rejects_unknown_field():
     query, err = try_validate({"target": "files", "where": {"field": "nope", "op": "eq", "value": 1}})
     assert query is None
-    assert err is not None and "unknown field" in err
+    assert err is not None
+    assert "unknown field" in err
 
 
 # ---------------------------------------------------------------------------
@@ -450,8 +453,6 @@ def _where(nl: str, now_epoch: float):
 
 
 def _epoch(*args):
-    import time as _time
-    from datetime import datetime as _dt
     return _time.mktime(_dt(*args).timetuple())
 
 
@@ -489,10 +490,7 @@ def test_calendar_upper_boundaries_exclude_files_just_past_the_period():
     """End-to-end through the compiler: a file one second past Sunday
     midnight (resp. past the month's last midnight) is excluded, one
     second before is included."""
-    import sqlite3 as _sqlite3
 
-    from omniquery.compiler import CompileParams, compile as compile_query
-    from omniquery.validation import AuthContext, validate
 
     ctx = AuthContext(role="ADMIN", user_id="t", client_uuid="t", ai_enabled=True)
     now = _epoch(2025, 6, 18, 15, 30)
@@ -518,10 +516,7 @@ def test_calendar_upper_boundaries_exclude_files_just_past_the_period():
 # ---------------------------------------------------------------------------
 
 def test_text_field_compiles_and_matches_all_surfaces():
-    import sqlite3 as _sqlite3
 
-    from omniquery.compiler import CompileParams, compile as compile_query
-    from omniquery.validation import AuthContext, validate
 
     ctx = AuthContext(role="ADMIN", user_id="t", client_uuid="t", ai_enabled=True)
     out = p.parse("girlnextdoor", NOW)
@@ -551,7 +546,7 @@ def test_text_field_compiles_and_matches_all_surfaces():
 # 8. Extension words: "pngs" is a name-suffix test, not a text search
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("nl,suffixes", [
+@pytest.mark.parametrize(("nl", "suffixes"), [
     ("pngs", [".png"]),
     ("3 star pngs", [".png"]),
     ("webp files", [".webp"]),
@@ -594,10 +589,7 @@ def test_extension_or_group_renders_one_chip():
 
 
 def test_extension_suffix_compiles_and_matches():
-    import sqlite3 as _sqlite3
 
-    from omniquery.compiler import CompileParams, compile as compile_query
-    from omniquery.validation import AuthContext, validate
 
     ctx = AuthContext(role="ADMIN", user_id="t", client_uuid="t", ai_enabled=True)
     out = p.parse("jpegs", NOW)

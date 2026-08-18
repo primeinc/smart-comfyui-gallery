@@ -18,6 +18,7 @@ for nothing more.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -46,7 +47,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """A private album shared with user 41, and a public one, each with a file."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -92,10 +93,8 @@ def library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for path in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(path)
-        except OSError:
-            pass
 
 
 def _client(smartgallery_app, role, user_id=9):

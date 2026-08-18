@@ -19,8 +19,8 @@ from PIL import Image
 
 from omniquery.engine import OmniQueryEngine
 from omniquery.validation import AuthContext
-from smartgallery_ai import AIConfig, HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL
-from smartgallery_ai import hashing, vectors
+from smartgallery_ai import HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig, hashing, vectors
+from smartgallery_ai import faces as F
 from smartgallery_ai.faces import FaceDetection, StubFaceBackend, cluster_faces, replace_faces_for_file
 from smartgallery_ai.review import (
     AlignmentElement,
@@ -70,7 +70,7 @@ def _tight_vector(base: np.ndarray, seed: int, spread: float = 0.01) -> np.ndarr
     return (base + rng.standard_normal(base.shape[0]).astype(np.float32) * spread).astype(np.float32)
 
 
-@pytest.fixture()
+@pytest.fixture
 def fixture(tmp_path):
     db_path = str(tmp_path / "gallery.sqlite")
     cache_dir = str(tmp_path / "cache")
@@ -328,12 +328,13 @@ def test_duplicates_unknown_file_is_empty(fixture):
 def test_similar_semantic_and_visual_spaces_differ(fixture):
     sem = fixture.client.get(f"{_PREFIX}/similar/sim_target?space=semantic&k=5").get_json()
     vis = fixture.client.get(f"{_PREFIX}/similar/sim_target?space=visual&k=5").get_json()
-    assert sem["enabled"] is True and sem["space"] == "semantic"
+    assert sem["enabled"] is True
+    assert sem["space"] == "semantic"
     assert vis["space"] == "visual"
     assert sem["neighbors"][0]["file_id"] == "sim_sem_near"
     assert vis["neighbors"][0]["file_id"] == "sim_vis_near"
     assert sem["neighbors"][0]["file_id"] != vis["neighbors"][0]["file_id"]
-    assert all("sim_target" != n["file_id"] for n in sem["neighbors"])
+    assert all(n["file_id"] != "sim_target" for n in sem["neighbors"])
 
 
 def test_similar_invalid_space_400(fixture):
@@ -545,7 +546,8 @@ def test_disabled_blueprint_short_circuits_every_route(tmp_path):
     # /status always reports, even when disabled.
     status = client.get(f"{_PREFIX}/status").get_json()
     assert status["enabled"] is False
-    assert "backends" in status and "counts" in status
+    assert "backends" in status
+    assert "counts" in status
 
     for method, path in [
         ("get", "/duplicates/f1"),
@@ -714,7 +716,6 @@ def test_faces_compare_reports_lanes_and_inventory(fixture, monkeypatch):
     """The endpoint renders the file and answers every lane plus the
     installed-pipeline inventory; a lane that cannot load reports its
     error in place instead of failing the request."""
-    from smartgallery_ai import faces as F
 
     def fake_compare(img, config):
         assert img.size == (32, 32)
@@ -756,7 +757,8 @@ def test_faces_recent_lists_scanned_files(fixture):
     assert data["enabled"] is True
     assert isinstance(data["files"], list)
     for entry in data["files"]:
-        assert set(entry) == {"file_id", "faces"} and entry["faces"] >= 1
+        assert set(entry) == {"file_id", "faces"}
+        assert entry["faces"] >= 1
 
 
 def test_faces_cluster_detail_reports_attribute_aggregates(fixture):

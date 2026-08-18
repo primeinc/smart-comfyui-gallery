@@ -23,6 +23,9 @@ A privacy control that cannot do its job has to refuse, not degrade.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
+import glob
+import hashlib
 import os
 
 import pytest
@@ -51,7 +54,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def guarded(smartgallery_app, monkeypatch):
     """A file in the library, and a server that owes guests a cleaned copy."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -97,10 +100,8 @@ def guarded(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def _as(smartgallery_app, role):
@@ -165,8 +166,6 @@ def test_a_guest_cannot_download_what_could_not_be_cleaned(
 def _drop_cached_thumbnail(smartgallery_app):
     """A cached thumbnail short-circuits the route before the branch under
     test, so a probe that leaves one in place proves nothing."""
-    import glob
-    import hashlib
 
     conn = smartgallery_app.get_db_connection()
     try:

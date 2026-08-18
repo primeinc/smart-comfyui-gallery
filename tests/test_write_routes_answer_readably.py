@@ -22,6 +22,7 @@ silently passed over.
 from __future__ import annotations
 
 import pytest
+from flask import Flask
 
 _MISSING_FILE = "d" * 32
 
@@ -56,7 +57,7 @@ _CALLS = [
 ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def owner(smartgallery_app, monkeypatch):
     """The local owner, which is how most galleries run."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
@@ -75,7 +76,7 @@ def _send(client, method, url, payload):
     return call(url, json=payload)
 
 
-@pytest.mark.parametrize("method,url,payload", _CALLS,
+@pytest.mark.parametrize(("method", "url", "payload"), _CALLS,
                          ids=[f"{m} {u.split('/')[-1]} {sorted(p)}"
                               for m, u, p in _CALLS])
 def test_it_answers_below_500_and_in_json(owner, method, url, payload):
@@ -167,7 +168,6 @@ def test_a_route_that_raises_would_be_caught():
     refuses to register one after the first request, and a check for
     unhandled exceptions should not be reaching into the thing it checks
     anyway. What is under test here is the pair of assertions above."""
-    from flask import Flask
 
     app = Flask(__name__)
 

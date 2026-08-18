@@ -7,12 +7,14 @@
 # supersedes); its decryption helper is module-private and is never exposed
 # as a general-purpose "decrypt this password" API.
 
+import contextlib
 import os
 import secrets
 import sqlite3
 
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error, InvalidHashError, VerificationError, VerifyMismatchError
+from cryptography.fernet import Fernet  # Lazy: only migration needs this.
 
 # Library defaults (time_cost, memory_cost, parallelism, hash_len, salt_len,
 # type=Argon2id) are appropriate here; no tuning required.
@@ -96,10 +98,8 @@ def dummy_verify() -> None:
     """Run one Argon2id verification against a throwaway hash and discard the
     result. Call on the user-not-found path so it costs the same as a real
     verify. Never raises."""
-    try:
+    with contextlib.suppress(Exception):
         ph.verify(_DECOY_HASH, "x")
-    except Exception:
-        pass
 
 
 def _decrypt_legacy(ciphertext: str, key: bytes) -> str | None:
@@ -109,7 +109,6 @@ def _decrypt_legacy(ciphertext: str, key: bytes) -> str | None:
     exists solely to support one-time migration. It is deliberately not
     reachable as `sg_auth.decrypt*` from outside this module.
     """
-    from cryptography.fernet import Fernet  # Lazy: only migration needs this.
 
     try:
         return Fernet(key).decrypt(ciphertext.encode()).decode()

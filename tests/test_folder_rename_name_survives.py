@@ -46,6 +46,8 @@ here; only the silent ones are shared.
 
 from __future__ import annotations
 
+import ast
+import inspect
 import os
 import re
 
@@ -114,7 +116,7 @@ def test_windows_really_does_drop_them(tmp_path):
     assert kept == "holiday", kept
 
 
-@pytest.fixture()
+@pytest.fixture
 def a_folder_with_a_picture(smartgallery_app, monkeypatch):
     """A real folder under the gallery root, known to the database."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
@@ -159,8 +161,7 @@ def a_folder_with_a_picture(smartgallery_app, monkeypatch):
         conn.close()
     for leftover in os.listdir(root):
         full = os.path.join(root, leftover)
-        if os.path.isdir(full) and (leftover.startswith("rename_probe")
-                                    or leftover.startswith("holiday")):
+        if os.path.isdir(full) and (leftover.startswith(("rename_probe", "holiday"))):
             __import__("shutil").rmtree(full, ignore_errors=True)
     smartgallery_app.folder_config_cache = None
 
@@ -172,7 +173,7 @@ def test_after_renaming_every_stored_path_is_really_there(smartgallery_app,
     """The symptom, through the route: rename a folder to a name the
     filesystem will not keep, and the database must still describe where
     the files actually are."""
-    key, file_id, _folder = a_folder_with_a_picture
+    key, _file_id, _folder = a_folder_with_a_picture
     if key is None:
         pytest.skip("the probe folder is not in the folder config")
 
@@ -232,15 +233,11 @@ def test_a_name_that_cleans_away_to_nothing_is_refused(smartgallery_app,
         assert body["message"] == "Invalid name.", (name, body)
 
 
-def test_both_names_go_through_one_trailing_rule():
+def test_both_names_go_through_one_trailing_rule(gallery_tree):
     """Two rules for one idea is how they drift apart. This one only came
     back because the folder path had its own."""
-    import ast
-    import io
-    import pathlib
 
-    source = pathlib.Path(smartgallery.__file__)
-    tree = ast.parse(io.open(source, encoding="utf-8").read())
+    tree = gallery_tree
 
     fn = next((node for node in ast.walk(tree)
                if isinstance(node, ast.FunctionDef)
@@ -253,7 +250,6 @@ def test_both_names_go_through_one_trailing_rule():
         "rename_folder does not remove what Windows removes, so the name it "
         "records is not the name the folder gets")
 
-    import inspect
     body = inspect.getsource(smartgallery.safe_media_filename)
     assert "strip_what_windows_drops" in body, (
         "safe_media_filename has its own copy of the trailing rule again; "

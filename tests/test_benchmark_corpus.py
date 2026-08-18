@@ -13,12 +13,18 @@ from pathlib import Path
 
 import pytest
 
-from omniquery.ast import ASTError, parse_query
+from omniquery.ast import ASTError, Cond, Group, Not, iter_conditions, parse_query
 from omniquery.benchmark.fixtures import (
-    ANCHOR_EPOCH, FIXTURE_BASE_PATH, FIXTURE_FILES, build_fixture_db,
+    ANCHOR_EPOCH,
+    FIXTURE_BASE_PATH,
+    FIXTURE_FILES,
+    build_fixture_db,
 )
 from omniquery.benchmark.harness import (
-    _date_placeholder_map, _resolve_date_placeholders, load_corpus, run_benchmark,
+    _date_placeholder_map,
+    _resolve_date_placeholders,
+    load_corpus,
+    run_benchmark,
 )
 from omniquery.engine import OmniQueryEngine
 from omniquery.validation import AuthContext, ValidationError, validate
@@ -65,7 +71,7 @@ def test_corpus_has_unique_ids(corpus):
 def test_corpus_entries_have_required_keys(corpus):
     for entry in corpus:
         assert set(entry) == {"id", "nl", "expected", "tags"}, entry["id"]
-        assert isinstance(entry["nl"], str) and entry["nl"] or entry["nl"] == ""
+        assert (isinstance(entry["nl"], str) and entry["nl"]) or entry["nl"] == ""
         assert isinstance(entry["tags"], list)
         expected = entry["expected"]
         assert ("ast" in expected) ^ ("unsupported" in expected), (
@@ -105,7 +111,6 @@ def test_corpus_adversarial_sql_literals_land_as_plain_text_values(corpus):
 
 
 def _iter_all_conds(node):
-    from omniquery.ast import Cond, Not, Group
     if node is None:
         return
     if isinstance(node, Cond):
@@ -148,7 +153,6 @@ def test_every_supported_entry_parses_validates_and_executes(corpus, engine):
 
 
 def test_file_ref_literal_ids_exist_in_fixture(corpus):
-    from omniquery.ast import iter_conditions
 
     checked_any = False
     for entry in corpus:

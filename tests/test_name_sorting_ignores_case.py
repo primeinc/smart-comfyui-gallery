@@ -27,6 +27,7 @@ implied away.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -58,7 +59,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
                         "ProcessPoolExecutor", _InlineExecutor)
@@ -66,7 +67,7 @@ def library(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
     base = smartgallery_app.BASE_OUTPUT_PATH
-    made = _NAMES + [_ACCENTED]
+    made = [*_NAMES, _ACCENTED]
     for name in made:
         Image.new("RGB", (8, 8), (1, 1, 1)).save(os.path.join(base, name))
 
@@ -89,10 +90,8 @@ def library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _order(smartgallery_app, ids, direction="ASC"):

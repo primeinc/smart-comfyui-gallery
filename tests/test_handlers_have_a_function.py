@@ -67,7 +67,7 @@ def _missing(page: str):
             if name not in defined and name not in _BUILTINS}
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)

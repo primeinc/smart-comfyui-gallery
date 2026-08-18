@@ -39,7 +39,7 @@ def test_a_large_upscale_is_still_allowed():
     being fixed, so the ceiling is pinned above it."""
     upscale_16k = 16384 * 16384
 
-    assert smartgallery.MAX_DECODED_PIXELS > upscale_16k, (
+    assert upscale_16k < smartgallery.MAX_DECODED_PIXELS, (
         f"the ceiling ({smartgallery.MAX_DECODED_PIXELS}) would refuse a "
         f"16384x16384 upscale ({upscale_16k})")
 
@@ -64,7 +64,7 @@ def test_making_a_thumbnail_does_not_switch_the_guard_off(tmp_path):
     before = Image.MAX_IMAGE_PIXELS
     result = smartgallery.create_thumbnail(str(source), "ceilingprobe", "image")
 
-    assert Image.MAX_IMAGE_PIXELS == before, (
+    assert before == Image.MAX_IMAGE_PIXELS, (
         "making a thumbnail changed the process-wide pixel ceiling")
     assert result and os.path.exists(result), "the ordinary thumbnail stopped working"
     os.remove(result)
@@ -89,5 +89,6 @@ def test_an_oversized_declaration_fails_that_file_only(tmp_path, monkeypatch):
     ok = tmp_path / "small.png"
     Image.new("RGB", (32, 32), (4, 5, 6)).save(ok)
     made = smartgallery.create_thumbnail(str(ok), "ceilingprobe3", "image")
-    assert made and os.path.exists(made)
+    assert made
+    assert os.path.exists(made)
     os.remove(made)

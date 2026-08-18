@@ -25,7 +25,6 @@ import logging
 import os
 import threading
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -136,7 +135,7 @@ class StubVisualEmbedder(VisualEmbedder):
 
 
 
-def pick_torch_device(torch_module, role: Optional[str] = None) -> str:
+def pick_torch_device(torch_module, role: str | None = None) -> str:
     """Best available torch device: honors AI_DAM_<ROLE>_DEVICE (e.g.
     AI_DAM_VISUAL_DEVICE=cuda:1 pins one backend to one card, spreading
     VRAM across GPUs), then AI_DAM_DEVICE, otherwise CUDA > MPS > CPU.
@@ -264,17 +263,15 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         batch = self._torch.stack(
             [self._preprocess(img.convert("RGB")) for img in imgs]
         ).to(self._device)
-        with self._infer_lock:
-            with self._torch.no_grad():
-                features = self._model.encode_image(batch)
+        with self._infer_lock, self._torch.no_grad():
+            features = self._model.encode_image(batch)
         return [_l2_normalize(f.cpu().numpy()) for f in features]
 
     def embed_text(self, text: str) -> np.ndarray:
         """CLIP text feature, unit-normalized so image/text cosine works."""
         tokens = self._tokenizer([text]).to(self._device)
-        with self._infer_lock:
-            with self._torch.no_grad():
-                features = self._model.encode_text(tokens)
+        with self._infer_lock, self._torch.no_grad():
+            features = self._model.encode_text(tokens)
         return _l2_normalize(features.squeeze(0).cpu().numpy())
 
 
@@ -344,7 +341,7 @@ class Dinov2VisualEmbedder(VisualEmbedder):
         return [_l2_normalize(t.cpu().numpy()) for t in cls_tokens]
 
 
-def get_semantic_backend(config: AIConfig) -> Optional[SemanticEmbedder]:
+def get_semantic_backend(config: AIConfig) -> SemanticEmbedder | None:
     """Resolve `config.semantic_backend` to an embedder instance, or None.
 
     'auto' tries the real backend and falls back to None (never to the
@@ -365,7 +362,7 @@ def get_semantic_backend(config: AIConfig) -> Optional[SemanticEmbedder]:
     raise ValueError(f"unknown semantic_backend: {name!r}")
 
 
-def get_visual_backend(config: AIConfig) -> Optional[VisualEmbedder]:
+def get_visual_backend(config: AIConfig) -> VisualEmbedder | None:
     """Resolve `config.visual_backend` to an embedder instance, or None.
 
     'auto' tries the real backend and falls back to None (never to the

@@ -14,6 +14,7 @@ instead of being stored and averaged.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -24,12 +25,12 @@ _ME = 41
 _SOMEONE_ELSE = "99"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def rated_files(smartgallery_app):
     """Two real files with rows, cleaned up afterwards."""
     ids = []
@@ -54,10 +55,8 @@ def rated_files(smartgallery_app):
         for file_id in ids:
             row = conn.execute("SELECT path FROM files WHERE id = ?", (file_id,)).fetchone()
             if row:
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(row[0])
-                except OSError:
-                    pass
         conn.execute(f"DELETE FROM file_ratings WHERE file_id LIKE '{_PREFIX}%'")
         conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
         conn.commit()

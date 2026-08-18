@@ -28,6 +28,7 @@ reported all eighteen filters as disagreeing.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -137,10 +138,8 @@ def both_views(smartgallery_app):
     finally:
         conn.close()
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _shown(smartgallery_app, ids, url):

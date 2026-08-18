@@ -19,6 +19,7 @@ every install has, and the one most likely to live on the external drive
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -54,7 +55,7 @@ def _scan(smartgallery_app):
         conn.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def rated_library(smartgallery_app, monkeypatch):
     """Two indexed images, one of them rated and commented on."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -97,10 +98,8 @@ def rated_library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for path in made:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(path)
-        except OSError:
-            pass
 
 
 def _counts(smartgallery_app, file_id):

@@ -37,7 +37,15 @@ import time
 # (faiss wiki Troubleshooting.md "Slow brute-force search with OpenBLAS").
 os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
 
+import ctypes
+
 import numpy as np
+from datasets import load_dataset
+from PIL import Image
+
+from smartgallery_ai import AIConfig
+from smartgallery_ai.faces import FaceDetection, cluster_faces, get_face_backend, replace_faces_for_file
+from smartgallery_ai.schema import init_schema
 
 RESULTS_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "results", "faiss_graph_evidence.json"
@@ -49,7 +57,6 @@ def _system_times():
     GetSystemTimes; None on other platforms. kernel INCLUDES idle."""
     if sys.platform != "win32":
         return None
-    import ctypes
 
     class _FT(ctypes.Structure):
         _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
@@ -91,7 +98,7 @@ class _LoadWatch(threading.Thread):
         while not self._stop_evt.wait(self.interval):
             cur = _system_times()
             cur_proc = time.process_time()
-            didle, dkern, duser = (c - p for c, p in zip(cur, prev))
+            didle, dkern, duser = (c - p for c, p in zip(cur, prev, strict=False))
             total = dkern + duser
             prev, prev_proc_old = cur, prev_proc
             prev_proc = cur_proc
@@ -131,7 +138,7 @@ def check_idle(seconds: int = 3, busy_frac: float = 0.15) -> int:
         for _ in range(seconds):
             time.sleep(1.0)
             cur = _system_times()
-            didle, dkern, duser = (c - p for c, p in zip(cur, prev))
+            didle, dkern, duser = (c - p for c, p in zip(cur, prev, strict=False))
             prev = cur
             total = dkern + duser
             busy = ((dkern - didle) + duser) / total if total > 0 else 0.0
@@ -172,10 +179,9 @@ def load_synthetic(n: int, d: int, centers: int, seed: int) -> np.ndarray:
     uniform vectors would concentrate cosines near 0 and test nothing."""
     rng = np.random.default_rng(seed)
     c = rng.standard_normal((centers, d)).astype(np.float32)
-    m = c[rng.integers(0, centers, n)] + 0.35 * rng.standard_normal((n, d)).astype(
+    return c[rng.integers(0, centers, n)] + 0.35 * rng.standard_normal((n, d)).astype(
         np.float32
     )
-    return m
 
 
 def load_db(path: str) -> np.ndarray:
@@ -200,7 +206,6 @@ def load_db(path: str) -> np.ndarray:
 
 
 def load_hf(dataset: str, column: str, split: str) -> np.ndarray:
-    from datasets import load_dataset
 
     ds = load_dataset(dataset, split=split)
     return np.asarray(ds[column], dtype=np.float32)
@@ -222,8 +227,6 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
     The cache (.npz) stores the gate configuration it was built with; a
     config change triggers a re-embed automatically.
     """
-    from smartgallery_ai import AIConfig
-    from smartgallery_ai.faces import get_face_backend
 
     cfg = AIConfig.from_env(base_path=root, db_path=":memory:")
     cfg.models_dir = models_dir
@@ -248,7 +251,6 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
             )
             return data["embeddings"], list(data["datasets"]), list(data["identities"])
 
-    from PIL import Image
     paths = []
     for dirpath, _dirnames, filenames in os.walk(root):
         for fn in filenames:
@@ -312,8 +314,6 @@ def time_production_clustering(m: np.ndarray, threshold: float) -> dict:
     """Time `cluster_faces` itself — the function production calls — over
     the same embeddings, via the production write path
     (`replace_faces_for_file` into a `schema.init_schema` database)."""
-    from smartgallery_ai.faces import FaceDetection, cluster_faces, replace_faces_for_file
-    from smartgallery_ai.schema import init_schema
 
     conn = sqlite3.connect(":memory:")
     conn.execute(
@@ -369,7 +369,7 @@ def sanity_report(labels: list, ds_names: list, identities: list) -> dict:
     top_share = max(cluster_sizes.values()) / n if n else 0.0
 
     by_identity: dict = {}
-    for lab, ident in zip(labels, identities):
+    for lab, ident in zip(labels, identities, strict=False):
         if ident:
             by_identity.setdefault(ident, []).append(lab)
     purities = {}
@@ -490,9 +490,9 @@ def main() -> None:
             faiss.omp_set_num_threads(args.omp_threads)
         backends["faiss-cpu"] = (
             faces._neighbor_graph_faiss,
-            f"faiss {getattr(faiss, '__version__', '?')} "
+            (f"faiss {getattr(faiss, '__version__', '?')} "
             f"omp={faiss.omp_get_max_threads()} "
-            f"wait_policy={os.environ.get('OMP_WAIT_POLICY', 'default')}",
+            f"wait_policy={os.environ.get('OMP_WAIT_POLICY', 'default')}"),
         )
     except ImportError:
         pass
@@ -533,7 +533,7 @@ def main() -> None:
             "runtime": runtime,
             "graph_ms": round(best * 1e3, 1),
             "chinese_whispers_ms": round(cw_time * 1e3, 1),
-            "edges": int(len(graph[1])),
+            "edges": len(graph[1]),
             "clusters": len(sizes),
             "largest_cluster": sizes[0] if sizes else 0,
         }
@@ -574,7 +574,7 @@ def main() -> None:
             else 0.0
         )
         divergent_w = np.concatenate([ref_w[~in_both_ref], o_w[~in_both_o]])
-        n_divergent = int(len(divergent_w))
+        n_divergent = len(divergent_w)
         boundary_ok = bool(
             np.all(np.abs(divergent_w.astype(np.float64) - args.threshold) <= tol)
         )

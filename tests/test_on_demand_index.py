@@ -20,19 +20,29 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 import time
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from flask import Flask
 from PIL import Image
 
-from smartgallery_ai import AIConfig, SPACE_SEMANTIC, SPACE_VISUAL
-from smartgallery_ai import hashing
+from smartgallery_ai import RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig, hashing, vectors
+from smartgallery_ai import worker as W
 from smartgallery_ai.embedders import StubSemanticEmbedder
+from smartgallery_ai.faces import (
+    FaceDetection,
+    StubFaceBackend,
+    cluster_faces,
+    get_face_backend,
+    replace_faces_for_file,
+)
+from smartgallery_ai.review import Finding, ReviewResult, store_review
 from smartgallery_ai.schema import init_schema
 from smartgallery_ai.service import _index_one_file, create_ai_blueprint, set_worker
-from smartgallery_ai.worker import AIWorker, indexing_totals, record_scan
+from smartgallery_ai.worker import AIWorker, app_git_ref, indexing_totals, record_scan
 
 _PREFIX = "/aidam"
 
@@ -77,19 +87,19 @@ def _add_typed_file(conn, file_id: str, file_type: str) -> None:
 
 
 def _cfg(tmp_path, **overrides) -> AIConfig:
-    base = dict(
-        enabled=True,
-        base_path=str(tmp_path),
-        db_path=str(tmp_path / "gallery.sqlite"),
-        models_dir=str(tmp_path / "models"),
-        cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True,
-        semantic_backend="stub",
-        visual_backend="stub",
-        face_backend="none",
-        critic_backend="none",
-        segmenter_backend="none",
-    )
+    base = {
+        "enabled": True,
+        "base_path": str(tmp_path),
+        "db_path": str(tmp_path / "gallery.sqlite"),
+        "models_dir": str(tmp_path / "models"),
+        "cache_dir": str(tmp_path / "cache"),
+        "ephemeral_index": True,
+        "semantic_backend": "stub",
+        "visual_backend": "stub",
+        "face_backend": "none",
+        "critic_backend": "none",
+        "segmenter_backend": "none",
+    }
     base.update(overrides)
     return AIConfig(**base)
 
@@ -212,7 +222,6 @@ def test_sync_index_faces_scan_suppresses_worker_rescan(tmp_path):
     result = _index_one_file(conn, cfg, file_row, force=False)
     assert result["faces"] is True
 
-    from smartgallery_ai.faces import StubFaceBackend
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
     remaining = worker._scan_candidates(
         conn, "faces", StubFaceBackend(lambda _img: []), 10)
@@ -282,7 +291,7 @@ def test_cycle_logs_progress_only_when_work_happened(tmp_path, caplog):
 # --- service: pending flags and the /index kick --------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def api(tmp_path):
     cfg = _cfg(tmp_path)
     conn = _make_db(cfg.db_path)
@@ -323,7 +332,8 @@ def test_duplicates_pending_until_hashed(api):
 
     after = api.client.get(f"{_PREFIX}/duplicates/fresh_img").get_json()
     assert after["pending"] is False
-    assert after["exact"] == [] and after["near"] == []
+    assert after["exact"] == []
+    assert after["near"] == []
 
 
 def test_faces_pending_vs_scanned_zero_faces(api):
@@ -462,7 +472,6 @@ def test_sync_index_faces_queue_a_recluster_for_the_worker(tmp_path):
         "SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'")]
     assert len(markers) == 1
 
-    from smartgallery_ai.faces import get_face_backend
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
     worker._process_faces(conn, get_face_backend(cfg), 10)
     remaining = conn.execute(
@@ -724,7 +733,6 @@ def test_backlog_reviews_ride_along_never_starved(tmp_path, monkeypatch):
 def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):
     """A failed provisioning run re-attempts after the cooldown (bounded
     at three retries) instead of staying dead until restart."""
-    from smartgallery_ai import worker as W
 
     cfg = _cfg(tmp_path, semantic_backend="auto", auto_provision=True)
     _make_db(cfg.db_path).close()
@@ -763,14 +771,15 @@ def test_cycle_log_names_why_stages_are_waiting(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger="smartgallery_ai.worker"):
         worker._run_cycle()
     lines = [r.getMessage() for r in caplog.records if "indexed:" in r.getMessage()]
-    assert lines and "provisioning failed" in lines[0]
-    assert "semantic" in lines[0] and "visual" in lines[0]
+    assert lines
+    assert "provisioning failed" in lines[0]
+    assert "semantic" in lines[0]
+    assert "visual" in lines[0]
 
 
 def test_app_git_ref_reads_branch_and_short_sha(tmp_path):
     """Reads branch@shortsha from a .git dir (loose ref, packed-refs, and
     detached HEAD all supported); non-checkouts return None."""
-    from smartgallery_ai.worker import app_git_ref
 
     git = tmp_path / ".git"
     (git / "refs" / "heads").mkdir(parents=True)
@@ -794,16 +803,12 @@ def test_app_git_ref_reads_branch_and_short_sha(tmp_path):
 # --- gallery-wide surfacing endpoints ------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def surf(tmp_path):
     """Fixture for the global surfaces: three visible embedded files (two
     of them exact duplicates with sizes), one policy-hidden embedded file,
     two reviews with distinct quality, and one 2-face cluster."""
-    import numpy as np
 
-    from smartgallery_ai import RUBRIC_VERSION, vectors
-    from smartgallery_ai.faces import FaceDetection, StubFaceBackend, cluster_faces, replace_faces_for_file
-    from smartgallery_ai.review import Finding, ReviewResult, store_review
 
     cfg = _cfg(tmp_path)
     conn = _make_db(cfg.db_path)
@@ -842,7 +847,7 @@ def surf(tmp_path):
     rng = np.random.default_rng(3)
     base = rng.standard_normal(16).astype(np.float32)
     base /= np.linalg.norm(base)
-    for fid, seed in (("vis_a", 1), ("vis_b", 2)):
+    for fid, _seed in (("vis_a", 1), ("vis_b", 2)):
         jitter = base + rng.standard_normal(16).astype(np.float32) * 0.01
         replace_faces_for_file(
             conn, fid,
@@ -868,7 +873,8 @@ def test_semantic_search_filters_hidden_files(surf):
     query is a 400."""
     data = surf.client.get(f"{_PREFIX}/search/semantic?q=anything").get_json()
     returned = {r["file_id"] for r in data["results"]}
-    assert "vis_a" in returned and "vis_b" in returned
+    assert "vis_a" in returned
+    assert "vis_b" in returned
     assert "hidden1" not in returned
 
     assert surf.client.get(f"{_PREFIX}/search/semantic").status_code == 400
@@ -933,7 +939,6 @@ def test_semantic_embedder_for_search_only_lends_locked_instances(tmp_path):
 
     class _Locked(StubSemanticEmbedder):
         def __init__(self):
-            import threading
             self._infer_lock = threading.Lock()
 
     locked = _Locked()

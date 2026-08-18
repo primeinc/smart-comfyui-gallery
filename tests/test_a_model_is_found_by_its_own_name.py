@@ -57,7 +57,6 @@ import pytest
 
 import smartgallery
 
-
 # name as ComfyUI would record it, and what makes it interesting
 MODELS = [
     ('detail_tweaker_xl.safetensors', 'underscores'),
@@ -137,7 +136,7 @@ def test_the_filter_is_actually_applied(a_library_of_models):
         "a word in no model should show nothing"
 
 
-@pytest.mark.parametrize("model,what", MODELS)
+@pytest.mark.parametrize(('model', 'what'), MODELS)
 def test_typing_a_models_name_finds_it(a_library_of_models, model, what):
     """The defect. Six of these found nothing before."""
     _client, _ids, shown_for = a_library_of_models
@@ -146,7 +145,7 @@ def test_typing_a_models_name_finds_it(a_library_of_models, model, what):
         f"typing the name of a model with {what} found nothing")
 
 
-@pytest.mark.parametrize("model,what", MODELS)
+@pytest.mark.parametrize(('model', 'what'), MODELS)
 def test_the_quoted_form_finds_the_whole_name(a_library_of_models, model, what):
     """The quoted form is documented as exact; an exact name is exact."""
     _client, _ids, shown_for = a_library_of_models
@@ -207,7 +206,7 @@ def test_a_quoted_word_does_not_match_inside_a_longer_one(a_library_of_models):
 
 def test_excluding_still_excludes(a_library_of_models):
     """Over-reach guard: `!` is documented and is how people narrow."""
-    _client, ids, shown_for = a_library_of_models
+    _client, _ids, shown_for = a_library_of_models
 
     without = shown_for("!detail")
     assert "detail_tweaker_xl.safetensors" not in without
@@ -232,7 +231,7 @@ def test_a_file_made_without_any_model_answers_an_exclusion(smartgallery_app,
     """Over-reach guard: a picture that used no LoRA at all is one of the
     pictures that is not using the one you are excluding."""
     sg = smartgallery_app
-    _client, _ids, shown_for = a_library_of_models
+    _client, _ids, _shown_for = a_library_of_models
 
     with sg.get_db_connection() as conn:
         path = os.path.join(sg.BASE_OUTPUT_PATH, "plain.png")

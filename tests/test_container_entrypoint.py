@@ -34,6 +34,8 @@ import subprocess
 
 import pytest
 
+pytestmark = pytest.mark.spawns  # every check here runs another program
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 _INIT = _REPO_ROOT / "docker_init.bash"
 
@@ -80,8 +82,8 @@ def _run(functions, tmp_path, script):
     env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT", "WINDIR")
            if key in os.environ}
     done = subprocess.run(
-        [_bash(), "-c", f'source "{functions.as_posix()}"; '
-                        f'load_env "{dump.as_posix()}" true; {script}'],
+        [_bash(), "-c", (f'source "{functions.as_posix()}"; '
+                        f'load_env "{dump.as_posix()}" true; {script}')],
         capture_output=True, text=True, timeout=300, env=env)
     return done.stdout + done.stderr
 

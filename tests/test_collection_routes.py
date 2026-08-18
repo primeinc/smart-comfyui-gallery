@@ -14,6 +14,7 @@ SQLite does NOT do by default. That is asserted here rather than trusted.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -22,12 +23,12 @@ from PIL import Image
 _PREFIX = "collroute_"
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(smartgallery_app):
     return smartgallery_app.app.test_client()
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app):
     """Two files and a user collection holding both."""
     file_ids = []
@@ -62,10 +63,8 @@ def library(smartgallery_app):
         for file_id in file_ids:
             row = conn.execute("SELECT path FROM files WHERE id = ?", (file_id,)).fetchone()
             if row:
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(row[0])
-                except OSError:
-                    pass
         conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
         conn.execute(f"DELETE FROM collections WHERE name LIKE '{_PREFIX}%'")
         conn.commit()

@@ -18,12 +18,16 @@ the app from starting, and that stays true.
 
 from __future__ import annotations
 
+import os
+import pathlib
+import re
+
 import pytest
 
 import smartgallery
 
 
-@pytest.mark.parametrize("typo,expected", [
+@pytest.mark.parametrize(("typo", "expected"), [
     ("BASE_OUTPUT_PAT", "BASE_OUTPUT_PATH"),
     ("BASE_OUTPUT_PATHH", "BASE_OUTPUT_PATH"),
     ("BASE_OUPUT_PATH", "BASE_OUTPUT_PATH"),
@@ -45,7 +49,7 @@ def test_a_near_miss_is_noticed(typo, expected):
 def test_a_correct_name_is_not_flagged():
     """Control: the real names must never be reported, or every start-up
     would carry warnings and nobody would read them."""
-    every_real_name = {name: "x" for name in smartgallery.KNOWN_ENV_VARS}
+    every_real_name = dict.fromkeys(smartgallery.KNOWN_ENV_VARS, "x")
 
     assert smartgallery.find_misspelt_env_vars(every_real_name) == []
 
@@ -71,9 +75,6 @@ def test_other_programs_variables_are_left_alone(unrelated):
 def test_the_known_list_matches_what_the_code_reads():
     """The list is only useful while it is complete: a setting added without
     being listed here would be reported as a misspelling of something else."""
-    import io
-    import pathlib
-    import re
 
     root = pathlib.Path(smartgallery.__file__).resolve().parent
     pattern = re.compile(
@@ -84,13 +85,22 @@ def test_the_known_list_matches_what_the_code_reads():
         re.VERBOSE)
     skip = {"PATH", "DISPLAY", "HOME", "TEMP", "TMP", "USERPROFILE"}
 
+    # Pruned during the walk rather than filtered afterwards: rglob descends
+    # into .venv and .AImodels in full before anything is discarded, which is
+    # most of a second to read forty files.
+    not_the_app = {".venv", "tests", "benchmarks", "probes", "vendor",
+                   ".git", "__pycache__", ".AImodels"}
+
     read = set()
-    for path in root.rglob("*.py"):
-        if any(p in path.parts for p in (".venv", "tests", "benchmarks", "probes", "vendor")):
-            continue
-        for match in pattern.finditer(io.open(path, encoding="utf-8").read()):
-            if match.group(1) not in skip:
-                read.add(match.group(1))
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in not_the_app]
+        for name in filenames:
+            if not name.endswith(".py"):
+                continue
+            text = (pathlib.Path(dirpath) / name).read_text(encoding="utf-8")
+            for match in pattern.finditer(text):
+                if match.group(1) not in skip:
+                    read.add(match.group(1))
 
     listed = set(smartgallery.KNOWN_ENV_VARS)
 
@@ -104,7 +114,6 @@ def test_the_known_list_matches_what_the_code_reads():
 def test_the_warning_is_printed_and_not_fatal(capsys):
     """It reports and returns; the documented contract is that nothing in
     the environment stops the app from starting."""
-    import os
 
     os.environ["BASE_OUTPUT_PAT"] = "C:/somewhere"
     try:

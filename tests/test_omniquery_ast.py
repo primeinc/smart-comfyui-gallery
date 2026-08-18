@@ -11,10 +11,16 @@ import pytest
 
 from omniquery import fields
 from omniquery.ast import (
-    ASTError, Cond, Group, Not, OrderSpec, canonicalize,
-    iter_conditions, json_schema, parse_query,
+    ASTError,
+    Cond,
+    Group,
+    Not,
+    OrderSpec,
+    canonicalize,
+    iter_conditions,
+    json_schema,
+    parse_query,
 )
-
 
 # ---------------------------------------------------------------------------
 # Round-trips

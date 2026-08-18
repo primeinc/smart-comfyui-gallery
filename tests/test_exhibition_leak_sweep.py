@@ -20,6 +20,7 @@ this?" from something you notice into something that fails.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -49,7 +50,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def canary(smartgallery_app, monkeypatch):
     """A public-album file carrying every marker a visitor must not see."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -100,10 +101,8 @@ def canary(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def _visitor(smartgallery_app):
@@ -148,8 +147,10 @@ def test_the_canary_is_actually_stored(smartgallery_app, canary):
     finally:
         conn.close()
 
-    assert row[0] == _PROMPT and row[1] == _MODEL
-    assert elements and elements[0][0] == _PROMPT
+    assert row[0] == _PROMPT
+    assert row[1] == _MODEL
+    assert elements
+    assert elements[0][0] == _PROMPT
 
 
 def test_staff_can_see_the_canary(smartgallery_app, canary):
@@ -163,7 +164,8 @@ def test_staff_can_see_the_canary(smartgallery_app, canary):
     body = client.get(
         f"/galleryout/api/file_full_details/{canary['file_id']}").get_data(as_text=True)
 
-    assert _PROMPT in body and _MODEL in body
+    assert _PROMPT in body
+    assert _MODEL in body
 
 
 @pytest.mark.parametrize("marker", [_PROMPT, _MODEL])

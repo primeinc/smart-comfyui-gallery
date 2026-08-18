@@ -80,8 +80,23 @@ def test_ai_resolvers_disabled_config_still_returns_lists_without_crashing(smart
 
 
 def test_normal_browsing_never_imports_torch(smartgallery_app):
+    """Browsing must not drag the AI stack in. Someone with the layer off,
+    or with no torch installed at all, still has to be able to look at
+    their pictures.
+
+    Asked as "did browsing import torch", not "is torch absent from this
+    process". The absolute form made the answer depend on what else had
+    run first, and forced any test that legitimately needs torch -- the
+    CUDA face-graph backend -- out into its own interpreter to avoid
+    tripping it. The difference across the calls is the real claim.
+    """
     client = smartgallery_app.app.test_client()
+    before = set(sys.modules)
+
     client.get("/")
     client.get(f"{_PREFIX}/status")
     client.post(f"{_PREFIX}/index/f1")
-    assert "torch" not in sys.modules
+
+    newly = set(sys.modules) - before
+    dragged_in = sorted(name for name in newly if name.split(".")[0] == "torch")
+    assert not dragged_in, f"browsing imported {dragged_in}"

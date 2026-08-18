@@ -31,7 +31,7 @@ import json
 import re
 import time
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from omniquery.parsers import ParserBackend, ParserOutcome, try_validate
 
@@ -40,7 +40,7 @@ from omniquery.parsers import ParserBackend, ParserOutcome, try_validate
 # ---------------------------------------------------------------------------
 
 # Surface phrase -> AST 'type' enum value.
-_TYPE_SYNONYMS: Dict[str, str] = {
+_TYPE_SYNONYMS: dict[str, str] = {
     "animated images": "animated_image", "animated image": "animated_image",
     "photos": "image", "photo": "image", "pictures": "image", "picture": "image",
     "pics": "image", "pic": "image",
@@ -56,7 +56,7 @@ _TYPE_SYNONYMS: Dict[str, str] = {
 # Surface word -> filename suffixes: "pngs" means files whose name ends
 # .png. Families with two spellings on disk carry both suffixes. gif and
 # pdf stay type synonyms above (the broader semantic).
-_EXT_SYNONYMS: Dict[str, Tuple[str, ...]] = {
+_EXT_SYNONYMS: dict[str, tuple[str, ...]] = {
     "pngs": (".png",), "png": (".png",),
     "jpgs": (".jpg", ".jpeg"), "jpg": (".jpg", ".jpeg"),
     "jpegs": (".jpg", ".jpeg"), "jpeg": (".jpg", ".jpeg"),
@@ -77,7 +77,7 @@ _EXT_SYNONYMS: Dict[str, Tuple[str, ...]] = {
 }
 
 
-def _ext_condition(key: str) -> Optional[dict]:
+def _ext_condition(key: str) -> dict | None:
     """The AST condition for one extension word: a single name-suffix test,
     or an 'or' group when the family has two on-disk spellings."""
     suffixes = _EXT_SYNONYMS.get(key)
@@ -88,7 +88,7 @@ def _ext_condition(key: str) -> Optional[dict]:
 
 
 # Surface phrase -> AST status_flag value (canonical capitalization).
-_STATUS_SYNONYMS: Dict[str, str] = {
+_STATUS_SYNONYMS: dict[str, str] = {
     "needs review": "Review", "in review": "Review",
     "approved": "Approved", "rejected": "Rejected",
     "needs edit": "To Edit", "to edit": "To Edit",
@@ -96,7 +96,7 @@ _STATUS_SYNONYMS: Dict[str, str] = {
 }
 
 # Surface phrase -> AST review_issue enum value.
-_ISSUE_SYNONYMS: Dict[str, str] = {
+_ISSUE_SYNONYMS: dict[str, str] = {
     "anatomy": "anatomy", "artifact": "artifact", "artifacts": "artifact",
     "composition": "composition", "lighting": "lighting",
     "text render": "text_render", "text rendering": "text_render",
@@ -104,7 +104,7 @@ _ISSUE_SYNONYMS: Dict[str, str] = {
     "detail loss": "detail_loss",
 }
 
-_MONTHS: Dict[str, int] = {
+_MONTHS: dict[str, int] = {
     "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3,
     "april": 4, "apr": 4, "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
     "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9,
@@ -132,30 +132,30 @@ STOPWORDS = frozenset({
 _PLACEHOLDER_FRAGMENT = r"qzq(\d+)qzq"
 
 
-def _build_alternation(mapping: Dict[str, str]) -> re.Pattern:
+def _build_alternation(mapping: dict[str, str]) -> re.Pattern:
     """Case-insensitive whole-word alternation over the mapping's keys,
     longest key first; a key's internal spaces match any whitespace run."""
     keys = sorted(mapping.keys(), key=len, reverse=True)
     parts = [re.escape(k).replace(r"\ ", r"\s+") for k in keys]
-    return re.compile(r"\b(" + "|".join(parts) + r")\b", re.I)
+    return re.compile(r"\b(" + "|".join(parts) + r")\b", re.IGNORECASE)
 
 
 _TYPE_RE = _build_alternation(_TYPE_SYNONYMS)
 _EXT_RE = _build_alternation(_EXT_SYNONYMS)
 _STATUS_RE = _build_alternation(_STATUS_SYNONYMS)
-_FAVORITE_RE = re.compile(r"\bfavou?rite[sd]?\b|\bfaves?\b", re.I)
-_UNFAVORITED_RE = re.compile(r"\bun-?favou?rited\b", re.I)
+_FAVORITE_RE = re.compile(r"\bfavou?rite[sd]?\b|\bfaves?\b", re.IGNORECASE)
+_UNFAVORITED_RE = re.compile(r"\bun-?favou?rited\b", re.IGNORECASE)
 
-_MY_RATING_AT_LEAST_RE = re.compile(r"\bi\s+rated?\s+at\s+least\s+(\d+)(?:\s*stars?)?\b", re.I)
-_RATING_COUNT_RE = re.compile(r"\brated\s+by\s+at\s+least\s+(\d+)\s+(?:people|users)\b", re.I)
-_RATED_BY_USER_RE = re.compile(r"\brated\s+by\s+([a-z0-9_\-]+)\b", re.I)
-_COMMENTED_BY_USER_RE = re.compile(r"\bcommented\s+(?:on\s+)?by\s+([a-z0-9_\-]+)\b", re.I)
-_RATING_BETWEEN_RE = re.compile(r"\brated?\s+between\s+(\d+)\s+and\s+(\d+)\b", re.I)
-_RATING_AT_LEAST_RE = re.compile(r"\brated?\s+at\s+least\s+(\d+)(?:\s*stars?)?\b", re.I)
-_RATING_PLUS_RE = re.compile(r"\b(\d+)\s*\+\s*stars?\b", re.I)
-_RATING_OR_BETTER_RE = re.compile(r"\b(\d+)\s*stars?\s+or\s+(?:better|more|higher|above)\b", re.I)
-_RATING_STARS_RE = re.compile(r"\b(\d+)\s*stars?\b", re.I)
-_RATING_EXACT_RE = re.compile(r"\brated\s+(\d+)(?:\s*stars?)?\b", re.I)
+_MY_RATING_AT_LEAST_RE = re.compile(r"\bi\s+rated?\s+at\s+least\s+(\d+)(?:\s*stars?)?\b", re.IGNORECASE)
+_RATING_COUNT_RE = re.compile(r"\brated\s+by\s+at\s+least\s+(\d+)\s+(?:people|users)\b", re.IGNORECASE)
+_RATED_BY_USER_RE = re.compile(r"\brated\s+by\s+([a-z0-9_\-]+)\b", re.IGNORECASE)
+_COMMENTED_BY_USER_RE = re.compile(r"\bcommented\s+(?:on\s+)?by\s+([a-z0-9_\-]+)\b", re.IGNORECASE)
+_RATING_BETWEEN_RE = re.compile(r"\brated?\s+between\s+(\d+)\s+and\s+(\d+)\b", re.IGNORECASE)
+_RATING_AT_LEAST_RE = re.compile(r"\brated?\s+at\s+least\s+(\d+)(?:\s*stars?)?\b", re.IGNORECASE)
+_RATING_PLUS_RE = re.compile(r"\b(\d+)\s*\+\s*stars?\b", re.IGNORECASE)
+_RATING_OR_BETTER_RE = re.compile(r"\b(\d+)\s*stars?\s+or\s+(?:better|more|higher|above)\b", re.IGNORECASE)
+_RATING_STARS_RE = re.compile(r"\b(\d+)\s*stars?\b", re.IGNORECASE)
+_RATING_EXACT_RE = re.compile(r"\brated\s+(\d+)(?:\s*stars?)?\b", re.IGNORECASE)
 
 _SIZE_OP_MAP = {
     "over": "gt", "bigger than": "gt", "larger than": "gt", "more than": "gt",
@@ -163,7 +163,7 @@ _SIZE_OP_MAP = {
 }
 _SIZE_RE = re.compile(
     r"\b(over|under|bigger\s+than|larger\s+than|smaller\s+than|less\s+than|"
-    r"more\s+than|at\s+least)\s+(\d+(?:\.\d+)?)\s*(mb|gb|megabytes?|gigabytes?)\b", re.I,
+    r"more\s+than|at\s+least)\s+(\d+(?:\.\d+)?)\s*(mb|gb|megabytes?|gigabytes?)\b", re.IGNORECASE,
 )
 
 _DURATION_OP_MAP = {"longer than": "gt", "over": "gt", "shorter than": "lt",
@@ -175,86 +175,86 @@ _DURATION_UNIT_SECONDS = {
 }
 _DURATION_RE = re.compile(
     r"\b(longer\s+than|shorter\s+than|over|under|at\s+least)\s+(\d+(?:\.\d+)?)\s*"
-    r"(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b", re.I,
+    r"(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b", re.IGNORECASE,
 )
 
 _MP_OP_MAP = {"over": "gt", "above": "gt", "more than": "gt",
               "under": "lt", "below": "lt", "less than": "lt", "at least": "ge"}
 _MEGAPIXELS_RE = re.compile(
     r"\b(?:(over|under|at\s+least|above|below|more\s+than|less\s+than)\s+)?"
-    r"(\d+(?:\.\d+)?)\s*(?:megapixels?|mp)\b", re.I,
+    r"(\d+(?:\.\d+)?)\s*(?:megapixels?|mp)\b", re.IGNORECASE,
 )
 
 _QUALITY_OP_MAP = {"above": "gt", "over": "gt", "at least": "ge", "below": "lt", "under": "lt"}
-_QUALITY_RE = re.compile(r"\bquality\s+(above|over|at\s+least|below|under)\s+(\d+(?:\.\d+)?)\b", re.I)
+_QUALITY_RE = re.compile(r"\bquality\s+(above|over|at\s+least|below|under)\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE)
 
 # wider/taller comparisons; "shorter than N" requires an explicit pixel
 # unit so it can never shadow duration's "shorter than 2 minutes".
-_WIDTH_RE = re.compile(r"\b(wider|narrower)\s+than\s+(\d+)(?:\s*(?:pixels?|px))?\b", re.I)
+_WIDTH_RE = re.compile(r"\b(wider|narrower)\s+than\s+(\d+)(?:\s*(?:pixels?|px))?\b", re.IGNORECASE)
 _HEIGHT_RE = re.compile(r"\btaller\s+than\s+(\d+)(?:\s*(?:pixels?|px))?\b"
-                         r"|\bshorter\s+than\s+(\d+)\s*(?:pixels?|px)\b", re.I)
-_PATH_RE = re.compile(r"\b(?:under|in)\s+the\s+([a-z0-9_\-/]+)\s+path\b", re.I)
-_FACE_CLUSTER_RE = re.compile(r"\bface\s+cluster\s+(\d+)\b", re.I)
-_NEAR_DUP_RE = re.compile(r"\bnear[\s-]?duplicates?\s+of\s+([a-z0-9_\-.]+)\b", re.I)
-_VISUALLY_SIMILAR_RE = re.compile(r"\bvisually\s+similar\s+to\s+([a-z0-9_\-.]+)\b", re.I)
-_SIMILAR_RE = re.compile(r"\bsimilar\s+to\s+([a-z0-9_\-.]+)\b", re.I)
-_CAPTION_NULL_RE = re.compile(r"\b(?:without|no)\s+(?:a\s+)?captions?\b", re.I)
-_CAPTION_NOT_NULL_RE = re.compile(r"\b(?:with|have|has)\s+a\s+caption\b", re.I)
+                         r"|\bshorter\s+than\s+(\d+)\s*(?:pixels?|px)\b", re.IGNORECASE)
+_PATH_RE = re.compile(r"\b(?:under|in)\s+the\s+([a-z0-9_\-/]+)\s+path\b", re.IGNORECASE)
+_FACE_CLUSTER_RE = re.compile(r"\bface\s+cluster\s+(\d+)\b", re.IGNORECASE)
+_NEAR_DUP_RE = re.compile(r"\bnear[\s-]?duplicates?\s+of\s+([a-z0-9_\-.]+)\b", re.IGNORECASE)
+_VISUALLY_SIMILAR_RE = re.compile(r"\bvisually\s+similar\s+to\s+([a-z0-9_\-.]+)\b", re.IGNORECASE)
+_SIMILAR_RE = re.compile(r"\bsimilar\s+to\s+([a-z0-9_\-.]+)\b", re.IGNORECASE)
+_CAPTION_NULL_RE = re.compile(r"\b(?:without|no)\s+(?:a\s+)?captions?\b", re.IGNORECASE)
+_CAPTION_NOT_NULL_RE = re.compile(r"\b(?:with|have|has)\s+a\s+caption\b", re.IGNORECASE)
 
-_SEED_RE = re.compile(r"\bseed\s+(\d+)\b", re.I)
-_STEPS_RE = re.compile(r"\b(\d+)\s+steps\b|\bsteps\s+(\d+)\b", re.I)
-_CFG_RE = re.compile(r"\bcfg\s+(\d+(?:\.\d+)?)\b", re.I)
-_MODEL_RE = re.compile(r"\b(?:model|checkpoint)\s+([a-z0-9][a-z0-9_.\-]*)", re.I)
-_LORA_RE = re.compile(r"\blora\s+([a-z0-9][a-z0-9_.\-]*)", re.I)
-_SAMPLER_RE = re.compile(r"\bsampler\s+([a-z0-9][a-z0-9_.\-]*)", re.I)
+_SEED_RE = re.compile(r"\bseed\s+(\d+)\b", re.IGNORECASE)
+_STEPS_RE = re.compile(r"\b(\d+)\s+steps\b|\bsteps\s+(\d+)\b", re.IGNORECASE)
+_CFG_RE = re.compile(r"\bcfg\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE)
+_MODEL_RE = re.compile(r"\b(?:model|checkpoint)\s+([a-z0-9][a-z0-9_.\-]*)", re.IGNORECASE)
+_LORA_RE = re.compile(r"\blora\s+([a-z0-9][a-z0-9_.\-]*)", re.IGNORECASE)
+_SAMPLER_RE = re.compile(r"\bsampler\s+([a-z0-9][a-z0-9_.\-]*)", re.IGNORECASE)
 
-_FOLDER_IN_THE_RE = re.compile(r"\bin\s+the\s+([a-z0-9_\-/]+(?:\s[a-z0-9_\-/]+)*?)\s+folder\b", re.I)
-_FOLDER_IN_FOLDER_RE = re.compile(r"\bin\s+folder\s+([a-z0-9_\-/]+)\b", re.I)
-_FOLDER_UNDER_RE = re.compile(r"\bunder\s+([a-z0-9_\-]+(?:/[a-z0-9_\-]+)*)/", re.I)
+_FOLDER_IN_THE_RE = re.compile(r"\bin\s+the\s+([a-z0-9_\-/]+(?:\s[a-z0-9_\-/]+)*?)\s+folder\b", re.IGNORECASE)
+_FOLDER_IN_FOLDER_RE = re.compile(r"\bin\s+folder\s+([a-z0-9_\-/]+)\b", re.IGNORECASE)
+_FOLDER_UNDER_RE = re.compile(r"\bunder\s+([a-z0-9_\-]+(?:/[a-z0-9_\-]+)*)/", re.IGNORECASE)
 
-_COLLECTION_RE = re.compile(r"\bin\s+the\s+([a-z0-9_\- ]+?)\s+(?:collection|album)\b", re.I)
+_COLLECTION_RE = re.compile(r"\bin\s+the\s+([a-z0-9_\- ]+?)\s+(?:collection|album)\b", re.IGNORECASE)
 
-_NAME_RE = re.compile(rf"\b(?:named|called)\s+{_PLACEHOLDER_FRAGMENT}\b", re.I)
+_NAME_RE = re.compile(rf"\b(?:named|called)\s+{_PLACEHOLDER_FRAGMENT}\b", re.IGNORECASE)
 # Unquoted tails: "named X..." with no (or unbalanced) quotes claims the
 # rest of the text verbatim -- SQL-looking literals included; the compiler
 # binds every value as a parameter, so they are inert data.
-_NAME_TAIL_RE = re.compile(r"\b(?:named|called)\s+(.+)$", re.I)
-_PROMPT_MENTIONS_RE = re.compile(rf"\bprompt\s+(?:mentions|contains)\s+{_PLACEHOLDER_FRAGMENT}\b", re.I)
-_PROMPT_TAIL_RE = re.compile(r"\bprompt\s+(?:mentions|contains)\s+(.+)$", re.I)
-_PROMPT_IN_RE = re.compile(rf"\bwith\s+{_PLACEHOLDER_FRAGMENT}\s+in\s+the\s+prompt\b", re.I)
-_CAPTION_RE = re.compile(rf"\bcaption\s+mentions\s+{_PLACEHOLDER_FRAGMENT}\b", re.I)
-_COMMENT_MENTIONS_RE = re.compile(rf"\bcomments?\s+mention(?:s|ing)?\s+{_PLACEHOLDER_FRAGMENT}\b", re.I)
-_COMMENTED_RE = re.compile(r"\bcommented\b", re.I)
+_NAME_TAIL_RE = re.compile(r"\b(?:named|called)\s+(.+)$", re.IGNORECASE)
+_PROMPT_MENTIONS_RE = re.compile(rf"\bprompt\s+(?:mentions|contains)\s+{_PLACEHOLDER_FRAGMENT}\b", re.IGNORECASE)
+_PROMPT_TAIL_RE = re.compile(r"\bprompt\s+(?:mentions|contains)\s+(.+)$", re.IGNORECASE)
+_PROMPT_IN_RE = re.compile(rf"\bwith\s+{_PLACEHOLDER_FRAGMENT}\s+in\s+the\s+prompt\b", re.IGNORECASE)
+_CAPTION_RE = re.compile(rf"\bcaption\s+mentions\s+{_PLACEHOLDER_FRAGMENT}\b", re.IGNORECASE)
+_COMMENT_MENTIONS_RE = re.compile(rf"\bcomments?\s+mention(?:s|ing)?\s+{_PLACEHOLDER_FRAGMENT}\b", re.IGNORECASE)
+_COMMENTED_RE = re.compile(r"\bcommented\b", re.IGNORECASE)
 
-_WORKFLOW_WITH_RE = re.compile(r"\b(?:with|have|has)\s+(?:a\s+)?workflows?(?:\s+data)?\b", re.I)
-_WORKFLOW_WITHOUT_RE = re.compile(r"\b(?:without|no)\s+workflows?(?:\s+data)?\b", re.I)
-_FACES_WITH_RE = re.compile(r"\bwith\s+faces?\b", re.I)
-_FACES_WITHOUT_RE = re.compile(r"\b(?:without|no)\s+faces?\b", re.I)
+_WORKFLOW_WITH_RE = re.compile(r"\b(?:with|have|has)\s+(?:a\s+)?workflows?(?:\s+data)?\b", re.IGNORECASE)
+_WORKFLOW_WITHOUT_RE = re.compile(r"\b(?:without|no)\s+workflows?(?:\s+data)?\b", re.IGNORECASE)
+_FACES_WITH_RE = re.compile(r"\bwith\s+faces?\b", re.IGNORECASE)
+_FACES_WITHOUT_RE = re.compile(r"\b(?:without|no)\s+faces?\b", re.IGNORECASE)
 
-_ISSUE_RE = re.compile(r"\bwith\s+([a-z]+(?:\s[a-z]+)?)\s+issues?\b", re.I)
+_ISSUE_RE = re.compile(r"\bwith\s+([a-z]+(?:\s[a-z]+)?)\s+issues?\b", re.IGNORECASE)
 
-_COUNT_META_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.I)
-_NEWEST_FIRST_RE = re.compile(r"\b(?:newest|latest)(?:\s+first)?\b", re.I)
-_OLDEST_RE = re.compile(r"\boldest\b", re.I)
-_LARGEST_RE = re.compile(r"\blargest\b", re.I)
-_BEST_RATED_RE = re.compile(r"\bbest\s+rated\b", re.I)
-_TOP_N_RE = re.compile(r"\b(?:top|first)\s+(\d+)\b", re.I)
+_COUNT_META_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.IGNORECASE)
+_NEWEST_FIRST_RE = re.compile(r"\b(?:newest|latest)(?:\s+first)?\b", re.IGNORECASE)
+_OLDEST_RE = re.compile(r"\boldest\b", re.IGNORECASE)
+_LARGEST_RE = re.compile(r"\blargest\b", re.IGNORECASE)
+_BEST_RATED_RE = re.compile(r"\bbest\s+rated\b", re.IGNORECASE)
+_TOP_N_RE = re.compile(r"\b(?:top|first)\s+(\d+)\b", re.IGNORECASE)
 
-_LAST_N_RE = re.compile(r"\b(?:last|past)\s+(\d+)\s+(days?|weeks?|months?)\b", re.I)
-_LAST_UNIT_RE = re.compile(r"\b(?:last|past)\s+(day|week|month|year)\b", re.I)
-_YESTERDAY_RE = re.compile(r"\byesterday\b", re.I)
-_TODAY_RE = re.compile(r"\btoday\b", re.I)
-_THIS_WEEK_RE = re.compile(r"\bthis\s+week\b", re.I)
-_THIS_MONTH_RE = re.compile(r"\bthis\s+month\b", re.I)
-_FROM_MONTH_YEAR_RE = re.compile(r"\bfrom\s+([a-z]+)\s+(\d{4})\b", re.I)
-_IN_YEAR_RE = re.compile(r"\bin\s+(\d{4})\b", re.I)
-_SINCE_AFTER_RE = re.compile(r"\b(?:since|after)\s+(\d{4}-\d{2}-\d{2})\b", re.I)
-_BEFORE_RE = re.compile(r"\bbefore\s+(\d{4}-\d{2}-\d{2})\b", re.I)
-_BETWEEN_DATES_RE = re.compile(r"\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b", re.I)
+_LAST_N_RE = re.compile(r"\b(?:last|past)\s+(\d+)\s+(days?|weeks?|months?)\b", re.IGNORECASE)
+_LAST_UNIT_RE = re.compile(r"\b(?:last|past)\s+(day|week|month|year)\b", re.IGNORECASE)
+_YESTERDAY_RE = re.compile(r"\byesterday\b", re.IGNORECASE)
+_TODAY_RE = re.compile(r"\btoday\b", re.IGNORECASE)
+_THIS_WEEK_RE = re.compile(r"\bthis\s+week\b", re.IGNORECASE)
+_THIS_MONTH_RE = re.compile(r"\bthis\s+month\b", re.IGNORECASE)
+_FROM_MONTH_YEAR_RE = re.compile(r"\bfrom\s+([a-z]+)\s+(\d{4})\b", re.IGNORECASE)
+_IN_YEAR_RE = re.compile(r"\bin\s+(\d{4})\b", re.IGNORECASE)
+_SINCE_AFTER_RE = re.compile(r"\b(?:since|after)\s+(\d{4}-\d{2}-\d{2})\b", re.IGNORECASE)
+_BEFORE_RE = re.compile(r"\bbefore\s+(\d{4}-\d{2}-\d{2})\b", re.IGNORECASE)
+_BETWEEN_DATES_RE = re.compile(r"\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b", re.IGNORECASE)
 
-_NEGATION_TRIGGER_RE = re.compile(r"\b(not|except|without|excluding|anything\s+but)\b", re.I)
+_NEGATION_TRIGGER_RE = re.compile(r"\b(not|except|without|excluding|anything\s+but)\b", re.IGNORECASE)
 _NEGATION_BOUNDARY_RE = re.compile(r",|;|\band\b|\bor\b")
-_OR_TOKEN_RE = re.compile(r"\bor\b", re.I)
+_OR_TOKEN_RE = re.compile(r"\bor\b", re.IGNORECASE)
 # Paired quotes only: the opening char must be matched by the SAME char,
 # so "'; DROP ..." (double-quoted with an internal apostrophe) extracts
 # the full literal instead of stopping at the inner quote.
@@ -271,11 +271,11 @@ _STRUCT_HINT_RE = re.compile(
     r"bigger|smaller|longer|shorter|mb|gb|kb|seconds?|minutes?|hours?|days?|"
     r"weeks?|months?|years?|stars?|rated|january|jan|february|feb|march|mar|"
     r"april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|"
-    r"oct|november|nov|december|dec)\b", re.I)
+    r"oct|november|nov|december|dec)\b", re.IGNORECASE)
 
 # Field -> short human label for interpretation chips (UI never sees SQL;
 # these chips ARE the explanation of what will run).
-_CHIP_LABELS: Dict[str, str] = {
+_CHIP_LABELS: dict[str, str] = {
     "type": "type", "status_flag": "status", "is_favorite": "favorite",
     "has_workflow": "workflow", "has_faces": "faces", "rating_avg": "rating",
     "size_mb": "size MB", "size_bytes": "size", "duration_seconds": "duration s",
@@ -287,7 +287,7 @@ _CHIP_LABELS: Dict[str, str] = {
     "gen_seed": "seed", "gen_steps": "steps", "gen_cfg": "cfg",
     "gen_model": "model", "gen_lora": "lora", "gen_sampler": "sampler",
 }
-_CHIP_OPS: Dict[str, str] = {
+_CHIP_OPS: dict[str, str] = {
     "eq": "=", "ne": "≠", "lt": "<", "le": "≤", "gt": ">",
     "ge": "≥", "contains": "~", "between": "between", "prefix": "starts",
     "suffix": "ends",
@@ -298,12 +298,12 @@ _CHIP_OPS: Dict[str, str] = {
 # Rule application machinery
 # ---------------------------------------------------------------------------
 
-def _apply_rule(text: str, consumed: List[bool], pattern: re.Pattern,
-                 builder) -> List[Tuple[int, int, Any]]:
+def _apply_rule(text: str, consumed: list[bool], pattern: re.Pattern,
+                 builder) -> list[tuple[int, int, Any]]:
     """Every non-overlapping (with already-consumed spans) match of
     `pattern`, run through `builder(match)`; a None result means "matched
     the shape but not a value we recognize" and consumes nothing."""
-    hits: List[Tuple[int, int, Any]] = []
+    hits: list[tuple[int, int, Any]] = []
     for m in pattern.finditer(text):
         s, e = m.span()
         if any(consumed[s:e]):
@@ -317,10 +317,10 @@ def _apply_rule(text: str, consumed: List[bool], pattern: re.Pattern,
     return hits
 
 
-def _and_or_single(conds: List[dict]) -> Optional[dict]:
+def _and_or_single(conds: list[dict]) -> dict | None:
     """Collapse a condition list to one where-node: None when empty, the
     lone condition itself, else an 'and' group -- duplicates dropped."""
-    deduped: List[dict] = []
+    deduped: list[dict] = []
     seen = set()
     for c in conds:
         key = json.dumps(c, sort_keys=True)
@@ -334,7 +334,7 @@ def _and_or_single(conds: List[dict]) -> Optional[dict]:
     return {"op": "and", "children": deduped}
 
 
-def _chip(cond: dict) -> Optional[dict]:
+def _chip(cond: dict) -> dict | None:
     """One humanized interpretation chip for a condition (or 'not' node)."""
     if cond.get("op") == "not":
         inner = _chip(cond.get("child") or {})
@@ -379,11 +379,11 @@ class NlqParser(ParserBackend):
         working = placeheld.lower()
         consumed = [False] * len(working)
 
-        spanned_conds: List[Tuple[int, int, dict]] = []
-        meta: Dict[str, Any] = {}
+        spanned_conds: list[tuple[int, int, dict]] = []
+        meta: dict[str, Any] = {}
 
         def _quote_builder(field: str):
-            def builder(m: re.Match) -> Optional[dict]:
+            def builder(m: re.Match) -> dict | None:
                 entry = quotes.get(int(m.group(1)))
                 if entry is None:
                     return None
@@ -396,7 +396,7 @@ class NlqParser(ParserBackend):
         def _tail_builder(field: str):
             """Unquoted-tail capture: the original-case rest of the text,
             placeholders restored verbatim (quote chars included)."""
-            def builder(m: re.Match) -> Optional[dict]:
+            def builder(m: re.Match) -> dict | None:
                 value = _restore_placeholders(_orig_slice(m), quotes)
                 return {"field": field, "op": "contains", "value": value} if value else None
             return builder
@@ -558,7 +558,7 @@ class NlqParser(ParserBackend):
             lambda _m: {"field": "mtime", "op": "between",
                        "value": [month_start_iso, month_end_iso]})
 
-        def _from_month_year_builder(m: re.Match) -> Optional[dict]:
+        def _from_month_year_builder(m: re.Match) -> dict | None:
             month = _MONTHS.get(m.group(1).lower())
             if month is None:
                 return None
@@ -607,7 +607,7 @@ class NlqParser(ParserBackend):
                                       lambda _m: {"field": "comment_count", "op": "gt", "value": 0})
 
         # -- review issues ------------------------------------------------
-        def _issue_builder(m: re.Match) -> Optional[dict]:
+        def _issue_builder(m: re.Match) -> dict | None:
             value = _ISSUE_SYNONYMS.get(re.sub(r"\s+", " ", m.group(1).strip().lower()))
             if value is None:
                 return None
@@ -635,7 +635,7 @@ class NlqParser(ParserBackend):
         spanned_conds += _apply_rule(working, consumed, _FAVORITE_RE,
                                       lambda _m: {"field": "is_favorite", "op": "eq", "value": True})
 
-        def _type_builder(m: re.Match) -> Optional[dict]:
+        def _type_builder(m: re.Match) -> dict | None:
             key = re.sub(r"\s+", " ", m.group(1).lower())
             value = _TYPE_SYNONYMS.get(key)
             return None if value is None else {"field": "type", "op": "eq", "value": value}
@@ -644,7 +644,7 @@ class NlqParser(ParserBackend):
         spanned_conds += _apply_rule(working, consumed, _EXT_RE,
                                       lambda m: _ext_condition(m.group(1).lower()))
 
-        def _status_builder(m: re.Match) -> Optional[dict]:
+        def _status_builder(m: re.Match) -> dict | None:
             key = re.sub(r"\s+", " ", m.group(1).lower())
             value = _STATUS_SYNONYMS.get(key)
             return None if value is None else {"field": "status_flag", "op": "eq", "value": value}
@@ -654,7 +654,7 @@ class NlqParser(ParserBackend):
         # -- THE CONTRACT: everything left becomes a text search -------------
         # Unconsumed quote placeholders first (exact phrases), then maximal
         # runs of adjacent leftover words joined into phrases.
-        text_terms: List[str] = []
+        text_terms: list[str] = []
         for m in _PLACEHOLDER_RE.finditer(working):
             s, e = m.span()
             if any(consumed[s:e]):
@@ -684,7 +684,7 @@ class NlqParser(ParserBackend):
         # "or" binds locally to its nearest left neighbor; everything else
         # stays ANDed around it. --------------------------------------------
         or_matches = [m for m in _OR_TOKEN_RE.finditer(working) if not any(consumed[m.start():m.end()])]
-        where: Optional[dict]
+        where: dict | None
         if or_matches:
             or_m = or_matches[0]
             left_spanned = sorted(
@@ -698,7 +698,7 @@ class NlqParser(ParserBackend):
                 if len(right) == 1 and len(left) > 1 and not right_is_new_subject:
                     rest = left[:-1]
                     local = {"op": "or", "children": [left[-1], right[0]]}
-                    where = _and_or_single(rest + [local])
+                    where = _and_or_single([*rest, local])
                 else:
                     where = {"op": "or", "children": [_and_or_single(left), _and_or_single(right)]}
             else:
@@ -706,7 +706,7 @@ class NlqParser(ParserBackend):
         else:
             where = _and_or_single([c for (_, _, c) in spanned_conds])
 
-        ast_dict: Dict[str, Any] = {"result": meta.get("result", "ids")}
+        ast_dict: dict[str, Any] = {"result": meta.get("result", "ids")}
         if where is not None:
             ast_dict["where"] = where
         if "order" in meta:
@@ -744,10 +744,10 @@ class NlqParser(ParserBackend):
 # Negation
 # ---------------------------------------------------------------------------
 
-_NEG_COLLECTION_RE = re.compile(r"in\s+the\s+([a-z0-9_\- ]+?)\s+(?:collection|album)\b", re.I)
+_NEG_COLLECTION_RE = re.compile(r"in\s+the\s+([a-z0-9_\- ]+?)\s+(?:collection|album)\b", re.IGNORECASE)
 
 
-def _match_predicate_at_start(s: str) -> Optional[Tuple[dict, int]]:
+def _match_predicate_at_start(s: str) -> tuple[dict, int] | None:
     """One negatable predicate (favorite / media type / status flag /
     collection membership) anchored at the start of `s`, or None."""
     m = _FAVORITE_RE.match(s)
@@ -774,11 +774,11 @@ def _match_predicate_at_start(s: str) -> Optional[Tuple[dict, int]]:
     return None
 
 
-def _try_negation(text: str, consumed: List[bool]) -> List[Tuple[int, int, dict]]:
+def _try_negation(text: str, consumed: list[bool]) -> list[tuple[int, int, dict]]:
     """Each unconsumed negation trigger claims the single predicate right
     after it (scope ends at the next comma/semicolon/'and'/'or') and wraps
     it in a 'not' node; unrecognized predicates consume nothing."""
-    hits: List[Tuple[int, int, dict]] = []
+    hits: list[tuple[int, int, dict]] = []
     for m in _NEGATION_TRIGGER_RE.finditer(text):
         s, e = m.span()
         if any(consumed[s:e]):
@@ -805,12 +805,12 @@ def _try_negation(text: str, consumed: List[bool]) -> List[Tuple[int, int, dict]
 # Quote extraction and leftover-phrase assembly
 # ---------------------------------------------------------------------------
 
-def _extract_quotes(text: str) -> Tuple[str, Dict[int, Tuple[str, str]]]:
+def _extract_quotes(text: str) -> tuple[str, dict[int, tuple[str, str]]]:
     """Replace each (properly paired) quoted substring with a qzq<N>qzq
     placeholder; quotes[N] = (quote_char, literal) so literals keep their
     exact content, can never be mis-tokenized, and can be restored
     verbatim -- quote characters included -- by _restore_placeholders."""
-    quotes: Dict[int, Tuple[str, str]] = {}
+    quotes: dict[int, tuple[str, str]] = {}
     counter = [0]
 
     def _replace(m: re.Match) -> str:
@@ -822,7 +822,7 @@ def _extract_quotes(text: str) -> Tuple[str, Dict[int, Tuple[str, str]]]:
     return _QUOTE_EXTRACT_RE.sub(_replace, text), quotes
 
 
-def _restore_placeholders(s: str, quotes: Dict[int, Tuple[str, str]]) -> str:
+def _restore_placeholders(s: str, quotes: dict[int, tuple[str, str]]) -> str:
     """Inverse of _extract_quotes over a text slice: each placeholder
     becomes its original quoted literal, quote characters and all."""
     def _put_back(m: re.Match) -> str:
@@ -832,7 +832,7 @@ def _restore_placeholders(s: str, quotes: Dict[int, Tuple[str, str]]) -> str:
 
 
 def _leftover_phrases(placeheld: str, working: str,
-                      consumed: List[bool]) -> List[Tuple[int, int, str]]:
+                      consumed: list[bool]) -> list[tuple[int, int, str]]:
     """Maximal runs of adjacent unconsumed non-stopword tokens, joined into
     original-case phrases: (start, end, phrase) spans covering exactly the
     tokens, so intervening consumed/stopword spans break the run."""
@@ -843,7 +843,7 @@ def _leftover_phrases(placeheld: str, working: str,
         and not any(consumed[m.start():m.end()])
         and not _PLACEHOLDER_RE.fullmatch(working[m.start():m.end()])
     ]
-    phrases: List[Tuple[int, int, str]] = []
+    phrases: list[tuple[int, int, str]] = []
     for s, e in tokens:
         if phrases and working[phrases[-1][1]:s].strip() == "" :
             ps, _, _ = phrases[-1]

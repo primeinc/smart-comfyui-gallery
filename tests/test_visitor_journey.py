@@ -19,6 +19,7 @@ comment, and read the comments back. In order, as a person would.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -50,7 +51,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def exhibition(smartgallery_app, monkeypatch):
     """An exhibition with one public album, one picture, and one visitor."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -96,10 +97,8 @@ def exhibition(smartgallery_app, monkeypatch):
         conn.commit()
     finally:
         conn.close()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(path)
-    except OSError:
-        pass
 
 
 def test_a_visitor_can_do_the_whole_journey(smartgallery_app, exhibition):

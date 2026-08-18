@@ -4,11 +4,18 @@ fixture database (omniquery/benchmark/fixtures.py)."""
 from __future__ import annotations
 
 import sqlite3
+import time
+from datetime import datetime
 
 import pytest
 
+from omniquery.ast import parse_query
 from omniquery.benchmark.fixtures import (
-    ANCHOR_EPOCH, FIXTURE_BASE_PATH, FIXTURE_EXPECTATIONS, FIXTURE_FILES, build_fixture_db,
+    ANCHOR_EPOCH,
+    FIXTURE_BASE_PATH,
+    FIXTURE_EXPECTATIONS,
+    FIXTURE_FILES,
+    build_fixture_db,
 )
 from omniquery.engine import OmniQueryEngine
 from omniquery.validation import AuthContext
@@ -25,7 +32,7 @@ def fixture_db_path(tmp_path_factory):
     return path
 
 
-@pytest.fixture()
+@pytest.fixture
 def engine(fixture_db_path):
     return OmniQueryEngine(
         db_path=fixture_db_path, base_path=FIXTURE_BASE_PATH,
@@ -98,8 +105,6 @@ def test_date_relative_days_ago(engine):
 
 
 def test_date_between_bare_dates_matches_calendar_days(engine):
-    import time
-    from datetime import datetime
     lo = time.mktime(datetime(2024, 1, 1).timetuple())
     hi = time.mktime(datetime(2025, 6, 1).timetuple())
     out = engine.run(
@@ -247,7 +252,8 @@ def test_count_matches_ids_length_for_same_query(engine):
     where = {"field": "type", "op": "eq", "value": "image"}
     ids_out = engine.run({"where": where, "limit": 2000}, GUEST, now_epoch=ANCHOR_EPOCH)
     count_out = engine.run({"result": "count", "where": where}, GUEST, now_epoch=ANCHOR_EPOCH)
-    assert ids_out.ok and count_out.ok
+    assert ids_out.ok
+    assert count_out.ok
     assert len(ids_out.ids) == count_out.count
 
 
@@ -340,7 +346,8 @@ def test_resolver_exception_produces_ai_unavailable_error(fixture_db_path):
 def test_run_surfaces_ast_errors(engine):
     out = engine.run({"target": "not_files"}, GUEST, now_epoch=ANCHOR_EPOCH)
     assert not out.ok
-    assert out.ids is None and out.count is None
+    assert out.ids is None
+    assert out.count is None
     assert "invalid query" in out.error
 
 
@@ -354,7 +361,6 @@ def test_run_surfaces_validation_errors(engine):
 
 
 def test_run_accepts_a_pre_parsed_query_object(engine):
-    from omniquery.ast import parse_query
     q = parse_query({"where": {"field": "type", "op": "eq", "value": "document"}, "limit": 200})
     out = engine.run(q, GUEST, now_epoch=ANCHOR_EPOCH)
     assert out.ok

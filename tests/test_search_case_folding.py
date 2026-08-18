@@ -20,6 +20,7 @@ ASCII control.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -55,7 +56,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def library(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
                         "ProcessPoolExecutor", _InlineExecutor)
@@ -82,10 +83,8 @@ def library(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in _FILES.values():
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _search(smartgallery_app, ids, term, path="/galleryout/view/_root_"):
@@ -100,7 +99,7 @@ def test_the_fixture_is_searchable_at_all(smartgallery_app, library):
     assert _search(smartgallery_app, library, _PREFIX) == sorted(_FILES.values())
 
 
-@pytest.mark.parametrize("term,expected_key", [
+@pytest.mark.parametrize(("term", "expected_key"), [
     ("测试", "chinese"),
     ("café", "french"),
     ("CAFÉ", "french"),        # the regression
@@ -136,7 +135,7 @@ def _filtered(smartgallery_app, library, query):
     return sorted(name for name, fid in library.items() if fid and fid in html)
 
 
-@pytest.fixture()
+@pytest.fixture
 def annotated(smartgallery_app, library):
     """The Greek file carries a comment and a prompt, both non-English."""
     conn = smartgallery_app.get_db_connection()

@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def albums(smartgallery_app):
     """One public album and one private album shared with user 41."""
     conn = smartgallery_app.get_db_connection()

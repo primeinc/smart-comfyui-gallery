@@ -36,6 +36,8 @@ import subprocess
 
 import pytest
 
+pytestmark = pytest.mark.spawns  # every check here runs another program
+
 _TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "templates"
 
 _PAYLOADS = [
@@ -87,7 +89,7 @@ def test_the_escaper_removes_everything_that_could_be_markup():
     the same as no escaper at all."""
     escaped = _run(_PAYLOADS)
 
-    for original, result in zip(_PAYLOADS, escaped):
+    for original, result in zip(_PAYLOADS, escaped, strict=False):
         for char in "<>\"'":
             assert char not in result, (original, result, char)
     # and it must still be the name, not a blank

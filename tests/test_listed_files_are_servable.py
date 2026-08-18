@@ -20,6 +20,7 @@ a public album showing nothing.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import os
 
 import pytest
@@ -47,7 +48,7 @@ class _InlineExecutor:
         return future
 
 
-@pytest.fixture()
+@pytest.fixture
 def exhibition(smartgallery_app, monkeypatch):
     """A public album holding two of three pictures, seen by a guest."""
     monkeypatch.setattr(smartgallery_app.concurrent.futures,
@@ -95,10 +96,8 @@ def exhibition(smartgallery_app, monkeypatch):
     finally:
         conn.close()
     for name in names:
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(base, name))
-        except OSError:
-            pass
 
 
 def _listed(client, coll_id):

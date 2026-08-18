@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, FrozenSet, List, Optional
 
 
 class Kind(str, Enum):
@@ -106,15 +105,15 @@ REVIEW_ALIGNMENT_EXPR = (
 )
 
 # collections.name values for the built-in type='system_flag' collections.
-STATUS_FLAG_VALUES: FrozenSet[str] = frozenset(
+STATUS_FLAG_VALUES: frozenset[str] = frozenset(
     {"Approved", "Review", "To Edit", "Rejected", "Select"}
 )
 # Accepted values of the files.type column.
-FILE_TYPE_VALUES: FrozenSet[str] = frozenset(
+FILE_TYPE_VALUES: frozenset[str] = frozenset(
     {"image", "video", "animated_image", "audio", "document"}
 )
 # Accepted values of the ai_review_findings.type column.
-REVIEW_ISSUE_VALUES: FrozenSet[str] = frozenset({
+REVIEW_ISSUE_VALUES: frozenset[str] = frozenset({
     "anatomy", "artifact", "composition", "lighting", "text_render",
     "prompt_mismatch", "style", "detail_loss", "other",
 })
@@ -127,7 +126,7 @@ class FieldSpec:
 
     name: str            # field name as parsers emit it
     kind: Kind
-    ops: FrozenSet[str]  # operator names validation accepts for this field
+    ops: frozenset[str]  # operator names validation accepts for this field
     strategy: Strategy
     orderable: bool = False   # usable in ORDER BY (order_expr must then be set)
     privileged: bool = False  # restricted to validation.PRIVILEGED_ROLES
@@ -137,14 +136,14 @@ class FieldSpec:
     # subquery rather than a plain column/expression comparison.
     correlated: bool = False
     needs_client_uuid: bool = False  # rejected unless the AuthContext carries a client_uuid
-    enum_values: Optional[FrozenSet[str]] = None  # allowed literals for Kind.ENUM fields
-    column: Optional[str] = None        # Strategy.COLUMN
-    expr: Optional[str] = None          # Strategy.EXPR / SUBQUERY_SCALAR
-    order_expr: Optional[str] = None    # only set when orderable
-    table: Optional[str] = None         # EXISTS_TEXT / EXISTS_USER inner table
-    alias: Optional[str] = None         # inner table alias
-    inner_column: Optional[str] = None  # EXISTS_TEXT inner column
-    type_filter: Optional[str] = None   # EXISTS_NAMED collections.type constant
+    enum_values: frozenset[str] | None = None  # allowed literals for Kind.ENUM fields
+    column: str | None = None        # Strategy.COLUMN
+    expr: str | None = None          # Strategy.EXPR / SUBQUERY_SCALAR
+    order_expr: str | None = None    # only set when orderable
+    table: str | None = None         # EXISTS_TEXT / EXISTS_USER inner table
+    alias: str | None = None         # inner table alias
+    inner_column: str | None = None  # EXISTS_TEXT inner column
+    type_filter: str | None = None   # EXISTS_NAMED collections.type constant
 
 
 def _f(**kwargs) -> FieldSpec:
@@ -160,7 +159,7 @@ ANY_TEXT_COLUMNS: tuple = ("f.name", "f.path", "f.workflow_prompt", "f.ai_captio
 ANY_TEXT_GP_COLUMNS: tuple = ("gp.positive_prompt", "gp.model", "gp.loras")
 
 # Registry source of truth: one spec per queryable field.
-_SPECS: List[FieldSpec] = [
+_SPECS: list[FieldSpec] = [
     # Universal free-text search: one term matched (contains) against every
     # text surface at once -- filename, path, workflow prompt, AI caption,
     # generation prompt, model name, LoRA names. This is the field bare
@@ -298,26 +297,26 @@ _SPECS: List[FieldSpec] = [
        strategy=Strategy.FILE_REF, requires_ai=True, correlated=True),
 ]
 
-FIELDS: Dict[str, FieldSpec] = {spec.name: spec for spec in _SPECS}  # name -> spec
+FIELDS: dict[str, FieldSpec] = {spec.name: spec for spec in _SPECS}  # name -> spec
 
-ORDERABLE_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.orderable)
-PRIVILEGED_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.privileged)
-AI_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.requires_ai)
-CORRELATED_FIELDS: FrozenSet[str] = frozenset(n for n, s in FIELDS.items() if s.correlated)
+ORDERABLE_FIELDS: frozenset[str] = frozenset(n for n, s in FIELDS.items() if s.orderable)
+PRIVILEGED_FIELDS: frozenset[str] = frozenset(n for n, s in FIELDS.items() if s.privileged)
+AI_FIELDS: frozenset[str] = frozenset(n for n, s in FIELDS.items() if s.requires_ai)
+CORRELATED_FIELDS: frozenset[str] = frozenset(n for n, s in FIELDS.items() if s.correlated)
 
 
-def get_field(name: str) -> Optional[FieldSpec]:
+def get_field(name: str) -> FieldSpec | None:
     """Spec for a field name, or None (not an exception) for unknown names,
     so callers can phrase their own error."""
     return FIELDS.get(name)
 
 
-def field_names() -> List[str]:
+def field_names() -> list[str]:
     """Sorted field vocabulary, for schema embedding and error messages."""
     return sorted(FIELDS)
 
 
-def all_ops() -> List[str]:
+def all_ops() -> list[str]:
     """Every operator name used by any field (for json_schema embedding)."""
     ops: set = set()
     for spec in FIELDS.values():

@@ -41,8 +41,7 @@ from __future__ import annotations
 import pytest
 
 
-
-@pytest.fixture()
+@pytest.fixture
 def caller(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -132,7 +131,7 @@ def test_a_refusal_keeps_its_own_answer(smartgallery_app, monkeypatch):
     assert response.status_code in (403, 404), response.status_code
 
 
-@pytest.mark.parametrize("path,headers,expected", [
+@pytest.mark.parametrize(("path", "headers", "expected"), [
     ("/galleryout/api/anything", {}, True),
     ("/galleryout/favorite_batch", {"Content-Type": "application/json"}, True),
     ("/galleryout/view/abc", {"Accept": "text/html"}, False),
@@ -148,11 +147,12 @@ def test_who_is_told_in_json(smartgallery_app, path, headers, expected):
 def test_the_fault_used_for_these_checks_is_a_real_one(smartgallery_app):
     """Control. Every check here rests on that request actually going
     wrong; if it stopped doing so they would all pass for nothing."""
-    route, payload = _A_FAULT
+    _route, payload = _A_FAULT
     ids = payload["file_ids"]
 
     # file_ids is iterated as a list of ids. A string is iterable, so it
     # reaches the database as one-character ids rather than being refused.
-    assert isinstance(ids, str) and len(ids) > 1
+    assert isinstance(ids, str)
+    assert len(ids) > 1
     assert list(ids) == ["a", "b", "c"], (
         "the value used here is no longer the shape that provoked the fault")

@@ -117,7 +117,7 @@ class AIConfig:
 
     # Tunables (documented in docs/AI_MODELS.md; override via env)
     near_dup_max_distance: int = 8      # max Hamming distance on phash64
-    face_cluster_threshold: Optional[float] = None  # cosine similarity threshold;
+    face_cluster_threshold: float | None = None  # cosine similarity threshold;
                                         #   None = the face backend's per-embedder
                                         #   default (faces.resolve_cluster_threshold)
     face_min_det_score: float = 0.5     # min detection confidence [0,1] to keep a face

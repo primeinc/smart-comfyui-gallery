@@ -39,7 +39,7 @@ _DOCUMENTED = re.compile(r"^#\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
 
 
 def _references(text):
-    return {name: rest for name, rest in _REFERENCE.findall(text)}
+    return dict(_REFERENCE.findall(text))
 
 
 def _documented(text):
@@ -72,7 +72,7 @@ def test_every_variable_is_mandatory(path):
     """An unset variable must stop compose with a message, not expand to
     nothing and hand the app a flag with no value."""
     for name, rest in _references(path.read_text(encoding="utf-8")).items():
-        assert rest.startswith(":?") or rest.startswith("?"), (
+        assert rest.startswith((":?", "?")), (
             f"{path.name}: ${{{name}{rest}}} expands to nothing when unset. "
             f"Use ${{{name}:?message}} so compose stops and says what to set.")
 

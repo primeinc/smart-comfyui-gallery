@@ -21,19 +21,28 @@ import os
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 from flask import Blueprint, Response, abort, jsonify, request, send_file, url_for
 
 from smartgallery_ai import (
-    AIConfig,
     HASH_ALGO_VERSION,
     SPACE_SEMANTIC,
     SPACE_VISUAL,
+    AIConfig,
+    embedders,
+    faces,
+    feedback,
+    hashing,
+    invalidation,
+    review,
+    runner,
+    schema,
+    vectors,
 )
-from smartgallery_ai import embedders, faces, feedback, hashing, invalidation, review, runner, schema, vectors
 from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
     _MTIME_EPSILON,
@@ -44,7 +53,7 @@ from smartgallery_ai.worker import (
     record_scan,
 )
 
-__all__ = ["create_ai_blueprint", "create_ai_resolvers", "set_worker", "get_worker"]
+__all__ = ["create_ai_blueprint", "create_ai_resolvers", "get_worker", "set_worker"]
 
 # Registered by the host app's startup code via `set_worker()` so `/status`
 # can report on the running background worker without the blueprint factory
@@ -84,8 +93,7 @@ _RENDERABLE_TYPES = tuple(hashing.IMAGE_FILE_TYPES | hashing.VIDEO_FILE_TYPES)
 
 def _connect(config: AIConfig) -> sqlite3.Connection:
     """Open a fresh SQLite connection to the gallery DB with name-addressable rows."""
-    conn = schema.connect(config.db_path)
-    return conn
+    return schema.connect(config.db_path)
 
 
 def _renderable(conn: sqlite3.Connection, file_id: str) -> bool:
@@ -118,7 +126,7 @@ def _disabled_response():
     return jsonify({"enabled": False}), 200
 
 
-def _extract_file_id(value: Any) -> Optional[str]:
+def _extract_file_id(value: Any) -> str | None:
     """File id from a resolver AST value -- bare string or `{"file_id": ...}` dict; None otherwise."""
     if isinstance(value, dict):
         return value.get("file_id")
@@ -275,9 +283,9 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     return result
 
 
-def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
-                        file_access_check: Optional[Callable[[str], bool]] = None,
-                        generation_metadata_visible: Optional[Callable[[], bool]] = None,
+def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
+                        file_access_check: Callable[[str], bool] | None = None,
+                        generation_metadata_visible: Callable[[], bool] | None = None,
                         ) -> Blueprint:
     """Build the AI DAM Flask blueprint.
 
@@ -726,7 +734,6 @@ def create_ai_blueprint(config: AIConfig, guard: Optional[Callable] = None,
             conn.close()
         if row is None:
             abort(404)
-        from smartgallery_ai.worker import load_source_image
         img = load_source_image(row["path"], row["type"])
         if img is None:
             return jsonify({"enabled": True,

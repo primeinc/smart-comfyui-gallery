@@ -34,7 +34,7 @@ import shutil
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def gallery(smartgallery_app, tmp_path, monkeypatch):
     """A gallery folder of this test's own, so the suite's real one is
     never emptied."""
@@ -57,7 +57,7 @@ def gallery(smartgallery_app, tmp_path, monkeypatch):
 def test_a_first_run_is_not_warned_at_and_leaves_a_marker(smartgallery_app, gallery):
     """Control, and the one that stops this being a nuisance: a new
     gallery folder has an empty database for the ordinary reason."""
-    root, _cache = gallery
+    _root, _cache = gallery
 
     warned = smartgallery_app.check_library_continuity(is_new_database=True)
 
