@@ -17,6 +17,7 @@ import errno
 import glob
 import hashlib
 import importlib.util
+import ipaddress
 import json
 import logging
 import math
@@ -425,10 +426,16 @@ FFPROBE_MANUAL_PATH = env_path("FFPROBE_MANUAL_PATH", "C:/ffmpeg/bin/ffprobe.exe
 # Must be different from the ComfyUI port (usually 8188).
 # The gallery does not require ComfyUI to be running; it works independently.
 SERVER_PORT = env_num("SERVER_PORT", 8189, minimum=1)
-# The interface to listen on. Every address by default, because the
-# gallery is normally opened from a phone or another machine on the
-# same network; set it to 127.0.0.1 to answer only this one.
-SERVER_HOST = env_or("SERVER_HOST", "0.0.0.0")
+# The interface to listen on. Every address by default -- the gallery is
+# normally opened from a phone or another machine on the same network --
+# so set it to 127.0.0.1 to answer only on this one.
+#
+# The default is written as the address INADDR_ANY names rather than as
+# four zeros, because that is what it means and it is the name the
+# operating system uses for it. It renders as 0.0.0.0, which is what
+# CONFIGURATION.md documents.
+ALL_INTERFACES = str(ipaddress.IPv4Address(socket.INADDR_ANY))
+SERVER_HOST = env_or("SERVER_HOST", ALL_INTERFACES)
 
 # Width (in pixels) of the generated thumbnails.
 THUMBNAIL_WIDTH = env_num("THUMBNAIL_WIDTH", 300, minimum=1)
@@ -1456,9 +1463,6 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 # Already Flask's default; stated so that it stays true.
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-folder_config_cache = None
-FFPROBE_EXECUTABLE_PATH = None
-
 
 @app.before_request
 def refuse_writes_started_by_another_site():
@@ -1623,6 +1627,35 @@ def _ai_file_access_check(file_id):
     resolved per request rather than at registration.
     """
     return is_file_accessible(file_id)
+
+
+class _RuntimeState:
+    """What the process works out for itself while it runs.
+
+    Seven module globals, rebound from six different functions, each
+    needing a `global` line to say so. One object says which values are
+    worked out rather than configured, and where: assigning an attribute
+    needs no declaration, so the `global` lines are gone with them.
+
+    Tests reach these the same way the code does --
+    `monkeypatch.setattr(smartgallery.STATE, "ffprobe_path", ...)`.
+    """
+
+    # The ffprobe this process found, or None if it found none.
+    ffprobe_path = None
+    # Whether the one-per-start line about ffprobe has been printed.
+    ffprobe_announced = False
+    # The scanned folder tree, until something invalidates it.
+    folder_config = None
+    # Lazily built OmniQuery singletons.
+    omniquery_parser = None
+    omniquery_sqlsearch = None
+    # What the update check found, if it ran.
+    update_available = False
+    remote_version = None
+
+
+STATE = _RuntimeState()
 
 
 # --- AI DAM BLUEPRINT (WI-31, optional; every route no-ops when disabled) ---
@@ -2563,9 +2596,6 @@ def _is_ffprobe(path_or_name):
     return banner.startswith("ffprobe")
 
 
-_FFPROBE_ANNOUNCED = False
-
-
 def _announce_ffprobe(message):
     """Say which ffprobe is in use, once per run.
 
@@ -2576,10 +2606,9 @@ def _announce_ffprobe(message):
     Only the failures used to be reported, which left "it is configured, so
     it must be working" as the reasonable conclusion.
     """
-    global _FFPROBE_ANNOUNCED
-    if _FFPROBE_ANNOUNCED:
+    if STATE.ffprobe_announced:
         return
-    _FFPROBE_ANNOUNCED = True
+    STATE.ffprobe_announced = True
     print(message)
 
 
@@ -3061,7 +3090,7 @@ def extract_workflow(filepath, target_type="ui"):
 
     if ext in video_exts:
         # --- FIX: Path resolution in worker processes ---
-        current_ffprobe_path = FFPROBE_EXECUTABLE_PATH
+        current_ffprobe_path = STATE.ffprobe_path
         if not current_ffprobe_path:
             current_ffprobe_path = find_ffprobe_path()
 
@@ -3217,7 +3246,7 @@ def analyze_file_metadata(filepath):
         except Exception:
             _logger.debug("ignored a failure in analyze_file_metadata", exc_info=True)
     elif details["type"] == "audio":
-        current_ffprobe = FFPROBE_EXECUTABLE_PATH or find_ffprobe_path()
+        current_ffprobe = STATE.ffprobe_path or find_ffprobe_path()
 
         if current_ffprobe:
             try:
@@ -3371,7 +3400,7 @@ def prune_thumbnail_cache(conn):
 
 
 def create_waveform(filepath, file_hash, file_type, amp=1.0):
-    if not GENERATE_WAVEFORMS or not FFPROBE_EXECUTABLE_PATH:
+    if not GENERATE_WAVEFORMS or not STATE.ffprobe_path:
         return None
     if not ensure_thumbnail_cache_dir():
         return None
@@ -3386,7 +3415,7 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
 
     try:
         ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-        ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
+        ffmpeg_bin = os.path.join(os.path.dirname(STATE.ffprobe_path), ffmpeg_name)
         if not os.path.exists(ffmpeg_bin):
             ffmpeg_bin = ffmpeg_name
 
@@ -3533,10 +3562,10 @@ def create_thumbnail(filepath, file_hash, file_type):
             # Fallback silently to FFmpeg
 
         # Method B: Fallback to FFmpeg (Most Robust for MKV/AVI/ProRes)
-        if FFPROBE_EXECUTABLE_PATH:
+        if STATE.ffprobe_path:
             try:
                 ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-                ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
+                ffmpeg_bin = os.path.join(os.path.dirname(STATE.ffprobe_path), ffmpeg_name)
                 if not os.path.exists(ffmpeg_bin):
                     ffmpeg_bin = ffmpeg_name
 
@@ -4586,9 +4615,8 @@ def init_db(conn=None):
 
 
 def get_dynamic_folder_config(force_refresh=False):
-    global folder_config_cache
-    if folder_config_cache is not None and not force_refresh:
-        return folder_config_cache
+    if STATE.folder_config is not None and not force_refresh:
+        return STATE.folder_config
 
     # print("INFO: Refreshing folder configuration by scanning directory tree...")
 
@@ -4757,7 +4785,7 @@ def get_dynamic_folder_config(force_refresh=False):
         _logger.debug("handled a failure in get_dynamic_folder_config", exc_info=True)
         print(f"Error calculating folder file counts: {e}")
 
-    folder_config_cache = dynamic_config
+    STATE.folder_config = dynamic_config
     return dynamic_config
 
 
@@ -5539,8 +5567,7 @@ def cleanup_invalid_watched_folders(conn):
 
 def initialize_gallery_fast_no_db_check():
     print("INFO: Initializing gallery...")
-    global FFPROBE_EXECUTABLE_PATH
-    FFPROBE_EXECUTABLE_PATH = find_ffprobe_path()
+    STATE.ffprobe_path = find_ffprobe_path()
     os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
     os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
     # See initialize_gallery: sweep tmp_* strandings from killed encoders.
@@ -5733,8 +5760,7 @@ def initialize_gallery():
     # Will exit(1) immediately if db/collections are missing, preventing ghost DB creation
     check_exhibition_requirements()
 
-    global FFPROBE_EXECUTABLE_PATH
-    FFPROBE_EXECUTABLE_PATH = find_ffprobe_path()
+    STATE.ffprobe_path = find_ffprobe_path()
     os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
     os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
     os.makedirs(CLEAN_CACHE_DIR, exist_ok=True)
@@ -6043,8 +6069,8 @@ def strip_media_metadata(input_path, output_path, file_type):
             return True
 
         # --- CASE B: REAL VIDEOS & AUDIO (MP4, MOV, MKV, MP3, WAV...) ---
-        if file_type in ["video", "audio"] and FFPROBE_EXECUTABLE_PATH:
-            ffmpeg_dir = os.path.dirname(FFPROBE_EXECUTABLE_PATH)
+        if file_type in ["video", "audio"] and STATE.ffprobe_path:
+            ffmpeg_dir = os.path.dirname(STATE.ffprobe_path)
             ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
             ffmpeg_path = os.path.join(ffmpeg_dir, ffmpeg_name)
             if not os.path.exists(ffmpeg_path):
@@ -8110,9 +8136,9 @@ def gallery_view(folder_key):
         global_blind_active=BLIND_RATING,  # Pass flag to template
         app_version=APP_VERSION,
         github_url=GITHUB_REPO_URL,
-        update_available=UPDATE_AVAILABLE,
-        remote_version=REMOTE_VERSION,
-        ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
+        update_available=STATE.update_available,
+        remote_version=STATE.remote_version,
+        ffmpeg_available=(STATE.ffprobe_path is not None),
         comfy_server_url=COMFYUI_SERVER_URL,
         stream_threshold=STREAM_THRESHOLD_BYTES,
         page_size_from_backend=PAGE_SIZE,
@@ -10184,7 +10210,7 @@ def get_storyboard(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
     # 1. Validation
-    has_ffmpeg = FFPROBE_EXECUTABLE_PATH is not None
+    has_ffmpeg = STATE.ffprobe_path is not None
 
     try:
         info = get_file_info_from_db(file_id)
@@ -10219,7 +10245,7 @@ def get_storyboard(file_id):
             # Get duration, fps, and frame count in ONE call
             try:
                 cmd_info = [
-                    FFPROBE_EXECUTABLE_PATH,
+                    STATE.ffprobe_path,
                     "-v",
                     "error",
                     "-select_streams",
@@ -10271,7 +10297,7 @@ def get_storyboard(file_id):
             if duration <= 0:
                 try:
                     cmd_dur2 = [
-                        FFPROBE_EXECUTABLE_PATH,
+                        STATE.ffprobe_path,
                         "-v",
                         "error",
                         "-show_entries",
@@ -10307,7 +10333,7 @@ def get_storyboard(file_id):
             print("🔍 Quick test...")
 
             ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-            ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
+            ffmpeg_bin = os.path.join(os.path.dirname(STATE.ffprobe_path), ffmpeg_name)
             if not os.path.exists(ffmpeg_bin):
                 ffmpeg_bin = ffmpeg_name
 
@@ -10375,7 +10401,7 @@ def get_storyboard(file_id):
 
             try:
                 ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-                ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
+                ffmpeg_bin = os.path.join(os.path.dirname(STATE.ffprobe_path), ffmpeg_name)
                 if not os.path.exists(ffmpeg_bin):
                     ffmpeg_bin = ffmpeg_name
 
@@ -10411,7 +10437,7 @@ def get_storyboard(file_id):
                     # Get corrected info
                     try:
                         cmd_info = [
-                            FFPROBE_EXECUTABLE_PATH,
+                            STATE.ffprobe_path,
                             "-v",
                             "error",
                             "-select_streams",
@@ -10470,7 +10496,7 @@ def get_storyboard(file_id):
                         actual_frame_number = int(timestamp * fps)
 
                     ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-                    ffmpeg_bin = os.path.join(os.path.dirname(FFPROBE_EXECUTABLE_PATH), ffmpeg_name)
+                    ffmpeg_bin = os.path.join(os.path.dirname(STATE.ffprobe_path), ffmpeg_name)
                     if not os.path.exists(ffmpeg_bin):
                         ffmpeg_bin = ffmpeg_name
 
@@ -10871,11 +10897,11 @@ def stream_video(file_id):
     """
     filepath = get_file_info_from_db(file_id, "path")
 
-    if not FFPROBE_EXECUTABLE_PATH:
+    if not STATE.ffprobe_path:
         abort(404, description="FFmpeg/FFprobe not found on system.")
 
     # Determine ffmpeg executable path based on ffprobe location
-    ffmpeg_dir = os.path.dirname(FFPROBE_EXECUTABLE_PATH)
+    ffmpeg_dir = os.path.dirname(STATE.ffprobe_path)
     ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
     ffmpeg_path = os.path.join(ffmpeg_dir, ffmpeg_name) if ffmpeg_dir else ffmpeg_name
 
@@ -12329,9 +12355,9 @@ def collection_view(coll_id):
         global_blind_active=BLIND_RATING,
         app_version=APP_VERSION,
         github_url=GITHUB_REPO_URL,
-        update_available=UPDATE_AVAILABLE,
-        remote_version=REMOTE_VERSION,
-        ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
+        update_available=STATE.update_available,
+        remote_version=STATE.remote_version,
+        ffmpeg_available=(STATE.ffprobe_path is not None),
         comfy_server_url=COMFYUI_SERVER_URL,
         stream_threshold=STREAM_THRESHOLD_BYTES,
         has_notes=has_notes,
@@ -12892,32 +12918,28 @@ def execute_omniquery():
 #     manual endpoint (omniquery.sqlexec).
 # Model failure falls back to the deterministic answer; no response ever
 # carries SQL or an AST.
-_omniquery_parser = None
-_omniquery_sqlsearch = None
 _omniquery_lock = threading.Lock()
 
 
 def _get_omniquery_parser():
     """Lazy singleton for the deterministic nlq parser (zero-dependency,
     always available)."""
-    global _omniquery_parser
-    if _omniquery_parser is None:
+    if STATE.omniquery_parser is None:
         with _omniquery_lock:
-            if _omniquery_parser is None:
-                _omniquery_parser = omniquery_parsers.make_search_parser()
-    return _omniquery_parser
+            if STATE.omniquery_parser is None:
+                STATE.omniquery_parser = omniquery_parsers.make_search_parser()
+    return STATE.omniquery_parser
 
 
 def _get_omniquery_sqlsearch():
     """Lazy singleton for the nl2sql model search. Constructing never
     loads the model; available() is re-checked per request so weights
     provisioned mid-session start working without a restart."""
-    global _omniquery_sqlsearch
-    if _omniquery_sqlsearch is None:
+    if STATE.omniquery_sqlsearch is None:
         with _omniquery_lock:
-            if _omniquery_sqlsearch is None:
-                _omniquery_sqlsearch = SqlSearch(db_path=DATABASE_FILE)
-    return _omniquery_sqlsearch
+            if STATE.omniquery_sqlsearch is None:
+                STATE.omniquery_sqlsearch = SqlSearch(db_path=DATABASE_FILE)
+    return STATE.omniquery_sqlsearch
 
 
 def _omniquery_run_ast(ast_dict, query_text):
@@ -13122,13 +13144,10 @@ def print_startup_banner():
 
 
 # --- GLOBAL STATE FOR UPDATES ---
-UPDATE_AVAILABLE = False
-REMOTE_VERSION = None  # New global variable
 
 
 def check_for_updates():
     """Checks the GitHub repo for a newer version without external libs."""
-    global UPDATE_AVAILABLE, REMOTE_VERSION
     print("Checking for updates...", end=" ", flush=True)
     try:
         # Timeout (3s) not blocking start if no internet connection
@@ -13165,8 +13184,8 @@ def check_for_updates():
                     is_update_available = remote_v > local_v
 
                 if is_update_available:
-                    UPDATE_AVAILABLE = True
-                    REMOTE_VERSION = remote_version_str  # Store the version string
+                    STATE.update_available = True
+                    STATE.remote_version = remote_version_str  # Store the version string
                     print(
                         f"\n{Colors.YELLOW}{Colors.BOLD}NOTICE: A new version"
                         f" ({remote_version_str}) is available!{Colors.RESET}"
@@ -15994,7 +16013,7 @@ def backfill_audio_durations(conn=None):
         def _work(item):
             fid, fpath = item
             dur = ""
-            current_ffprobe = FFPROBE_EXECUTABLE_PATH or find_ffprobe_path()
+            current_ffprobe = STATE.ffprobe_path or find_ffprobe_path()
             if current_ffprobe:
                 try:
                     cmd_info = [
@@ -16735,7 +16754,7 @@ if __name__ == "__main__":
     initialize_gallery()
 
     # --- CHECK: FFMPEG WARNING ---
-    if not FFPROBE_EXECUTABLE_PATH:
+    if not STATE.ffprobe_path:
         if os.environ.get("DISPLAY") or os.name == "nt":
             try:
                 show_ffmpeg_warning()

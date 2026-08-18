@@ -40,7 +40,7 @@ def _count_connections_for(smartgallery_app, monkeypatch, root, folder_count):
         return real_connect(*args, **kwargs)
 
     monkeypatch.setattr(smartgallery_app, "BASE_OUTPUT_PATH", str(root))
-    monkeypatch.setattr(smartgallery_app, "folder_config_cache", None)
+    monkeypatch.setattr(smartgallery_app.STATE, "folder_config", None)
     monkeypatch.setattr(smartgallery_app, "get_db_connection", counting_connect)
     try:
         folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)

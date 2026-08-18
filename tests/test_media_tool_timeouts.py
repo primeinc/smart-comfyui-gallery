@@ -71,7 +71,7 @@ def test_the_probe_still_says_yes_to_a_real_ffprobe(monkeypatch):
 
 def test_a_hanging_probe_costs_only_that_file(a_tool_that_hangs, tmp_path, monkeypatch):
     """The scan must move on rather than stop."""
-    monkeypatch.setattr(smartgallery, "FFPROBE_EXECUTABLE_PATH", "hanging-ffprobe")
+    monkeypatch.setattr(smartgallery.STATE, "ffprobe_path", "hanging-ffprobe")
     target = tmp_path / "clip.mp4"
     target.write_bytes(b"not really a video")
 
@@ -120,7 +120,7 @@ def test_no_media_tool_is_started_in_a_way_that_can_outlive_its_timeout(gallery_
     codebase's behaviour to verify. What IS ours is never reaching for the
     call that has no such contract, which is a property of the source.
     """
-    media = {"ffprobe", "ffmpeg", "FFPROBE_EXECUTABLE_PATH", "FFMPEG_EXECUTABLE_PATH"}
+    media = {"ffprobe", "ffmpeg", "ffprobe_path", "FFMPEG_EXECUTABLE_PATH"}
     offenders = []
     for node in ast.walk(gallery_tree):
         if not (

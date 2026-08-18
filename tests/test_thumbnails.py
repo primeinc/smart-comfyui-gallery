@@ -119,7 +119,7 @@ def test_waveform_promotes_only_a_complete_render(smartgallery_app, cache_dir, t
     """ffmpeg is killed by the 20s timeout on pathological input; a partial
     PNG must never be promoted, because create_waveform returns any existing
     file at the final name without re-checking it."""
-    if not smartgallery_app.FFPROBE_EXECUTABLE_PATH:
+    if not smartgallery_app.STATE.ffprobe_path:
         pytest.skip("ffprobe not available")
     if not smartgallery_app.GENERATE_WAVEFORMS:
         pytest.skip("waveform generation disabled by configuration")

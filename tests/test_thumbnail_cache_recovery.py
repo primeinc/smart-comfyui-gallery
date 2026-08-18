@@ -101,7 +101,7 @@ def test_waveforms_stop_instead_of_failing_per_file(smartgallery_app, tmp_path, 
     """The other writer into the same folder. It returns None for a missing
     cache rather than letting ffmpeg write to a path that is not there."""
     monkeypatch.setattr(smartgallery_app, "GENERATE_WAVEFORMS", True)
-    monkeypatch.setattr(smartgallery_app, "FFPROBE_EXECUTABLE_PATH", "ffprobe")
+    monkeypatch.setattr(smartgallery_app.STATE, "ffprobe_path", "ffprobe")
     monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(tmp_path / "gone"))
     monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR", str(tmp_path / "gone" / ".thumbnails_cache"))
 

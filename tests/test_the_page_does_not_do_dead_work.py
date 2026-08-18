@@ -172,7 +172,7 @@ def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
         conn.close()
 
     try:
-        smartgallery_app.folder_config_cache = None
+        smartgallery_app.STATE.folder_config = None
         folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
         key = next(
             (
@@ -201,4 +201,4 @@ def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
         finally:
             conn.close()
         shutil.rmtree(here, ignore_errors=True)
-        smartgallery_app.folder_config_cache = None
+        smartgallery_app.STATE.folder_config = None

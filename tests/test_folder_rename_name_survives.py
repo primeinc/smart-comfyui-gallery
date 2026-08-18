@@ -138,7 +138,7 @@ def a_folder_with_a_picture(smartgallery_app, monkeypatch):
     finally:
         conn.close()
 
-    smartgallery_app.folder_config_cache = None
+    smartgallery_app.STATE.folder_config = None
     folders = smartgallery_app.get_dynamic_folder_config()
     key = next(
         (
@@ -162,7 +162,7 @@ def a_folder_with_a_picture(smartgallery_app, monkeypatch):
         full = os.path.join(root, leftover)
         if os.path.isdir(full) and (leftover.startswith(("rename_probe", "holiday"))):
             __import__("shutil").rmtree(full, ignore_errors=True)
-    smartgallery_app.folder_config_cache = None
+    smartgallery_app.STATE.folder_config = None
 
 
 @pytest.mark.parametrize("requested", ["holiday ", "holiday."])

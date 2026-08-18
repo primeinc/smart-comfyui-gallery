@@ -46,7 +46,7 @@ class _ScriptedModel:
 @pytest.fixture
 def nlq_parser(smartgallery_app, monkeypatch):
     """Model-free endpoint: the nlq rules answer everything."""
-    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", _NoModel())
+    monkeypatch.setattr(smartgallery_app.STATE, "omniquery_sqlsearch", _NoModel())
     return smartgallery_app
 
 
@@ -240,7 +240,7 @@ def test_live_mode_latency_budget(smartgallery_app, nlq_parser, seeded_files):
 def test_fully_structured_query_never_consults_the_model(smartgallery_app, monkeypatch, seeded_files):
     del seeded_files
     model = _ScriptedModel(ids=["nlqtest-img-fav"], sql="SELECT ...")
-    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    monkeypatch.setattr(smartgallery_app.STATE, "omniquery_sqlsearch", model)
     client = smartgallery_app.app.test_client()
     data = client.post(_NLQ_URL, json={"query": "favorite videos"}).get_json()
     assert data["backend"] == "nlq"
@@ -252,7 +252,7 @@ def test_free_language_query_is_answered_by_the_model(smartgallery_app, monkeypa
     model = _ScriptedModel(
         ids=["nlqtest-img-plain", "nlqtest-img-fav"], sql="SELECT DISTINCT files.id FROM files WHERE ..."
     )
-    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    monkeypatch.setattr(smartgallery_app.STATE, "omniquery_sqlsearch", model)
     client = smartgallery_app.app.test_client()
     data = client.post(_NLQ_URL, json={"query": "girlnextdoor"}).get_json()
     assert data["status"] == "success"
@@ -271,7 +271,7 @@ def test_free_language_query_is_answered_by_the_model(smartgallery_app, monkeypa
 def test_model_count_answer_becomes_a_stat_card(smartgallery_app, monkeypatch, seeded_files):
     del seeded_files
     model = _ScriptedModel(ids=["7"], sql="SELECT COUNT(*) FROM files WHERE ...")
-    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    monkeypatch.setattr(smartgallery_app.STATE, "omniquery_sqlsearch", model)
     client = smartgallery_app.app.test_client()
     data = client.post(_NLQ_URL, json={"query": "roughly how much girlnextdoor stuff"}).get_json()
     assert data["kind"] == "count"
@@ -282,7 +282,7 @@ def test_model_count_answer_becomes_a_stat_card(smartgallery_app, monkeypatch, s
 def test_model_failure_falls_back_to_the_rules_answer(smartgallery_app, monkeypatch, seeded_files):
     del seeded_files
     model = _ScriptedModel(ids=None, err="generation error: engine died")
-    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    monkeypatch.setattr(smartgallery_app.STATE, "omniquery_sqlsearch", model)
     client = smartgallery_app.app.test_client()
     data = client.post(_NLQ_URL, json={"query": "girlnextdoor"}).get_json()
     assert data["status"] == "success"
@@ -294,7 +294,7 @@ def test_model_failure_falls_back_to_the_rules_answer(smartgallery_app, monkeypa
 def test_live_mode_never_consults_the_model(smartgallery_app, monkeypatch, seeded_files):
     del seeded_files
     model = _ScriptedModel(ids=["nlqtest-img-fav"], sql="SELECT ...")
-    monkeypatch.setattr(smartgallery_app, "_omniquery_sqlsearch", model)
+    monkeypatch.setattr(smartgallery_app.STATE, "omniquery_sqlsearch", model)
     client = smartgallery_app.app.test_client()
     data = client.post(_NLQ_URL, json={"query": "girlnextdoor", "live": True}).get_json()
     assert data["status"] == "success"

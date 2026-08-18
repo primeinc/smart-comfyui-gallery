@@ -36,11 +36,11 @@ import pytest
 def resolving(smartgallery_app, monkeypatch):
     """A gallery whose ffprobe resolution starts from nothing said yet.
 
-    _FFPROBE_ANNOUNCED is module state that a fresh interpreter reset for
+    STATE.ffprobe_announced is process state that a fresh interpreter reset for
     free. Without this every case after the first would see silence and
     read it as "announced nothing".
     """
-    monkeypatch.setattr(smartgallery_app, "_FFPROBE_ANNOUNCED", False)
+    monkeypatch.setattr(smartgallery_app.STATE, "ffprobe_announced", False)
     # Never fetch a ~170MB build from a test.
     monkeypatch.setattr(smartgallery_app, "FFMPEG_AUTO_DOWNLOAD", False)
     return smartgallery_app
