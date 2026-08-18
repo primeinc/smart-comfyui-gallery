@@ -48,17 +48,20 @@ _ROUTES = [
 def planted_secret(smartgallery_app):
     """A file one level above the input folder, guaranteed to be outside
     every directory any route is allowed to serve from."""
-    served = {os.path.abspath(p) for p in (
-        smartgallery_app.BASE_INPUT_PATH,
-        smartgallery_app.BASE_OUTPUT_PATH,
-        smartgallery_app.BASE_SMARTGALLERY_PATH,
-        smartgallery_app.ZIP_CACHE_DIR,
-        smartgallery_app.THUMBNAIL_CACHE_DIR)}
+    served = {
+        os.path.abspath(p)
+        for p in (
+            smartgallery_app.BASE_INPUT_PATH,
+            smartgallery_app.BASE_OUTPUT_PATH,
+            smartgallery_app.BASE_SMARTGALLERY_PATH,
+            smartgallery_app.ZIP_CACHE_DIR,
+            smartgallery_app.THUMBNAIL_CACHE_DIR,
+        )
+    }
     for directory in served:
         os.makedirs(directory, exist_ok=True)
 
-    outside = os.path.abspath(
-        os.path.join(smartgallery_app.BASE_INPUT_PATH, os.pardir))
+    outside = os.path.abspath(os.path.join(smartgallery_app.BASE_INPUT_PATH, os.pardir))
     if outside in served:
         pytest.skip("no directory above the input folder is out of range here")
 
@@ -85,8 +88,7 @@ def test_the_probe_can_see_a_genuine_serve(smartgallery_app):
     with open(inside, "wb") as fh:
         fh.write(_SECRET)
     try:
-        resp = smartgallery_app.app.test_client().get(
-            "/galleryout/serve_zip/control_probe.zip")
+        resp = smartgallery_app.app.test_client().get("/galleryout/serve_zip/control_probe.zip")
         assert resp.status_code == 200
         assert _SECRET in resp.get_data(), "the probe cannot detect a real serve"
     finally:
@@ -96,9 +98,6 @@ def test_the_probe_can_see_a_genuine_serve(smartgallery_app):
 
 @pytest.mark.parametrize("route", _ROUTES)
 @pytest.mark.parametrize("payload", _PAYLOADS)
-def test_no_route_serves_a_file_outside_its_directory(
-        smartgallery_app, planted_secret, route, payload):
+def test_no_route_serves_a_file_outside_its_directory(smartgallery_app, planted_secret, route, payload):
     resp = smartgallery_app.app.test_client().get(route.format(payload))
-    assert _SECRET not in resp.get_data(), (
-        f"{route.format(payload)} escaped its directory (status "
-        f"{resp.status_code})")
+    assert _SECRET not in resp.get_data(), f"{route.format(payload)} escaped its directory (status {resp.status_code})"

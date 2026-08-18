@@ -37,7 +37,7 @@ class CompileParams:
     itself, supplied by the engine so compilation stays a pure function."""
 
     now_epoch: float  # 'now' in epoch seconds; anchor for relative-date values
-    base_path: str    # gallery root; folder predicates only match beneath it
+    base_path: str  # gallery root; folder predicates only match beneath it
     client_uuid: str | None = None  # keys the caller-specific 'my_rating' subquery
     # (field_name, json.dumps(cond.value, sort_keys=True)) -> resolved file ids.
     # Populated by the engine's AI pre-resolution pass before compiling any
@@ -72,8 +72,7 @@ def compile(vq: ValidatedQuery, params: CompileParams) -> CompiledQuery:
         if where_sql:
             sql += f" WHERE {where_sql}"
         sql += ")"
-        return CompiledQuery(sql=sql, params=tuple(where_params),
-                              effective_limit=vq.effective_limit)
+        return CompiledQuery(sql=sql, params=tuple(where_params), effective_limit=vq.effective_limit)
 
     sql = "SELECT DISTINCT f.id FROM files f"
     if where_sql:
@@ -81,8 +80,7 @@ def compile(vq: ValidatedQuery, params: CompileParams) -> CompiledQuery:
     sql += " ORDER BY " + _order_by_clause(query.order_by)
     sql += " LIMIT ?"
     all_params = [*where_params, vq.effective_limit]
-    return CompiledQuery(sql=sql, params=tuple(all_params),
-                          effective_limit=vq.effective_limit)
+    return CompiledQuery(sql=sql, params=tuple(all_params), effective_limit=vq.effective_limit)
 
 
 def _order_by_clause(order_by: tuple) -> str:
@@ -104,6 +102,7 @@ def _order_by_clause(order_by: tuple) -> str:
 # ---------------------------------------------------------------------------
 # Node compilation (AND/OR/NOT/Cond -> SQL text + positional params)
 # ---------------------------------------------------------------------------
+
 
 def _compile_node(node: Node, params: CompileParams) -> tuple[str, list[Any]]:
     """Recursively compile a where node to (SQL fragment, bind values);
@@ -151,6 +150,7 @@ def _compile_cond(cond: Cond, params: CompileParams) -> tuple[str, list[Any]]:
 # LIKE pattern helpers (case-insensitive by SQLite default for ASCII)
 # ---------------------------------------------------------------------------
 
+
 def _escape_like(value: str) -> str:
     """Escape LIKE wildcards ('%', '_') and the escape character itself so a
     bound value matches only literally."""
@@ -178,13 +178,12 @@ def _like_clause(column: str, op: str, value: str) -> tuple[str, list[Any]]:
 # TEXT
 # ---------------------------------------------------------------------------
 
-def _build_text(spec: fields.FieldSpec, op: str, value: Any,
-                 params: CompileParams) -> tuple[str, list[Any]]:
+
+def _build_text(spec: fields.FieldSpec, op: str, value: Any, params: CompileParams) -> tuple[str, list[Any]]:
     """Text predicate per strategy: direct column LIKE, folder path match, or
     an EXISTS probe into a per-file child table."""
     if op in ("is_null", "not_null"):
-        return (f"{spec.column} IS NULL" if op == "is_null"
-                else f"{spec.column} IS NOT NULL"), []
+        return (f"{spec.column} IS NULL" if op == "is_null" else f"{spec.column} IS NOT NULL"), []
 
     if spec.strategy == fields.Strategy.COLUMN:
         return _like_clause(spec.column, op, value)
@@ -204,8 +203,9 @@ def _build_text(spec: fields.FieldSpec, op: str, value: Any,
             csql, cparams = _like_clause(column, "contains", value)
             gp_parts.append(csql)
             binds.extend(cparams)
-        parts.append("EXISTS (SELECT 1 FROM generation_params gp "
-                     "WHERE gp.file_id = f.id AND (" + " OR ".join(gp_parts) + "))")
+        parts.append(
+            "EXISTS (SELECT 1 FROM generation_params gp WHERE gp.file_id = f.id AND (" + " OR ".join(gp_parts) + "))"
+        )
         return "(" + " OR ".join(parts) + ")", binds
 
     if spec.strategy == fields.Strategy.FOLDER:
@@ -213,22 +213,25 @@ def _build_text(spec: fields.FieldSpec, op: str, value: Any,
 
     if spec.strategy == fields.Strategy.EXISTS_TEXT:
         inner_sql, inner_params = _like_clause(spec.inner_column, op, value)
-        core = (f"SELECT 1 FROM {spec.table} {spec.alias} "
-                f"WHERE {spec.alias}.file_id = f.id AND {inner_sql}")
+        core = f"SELECT 1 FROM {spec.table} {spec.alias} WHERE {spec.alias}.file_id = f.id AND {inner_sql}"
         return f"EXISTS ({core})", inner_params
 
     if spec.strategy == fields.Strategy.EXISTS_NAMED:
         name_sql, name_params = _like_clause("c.name", op, value)
-        core = ("SELECT 1 FROM collection_files cf "
-                "JOIN collections c ON c.id = cf.collection_id "
-                f"WHERE cf.file_id = f.id AND c.type = ? AND {name_sql}")
+        core = (
+            "SELECT 1 FROM collection_files cf "
+            "JOIN collections c ON c.id = cf.collection_id "
+            f"WHERE cf.file_id = f.id AND c.type = ? AND {name_sql}"
+        )
         return f"EXISTS ({core})", [spec.type_filter, *name_params]
 
     if spec.strategy == fields.Strategy.EXISTS_USER:
         name_sql, name_params = _like_clause("u.username", op, value)
-        core = (f"SELECT 1 FROM {spec.table} {spec.alias} "
-                f"JOIN users u ON {spec.alias}.client_uuid = CAST(u.user_id AS TEXT) "
-                f"WHERE {spec.alias}.file_id = f.id AND {name_sql}")
+        core = (
+            f"SELECT 1 FROM {spec.table} {spec.alias} "
+            f"JOIN users u ON {spec.alias}.client_uuid = CAST(u.user_id AS TEXT) "
+            f"WHERE {spec.alias}.file_id = f.id AND {name_sql}"
+        )
         return f"EXISTS ({core})", name_params
 
     raise CompileError(f"unhandled text strategy {spec.strategy!r}")
@@ -250,16 +253,15 @@ def _build_folder(op: str, value: str, params: CompileParams) -> tuple[str, list
     # appears anywhere in its path.
     base_pattern = _escape_like(base) + "/%"
     folder_pattern = "%" + _escape_like(folder) + "%"
-    return (f"({column} LIKE ? ESCAPE '\\' AND {column} LIKE ? ESCAPE '\\')",
-            [base_pattern, folder_pattern])
+    return (f"({column} LIKE ? ESCAPE '\\' AND {column} LIKE ? ESCAPE '\\')", [base_pattern, folder_pattern])
 
 
 # ---------------------------------------------------------------------------
 # NUMBER
 # ---------------------------------------------------------------------------
 
-def _build_number(spec: fields.FieldSpec, op: str, value: Any,
-                   params: CompileParams) -> tuple[str, list[Any]]:
+
+def _build_number(spec: fields.FieldSpec, op: str, value: Any, params: CompileParams) -> tuple[str, list[Any]]:
     """Numeric comparison against a column, computed expression, or scalar
     subquery; my_rating additionally binds the caller's client_uuid, and
     face_cluster compiles to an EXISTS membership probe."""
@@ -274,8 +276,7 @@ def _build_number(spec: fields.FieldSpec, op: str, value: Any,
         core = "SELECT 1 FROM ai_face_instances fa WHERE fa.file_id = f.id AND fa.cluster_id = ?"
         return f"EXISTS ({core})", [value]
 
-    if spec.strategy in (fields.Strategy.COLUMN, fields.Strategy.EXPR,
-                          fields.Strategy.SUBQUERY_SCALAR):
+    if spec.strategy in (fields.Strategy.COLUMN, fields.Strategy.EXPR, fields.Strategy.SUBQUERY_SCALAR):
         expr = spec.column if spec.strategy == fields.Strategy.COLUMN else spec.expr
         if op == "between":
             lo, hi = value
@@ -288,6 +289,7 @@ def _build_number(spec: fields.FieldSpec, op: str, value: Any,
 # ---------------------------------------------------------------------------
 # BOOL
 # ---------------------------------------------------------------------------
+
 
 def _build_bool(spec: fields.FieldSpec, _op: str, value: bool) -> tuple[str, list[Any]]:
     """Boolean predicate: 0/1 column comparison, or EXISTS / NOT EXISTS for
@@ -303,6 +305,7 @@ def _build_bool(spec: fields.FieldSpec, _op: str, value: bool) -> tuple[str, lis
 # ---------------------------------------------------------------------------
 # ENUM
 # ---------------------------------------------------------------------------
+
 
 def _inner_match(column: str, op: str, value: Any) -> tuple[str, list[Any]]:
     """eq/ne/in match against a single column; 'ne' is handled by the caller
@@ -324,9 +327,11 @@ def _build_enum(spec: fields.FieldSpec, op: str, value: Any) -> tuple[str, list[
 
     if spec.strategy == fields.Strategy.EXISTS_NAMED:
         inner_sql, inner_params = _inner_match("c.name", op, value)
-        core = ("SELECT 1 FROM collection_files cf "
-                "JOIN collections c ON c.id = cf.collection_id "
-                f"WHERE cf.file_id = f.id AND c.type = ? AND {inner_sql}")
+        core = (
+            "SELECT 1 FROM collection_files cf "
+            "JOIN collections c ON c.id = cf.collection_id "
+            f"WHERE cf.file_id = f.id AND c.type = ? AND {inner_sql}"
+        )
         all_params = [spec.type_filter, *inner_params]
         return (f"NOT EXISTS ({core})" if op == "ne" else f"EXISTS ({core})"), all_params
 
@@ -341,6 +346,7 @@ def _build_enum(spec: fields.FieldSpec, op: str, value: Any) -> tuple[str, list[
 # ---------------------------------------------------------------------------
 # DATETIME
 # ---------------------------------------------------------------------------
+
 
 def _local_epoch(dt: datetime) -> float:
     """Naive datetime -> epoch seconds in the machine's local timezone."""
@@ -362,8 +368,7 @@ def _resolve_datetime(value: Any, now_epoch: float) -> tuple[float, bool]:
     return _local_epoch(datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")), False
 
 
-def _build_datetime(spec: fields.FieldSpec, op: str, value: Any,
-                     params: CompileParams) -> tuple[str, list[Any]]:
+def _build_datetime(spec: fields.FieldSpec, op: str, value: Any, params: CompileParams) -> tuple[str, list[Any]]:
     """Datetime comparison in epoch seconds; 'between' is half-open
     [lo, hi) and widens a bare end date to cover that entire local day."""
     column = spec.column
@@ -387,14 +392,14 @@ def _build_datetime(spec: fields.FieldSpec, op: str, value: Any,
 # FILE_REF (resolved outside SQL by the engine's AI resolvers)
 # ---------------------------------------------------------------------------
 
+
 def resolution_key(field_name: str, value: Any) -> tuple[str, str]:
     """Deterministic lookup key for CompileParams.ai_resolutions. Exposed so
     the engine can populate the mapping with keys the compiler will find."""
     return field_name, json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def _build_file_ref(spec: fields.FieldSpec, value: Any,
-                     params: CompileParams) -> tuple[str, list[Any]]:
+def _build_file_ref(spec: fields.FieldSpec, value: Any, params: CompileParams) -> tuple[str, list[Any]]:
     """Membership test against the pre-resolved id list; an empty resolution
     compiles to a constant-false predicate."""
     key = resolution_key(spec.name, value)

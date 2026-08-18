@@ -32,11 +32,11 @@ from typing import Any, Union
 
 AST_VERSION = 1  # wire-format version; parse_query rejects any other
 
-MAX_DEPTH = 6           # maximum nesting of Group/Not nodes
-MAX_CONDITIONS = 32     # maximum number of Cond leaves in one query
+MAX_DEPTH = 6  # maximum nesting of Group/Not nodes
+MAX_CONDITIONS = 32  # maximum number of Cond leaves in one query
 MAX_GROUP_CHILDREN = 16  # maximum children in a single and/or group
-MAX_IN_VALUES = 64      # maximum number of items in an "in" list
-MAX_STR_LEN = 512       # maximum length of a string literal
+MAX_IN_VALUES = 64  # maximum number of items in an "in" list
+MAX_STR_LEN = 512  # maximum length of a string literal
 
 
 class ASTError(ValueError):
@@ -47,6 +47,7 @@ class ASTError(ValueError):
 # Nodes
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Cond:
     """Leaf predicate: one field/operator/value comparison. Only structure is
@@ -54,7 +55,7 @@ class Cond:
     omniquery.validation's job."""
 
     field: str  # field name; resolved against the registry by validation
-    op: str     # operator name; allowed set depends on the field
+    op: str  # operator name; allowed set depends on the field
     value: Any = None  # JSON scalar, flat scalar list, or small dict; None for value-less ops
 
     def to_dict(self) -> dict:
@@ -117,8 +118,7 @@ class Query:
 
     def to_dict(self) -> dict:
         """JSON form parse_query accepts; unset optional parts are omitted."""
-        d: dict = {"version": self.version, "target": self.target,
-                   "result": self.result}
+        d: dict = {"version": self.version, "target": self.target, "result": self.result}
         if self.where is not None:
             d["where"] = self.where.to_dict()
         if self.order_by:
@@ -199,10 +199,7 @@ def _parse_node(obj: Any, depth: int, counter: dict, ctx: str) -> Node:
             raise ASTError(f"{ctx}: '{op}' requires a non-empty children list")
         if len(children) > MAX_GROUP_CHILDREN:
             raise ASTError(f"{ctx}: more than {MAX_GROUP_CHILDREN} children")
-        parsed = tuple(
-            _parse_node(c, depth + 1, counter, f"{ctx}.children[{i}]")
-            for i, c in enumerate(children)
-        )
+        parsed = tuple(_parse_node(c, depth + 1, counter, f"{ctx}.children[{i}]") for i, c in enumerate(children))
         return Group(op=op, children=parsed)
 
     if op == "not":
@@ -247,8 +244,7 @@ def parse_query(obj: Any) -> Query:
     if not isinstance(obj, dict):
         raise ASTError("query must be a JSON object")
 
-    _require_keys(obj, {"version", "target", "result", "where", "order_by",
-                        "limit"}, "query")
+    _require_keys(obj, {"version", "target", "result", "where", "order_by", "limit"}, "query")
 
     version = obj.get("version", AST_VERSION)
     if version != AST_VERSION:
@@ -292,8 +288,7 @@ def parse_query(obj: Any) -> Query:
         if limit < 1:
             raise ASTError("limit must be >= 1")
 
-    return Query(target=target, result=result, where=where,
-                 order_by=tuple(order_by), limit=limit, version=version)
+    return Query(target=target, result=result, where=where, order_by=tuple(order_by), limit=limit, version=version)
 
 
 def iter_conditions(node: Node | None):
@@ -337,8 +332,8 @@ def canonicalize(query: Query) -> dict:
 # JSON Schema (for constrained decoding / tool-call definitions)
 # ---------------------------------------------------------------------------
 
-def json_schema(field_names: list[str] | None = None,
-                operator_names: list[str] | None = None) -> dict:
+
+def json_schema(field_names: list[str] | None = None, operator_names: list[str] | None = None) -> dict:
     """JSON Schema for the AST. When field/operator vocabularies are given
     (from omniquery.fields), they are embedded as enums so constrained
     decoders can only emit valid vocabulary.

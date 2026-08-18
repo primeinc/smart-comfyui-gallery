@@ -66,6 +66,7 @@ class MobileSamSegmenter(SegmenterBackend):
                     pick_torch_device,
                     warn_if_vram_pressure,
                 )
+
                 device = pick_torch_device(torch, role="segmenter")
                 self._device = device
                 _logger.info("[AI] %s on device %s", self.model_id, device)
@@ -75,12 +76,10 @@ class MobileSamSegmenter(SegmenterBackend):
                 model.eval()
                 self._predictor = SamPredictor(model.to(device))
             except Exception as exc:
-                raise BackendUnavailable(
-                    f"failed to load mobile_sam weights: {exc}") from exc
+                raise BackendUnavailable(f"failed to load mobile_sam weights: {exc}") from exc
         self._torch = torch
 
-    def segment(self, img: Image.Image, bbox: tuple | None = None,
-                points: list | None = None) -> np.ndarray:
+    def segment(self, img: Image.Image, bbox: tuple | None = None, points: list | None = None) -> np.ndarray:
         """Predict one boolean HxW mask from normalized-[0,1] prompts:
         `bbox` as (x, y, w, h), `points` as foreground clicks. At least
         one prompt is required; single-mask mode keeps output
@@ -97,13 +96,11 @@ class MobileSamSegmenter(SegmenterBackend):
             point_labels = None
             if bbox is not None:
                 x, y, bw, bh = bbox
-                box_arr = np.array(
-                    [x * w, y * h, (x + bw) * w, (y + bh) * h], dtype=np.float32)
+                box_arr = np.array([x * w, y * h, (x + bw) * w, (y + bh) * h], dtype=np.float32)
             if points:
-                point_coords = np.array(
-                    [[px * w, py * h] for px, py in points], dtype=np.float32)
+                point_coords = np.array([[px * w, py * h] for px, py in points], dtype=np.float32)
                 point_labels = np.ones(len(points), dtype=np.int32)
             masks, _scores, _ = self._predictor.predict(
-                point_coords=point_coords, point_labels=point_labels,
-                box=box_arr, multimask_output=False)
+                point_coords=point_coords, point_labels=point_labels, box=box_arr, multimask_output=False
+            )
         return masks[0].astype(bool)

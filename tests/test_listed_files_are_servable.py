@@ -51,11 +51,9 @@ class _InlineExecutor:
 @pytest.fixture
 def exhibition(smartgallery_app, monkeypatch):
     """A public album holding two of three pictures, seen by a guest."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
-    names = [f"{_PREFIX}shared_one.png", f"{_PREFIX}shared_two.png",
-             f"{_PREFIX}kept_back.png"]
+    names = [f"{_PREFIX}shared_one.png", f"{_PREFIX}shared_two.png", f"{_PREFIX}kept_back.png"]
     for name in names:
         Image.new("RGB", (16, 16), (4, 4, 4)).save(os.path.join(base, name))
 
@@ -65,15 +63,16 @@ def exhibition(smartgallery_app, monkeypatch):
         conn.execute("DELETE FROM collections WHERE name = 'Servable Album'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r["name"]: r["id"] for r in conn.execute(
-            f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
-        conn.execute("INSERT INTO collections (name, type, is_public) "
-                     "VALUES (?, ?, 1)", ("Servable Album", "user_album"))
-        coll_id = conn.execute("SELECT id FROM collections WHERE name = ?",
-                               ("Servable Album",)).fetchone()[0]
+        ids = {
+            r["name"]: r["id"]
+            for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        }
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public) VALUES (?, ?, 1)", ("Servable Album", "user_album")
+        )
+        coll_id = conn.execute("SELECT id FROM collections WHERE name = ?", ("Servable Album",)).fetchone()[0]
         for name in names[:2]:
-            conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                         "VALUES (?, ?)", (coll_id, ids[name]))
+            conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, ids[name]))
         conn.commit()
     finally:
         conn.close()
@@ -101,8 +100,7 @@ def exhibition(smartgallery_app, monkeypatch):
 
 
 def _listed(client, coll_id):
-    response = client.get(f"/galleryout/collection/{coll_id}",
-                          headers={"Accept": "application/json"})
+    response = client.get(f"/galleryout/collection/{coll_id}", headers={"Accept": "application/json"})
     assert response.status_code == 200, response.status_code
     return [f["id"] for f in (response.get_json() or {}).get("files") or []]
 
@@ -114,8 +112,7 @@ def test_the_album_lists_what_was_put_in_it(exhibition):
 
     listed = _listed(client, coll_id)
 
-    assert set(listed) == {ids[f"{_PREFIX}shared_one.png"],
-                           ids[f"{_PREFIX}shared_two.png"]}, listed
+    assert set(listed) == {ids[f"{_PREFIX}shared_one.png"], ids[f"{_PREFIX}shared_two.png"]}, listed
 
 
 def test_everything_listed_can_be_served(exhibition):

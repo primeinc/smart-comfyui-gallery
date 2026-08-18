@@ -41,9 +41,11 @@ def test_the_transport_ceiling_is_not_written_in(gallery_tree):
     setting can move."""
     tree = gallery_tree
 
-    serves = [node for node in ast.walk(tree)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-              and node.func.id == "serve"]
+    serves = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "serve"
+    ]
     assert serves, "the serve() call is gone; this check is stale"
 
     for call in serves:
@@ -53,7 +55,8 @@ def test_the_transport_ceiling_is_not_written_in(gallery_tree):
             assert not isinstance(keyword.value, ast.Constant), (
                 f"serve() at line {call.lineno} passes a fixed "
                 f"max_request_body_size of {getattr(keyword.value, 'value', '?')}; "
-                f"COMFYUI_MAX_UPLOAD_MB cannot raise it")
+                f"COMFYUI_MAX_UPLOAD_MB cannot raise it"
+            )
 
 
 def test_the_transport_ceiling_clears_the_app_ceiling():
@@ -64,8 +67,8 @@ def test_the_transport_ceiling_clears_the_app_ceiling():
     app_limit = smartgallery.app.config["MAX_CONTENT_LENGTH"]
 
     assert app_limit < smartgallery.MAX_REQUEST_BODY_BYTES, (
-        f"transport ceiling {smartgallery.MAX_REQUEST_BODY_BYTES} does not "
-        f"clear the app ceiling {app_limit}")
+        f"transport ceiling {smartgallery.MAX_REQUEST_BODY_BYTES} does not clear the app ceiling {app_limit}"
+    )
 
 
 @pytest.mark.parametrize("configured", [4000, 8000, 2049])
@@ -83,10 +86,12 @@ def test_a_setting_above_two_gigabytes_is_not_quietly_capped(configured):
     assert transport_limit > app_limit, (
         f"COMFYUI_MAX_UPLOAD_MB={configured} gives an app ceiling of "
         f"{app_limit // _MIB} MB and a transport ceiling of "
-        f"{transport_limit // _MIB} MB, so the real limit is the lower one")
+        f"{transport_limit // _MIB} MB, so the real limit is the lower one"
+    )
     assert transport_limit > _OLD_LITERAL, (
         f"the transport ceiling is still {transport_limit // _MIB} MB with "
-        f"{configured} MB configured; uploads stop at the old fixed 2048 MB")
+        f"{configured} MB configured; uploads stop at the old fixed 2048 MB"
+    )
 
 
 def test_the_shipped_ceilings_came_from_that_same_arithmetic():
@@ -94,10 +99,10 @@ def test_the_shipped_ceilings_came_from_that_same_arithmetic():
     two limits were derived inline once and could be again."""
     expected = smartgallery.derive_upload_ceilings(smartgallery.MAX_UPLOAD_MB)
 
-    assert (smartgallery.app.config["MAX_CONTENT_LENGTH"],
-            smartgallery.MAX_REQUEST_BODY_BYTES) == expected, (
+    assert (smartgallery.app.config["MAX_CONTENT_LENGTH"], smartgallery.MAX_REQUEST_BODY_BYTES) == expected, (
         "the running ceilings do not match derive_upload_ceilings, so the "
-        "setting and the limits have parted company again")
+        "setting and the limits have parted company again"
+    )
 
 
 @pytest.fixture
@@ -111,57 +116,64 @@ def uploader(smartgallery_app, monkeypatch):
     return client
 
 
-def test_a_refused_upload_says_what_the_limit_is(smartgallery_app, uploader,
-                                                 monkeypatch):
+def test_a_refused_upload_says_what_the_limit_is(smartgallery_app, uploader, monkeypatch):
     """Nothing handled 413, so the reply was an HTML error page and the
     upload screen fell back to showing the number 413."""
     monkeypatch.setitem(smartgallery_app.app.config, "MAX_CONTENT_LENGTH", 1024)
 
-    response = uploader.post("/galleryout/upload", data={
-        "folder_key": "_root_",
-        "files": (io.BytesIO(b"x" * 40000), "big.png"),
-    }, content_type="multipart/form-data")
+    response = uploader.post(
+        "/galleryout/upload",
+        data={
+            "folder_key": "_root_",
+            "files": (io.BytesIO(b"x" * 40000), "big.png"),
+        },
+        content_type="multipart/form-data",
+    )
 
     assert response.status_code == 413, response.status_code
     body = response.get_json()
     assert body is not None, (
         f"a refused upload answered with something that is not JSON, so the "
         f"screen has only the number 413 to show: "
-        f"{response.get_data(as_text=True)[:200]}")
+        f"{response.get_data(as_text=True)[:200]}"
+    )
     assert "MB" in body["message"], body["message"]
     assert "COMFYUI_MAX_UPLOAD_MB" in body["message"], body["message"]
 
 
-def test_the_limit_named_is_the_limit_in_force(smartgallery_app, uploader,
-                                               monkeypatch):
+def test_the_limit_named_is_the_limit_in_force(smartgallery_app, uploader, monkeypatch):
     """A message naming a number that is not the setting would be worse
     than none -- that is the fault being fixed, one layer up."""
     monkeypatch.setitem(smartgallery_app.app.config, "MAX_CONTENT_LENGTH", 1024)
     monkeypatch.setattr(smartgallery_app, "MAX_UPLOAD_MB", 7, raising=False)
 
-    response = uploader.post("/galleryout/upload", data={
-        "folder_key": "_root_",
-        "files": (io.BytesIO(b"x" * 40000), "big.png"),
-    }, content_type="multipart/form-data")
+    response = uploader.post(
+        "/galleryout/upload",
+        data={
+            "folder_key": "_root_",
+            "files": (io.BytesIO(b"x" * 40000), "big.png"),
+        },
+        content_type="multipart/form-data",
+    )
 
-    assert "7 MB" in response.get_json()["message"], (
-        response.get_json()["message"])
+    assert "7 MB" in response.get_json()["message"], response.get_json()["message"]
 
 
-def test_an_upload_within_the_limit_is_not_refused(smartgallery_app, uploader,
-                                                   monkeypatch):
+def test_an_upload_within_the_limit_is_not_refused(smartgallery_app, uploader, monkeypatch):
     """Over-reach guard. A ceiling that refuses everything would satisfy
     every check above."""
-    monkeypatch.setitem(smartgallery_app.app.config, "MAX_CONTENT_LENGTH",
-                        50 * _MIB)
+    monkeypatch.setitem(smartgallery_app.app.config, "MAX_CONTENT_LENGTH", 50 * _MIB)
 
-    response = uploader.post("/galleryout/upload", data={
-        "folder_key": "_root_",
-        "files": (io.BytesIO(b"x" * 4096), "small.png"),
-    }, content_type="multipart/form-data")
+    response = uploader.post(
+        "/galleryout/upload",
+        data={
+            "folder_key": "_root_",
+            "files": (io.BytesIO(b"x" * 4096), "small.png"),
+        },
+        content_type="multipart/form-data",
+    )
 
-    assert response.status_code != 413, (
-        "an upload well under the limit was refused as too large")
+    assert response.status_code != 413, "an upload well under the limit was refused as too large"
     assert response.get_json() is not None
 
 
@@ -176,11 +188,15 @@ def test_an_unhandled_413_would_not_be_json():
     def _take():
         return str(len(request.form))
 
-    response = app.test_client().post("/take", data={
-        "files": (io.BytesIO(b"x" * 40000), "big.png"),
-    }, content_type="multipart/form-data")
+    response = app.test_client().post(
+        "/take",
+        data={
+            "files": (io.BytesIO(b"x" * 40000), "big.png"),
+        },
+        content_type="multipart/form-data",
+    )
 
     assert response.status_code == 413, response.status_code
     assert response.get_json() is None, (
-        "an unhandled 413 produced JSON, so the check above would pass "
-        "without any handler at all")
+        "an unhandled 413 produced JSON, so the check above would pass without any handler at all"
+    )

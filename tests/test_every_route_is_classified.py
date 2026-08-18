@@ -49,8 +49,7 @@ _INTENTIONALLY_OPEN = {
 }
 
 
-def _classify(gallery_source, gallery_tree):
-    lines = gallery_source.splitlines()
+def _classify(gallery_tree):
     tree = gallery_tree
 
     found = {}
@@ -59,8 +58,7 @@ def _classify(gallery_source, gallery_tree):
             continue
         routes, decorators = [], []
         for dec in node.decorator_list:
-            if (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
-                    and dec.func.attr == "route"):
+            if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr == "route":
                 if dec.args and isinstance(dec.args[0], ast.Constant):
                     routes.append(dec.args[0].value)
             elif isinstance(dec, ast.Name):
@@ -68,13 +66,18 @@ def _classify(gallery_source, gallery_tree):
         if not routes:
             continue
 
-        body = "\n".join(lines[node.lineno - 1: node.end_lineno])
+        # Unparsed rather than sliced out of the file. The markers below are
+        # written with single quotes, and reading the source made whether a
+        # route counted as guarded depend on how the file happened to be
+        # formatted: `ruff format` normalised the tree to double quotes and
+        # eight guarded routes silently reclassified as OPEN. ast.unparse
+        # emits one canonical form whatever the source looks like.
+        body = ast.unparse(node)
         if "management_api_only" in decorators:
             kind = "management"
         elif "is_file_accessible" in body:
             kind = "per-file"
-        elif ("Authentication required" in body or "'user_id' in session" in body
-              or "session.get('user_id')" in body):
+        elif "Authentication required" in body or "'user_id' in session" in body or "session.get('user_id')" in body:
             kind = "session"
         elif "should_strip_metadata" in body or "['ADMIN'" in body:
             # The list literal, not the bare word: a route that merely
@@ -86,23 +89,25 @@ def _classify(gallery_source, gallery_tree):
     return found
 
 
-def test_the_classifier_still_reads_the_file(gallery_source, gallery_tree):
+def test_the_classifier_still_reads_the_file(gallery_tree):
     """Control: if the parsing breaks, every assertion below passes on an
     empty set. Two known routes are pinned by name and category."""
-    found = _classify(gallery_source, gallery_tree)
+    found = _classify(gallery_tree)
 
     assert len(found) > 80, f"only {len(found)} routes found; the parser is broken"
     assert found["delete_folder"][0] == "management", found.get("delete_folder")
     assert found["serve_file"][0] == "per-file", found.get("serve_file")
 
 
-def test_no_route_is_open_by_accident(gallery_source, gallery_tree):
+def test_no_route_is_open_by_accident(gallery_tree):
     """The regression this file exists for."""
-    found = _classify(gallery_source, gallery_tree)
+    found = _classify(gallery_tree)
 
     unclassified = sorted(
-        f"{name} ({route})" for name, (kind, route) in found.items()
-        if kind == "OPEN" and name not in _INTENTIONALLY_OPEN)
+        f"{name} ({route})"
+        for name, (kind, route) in found.items()
+        if kind == "OPEN" and name not in _INTENTIONALLY_OPEN
+    )
 
     assert unclassified == [], (
         "these routes answer anyone and are not listed as deliberately "
@@ -110,22 +115,22 @@ def test_no_route_is_open_by_accident(gallery_source, gallery_tree):
         "Add management_api_only, or an is_file_accessible check, or refuse "
         "a caller with no session where logins are required -- or, if it "
         "really should answer anyone, add it to _INTENTIONALLY_OPEN in this "
-        "file with the reason.")
+        "file with the reason."
+    )
 
 
-def test_the_open_list_has_not_gone_stale(gallery_source, gallery_tree):
+def test_the_open_list_has_not_gone_stale(gallery_tree):
     """A name left here after the route gained a gate, or after it was
     removed, would silently excuse a future route of the same name."""
-    found = _classify(gallery_source, gallery_tree)
+    found = _classify(gallery_tree)
 
     missing = sorted(n for n in _INTENTIONALLY_OPEN if n not in found)
     assert missing == [], f"listed as open but no longer a route: {missing}"
 
-    no_longer_open = sorted(n for n in _INTENTIONALLY_OPEN
-                            if found[n][0] != "OPEN")
+    no_longer_open = sorted(n for n in _INTENTIONALLY_OPEN if found[n][0] != "OPEN")
     assert no_longer_open == [], (
-        f"listed as deliberately open but now gated: {no_longer_open}. "
-        f"Remove them from _INTENTIONALLY_OPEN.")
+        f"listed as deliberately open but now gated: {no_longer_open}. Remove them from _INTENTIONALLY_OPEN."
+    )
 
 
 @pytest.mark.parametrize("name", sorted(_INTENTIONALLY_OPEN))

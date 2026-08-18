@@ -47,11 +47,11 @@ def _server_style_bind(port):
     """A bind performed the way waitress performs its own."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         with contextlib.suppress(OSError):
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
-                         s.getsockopt(socket.SOL_SOCKET,
-                                      socket.SO_REUSEADDR) | 1)
+            s.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) | 1
+            )
         try:
-            s.bind(('0.0.0.0', port))
+            s.bind(("0.0.0.0", port))
             return True
         except OSError:
             return False
@@ -60,7 +60,7 @@ def _server_style_bind(port):
 @pytest.fixture
 def free_port():
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    probe.bind(('0.0.0.0', 0))
+    probe.bind(("0.0.0.0", 0))
     port = probe.getsockname()[1]
     probe.close()
     return port
@@ -70,7 +70,7 @@ def free_port():
 def busy_port():
     """A port with something actually listening on it."""
     holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    holder.bind(('0.0.0.0', 0))
+    holder.bind(("0.0.0.0", 0))
     holder.listen(1)
     yield holder.getsockname()[1]
     holder.close()
@@ -82,16 +82,16 @@ def crashed_port():
     still open -- the case the removed block was aiming at."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('127.0.0.1', 0))
+    server.bind(("127.0.0.1", 0))
     server.listen(1)
     port = server.getsockname()[1]
 
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect(('127.0.0.1', port))
+    client.connect(("127.0.0.1", port))
     accepted, _ = server.accept()
-    accepted.sendall(b'hello')
+    accepted.sendall(b"hello")
     client.recv(5)
-    accepted.close()   # the server side closing first is what leaves it
+    accepted.close()  # the server side closing first is what leaves it
     client.close()
     server.close()
     return port
@@ -124,7 +124,8 @@ def test_the_check_agrees_with_the_server(case, request):
         f"on a {case.replace('_', ' ')} the check says "
         f"{'available' if checked else 'IN USE'} while the server would "
         f"{'bind' if server_would_bind else 'fail'}. Where the check is the "
-        f"stricter one the gallery refuses to start on a working port.")
+        f"stricter one the gallery refuses to start on a working port."
+    )
 
 
 def test_the_check_asks_for_what_the_server_asks_for(gallery_tree):
@@ -133,16 +134,17 @@ def test_the_check_asks_for_what_the_server_asks_for(gallery_tree):
     two would part company, the option is the reason."""
     tree = gallery_tree
 
-    function = next((node for node in ast.walk(tree)
-                     if isinstance(node, ast.FunctionDef)
-                     and node.name == "check_port_available"), None)
+    function = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "check_port_available"),
+        None,
+    )
     assert function is not None, "check_port_available is gone"
 
-    attributes = {node.attr for node in ast.walk(function)
-                  if isinstance(node, ast.Attribute)}
+    attributes = {node.attr for node in ast.walk(function) if isinstance(node, ast.Attribute)}
     assert "SO_REUSEADDR" in attributes, (
         "check_port_available binds without SO_REUSEADDR while both servers "
-        "bind with it, so it can refuse a port they would accept")
+        "bind with it, so it can refuse a port they would accept"
+    )
     assert "bind" in attributes, "it no longer binds anything"
 
 
@@ -155,17 +157,16 @@ def test_no_socket_options_are_set_on_a_socket_that_is_thrown_away(gallery_tree)
 
     offenders = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "setsockopt"):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "setsockopt"):
             continue
         target = node.func.value
         if not isinstance(target, ast.Name):
             continue
         # Inside check_port_available the socket is bound straight after,
         # which is the whole point; anywhere else, say where it goes.
-        enclosing = [f.name for f in ast.walk(tree)
-                     if isinstance(f, ast.FunctionDef)
-                     and any(n is node for n in ast.walk(f))]
+        enclosing = [
+            f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and any(n is node for n in ast.walk(f))
+        ]
         if "check_port_available" in enclosing:
             continue
         offenders.append(node.lineno)
@@ -173,4 +174,5 @@ def test_no_socket_options_are_set_on_a_socket_that_is_thrown_away(gallery_tree)
     assert offenders == [], (
         f"setsockopt at lines {offenders} on a socket outside the port "
         f"check. Options belong to the socket they are set on -- if it is "
-        f"not the one that gets bound, the call does nothing.")
+        f"not the one that gets bound, the call does nothing."
+    )

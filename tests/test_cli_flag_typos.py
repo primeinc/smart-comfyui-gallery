@@ -36,13 +36,16 @@ def _leftovers(args):
     return unknown
 
 
-@pytest.mark.parametrize("typo", [
-    "--forcelogin",
-    "--force_login",
-    "--exhibiton",
-    "--blind_rating",
-    "--enable-guest-logins",
-])
+@pytest.mark.parametrize(
+    "typo",
+    [
+        "--forcelogin",
+        "--force_login",
+        "--exhibiton",
+        "--blind_rating",
+        "--enable-guest-logins",
+    ],
+)
 def test_a_mistyped_flag_refuses_to_start(capsys, typo):
     """The regression: these started a gallery that was not what was asked
     for, and said nothing."""
@@ -65,12 +68,15 @@ def test_the_message_suggests_the_real_flag(capsys):
     assert "--force-login" in capsys.readouterr().out, "no suggestion offered"
 
 
-@pytest.mark.parametrize("args", [
-    ["--force-login", "--admin-pass", "correct-horse-battery", "--blind-rating"],
-    ["--exhibition"],
-    ["--enable-guest-login"],
-    [],
-])
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--force-login", "--admin-pass", "correct-horse-battery", "--blind-rating"],
+        ["--exhibition"],
+        ["--enable-guest-login"],
+        [],
+    ],
+)
 def test_the_real_flags_still_start(capsys, args):
     """The counterpart -- refusing everything would pass the tests above."""
     unknown = _leftovers(args)
@@ -84,8 +90,7 @@ def test_the_real_flags_still_start(capsys, args):
 def test_the_real_flags_reach_the_settings_they_name():
     """The other half of "still start": parsing has to produce the modes,
     not merely decline to refuse them."""
-    parsed, _unknown = smartgallery._parser.parse_known_args(
-        ["--force-login", "--blind-rating"])
+    parsed, _unknown = smartgallery._parser.parse_known_args(["--force-login", "--blind-rating"])
 
     assert parsed.force_login is True
     assert parsed.blind_rating is True
@@ -109,9 +114,12 @@ def test_the_check_runs_at_import(gallery_tree):
     """The refusal is only worth anything if startup still calls it. It was
     an inline block once and could be again, or the call could be dropped
     while the function stayed."""
-    called = {node.func.id for node in ast.walk(gallery_tree)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    called = {
+        node.func.id
+        for node in ast.walk(gallery_tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
 
     assert "refuse_unrecognised_flags" in called, (
-        "nothing calls refuse_unrecognised_flags at startup, so a misspelt "
-        "flag is silently dropped again")
+        "nothing calls refuse_unrecognised_flags at startup, so a misspelt flag is silently dropped again"
+    )

@@ -85,20 +85,36 @@ def fixture(tmp_path):
 
     shared_sha = "a" * 64
     hashing.upsert_hashes(
-        conn, "dup_target", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now,
+        conn,
+        "dup_target",
+        hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
+        1000.0,
+        HASH_ALGO_VERSION,
+        now,
     )
     hashing.upsert_hashes(
-        conn, "dup_twin", hashing.HashResult(sha256=shared_sha, phash64=-1, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now,
+        conn,
+        "dup_twin",
+        hashing.HashResult(sha256=shared_sha, phash64=-1, dhash64=0),
+        1000.0,
+        HASH_ALGO_VERSION,
+        now,
     )
     hashing.upsert_hashes(
-        conn, "dup_near", hashing.HashResult(sha256="b" * 64, phash64=0b111, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now,
+        conn,
+        "dup_near",
+        hashing.HashResult(sha256="b" * 64, phash64=0b111, dhash64=0),
+        1000.0,
+        HASH_ALGO_VERSION,
+        now,
     )
     hashing.upsert_hashes(
-        conn, "dup_far", hashing.HashResult(sha256="c" * 64, phash64=-1, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now,
+        conn,
+        "dup_far",
+        hashing.HashResult(sha256="c" * 64, phash64=-1, dhash64=0),
+        1000.0,
+        HASH_ALGO_VERSION,
+        now,
     )
 
     # --- semantic vs. visual similarity (spaces must genuinely differ) -----
@@ -107,18 +123,14 @@ def fixture(tmp_path):
     _add_file(conn, "sim_vis_near")
 
     store = vectors.VectorStore(cache_dir=cache_dir, ephemeral=True)
-    store.add(conn, "sim_target", SPACE_SEMANTIC, "m-sem", "v1",
-               np.array([1, 0, 0, 0], dtype=np.float32), 1000.0)
-    store.add(conn, "sim_sem_near", SPACE_SEMANTIC, "m-sem", "v1",
-               np.array([0.95, 0.05, 0, 0], dtype=np.float32), 1000.0)
-    store.add(conn, "sim_vis_near", SPACE_SEMANTIC, "m-sem", "v1",
-               np.array([0, 1, 0, 0], dtype=np.float32), 1000.0)
-    store.add(conn, "sim_target", SPACE_VISUAL, "m-vis", "v1",
-               np.array([0, 0, 1, 0], dtype=np.float32), 1000.0)
-    store.add(conn, "sim_sem_near", SPACE_VISUAL, "m-vis", "v1",
-               np.array([0, 0, 0, 1], dtype=np.float32), 1000.0)
-    store.add(conn, "sim_vis_near", SPACE_VISUAL, "m-vis", "v1",
-               np.array([0, 0, 0.95, 0.05], dtype=np.float32), 1000.0)
+    store.add(conn, "sim_target", SPACE_SEMANTIC, "m-sem", "v1", np.array([1, 0, 0, 0], dtype=np.float32), 1000.0)
+    store.add(
+        conn, "sim_sem_near", SPACE_SEMANTIC, "m-sem", "v1", np.array([0.95, 0.05, 0, 0], dtype=np.float32), 1000.0
+    )
+    store.add(conn, "sim_vis_near", SPACE_SEMANTIC, "m-sem", "v1", np.array([0, 1, 0, 0], dtype=np.float32), 1000.0)
+    store.add(conn, "sim_target", SPACE_VISUAL, "m-vis", "v1", np.array([0, 0, 1, 0], dtype=np.float32), 1000.0)
+    store.add(conn, "sim_sem_near", SPACE_VISUAL, "m-vis", "v1", np.array([0, 0, 0, 1], dtype=np.float32), 1000.0)
+    store.add(conn, "sim_vis_near", SPACE_VISUAL, "m-vis", "v1", np.array([0, 0, 0.95, 0.05], dtype=np.float32), 1000.0)
 
     # --- faces: two tight groups plus one multi-face file spanning both ----
     for fid in ("multi_face", "grp_a1", "grp_a2", "grp_b1", "grp_b2"):
@@ -134,68 +146,102 @@ def fixture(tmp_path):
     face_model_version = StubFaceBackend.model_version
 
     replace_faces_for_file(
-        conn, "grp_a1",
-        [FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9,
-                        embedding=_tight_vector(base_a, 10))],
-        face_model_id, face_model_version, 1000.0, now,
+        conn,
+        "grp_a1",
+        [FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9, embedding=_tight_vector(base_a, 10))],
+        face_model_id,
+        face_model_version,
+        1000.0,
+        now,
     )
     replace_faces_for_file(
-        conn, "grp_a2",
-        [FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9,
-                        embedding=_tight_vector(base_a, 11))],
-        face_model_id, face_model_version, 1000.0, now,
+        conn,
+        "grp_a2",
+        [FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9, embedding=_tight_vector(base_a, 11))],
+        face_model_id,
+        face_model_version,
+        1000.0,
+        now,
     )
     replace_faces_for_file(
-        conn, "grp_b1",
-        [FaceDetection(bbox=(0.3, 0.3, 0.2, 0.2), landmarks=[], det_score=0.85,
-                        embedding=_tight_vector(base_b, 20))],
-        face_model_id, face_model_version, 1000.0, now,
+        conn,
+        "grp_b1",
+        [FaceDetection(bbox=(0.3, 0.3, 0.2, 0.2), landmarks=[], det_score=0.85, embedding=_tight_vector(base_b, 20))],
+        face_model_id,
+        face_model_version,
+        1000.0,
+        now,
     )
     replace_faces_for_file(
-        conn, "grp_b2",
-        [FaceDetection(bbox=(0.3, 0.3, 0.2, 0.2), landmarks=[], det_score=0.85,
-                        embedding=_tight_vector(base_b, 21))],
-        face_model_id, face_model_version, 1000.0, now,
+        conn,
+        "grp_b2",
+        [FaceDetection(bbox=(0.3, 0.3, 0.2, 0.2), landmarks=[], det_score=0.85, embedding=_tight_vector(base_b, 21))],
+        face_model_id,
+        face_model_version,
+        1000.0,
+        now,
     )
     replace_faces_for_file(
-        conn, "multi_face",
+        conn,
+        "multi_face",
         [
-            FaceDetection(bbox=(0.0, 0.0, 0.15, 0.15), landmarks=[(0.05, 0.05)], det_score=0.8,
-                           embedding=_tight_vector(base_a, 30)),
-            FaceDetection(bbox=(0.5, 0.5, 0.15, 0.15), landmarks=[(0.55, 0.55)], det_score=0.75,
-                           embedding=_tight_vector(base_b, 31)),
+            FaceDetection(
+                bbox=(0.0, 0.0, 0.15, 0.15),
+                landmarks=[(0.05, 0.05)],
+                det_score=0.8,
+                embedding=_tight_vector(base_a, 30),
+            ),
+            FaceDetection(
+                bbox=(0.5, 0.5, 0.15, 0.15),
+                landmarks=[(0.55, 0.55)],
+                det_score=0.75,
+                embedding=_tight_vector(base_b, 31),
+            ),
         ],
-        face_model_id, face_model_version, 1000.0, now,
+        face_model_id,
+        face_model_version,
+        1000.0,
+        now,
     )
 
-    new_cluster_ids = cluster_faces(conn, face_model_id, face_model_version,
-                                     threshold=0.9, min_cluster_size=2)
+    new_cluster_ids = cluster_faces(conn, face_model_id, face_model_version, threshold=0.9, min_cluster_size=2)
     assert len(new_cluster_ids) == 2
 
     # --- review: one global finding, one localizable finding + mask --------
     _add_file(conn, "review_file")
     review_result = ReviewResult(
-        quality_score=6.0, prompt_alignment_score=2 / 3, summary="stub review",
+        quality_score=6.0,
+        prompt_alignment_score=2 / 3,
+        summary="stub review",
         findings=[
-            Finding(type="lighting", severity="medium", confidence=0.8,
-                    localizable=False, description="too dark"),
-            Finding(type="artifact", severity="high", confidence=0.9,
-                    localizable=True, description="red box", bbox=(0.1, 0.1, 0.2, 0.2)),
+            Finding(type="lighting", severity="medium", confidence=0.8, localizable=False, description="too dark"),
+            Finding(
+                type="artifact",
+                severity="high",
+                confidence=0.9,
+                localizable=True,
+                description="red box",
+                bbox=(0.1, 0.1, 0.2, 0.2),
+            ),
         ],
         alignment=[
             # located match -> gets a mask and a highlight
-            AlignmentElement(ordinal=0, text="a red cube", satisfied=True,
-                             confidence=0.9, bbox=(0.1, 0.1, 0.2, 0.2)),
+            AlignmentElement(ordinal=0, text="a red cube", satisfied=True, confidence=0.9, bbox=(0.1, 0.1, 0.2, 0.2)),
             # satisfied but whole-image (style) -> no locus, no mask
-            AlignmentElement(ordinal=1, text="cinematic lighting", satisfied=True,
-                             confidence=0.6),
-            AlignmentElement(ordinal=2, text="a blue sphere", satisfied=False,
-                             confidence=0.8),
+            AlignmentElement(ordinal=1, text="cinematic lighting", satisfied=True, confidence=0.6),
+            AlignmentElement(ordinal=2, text="a blue sphere", satisfied=False, confidence=0.8),
         ],
     )
     review_id = store_review(
-        conn, "review_file", review_result, "stub-critic", "stub-v1",
-        RUBRIC_VERSION, None, 1000.0, now,
+        conn,
+        "review_file",
+        review_result,
+        "stub-critic",
+        "stub-v1",
+        RUBRIC_VERSION,
+        None,
+        1000.0,
+        now,
     )
     finding_rows = conn.execute(
         "SELECT finding_id, localizable FROM ai_review_findings WHERE review_id = ? ORDER BY finding_id",
@@ -208,27 +254,43 @@ def fixture(tmp_path):
     generate_finding_mask(conn, cache_dir, mask_img, "review_file", local_finding_id, StubSegmenter())
 
     element_rows = conn.execute(
-        "SELECT element_id, ordinal FROM ai_review_alignment WHERE review_id = ? "
-        "ORDER BY ordinal", (review_id,),
+        "SELECT element_id, ordinal FROM ai_review_alignment WHERE review_id = ? ORDER BY ordinal",
+        (review_id,),
     ).fetchall()
-    located_element_id = element_rows[0]["element_id"]      # ordinal 0, has a bbox
-    global_element_id = element_rows[1]["element_id"]       # ordinal 1, whole-image
-    absent_element_id = element_rows[2]["element_id"]       # ordinal 2, not present
-    generate_alignment_mask(conn, cache_dir, mask_img, "review_file",
-                            located_element_id, StubSegmenter())
+    located_element_id = element_rows[0]["element_id"]  # ordinal 0, has a bbox
+    global_element_id = element_rows[1]["element_id"]  # ordinal 1, whole-image
+    absent_element_id = element_rows[2]["element_id"]  # ordinal 2, not present
+    generate_alignment_mask(conn, cache_dir, mask_img, "review_file", located_element_id, StubSegmenter())
 
     # --- a finding whose mask_path was tampered to point outside cache_dir -
     _add_file(conn, "review_file2")
     outside_path = str(tmp_path / "outside.png")
     Image.new("L", (4, 4), 0).save(outside_path)
     review_result2 = ReviewResult(
-        quality_score=3.0, prompt_alignment_score=None, summary="second",
-        findings=[Finding(type="artifact", severity="low", confidence=0.5,
-                           localizable=True, description="x", bbox=(0.0, 0.0, 0.1, 0.1))],
+        quality_score=3.0,
+        prompt_alignment_score=None,
+        summary="second",
+        findings=[
+            Finding(
+                type="artifact",
+                severity="low",
+                confidence=0.5,
+                localizable=True,
+                description="x",
+                bbox=(0.0, 0.0, 0.1, 0.1),
+            )
+        ],
     )
     review_id2 = store_review(
-        conn, "review_file2", review_result2, "stub-critic", "stub-v1",
-        RUBRIC_VERSION, None, 1000.0, now,
+        conn,
+        "review_file2",
+        review_result2,
+        "stub-critic",
+        "stub-v1",
+        RUBRIC_VERSION,
+        None,
+        1000.0,
+        now,
     )
     outside_finding_id = conn.execute(
         "SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id2,)
@@ -284,7 +346,11 @@ def test_status_reports_backends_and_counts(fixture):
     data = resp.get_json()
     assert data["enabled"] is True
     assert data["backends"] == {
-        "semantic": False, "visual": False, "face": True, "critic": False, "segmenter": False,
+        "semantic": False,
+        "visual": False,
+        "face": True,
+        "critic": False,
+        "segmenter": False,
     }
     counts = data["counts"]
     assert counts["hashed"] == 4
@@ -293,9 +359,15 @@ def test_status_reports_backends_and_counts(fixture):
     assert counts["face_instances"] == 6
     assert counts["face_clusters"] == 2
     assert counts["reviews"] == 2
-    assert data["worker"] == {"running": False, "stats": {}, "provisioning": {},
-                              "priority_queued": 0, "recent_errors": [],
-                              "review_seconds": None, "stage_pace": {}}
+    assert data["worker"] == {
+        "running": False,
+        "stats": {},
+        "provisioning": {},
+        "priority_queued": 0,
+        "recent_errors": [],
+        "review_seconds": None,
+        "stage_pace": {},
+    }
 
 
 # --- /duplicates ----------------------------------------------------------------
@@ -410,8 +482,7 @@ def test_review_for_file_missing_review_returns_none(fixture):
     """Unknown ids yield the empty review shape, not-pending and not-failed:
     no critic will ever reach a file that does not exist."""
     data = fixture.client.get(f"{_PREFIX}/review/no-such-file").get_json()
-    assert data == {"enabled": True, "review": None, "findings": [],
-                    "pending": False, "scan_failed": False}
+    assert data == {"enabled": True, "review": None, "findings": [], "pending": False, "scan_failed": False}
 
 
 def test_review_alignment_reports_every_element_in_prompt_order(fixture):
@@ -430,13 +501,13 @@ def test_review_alignment_reports_every_element_in_prompt_order(fixture):
 def test_review_alignment_mask_url_only_on_located_matches(fixture):
     """A highlight needs a locus: the whole-image match and the absent
     element carry no bbox and no mask, so nothing is drawn for them."""
-    alignment = {e["ordinal"]: e for e in
-                 fixture.client.get(f"{_PREFIX}/review/review_file").get_json()["review"]["alignment"]}
+    alignment = {
+        e["ordinal"]: e for e in fixture.client.get(f"{_PREFIX}/review/review_file").get_json()["review"]["alignment"]
+    }
 
     located = alignment[0]
     assert located["bbox"] == pytest.approx([0.1, 0.1, 0.2, 0.2])
-    assert located["mask_url"] == (
-        f"{_PREFIX}/review/alignment/mask/{fixture.located_element_id}")
+    assert located["mask_url"] == (f"{_PREFIX}/review/alignment/mask/{fixture.located_element_id}")
 
     for ordinal in (1, 2):
         assert alignment[ordinal]["bbox"] is None
@@ -444,8 +515,7 @@ def test_review_alignment_mask_url_only_on_located_matches(fixture):
 
 
 def test_review_alignment_mask_serves_png(fixture):
-    resp = fixture.client.get(
-        f"{_PREFIX}/review/alignment/mask/{fixture.located_element_id}")
+    resp = fixture.client.get(f"{_PREFIX}/review/alignment/mask/{fixture.located_element_id}")
     assert resp.status_code == 200
     assert resp.mimetype == "image/png"
 
@@ -453,10 +523,8 @@ def test_review_alignment_mask_serves_png(fixture):
 def test_review_alignment_mask_404s_without_a_mask(fixture):
     """An unlocalized match and an absent element have no mask to serve."""
     for element_id in (fixture.global_element_id, fixture.absent_element_id):
-        assert fixture.client.get(
-            f"{_PREFIX}/review/alignment/mask/{element_id}").status_code == 404
-    assert fixture.client.get(
-        f"{_PREFIX}/review/alignment/mask/999999").status_code == 404
+        assert fixture.client.get(f"{_PREFIX}/review/alignment/mask/{element_id}").status_code == 404
+    assert fixture.client.get(f"{_PREFIX}/review/alignment/mask/999999").status_code == 404
 
 
 def test_review_mask_serves_png(fixture):
@@ -486,10 +554,16 @@ def test_review_mask_rejects_path_outside_cache_dir(fixture):
 
 
 def test_feedback_post_and_export_round_trip(fixture):
-    resp = fixture.client.post(f"{_PREFIX}/review/feedback", json={
-        "target_kind": "finding", "target_id": str(fixture.local_finding_id),
-        "verdict": "accept", "file_id": "review_file", "note": "looks right",
-    })
+    resp = fixture.client.post(
+        f"{_PREFIX}/review/feedback",
+        json={
+            "target_kind": "finding",
+            "target_id": str(fixture.local_finding_id),
+            "verdict": "accept",
+            "file_id": "review_file",
+            "note": "looks right",
+        },
+    )
     assert resp.status_code == 201
     body = resp.get_json()
     assert body["enabled"] is True
@@ -505,9 +579,14 @@ def test_feedback_post_and_export_round_trip(fixture):
 
 
 def test_feedback_post_invalid_verdict_returns_400(fixture):
-    resp = fixture.client.post(f"{_PREFIX}/review/feedback", json={
-        "target_kind": "finding", "target_id": "1", "verdict": "not-a-real-verdict",
-    })
+    resp = fixture.client.post(
+        f"{_PREFIX}/review/feedback",
+        json={
+            "target_kind": "finding",
+            "target_id": "1",
+            "verdict": "not-a-real-verdict",
+        },
+    )
     assert resp.status_code == 400
 
 
@@ -537,8 +616,7 @@ def test_disabled_blueprint_short_circuits_every_route(tmp_path):
     db_path = str(tmp_path / "disabled.sqlite")
     conn = _make_conn(db_path)
     conn.close()
-    config = AIConfig(enabled=False, base_path=str(tmp_path), db_path=db_path,
-                       cache_dir=str(tmp_path / "cache"))
+    config = AIConfig(enabled=False, base_path=str(tmp_path), db_path=db_path, cache_dir=str(tmp_path / "cache"))
     app = Flask(__name__)
     app.register_blueprint(create_ai_blueprint(config), url_prefix=_PREFIX)
     client = app.test_client()
@@ -573,13 +651,17 @@ def test_disabled_blueprint_short_circuits_every_route(tmp_path):
 def test_ai_resolvers_end_to_end_with_omniquery_engine(fixture):
     resolvers = create_ai_resolvers(fixture.config)
     engine = OmniQueryEngine(
-        db_path=fixture.config.db_path, base_path=fixture.config.base_path, ai_resolvers=resolvers,
+        db_path=fixture.config.db_path,
+        base_path=fixture.config.base_path,
+        ai_resolvers=resolvers,
     )
     ctx = AuthContext(role="STAFF", user_id="3", client_uuid="3", ai_enabled=True)
 
     semantic_outcome = engine.run(
-        {"where": {"field": "similar_to_semantic", "op": "eq",
-                   "value": {"file_id": "sim_target", "k": 5}}, "limit": 50},
+        {
+            "where": {"field": "similar_to_semantic", "op": "eq", "value": {"file_id": "sim_target", "k": 5}},
+            "limit": 50,
+        },
         ctx,
     )
     assert semantic_outcome.ok
@@ -615,29 +697,33 @@ def test_file_access_check_scopes_per_file_routes(tmp_path):
     _add_file(conn, "hid")
     for fid in ("vis", "hid"):
         result = ReviewResult(
-            quality_score=5.0, prompt_alignment_score=None, summary="s",
-            findings=[Finding(type="artifact", severity="low", confidence=0.9,
-                              localizable=True, description="spot",
-                              bbox=(0.25, 0.25, 0.5, 0.5))])
-        store_review(conn, fid, result, "critic-x", "v1", RUBRIC_VERSION,
-                     None, 1000.0, 2000.0)
-    hid_finding = conn.execute(
-        "SELECT finding_id FROM ai_review_findings WHERE file_id='hid'").fetchone()[0]
+            quality_score=5.0,
+            prompt_alignment_score=None,
+            summary="s",
+            findings=[
+                Finding(
+                    type="artifact",
+                    severity="low",
+                    confidence=0.9,
+                    localizable=True,
+                    description="spot",
+                    bbox=(0.25, 0.25, 0.5, 0.5),
+                )
+            ],
+        )
+        store_review(conn, fid, result, "critic-x", "v1", RUBRIC_VERSION, None, 1000.0, 2000.0)
+    hid_finding = conn.execute("SELECT finding_id FROM ai_review_findings WHERE file_id='hid'").fetchone()[0]
     img = Image.new("RGB", (32, 32), (40, 40, 40))
     generate_finding_mask(conn, cache_dir, img, "hid", hid_finding, StubSegmenter())
     conn.close()
 
-    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
-                      cache_dir=cache_dir, ephemeral_index=True)
+    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path, cache_dir=cache_dir, ephemeral_index=True)
     app = Flask(__name__)
-    app.register_blueprint(
-        create_ai_blueprint(config, file_access_check=lambda fid: fid == "vis"),
-        url_prefix=_PREFIX)
+    app.register_blueprint(create_ai_blueprint(config, file_access_check=lambda fid: fid == "vis"), url_prefix=_PREFIX)
     client = app.test_client()
 
     assert client.get(f"{_PREFIX}/review/vis").status_code == 200
-    for path in ("/review/hid", "/duplicates/hid", "/similar/hid",
-                 "/faces/hid", f"/review/mask/{hid_finding}"):
+    for path in ("/review/hid", "/duplicates/hid", "/similar/hid", "/faces/hid", f"/review/mask/{hid_finding}"):
         assert client.get(f"{_PREFIX}{path}").status_code == 404, path
 
 
@@ -654,32 +740,30 @@ def test_file_access_check_filters_returned_neighbors(tmp_path):
         _add_file(conn, fid)
     shared_sha = "c" * 64
     hashing.upsert_hashes(
-        conn, "vis_anchor", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now)
+        conn, "vis_anchor", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0), 1000.0, HASH_ALGO_VERSION, now
+    )
     hashing.upsert_hashes(
-        conn, "vis_twin", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now)
+        conn, "vis_twin", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0), 1000.0, HASH_ALGO_VERSION, now
+    )
     hashing.upsert_hashes(
-        conn, "hid_twin", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now)
+        conn, "hid_twin", hashing.HashResult(sha256=shared_sha, phash64=0, dhash64=0), 1000.0, HASH_ALGO_VERSION, now
+    )
     hashing.upsert_hashes(
-        conn, "hid_near", hashing.HashResult(sha256="d" * 64, phash64=0b11, dhash64=0),
-        1000.0, HASH_ALGO_VERSION, now)
+        conn, "hid_near", hashing.HashResult(sha256="d" * 64, phash64=0b11, dhash64=0), 1000.0, HASH_ALGO_VERSION, now
+    )
 
     store = vectors.VectorStore(cache_dir=cache_dir, ephemeral=True)
     base = np.ones(8, dtype=np.float32)
     for i, fid in enumerate(("vis_anchor", "vis_twin", "hid_twin")):
-        store.add(conn, fid, SPACE_SEMANTIC, "m", "v1",
-                  _tight_vector(base, seed=i), 1000.0)
+        store.add(conn, fid, SPACE_SEMANTIC, "m", "v1", _tight_vector(base, seed=i), 1000.0)
 
     conn.close()
 
-    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
-                      cache_dir=cache_dir, ephemeral_index=True)
+    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path, cache_dir=cache_dir, ephemeral_index=True)
     app = Flask(__name__)
     app.register_blueprint(
-        create_ai_blueprint(config, file_access_check=lambda fid: fid.startswith("vis")),
-        url_prefix=_PREFIX)
+        create_ai_blueprint(config, file_access_check=lambda fid: fid.startswith("vis")), url_prefix=_PREFIX
+    )
     client = app.test_client()
 
     dup = client.get(f"{_PREFIX}/duplicates/vis_anchor").get_json()
@@ -700,8 +784,7 @@ def test_review_reports_prompt_availability(fixture):
     assert before["prompt_available"] is False
 
     conn = sqlite3.connect(fixture.config.db_path)
-    conn.execute(
-        "UPDATE files SET workflow_prompt = 'a red fox in snow' WHERE id = 'review_file'")
+    conn.execute("UPDATE files SET workflow_prompt = 'a red fox in snow' WHERE id = 'review_file'")
     conn.commit()
     conn.close()
 
@@ -719,12 +802,13 @@ def test_faces_compare_reports_lanes_and_inventory(fixture, monkeypatch):
 
     def fake_compare(img, config):
         assert img.size == (32, 32)
-        return {"lanes": {"yunet": {"model": "opencv/yunet+sface (v)",
-                                    "elapsed_ms": 1.2, "faces": []},
-                          "scrfd": {"model": "scrfd",
-                                    "error": "antelopev2 pack not found"}},
-                "installed": [{"name": "yunet+sface", "weights_present": False,
-                               "active": False}]}
+        return {
+            "lanes": {
+                "yunet": {"model": "opencv/yunet+sface (v)", "elapsed_ms": 1.2, "faces": []},
+                "scrfd": {"model": "scrfd", "error": "antelopev2 pack not found"},
+            },
+            "installed": [{"name": "yunet+sface", "weights_present": False, "active": False}],
+        }
 
     monkeypatch.setattr(F, "compare_detectors", fake_compare)
     res = fixture.client.get(f"{_PREFIX}/faces/compare/index_target")
@@ -767,12 +851,11 @@ def test_faces_cluster_detail_reports_attribute_aggregates(fixture):
     clusters = fixture.client.get(f"{_PREFIX}/faces/clusters").get_json()["clusters"]
     if not clusters:
         import pytest
+
         pytest.skip("fixture has no clusters")
-    detail = fixture.client.get(
-        f"{_PREFIX}/faces/clusters/{clusters[0]['cluster_id']}").get_json()
+    detail = fixture.client.get(f"{_PREFIX}/faces/clusters/{clusters[0]['cluster_id']}").get_json()
     assert "attributes" in detail
     agg = detail["attributes"]
-    assert {"with_age", "age_min", "age_max", "age_avg",
-            "male", "female", "yaw_abs_avg"} <= set(agg)
+    assert {"with_age", "age_min", "age_max", "age_avg", "male", "female", "yaw_abs_avg"} <= set(agg)
     for member in detail["members"]:
         assert {"age", "sex", "pose_yaw"} <= set(member)

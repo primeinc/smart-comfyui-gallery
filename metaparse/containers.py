@@ -12,8 +12,8 @@ from PIL import Image
 from .stealth import read_stealth_metadata
 
 # EXIF tags used by the tools we support.
-_TAG_MAKE = 0x010F        # ComfyUI WebP: "workflow:{...}"
-_TAG_MODEL = 0x0110       # ComfyUI WebP: "prompt:{...}"; legacy SwarmUI: sui JSON
+_TAG_MAKE = 0x010F  # ComfyUI WebP: "workflow:{...}"
+_TAG_MODEL = 0x0110  # ComfyUI WebP: "prompt:{...}"; legacy SwarmUI: sui JSON
 _TAG_SOFTWARE = 0x0131
 _TAG_USER_COMMENT = 0x9286
 _TAG_MAKER_NOTE = 0x927C  # Fooocus: metadata scheme name
@@ -57,7 +57,7 @@ def decode_user_comment(value) -> str | None:
 @dataclass
 class RawMetadata:
     path: str = ""
-    format: str = ""          # PIL format name: PNG / JPEG / WEBP / GIF ...
+    format: str = ""  # PIL format name: PNG / JPEG / WEBP / GIF ...
     width: int = 0
     height: int = 0
     mode: str = ""
@@ -71,7 +71,7 @@ class RawMetadata:
     gif_comment: str | None = None
     _stealth_text: str | None = None
     _stealth_checked: bool = False
-    _img: object = None       # open PIL image, only while inside load_raw()
+    _img: object = None  # open PIL image, only while inside load_raw()
 
     def stealth(self) -> str | None:
         """Lazily decode stealth-pnginfo. Only valid inside load_raw()'s scope."""
@@ -113,8 +113,11 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
     try:
         with Image.open(filepath) as img:
             raw = RawMetadata(
-                path=filepath, format=img.format or "",
-                width=img.width, height=img.height, mode=img.mode,
+                path=filepath,
+                format=img.format or "",
+                width=img.width,
+                height=img.height,
+                mode=img.mode,
             )
             for key, value in (img.info or {}).items():
                 if key == "exif":

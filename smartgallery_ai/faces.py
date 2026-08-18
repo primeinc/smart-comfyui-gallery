@@ -45,9 +45,8 @@ from smartgallery_ai.faiss_runtime import import_faiss
 # EVERY alignment. Silence exactly that warning at its source module —
 # every other warning stays visible.
 warnings.filterwarnings(
-    "ignore", category=FutureWarning,
-    module=r"insightface\.utils\.face_align",
-    message=r".*`estimate` is deprecated.*")
+    "ignore", category=FutureWarning, module=r"insightface\.utils\.face_align", message=r".*`estimate` is deprecated.*"
+)
 
 __all__ = [
     "BackendUnavailable",
@@ -66,15 +65,14 @@ _SFACE_FILENAME = "face_recognition_sface_2021dec.onnx"  # recognizer ONNX, expe
 # layout: <models_dir>/insightface/models/antelopev2/); the cv2 arcface
 # embedder reads it from there so the weights exist exactly once.
 _INSIGHTFACE_ROOT = "insightface"  # models_dir-relative FaceAnalysis root
-_ARCFACE_FILENAME = os.path.join(
-    _INSIGHTFACE_ROOT, "models", "antelopev2", "glintr100.onnx")
+_ARCFACE_FILENAME = os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2", "glintr100.onnx")
 
 # ArcFace canonical 112x112 5-landmark template
 # (insightface python-package/insightface/utils/face_align.py: arcface_dst).
 _ARCFACE_DST = np.array(
-    [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
-     [41.5493, 92.3655], [70.7299, 92.2041]],
-    dtype=np.float32)
+    [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366], [41.5493, 92.3655], [70.7299, 92.2041]],
+    dtype=np.float32,
+)
 
 
 def _umeyama_similarity(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
@@ -96,7 +94,7 @@ def _umeyama_similarity(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
     if np.linalg.det(cov) < 0:
         sign[-1] = -1
     rot = u @ np.diag(sign) @ vt
-    var_src = (src_c ** 2).sum() / n
+    var_src = (src_c**2).sum() / n
     scale = (s * sign).sum() / var_src
     t = dst_mean - scale * (rot @ src_mean)
     m = np.zeros((2, 3))
@@ -240,9 +238,7 @@ class OpenCVFaceBackend(FaceBackend):
         cap. A forced `embedder` whose weights are missing raises instead
         of silently falling back."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
-            raise BackendUnavailable(
-                "this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF"
-            )
+            raise BackendUnavailable("this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF")
         detector_path = os.path.join(models_dir, _YUNET_FILENAME)
         recognizer_path = os.path.join(models_dir, _SFACE_FILENAME)
         arcface_path = os.path.join(models_dir, _ARCFACE_FILENAME)
@@ -252,19 +248,19 @@ class OpenCVFaceBackend(FaceBackend):
             embedder = "arcface" if os.path.isfile(arcface_path) else "sface"
         if embedder == "arcface":
             if not os.path.isfile(arcface_path):
-                raise BackendUnavailable(
-                    f"ArcFace model not found at {arcface_path}")
+                raise BackendUnavailable(f"ArcFace model not found at {arcface_path}")
         elif embedder == "sface":
             if not os.path.isfile(recognizer_path):
-                raise BackendUnavailable(
-                    f"SFace model not found at {recognizer_path}")
+                raise BackendUnavailable(f"SFace model not found at {recognizer_path}")
         else:
             raise ValueError(f"unknown face embedder: {embedder!r}")
         self._embedder = embedder
         self.model_id = f"opencv/yunet+{embedder}"
         self.model_version = (
-            "yunet-2023mar+arcface-glintr100-ms1600" if embedder == "arcface"
-            else "yunet-2023mar+sface-2021dec-v2-ms1600")
+            "yunet-2023mar+arcface-glintr100-ms1600"
+            if embedder == "arcface"
+            else "yunet-2023mar+sface-2021dec-v2-ms1600"
+        )
         # Operating points from the labeled three-way A/B sweep
         # (benchmarks/face_embedder_ab.py, 175 faces / 31 identities):
         # glintr100 pairwise-F1 is flat 0.926-0.933 across 0.30-0.50; 0.48
@@ -283,9 +279,7 @@ class OpenCVFaceBackend(FaceBackend):
             except Exception:  # log tuning must never block loading
                 prev_level = None
         try:
-            self._detector = cv2.FaceDetectorYN.create(
-                detector_path, "", (320, 320), score_threshold=min_det_score
-            )
+            self._detector = cv2.FaceDetectorYN.create(detector_path, "", (320, 320), score_threshold=min_det_score)
             if embedder == "arcface":
                 self._recognizer = None
                 self._arcface = cv2.dnn.readNetFromONNX(arcface_path)
@@ -337,9 +331,7 @@ class OpenCVFaceBackend(FaceBackend):
                 # 127.5 and BGR->RGB swap; 512-d output, cosine-ready
                 # after normalization downstream.
                 aligned = _arcface_norm_crop(bgr, landmarks_px)
-                blob = cv2.dnn.blobFromImage(
-                    aligned, 1.0 / 127.5, (112, 112),
-                    (127.5, 127.5, 127.5), swapRB=True)
+                blob = cv2.dnn.blobFromImage(aligned, 1.0 / 127.5, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
                 self._arcface.setInput(blob)
                 feature = self._arcface.forward()
             else:
@@ -352,9 +344,7 @@ class OpenCVFaceBackend(FaceBackend):
                 _clamp01(bw / w),
                 _clamp01(bh / h),
             )
-            landmarks = [
-                (_clamp01(px / w), _clamp01(py / h)) for px, py in landmarks_px
-            ]
+            landmarks = [(_clamp01(px / w), _clamp01(py / h)) for px, py in landmarks_px]
             detections.append(
                 FaceDetection(
                     bbox=bbox,
@@ -383,8 +373,7 @@ class InsightFaceBackend(FaceBackend):
     # 0.40 keeps P 1.000 with F1 0.998.
     default_cluster_threshold = 0.40
 
-    def __init__(self, models_dir: str, min_det_score: float = 0.5,
-                 min_face_px: int = 24):
+    def __init__(self, models_dir: str, min_det_score: float = 0.5, min_face_px: int = 24):
         """`min_det_score` re-filters detections (FaceAnalysis is prepared
         at the same threshold); `min_face_px` drops noise-floor boxes by
         native-pixel side, same junk gate as the OpenCV backend."""
@@ -406,11 +395,12 @@ class InsightFaceBackend(FaceBackend):
             if min(x2 - x1, y2 - y1) < self._min_face_px:
                 continue
             embedding = np.asarray(face.embedding, dtype=np.float32).reshape(-1)
-            bbox = (_clamp01(x1 / w), _clamp01(y1 / h),
-                    _clamp01((x2 - x1) / w), _clamp01((y2 - y1) / h))
-            landmarks = ([(_clamp01(float(px) / w), _clamp01(float(py) / h))
-                          for px, py in face.kps]
-                         if face.kps is not None else [])
+            bbox = (_clamp01(x1 / w), _clamp01(y1 / h), _clamp01((x2 - x1) / w), _clamp01((y2 - y1) / h))
+            landmarks = (
+                [(_clamp01(float(px) / w), _clamp01(float(py) / h)) for px, py in face.kps]
+                if face.kps is not None
+                else []
+            )
             attributes: dict = {}
             if face.gender is not None and face.age is not None:
                 attributes["age"] = int(face.age)
@@ -418,19 +408,17 @@ class InsightFaceBackend(FaceBackend):
             lmk106 = face.get("landmark_2d_106")
             if lmk106 is not None:
                 attributes["landmark_2d_106"] = [
-                    [round(_clamp01(float(px) / w), 5),
-                     round(_clamp01(float(py) / h), 5)]
-                    for px, py in lmk106]
+                    [round(_clamp01(float(px) / w), 5), round(_clamp01(float(py) / h), 5)] for px, py in lmk106
+                ]
             lmk68 = face.get("landmark_3d_68")
             if lmk68 is not None:
                 # x/y normalized like every other coordinate; z stays in
                 # the model's pixel-scaled depth units (no image norm
                 # exists for depth) — recorded as-is.
                 attributes["landmark_3d_68"] = [
-                    [round(_clamp01(float(px) / w), 5),
-                     round(_clamp01(float(py) / h), 5),
-                     round(float(pz), 2)]
-                    for px, py, pz in lmk68]
+                    [round(_clamp01(float(px) / w), 5), round(_clamp01(float(py) / h), 5), round(float(pz), 2)]
+                    for px, py, pz in lmk68
+                ]
             pose = face.get("pose")
             if pose is not None:
                 attributes["pose"] = {
@@ -438,9 +426,11 @@ class InsightFaceBackend(FaceBackend):
                     "yaw": round(float(pose[1]), 2),
                     "roll": round(float(pose[2]), 2),
                 }
-            detections.append(FaceDetection(
-                bbox=bbox, landmarks=landmarks, det_score=score,
-                embedding=embedding, attributes=attributes or None))
+            detections.append(
+                FaceDetection(
+                    bbox=bbox, landmarks=landmarks, det_score=score, embedding=embedding, attributes=attributes or None
+                )
+            )
         return detections
 
 
@@ -458,6 +448,7 @@ def _ort_providers() -> list:
         return [p.strip() for p in value.split(",") if p.strip()]
     try:
         import onnxruntime as ort
+
         if "CUDAExecutionProvider" in ort.get_available_providers():
             return ["CUDAExecutionProvider", "CPUExecutionProvider"]
     except Exception:
@@ -499,17 +490,15 @@ def get_insightface_app(models_dir: str):
         app = FaceAnalysis(
             name="antelopev2",
             root=os.path.join(models_dir, _INSIGHTFACE_ROOT),
-            allowed_modules=["detection", "recognition", "genderage",
-                             "landmark_2d_106", "landmark_3d_68"],
+            allowed_modules=["detection", "recognition", "genderage", "landmark_2d_106", "landmark_3d_68"],
             providers=["CPUExecutionProvider"],
         )
         app.prepare(ctx_id=0)  # Auto det-size: joint 128x128 + 640x640
         rec_providers = _ort_providers()
         if rec_providers != ["CPUExecutionProvider"]:
             from insightface.model_zoo import model_zoo
-            rec = model_zoo.get_model(
-                os.path.join(models_dir, _ARCFACE_FILENAME),
-                providers=rec_providers)
+
+            rec = model_zoo.get_model(os.path.join(models_dir, _ARCFACE_FILENAME), providers=rec_providers)
             rec.prepare(ctx_id=0)
             app.models["recognition"] = rec
     except Exception as exc:
@@ -532,8 +521,7 @@ def installed_pipelines(config: AIConfig) -> list:
         pass
 
     def _entry(name, model_id, model_version, weight_paths, selector):
-        present = all(os.path.isfile(os.path.join(models_dir, p))
-                      for p in weight_paths)
+        present = all(os.path.isfile(os.path.join(models_dir, p)) for p in weight_paths)
         return {
             "name": name,
             "model_id": model_id,
@@ -544,19 +532,27 @@ def installed_pipelines(config: AIConfig) -> list:
         }
 
     return [
-        _entry("scrfd+glintr100",
-               "insightface/antelopev2", "scrfd10g+glintr100-v1",
-               [os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2",
-                             "scrfd_10g_bnkps.onnx"), _ARCFACE_FILENAME],
-               "AI_DAM_FACE_BACKEND=insightface"),
-        _entry("yunet+arcface",
-               "opencv/yunet+arcface", "yunet-2023mar+arcface-glintr100-ms1600",
-               [_YUNET_FILENAME, _ARCFACE_FILENAME],
-               "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=arcface"),
-        _entry("yunet+sface",
-               "opencv/yunet+sface", "yunet-2023mar+sface-2021dec-v2-ms1600",
-               [_YUNET_FILENAME, _SFACE_FILENAME],
-               "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=sface"),
+        _entry(
+            "scrfd+glintr100",
+            "insightface/antelopev2",
+            "scrfd10g+glintr100-v1",
+            [os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2", "scrfd_10g_bnkps.onnx"), _ARCFACE_FILENAME],
+            "AI_DAM_FACE_BACKEND=insightface",
+        ),
+        _entry(
+            "yunet+arcface",
+            "opencv/yunet+arcface",
+            "yunet-2023mar+arcface-glintr100-ms1600",
+            [_YUNET_FILENAME, _ARCFACE_FILENAME],
+            "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=arcface",
+        ),
+        _entry(
+            "yunet+sface",
+            "opencv/yunet+sface",
+            "yunet-2023mar+sface-2021dec-v2-ms1600",
+            [_YUNET_FILENAME, _SFACE_FILENAME],
+            "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=sface",
+        ),
     ]
 
 
@@ -578,18 +574,22 @@ def compare_detectors(img: Image.Image, config: AIConfig) -> dict:
         return {
             "model": f"{backend.model_id} ({backend.model_version})",
             "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
-            "faces": [{"bbox": list(d.bbox), "landmarks": d.landmarks,
-                       "det_score": d.det_score, "attributes": d.attributes}
-                      for d in dets],
+            "faces": [
+                {"bbox": list(d.bbox), "landmarks": d.landmarks, "det_score": d.det_score, "attributes": d.attributes}
+                for d in dets
+            ],
         }
 
     lanes: dict = {}
     lane_makers = {
         "yunet": lambda: OpenCVFaceBackend(
-            config.models_dir, config.face_min_det_score, config.face_min_px,
-            config.face_detect_max_side, config.face_embedder),
-        "scrfd": lambda: InsightFaceBackend(
-            config.models_dir, config.face_min_det_score, config.face_min_px),
+            config.models_dir,
+            config.face_min_det_score,
+            config.face_min_px,
+            config.face_detect_max_side,
+            config.face_embedder,
+        ),
+        "scrfd": lambda: InsightFaceBackend(config.models_dir, config.face_min_det_score, config.face_min_px),
     }
     for lane, make_backend in lane_makers.items():
         try:
@@ -674,9 +674,9 @@ def replace_faces_for_file(
     """
     try:
         conn.execute(
-            "DELETE FROM ai_face_instances "
-            "WHERE file_id = ? AND model_id = ? AND model_version = ?",
-            (file_id, model_id, model_version))
+            "DELETE FROM ai_face_instances WHERE file_id = ? AND model_id = ? AND model_version = ?",
+            (file_id, model_id, model_version),
+        )
         cur = conn.cursor()
         face_ids = []
         for det in detections:
@@ -861,10 +861,7 @@ def _neighbor_graph(normed: np.ndarray, threshold: float) -> tuple:
     if requested == "numpy":
         return _neighbor_graph_numpy(normed, threshold), "numpy"
     if requested != "auto":
-        raise ValueError(
-            f"AI_DAM_FACE_GRAPH_BACKEND={requested!r} is not one of "
-            "auto/torch-cuda/faiss/numpy"
-        )
+        raise ValueError(f"AI_DAM_FACE_GRAPH_BACKEND={requested!r} is not one of auto/torch-cuda/faiss/numpy")
 
     try:
         return _neighbor_graph_torch_cuda(normed, threshold), "torch-cuda"
@@ -991,8 +988,7 @@ def cluster_faces(
 
     try:
         conn.execute(
-            "UPDATE ai_face_instances SET cluster_id = NULL "
-            "WHERE model_id = ? AND model_version = ?",
+            "UPDATE ai_face_instances SET cluster_id = NULL WHERE model_id = ? AND model_version = ?",
             (model_id, model_version),
         )
         old_rows = conn.execute(
@@ -1014,9 +1010,7 @@ def cluster_faces(
 
         dims = {r[3] for r in rows}
         if len(dims) > 1:
-            raise ValueError(
-                f"inconsistent embedding dims for model_version={model_version!r}: {dims}"
-            )
+            raise ValueError(f"inconsistent embedding dims for model_version={model_version!r}: {dims}")
         dim = next(iter(dims))
         face_ids = [r[0] for r in rows]
         matrix = np.zeros((len(rows), dim), dtype=np.float32)
@@ -1032,9 +1026,7 @@ def cluster_faces(
         for idx, label in enumerate(labels):
             components.setdefault(label, []).append(idx)
 
-        cluster_components = [
-            members for members in components.values() if len(members) >= min_cluster_size
-        ]
+        cluster_components = [members for members in components.values() if len(members) >= min_cluster_size]
         cluster_components.sort(key=min)
 
         centroids = np.zeros((len(cluster_components), dim), dtype=np.float32)

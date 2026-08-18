@@ -47,9 +47,17 @@ ENV_MODEL = "OMNIQUERY_NL2SQL_MODEL"
 # versions, sessions, scan logs) only wastes prompt tokens and invites
 # joins against noise.
 _SCHEMA_TABLES = (
-    "files", "generation_params", "file_ratings", "file_comments",
-    "collections", "collection_files", "ai_face_instances",
-    "ai_face_clusters", "ai_reviews", "ai_review_findings", "users",
+    "files",
+    "generation_params",
+    "file_ratings",
+    "file_comments",
+    "collections",
+    "collection_files",
+    "ai_face_instances",
+    "ai_face_clusters",
+    "ai_reviews",
+    "ai_review_findings",
+    "users",
 )
 
 # The distil model card's system prompt, with the SQL dialect rules kept
@@ -93,8 +101,7 @@ def schema_block(db_path: str) -> str:
     placeholders = ",".join("?" for _ in _SCHEMA_TABLES)
     with sqlite3.connect(f"file:{os.path.abspath(db_path)}?mode=ro", uri=True) as conn:
         rows = conn.execute(
-            f"SELECT name, sql FROM sqlite_master WHERE type='table' "
-            f"AND name IN ({placeholders}) ORDER BY name",
+            f"SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ({placeholders}) ORDER BY name",
             _SCHEMA_TABLES,
         ).fetchall()
         # Live value hints for the enum-ish columns the DDL cannot show
@@ -103,20 +110,23 @@ def schema_block(db_path: str) -> str:
         # for every install.
         hints: list[str] = []
         try:
-            types = [r[0] for r in conn.execute(
-                "SELECT DISTINCT type FROM files WHERE type IS NOT NULL "
-                "ORDER BY type LIMIT 12")]
+            types = [
+                r[0]
+                for r in conn.execute("SELECT DISTINCT type FROM files WHERE type IS NOT NULL ORDER BY type LIMIT 12")
+            ]
             if types:
                 hints.append("-- files.type values: " + ", ".join(types))
         except sqlite3.Error:
             pass
         try:
-            flags = [r[0] for r in conn.execute(
-                "SELECT DISTINCT name FROM collections "
-                "WHERE type = 'system_flag' ORDER BY name LIMIT 12")]
+            flags = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT name FROM collections WHERE type = 'system_flag' ORDER BY name LIMIT 12"
+                )
+            ]
             if flags:
-                hints.append("-- collections.name values where "
-                             "type='system_flag': " + ", ".join(flags))
+                hints.append("-- collections.name values where type='system_flag': " + ", ".join(flags))
         except sqlite3.Error:
             pass
     block = "\n\n".join(sql for _name, sql in rows if sql)
@@ -143,7 +153,7 @@ def _extract_sql(content: str) -> str:
     sql = sql.split(";", 1)[0]
     junk = _JUNK_RE.search(sql)
     if junk:
-        sql = sql[:junk.start()]
+        sql = sql[: junk.start()]
     return sql.strip()
 
 
@@ -151,12 +161,12 @@ class SqlSearch:
     """NL -> SQL through the local text2sql model. search() never raises;
     it returns (ids, sql, None) or (None, sql, reason)."""
 
-    def __init__(self, db_path: str, model_ref: str | None = None,
-                 models_dir: str | None = None, max_tokens: int = 256):
+    def __init__(
+        self, db_path: str, model_ref: str | None = None, models_dir: str | None = None, max_tokens: int = 256
+    ):
         self.db_path = db_path
         self.model_ref = model_ref or os.environ.get(ENV_MODEL) or DEFAULT_MODEL
-        self.models_dir = (models_dir
-                           or os.environ.get("AI_DAM_MODELS_DIR", ".AImodels"))
+        self.models_dir = models_dir or os.environ.get("AI_DAM_MODELS_DIR", ".AImodels")
         self.max_tokens = max_tokens
 
     def available(self) -> bool:
@@ -177,11 +187,9 @@ class SqlSearch:
         cuts the statement at the first terminator or template junk, and it
         is the tested cut."""
 
-        return ai_models.Chat(self.model_ref, models_dir=self.models_dir,
-                              system=_SYSTEM_PROMPT)
+        return ai_models.Chat(self.model_ref, models_dir=self.models_dir, system=_SYSTEM_PROMPT)
 
-    def search(self, question: str, max_rounds: int = 3
-               ) -> tuple[list[str] | None, str | None, str | None]:
+    def search(self, question: str, max_rounds: int = 3) -> tuple[list[str] | None, str | None, str | None]:
         """The agentic loop: the model generates SQL, READS the sandboxed
         execution outcome, and acts on it before answering.
 
@@ -231,16 +239,17 @@ class SqlSearch:
             # only the next instruction has to be composed.
             if not result.ok:
                 last_reason = result.error
-                turn = (f"That query failed with: {result.error}\n"
-                        "Fix it. Output only the corrected SQL query.")
+                turn = f"That query failed with: {result.error}\nFix it. Output only the corrected SQL query."
             else:
                 last_reason = "0 rows"
-                turn = ("That query ran but returned 0 rows. If the question "
-                        "could match differently (other text columns from the "
-                        "rules, looser LIKE patterns, fewer constraints), "
-                        "output a broadened SQL query. If 0 results is "
-                        "genuinely the correct answer, output the exact same "
-                        "query again.")
+                turn = (
+                    "That query ran but returned 0 rows. If the question "
+                    "could match differently (other text columns from the "
+                    "rules, looser LIKE patterns, fewer constraints), "
+                    "output a broadened SQL query. If 0 results is "
+                    "genuinely the correct answer, output the exact same "
+                    "query again."
+                )
             last_sql = sql
 
         if last_sql is not None and last_reason == "0 rows":

@@ -60,8 +60,7 @@ _CASES = [
 def _node():
     found = shutil.which("node")
     if found is None:
-        pytest.skip("node is not on PATH; the template's own function cannot "
-                    "be executed here")
+        pytest.skip("node is not on PATH; the template's own function cannot be executed here")
     return found
 
 
@@ -71,19 +70,21 @@ def _extract(template: str) -> str:
     # The closing brace sits at whatever column the enclosing script uses --
     # column 0 in collections.html, four or eight elsewhere. Requiring an
     # indent captured a truncated chunk there and blamed the template.
-    match = re.search(r"function jsInAttr\(value\) \{.*?\n {0,8}\}",
-                      source, re.DOTALL)
+    match = re.search(r"function jsInAttr\(value\) \{.*?\n {0,8}\}", source, re.DOTALL)
     assert match, f"{template} has no jsInAttr; the escaping has gone"
     extracted = match.group(0)
     assert extracted.count("replace(") == 6, (
         f"{template}: extracted {extracted.count('replace(')} replace calls, "
-        f"expected 6 -- the function was cut short:\n{extracted}")
+        f"expected 6 -- the function was cut short:\n{extracted}"
+    )
     return extracted
 
 
 def _round_trip(template: str, values):
     """Escape each value, then undo what the two parsers would do."""
-    script = _extract(template) + r"""
+    script = (
+        _extract(template)
+        + r"""
 const values = JSON.parse(process.argv[1]);
 const out = values.map(v => {
     const escaped = jsInAttr(v);
@@ -99,8 +100,8 @@ const out = values.map(v => {
 });
 console.log(JSON.stringify(out));
 """
-    done = subprocess.run([_node(), "-e", script, json.dumps(values)],
-                          capture_output=True, text=True, timeout=300)
+    )
+    done = subprocess.run([_node(), "-e", script, json.dumps(values)], capture_output=True, text=True, timeout=300)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -141,17 +142,20 @@ const out = values.map(v => {
 });
 console.log(JSON.stringify(out));
 """
-    done = subprocess.run([_node(), "-e", script, json.dumps(_CASES)],
-                          capture_output=True, text=True, timeout=300)
+    done = subprocess.run([_node(), "-e", script, json.dumps(_CASES)], capture_output=True, text=True, timeout=300)
     assert done.returncode == 0, done.stderr
     raw = json.loads(done.stdout)
 
-    broke = [c for c, r in zip(_CASES, raw, strict=False)
-             if r["threw"] is not None or r["parsed"] != c or '"' in r["escaped"]]
+    broke = [
+        c
+        for c, r in zip(_CASES, raw, strict=False)
+        if r["threw"] is not None or r["parsed"] != c or '"' in r["escaped"]
+    ]
 
     assert len(broke) >= 5, (
         f"only {len(broke)} of the cases misbehave unescaped, so this set is "
-        f"too gentle to prove the escaping does anything: {broke}")
+        f"too gentle to prove the escaping does anything: {broke}"
+    )
     assert "Bob's renders" in broke, broke
 
 
@@ -170,7 +174,8 @@ def test_the_partials_use_the_helper_they_do_not_define(partial):
     assert "function jsInAttr" not in source, (
         f"{partial} defines its own jsInAttr again; index.html already "
         f"declares one in the same scope and the later declaration wins, so "
-        f"one of the two would be dead")
+        f"one of the two would be dead"
+    )
 
 
 def test_an_html_entity_escaper_is_never_used_inside_a_javascript_string():
@@ -192,7 +197,8 @@ def test_an_html_entity_escaper_is_never_used_inside_a_javascript_string():
 
     assert not offenders, (
         f"{len(offenders)} site(s) put an HTML-entity-escaped value inside a "
-        f"JavaScript string; use jsInAttr: {offenders[:3]}")
+        f"JavaScript string; use jsInAttr: {offenders[:3]}"
+    )
 
 
 def test_the_folder_menu_uses_the_escaped_name():
@@ -203,8 +209,5 @@ def test_the_folder_menu_uses_the_escaped_name():
 
     handlers = re.findall(r'on\w+="[^"]*\$\{folderDisplayName\}[^"]*"', source)
 
-    assert not handlers, (
-        f"{len(handlers)} handler(s) still interpolate the raw folder name: "
-        f"{handlers[:2]}")
-    assert "jsInAttr(folderDisplayName)" in source, (
-        "the escaped name is not being produced at all")
+    assert not handlers, f"{len(handlers)} handler(s) still interpolate the raw folder name: {handlers[:2]}"
+    assert "jsInAttr(folderDisplayName)" in source, "the escaped name is not being produced at all"

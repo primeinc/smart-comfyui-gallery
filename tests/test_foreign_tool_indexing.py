@@ -57,8 +57,7 @@ class _InlineExecutor:
 
 @pytest.fixture
 def a1111_file(smartgallery_app, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
@@ -73,8 +72,7 @@ def a1111_file(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        row = conn.execute("SELECT id FROM files WHERE name = ?",
-                           (f"{_PREFIX}pic.png",)).fetchone()
+        row = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()
     finally:
         conn.close()
 
@@ -96,8 +94,7 @@ def test_the_prompt_is_read_out_of_the_infotext(smartgallery_app, a1111_file):
     against a file that carries no metadata at all."""
     conn = smartgallery_app.get_db_connection()
     try:
-        prompt = conn.execute("SELECT workflow_prompt FROM files WHERE id = ?",
-                              (a1111_file,)).fetchone()[0]
+        prompt = conn.execute("SELECT workflow_prompt FROM files WHERE id = ?", (a1111_file,)).fetchone()[0]
     finally:
         conn.close()
 
@@ -111,7 +108,8 @@ def test_the_typed_parameters_reach_the_database(smartgallery_app, a1111_file):
         row = conn.execute(
             "SELECT tool, model, sampler, seed, steps, cfg, positive_prompt, "
             "negative_prompt FROM generation_params WHERE file_id = ?",
-            (a1111_file,)).fetchone()
+            (a1111_file,),
+        ).fetchone()
     finally:
         conn.close()
 
@@ -127,23 +125,19 @@ def test_the_typed_parameters_reach_the_database(smartgallery_app, a1111_file):
     assert negative == "blurry, watermark"
 
 
-@pytest.mark.parametrize("term", ["seed:12345", "model:v1-5", "sampler:Euler",
-                                  "steps:20", "cfg:7"])
+@pytest.mark.parametrize("term", ["seed:12345", "model:v1-5", "sampler:Euler", "steps:20", "cfg:7"])
 def test_each_typed_operator_finds_it(smartgallery_app, a1111_file, term):
     """What a person actually does with this: search by what made it."""
-    page = smartgallery_app.app.test_client().get(
-        f"/galleryout/view/_root_?workflow_prompt={term}")
+    page = smartgallery_app.app.test_client().get(f"/galleryout/view/_root_?workflow_prompt={term}")
 
     assert page.status_code == 200, page.get_data(as_text=True)[:200]
-    assert a1111_file in page.get_data(as_text=True), (
-        f"searching {term!r} did not find the A1111 file")
+    assert a1111_file in page.get_data(as_text=True), f"searching {term!r} did not find the A1111 file"
 
 
 def test_a_search_that_should_miss_still_misses(smartgallery_app, a1111_file):
     """Folding every operator into 'match anything' would satisfy the five
     above."""
-    page = smartgallery_app.app.test_client().get(
-        "/galleryout/view/_root_?workflow_prompt=seed:99999")
+    page = smartgallery_app.app.test_client().get("/galleryout/view/_root_?workflow_prompt=seed:99999")
 
     assert page.status_code == 200
     assert a1111_file not in page.get_data(as_text=True)

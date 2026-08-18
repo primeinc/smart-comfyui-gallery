@@ -84,7 +84,7 @@ def _function(source: str, name: str) -> str:
             if depth == 0:
                 break
         index += 1
-    return source[start:index + 1]
+    return source[start : index + 1]
 
 
 def _renderer(template: str) -> str:
@@ -97,21 +97,29 @@ def _renderer(template: str) -> str:
     supposed to pass on both builds, which are the only reason to trust the
     rest."""
     source = (_TEMPLATES / template).read_text(encoding="utf-8")
-    guard = ("function markdownSafeUrl(url) { return url; }"
-             if "function markdownSafeUrl(" not in source
-             else _function(source, "markdownSafeUrl"))
-    return "\n".join([
-        # A stand-in for the page's own escaper, which lives elsewhere.
-        ("function escapeHTML(v){ return String(v).replace(/[&<>\"']/g,"
-        " m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"
-        "\"'\":'&#39;'}[m])); }"),
-        guard,
-        _function(source, "renderMarkdownText"),
-    ])
+    guard = (
+        "function markdownSafeUrl(url) { return url; }"
+        if "function markdownSafeUrl(" not in source
+        else _function(source, "markdownSafeUrl")
+    )
+    return "\n".join(
+        [
+            # A stand-in for the page's own escaper, which lives elsewhere.
+            (
+                "function escapeHTML(v){ return String(v).replace(/[&<>\"']/g,"
+                " m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"
+                "\"'\":'&#39;'}[m])); }"
+            ),
+            guard,
+            _function(source, "renderMarkdownText"),
+        ]
+    )
 
 
 def _render(template: str, notes):
-    script = _renderer(template) + r"""
+    script = (
+        _renderer(template)
+        + r"""
 const notes = JSON.parse(process.argv[1]);
 console.log(JSON.stringify(notes.map(n => {
     const html = renderMarkdownText(n);
@@ -119,8 +127,8 @@ console.log(JSON.stringify(notes.map(n => {
     return {html, url: found ? found[1] : null};
 })));
 """
-    done = subprocess.run([_node(), "-e", script, json.dumps(notes)],
-                          capture_output=True, text=True, timeout=300)
+    )
+    done = subprocess.run([_node(), "-e", script, json.dumps(notes)], capture_output=True, text=True, timeout=300)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -179,17 +187,27 @@ def test_a_scheme_hidden_behind_control_characters_is_caught(template):
     through a note today. The helper is called directly, because the reason
     it holds should not be an accident of another regex."""
     source = (_TEMPLATES / template).read_text(encoding="utf-8")
-    assert "function markdownSafeUrl(" in source, (
-        f"{template} has no markdownSafeUrl; there is nothing to call")
-    script = _renderer(template) + r"""
+    assert "function markdownSafeUrl(" in source, f"{template} has no markdownSafeUrl; there is nothing to call"
+    script = (
+        _renderer(template)
+        + r"""
 const values = JSON.parse(process.argv[1]);
 console.log(JSON.stringify(values.map(v => markdownSafeUrl(v))));
 """
+    )
     done = subprocess.run(
-        [_node(), "-e", script,
-         json.dumps(["java\tscript:alert(1)", "java\nscript:alert(1)",
-                     " javascript:alert(1)", "https://example.com"])],
-        capture_output=True, text=True, timeout=300)
+        [
+            _node(),
+            "-e",
+            script,
+            json.dumps(
+                ["java\tscript:alert(1)", "java\nscript:alert(1)", " javascript:alert(1)", "https://example.com"]
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert done.returncode == 0, done.stderr
     blocked_a, blocked_b, blocked_c, allowed = json.loads(done.stdout)
 
@@ -204,11 +222,8 @@ def test_no_markdown_url_reaches_an_attribute_unchecked():
     through it too."""
     offenders = []
     for template in sorted(_TEMPLATES.rglob("*.html")):
-        for number, line in enumerate(
-                template.read_text(encoding="utf-8").splitlines(), 1):
+        for number, line in enumerate(template.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r'(?:href|src)="\$\{url\}"', line):
                 offenders.append(f"{template.name}:{number}")
 
-    assert not offenders, (
-        f"{len(offenders)} markdown link(s) put a URL straight into an "
-        f"attribute: {offenders}")
+    assert not offenders, f"{len(offenders)} markdown link(s) put a URL straight into an attribute: {offenders}"

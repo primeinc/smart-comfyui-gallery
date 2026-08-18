@@ -71,10 +71,7 @@ def detection(seed: int, dim: int = 16, embedding: np.ndarray = None) -> FaceDet
 
 
 def _insert_instances(conn, file_id, vectors, model_id="m1", model_version="v1"):
-    dets = [
-        FaceDetection(bbox=(0.0, 0.0, 0.1, 0.1), landmarks=[], det_score=0.9, embedding=v)
-        for v in vectors
-    ]
+    dets = [FaceDetection(bbox=(0.0, 0.0, 0.1, 0.1), landmarks=[], det_score=0.9, embedding=v) for v in vectors]
     return replace_faces_for_file(conn, file_id, dets, model_id, model_version, 1000.0, 2000.0)
 
 
@@ -195,9 +192,7 @@ def test_get_face_backend_stub_uses_extra_source_mapping():
     img = Image.new("RGB", (16, 16), color=(50, 60, 70))
     other = Image.new("RGB", (16, 16), color=(0, 0, 0))
     dets = [detection(seed=3)]
-    config = AIConfig(
-        face_backend="stub", extra={"face_stub_source": {image_key(img): dets}}
-    )
+    config = AIConfig(face_backend="stub", extra={"face_stub_source": {image_key(img): dets}})
     backend = get_face_backend(config)
     assert backend.detect(img) == dets
     assert backend.detect(other) == []
@@ -216,14 +211,15 @@ def test_replace_faces_keeps_other_models_rows():
 
     replace_faces_for_file(conn, "f1", [detection(seed=2)], "new-model", "v1", 1000.0, 2001.0)
     rows = conn.execute(
-        "SELECT model_id, model_version FROM ai_face_instances "
-        "WHERE file_id = ? ORDER BY model_id", ("f1",)).fetchall()
+        "SELECT model_id, model_version FROM ai_face_instances WHERE file_id = ? ORDER BY model_id", ("f1",)
+    ).fetchall()
     assert rows == [("new-model", "v1"), ("old-model", "v0")]
 
     replace_faces_for_file(conn, "f1", [detection(seed=3)], "old-model", "v1", 1000.0, 2002.0)
     rows = conn.execute(
-        "SELECT model_id, model_version FROM ai_face_instances "
-        "WHERE file_id = ? ORDER BY model_id, model_version", ("f1",)).fetchall()
+        "SELECT model_id, model_version FROM ai_face_instances WHERE file_id = ? ORDER BY model_id, model_version",
+        ("f1",),
+    ).fetchall()
     assert rows == [("new-model", "v1"), ("old-model", "v0"), ("old-model", "v1")]
 
 
@@ -242,9 +238,7 @@ def test_replace_faces_failure_mid_insert_rolls_back_prior_rows():
     with pytest.raises(IndexError):
         replace_faces_for_file(conn, "f1", [good, broken], "m1", "v1", 1000.0, 2001.0)
 
-    rows = conn.execute(
-        "SELECT face_id FROM ai_face_instances WHERE file_id = ? ORDER BY face_id", ("f1",)
-    ).fetchall()
+    rows = conn.execute("SELECT face_id FROM ai_face_instances WHERE file_id = ? ORDER BY face_id", ("f1",)).fetchall()
     assert [r[0] for r in rows] == original_ids
 
 
@@ -268,22 +262,13 @@ def test_cluster_faces_transitive_chain_merges_subthreshold_pair():
     new_cluster_ids = cluster_faces(conn, "m1", "v1", threshold=0.7, min_cluster_size=2)
     assert len(new_cluster_ids) == 1
 
-    size = conn.execute(
-        "SELECT size FROM ai_face_clusters WHERE cluster_id = ?", (new_cluster_ids[0],)
-    ).fetchone()[0]
+    size = conn.execute("SELECT size FROM ai_face_clusters WHERE cluster_id = ?", (new_cluster_ids[0],)).fetchone()[0]
     assert size == 3
 
     for fid in ("f_e1", "f_e2", "f_bridge"):
-        cid = conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
-        ).fetchone()[0]
+        cid = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)).fetchone()[0]
         assert cid == new_cluster_ids[0]
-    assert (
-        conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("f_out",)
-        ).fetchone()[0]
-        is None
-    )
+    assert conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("f_out",)).fetchone()[0] is None
 
 
 def test_cluster_faces_merged_clusters_keep_single_best_label():
@@ -305,12 +290,8 @@ def test_cluster_faces_merged_clusters_keep_single_best_label():
 
     # Run 1: high threshold keeps the two groups separate; label both.
     cluster_faces(conn, "m1", "v1", threshold=0.99, min_cluster_size=2)
-    a_cluster = conn.execute(
-        "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("a0",)
-    ).fetchone()[0]
-    b_cluster = conn.execute(
-        "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("b0",)
-    ).fetchone()[0]
+    a_cluster = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("a0",)).fetchone()[0]
+    b_cluster = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", ("b0",)).fetchone()[0]
     assert a_cluster is not None
     assert b_cluster is not None
     assert a_cluster != b_cluster
@@ -324,9 +305,7 @@ def test_cluster_faces_merged_clusters_keep_single_best_label():
     new_cluster_ids = cluster_faces(conn, "m1", "v1", threshold=0.95, min_cluster_size=2)
     assert len(new_cluster_ids) == 1
 
-    labels = [
-        r[0] for r in conn.execute("SELECT label FROM ai_face_clusters").fetchall()
-    ]
+    labels = [r[0] for r in conn.execute("SELECT label FROM ai_face_clusters").fetchall()]
     assert labels == ["Alice"]
 
 
@@ -369,14 +348,10 @@ def test_cluster_faces_inconsistent_dims_raises_and_rolls_back():
         cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=2)
 
     # Rollback restored both the cluster row and the instances' cluster_id.
-    remaining = [
-        r[0] for r in conn.execute("SELECT cluster_id FROM ai_face_clusters").fetchall()
-    ]
+    remaining = [r[0] for r in conn.execute("SELECT cluster_id FROM ai_face_clusters").fetchall()]
     assert remaining == ids_run1
     for fid in ("g0", "g1"):
-        cid = conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
-        ).fetchone()[0]
+        cid = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)).fetchone()[0]
         assert cid == ids_run1[0]
 
 
@@ -388,14 +363,10 @@ def test_cluster_faces_params_note_recorded_in_cluster_provenance():
     _insert_instances(conn, "p0", [vecs[0]])
     _insert_instances(conn, "p1", [vecs[1]])
 
-    ids = cluster_faces(
-        conn, "m1", "v1", threshold=0.9, min_cluster_size=2, params_note="tuned-v2"
-    )
+    ids = cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=2, params_note="tuned-v2")
     assert len(ids) == 1
 
-    params_json = conn.execute(
-        "SELECT params FROM ai_face_clusters WHERE cluster_id = ?", (ids[0],)
-    ).fetchone()[0]
+    params_json = conn.execute("SELECT params FROM ai_face_clusters WHERE cluster_id = ?", (ids[0],)).fetchone()[0]
     params = json.loads(params_json)
     assert params.pop("graph_backend") in {"torch-cuda", "faiss-cpu", "numpy"}
     assert params == {

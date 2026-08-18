@@ -21,18 +21,21 @@ def upload_target(smartgallery_app):
     """(client, folder_key, folder_path) for the gallery root."""
     folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
     root = smartgallery_app.BASE_OUTPUT_PATH
-    key = next((k for k, v in folders.items()
-                if os.path.normpath(v["path"]) == os.path.normpath(root)), None)
+    key = next((k for k, v in folders.items() if os.path.normpath(v["path"]) == os.path.normpath(root)), None)
     if key is None:
         pytest.skip("gallery root is not exposed as a folder key")
     return smartgallery_app.app.test_client(), key, root
 
 
 def _upload(client, key, name, body=b"uploaded bytes"):
-    return client.post("/galleryout/upload", data={
-        "folder_key": key,
-        "files": (io.BytesIO(body), name),
-    }, content_type="multipart/form-data")
+    return client.post(
+        "/galleryout/upload",
+        data={
+            "folder_key": key,
+            "files": (io.BytesIO(body), name),
+        },
+        content_type="multipart/form-data",
+    )
 
 
 def _cleanup(folder, *names):
@@ -67,16 +70,13 @@ def test_upload_never_overwrites_an_existing_file(upload_target):
         assert resp.status_code == 200
 
         with open(existing, "rb") as fh:
-            assert fh.read() == b"ORIGINAL CONTENT", (
-                "the upload overwrote a file already in the folder")
-        siblings = [f for f in os.listdir(folder)
-                    if f.startswith("upl_clash(") and f.endswith(".png")]
+            assert fh.read() == b"ORIGINAL CONTENT", "the upload overwrote a file already in the folder"
+        siblings = [f for f in os.listdir(folder) if f.startswith("upl_clash(") and f.endswith(".png")]
         assert siblings, f"the uploaded file was dropped entirely: {os.listdir(folder)}"
         with open(os.path.join(folder, siblings[0]), "rb") as fh:
             assert fh.read() == b"INCOMING CONTENT"
     finally:
-        _cleanup(folder, "upl_clash.png",
-                 *[f for f in os.listdir(folder) if f.startswith("upl_clash(")])
+        _cleanup(folder, "upl_clash.png", *[f for f in os.listdir(folder) if f.startswith("upl_clash(")])
 
 
 def test_upload_refuses_a_disallowed_extension(upload_target):
@@ -104,16 +104,24 @@ def test_upload_sanitises_a_traversing_filename(upload_target):
 
 def test_upload_rejects_an_unknown_destination(smartgallery_app):
     client = smartgallery_app.app.test_client()
-    resp = client.post("/galleryout/upload", data={
-        "folder_key": "no_such_folder",
-        "files": (io.BytesIO(b"x"), "upl_nowhere.png"),
-    }, content_type="multipart/form-data")
+    resp = client.post(
+        "/galleryout/upload",
+        data={
+            "folder_key": "no_such_folder",
+            "files": (io.BytesIO(b"x"), "upl_nowhere.png"),
+        },
+        content_type="multipart/form-data",
+    )
     assert resp.status_code == 404
 
 
 def test_upload_without_a_folder_key_is_rejected(smartgallery_app):
     client = smartgallery_app.app.test_client()
-    resp = client.post("/galleryout/upload", data={
-        "files": (io.BytesIO(b"x"), "upl_nokey.png"),
-    }, content_type="multipart/form-data")
+    resp = client.post(
+        "/galleryout/upload",
+        data={
+            "files": (io.BytesIO(b"x"), "upl_nokey.png"),
+        },
+        content_type="multipart/form-data",
+    )
     assert resp.status_code == 400

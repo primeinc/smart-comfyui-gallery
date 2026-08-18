@@ -62,13 +62,11 @@ def _purge(smartgallery_app):
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two images in the gallery root, scanned in-process."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     root = smartgallery_app.BASE_OUTPUT_PATH
     os.makedirs(root, exist_ok=True)
     made = []
-    for name, colour in ((f"{_PREFIX}alpha.png", (210, 40, 40)),
-                         (f"{_PREFIX}beta.png", (40, 210, 40))):
+    for name, colour in ((f"{_PREFIX}alpha.png", (210, 40, 40)), (f"{_PREFIX}beta.png", (40, 210, 40))):
         path = os.path.join(root, name)
         Image.new("RGB", (80, 60), colour).save(path)
         made.append((name, path))
@@ -77,8 +75,10 @@ def library(smartgallery_app, monkeypatch):
     conn = smartgallery_app.get_db_connection()
     try:
         smartgallery_app.full_sync_database(conn)
-        ids = {r["name"]: r["id"] for r in conn.execute(
-            f"SELECT id, name FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        ids = {
+            r["name"]: r["id"]
+            for r in conn.execute(f"SELECT id, name FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        }
     finally:
         conn.close()
 
@@ -97,9 +97,9 @@ def client(smartgallery_app):
 
 def _rate_as_browser(client, file_id, rating):
     """Exactly what the page sends with no login: the fixed 'admin' identity."""
-    resp = client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": file_id, "rating": rating,
-                             "client_uuid": "admin"})
+    resp = client.post(
+        "/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": rating, "client_uuid": "admin"}
+    )
     assert resp.status_code == 200, resp.get_data(as_text=True)
     return resp
 
@@ -111,9 +111,10 @@ def test_a_rating_is_stored_under_the_identity_the_page_uses(client, library):
 
     conn = get_db_connection()
     try:
-        rows = [(r[0], r[1]) for r in conn.execute(
-            "SELECT client_uuid, rating FROM file_ratings WHERE file_id = ?",
-            (alpha,)).fetchall()]
+        rows = [
+            (r[0], r[1])
+            for r in conn.execute("SELECT client_uuid, rating FROM file_ratings WHERE file_id = ?", (alpha,)).fetchall()
+        ]
     finally:
         conn.close()
 
@@ -134,10 +135,8 @@ def test_my_ratings_only_still_shows_the_files_i_rated(client, library):
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    assert f"{_PREFIX}alpha.png" in html, (
-        "a file the user rated is missing from their own ratings view")
-    assert f"{_PREFIX}beta.png" not in html, (
-        "an unrated file leaked into the rated-only view")
+    assert f"{_PREFIX}alpha.png" in html, "a file the user rated is missing from their own ratings view"
+    assert f"{_PREFIX}beta.png" not in html, "an unrated file leaked into the rated-only view"
 
 
 def test_unrated_means_not_rated_by_me(client, library):
@@ -152,5 +151,4 @@ def test_unrated_means_not_rated_by_me(client, library):
     html = client.get("/galleryout/view/_root_?sort_by=unrated").get_data(as_text=True)
 
     assert f"{_PREFIX}beta.png" in html, "an unrated file is missing from the unrated view"
-    assert f"{_PREFIX}alpha.png" not in html, (
-        "a file the user already rated came back as unrated")
+    assert f"{_PREFIX}alpha.png" not in html, "a file the user already rated came back as unrated"

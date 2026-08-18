@@ -145,8 +145,7 @@ def test_a_rewrite_in_place_keeps_its_ratings():
     assert not smartgallery.looks_like_a_renamed_root(db, db - disk, disk - db)
 
 
-def test_a_file_that_really_went_is_still_removed(smartgallery_app,
-                                                  a_library_of_its_own):
+def test_a_file_that_really_went_is_still_removed(smartgallery_app, a_library_of_its_own):
     """The control this file most needs, and the only one that can run
     against the build before the change: the guard must not stop ordinary
     cleanup. A scan that keeps rows for pictures that are gone fills the
@@ -168,9 +167,9 @@ def test_a_file_that_really_went_is_still_removed(smartgallery_app,
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-            "VALUES (?,?,?,?,?)",
-            (ghost_id, vanished, 1700000000.0, "deleted.png", "image"))
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+            (ghost_id, vanished, 1700000000.0, "deleted.png", "image"),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -180,19 +179,18 @@ def test_a_file_that_really_went_is_still_removed(smartgallery_app,
         conn = smartgallery_app.get_db_connection()
         try:
             smartgallery_app.full_sync_database(conn)
-            left = conn.execute("SELECT COUNT(*) FROM files WHERE id = ?",
-                                (ghost_id,)).fetchone()[0]
+            left = conn.execute("SELECT COUNT(*) FROM files WHERE id = ?", (ghost_id,)).fetchone()[0]
         finally:
             conn.close()
 
         assert left == 0, (
             "a row for a picture that is genuinely gone survived the scan; "
-            "the gallery will list something that opens nothing")
+            "the gallery will list something that opens nothing"
+        )
     finally:
         conn = smartgallery_app.get_db_connection()
         try:
-            conn.execute("DELETE FROM files WHERE path LIKE ?",
-                         ("%gone_probe%",))
+            conn.execute("DELETE FROM files WHERE path LIKE ?", ("%gone_probe%",))
             conn.commit()
         finally:
             conn.close()
@@ -206,21 +204,23 @@ def test_the_scan_asks_before_it_deletes(gallery_tree):
 
     tree = gallery_tree
 
-    fn = next((node for node in ast.walk(tree)
-               if isinstance(node, ast.FunctionDef)
-               and node.name == "full_sync_database"), None)
+    fn = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "full_sync_database"),
+        None,
+    )
     assert fn is not None, "full_sync_database is gone"
 
-    called = [node for node in ast.walk(fn)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-              and node.func.id == "looks_like_a_renamed_root"]
-    assert called, (
-        "the scan works out what to delete without asking whether the "
-        "library simply moved")
+    called = [
+        node
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "looks_like_a_renamed_root"
+    ]
+    assert called, "the scan works out what to delete without asking whether the library simply moved"
 
 
-def test_the_library_survives_a_scan_at_the_new_address(smartgallery_app,
-                                                        a_library_of_its_own):
+def test_the_library_survives_a_scan_at_the_new_address(smartgallery_app, a_library_of_its_own):
     """End to end through the real sync: rate a picture, reach the folder
     by another spelling, scan, and the rating must still be there."""
     root, _kept = a_library_of_its_own
@@ -235,18 +235,17 @@ def test_the_library_survives_a_scan_at_the_new_address(smartgallery_app,
             with open(target, "wb") as fh:
                 fh.write(b"x")
             # recorded under a spelling the scan will not produce
-            recorded = target.replace(os.sep, "/").replace(
-                "rootmove_probe", "ROOTMOVE_PROBE")
+            recorded = target.replace(os.sep, "/").replace("rootmove_probe", "ROOTMOVE_PROBE")
             file_id = __import__("hashlib").md5(recorded.encode()).hexdigest()
             ids.append(file_id)
             conn.execute(
-                "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-                "VALUES (?,?,?,?,?)",
-                (file_id, recorded, os.path.getmtime(target), name, "image"))
+                "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+                (file_id, recorded, os.path.getmtime(target), name, "image"),
+            )
             conn.execute(
-                "INSERT OR REPLACE INTO file_ratings "
-                "(file_id, client_uuid, rating) VALUES (?,?,?)",
-                (file_id, "someone", 5))
+                "INSERT OR REPLACE INTO file_ratings (file_id, client_uuid, rating) VALUES (?,?,?)",
+                (file_id, "someone", 5),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -254,30 +253,25 @@ def test_the_library_survives_a_scan_at_the_new_address(smartgallery_app,
     try:
         conn = smartgallery_app.get_db_connection()
         try:
-            before = conn.execute(
-                "SELECT COUNT(*) FROM file_ratings WHERE file_id IN (?,?)",
-                ids).fetchone()[0]
+            before = conn.execute("SELECT COUNT(*) FROM file_ratings WHERE file_id IN (?,?)", ids).fetchone()[0]
             assert before == 2, "the fixture did not record the ratings"
 
             smartgallery_app.get_dynamic_folder_config(force_refresh=True)
             smartgallery_app.full_sync_database(conn)
 
-            after = conn.execute(
-                "SELECT COUNT(*) FROM file_ratings WHERE file_id IN (?,?)",
-                ids).fetchone()[0]
+            after = conn.execute("SELECT COUNT(*) FROM file_ratings WHERE file_id IN (?,?)", ids).fetchone()[0]
         finally:
             conn.close()
 
         assert after == 2, (
             "a scan that found the same pictures under a different spelling "
-            "of the folder deleted the rows, and the ratings went with them")
+            "of the folder deleted the rows, and the ratings went with them"
+        )
     finally:
         conn = smartgallery_app.get_db_connection()
         try:
-            conn.execute("DELETE FROM files WHERE path LIKE ?",
-                         ("%OOTMOVE_PROBE%",))
-            conn.execute("DELETE FROM files WHERE path LIKE ?",
-                         ("%ootmove_probe%",))
+            conn.execute("DELETE FROM files WHERE path LIKE ?", ("%OOTMOVE_PROBE%",))
+            conn.execute("DELETE FROM files WHERE path LIKE ?", ("%ootmove_probe%",))
             conn.commit()
         finally:
             conn.close()

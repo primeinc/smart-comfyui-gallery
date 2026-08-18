@@ -44,6 +44,7 @@ def connect(db_path, row_factory=sqlite3.Row, **kwargs):
         conn.row_factory = row_factory
     return conn
 
+
 # Idempotent statements executed in order by init_schema().
 DDL = [
     # --- content identity / near-duplicates (no GPU required) ---
@@ -61,7 +62,6 @@ DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_ai_hashes_sha256 ON ai_file_hashes(sha256);",
     "CREATE INDEX IF NOT EXISTS idx_ai_hashes_phash ON ai_file_hashes(phash64);",
-
     # --- embedding spaces (semantic and visual are SEPARATE spaces) ---
     """
     CREATE TABLE IF NOT EXISTS ai_embeddings (
@@ -77,9 +77,7 @@ DDL = [
         PRIMARY KEY (file_id, space)
     );
     """,
-    ("CREATE INDEX IF NOT EXISTS idx_ai_emb_space "
-    "ON ai_embeddings(space, model_id, model_version);"),
-
+    ("CREATE INDEX IF NOT EXISTS idx_ai_emb_space ON ai_embeddings(space, model_id, model_version);"),
     # --- face instances (one row per detected face; multi-face assets OK) ---
     """
     CREATE TABLE IF NOT EXISTS ai_face_clusters (
@@ -122,9 +120,7 @@ DDL = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_ai_faces_file ON ai_face_instances(file_id);",
-    ("CREATE INDEX IF NOT EXISTS idx_ai_faces_cluster "
-    "ON ai_face_instances(cluster_id);"),
-
+    ("CREATE INDEX IF NOT EXISTS idx_ai_faces_cluster ON ai_face_instances(cluster_id);"),
     # --- generation review (typed findings; masks only when localizable) ---
     """
     CREATE TABLE IF NOT EXISTS ai_reviews (
@@ -172,8 +168,7 @@ DDL = [
                AND points IS NULL AND mask_path IS NULL))
     );
     """,
-    ("CREATE INDEX IF NOT EXISTS idx_ai_findings_file "
-    "ON ai_review_findings(file_id, type);"),
+    ("CREATE INDEX IF NOT EXISTS idx_ai_findings_file ON ai_review_findings(file_id, type);"),
     """
     CREATE TABLE IF NOT EXISTS ai_review_alignment (
         element_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,9 +199,7 @@ DDL = [
                AND bbox_w IS NULL AND bbox_h IS NULL AND mask_path IS NULL))
     );
     """,
-    ("CREATE INDEX IF NOT EXISTS idx_ai_alignment_review "
-    "ON ai_review_alignment(review_id, ordinal);"),
-
+    ("CREATE INDEX IF NOT EXISTS idx_ai_alignment_review ON ai_review_alignment(review_id, ordinal);"),
     # --- human feedback (exportable for reviewer tuning / LoRA work) ---
     """
     CREATE TABLE IF NOT EXISTS ai_feedback (
@@ -224,7 +217,6 @@ DDL = [
         exported_at REAL
     );
     """,
-
     # --- scan bookkeeping: records that a (file, kind, model) was scanned
     # at a given source mtime, INCLUDING zero-result scans (a file with no
     # faces must not be re-scanned every cycle). `scanned_at` is the
@@ -254,7 +246,6 @@ DDL = [
         PRIMARY KEY (file_id, kind, model_id, model_version)
     );
     """,
-
     # --- small key/value state (active model versions, measured thresholds) ---
     """
     CREATE TABLE IF NOT EXISTS ai_dam_state (
@@ -302,11 +293,9 @@ def _migrate_scan_log_input_key(conn) -> None:
     That is the intended effect, not a side effect: those rows were recorded
     under a key that could not see the prompt, so none of them can be
     trusted to be current."""
-    cols = {row[1] for row in conn.execute(
-        "PRAGMA table_info(ai_scan_log)").fetchall()}
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(ai_scan_log)").fetchall()}
     if "input_key" not in cols:
-        conn.execute(
-            "ALTER TABLE ai_scan_log ADD COLUMN input_key TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE ai_scan_log ADD COLUMN input_key TEXT NOT NULL DEFAULT ''")
 
 
 def _migrate_face_attributes(conn) -> None:
@@ -315,11 +304,15 @@ def _migrate_face_attributes(conn) -> None:
     aggregatable in SQL (age/sex from genderage, pitch/yaw/roll from the
     3D landmark head); `attributes` JSON carries the structured geometry
     (normalized landmark arrays). All nullable: existing rows stay valid."""
-    cols = {row[1] for row in conn.execute(
-        "PRAGMA table_info(ai_face_instances)").fetchall()}
-    for name, decl in (("attributes", "TEXT"), ("age", "INTEGER"),
-                       ("sex", "TEXT"), ("pose_pitch", "REAL"),
-                       ("pose_yaw", "REAL"), ("pose_roll", "REAL")):
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(ai_face_instances)").fetchall()}
+    for name, decl in (
+        ("attributes", "TEXT"),
+        ("age", "INTEGER"),
+        ("sex", "TEXT"),
+        ("pose_pitch", "REAL"),
+        ("pose_yaw", "REAL"),
+        ("pose_roll", "REAL"),
+    ):
         if name not in cols:
             conn.execute(f"ALTER TABLE ai_face_instances ADD COLUMN {name} {decl}")
 
@@ -331,9 +324,7 @@ def _migrate_scan_log_kinds(conn) -> None:
     or a PK, but the table is derived bookkeeping, so a rename/copy/drop
     rebuild is safe. Detection reads the stored DDL — deterministic, no
     probe writes."""
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'"
-    ).fetchone()
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'").fetchone()
     if row is None:
         return
     current = "'masks'" in row[0] and "kind, model_id, model_version" in row[0]
@@ -355,7 +346,8 @@ def _migrate_scan_log_kinds(conn) -> None:
         SELECT file_id, kind, model_id, model_version, source_mtime,
                scanned_at, result_count
         FROM ai_scan_log_old
-        """)
+        """
+    )
     conn.execute("DROP TABLE ai_scan_log_old")
 
 

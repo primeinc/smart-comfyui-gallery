@@ -137,9 +137,7 @@ def provision_groups_for(config: AIConfig) -> list:
         return []
     missing = []
     for group in provisioning.resolve_groups(wanted):
-        weights_missing = any(
-            not provisioning.artifact_present(config.models_dir, a)
-            for a in group.artifacts)
+        weights_missing = any(not provisioning.artifact_present(config.models_dir, a) for a in group.artifacts)
         if weights_missing or provisioning.runtime_missing(group):
             missing.append(group.name)
     return missing
@@ -182,6 +180,7 @@ class _ClickConsoleHandler(logging.Handler):
         if not self._plain:
             try:
                 import click
+
                 color = self._LEVEL_COLORS.get(record.levelno)
                 styled = click.style(message, fg=color) if color else message
                 click.echo(f"{click.style(stamp, dim=True)} {styled}")
@@ -200,10 +199,7 @@ def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
     /index path stores faces OUTSIDE the worker's scan loop; without this
     marker those faces would stay unclustered until some other file's
     face scan happened to trigger clustering."""
-    AIWorker._set_state(
-        conn,
-        f"faces_cluster_pending:{backend.model_id}:{backend.model_version}",
-        "1")
+    AIWorker._set_state(conn, f"faces_cluster_pending:{backend.model_id}:{backend.model_version}", "1")
 
 
 def stage_input_key(*parts: str | None) -> str:
@@ -226,9 +222,16 @@ def stage_input_key(*parts: str | None) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:32]
 
 
-def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
-                source_mtime: float, now: float, result_count: int,
-                input_key: str = "") -> None:
+def record_scan(
+    conn: sqlite3.Connection,
+    file_id: str,
+    kind: str,
+    backend,
+    source_mtime: float,
+    now: float,
+    result_count: int,
+    input_key: str = "",
+) -> None:
     """Upsert the (file, kind, model) scan-log row recording an attempt at
     `source_mtime` under `input_key`; `scanned_at` is the last-run stamp and
     `result_count` of -1 marks a failed attempt. Model-scoped on purpose:
@@ -252,8 +255,7 @@ def record_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
             result_count = excluded.result_count,
             input_key = excluded.input_key
         """,
-        (file_id, kind, backend.model_id, backend.model_version,
-         source_mtime, now, result_count, input_key),
+        (file_id, kind, backend.model_id, backend.model_version, source_mtime, now, result_count, input_key),
     )
     conn.commit()
 
@@ -308,24 +310,20 @@ def indexing_totals(conn: sqlite3.Connection) -> dict:
     re-queues files without resetting these counters) — meant for progress
     display in /status, the panel, and the cycle log, never scheduling."""
     type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
+
     def one(sql, params=()):
         return conn.execute(sql, params).fetchone()[0]
+
     return {
         "files_total": one("SELECT COUNT(*) FROM files"),
-        "visual_files_total": one(
-            f"SELECT COUNT(*) FROM files WHERE type IN ({type_placeholders})",
-            _VISUAL_TYPES),
+        "visual_files_total": one(f"SELECT COUNT(*) FROM files WHERE type IN ({type_placeholders})", _VISUAL_TYPES),
         "hashed": one("SELECT COUNT(*) FROM ai_file_hashes"),
-        "embeddings_semantic": one(
-            "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,)),
-        "embeddings_visual": one(
-            "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)),
+        "embeddings_semantic": one("SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,)),
+        "embeddings_visual": one("SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)),
         # DISTINCT: scan rows are model-scoped, and progress means "files a
         # detector has reached", not rows-per-pipeline.
-        "faces_scanned": one(
-            "SELECT COUNT(DISTINCT file_id) FROM ai_scan_log WHERE kind = 'faces'"),
-        "reviews_scanned": one(
-            "SELECT COUNT(DISTINCT file_id) FROM ai_scan_log WHERE kind = 'review'"),
+        "faces_scanned": one("SELECT COUNT(DISTINCT file_id) FROM ai_scan_log WHERE kind = 'faces'"),
+        "reviews_scanned": one("SELECT COUNT(DISTINCT file_id) FROM ai_scan_log WHERE kind = 'review'"),
     }
 
 
@@ -350,7 +348,7 @@ def _fetch_candidates(
     CHUNK = 500
     rows: list = []
     for start in range(0, len(ids), CHUNK):
-        chunk = ids[start:start + CHUNK]
+        chunk = ids[start : start + CHUNK]
         id_placeholders = ",".join("?" for _ in chunk)
         query = f"SELECT id, path, mtime, type FROM files WHERE id IN ({id_placeholders})"
         params: list = list(chunk)
@@ -376,8 +374,7 @@ class AIWorker:
     resolves it to None) are skipped entirely for that cycle.
     """
 
-    def __init__(self, config: AIConfig, db_path: str, poll_interval: float = 20.0,
-                 batch_size: int = 50):
+    def __init__(self, config: AIConfig, db_path: str, poll_interval: float = 20.0, batch_size: int = 50):
         """`poll_interval` is the sleep between wake cycles in seconds; `batch_size`
         is the per-cycle file budget shared across all stages combined."""
         self.config = config
@@ -423,7 +420,7 @@ class AIWorker:
         # ride along every `_review_interval` cycles while the crawl is
         # busy, and the interval adapts to the measured per-review cost.
         self._review_interval = 1
-        self._cycles_since_review = 10 ** 9  # first cycle always eligible
+        self._cycles_since_review = 10**9  # first cycle always eligible
         self._last_review_seconds: float | None = None
         # stage -> smoothed seconds/item, measured passively from real
         # cycle work (see _CYCLE_TARGET_SECONDS above).
@@ -484,14 +481,19 @@ class AIWorker:
             for idx, card in enumerate(gpu.get("gpus") or []):
                 _logger.info(
                     "[AI] GPU%d: %s (compute capability %s, %s)",
-                    idx, card.get("name") or "unknown NVIDIA device",
-                    card.get("compute_capability"), card.get("vram") or "?")
+                    idx,
+                    card.get("name") or "unknown NVIDIA device",
+                    card.get("compute_capability"),
+                    card.get("vram") or "?",
+                )
             _logger.info(
                 "[AI] driver %s (CUDA %s) -> torch wheels %s; device rule: "
                 "most VRAM, newest generation on ties (AI_DAM_DEVICE=cuda:N "
                 "overrides)",
-                gpu.get("driver") or "?", gpu.get("driver_cuda") or "?",
-                (gpu.get("torch_index") or "").rsplit("/", 1)[-1] or "?")
+                gpu.get("driver") or "?",
+                gpu.get("driver_cuda") or "?",
+                (gpu.get("torch_index") or "").rsplit("/", 1)[-1] or "?",
+            )
         else:
             _logger.info("[AI] no NVIDIA GPU detected — CPU wheels/devices")
         self._maybe_start_auto_provision()
@@ -512,8 +514,7 @@ class AIWorker:
             return
         self._provision_attempts += 1
         self._provision_thread = None
-        _logger.info("[AIWorker] retrying auto-provisioning (attempt %d of 3)",
-                     self._provision_attempts)
+        _logger.info("[AIWorker] retrying auto-provisioning (attempt %d of 3)", self._provision_attempts)
         self._maybe_start_auto_provision()
 
     def _maybe_start_auto_provision(self) -> None:
@@ -537,8 +538,8 @@ class AIWorker:
         self._provision_started_at = time.monotonic()
         self.provision_state = {"state": "downloading", "groups": list(missing)}
         self._provision_thread = threading.Thread(
-            target=self._provision_worker, args=(list(missing),),
-            name="AIWorkerProvision", daemon=True)
+            target=self._provision_worker, args=(list(missing),), name="AIWorkerProvision", daemon=True
+        )
         self._provision_thread.start()
 
     def _on_provision_event(self, event: dict) -> None:
@@ -552,16 +553,16 @@ class AIWorker:
         item = event.get("item", "")
         if event["phase"] == "start":
             state["current"] = item
-            state["detail"] = ("installing package" if event["kind"] == "runtime"
-                              else f"downloading ({event.get('size', '?')})")
+            state["detail"] = (
+                "installing package" if event["kind"] == "runtime" else f"downloading ({event.get('size', '?')})"
+            )
             self._provision_next_log_pct = 10
             _logger.info("[AIWorker] provisioning %s: %s", state["detail"], item)
         elif event["phase"] == "bytes":
             done, total = event["bytes_done"], event.get("bytes_total")
             if total:
                 pct = int(done * 100 / total)
-                state["detail"] = (f"{done / 1e6:.1f} MB / {total / 1e6:.1f} MB "
-                                   f"({pct}%)")
+                state["detail"] = f"{done / 1e6:.1f} MB / {total / 1e6:.1f} MB ({pct}%)"
                 if pct >= self._provision_next_log_pct:
                     self._provision_next_log_pct = pct + 10
                     _logger.info("[AIWorker] %s: %s", item, state["detail"])
@@ -580,24 +581,31 @@ class AIWorker:
         everything activates in this process without a restart. Network
         failure (e.g. an egress-denied host) leaves the layer degraded
         exactly as if nothing had been provisioned."""
-        _logger.info("[AIWorker] auto-provisioning missing capability "
-                     "group(s): %s (set AI_DAM_AUTO_PROVISION=false to opt out)",
-                     ", ".join(groups))
+        _logger.info(
+            "[AIWorker] auto-provisioning missing capability group(s): %s (set AI_DAM_AUTO_PROVISION=false to opt out)",
+            ", ".join(groups),
+        )
         try:
             result = provisioning.provision(
-                self.config.models_dir, groups,
+                self.config.models_dir,
+                groups,
                 log=lambda msg: _logger.info("[AIWorker] provision %s", msg),
-                progress=self._on_provision_event)
+                progress=self._on_provision_event,
+            )
             self.provision_state = {
-                "state": "done", "groups": list(groups),
+                "state": "done",
+                "groups": list(groups),
                 "done": self.provision_state.get("done", []),
             }
-            _logger.info("[AIWorker] provisioning complete: %d downloaded, "
-                         "%d already present",
-                         len(result["downloaded"]), len(result["skipped"]))
+            _logger.info(
+                "[AIWorker] provisioning complete: %d downloaded, %d already present",
+                len(result["downloaded"]),
+                len(result["skipped"]),
+            )
         except Exception as exc:  # downloads may fail; never fatal
             self.provision_state = {
-                "state": f"failed: {exc}", "groups": list(groups),
+                "state": f"failed: {exc}",
+                "groups": list(groups),
                 "done": self.provision_state.get("done", []),
             }
             self._note_error("provision:download", f"auto-provision failed: {exc}")
@@ -610,6 +618,7 @@ class AIWorker:
             self._backend_failed_at.clear()
         try:
             from smartgallery_ai import service as _service
+
             _service.invalidate_backend_probe_cache()
         except Exception:  # status cache refresh is best-effort
             pass
@@ -695,30 +704,32 @@ class AIWorker:
             self._maybe_retry_provision()
             self._process_priority_requests(conn)
 
-            hash_quota = self._paced_quota("hash", _CYCLE_TARGET_SECONDS,
-                                            self.batch_size)
+            hash_quota = self._paced_quota("hash", _CYCLE_TARGET_SECONDS, self.batch_size)
             t0 = time.monotonic()
             hashed = self._process_hashes(conn, hash_quota)
             self._note_pace("hash", time.monotonic() - t0, hashed)
 
             fast_stages = []
-            semantic_backend = self._backend("semantic",
-                                             embedders.get_semantic_backend)
+            semantic_backend = self._backend("semantic", embedders.get_semantic_backend)
             if semantic_backend is not None:
-                fast_stages.append(("semantic", lambda limit: self._process_embedding_space(
-                    conn, semantic_backend, SPACE_SEMANTIC, limit)))
+                fast_stages.append(
+                    (
+                        "semantic",
+                        lambda limit: self._process_embedding_space(conn, semantic_backend, SPACE_SEMANTIC, limit),
+                    )
+                )
             else:
                 self._note_skip(skips, "semantic", self.config.semantic_backend)
             visual_backend = self._backend("visual", embedders.get_visual_backend)
             if visual_backend is not None:
-                fast_stages.append(("visual", lambda limit: self._process_embedding_space(
-                    conn, visual_backend, SPACE_VISUAL, limit)))
+                fast_stages.append(
+                    ("visual", lambda limit: self._process_embedding_space(conn, visual_backend, SPACE_VISUAL, limit))
+                )
             else:
                 self._note_skip(skips, "visual", self.config.visual_backend)
             face_backend = self._backend("face", faces.get_face_backend)
             if face_backend is not None:
-                fast_stages.append(("faces", lambda limit: self._process_faces(
-                    conn, face_backend, limit)))
+                fast_stages.append(("faces", lambda limit: self._process_faces(conn, face_backend, limit)))
             else:
                 self._note_skip(skips, "faces", self.config.face_backend)
 
@@ -729,20 +740,17 @@ class AIWorker:
             budget -= fast_consumed
 
             if budget > 0:
-                segmenter = self._backend("segmenter",
-                                          review.get_segmenter_backend)
+                segmenter = self._backend("segmenter", review.get_segmenter_backend)
                 if segmenter is not None:
                     budget -= self._process_masks(conn, segmenter, budget)
                 else:
                     self._note_skip(skips, "masks", self.config.segmenter_backend)
 
             self._cycles_since_review += 1
-            critic_backend = self._backend("critic",
-                                           review.get_reviewer)
+            critic_backend = self._backend("critic", review.get_reviewer)
             if critic_backend is None:
                 self._note_skip(skips, "reviews", self.config.critic_backend)
-            elif (fast_consumed == 0
-                    or self._cycles_since_review >= self._review_interval):
+            elif fast_consumed == 0 or self._cycles_since_review >= self._review_interval:
                 n = max(1, self.batch_size // 10) if fast_consumed == 0 else 1
                 t0 = time.monotonic()
                 reviewed = self._process_reviews(conn, critic_backend, n)
@@ -750,26 +758,19 @@ class AIWorker:
                     per_review = (time.monotonic() - t0) / reviewed
                     self._last_review_seconds = per_review
                     if per_review > _REVIEW_SLOW_SECONDS:
-                        self._review_interval = min(
-                            max(2, self._review_interval * 2),
-                            _REVIEW_MAX_INTERVAL)
+                        self._review_interval = min(max(2, self._review_interval * 2), _REVIEW_MAX_INTERVAL)
                     else:
                         self._review_interval = 1
                     self._cycles_since_review = 0
             elif self.config.critic_backend not in ("none", "stub"):
-                last = (f"{self._last_review_seconds:.0f}s/review"
-                        if self._last_review_seconds else "unmeasured")
-                skips.setdefault(
-                    "reviews",
-                    f"paced 1 per {self._review_interval} cycles ({last})")
+                last = f"{self._last_review_seconds:.0f}s/review" if self._last_review_seconds else "unmeasured"
+                skips.setdefault("reviews", f"paced 1 per {self._review_interval} cycles ({last})")
 
             self._sweep_orphaned_masks(conn)
             self._log_cycle_progress(conn, stats_before, skips)
             # Exhausted hash budget or exhausted stage budget both mean the
             # backlog continues; the loop skips its sleep and keeps going.
-            self._backlog_remaining = (
-                self.batch_size > 0
-                and (hashed >= hash_quota or budget <= 0))
+            self._backlog_remaining = self.batch_size > 0 and (hashed >= hash_quota or budget <= 0)
         finally:
             conn.close()
 
@@ -782,9 +783,7 @@ class AIWorker:
             return
         per_item = elapsed / items
         old = self._stage_pace.get(stage)
-        self._stage_pace[stage] = (
-            per_item if old is None
-            else old * _PACE_EMA_KEEP + per_item * (1 - _PACE_EMA_KEEP))
+        self._stage_pace[stage] = per_item if old is None else old * _PACE_EMA_KEEP + per_item * (1 - _PACE_EMA_KEEP)
 
     def _paced_quota(self, stage: str, time_slice: float, cap: int) -> int:
         """Items that fit `time_slice` at the stage's measured pace, never
@@ -818,9 +817,7 @@ class AIWorker:
 
         def offer(name, run_stage):
             nonlocal consumed
-            take = min(count_quota,
-                       self._paced_quota(name, time_slice, count_quota),
-                       budget - consumed)
+            take = min(count_quota, self._paced_quota(name, time_slice, count_quota), budget - consumed)
             if take <= 0:
                 return False
             t0 = time.monotonic()
@@ -831,8 +828,7 @@ class AIWorker:
 
         hungry = [(n, r) for n, r in stages if offer(n, r)]
         while consumed < budget and hungry and time.monotonic() < deadline:
-            hungry = [(n, r) for n, r in hungry
-                      if consumed < budget and offer(n, r)]
+            hungry = [(n, r) for n, r in hungry if consumed < budget and offer(n, r)]
         return consumed
 
     def _note_skip(self, skips: dict, stage: str, selector: str) -> None:
@@ -855,12 +851,10 @@ class AIWorker:
             self._process_hashes(conn, 1, only_file_id=file_id)
             semantic = self._backend("semantic", embedders.get_semantic_backend)
             if semantic is not None:
-                self._process_embedding_space(conn, semantic, SPACE_SEMANTIC, 1,
-                                              only_file_id=file_id)
+                self._process_embedding_space(conn, semantic, SPACE_SEMANTIC, 1, only_file_id=file_id)
             visual = self._backend("visual", embedders.get_visual_backend)
             if visual is not None:
-                self._process_embedding_space(conn, visual, SPACE_VISUAL, 1,
-                                              only_file_id=file_id)
+                self._process_embedding_space(conn, visual, SPACE_VISUAL, 1, only_file_id=file_id)
             face_backend = self._backend("face", faces.get_face_backend)
             if face_backend is not None:
                 self._process_faces(conn, face_backend, 1, only_file_id=file_id)
@@ -868,15 +862,16 @@ class AIWorker:
             if critic is not None:
                 self._process_reviews(conn, critic, 1, only_file_id=file_id)
 
-    def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict,
-                            skips: dict | None = None) -> None:
+    def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict, skips: dict | None = None) -> None:
         """One INFO line per cycle that did work — what was indexed, how far
         the gallery backlog has progressed, and WHY any configured stage
         produced nothing — so a long first index is visibly alive (and its
         stalls diagnosable) from the console. Idle cycles stay silent."""
         with self._lock:
-            deltas = {key: self.stats[key] - stats_before.get(key, 0)
-                      for key in ("hashed", "embedded", "faces_indexed", "reviewed")}
+            deltas = {
+                key: self.stats[key] - stats_before.get(key, 0)
+                for key in ("hashed", "embedded", "faces_indexed", "reviewed")
+            }
         if not any(deltas.values()):
             return
         totals = indexing_totals(conn)
@@ -887,12 +882,18 @@ class AIWorker:
         _logger.info(
             "[AIWorker] indexed: +%d hashed, +%d embedded, +%d faces, +%d reviews "
             "(gallery: %d/%d hashed, %d/%d semantic, %d/%d visual, %d/%d faces)%s",
-            deltas["hashed"], deltas["embedded"], deltas["faces_indexed"],
+            deltas["hashed"],
+            deltas["embedded"],
+            deltas["faces_indexed"],
             deltas["reviewed"],
-            totals["hashed"], totals["files_total"],
-            totals["embeddings_semantic"], totals["visual_files_total"],
-            totals["embeddings_visual"], totals["visual_files_total"],
-            totals["faces_scanned"], totals["visual_files_total"],
+            totals["hashed"],
+            totals["files_total"],
+            totals["embeddings_semantic"],
+            totals["visual_files_total"],
+            totals["embeddings_visual"],
+            totals["visual_files_total"],
+            totals["faces_scanned"],
+            totals["visual_files_total"],
             waiting,
         )
 
@@ -917,8 +918,7 @@ class AIWorker:
             try:
                 shutil.rmtree(target)
             except OSError as exc:
-                self._note_error(f"sweep:{entry}",
-                                 f"mask sweep: could not remove {target}: {exc}")
+                self._note_error(f"sweep:{entry}", f"mask sweep: could not remove {target}: {exc}")
 
     # -- backend caching ---------------------------------------------------------
 
@@ -981,8 +981,7 @@ class AIWorker:
 
     # -- stages ------------------------------------------------------------------
 
-    def _process_hashes(self, conn: sqlite3.Connection, limit: int,
-                        only_file_id: str | None = None) -> int:
+    def _process_hashes(self, conn: sqlite3.Connection, limit: int, only_file_id: str | None = None) -> int:
         """Hash stage: (re)compute content hashes for missing/stale files. Returns
         candidates consumed -- charged against the budget even when hashing fails.
         `only_file_id` restricts the stage to that file (priority requests)."""
@@ -1008,7 +1007,11 @@ class AIWorker:
         return len(candidates)
 
     def _process_embedding_space(
-        self, conn: sqlite3.Connection, backend, space: str, limit: int,
+        self,
+        conn: sqlite3.Connection,
+        backend,
+        space: str,
+        limit: int,
         only_file_id: str | None = None,
     ) -> int:
         """Embedding stage for one space: embed missing/stale renderable files.
@@ -1021,9 +1024,7 @@ class AIWorker:
         wanted = set(missing) | set(stale)
         if only_file_id is not None:
             wanted &= {only_file_id}
-        candidates = _fetch_candidates(
-            conn, wanted, limit, allowed_types=_VISUAL_TYPES
-        )
+        candidates = _fetch_candidates(conn, wanted, limit, allowed_types=_VISUAL_TYPES)
         store = vectors.VectorStore(cache_dir=self.config.cache_dir, ephemeral=self.config.ephemeral_index)
         chunk_size = max(1, _env_num("AI_DAM_EMBED_BATCH", 16))
         for start in range(0, len(candidates), chunk_size):
@@ -1035,9 +1036,7 @@ class AIWorker:
             # Decode in threads (PIL releases the GIL in its codecs) so the
             # GPU gets a full batch instead of idling behind one decode.
             with ThreadPoolExecutor(max_workers=min(4, len(chunk))) as pool:
-                images = list(
-                    pool.map(lambda r: load_source_image(r["path"], r["type"]), chunk)
-                )
+                images = list(pool.map(lambda r: load_source_image(r["path"], r["type"]), chunk))
             loaded = []
             for row, img in zip(chunk, images, strict=False):
                 if img is None:
@@ -1068,8 +1067,13 @@ class AIWorker:
                 if vec is None:
                     continue
                 store.add(
-                    conn, row["id"], space, backend.model_id,
-                    backend.model_version, vec, row["mtime"],
+                    conn,
+                    row["id"],
+                    space,
+                    backend.model_id,
+                    backend.model_version,
+                    vec,
+                    row["mtime"],
                 )
                 with self._lock:
                     self.stats["embedded"] += 1
@@ -1080,11 +1084,18 @@ class AIWorker:
             store.refresh(conn, space)
         return len(candidates)
 
-    def _scan_candidates(self, conn: sqlite3.Connection, kind: str, backend,
-                         limit: int, extra_cols: str = "",
-                         only_file_id: str | None = None,
-                         input_key_sql: str = "''", input_key_params: tuple = (),
-                         joins: str = "") -> list:
+    def _scan_candidates(
+        self,
+        conn: sqlite3.Connection,
+        kind: str,
+        backend,
+        limit: int,
+        extra_cols: str = "",
+        only_file_id: str | None = None,
+        input_key_sql: str = "''",
+        input_key_params: tuple = (),
+        joins: str = "",
+    ) -> list:
         """Files needing a (re-)scan for `kind`: no ai_scan_log row for the
         current model, at the current source mtime, UNDER THE CURRENT INPUT
         KEY. Zero-result scans are logged too, so a file with no faces is
@@ -1116,18 +1127,32 @@ class AIWorker:
             ORDER BY f.mtime DESC, f.id ASC
             LIMIT ?
             """,
-            (*_VISUAL_TYPES, *only_params, kind, backend.model_id,
-             backend.model_version, _MTIME_EPSILON, *input_key_params, limit),
+            (
+                *_VISUAL_TYPES,
+                *only_params,
+                kind,
+                backend.model_id,
+                backend.model_version,
+                _MTIME_EPSILON,
+                *input_key_params,
+                limit,
+            ),
         ).fetchall()
 
     @staticmethod
-    def _log_scan(conn: sqlite3.Connection, file_id: str, kind: str, backend,
-                  source_mtime: float, now: float, result_count: int,
-                  input_key: str = "") -> None:
+    def _log_scan(
+        conn: sqlite3.Connection,
+        file_id: str,
+        kind: str,
+        backend,
+        source_mtime: float,
+        now: float,
+        result_count: int,
+        input_key: str = "",
+    ) -> None:
         """Upsert the single (file, kind) scan-log row recording an attempt at
         (model, mtime, inputs); `result_count` of -1 marks a failed attempt."""
-        record_scan(conn, file_id, kind, backend, source_mtime, now,
-                    result_count, input_key)
+        record_scan(conn, file_id, kind, backend, source_mtime, now, result_count, input_key)
 
     def _ensure_faces_attr_backfill(self, conn: sqlite3.Connection, backend) -> None:
         """One-time re-queue of files whose stored face rows predate
@@ -1151,14 +1176,15 @@ class AIWorker:
                   AND attributes IS NULL
               )
             """,
-            (backend.model_id, backend.model_version,
-             backend.model_id, backend.model_version))
+            (backend.model_id, backend.model_version, backend.model_id, backend.model_version),
+        )
         self._set_state(conn, marker, "1")
         if cur.rowcount:
             _logger.info(
                 "[AIWorker] faces attribute backfill: re-queued %d files "
                 "(attributes fill in place; embeddings version-stable)",
-                cur.rowcount)
+                cur.rowcount,
+            )
 
     def _ensure_review_alignment_requeue(self, conn: sqlite3.Connection, backend) -> None:
         """One-time re-queue of reviews whose alignment score cannot be
@@ -1196,20 +1222,14 @@ class AIWorker:
         # would find: the traced positive prompt, else files.workflow_prompt.
         sources = []
         if has_genparams:
-            sources.append(
-                "SELECT file_id FROM generation_params "
-                "WHERE TRIM(COALESCE(positive_prompt, '')) <> ''")
+            sources.append("SELECT file_id FROM generation_params WHERE TRIM(COALESCE(positive_prompt, '')) <> ''")
         if has_workflow_prompt:
-            sources.append(
-                "SELECT id FROM files "
-                "WHERE TRIM(COALESCE(workflow_prompt, '')) <> ''")
+            sources.append("SELECT id FROM files WHERE TRIM(COALESCE(workflow_prompt, '')) <> ''")
         # Legacy-scale rows are stale on their own; the null-alignment case
         # additionally requires that a prompt exists to score against.
         stale = ["prompt_alignment_score > 1.0"]
         if sources:
-            stale.append(
-                "(prompt_alignment_score IS NULL AND file_id IN "
-                f"({' UNION '.join(sources)}))")
+            stale.append(f"(prompt_alignment_score IS NULL AND file_id IN ({' UNION '.join(sources)}))")
         cur = conn.execute(
             f"""
             DELETE FROM ai_scan_log WHERE kind = 'review'
@@ -1217,28 +1237,27 @@ class AIWorker:
               AND file_id IN (
                 SELECT file_id FROM ai_reviews
                 WHERE model_id = ? AND model_version = ?
-                  AND ({' OR '.join(stale)})
+                  AND ({" OR ".join(stale)})
               )
             """,
-            (backend.model_id, backend.model_version,
-             backend.model_id, backend.model_version))
+            (backend.model_id, backend.model_version, backend.model_id, backend.model_version),
+        )
         self._set_state(conn, marker, "1")
         if cur.rowcount:
             _logger.info(
                 "[AIWorker] review alignment re-queue: %d file(s) carry an "
                 "untrustworthy alignment score and will be re-scored",
-                cur.rowcount)
+                cur.rowcount,
+            )
 
-    def _process_faces(self, conn: sqlite3.Connection, backend, limit: int,
-                       only_file_id: str | None = None) -> int:
+    def _process_faces(self, conn: sqlite3.Connection, backend, limit: int, only_file_id: str | None = None) -> int:
         """Face stage: detect and store faces per candidate, then recluster when
         faces were indexed or a clustering attempt is still pending. Returns
         candidates consumed, successful or not."""
         if limit <= 0:
             return 0
         self._ensure_faces_attr_backfill(conn, backend)
-        rows = self._scan_candidates(conn, "faces", backend, limit,
-                                     only_file_id=only_file_id)
+        rows = self._scan_candidates(conn, "faces", backend, limit, only_file_id=only_file_id)
         now = time.time()
         for row in rows:
             if only_file_id is None:
@@ -1270,8 +1289,8 @@ class AIWorker:
         if rows or self._get_state(conn, pending_key) is not None:
             try:
                 faces.cluster_faces(
-                    conn, backend.model_id, backend.model_version,
-                    faces.resolve_cluster_threshold(self.config, backend))
+                    conn, backend.model_id, backend.model_version, faces.resolve_cluster_threshold(self.config, backend)
+                )
                 self._clear_state(conn, pending_key)
             except Exception as exc:
                 self._note_error("faces:cluster", f"face clustering failed: {exc}")
@@ -1286,14 +1305,14 @@ class AIWorker:
             "INSERT INTO ai_dam_state (key, value, updated_at) VALUES (?, ?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
             "updated_at=excluded.updated_at",
-            (key, value, time.time()))
+            (key, value, time.time()),
+        )
         conn.commit()
 
     @staticmethod
     def _get_state(conn: sqlite3.Connection, key: str):
         """Stored value for `key`, or None when unset."""
-        row = conn.execute(
-            "SELECT value FROM ai_dam_state WHERE key = ?", (key,)).fetchone()
+        row = conn.execute("SELECT value FROM ai_dam_state WHERE key = ?", (key,)).fetchone()
         return row[0] if row is not None else None
 
     @staticmethod
@@ -1317,35 +1336,39 @@ class AIWorker:
         Degrades by surface: a DB without generation_params or without
         files.workflow_prompt keys on whatever it does have. The key is
         stable for a given schema, so degrading does not cause churn."""
+
         def _key(traced_pos, workflow_pos, traced_neg, rubric):
-            positive, negative = review.normalize_prompt_pair(
-                traced_pos, workflow_pos, traced_neg)
+            positive, negative = review.normalize_prompt_pair(traced_pos, workflow_pos, traced_neg)
             return stage_input_key(positive, negative, rubric)
 
         conn.create_function("sg_review_key", 4, _key, deterministic=True)
 
         has_gp = _has_column(conn, "generation_params", "positive_prompt")
         has_wf = _has_column(conn, "files", "workflow_prompt")
-        joins = ("LEFT JOIN generation_params gp ON gp.file_id = f.id"
-                 if has_gp else "")
+        joins = "LEFT JOIN generation_params gp ON gp.file_id = f.id" if has_gp else ""
         traced_pos = "gp.positive_prompt" if has_gp else "NULL"
         traced_neg = "gp.negative_prompt" if has_gp else "NULL"
         workflow_pos = "f.workflow_prompt" if has_wf else "NULL"
-        expr = (f"sg_review_key({traced_pos}, {workflow_pos}, {traced_neg}, ?)")
+        expr = f"sg_review_key({traced_pos}, {workflow_pos}, {traced_neg}, ?)"
         return expr, (RUBRIC_VERSION,), joins
 
-    def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int,
-                         only_file_id: str | None = None) -> int:
+    def _process_reviews(self, conn: sqlite3.Connection, backend, limit: int, only_file_id: str | None = None) -> int:
         """Review stage: run the critic per candidate, store the review, and
         generate finding masks when a segmenter is available. Returns candidates
         consumed, successful or not."""
         if limit <= 0:
             return 0
         key_sql, key_params, joins = self._review_key_sql(conn)
-        rows = self._scan_candidates(conn, "review", backend, limit,
-                                     only_file_id=only_file_id,
-                                     input_key_sql=key_sql,
-                                     input_key_params=key_params, joins=joins)
+        rows = self._scan_candidates(
+            conn,
+            "review",
+            backend,
+            limit,
+            only_file_id=only_file_id,
+            input_key_sql=key_sql,
+            input_key_params=key_params,
+            joins=joins,
+        )
         segmenter = self._backend("segmenter", review.get_segmenter_backend)
         now = time.time()
         for row in rows:
@@ -1365,20 +1388,23 @@ class AIWorker:
             # same normalized pair via review.normalize_prompt_pair.
             input_key = stage_input_key(prompt_text, negative_text, RUBRIC_VERSION)
             try:
-                payload = backend.review(img, prompt_text, RUBRIC_VERSION,
-                                         negative_text=negative_text)
+                payload = backend.review(img, prompt_text, RUBRIC_VERSION, negative_text=negative_text)
                 result = review.validate_review_payload(payload)
                 review_id = review.store_review(
-                    conn, file_id, result, backend.model_id, backend.model_version,
-                    RUBRIC_VERSION, json.dumps(payload), mtime, now,
+                    conn,
+                    file_id,
+                    result,
+                    backend.model_id,
+                    backend.model_version,
+                    RUBRIC_VERSION,
+                    json.dumps(payload),
+                    mtime,
+                    now,
                 )
                 if segmenter is not None:
-                    generated = self._generate_masks(conn, img, file_id,
-                                                     review_id, segmenter)
-                    self._log_masks_if_complete(conn, file_id, review_id,
-                                                segmenter, mtime, now, generated)
-                self._log_scan(conn, file_id, "review", backend, mtime, now,
-                               len(result.findings), input_key)
+                    generated = self._generate_masks(conn, img, file_id, review_id, segmenter)
+                    self._log_masks_if_complete(conn, file_id, review_id, segmenter, mtime, now, generated)
+                self._log_scan(conn, file_id, "review", backend, mtime, now, len(result.findings), input_key)
             except Exception as exc:
                 self._note_error(f"review:{file_id}", f"review: failed for {path}: {exc}")
                 # Record the FAILED attempt too (result_count = -1): a
@@ -1387,45 +1413,48 @@ class AIWorker:
                 # file re-enters the queue when its mtime or the model
                 # changes (normal staleness), or on rebuild.
                 with contextlib.suppress(sqlite3.Error):
-                    self._log_scan(conn, file_id, "review", backend, mtime,
-                                   now, -1, input_key)
+                    self._log_scan(conn, file_id, "review", backend, mtime, now, -1, input_key)
                 continue
             with self._lock:
                 self.stats["reviewed"] += 1
         return len(rows)
 
-    def _generate_masks(self, conn: sqlite3.Connection, img, file_id: str,
-                        review_id: int, segmenter) -> int:
+    def _generate_masks(self, conn: sqlite3.Connection, img, file_id: str, review_id: int, segmenter) -> int:
         """Segment every localizable finding of a review, then every located
         satisfied prompt element (the highlight layer showing WHERE the
         prompt was honored). Ungrounded rows never reach the segmenter
         (the generate_* helpers enforce it); a per-row failure is logged,
         never fatal. Returns the number of masks successfully generated."""
-        finding_ids = [r[0] for r in conn.execute(
-            "SELECT finding_id FROM ai_review_findings "
-            "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
-            (review_id,)).fetchall()]
+        finding_ids = [
+            r[0]
+            for r in conn.execute(
+                "SELECT finding_id FROM ai_review_findings "
+                "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
+                (review_id,),
+            ).fetchall()
+        ]
         generated = 0
         for finding_id in finding_ids:
             try:
-                review.generate_finding_mask(
-                    conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
+                review.generate_finding_mask(conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
                 generated += 1
             except Exception as exc:
-                self._note_error(f"mask:{finding_id}",
-                                 f"mask: failed for finding {finding_id}: {exc}")
-        element_ids = [r[0] for r in conn.execute(
-            "SELECT element_id FROM ai_review_alignment "
-            "WHERE review_id = ? AND satisfied = 1 AND bbox_x IS NOT NULL "
-            "AND mask_path IS NULL", (review_id,)).fetchall()]
+                self._note_error(f"mask:{finding_id}", f"mask: failed for finding {finding_id}: {exc}")
+        element_ids = [
+            r[0]
+            for r in conn.execute(
+                "SELECT element_id FROM ai_review_alignment "
+                "WHERE review_id = ? AND satisfied = 1 AND bbox_x IS NOT NULL "
+                "AND mask_path IS NULL",
+                (review_id,),
+            ).fetchall()
+        ]
         for element_id in element_ids:
             try:
-                review.generate_alignment_mask(
-                    conn, self.config.cache_dir, img, file_id, element_id, segmenter)
+                review.generate_alignment_mask(conn, self.config.cache_dir, img, file_id, element_id, segmenter)
                 generated += 1
             except Exception as exc:
-                self._note_error(f"alignmask:{element_id}",
-                                 f"mask: failed for prompt element {element_id}: {exc}")
+                self._note_error(f"alignmask:{element_id}", f"mask: failed for prompt element {element_id}: {exc}")
         return generated
 
     def _process_masks(self, conn: sqlite3.Connection, segmenter, limit: int) -> int:
@@ -1462,23 +1491,28 @@ class AIWorker:
             if img is None:
                 self._note_error(f"mask:{file_id}", f"mask: could not read {path}")
                 continue
-            generated = self._generate_masks(conn, img, file_id,
-                                             row["review_id"], segmenter)
-            self._log_masks_if_complete(conn, file_id, row["review_id"],
-                                        segmenter, mtime, now, generated)
+            generated = self._generate_masks(conn, img, file_id, row["review_id"], segmenter)
+            self._log_masks_if_complete(conn, file_id, row["review_id"], segmenter, mtime, now, generated)
         return len(rows)
 
-    def _log_masks_if_complete(self, conn: sqlite3.Connection, file_id: str,
-                               review_id: int, segmenter, mtime: float,
-                               now: float, generated: int) -> None:
+    def _log_masks_if_complete(
+        self,
+        conn: sqlite3.Connection,
+        file_id: str,
+        review_id: int,
+        segmenter,
+        mtime: float,
+        now: float,
+        generated: int,
+    ) -> None:
         """Record the mask scan ONLY when every localizable finding of the
         review has a mask. A partial failure (transient segmenter or
         filesystem error) leaves the file selectable so the next cycle
         retries the remaining findings, instead of a completion row
         freezing them mask-less until the next mtime/model change."""
         remaining = conn.execute(
-            "SELECT COUNT(*) FROM ai_review_findings "
-            "WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
-            (review_id,)).fetchone()[0]
+            "SELECT COUNT(*) FROM ai_review_findings WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
+            (review_id,),
+        ).fetchone()[0]
         if remaining == 0:
             self._log_scan(conn, file_id, "masks", segmenter, mtime, now, generated)

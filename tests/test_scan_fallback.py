@@ -55,8 +55,9 @@ class _DeadPoolExecutor(_InlineExecutor):
 
     def submit(self, fn, *args, **kwargs):
         future = concurrent.futures.Future()
-        future.set_exception(concurrent.futures.process.BrokenProcessPool(
-            "A process in the process pool was terminated abruptly"))
+        future.set_exception(
+            concurrent.futures.process.BrokenProcessPool("A process in the process pool was terminated abruptly")
+        )
         return future
 
 
@@ -85,9 +86,10 @@ def gallery_files(smartgallery_app):
     os.makedirs(os.path.join(root, "scanprobe"), exist_ok=True)
     made = []
     for name, size, colour in (
-            ("scanprobe_a.png", (64, 48), (200, 30, 30)),
-            ("scanprobe_b.png", (48, 64), (30, 200, 30)),
-            (os.path.join("scanprobe", "scanprobe_c.png"), (32, 32), (30, 30, 200))):
+        ("scanprobe_a.png", (64, 48), (200, 30, 30)),
+        ("scanprobe_b.png", (48, 64), (30, 200, 30)),
+        (os.path.join("scanprobe", "scanprobe_c.png"), (32, 32), (30, 30, 200)),
+    ):
         path = os.path.join(root, name)
         Image.new("RGB", size, colour).save(path)
         made.append(path)
@@ -100,8 +102,7 @@ def gallery_files(smartgallery_app):
 
 
 def _indexed_probe_names(conn):
-    return sorted(r[0] for r in conn.execute(
-        "SELECT name FROM files WHERE name LIKE 'scanprobe_%'").fetchall())
+    return sorted(r[0] for r in conn.execute("SELECT name FROM files WHERE name LIKE 'scanprobe_%'").fetchall())
 
 
 def _scan(smartgallery_app):
@@ -114,43 +115,36 @@ def _scan(smartgallery_app):
 
 
 def test_scan_indexes_files_when_the_pool_works(smartgallery_app, gallery_files, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
-    assert _scan(smartgallery_app) == [
-        "scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
 
 
-def test_scan_falls_back_to_sequential_when_the_pool_is_dead(
-        smartgallery_app, gallery_files, monkeypatch, capsys):
+def test_scan_falls_back_to_sequential_when_the_pool_is_dead(smartgallery_app, gallery_files, monkeypatch, capsys):
     """The regression: this environment used to index nothing at all."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _DeadPoolExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _DeadPoolExecutor)
 
     indexed = _scan(smartgallery_app)
 
     assert indexed == ["scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"], (
-        "files were skipped when the process pool was unavailable")
+        "files were skipped when the process pool was unavailable"
+    )
     out = capsys.readouterr().out
     assert "one at a time" in out, "no explanation of the fallback was printed"
-    assert "corrupted file" not in out, (
-        "a pool-level failure is still being blamed on file corruption")
+    assert "corrupted file" not in out, "a pool-level failure is still being blamed on file corruption"
 
 
-def test_scan_survives_pool_creation_failing_outright(
-        smartgallery_app, gallery_files, monkeypatch):
+def test_scan_survives_pool_creation_failing_outright(smartgallery_app, gallery_files, monkeypatch):
     """Some environments refuse to create the pool at all, rather than
     failing per-future."""
+
     def refuse(*_a, **_k):
         raise OSError("spawning is not permitted here")
 
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", refuse)
-    assert _scan(smartgallery_app) == [
-        "scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", refuse)
+    assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
 
 
-def test_one_unreadable_file_does_not_cost_the_others(
-        smartgallery_app, gallery_files, monkeypatch):
+def test_one_unreadable_file_does_not_cost_the_others(smartgallery_app, gallery_files, monkeypatch):
     """A per-file error is attributed to that file and the scan continues --
     the original fault-tolerance intent, preserved."""
     real_process = smartgallery_app.process_single_file
@@ -160,15 +154,13 @@ def test_one_unreadable_file_does_not_cost_the_others(
             raise ValueError("simulated decode failure")
         return real_process(path, *args, **kwargs)
 
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "process_single_file", explode_on_b)
 
     assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_c.png"]
 
 
-def test_a_small_scan_never_starts_a_pool(smartgallery_app, gallery_files,
-                                          monkeypatch):
+def test_a_small_scan_never_starts_a_pool(smartgallery_app, gallery_files, monkeypatch):
     """The threshold, and the reason it exists: a pool worker has to import
     this module before it can do anything, which costs about a second
     whether the batch is three files or three thousand.
@@ -181,18 +173,17 @@ def test_a_small_scan_never_starts_a_pool(smartgallery_app, gallery_files,
     def forbidden(*_args, **_kwargs):
         raise AssertionError(
             "a three-file scan reached for a process pool; each worker would "
-            "import the whole module before touching a single picture")
+            "import the whole module before touching a single picture"
+        )
 
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", forbidden)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", forbidden)
 
-    assert _scan(smartgallery_app) == [
-        "scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"], (
-        "the in-process path indexed a different set than the pool does")
+    assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"], (
+        "the in-process path indexed a different set than the pool does"
+    )
 
 
-def test_a_large_enough_scan_still_uses_the_pool(smartgallery_app,
-                                                 gallery_files, monkeypatch):
+def test_a_large_enough_scan_still_uses_the_pool(smartgallery_app, gallery_files, monkeypatch):
     """Control for the test above. A threshold that swallowed every scan
     would satisfy it while quietly making the gallery single-threaded."""
     monkeypatch.setattr(smartgallery_app, "PARALLEL_SCAN_MIN_FILES", 2)
@@ -203,11 +194,10 @@ def test_a_large_enough_scan_still_uses_the_pool(smartgallery_app,
             super().__init__(max_workers)
             built.append(max_workers)
 
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _Counted)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _Counted)
 
-    assert _scan(smartgallery_app) == [
-        "scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
+    assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
     assert built, (
         "three files with a bound of two did not reach the pool, so the "
-        "threshold has turned scanning sequential at every size")
+        "threshold has turned scanning sequential at every size"
+    )

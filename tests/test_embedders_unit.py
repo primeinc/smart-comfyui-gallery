@@ -159,8 +159,7 @@ def test_dinov2_ctor_missing_weights_names_expected_dir(tmp_path):
 _HEAVY = ("torch", "open_clip", "transformers")
 
 
-@pytest.mark.parametrize("backend",
-                         [OpenClipSemanticEmbedder, Dinov2VisualEmbedder])
+@pytest.mark.parametrize("backend", [OpenClipSemanticEmbedder, Dinov2VisualEmbedder])
 def test_missing_weights_check_never_imports_heavy_runtimes(tmp_path, backend):
     """With no weights, neither constructor pulls in torch, open_clip or
     transformers -- the gallery has to start on a machine that has none of
@@ -179,11 +178,8 @@ def test_missing_weights_check_never_imports_heavy_runtimes(tmp_path, backend):
         backend(str(tmp_path))
 
     newly = set(sys.modules) - before
-    leaked = sorted(name for name in newly
-                    if name in _HEAVY or name.split(".")[0] in _HEAVY)
-    assert not leaked, (
-        f"{backend.__name__} imported {leaked} just to notice its weights "
-        f"were missing")
+    leaked = sorted(name for name in newly if name in _HEAVY or name.split(".")[0] in _HEAVY)
+    assert not leaked, f"{backend.__name__} imported {leaked} just to notice its weights were missing"
 
 
 def test_openclip_ctor_missing_runtime_raises_backend_unavailable(tmp_path, monkeypatch):
@@ -215,7 +211,8 @@ def test_openclip_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
-        sys.modules, "open_clip",
+        sys.modules,
+        "open_clip",
         _fake_module("open_clip", create_model_and_transforms=_fail),
     )
     with pytest.raises(BackendUnavailable, match="failed to load open_clip weights") as exc_info:
@@ -235,7 +232,8 @@ def test_dinov2_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(sys.modules, "torchvision", _fake_module("torchvision"))
     monkeypatch.setitem(
-        sys.modules, "transformers",
+        sys.modules,
+        "transformers",
         _fake_module("transformers", AutoImageProcessor=_FailingAuto, AutoModel=_FailingAuto),
     )
     with pytest.raises(BackendUnavailable, match="failed to load dinov2 weights"):
@@ -301,8 +299,7 @@ def test_dinov2_ctor_fails_before_transformers_when_torchvision_missing(tmp_path
         if name == "torchvision":
             raise ImportError("No module named 'torchvision'")
         if name == "transformers":
-            raise AssertionError(
-                "transformers imported in a torchvision-less process")
+            raise AssertionError("transformers imported in a torchvision-less process")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
@@ -359,7 +356,8 @@ def test_auto_degrades_to_none_even_when_weight_loading_fails(tmp_path, monkeypa
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
-        sys.modules, "open_clip",
+        sys.modules,
+        "open_clip",
         _fake_module("open_clip", create_model_and_transforms=_fail),
     )
     assert get_semantic_backend(_cfg(str(tmp_path), semantic_backend="auto")) is None
@@ -413,6 +411,7 @@ def test_pick_torch_device_single_gpu_stays_bare_cuda(monkeypatch):
 
     def _boom():
         raise RuntimeError("driver hiccup")
+
     broken = _fake_torch_with_gpus([1, 2])
     broken.cuda.device_count = _boom
     assert pick_torch_device(broken) == "cuda"
@@ -444,16 +443,13 @@ def test_vram_pressure_warns_only_when_the_chosen_card_is_nearly_full(caplog):
     naming the device and the escape hatch; ample free VRAM, CPU devices,
     and torch builds without mem_get_info all stay silent."""
 
-
     def torch_with_free(free_bytes):
-        cuda = types.SimpleNamespace(
-            mem_get_info=lambda _index=0: (free_bytes, 16 << 30))
+        cuda = types.SimpleNamespace(mem_get_info=lambda _index=0: (free_bytes, 16 << 30))
         return types.SimpleNamespace(cuda=cuda)
 
     with caplog.at_level(logging.WARNING, logger="smartgallery_ai.embedders"):
         warn_if_vram_pressure(torch_with_free(1 << 30), "cuda:1", "model-x")
-    assert any("cuda:1" in r.getMessage() and "VRAM free" in r.getMessage()
-               for r in caplog.records)
+    assert any("cuda:1" in r.getMessage() and "VRAM free" in r.getMessage() for r in caplog.records)
 
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="smartgallery_ai.embedders"):

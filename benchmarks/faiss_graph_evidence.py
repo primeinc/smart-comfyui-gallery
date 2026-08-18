@@ -47,9 +47,7 @@ from smartgallery_ai import AIConfig
 from smartgallery_ai.faces import FaceDetection, cluster_faces, get_face_backend, replace_faces_for_file
 from smartgallery_ai.schema import init_schema
 
-RESULTS_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "results", "faiss_graph_evidence.json"
-)
+RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "faiss_graph_evidence.json")
 
 
 def _system_times():
@@ -62,9 +60,7 @@ def _system_times():
         _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
 
     idle, kern, user = _FT(), _FT(), _FT()
-    ok = ctypes.windll.kernel32.GetSystemTimes(
-        ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)
-    )
+    ok = ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user))
     if not ok:
         return None
 
@@ -148,7 +144,9 @@ def check_idle(seconds: int = 3, busy_frac: float = 0.15) -> int:
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode == 0:
             for i, line in enumerate(out.stdout.split()):
@@ -179,9 +177,7 @@ def load_synthetic(n: int, d: int, centers: int, seed: int) -> np.ndarray:
     uniform vectors would concentrate cosines near 0 and test nothing."""
     rng = np.random.default_rng(seed)
     c = rng.standard_normal((centers, d)).astype(np.float32)
-    return c[rng.integers(0, centers, n)] + 0.35 * rng.standard_normal((n, d)).astype(
-        np.float32
-    )
+    return c[rng.integers(0, centers, n)] + 0.35 * rng.standard_normal((n, d)).astype(np.float32)
 
 
 def load_db(path: str) -> np.ndarray:
@@ -189,9 +185,7 @@ def load_db(path: str) -> np.ndarray:
     uri = f"file:{path}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     try:
-        rows = conn.execute(
-            "SELECT embedding, dim FROM ai_face_instances WHERE embedding IS NOT NULL"
-        ).fetchall()
+        rows = conn.execute("SELECT embedding, dim FROM ai_face_instances WHERE embedding IS NOT NULL").fetchall()
     finally:
         conn.close()
     if not rows:
@@ -200,9 +194,7 @@ def load_db(path: str) -> np.ndarray:
     for _, dim in rows:
         dims[dim] = dims.get(dim, 0) + 1
     dim = max(dims.items(), key=lambda kv: kv[1])[0]
-    return np.stack(
-        [np.frombuffer(blob, dtype="<f4") for blob, d in rows if d == dim]
-    )
+    return np.stack([np.frombuffer(blob, dtype="<f4") for blob, d in rows if d == dim])
 
 
 def load_hf(dataset: str, column: str, split: str) -> np.ndarray:
@@ -232,23 +224,15 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
     cfg.models_dir = models_dir
     cfg.face_backend = "opencv"
     backend = get_face_backend(cfg)
-    gate = (
-        f"{backend.model_version}|det>={cfg.face_min_det_score}"
-        f"|px>={cfg.face_min_px}"
-    )
+    gate = f"{backend.model_version}|det>={cfg.face_min_det_score}|px>={cfg.face_min_px}"
 
     if cache and os.path.isfile(cache):
         data = np.load(cache, allow_pickle=False)
         cached_gate = str(data["gate"]) if "gate" in data else ""
         if "paths" not in data or cached_gate != gate:
-            print(
-                f"cache config {cached_gate or 'missing'!r} != current "
-                f"{gate!r}; re-embedding"
-            )
+            print(f"cache config {cached_gate or 'missing'!r} != current {gate!r}; re-embedding")
         else:
-            print(
-                f"loaded embedding cache ({data['embeddings'].shape[0]} faces, {gate})"
-            )
+            print(f"loaded embedding cache ({data['embeddings'].shape[0]} faces, {gate})")
             return data["embeddings"], list(data["datasets"]), list(data["identities"])
 
     paths = []
@@ -267,11 +251,7 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
         rel = os.path.relpath(path, root)
         parts = rel.replace("\\", "/").split("/")
         dataset = parts[0]
-        identity = (
-            f"{dataset}/{parts[-2]}"
-            if dataset in _LABELED_DATASETS and len(parts) >= 3
-            else ""
-        )
+        identity = f"{dataset}/{parts[-2]}" if dataset in _LABELED_DATASETS and len(parts) >= 3 else ""
         try:
             with Image.open(path) as img:
                 detections = backend.detect(img)
@@ -286,10 +266,7 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
                 face_paths.append(rel)
                 face_bboxes.append(det.bbox)
         if (i + 1) % 500 == 0:
-            print(
-                f"  {i + 1}/{len(paths)} images, {len(embs)} faces, "
-                f"{time.perf_counter() - t0:.0f}s"
-            )
+            print(f"  {i + 1}/{len(paths)} images, {len(embs)} faces, {time.perf_counter() - t0:.0f}s")
     print(
         f"embedded {len(embs)} faces from {len(paths)} images "
         f"({decode_failures} undecodable) in {time.perf_counter() - t0:.0f}s"
@@ -337,11 +314,13 @@ def time_production_clustering(m: np.ndarray, threshold: float) -> dict:
     t0 = time.perf_counter()
     cluster_ids = cluster_faces(conn, "bench", "bench-v1", threshold=threshold)
     elapsed = time.perf_counter() - t0
-    params = json.loads(
-        conn.execute(
-            "SELECT params FROM ai_face_clusters WHERE cluster_id = ?", (cluster_ids[0],)
-        ).fetchone()[0]
-    ) if cluster_ids else {}
+    params = (
+        json.loads(
+            conn.execute("SELECT params FROM ai_face_clusters WHERE cluster_id = ?", (cluster_ids[0],)).fetchone()[0]
+        )
+        if cluster_ids
+        else {}
+    )
     conn.close()
     return {
         "seconds": round(elapsed, 2),
@@ -386,9 +365,7 @@ def sanity_report(labels: list, ds_names: list, identities: list) -> dict:
         "top_cluster_share": round(top_share, 4),
         "labeled_identities": len(purities),
         "identities_fully_grouped": sum(1 for p in purities.values() if p == 1.0),
-        "mean_identity_purity": (
-            round(sum(purities.values()) / len(purities), 4) if purities else None
-        ),
+        "mean_identity_purity": (round(sum(purities.values()) / len(purities), 4) if purities else None),
     }
 
 
@@ -490,9 +467,11 @@ def main() -> None:
             faiss.omp_set_num_threads(args.omp_threads)
         backends["faiss-cpu"] = (
             faces._neighbor_graph_faiss,
-            (f"faiss {getattr(faiss, '__version__', '?')} "
-            f"omp={faiss.omp_get_max_threads()} "
-            f"wait_policy={os.environ.get('OMP_WAIT_POLICY', 'default')}"),
+            (
+                f"faiss {getattr(faiss, '__version__', '?')} "
+                f"omp={faiss.omp_get_max_threads()} "
+                f"wait_policy={os.environ.get('OMP_WAIT_POLICY', 'default')}"
+            ),
         )
     except ImportError:
         pass
@@ -562,22 +541,13 @@ def main() -> None:
         in_both_ref = np.isin(ref_key, o_key, assume_unique=True)
         in_both_o = np.isin(o_key, ref_key, assume_unique=True)
         max_w_delta = (
-            float(
-                np.max(
-                    np.abs(
-                        ref_w[in_both_ref].astype(np.float64)
-                        - o_w[in_both_o].astype(np.float64)
-                    )
-                )
-            )
+            float(np.max(np.abs(ref_w[in_both_ref].astype(np.float64) - o_w[in_both_o].astype(np.float64))))
             if in_both_ref.any()
             else 0.0
         )
         divergent_w = np.concatenate([ref_w[~in_both_ref], o_w[~in_both_o]])
         n_divergent = len(divergent_w)
-        boundary_ok = bool(
-            np.all(np.abs(divergent_w.astype(np.float64) - args.threshold) <= tol)
-        )
+        boundary_ok = bool(np.all(np.abs(divergent_w.astype(np.float64) - args.threshold) <= tol))
         weights_ok = max_w_delta <= tol
         same_clusters = partitions[other] == ref_part
         record["equivalence"][f"{ref}=={other}"] = {
@@ -596,10 +566,7 @@ def main() -> None:
 
     sizes = sorted((len(g) for g in ref_part), reverse=True)
     agreement = f" — identical across all {len(names)} backends" if len(names) > 1 else ""
-    print(
-        f"  result: {len(ref_cols):,} edges, {len(sizes):,} clusters "
-        f"(largest {sizes[0] if sizes else 0}){agreement}"
-    )
+    print(f"  result: {len(ref_cols):,} edges, {len(sizes):,} clusters (largest {sizes[0] if sizes else 0}){agreement}")
 
     record["load"] = watch.stop()
     if record["load"].get("samples"):

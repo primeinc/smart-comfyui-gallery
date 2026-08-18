@@ -58,8 +58,7 @@ class _InlineExecutor:
 
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     for name in _FILES.values():
         Image.new("RGB", (16, 16), (30, 30, 90)).save(os.path.join(base, name))
@@ -69,8 +68,7 @@ def library(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r[0]: r[1] for r in conn.execute(
-            f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        ids = {r[0]: r[1] for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
     finally:
         conn.close()
 
@@ -99,24 +97,25 @@ def test_the_fixture_is_searchable_at_all(smartgallery_app, library):
     assert _search(smartgallery_app, library, _PREFIX) == sorted(_FILES.values())
 
 
-@pytest.mark.parametrize(("term", "expected_key"), [
-    ("测试", "chinese"),
-    ("café", "french"),
-    ("CAFÉ", "french"),        # the regression
-    ("Café", "french"),
-    ("рисунок", "russian"),
-    ("РИСУНОК", "russian"),    # the regression
-    ("Ελλάδα", "greek"),
-    ("ΕΛΛΆΔΑ", "greek"),       # the regression
-    ("straße", "german"),
-    ("STRASSE", "german"),     # folds to the same thing in Python
-])
-def test_a_search_finds_its_file_whatever_the_case(smartgallery_app, library,
-                                                   term, expected_key):
+@pytest.mark.parametrize(
+    ("term", "expected_key"),
+    [
+        ("测试", "chinese"),
+        ("café", "french"),
+        ("CAFÉ", "french"),  # the regression
+        ("Café", "french"),
+        ("рисунок", "russian"),
+        ("РИСУНОК", "russian"),  # the regression
+        ("Ελλάδα", "greek"),
+        ("ΕΛΛΆΔΑ", "greek"),  # the regression
+        ("straße", "german"),
+        ("STRASSE", "german"),  # folds to the same thing in Python
+    ],
+)
+def test_a_search_finds_its_file_whatever_the_case(smartgallery_app, library, term, expected_key):
     found = _search(smartgallery_app, library, term)
 
-    assert _FILES[expected_key] in found, (
-        f"searching {term!r} did not find {_FILES[expected_key]!r}; found {found}")
+    assert _FILES[expected_key] in found, f"searching {term!r} did not find {_FILES[expected_key]!r}; found {found}"
 
 
 def test_ascii_search_still_folds(smartgallery_app, library):
@@ -141,12 +140,13 @@ def annotated(smartgallery_app, library):
     conn = smartgallery_app.get_db_connection()
     try:
         file_id = library[_FILES["greek"]]
-        conn.execute("INSERT INTO file_comments (file_id, client_uuid, author_name, "
-                     "comment_text, target_audience, created_at) "
-                     "VALUES (?, 'admin', 'Me', 'Καλημέρα κόσμε', 'public', 1.0)",
-                     (file_id,))
-        conn.execute("UPDATE files SET workflow_prompt = ? WHERE id = ?",
-                     ("портрет девушки", file_id))
+        conn.execute(
+            "INSERT INTO file_comments (file_id, client_uuid, author_name, "
+            "comment_text, target_audience, created_at) "
+            "VALUES (?, 'admin', 'Me', 'Καλημέρα κόσμε', 'public', 1.0)",
+            (file_id,),
+        )
+        conn.execute("UPDATE files SET workflow_prompt = ? WHERE id = ?", ("портрет девушки", file_id))
         conn.commit()
     finally:
         conn.close()
@@ -173,5 +173,4 @@ def test_comment_search_still_excludes_what_it_should(smartgallery_app, annotate
     """The negation form has to keep working: folding both sides must not
     turn a NOT LIKE into a match-everything."""
     found = _filtered(smartgallery_app, annotated, "comment_search=ΚΌΣΜΕ")
-    assert _FILES["french"] not in found, (
-        "a file with no such comment came back from a comment search")
+    assert _FILES["french"] not in found, "a file with no such comment came back from a comment search"

@@ -98,14 +98,12 @@ DEFAULT_FINDING_MIN_MARGIN = 0.0
 
 # Coarse region vocabulary for the ASSESS step; any value other than
 # 'whole-image' invites a LOCALIZE attempt for spatial finding types.
-_REGIONS = ("whole-image", "top-left", "top-right", "bottom-left",
-            "bottom-right", "center")
+_REGIONS = ("whole-image", "top-left", "top-right", "bottom-left", "bottom-right", "center")
 
 # Only finding types with an inherent spatial locus may be localizable;
 # lighting/style/composition/prompt_mismatch are whole-image properties
 # and must never carry a bbox or mask.
-_LOCALIZABLE_TYPES = frozenset(
-    {"anatomy", "artifact", "text_render", "detail_loss", "other"})
+_LOCALIZABLE_TYPES = frozenset({"anatomy", "artifact", "text_render", "detail_loss", "other"})
 
 # Upper bound on ALIGN elements. Each one costs a schema slot and tokens in
 # a single fixed-length reply, so an unbounded prompt cannot be allowed to
@@ -125,9 +123,9 @@ _SEGMENT_RE = re.compile(r",|\n|\bBREAK\b")
 # NEVER used to produce the text handed to the model or stored in the DB --
 # that text is always the user's own.
 _NORM_STRIP = (
-    re.compile(r"<[^>]*>"),          # <lora:name:0.8>
-    re.compile(r":\d+(?:\.\d+)?"),   # :1.2
-    re.compile(r"[()\[\]{}]"),       # weight brackets
+    re.compile(r"<[^>]*>"),  # <lora:name:0.8>
+    re.compile(r":\d+(?:\.\d+)?"),  # :1.2
+    re.compile(r"[()\[\]{}]"),  # weight brackets
 )
 
 
@@ -149,8 +147,7 @@ def _norm_for_match(text: str) -> str:
     return " ".join(text.lower().split()).strip(" .;:-")
 
 
-def extract_prompt_elements_report(prompt: str | None,
-                                   negative: str | None = None) -> tuple:
+def extract_prompt_elements_report(prompt: str | None, negative: str | None = None) -> tuple:
     """`(elements, truncated)` for the ALIGN step.
 
     Every element is a TRUE substring of `prompt` -- sliced out by index
@@ -199,8 +196,7 @@ def extract_prompt_elements_report(prompt: str | None,
     return elements, truncated
 
 
-def extract_prompt_elements(prompt: str | None,
-                            negative: str | None = None) -> list:
+def extract_prompt_elements(prompt: str | None, negative: str | None = None) -> list:
     """The elements alone; see `extract_prompt_elements_report`."""
     return extract_prompt_elements_report(prompt, negative)[0]
 
@@ -215,10 +211,13 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a / np.linalg.norm(a), b / np.linalg.norm(b)))
 
 
-def check_grounding(embedder: SemanticEmbedder, description: str,
-                    img: Image.Image,
-                    min_cos: float = DEFAULT_GROUNDING_MIN_COS,
-                    min_margin: float = DEFAULT_GROUNDING_MIN_MARGIN) -> float:
+def check_grounding(
+    embedder: SemanticEmbedder,
+    description: str,
+    img: Image.Image,
+    min_cos: float = DEFAULT_GROUNDING_MIN_COS,
+    min_margin: float = DEFAULT_GROUNDING_MIN_MARGIN,
+) -> float:
     """The deterministic contrastive anti-fabrication gate, exposed as a
     pure function so its negative cases are testable without loading a
     vision-language model. Requires BOTH an absolute cosine floor AND a
@@ -232,20 +231,25 @@ def check_grounding(embedder: SemanticEmbedder, description: str,
     cos = _cos(embedder.embed_text(description), iv)
     if not (cos >= min_cos):
         raise UngroundedReviewError(
-            f"description does not match image (CLIP cos {cos:.3f} < "
-            f"{min_cos}); refusing to store an ungrounded review")
+            f"description does not match image (CLIP cos {cos:.3f} < {min_cos}); refusing to store an ungrounded review"
+        )
     margin = cos - _cos(embedder.embed_text(GROUNDING_BASELINE_TEXT), iv)
     if not (margin >= min_margin):
         raise UngroundedReviewError(
             f"description is not specific to this image (margin {margin:.3f}"
             f" < {min_margin} over the generic baseline); vacuous or "
-            f"copied descriptions are rejected")
+            f"copied descriptions are rejected"
+        )
     return margin
 
 
-def verify_finding_region(embedder: SemanticEmbedder, description: str,
-                          bbox: tuple, img: Image.Image,
-                          min_margin: float = DEFAULT_FINDING_MIN_MARGIN) -> bool:
+def verify_finding_region(
+    embedder: SemanticEmbedder,
+    description: str,
+    bbox: tuple,
+    img: Image.Image,
+    min_margin: float = DEFAULT_FINDING_MIN_MARGIN,
+) -> bool:
     """Topical grounding check for one localizable finding: does the named
     defect/content actually appear in the claimed region? Crops the bbox
     (with 10% padding), and requires the finding text to beat the generic
@@ -255,16 +259,19 @@ def verify_finding_region(embedder: SemanticEmbedder, description: str,
     w, h = img.size
     x, y, bw, bh = bbox
     pad_x, pad_y = 0.1 * bw, 0.1 * bh
-    box = (max(0, int((x - pad_x) * w)), max(0, int((y - pad_y) * h)),
-           min(w, int((x + bw + pad_x) * w)), min(h, int((y + bh + pad_y) * h)))
+    box = (
+        max(0, int((x - pad_x) * w)),
+        max(0, int((y - pad_y) * h)),
+        min(w, int((x + bw + pad_x) * w)),
+        min(h, int((y + bh + pad_y) * h)),
+    )
     if box[2] - box[0] < 8 or box[3] - box[1] < 8:
         return False
     crop = img.crop(box)
     if max(crop.size) < 224:
         crop = crop.resize((224, 224), Image.Resampling.LANCZOS)
     cv = embedder.embed_image(crop)
-    margin = (_cos(embedder.embed_text(description), cv)
-              - _cos(embedder.embed_text(GROUNDING_BASELINE_TEXT), cv))
+    margin = _cos(embedder.embed_text(description), cv) - _cos(embedder.embed_text(GROUNDING_BASELINE_TEXT), cv)
     return bool(margin >= min_margin)
 
 
@@ -284,13 +291,17 @@ def _describe_tool() -> dict:
     return ai_models.tool(
         "describe",
         "State plainly what is visible in the image.",
-        {"type": "object",
-         "properties": {
-             "description": {
-                 "type": "string",
-                 "description": "Two short factual sentences about what is "
-                                "in the image."}},
-         "required": ["description"]})
+        {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Two short factual sentences about what is in the image.",
+                }
+            },
+            "required": ["description"],
+        },
+    )
 
 
 def _assess_tool() -> dict:
@@ -299,30 +310,35 @@ def _assess_tool() -> dict:
     nothing and a stated number anchors the model into producing it."""
     return ai_models.tool(
         "assess",
-        "Report the technical quality of an AI-generated image and every "
-        "concrete visible defect.",
-        {"type": "object",
-         "properties": {
-             "quality_score": {
-                 "type": "number", "minimum": 0, "maximum": 10,
-                 "description": "Overall technical quality, 0-10."},
-             "defects": {
-                 "type": "array", "maxItems": 16,
-                 "items": {
-                     "type": "object",
-                     "properties": {
-                         "type": {"enum": list(FINDING_TYPES)},
-                         "severity": {"enum": list(_SEVERITIES)},
-                         "confidence": {"type": "number",
-                                        "minimum": 0, "maximum": 1},
-                         "region": {"enum": list(_REGIONS)},
-                         "what": {"type": "string",
-                                  "description": "A few words describing it."},
-                     },
-                     "required": ["type", "severity", "confidence",
-                                  "region", "what"]}},
-         },
-         "required": ["quality_score", "defects"]})
+        "Report the technical quality of an AI-generated image and every concrete visible defect.",
+        {
+            "type": "object",
+            "properties": {
+                "quality_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "description": "Overall technical quality, 0-10.",
+                },
+                "defects": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"enum": list(FINDING_TYPES)},
+                            "severity": {"enum": list(_SEVERITIES)},
+                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            "region": {"enum": list(_REGIONS)},
+                            "what": {"type": "string", "description": "A few words describing it."},
+                        },
+                        "required": ["type", "severity", "confidence", "region", "what"],
+                    },
+                },
+            },
+            "required": ["quality_score", "defects"],
+        },
+    )
 
 
 def _locate_tool() -> dict:
@@ -330,20 +346,28 @@ def _locate_tool() -> dict:
     the answer does not depend on how the processor scaled the image."""
     return ai_models.tool(
         "locate",
-        "Give the bounding box of one thing in the image, as fractions of "
-        "the image size.",
-        {"type": "object",
-         "properties": {
-             "x": {"type": "number", "minimum": 0, "maximum": 1,
-                   "description": "Left edge, fraction of the width."},
-             "y": {"type": "number", "minimum": 0, "maximum": 1,
-                   "description": "Top edge, fraction of the height."},
-             "w": {"type": "number", "minimum": 0, "maximum": 1,
-                   "description": "Width, fraction of the image width."},
-             "h": {"type": "number", "minimum": 0, "maximum": 1,
-                   "description": "Height, fraction of the image height."},
-         },
-         "required": ["x", "y", "w", "h"]})
+        "Give the bounding box of one thing in the image, as fractions of the image size.",
+        {
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "minimum": 0, "maximum": 1, "description": "Left edge, fraction of the width."},
+                "y": {"type": "number", "minimum": 0, "maximum": 1, "description": "Top edge, fraction of the height."},
+                "w": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Width, fraction of the image width.",
+                },
+                "h": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Height, fraction of the image height.",
+                },
+            },
+            "required": ["x", "y", "w", "h"],
+        },
+    )
 
 
 def _align_tool(n: int) -> dict:
@@ -355,21 +379,27 @@ def _align_tool(n: int) -> dict:
     return ai_models.tool(
         "align",
         "Say whether each requested prompt element is visible in the image.",
-        {"type": "object",
-         "properties": {
-             "elements": {
-                 "type": "array", "minItems": n, "maxItems": n,
-                 "items": {
-                     "type": "object",
-                     "properties": {
-                         "present": {"type": "boolean"},
-                         "confidence": {"type": "number",
-                                        "minimum": 0, "maximum": 1},
-                         "where": {"enum": ["absent", *_REGIONS]},
-                     },
-                     "required": ["present", "confidence", "where"]}},
-         },
-         "required": ["elements"]})
+        {
+            "type": "object",
+            "properties": {
+                "elements": {
+                    "type": "array",
+                    "minItems": n,
+                    "maxItems": n,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "present": {"type": "boolean"},
+                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            "where": {"enum": ["absent", *_REGIONS]},
+                        },
+                        "required": ["present", "confidence", "where"],
+                    },
+                },
+            },
+            "required": ["elements"],
+        },
+    )
 
 
 # --- defensive reads ---------------------------------------------------------
@@ -393,9 +423,13 @@ def _as_defect(raw) -> dict | None:
     except (TypeError, ValueError):
         return None
     region = raw.get("region")
-    return {"type": kind, "severity": severity, "confidence": confidence,
-            "region": region if region in _REGIONS else "whole-image",
-            "what": str(raw.get("what") or "")[:300] or str(kind)}
+    return {
+        "type": kind,
+        "severity": severity,
+        "confidence": confidence,
+        "region": region if region in _REGIONS else "whole-image",
+        "what": str(raw.get("what") or "")[:300] or str(kind),
+    }
 
 
 def _as_bbox(raw) -> tuple | None:
@@ -409,9 +443,7 @@ def _as_bbox(raw) -> tuple | None:
         x, y, w, h = (float(raw[key]) for key in ("x", "y", "w", "h"))
     except (KeyError, TypeError, ValueError):
         return None
-    if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0
-            and 0.01 <= w <= 1.0 - x + 1e-6
-            and 0.01 <= h <= 1.0 - y + 1e-6):
+    if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and 0.01 <= w <= 1.0 - x + 1e-6 and 0.01 <= h <= 1.0 - y + 1e-6):
         return None
     return (x, y, min(w, 1.0 - x), min(h, 1.0 - y))
 
@@ -425,8 +457,11 @@ def _as_verdict(raw) -> dict | None:
     except (TypeError, ValueError):
         confidence = 0.5
     where = raw.get("where")
-    return {"present": bool(raw["present"]), "confidence": confidence,
-            "where": where if where in ("absent", *_REGIONS) else "whole-image"}
+    return {
+        "present": bool(raw["present"]),
+        "confidence": confidence,
+        "where": where if where in ("absent", *_REGIONS) else "whole-image",
+    }
 
 
 class Reviewer:
@@ -444,11 +479,14 @@ class Reviewer:
 
     progress = None
 
-    def __init__(self, models_dir: str,
-                 semantic_embedder: SemanticEmbedder | None = None,
-                 model_ref: str = DEFAULT_REVIEW_MODEL,
-                 grounding_min_cos: float = DEFAULT_GROUNDING_MIN_COS,
-                 device: str = ""):
+    def __init__(
+        self,
+        models_dir: str,
+        semantic_embedder: SemanticEmbedder | None = None,
+        model_ref: str = DEFAULT_REVIEW_MODEL,
+        grounding_min_cos: float = DEFAULT_GROUNDING_MIN_COS,
+        device: str = "",
+    ):
         """Raises `BackendUnavailable` unless the embedder, the weights and
         the transformers runtime are all present and loadable."""
         # The CLIP gate is a hard dependency: a review must not exist in a
@@ -458,7 +496,8 @@ class Reviewer:
             raise BackendUnavailable(
                 "the reviewer requires the semantic (OpenCLIP) backend for "
                 "its grounding gate and region verification; provision the "
-                "OpenCLIP weights or disable reviews")
+                "OpenCLIP weights or disable reviews"
+            )
         self.model_id = model_ref
         self.model_version = f"{model_ref}+{PROTOCOL_VERSION}"
         self._models_dir = models_dir
@@ -485,9 +524,9 @@ class Reviewer:
         with contextlib.suppress(Exception):
             sink(stage, detail)
 
-    def review(self, img: Image.Image, prompt_text: str | None,
-               rubric_version: str,
-               negative_text: str | None = None) -> dict:
+    def review(
+        self, img: Image.Image, prompt_text: str | None, rubric_version: str, negative_text: str | None = None
+    ) -> dict:
         """Run the protocol and return the RAW payload dict for
         `validate_review_payload`. Raises `UngroundedReviewError` when the
         description fails the gate -- nothing is stored for that image.
@@ -503,35 +542,35 @@ class Reviewer:
         # matters: the ALIGN contract is fixed-length, and every tool has to
         # be declared up front because they render into the system block the
         # KV cache is built on.
-        expected, truncated = (extract_prompt_elements_report(
-            prompt_text, negative_text) if prompt_text else ([], False))
+        expected, truncated = extract_prompt_elements_report(prompt_text, negative_text) if prompt_text else ([], False)
         tools = [_describe_tool(), _assess_tool(), _locate_tool()]
         if expected:
             tools.append(_align_tool(len(expected)))
 
         chat = ai_models.Chat(
-            self.model_id, [img], models_dir=self._models_dir,
-            device=self._device, tools=tools,
+            self.model_id,
+            [img],
+            models_dir=self._models_dir,
+            device=self._device,
+            tools=tools,
             system="You are a strict reviewer of AI-generated images. "
-                   "Answer only by calling the tool you were asked for.")
+            "Answer only by calling the tool you were asked for.",
+        )
 
         # 1. DESCRIBE -- what the model commits to seeing, before it is
         # asked to judge anything. Nothing schema-shaped to parrot: the
         # contract is one free-form string.
         self._emit("describe")
         try:
-            described = chat.ask_json("Call describe for this image.",
-                                      name="describe", max_new_tokens=160)
+            described = chat.ask_json("Call describe for this image.", name="describe", max_new_tokens=160)
         except ValueError as exc:
-            raise UngroundedReviewError(
-                f"the model produced no description: {exc}") from exc
+            raise UngroundedReviewError(f"the model produced no description: {exc}") from exc
         description = str((described or {}).get("description", "")).strip()
 
         # 2. GROUND -- deterministic anti-fabrication gate (the embedder is
         # a constructor-enforced hard dependency; this can never be skipped)
         self._emit("ground", description=description)
-        grounding_margin = check_grounding(
-            self._embedder, description, img, self._grounding_min_cos)
+        grounding_margin = check_grounding(self._embedder, description, img, self._grounding_min_cos)
 
         # 3. ASSESS
         self._emit("assess", grounding_margin=round(grounding_margin, 3))
@@ -540,10 +579,11 @@ class Reviewer:
                 "Call assess for this image. Report overall technical quality "
                 "0-10 and list every concrete defect you can actually see -- "
                 "the list may well be empty.",
-                name="assess", max_new_tokens=900)
+                name="assess",
+                max_new_tokens=900,
+            )
         except ValueError as exc:
-            raise UngroundedReviewError(
-                f"the model produced no usable assessment: {exc}") from exc
+            raise UngroundedReviewError(f"the model produced no usable assessment: {exc}") from exc
         if not isinstance(assessment, dict):
             raise UngroundedReviewError("the assessment was not an object")
 
@@ -560,19 +600,15 @@ class Reviewer:
         adherence_note = ""
         if expected:
             self._emit("align", findings=len(findings))
-            alignment_elements = self._alignment(
-                chat, expected, description, img, findings)
+            alignment_elements = self._alignment(chat, expected, description, img, findings)
             if alignment_elements:
                 satisfied = sum(1 for e in alignment_elements if e["satisfied"])
-                adherence_note = (f" [adherence {satisfied}"
-                                  f"/{len(alignment_elements)} prompt elements]")
+                adherence_note = f" [adherence {satisfied}/{len(alignment_elements)} prompt elements]"
                 if truncated:
                     # Say it. The score is satisfied/total, so a quietly
                     # shortened total reads as a complete verdict on a
                     # prompt that was never fully checked.
-                    adherence_note += (
-                        f" [only the first {_ALIGN_MAX_ELEMENTS} prompt "
-                        f"elements were checked]")
+                    adherence_note += f" [only the first {_ALIGN_MAX_ELEMENTS} prompt elements were checked]"
 
         # 5. ASSEMBLE (deterministic). Prompt-following is the fraction of
         # the user's own prompt the image actually delivered -- countable,
@@ -580,16 +616,14 @@ class Reviewer:
         # only "this file carries no generation prompt to follow".
         alignment_score = None
         if alignment_elements:
-            alignment_score = (sum(1 for e in alignment_elements if e["satisfied"])
-                               / len(alignment_elements))
+            alignment_score = sum(1 for e in alignment_elements if e["satisfied"]) / len(alignment_elements)
 
-        self._emit("assemble", findings=len(findings),
-                   alignment=len(alignment_elements),
-                   alignment_score=alignment_score)
+        self._emit(
+            "assemble", findings=len(findings), alignment=len(alignment_elements), alignment_score=alignment_score
+        )
         summary = f"{description[:260]} [grounding margin {grounding_margin:.2f}]"
         if dropped_unverified:
-            summary += (f" [{dropped_unverified} finding(s) dropped: region "
-                        f"verification failed]")
+            summary += f" [{dropped_unverified} finding(s) dropped: region verification failed]"
         summary += adherence_note
 
         return {
@@ -612,7 +646,7 @@ class Reviewer:
         findings: list = []
         dropped = 0
         raw_defects = assessment.get("defects")
-        for raw in (raw_defects if isinstance(raw_defects, list) else []):
+        for raw in raw_defects if isinstance(raw_defects, list) else []:
             defect = _as_defect(raw)
             if defect is None:
                 continue
@@ -621,11 +655,9 @@ class Reviewer:
             # never per-defect text.
             text = defect["what"]
             bbox = None
-            if (defect["type"] in _LOCALIZABLE_TYPES
-                    and defect["region"] != "whole-image"):
+            if defect["type"] in _LOCALIZABLE_TYPES and defect["region"] != "whole-image":
                 bbox = self._locate(chat, text)
-                if bbox is not None and not verify_finding_region(
-                        self._embedder, text, bbox, img):
+                if bbox is not None and not verify_finding_region(self._embedder, text, bbox, img):
                     dropped += 1
                     continue
             if bbox is None and defect["region"] != "whole-image":
@@ -642,8 +674,7 @@ class Reviewer:
             findings.append(finding)
         return findings, dropped
 
-    def _alignment(self, chat, expected: list, description: str,
-                   img: Image.Image, findings: list) -> list:
+    def _alignment(self, chat, expected: list, description: str, img: Image.Image, findings: list) -> list:
         """The ALIGN elements, appending prompt_mismatch findings for
         confidently-absent ones. A failed ALIGN never sinks the review."""
         listing = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(expected))
@@ -657,7 +688,9 @@ class Reviewer:
                 "where it is -- a region name, or 'absent' when it is not "
                 "there, or 'whole-image' when it is an overall property "
                 "rather than a thing in one place.",
-                name="align", max_new_tokens=40 * len(expected) + 80)
+                name="align",
+                max_new_tokens=40 * len(expected) + 80,
+            )
             raw = reply.get("elements") if isinstance(reply, dict) else None
         except Exception as exc:
             _logger.debug("[AI] ALIGN failed, the review continues: %s", exc)
@@ -682,24 +715,24 @@ class Reviewer:
             bbox = None
             if satisfied and verdict["where"] not in ("absent", "whole-image"):
                 bbox = self._locate(chat, text)
-                if bbox is not None and not verify_finding_region(
-                        self._embedder, text, bbox, img):
+                if bbox is not None and not verify_finding_region(self._embedder, text, bbox, img):
                     bbox = None
-            element = {"ordinal": ordinal, "text": text,
-                       "satisfied": satisfied, "confidence": confidence}
+            element = {"ordinal": ordinal, "text": text, "satisfied": satisfied, "confidence": confidence}
             if bbox is not None:
                 element["bbox"] = list(bbox)
             elements.append(element)
             # A confidently-absent element is also a defect, so it stays in
             # the findings list the reviewer reads.
             if not satisfied and confidence >= 0.5:
-                findings.append({
-                    "type": "prompt_mismatch",
-                    "severity": "medium",
-                    "confidence": confidence,
-                    "localizable": False,
-                    "description": f'requested "{text[:120]}" is not visible',
-                })
+                findings.append(
+                    {
+                        "type": "prompt_mismatch",
+                        "severity": "medium",
+                        "confidence": confidence,
+                        "localizable": False,
+                        "description": f'requested "{text[:120]}" is not visible',
+                    }
+                )
         return elements
 
     def _locate(self, chat, what: str) -> tuple | None:
@@ -707,8 +740,8 @@ class Reviewer:
         cannot state a geometrically coherent box (the finding then stays
         global)."""
         try:
-            return _as_bbox(chat.ask_json(
-                f"Call locate for this: {what}", name="locate",
-                max_new_tokens=96, attempts=1))
+            return _as_bbox(
+                chat.ask_json(f"Call locate for this: {what}", name="locate", max_new_tokens=96, attempts=1)
+            )
         except Exception:  # a failed localization is a global finding
             return None

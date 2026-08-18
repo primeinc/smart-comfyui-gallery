@@ -74,8 +74,7 @@ process.stdout.write(JSON.stringify(files.map(function (file) {
 def _node():
     found = shutil.which("node")
     if found is None:
-        pytest.skip("node is not on PATH; the shipped JavaScript cannot be "
-                    "parsed here")
+        pytest.skip("node is not on PATH; the shipped JavaScript cannot be parsed here")
     return found
 
 
@@ -85,7 +84,7 @@ def _executable_blocks(html: str):
         if _SRC.search(attrs) or not body.strip():
             continue
         found = _TYPE.search(attrs)
-        kind = (found.group(1).strip().lower() if found else "")
+        kind = found.group(1).strip().lower() if found else ""
         if kind in _JS_TYPES:
             blocks.append(body)
     return blocks
@@ -102,18 +101,13 @@ def _syntax_errors(blocks, tmp_path):
         path.write_text(body, encoding="utf-8")
         paths.append(str(path))
 
-    done = subprocess.run([_node(), "-e", _PARSE_EACH, json.dumps(paths)],
-                          capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, (
-        f"the parser itself failed instead of reporting on the blocks:\n"
-        f"{done.stderr}")
+    done = subprocess.run([_node(), "-e", _PARSE_EACH, json.dumps(paths)], capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, f"the parser itself failed instead of reporting on the blocks:\n{done.stderr}"
 
     results = json.loads(done.stdout)
-    assert len(results) == len(blocks), (
-        f"asked about {len(blocks)} blocks, heard about {len(results)}")
+    assert len(results) == len(blocks), f"asked about {len(blocks)} blocks, heard about {len(results)}"
 
-    return [(index, message) for index, message in enumerate(results)
-            if message is not None]
+    return [(index, message) for index, message in enumerate(results) if message is not None]
 
 
 @pytest.fixture
@@ -146,7 +140,8 @@ def test_the_management_page_ships_parseable_javascript(client, tmp_path):
 
     assert len(blocks) > 10, (
         f"only {len(blocks)} executable script blocks were found in "
-        f"{len(page)} bytes; the extraction is not reaching the page")
+        f"{len(page)} bytes; the extraction is not reaching the page"
+    )
     assert sum(len(b) for b in blocks) > 100_000, "far less script than expected"
 
     errors = _syntax_errors(blocks, tmp_path)
@@ -154,8 +149,7 @@ def test_the_management_page_ships_parseable_javascript(client, tmp_path):
     assert not errors, errors
 
 
-def test_the_exhibition_page_ships_parseable_javascript(smartgallery_app,
-                                                        monkeypatch, tmp_path):
+def test_the_exhibition_page_ships_parseable_javascript(smartgallery_app, monkeypatch, tmp_path):
     """The visitor's page is a different template and was edited by the same
     commit, so it is checked on its own rather than assumed to follow."""
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
@@ -170,8 +164,8 @@ def test_the_exhibition_page_ships_parseable_javascript(smartgallery_app,
     blocks = _executable_blocks(page)
 
     assert len(blocks) > 3, (
-        f"{len(blocks)} blocks found; this may be the login screen rather "
-        f"than the exhibition itself")
+        f"{len(blocks)} blocks found; this may be the login screen rather than the exhibition itself"
+    )
 
     errors = _syntax_errors(blocks, tmp_path)
 
@@ -203,7 +197,8 @@ def test_a_template_the_rendered_pages_never_reach_still_parses(relpath, tmp_pat
     html = (_REPO_ROOT / relpath).read_text(encoding="utf-8")
     assert "{{" not in html, (
         f"{relpath} grew Jinja expressions, so it can no longer be read "
-        f"from disk; move it to one of the rendered-page checks above")
+        f"from disk; move it to one of the rendered-page checks above"
+    )
 
     blocks = _executable_blocks(html)
     assert blocks, f"{relpath} has no executable script blocks -- probe broken?"
@@ -241,15 +236,15 @@ def _render_standalone(app, template_name: str) -> str:
 
 
 @pytest.mark.parametrize("template_name", _EXHIBITION_TEMPLATES)
-def test_the_exhibition_templates_parse_on_their_own(smartgallery_app,
-                                                     template_name, tmp_path):
+def test_the_exhibition_templates_parse_on_their_own(smartgallery_app, template_name, tmp_path):
     try:
         html = _render_standalone(smartgallery_app.app, template_name)
     except TypeError as exc:  # a `| tojson` value that Undefined cannot satisfy
         pytest.fail(
             f"{template_name} could not render for the JS check ({exc}). A new "
             f"`| tojson` variable likely needs a value in "
-            f"_EXHIBITION_TOJSON_CONTEXT.")
+            f"_EXHIBITION_TOJSON_CONTEXT."
+        )
 
     blocks = _executable_blocks(html)
     assert blocks, f"{template_name} has no executable script blocks -- probe broken?"
@@ -263,10 +258,12 @@ def test_a_script_that_is_not_javascript_is_left_alone():
     """The changelog travels inside a script tag as text/markdown. Browsers
     do not run it and neither does this, or every release note would have
     to be valid JavaScript."""
-    html = ('<script id="changelog-data" type="text/markdown">\n'
-            '# Changelog\n* a bullet point\n</script>'
-            '<script>let ok = 1;</script>'
-            '<script src="/x.js"></script>')
+    html = (
+        '<script id="changelog-data" type="text/markdown">\n'
+        "# Changelog\n* a bullet point\n</script>"
+        "<script>let ok = 1;</script>"
+        '<script src="/x.js"></script>'
+    )
 
     blocks = _executable_blocks(html)
 

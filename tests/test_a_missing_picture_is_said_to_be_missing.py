@@ -43,18 +43,21 @@ from werkzeug.exceptions import Forbidden, NotFound
 
 import smartgallery
 
-MISSING = "deadbeef" * 4          # the right shape, no such picture
+MISSING = "deadbeef" * 4  # the right shape, no such picture
 
 
 def a_real_png():
     def chunk(kind, payload):
         body = kind + payload
-        return (struct.pack(">I", len(payload)) + body
-                + struct.pack(">I", zlib.crc32(body)))
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body))
+
     header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
-            + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff"))
-            + chunk(b"IEND", b""))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff"))
+        + chunk(b"IEND", b"")
+    )
 
 
 def file_id_routes(app):
@@ -87,11 +90,11 @@ def a_gallery_with_one_picture(smartgallery_app, tmp_path, monkeypatch):
 
 def ask(client, method, template, file_id):
     return client.open(
-        template.replace("<file_id>", file_id)
-                .replace("<string:file_id>", file_id),
+        template.replace("<file_id>", file_id).replace("<string:file_id>", file_id),
         method=method,
         json={} if method in ("POST", "PUT", "PATCH") else None,
-        headers={"Sec-Fetch-Site": "same-origin"})
+        headers={"Sec-Fetch-Site": "same-origin"},
+    )
 
 
 def test_there_are_routes_to_sweep(a_gallery_with_one_picture):
@@ -103,8 +106,7 @@ def test_there_are_routes_to_sweep(a_gallery_with_one_picture):
     assert len(routes) >= 20, f"only found {len(routes)} routes taking a file id"
 
 
-def test_no_route_calls_a_missing_picture_a_server_fault(
-        a_gallery_with_one_picture):
+def test_no_route_calls_a_missing_picture_a_server_fault(a_gallery_with_one_picture):
     """The defect. Three of them answered 500."""
     sg, client = a_gallery_with_one_picture
 
@@ -116,7 +118,8 @@ def test_no_route_calls_a_missing_picture_a_server_fault(
 
     assert not faulted, (
         "asking for a picture that is not in the library was reported as "
-        "the gallery having broken:\n  " + "\n  ".join(faulted))
+        "the gallery having broken:\n  " + "\n  ".join(faulted)
+    )
 
 
 def test_no_route_calls_a_missing_picture_a_success(a_gallery_with_one_picture):
@@ -135,9 +138,7 @@ def test_no_route_calls_a_missing_picture_a_success(a_gallery_with_one_picture):
         if isinstance(body, dict) and body.get("status") == "error":
             lying.append("{} {} -> 200 but {!r}".format(method, template, body.get("message")))
 
-    assert not lying, (
-        "answered 200 while its own body reported a failure:\n  "
-        + "\n  ".join(lying))
+    assert not lying, "answered 200 while its own body reported a failure:\n  " + "\n  ".join(lying)
 
 
 def test_the_refusal_does_not_quote_the_machine(a_gallery_with_one_picture):
@@ -154,8 +155,7 @@ def test_the_refusal_does_not_quote_the_machine(a_gallery_with_one_picture):
         if not answer.is_json:
             continue
         text = json.dumps(answer.get_json())
-        for giveaway in ("Traceback", "SELECT ", "sqlite", ".py", "C:\\",
-                         "/home/", "smartgallery."):
+        for giveaway in ("Traceback", "SELECT ", "sqlite", ".py", "C:\\", "/home/", "smartgallery."):
             if giveaway in text:
                 leaked.append(f"{method} {template} leaked {giveaway!r}: {text[:120]}")
 
@@ -169,11 +169,9 @@ def test_a_refusal_says_what_is_wrong_in_words(a_gallery_with_one_picture):
     sg, client = a_gallery_with_one_picture
 
     # the route that raises it, rather than one that answers for itself
-    answer = ask(client, "GET", "/galleryout/storyboard/<string:file_id>",
-                 MISSING)
+    answer = ask(client, "GET", "/galleryout/storyboard/<string:file_id>", MISSING)
     assert answer.status_code == 404
-    assert "not in the gallery" in answer.get_data(as_text=True), \
-        answer.get_data(as_text=True)[:200]
+    assert "not in the gallery" in answer.get_data(as_text=True), answer.get_data(as_text=True)[:200]
 
     # and nowhere may still claim the address itself was wrong
     untrue = []
@@ -182,8 +180,8 @@ def test_a_refusal_says_what_is_wrong_in_words(a_gallery_with_one_picture):
         if "requested URL was not found" in said:
             untrue.append(f"{method} {template}")
     assert not untrue, (
-        "told somebody the address was wrong when the address was right "
-        "and the picture was gone: " + ", ".join(untrue))
+        "told somebody the address was wrong when the address was right and the picture was gone: " + ", ".join(untrue)
+    )
 
 
 def test_the_picture_that_is_there_still_answers(a_gallery_with_one_picture):
@@ -195,8 +193,7 @@ def test_the_picture_that_is_there_still_answers(a_gallery_with_one_picture):
         conn.execute("DELETE FROM files")
         conn.commit()
         sg.full_sync_database(conn)
-        row = conn.execute(
-            "SELECT id FROM files WHERE name = 'real.png'").fetchone()
+        row = conn.execute("SELECT id FROM files WHERE name = 'real.png'").fetchone()
     assert row, "the scan did not record the picture this check depends on"
 
     # read-only addresses only: the sweep above must not be able to delete
@@ -204,9 +201,7 @@ def test_the_picture_that_is_there_still_answers(a_gallery_with_one_picture):
     answer = ask(client, "GET", "/galleryout/file/<string:file_id>", row["id"])
     assert answer.status_code == 200, answer.status_code
 
-    details = ask(client, "GET",
-                  "/galleryout/api/file_full_details/<string:file_id>",
-                  row["id"])
+    details = ask(client, "GET", "/galleryout/api/file_full_details/<string:file_id>", row["id"])
     assert details.status_code == 200, details.status_code
 
     with smartgallery.get_db_connection() as conn:
@@ -215,7 +210,6 @@ def test_the_picture_that_is_there_still_answers(a_gallery_with_one_picture):
 
 
 class TestTheHelperItself:
-
     def test_it_keeps_the_status(self):
 
         with smartgallery.app.test_request_context("/"):

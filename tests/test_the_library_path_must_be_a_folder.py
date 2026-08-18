@@ -62,10 +62,12 @@ def test_the_startup_check_asks_whether_it_is_a_folder(gallery_tree, setting):
 
     asked = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in ("exists", "isdir")
-                and node.args):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("exists", "isdir")
+            and node.args
+        ):
             continue
         argument = node.args[0]
         if isinstance(argument, ast.Name) and argument.id == setting:
@@ -74,11 +76,11 @@ def test_the_startup_check_asks_whether_it_is_a_folder(gallery_tree, setting):
     assert asked, f"nothing checks {setting} at all"
     assert "exists" not in asked, (
         f"{setting} is checked with os.path.exists somewhere, which a file "
-        f"passes -- the gallery then starts on it and shows nothing")
+        f"passes -- the gallery then starts on it and shows nothing"
+    )
 
 
-def test_the_refusal_tells_the_truth_about_a_missing_folder(tmp_path, capsys,
-                                                            monkeypatch):
+def test_the_refusal_tells_the_truth_about_a_missing_folder(tmp_path, capsys, monkeypatch):
     """A path that really is not there must still say so."""
     monkeypatch.setattr(smartgallery, "TKINTER_AVAILABLE", False)
     missing = str(tmp_path / "not_here")
@@ -104,14 +106,12 @@ def test_the_refusal_tells_the_truth_about_a_file(tmp_path, capsys, monkeypatch)
 
     assert exited.value.code == 1
     printed = capsys.readouterr().out
-    assert "does not exist" not in printed, (
-        f"told somebody a file that is right there does not exist:\n{printed}")
+    assert "does not exist" not in printed, f"told somebody a file that is right there does not exist:\n{printed}"
     assert "is a file, not a folder" in printed, printed
     assert str(a_file) in printed, printed
 
 
-def test_the_refusal_still_says_which_setting_to_edit(tmp_path, capsys,
-                                                      monkeypatch):
+def test_the_refusal_still_says_which_setting_to_edit(tmp_path, capsys, monkeypatch):
     """Over-reach guard: the useful half of the original message has to
     survive the change."""
     monkeypatch.setattr(smartgallery, "TKINTER_AVAILABLE", False)
@@ -134,6 +134,6 @@ def test_it_still_stops_rather_than_carrying_on(tmp_path, monkeypatch):
 
     for path in [str(tmp_path / "not_here"), str(tmp_path)]:
         if path == str(tmp_path):
-            continue          # a real folder is never passed to this
+            continue  # a real folder is never passed to this
         with pytest.raises(SystemExit):
             smartgallery.show_config_error_and_exit(path)

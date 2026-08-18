@@ -5,20 +5,29 @@ from dataclasses import dataclass, field
 # Canonical parameter slots every adapter maps into. Anything a tool emits
 # beyond these lands in `extra` with its original key.
 CANONICAL_KEYS = (
-    "model", "model_hash", "sampler", "scheduler", "seed", "steps",
-    "cfg", "size", "denoise", "clip_skip", "version",
+    "model",
+    "model_hash",
+    "sampler",
+    "scheduler",
+    "seed",
+    "steps",
+    "cfg",
+    "size",
+    "denoise",
+    "clip_skip",
+    "version",
 )
 
 
 @dataclass
 class ParsedMetadata:
-    tool: str                       # display name, e.g. "SwarmUI", "A1111 / Forge"
+    tool: str  # display name, e.g. "SwarmUI", "A1111 / Forge"
     positive: str = ""
     negative: str = ""
-    params: dict[str, str] = field(default_factory=dict)   # canonical keys only
-    extra: dict[str, str] = field(default_factory=dict)    # tool-specific leftovers
-    raw: str = ""                   # the embedded text as found (infotext or JSON)
-    detection: str = "marker"       # "marker" | "heuristic" | "stealth"
+    params: dict[str, str] = field(default_factory=dict)  # canonical keys only
+    extra: dict[str, str] = field(default_factory=dict)  # tool-specific leftovers
+    raw: str = ""  # the embedded text as found (infotext or JSON)
+    detection: str = "marker"  # "marker" | "heuristic" | "stealth"
 
     @property
     def renderable(self) -> bool:

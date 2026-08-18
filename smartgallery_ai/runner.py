@@ -122,14 +122,11 @@ def _event(step: str, status: str, **detail) -> dict:
 
 
 def _step_resolve(ctx: RunContext) -> dict:
-    row = ctx.conn.execute(
-        "SELECT path, type, mtime FROM files WHERE id = ?", (ctx.file_id,)
-    ).fetchone()
+    row = ctx.conn.execute("SELECT path, type, mtime FROM files WHERE id = ?", (ctx.file_id,)).fetchone()
     if row is None:
         raise LookupError(f"no such file: {ctx.file_id}")
     ctx.path, ctx.file_type, ctx.mtime = row[0], row[1], row[2]
-    ctx.prompt_text, ctx.negative_text = review_mod.resolve_prompt_texts(
-        ctx.conn, ctx.file_id)
+    ctx.prompt_text, ctx.negative_text = review_mod.resolve_prompt_texts(ctx.conn, ctx.file_id)
     ctx.input_key = stage_input_key(ctx.prompt_text, ctx.negative_text, RUBRIC_VERSION)
     return {
         "path": ctx.path,
@@ -155,8 +152,7 @@ def _step_critic(ctx: RunContext) -> dict:
         raise RuntimeError("no critic backend is available")
     if ctx.img is None:
         raise LookupError("load did not run; nothing to review")
-    ctx.payload = ctx.critic.review(
-        ctx.img, ctx.prompt_text, RUBRIC_VERSION, negative_text=ctx.negative_text)
+    ctx.payload = ctx.critic.review(ctx.img, ctx.prompt_text, RUBRIC_VERSION, negative_text=ctx.negative_text)
     return {"raw_keys": sorted(ctx.payload or {})}
 
 
@@ -165,8 +161,13 @@ def _step_validate(ctx: RunContext) -> dict:
         raise LookupError("critic did not run; nothing to validate")
     ctx.result = review_mod.validate_review_payload(ctx.payload)
     ctx.findings = [
-        {"type": f.type, "severity": f.severity, "confidence": f.confidence,
-         "localizable": f.localizable, "description": f.description}
+        {
+            "type": f.type,
+            "severity": f.severity,
+            "confidence": f.confidence,
+            "localizable": f.localizable,
+            "description": f.description,
+        }
         for f in ctx.result.findings
     ]
     return {
@@ -175,8 +176,7 @@ def _step_validate(ctx: RunContext) -> dict:
         "summary": ctx.result.summary,
         "findings": ctx.findings,
         "alignment": [
-            {"ordinal": e.ordinal, "text": e.text, "satisfied": e.satisfied,
-             "confidence": e.confidence}
+            {"ordinal": e.ordinal, "text": e.text, "satisfied": e.satisfied, "confidence": e.confidence}
             for e in ctx.result.alignment
         ],
     }
@@ -186,9 +186,16 @@ def _step_store(ctx: RunContext) -> dict:
     if ctx.result is None:
         raise LookupError("validate did not run; nothing to store")
     ctx.review_id = review_mod.store_review(
-        ctx.conn, ctx.file_id, ctx.result, ctx.critic.model_id,
-        ctx.critic.model_version, RUBRIC_VERSION, json.dumps(ctx.payload),
-        ctx.mtime, time.time())
+        ctx.conn,
+        ctx.file_id,
+        ctx.result,
+        ctx.critic.model_id,
+        ctx.critic.model_version,
+        RUBRIC_VERSION,
+        json.dumps(ctx.payload),
+        ctx.mtime,
+        time.time(),
+    )
     return {"review_id": ctx.review_id}
 
 
@@ -199,26 +206,34 @@ def _step_masks(ctx: RunContext) -> dict:
         return {"skipped": "no segmenter backend"}
     generated = 0
     failures = []
-    finding_ids = [r[0] for r in ctx.conn.execute(
-        "SELECT finding_id FROM ai_review_findings WHERE review_id = ? "
-        "AND localizable = 1 AND mask_path IS NULL", (ctx.review_id,))]
+    finding_ids = [
+        r[0]
+        for r in ctx.conn.execute(
+            "SELECT finding_id FROM ai_review_findings WHERE review_id = ? AND localizable = 1 AND mask_path IS NULL",
+            (ctx.review_id,),
+        )
+    ]
     for finding_id in finding_ids:
         try:
             review_mod.generate_finding_mask(
-                ctx.conn, ctx.config.cache_dir, ctx.img, ctx.file_id,
-                finding_id, ctx.segmenter)
+                ctx.conn, ctx.config.cache_dir, ctx.img, ctx.file_id, finding_id, ctx.segmenter
+            )
             generated += 1
         except Exception as exc:
             failures.append(f"finding {finding_id}: {exc}")
-    element_ids = [r[0] for r in ctx.conn.execute(
-        "SELECT element_id FROM ai_review_alignment WHERE review_id = ? "
-        "AND satisfied = 1 AND bbox_x IS NOT NULL AND mask_path IS NULL",
-        (ctx.review_id,))]
+    element_ids = [
+        r[0]
+        for r in ctx.conn.execute(
+            "SELECT element_id FROM ai_review_alignment WHERE review_id = ? "
+            "AND satisfied = 1 AND bbox_x IS NOT NULL AND mask_path IS NULL",
+            (ctx.review_id,),
+        )
+    ]
     for element_id in element_ids:
         try:
             review_mod.generate_alignment_mask(
-                ctx.conn, ctx.config.cache_dir, ctx.img, ctx.file_id,
-                element_id, ctx.segmenter)
+                ctx.conn, ctx.config.cache_dir, ctx.img, ctx.file_id, element_id, ctx.segmenter
+            )
             generated += 1
         except Exception as exc:
             failures.append(f"element {element_id}: {exc}")
@@ -235,8 +250,7 @@ def _step_log(ctx: RunContext) -> dict:
     paid for once."""
     if ctx.review_id is None:
         return {"skipped": "nothing stored; scan log untouched"}
-    record_scan(ctx.conn, ctx.file_id, "review", ctx.critic, ctx.mtime,
-                time.time(), len(ctx.findings), ctx.input_key)
+    record_scan(ctx.conn, ctx.file_id, "review", ctx.critic, ctx.mtime, time.time(), len(ctx.findings), ctx.input_key)
     ctx.conn.commit()
     return {"input_key": ctx.input_key, "result_count": len(ctx.findings)}
 
@@ -252,9 +266,14 @@ _IMPL = {
 }
 
 
-def run_review(config: AIConfig, file_id: str, steps: str | None = None,
-               critic=None, segmenter=None,
-               connect: Callable | None = None) -> Iterator[dict]:
+def run_review(
+    config: AIConfig,
+    file_id: str,
+    steps: str | None = None,
+    critic=None,
+    segmenter=None,
+    connect: Callable | None = None,
+) -> Iterator[dict]:
     """Run the review pipeline over one file, yielding JSON-ready events.
 
     Raises `RunnerBusy` immediately if another run holds the critic. The
@@ -296,16 +315,14 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
         conn.close()
         return
 
-    ctx = RunContext(config=config, file_id=file_id, conn=conn,
-                     critic=critic, segmenter=segmenter)
+    ctx = RunContext(config=config, file_id=file_id, conn=conn, critic=critic, segmenter=segmenter)
 
     # The critic reports its protocol stages from inside a blocking call, so
     # it runs on a thread and this generator drains its events. Without that
     # the whole point -- watching a 200s review progress -- is lost.
     sink: queue.Queue = queue.Queue()
     if critic is not None:
-        critic.progress = lambda stage, detail: sink.put(
-            _event(f"critic:{stage}", "info", **detail))
+        critic.progress = lambda stage, detail: sink.put(_event(f"critic:{stage}", "info", **detail))
 
     try:
         for name in selected:
@@ -321,11 +338,9 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
             try:
                 detail = _IMPL[name](ctx) or {}
             except Exception as exc:
-                yield _event(name, "error", error=str(exc),
-                             seconds=round(time.monotonic() - started, 3))
+                yield _event(name, "error", error=str(exc), seconds=round(time.monotonic() - started, 3))
                 break
-            yield _event(name, "ok", seconds=round(time.monotonic() - started, 3),
-                         **detail)
+            yield _event(name, "ok", seconds=round(time.monotonic() - started, 3), **detail)
     finally:
         if critic is not None:
             critic.progress = None

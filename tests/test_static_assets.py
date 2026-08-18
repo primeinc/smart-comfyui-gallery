@@ -121,11 +121,11 @@ def test_only_the_static_endpoint_escapes_the_route_audit(gallery_tree, smartgal
     silently unguarded."""
     tree = gallery_tree
     from_source = {
-        node.name for node in ast.walk(tree)
+        node.name
+        for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
         for dec in node.decorator_list
-        if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
-        and dec.func.attr == "route"
+        if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr == "route"
     }
     assert len(from_source) > 50, len(from_source)
 
@@ -139,4 +139,5 @@ def test_only_the_static_endpoint_escapes_the_route_audit(gallery_tree, smartgal
     assert unaccounted == {"static"}, (
         f"{sorted(unaccounted)} are served but are not @app.route functions, "
         f"so the route audit never sees them and nothing states who may call "
-        f"them. Gate them and list them here.")
+        f"them. Gate them and list them here."
+    )

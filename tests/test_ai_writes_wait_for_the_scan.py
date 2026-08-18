@@ -55,8 +55,7 @@ def gallery_db(tmp_path):
 def test_the_shared_connection_waits_as_long_as_the_gallery(gallery_db):
     conn = schema.connect(gallery_db)
     try:
-        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == \
-            schema.DB_TIMEOUT_SECONDS * 1000
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == schema.DB_TIMEOUT_SECONDS * 1000
     finally:
         conn.close()
 
@@ -80,11 +79,8 @@ def test_the_service_opens_it_the_same_way(gallery_db):
 
     conn = service._connect(_Config())
     try:
-        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == \
-            schema.DB_TIMEOUT_SECONDS * 1000
-        assert conn.row_factory is sqlite3.Row, (
-            "rows stopped being name-addressable; every caller reads by "
-            "column name")
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == schema.DB_TIMEOUT_SECONDS * 1000
+        assert conn.row_factory is sqlite3.Row, "rows stopped being name-addressable; every caller reads by column name"
     finally:
         conn.close()
 
@@ -102,7 +98,8 @@ def test_a_write_survives_a_scan_holding_the_lock(gallery_db):
     default is a property, not a race to be sat through."""
     assert schema.DB_TIMEOUT_SECONDS > 5.0, (
         "sqlite3.connect defaults to a 5s busy timeout; the gallery's own "
-        f"connect must wait longer, not {schema.DB_TIMEOUT_SECONDS}s")
+        f"connect must wait longer, not {schema.DB_TIMEOUT_SECONDS}s"
+    )
 
     holding = threading.Event()
     release = threading.Event()
@@ -147,8 +144,8 @@ def test_a_write_survives_a_scan_holding_the_lock(gallery_db):
     writer = threading.Thread(target=worker_write, daemon=True)
     writer.start()
     assert not wrote.wait(0.05), (
-        "the worker's write completed while the scan still held the lock; "
-        "it cannot have waited for anything")
+        "the worker's write completed while the scan still held the lock; it cannot have waited for anything"
+    )
 
     release.set()
     assert wrote.wait(30), "the worker's write never completed"
@@ -159,8 +156,7 @@ def test_a_write_survives_a_scan_holding_the_lock(gallery_db):
         rows = {row[0] for row in check.execute("SELECT id FROM files")}
     finally:
         check.close()
-    assert rows == {"scanned", "by_worker"}, (
-        f"the worker's write did not land: {sorted(rows)}")
+    assert rows == {"scanned", "by_worker"}, f"the worker's write did not land: {sorted(rows)}"
 
 
 def test_an_uncontended_write_is_not_slowed(gallery_db):
@@ -185,8 +181,7 @@ def test_a_caller_that_wants_plain_rows_still_gets_them(gallery_db):
     conn = schema.connect(gallery_db, row_factory=None)
     try:
         assert conn.row_factory is None
-        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == \
-            schema.DB_TIMEOUT_SECONDS * 1000
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == schema.DB_TIMEOUT_SECONDS * 1000
     finally:
         conn.close()
 
@@ -201,11 +196,13 @@ def test_nothing_in_the_ai_layer_opens_the_database_on_its_own():
     for module in sorted(package.rglob("*.py")):
         tree = ast.parse(open(module, encoding="utf-8").read())
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "connect"
-                    and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "sqlite3"):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "connect"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "sqlite3"
+            ):
                 continue
             # schema.connect is the one that is allowed to.
             if module.name == "schema.py":
@@ -218,4 +215,5 @@ def test_nothing_in_the_ai_layer_opens_the_database_on_its_own():
         f"sqlite3.connect with no timeout at {offenders}. Use "
         f"schema.connect, or name a timeout -- the default is five seconds "
         f"and the gallery holds the write lock for longer than that during "
-        f"a scan.")
+        f"a scan."
+    )

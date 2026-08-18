@@ -53,8 +53,7 @@ class _InlineExecutor:
 @pytest.fixture
 def canary(smartgallery_app, monkeypatch):
     """A public-album file carrying every marker a visitor must not see."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app.AI_CONFIG, "enabled", True)
@@ -68,26 +67,30 @@ def canary(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                               (f"{_PREFIX}pic.png",)).fetchone()[0]
-        conn.execute("UPDATE files SET workflow_prompt = ?, workflow_files = ? "
-                     "WHERE id = ?", (_PROMPT, _MODEL, file_id))
-        conn.execute("INSERT INTO collections (name, type, is_public, created_at) "
-                     "VALUES (?, 'user_album', 1, 1.0)", (f"{_PREFIX}album",))
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()[0]
+        conn.execute(
+            "UPDATE files SET workflow_prompt = ?, workflow_files = ? WHERE id = ?", (_PROMPT, _MODEL, file_id)
+        )
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, created_at) VALUES (?, 'user_album', 1, 1.0)",
+            (f"{_PREFIX}album",),
+        )
         coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                     "VALUES (?, ?)", (coll_id, file_id))
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, file_id))
         # A stored review, whose alignment elements are slices of the prompt.
         conn.execute(
             "INSERT INTO ai_reviews (file_id, rubric_version, model_id, "
             "model_version, quality_score, prompt_alignment_score, summary, "
             "source_mtime, computed_at) VALUES (?, 'v1', 'critic', '1', 8.0, 0.5, "
-            "?, 1.0, 1.0)", (file_id, f"missing: {_PROMPT}"))
+            "?, 1.0, 1.0)",
+            (file_id, f"missing: {_PROMPT}"),
+        )
         review_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.execute(
             "INSERT INTO ai_review_alignment (review_id, file_id, ordinal, text, "
             "satisfied, confidence) VALUES (?, ?, 0, ?, 0, 0.9)",
-            (review_id, file_id, _PROMPT))
+            (review_id, file_id, _PROMPT),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -140,10 +143,12 @@ def test_the_canary_is_actually_stored(smartgallery_app, canary):
     absence below means redaction and not an empty fixture."""
     conn = smartgallery_app.get_db_connection()
     try:
-        row = conn.execute("SELECT workflow_prompt, workflow_files FROM files "
-                           "WHERE id = ?", (canary["file_id"],)).fetchone()
-        elements = conn.execute("SELECT text FROM ai_review_alignment "
-                                "WHERE file_id = ?", (canary["file_id"],)).fetchall()
+        row = conn.execute(
+            "SELECT workflow_prompt, workflow_files FROM files WHERE id = ?", (canary["file_id"],)
+        ).fetchone()
+        elements = conn.execute(
+            "SELECT text FROM ai_review_alignment WHERE file_id = ?", (canary["file_id"],)
+        ).fetchall()
     finally:
         conn.close()
 
@@ -161,8 +166,7 @@ def test_staff_can_see_the_canary(smartgallery_app, canary):
         session["user_id"] = 1
         session["role"] = "ADMIN"
 
-    body = client.get(
-        f"/galleryout/api/file_full_details/{canary['file_id']}").get_data(as_text=True)
+    body = client.get(f"/galleryout/api/file_full_details/{canary['file_id']}").get_data(as_text=True)
 
     assert _PROMPT in body
     assert _MODEL in body

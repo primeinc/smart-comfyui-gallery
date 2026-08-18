@@ -29,6 +29,7 @@ USERS_DDL = """
 
 # --- hash_password / verify_password ------------------------------------
 
+
 def test_hash_password_produces_argon2id():
     h = sg_auth.hash_password("correct horse battery staple")
     assert h.startswith("$argon2id$")
@@ -45,15 +46,18 @@ def test_verify_password_accepts_correct_rejects_wrong():
     assert needs_rehash is False
 
 
-@pytest.mark.parametrize("stored", [
-    None,
-    "",
-    sg_auth.UNUSABLE_PASSWORD,
-    "gAAAAABqf6eGg-H7hFSKDW6uZxD0W-XTz9URdPFytuDO7uiPED9ujScO3FIBXT1-vZU8OrzCZYXHAbUcrsCRxW9fBKIxoXDyWw==",
-    "plaintext-not-a-hash-at-all",
-    "$2b$12$notanargon2hash..................",
-    12345,
-])
+@pytest.mark.parametrize(
+    "stored",
+    [
+        None,
+        "",
+        sg_auth.UNUSABLE_PASSWORD,
+        "gAAAAABqf6eGg-H7hFSKDW6uZxD0W-XTz9URdPFytuDO7uiPED9ujScO3FIBXT1-vZU8OrzCZYXHAbUcrsCRxW9fBKIxoXDyWw==",
+        "plaintext-not-a-hash-at-all",
+        "$2b$12$notanargon2hash..................",
+        12345,
+    ],
+)
 def test_verify_password_never_raises_on_garbage(stored):
     valid, needs_rehash = sg_auth.verify_password(stored, "whatever")
     assert (valid, needs_rehash) == (False, False)
@@ -74,6 +78,7 @@ def test_is_legacy_ciphertext():
 
 
 # --- migrate_legacy_passwords --------------------------------------------
+
 
 def _make_legacy_db(tmp_path):
     """3 users with real Fernet ciphertext + 1 with corrupt ciphertext."""
@@ -186,6 +191,7 @@ def test_migrate_legacy_passwords_safe_with_no_legacy_rows(tmp_path):
 
 # --- Recoverability: no decrypt path exists ------------------------------
 
+
 def test_sg_auth_exposes_no_public_decrypt_api():
     public_names = [n for n in dir(sg_auth) if not n.startswith("_")]
     decrypt_like = [n for n in public_names if re.search("decrypt", n, re.IGNORECASE)]
@@ -201,11 +207,11 @@ def test_smartgallery_source_has_no_reversible_password_traces():
 
 # --- End-to-end via Flask test client -------------------------------------
 
+
 def _insert_user(smartgallery_app, username, password_column_value, role="USER"):
     with smartgallery_app.get_db_connection() as conn:
         conn.execute(
-            "INSERT INTO users (username, password, full_name, role, is_active) "
-            "VALUES (?, ?, ?, ?, 1)",
+            "INSERT INTO users (username, password, full_name, role, is_active) VALUES (?, ?, ?, ?, 1)",
             (username, password_column_value, username.title(), role),
         )
         conn.commit()
@@ -216,16 +222,24 @@ def test_login_success_and_failure(smartgallery_app):
 
     client = smartgallery_app.app.test_client()
 
-    resp = client.post("/galleryout/login", json={
-        "username": "e2e_login_user", "password": "hunter2secret",
-    })
+    resp = client.post(
+        "/galleryout/login",
+        json={
+            "username": "e2e_login_user",
+            "password": "hunter2secret",
+        },
+    )
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "success"
 
     client2 = smartgallery_app.app.test_client()
-    resp = client2.post("/galleryout/login", json={
-        "username": "e2e_login_user", "password": "wrong-password",
-    })
+    resp = client2.post(
+        "/galleryout/login",
+        json={
+            "username": "e2e_login_user",
+            "password": "wrong-password",
+        },
+    )
     assert resp.status_code == 401
     assert resp.get_json()["status"] == "error"
 
@@ -234,9 +248,13 @@ def test_login_rejects_unusable_sentinel(smartgallery_app):
     _insert_user(smartgallery_app, "e2e_sentinel_user", sg_auth.UNUSABLE_PASSWORD)
 
     client = smartgallery_app.app.test_client()
-    resp = client.post("/galleryout/login", json={
-        "username": "e2e_sentinel_user", "password": "anything-at-all",
-    })
+    resp = client.post(
+        "/galleryout/login",
+        json={
+            "username": "e2e_sentinel_user",
+            "password": "anything-at-all",
+        },
+    )
     assert resp.status_code == 401
     assert resp.get_json()["status"] == "error"
 
@@ -256,6 +274,7 @@ def test_admin_users_endpoint_never_leaks_password_fields(smartgallery_app):
 
 
 # --- Adversarial-review confirmed fixes (WI-31) ---
+
 
 def test_constant_time_equals_is_total_and_never_raises():
     # secrets.compare_digest raises on these; our wrapper must not.
@@ -284,13 +303,11 @@ def test_admin_login_non_ascii_password_does_not_500(smartgallery_app):
             conn.commit()
         client = sg.app.test_client()
         # Correct non-ASCII admin password authenticates (no 500, no lockout).
-        ok = client.post("/galleryout/login",
-                         json={"username": "admin", "password": "Motörhead1"})
+        ok = client.post("/galleryout/login", json={"username": "admin", "password": "Motörhead1"})
         assert ok.status_code == 200
         assert ok.get_json()["status"] == "success"
         # A crafted non-string password must not 500 the endpoint.
-        crafted = client.post("/galleryout/login",
-                              json={"username": "admin", "password": [1, 2, 3]})
+        crafted = client.post("/galleryout/login", json={"username": "admin", "password": [1, 2, 3]})
         assert crafted.status_code == 401
     finally:
         sg.ADMIN_PASS_INPUT, sg.FORCE_LOGIN = orig_pass, orig_force
@@ -311,8 +328,7 @@ def test_login_unknown_user_performs_decoy_verify(monkeypatch, smartgallery_app)
 
     monkeypatch.setattr(sg_auth, "dummy_verify", counting_dummy)
     client = smartgallery_app.app.test_client()
-    resp = client.post("/galleryout/login",
-                       json={"username": "definitely_no_such_user_xyz", "password": "whatever"})
+    resp = client.post("/galleryout/login", json={"username": "definitely_no_such_user_xyz", "password": "whatever"})
     assert resp.status_code == 401
     assert calls["n"] == 1
 

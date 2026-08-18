@@ -21,52 +21,78 @@ from metaparse.model import ParsedMetadata
 A1111_INFOTEXT = (
     "a castle on a hill <lora:castleLora:0.8>\n"
     "Negative prompt: blurry, ugly\n"
-    'Steps: 20, Sampler: Euler a, Schedule type: Karras, CFG scale: 7, '
-    'Seed: 12345, Size: 512x768, Model hash: abc123def, Model: dreamshaper_8, '
+    "Steps: 20, Sampler: Euler a, Schedule type: Karras, CFG scale: 7, "
+    "Seed: 12345, Size: 512x768, Model hash: abc123def, Model: dreamshaper_8, "
     'Denoising strength: 0.4, Clip skip: 2, Lora hashes: "castleLora: deadbeef", '
     "Version: v1.10.1"
 )
 
-COMFY_PROMPT_GRAPH = json.dumps({
-    "3": {"class_type": "KSampler", "inputs": {"seed": 5}},
-    "9": {"class_type": "SaveImage", "inputs": {}},
-})
+COMFY_PROMPT_GRAPH = json.dumps(
+    {
+        "3": {"class_type": "KSampler", "inputs": {"seed": 5}},
+        "9": {"class_type": "SaveImage", "inputs": {}},
+    }
+)
 COMFY_WORKFLOW = json.dumps({"nodes": [{"id": 1}], "links": [], "version": 0.4})
 
-SWARM_PARAMS = json.dumps({
-    "sui_image_params": {
-        "prompt": "a photo of a cat",
-        "negativeprompt": "dog",
-        "model": "OfficialStableDiffusion/sd_xl_base_1.0",
-        "seed": 1, "steps": 20, "cfgscale": 7.0,
-        "width": 1024, "height": 1024,
-        "comfyuisampler": "euler",
-        "swarm_version": "0.9.3.1",
-    },
-    "sui_extra_data": {"date": "2025-01-25", "generation_time": "4.84 sec"},
-    "sui_models": [{"name": "sd_xl_base_1.0.safetensors", "param": "model", "hash": "0xd7a9"}],
-})
+SWARM_PARAMS = json.dumps(
+    {
+        "sui_image_params": {
+            "prompt": "a photo of a cat",
+            "negativeprompt": "dog",
+            "model": "OfficialStableDiffusion/sd_xl_base_1.0",
+            "seed": 1,
+            "steps": 20,
+            "cfgscale": 7.0,
+            "width": 1024,
+            "height": 1024,
+            "comfyuisampler": "euler",
+            "swarm_version": "0.9.3.1",
+        },
+        "sui_extra_data": {"date": "2025-01-25", "generation_time": "4.84 sec"},
+        "sui_models": [{"name": "sd_xl_base_1.0.safetensors", "param": "model", "hash": "0xd7a9"}],
+    }
+)
 
-FOOOCUS_JSON = json.dumps({
-    "prompt": "an astronaut riding a horse",
-    "negative_prompt": "low quality",
-    "base_model": "juggernautXL", "sampler": "dpmpp_2m_sde_gpu",
-    "scheduler": "karras", "seed": 42, "steps": 30, "guidance_scale": 4.0,
-    "width": 1152, "height": 896,
-})
+FOOOCUS_JSON = json.dumps(
+    {
+        "prompt": "an astronaut riding a horse",
+        "negative_prompt": "low quality",
+        "base_model": "juggernautXL",
+        "sampler": "dpmpp_2m_sde_gpu",
+        "scheduler": "karras",
+        "seed": 42,
+        "steps": 30,
+        "guidance_scale": 4.0,
+        "width": 1152,
+        "height": 896,
+    }
+)
 
-INVOKEAI_METADATA = json.dumps({
-    "positive_prompt": "a lighthouse at dawn",
-    "negative_prompt": "fog",
-    "model": {"model_name": "stable-diffusion-xl", "base_model": "sdxl"},
-    "scheduler": "euler", "seed": 777, "steps": 25, "cfg_scale": 7.5,
-    "width": 1024, "height": 1024, "app_version": "4.2.0",
-})
+INVOKEAI_METADATA = json.dumps(
+    {
+        "positive_prompt": "a lighthouse at dawn",
+        "negative_prompt": "fog",
+        "model": {"model_name": "stable-diffusion-xl", "base_model": "sdxl"},
+        "scheduler": "euler",
+        "seed": 777,
+        "steps": 25,
+        "cfg_scale": 7.5,
+        "width": 1024,
+        "height": 1024,
+        "app_version": "4.2.0",
+    }
+)
 
-NOVELAI_COMMENT = json.dumps({
-    "uc": "lowres, bad anatomy",
-    "steps": 28, "sampler": "k_euler_ancestral", "seed": 999, "scale": 11.0,
-})
+NOVELAI_COMMENT = json.dumps(
+    {
+        "uc": "lowres, bad anatomy",
+        "steps": 28,
+        "sampler": "k_euler_ancestral",
+        "seed": 999,
+        "scale": 11.0,
+    }
+)
 
 DRAWTHINGS_XMP = (
     '<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>'
@@ -74,11 +100,18 @@ DRAWTHINGS_XMP = (
     'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
     '<rdf:Description xmlns:exif="http://ns.adobe.com/exif/1.0/">'
     "<exif:UserComment><rdf:Alt><rdf:li>"
-    + json.dumps({
-        "c": "a watercolor fox", "uc": "photo",
-        "model": "dreamshaper_v8", "sampler": "DPM++ 2M Karras",
-        "seed": 31337, "scale": 6.5, "steps": 22, "size": "512x512",
-    })
+    + json.dumps(
+        {
+            "c": "a watercolor fox",
+            "uc": "photo",
+            "model": "dreamshaper_v8",
+            "sampler": "DPM++ 2M Karras",
+            "seed": 31337,
+            "scale": 6.5,
+            "steps": 22,
+            "size": "512x512",
+        }
+    )
     + "</rdf:li></rdf:Alt></exif:UserComment></rdf:Description></rdf:RDF></x:xmpmeta>"
     '<?xpacket end="w"?>'
 )
@@ -91,9 +124,7 @@ def make_png(path, chunks: dict, size=(16, 16), mode="RGB", itxt=()):
             info.add_itxt(key, value)
         else:
             info.add_text(key, value)
-    Image.new(mode, size, (200, 100, 50) if mode == "RGB" else (200, 100, 50, 255)).save(
-        path, pnginfo=info
-    )
+    Image.new(mode, size, (200, 100, 50) if mode == "RGB" else (200, 100, 50, 255)).save(path, pnginfo=info)
     return str(path)
 
 
@@ -131,6 +162,7 @@ def embed_stealth_alpha(img: Image.Image, text: str, compressed=True) -> Image.I
 # ---------------------------------------------------------------------------
 # adapter detection + field mapping
 # ---------------------------------------------------------------------------
+
 
 def test_a1111_png_marker(tmp_path):
     path = make_png(tmp_path / "a.png", {"parameters": A1111_INFOTEXT})
@@ -240,15 +272,20 @@ def test_novelai_legacy(tmp_path):
 
 
 def test_easydiffusion_chunks(tmp_path):
-    path = make_png(tmp_path / "e.png", {
-        "prompt": "a desert oasis",
-        "negative_prompt": "cactus",
-        "seed": "2024",
-        "use_stable_diffusion_model": "C:\\models\\sd-v1-5.ckpt",
-        "sampler_name": "euler_a",
-        "width": "512", "height": "512",
-        "num_inference_steps": "25", "guidance_scale": "7.5",
-    })
+    path = make_png(
+        tmp_path / "e.png",
+        {
+            "prompt": "a desert oasis",
+            "negative_prompt": "cactus",
+            "seed": "2024",
+            "use_stable_diffusion_model": "C:\\models\\sd-v1-5.ckpt",
+            "sampler_name": "euler_a",
+            "width": "512",
+            "height": "512",
+            "num_inference_steps": "25",
+            "guidance_scale": "7.5",
+        },
+    )
     parsed = metaparse.parse_file(path)
     assert parsed.tool == "Easy Diffusion"
     assert parsed.positive == "a desert oasis"
@@ -258,7 +295,8 @@ def test_easydiffusion_chunks(tmp_path):
 
 def test_drawthings_xmp(tmp_path):
     path = make_png(
-        tmp_path / "dt.png", {"XML:com.adobe.xmp": DRAWTHINGS_XMP},
+        tmp_path / "dt.png",
+        {"XML:com.adobe.xmp": DRAWTHINGS_XMP},
         itxt=("XML:com.adobe.xmp",),
     )
     parsed = metaparse.parse_file(path)
@@ -311,6 +349,7 @@ def test_no_metadata_returns_none(tmp_path):
 # stealth
 # ---------------------------------------------------------------------------
 
+
 def test_stealth_forge_infotext(tmp_path):
     img = embed_stealth_alpha(Image.new("RGB", (96, 96), (120, 60, 30)), A1111_INFOTEXT)
     path = str(tmp_path / "st.png")
@@ -324,9 +363,13 @@ def test_stealth_forge_infotext(tmp_path):
 
 
 def test_stealth_novelai_json(tmp_path):
-    payload = json.dumps({
-        "Description": "1girl", "Software": "NovelAI", "Comment": NOVELAI_COMMENT,
-    })
+    payload = json.dumps(
+        {
+            "Description": "1girl",
+            "Software": "NovelAI",
+            "Comment": NOVELAI_COMMENT,
+        }
+    )
     img = embed_stealth_alpha(Image.new("RGB", (96, 96), (5, 5, 5)), payload)
     path = str(tmp_path / "stn.png")
     img.save(path)
@@ -337,9 +380,7 @@ def test_stealth_novelai_json(tmp_path):
 
 
 def test_stealth_uncompressed_variant(tmp_path):
-    img = embed_stealth_alpha(
-        Image.new("RGB", (128, 128), (9, 9, 9)), A1111_INFOTEXT, compressed=False
-    )
+    img = embed_stealth_alpha(Image.new("RGB", (128, 128), (9, 9, 9)), A1111_INFOTEXT, compressed=False)
     path = str(tmp_path / "stu.png")
     img.save(path)
     parsed = metaparse.parse_file(path, allow_stealth=True)
@@ -350,6 +391,7 @@ def test_stealth_uncompressed_variant(tmp_path):
 # ---------------------------------------------------------------------------
 # units
 # ---------------------------------------------------------------------------
+
 
 def test_decode_user_comment_variants():
     text = "hello, Steps: 20"
@@ -377,6 +419,7 @@ def test_render_report_empty_parse_is_none():
 # ---------------------------------------------------------------------------
 # gallery wiring: non-ComfyUI prompts reach the indexed prompt column
 # ---------------------------------------------------------------------------
+
 
 def test_process_single_file_indexes_foreign_prompt(smartgallery_app, tmp_path):
     sg = smartgallery_app

@@ -88,10 +88,10 @@ class AIConfig:
     """
 
     enabled: bool = False
-    base_path: str = ""            # BASE_SMARTGALLERY_PATH of the host app
-    db_path: str = ""              # main SmartGallery sqlite file (shared DB)
-    models_dir: str = ""           # where provisioned model files live
-    cache_dir: str = ""            # derived caches (vector index files, masks)
+    base_path: str = ""  # BASE_SMARTGALLERY_PATH of the host app
+    db_path: str = ""  # main SmartGallery sqlite file (shared DB)
+    models_dir: str = ""  # where provisioned model files live
+    cache_dir: str = ""  # derived caches (vector index files, masks)
     ephemeral_index: bool = False  # True: never persist vector index to disk
 
     # Backend selectors; "none" disables, "auto" picks the best available.
@@ -116,20 +116,20 @@ class AIConfig:
     auto_provision: bool = False
 
     # Tunables (documented in docs/AI_MODELS.md; override via env)
-    near_dup_max_distance: int = 8      # max Hamming distance on phash64
+    near_dup_max_distance: int = 8  # max Hamming distance on phash64
     face_cluster_threshold: float | None = None  # cosine similarity threshold;
-                                        #   None = the face backend's per-embedder
-                                        #   default (faces.resolve_cluster_threshold)
-    face_min_det_score: float = 0.5     # min detection confidence [0,1] to keep a face
-    face_min_px: int = 24               # min face box side in detect-input pixels; smaller
-                                        #   detections sit at YuNet's ~10px noise floor and
-                                        #   embed as junk (docs/FACE_CLUSTERING.md)
-    face_detect_max_side: int = 1600    # cap detection input; keeps large faces inside
-                                        #   YuNet's ~10-300px band (0 disables)
-    face_embedder: str = "auto"         # 'arcface' (buffalo_l w600k_r50, 512-d) |
-                                        #   'sface' (128-d) | 'auto' (arcface when
-                                        #   its weights are present)
-    similar_default_k: int = 24         # default neighbor count for similarity queries
+    #   None = the face backend's per-embedder
+    #   default (faces.resolve_cluster_threshold)
+    face_min_det_score: float = 0.5  # min detection confidence [0,1] to keep a face
+    face_min_px: int = 24  # min face box side in detect-input pixels; smaller
+    #   detections sit at YuNet's ~10px noise floor and
+    #   embed as junk (docs/FACE_CLUSTERING.md)
+    face_detect_max_side: int = 1600  # cap detection input; keeps large faces inside
+    #   YuNet's ~10-300px band (0 disables)
+    face_embedder: str = "auto"  # 'arcface' (buffalo_l w600k_r50, 512-d) |
+    #   'sface' (128-d) | 'auto' (arcface when
+    #   its weights are present)
+    similar_default_k: int = 24  # default neighbor count for similarity queries
 
     extra: dict = field(default_factory=dict)  # free-form backend-specific options
 
@@ -157,8 +157,7 @@ class AIConfig:
             # None keeps the per-embedder default; a blank value must mean
             # that too, not float('') -- membership in os.environ is true
             # for `set "AI_DAM_FACE_CLUSTER_THRESHOLD="`.
-            face_cluster_threshold=_env_num(
-                "AI_DAM_FACE_CLUSTER_THRESHOLD", None, float),
+            face_cluster_threshold=_env_num("AI_DAM_FACE_CLUSTER_THRESHOLD", None, float),
             face_min_px=_env_num("AI_DAM_FACE_MIN_PX", 24),
             face_detect_max_side=_env_num("AI_DAM_FACE_DETECT_MAX_SIDE", 1600),
             face_embedder=_env_str("AI_DAM_FACE_EMBEDDER", "auto"),

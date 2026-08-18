@@ -104,31 +104,40 @@ def stage2() -> int:
     # A tiny real image so the scanner has something to chew on.
     try:
         from PIL import Image
-        Image.new("RGB", (64, 64), (120, 40, 200)).save(
-            os.path.join(gallery, "probe_img.png"))
+
+        Image.new("RGB", (64, 64), (120, 40, 200)).save(os.path.join(gallery, "probe_img.png"))
     except Exception:
         pass
 
     env = dict(os.environ)
-    env.update({
-        "BASE_OUTPUT_PATH": gallery,
-        "BASE_SMARTGALLERY_PATH": gallery,
-        "BASE_INPUT_PATH": os.path.join(tmp, "input"),
-        "SERVER_PORT": str(PORT),
-        "ENABLE_AI_DAM": "true",
-        # Explicit stub backends: heavy models are a provisioning concern;
-        # the probe proves the *service layer* needs no network.
-        "AI_DAM_SEMANTIC_BACKEND": "stub",
-        "AI_DAM_VISUAL_BACKEND": "stub",
-        # Egress must be denied by the netns, not by proxy settings:
-        "HTTP_PROXY": "", "HTTPS_PROXY": "", "http_proxy": "", "https_proxy": "",
-    })
+    env.update(
+        {
+            "BASE_OUTPUT_PATH": gallery,
+            "BASE_SMARTGALLERY_PATH": gallery,
+            "BASE_INPUT_PATH": os.path.join(tmp, "input"),
+            "SERVER_PORT": str(PORT),
+            "ENABLE_AI_DAM": "true",
+            # Explicit stub backends: heavy models are a provisioning concern;
+            # the probe proves the *service layer* needs no network.
+            "AI_DAM_SEMANTIC_BACKEND": "stub",
+            "AI_DAM_VISUAL_BACKEND": "stub",
+            # Egress must be denied by the netns, not by proxy settings:
+            "HTTP_PROXY": "",
+            "HTTPS_PROXY": "",
+            "http_proxy": "",
+            "https_proxy": "",
+        }
+    )
     os.makedirs(env["BASE_INPUT_PATH"], exist_ok=True)
 
     server = subprocess.Popen(
         [sys.executable, os.path.join(REPO, "smartgallery.py")],
-        cwd=REPO, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        cwd=REPO,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
 
     evidence = {"netns_egress_denied": True, "requests": []}
     try:
@@ -142,8 +151,7 @@ def stage2() -> int:
         for name, url in checks:
             try:
                 status, body = get(url)
-                evidence["requests"].append({"name": name, "status": status,
-                                             "bytes": len(body)})
+                evidence["requests"].append({"name": name, "status": status, "bytes": len(body)})
                 if status != 200:
                     ok = False
             except Exception as exc:
@@ -156,8 +164,8 @@ def stage2() -> int:
         sys.path.insert(0, REPO)
         try:
             from omniquery.parsers.nlq import NlqParser
-            outcome = NlqParser().parse(
-                "favorite videos from the last 7 days", now_epoch=time.time())
+
+            outcome = NlqParser().parse("favorite videos from the last 7 days", now_epoch=time.time())
             evidence["omniquery_nlq"] = {
                 "ast_produced": outcome.ast is not None,
                 "confidence": outcome.confidence,

@@ -67,8 +67,7 @@ FINDING_TYPES = (
 
 _SEVERITIES = ("low", "medium", "high")
 # Exhaustive key sets: any key outside these fails validation outright.
-_TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findings",
-                   "alignment"}
+_TOP_LEVEL_KEYS = {"quality_score", "prompt_alignment_score", "summary", "findings", "alignment"}
 _ALIGNMENT_KEYS = {"ordinal", "text", "satisfied", "confidence", "bbox"}
 _FINDING_KEYS = {"type", "severity", "confidence", "localizable", "description", "bbox", "points"}
 
@@ -76,8 +75,7 @@ _FINDING_KEYS = {"type", "severity", "confidence", "localizable", "description",
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
     """True when `table` has a column named `column`; a missing table reads
     as no columns."""
-    return any(row[1] == column
-               for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+    return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
 
 
 def normalize_prompt_pair(traced_positive, workflow_positive, traced_negative) -> tuple:
@@ -117,13 +115,12 @@ def resolve_prompt_texts(conn: sqlite3.Connection, file_id: str) -> tuple:
     traced_positive = traced_negative = workflow_positive = None
     if _has_column(conn, "generation_params", "positive_prompt"):
         row = conn.execute(
-            "SELECT positive_prompt, negative_prompt FROM generation_params "
-            "WHERE file_id = ?", (file_id,)).fetchone()
+            "SELECT positive_prompt, negative_prompt FROM generation_params WHERE file_id = ?", (file_id,)
+        ).fetchone()
         if row is not None:
             traced_positive, traced_negative = row[0], row[1]
     if _has_column(conn, "files", "workflow_prompt"):
-        row = conn.execute(
-            "SELECT workflow_prompt FROM files WHERE id = ?", (file_id,)).fetchone()
+        row = conn.execute("SELECT workflow_prompt FROM files WHERE id = ?", (file_id,)).fetchone()
         if row is not None:
             workflow_positive = row[0]
     return normalize_prompt_pair(traced_positive, workflow_positive, traced_negative)
@@ -209,9 +206,7 @@ def _require(condition: bool, path: str, message: str) -> None:
 def _validate_point(value, path: str) -> tuple:
     """Validate one [x, y] pair into a float tuple; coordinates are
     fractions of image size and must lie in [0, 1]."""
-    _require(
-        isinstance(value, (list, tuple)) and len(value) == 2, path, "must be a 2-element [x, y]"
-    )
+    _require(isinstance(value, (list, tuple)) and len(value) == 2, path, "must be a 2-element [x, y]")
     x, y = value
     _require(_is_number(x) and _is_number(y), path, "coordinates must be numbers")
     _require(
@@ -233,8 +228,7 @@ def _validate_bbox(value, path: str) -> tuple:
     # zero-area box would produce an empty mask the UI still advertises,
     # and x+w/y+h beyond the frame is not a real image region.
     _require(w > 0.0 and h > 0.0, path, "bbox must have positive area")
-    _require(x + w <= 1.0 + 1e-6 and y + h <= 1.0 + 1e-6, path,
-             "bbox must lie within the image frame")
+    _require(x + w <= 1.0 + 1e-6 and y + h <= 1.0 + 1e-6, path, "bbox must lie within the image frame")
     return (x, y, w, h)
 
 
@@ -322,8 +316,7 @@ def _validate_alignment_element(raw, index: int) -> AlignmentElement:
         _require(key in raw, f"{prefix}.{key}", "missing required field")
 
     ordinal = raw["ordinal"]
-    _require(isinstance(ordinal, int) and not isinstance(ordinal, bool),
-             f"{prefix}.ordinal", "must be an integer")
+    _require(isinstance(ordinal, int) and not isinstance(ordinal, bool), f"{prefix}.ordinal", "must be an integer")
     _require(ordinal >= 0, f"{prefix}.ordinal", "must not be negative")
 
     text = raw["text"]
@@ -335,13 +328,11 @@ def _validate_alignment_element(raw, index: int) -> AlignmentElement:
 
     confidence = raw["confidence"]
     _require(_is_number(confidence), f"{prefix}.confidence", "must be a number")
-    _require(0.0 <= float(confidence) <= 1.0, f"{prefix}.confidence",
-             "must be within [0, 1]")
+    _require(0.0 <= float(confidence) <= 1.0, f"{prefix}.confidence", "must be within [0, 1]")
 
     bbox_raw = raw.get("bbox")
     if not satisfied:
-        _require(bbox_raw is None, prefix,
-                 "an absent element cannot carry a bbox")
+        _require(bbox_raw is None, prefix, "an absent element cannot carry a bbox")
     bbox = _validate_bbox(bbox_raw, f"{prefix}.bbox") if bbox_raw is not None else None
 
     return AlignmentElement(
@@ -397,23 +388,22 @@ def validate_review_payload(payload: dict) -> ReviewResult:
     _require(isinstance(alignment_raw, list), "alignment", "must be a list")
     alignment = [_validate_alignment_element(e, i) for i, e in enumerate(alignment_raw)]
     ordinals = [e.ordinal for e in alignment]
-    _require(len(set(ordinals)) == len(ordinals), "alignment",
-             "ordinals must be unique")
+    _require(len(set(ordinals)) == len(ordinals), "alignment", "ordinals must be unique")
     # The score is the elements, not a second opinion about them: a payload
     # that scores 0.9 while its own element list says half the prompt is
     # missing is incoherent, and silently trusting either half would hide
     # the disagreement. Reject it.
     if alignment and prompt_alignment_score is not None:
         expected = sum(1 for e in alignment if e.satisfied) / len(alignment)
-        _require(abs(float(prompt_alignment_score) - expected) <= 1e-6,
-                 "prompt_alignment_score",
-                 f"must equal satisfied/total over `alignment` ({expected:.6f})")
+        _require(
+            abs(float(prompt_alignment_score) - expected) <= 1e-6,
+            "prompt_alignment_score",
+            f"must equal satisfied/total over `alignment` ({expected:.6f})",
+        )
 
     return ReviewResult(
         quality_score=float(quality_score),
-        prompt_alignment_score=(
-            float(prompt_alignment_score) if prompt_alignment_score is not None else None
-        ),
+        prompt_alignment_score=(float(prompt_alignment_score) if prompt_alignment_score is not None else None),
         summary=summary,
         findings=findings,
         alignment=alignment,
@@ -443,8 +433,9 @@ class StubReviewer:
     _RED_MIN_R = 180  # red-channel floor (0-255) for the artifact-rectangle mask
     _RED_MAX_GB = 80  # green/blue ceiling (0-255) for the artifact-rectangle mask
 
-    def review(self, img: Image.Image, prompt_text: str | None, rubric_version: str,
-               negative_text: str | None = None) -> dict:
+    def review(
+        self, img: Image.Image, prompt_text: str | None, rubric_version: str, negative_text: str | None = None
+    ) -> dict:
         """Apply the two stub heuristics and emit a raw payload dict; the
         quality score drops 2 points per finding."""
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)
@@ -481,8 +472,7 @@ class StubReviewer:
         # and panel layers to be exercised without a real VLM.
         alignment = [
             {"ordinal": i, "text": text, "satisfied": i % 2 == 0, "confidence": 0.7}
-            for i, text in enumerate(
-                t.strip() for t in (prompt_text or "").split(",") if t.strip())
+            for i, text in enumerate(t.strip() for t in (prompt_text or "").split(",") if t.strip())
         ]
         score = None
         if alignment:
@@ -515,8 +505,8 @@ class StubReviewer:
 # 'auto' -> vlm resolution requires the committed grounding-gate
 # calibration report to meet these bounds at the shipped margin threshold.
 _CALIBRATION_REPORT_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "benchmarks", "results", "grounding_calibration.json")
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "benchmarks", "results", "grounding_calibration.json"
+)
 _AUTO_CRITIC_MAX_FAR = 0.05  # false-accept-rate ceiling (ungrounded text passing the gate)
 _AUTO_CRITIC_MAX_FRR = 0.30  # false-reject-rate ceiling (grounded text failing the gate)
 
@@ -557,12 +547,15 @@ def _auto_critic_measurement_passed(report_path: str | None = None) -> bool:
     try:
         from smartgallery_ai.embedders import OpenClipSemanticEmbedder
         from smartgallery_ai.reviewer import DEFAULT_GROUNDING_MIN_MARGIN, GROUNDING_BASELINE_TEXT
+
         with open(report_path or _CALIBRATION_REPORT_PATH, encoding="utf-8") as fh:
             report = json.load(fh)
 
         backend = report["backend"]
-        if (backend["model_id"] != OpenClipSemanticEmbedder.model_id
-                or backend["model_version"] != OpenClipSemanticEmbedder.model_version):
+        if (
+            backend["model_id"] != OpenClipSemanticEmbedder.model_id
+            or backend["model_version"] != OpenClipSemanticEmbedder.model_version
+        ):
             return False
         if report["baseline_text"] != GROUNDING_BASELINE_TEXT:
             return False
@@ -570,18 +563,19 @@ def _auto_critic_measurement_passed(report_path: str | None = None) -> bool:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         inputs = report["inputs"]
         file_entries = [e for e in inputs if "file" in e]
-        if not inputs or not any(
-                e["file"] == _CALIBRATION_PORTRAIT_REL for e in file_entries):
+        if not inputs or not any(e["file"] == _CALIBRATION_PORTRAIT_REL for e in file_entries):
             return False
         for entry in file_entries:
             if _sha256_of_file(os.path.join(repo_root, entry["file"])) != entry["file_sha256"]:
                 return False
 
         row = next(
-            s for s in report["sweep"]
-            if abs(float(s["margin_threshold"]) - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
-        return (float(row["false_accept_rate"]) <= _AUTO_CRITIC_MAX_FAR
-                and float(row["false_reject_rate"]) <= _AUTO_CRITIC_MAX_FRR)
+            s for s in report["sweep"] if abs(float(s["margin_threshold"]) - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9
+        )
+        return (
+            float(row["false_accept_rate"]) <= _AUTO_CRITIC_MAX_FAR
+            and float(row["false_reject_rate"]) <= _AUTO_CRITIC_MAX_FRR
+        )
     except Exception:
         return False
 
@@ -617,9 +611,11 @@ def get_reviewer(config: AIConfig):
             if embedder is None:
                 raise BackendUnavailable(
                     "the reviewer requires the semantic (OpenCLIP) backend "
-                    "for grounding and prompt-alignment; it is unavailable")
-            return Reviewer(config.models_dir, semantic_embedder=embedder,
-                            model_ref=config.critic_model or DEFAULT_REVIEW_MODEL)
+                    "for grounding and prompt-alignment; it is unavailable"
+                )
+            return Reviewer(
+                config.models_dir, semantic_embedder=embedder, model_ref=config.critic_model or DEFAULT_REVIEW_MODEL
+            )
         except BackendUnavailable:
             if name == "vlm":
                 raise
@@ -680,12 +676,18 @@ def store_review(
         if old is not None:
             # Collect superseded mask paths up front; unlink only after the
             # replacement commits — rollback() cannot undo os.unlink.
-            superseded_masks = [m for (m,) in conn.execute(
-                "SELECT mask_path FROM ai_review_findings "
-                "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],))]
-            superseded_masks += [m for (m,) in conn.execute(
-                "SELECT mask_path FROM ai_review_alignment "
-                "WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],))]
+            superseded_masks = [
+                m
+                for (m,) in conn.execute(
+                    "SELECT mask_path FROM ai_review_findings WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],)
+                )
+            ]
+            superseded_masks += [
+                m
+                for (m,) in conn.execute(
+                    "SELECT mask_path FROM ai_review_alignment WHERE review_id = ? AND mask_path IS NOT NULL", (old[0],)
+                )
+            ]
             conn.execute("DELETE FROM ai_review_alignment WHERE review_id = ?", (old[0],))
             conn.execute("DELETE FROM ai_review_findings WHERE review_id = ?", (old[0],))
             conn.execute("DELETE FROM ai_reviews WHERE review_id = ?", (old[0],))
@@ -717,11 +719,7 @@ def store_review(
             if finding.localizable:
                 bbox = finding.bbox or (None, None, None, None)
                 bbox_x, bbox_y, bbox_w, bbox_h = bbox
-                points_json = (
-                    json.dumps([[p[0], p[1]] for p in finding.points])
-                    if finding.points
-                    else None
-                )
+                points_json = json.dumps([[p[0], p[1]] for p in finding.points]) if finding.points else None
             else:
                 bbox_x = bbox_y = bbox_w = bbox_h = None
                 points_json = None
@@ -767,7 +765,10 @@ def store_review(
                     element.text,
                     1 if element.satisfied else 0,
                     element.confidence,
-                    bx, by, bw, bh,
+                    bx,
+                    by,
+                    bw,
+                    bh,
                 ),
             )
         conn.commit()
@@ -858,14 +859,11 @@ def _write_mask(cache_dir: str, file_id: str, name: str, mask: np.ndarray) -> st
     rendering identically.
     """
     opaque = np.where(mask, np.uint8(255), np.uint8(0))
-    rgba = np.dstack([np.full_like(opaque, 255), np.full_like(opaque, 255),
-                      np.full_like(opaque, 255), opaque])
+    rgba = np.dstack([np.full_like(opaque, 255), np.full_like(opaque, 255), np.full_like(opaque, 255), opaque])
     mask_img = Image.fromarray(rgba, mode="RGBA")
     masks_root = os.path.realpath(os.path.join(cache_dir, "masks"))
-    file_dir = os.path.realpath(
-        os.path.join(masks_root, _safe_path_component(str(file_id))))
-    mask_path = os.path.realpath(
-        os.path.join(file_dir, f"{_safe_path_component(name)}.png"))
+    file_dir = os.path.realpath(os.path.join(masks_root, _safe_path_component(str(file_id))))
+    mask_path = os.path.realpath(os.path.join(file_dir, f"{_safe_path_component(name)}.png"))
     if os.path.commonpath([masks_root, mask_path]) != masks_root:
         raise ValueError("resolved mask path escapes cache_dir")
     os.makedirs(file_dir, exist_ok=True)
@@ -904,11 +902,9 @@ def generate_alignment_mask(
 
     satisfied, bbox_x, bbox_y, bbox_w, bbox_h = row
     if not satisfied:
-        raise MaskNotAllowedError(
-            f"alignment element {element_id} is absent and has no locus")
+        raise MaskNotAllowedError(f"alignment element {element_id} is absent and has no locus")
     if bbox_x is None:
-        raise MaskNotAllowedError(
-            f"alignment element {element_id} was not localized")
+        raise MaskNotAllowedError(f"alignment element {element_id} was not localized")
 
     mask = segmenter.segment(img, bbox=(bbox_x, bbox_y, bbox_w, bbox_h))
     mask_path = _write_mask(cache_dir, file_id, f"align-{element_id}", mask)

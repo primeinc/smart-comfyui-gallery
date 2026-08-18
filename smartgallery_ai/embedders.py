@@ -128,11 +128,10 @@ class StubVisualEmbedder(VisualEmbedder):
         """L2-normalized 4x4x4 RGB histogram: reflects palette overlap only,
         never layout or content."""
         rgb = np.asarray(img.convert("RGB"), dtype=np.uint8).reshape(-1, 3)
-        bins = (rgb.astype(np.int32) // 64)  # 4 bins per channel (0..3)
+        bins = rgb.astype(np.int32) // 64  # 4 bins per channel (0..3)
         indices = bins[:, 0] * 16 + bins[:, 1] * 4 + bins[:, 2]
         hist = np.bincount(indices, minlength=self.dim)[: self.dim].astype(np.float32)
         return _l2_normalize(hist)
-
 
 
 def pick_torch_device(torch_module, role: str | None = None) -> str:
@@ -154,15 +153,15 @@ def pick_torch_device(torch_module, role: str | None = None) -> str:
         try:
             count = cuda.device_count()
             if count > 1:
+
                 def rank(i):
                     props = cuda.get_device_properties(i)
                     # Most VRAM wins; equal VRAM goes to the newer
                     # generation (higher compute capability) -- otherwise
                     # an older card that happens to enumerate first would
                     # win the tie.
-                    return (props.total_memory,
-                            getattr(props, "major", 0),
-                            getattr(props, "minor", 0))
+                    return (props.total_memory, getattr(props, "major", 0), getattr(props, "minor", 0))
+
                 return f"cuda:{max(range(count), key=rank)}"
         except Exception:  # enumeration is best-effort; cuda:0 still works
             pass
@@ -200,7 +199,12 @@ def warn_if_vram_pressure(torch_module, device: str, model_id: str) -> None:
             "[AI] %s: %s has only %.1f GiB of %.1f GiB VRAM free — another "
             "app (ComfyUI?) is using this card; loading here may OOM. Pin a "
             "different device with AI_DAM_DEVICE=cuda:N (or AI_DAM_DEVICE=cpu).",
-            model_id, device, free / (1 << 30), total / (1 << 30))
+            model_id,
+            device,
+            free / (1 << 30),
+            total / (1 << 30),
+        )
+
 
 class OpenClipSemanticEmbedder(SemanticEmbedder):
     """Joint image/text embedding via open_clip ViT-B-32 (laion2b_s34b_b79k).
@@ -219,9 +223,7 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         # Check the weights BEFORE importing the heavy runtime: 'auto'
         # resolution on an unprovisioned system must stay fast and
         # side-effect-free (a cold torch import costs ~10s).
-        weights_path = os.path.join(
-            models_dir, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin"
-        )
+        weights_path = os.path.join(models_dir, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")
         if not os.path.isfile(weights_path):
             raise BackendUnavailable(f"open_clip weights not found at {weights_path}")
 
@@ -240,8 +242,7 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
         except Exception as exc:
             raise BackendUnavailable(f"failed to load open_clip weights: {exc}") from exc
         self._device = pick_torch_device(torch, role="semantic")
-        _logger.info("[AI] %s on device %s (torch %s)",
-                     self.model_id, self._device, getattr(torch, "__version__", "?"))
+        _logger.info("[AI] %s on device %s (torch %s)", self.model_id, self._device, getattr(torch, "__version__", "?"))
         warn_if_vram_pressure(torch, self._device, self.model_id)
         model.eval()
         self._model = model.to(self._device)
@@ -260,9 +261,7 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
     def embed_images(self, imgs: list) -> list:
         """One batched forward for the whole list — the throughput path the
         worker feeds decoded chunks into."""
-        batch = self._torch.stack(
-            [self._preprocess(img.convert("RGB")) for img in imgs]
-        ).to(self._device)
+        batch = self._torch.stack([self._preprocess(img.convert("RGB")) for img in imgs]).to(self._device)
         with self._infer_lock, self._torch.no_grad():
             features = self._model.encode_image(batch)
         return [_l2_normalize(f.cpu().numpy()) for f in features]
@@ -297,6 +296,7 @@ class Dinov2VisualEmbedder(VisualEmbedder):
 
         try:
             import torch
+
             # torchvision MUST come before transformers: transformers
             # freezes its torchvision-availability flag when first imported,
             # and AutoImageProcessor hard-requires torchvision. Importing
@@ -310,16 +310,13 @@ class Dinov2VisualEmbedder(VisualEmbedder):
             raise BackendUnavailable(f"dinov2 backend unavailable: {exc}") from exc
 
         try:
-            self._processor = AutoImageProcessor.from_pretrained(
-                weights_dir, local_files_only=True
-            )
+            self._processor = AutoImageProcessor.from_pretrained(weights_dir, local_files_only=True)
             self._model = AutoModel.from_pretrained(weights_dir, local_files_only=True)
         except Exception as exc:
             raise BackendUnavailable(f"failed to load dinov2 weights: {exc}") from exc
         self._model.eval()
         self._device = pick_torch_device(torch, role="visual")
-        _logger.info("[AI] %s on device %s (torch %s)",
-                     self.model_id, self._device, getattr(torch, "__version__", "?"))
+        _logger.info("[AI] %s on device %s (torch %s)", self.model_id, self._device, getattr(torch, "__version__", "?"))
         warn_if_vram_pressure(torch, self._device, self.model_id)
         self._model = self._model.to(self._device)
         self._torch = torch
@@ -331,9 +328,7 @@ class Dinov2VisualEmbedder(VisualEmbedder):
     def embed_images(self, imgs: list) -> list:
         """One batched forward for the whole list (the processor natively
         accepts image lists)."""
-        inputs = self._processor(
-            images=[img.convert("RGB") for img in imgs], return_tensors="pt"
-        )
+        inputs = self._processor(images=[img.convert("RGB") for img in imgs], return_tensors="pt")
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         with self._torch.no_grad():
             outputs = self._model(**inputs)

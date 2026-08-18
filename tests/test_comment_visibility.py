@@ -27,11 +27,11 @@ _PASSWORD = "correct-horse-battery"
 _FILE = "comment_visibility_f1"
 
 _COMMENTS = [
-    ('41', 'Alice', 'a public remark', 'public'),
-    ('admin', 'Staff', 'internal staff note', 'internal'),
-    ('admin', 'Staff', 'private note for user 41', 'user:41'),
-    ('admin', 'Staff', 'private note for user 77', 'user:77'),
-    ('77', 'Bob', 'bob wrote this', 'public'),
+    ("41", "Alice", "a public remark", "public"),
+    ("admin", "Staff", "internal staff note", "internal"),
+    ("admin", "Staff", "private note for user 41", "user:41"),
+    ("admin", "Staff", "private note for user 77", "user:77"),
+    ("77", "Bob", "bob wrote this", "public"),
 ]
 
 
@@ -48,24 +48,24 @@ def exhibited_file(smartgallery_app, monkeypatch):
     try:
         conn.execute(
             "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
-            "VALUES (?, '/x/a.png', 1.0, 'a.png', 'image', 1)", (_FILE,))
-        conn.execute("INSERT INTO collections (name, type, is_public) "
-                     "VALUES ('Shown', 'user_album', 1)")
-        album = conn.execute(
-            "SELECT id FROM collections WHERE name='Shown'").fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                     "VALUES (?, ?)", (album, _FILE))
+            "VALUES (?, '/x/a.png', 1.0, 'a.png', 'image', 1)",
+            (_FILE,),
+        )
+        conn.execute("INSERT INTO collections (name, type, is_public) VALUES ('Shown', 'user_album', 1)")
+        album = conn.execute("SELECT id FROM collections WHERE name='Shown'").fetchone()[0]
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (album, _FILE))
         for uuid_, author, text, audience in _COMMENTS:
             conn.execute(
                 "INSERT INTO file_comments (file_id, client_uuid, author_name, "
                 "comment_text, target_audience, created_at) "
-                "VALUES (?, ?, ?, ?, ?, 1.0)", (_FILE, uuid_, author, text, audience))
+                "VALUES (?, ?, ?, ?, ?, 1.0)",
+                (_FILE, uuid_, author, text, audience),
+            )
         conn.commit()
     finally:
         conn.close()
 
-    force_login, missing, _short = smartgallery_app.derive_login_policy(
-        _PASSWORD, exhibition=True, force_login=False)
+    force_login, missing, _short = smartgallery_app.derive_login_policy(_PASSWORD, exhibition=True, force_login=False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "ADMIN_PASS_INPUT", _PASSWORD)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", force_login)
@@ -86,60 +86,53 @@ def exhibited_file(smartgallery_app, monkeypatch):
 
 def _texts(resp):
     body = resp.get_json()
-    return sorted(c['comment_text'] for c in (body.get('comments') or []))
+    return sorted(c["comment_text"] for c in (body.get("comments") or []))
 
 
 def _as(gallery, user_id, role):
     client = gallery.app.test_client()
     with client.session_transaction() as session:
-        session['user_id'] = user_id
-        session['role'] = role
+        session["user_id"] = user_id
+        session["role"] = role
     return client
 
 
 def test_a_user_cannot_read_notes_addressed_to_someone_else(exhibited_file):
     """The parameter is ignored in favour of the session, so asking for
     another user's id does not hand over their messages."""
-    client = _as(exhibited_file, 41, 'CUSTOMER')
+    client = _as(exhibited_file, 41, "CUSTOMER")
 
-    seen = _texts(client.get('/galleryout/api/exhibition/comments'
-                             f'?file_id={_FILE}&client_uuid=77'))
+    seen = _texts(client.get(f"/galleryout/api/exhibition/comments?file_id={_FILE}&client_uuid=77"))
 
-    assert 'private note for user 77' not in seen, (
-        f"a user read another person's private note: {seen}")
-    assert 'internal staff note' not in seen, f'staff notes leaked: {seen}'
-    assert 'private note for user 41' in seen, f'own message missing: {seen}'
-    assert 'a public remark' in seen, seen
+    assert "private note for user 77" not in seen, f"a user read another person's private note: {seen}"
+    assert "internal staff note" not in seen, f"staff notes leaked: {seen}"
+    assert "private note for user 41" in seen, f"own message missing: {seen}"
+    assert "a public remark" in seen, seen
 
 
 def test_staff_see_everything(exhibited_file):
-    client = _as(exhibited_file, 1, 'ADMIN')
+    client = _as(exhibited_file, 1, "ADMIN")
 
-    seen = _texts(client.get(
-        f'/galleryout/api/exhibition/comments?file_id={_FILE}'))
+    seen = _texts(client.get(f"/galleryout/api/exhibition/comments?file_id={_FILE}"))
 
-    for expected in ('internal staff note', 'private note for user 41',
-                     'private note for user 77', 'a public remark'):
-        assert expected in seen, f'{expected!r} hidden from staff: {seen}'
+    for expected in ("internal staff note", "private note for user 41", "private note for user 77", "a public remark"):
+        assert expected in seen, f"{expected!r} hidden from staff: {seen}"
 
 
 def test_an_anonymous_caller_is_refused_entirely(exhibited_file):
     """With logins in play the query parameter is never even reached."""
     client = exhibited_file.app.test_client()
 
-    resp = client.get('/galleryout/api/exhibition/comments'
-                      f'?file_id={_FILE}&client_uuid=41')
+    resp = client.get(f"/galleryout/api/exhibition/comments?file_id={_FILE}&client_uuid=41")
 
     assert resp.status_code == 401, resp.status_code
     body = resp.get_data(as_text=True)
-    assert 'private note' not in body and 'internal staff note' not in body
+    assert "private note" not in body and "internal staff note" not in body
 
 
 def test_a_guest_sees_only_public_and_their_own(exhibited_file):
-    client = _as(exhibited_file, 'guest_deadbeefdeadbeef', 'GUEST')
+    client = _as(exhibited_file, "guest_deadbeefdeadbeef", "GUEST")
 
-    seen = _texts(client.get('/galleryout/api/exhibition/comments'
-                             f'?file_id={_FILE}&client_uuid=admin'))
+    seen = _texts(client.get(f"/galleryout/api/exhibition/comments?file_id={_FILE}&client_uuid=admin"))
 
-    assert seen == ['a public remark', 'bob wrote this'], (
-        f'a guest saw more than the public comments: {seen}')
+    assert seen == ["a public remark", "bob wrote this"], f"a guest saw more than the public comments: {seen}"

@@ -43,8 +43,7 @@ class _DupAttrFinder(HTMLParser):
                 dups.add(name)
             seen.add(name)
         if dups:
-            self.hits.append((self.getpos()[0], tag, sorted(dups),
-                              (self.get_starttag_text() or "")[:150]))
+            self.hits.append((self.getpos()[0], tag, sorted(dups), (self.get_starttag_text() or "")[:150]))
 
 
 def _find_duplicates(html: str, strip_jinja: bool = False):
@@ -54,20 +53,23 @@ def _find_duplicates(html: str, strip_jinja: bool = False):
 
 
 def _format(hits) -> str:
-    return "\n".join(f"  line {ln} <{tag}> duplicated {dups}: {snip}"
-                     for ln, tag, dups, snip in hits)
+    return "\n".join(f"  line {ln} <{tag}> duplicated {dups}: {snip}" for ln, tag, dups, snip in hits)
 
 
 def test_detector_catches_a_planted_duplicate():
     """Positive control: an empty result from the scans below means
     'clean' only because this proves the detector detects."""
-    bug = ('<button class="glass-btn mobile-only" type="button" onclick="x()" '
-           'class="glass-btn {% if q %}active{% endif %}" title="t">go</button>')
+    bug = (
+        '<button class="glass-btn mobile-only" type="button" onclick="x()" '
+        'class="glass-btn {% if q %}active{% endif %}" title="t">go</button>'
+    )
     hits = _find_duplicates(bug, strip_jinja=True)
     assert [h[2] for h in hits] == [["class"]]
 
-    fixed = ('<button type="button" onclick="x()" '
-             'class="glass-btn mobile-only {% if q %}active{% endif %}" title="t">go</button>')
+    fixed = (
+        '<button type="button" onclick="x()" '
+        'class="glass-btn mobile-only {% if q %}active{% endif %}" title="t">go</button>'
+    )
     assert _find_duplicates(fixed, strip_jinja=True) == []
 
     # Not class-specific: any repeated attribute is caught.

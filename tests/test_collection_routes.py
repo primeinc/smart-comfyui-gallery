@@ -40,18 +40,21 @@ def library(smartgallery_app):
             Image.new("RGB", (16, 16), (140, 70, 190)).save(path)
             file_id = f"{_PREFIX}{n}"
             conn.execute(
-                "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
-                "VALUES (?, ?, ?, ?, 'image', ?)",
-                (file_id, path, os.path.getmtime(path), name, os.path.getsize(path)))
+                "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) VALUES (?, ?, ?, ?, 'image', ?)",
+                (file_id, path, os.path.getmtime(path), name, os.path.getsize(path)),
+            )
             file_ids.append(file_id)
         conn.execute(
             "INSERT INTO collections (name, type, color, is_public, created_at) "
-            "VALUES (?, 'user', '#abcdef', 0, 1000.0)", (f"{_PREFIX}album",))
+            "VALUES (?, 'user', '#abcdef', 0, 1000.0)",
+            (f"{_PREFIX}album",),
+        )
         coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         for file_id in file_ids:
             conn.execute(
-                "INSERT INTO collection_files (collection_id, file_id, added_at) "
-                "VALUES (?, ?, 1000.0)", (coll_id, file_id))
+                "INSERT INTO collection_files (collection_id, file_id, added_at) VALUES (?, ?, 1000.0)",
+                (coll_id, file_id),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -75,9 +78,10 @@ def library(smartgallery_app):
 def _members(smartgallery_app, coll_id):
     conn = smartgallery_app.get_db_connection()
     try:
-        return sorted(r[0] for r in conn.execute(
-            "SELECT file_id FROM collection_files WHERE collection_id = ?",
-            (coll_id,)).fetchall())
+        return sorted(
+            r[0]
+            for r in conn.execute("SELECT file_id FROM collection_files WHERE collection_id = ?", (coll_id,)).fetchall()
+        )
     finally:
         conn.close()
 
@@ -85,8 +89,7 @@ def _members(smartgallery_app, coll_id):
 def _file_rows(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
-        return sorted(r[0] for r in conn.execute(
-            f"SELECT id FROM files WHERE id LIKE '{_PREFIX}%'").fetchall())
+        return sorted(r[0] for r in conn.execute(f"SELECT id FROM files WHERE id LIKE '{_PREFIX}%'").fetchall())
     finally:
         conn.close()
 
@@ -97,8 +100,7 @@ def test_deleting_a_collection_keeps_every_file(smartgallery_app, client, librar
     paths = []
     conn = smartgallery_app.get_db_connection()
     try:
-        paths = [r[0] for r in conn.execute(
-            f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()]
+        paths = [r[0] for r in conn.execute(f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()]
     finally:
         conn.close()
 
@@ -119,8 +121,7 @@ def test_deleting_a_collection_clears_its_membership_rows(smartgallery_app, clie
 
     client.post("/galleryout/api/collections/delete", json={"id": coll_id})
 
-    assert _members(smartgallery_app, coll_id) == [], (
-        "membership rows outlived their collection")
+    assert _members(smartgallery_app, coll_id) == [], "membership rows outlived their collection"
 
 
 def test_deleting_a_file_clears_its_membership(smartgallery_app, client, library):
@@ -137,8 +138,7 @@ def test_system_flags_cannot_be_deleted(smartgallery_app, client):
     from every file that carries it."""
     conn = smartgallery_app.get_db_connection()
     try:
-        row = conn.execute(
-            "SELECT id FROM collections WHERE type = 'system_flag' LIMIT 1").fetchone()
+        row = conn.execute("SELECT id FROM collections WHERE type = 'system_flag' LIMIT 1").fetchone()
     finally:
         conn.close()
     if row is None:
@@ -149,33 +149,37 @@ def test_system_flags_cannot_be_deleted(smartgallery_app, client):
     assert resp.status_code == 403
     conn = smartgallery_app.get_db_connection()
     try:
-        assert conn.execute("SELECT 1 FROM collections WHERE id = ?",
-                            (row[0],)).fetchone() is not None
+        assert conn.execute("SELECT 1 FROM collections WHERE id = ?", (row[0],)).fetchone() is not None
     finally:
         conn.close()
 
 
 def test_tag_batch_adds_and_removes_membership(smartgallery_app, client, library):
     file_ids, coll_id = library
-    client.post("/galleryout/api/collections/tag_batch",
-                json={"file_ids": file_ids, "collection_id": coll_id, "action": "remove"})
+    client.post(
+        "/galleryout/api/collections/tag_batch",
+        json={"file_ids": file_ids, "collection_id": coll_id, "action": "remove"},
+    )
     assert _members(smartgallery_app, coll_id) == []
 
-    client.post("/galleryout/api/collections/tag_batch",
-                json={"file_ids": file_ids, "collection_id": coll_id, "action": "add"})
+    client.post(
+        "/galleryout/api/collections/tag_batch", json={"file_ids": file_ids, "collection_id": coll_id, "action": "add"}
+    )
     assert _members(smartgallery_app, coll_id) == sorted(file_ids)
 
 
 def test_tag_batch_adding_twice_does_not_duplicate(smartgallery_app, client, library):
     file_ids, coll_id = library
     for _ in range(3):
-        client.post("/galleryout/api/collections/tag_batch",
-                    json={"file_ids": file_ids, "collection_id": coll_id,
-                          "action": "add"})
+        client.post(
+            "/galleryout/api/collections/tag_batch",
+            json={"file_ids": file_ids, "collection_id": coll_id, "action": "add"},
+        )
     assert _members(smartgallery_app, coll_id) == sorted(file_ids)
 
 
 def test_tag_batch_needs_files(client):
-    resp = client.post("/galleryout/api/collections/tag_batch",
-                       json={"file_ids": [], "collection_id": 1, "action": "add"})
+    resp = client.post(
+        "/galleryout/api/collections/tag_batch", json={"file_ids": [], "collection_id": 1, "action": "add"}
+    )
     assert resp.status_code == 400

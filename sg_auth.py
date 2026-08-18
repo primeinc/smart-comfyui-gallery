@@ -166,9 +166,7 @@ def migrate_legacy_passwords(conn: sqlite3.Connection, key_file_path: str) -> di
     # GLOB (case-sensitive) so this completeness gate matches
     # is_legacy_ciphertext()'s case-sensitive startswith exactly; a
     # case-insensitive LIKE could disagree and wrongly retain the key file.
-    remaining = conn.execute(
-        "SELECT 1 FROM users WHERE password GLOB 'gAAAA*' LIMIT 1"
-    ).fetchone()
+    remaining = conn.execute("SELECT 1 FROM users WHERE password GLOB 'gAAAA*' LIMIT 1").fetchone()
     if remaining is None and os.path.exists(key_file_path):
         try:
             os.remove(key_file_path)

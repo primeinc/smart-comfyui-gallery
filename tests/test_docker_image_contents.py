@@ -44,8 +44,7 @@ _BUILD_ARGS = {
 _COPY = re.compile(r"^COPY\s+(?:--\S+\s+)*(\S+)\s+(\S+)\s*$", re.MULTILINE)
 
 # Directories that are not part of the running application.
-_NOT_SHIPPED = {"tests", "probes", "benchmarks", "experiments", "docs",
-                "vendor", "assets", "templates"}
+_NOT_SHIPPED = {"tests", "probes", "benchmarks", "experiments", "docs", "vendor", "assets", "templates"}
 
 
 def _expand(value):
@@ -68,9 +67,13 @@ def _dockerignore_patterns():
     path = _REPO_ROOT / ".dockerignore"
     assert path.exists(), (
         "no .dockerignore: the whole working tree, weights and virtualenv "
-        "included, is sent to the daemon on every build")
-    return {line.strip() for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.strip().startswith("#")}
+        "included, is sent to the daemon on every build"
+    )
+    return {
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
 
 
 def _first_party_names():
@@ -94,7 +97,7 @@ def assembled_image(tmp_path_factory):
     for source, dest in _copies():
         origin = _REPO_ROOT / source
         assert origin.exists(), f"Dockerfile copies {source}, which is not in the repo"
-        target = app / dest[len("/app/"):].rstrip("/")
+        target = app / dest[len("/app/") :].rstrip("/")
         if origin.is_dir():
             shutil.copytree(origin, target)
         else:
@@ -144,8 +147,7 @@ def _first_party_imports_under(root):
             for dotted in names:
                 head = dotted.split(".")[0]
                 if head in first_party:
-                    wanted.setdefault(head, []).append(
-                        str(source.relative_to(root)))
+                    wanted.setdefault(head, []).append(str(source.relative_to(root)))
     return wanted
 
 
@@ -172,15 +174,15 @@ def test_the_image_carries_every_module_it_imports(assembled_image):
     ones, which is the case the file's own docstring says booting cannot
     reach.
     """
-    assert _first_party_imports_under(assembled_image), (
-        "no first-party imports found in the assembled image at all")
+    assert _first_party_imports_under(assembled_image), "no first-party imports found in the assembled image at all"
 
     missing = _modules_missing_from(assembled_image)
 
     assert not missing, (
         f"the image imports {sorted(missing)} but the Dockerfile never "
         f"copies them: {missing}. The container fails -- at startup for a "
-        f"module-scope import, or on the request that reaches a lazy one.")
+        f"module-scope import, or on the request that reaches a lazy one."
+    )
 
 
 def test_a_missing_module_would_actually_be_noticed(assembled_image):
@@ -200,7 +202,8 @@ def test_a_missing_module_would_actually_be_noticed(assembled_image):
     assert "sg_auth" in missing, (
         "sg_auth was taken out of the image and the check still reported it "
         f"complete (it found {sorted(missing)}), so a Dockerfile that stopped "
-        f"copying a module would pass")
+        f"copying a module would pass"
+    )
     assert missing["sg_auth"], "the report does not say which file wanted it"
 
 
@@ -211,18 +214,20 @@ def test_every_first_party_import_is_in_the_image():
     text = (_REPO_ROOT / "smartgallery.py").read_text(encoding="utf-8")
     copied = {source for source, _dest in _copies()}
 
-    needed = {name for name in _first_party_names()
-              if re.search(rf"^\s*(?:import|from)\s+{re.escape(name)}\b", text,
-                           re.MULTILINE)}
+    needed = {
+        name
+        for name in _first_party_names()
+        if re.search(rf"^\s*(?:import|from)\s+{re.escape(name)}\b", text, re.MULTILINE)
+    }
     assert needed, "no first-party imports found in smartgallery.py at all"
 
-    missing = {name for name in needed
-               if name not in copied and f"{name}.py" not in copied}
+    missing = {name for name in needed if name not in copied and f"{name}.py" not in copied}
     assert not missing, (
         f"smartgallery.py imports {sorted(missing)}, which the Dockerfile "
         f"never copies. It copies {sorted(copied)}. The container will fail "
         f"-- at startup for a module-scope import, or on the request that "
-        f"reaches a lazy one.")
+        f"reaches a lazy one."
+    )
 
 
 def test_the_build_context_excludes_the_heavy_directories():
@@ -239,13 +244,13 @@ def test_nothing_the_dockerfile_copies_is_excluded():
     a slow build into a failed one."""
     ignored = _dockerignore_patterns()
     assert not any(p.startswith("!") for p in ignored), (
-        "a re-include appeared; this check only understands plain excludes")
+        "a re-include appeared; this check only understands plain excludes"
+    )
 
     for source, _dest in _copies():
         head = source.split("/")[0]
         assert head not in ignored, (
-            f"the Dockerfile copies {source}, but .dockerignore excludes "
-            f"{head}, so the build cannot see it")
+            f"the Dockerfile copies {source}, but .dockerignore excludes {head}, so the build cannot see it"
+        )
 
-    assert "experiments" not in ignored, (
-        "make build_exp copies experiments/, so it has to stay in the context")
+    assert "experiments" not in ignored, "make build_exp copies experiments/, so it has to stay in the context"

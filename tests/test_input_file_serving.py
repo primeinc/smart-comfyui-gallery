@@ -32,8 +32,7 @@ import urllib.parse
 import pytest
 from PIL import Image
 
-_NAMES = ["plain.png", "测试.png", "Ordner-Größe.png", "рисунок.png",
-          "イラスト.png", "ЖУРНАЛ.png"]
+_NAMES = ["plain.png", "测试.png", "Ordner-Größe.png", "рисунок.png", "イラスト.png", "ЖУРНАЛ.png"]
 
 
 @pytest.fixture
@@ -47,8 +46,7 @@ def input_folder(smartgallery_app, monkeypatch):
     os.makedirs(os.path.join(root, "clipspace"), exist_ok=True)
     for name in _NAMES:
         Image.new("RGB", (8, 8), (5, 5, 5)).save(os.path.join(root, name))
-    Image.new("RGB", (8, 8), (6, 6, 6)).save(
-        os.path.join(root, "clipspace", "pasted.png"))
+    Image.new("RGB", (8, 8), (6, 6, 6)).save(os.path.join(root, "clipspace", "pasted.png"))
 
     outside = os.path.join(os.path.dirname(os.path.abspath(root)), "outside.txt")
     with open(outside, "w", encoding="utf-8") as handle:
@@ -91,14 +89,17 @@ def test_a_file_that_is_not_there_is_still_missing(input_folder):
     assert _get(client, "no_such_image.png").status_code == 404
 
 
-@pytest.mark.parametrize("attempt", [
-    "../outside.txt",
-    "../../outside.txt",
-    "clipspace/../../outside.txt",
-    "..%2Foutside.txt",
-    "C:/Windows/win.ini",
-    "/etc/passwd",
-])
+@pytest.mark.parametrize(
+    "attempt",
+    [
+        "../outside.txt",
+        "../../outside.txt",
+        "clipspace/../../outside.txt",
+        "..%2Foutside.txt",
+        "C:/Windows/win.ini",
+        "/etc/passwd",
+    ],
+)
 def test_nothing_outside_the_input_folder_is_served(input_folder, attempt):
     """secure_filename was doing this by accident. Removing it must not
     remove the protection, so every shape is held here."""
@@ -108,17 +109,13 @@ def test_nothing_outside_the_input_folder_is_served(input_folder, attempt):
     # Followed, because a leading-slash attempt makes a double-slash URL
     # that Werkzeug answers with a 308 to the normalised path. The hop is
     # not the answer; where it lands is.
-    response = client.get("/galleryout/input_file/" + attempt,
-                          follow_redirects=True)
+    response = client.get("/galleryout/input_file/" + attempt, follow_redirects=True)
 
-    assert response.status_code != 200, (
-        f"{attempt} was served: {response.status_code}")
+    assert response.status_code != 200, f"{attempt} was served: {response.status_code}"
     assert b"must never be served" not in response.get_data()
 
 
-def test_a_guest_is_still_refused_when_a_login_is_required(smartgallery_app,
-                                                           input_folder,
-                                                           monkeypatch):
+def test_a_guest_is_still_refused_when_a_login_is_required(smartgallery_app, input_folder, monkeypatch):
     """The route's other half. Loosening the name handling must not loosen
     who may ask."""
     client, _outside = input_folder
@@ -130,8 +127,7 @@ def test_a_guest_is_still_refused_when_a_login_is_required(smartgallery_app,
     assert _get(client, "plain.png").status_code == 403
 
 
-def test_a_signed_in_manager_is_allowed(smartgallery_app, input_folder,
-                                        monkeypatch):
+def test_a_signed_in_manager_is_allowed(smartgallery_app, input_folder, monkeypatch):
     """Control for the test above: it must be refusing the role, not
     refusing everyone."""
     client, _outside = input_folder

@@ -59,8 +59,7 @@ class _InlineExecutor:
 
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     names = [f"{_PREFIX}shared.png", f"{_PREFIX}private.png"]
     for name in names:
@@ -72,18 +71,22 @@ def library(smartgallery_app, monkeypatch):
         conn.execute("DELETE FROM collections WHERE name = 'Comment Album'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r["name"]: r["id"] for r in conn.execute(
-            f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
-        conn.execute("INSERT INTO collections (name, type, is_public) VALUES (?, ?, 1)",
-                     ("Comment Album", "user_album"))
-        coll_id = conn.execute("SELECT id FROM collections WHERE name = ?",
-                               ("Comment Album",)).fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)",
-                     (coll_id, ids[names[0]]))
+        ids = {
+            r["name"]: r["id"]
+            for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        }
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public) VALUES (?, ?, 1)", ("Comment Album", "user_album")
+        )
+        coll_id = conn.execute("SELECT id FROM collections WHERE name = ?", ("Comment Album",)).fetchone()[0]
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, ids[names[0]]))
         for name in names:
-            conn.execute("INSERT INTO file_comments (file_id, client_uuid, author_name, "
-                         "comment_text, target_audience) VALUES (?, 'admin', 'Owner', ?, "
-                         "'public')", (ids[name], _OWNER_NOTE))
+            conn.execute(
+                "INSERT INTO file_comments (file_id, client_uuid, author_name, "
+                "comment_text, target_audience) VALUES (?, 'admin', 'Owner', ?, "
+                "'public')",
+                (ids[name], _OWNER_NOTE),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -116,14 +119,14 @@ def _visitor(smartgallery_app, monkeypatch, role="GUEST"):
 def _written(smartgallery_app, file_id):
     conn = smartgallery_app.get_db_connection()
     try:
-        return conn.execute("SELECT COUNT(*) FROM file_comments WHERE file_id = ? "
-                            "AND client_uuid = '42'", (file_id,)).fetchone()[0]
+        return conn.execute(
+            "SELECT COUNT(*) FROM file_comments WHERE file_id = ? AND client_uuid = '42'", (file_id,)
+        ).fetchone()[0]
     finally:
         conn.close()
 
 
-def test_a_visitor_reads_and_writes_on_a_shared_picture(smartgallery_app, library,
-                                                        monkeypatch):
+def test_a_visitor_reads_and_writes_on_a_shared_picture(smartgallery_app, library, monkeypatch):
     """Control. Every refusal below is only worth something while the
     feature still works where it should."""
     client = _visitor(smartgallery_app, monkeypatch)
@@ -133,14 +136,12 @@ def test_a_visitor_reads_and_writes_on_a_shared_picture(smartgallery_app, librar
     assert read.status_code == 200, read.get_json()
     assert _OWNER_NOTE in read.get_data(as_text=True)
 
-    posted = client.post("/galleryout/api/exhibition/post_comment",
-                         json={"file_id": shared, "text": "lovely"})
+    posted = client.post("/galleryout/api/exhibition/post_comment", json={"file_id": shared, "text": "lovely"})
     assert posted.status_code == 200, posted.get_json()
     assert _written(smartgallery_app, shared) == 1
 
 
-def test_a_visitor_cannot_read_comments_on_a_private_picture(smartgallery_app,
-                                                             library, monkeypatch):
+def test_a_visitor_cannot_read_comments_on_a_private_picture(smartgallery_app, library, monkeypatch):
     """The leak: an owner's notes about a picture nobody shared."""
     client = _visitor(smartgallery_app, monkeypatch)
     private = library[f"{_PREFIX}private.png"]
@@ -152,13 +153,13 @@ def test_a_visitor_cannot_read_comments_on_a_private_picture(smartgallery_app,
     assert _OWNER_NOTE not in response.get_data(as_text=True)
 
 
-def test_a_visitor_cannot_comment_on_a_private_picture(smartgallery_app, library,
-                                                       monkeypatch):
+def test_a_visitor_cannot_comment_on_a_private_picture(smartgallery_app, library, monkeypatch):
     client = _visitor(smartgallery_app, monkeypatch)
     private = library[f"{_PREFIX}private.png"]
 
-    response = client.post("/galleryout/api/exhibition/post_comment",
-                           json={"file_id": private, "text": "I can write here"})
+    response = client.post(
+        "/galleryout/api/exhibition/post_comment", json={"file_id": private, "text": "I can write here"}
+    )
 
     assert response.status_code == 404, response.get_json()
     assert _written(smartgallery_app, private) == 0
@@ -228,17 +229,23 @@ def test_every_route_taking_a_file_id_decides_who_may_use_it(gallery_tree):
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
             continue
-        routes = [d for d in node.decorator_list
-                  if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                  and d.func.attr == "route"]
+        routes = [
+            d
+            for d in node.decorator_list
+            if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "route"
+        ]
         if not routes:
             continue
 
         takes_a_file = any(a.arg in keys for a in node.args.args) or any(
-            isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-            and c.func.attr in ("get", "getlist") and c.args
-            and isinstance(c.args[0], ast.Constant) and str(c.args[0].value) in keys
-            for c in ast.walk(node))
+            isinstance(c, ast.Call)
+            and isinstance(c.func, ast.Attribute)
+            and c.func.attr in ("get", "getlist")
+            and c.args
+            and isinstance(c.args[0], ast.Constant)
+            and str(c.args[0].value) in keys
+            for c in ast.walk(node)
+        )
         if not takes_a_file:
             continue
 
@@ -252,6 +259,4 @@ def test_every_route_taking_a_file_id_decides_who_may_use_it(gallery_tree):
         unguarded.append(f"{node.name} (line {node.lineno})")
 
     assert examined > 20, f"only {examined} routes take a file id; the sweep is not working"
-    assert not unguarded, (
-        f"{len(unguarded)} route(s) take a file id and never decide who may "
-        f"use it: {unguarded}")
+    assert not unguarded, f"{len(unguarded)} route(s) take a file id and never decide who may use it: {unguarded}"

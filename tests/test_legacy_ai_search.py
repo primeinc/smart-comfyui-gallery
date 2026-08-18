@@ -31,8 +31,12 @@ _CLAIMS = ("processing", "completed")
 
 
 def _source_files():
-    yield from sorted(_ROOT.glob("*.py")) + sorted(_ROOT.glob("smartgallery_ai/*.py")) \
-            + sorted(_ROOT.glob("omniquery/*.py")) + sorted(_ROOT.glob("metaparse/*.py"))
+    yield from (
+        sorted(_ROOT.glob("*.py"))
+        + sorted(_ROOT.glob("smartgallery_ai/*.py"))
+        + sorted(_ROOT.glob("omniquery/*.py"))
+        + sorted(_ROOT.glob("metaparse/*.py"))
+    )
 
 
 def test_nothing_claims_a_row_from_the_indexing_queue():
@@ -54,7 +58,8 @@ def test_nothing_claims_a_row_from_the_indexing_queue():
     assert setters == [], (
         "something now claims rows from ai_indexing_queue: "
         f"{setters}. Update the 'ENABLE_AI_SEARCH is inert' section of "
-        "docs/CONFIGURATION.md, which tells people the flag does nothing.")
+        "docs/CONFIGURATION.md, which tells people the flag does nothing."
+    )
 
 
 @pytest.fixture
@@ -90,13 +95,18 @@ def test_stale_queue_rows_are_swept(legacy_enabled):
     conn = legacy_enabled.get_db_connection()
     try:
         old = time.time() - (4 * 86400)
-        conn.execute("INSERT INTO ai_indexing_queue (file_path, file_id, status, "
-                     "created_at, force_index, params) "
-                     "VALUES ('/x/stale.png', 'stale1', 'pending', ?, 0, '{}')", (old,))
-        conn.execute("INSERT INTO ai_indexing_queue (file_path, file_id, status, "
-                     "created_at, force_index, params) "
-                     "VALUES ('/x/fresh.png', 'fresh1', 'pending', ?, 0, '{}')",
-                     (time.time(),))
+        conn.execute(
+            "INSERT INTO ai_indexing_queue (file_path, file_id, status, "
+            "created_at, force_index, params) "
+            "VALUES ('/x/stale.png', 'stale1', 'pending', ?, 0, '{}')",
+            (old,),
+        )
+        conn.execute(
+            "INSERT INTO ai_indexing_queue (file_path, file_id, status, "
+            "created_at, force_index, params) "
+            "VALUES ('/x/fresh.png', 'fresh1', 'pending', ?, 0, '{}')",
+            (time.time(),),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -105,14 +115,12 @@ def test_stale_queue_rows_are_swept(legacy_enabled):
     conn = legacy_enabled.get_db_connection()
     try:
         removed = legacy_enabled.sweep_stale_index_queue(conn)
-        remaining = [r[0] for r in conn.execute(
-            "SELECT file_id FROM ai_indexing_queue").fetchall()]
+        remaining = [r[0] for r in conn.execute("SELECT file_id FROM ai_indexing_queue").fetchall()]
     finally:
         conn.close()
 
     assert removed == 1, f"the sweep removed {removed} rows"
-    assert remaining == ["fresh1"], (
-        f"the stale row survived the three-day sweep: {remaining}")
+    assert remaining == ["fresh1"], f"the stale row survived the three-day sweep: {remaining}"
 
 
 def test_the_sweep_leaves_a_row_that_is_being_worked_on(legacy_enabled):
@@ -122,13 +130,15 @@ def test_the_sweep_leaves_a_row_that_is_being_worked_on(legacy_enabled):
     conn = legacy_enabled.get_db_connection()
     try:
         old = time.time() - (4 * 86400)
-        conn.execute("INSERT INTO ai_indexing_queue (file_path, file_id, status, "
-                     "created_at, force_index, params) "
-                     "VALUES ('/x/busy.png', 'busy1', 'processing', ?, 0, '{}')", (old,))
+        conn.execute(
+            "INSERT INTO ai_indexing_queue (file_path, file_id, status, "
+            "created_at, force_index, params) "
+            "VALUES ('/x/busy.png', 'busy1', 'processing', ?, 0, '{}')",
+            (old,),
+        )
         conn.commit()
         legacy_enabled.sweep_stale_index_queue(conn)
-        remaining = [r[0] for r in conn.execute(
-            "SELECT file_id FROM ai_indexing_queue").fetchall()]
+        remaining = [r[0] for r in conn.execute("SELECT file_id FROM ai_indexing_queue").fetchall()]
     finally:
         conn.close()
 

@@ -43,9 +43,9 @@ def _sql_of(node):
 
 
 def _calls_helper(stmt):
-    return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-               and n.func.id == _HELPER
-               for n in ast.walk(stmt))
+    return any(
+        isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == _HELPER for n in ast.walk(stmt)
+    )
 
 
 def _unprotected_id_changes(tree):
@@ -81,7 +81,8 @@ def test_the_check_still_sees_the_known_sites(gallery_tree):
 
     assert len(sites) >= 4, (
         f"only {len(sites)} statements rewrite files.id; the check has "
-        f"stopped finding them, which would make it pass regardless.")
+        f"stopped finding them, which would make it pass regardless."
+    )
 
 
 def test_every_id_change_carries_the_files_data(gallery_tree):

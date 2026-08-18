@@ -104,17 +104,28 @@ def test_status_reports_registered_worker_and_reset(tmp_path):
     try:
         assert get_worker() is fake_worker
         data = client.get(f"{_PREFIX}/status").get_json()
-        assert data["worker"] == {"running": True, "stats": {"scanned": 3},
-                              "provisioning": {}, "priority_queued": 0,
-                              "recent_errors": [], "review_seconds": None,
-                              "stage_pace": {}}
+        assert data["worker"] == {
+            "running": True,
+            "stats": {"scanned": 3},
+            "provisioning": {},
+            "priority_queued": 0,
+            "recent_errors": [],
+            "review_seconds": None,
+            "stage_pace": {},
+        }
     finally:
         set_worker(None)
 
     data = client.get(f"{_PREFIX}/status").get_json()
-    assert data["worker"] == {"running": False, "stats": {}, "provisioning": {},
-                              "priority_queued": 0, "recent_errors": [],
-                              "review_seconds": None, "stage_pace": {}}
+    assert data["worker"] == {
+        "running": False,
+        "stats": {},
+        "provisioning": {},
+        "priority_queued": 0,
+        "recent_errors": [],
+        "review_seconds": None,
+        "stage_pace": {},
+    }
 
 
 def test_status_invalid_segmenter_selector_degrades_to_unavailable(tmp_path):
@@ -170,7 +181,9 @@ def test_faces_recluster_without_backend_notes_absence(tmp_path):
 
     assert resp.status_code == 200
     assert resp.get_json() == {
-        "enabled": True, "clusters": 0, "note": "no face backend configured",
+        "enabled": True,
+        "clusters": 0,
+        "note": "no face backend configured",
     }
 
 
@@ -183,13 +196,21 @@ def test_review_points_only_finding_serializes_points(tmp_path):
     conn = _make_conn(str(tmp_path / "gallery.sqlite"))
     _add_file(conn, "pf")
     result = ReviewResult(
-        quality_score=7.0, prompt_alignment_score=None, summary="pts",
-        findings=[Finding(type="anatomy", severity="low", confidence=0.6,
-                          localizable=True, description="extra finger",
-                          points=[(0.1, 0.2), (0.3, 0.4)])],
+        quality_score=7.0,
+        prompt_alignment_score=None,
+        summary="pts",
+        findings=[
+            Finding(
+                type="anatomy",
+                severity="low",
+                confidence=0.6,
+                localizable=True,
+                description="extra finger",
+                points=[(0.1, 0.2), (0.3, 0.4)],
+            )
+        ],
     )
-    store_review(conn, "pf", result, "critic-x", "v1", RUBRIC_VERSION,
-                 None, 1000.0, time.time())
+    store_review(conn, "pf", result, "critic-x", "v1", RUBRIC_VERSION, None, 1000.0, time.time())
     conn.close()
     client = _client(_make_config(tmp_path))
 
@@ -203,16 +224,22 @@ def test_review_points_only_finding_serializes_points(tmp_path):
 
 def _store_single_localizable_finding(conn, file_id: str) -> int:
     result = ReviewResult(
-        quality_score=5.0, prompt_alignment_score=None, summary="s",
-        findings=[Finding(type="artifact", severity="low", confidence=0.9,
-                          localizable=True, description="spot",
-                          bbox=(0.25, 0.25, 0.5, 0.5))],
+        quality_score=5.0,
+        prompt_alignment_score=None,
+        summary="s",
+        findings=[
+            Finding(
+                type="artifact",
+                severity="low",
+                confidence=0.9,
+                localizable=True,
+                description="spot",
+                bbox=(0.25, 0.25, 0.5, 0.5),
+            )
+        ],
     )
-    review_id = store_review(conn, file_id, result, "critic-x", "v1",
-                             RUBRIC_VERSION, None, 1000.0, time.time())
-    return conn.execute(
-        "SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)
-    ).fetchone()[0]
+    review_id = store_review(conn, file_id, result, "critic-x", "v1", RUBRIC_VERSION, None, 1000.0, time.time())
+    return conn.execute("SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)).fetchone()[0]
 
 
 def test_review_mask_404_before_mask_generation(tmp_path):
@@ -221,9 +248,10 @@ def test_review_mask_404_before_mask_generation(tmp_path):
     conn = _make_conn(str(tmp_path / "gallery.sqlite"))
     _add_file(conn, "pending")
     finding_id = _store_single_localizable_finding(conn, "pending")
-    assert conn.execute(
-        "SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)
-    ).fetchone()[0] is None
+    assert (
+        conn.execute("SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)).fetchone()[0]
+        is None
+    )
     conn.close()
     client = _client(_make_config(tmp_path))
 
@@ -240,8 +268,7 @@ def test_review_mask_404_when_mask_file_missing_on_disk(tmp_path):
     finding_id = _store_single_localizable_finding(conn, "ghost")
     config = _make_config(tmp_path)
     missing = os.path.join(config.cache_dir, "masks", "ghost", "gone.png")
-    conn.execute("UPDATE ai_review_findings SET mask_path = ? WHERE finding_id = ?",
-                 (missing, finding_id))
+    conn.execute("UPDATE ai_review_findings SET mask_path = ? WHERE finding_id = ?", (missing, finding_id))
     conn.commit()
     conn.close()
     client = _client(config)
@@ -284,8 +311,7 @@ def test_index_force_clears_only_review_scan_log_entry(tmp_path):
     assert data["review_rescheduled"] is True
     assert data["hashed"] is True
     check = sqlite3.connect(db_path)
-    kinds = [r[0] for r in check.execute(
-        "SELECT kind FROM ai_scan_log WHERE file_id = 'forced'")]
+    kinds = [r[0] for r in check.execute("SELECT kind FROM ai_scan_log WHERE file_id = 'forced'")]
     check.close()
     assert kinds == ["faces"]
 
@@ -297,8 +323,7 @@ def test_index_with_stub_backends_embeds_both_spaces(tmp_path):
     conn = _make_conn(db_path)
     _seed_indexable_image(conn, tmp_path, "embed_me")
     conn.close()
-    config = _make_config(tmp_path, semantic_backend="stub", visual_backend="stub",
-                          face_backend="stub")
+    config = _make_config(tmp_path, semantic_backend="stub", visual_backend="stub", face_backend="stub")
     client = _client(config)
 
     resp = client.post(f"{_PREFIX}/index/embed_me", json={})

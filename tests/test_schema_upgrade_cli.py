@@ -28,16 +28,15 @@ def _base_db(path: str) -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, "
         "mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT, "
-        "workflow_prompt TEXT DEFAULT '')")
-    conn.execute("INSERT INTO files VALUES ('f1', '/x/a.png', 1000.0, 'a.png', "
-                 "'image', 'a red square')")
+        "workflow_prompt TEXT DEFAULT '')"
+    )
+    conn.execute("INSERT INTO files VALUES ('f1', '/x/a.png', 1000.0, 'a.png', 'image', 'a red square')")
     schema.init_schema(conn)
     return conn
 
 
 def _tables(conn) -> set:
-    return {r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
 
 def _seed_review(conn) -> None:
@@ -45,7 +44,8 @@ def _seed_review(conn) -> None:
         "INSERT INTO ai_reviews (file_id, rubric_version, model_id, model_version, "
         "quality_score, prompt_alignment_score, summary, raw_response, "
         "source_mtime, computed_at) VALUES ('f1', 'r1', 'm', 'v1', 8.0, 0.5, "
-        "'s', '{}', 1000.0, 1.0)")
+        "'s', '{}', 1000.0, 1.0)"
+    )
     conn.commit()
 
 
@@ -70,7 +70,8 @@ def test_startup_restores_any_missing_derived_table(tmp_path, dropped):
         assert dropped in _tables(conn), f"{dropped} not recreated on upgrade"
         if dropped != "ai_reviews":
             assert conn.execute("SELECT COUNT(*) FROM ai_reviews").fetchone()[0] == 1, (
-                f"recreating {dropped} disturbed existing rows")
+                f"recreating {dropped} disturbed existing rows"
+            )
     finally:
         conn.close()
 
@@ -93,10 +94,11 @@ def test_derived_tables_lists_every_ai_table_the_schema_creates(tmp_path):
         listed = set(schema.DERIVED_TABLES)
         assert created - listed == set(), (
             f"tables created but missing from DERIVED_TABLES (rebuild would "
-            f"leave them stale): {sorted(created - listed)}")
+            f"leave them stale): {sorted(created - listed)}"
+        )
         assert listed - created == set(), (
-            f"DERIVED_TABLES names tables the schema never creates: "
-            f"{sorted(listed - created)}")
+            f"DERIVED_TABLES names tables the schema never creates: {sorted(listed - created)}"
+        )
     finally:
         conn.close()
 
@@ -105,8 +107,10 @@ def test_cli_rebuild_clears_derived_state_but_keeps_feedback(tmp_path, capsys):
     db = str(tmp_path / "g.sqlite")
     conn = _base_db(db)
     _seed_review(conn)
-    conn.execute("INSERT INTO ai_feedback (target_kind, target_id, file_id, "
-                 "verdict, created_at) VALUES ('finding', 1, 'f1', 'accept', 1.0)")
+    conn.execute(
+        "INSERT INTO ai_feedback (target_kind, target_id, file_id, "
+        "verdict, created_at) VALUES ('finding', 1, 'f1', 'accept', 1.0)"
+    )
     conn.commit()
     conn.close()
 
@@ -117,7 +121,8 @@ def test_cli_rebuild_clears_derived_state_but_keeps_feedback(tmp_path, capsys):
     try:
         assert conn.execute("SELECT COUNT(*) FROM ai_reviews").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM ai_feedback").fetchone()[0] == 1, (
-            "human feedback is not recomputable and must survive a rebuild")
+            "human feedback is not recomputable and must survive a rebuild"
+        )
         # The schema is recreated, not merely emptied.
         assert set(schema.DERIVED_TABLES) <= _tables(conn)
     finally:
@@ -127,8 +132,10 @@ def test_cli_rebuild_clears_derived_state_but_keeps_feedback(tmp_path, capsys):
 def test_cli_rebuild_drop_feedback_removes_it(tmp_path):
     db = str(tmp_path / "g.sqlite")
     conn = _base_db(db)
-    conn.execute("INSERT INTO ai_feedback (target_kind, target_id, file_id, "
-                 "verdict, created_at) VALUES ('finding', 1, 'f1', 'accept', 1.0)")
+    conn.execute(
+        "INSERT INTO ai_feedback (target_kind, target_id, file_id, "
+        "verdict, created_at) VALUES ('finding', 1, 'f1', 'accept', 1.0)"
+    )
     conn.commit()
     conn.close()
 

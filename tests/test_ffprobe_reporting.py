@@ -50,8 +50,7 @@ def resolving(smartgallery_app, monkeypatch):
 def no_ffprobe_anywhere(resolving, monkeypatch, tmp_path):
     """An environment with nothing named ffprobe on PATH."""
     monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
-    monkeypatch.setattr(resolving, "FFPROBE_MANUAL_PATH",
-                        str(tmp_path / "nowhere" / "ffprobe.exe"))
+    monkeypatch.setattr(resolving, "FFPROBE_MANUAL_PATH", str(tmp_path / "nowhere" / "ffprobe.exe"))
     return resolving
 
 
@@ -64,8 +63,7 @@ def test_a_missing_ffprobe_says_what_stops_working(no_ffprobe_anywhere, capsys):
     out = capsys.readouterr().out
     assert "ffprobe not found" in out, out
     for consequence in ("thumbnail", "waveform", "stripping"):
-        assert consequence in out.lower(), (
-            f"the warning does not mention {consequence}:\n{out}")
+        assert consequence in out.lower(), f"the warning does not mention {consequence}:\n{out}"
     assert "FFPROBE_MANUAL_PATH" in out, "it does not say how to fix it"
 
 
@@ -84,8 +82,7 @@ def test_resolution_is_announced_once(resolving, capsys):
     assert announcements or warnings, "resolution said nothing at all"
 
 
-def test_a_manual_path_with_no_ffprobe_anywhere_near_it_still_warns(
-        resolving, monkeypatch, capsys, tmp_path):
+def test_a_manual_path_with_no_ffprobe_anywhere_near_it_still_warns(resolving, monkeypatch, capsys, tmp_path):
     """Pointing FFPROBE_MANUAL_PATH somewhere with no ffprobe in it must
     keep saying so, rather than falling silent."""
     decoy = tmp_path / "ffmpeg.exe"
@@ -100,8 +97,7 @@ def test_a_manual_path_with_no_ffprobe_anywhere_near_it_still_warns(
 
 
 @pytest.mark.parametrize("point_at", ["the ffmpeg beside it", "the folder"])
-def test_a_manual_path_aimed_at_the_install_finds_ffprobe(
-        resolving, monkeypatch, capsys, tmp_path, point_at):
+def test_a_manual_path_aimed_at_the_install_finds_ffprobe(resolving, monkeypatch, capsys, tmp_path, point_at):
     """Nobody installs "ffprobe" -- they install ffmpeg. Aiming the setting
     at the ffmpeg program, or at the folder both live in, used to be
     refused with "does not point at ffprobe" even though the install was
@@ -128,6 +124,6 @@ def test_a_manual_path_aimed_at_the_install_finds_ffprobe(
     out = capsys.readouterr().out
     assert "falling back to PATH" not in out, out
     assert "INFO: ffprobe:" in out, out
-    assert str(bin_dir).replace(os.sep, "/").lower() in \
-        out.replace(os.sep, "/").lower(), (
-        f"resolved to something outside the install it was pointed at:\n{out}")
+    assert str(bin_dir).replace(os.sep, "/").lower() in out.replace(os.sep, "/").lower(), (
+        f"resolved to something outside the install it was pointed at:\n{out}"
+    )

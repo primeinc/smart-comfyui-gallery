@@ -28,7 +28,8 @@ def test_a_misspelt_yes_keeps_a_true_default(monkeypatch, typo):
     monkeypatch.setenv("ENABLE_AI_DAM", typo)
 
     assert smartgallery_ai._env_bool("ENABLE_AI_DAM", "true") is True, (
-        f"{typo!r} silently turned a default-on setting off")
+        f"{typo!r} silently turned a default-on setting off"
+    )
 
 
 @pytest.mark.parametrize("typo", ["ture", "maybe", "0.0"])
@@ -49,10 +50,21 @@ def test_it_says_so(monkeypatch, caplog):
     assert "ENABLE_AI_DAM" in caplog.text and "ture" in caplog.text, caplog.text
 
 
-@pytest.mark.parametrize(("value", "expected"), [
-    ("1", True), ("true", True), ("TRUE", True), ("Yes", True), ("on", True),
-    ("0", False), ("false", False), ("FALSE", False), ("no", False), ("off", False),
-])
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("Yes", True),
+        ("on", True),
+        ("0", False),
+        ("false", False),
+        ("FALSE", False),
+        ("no", False),
+        ("off", False),
+    ],
+)
 def test_the_real_values_still_parse(monkeypatch, value, expected):
     """The counterpart -- a helper that always returned the default would
     pass every test above."""

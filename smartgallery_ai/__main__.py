@@ -35,8 +35,10 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     finally:
         conn.close()
     kept = "kept" if not args.drop_feedback else "DROPPED"
-    print(f"Derived AI state dropped and schema recreated (feedback {kept}). "
-          f"The worker will repopulate from source media.")
+    print(
+        f"Derived AI state dropped and schema recreated (feedback {kept}). "
+        f"The worker will repopulate from source media."
+    )
     return 0
 
 
@@ -78,11 +80,9 @@ def cmd_provision(args: argparse.Namespace) -> int:
     except P.ProvisionError as exc:
         print(f"error: {exc}")
         return 1
-    print(f"\ndone: {len(result['downloaded'])} downloaded, "
-          f"{len(result['skipped'])} already present")
+    print(f"\ndone: {len(result['downloaded'])} downloaded, {len(result['skipped'])} already present")
     if result["downloaded"]:
-        print("Restart the gallery (or wait for the worker's backend retry "
-              "window) to activate the new backends.")
+        print("Restart the gallery (or wait for the worker's backend retry window) to activate the new backends.")
     return 0
 
 
@@ -93,29 +93,23 @@ def main(argv=None) -> int:
 
     p_rebuild = sub.add_parser("rebuild", help="drop + recreate derived AI state")
     p_rebuild.add_argument("--db", required=True, help="SmartGallery sqlite file")
-    p_rebuild.add_argument("--drop-feedback", action="store_true",
-                           help="also drop human feedback (NOT recomputable)")
+    p_rebuild.add_argument("--drop-feedback", action="store_true", help="also drop human feedback (NOT recomputable)")
     p_rebuild.set_defaults(fn=cmd_rebuild)
 
     p_status = sub.add_parser("status", help="row counts per derived table")
     p_status.add_argument("--db", required=True)
     p_status.set_defaults(fn=cmd_status)
 
-
     p_prov = sub.add_parser(
         "provision",
         help="download model weights into the models dir (the worker also "
-             "auto-provisions on start unless AI_DAM_AUTO_PROVISION=false)")
-    p_prov.add_argument("groups", nargs="*", default=["all"],
-                        help=", ".join(g.name for g in GROUPS) + ", or all")
-    p_prov.add_argument("--models-dir", default=".AImodels",
-                        help="target directory the backends load from")
-    p_prov.add_argument("--list", action="store_true",
-                        help="show the plan only; download nothing")
-    p_prov.add_argument("--yes", action="store_true",
-                        help="skip the confirmation prompt")
-    p_prov.add_argument("--force", action="store_true",
-                        help="re-download artifacts that already exist")
+        "auto-provisions on start unless AI_DAM_AUTO_PROVISION=false)",
+    )
+    p_prov.add_argument("groups", nargs="*", default=["all"], help=", ".join(g.name for g in GROUPS) + ", or all")
+    p_prov.add_argument("--models-dir", default=".AImodels", help="target directory the backends load from")
+    p_prov.add_argument("--list", action="store_true", help="show the plan only; download nothing")
+    p_prov.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    p_prov.add_argument("--force", action="store_true", help="re-download artifacts that already exist")
     p_prov.set_defaults(fn=cmd_provision)
 
     args = parser.parse_args(argv)

@@ -44,7 +44,8 @@ _ACCEPTED = {
     "renderMarkdownText": (
         "exhibition.html declares it twice: a full renderer and a smaller "
         "one that wins. Which the visitor's portal should use is a product "
-        "decision, not a defect -- see test_note_markdown_links.py."),
+        "decision, not a defect -- see test_note_markdown_links.py."
+    ),
 }
 
 
@@ -80,10 +81,9 @@ def test_the_sweep_reaches_the_functions(management_page):
     _dupes, total = _duplicates(management_page)
 
     assert total > 100, (
-        f"only {total} function declarations found in "
-        f"{len(_executable_js(management_page))} characters of script")
-    assert "function jsInAttr" in management_page, (
-        "the page no longer carries the helper this check was written for")
+        f"only {total} function declarations found in {len(_executable_js(management_page))} characters of script"
+    )
+    assert "function jsInAttr" in management_page, "the page no longer carries the helper this check was written for"
 
 
 def test_no_function_is_declared_twice_on_the_management_page(management_page):
@@ -93,11 +93,11 @@ def test_no_function_is_declared_twice_on_the_management_page(management_page):
     assert not unexpected, (
         f"declared more than once, so all but the last are dead: "
         f"{unexpected}. Partials share one scope with the page that "
-        f"includes them.")
+        f"includes them."
+    )
 
 
-def test_no_function_is_declared_twice_on_the_exhibition_page(smartgallery_app,
-                                                              monkeypatch):
+def test_no_function_is_declared_twice_on_the_exhibition_page(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     client = smartgallery_app.app.test_client()
@@ -115,9 +115,7 @@ def test_no_function_is_declared_twice_on_the_exhibition_page(smartgallery_app,
     assert not unexpected, unexpected
 
 
-def test_no_function_is_declared_twice_on_the_ai_dashboard(management_page,
-                                                           smartgallery_app,
-                                                           monkeypatch):
+def test_no_function_is_declared_twice_on_the_ai_dashboard(management_page, smartgallery_app, monkeypatch):
     """The third page. It is a separate template that neither of the other
     two includes, so nothing here is implied by them."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
@@ -136,10 +134,9 @@ def test_the_accepted_list_is_still_describing_something_real():
     """An allowlist that outlives its entry is a lie in a test file. If the
     duplicate is resolved, this fails and the entry goes."""
 
-    exhibition = (Path(__file__).resolve().parent.parent
-                  / "templates" / "exhibition.html").read_text(encoding="utf-8")
+    exhibition = (Path(__file__).resolve().parent.parent / "templates" / "exhibition.html").read_text(encoding="utf-8")
     declared = len(re.findall(r"function renderMarkdownText\s*\(", exhibition))
 
     assert declared >= 2, (
-        f"exhibition.html now declares renderMarkdownText {declared} time(s); "
-        f"remove it from the accepted list above.")
+        f"exhibition.html now declares renderMarkdownText {declared} time(s); remove it from the accepted list above."
+    )

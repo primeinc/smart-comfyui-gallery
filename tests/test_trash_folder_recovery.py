@@ -54,8 +54,7 @@ def _victim(tmp_path, name="doomed.png"):
     return path
 
 
-def test_a_file_goes_to_the_trash_when_it_is_all_there(smartgallery_app,
-                                                       trash, tmp_path):
+def test_a_file_goes_to_the_trash_when_it_is_all_there(smartgallery_app, trash, tmp_path):
     """Control. Everything below removes something, so this pins the
     ordinary path and proves the fixture reaches the real code."""
     _delete_to, folder = trash
@@ -67,8 +66,7 @@ def test_a_file_goes_to_the_trash_when_it_is_all_there(smartgallery_app,
     assert len(list(folder.iterdir())) == 1
 
 
-def test_the_trash_folder_is_put_back_when_it_has_gone(smartgallery_app,
-                                                       trash, tmp_path):
+def test_the_trash_folder_is_put_back_when_it_has_gone(smartgallery_app, trash, tmp_path):
     """The bug: from here on every delete failed until a restart."""
     _delete_to, folder = trash
     shutil.rmtree(folder)
@@ -81,8 +79,7 @@ def test_the_trash_folder_is_put_back_when_it_has_gone(smartgallery_app,
     assert len(list(folder.iterdir())) == 1
 
 
-def test_a_file_is_never_destroyed_when_the_trash_is_unreachable(
-        smartgallery_app, trash, tmp_path):
+def test_a_file_is_never_destroyed_when_the_trash_is_unreachable(smartgallery_app, trash, tmp_path):
     """The one that matters. DELETE_TO is set precisely so that deleting is
     recoverable; a delete that cannot be recovered must not happen.
 
@@ -100,8 +97,7 @@ def test_a_file_is_never_destroyed_when_the_trash_is_unreachable(
     assert "nothing was deleted" in str(raised.value), raised.value
 
 
-def test_a_folder_is_never_destroyed_when_the_trash_is_unreachable(
-        smartgallery_app, trash, tmp_path):
+def test_a_folder_is_never_destroyed_when_the_trash_is_unreachable(smartgallery_app, trash, tmp_path):
     """The worst of the set, and it did not behave like the file case.
 
     shutil.move falls back to copytree when the rename fails, and copytree
@@ -129,11 +125,11 @@ def test_a_folder_is_never_destroyed_when_the_trash_is_unreachable(
     assert (doomed / "keepme.png").exists(), "an entire folder was destroyed"
     assert not delete_to.exists(), (
         "the trash tree was rebuilt on top of a missing DELETE_TO; the "
-        "folder would be hidden the moment the real one came back")
+        "folder would be hidden the moment the real one came back"
+    )
 
 
-def test_a_folder_goes_to_the_trash_once_it_is_back(smartgallery_app,
-                                                    trash, tmp_path):
+def test_a_folder_goes_to_the_trash_once_it_is_back(smartgallery_app, trash, tmp_path):
     """Folder deletion recovers through the same path as file deletion."""
     _delete_to, folder = trash
     shutil.rmtree(folder)
@@ -148,8 +144,7 @@ def test_a_folder_goes_to_the_trash_once_it_is_back(smartgallery_app,
     assert len(list(folder.iterdir())) == 1
 
 
-def test_deleting_stays_permanent_when_no_trash_is_configured(
-        smartgallery_app, tmp_path, monkeypatch):
+def test_deleting_stays_permanent_when_no_trash_is_configured(smartgallery_app, tmp_path, monkeypatch):
     """Control against over-reach. Most installs set no DELETE_TO at all,
     and refusing there -- or demanding a folder that was never configured
     -- would break deleting for the majority to protect a minority."""

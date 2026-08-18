@@ -74,7 +74,8 @@ def test_a_stalled_download_gives_up(silent_server, tmp_path, monkeypatch):
     assert elapsed < 15, f"the download took {elapsed:.1f}s to give up"
     assert not os.path.exists(dest), "a failed download left a file behind"
     assert "timed out" in str(excinfo.value).lower() or "timeout" in type(excinfo.value).__name__.lower(), (
-        f"gave up for some other reason: {type(excinfo.value).__name__}: {excinfo.value}")
+        f"gave up for some other reason: {type(excinfo.value).__name__}: {excinfo.value}"
+    )
 
 
 def test_the_timeout_is_actually_passed_through(tmp_path, monkeypatch):
@@ -106,8 +107,7 @@ def test_the_timeout_is_actually_passed_through(tmp_path, monkeypatch):
 
     provision._download_url("http://example.invalid/model.bin", dest)
 
-    assert seen["timeout"] == provision.DOWNLOAD_STALL_TIMEOUT, (
-        f"urlopen was called with timeout={seen['timeout']!r}")
+    assert seen["timeout"] == provision.DOWNLOAD_STALL_TIMEOUT, f"urlopen was called with timeout={seen['timeout']!r}"
     assert os.path.exists(dest), "the successful path stopped working"
 
 
@@ -122,7 +122,7 @@ def test_a_normal_download_still_completes(tmp_path, monkeypatch):
             self.headers = {"Content-Length": str(len(payload))}
 
         def read(self, n=None):
-            chunk = payload[self._pos:self._pos + (n or len(payload))]
+            chunk = payload[self._pos : self._pos + (n or len(payload))]
             self._pos += len(chunk)
             return chunk
 
@@ -132,13 +132,13 @@ def test_a_normal_download_still_completes(tmp_path, monkeypatch):
         def __exit__(self, *exc):
             return False
 
-    monkeypatch.setattr(provision.urllib.request, "urlopen",
-                        lambda url, timeout=None: _Response())
+    monkeypatch.setattr(provision.urllib.request, "urlopen", lambda url, timeout=None: _Response())
     dest = str(tmp_path / "model.bin")
     seen_progress = []
 
-    provision._download_url("http://example.invalid/m.bin", dest,
-                            progress=lambda done, total: seen_progress.append((done, total)))
+    provision._download_url(
+        "http://example.invalid/m.bin", dest, progress=lambda done, total: seen_progress.append((done, total))
+    )
 
     assert os.path.getsize(dest) == len(payload)
     assert seen_progress[-1] == (len(payload), len(payload))

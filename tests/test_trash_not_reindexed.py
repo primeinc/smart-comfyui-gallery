@@ -48,8 +48,7 @@ class _InlineExecutor:
 @pytest.fixture
 def gallery_with_inside_trash(smartgallery_app, monkeypatch):
     """A gallery whose trash folder sits inside it, holding one indexed file."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     delete_to = os.path.join(base, f"{_PREFIX}recycle")
     trash = os.path.join(delete_to, "SmartGallery")
@@ -91,8 +90,7 @@ def _rescan(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
         smartgallery_app.full_sync_database(conn)
-        return [r[0] for r in conn.execute(
-            f"SELECT name FROM files WHERE name LIKE '%{_PREFIX}%'").fetchall()]
+        return [r[0] for r in conn.execute(f"SELECT name FROM files WHERE name LIKE '%{_PREFIX}%'").fetchall()]
     finally:
         conn.close()
 
@@ -105,21 +103,18 @@ def test_the_fixture_indexes_the_file(smartgallery_app, gallery_with_inside_tras
 def test_a_deleted_file_does_not_come_back(smartgallery_app, gallery_with_inside_trash):
     """The regression: the next scan re-indexed it out of the trash."""
     state = gallery_with_inside_trash
-    resp = smartgallery_app.app.test_client().post(
-        "/galleryout/delete_batch", json={"file_ids": [state["file_id"]]})
+    resp = smartgallery_app.app.test_client().post("/galleryout/delete_batch", json={"file_ids": [state["file_id"]]})
     assert resp.status_code == 200, resp.get_data(as_text=True)
 
     assert os.listdir(state["trash"]), "the file was not moved to the trash at all"
-    assert _rescan(smartgallery_app) == [], (
-        "a deleted file was indexed again out of the trash folder")
+    assert _rescan(smartgallery_app) == [], "a deleted file was indexed again out of the trash folder"
 
 
 def test_the_trash_still_receives_the_file(smartgallery_app, gallery_with_inside_trash):
     """Excluding the trash from the scan must not stop deletions reaching
     it -- that is the whole point of DELETE_TO."""
     state = gallery_with_inside_trash
-    smartgallery_app.app.test_client().post(
-        "/galleryout/delete_batch", json={"file_ids": [state["file_id"]]})
+    smartgallery_app.app.test_client().post("/galleryout/delete_batch", json={"file_ids": [state["file_id"]]})
 
     trashed = os.listdir(state["trash"])
     assert len(trashed) == 1, trashed
@@ -136,8 +131,7 @@ def test_a_normal_folder_is_still_indexed(smartgallery_app, gallery_with_inside_
     kept = f"{_PREFIX}kept.png"
     Image.new("RGB", (16, 16), (9, 9, 9)).save(os.path.join(other, kept))
     try:
-        assert kept in _rescan(smartgallery_app), (
-            "an ordinary folder was excluded along with the trash")
+        assert kept in _rescan(smartgallery_app), "an ordinary folder was excluded along with the trash"
     finally:
         os.remove(os.path.join(other, kept))
         os.rmdir(other)

@@ -51,26 +51,22 @@ def client(smartgallery_app, monkeypatch, tmp_path):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(tmp_path))
-    monkeypatch.setattr(smartgallery_app, "IMPORTED_WORKFLOWS_DIR",
-                        str(tmp_path / ".imported_workflows"))
+    monkeypatch.setattr(smartgallery_app, "IMPORTED_WORKFLOWS_DIR", str(tmp_path / ".imported_workflows"))
     return smartgallery_app.app.test_client()
 
 
 def _prompts_dir(smartgallery_app):
-    return os.path.join(smartgallery_app.BASE_SMARTGALLERY_PATH,
-                        ".omniquery", "saved_prompts")
+    return os.path.join(smartgallery_app.BASE_SMARTGALLERY_PATH, ".omniquery", "saved_prompts")
 
 
 def _queries_dir(smartgallery_app):
-    return os.path.join(smartgallery_app.BASE_SMARTGALLERY_PATH,
-                        ".omniquery", "saved_queries")
+    return os.path.join(smartgallery_app.BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries")
 
 
 def test_every_saved_prompt_keeps_its_own_name(smartgallery_app, client):
     """The bug: they all became one file called `txt`."""
     for name, body in _NAMES.items():
-        answer = client.post("/galleryout/api/omniquery/prompts/save",
-                             json={"name": name, "text": body}).get_json()
+        answer = client.post("/galleryout/api/omniquery/prompts/save", json={"name": name, "text": body}).get_json()
         assert answer["status"] == "success", (name, answer)
 
     on_disk = sorted(os.listdir(_prompts_dir(smartgallery_app)))
@@ -78,7 +74,8 @@ def test_every_saved_prompt_keeps_its_own_name(smartgallery_app, client):
     assert len(on_disk) == len(_NAMES), (
         f"{len(_NAMES)} prompts were saved and {len(on_disk)} files exist: "
         f"{on_disk}. Names that collapse to the same text overwrite each "
-        f"other, and every save still reported success.")
+        f"other, and every save still reported success."
+    )
     for name in _NAMES:
         assert f"{name}.txt" in on_disk, (name, on_disk)
 
@@ -86,12 +83,10 @@ def test_every_saved_prompt_keeps_its_own_name(smartgallery_app, client):
 def test_a_saved_prompt_comes_back(smartgallery_app, client):
     """Saving distinctly is only half of it; the round trip is the point."""
     for name, body in _NAMES.items():
-        client.post("/galleryout/api/omniquery/prompts/save",
-                    json={"name": name, "text": body})
+        client.post("/galleryout/api/omniquery/prompts/save", json={"name": name, "text": body})
 
     for name, body in _NAMES.items():
-        answer = client.post("/galleryout/api/omniquery/prompts/load",
-                             json={"name": f"{name}.txt"}).get_json()
+        answer = client.post("/galleryout/api/omniquery/prompts/load", json={"name": f"{name}.txt"}).get_json()
         assert answer["status"] == "success", (name, answer)
         assert answer["text"] == body, (name, answer)
 
@@ -99,8 +94,9 @@ def test_a_saved_prompt_comes_back(smartgallery_app, client):
 def test_every_saved_query_keeps_its_own_name(smartgallery_app, client):
     """The same pair of routes again, for the other saved thing."""
     for name in _NAMES:
-        answer = client.post("/galleryout/api/omniquery/queries/save",
-                             json={"name": name, "sql": f"SELECT '{name}'"}).get_json()
+        answer = client.post(
+            "/galleryout/api/omniquery/queries/save", json={"name": name, "sql": f"SELECT '{name}'"}
+        ).get_json()
         assert answer["status"] == "success", (name, answer)
 
     on_disk = sorted(os.listdir(_queries_dir(smartgallery_app)))
@@ -112,8 +108,7 @@ def test_the_list_offers_the_names_back(smartgallery_app, client):
     """What the person sees. Collapsed names showed up as an entry called
     `txt` rather than what they typed."""
     for name in _NAMES:
-        client.post("/galleryout/api/omniquery/queries/save",
-                    json={"name": name, "sql": "SELECT 1"})
+        client.post("/galleryout/api/omniquery/queries/save", json={"name": name, "sql": "SELECT 1"})
 
     listed = client.get("/galleryout/api/omniquery/queries/list").get_json()
     names = {entry.get("name", "") for entry in listed.get("queries", [])}
@@ -125,19 +120,16 @@ def test_the_list_offers_the_names_back(smartgallery_app, client):
 def test_a_name_cannot_reach_outside_its_folder(smartgallery_app, client):
     """The one thing secure_filename was genuinely providing. Keeping the
     name must not mean keeping a path."""
-    client.post("/galleryout/api/omniquery/prompts/save",
-                json={"name": "../../escaped", "text": "nope"})
+    client.post("/galleryout/api/omniquery/prompts/save", json={"name": "../../escaped", "text": "nope"})
 
     root = smartgallery_app.BASE_SMARTGALLERY_PATH
-    assert not os.path.exists(os.path.join(root, "escaped.txt")), (
-        "a saved prompt was written outside its folder")
+    assert not os.path.exists(os.path.join(root, "escaped.txt")), "a saved prompt was written outside its folder"
     assert not os.path.exists(os.path.join(root, "..", "escaped.txt"))
     assert "escaped.txt" in os.listdir(_prompts_dir(smartgallery_app))
 
 
 @pytest.mark.parametrize("name", ["..", ".", "..."])
-def test_a_name_of_nothing_much_still_makes_one_ordinary_file(smartgallery_app,
-                                                              client, name):
+def test_a_name_of_nothing_much_still_makes_one_ordinary_file(smartgallery_app, client, name):
     """`.` and `..` name directories, not files.
 
     Asserting the resulting filename would be asserting a guess: the route
@@ -145,8 +137,7 @@ def test_a_name_of_nothing_much_still_makes_one_ordinary_file(smartgallery_app,
     which is an ordinary file and perfectly safe. What has to hold is the
     property, not the spelling -- one real file, inside the folder, and no
     directory made."""
-    answer = client.post("/galleryout/api/omniquery/prompts/save",
-                         json={"name": name, "text": "nope"}).get_json()
+    answer = client.post("/galleryout/api/omniquery/prompts/save", json={"name": name, "text": "nope"}).get_json()
 
     assert answer["status"] == "success", answer
     directory = _prompts_dir(smartgallery_app)
@@ -184,15 +175,15 @@ def test_no_user_supplied_name_goes_through_secure_filename(gallery_tree, smartg
     # Read as calls rather than as text: the first version of this matched
     # the word inside safe_media_filename's own docstring, which explains
     # the very fault being checked for, and failed against the fixed file.
-    offenders = sorted({node.lineno for node in calls
-                        if _called(node) == "secure_filename"})
-    replacements = [node for node in calls
-                    if _called(node) == "safe_media_filename"]
+    offenders = sorted({node.lineno for node in calls if _called(node) == "secure_filename"})
+    replacements = [node for node in calls if _called(node) == "safe_media_filename"]
 
     assert not offenders, (
         f"line(s) {offenders} still turn a name into a filename with "
-        f"secure_filename, which drops every non-ASCII character")
+        f"secure_filename, which drops every non-ASCII character"
+    )
     assert len(replacements) > 10, (
         f"only {len(replacements)} calls to safe_media_filename; the "
         f"sanitising has gone rather than been replaced, and this check "
-        f"would pass over a file that does none at all")
+        f"would pass over a file that does none at all"
+    )

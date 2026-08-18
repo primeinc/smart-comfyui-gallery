@@ -27,23 +27,25 @@ import pytest
 import smartgallery
 
 
-@pytest.mark.parametrize(("typo", "expected"), [
-    ("BASE_OUTPUT_PAT", "BASE_OUTPUT_PATH"),
-    ("BASE_OUTPUT_PATHH", "BASE_OUTPUT_PATH"),
-    ("BASE_OUPUT_PATH", "BASE_OUTPUT_PATH"),
-    ("ENABLE_AI_DM", "ENABLE_AI_DAM"),
-    ("ENABLE_AI_DAMM", "ENABLE_AI_DAM"),
-    ("GENERATE_THUMBNAIL", "GENERATE_THUMBNAILS"),
-    ("DELETE_T0", "DELETE_TO"),
-    ("SERVER_PORTS", "SERVER_PORT"),
-    ("ADMIN_PASSWORDS", "ADMIN_PASSWORD"),
-])
+@pytest.mark.parametrize(
+    ("typo", "expected"),
+    [
+        ("BASE_OUTPUT_PAT", "BASE_OUTPUT_PATH"),
+        ("BASE_OUTPUT_PATHH", "BASE_OUTPUT_PATH"),
+        ("BASE_OUPUT_PATH", "BASE_OUTPUT_PATH"),
+        ("ENABLE_AI_DM", "ENABLE_AI_DAM"),
+        ("ENABLE_AI_DAMM", "ENABLE_AI_DAM"),
+        ("GENERATE_THUMBNAIL", "GENERATE_THUMBNAILS"),
+        ("DELETE_T0", "DELETE_TO"),
+        ("SERVER_PORTS", "SERVER_PORT"),
+        ("ADMIN_PASSWORDS", "ADMIN_PASSWORD"),
+    ],
+)
 def test_a_near_miss_is_noticed(typo, expected):
     """The regression: these were read by nothing and mentioned by nobody."""
     found = smartgallery.find_misspelt_env_vars({typo: "value"})
 
-    assert found == [(typo, expected)], (
-        f"{typo} was not recognised as a misspelling of {expected}: {found}")
+    assert found == [(typo, expected)], f"{typo} was not recognised as a misspelling of {expected}: {found}"
 
 
 def test_a_correct_name_is_not_flagged():
@@ -54,18 +56,26 @@ def test_a_correct_name_is_not_flagged():
     assert smartgallery.find_misspelt_env_vars(every_real_name) == []
 
 
-@pytest.mark.parametrize("unrelated", [
-    "PATH", "HOME", "USERPROFILE", "TEMP", "PYTHONPATH", "VIRTUAL_ENV",
-    "COMFYUI_PORT",            # ComfyUI's own, not ours
-    "CUDA_VISIBLE_DEVICES",
-    "PROCESSOR_ARCHITECTURE",
-    "NUMBER_OF_PROCESSORS",
-    # Found set on a real machine during this work, and reported as a
-    # misspelling of AI_DAM_MODELS_DIR at the cutoff first chosen. It is
-    # why the cutoff is measured rather than picked.
-    "PAI_MODEL_DIR",
-    "AI_MODELS_DIR",
-])
+@pytest.mark.parametrize(
+    "unrelated",
+    [
+        "PATH",
+        "HOME",
+        "USERPROFILE",
+        "TEMP",
+        "PYTHONPATH",
+        "VIRTUAL_ENV",
+        "COMFYUI_PORT",  # ComfyUI's own, not ours
+        "CUDA_VISIBLE_DEVICES",
+        "PROCESSOR_ARCHITECTURE",
+        "NUMBER_OF_PROCESSORS",
+        # Found set on a real machine during this work, and reported as a
+        # misspelling of AI_DAM_MODELS_DIR at the cutoff first chosen. It is
+        # why the cutoff is measured rather than picked.
+        "PAI_MODEL_DIR",
+        "AI_MODELS_DIR",
+    ],
+)
 def test_other_programs_variables_are_left_alone(unrelated):
     """The cost of a false positive is a warning about someone else's
     setting, which teaches people to ignore warnings."""
@@ -78,18 +88,23 @@ def test_the_known_list_matches_what_the_code_reads():
 
     root = pathlib.Path(smartgallery.__file__).resolve().parent
     pattern = re.compile(
+        # \s* after the paren on purpose. Without it a call whose name sat on
+        # the next line was invisible, and AI_DAM_FACE_CLUSTER_THRESHOLD sat
+        # that way -- read, documented, and absent from KNOWN_ENV_VARS, so
+        # anyone setting it correctly was told it was a misspelling. Whether
+        # a setting is detected must not depend on where the line wraps.
         r"""(?:os\.environ\.get\(|os\.getenv\(|env_or\(|env_num\(|env_flag\(
             |env_path\(
             |_env_str\(|_env_num\(|_env_bool\(|ENV_MODEL\w*\s*=\s*)
-            ["']([A-Z][A-Z0-9_]{2,})["']""",
-        re.VERBOSE)
+            \s*["']([A-Z][A-Z0-9_]{2,})["']""",
+        re.VERBOSE,
+    )
     skip = {"PATH", "DISPLAY", "HOME", "TEMP", "TMP", "USERPROFILE"}
 
     # Pruned during the walk rather than filtered afterwards: rglob descends
     # into .venv and .AImodels in full before anything is discarded, which is
     # most of a second to read forty files.
-    not_the_app = {".venv", "tests", "benchmarks", "probes", "vendor",
-                   ".git", "__pycache__", ".AImodels"}
+    not_the_app = {".venv", "tests", "benchmarks", "probes", "vendor", ".git", "__pycache__", ".AImodels"}
 
     read = set()
     for dirpath, dirnames, filenames in os.walk(root):
@@ -106,9 +121,9 @@ def test_the_known_list_matches_what_the_code_reads():
 
     assert read - listed == set(), (
         f"settings the code reads but KNOWN_ENV_VARS omits: {sorted(read - listed)}. "
-        f"Add them, or a user setting one correctly will be told it is a typo.")
-    assert listed - read == set(), (
-        f"listed in KNOWN_ENV_VARS but read by nothing: {sorted(listed - read)}")
+        f"Add them, or a user setting one correctly will be told it is a typo."
+    )
+    assert listed - read == set(), f"listed in KNOWN_ENV_VARS but read by nothing: {sorted(listed - read)}"
 
 
 def test_the_warning_is_printed_and_not_fatal(capsys):

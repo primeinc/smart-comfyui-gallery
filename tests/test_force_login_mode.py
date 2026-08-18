@@ -32,14 +32,14 @@ import pytest
 # Routes that change or destroy media. An unauthenticated caller must not
 # reach any of them while the flag is on.
 _DESTRUCTIVE = [
-    ('/galleryout/delete_batch', {'file_ids': ['x']}),
-    ('/galleryout/move_batch', {'file_ids': ['x'], 'destination_folder': '_root_'}),
-    ('/galleryout/copy_batch', {'file_ids': ['x'], 'destination_folder': '_root_'}),
-    ('/galleryout/delete_folder/_root_', {}),
-    ('/galleryout/rename_file/x', {'new_name': 'y.png'}),
-    ('/galleryout/create_folder', {'folder_name': 'x', 'parent_key': '_root_'}),
-    ('/galleryout/prepare_batch_zip', {'file_ids': ['x']}),
-    ('/galleryout/favorite_batch', {'file_ids': ['x'], 'status': True}),
+    ("/galleryout/delete_batch", {"file_ids": ["x"]}),
+    ("/galleryout/move_batch", {"file_ids": ["x"], "destination_folder": "_root_"}),
+    ("/galleryout/copy_batch", {"file_ids": ["x"], "destination_folder": "_root_"}),
+    ("/galleryout/delete_folder/_root_", {}),
+    ("/galleryout/rename_file/x", {"new_name": "y.png"}),
+    ("/galleryout/create_folder", {"folder_name": "x", "parent_key": "_root_"}),
+    ("/galleryout/prepare_batch_zip", {"file_ids": ["x"]}),
+    ("/galleryout/favorite_batch", {"file_ids": ["x"], "status": True}),
 ]
 
 
@@ -74,53 +74,54 @@ def test_the_flag_still_reaches_the_setting(smartgallery_app):
     parsed, _unknown = smartgallery_app._parser.parse_known_args(["--force-login"])
 
     assert parsed.force_login is True, "--force-login no longer parses to anything"
-    assert hasattr(smartgallery_app, "FORCE_LOGIN"), (
-        "FORCE_LOGIN is gone; the guards below have nothing to read")
+    assert hasattr(smartgallery_app, "FORCE_LOGIN"), "FORCE_LOGIN is gone; the guards below have nothing to read"
 
 
-@pytest.mark.parametrize("path", ['/galleryout/', '/galleryout/view/_root_'])
+@pytest.mark.parametrize("path", ["/galleryout/", "/galleryout/view/_root_"])
 def test_login_demanded_without_a_password_locks_everything_down(locked_down, path):
     resp = locked_down.get(path, follow_redirects=True)
     body = resp.get_data(as_text=True)
 
-    assert resp.status_code == 403, f'{path} answered {resp.status_code}'
+    assert resp.status_code == 403, f"{path} answered {resp.status_code}"
     # The denial has to be legible -- an owner who locked themselves out
     # needs to see that a password is wanted, not a blank page.
-    assert 'password' in body.lower() or 'login' in body.lower(), (
-        f'{path} denied without saying why')
+    assert "password" in body.lower() or "login" in body.lower(), f"{path} denied without saying why"
     # And it must not carry the gallery itself.
-    assert 'lightbox-toolbar' not in body, f'{path} leaked the gallery interface'
-    assert 'gallery-item' not in body, f'{path} leaked file listings'
+    assert "lightbox-toolbar" not in body, f"{path} leaked the gallery interface"
+    assert "gallery-item" not in body, f"{path} leaked file listings"
 
 
 def test_destructive_apis_refuse_an_anonymous_caller(locked_down):
-    bad = [(path, r.status_code)
-           for path, payload in _DESTRUCTIVE
-           for r in [locked_down.post(path, json=payload)]
-           if r.status_code not in (401, 403)]
+    bad = [
+        (path, r.status_code)
+        for path, payload in _DESTRUCTIVE
+        for r in [locked_down.post(path, json=payload)]
+        if r.status_code not in (401, 403)
+    ]
 
-    assert not bad, f'reachable without logging in: {bad}'
+    assert not bad, f"reachable without logging in: {bad}"
 
 
 def test_a_logged_in_customer_still_cannot_use_the_management_apis(locked_down):
     """Authentication is not authorisation: a CUSTOMER account exists to
     view and rate, and must not be able to delete the library."""
     with locked_down.session_transaction() as session:
-        session['user_id'] = 5
-        session['role'] = 'CUSTOMER'
+        session["user_id"] = 5
+        session["role"] = "CUSTOMER"
 
-    bad = [(path, r.status_code)
-           for path, payload in _DESTRUCTIVE
-           for r in [locked_down.post(path, json=payload)]
-           if r.status_code != 403]
+    bad = [
+        (path, r.status_code)
+        for path, payload in _DESTRUCTIVE
+        for r in [locked_down.post(path, json=payload)]
+        if r.status_code != 403
+    ]
 
-    assert not bad, f'a CUSTOMER reached management routes: {bad}'
+    assert not bad, f"a CUSTOMER reached management routes: {bad}"
 
 
 def test_without_the_flag_a_local_install_stays_usable(wide_open):
     """The counterpart: the default single-user install must NOT demand a
     login, or the flag would be meaningless and every owner locked out."""
-    resp = wide_open.post('/galleryout/favorite_batch',
-                          json={'file_ids': ['nope'], 'status': True})
+    resp = wide_open.post("/galleryout/favorite_batch", json={"file_ids": ["nope"], "status": True})
 
     assert resp.status_code == 200, resp.status_code

@@ -38,8 +38,8 @@ def _seed(smartgallery_app, name, favorite=0):
         conn.execute(
             "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size, is_favorite) "
             "VALUES (?, ?, ?, ?, 'image', ?, ?)",
-            (file_id, path, os.path.getmtime(path), name,
-             os.path.getsize(path), favorite))
+            (file_id, path, os.path.getmtime(path), name, os.path.getsize(path), favorite),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -65,9 +65,7 @@ def _cleanup(smartgallery_app):
 def _lookup(smartgallery_app, name):
     conn = smartgallery_app.get_db_connection()
     try:
-        row = conn.execute(
-            "SELECT id, path, name, is_favorite FROM files WHERE name = ?",
-            (name,)).fetchone()
+        row = conn.execute("SELECT id, path, name, is_favorite FROM files WHERE name = ?", (name,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
@@ -78,8 +76,7 @@ def test_rename_moves_the_file_and_updates_its_row(smartgallery_app, client):
     new = f"{_PREFIX}after.png"
     file_id, old_path = _seed(smartgallery_app, old, favorite=1)
 
-    resp = client.post(f"/galleryout/rename_file/{file_id}",
-                       json={"new_name": new})
+    resp = client.post(f"/galleryout/rename_file/{file_id}", json={"new_name": new})
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert not os.path.exists(old_path)
@@ -100,8 +97,7 @@ def test_rename_onto_an_existing_name_is_refused(smartgallery_app, client):
     source = f"{_PREFIX}source.png"
     file_id, source_path = _seed(smartgallery_app, source)
 
-    resp = client.post(f"/galleryout/rename_file/{file_id}",
-                       json={"new_name": victim})
+    resp = client.post(f"/galleryout/rename_file/{file_id}", json={"new_name": victim})
 
     assert resp.status_code == 409, "rename should refuse a taken name"
     with open(victim_path, "rb") as fh:
@@ -112,16 +108,13 @@ def test_rename_onto_an_existing_name_is_refused(smartgallery_app, client):
 def test_rename_keeps_the_extension_when_none_is_given(smartgallery_app, client):
     file_id, _path = _seed(smartgallery_app, f"{_PREFIX}keepext.png")
 
-    resp = client.post(f"/galleryout/rename_file/{file_id}",
-                       json={"new_name": f"{_PREFIX}renamed"})
+    resp = client.post(f"/galleryout/rename_file/{file_id}", json={"new_name": f"{_PREFIX}renamed"})
 
     assert resp.status_code == 200
-    assert os.path.isfile(os.path.join(
-        smartgallery_app.BASE_OUTPUT_PATH, f"{_PREFIX}renamed.png"))
+    assert os.path.isfile(os.path.join(smartgallery_app.BASE_OUTPUT_PATH, f"{_PREFIX}renamed.png"))
 
 
-@pytest.mark.parametrize("bad", ["", "   ", "a/b.png", "a" + chr(92) + "b.png",
-                                 "x:y.png", "we*rd.png", 'q"uote.png'])
+@pytest.mark.parametrize("bad", ["", "   ", "a/b.png", "a" + chr(92) + "b.png", "x:y.png", "we*rd.png", 'q"uote.png'])
 def test_rename_rejects_unusable_names(smartgallery_app, client, bad):
     file_id, path = _seed(smartgallery_app, f"{_PREFIX}guard.png")
 

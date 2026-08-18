@@ -73,7 +73,9 @@ def _query_one(db_path: str, sql: str, params: tuple = ()):
 def _face_stub_source(_img):
     return [
         FaceDetection(
-            bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9,
+            bbox=(0.1, 0.1, 0.2, 0.2),
+            landmarks=[],
+            det_score=0.9,
             embedding=np.ones(8, dtype=np.float32),
         )
     ]
@@ -138,12 +140,8 @@ def test_worker_hashes_and_embeds_real_files(worker_env):
         row = _query_one(db_path, "SELECT sha256 FROM ai_file_hashes WHERE file_id = ?", (fid,))
         assert row is not None
 
-    sem_count = _query_one(
-        db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,)
-    )[0]
-    vis_count = _query_one(
-        db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)
-    )[0]
+    sem_count = _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,))[0]
+    vis_count = _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,))[0]
     assert sem_count == 3
     assert vis_count == 3
 
@@ -160,25 +158,22 @@ def test_worker_recomputes_on_mtime_staleness(worker_env):
     worker.start()
     try:
         assert _wait_until(lambda: worker.stats["hashed"] >= 3, timeout=3.0)
-        original_row = _query_one(
-            db_path, "SELECT source_mtime FROM ai_file_hashes WHERE file_id = ?", ("f0",)
-        )
+        original_row = _query_one(db_path, "SELECT source_mtime FROM ai_file_hashes WHERE file_id = ?", ("f0",))
         assert original_row[0] == pytest.approx(1000.0)
 
         _set_mtime(db_path, "f0", 5000.0)
 
         assert _wait_until(
-            lambda: (_query_one(
-                db_path, "SELECT source_mtime FROM ai_file_hashes WHERE file_id = ?", ("f0",)
-            ) or [None])[0] == pytest.approx(5000.0),
+            lambda: (
+                (_query_one(db_path, "SELECT source_mtime FROM ai_file_hashes WHERE file_id = ?", ("f0",)) or [None])[0]
+                == pytest.approx(5000.0)
+            ),
             timeout=3.0,
         )
     finally:
         worker.stop(timeout=2.0)
 
-    updated_row = _query_one(
-        db_path, "SELECT source_mtime FROM ai_file_hashes WHERE file_id = ?", ("f0",)
-    )
+    updated_row = _query_one(db_path, "SELECT source_mtime FROM ai_file_hashes WHERE file_id = ?", ("f0",))
     assert updated_row[0] == pytest.approx(5000.0)
 
 
@@ -208,13 +203,17 @@ def test_worker_never_raises_on_unreadable_path(worker_env):
 def test_worker_start_is_idempotent_and_default_state(tmp_path):
     db_path = str(tmp_path / "gallery.sqlite")
     _make_db(db_path)
-    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
-                       cache_dir=str(tmp_path / "cache"))
+    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path, cache_dir=str(tmp_path / "cache"))
     worker = AIWorker(config, db_path, poll_interval=0.05)
 
     assert not worker.is_running
     assert worker.stats == {
-        "cycles": 0, "hashed": 0, "embedded": 0, "faces_indexed": 0, "reviewed": 0, "errors": 0,
+        "cycles": 0,
+        "hashed": 0,
+        "embedded": 0,
+        "faces_indexed": 0,
+        "reviewed": 0,
+        "errors": 0,
     }
 
     worker.start()
@@ -240,10 +239,16 @@ def test_worker_zero_result_scan_not_repeated(tmp_path):
         return []
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="stub", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="stub",
+        critic_backend="none",
         extra={"face_stub_source": counting_empty_source},
     )
     worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
@@ -255,9 +260,7 @@ def test_worker_zero_result_scan_not_repeated(tmp_path):
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM ai_scan_log WHERE file_id = 'nf1' AND kind = 'faces'"
-    ).fetchone()
+    row = conn.execute("SELECT * FROM ai_scan_log WHERE file_id = 'nf1' AND kind = 'faces'").fetchone()
     conn.close()
     assert row is not None
     assert row["result_count"] == 0
@@ -279,10 +282,16 @@ def test_worker_rescans_after_mtime_change(tmp_path):
         return _face_stub_source(img)
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="stub", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="stub",
+        critic_backend="none",
         extra={"face_stub_source": counting_source},
     )
     worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
@@ -314,44 +323,64 @@ def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path):
     # critic ran while segmenter_backend was 'none').
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    result = R.validate_review_payload({
-        "quality_score": 5.0, "prompt_alignment_score": None, "summary": "s",
-        "findings": [{"type": "artifact", "severity": "low", "confidence": 0.9,
-                      "localizable": True, "description": "spot",
-                      "bbox": [0.25, 0.25, 0.5, 0.5]}]})
-    R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION,
-                   "{}", 1000.0, 1.0)
+    result = R.validate_review_payload(
+        {
+            "quality_score": 5.0,
+            "prompt_alignment_score": None,
+            "summary": "s",
+            "findings": [
+                {
+                    "type": "artifact",
+                    "severity": "low",
+                    "confidence": 0.9,
+                    "localizable": True,
+                    "description": "spot",
+                    "bbox": [0.25, 0.25, 0.5, 0.5],
+                }
+            ],
+        }
+    )
+    R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION, "{}", 1000.0, 1.0)
     # Mark the review scan as done (so only the mask stage has work).
     conn.execute(
         "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version,"
         " source_mtime, scanned_at, result_count)"
-        " VALUES ('mf1', 'review', 'critic-x', 'v1', 1000.0, 1.0, 1)")
+        " VALUES ('mf1', 'review', 'critic-x', 'v1', 1000.0, 1.0, 1)"
+    )
     conn.commit()
     assert conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
     conn.close()
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="none", segmenter_backend="stub",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="none",
+        segmenter_backend="stub",
     )
     worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
     worker.start()
     try:
+
         def has_mask():
             c = sqlite3.connect(db_path)
             mp = c.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
             c.close()
             return mp is not None
+
         assert _wait_until(has_mask, timeout=5.0), "late segmenter never masked"
     finally:
         worker.stop(timeout=2.0)
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    log = conn.execute(
-        "SELECT * FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()
+    log = conn.execute("SELECT * FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()
     mask_path = conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
     conn.close()
     assert log is not None
@@ -387,7 +416,8 @@ def test_scan_log_check_migration_admits_masks(tmp_path):
     conn.execute(
         "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version,"
         " source_mtime, scanned_at, result_count)"
-        " VALUES ('f1','masks','m','v',0,0,1)")
+        " VALUES ('f1','masks','m','v',0,0,1)"
+    )
     conn.commit()
 
 
@@ -408,16 +438,21 @@ def test_worker_sweeps_orphaned_mask_dirs(tmp_path):
     (cache / "masks" / "ghost" / "9.png").write_bytes(b"x")
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(cache),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(cache),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="none",
     )
     worker = AIWorker(config, db_path, poll_interval=0.03, batch_size=50)
     worker.start()
     try:
-        assert _wait_until(
-            lambda: not _os.path.isdir(str(cache / "masks" / "ghost")), timeout=5.0)
+        assert _wait_until(lambda: not _os.path.isdir(str(cache / "masks" / "ghost")), timeout=5.0)
     finally:
         worker.stop(timeout=2.0)
     assert _os.path.isfile(str(cache / "masks" / "keep1" / "1.png"))
@@ -430,10 +465,16 @@ def test_backend_resolver_exception_cached_none_no_deadlock(tmp_path):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="none",
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
 
@@ -480,40 +521,56 @@ def test_failed_mask_generation_is_retried_not_logged_complete(tmp_path):
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    result = R.validate_review_payload({
-        "quality_score": 5.0, "prompt_alignment_score": None, "summary": "s",
-        "findings": [{"type": "artifact", "severity": "low", "confidence": 0.9,
-                      "localizable": True, "description": "spot",
-                      "bbox": [0.25, 0.25, 0.5, 0.5]}]})
-    R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION,
-                   "{}", 1000.0, 1.0)
+    result = R.validate_review_payload(
+        {
+            "quality_score": 5.0,
+            "prompt_alignment_score": None,
+            "summary": "s",
+            "findings": [
+                {
+                    "type": "artifact",
+                    "severity": "low",
+                    "confidence": 0.9,
+                    "localizable": True,
+                    "description": "spot",
+                    "bbox": [0.25, 0.25, 0.5, 0.5],
+                }
+            ],
+        }
+    )
+    R.store_review(conn, "mf1", result, "critic-x", "v1", RUBRIC_VERSION, "{}", 1000.0, 1.0)
     conn.execute(
         "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version,"
         " source_mtime, scanned_at, result_count)"
-        " VALUES ('mf1', 'review', 'critic-x', 'v1', 1000.0, 1.0, 1)")
+        " VALUES ('mf1', 'review', 'critic-x', 'v1', 1000.0, 1.0, 1)"
+    )
     conn.commit()
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="none", segmenter_backend="stub",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="none",
+        segmenter_backend="stub",
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=50)
 
     processed = worker._process_masks(conn, _ExplodingSegmenter(), 10)
     assert processed == 1  # the candidate was attempted...
-    assert conn.execute(
-        "SELECT COUNT(*) FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'"
-    ).fetchone()[0] == 0  # ...but not recorded as complete
-    assert conn.execute(
-        "SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
+    assert (
+        conn.execute("SELECT COUNT(*) FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()[0] == 0
+    )  # ...but not recorded as complete
+    assert conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
 
     worker._process_masks(conn, StubSegmenter(), 10)
     mask_path = conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0]
-    log = conn.execute(
-        "SELECT result_count FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'"
-    ).fetchone()
+    log = conn.execute("SELECT result_count FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()
     conn.close()
     assert mask_path is not None
     assert _os.path.isfile(mask_path)
@@ -530,9 +587,7 @@ def test_worker_clusters_faces_after_indexing(worker_env):
         lambda: (_query_one(db_path, "SELECT COUNT(*) FROM ai_face_clusters") or (0,))[0] > 0,
         timeout=5.0,
     ), "worker never clustered the indexed faces"
-    assigned = _query_one(
-        db_path,
-        "SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL")[0]
+    assigned = _query_one(db_path, "SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL")[0]
     assert assigned >= 2
 
 
@@ -544,10 +599,16 @@ def test_unavailable_backend_reprobed_after_retry_window(tmp_path):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="none",
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
 
@@ -601,8 +662,7 @@ def test_fast_scheduler_redistributes_drained_stage_quotas():
     _sem, run_sem = _stage(0)
     _vis, run_vis = _stage(0)
     fac, run_fac = _stage(1000)
-    consumed = _pace_host()._run_fast_stages(
-        [("semantic", run_sem), ("visual", run_vis), ("faces", run_fac)], 9)
+    consumed = _pace_host()._run_fast_stages([("semantic", run_sem), ("visual", run_vis), ("faces", run_fac)], 9)
     assert consumed == 9
     assert 1000 - fac["remaining"] == 9
 
@@ -612,8 +672,7 @@ def test_fast_scheduler_is_fair_when_every_backlog_is_deep():
     a, run_a = _stage(1000)
     b, run_b = _stage(1000)
     c, run_c = _stage(1000)
-    consumed = _pace_host()._run_fast_stages(
-        [("a", run_a), ("b", run_b), ("c", run_c)], 9)
+    consumed = _pace_host()._run_fast_stages([("a", run_a), ("b", run_b), ("c", run_c)], 9)
     assert consumed == 9
     assert [1000 - s["remaining"] for s in (a, b, c)] == [3, 3, 3]
 
@@ -635,10 +694,16 @@ def test_review_pacing_rides_along_and_backs_off(tmp_path, monkeypatch):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="stub",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="stub",
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
 
@@ -664,12 +729,12 @@ def test_review_pacing_rides_along_and_backs_off(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "_run_fast_stages", lambda stages, budget: 1)
 
     worker._run_cycle()
-    assert review_calls == [1]          # rode along despite the busy crawl
+    assert review_calls == [1]  # rode along despite the busy crawl
     assert worker._review_interval == 2  # slow -> backed off
 
-    worker._run_cycle()                  # cycles_since_review=1 < 2: paced out
+    worker._run_cycle()  # cycles_since_review=1 < 2: paced out
     assert review_calls == [1]
-    worker._run_cycle()                  # interval reached: reviews again
+    worker._run_cycle()  # interval reached: reviews again
     assert review_calls == [1, 1]
     assert worker._review_interval == 4  # still slow -> further backoff
 
@@ -679,10 +744,16 @@ def test_review_pacing_resets_when_reviews_are_fast(tmp_path, monkeypatch):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="none", critic_backend="stub",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="stub",
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
     worker._review_interval = 8  # pretend an earlier slow phase
@@ -695,9 +766,9 @@ def test_review_pacing_resets_when_reviews_are_fast(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "_sweep_orphaned_masks", lambda *a, **k: None)
     monkeypatch.setattr(worker, "_run_fast_stages", lambda stages, budget: 1)
     monkeypatch.setattr(worker, "_backend", lambda key, resolver: object())
-    monkeypatch.setattr(worker, "_process_reviews",
-                        lambda conn, backend, n, only_file_id=None:
-                        (review_calls.append(n), 1)[1])
+    monkeypatch.setattr(
+        worker, "_process_reviews", lambda conn, backend, n, only_file_id=None: (review_calls.append(n), 1)[1]
+    )
 
     worker._run_cycle()
     assert review_calls == [1]
@@ -723,14 +794,14 @@ def test_record_scan_is_model_scoped(tmp_path):
     record_scan(conn, "f1", "faces", _M1, 1000.0, 2000.0, 3)
     record_scan(conn, "f1", "faces", _M2, 1000.0, 2001.0, 1)
     rows = conn.execute(
-        "SELECT model_id, result_count, scanned_at FROM ai_scan_log "
-        "WHERE file_id = 'f1' ORDER BY model_id").fetchall()
+        "SELECT model_id, result_count, scanned_at FROM ai_scan_log WHERE file_id = 'f1' ORDER BY model_id"
+    ).fetchall()
     assert [tuple(r) for r in rows] == [("m1", 3, 2000.0), ("m2", 1, 2001.0)]
 
     record_scan(conn, "f1", "faces", _M1, 1000.0, 2002.0, 2)
     rows = conn.execute(
-        "SELECT model_id, result_count, scanned_at FROM ai_scan_log "
-        "WHERE file_id = 'f1' ORDER BY model_id").fetchall()
+        "SELECT model_id, result_count, scanned_at FROM ai_scan_log WHERE file_id = 'f1' ORDER BY model_id"
+    ).fetchall()
     assert [tuple(r) for r in rows] == [("m1", 2, 2002.0), ("m2", 1, 2001.0)]
     conn.close()
 
@@ -745,7 +816,8 @@ def test_scan_log_pk_migration_preserves_rows(tmp_path):
     conn.execute(
         "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, "
         "mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT, "
-        "workflow_prompt TEXT DEFAULT '')")
+        "workflow_prompt TEXT DEFAULT '')"
+    )
     conn.execute(
         """
         CREATE TABLE ai_scan_log (
@@ -759,17 +831,13 @@ def test_scan_log_pk_migration_preserves_rows(tmp_path):
             result_count INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (file_id, kind)
         )
-        """)
-    conn.execute(
-        "INSERT INTO files (id, path, mtime, name, type) "
-        "VALUES ('f1', 'p1', 1000.0, 'f1', 'image')")
-    conn.execute(
-        "INSERT INTO ai_scan_log VALUES ('f1', 'faces', 'm1', 'v1', 1000.0, 2000.0, 3)")
+        """
+    )
+    conn.execute("INSERT INTO files (id, path, mtime, name, type) VALUES ('f1', 'p1', 1000.0, 'f1', 'image')")
+    conn.execute("INSERT INTO ai_scan_log VALUES ('f1', 'faces', 'm1', 'v1', 1000.0, 2000.0, 3)")
     init_schema(conn)
 
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'"
-    ).fetchone()
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_scan_log'").fetchone()
     assert "kind, model_id, model_version" in row[0]
     assert conn.execute("SELECT COUNT(*) FROM ai_scan_log").fetchone()[0] == 1
 
@@ -777,9 +845,7 @@ def test_scan_log_pk_migration_preserves_rows(tmp_path):
         model_id, model_version = "m2", "v1"
 
     record_scan(conn, "f1", "faces", _M2, 1000.0, 2001.0, 1)
-    assert conn.execute(
-        "SELECT COUNT(*) FROM ai_scan_log WHERE file_id = 'f1' AND kind = 'faces'"
-    ).fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(*) FROM ai_scan_log WHERE file_id = 'f1' AND kind = 'faces'").fetchone()[0] == 2
     conn.close()
 
 
@@ -797,16 +863,27 @@ def test_faces_attribute_backfill_requeues_only_null_attribute_rows(tmp_path):
         _add_file(db_path, f"bf{i}", img_path, mtime=1000.0)
 
     def source_with_attrs(_img):
-        return [FaceDetection(
-            bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9,
-            embedding=np.ones(8, dtype=np.float32),
-            attributes={"age": 30, "landmark_2d_106": [[0.1, 0.2]]})]
+        return [
+            FaceDetection(
+                bbox=(0.1, 0.1, 0.2, 0.2),
+                landmarks=[],
+                det_score=0.9,
+                embedding=np.ones(8, dtype=np.float32),
+                attributes={"age": 30, "landmark_2d_106": [[0.1, 0.2]]},
+            )
+        ]
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="stub", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="stub",
+        critic_backend="none",
         extra={"face_stub_source": source_with_attrs},
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
@@ -818,18 +895,13 @@ def test_faces_attribute_backfill_requeues_only_null_attribute_rows(tmp_path):
 
     # Simulate rows written before attribute persistence on ONE file, and
     # clear the marker so the backfill re-examines the table.
-    conn.execute(
-        "UPDATE ai_face_instances SET attributes = NULL, age = NULL "
-        "WHERE file_id = 'bf1'")
-    conn.execute(
-        "DELETE FROM ai_dam_state WHERE key LIKE 'faces_attr_backfill:%'")
+    conn.execute("UPDATE ai_face_instances SET attributes = NULL, age = NULL WHERE file_id = 'bf1'")
+    conn.execute("DELETE FROM ai_dam_state WHERE key LIKE 'faces_attr_backfill:%'")
     conn.commit()
 
     # Only bf1 re-enters the queue; re-processing restores its attributes.
     assert worker._process_faces(conn, backend, 10) == 1
-    row = conn.execute(
-        "SELECT attributes, age FROM ai_face_instances WHERE file_id = 'bf1'"
-    ).fetchone()
+    row = conn.execute("SELECT attributes, age FROM ai_face_instances WHERE file_id = 'bf1'").fetchone()
     assert row["attributes"] is not None
     assert row["age"] == 30
 
@@ -853,10 +925,16 @@ def test_face_clustering_retried_after_failure(tmp_path, monkeypatch):
         _add_file(db_path, f"cf{i}", img_path, mtime=1000.0)
 
     config = AIConfig(
-        enabled=True, base_path=str(tmp_path), db_path=db_path,
-        models_dir=str(tmp_path / "models"), cache_dir=str(tmp_path / "cache"),
-        ephemeral_index=True, semantic_backend="none", visual_backend="none",
-        face_backend="stub", critic_backend="none",
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "models"),
+        cache_dir=str(tmp_path / "cache"),
+        ephemeral_index=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="stub",
+        critic_backend="none",
         extra={"face_stub_source": _face_stub_source},
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
@@ -884,9 +962,7 @@ def test_face_clustering_retried_after_failure(tmp_path, monkeypatch):
     # Cycle 2: no face candidates remain, yet clustering retries and lands.
     assert worker._process_faces(conn, backend, 10) == 0
     assert len(calls) == 2
-    assert conn.execute(
-        "SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL"
-    ).fetchone()[0] >= 1
+    assert conn.execute("SELECT COUNT(*) FROM ai_face_instances WHERE cluster_id IS NOT NULL").fetchone()[0] >= 1
 
     # Cycle 3: nothing pending — clustering is not re-run.
     assert worker._process_faces(conn, backend, 10) == 0
@@ -911,9 +987,9 @@ def test_note_pace_ema_and_first_measurement():
     host = _pace_host()
     host._note_pace("s", elapsed=10.0, items=5)
     assert host._stage_pace["s"] == 2.0
-    host._note_pace("s", elapsed=4.0, items=1)   # 2.0*0.6 + 4.0*0.4
+    host._note_pace("s", elapsed=4.0, items=1)  # 2.0*0.6 + 4.0*0.4
     assert abs(host._stage_pace["s"] - 2.8) < 1e-9
-    host._note_pace("s", elapsed=0.0, items=0)   # no-op, never divides by 0
+    host._note_pace("s", elapsed=0.0, items=0)  # no-op, never divides by 0
     assert abs(host._stage_pace["s"] - 2.8) < 1e-9
 
 
@@ -934,7 +1010,7 @@ def test_fast_scheduler_time_deadline_stops_reoffers(monkeypatch):
     a, run_a_inner = _stage(1000)
 
     def run_a(limit):
-        clock["t"] += 20.0   # each offer costs 20s; target is 12s
+        clock["t"] += 20.0  # each offer costs 20s; target is 12s
         return run_a_inner(limit)
 
     consumed = host._run_fast_stages([("a", run_a)], 50)
@@ -950,6 +1026,7 @@ def test_fast_scheduler_time_deadline_stops_reoffers(monkeypatch):
 # that ordinary staleness never revisits (same file, same model). The
 # worker sweeps them once per model version.
 
+
 def _review_env(tmp_path, workflow_prompt="a red square"):
     """DB + stub critic + worker, with one file carrying `workflow_prompt`."""
 
@@ -958,14 +1035,24 @@ def _review_env(tmp_path, workflow_prompt="a red square"):
     img = str(tmp_path / "a.png")
     Image.new("RGB", (16, 16), (200, 10, 10)).save(img)
     conn = sqlite3.connect(db_path)
-    conn.execute("INSERT INTO files (id, path, mtime, name, type, workflow_prompt) "
-                 "VALUES ('f1', ?, 1000.0, 'a.png', 'image', ?)", (img, workflow_prompt))
+    conn.execute(
+        "INSERT INTO files (id, path, mtime, name, type, workflow_prompt) "
+        "VALUES ('f1', ?, 1000.0, 'a.png', 'image', ?)",
+        (img, workflow_prompt),
+    )
     conn.commit()
     conn.close()
-    cfg = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
-                   models_dir=str(tmp_path / "m"), cache_dir=str(tmp_path / "c"),
-                   critic_backend="stub", semantic_backend="none",
-                   visual_backend="none", face_backend="none")
+    cfg = AIConfig(
+        enabled=True,
+        base_path=str(tmp_path),
+        db_path=db_path,
+        models_dir=str(tmp_path / "m"),
+        cache_dir=str(tmp_path / "c"),
+        critic_backend="stub",
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+    )
     worker = AIWorker(cfg, db_path, poll_interval=999.0, batch_size=5)
     return db_path, worker, R.get_reviewer(cfg)
 
@@ -977,17 +1064,19 @@ def _seed_reviewed_without_alignment(conn, backend):
         "INSERT INTO ai_reviews (file_id, rubric_version, model_id, model_version, "
         "quality_score, prompt_alignment_score, summary, raw_response, source_mtime, "
         "computed_at) VALUES ('f1', 'r1', ?, ?, 8.0, NULL, 's', '{}', 1000.0, 1.0)",
-        (backend.model_id, backend.model_version))
+        (backend.model_id, backend.model_version),
+    )
     conn.execute(
         "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
         "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
-        "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+        "1000.0, 1.0, 1)",
+        (backend.model_id, backend.model_version),
+    )
     conn.commit()
 
 
 def _scan_rows(conn) -> int:
-    return conn.execute(
-        "SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'review'").fetchone()[0]
+    return conn.execute("SELECT COUNT(*) FROM ai_scan_log WHERE kind = 'review'").fetchone()[0]
 
 
 def test_review_path_runs_without_crashing(tmp_path):
@@ -999,8 +1088,9 @@ def test_review_path_runs_without_crashing(tmp_path):
     conn.row_factory = sqlite3.Row
     try:
         assert worker._process_reviews(conn, backend, 5) == 1
-        row = conn.execute("SELECT quality_score, prompt_alignment_score "
-                           "FROM ai_reviews WHERE file_id = 'f1'").fetchone()
+        row = conn.execute(
+            "SELECT quality_score, prompt_alignment_score FROM ai_reviews WHERE file_id = 'f1'"
+        ).fetchone()
         assert row is not None
         assert row["quality_score"] is not None
     finally:
@@ -1022,7 +1112,9 @@ def test_alignment_requeue_clears_scan_log_once(tmp_path):
         conn.execute(
             "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
             "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
-            "1000.0, 2.0, 1)", (backend.model_id, backend.model_version))
+            "1000.0, 2.0, 1)",
+            (backend.model_id, backend.model_version),
+        )
         conn.commit()
         worker._ensure_review_alignment_requeue(conn, backend)
         assert _scan_rows(conn) == 1, "sweep re-fired; the marker guard is not holding"
@@ -1057,11 +1149,14 @@ def test_alignment_requeue_catches_legacy_0_to_10_scores(tmp_path):
             "model_version, quality_score, prompt_alignment_score, summary, "
             "raw_response, source_mtime, computed_at) VALUES ('f1', 'r1', ?, ?, "
             "8.0, 7.0, 's', '{}', 1000.0, 1.0)",
-            (backend.model_id, backend.model_version))
+            (backend.model_id, backend.model_version),
+        )
         conn.execute(
             "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
             "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
-            "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+            "1000.0, 1.0, 1)",
+            (backend.model_id, backend.model_version),
+        )
         conn.commit()
         worker._ensure_review_alignment_requeue(conn, backend)
         assert _scan_rows(conn) == 0, "legacy 0..10 alignment score not re-queued"
@@ -1080,11 +1175,14 @@ def test_alignment_requeue_keeps_valid_fractional_scores(tmp_path):
             "model_version, quality_score, prompt_alignment_score, summary, "
             "raw_response, source_mtime, computed_at) VALUES ('f1', 'r1', ?, ?, "
             "8.0, 0.75, 's', '{}', 1000.0, 1.0)",
-            (backend.model_id, backend.model_version))
+            (backend.model_id, backend.model_version),
+        )
         conn.execute(
             "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
             "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
-            "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+            "1000.0, 1.0, 1)",
+            (backend.model_id, backend.model_version),
+        )
         conn.commit()
         worker._ensure_review_alignment_requeue(conn, backend)
         assert _scan_rows(conn) == 1, "re-queued a review whose score is already 0..1"
@@ -1100,18 +1198,20 @@ def test_alignment_requeue_reruns_after_predicate_widened(tmp_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        worker._set_state(
-            conn, f"review_alignment_requeue:{backend.model_id}:{backend.model_version}", "1")
+        worker._set_state(conn, f"review_alignment_requeue:{backend.model_id}:{backend.model_version}", "1")
         conn.execute(
             "INSERT INTO ai_reviews (file_id, rubric_version, model_id, "
             "model_version, quality_score, prompt_alignment_score, summary, "
             "raw_response, source_mtime, computed_at) VALUES ('f1', 'r1', ?, ?, "
             "8.0, 7.0, 's', '{}', 1000.0, 1.0)",
-            (backend.model_id, backend.model_version))
+            (backend.model_id, backend.model_version),
+        )
         conn.execute(
             "INSERT INTO ai_scan_log (file_id, kind, model_id, model_version, "
             "source_mtime, scanned_at, result_count) VALUES ('f1', 'review', ?, ?, "
-            "1000.0, 1.0, 1)", (backend.model_id, backend.model_version))
+            "1000.0, 1.0, 1)",
+            (backend.model_id, backend.model_version),
+        )
         conn.commit()
         worker._ensure_review_alignment_requeue(conn, backend)
         assert _scan_rows(conn) == 0, "the v1 marker suppressed the widened v2 sweep"

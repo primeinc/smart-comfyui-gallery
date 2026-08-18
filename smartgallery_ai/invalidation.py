@@ -44,9 +44,7 @@ def find_stale_hashes(conn, algo_version: str) -> list[str]:
     ]
 
 
-def find_stale_embeddings(
-    conn, space: str, model_id: str, model_version: str
-) -> list[str]:
+def find_stale_embeddings(conn, space: str, model_id: str, model_version: str) -> list[str]:
     """file_ids whose `ai_embeddings` row in `space` is stale vs the active model."""
     rows = conn.execute(
         """

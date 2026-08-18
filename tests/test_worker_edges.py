@@ -33,6 +33,7 @@ from smartgallery_ai.worker import (
 
 # -- helpers (mirroring tests/test_worker.py conventions) ---------------------
 
+
 def _make_db(db_path: str, with_prompt_column: bool = True) -> None:
     conn = sqlite3.connect(db_path)
     prompt_col = ",\n            workflow_prompt TEXT DEFAULT ''" if with_prompt_column else ""
@@ -52,8 +53,7 @@ def _make_db(db_path: str, with_prompt_column: bool = True) -> None:
     conn.close()
 
 
-def _add_file(db_path: str, file_id: str, path: str, mtime: float,
-              file_type: str = "image") -> None:
+def _add_file(db_path: str, file_id: str, path: str, mtime: float, file_type: str = "image") -> None:
     conn = sqlite3.connect(db_path)
     conn.execute(
         "INSERT INTO files (id, path, mtime, name, type) VALUES (?, ?, ?, ?, ?)",
@@ -86,31 +86,39 @@ def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.02) -> bool
     return predicate()
 
 
-def _add_generation_params(db_path: str, file_id: str, positive: str,
-                           negative: str = "") -> None:
+def _add_generation_params(db_path: str, file_id: str, positive: str, negative: str = "") -> None:
     """Plant a traced generation_params row, creating the table if the test
     DB has none (these DBs are AI-only; the host app owns that schema)."""
     conn = sqlite3.connect(db_path)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS generation_params ("
         "file_id TEXT PRIMARY KEY, positive_prompt TEXT NOT NULL DEFAULT '', "
-        "negative_prompt TEXT NOT NULL DEFAULT '')")
+        "negative_prompt TEXT NOT NULL DEFAULT '')"
+    )
     conn.execute(
         "INSERT INTO generation_params (file_id, positive_prompt, negative_prompt) "
         "VALUES (?, ?, ?) ON CONFLICT(file_id) DO UPDATE SET "
         "positive_prompt=excluded.positive_prompt, "
         "negative_prompt=excluded.negative_prompt",
-        (file_id, positive, negative))
+        (file_id, positive, negative),
+    )
     conn.commit()
     conn.close()
 
 
 def _config(tmp_path, db_path, **overrides) -> AIConfig:
     kwargs = {
-        "enabled": True, "base_path": str(tmp_path), "db_path": db_path,
-        "models_dir": str(tmp_path / "models"), "cache_dir": str(tmp_path / "cache"),
-        "ephemeral_index": True, "semantic_backend": "none", "visual_backend": "none",
-        "face_backend": "none", "critic_backend": "none", "segmenter_backend": "none",
+        "enabled": True,
+        "base_path": str(tmp_path),
+        "db_path": db_path,
+        "models_dir": str(tmp_path / "models"),
+        "cache_dir": str(tmp_path / "cache"),
+        "ephemeral_index": True,
+        "semantic_backend": "none",
+        "visual_backend": "none",
+        "face_backend": "none",
+        "critic_backend": "none",
+        "segmenter_backend": "none",
     }
     kwargs.update(overrides)
     return AIConfig(**kwargs)
@@ -145,30 +153,26 @@ class _RecordingCritic:
 
     def review(self, _img, prompt_text, _rubric_version, negative_text=None):
         self.prompts.append(prompt_text)
-        return {"quality_score": 7.0, "prompt_alignment_score": None,
-                "summary": "recorded", "findings": []}
+        return {"quality_score": 7.0, "prompt_alignment_score": None, "summary": "recorded", "findings": []}
 
 
 # -- _fetch_candidates --------------------------------------------------------
+
 
 def test_fetch_candidates_orders_and_caps_across_chunks():
     """With >CHUNK (500) ids, results are still globally mtime-DESC/id-ASC
     ordered and capped at limit, not per-chunk artifacts."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, "
-                 "mtime REAL, type TEXT)")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL, type TEXT)")
     ids = [f"f{i:04d}" for i in range(1100)]
     mtimes = {fid: float((i * 7) % 41) for i, fid in enumerate(ids)}
-    conn.executemany(
-        "INSERT INTO files VALUES (?, ?, ?, 'image')",
-        [(fid, f"/x/{fid}", mtimes[fid]) for fid in ids])
+    conn.executemany("INSERT INTO files VALUES (?, ?, ?, 'image')", [(fid, f"/x/{fid}", mtimes[fid]) for fid in ids])
 
     # Scrambled id order: chunk membership must not affect the result.
     rows = _fetch_candidates(conn, list(reversed(ids)), limit=9)
 
-    expected = sorted(((fid, mtimes[fid]) for fid in ids),
-                      key=lambda t: (-t[1], t[0]))[:9]
+    expected = sorted(((fid, mtimes[fid]) for fid in ids), key=lambda t: (-t[1], t[0]))[:9]
     assert [(r["id"], r["mtime"]) for r in rows] == expected
     conn.close()
 
@@ -178,15 +182,17 @@ def test_fetch_candidates_allowed_types_filters_nonvisual():
     never come back even when their ids were requested."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, "
-                 "mtime REAL, type TEXT)")
-    data = [("a", 5.0, "image"), ("b", 4.0, "audio"), ("c", 3.0, "video"),
-            ("d", 2.0, "document"), ("e", 1.0, "animated_image")]
-    conn.executemany("INSERT INTO files VALUES (?, ?, ?, ?)",
-                     [(i, f"/x/{i}", m, t) for i, m, t in data])
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL, type TEXT)")
+    data = [
+        ("a", 5.0, "image"),
+        ("b", 4.0, "audio"),
+        ("c", 3.0, "video"),
+        ("d", 2.0, "document"),
+        ("e", 1.0, "animated_image"),
+    ]
+    conn.executemany("INSERT INTO files VALUES (?, ?, ?, ?)", [(i, f"/x/{i}", m, t) for i, m, t in data])
 
-    rows = _fetch_candidates(conn, ["a", "b", "c", "d", "e"], limit=10,
-                             allowed_types=_VISUAL_TYPES)
+    rows = _fetch_candidates(conn, ["a", "b", "c", "d", "e"], limit=10, allowed_types=_VISUAL_TYPES)
     assert [r["id"] for r in rows] == ["a", "c", "e"]
 
     # Without a type filter every requested row comes back.
@@ -199,8 +205,7 @@ def test_fetch_candidates_empty_ids_or_nonpositive_limit():
     """No ids or a non-positive limit yields [] without touching the DB."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, "
-                 "mtime REAL, type TEXT)")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL, type TEXT)")
     conn.execute("INSERT INTO files VALUES ('a', '/a', 1.0, 'image')")
     assert _fetch_candidates(conn, [], limit=5) == []
     assert _fetch_candidates(conn, ["a"], limit=0) == []
@@ -209,6 +214,7 @@ def test_fetch_candidates_empty_ids_or_nonpositive_limit():
 
 
 # -- per-cycle budget ---------------------------------------------------------
+
 
 def test_hashing_has_its_own_budget_and_model_stages_split_theirs(tmp_path):
     """Hashing never starves the model stages (its per-file cost is
@@ -219,24 +225,19 @@ def test_hashing_has_its_own_budget_and_model_stages_split_theirs(tmp_path):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     for i in range(2):
-        _add_file(db_path, f"f{i}", _save_png(tmp_path, f"img{i}.png",
-                                              (40 * i + 30, 10, 10)), 1000.0)
-    config = _config(tmp_path, db_path, semantic_backend="stub",
-                     visual_backend="stub")
+        _add_file(db_path, f"f{i}", _save_png(tmp_path, f"img{i}.png", (40 * i + 30, 10, 10)), 1000.0)
+    config = _config(tmp_path, db_path, semantic_backend="stub", visual_backend="stub")
     worker = AIWorker(config, db_path, batch_size=2)
 
     worker._run_cycle()  # cycle 1: hashes (own budget) + one slot per space
     assert worker.stats["hashed"] == 2
     assert worker.stats["embedded"] == 2
-    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings "
-                      "WHERE space = ?", (SPACE_SEMANTIC,))[0] == 1
-    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings "
-                      "WHERE space = ?", (SPACE_VISUAL,))[0] == 1
+    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,))[0] == 1
+    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,))[0] == 1
 
     worker._run_cycle()  # cycle 2: the remaining file in both spaces
     assert worker.stats["embedded"] == 4
-    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings "
-                      "WHERE space = ?", (SPACE_VISUAL,))[0] == 2
+    assert _query_one(db_path, "SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,))[0] == 2
 
 
 def test_all_stages_return_zero_on_nonpositive_limit(tmp_path):
@@ -262,6 +263,7 @@ def test_all_stages_return_zero_on_nonpositive_limit(tmp_path):
 
 # -- loop / lifecycle resilience ---------------------------------------------
 
+
 def test_run_loop_survives_failing_cycles(tmp_path):
     """A cycle that raises (unopenable DB) is counted as an error and the
     worker thread keeps running instead of dying."""
@@ -270,8 +272,7 @@ def test_run_loop_survives_failing_cycles(tmp_path):
     worker = AIWorker(config, bad_db, poll_interval=0.02)
     worker.start()
     try:
-        assert _wait_until(lambda: worker.stats["errors"] >= 2, timeout=5.0), \
-            "cycle errors were not counted"
+        assert _wait_until(lambda: worker.stats["errors"] >= 2, timeout=5.0), "cycle errors were not counted"
         assert worker.is_running, "worker thread died on a failing cycle"
         assert worker.stats["cycles"] == 0  # no cycle ever completed
     finally:
@@ -284,8 +285,7 @@ def test_stop_during_active_cycle_joins_cleanly(tmp_path):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     for i in range(4):
-        _add_file(db_path, f"s{i}", _save_png(tmp_path, f"s{i}.png",
-                                              (i * 20, 30, 30)), 1000.0)
+        _add_file(db_path, f"s{i}", _save_png(tmp_path, f"s{i}.png", (i * 20, 30, 30)), 1000.0)
 
     detect_started = []
 
@@ -294,17 +294,16 @@ def test_stop_during_active_cycle_joins_cleanly(tmp_path):
         time.sleep(0.15)
         return []
 
-    config = _config(tmp_path, db_path, face_backend="stub",
-                     extra={"face_stub_source": slow_source})
+    config = _config(tmp_path, db_path, face_backend="stub", extra={"face_stub_source": slow_source})
     worker = AIWorker(config, db_path, poll_interval=30.0, batch_size=50)
     worker.start()
-    assert _wait_until(lambda: len(detect_started) >= 1, timeout=5.0), \
-        "cycle never reached the slow face stage"
+    assert _wait_until(lambda: len(detect_started) >= 1, timeout=5.0), "cycle never reached the slow face stage"
     worker.stop(timeout=10.0)  # issued mid-cycle
     assert not worker.is_running
 
 
 # -- scan-log staleness selection --------------------------------------------
+
 
 def test_scan_candidates_staleness_selection(tmp_path):
     """A file is (re-)selected when unlogged, when its mtime changes, or
@@ -339,6 +338,7 @@ def test_scan_candidates_staleness_selection(tmp_path):
 
 # -- review stage -------------------------------------------------------------
 
+
 def test_review_failure_logged_minus_one_and_not_retried(tmp_path):
     """A critic that raises writes a 'review' scan-log row with
     result_count -1 and the file is NOT re-attempted next cycle."""
@@ -352,8 +352,8 @@ def test_review_failure_logged_minus_one_and_not_retried(tmp_path):
         assert worker._process_reviews(conn, critic, 10) == 1  # attempted once
 
         log = conn.execute(
-            "SELECT model_id, model_version, result_count FROM ai_scan_log "
-            "WHERE file_id = 'rv1' AND kind = 'review'").fetchone()
+            "SELECT model_id, model_version, result_count FROM ai_scan_log WHERE file_id = 'rv1' AND kind = 'review'"
+        ).fetchone()
         assert log is not None
         assert (log["model_id"], log["model_version"]) == ("raising-critic", "boom-v1")
         assert log["result_count"] == -1
@@ -412,9 +412,7 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
     try:
         # 1. reviewed with no prompt anywhere -> honest null alignment
         assert worker._process_reviews(conn, StubReviewer(), 10) == 1
-        assert conn.execute(
-            "SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'"
-        ).fetchone()[0] is None
+        assert conn.execute("SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'").fetchone()[0] is None
 
         # 2. nothing changed -> not a candidate
         assert worker._process_reviews(conn, StubReviewer(), 10) == 0
@@ -424,11 +422,11 @@ def test_prompt_arriving_after_a_review_re_queues_it(tmp_path):
 
         # 4. the file MUST come back as a candidate and gain a real score
         assert worker._process_reviews(conn, StubReviewer(), 10) == 1, (
-            "a prompt that arrived after the review left it stale; the "
-            "staleness key is not covering the prompt")
-        assert conn.execute(
-            "SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'"
-        ).fetchone()[0] is not None
+            "a prompt that arrived after the review left it stale; the staleness key is not covering the prompt"
+        )
+        assert (
+            conn.execute("SELECT prompt_alignment_score FROM ai_reviews WHERE file_id='late'").fetchone()[0] is not None
+        )
 
         # 5. and it settles -- re-keying must not cause permanent churn
         assert worker._process_reviews(conn, StubReviewer(), 10) == 0
@@ -473,32 +471,27 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
     conn.execute("UPDATE files SET workflow_prompt = 'a castle' WHERE id = 'ok1'")
     conn.commit()
 
-    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub",
-                              segmenter_backend="stub"), db_path)
+    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub", segmenter_backend="stub"), db_path)
     try:
         assert worker._process_reviews(conn, StubReviewer(), 10) == 1
 
         review_row = conn.execute(
-            "SELECT quality_score, prompt_alignment_score, rubric_version "
-            "FROM ai_reviews WHERE file_id = 'ok1'").fetchone()
+            "SELECT quality_score, prompt_alignment_score, rubric_version FROM ai_reviews WHERE file_id = 'ok1'"
+        ).fetchone()
         assert review_row is not None
         assert review_row["quality_score"] == pytest.approx(8.0)  # one finding
         assert review_row["prompt_alignment_score"] == pytest.approx(1.0)
         assert review_row["rubric_version"] == RUBRIC_VERSION
 
-        finding = conn.execute(
-            "SELECT localizable, mask_path FROM ai_review_findings "
-            "WHERE file_id = 'ok1'").fetchone()
+        finding = conn.execute("SELECT localizable, mask_path FROM ai_review_findings WHERE file_id = 'ok1'").fetchone()
         assert finding["localizable"] == 1
         assert finding["mask_path"] is not None
         assert os.path.isfile(finding["mask_path"])
 
         review_log = conn.execute(
-            "SELECT result_count FROM ai_scan_log WHERE file_id='ok1' "
-            "AND kind='review'").fetchone()
-        masks_log = conn.execute(
-            "SELECT result_count FROM ai_scan_log WHERE file_id='ok1' "
-            "AND kind='masks'").fetchone()
+            "SELECT result_count FROM ai_scan_log WHERE file_id='ok1' AND kind='review'"
+        ).fetchone()
+        masks_log = conn.execute("SELECT result_count FROM ai_scan_log WHERE file_id='ok1' AND kind='masks'").fetchone()
         assert review_log["result_count"] == 1
         assert masks_log["result_count"] == 1
         assert worker.stats["reviewed"] == 1
@@ -526,14 +519,12 @@ def test_review_without_workflow_prompt_column_uses_null_prompt(tmp_path):
         assert critic.prompts == [None]
 
         row = conn.execute(
-            "SELECT prompt_alignment_score, quality_score FROM ai_reviews "
-            "WHERE file_id = 'np1'").fetchone()
+            "SELECT prompt_alignment_score, quality_score FROM ai_reviews WHERE file_id = 'np1'"
+        ).fetchone()
         assert row is not None
         assert row["prompt_alignment_score"] is None
         assert row["quality_score"] == pytest.approx(7.0)
-        log = conn.execute(
-            "SELECT result_count FROM ai_scan_log WHERE file_id='np1' "
-            "AND kind='review'").fetchone()
+        log = conn.execute("SELECT result_count FROM ai_scan_log WHERE file_id='np1' AND kind='review'").fetchone()
         assert log["result_count"] == 0
         assert worker.stats["reviewed"] == 1
     finally:
@@ -541,6 +532,7 @@ def test_review_without_workflow_prompt_column_uses_null_prompt(tmp_path):
 
 
 # -- embedding / face failure paths ------------------------------------------
+
 
 class _RaisingEmbedder:
     model_id = "raising-embedder"
@@ -559,8 +551,7 @@ def test_embedding_backend_failure_counts_error_writes_nothing(tmp_path):
     worker = AIWorker(_config(tmp_path, db_path), db_path)
     conn = _open(db_path)
     try:
-        used = worker._process_embedding_space(conn, _RaisingEmbedder(),
-                                               SPACE_SEMANTIC, 10)
+        used = worker._process_embedding_space(conn, _RaisingEmbedder(), SPACE_SEMANTIC, 10)
         assert used == 1  # counted against the budget despite failing
         assert conn.execute("SELECT COUNT(*) FROM ai_embeddings").fetchone()[0] == 0
         assert worker.stats["embedded"] == 0
@@ -592,9 +583,7 @@ def test_face_detect_failure_leaves_file_retryable(tmp_path):
     conn = _open(db_path)
     try:
         assert worker._process_faces(conn, backend, 10) == 1
-        assert conn.execute(
-            "SELECT COUNT(*) FROM ai_scan_log WHERE kind='faces'"
-        ).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ai_scan_log WHERE kind='faces'").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM ai_face_instances").fetchone()[0] == 0
         assert worker.stats["faces_indexed"] == 0
         assert worker.stats["errors"] >= 1
@@ -608,6 +597,7 @@ def test_face_detect_failure_leaves_file_retryable(tmp_path):
 
 # -- mask stage ---------------------------------------------------------------
 
+
 def test_mask_stage_skips_when_no_findings_lack_masks(tmp_path):
     """With only global (non-localizable) findings, the standalone mask
     stage selects nothing and writes no 'masks' scan-log row."""
@@ -616,19 +606,28 @@ def test_mask_stage_skips_when_no_findings_lack_masks(tmp_path):
     _make_db(db_path)
     _add_file(db_path, "g1", _save_png(tmp_path, "g1.png"), 1000.0)
     conn = _open(db_path)
-    result = R.validate_review_payload({
-        "quality_score": 6.0, "prompt_alignment_score": None, "summary": "s",
-        "findings": [{"type": "lighting", "severity": "low", "confidence": 0.7,
-                      "localizable": False, "description": "flat light"}]})
-    R.store_review(conn, "g1", result, "critic-x", "v1", RUBRIC_VERSION,
-                   "{}", 1000.0, 1.0)
+    result = R.validate_review_payload(
+        {
+            "quality_score": 6.0,
+            "prompt_alignment_score": None,
+            "summary": "s",
+            "findings": [
+                {
+                    "type": "lighting",
+                    "severity": "low",
+                    "confidence": 0.7,
+                    "localizable": False,
+                    "description": "flat light",
+                }
+            ],
+        }
+    )
+    R.store_review(conn, "g1", result, "critic-x", "v1", RUBRIC_VERSION, "{}", 1000.0, 1.0)
 
     worker = AIWorker(_config(tmp_path, db_path), db_path)
     try:
         assert worker._process_masks(conn, StubSegmenter(), 10) == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM ai_scan_log WHERE kind='masks'"
-        ).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ai_scan_log WHERE kind='masks'").fetchone()[0] == 0
         assert worker.stats["errors"] == 0
     finally:
         conn.close()
@@ -642,23 +641,31 @@ def test_mask_stage_unreadable_file_counts_error_stays_retryable(tmp_path):
     _make_db(db_path)
     _add_file(db_path, "mm1", str(tmp_path / "vanished.png"), 1000.0)
     conn = _open(db_path)
-    result = R.validate_review_payload({
-        "quality_score": 5.0, "prompt_alignment_score": None, "summary": "s",
-        "findings": [{"type": "artifact", "severity": "low", "confidence": 0.9,
-                      "localizable": True, "description": "spot",
-                      "bbox": [0.25, 0.25, 0.5, 0.5]}]})
-    R.store_review(conn, "mm1", result, "critic-x", "v1", RUBRIC_VERSION,
-                   "{}", 1000.0, 1.0)
+    result = R.validate_review_payload(
+        {
+            "quality_score": 5.0,
+            "prompt_alignment_score": None,
+            "summary": "s",
+            "findings": [
+                {
+                    "type": "artifact",
+                    "severity": "low",
+                    "confidence": 0.9,
+                    "localizable": True,
+                    "description": "spot",
+                    "bbox": [0.25, 0.25, 0.5, 0.5],
+                }
+            ],
+        }
+    )
+    R.store_review(conn, "mm1", result, "critic-x", "v1", RUBRIC_VERSION, "{}", 1000.0, 1.0)
 
     worker = AIWorker(_config(tmp_path, db_path), db_path)
     try:
         assert worker._process_masks(conn, StubSegmenter(), 10) == 1
         assert worker.stats["errors"] == 1
-        assert conn.execute(
-            "SELECT COUNT(*) FROM ai_scan_log WHERE kind='masks'"
-        ).fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
+        assert conn.execute("SELECT COUNT(*) FROM ai_scan_log WHERE kind='masks'").fetchone()[0] == 0
+        assert conn.execute("SELECT mask_path FROM ai_review_findings").fetchone()[0] is None
         # Still a candidate next cycle.
         assert worker._process_masks(conn, StubSegmenter(), 10) == 1
     finally:
@@ -671,24 +678,22 @@ def test_cycle_runs_review_stage_with_stub_critic(tmp_path):
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     _add_file(db_path, "cy1", _save_png(tmp_path, "cy1.png"), 1000.0)
-    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"),
-                      db_path, batch_size=50)
+    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"), db_path, batch_size=50)
 
     worker._run_cycle()
 
     assert worker.stats["reviewed"] == 1
-    row = _query_one(db_path, "SELECT model_id, quality_score FROM ai_reviews "
-                     "WHERE file_id = 'cy1'")
+    row = _query_one(db_path, "SELECT model_id, quality_score FROM ai_reviews WHERE file_id = 'cy1'")
     assert row is not None
     assert row[0] == "stub-reviewer"
     assert 0.0 <= row[1] <= 10.0
-    log = _query_one(db_path, "SELECT result_count FROM ai_scan_log "
-                     "WHERE file_id='cy1' AND kind='review'")
+    log = _query_one(db_path, "SELECT result_count FROM ai_scan_log WHERE file_id='cy1' AND kind='review'")
     assert log is not None
     assert log[0] >= 0
 
 
 # -- orphaned-mask sweep ------------------------------------------------------
+
 
 def test_sweep_unremovable_entry_counts_error_keeps_rest_working(tmp_path):
     """An unremovable masks-cache entry (a plain file) is counted as an
@@ -710,23 +715,23 @@ def test_sweep_unremovable_entry_counts_error_keeps_rest_working(tmp_path):
         conn.close()
 
     assert not (cache / "masks" / "ghost").exists()  # orphan removed
-    assert (cache / "masks" / "keep1").is_dir()      # live id kept
-    assert (cache / "masks" / "stray").is_file()     # failure left in place
+    assert (cache / "masks" / "keep1").is_dir()  # live id kept
+    assert (cache / "masks" / "stray").is_file()  # failure left in place
     assert worker.stats["errors"] == 1
 
 
 # -- video / source loading ---------------------------------------------------
+
 
 def test_load_source_image_video_first_frame(tmp_path):
     """load_source_image on a real video returns specifically the FIRST
     frame (red; later frames are blue) as an RGB PIL image of the video's
     dimensions."""
     video_path = str(tmp_path / "clip.avi")
-    writer = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*"MJPG"),
-                             5, (32, 24))
+    writer = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*"MJPG"), 5, (32, 24))
     assert writer.isOpened(), "environment cannot write MJPG avi"
     red = np.zeros((24, 32, 3), dtype=np.uint8)
-    red[:, :, 2] = 255   # BGR: pure red -- frame 0 only
+    red[:, :, 2] = 255  # BGR: pure red -- frame 0 only
     blue = np.zeros((24, 32, 3), dtype=np.uint8)
     blue[:, :, 0] = 255  # BGR: pure blue -- frames 1..2
     writer.write(red)
@@ -762,6 +767,7 @@ def test_load_source_image_returns_none_for_unreadable_and_nonvisual(tmp_path):
 
 # -- ai_dam_state -------------------------------------------------------------
 
+
 def test_state_helpers_round_trip(tmp_path):
     """_set_state upserts, _get_state reads back, _clear_state deletes;
     reads of missing keys are None and clearing twice is safe."""
@@ -774,8 +780,7 @@ def test_state_helpers_round_trip(tmp_path):
         assert AIWorker._get_state(conn, "k") == "one"
         AIWorker._set_state(conn, "k", "two")  # upsert, not duplicate
         assert AIWorker._get_state(conn, "k") == "two"
-        assert conn.execute(
-            "SELECT COUNT(*) FROM ai_dam_state WHERE key='k'").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM ai_dam_state WHERE key='k'").fetchone()[0] == 1
         AIWorker._clear_state(conn, "k")
         assert AIWorker._get_state(conn, "k") is None
         AIWorker._clear_state(conn, "k")  # idempotent

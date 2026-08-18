@@ -66,9 +66,7 @@ def record_feedback(
     opaque `sqlite3.IntegrityError`.
     """
     if target_kind not in TARGET_KINDS:
-        raise FeedbackValidationError(
-            f"target_kind must be one of {TARGET_KINDS}, got {target_kind!r}"
-        )
+        raise FeedbackValidationError(f"target_kind must be one of {TARGET_KINDS}, got {target_kind!r}")
     if not target_id:
         raise FeedbackValidationError("target_id is required")
     if verdict not in VERDICTS:
@@ -100,9 +98,7 @@ def list_feedback(conn: sqlite3.Connection, unexported_only: bool = False) -> li
     return [dict(zip(_COLUMNS, row, strict=False)) for row in rows]
 
 
-def export_feedback(
-    conn: sqlite3.Connection, out_path: str | None = None, mark: bool = True
-) -> str:
+def export_feedback(conn: sqlite3.Connection, out_path: str | None = None, mark: bool = True) -> str:
     """Export all feedback rows as JSONL (one canonical, sorted-key JSON
     object per row, including every column), optionally writing it to
     `out_path`. When `mark` is True, rows that had never been exported

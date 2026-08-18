@@ -48,8 +48,8 @@ def test_a_small_library_still_keeps_every_snapshot():
 
     kept = [token for token in tokens if store.get(token, "") is not None]
     assert len(kept) == 32, (
-        f"only {len(kept)} of 32 small snapshots survived; ordinary browsing "
-        f"has started losing views it used to keep")
+        f"only {len(kept)} of 32 small snapshots survived; ordinary browsing has started losing views it used to keep"
+    )
 
 
 def test_the_count_ceiling_still_applies():
@@ -73,7 +73,8 @@ def test_rows_held_stay_under_the_ceiling():
     held = sum(len(files) for _owner, files in store._snapshots.values())
     assert held <= 10_000, (
         f"{held} rows held across snapshots against a ceiling of 10000; at "
-        f"the measured 2278 bytes a row that is {held * 2278 / 1048576:.0f} MB")
+        f"the measured 2278 bytes a row that is {held * 2278 / 1048576:.0f} MB"
+    )
 
 
 def test_the_newest_view_is_kept_even_when_it_alone_is_too_big():
@@ -88,12 +89,12 @@ def test_the_newest_view_is_kept_even_when_it_alone_is_too_big():
     snapshot = store.get(token, "")
     assert snapshot is not None, (
         "a view bigger than the ceiling was evicted the moment it was "
-        "stored, so a library that size cannot be paged at all")
+        "stored, so a library that size cannot be paged at all"
+    )
     assert len(snapshot) == 250_000
 
 
-def test_paging_still_works_after_a_large_view_arrives(smartgallery_app,
-                                                       monkeypatch):
+def test_paging_still_works_after_a_large_view_arrives(smartgallery_app, monkeypatch):
     """End to end, through the route that consumes these: the token from a
     large view must still serve its pages."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
@@ -130,7 +131,8 @@ def test_the_shipped_store_bounds_its_rows():
 
     assert getattr(store, "_max_rows", None), (
         "VIEW_SNAPSHOTS has no row ceiling, so its memory is whatever the "
-        "library size multiplied by its snapshot count happens to be")
+        "library size multiplied by its snapshot count happens to be"
+    )
     assert store._max_rows <= 200_000, store._max_rows
 
 

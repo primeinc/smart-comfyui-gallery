@@ -132,7 +132,10 @@ def _detect_gpus():
     try:
         proc = subprocess.run(
             ["nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
     except OSError:
         return []
     if proc.returncode != 0:
@@ -147,26 +150,25 @@ def _detect_gpus():
 def _run_cell(snippet: str, env_extra: dict, timeout: int = 300) -> dict:
     env = {**os.environ, "PROBE_REPO": REPO, **env_extra}
     try:
-        proc = subprocess.run([sys.executable, "-c", snippet],
-                              capture_output=True, text=True, timeout=timeout, env=env)
+        proc = subprocess.run([sys.executable, "-c", snippet], capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         return {"status": "FAIL", "detail": f"timeout after {timeout}s"}
     lines = [ln for ln in proc.stdout.strip().splitlines() if ln.startswith("{")]
     if proc.returncode != 0 or not lines:
         tail = (proc.stderr or proc.stdout or "").strip()[-200:]
-        return {"status": "FAIL",
-                "detail": f"process died rc={proc.returncode}: {tail}"}
+        return {"status": "FAIL", "detail": f"process died rc={proc.returncode}: {tail}"}
     return json.loads(lines[-1])
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="AI/ML hardware matrix probe")
-    parser.add_argument("--model", default=os.environ.get(
-        "OMNIQUERY_NL2SQL_MODEL", "distil-labs/distil-qwen3-4b-text2sql"))
-    parser.add_argument("--models-dir", default=os.environ.get(
-        "AI_DAM_MODELS_DIR", os.path.join(REPO, ".AImodels")))
-    parser.add_argument("--onnx", default=os.path.join(
-        REPO, ".AImodels", "insightface", "models", "antelopev2", "glintr100.onnx"))
+    parser.add_argument(
+        "--model", default=os.environ.get("OMNIQUERY_NL2SQL_MODEL", "distil-labs/distil-qwen3-4b-text2sql")
+    )
+    parser.add_argument("--models-dir", default=os.environ.get("AI_DAM_MODELS_DIR", os.path.join(REPO, ".AImodels")))
+    parser.add_argument(
+        "--onnx", default=os.path.join(REPO, ".AImodels", "insightface", "models", "antelopev2", "glintr100.onnx")
+    )
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
 
@@ -178,19 +180,28 @@ def main(argv=None) -> int:
         is_cpu = dev == "cpu"
         pin = {"CUDA_VISIBLE_DEVICES": ""} if is_cpu else {"CUDA_VISIBLE_DEVICES": dev}
 
-        results[f"generate/{name}"] = _run_cell(_GENERATE_SNIPPET, {
-            **pin, "PROBE_MODEL": args.model,
-            "PROBE_MODELS_DIR": args.models_dir,
-            # CUDA_VISIBLE_DEVICES is already pinned to this card, so the
-            # child process sees exactly one GPU and it is index 0.
-            "PROBE_DEVICE": "cpu" if is_cpu else "cuda:0"}, timeout=600)
-        results[f"torch/{name}"] = _run_cell(_TORCH_SNIPPET, {
-            **pin, "PROBE_DEVICE": "cpu" if is_cpu else "cuda:0"})
-        results[f"ort/{name}"] = _run_cell(_ORT_SNIPPET, {
-            **pin, "PROBE_ONNX": args.onnx,
-            "PROBE_ORT_PROVIDER": "CPUExecutionProvider" if is_cpu else "CUDAExecutionProvider"})
-        results[f"faiss/{name}"] = _run_cell(_FAISS_SNIPPET, {
-            **pin, "PROBE_FAISS_GPU": "0" if is_cpu else "1"})
+        results[f"generate/{name}"] = _run_cell(
+            _GENERATE_SNIPPET,
+            {
+                **pin,
+                "PROBE_MODEL": args.model,
+                "PROBE_MODELS_DIR": args.models_dir,
+                # CUDA_VISIBLE_DEVICES is already pinned to this card, so the
+                # child process sees exactly one GPU and it is index 0.
+                "PROBE_DEVICE": "cpu" if is_cpu else "cuda:0",
+            },
+            timeout=600,
+        )
+        results[f"torch/{name}"] = _run_cell(_TORCH_SNIPPET, {**pin, "PROBE_DEVICE": "cpu" if is_cpu else "cuda:0"})
+        results[f"ort/{name}"] = _run_cell(
+            _ORT_SNIPPET,
+            {
+                **pin,
+                "PROBE_ONNX": args.onnx,
+                "PROBE_ORT_PROVIDER": "CPUExecutionProvider" if is_cpu else "CUDAExecutionProvider",
+            },
+        )
+        results[f"faiss/{name}"] = _run_cell(_FAISS_SNIPPET, {**pin, "PROBE_FAISS_GPU": "0" if is_cpu else "1"})
 
     width = max(len(k) for k in results)
     failed = False

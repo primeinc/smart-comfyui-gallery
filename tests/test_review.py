@@ -155,14 +155,15 @@ def test_validate_alignment_elements_and_derived_score():
     payload = valid_payload(
         prompt_alignment_score=0.5,
         alignment=[
-            {"ordinal": 0, "text": "a red cube", "satisfied": True,
-             "confidence": 0.9, "bbox": [0.1, 0.1, 0.2, 0.2]},
+            {"ordinal": 0, "text": "a red cube", "satisfied": True, "confidence": 0.9, "bbox": [0.1, 0.1, 0.2, 0.2]},
             {"ordinal": 1, "text": "a blue sphere", "satisfied": False, "confidence": 0.8},
         ],
     )
     result = validate_review_payload(payload)
     assert [(e.ordinal, e.text, e.satisfied) for e in result.alignment] == [
-        (0, "a red cube", True), (1, "a blue sphere", False)]
+        (0, "a red cube", True),
+        (1, "a blue sphere", False),
+    ]
     assert result.alignment[0].bbox == (0.1, 0.1, 0.2, 0.2)
     assert result.alignment[1].bbox is None
 
@@ -186,8 +187,9 @@ def test_reject_absent_alignment_element_carrying_a_bbox():
     """An element that is not in the image cannot have been located."""
     payload = valid_payload(
         prompt_alignment_score=0.0,
-        alignment=[{"ordinal": 0, "text": "a blue sphere", "satisfied": False,
-                    "confidence": 0.8, "bbox": [0.1, 0.1, 0.2, 0.2]}],
+        alignment=[
+            {"ordinal": 0, "text": "a blue sphere", "satisfied": False, "confidence": 0.8, "bbox": [0.1, 0.1, 0.2, 0.2]}
+        ],
     )
     with pytest.raises(ReviewSchemaError) as exc:
         validate_review_payload(payload)
@@ -217,19 +219,26 @@ def test_reject_alignment_score_above_one():
 def test_store_review_persists_alignment_elements_and_replaces_them_on_upsert():
     conn = make_conn()
     add_file(conn, "f1")
-    result = validate_review_payload(valid_payload(
-        prompt_alignment_score=0.5,
-        alignment=[
-            {"ordinal": 0, "text": "a red cube", "satisfied": True,
-             "confidence": 0.9, "bbox": [0.1, 0.1, 0.2, 0.2]},
-            {"ordinal": 1, "text": "a blue sphere", "satisfied": False, "confidence": 0.8},
-        ],
-    ))
-    review_id = store_review(conn, "f1", result, "critic-x", "v1",
-                             "review-rubric-v2", None, 1000.0, 2000.0)
+    result = validate_review_payload(
+        valid_payload(
+            prompt_alignment_score=0.5,
+            alignment=[
+                {
+                    "ordinal": 0,
+                    "text": "a red cube",
+                    "satisfied": True,
+                    "confidence": 0.9,
+                    "bbox": [0.1, 0.1, 0.2, 0.2],
+                },
+                {"ordinal": 1, "text": "a blue sphere", "satisfied": False, "confidence": 0.8},
+            ],
+        )
+    )
+    review_id = store_review(conn, "f1", result, "critic-x", "v1", "review-rubric-v2", None, 1000.0, 2000.0)
     rows = conn.execute(
-        "SELECT ordinal, text, satisfied, bbox_x FROM ai_review_alignment "
-        "WHERE review_id = ? ORDER BY ordinal", (review_id,)).fetchall()
+        "SELECT ordinal, text, satisfied, bbox_x FROM ai_review_alignment WHERE review_id = ? ORDER BY ordinal",
+        (review_id,),
+    ).fetchall()
     assert [tuple(r) for r in rows] == [
         (0, "a red cube", 1, 0.1),
         (1, "a blue sphere", 0, None),
@@ -237,17 +246,15 @@ def test_store_review_persists_alignment_elements_and_replaces_them_on_upsert():
 
     # re-reviewing the same (file, rubric, model) replaces the old elements
     # rather than accumulating a second prompt's worth of rows
-    replacement = validate_review_payload(valid_payload(
-        prompt_alignment_score=1.0,
-        alignment=[{"ordinal": 0, "text": "a green field", "satisfied": True,
-                    "confidence": 0.7}],
-    ))
-    store_review(conn, "f1", replacement, "critic-x", "v1",
-                 "review-rubric-v2", None, 1000.0, 3000.0)
-    assert conn.execute(
-        "SELECT COUNT(*) FROM ai_review_alignment").fetchone()[0] == 1
-    assert conn.execute(
-        "SELECT text FROM ai_review_alignment").fetchone()[0] == "a green field"
+    replacement = validate_review_payload(
+        valid_payload(
+            prompt_alignment_score=1.0,
+            alignment=[{"ordinal": 0, "text": "a green field", "satisfied": True, "confidence": 0.7}],
+        )
+    )
+    store_review(conn, "f1", replacement, "critic-x", "v1", "review-rubric-v2", None, 1000.0, 3000.0)
+    assert conn.execute("SELECT COUNT(*) FROM ai_review_alignment").fetchone()[0] == 1
+    assert conn.execute("SELECT text FROM ai_review_alignment").fetchone()[0] == "a green field"
 
 
 def test_alignment_check_constraint_is_live_for_direct_sql():
@@ -256,13 +263,14 @@ def test_alignment_check_constraint_is_live_for_direct_sql():
     conn = make_conn()
     add_file(conn, "f1")
     result = validate_review_payload(valid_payload(prompt_alignment_score=None))
-    review_id = store_review(conn, "f1", result, "critic-x", "v1",
-                             "review-rubric-v2", None, 1000.0, 2000.0)
+    review_id = store_review(conn, "f1", result, "critic-x", "v1", "review-rubric-v2", None, 1000.0, 2000.0)
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
             "INSERT INTO ai_review_alignment "
             "(review_id, file_id, ordinal, text, satisfied, confidence, bbox_x) "
-            "VALUES (?, 'f1', 0, 'x', 0, 0.5, 0.1)", (review_id,))
+            "VALUES (?, 'f1', 0, 'x', 0, 0.5, 0.1)",
+            (review_id,),
+        )
 
 
 def test_reject_non_dict_payload():
@@ -370,9 +378,7 @@ def test_store_review_inserts_review_and_findings():
     conn = make_conn()
     add_file(conn, "f1")
     result = validate_review_payload(valid_payload())
-    review_id = store_review(
-        conn, "f1", result, "critic-x", "v1", "review-rubric-v1", '{"raw": true}', 1000.0, 2000.0
-    )
+    review_id = store_review(conn, "f1", result, "critic-x", "v1", "review-rubric-v1", '{"raw": true}', 1000.0, 2000.0)
     review_row = conn.execute(
         "SELECT file_id, rubric_version, model_id, quality_score, prompt_alignment_score, summary "
         "FROM ai_reviews WHERE review_id = ?",
@@ -403,9 +409,7 @@ def test_store_review_upserts_by_file_rubric_model():
     assert reviews == [(review_id_2, "second pass")]
     assert review_id_1 != review_id_2
     # old findings must be gone too (deleted with the old review)
-    leftover = conn.execute(
-        "SELECT COUNT(*) FROM ai_review_findings WHERE review_id = ?", (review_id_1,)
-    ).fetchone()[0]
+    leftover = conn.execute("SELECT COUNT(*) FROM ai_review_findings WHERE review_id = ?", (review_id_1,)).fetchone()[0]
     assert leftover == 0
 
 
@@ -495,9 +499,7 @@ def _store_one_finding(conn, file_id, localizable, bbox=None, points=None):
     )
     result = ReviewResult(quality_score=5.0, prompt_alignment_score=None, summary="s", findings=[finding])
     review_id = store_review(conn, file_id, result, "critic-x", "v1", "rubric-1", None, 1000.0, 2000.0)
-    return conn.execute(
-        "SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)
-    ).fetchone()[0]
+    return conn.execute("SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)).fetchone()[0]
 
 
 def test_generate_finding_mask_localizable_creates_png_source_untouched(tmp_path):
@@ -567,11 +569,11 @@ def test_generate_finding_mask_path_traversal_stays_inside_cache_dir(tmp_path):
 
 # --- Fail-closed critic dependency invariant (adversarial-audit fix) ---
 
+
 def test_qwen_critic_requires_semantic_embedder():
     """The CLIP grounding gate is the anti-fabrication mechanism the
     critic's measured record relies on: constructing the critic without an
     embedder must be impossible, in the class AND through the factory."""
-
 
     # Class-level invariant: embedder=None is rejected before anything else
     # (no weights needed for this check to fire).
@@ -580,13 +582,11 @@ def test_qwen_critic_requires_semantic_embedder():
 
     # Factory 'auto': no semantic backend available -> critic unavailable
     # (returns None), never a gate-less critic.
-    cfg = AIConfig(enabled=True, models_dir="/nonexistent",
-                   semantic_backend="none", critic_backend="auto")
+    cfg = AIConfig(enabled=True, models_dir="/nonexistent", semantic_backend="none", critic_backend="auto")
     assert get_reviewer(cfg) is None
 
     # Factory explicit 'qwen-vl': surfaces the configuration error.
-    cfg2 = AIConfig(enabled=True, models_dir="/nonexistent",
-                    semantic_backend="none", critic_backend="vlm")
+    cfg2 = AIConfig(enabled=True, models_dir="/nonexistent", semantic_backend="none", critic_backend="vlm")
     with _pytest.raises(BackendUnavailable):
         get_reviewer(cfg2)
 
@@ -600,7 +600,8 @@ def _plant_mask(conn, finding_id, tmp_path, name="old_mask.png"):
     conn.execute(
         "UPDATE ai_review_findings SET mask_path = ?, mask_model_id = 'seg', "
         "mask_model_version = 'v1' WHERE finding_id = ?",
-        (str(mask_file), finding_id))
+        (str(mask_file), finding_id),
+    )
     conn.commit()
     return mask_file
 
@@ -615,15 +616,19 @@ def test_store_review_failed_replacement_preserves_old_review_and_mask(tmp_path)
     mask_file = _plant_mask(conn, finding_id, tmp_path)
 
     bad = ReviewResult(
-        quality_score=5.0, prompt_alignment_score=None, summary="new",
-        findings=[Finding(type="artifact", severity="catastrophic",
-                          confidence=0.9, localizable=False, description="d")])
+        quality_score=5.0,
+        prompt_alignment_score=None,
+        summary="new",
+        findings=[
+            Finding(type="artifact", severity="catastrophic", confidence=0.9, localizable=False, description="d")
+        ],
+    )
     with pytest.raises(sqlite3.IntegrityError):
         store_review(conn, "f1", bad, "critic-x", "v1", "rubric-1", None, 1000.0, 3000.0)
 
     row = conn.execute(
-        "SELECT r.summary, fi.mask_path FROM ai_reviews r "
-        "JOIN ai_review_findings fi ON fi.review_id = r.review_id").fetchone()
+        "SELECT r.summary, fi.mask_path FROM ai_reviews r JOIN ai_review_findings fi ON fi.review_id = r.review_id"
+    ).fetchone()
     assert row == ("s", str(mask_file))
     assert mask_file.exists()
 
@@ -634,8 +639,7 @@ def test_store_review_successful_replacement_unlinks_old_mask(tmp_path):
     finding_id = _store_one_finding(conn, "f1", localizable=True, bbox=(0.25, 0.25, 0.5, 0.5))
     mask_file = _plant_mask(conn, finding_id, tmp_path)
 
-    good = ReviewResult(quality_score=6.0, prompt_alignment_score=None,
-                        summary="replacement", findings=[])
+    good = ReviewResult(quality_score=6.0, prompt_alignment_score=None, summary="replacement", findings=[])
     store_review(conn, "f1", good, "critic-x", "v1", "rubric-1", None, 1000.0, 3000.0)
     assert conn.execute("SELECT summary FROM ai_reviews").fetchone()[0] == "replacement"
     assert not mask_file.exists()
@@ -649,7 +653,6 @@ def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
     baseline text, and input manifest hashes matching this checkout — not
     merely in-bounds numbers. A synthetic numbers-only report must never
     enable 'auto'."""
-
 
     with open(REV._CALIBRATION_REPORT_PATH, encoding="utf-8") as fh:
         real = _json.load(fh)
@@ -668,8 +671,7 @@ def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
         return _auto_critic_measurement_passed(path)
 
     def shipped_row(report):
-        return next(s for s in report["sweep"]
-                    if abs(s["margin_threshold"] - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
+        return next(s for s in report["sweep"] if abs(s["margin_threshold"] - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
 
     # A faithful copy elsewhere passes: acceptance is content-bound.
     assert variant(lambda _r: None) is True
@@ -687,24 +689,31 @@ def test_auto_critic_gate_binds_to_evidence_identity(tmp_path):
     assert variant(lambda r: r.pop("inputs")) is False
 
     def tamper_hash(r):
-        entry = next(e for e in r["inputs"]
-                     if e.get("file") == "probes/data/calibration_portrait.png")
+        entry = next(e for e in r["inputs"] if e.get("file") == "probes/data/calibration_portrait.png")
         entry["file_sha256"] = "0" * 64
 
     assert variant(tamper_hash) is False
 
     def drop_portrait(r):
-        r["inputs"] = [e for e in r["inputs"]
-                       if e.get("file") != "probes/data/calibration_portrait.png"]
+        r["inputs"] = [e for e in r["inputs"] if e.get("file") != "probes/data/calibration_portrait.png"]
 
     assert variant(drop_portrait) is False
 
     # The failure mode this gate exists for: a bare numbers-only document.
     minimal = str(tmp_path / "minimal.json")
     with open(minimal, "w", encoding="utf-8") as fh:
-        _json.dump({"sweep": [{"margin_threshold": DEFAULT_GROUNDING_MIN_MARGIN,
-                               "false_accept_rate": 0.0,
-                               "false_reject_rate": 0.0}]}, fh)
+        _json.dump(
+            {
+                "sweep": [
+                    {
+                        "margin_threshold": DEFAULT_GROUNDING_MIN_MARGIN,
+                        "false_accept_rate": 0.0,
+                        "false_reject_rate": 0.0,
+                    }
+                ]
+            },
+            fh,
+        )
     assert _auto_critic_measurement_passed(minimal) is False
 
     assert _auto_critic_measurement_passed(str(tmp_path / "absent.json")) is False
@@ -734,12 +743,20 @@ def test_qwen_critic_summary_survives_rejected_last_finding(monkeypatch):
         def ask_json(self, _prompt, name="", max_new_tokens=512, attempts=2):
             del _prompt, max_new_tokens, attempts
             if name == "describe":
-                return {"description":
-                        "A cat sitting on a red sofa. The room is bright."}
+                return {"description": "A cat sitting on a red sofa. The room is bright."}
             if name == "assess":
-                return {"quality_score": 7.0, "defects": [
-                    {"type": "artifact", "severity": "low", "confidence": 0.9,
-                     "region": "bottom-right", "what": "fabricated glitch text"}]}
+                return {
+                    "quality_score": 7.0,
+                    "defects": [
+                        {
+                            "type": "artifact",
+                            "severity": "low",
+                            "confidence": 0.9,
+                            "region": "bottom-right",
+                            "what": "fabricated glitch text",
+                        }
+                    ],
+                }
             return {"x": 0.6, "y": 0.6, "w": 0.2, "h": 0.2}  # locate
 
     monkeypatch.setattr(CQ.ai_models, "Chat", lambda *_a, **_k: _ScriptedChat())

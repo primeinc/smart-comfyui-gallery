@@ -129,8 +129,18 @@ def test_replace_faces_for_file_three_detections_round_trip():
 
     for row, det in zip(rows, dets, strict=False):
         (
-            _face_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score, embedding_blob, dim,
-            model_id, model_version, source_mtime, computed_at,
+            _face_id,
+            bbox_x,
+            bbox_y,
+            bbox_w,
+            bbox_h,
+            det_score,
+            embedding_blob,
+            dim,
+            model_id,
+            model_version,
+            source_mtime,
+            computed_at,
         ) = row
         assert (bbox_x, bbox_y, bbox_w, bbox_h) == pytest.approx(det.bbox)
         assert det_score == pytest.approx(det.det_score)
@@ -146,15 +156,9 @@ def test_replace_faces_for_file_three_detections_round_trip():
 def test_replace_faces_for_file_rerun_with_fewer_detections_leaves_exact_count():
     conn = make_conn()
     add_files(conn, ["f1"])
-    replace_faces_for_file(
-        conn, "f1", [detection(seed=i) for i in range(3)], "m1", "v1", 1000.0, 2000.0
-    )
-    replace_faces_for_file(
-        conn, "f1", [detection(seed=i) for i in range(2)], "m1", "v1", 1000.0, 2001.0
-    )
-    rows = conn.execute(
-        "SELECT face_id FROM ai_face_instances WHERE file_id = ?", ("f1",)
-    ).fetchall()
+    replace_faces_for_file(conn, "f1", [detection(seed=i) for i in range(3)], "m1", "v1", 1000.0, 2000.0)
+    replace_faces_for_file(conn, "f1", [detection(seed=i) for i in range(2)], "m1", "v1", 1000.0, 2001.0)
+    rows = conn.execute("SELECT face_id FROM ai_face_instances WHERE file_id = ?", ("f1",)).fetchall()
     assert len(rows) == 2
 
 
@@ -165,24 +169,35 @@ def test_replace_faces_for_file_is_model_scoped_never_clobbers_other_pipeline():
     leaves the other's rows byte-identical."""
     conn = make_conn()
     add_files(conn, ["f1"])
-    replace_faces_for_file(conn, "f1", [detection(seed=1), detection(seed=2)],
-                           "insightface/antelopev2", "v1", 1000.0, 2000.0)
-    other_before = [tuple(r) for r in conn.execute(
-        "SELECT face_id, embedding FROM ai_face_instances "
-        "WHERE model_id = 'insightface/antelopev2' ORDER BY face_id").fetchall()]
+    replace_faces_for_file(
+        conn, "f1", [detection(seed=1), detection(seed=2)], "insightface/antelopev2", "v1", 1000.0, 2000.0
+    )
+    other_before = [
+        tuple(r)
+        for r in conn.execute(
+            "SELECT face_id, embedding FROM ai_face_instances "
+            "WHERE model_id = 'insightface/antelopev2' ORDER BY face_id"
+        ).fetchall()
+    ]
 
-    replace_faces_for_file(conn, "f1", [detection(seed=9)],
-                           "opencv/yunet+sface", "v2", 1000.0, 2001.0)
-    by_model = dict(conn.execute(
-        "SELECT model_id, COUNT(*) FROM ai_face_instances "
-        "WHERE file_id = 'f1' GROUP BY model_id").fetchall())
+    replace_faces_for_file(conn, "f1", [detection(seed=9)], "opencv/yunet+sface", "v2", 1000.0, 2001.0)
+    by_model = dict(
+        conn.execute(
+            "SELECT model_id, COUNT(*) FROM ai_face_instances WHERE file_id = 'f1' GROUP BY model_id"
+        ).fetchall()
+    )
     assert by_model == {"insightface/antelopev2": 2, "opencv/yunet+sface": 1}
 
-    replace_faces_for_file(conn, "f1", [detection(seed=10), detection(seed=11)],
-                           "opencv/yunet+sface", "v2", 1000.0, 2002.0)
-    other_after = [tuple(r) for r in conn.execute(
-        "SELECT face_id, embedding FROM ai_face_instances "
-        "WHERE model_id = 'insightface/antelopev2' ORDER BY face_id").fetchall()]
+    replace_faces_for_file(
+        conn, "f1", [detection(seed=10), detection(seed=11)], "opencv/yunet+sface", "v2", 1000.0, 2002.0
+    )
+    other_after = [
+        tuple(r)
+        for r in conn.execute(
+            "SELECT face_id, embedding FROM ai_face_instances "
+            "WHERE model_id = 'insightface/antelopev2' ORDER BY face_id"
+        ).fetchall()
+    ]
     assert other_after == other_before
 
 
@@ -192,9 +207,7 @@ def test_replace_faces_for_file_multi_face_asset_multiple_rows():
     dets = [detection(seed=i) for i in range(4)]
     face_ids = replace_faces_for_file(conn, "group_photo", dets, "m1", "v1", 1000.0, 2000.0)
     assert len(set(face_ids)) == 4
-    count = conn.execute(
-        "SELECT COUNT(*) FROM ai_face_instances WHERE file_id = ?", ("group_photo",)
-    ).fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM ai_face_instances WHERE file_id = ?", ("group_photo",)).fetchone()[0]
     assert count == 4
 
 
@@ -256,10 +269,7 @@ def test_get_face_backend_unknown_name_raises():
 
 
 def _insert_instances(conn, file_id, vectors, model_id="m1", model_version="v1"):
-    dets = [
-        FaceDetection(bbox=(0.0, 0.0, 0.1, 0.1), landmarks=[], det_score=0.9, embedding=v)
-        for v in vectors
-    ]
+    dets = [FaceDetection(bbox=(0.0, 0.0, 0.1, 0.1), landmarks=[], det_score=0.9, embedding=v) for v in vectors]
     return replace_faces_for_file(conn, file_id, dets, model_id, model_version, 1000.0, 2000.0)
 
 
@@ -303,16 +313,12 @@ def test_cluster_faces_two_tight_groups_plus_outliers():
     # outliers must have NULL cluster_id
     outlier_ids = file_ids[10:13]
     for fid in outlier_ids:
-        cluster_id = conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
-        ).fetchone()[0]
+        cluster_id = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)).fetchone()[0]
         assert cluster_id is None
 
     # every member of the tight groups got assigned to some cluster
     for fid in file_ids[:10]:
-        cluster_id = conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
-        ).fetchone()[0]
+        cluster_id = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)).fetchone()[0]
         assert cluster_id is not None
 
 
@@ -380,44 +386,34 @@ def test_cluster_faces_label_preserved_across_recluster():
         _insert_instances(conn, fid, [vec])
 
     cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=2)
-    clusters = conn.execute(
-        "SELECT cluster_id, centroid FROM ai_face_clusters ORDER BY cluster_id"
-    ).fetchall()
+    clusters = conn.execute("SELECT cluster_id, centroid FROM ai_face_clusters ORDER BY cluster_id").fetchall()
     assert len(clusters) == 2
 
     # label the cluster containing group_a's members
-    a_face_id = conn.execute(
-        "SELECT face_id FROM ai_face_instances WHERE file_id = ?", (file_ids_a[0],)
-    ).fetchone()[0]
-    a_cluster_id = conn.execute(
-        "SELECT cluster_id FROM ai_face_instances WHERE face_id = ?", (a_face_id,)
-    ).fetchone()[0]
-    conn.execute(
-        "UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?", ("Alice", a_cluster_id)
-    )
+    a_face_id = conn.execute("SELECT face_id FROM ai_face_instances WHERE file_id = ?", (file_ids_a[0],)).fetchone()[0]
+    a_cluster_id = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE face_id = ?", (a_face_id,)).fetchone()[
+        0
+    ]
+    conn.execute("UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?", ("Alice", a_cluster_id))
     conn.commit()
 
     # add one more member to group_a and re-cluster; label must carry over
     # to whichever *new* cluster_id now represents that same group.
-    extra = (group_a[0] + np.random.default_rng(7).standard_normal(16).astype(np.float32) * 0.02)
+    extra = group_a[0] + np.random.default_rng(7).standard_normal(16).astype(np.float32) * 0.02
     add_files(conn, ["a4"])
     _insert_instances(conn, "a4", [extra.astype(np.float32)])
 
     new_cluster_ids = cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=2)
     assert len(new_cluster_ids) == 2
 
-    labels = dict(conn.execute(
-            "SELECT cluster_id, label FROM ai_face_clusters"
-        ).fetchall())
+    labels = dict(conn.execute("SELECT cluster_id, label FROM ai_face_clusters").fetchall())
     assert "Alice" in labels.values()
     labeled_cluster_id = next(cid for cid, label in labels.items() if label == "Alice")
 
     # every original group_a member (plus the new one) should now be in the
     # relabeled cluster
     for fid in [*file_ids_a, "a4"]:
-        cid = conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
-        ).fetchone()[0]
+        cid = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)).fetchone()[0]
         assert cid == labeled_cluster_id
 
     # clusters were fully replaced (AUTOINCREMENT never reuses an id), yet
@@ -468,9 +464,7 @@ def test_cluster_faces_below_min_size_stays_unclustered():
     result = cluster_faces(conn, "m1", "v1", threshold=0.9, min_cluster_size=3)
     assert result == []
     for fid in ("only1", "only2"):
-        cid = conn.execute(
-            "SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)
-        ).fetchone()[0]
+        cid = conn.execute("SELECT cluster_id FROM ai_face_instances WHERE file_id = ?", (fid,)).fetchone()[0]
         assert cid is None
 
 
@@ -479,13 +473,11 @@ def test_cluster_faces_below_min_size_stays_unclustered():
 # pairs, same similarities (IEEE float32 in every backend; the torch backend
 # pins allow_tf32=False so Ampere+ tensor cores cannot skew the boundary).
 
+
 def _edge_set(graph):
     indptr, cols, weights = graph
     rows = np.repeat(np.arange(len(indptr) - 1), np.diff(indptr))
-    return {
-        (int(i), int(j), round(float(w), 4))
-        for i, j, w in zip(rows, cols, weights, strict=False)
-    }
+    return {(int(i), int(j), round(float(w), 4)) for i, j, w in zip(rows, cols, weights, strict=False)}
 
 
 def _backend_fixture():
@@ -510,9 +502,7 @@ def test_neighbor_graph_faiss_matches_numpy():
     assert faiss is not None
 
     m = _backend_fixture()
-    assert _edge_set(_neighbor_graph_faiss(m, 0.6)) == _edge_set(
-        _neighbor_graph_numpy(m, 0.6)
-    )
+    assert _edge_set(_neighbor_graph_faiss(m, 0.6)) == _edge_set(_neighbor_graph_numpy(m, 0.6))
 
 
 def test_neighbor_graph_torch_cuda_matches_numpy():
@@ -532,9 +522,7 @@ def test_neighbor_graph_torch_cuda_matches_numpy():
 
     m = _backend_fixture()
 
-    assert _edge_set(_neighbor_graph_torch_cuda(m, 0.6)) == _edge_set(
-        _neighbor_graph_numpy(m, 0.6)
-    )
+    assert _edge_set(_neighbor_graph_torch_cuda(m, 0.6)) == _edge_set(_neighbor_graph_numpy(m, 0.6))
 
 
 def test_neighbor_graph_threshold_boundary_inclusive():
@@ -547,9 +535,7 @@ def test_neighbor_graph_threshold_boundary_inclusive():
     at_indptr, at_cols, _ = _neighbor_graph_numpy(m, thr)
     assert list(at_indptr) == [0, 1, 2]
     assert list(at_cols) == [1, 0]
-    above_indptr, _, _ = _neighbor_graph_numpy(
-        m, float(np.nextafter(np.float32(0.6), np.float32(1)))
-    )
+    above_indptr, _, _ = _neighbor_graph_numpy(m, float(np.nextafter(np.float32(0.6), np.float32(1))))
     assert list(above_indptr) == [0, 0, 0]
 
 
@@ -600,11 +586,10 @@ def test_umeyama_matches_skimage_fixture():
     estimator — on a captured fixture (skimage 0.26.0, verified to ~1e-6
     over 200 random landmark sets)."""
 
-    lmk = np.array([[210.5, 180.25], [312.75, 178.0], [260.0, 240.5],
-                    [222.25, 300.75], [305.5, 298.0]])
-    expected = np.array([
-        [3.41340034e-01, -5.51772644e-03, -3.21517002e+01],
-        [5.51772644e-03, 3.41340034e-01, -1.12969063e+01]])
+    lmk = np.array([[210.5, 180.25], [312.75, 178.0], [260.0, 240.5], [222.25, 300.75], [305.5, 298.0]])
+    expected = np.array(
+        [[3.41340034e-01, -5.51772644e-03, -3.21517002e01], [5.51772644e-03, 3.41340034e-01, -1.12969063e01]]
+    )
     m = _umeyama_similarity(lmk, _ARCFACE_DST)
     # fixture repr carries 8 significant digits; translation terms are
     # O(30), so equality holds to ~2e-6 absolute
@@ -718,8 +703,7 @@ def test_installed_pipelines_inventory(tmp_path):
 
     cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
     inv = installed_pipelines(cfg)
-    assert [p["name"] for p in inv] == [
-        "scrfd+glintr100", "yunet+arcface", "yunet+sface"]
+    assert [p["name"] for p in inv] == ["scrfd+glintr100", "yunet+arcface", "yunet+sface"]
     assert all(p["weights_present"] is False for p in inv)
     assert all(p["active"] is False for p in inv)
     versions = {p["model_version"] for p in inv}
@@ -730,10 +714,9 @@ def test_compare_detectors_reports_every_lane(tmp_path, monkeypatch):
     """Both lanes answer; an unavailable lane carries its error while the
     other still reports detections, and the inventory rides along."""
 
-
-    det = FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2),
-                        landmarks=[(0.15, 0.15)], det_score=0.9,
-                        embedding=np.ones(4, dtype=np.float32))
+    det = FaceDetection(
+        bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[(0.15, 0.15)], det_score=0.9, embedding=np.ones(4, dtype=np.float32)
+    )
 
     class _FakeCv(F.FaceBackend):
         model_id = "opencv/yunet+sface"
@@ -767,14 +750,18 @@ def test_replace_faces_round_trips_attributes():
     conn = make_conn()
     add_files(conn, ["f1"])
     det = detection(seed=1)
-    det.attributes = {"age": 27, "sex": "F",
-                      "pose": {"pitch": -3.1, "yaw": 12.5, "roll": 0.4},
-                      "landmark_2d_106": [[0.1, 0.2], [0.3, 0.4]]}
+    det.attributes = {
+        "age": 27,
+        "sex": "F",
+        "pose": {"pitch": -3.1, "yaw": 12.5, "roll": 0.4},
+        "landmark_2d_106": [[0.1, 0.2], [0.3, 0.4]],
+    }
     replace_faces_for_file(conn, "f1", [det, detection(seed=2)], "m1", "v1", 1000.0, 2000.0)
     rows = conn.execute(
         "SELECT attributes, age, sex, pose_pitch, pose_yaw, pose_roll "
         "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
-        ("f1",)).fetchall()
+        ("f1",),
+    ).fetchall()
     attrs, age, sex, pitch, yaw, roll = rows[0]
     assert (age, sex) == (27, "F")
     assert isinstance(age, int)
@@ -782,16 +769,16 @@ def test_replace_faces_round_trips_attributes():
     assert _json.loads(attrs) == {"landmark_2d_106": [[0.1, 0.2], [0.3, 0.4]]}
     assert rows[1] == (None, None, None, None, None, None)
     # analyzable in plain SQL, not locked in a blob
-    assert conn.execute(
-        "SELECT COUNT(*) FROM ai_face_instances WHERE ABS(pose_yaw) > 10"
-    ).fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM ai_face_instances WHERE ABS(pose_yaw) > 10").fetchone()[0] == 1
 
 
 def test_schema_migration_adds_attributes_column():
     """A database created before the column existed gains it on init."""
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
-                 " mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT)")
+    conn.execute(
+        "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
+        " mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT)"
+    )
     init_schema(conn)
     conn.execute("ALTER TABLE ai_face_instances RENAME TO t_old")
     conn.execute("""CREATE TABLE ai_face_instances (

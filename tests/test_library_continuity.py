@@ -43,14 +43,12 @@ def gallery(smartgallery_app, tmp_path, monkeypatch):
     cache.mkdir(parents=True)
     monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(root))
     monkeypatch.setattr(smartgallery_app, "SQLITE_CACHE_DIR", str(cache))
-    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE",
-                        str(cache / "gallery_cache.sqlite"))
+    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE", str(cache / "gallery_cache.sqlite"))
     # raising=False so the fixture still builds against a build that has no
     # marker at all. Otherwise the tests below would ERROR here rather than
     # fail on the thing they exist to catch, and would never be shown to
     # detect it.
-    monkeypatch.setattr(smartgallery_app, "LIBRARY_MARKER_FILE",
-                        str(root / ".smartgallery_library"), raising=False)
+    monkeypatch.setattr(smartgallery_app, "LIBRARY_MARKER_FILE", str(root / ".smartgallery_library"), raising=False)
     return root, cache
 
 
@@ -63,13 +61,13 @@ def test_a_first_run_is_not_warned_at_and_leaves_a_marker(smartgallery_app, gall
 
     assert warned is False
     assert os.path.exists(smartgallery_app.LIBRARY_MARKER_FILE), (
-        "nothing recorded that a library exists here, so the loss of one "
-        "could never be noticed")
+        "nothing recorded that a library exists here, so the loss of one could never be noticed"
+    )
 
 
 def test_an_ordinary_run_says_nothing(smartgallery_app, gallery):
     """A database that is already there is not news either."""
-    smartgallery_app.check_library_continuity(is_new_database=True)   # first run
+    smartgallery_app.check_library_continuity(is_new_database=True)  # first run
 
     warned = smartgallery_app.check_library_continuity(is_new_database=False)
 
@@ -78,7 +76,7 @@ def test_an_ordinary_run_says_nothing(smartgallery_app, gallery):
 
 def test_a_lost_database_is_announced(smartgallery_app, gallery, capsys):
     """The bug: this was the silent case."""
-    smartgallery_app.check_library_continuity(is_new_database=True)   # first run
+    smartgallery_app.check_library_continuity(is_new_database=True)  # first run
     capsys.readouterr()
 
     warned = smartgallery_app.check_library_continuity(is_new_database=True)
@@ -90,12 +88,10 @@ def test_a_lost_database_is_announced(smartgallery_app, gallery, capsys):
     assert "backup" in said, said
 
 
-def test_it_survives_a_gallery_folder_it_cannot_write_to(smartgallery_app,
-                                                         tmp_path, monkeypatch):
+def test_it_survives_a_gallery_folder_it_cannot_write_to(smartgallery_app, tmp_path, monkeypatch):
     """It runs inside init_db, so it must never be the reason the gallery
     fails to start."""
-    monkeypatch.setattr(smartgallery_app, "LIBRARY_MARKER_FILE",
-                        str(tmp_path / "no" / "such" / "place" / ".marker"))
+    monkeypatch.setattr(smartgallery_app, "LIBRARY_MARKER_FILE", str(tmp_path / "no" / "such" / "place" / ".marker"))
 
     assert smartgallery_app.check_library_continuity(is_new_database=True) is False
 
@@ -113,17 +109,14 @@ def test_the_database_folder_is_put_back(smartgallery_app, gallery):
         conn.close()
 
 
-def test_no_database_is_started_outside_an_existing_gallery(smartgallery_app,
-                                                            tmp_path, monkeypatch):
+def test_no_database_is_started_outside_an_existing_gallery(smartgallery_app, tmp_path, monkeypatch):
     """The condition that keeps recovery from being reckless. An unplugged
     drive leaves a writable empty mount point; a library started there is
     invisible the moment the real one comes back."""
     absent = tmp_path / "unplugged"
     monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(absent))
-    monkeypatch.setattr(smartgallery_app, "SQLITE_CACHE_DIR",
-                        str(absent / ".sqlite_cache"))
-    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE",
-                        str(absent / ".sqlite_cache" / "gallery_cache.sqlite"))
+    monkeypatch.setattr(smartgallery_app, "SQLITE_CACHE_DIR", str(absent / ".sqlite_cache"))
+    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE", str(absent / ".sqlite_cache" / "gallery_cache.sqlite"))
 
     with pytest.raises(Exception):
         smartgallery_app.get_db_connection()

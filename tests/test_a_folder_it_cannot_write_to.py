@@ -55,12 +55,15 @@ import smartgallery
 def a_real_png():
     def chunk(kind, payload):
         body = kind + payload
-        return (struct.pack(">I", len(payload)) + body
-                + struct.pack(">I", zlib.crc32(body)))
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body))
+
     header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
-            + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff"))
-            + chunk(b"IEND", b""))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff"))
+        + chunk(b"IEND", b"")
+    )
 
 
 @pytest.fixture
@@ -78,13 +81,11 @@ def a_folder_that_refuses_writes(smartgallery_app, tmp_path, monkeypatch):
         conn.execute("DELETE FROM files")
         conn.commit()
         sg.full_sync_database(conn)
-        row = conn.execute(
-            "SELECT id FROM files WHERE name = 'picture.png'").fetchone()
+        row = conn.execute("SELECT id FROM files WHERE name = 'picture.png'").fetchone()
     assert row, "the scan did not record the picture this rests on"
 
     folders = sg.get_dynamic_folder_config(force_refresh=True)
-    folder_key = next(k for k, v in folders.items()
-                      if str(v.get("path", "")).endswith("a_folder"))
+    folder_key = next(k for k, v in folders.items() if str(v.get("path", "")).endswith("a_folder"))
 
     client = sg.app.test_client()
     with client.session_transaction() as session:
@@ -103,9 +104,9 @@ def a_folder_that_refuses_writes(smartgallery_app, tmp_path, monkeypatch):
         def wrapper(*args, **kwargs):
             target = args[index] if len(args) > index else ""
             if inside(target):
-                raise PermissionError(errno.EACCES, "Permission denied",
-                                      str(target))
+                raise PermissionError(errno.EACCES, "Permission denied", str(target))
             return original(*args, **kwargs)
+
         return wrapper
 
     real_open = builtins.open
@@ -114,13 +115,11 @@ def a_folder_that_refuses_writes(smartgallery_app, tmp_path, monkeypatch):
         mode = kwargs.get("mode", args[1] if len(args) > 1 else "r")
         target = args[0] if args else ""
         if any(c in str(mode) for c in "wax+") and inside(target):
-            raise PermissionError(errno.EACCES, "Permission denied",
-                                  str(target))
+            raise PermissionError(errno.EACCES, "Permission denied", str(target))
         return real_open(*args, **kwargs)
 
     def arm():
-        for name in ("rename", "replace", "makedirs", "remove", "unlink",
-                     "rmdir"):
+        for name in ("rename", "replace", "makedirs", "remove", "unlink", "rmdir"):
             monkeypatch.setattr(os, name, refusing(getattr(os, name)))
         for name in ("move", "copy2", "copy"):
             monkeypatch.setattr(shutil, name, refusing(getattr(shutil, name), 1))
@@ -136,24 +135,28 @@ def a_folder_that_refuses_writes(smartgallery_app, tmp_path, monkeypatch):
 
 def every_action(file_id, folder_key):
     return [
-        ("rename a picture", "/galleryout/rename_file/" + file_id,
-         {"json": {"new_name": "other.png"}}),
-        ("create a folder", "/galleryout/create_folder",
-         {"json": {"folder_name": "brand_new", "parent_key": "_root_"}}),
-        ("rename a folder", "/galleryout/rename_folder/" + folder_key,
-         {"json": {"new_name": "renamed_folder"}}),
+        ("rename a picture", "/galleryout/rename_file/" + file_id, {"json": {"new_name": "other.png"}}),
+        (
+            "create a folder",
+            "/galleryout/create_folder",
+            {"json": {"folder_name": "brand_new", "parent_key": "_root_"}},
+        ),
+        ("rename a folder", "/galleryout/rename_folder/" + folder_key, {"json": {"new_name": "renamed_folder"}}),
         ("delete a picture", "/galleryout/delete/" + file_id, {}),
         ("delete a folder", "/galleryout/delete_folder/" + folder_key, {}),
-        ("upload a picture", "/galleryout/upload",
-         {"data": {"files": (_io.BytesIO(a_real_png()), "new.png"),
-                   "folder_key": "_root_"},
-          "content_type": "multipart/form-data"}),
+        (
+            "upload a picture",
+            "/galleryout/upload",
+            {
+                "data": {"files": (_io.BytesIO(a_real_png()), "new.png"), "folder_key": "_root_"},
+                "content_type": "multipart/form-data",
+            },
+        ),
     ]
 
 
 def post(client, url, kwargs):
-    return client.open(url, method="POST",
-                       headers={"Sec-Fetch-Site": "same-origin"}, **kwargs)
+    return client.open(url, method="POST", headers={"Sec-Fetch-Site": "same-origin"}, **kwargs)
 
 
 def test_the_folder_really_does_refuse(a_folder_that_refuses_writes):
@@ -200,8 +203,7 @@ def test_the_library_still_matches_the_disk(a_folder_that_refuses_writes):
         rows = conn.execute("SELECT name, path FROM files").fetchall()
     assert rows, "the library forgot the picture that is still on the disk"
     for row in rows:
-        assert os.path.exists(row["path"]), (
-            "the library points at {}, which is not on the disk".format(row["path"]))
+        assert os.path.exists(row["path"]), "the library points at {}, which is not on the disk".format(row["path"])
 
 
 def test_each_one_says_what_is_actually_wrong(a_folder_that_refuses_writes):
@@ -215,9 +217,7 @@ def test_each_one_says_what_is_actually_wrong(a_folder_that_refuses_writes):
         if "not allowed to change" not in said:
             unhelpful.append(f"{label} said {said[:160]}")
 
-    assert not unhelpful, (
-        "did not say the gallery cannot write to the folder:\n  "
-        + "\n  ".join(unhelpful))
+    assert not unhelpful, "did not say the gallery cannot write to the folder:\n  " + "\n  ".join(unhelpful)
 
 
 def test_none_of_them_hands_back_errno(a_folder_that_refuses_writes):
@@ -254,26 +254,22 @@ def test_an_upload_says_why_it_failed(a_folder_that_refuses_writes):
     assert "not allowed to change" in said, said
 
 
-def test_everything_still_works_when_the_folder_is_writable(
-        a_folder_that_refuses_writes):
+def test_everything_still_works_when_the_folder_is_writable(a_folder_that_refuses_writes):
     """Over-reach guard, and the case that matters most: none of this may
     make an ordinary gallery refuse or complain."""
     _sg, client, file_id, _folder_key, root, _arm = a_folder_that_refuses_writes
     # deliberately not armed
 
-    made = post(client, "/galleryout/create_folder",
-                {"json": {"folder_name": "brand_new", "parent_key": "_root_"}})
+    made = post(client, "/galleryout/create_folder", {"json": {"folder_name": "brand_new", "parent_key": "_root_"}})
     assert made.status_code == 200, made.get_data(as_text=True)
     assert os.path.isdir(os.path.join(root, "brand_new"))
 
-    renamed = post(client, "/galleryout/rename_file/" + file_id,
-                   {"json": {"new_name": "other.png"}})
+    renamed = post(client, "/galleryout/rename_file/" + file_id, {"json": {"new_name": "other.png"}})
     assert renamed.status_code == 200, renamed.get_data(as_text=True)
     assert os.path.exists(os.path.join(root, "other.png"))
 
 
 class TestTheExplanationItself:
-
     def test_it_speaks_only_for_permission_failures(self):
         """Anything else is left as it was rather than dressed up as a
         permission problem it might not be."""
@@ -290,16 +286,13 @@ class TestTheExplanationItself:
 
     def test_it_names_the_folder_not_the_file(self):
         say = smartgallery.explain_a_refused_write
-        said = say(PermissionError(errno.EACCES, "denied",
-                                   "/pictures/output/holiday.png"))
+        said = say(PermissionError(errno.EACCES, "denied", "/pictures/output/holiday.png"))
 
         assert "/pictures/output" in said
-        assert "holiday.png" not in said, \
-            "named the file, which is not the thing that refused"
+        assert "holiday.png" not in said, "named the file, which is not the thing that refused"
 
     def test_it_offers_both_of_the_usual_causes(self):
-        said = smartgallery.explain_a_refused_write(
-            PermissionError(errno.EACCES, "denied", "/x/y.png"))
+        said = smartgallery.explain_a_refused_write(PermissionError(errno.EACCES, "denied", "/x/y.png"))
 
         assert "read-only" in said
         assert "different user" in said

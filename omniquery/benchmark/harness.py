@@ -82,6 +82,7 @@ _THETA_STEPS = [round(i * 0.1, 1) for i in range(10)]  # 0.0 .. 0.9
 # Corpus / fixture plumbing
 # ---------------------------------------------------------------------------
 
+
 def load_corpus(corpus_path: Path) -> list[dict]:
     """Parse a JSONL corpus: one entry per non-blank line, in file order."""
     entries: list[dict] = []
@@ -128,8 +129,7 @@ def _build_fixture_engine() -> OmniQueryEngine:
     fd, db_path = tempfile.mkstemp(suffix=".db", prefix="omniquery_bench_")
     os.close(fd)
     build_fixture_db(db_path, seed=42)
-    return OmniQueryEngine(db_path=db_path, base_path=FIXTURE_BASE_PATH,
-                            ai_resolvers=_STUB_AI_RESOLVERS)
+    return OmniQueryEngine(db_path=db_path, base_path=FIXTURE_BASE_PATH, ai_resolvers=_STUB_AI_RESOLVERS)
 
 
 def _exec_result(engine: OmniQueryEngine, query: Any, now_epoch: float) -> tuple[str, Any] | None:
@@ -148,9 +148,11 @@ def _exec_result(engine: OmniQueryEngine, query: Any, now_epoch: float) -> tuple
 # Per-entry scoring
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _EntryRecord:
     """Scoring flags for one corpus entry under one backend."""
+
     expected_unsupported: bool  # corpus marks the entry {"unsupported": true}
     produced_ast: bool  # backend answered with an AST rather than declining
     valid: bool  # harness-side validation of the produced AST passed
@@ -159,8 +161,7 @@ class _EntryRecord:
     confidence: float | None  # backend's self-reported confidence, if any
 
 
-def _score_entry(expected: dict, outcome: ParserOutcome, engine: OmniQueryEngine,
-                  now_epoch: float) -> _EntryRecord:
+def _score_entry(expected: dict, outcome: ParserOutcome, engine: OmniQueryEngine, now_epoch: float) -> _EntryRecord:
     """Score one backend outcome against its corpus entry. ast_exact and
     exec_match stay False for entries expected to be unsupported -- there
     is no expected AST to compare against."""
@@ -183,8 +184,14 @@ def _score_entry(expected: dict, outcome: ParserOutcome, engine: OmniQueryEngine
                 if got is not None and got == want:
                     exec_match = True
 
-    return _EntryRecord(expected_unsupported=expected_unsupported, produced_ast=produced_ast_dict is not None,
-                         valid=valid, ast_exact=ast_exact, exec_match=exec_match, confidence=outcome.confidence)
+    return _EntryRecord(
+        expected_unsupported=expected_unsupported,
+        produced_ast=produced_ast_dict is not None,
+        valid=valid,
+        ast_exact=ast_exact,
+        exec_match=exec_match,
+        confidence=outcome.confidence,
+    )
 
 
 def _latency_stats(latencies_ms: list[float]) -> dict[str, float | None]:
@@ -248,8 +255,7 @@ def _peak_rss_kb() -> int:
     """
     if resource is not None:
         peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        return peak // 1024 if sys.platform == 'darwin' else peak
-
+        return peak // 1024 if sys.platform == "darwin" else peak
 
     class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
         _fields_ = [
@@ -268,18 +274,18 @@ def _peak_rss_kb() -> int:
     # Typed signatures are load-bearing: the GetCurrentProcess pseudo-handle
     # ((HANDLE)-1) truncates to a 32-bit int under ctypes' default
     # conversions on 64-bit Windows and yields ERROR_INVALID_HANDLE.
-    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.GetCurrentProcess.restype = wintypes.HANDLE
     kernel32.K32GetProcessMemoryInfo.argtypes = [
-        wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD,
+        wintypes.HANDLE,
+        ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+        wintypes.DWORD,
     ]
     kernel32.K32GetProcessMemoryInfo.restype = wintypes.BOOL
 
     counters = PROCESS_MEMORY_COUNTERS()
     counters.cb = ctypes.sizeof(counters)
-    ok = kernel32.K32GetProcessMemoryInfo(
-        kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
-    )
+    ok = kernel32.K32GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb)
     return int(counters.PeakWorkingSetSize) // 1024 if ok else 0
 
 
@@ -287,8 +293,10 @@ def _peak_rss_kb() -> int:
 # Backend runners
 # ---------------------------------------------------------------------------
 
-def _run_backend(backend: ParserBackend, entries: list[dict], engine: OmniQueryEngine,
-                  now_epoch: float) -> dict[str, Any]:
+
+def _run_backend(
+    backend: ParserBackend, entries: list[dict], engine: OmniQueryEngine, now_epoch: float
+) -> dict[str, Any]:
     """Run one backend over every entry -- timing only the .parse() call --
     and aggregate the scores."""
     records: list[_EntryRecord] = []
@@ -301,8 +309,7 @@ def _run_backend(backend: ParserBackend, entries: list[dict], engine: OmniQueryE
     return _aggregate(records, latencies)
 
 
-def _run_fusion(entries: list[dict], engine: OmniQueryEngine,
-                 now_epoch: float) -> dict[str, Any]:
+def _run_fusion(entries: list[dict], engine: OmniQueryEngine, now_epoch: float) -> dict[str, Any]:
     """Measure the SHIPPED endpoint policy: nlq answers entries it fully
     consumes (no leftover text terms); free-language entries go to the
     SqlSearch agentic loop, and a model failure falls back to the nlq
@@ -340,16 +347,22 @@ def _run_fusion(entries: list[dict], engine: OmniQueryEngine,
                 ok = want is not None and want[0] == "ids" and frozenset(ids) == want[1]
                 model_correct += int(ok)
         latencies.append((time.monotonic() - t0) * 1000.0)
-        records.append(_EntryRecord(
-            expected_unsupported=False, produced_ast=True, valid=True,
-            ast_exact=False, exec_match=ok, confidence=None))
+        records.append(
+            _EntryRecord(
+                expected_unsupported=False,
+                produced_ast=True,
+                valid=True,
+                ast_exact=False,
+                exec_match=ok,
+                confidence=None,
+            )
+        )
     metrics = _aggregate(records, latencies)
     metrics["fusion"] = {"model_used": model_used, "model_correct": model_correct}
     return metrics
 
 
-def _run_sqlsearch(entries: list[dict], engine: OmniQueryEngine,
-                    now_epoch: float) -> dict[str, Any]:
+def _run_sqlsearch(entries: list[dict], engine: OmniQueryEngine, now_epoch: float) -> dict[str, Any]:
     """Measure the nl2sql SQL path (omniquery.parsers.nl2sql.SqlSearch):
     the model's agentic generate/execute/read-results loop runs against
     the fixture DB, and its id set is compared with the expected AST's
@@ -382,10 +395,16 @@ def _run_sqlsearch(entries: list[dict], engine: OmniQueryEngine,
                 exec_match = want_set is not None and got == want_set
         if ids is None:
             fail_reasons[(err or "unknown")[:60]] += 1
-        records.append(_EntryRecord(
-            expected_unsupported=False, produced_ast=ids is not None,
-            valid=ids is not None, ast_exact=False, exec_match=exec_match,
-            confidence=None))
+        records.append(
+            _EntryRecord(
+                expected_unsupported=False,
+                produced_ast=ids is not None,
+                valid=ids is not None,
+                ast_exact=False,
+                exec_match=exec_match,
+                confidence=None,
+            )
+        )
     metrics = _aggregate(records, latencies)
     metrics["sql_fail_reasons"] = dict(fail_reasons)
     return metrics
@@ -395,8 +414,13 @@ def _run_sqlsearch(entries: list[dict], engine: OmniQueryEngine,
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run_benchmark(backend_names: list[str], corpus_path: Any = _DEFAULT_CORPUS_PATH,
-                   out_path: str | None = None, now_epoch: float = ANCHOR_EPOCH) -> dict[str, Any]:
+
+def run_benchmark(
+    backend_names: list[str],
+    corpus_path: Any = _DEFAULT_CORPUS_PATH,
+    out_path: str | None = None,
+    now_epoch: float = ANCHOR_EPOCH,
+) -> dict[str, Any]:
     """Run each of `backend_names` (any of 'nlq', 'nl2sql',
     'sqlsearch') against the corpus at `corpus_path`. Writes a
     JSON report to `out_path` if given, and always returns the report dict.
@@ -406,8 +430,7 @@ def run_benchmark(backend_names: list[str], corpus_path: Any = _DEFAULT_CORPUS_P
     engine = _build_fixture_engine()
 
     instances: dict[str, ParserBackend] = {
-        name: get_backend(name) for name in backend_names
-        if name not in ("sqlsearch", "fusion")
+        name: get_backend(name) for name in backend_names if name not in ("sqlsearch", "fusion")
     }
 
     report: dict[str, Any] = {
@@ -436,7 +459,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """CLI argument parsing; `argv=None` reads sys.argv."""
     parser = argparse.ArgumentParser(description="OmniQuery v2 NL-parser benchmark")
     parser.add_argument(
-        "--backends", type=str, default="nlq",
+        "--backends",
+        type=str,
+        default="nlq",
         help="comma-separated backend names, e.g. nlq,nl2sql,search",
     )
     parser.add_argument("--corpus", type=str, default=str(_DEFAULT_CORPUS_PATH))

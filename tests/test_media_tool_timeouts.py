@@ -42,6 +42,7 @@ def a_tool_that_hangs(monkeypatch):
     raising TimeoutExpired where subprocess.run is called asks exactly
     that, instantly and on every platform.
     """
+
     def times_out(cmd, *args, **kwargs):
         raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 1))
 
@@ -68,8 +69,7 @@ def test_the_probe_still_says_yes_to_a_real_ffprobe(monkeypatch):
     assert smartgallery._is_ffprobe("ffprobe") is True
 
 
-def test_a_hanging_probe_costs_only_that_file(a_tool_that_hangs, tmp_path,
-                                              monkeypatch):
+def test_a_hanging_probe_costs_only_that_file(a_tool_that_hangs, tmp_path, monkeypatch):
     """The scan must move on rather than stop."""
     monkeypatch.setattr(smartgallery, "FFPROBE_EXECUTABLE_PATH", "hanging-ffprobe")
     target = tmp_path / "clip.mp4"
@@ -93,10 +93,12 @@ def test_every_media_subprocess_call_passes_a_timeout(gallery_tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if not (isinstance(func, ast.Attribute)
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "subprocess"
-                and func.attr in {"run", "check_output", "call"}):
+        if not (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "subprocess"
+            and func.attr in {"run", "check_output", "call"}
+        ):
             continue
         if "timeout" not in {kw.arg for kw in node.keywords if kw.arg}:
             missing.append(node.lineno)
@@ -104,7 +106,8 @@ def test_every_media_subprocess_call_passes_a_timeout(gallery_tree):
     assert missing == [], (
         f"subprocess calls without a timeout at lines {missing} of "
         f"{source.name}. An external tool that hangs there hangs whatever is "
-        f"waiting on it -- a request, the scan, or start-up.")
+        f"waiting on it -- a request, the scan, or start-up."
+    )
 
 
 def test_no_media_tool_is_started_in_a_way_that_can_outlive_its_timeout(gallery_tree):
@@ -120,10 +123,13 @@ def test_no_media_tool_is_started_in_a_way_that_can_outlive_its_timeout(gallery_
     media = {"ffprobe", "ffmpeg", "FFPROBE_EXECUTABLE_PATH", "FFMPEG_EXECUTABLE_PATH"}
     offenders = []
     for node in ast.walk(gallery_tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "Popen"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "subprocess"):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "Popen"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+        ):
             continue
         mentions = " ".join(ast.dump(arg) for arg in node.args)
         if any(name in mentions for name in media):
@@ -134,4 +140,5 @@ def test_no_media_tool_is_started_in_a_way_that_can_outlive_its_timeout(gallery_
         f"Popen has no timeout and does not reap the child, so a hung ffmpeg "
         f"survives whatever bound the caller thought it had. Use "
         f"subprocess.run(..., timeout=...), or route it through "
-        f"stream_media_process, which owns its own clock and kill.")
+        f"stream_media_process, which owns its own clock and kill."
+    )

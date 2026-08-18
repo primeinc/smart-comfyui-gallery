@@ -60,8 +60,7 @@ class _InlineExecutor:
 @pytest.fixture
 def marked_file(smartgallery_app, monkeypatch):
     """One indexed picture the person has marked, rated and commented on."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     name = f"{_PREFIX}treasured.png"
     path = os.path.join(base, name)
@@ -72,15 +71,16 @@ def marked_file(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                               (name,)).fetchone()[0]
-        conn.execute("UPDATE files SET is_favorite = 1, ai_caption = ?, "
-                     "ai_last_scanned = 99 WHERE id = ?", ("a caption", file_id))
-        conn.execute("INSERT INTO file_ratings (file_id, client_uuid, rating) "
-                     "VALUES (?, ?, ?)", (file_id, "admin", 5))
-        conn.execute("INSERT INTO file_comments (file_id, client_uuid, "
-                     "author_name, comment_text) VALUES (?, ?, ?, ?)",
-                     (file_id, "admin", "me", "love this"))
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (name,)).fetchone()[0]
+        conn.execute(
+            "UPDATE files SET is_favorite = 1, ai_caption = ?, ai_last_scanned = 99 WHERE id = ?",
+            ("a caption", file_id),
+        )
+        conn.execute("INSERT INTO file_ratings (file_id, client_uuid, rating) VALUES (?, ?, ?)", (file_id, "admin", 5))
+        conn.execute(
+            "INSERT INTO file_comments (file_id, client_uuid, author_name, comment_text) VALUES (?, ?, ?, ?)",
+            (file_id, "admin", "me", "love this"),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -112,12 +112,11 @@ def _rescan_after_touching(smartgallery_app, path):
 def _row(smartgallery_app, file_id):
     conn = smartgallery_app.get_db_connection()
     try:
-        files = conn.execute("SELECT is_favorite, ai_caption, ai_last_scanned "
-                             "FROM files WHERE id = ?", (file_id,)).fetchone()
-        rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?",
-                              (file_id,)).fetchone()
-        comments = conn.execute("SELECT COUNT(*) FROM file_comments "
-                                "WHERE file_id = ?", (file_id,)).fetchone()[0]
+        files = conn.execute(
+            "SELECT is_favorite, ai_caption, ai_last_scanned FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?", (file_id,)).fetchone()
+        comments = conn.execute("SELECT COUNT(*) FROM file_comments WHERE file_id = ?", (file_id,)).fetchone()[0]
     finally:
         conn.close()
     return files, rating, comments
@@ -142,8 +141,8 @@ def test_the_favourite_survives_a_changed_timestamp(smartgallery_app, marked_fil
 
     files, _rating, _comments = _row(smartgallery_app, file_id)
     assert files["is_favorite"] == 1, (
-        "the favourite was cleared by a rescan; a restored backup would empty "
-        "the whole Favourites view at once")
+        "the favourite was cleared by a rescan; a restored backup would empty the whole Favourites view at once"
+    )
 
 
 def test_the_derived_fields_are_still_cleared(smartgallery_app, marked_file):
@@ -183,12 +182,13 @@ def test_no_scan_statement_clears_the_favourite(smartgallery_app):
     source = _SOURCE.read_text(encoding="utf-8")
 
     assert "ai_embedding = CASE" in source, (
-        "the derived-field resets have gone entirely; this check would then "
-        "pass without meaning anything")
+        "the derived-field resets have gone entirely; this check would then pass without meaning anything"
+    )
 
     offenders = re.findall(r"is_favorite\s*=\s*CASE", source)
 
     assert not offenders, (
         f"{len(offenders)} scan statement(s) still clear is_favorite on an "
         f"mtime change. It is the person's own choice, not derived from the "
-        f"file.")
+        f"file."
+    )

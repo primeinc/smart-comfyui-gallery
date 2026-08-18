@@ -34,13 +34,9 @@ FOLDERS = ["portraits", "landscapes/2024", "landscapes/2025", "renders/batch_a",
 
 # One media-type slot per generated file; the shuffled pool fixes each
 # file's type while keeping the overall mix (30/10/6/8/6) constant.
-_TYPE_POOL = (
-    ["image"] * 30 + ["video"] * 10 + ["animated_image"] * 6
-    + ["audio"] * 8 + ["document"] * 6
-)
+_TYPE_POOL = ["image"] * 30 + ["video"] * 10 + ["animated_image"] * 6 + ["audio"] * 8 + ["document"] * 6
 # Canonical file extension per media type.
-_EXT = {"image": ".png", "video": ".mp4", "animated_image": ".gif",
-        "audio": ".mp3", "document": ".pdf"}
+_EXT = {"image": ".png", "video": ".mp4", "animated_image": ".gif", "audio": ".mp3", "document": ".pdf"}
 # "WIDTHxHEIGHT" pixel strings, as stored in files.dimensions.
 _DIMENSIONS_POOL = ["512x512", "768x1024", "1024x1024", "1920x1080", "1280x720", "2048x1536"]
 
@@ -96,7 +92,13 @@ USER_ALBUMS = ["Portfolio", "Client Picks", "WIP"]
 # alias logged-in users (stringified user_id -- e.g. "3" is carol).
 _RATING_CLIENT_POOL = ["anon-aaa", "anon-bbb", "anon-ccc", "anon-ddd", "1", "2", "3", "4", "5"]
 _COMMENT_CLIENT_POOL = ["anon-aaa", "anon-bbb", "3", "4"]
-_USERNAME_BY_UUID = {"1": "alice", "2": "bob", "3": "carol", "4": "dave", "5": "erin"}  # stringified user_id -> username, mirroring USERS
+_USERNAME_BY_UUID = {
+    "1": "alice",
+    "2": "bob",
+    "3": "carol",
+    "4": "dave",
+    "5": "erin",
+}  # stringified user_id -> username, mirroring USERS
 
 # --- core SmartGallery tables (mirrors smartgallery.py's init_db()) --------
 
@@ -215,6 +217,7 @@ _CORE_DDL = [
 # Deterministic content generation
 # ---------------------------------------------------------------------------
 
+
 def _make_id(idx: int) -> str:
     """Fixture file id for a 1-based index, zero-padded to three digits ("f001")."""
     return f"f{idx:03d}"
@@ -271,15 +274,28 @@ def _generate(seed: int) -> dict[str, Any]:
         ai_caption = rng.choice(_CAPTION_POOL) if rng.random() < 0.5 else None
         is_favorite = 1 if rng.random() < 0.25 else 0
 
-        files.append({
-            "id": fid, "path": path, "folder": folder, "name": name, "type": ftype,
-            "mtime": mtime, "duration": duration, "duration_seconds": duration_seconds,
-            "dimensions": dimensions, "width": width, "height": height,
-            "megapixels": megapixels, "has_workflow": has_workflow,
-            "is_favorite": is_favorite, "size": size,
-            "workflow_files": workflow_files, "workflow_prompt": workflow_prompt,
-            "ai_caption": ai_caption,
-        })
+        files.append(
+            {
+                "id": fid,
+                "path": path,
+                "folder": folder,
+                "name": name,
+                "type": ftype,
+                "mtime": mtime,
+                "duration": duration,
+                "duration_seconds": duration_seconds,
+                "dimensions": dimensions,
+                "width": width,
+                "height": height,
+                "megapixels": megapixels,
+                "has_workflow": has_workflow,
+                "is_favorite": is_favorite,
+                "size": size,
+                "workflow_files": workflow_files,
+                "workflow_prompt": workflow_prompt,
+                "ai_caption": ai_caption,
+            }
+        )
 
     ratings: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = []
@@ -287,19 +303,26 @@ def _generate(seed: int) -> dict[str, Any]:
         if rng.random() < 0.55:
             n = rng.randint(1, 3)
             for cu in rng.sample(_RATING_CLIENT_POOL, k=n):
-                ratings.append({
-                    "file_id": f["id"], "client_uuid": cu, "rating": rng.randint(1, 5),
-                    "created_at": f["mtime"] + 10.0,
-                })
+                ratings.append(
+                    {
+                        "file_id": f["id"],
+                        "client_uuid": cu,
+                        "rating": rng.randint(1, 5),
+                        "created_at": f["mtime"] + 10.0,
+                    }
+                )
         if rng.random() < 0.4:
             n = rng.randint(1, 2)
             for cu in rng.sample(_COMMENT_CLIENT_POOL, k=n):
-                comments.append({
-                    "file_id": f["id"], "client_uuid": cu,
-                    "author_name": _USERNAME_BY_UUID.get(cu, cu),
-                    "comment_text": rng.choice(_COMMENT_POOL),
-                    "created_at": f["mtime"] + 20.0,
-                })
+                comments.append(
+                    {
+                        "file_id": f["id"],
+                        "client_uuid": cu,
+                        "author_name": _USERNAME_BY_UUID.get(cu, cu),
+                        "comment_text": rng.choice(_COMMENT_POOL),
+                        "created_at": f["mtime"] + 20.0,
+                    }
+                )
 
     all_ids = [f["id"] for f in files]
     shuffled = all_ids[:]
@@ -308,7 +331,7 @@ def _generate(seed: int) -> dict[str, Any]:
     membership: dict[tuple[str, str], list[str]] = {}
     cursor = 0
     for (flag_name, flag_type, _color), chunk_size in zip(STATUS_FLAGS, _FLAG_SIZES, strict=False):
-        membership[(flag_name, flag_type)] = shuffled[cursor:cursor + chunk_size]
+        membership[(flag_name, flag_type)] = shuffled[cursor : cursor + chunk_size]
         cursor += chunk_size
     for album_name in USER_ALBUMS:
         membership[(album_name, "user_album")] = rng.sample(all_ids, 15)
@@ -319,46 +342,65 @@ def _generate(seed: int) -> dict[str, Any]:
         if f["type"] in ("image", "video", "animated_image"):
             phash = _signed64(rng.getrandbits(64))
             dhash = _signed64(rng.getrandbits(64))
-        hashes.append({
-            "file_id": f["id"], "sha256": hashlib.sha256(f["id"].encode()).hexdigest(),
-            "phash64": phash, "dhash64": dhash, "algo_version": HASH_ALGO_VERSION,
-            "source_mtime": f["mtime"], "computed_at": f["mtime"] + 1.0,
-        })
+        hashes.append(
+            {
+                "file_id": f["id"],
+                "sha256": hashlib.sha256(f["id"].encode()).hexdigest(),
+                "phash64": phash,
+                "dhash64": dhash,
+                "algo_version": HASH_ALGO_VERSION,
+                "source_mtime": f["mtime"],
+                "computed_at": f["mtime"] + 1.0,
+            }
+        )
 
     embeddings: list[dict[str, Any]] = []
     embed_candidates = [f for f in files if f["type"] in ("image", "animated_image")][:20]
     for f in embed_candidates:
         for space in (SPACE_SEMANTIC, SPACE_VISUAL):
             vector = struct.pack("<8f", *(rng.uniform(-1, 1) for _ in range(8)))
-            embeddings.append({
-                "file_id": f["id"], "space": space, "model_id": "stub-embedder",
-                "model_version": "v1", "dim": 8, "vector": vector,
-                "source_mtime": f["mtime"], "computed_at": f["mtime"] + 1.0,
-            })
+            embeddings.append(
+                {
+                    "file_id": f["id"],
+                    "space": space,
+                    "model_id": "stub-embedder",
+                    "model_version": "v1",
+                    "dim": 8,
+                    "vector": vector,
+                    "source_mtime": f["mtime"],
+                    "computed_at": f["mtime"] + 1.0,
+                }
+            )
 
     face_clusters = [
         {"cluster_id": 1, "label": "Character A", "model_id": "stub-facenet", "model_version": "v1"},
         {"cluster_id": 2, "label": "Character B", "model_id": "stub-facenet", "model_version": "v1"},
     ]
     face_instances: list[dict[str, Any]] = []
-    face_candidates = [f for f in files
-                        if f["folder"] == "portraits" and f["type"] in ("image", "video", "animated_image")]
+    face_candidates = [
+        f for f in files if f["folder"] == "portraits" and f["type"] in ("image", "video", "animated_image")
+    ]
     for i, f in enumerate(face_candidates):
         n_faces = 2 if i % 3 == 0 else 1
         for _ in range(n_faces):
             cluster_id = None if i % 4 == 3 else (1 if i % 2 == 0 else 2)
-            face_instances.append({
-                "file_id": f["id"],
-                "bbox_x": round(rng.uniform(0.05, 0.5), 3),
-                "bbox_y": round(rng.uniform(0.05, 0.5), 3),
-                "bbox_w": round(rng.uniform(0.1, 0.4), 3),
-                "bbox_h": round(rng.uniform(0.1, 0.4), 3),
-                "det_score": round(rng.uniform(0.5, 0.99), 3),
-                "embedding": struct.pack("<8f", *(rng.uniform(-1, 1) for _ in range(8))),
-                "dim": 8, "model_id": "stub-facenet", "model_version": "v1",
-                "source_mtime": f["mtime"], "computed_at": f["mtime"] + 1.0,
-                "cluster_id": cluster_id,
-            })
+            face_instances.append(
+                {
+                    "file_id": f["id"],
+                    "bbox_x": round(rng.uniform(0.05, 0.5), 3),
+                    "bbox_y": round(rng.uniform(0.05, 0.5), 3),
+                    "bbox_w": round(rng.uniform(0.1, 0.4), 3),
+                    "bbox_h": round(rng.uniform(0.1, 0.4), 3),
+                    "det_score": round(rng.uniform(0.5, 0.99), 3),
+                    "embedding": struct.pack("<8f", *(rng.uniform(-1, 1) for _ in range(8))),
+                    "dim": 8,
+                    "model_id": "stub-facenet",
+                    "model_version": "v1",
+                    "source_mtime": f["mtime"],
+                    "computed_at": f["mtime"] + 1.0,
+                    "cluster_id": cluster_id,
+                }
+            )
 
     # Typed generation parameters for every workflow-bearing file. The
     # FIRST row is pinned (seed/steps/cfg/model/lora) so corpus entries can
@@ -369,51 +411,79 @@ def _generate(seed: int) -> dict[str, Any]:
         if not f["has_workflow"]:
             continue
         i = len(genparams)
-        genparams.append({
-            "file_id": f["id"], "tool": "comfyui", "detection": "workflow",
-            "positive_prompt": f["workflow_prompt"],
-            "negative_prompt": "blurry, lowres, watermark",
-            "model": ["flux1-dev-fp8", "sdxl_base_1.0", "dreamshaper_8"][i % 3],
-            "sampler": ["euler", "dpmpp_2m"][i % 2],
-            "scheduler": "normal",
-            "seed": rng.randint(1, 2**31), "steps": [20, 25, 30][i % 3],
-            "cfg": [4.0, 7.0, 7.5][i % 3],
-            "width": f["width"], "height": f["height"],
-            "loras": ('[{"name": "girlnextdoor", "weight": 0.8}]' if i % 3 == 0
-                      else '[{"name": "detail-tweaker", "weight": 0.6}]' if i % 3 == 1
-                      else "[]"),
-            "parsed_at": f["mtime"] + 3.0,
-        })
+        genparams.append(
+            {
+                "file_id": f["id"],
+                "tool": "comfyui",
+                "detection": "workflow",
+                "positive_prompt": f["workflow_prompt"],
+                "negative_prompt": "blurry, lowres, watermark",
+                "model": ["flux1-dev-fp8", "sdxl_base_1.0", "dreamshaper_8"][i % 3],
+                "sampler": ["euler", "dpmpp_2m"][i % 2],
+                "scheduler": "normal",
+                "seed": rng.randint(1, 2**31),
+                "steps": [20, 25, 30][i % 3],
+                "cfg": [4.0, 7.0, 7.5][i % 3],
+                "width": f["width"],
+                "height": f["height"],
+                "loras": (
+                    '[{"name": "girlnextdoor", "weight": 0.8}]'
+                    if i % 3 == 0
+                    else '[{"name": "detail-tweaker", "weight": 0.6}]'
+                    if i % 3 == 1
+                    else "[]"
+                ),
+                "parsed_at": f["mtime"] + 3.0,
+            }
+        )
     if genparams:
         genparams[0].update(seed=424242, steps=30, cfg=7.5, model="flux1-dev-fp8")
 
     review_candidates = files[::4][:15]
     reviews: list[dict[str, Any]] = []
     for f in review_candidates:
-        reviews.append({
-            "file_id": f["id"], "rubric_version": RUBRIC_VERSION, "model_id": "stub-critic",
-            "model_version": "v1", "quality_score": round(rng.uniform(1, 10), 2),
-            "prompt_alignment_score": round(rng.uniform(0, 1), 3),
-            "summary": "", "raw_response": "{}",
-            "source_mtime": f["mtime"], "computed_at": f["mtime"] + 2.0,
-        })
+        reviews.append(
+            {
+                "file_id": f["id"],
+                "rubric_version": RUBRIC_VERSION,
+                "model_id": "stub-critic",
+                "model_version": "v1",
+                "quality_score": round(rng.uniform(1, 10), 2),
+                "prompt_alignment_score": round(rng.uniform(0, 1), 3),
+                "summary": "",
+                "raw_response": "{}",
+                "source_mtime": f["mtime"],
+                "computed_at": f["mtime"] + 2.0,
+            }
+        )
 
     issue_values = sorted(REVIEW_ISSUE_VALUES)
     findings: list[dict[str, Any]] = []
     for i, rv in enumerate(reviews[:10]):
         issue_type = issue_values[i % len(issue_values)]
-        findings.append({
-            "file_id": rv["file_id"], "review_index": i, "type": issue_type,
-            "severity": rng.choice(["low", "medium", "high"]),
-            "confidence": round(rng.uniform(0.5, 0.99), 2),
-            "description": f"{issue_type} issue detected",
-        })
+        findings.append(
+            {
+                "file_id": rv["file_id"],
+                "review_index": i,
+                "type": issue_type,
+                "severity": rng.choice(["low", "medium", "high"]),
+                "confidence": round(rng.uniform(0.5, 0.99), 2),
+                "description": f"{issue_type} issue detected",
+            }
+        )
 
     return {
-        "files": files, "ratings": ratings, "comments": comments,
-        "membership": membership, "hashes": hashes, "embeddings": embeddings,
-        "face_clusters": face_clusters, "face_instances": face_instances,
-        "reviews": reviews, "findings": findings, "genparams": genparams,
+        "files": files,
+        "ratings": ratings,
+        "comments": comments,
+        "membership": membership,
+        "hashes": hashes,
+        "embeddings": embeddings,
+        "face_clusters": face_clusters,
+        "face_instances": face_instances,
+        "reviews": reviews,
+        "findings": findings,
+        "genparams": genparams,
     }
 
 
@@ -426,6 +496,7 @@ def _signed64(unsigned: int) -> int:
 # ---------------------------------------------------------------------------
 # DB construction
 # ---------------------------------------------------------------------------
+
 
 def build_fixture_db(path: str, seed: int = 42) -> None:
     """Write a deterministic fixture SQLite database to `path`, replacing
@@ -446,10 +517,24 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
             "INSERT INTO files (id, path, mtime, name, type, duration, dimensions, "
             "has_workflow, is_favorite, size, workflow_files, workflow_prompt, ai_caption) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(f["id"], f["path"], f["mtime"], f["name"], f["type"], f["duration"],
-              f["dimensions"], f["has_workflow"], f["is_favorite"], f["size"],
-              f["workflow_files"], f["workflow_prompt"], f["ai_caption"])
-             for f in data["files"]],
+            [
+                (
+                    f["id"],
+                    f["path"],
+                    f["mtime"],
+                    f["name"],
+                    f["type"],
+                    f["duration"],
+                    f["dimensions"],
+                    f["has_workflow"],
+                    f["is_favorite"],
+                    f["size"],
+                    f["workflow_files"],
+                    f["workflow_prompt"],
+                    f["ai_caption"],
+                )
+                for f in data["files"]
+            ],
         )
 
         conn.executemany(
@@ -457,19 +542,33 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
             "positive_prompt, negative_prompt, model, sampler, scheduler, "
             "seed, steps, cfg, width, height, loras, parsed_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(g["file_id"], g["tool"], g["detection"], g["positive_prompt"],
-              g["negative_prompt"], g["model"], g["sampler"], g["scheduler"],
-              g["seed"], g["steps"], g["cfg"], g["width"], g["height"],
-              g["loras"], g["parsed_at"])
-             for g in data["genparams"]],
+            [
+                (
+                    g["file_id"],
+                    g["tool"],
+                    g["detection"],
+                    g["positive_prompt"],
+                    g["negative_prompt"],
+                    g["model"],
+                    g["sampler"],
+                    g["scheduler"],
+                    g["seed"],
+                    g["steps"],
+                    g["cfg"],
+                    g["width"],
+                    g["height"],
+                    g["loras"],
+                    g["parsed_at"],
+                )
+                for g in data["genparams"]
+            ],
         )
 
         collection_ids: dict[tuple[str, str], int] = {}
         all_collections = STATUS_FLAGS + [(n, "user_album", "#888888") for n in USER_ALBUMS]
         for name, ctype, color in all_collections:
             cur = conn.execute(
-                "INSERT INTO collections (name, type, color, is_public, created_at) "
-                "VALUES (?,?,?,0,?)",
+                "INSERT INTO collections (name, type, color, is_public, created_at) VALUES (?,?,?,0,?)",
                 (name, ctype, color, ANCHOR_EPOCH),
             )
             collection_ids[(name, ctype)] = cur.lastrowid
@@ -482,46 +581,68 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
             )
 
         conn.executemany(
-            "INSERT INTO users (user_id, username, password, full_name, role, is_active) "
-            "VALUES (?,?,?,?,?,1)",
+            "INSERT INTO users (user_id, username, password, full_name, role, is_active) VALUES (?,?,?,?,?,1)",
             [(uid, uname, "x", full_name, role) for uid, uname, full_name, role in USERS],
         )
 
         conn.executemany(
             "INSERT INTO file_ratings (file_id, client_uuid, rating, created_at) VALUES (?,?,?,?)",
-            [(r["file_id"], r["client_uuid"], r["rating"], r["created_at"])
-             for r in data["ratings"]],
+            [(r["file_id"], r["client_uuid"], r["rating"], r["created_at"]) for r in data["ratings"]],
         )
 
         conn.executemany(
             "INSERT INTO file_comments "
             "(file_id, client_uuid, author_name, comment_text, target_audience, created_at) "
             "VALUES (?,?,?,?,'public',?)",
-            [(c["file_id"], c["client_uuid"], c["author_name"], c["comment_text"], c["created_at"])
-             for c in data["comments"]],
+            [
+                (c["file_id"], c["client_uuid"], c["author_name"], c["comment_text"], c["created_at"])
+                for c in data["comments"]
+            ],
         )
 
         conn.executemany(
             "INSERT INTO ai_file_hashes "
             "(file_id, sha256, phash64, dhash64, algo_version, source_mtime, computed_at) "
             "VALUES (?,?,?,?,?,?,?)",
-            [(h["file_id"], h["sha256"], h["phash64"], h["dhash64"], h["algo_version"],
-              h["source_mtime"], h["computed_at"]) for h in data["hashes"]],
+            [
+                (
+                    h["file_id"],
+                    h["sha256"],
+                    h["phash64"],
+                    h["dhash64"],
+                    h["algo_version"],
+                    h["source_mtime"],
+                    h["computed_at"],
+                )
+                for h in data["hashes"]
+            ],
         )
 
         conn.executemany(
             "INSERT INTO ai_embeddings "
             "(file_id, space, model_id, model_version, dim, vector, source_mtime, computed_at) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            [(e["file_id"], e["space"], e["model_id"], e["model_version"], e["dim"],
-              e["vector"], e["source_mtime"], e["computed_at"]) for e in data["embeddings"]],
+            [
+                (
+                    e["file_id"],
+                    e["space"],
+                    e["model_id"],
+                    e["model_version"],
+                    e["dim"],
+                    e["vector"],
+                    e["source_mtime"],
+                    e["computed_at"],
+                )
+                for e in data["embeddings"]
+            ],
         )
 
         conn.executemany(
-            "INSERT INTO ai_face_clusters "
-            "(cluster_id, label, model_id, model_version, updated_at) VALUES (?,?,?,?,?)",
-            [(c["cluster_id"], c["label"], c["model_id"], c["model_version"], ANCHOR_EPOCH)
-             for c in data["face_clusters"]],
+            "INSERT INTO ai_face_clusters (cluster_id, label, model_id, model_version, updated_at) VALUES (?,?,?,?,?)",
+            [
+                (c["cluster_id"], c["label"], c["model_id"], c["model_version"], ANCHOR_EPOCH)
+                for c in data["face_clusters"]
+            ],
         )
 
         conn.executemany(
@@ -529,10 +650,24 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
             "(file_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score, embedding, dim, "
             "model_id, model_version, source_mtime, computed_at, cluster_id) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(fi["file_id"], fi["bbox_x"], fi["bbox_y"], fi["bbox_w"], fi["bbox_h"],
-              fi["det_score"], fi["embedding"], fi["dim"], fi["model_id"],
-              fi["model_version"], fi["source_mtime"], fi["computed_at"], fi["cluster_id"])
-             for fi in data["face_instances"]],
+            [
+                (
+                    fi["file_id"],
+                    fi["bbox_x"],
+                    fi["bbox_y"],
+                    fi["bbox_w"],
+                    fi["bbox_h"],
+                    fi["det_score"],
+                    fi["embedding"],
+                    fi["dim"],
+                    fi["model_id"],
+                    fi["model_version"],
+                    fi["source_mtime"],
+                    fi["computed_at"],
+                    fi["cluster_id"],
+                )
+                for fi in data["face_instances"]
+            ],
         )
 
         review_ids: list[int] = []
@@ -542,9 +677,18 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
                 "(file_id, rubric_version, model_id, model_version, quality_score, "
                 "prompt_alignment_score, summary, raw_response, source_mtime, computed_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (rv["file_id"], rv["rubric_version"], rv["model_id"], rv["model_version"],
-                 rv["quality_score"], rv["prompt_alignment_score"], rv["summary"],
-                 rv["raw_response"], rv["source_mtime"], rv["computed_at"]),
+                (
+                    rv["file_id"],
+                    rv["rubric_version"],
+                    rv["model_id"],
+                    rv["model_version"],
+                    rv["quality_score"],
+                    rv["prompt_alignment_score"],
+                    rv["summary"],
+                    rv["raw_response"],
+                    rv["source_mtime"],
+                    rv["computed_at"],
+                ),
             )
             review_ids.append(cur.lastrowid)
 
@@ -552,9 +696,17 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
             "INSERT INTO ai_review_findings "
             "(review_id, file_id, type, severity, confidence, localizable, description) "
             "VALUES (?,?,?,?,?,0,?)",
-            [(review_ids[finding["review_index"]], finding["file_id"], finding["type"],
-              finding["severity"], finding["confidence"], finding["description"])
-             for finding in data["findings"]],
+            [
+                (
+                    review_ids[finding["review_index"]],
+                    finding["file_id"],
+                    finding["type"],
+                    finding["severity"],
+                    finding["confidence"],
+                    finding["description"],
+                )
+                for finding in data["findings"]
+            ],
         )
 
         conn.commit()
@@ -565,6 +717,7 @@ def build_fixture_db(path: str, seed: int = 42) -> None:
 # ---------------------------------------------------------------------------
 # Ground-truth expectations, computed straight from the generated records
 # ---------------------------------------------------------------------------
+
 
 def _compute_expectations(data: dict[str, Any]) -> dict[str, frozenset[str]]:
     """Ground-truth answer sets, keyed by scenario name, each the frozenset
@@ -578,25 +731,16 @@ def _compute_expectations(data: dict[str, Any]) -> dict[str, frozenset[str]]:
 
     return {
         "type_image": frozenset(f["id"] for f in files if f["type"] == "image"),
-        "type_video_or_audio": frozenset(
-            f["id"] for f in files if f["type"] in ("video", "audio")
-        ),
+        "type_video_or_audio": frozenset(f["id"] for f in files if f["type"] in ("video", "audio")),
         "is_favorite_true": frozenset(f["id"] for f in files if f["is_favorite"] == 1),
         "has_workflow_true": frozenset(f["id"] for f in files if f["has_workflow"] == 1),
-        "ai_caption_not_null": frozenset(
-            f["id"] for f in files if f["ai_caption"] is not None
-        ),
+        "ai_caption_not_null": frozenset(f["id"] for f in files if f["ai_caption"] is not None),
         "ai_caption_null": frozenset(f["id"] for f in files if f["ai_caption"] is None),
-        "folder_landscapes_2024": frozenset(
-            f["id"] for f in files if f["folder"] == "landscapes/2024"
-        ),
-        "folder_contains_landscapes": frozenset(
-            f["id"] for f in files if "landscapes" in f["folder"]
-        ),
+        "folder_landscapes_2024": frozenset(f["id"] for f in files if f["folder"] == "landscapes/2024"),
+        "folder_contains_landscapes": frozenset(f["id"] for f in files if "landscapes" in f["folder"]),
         "size_gt_20mb": frozenset(f["id"] for f in files if f["size"] > 20 * 1024 * 1024),
         "duration_seconds_ge_300": frozenset(
-            f["id"] for f in files
-            if f["duration_seconds"] is not None and f["duration_seconds"] >= 300
+            f["id"] for f in files if f["duration_seconds"] is not None and f["duration_seconds"] >= 300
         ),
         "workflow_prompt_contains_cyberpunk": frozenset(
             f["id"] for f in files if "cyberpunk" in (f["workflow_prompt"] or "").lower()
@@ -607,12 +751,8 @@ def _compute_expectations(data: dict[str, Any]) -> dict[str, frozenset[str]]:
             c["file_id"] for c in data["comments"] if "amazing" in c["comment_text"].lower()
         ),
         "has_faces_true": frozenset(fi["file_id"] for fi in data["face_instances"]),
-        "rating_avg_ge_4": frozenset(
-            fid for fid, vals in rating_totals.items() if sum(vals) / len(vals) >= 4.0
-        ),
-        "rated_by_carol": frozenset(
-            r["file_id"] for r in data["ratings"] if r["client_uuid"] == "3"
-        ),
+        "rating_avg_ge_4": frozenset(fid for fid, vals in rating_totals.items() if sum(vals) / len(vals) >= 4.0),
+        "rated_by_carol": frozenset(r["file_id"] for r in data["ratings"] if r["client_uuid"] == "3"),
     }
 
 

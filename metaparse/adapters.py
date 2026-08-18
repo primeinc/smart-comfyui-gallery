@@ -35,10 +35,17 @@ _RE_IMAGESIZE = re.compile(r"^(\d+)x(\d+)$")
 
 # infotext key -> canonical param slot
 _INFOTEXT_CANONICAL = {
-    "Model": "model", "Model hash": "model_hash", "Sampler": "sampler",
-    "Schedule type": "scheduler", "Seed": "seed", "Steps": "steps",
-    "CFG scale": "cfg", "Size": "size", "Denoising strength": "denoise",
-    "Clip skip": "clip_skip", "Version": "version",
+    "Model": "model",
+    "Model hash": "model_hash",
+    "Sampler": "sampler",
+    "Schedule type": "scheduler",
+    "Seed": "seed",
+    "Steps": "steps",
+    "CFG scale": "cfg",
+    "Size": "size",
+    "Denoising strength": "denoise",
+    "Clip skip": "clip_skip",
+    "Version": "version",
 }
 
 
@@ -72,7 +79,7 @@ def parse_infotext(text: str, tool: str, detection: str = "marker") -> ParsedMet
         line = line.strip()
         if line.startswith("Negative prompt:"):
             in_negative = True
-            line = line[len("Negative prompt:"):].strip()
+            line = line[len("Negative prompt:") :].strip()
         (negative if in_negative else prompt).append(line)
     result.positive = "\n".join(prompt).strip()
     result.negative = "\n".join(negative).strip()
@@ -89,8 +96,10 @@ def parse_infotext(text: str, tool: str, detection: str = "marker") -> ParsedMet
 # Adapters
 # ---------------------------------------------------------------------------
 
+
 class SwarmUIAdapter:
     """SwarmUI: JSON in the `parameters` chunk / EXIF, keyed sui_image_params."""
+
     tool = "SwarmUI"
 
     @staticmethod
@@ -142,6 +151,7 @@ class SwarmUIAdapter:
 class FooocusAdapter:
     """Fooocus: `parameters` + `fooocus_scheme` chunks (or EXIF MakerNote scheme);
     legacy builds used a bare `Comment`/`comment` JSON."""
+
     tool = "Fooocus"
     _JSON_KEYS = {"prompt", "negative_prompt"}
 
@@ -201,6 +211,7 @@ class FooocusAdapter:
 
 class InvokeAIAdapter:
     """InvokeAI: `invokeai_metadata` (v3+), `sd-metadata` (v2) or `Dream` (v1)."""
+
     tool = "InvokeAI"
 
     @classmethod
@@ -290,6 +301,7 @@ def _split_bracket_prompt(prompt: str):
 
 class NovelAIAdapter:
     """NovelAI: tEXt Software=NovelAI, Description + Comment JSON."""
+
     tool = "NovelAI"
 
     @classmethod
@@ -300,7 +312,8 @@ class NovelAIAdapter:
     def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         comment = raw.text_json("Comment") or {}
         result = ParsedMetadata(
-            tool=cls.tool, detection="marker",
+            tool=cls.tool,
+            detection="marker",
             raw=raw.text.get("Comment") or raw.text.get("Description", ""),
         )
         result.positive = str(raw.text.get("Description", "") or "").strip()
@@ -346,14 +359,21 @@ class NovelAIAdapter:
 
 class EasyDiffusionAdapter:
     """Easy Diffusion: individual PNG chunks, or one JSON UserComment."""
+
     tool = "Easy Diffusion"
     # spaced-key variant -> snake variant (older vs newer exports)
     _KEYS = {
-        "Prompt": "prompt", "Negative Prompt": "negative_prompt",
-        "Seed": "seed", "Stable Diffusion model": "use_stable_diffusion_model",
-        "Sampler": "sampler_name", "Width": "width", "Height": "height",
-        "Steps": "num_inference_steps", "Guidance Scale": "guidance_scale",
-        "Clip Skip": "clip_skip", "VAE model": "use_vae_model",
+        "Prompt": "prompt",
+        "Negative Prompt": "negative_prompt",
+        "Seed": "seed",
+        "Stable Diffusion model": "use_stable_diffusion_model",
+        "Sampler": "sampler_name",
+        "Width": "width",
+        "Height": "height",
+        "Steps": "num_inference_steps",
+        "Guidance Scale": "guidance_scale",
+        "Clip Skip": "clip_skip",
+        "VAE model": "use_vae_model",
     }
 
     @classmethod
@@ -398,6 +418,7 @@ class EasyDiffusionAdapter:
 
 class DrawThingsAdapter:
     """Draw Things: JSON inside XMP exif:UserComment."""
+
     tool = "Draw Things"
 
     @classmethod
@@ -443,6 +464,7 @@ class ComfyUIAdapter:
     the gallery's existing pipeline; this adapter only identifies the tool
     (and parses the infotext when a node also wrote an A1111-compatible
     `parameters` chunk)."""
+
     tool = "ComfyUI"
 
     @classmethod
@@ -451,9 +473,7 @@ class ComfyUIAdapter:
         if isinstance(workflow, dict) and "nodes" in workflow:
             return True
         prompt = raw.text_json("prompt")
-        if isinstance(prompt, dict) and any(
-            isinstance(v, dict) and "class_type" in v for v in prompt.values()
-        ):
+        if isinstance(prompt, dict) and any(isinstance(v, dict) and "class_type" in v for v in prompt.values()):
             return True
         return any(tag and tag.startswith(("workflow:{", "prompt:{")) for tag in (raw.exif_make, raw.exif_model))
 
@@ -469,6 +489,7 @@ class ComfyUIAdapter:
 class A1111Adapter:
     """A1111 / Forge: infotext in the `parameters` chunk, EXIF UserComment,
     or a GIF comment."""
+
     tool = "A1111 / Forge"
 
     @staticmethod
@@ -524,8 +545,14 @@ def _json_or_none(text: str | None):
 # images carrying both a graph and an A1111-compatible infotext are labeled
 # as ComfyUI output.
 MARKER_ADAPTERS = (
-    SwarmUIAdapter, NovelAIAdapter, FooocusAdapter, InvokeAIAdapter,
-    EasyDiffusionAdapter, DrawThingsAdapter, ComfyUIAdapter, A1111Adapter,
+    SwarmUIAdapter,
+    NovelAIAdapter,
+    FooocusAdapter,
+    InvokeAIAdapter,
+    EasyDiffusionAdapter,
+    DrawThingsAdapter,
+    ComfyUIAdapter,
+    A1111Adapter,
 )
 
 # Heuristic pass: fall through by popularity.

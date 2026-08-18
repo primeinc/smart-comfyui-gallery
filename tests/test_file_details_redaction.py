@@ -53,8 +53,7 @@ class _InlineExecutor:
 @pytest.fixture
 def shown_file(smartgallery_app, monkeypatch):
     """A file in a public album, carrying a prompt and a model name."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
 
@@ -67,16 +66,17 @@ def shown_file(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                               (f"{_PREFIX}shown.png",)).fetchone()[0]
-        conn.execute("UPDATE files SET workflow_files = ?, workflow_prompt = ? "
-                     "WHERE id = ?", (f"{_MODEL} ||| lora_secret.safetensors",
-                                      _PROMPT, file_id))
-        conn.execute("INSERT INTO collections (name, type, is_public, created_at) "
-                     "VALUES (?, 'user_album', 1, 1.0)", (f"{_PREFIX}album",))
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}shown.png",)).fetchone()[0]
+        conn.execute(
+            "UPDATE files SET workflow_files = ?, workflow_prompt = ? WHERE id = ?",
+            (f"{_MODEL} ||| lora_secret.safetensors", _PROMPT, file_id),
+        )
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, created_at) VALUES (?, 'user_album', 1, 1.0)",
+            (f"{_PREFIX}album",),
+        )
         coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                     "VALUES (?, ?)", (coll_id, file_id))
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, file_id))
         conn.commit()
     finally:
         conn.close()
@@ -105,8 +105,7 @@ def _as(smartgallery_app, role):
 def test_a_visitor_gets_the_details_at_all(smartgallery_app, shown_file):
     """Control: the endpoint answers a visitor, so an absent prompt below
     means it was removed and not that the request was refused."""
-    resp = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/api/file_full_details/{shown_file}")
+    resp = _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/api/file_full_details/{shown_file}")
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
     body = resp.get_json()
@@ -117,42 +116,39 @@ def test_a_visitor_gets_the_details_at_all(smartgallery_app, shown_file):
 
 def test_the_prompt_and_models_do_not_reach_a_visitor(smartgallery_app, shown_file):
     """The regression: all three arrived in one response."""
-    body = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
+    body = (
+        _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
+    )
 
     assert _PROMPT not in body, "the prompt was handed to a visitor"
     assert _MODEL not in body, "the model names were handed to a visitor"
     flat = body.replace("\\\\", "/").replace("\\", "/")
-    assert smartgallery_app.BASE_OUTPUT_PATH.replace("\\", "/") not in flat, (
-        "the server path was handed to a visitor")
+    assert smartgallery_app.BASE_OUTPUT_PATH.replace("\\", "/") not in flat, "the server path was handed to a visitor"
 
 
 def test_staff_still_get_everything(smartgallery_app, shown_file):
     """The counterpart: this endpoint is what fills the Asset Info panel."""
-    body = _as(smartgallery_app, "ADMIN").get(
-        f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
+    body = _as(smartgallery_app, "ADMIN").get(f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
 
     assert _PROMPT in body, "staff lost the prompt"
     assert _MODEL in body, "staff lost the model names"
 
 
 def test_check_metadata_keeps_the_real_path_from_a_visitor(smartgallery_app, shown_file):
-    resp = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/check_metadata/{shown_file}")
+    resp = _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/check_metadata/{shown_file}")
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
-    assert resp.get_json().get("real_path") is None, (
-        "a visitor was told where the file lives on the server")
+    assert resp.get_json().get("real_path") is None, "a visitor was told where the file lives on the server"
 
 
-def test_the_default_local_install_is_unaffected(smartgallery_app, shown_file,
-                                                  monkeypatch):
+def test_the_default_local_install_is_unaffected(smartgallery_app, shown_file, monkeypatch):
     """With no login there is one person and it is all theirs."""
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
 
-    body = smartgallery_app.app.test_client().get(
-        f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
+    body = (
+        smartgallery_app.app.test_client().get(f"/galleryout/api/file_full_details/{shown_file}").get_data(as_text=True)
+    )
 
     assert _PROMPT in body
     assert _MODEL in body

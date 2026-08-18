@@ -123,7 +123,8 @@ def helper():
     streamer = getattr(smartgallery, "stream_media_process", None)
     assert streamer is not None, (
         "smartgallery has no stream_media_process; the stream route reads "
-        "the transcoder inline with nothing bounding a silent child")
+        "the transcoder inline with nothing bounding a silent child"
+    )
     return streamer
 
 
@@ -165,7 +166,8 @@ def test_the_shipped_loop_would_have_blocked_for_ever(clock):
     assert process.stdout.blocked.wait(10), "the loop never reached a read"
     assert not done.is_set(), (
         "the unguarded loop returned on its own; the transcode is supposed "
-        "to sit there silently, so this test is not measuring a stall")
+        "to sit there silently, so this test is not measuring a stall"
+    )
     assert bytes(body) == b""
     assert process.poll() is None, "nothing killed the transcode"
 
@@ -184,7 +186,8 @@ def test_a_stalled_transcode_is_given_up_on(helper, clock):
 
     assert done.wait(10), (
         "the stream never ended after the transcode went silent for longer "
-        "than its bound; the thread serving that request is still blocked")
+        "than its bound; the thread serving that request is still blocked"
+    )
     assert bytes(body) == b""
 
 
@@ -220,8 +223,8 @@ def test_a_slow_stream_is_left_alone(helper, clock):
     assert done.wait(10), "the slow stream never ended"
 
     assert bytes(body) == b"x" * (64 * chunks), (
-        f"a stream that kept producing was cut off after "
-        f"{len(body)} of {64 * chunks} bytes")
+        f"a stream that kept producing was cut off after {len(body)} of {64 * chunks} bytes"
+    )
 
 
 def test_an_ordinary_stream_arrives_whole(helper, clock):
@@ -252,16 +255,17 @@ def test_the_stream_route_reads_through_the_helper(gallery_tree):
 
     tree = gallery_tree
 
-    route = next((node for node in ast.walk(tree)
-                  if isinstance(node, ast.FunctionDef)
-                  and node.name == "stream_video"), None)
+    route = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "stream_video"), None
+    )
     assert route is not None, "stream_video is gone; this check is stale"
 
-    called = {call.func.id for call in ast.walk(route)
-              if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)}
+    called = {
+        call.func.id for call in ast.walk(route) if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+    }
     assert "stream_media_process" in called, (
-        "stream_video no longer streams through stream_media_process, so "
-        "nothing bounds a transcoder that goes silent")
+        "stream_video no longer streams through stream_media_process, so nothing bounds a transcoder that goes silent"
+    )
 
 
 def test_every_pipe_the_gallery_reads_is_bounded(gallery_tree):
@@ -275,10 +279,13 @@ def test_every_pipe_the_gallery_reads_is_bounded(gallery_tree):
 
     piped = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "Popen"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "subprocess"):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "Popen"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+        ):
             continue
         keywords = {kw.arg for kw in node.keywords if kw.arg}
         if "stdout" in keywords:
@@ -289,4 +296,5 @@ def test_every_pipe_the_gallery_reads_is_bounded(gallery_tree):
         f"clock on it -- a read from a child that stops producing blocks the "
         f"thread that serves the request. Route it through "
         f"stream_media_process or give it its own bound, then update this "
-        f"count.")
+        f"count."
+    )

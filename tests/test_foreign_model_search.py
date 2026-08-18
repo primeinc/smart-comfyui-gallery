@@ -29,10 +29,12 @@ _PREFIX = "fmodel_"
 
 
 def _infotext(model, extra_prompt=""):
-    return (f"a {_PREFIX}photo of a cat{extra_prompt}\n"
-            "Negative prompt: blurry\n"
-            "Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, Size: 512x512, "
-            f"Model hash: hash_{model}, Model: {model}")
+    return (
+        f"a {_PREFIX}photo of a cat{extra_prompt}\n"
+        "Negative prompt: blurry\n"
+        "Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, Size: 512x512, "
+        f"Model hash: hash_{model}, Model: {model}"
+    )
 
 
 class _InlineExecutor:
@@ -57,20 +59,17 @@ class _InlineExecutor:
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two foreign pictures from different checkpoints, one with a LoRA."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
     base = smartgallery_app.BASE_OUTPUT_PATH
     made = []
-    for model, extra in (("dreamshaper_v8", " <lora:filmgrain_v2:0.6>"),
-                         ("juggernaut_xl", "")):
+    for model, extra in (("dreamshaper_v8", " <lora:filmgrain_v2:0.6>"), ("juggernaut_xl", "")):
         name = f"{_PREFIX}{model}.png"
         info = PngImagePlugin.PngInfo()
         info.add_text("parameters", _infotext(model, extra))
-        Image.new("RGB", (24, 24), (3, 3, 3)).save(os.path.join(base, name),
-                                                   pnginfo=info)
+        Image.new("RGB", (24, 24), (3, 3, 3)).save(os.path.join(base, name), pnginfo=info)
         made.append(name)
 
     conn = smartgallery_app.get_db_connection()
@@ -78,8 +77,7 @@ def library(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r[0]: r[1] for r in conn.execute(
-            f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        ids = {r[0]: r[1] for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
     finally:
         conn.close()
 
@@ -97,8 +95,7 @@ def library(smartgallery_app, monkeypatch):
 
 
 def _search(smartgallery_app, ids, query):
-    html = smartgallery_app.app.test_client().get(
-        f"/galleryout/view/_root_?{query}").get_data(as_text=True)
+    html = smartgallery_app.app.test_client().get(f"/galleryout/view/_root_?{query}").get_data(as_text=True)
     return sorted(name for name, fid in ids.items() if fid and fid in html)
 
 
@@ -106,9 +103,10 @@ def test_the_model_is_recorded_where_the_search_looks(smartgallery_app, library)
     """The regression, at its source: this field was empty."""
     conn = smartgallery_app.get_db_connection()
     try:
-        rows = {r[0]: r[1] for r in conn.execute(
-            f"SELECT name, workflow_files FROM files WHERE name LIKE '{_PREFIX}%'"
-        ).fetchall()}
+        rows = {
+            r[0]: r[1]
+            for r in conn.execute(f"SELECT name, workflow_files FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        }
     finally:
         conn.close()
 
@@ -122,8 +120,8 @@ def test_a_lora_is_recorded_too(smartgallery_app, library):
     conn = smartgallery_app.get_db_connection()
     try:
         value = conn.execute(
-            "SELECT workflow_files FROM files WHERE name = ?",
-            (f"{_PREFIX}dreamshaper_v8.png",)).fetchone()[0]
+            "SELECT workflow_files FROM files WHERE name = ?", (f"{_PREFIX}dreamshaper_v8.png",)
+        ).fetchone()[0]
     finally:
         conn.close()
 
@@ -162,9 +160,10 @@ def test_clustering_is_untouched(smartgallery_app, library):
     checkpoints still hash differently, and neither hash is empty."""
     conn = smartgallery_app.get_db_connection()
     try:
-        hashes = {r[0]: r[1] for r in conn.execute(
-            f"SELECT name, models_hash FROM files WHERE name LIKE '{_PREFIX}%'"
-        ).fetchall()}
+        hashes = {
+            r[0]: r[1]
+            for r in conn.execute(f"SELECT name, models_hash FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        }
     finally:
         conn.close()
 

@@ -143,10 +143,7 @@ def test_priority_file_fully_indexed_outside_the_cycle_budget(tmp_path):
     conn = sqlite3.connect(cfg.db_path)
     try:
         hashed = {r[0] for r in conn.execute("SELECT file_id FROM ai_file_hashes")}
-        embedded = {
-            (r[0], r[1])
-            for r in conn.execute("SELECT file_id, space FROM ai_embeddings")
-        }
+        embedded = {(r[0], r[1]) for r in conn.execute("SELECT file_id, space FROM ai_embeddings")}
     finally:
         conn.close()
     assert hashed == {"urgent_file"}
@@ -179,9 +176,7 @@ def test_priority_request_wakes_a_sleeping_worker(tmp_path):
         while time.time() < deadline:
             conn = sqlite3.connect(cfg.db_path)
             try:
-                hashed = conn.execute(
-                    "SELECT 1 FROM ai_file_hashes WHERE file_id = 'wake_file'"
-                ).fetchone() is not None
+                hashed = conn.execute("SELECT 1 FROM ai_file_hashes WHERE file_id = 'wake_file'").fetchone() is not None
             finally:
                 conn.close()
             if hashed:
@@ -223,8 +218,7 @@ def test_sync_index_faces_scan_suppresses_worker_rescan(tmp_path):
     assert result["faces"] is True
 
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
-    remaining = worker._scan_candidates(
-        conn, "faces", StubFaceBackend(lambda _img: []), 10)
+    remaining = worker._scan_candidates(conn, "faces", StubFaceBackend(lambda _img: []), 10)
     conn.close()
     assert [r["id"] for r in remaining] == []
 
@@ -243,9 +237,12 @@ def test_indexing_totals_counts_files_and_stage_coverage(tmp_path):
 
     now = time.time()
     hashing.upsert_hashes(
-        conn, "img1",
+        conn,
+        "img1",
         hashing.HashResult(sha256="a" * 64, phash64=0, dhash64=0),
-        1000.0, "algo-v1", now,
+        1000.0,
+        "algo-v1",
+        now,
     )
     backend = StubSemanticEmbedder()
     record_scan(conn, "img1", "faces", backend, 1000.0, now, 0)
@@ -324,9 +321,12 @@ def test_duplicates_pending_until_hashed(api):
     conn = sqlite3.connect(api.cfg.db_path)
     conn.row_factory = sqlite3.Row
     hashing.upsert_hashes(
-        conn, "fresh_img",
+        conn,
+        "fresh_img",
         hashing.HashResult(sha256="d" * 64, phash64=0, dhash64=0),
-        1000.0, "algo-v1", time.time(),
+        1000.0,
+        "algo-v1",
+        time.time(),
     )
     conn.close()
 
@@ -344,8 +344,7 @@ def test_faces_pending_vs_scanned_zero_faces(api):
 
     conn = sqlite3.connect(api.cfg.db_path)
     conn.row_factory = sqlite3.Row
-    record_scan(conn, "fresh_img", "faces", StubSemanticEmbedder(),
-                1000.0, time.time(), 0)
+    record_scan(conn, "fresh_img", "faces", StubSemanticEmbedder(), 1000.0, time.time(), 0)
     conn.close()
 
     after = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
@@ -362,8 +361,7 @@ def test_review_pending_vs_recorded_failure(api):
 
     conn = sqlite3.connect(api.cfg.db_path)
     conn.row_factory = sqlite3.Row
-    record_scan(conn, "fresh_img", "review", StubSemanticEmbedder(),
-                1000.0, time.time(), -1)
+    record_scan(conn, "fresh_img", "review", StubSemanticEmbedder(), 1000.0, time.time(), -1)
     conn.close()
 
     after = api.client.get(f"{_PREFIX}/review/fresh_img").get_json()
@@ -378,9 +376,13 @@ def test_status_carries_indexing_backlog_totals(api):
     assert status["indexing"]["files_total"] == 2
     assert status["indexing"]["visual_files_total"] == 1
     assert set(status["indexing"]) == {
-        "files_total", "visual_files_total", "hashed",
-        "embeddings_semantic", "embeddings_visual",
-        "faces_scanned", "reviews_scanned",
+        "files_total",
+        "visual_files_total",
+        "hashed",
+        "embeddings_semantic",
+        "embeddings_visual",
+        "faces_scanned",
+        "reviews_scanned",
     }
 
 
@@ -415,16 +417,13 @@ def test_index_endpoint_force_reschedules_review_before_queueing(api):
     priority pass re-reviews it."""
     conn = sqlite3.connect(api.cfg.db_path)
     conn.row_factory = sqlite3.Row
-    record_scan(conn, "fresh_img", "review", StubSemanticEmbedder(),
-                1000.0, time.time(), 2)
+    record_scan(conn, "fresh_img", "review", StubSemanticEmbedder(), 1000.0, time.time(), 2)
     conn.close()
 
-    fake_worker = SimpleNamespace(
-        is_running=True, request_priority_index=lambda _fid: True)
+    fake_worker = SimpleNamespace(is_running=True, request_priority_index=lambda _fid: True)
     set_worker(fake_worker)
     try:
-        data = api.client.post(f"{_PREFIX}/index/fresh_img",
-                               json={"force": True}).get_json()
+        data = api.client.post(f"{_PREFIX}/index/fresh_img", json={"force": True}).get_json()
     finally:
         set_worker(None)
     assert data["review_rescheduled"] is True
@@ -432,8 +431,8 @@ def test_index_endpoint_force_reschedules_review_before_queueing(api):
     conn = sqlite3.connect(api.cfg.db_path)
     try:
         remaining = conn.execute(
-            "SELECT COUNT(*) FROM ai_scan_log WHERE file_id = 'fresh_img' "
-            "AND kind = 'review'").fetchone()[0]
+            "SELECT COUNT(*) FROM ai_scan_log WHERE file_id = 'fresh_img' AND kind = 'review'"
+        ).fetchone()[0]
     finally:
         conn.close()
     assert remaining == 0
@@ -468,15 +467,12 @@ def test_sync_index_faces_queue_a_recluster_for_the_worker(tmp_path):
     file_row = conn.execute("SELECT * FROM files WHERE id = 'clustered_file'").fetchone()
     _index_one_file(conn, cfg, file_row, force=False)
 
-    markers = [r[0] for r in conn.execute(
-        "SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'")]
+    markers = [r[0] for r in conn.execute("SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'")]
     assert len(markers) == 1
 
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=10)
     worker._process_faces(conn, get_face_backend(cfg), 10)
-    remaining = conn.execute(
-        "SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'"
-    ).fetchall()
+    remaining = conn.execute("SELECT key FROM ai_dam_state WHERE key LIKE 'faces_cluster_pending:%'").fetchall()
     conn.close()
     assert remaining == []
 
@@ -487,8 +483,7 @@ def test_faces_modified_file_reads_as_pending_again(api):
     not 'scanned — nothing found'."""
     conn = sqlite3.connect(api.cfg.db_path)
     conn.row_factory = sqlite3.Row
-    record_scan(conn, "fresh_img", "faces", StubSemanticEmbedder(),
-                1000.0, time.time(), 0)
+    record_scan(conn, "fresh_img", "faces", StubSemanticEmbedder(), 1000.0, time.time(), 0)
     conn.close()
     scanned = api.client.get(f"{_PREFIX}/faces/fresh_img").get_json()
     assert scanned["pending"] is False
@@ -521,8 +516,7 @@ def test_backlog_processes_newest_files_first(tmp_path):
     conn = sqlite3.connect(cfg.db_path)
     try:
         hashed = {r[0] for r in conn.execute("SELECT file_id FROM ai_file_hashes")}
-        embedded = {r[0] for r in conn.execute(
-            "SELECT DISTINCT file_id FROM ai_embeddings")}
+        embedded = {r[0] for r in conn.execute("SELECT DISTINCT file_id FROM ai_embeddings")}
     finally:
         conn.close()
     assert hashed == {"today", "yesterday"}
@@ -572,8 +566,7 @@ def test_loop_skips_sleep_while_backlog_remains(tmp_path):
         while time.time() < deadline:
             conn = sqlite3.connect(cfg.db_path)
             try:
-                count = conn.execute(
-                    "SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0]
+                count = conn.execute("SELECT COUNT(*) FROM ai_file_hashes").fetchone()[0]
             finally:
                 conn.close()
             if count >= 4:
@@ -603,8 +596,7 @@ def test_priority_request_served_mid_stage(tmp_path):
     def tracking_stage(conn_, backend, space, limit, only_file_id=None):
         if only_file_id is not None:
             order.append(("priority", only_file_id, space))
-        return original_stage(conn_, backend, space, limit,
-                              only_file_id=only_file_id)
+        return original_stage(conn_, backend, space, limit, only_file_id=only_file_id)
 
     worker._process_embedding_space = tracking_stage
 
@@ -623,7 +615,8 @@ def test_priority_request_served_mid_stage(tmp_path):
     worker._run_cycle()
 
     assert ("priority", "urgent", SPACE_SEMANTIC) in order, (
-        "the mid-cycle priority request was not served during the cycle")
+        "the mid-cycle priority request was not served during the cycle"
+    )
 
 
 # --- status page data + CUDA-swap hold -----------------------------------------
@@ -686,8 +679,7 @@ def test_model_stages_share_the_budget_evenly(tmp_path):
 
     conn = sqlite3.connect(cfg.db_path)
     try:
-        by_space = dict(conn.execute(
-            "SELECT space, COUNT(*) FROM ai_embeddings GROUP BY space").fetchall())
+        by_space = dict(conn.execute("SELECT space, COUNT(*) FROM ai_embeddings GROUP BY space").fetchall())
     finally:
         conn.close()
     assert by_space.get(SPACE_SEMANTIC, 0) == 2
@@ -708,9 +700,11 @@ def test_backlog_reviews_ride_along_never_starved(tmp_path, monkeypatch):
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=2)
     review_calls = []
     monkeypatch.setattr(
-        worker, "_backend",
-        lambda key, resolver, _orig=worker._backend: (
-            object() if key == "critic" else _orig(key, resolver)))
+        worker,
+        "_backend",
+        lambda key, resolver, _orig=worker._backend: object() if key == "critic" else _orig(key, resolver),
+    )
+
     def _fake_process_reviews(_self, _conn, _backend, limit, only_file_id=None):
         del only_file_id  # accepted only for _process_reviews' call-signature compatibility
         review_calls.append(limit)
@@ -718,10 +712,10 @@ def test_backlog_reviews_ride_along_never_starved(tmp_path, monkeypatch):
 
     monkeypatch.setattr(AIWorker, "_process_reviews", _fake_process_reviews)
 
-    worker._run_cycle()   # embedding backlog present -> one ride-along review
+    worker._run_cycle()  # embedding backlog present -> one ride-along review
     assert review_calls == [1]
 
-    while True:           # drain the fast-stage backlog
+    while True:  # drain the fast-stage backlog
         before = dict(worker.stats)
         worker._run_cycle()
         if worker.stats["embedded"] == before["embedded"]:
@@ -741,9 +735,7 @@ def test_failed_provisioning_retries_after_cooldown(tmp_path, monkeypatch):
     worker._provision_started_at = time.monotonic() - 601.0
 
     monkeypatch.setattr(W, "provision_groups_for", lambda _config: ["semantic"])
-    monkeypatch.setattr(
-        W.provisioning, "provision",
-        lambda *_a, **_k: {"downloaded": [], "skipped": []})
+    monkeypatch.setattr(W.provisioning, "provision", lambda *_a, **_k: {"downloaded": [], "skipped": []})
 
     worker._maybe_retry_provision()
     worker._provision_thread.join(timeout=10)
@@ -764,8 +756,7 @@ def test_cycle_log_names_why_stages_are_waiting(tmp_path, caplog):
     conn.close()
 
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=5)
-    worker.provision_state = {"state": "failed: connection reset",
-                              "groups": ["semantic", "visual"]}
+    worker.provision_state = {"state": "failed: connection reset", "groups": ["semantic", "visual"]}
     worker._provision_started_at = time.monotonic() - 120.0
 
     with caplog.at_level(logging.INFO, logger="smartgallery_ai.worker"):
@@ -788,8 +779,7 @@ def test_app_git_ref_reads_branch_and_short_sha(tmp_path):
     assert app_git_ref(str(tmp_path)) == "feature-x@abc123def"
 
     (git / "refs" / "heads" / "feature-x").unlink()
-    (git / "packed-refs").write_text(
-        "# pack-refs\nfeedbeef12345678 refs/heads/feature-x\n")
+    (git / "packed-refs").write_text("# pack-refs\nfeedbeef12345678 refs/heads/feature-x\n")
     assert app_git_ref(str(tmp_path)) == "feature-x@feedbeef1"
 
     (git / "HEAD").write_text("0123456789abcdef\n")
@@ -809,7 +799,6 @@ def surf(tmp_path):
     of them exact duplicates with sizes), one policy-hidden embedded file,
     two reviews with distinct quality, and one 2-face cluster."""
 
-
     cfg = _cfg(tmp_path)
     conn = _make_db(cfg.db_path)
     now = time.time()
@@ -819,30 +808,47 @@ def surf(tmp_path):
     stub = StubSemanticEmbedder()
     store = vectors.VectorStore(cache_dir=cfg.cache_dir, ephemeral=True)
     for fid in ("vis_a", "vis_b", "hidden1"):
-        store.add(conn, fid, SPACE_SEMANTIC, stub.model_id, stub.model_version,
-                  stub.embed_text(fid), 1000.0)
+        store.add(conn, fid, SPACE_SEMANTIC, stub.model_id, stub.model_version, stub.embed_text(fid), 1000.0)
 
-    store_review(conn, "vis_a",
-                 ReviewResult(quality_score=0.2, prompt_alignment_score=None,
-                              summary="rough", findings=[
-                                  Finding(type="artifact", severity="high",
-                                          confidence=0.9, localizable=False,
-                                          description="bad hands")]),
-                 "stub-critic", "stub-v1", RUBRIC_VERSION, None, 1000.0, now)
-    store_review(conn, "vis_b",
-                 ReviewResult(quality_score=0.8, prompt_alignment_score=0.5,
-                              summary="clean", findings=[]),
-                 "stub-critic", "stub-v1", RUBRIC_VERSION, None, 1000.0, now)
+    store_review(
+        conn,
+        "vis_a",
+        ReviewResult(
+            quality_score=0.2,
+            prompt_alignment_score=None,
+            summary="rough",
+            findings=[
+                Finding(type="artifact", severity="high", confidence=0.9, localizable=False, description="bad hands")
+            ],
+        ),
+        "stub-critic",
+        "stub-v1",
+        RUBRIC_VERSION,
+        None,
+        1000.0,
+        now,
+    )
+    store_review(
+        conn,
+        "vis_b",
+        ReviewResult(quality_score=0.8, prompt_alignment_score=0.5, summary="clean", findings=[]),
+        "stub-critic",
+        "stub-v1",
+        RUBRIC_VERSION,
+        None,
+        1000.0,
+        now,
+    )
 
     shared = "e" * 64
     for fid, size in (("vis_a", 100), ("vis_b", 40), ("hidden1", 0)):
         conn.execute("UPDATE files SET size = ? WHERE id = ?", (size, fid))
-    hashing.upsert_hashes(conn, "vis_a",
-                          hashing.HashResult(sha256=shared, phash64=0, dhash64=0),
-                          1000.0, "algo-v1", now)
-    hashing.upsert_hashes(conn, "vis_b",
-                          hashing.HashResult(sha256=shared, phash64=-1, dhash64=0),
-                          1000.0, "algo-v1", now)
+    hashing.upsert_hashes(
+        conn, "vis_a", hashing.HashResult(sha256=shared, phash64=0, dhash64=0), 1000.0, "algo-v1", now
+    )
+    hashing.upsert_hashes(
+        conn, "vis_b", hashing.HashResult(sha256=shared, phash64=-1, dhash64=0), 1000.0, "algo-v1", now
+    )
 
     rng = np.random.default_rng(3)
     base = rng.standard_normal(16).astype(np.float32)
@@ -850,21 +856,26 @@ def surf(tmp_path):
     for fid, _seed in (("vis_a", 1), ("vis_b", 2)):
         jitter = base + rng.standard_normal(16).astype(np.float32) * 0.01
         replace_faces_for_file(
-            conn, fid,
-            [FaceDetection(bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[],
-                           det_score=0.9, embedding=jitter.astype(np.float32))],
-            StubFaceBackend.model_id, StubFaceBackend.model_version, 1000.0, now)
-    cluster_ids = cluster_faces(conn, StubFaceBackend.model_id,
-                                StubFaceBackend.model_version,
-                                threshold=0.9, min_cluster_size=2)
+            conn,
+            fid,
+            [
+                FaceDetection(
+                    bbox=(0.1, 0.1, 0.2, 0.2), landmarks=[], det_score=0.9, embedding=jitter.astype(np.float32)
+                )
+            ],
+            StubFaceBackend.model_id,
+            StubFaceBackend.model_version,
+            1000.0,
+            now,
+        )
+    cluster_ids = cluster_faces(
+        conn, StubFaceBackend.model_id, StubFaceBackend.model_version, threshold=0.9, min_cluster_size=2
+    )
     conn.close()
 
     app = Flask(__name__)
-    app.register_blueprint(
-        create_ai_blueprint(cfg, file_access_check=lambda fid: fid != "hidden1"),
-        url_prefix=_PREFIX)
-    return SimpleNamespace(cfg=cfg, client=app.test_client(),
-                           cluster_id=cluster_ids[0])
+    app.register_blueprint(create_ai_blueprint(cfg, file_access_check=lambda fid: fid != "hidden1"), url_prefix=_PREFIX)
+    return SimpleNamespace(cfg=cfg, client=app.test_client(), cluster_id=cluster_ids[0])
 
 
 def test_semantic_search_filters_hidden_files(surf):
@@ -908,20 +919,17 @@ def test_cluster_label_roundtrip_and_unknown_404(surf):
     """POST sets a cluster's label (visible in the listing), empty clears
     it, and an unknown cluster id is a 404."""
     cid = surf.cluster_id
-    res = surf.client.post(f"{_PREFIX}/faces/clusters/{cid}/label",
-                           json={"label": "  Sarah  "})
+    res = surf.client.post(f"{_PREFIX}/faces/clusters/{cid}/label", json={"label": "  Sarah  "})
     assert res.get_json()["label"] == "Sarah"
 
     listing = surf.client.get(f"{_PREFIX}/faces/clusters").get_json()
     labels = {c["cluster_id"]: c["label"] for c in listing["clusters"]}
     assert labels[cid] == "Sarah"
 
-    cleared = surf.client.post(f"{_PREFIX}/faces/clusters/{cid}/label",
-                               json={"label": ""})
+    cleared = surf.client.post(f"{_PREFIX}/faces/clusters/{cid}/label", json={"label": ""})
     assert cleared.get_json()["label"] is None
 
-    assert surf.client.post(f"{_PREFIX}/faces/clusters/99999/label",
-                            json={"label": "x"}).status_code == 404
+    assert surf.client.post(f"{_PREFIX}/faces/clusters/99999/label", json={"label": "x"}).status_code == 404
 
 
 def test_semantic_embedder_for_search_only_lends_locked_instances(tmp_path):

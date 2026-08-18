@@ -39,8 +39,7 @@ def test_an_anonymous_caller_is_refused(locked):
     """The regression: this answered with library counts and worker errors."""
     resp = locked.app.test_client().get(_STATUS)
 
-    assert resp.status_code in (401, 403), (
-        f"the AI status answered {resp.status_code} to a caller with no session")
+    assert resp.status_code in (401, 403), f"the AI status answered {resp.status_code} to a caller with no session"
 
 
 def test_a_customer_is_refused(locked):

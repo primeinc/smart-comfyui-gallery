@@ -41,10 +41,12 @@ _INIT = _REPO_ROOT / "docker_init.bash"
 
 _PASSWORD = "hunter2222"
 _PASSPHRASE = "s3cr3t-passphrase"
-_DUMP = (f"CLI_ARGS=--port 8189 --admin-pass {_PASSWORD} --force-login\n"
-         f"ADMIN_PASSWORD={_PASSPHRASE}\n"
-         "HF_TOKEN=abcdef123\n"
-         "BASE_OUTPUT_PATH=/mnt/output\n")
+_DUMP = (
+    f"CLI_ARGS=--port 8189 --admin-pass {_PASSWORD} --force-login\n"
+    f"ADMIN_PASSWORD={_PASSPHRASE}\n"
+    "HF_TOKEN=abcdef123\n"
+    "BASE_OUTPUT_PATH=/mnt/output\n"
+)
 
 
 def _bash():
@@ -62,7 +64,7 @@ def functions(tmp_path_factory):
     marker = "# smartgallerytoo is a specfiic user"
     assert marker in text, "the entrypoint no longer has the expected shape"
 
-    prefix = text[:text.index(marker)]
+    prefix = text[: text.index(marker)]
     # Only that the function under test is in the slice. Requiring the
     # helper that implements the fix would make these tests ERROR on an
     # unfixed entrypoint instead of reporting the leak they exist to catch.
@@ -79,12 +81,14 @@ def _run(functions, tmp_path, script):
     # A deliberately bare environment: the suite's own conftest exports
     # BASE_OUTPUT_PATH, and inheriting it sends load_env down its
     # "overwriting" branch instead of its "setting" one.
-    env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT", "WINDIR")
-           if key in os.environ}
+    env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT", "WINDIR") if key in os.environ}
     done = subprocess.run(
-        [_bash(), "-c", (f'source "{functions.as_posix()}"; '
-                        f'load_env "{dump.as_posix()}" true; {script}')],
-        capture_output=True, text=True, timeout=300, env=env)
+        [_bash(), "-c", (f'source "{functions.as_posix()}"; load_env "{dump.as_posix()}" true; {script}')],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env=env,
+    )
     return done.stdout + done.stderr
 
 
@@ -95,7 +99,8 @@ def test_the_harness_reaches_the_real_function(functions, tmp_path):
 
     assert "Loading environment variables from" in output, output
     assert "BASE_OUTPUT_PATH [/mnt/output]" in output, (
-        "a value that is not secret should still be printed in full:\n" + output)
+        "a value that is not secret should still be printed in full:\n" + output
+    )
 
 
 def test_the_password_is_not_printed(functions, tmp_path):
@@ -118,9 +123,7 @@ def test_a_password_shaped_variable_is_not_printed(functions, tmp_path):
 def test_the_values_that_reach_the_app_are_unchanged(functions, tmp_path):
     """The dangerous way to pass the tests above: redact the value itself.
     Every Docker user would then get a password of literal asterisks."""
-    output = _run(
-        functions, tmp_path,
-        'echo "EXPORTED_CLI=[$CLI_ARGS]"; echo "EXPORTED_PASS=[$ADMIN_PASSWORD]"')
+    output = _run(functions, tmp_path, 'echo "EXPORTED_CLI=[$CLI_ARGS]"; echo "EXPORTED_PASS=[$ADMIN_PASSWORD]"')
 
     assert f"EXPORTED_CLI=[--port 8189 --admin-pass {_PASSWORD} --force-login]" in output, output
     assert f"EXPORTED_PASS=[{_PASSPHRASE}]" in output, output
@@ -128,7 +131,6 @@ def test_the_values_that_reach_the_app_are_unchanged(functions, tmp_path):
 
 def test_the_entrypoint_is_valid_bash():
     """`bash -n` on the whole file, not just the part sourced above."""
-    done = subprocess.run([_bash(), "-n", str(_INIT)],
-                          capture_output=True, text=True, timeout=300)
+    done = subprocess.run([_bash(), "-n", str(_INIT)], capture_output=True, text=True, timeout=300)
 
     assert done.returncode == 0, done.stderr

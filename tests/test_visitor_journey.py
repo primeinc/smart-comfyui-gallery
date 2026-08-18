@@ -54,8 +54,7 @@ class _InlineExecutor:
 @pytest.fixture
 def exhibition(smartgallery_app, monkeypatch):
     """An exhibition with one public album, one picture, and one visitor."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
 
@@ -71,18 +70,19 @@ def exhibition(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM users WHERE username LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                               (f"{_PREFIX}pic.png",)).fetchone()[0]
-        conn.execute("UPDATE files SET workflow_prompt = ? WHERE id = ?",
-                     (_PROMPT, file_id))
-        conn.execute("INSERT INTO collections (name, type, is_public, created_at) "
-                     "VALUES (?, 'user_album', 1, 1.0)", (f"{_PREFIX}album",))
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()[0]
+        conn.execute("UPDATE files SET workflow_prompt = ? WHERE id = ?", (_PROMPT, file_id))
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, created_at) VALUES (?, 'user_album', 1, 1.0)",
+            (f"{_PREFIX}album",),
+        )
         coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                     "VALUES (?, ?)", (coll_id, file_id))
-        conn.execute("INSERT INTO users (username, password, full_name, role, "
-                     "is_active) VALUES (?, ?, 'A Visitor', 'CUSTOMER', 1)",
-                     (f"{_PREFIX}guest", sg_auth.hash_password(_PASSWORD)))
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, file_id))
+        conn.execute(
+            "INSERT INTO users (username, password, full_name, role, "
+            "is_active) VALUES (?, ?, 'A Visitor', 'CUSTOMER', 1)",
+            (f"{_PREFIX}guest", sg_auth.hash_password(_PASSWORD)),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -107,20 +107,17 @@ def test_a_visitor_can_do_the_whole_journey(smartgallery_app, exhibition):
     file_id = exhibition["file_id"]
 
     # 1. Sign in.
-    login = client.post("/galleryout/login",
-                        json={"username": f"{_PREFIX}guest", "password": _PASSWORD})
+    login = client.post("/galleryout/login", json={"username": f"{_PREFIX}guest", "password": _PASSWORD})
     assert login.status_code == 200, login.get_data(as_text=True)
     assert login.get_json()["status"] == "success"
 
     # 2. The album list, which is the front page of an exhibition.
     albums = client.get("/galleryout/api/collections")
     assert albums.status_code == 200, albums.get_data(as_text=True)
-    assert exhibition["album"] in albums.get_data(as_text=True), (
-        "the visitor cannot see the public album at all")
+    assert exhibition["album"] in albums.get_data(as_text=True), "the visitor cannot see the public album at all"
 
     # 3. Open it and get its contents.
-    listing = client.get(f"/galleryout/collection/{exhibition['coll_id']}",
-                         headers={"Accept": "application/json"})
+    listing = client.get(f"/galleryout/collection/{exhibition['coll_id']}", headers={"Accept": "application/json"})
     assert listing.status_code == 200, listing.get_data(as_text=True)
     names = [f["name"] for f in listing.get_json()["files"]]
     assert names == [f"{_PREFIX}pic.png"], names
@@ -141,13 +138,11 @@ def test_a_visitor_can_do_the_whole_journey(smartgallery_app, exhibition):
     assert _PROMPT not in details.get_data(as_text=True), "the prompt came with it"
 
     # 6. Rate it.
-    rated = client.post("/galleryout/api/exhibition/rate",
-                        json={"file_id": file_id, "rating": 4})
+    rated = client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 4})
     assert rated.status_code == 200, rated.get_data(as_text=True)
 
     # 7. Say something about it.
-    posted = client.post("/galleryout/api/exhibition/post_comment",
-                         json={"file_id": file_id, "text": "lovely light"})
+    posted = client.post("/galleryout/api/exhibition/post_comment", json={"file_id": file_id, "text": "lovely light"})
     assert posted.status_code == 200, posted.get_data(as_text=True)
 
     # 8. Read it back, as the page does after posting.
@@ -159,8 +154,7 @@ def test_a_visitor_can_do_the_whole_journey(smartgallery_app, exhibition):
     # 9. And the rating stuck, under the identity the visitor was given.
     conn = smartgallery_app.get_db_connection()
     try:
-        stored = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?",
-                              (file_id,)).fetchone()
+        stored = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?", (file_id,)).fetchone()
     finally:
         conn.close()
     assert stored and stored[0] == 4, "the visitor's rating was not recorded"
@@ -176,13 +170,14 @@ def test_browsing_and_writing_need_a_session(smartgallery_app, exhibition):
     for label, method, url, payload in [
         ("album list", "GET", "/galleryout/api/collections", None),
         ("listing", "GET", f"/galleryout/collection/{exhibition['coll_id']}", None),
-        ("rate", "POST", "/galleryout/api/exhibition/rate",
-         {"file_id": file_id, "rating": 1}),
-        ("comment", "POST", "/galleryout/api/exhibition/post_comment",
-         {"file_id": file_id, "text": "no"}),
+        ("rate", "POST", "/galleryout/api/exhibition/rate", {"file_id": file_id, "rating": 1}),
+        ("comment", "POST", "/galleryout/api/exhibition/post_comment", {"file_id": file_id, "text": "no"}),
     ]:
-        resp = (client.post(url, json=payload) if method == "POST"
-                else client.get(url, headers={"Accept": "application/json"}))
+        resp = (
+            client.post(url, json=payload)
+            if method == "POST"
+            else client.get(url, headers={"Accept": "application/json"})
+        )
         body = resp.get_data().decode("utf-8", "replace")
         if resp.status_code == 200 and "exhibition_login" not in body:
             answered.append(f"{label} answered 200")
@@ -190,8 +185,7 @@ def test_browsing_and_writing_need_a_session(smartgallery_app, exhibition):
     assert answered == [], f"reachable without signing in: {answered}"
 
 
-def test_a_public_file_itself_is_served_without_a_session(smartgallery_app,
-                                                          exhibition):
+def test_a_public_file_itself_is_served_without_a_session(smartgallery_app, exhibition):
     """Not a hole -- the rule, written down.
 
     is_file_accessible has an explicit branch for a caller with no session:
@@ -213,8 +207,7 @@ def test_a_public_file_itself_is_served_without_a_session(smartgallery_app,
     assert _PROMPT not in details.get_data(as_text=True)
 
 
-def test_a_file_in_no_album_is_not_served_without_a_session(smartgallery_app,
-                                                             exhibition):
+def test_a_file_in_no_album_is_not_served_without_a_session(smartgallery_app, exhibition):
     """The bound on the rule above: public means in a public album, not
     'any file whose id you can name'."""
     base = smartgallery_app.BASE_OUTPUT_PATH
@@ -224,8 +217,7 @@ def test_a_file_in_no_album_is_not_served_without_a_session(smartgallery_app,
     conn = smartgallery_app.get_db_connection()
     try:
         smartgallery_app.full_sync_database(conn)
-        uncurated = conn.execute("SELECT id FROM files WHERE name = ?",
-                                 (f"{_PREFIX}uncurated.png",)).fetchone()[0]
+        uncurated = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}uncurated.png",)).fetchone()[0]
     finally:
         conn.close()
 

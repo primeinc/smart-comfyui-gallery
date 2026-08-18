@@ -57,8 +57,7 @@ class _InlineExecutor:
 @pytest.fixture
 def guarded(smartgallery_app, monkeypatch):
     """A file in the library, and a server that owes guests a cleaned copy."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     # Exhibition mode is where this matters: it is the mode that shows the
     # library to visitors, and the only one where a non-staff caller may
     # fetch a file at all (is_file_accessible refuses them outright under
@@ -78,15 +77,15 @@ def guarded(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                               (f"{_PREFIX}pic.png",)).fetchone()[0]
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()[0]
         # A visitor may only see files in a public album, so the file has to
         # be in one for the request to reach the stripping step.
-        conn.execute("INSERT INTO collections (name, type, is_public, created_at) "
-                     "VALUES (?, 'user_album', 1, 1.0)", (f"{_PREFIX}album",))
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, created_at) VALUES (?, 'user_album', 1, 1.0)",
+            (f"{_PREFIX}album",),
+        )
         coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)",
-                     (coll_id, file_id))
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, file_id))
         conn.commit()
     finally:
         conn.close()
@@ -123,23 +122,19 @@ def test_the_secret_really_is_in_the_file(smartgallery_app, guarded):
 def test_a_guest_is_refused_when_stripping_fails(smartgallery_app, guarded, monkeypatch):
     """The regression: no ffmpeg, so the strip fails and the original used
     to go out with the prompt still inside it."""
-    monkeypatch.setattr(smartgallery_app, "strip_media_metadata",
-                        lambda *a, **k: False)
+    monkeypatch.setattr(smartgallery_app, "strip_media_metadata", lambda *a, **k: False)
     client = _as(smartgallery_app, "CUSTOMER")
 
     resp = client.get(f"/galleryout/file/{guarded}")
 
-    assert _SECRET.encode() not in resp.get_data(), (
-        "the prompt was served to a guest because stripping failed")
-    assert resp.status_code != 200, (
-        f"a guest got a 200 for a file that could not be cleaned ({resp.status_code})")
+    assert _SECRET.encode() not in resp.get_data(), "the prompt was served to a guest because stripping failed"
+    assert resp.status_code != 200, f"a guest got a 200 for a file that could not be cleaned ({resp.status_code})"
 
 
 def test_staff_still_get_the_original(smartgallery_app, guarded, monkeypatch):
     """The counterpart: stripping is for guests. Staff must keep getting
     the real file, or the fix has broken the gallery for its owner."""
-    monkeypatch.setattr(smartgallery_app, "strip_media_metadata",
-                        lambda *a, **k: False)
+    monkeypatch.setattr(smartgallery_app, "strip_media_metadata", lambda *a, **k: False)
     client = _as(smartgallery_app, "ADMIN")
 
     resp = client.get(f"/galleryout/file/{guarded}")
@@ -148,18 +143,15 @@ def test_staff_still_get_the_original(smartgallery_app, guarded, monkeypatch):
     assert _SECRET.encode() in resp.get_data(), "staff were denied their own metadata"
 
 
-def test_a_guest_cannot_download_what_could_not_be_cleaned(
-        smartgallery_app, guarded, monkeypatch):
+def test_a_guest_cannot_download_what_could_not_be_cleaned(smartgallery_app, guarded, monkeypatch):
     """The download route had the same fallback, and it matters more: the
     visitor keeps the file and can read it at leisure."""
-    monkeypatch.setattr(smartgallery_app, "strip_media_metadata",
-                        lambda *a, **k: False)
+    monkeypatch.setattr(smartgallery_app, "strip_media_metadata", lambda *a, **k: False)
     client = _as(smartgallery_app, "CUSTOMER")
 
     resp = client.get(f"/galleryout/download/{guarded}")
 
-    assert _SECRET.encode() not in resp.get_data(), (
-        "the original file was handed to a guest because stripping failed")
+    assert _SECRET.encode() not in resp.get_data(), "the original file was handed to a guest because stripping failed"
     assert resp.status_code != 200, resp.status_code
 
 
@@ -169,39 +161,32 @@ def _drop_cached_thumbnail(smartgallery_app):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        row = conn.execute("SELECT path, mtime FROM files WHERE name = ?",
-                           (f"{_PREFIX}pic.png",)).fetchone()
+        row = conn.execute("SELECT path, mtime FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()
     finally:
         conn.close()
     digest = hashlib.md5((row[0] + str(row[1])).encode()).hexdigest()
-    for cached in glob.glob(os.path.join(smartgallery_app.THUMBNAIL_CACHE_DIR,
-                                         f"{digest}.*")):
+    for cached in glob.glob(os.path.join(smartgallery_app.THUMBNAIL_CACHE_DIR, f"{digest}.*")):
         os.remove(cached)
 
 
-def test_thumbnails_do_not_become_a_way_round_the_stripping(
-        smartgallery_app, guarded, monkeypatch):
+def test_thumbnails_do_not_become_a_way_round_the_stripping(smartgallery_app, guarded, monkeypatch):
     """With server-side thumbnails switched off, the thumbnail route serves
     the original file and lets the browser downscale it. That is the route
     every tile in the grid asks for, so with that setting a visitor was
     handed the prompt for each picture without opening any of them."""
-    monkeypatch.setattr(smartgallery_app, "thumbnail_generation_enabled",
-                        lambda: False)
+    monkeypatch.setattr(smartgallery_app, "thumbnail_generation_enabled", lambda: False)
     _drop_cached_thumbnail(smartgallery_app)
     client = _as(smartgallery_app, "CUSTOMER")
 
     resp = client.get(f"/galleryout/thumbnail/{guarded}")
 
-    assert _SECRET.encode() not in resp.get_data(), (
-        "the thumbnail route handed a visitor the original, prompt and all")
+    assert _SECRET.encode() not in resp.get_data(), "the thumbnail route handed a visitor the original, prompt and all"
 
 
-def test_thumbnails_still_reach_staff_with_generation_off(
-        smartgallery_app, guarded, monkeypatch):
+def test_thumbnails_still_reach_staff_with_generation_off(smartgallery_app, guarded, monkeypatch):
     """The counterpart: with generation off the original IS the thumbnail,
     and staff are entitled to it."""
-    monkeypatch.setattr(smartgallery_app, "thumbnail_generation_enabled",
-                        lambda: False)
+    monkeypatch.setattr(smartgallery_app, "thumbnail_generation_enabled", lambda: False)
     _drop_cached_thumbnail(smartgallery_app)
     client = _as(smartgallery_app, "ADMIN")
 

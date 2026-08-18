@@ -50,8 +50,7 @@ class _InlineExecutor:
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """A private album shared with user 41, and a public one, each with a file."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
@@ -69,15 +68,17 @@ def library(smartgallery_app, monkeypatch):
         smartgallery_app.full_sync_database(conn)
         ids = {}
         for album, is_public, shared, filename in (
-                (f"{_PREFIX}private", 0, "41", f"{_PREFIX}secret.png"),
-                (f"{_PREFIX}public", 1, "", f"{_PREFIX}open.png")):
-            conn.execute("INSERT INTO collections (name, type, is_public, shared_users, created_at) "
-                         "VALUES (?, 'user_album', ?, ?, 1.0)", (album, is_public, shared))
+            (f"{_PREFIX}private", 0, "41", f"{_PREFIX}secret.png"),
+            (f"{_PREFIX}public", 1, "", f"{_PREFIX}open.png"),
+        ):
+            conn.execute(
+                "INSERT INTO collections (name, type, is_public, shared_users, created_at) "
+                "VALUES (?, 'user_album', ?, ?, 1.0)",
+                (album, is_public, shared),
+            )
             coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-            file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                                   (filename,)).fetchone()[0]
-            conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)",
-                         (coll_id, file_id))
+            file_id = conn.execute("SELECT id FROM files WHERE name = ?", (filename,)).fetchone()[0]
+            conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, ?)", (coll_id, file_id))
             ids[album] = coll_id
         conn.commit()
     finally:
@@ -106,8 +107,9 @@ def _client(smartgallery_app, role, user_id=9):
 
 
 def _names(resp):
-    return sorted(f["name"] for f in (resp.get_json() or {}).get("files", [])
-                  if str(f.get("name", "")).startswith(_PREFIX))
+    return sorted(
+        f["name"] for f in (resp.get_json() or {}).get("files", []) if str(f.get("name", "")).startswith(_PREFIX)
+    )
 
 
 def test_staff_can_read_the_private_album(smartgallery_app, library):
@@ -125,11 +127,9 @@ def test_a_customer_cannot_read_a_private_album(smartgallery_app, library):
     """The regression: this answered 200 with the album's contents."""
     client = _client(smartgallery_app, "CUSTOMER")
 
-    resp = client.get(f"/galleryout/collection/{library[f'{_PREFIX}private']}",
-                      headers=_JSON, follow_redirects=False)
+    resp = client.get(f"/galleryout/collection/{library[f'{_PREFIX}private']}", headers=_JSON, follow_redirects=False)
 
-    assert resp.status_code in (301, 302), (
-        f"a customer read a private album ({resp.status_code})")
+    assert resp.status_code in (301, 302), f"a customer read a private album ({resp.status_code})"
     assert f"{_PREFIX}secret.png" not in resp.get_data(as_text=True)
 
 
@@ -141,7 +141,8 @@ def test_the_all_view_is_not_a_way_around_it(smartgallery_app, library):
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
     assert _names(resp) == [f"{_PREFIX}open.png"], (
-        f"the all view exposed an album the direct request refuses: {_names(resp)}")
+        f"the all view exposed an album the direct request refuses: {_names(resp)}"
+    )
 
 
 def test_the_account_it_is_shared_with_still_reads_it(smartgallery_app, library):
@@ -151,8 +152,7 @@ def test_the_account_it_is_shared_with_still_reads_it(smartgallery_app, library)
     resp = client.get(f"/galleryout/collection/{library[f'{_PREFIX}private']}", headers=_JSON)
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
-    assert _names(resp) == [f"{_PREFIX}secret.png"], (
-        "the account the album was shared with lost access to it")
+    assert _names(resp) == [f"{_PREFIX}secret.png"], "the account the album was shared with lost access to it"
 
 
 def test_the_default_local_install_reads_everything(smartgallery_app, library, monkeypatch):
@@ -162,7 +162,8 @@ def test_the_default_local_install_reads_everything(smartgallery_app, library, m
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
     resp = smartgallery_app.app.test_client().get(
-        f"/galleryout/collection/{library[f'{_PREFIX}private']}", headers=_JSON)
+        f"/galleryout/collection/{library[f'{_PREFIX}private']}", headers=_JSON
+    )
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
     assert _names(resp) == [f"{_PREFIX}secret.png"]

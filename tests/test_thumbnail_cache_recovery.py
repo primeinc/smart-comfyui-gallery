@@ -66,9 +66,7 @@ def test_the_folder_is_put_back_when_it_has_gone(smartgallery_app, picture):
     assert made and os.path.isfile(made), made
 
 
-def test_it_is_not_recreated_outside_an_existing_gallery(smartgallery_app,
-                                                         picture, tmp_path,
-                                                         monkeypatch):
+def test_it_is_not_recreated_outside_an_existing_gallery(smartgallery_app, picture, tmp_path, monkeypatch):
     """The condition that makes putting it back safe rather than reckless.
 
     An unplugged drive leaves a mount point that is an ordinary, writable,
@@ -77,41 +75,33 @@ def test_it_is_not_recreated_outside_an_existing_gallery(smartgallery_app,
     never look at them again."""
     absent_root = tmp_path / "unplugged"
     monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(absent_root))
-    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR",
-                        str(absent_root / ".thumbnails_cache"))
+    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR", str(absent_root / ".thumbnails_cache"))
 
     made = smartgallery_app.create_thumbnail(picture, "unplugged", "image")
 
     assert made is None, made
-    assert not absent_root.exists(), (
-        "a gallery tree was created on top of a missing root")
+    assert not absent_root.exists(), "a gallery tree was created on top of a missing root"
 
 
-def test_the_helper_reports_rather_than_raising(smartgallery_app, tmp_path,
-                                                monkeypatch):
+def test_the_helper_reports_rather_than_raising(smartgallery_app, tmp_path, monkeypatch):
     """It is called from the scan's worker path, so it has to answer with a
     boolean whatever the filesystem says -- an exception there costs the
     file its thumbnail at best and the scan at worst."""
     assert smartgallery_app.ensure_thumbnail_cache_dir() is True
 
-    monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH",
-                        str(tmp_path / "nope"))
-    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR",
-                        str(tmp_path / "nope" / ".thumbnails_cache"))
+    monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(tmp_path / "nope"))
+    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR", str(tmp_path / "nope" / ".thumbnails_cache"))
 
     assert smartgallery_app.ensure_thumbnail_cache_dir() is False
 
 
-def test_waveforms_stop_instead_of_failing_per_file(smartgallery_app, tmp_path,
-                                                    monkeypatch):
+def test_waveforms_stop_instead_of_failing_per_file(smartgallery_app, tmp_path, monkeypatch):
     """The other writer into the same folder. It returns None for a missing
     cache rather than letting ffmpeg write to a path that is not there."""
     monkeypatch.setattr(smartgallery_app, "GENERATE_WAVEFORMS", True)
     monkeypatch.setattr(smartgallery_app, "FFPROBE_EXECUTABLE_PATH", "ffprobe")
-    monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH",
-                        str(tmp_path / "gone"))
-    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR",
-                        str(tmp_path / "gone" / ".thumbnails_cache"))
+    monkeypatch.setattr(smartgallery_app, "BASE_SMARTGALLERY_PATH", str(tmp_path / "gone"))
+    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR", str(tmp_path / "gone" / ".thumbnails_cache"))
 
     assert smartgallery_app.create_waveform("whatever.mp3", "h", "audio") is None
     assert not (tmp_path / "gone").exists()

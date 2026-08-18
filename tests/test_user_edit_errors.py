@@ -51,16 +51,16 @@ def admin(smartgallery_app, monkeypatch):
 
 
 def _create(client, username, role="STAFF"):
-    return client.post("/galleryout/api/admin/users",
-                       json={"username": username, "password": "longenough1",
-                             "full_name": username.title(), "role": role})
+    return client.post(
+        "/galleryout/api/admin/users",
+        json={"username": username, "password": "longenough1", "full_name": username.title(), "role": role},
+    )
 
 
 def _row(smartgallery_app, username):
     conn = smartgallery_app.get_db_connection()
     try:
-        return conn.execute("SELECT user_id, username, role FROM users "
-                            "WHERE username = ?", (username,)).fetchone()
+        return conn.execute("SELECT user_id, username, role FROM users WHERE username = ?", (username,)).fetchone()
     finally:
         conn.close()
 
@@ -91,46 +91,47 @@ def test_a_duplicate_username_is_refused_on_an_edit(smartgallery_app, admin):
     _create(admin, "bob_t")
     bob = _row(smartgallery_app, "bob_t")
 
-    renamed = admin.put("/galleryout/api/admin/users",
-                        json={"user_id": bob["user_id"], "username": "alice_t",
-                              "full_name": "Bob", "role": "STAFF", "is_active": 1})
+    renamed = admin.put(
+        "/galleryout/api/admin/users",
+        json={"user_id": bob["user_id"], "username": "alice_t", "full_name": "Bob", "role": "STAFF", "is_active": 1},
+    )
 
     assert renamed.status_code == 400, (renamed.status_code, renamed.get_json())
     assert renamed.get_json()["message"] == "That username is already taken."
-    assert _row(smartgallery_app, "bob_t")["username"] == "bob_t", (
-        "the rename half-applied")
+    assert _row(smartgallery_app, "bob_t")["username"] == "bob_t", "the rename half-applied"
 
 
 def test_an_unknown_role_is_refused_on_an_edit(smartgallery_app, admin):
     _create(admin, "bob_t")
     bob = _row(smartgallery_app, "bob_t")
 
-    changed = admin.put("/galleryout/api/admin/users",
-                        json={"user_id": bob["user_id"], "username": "bob_t",
-                              "full_name": "Bob", "role": "SUPERUSER",
-                              "is_active": 1})
+    changed = admin.put(
+        "/galleryout/api/admin/users",
+        json={"user_id": bob["user_id"], "username": "bob_t", "full_name": "Bob", "role": "SUPERUSER", "is_active": 1},
+    )
 
     assert changed.status_code == 400, (changed.status_code, changed.get_json())
     assert changed.get_json()["message"] == "That is not a role this gallery knows."
     assert _row(smartgallery_app, "bob_t")["role"] == "STAFF"
 
 
-@pytest.mark.parametrize("bad", [
-    {"username": "alice_t"},
-    {"role": "SUPERUSER"},
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"username": "alice_t"},
+        {"role": "SUPERUSER"},
+    ],
+)
 def test_the_message_is_not_the_database_talking(smartgallery_app, admin, bad):
     """A person reading this has just made a typo, and 'CHECK constraint
     failed: role IN (...)' tells them nothing they can act on."""
     _create(admin, "alice_t")
     _create(admin, "bob_t")
     bob = _row(smartgallery_app, "bob_t")
-    payload = {"user_id": bob["user_id"], "username": "bob_t", "full_name": "Bob",
-               "role": "STAFF", "is_active": 1}
+    payload = {"user_id": bob["user_id"], "username": "bob_t", "full_name": "Bob", "role": "STAFF", "is_active": 1}
     payload.update(bad)
 
-    message = admin.put("/galleryout/api/admin/users",
-                        json=payload).get_json()["message"]
+    message = admin.put("/galleryout/api/admin/users", json=payload).get_json()["message"]
 
     assert "constraint" not in message.lower(), message
     assert "users." not in message, message
@@ -141,10 +142,16 @@ def test_an_ordinary_edit_still_works(smartgallery_app, admin):
     _create(admin, "bob_t")
     bob = _row(smartgallery_app, "bob_t")
 
-    changed = admin.put("/galleryout/api/admin/users",
-                        json={"user_id": bob["user_id"], "username": "bob_t",
-                              "full_name": "Bob Renamed", "role": "MANAGER",
-                              "is_active": 1})
+    changed = admin.put(
+        "/galleryout/api/admin/users",
+        json={
+            "user_id": bob["user_id"],
+            "username": "bob_t",
+            "full_name": "Bob Renamed",
+            "role": "MANAGER",
+            "is_active": 1,
+        },
+    )
 
     assert changed.status_code == 200, changed.get_json()
     assert _row(smartgallery_app, "bob_t")["role"] == "MANAGER"

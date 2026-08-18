@@ -36,11 +36,11 @@ def _decode_channel(bits: np.ndarray, signatures: dict):
     sig = np.packbits(bits[:_SIG_LEN_BITS]).tobytes().decode("utf-8", errors="ignore")
     if sig not in signatures:
         return None
-    length = int.from_bytes(np.packbits(bits[_SIG_LEN_BITS:_SIG_LEN_BITS + 32]).tobytes(), "big")
+    length = int.from_bytes(np.packbits(bits[_SIG_LEN_BITS : _SIG_LEN_BITS + 32]).tobytes(), "big")
     start = _SIG_LEN_BITS + 32
     if length <= 0 or length > _MAX_PAYLOAD_BITS or start + length > bits.size:
         return None
-    return _bits_to_text(bits[start:start + length], signatures[sig])
+    return _bits_to_text(bits[start : start + length], signatures[sig])
 
 
 def read_stealth_metadata(img):
@@ -59,9 +59,9 @@ def read_stealth_metadata(img):
     arr = arr.transpose(1, 0, 2)
 
     if img.mode == "RGBA":
-        alpha_bits = (arr[..., 3].reshape(-1) & 1)
+        alpha_bits = arr[..., 3].reshape(-1) & 1
         text = _decode_channel(alpha_bits, _ALPHA_SIGS)
         if text is not None:
             return text
-    rgb_bits = (arr[..., :3].reshape(-1) & 1)
+    rgb_bits = arr[..., :3].reshape(-1) & 1
     return _decode_channel(rgb_bits, _RGB_SIGS)

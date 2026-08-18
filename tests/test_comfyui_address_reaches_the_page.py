@@ -61,13 +61,12 @@ def _page(client):
     assert response.status_code == 200, response.status_code
     body = response.get_data(as_text=True)
     assert len(body) > 100000, (
-        f"the gallery page is only {len(body)} bytes; this is not the page "
-        f"these checks are about")
+        f"the gallery page is only {len(body)} bytes; this is not the page these checks are about"
+    )
     return body
 
 
-def test_a_configured_address_reaches_the_page(smartgallery_app, viewer,
-                                               monkeypatch):
+def test_a_configured_address_reaches_the_page(smartgallery_app, viewer, monkeypatch):
     """The whole point: a setting the server honours must reach the browser,
     because the browser is what opens ComfyUI."""
     monkeypatch.setattr(smartgallery_app, "COMFYUI_SERVER_URL", _CONFIGURED)
@@ -76,12 +75,11 @@ def test_a_configured_address_reaches_the_page(smartgallery_app, viewer,
 
     assert _CONFIGURED in body, (
         f"COMFYUI_SERVER_URL is {_CONFIGURED} and the page never mentions "
-        f"it; every ComfyUI link in the browser goes somewhere else")
+        f"it; every ComfyUI link in the browser goes somewhere else"
+    )
 
 
-def test_nothing_on_the_page_still_falls_back_to_the_builtin(smartgallery_app,
-                                                             viewer,
-                                                             monkeypatch):
+def test_nothing_on_the_page_still_falls_back_to_the_builtin(smartgallery_app, viewer, monkeypatch):
     """One reaching the page is not enough -- eight places had their own
     copy, and one left behind is one broken button."""
     monkeypatch.setattr(smartgallery_app, "COMFYUI_SERVER_URL", _CONFIGURED)
@@ -90,12 +88,11 @@ def test_nothing_on_the_page_still_falls_back_to_the_builtin(smartgallery_app,
 
     for literal in _QUOTED:
         assert literal not in body, (
-            f"the page still carries {literal} as a fallback while "
-            f"COMFYUI_SERVER_URL is {_CONFIGURED}")
+            f"the page still carries {literal} as a fallback while COMFYUI_SERVER_URL is {_CONFIGURED}"
+        )
 
 
-def test_the_address_is_set_before_the_page_can_ask_for_it(smartgallery_app,
-                                                           viewer, monkeypatch):
+def test_the_address_is_set_before_the_page_can_ask_for_it(smartgallery_app, viewer, monkeypatch):
     """The tools menu is markup with handlers on it, not script, and it sits
     near the top of the body. The value has to be in place by then or the
     first click reads undefined."""
@@ -111,13 +108,10 @@ def test_the_address_is_set_before_the_page_can_ask_for_it(smartgallery_app,
 
     head_ends = body.find("</head>")
     assert head_ends != -1
-    assert assigned < head_ends, (
-        "window.SG_COMFY_URL is assigned in the body, after markup that "
-        "already refers to it")
+    assert assigned < head_ends, "window.SG_COMFY_URL is assigned in the body, after markup that already refers to it"
 
 
-def test_the_remix_help_text_names_the_address_in_use(smartgallery_app, viewer,
-                                                      monkeypatch):
+def test_the_remix_help_text_names_the_address_in_use(smartgallery_app, viewer, monkeypatch):
     """It told people, as a plain statement of fact, an address that was not
     theirs."""
     monkeypatch.setattr(smartgallery_app, "COMFYUI_SERVER_URL", _CONFIGURED)
@@ -126,7 +120,7 @@ def test_the_remix_help_text_names_the_address_in_use(smartgallery_app, viewer,
 
     assert "Remix sends generation jobs to" in body, "the help text is gone"
     sentence_at = body.find("Remix sends generation jobs to")
-    sentence = body[sentence_at:sentence_at + 200]
+    sentence = body[sentence_at : sentence_at + 200]
     assert _CONFIGURED in sentence, f"the help text says: {sentence[:160]}"
 
 
@@ -138,11 +132,11 @@ def test_the_built_in_default_still_works(smartgallery_app, viewer, monkeypatch)
     body = _page(viewer)
 
     assert f'window.SG_COMFY_URL = "{_BUILTIN}"' in body, (
-        "the ordinary local setup no longer gets the ordinary local address")
+        "the ordinary local setup no longer gets the ordinary local address"
+    )
 
 
-def test_an_address_that_is_not_configured_does_not_appear(smartgallery_app,
-                                                           viewer, monkeypatch):
+def test_an_address_that_is_not_configured_does_not_appear(smartgallery_app, viewer, monkeypatch):
     """Control for the checks above. They pass by finding a string in a
     1.4MB page, so the page must not be the sort of thing every string is
     found in."""
@@ -151,25 +145,24 @@ def test_an_address_that_is_not_configured_does_not_appear(smartgallery_app,
     body = _page(viewer)
 
     assert _CONFIGURED not in body, (
-        "an address nobody configured turned up in the page, so finding one "
-        "there proves nothing")
+        "an address nobody configured turned up in the page, so finding one there proves nothing"
+    )
 
 
-def test_an_awkward_address_cannot_break_the_page(smartgallery_app, viewer,
-                                                  monkeypatch):
+def test_an_awkward_address_cannot_break_the_page(smartgallery_app, viewer, monkeypatch):
     """It is a setting an operator types, and it is being written into a
     script tag. A value carrying markup must arrive as a value."""
-    monkeypatch.setattr(smartgallery_app, "COMFYUI_SERVER_URL",
-                        'http://x/</script><script>window.OWNED=1;//')
+    monkeypatch.setattr(smartgallery_app, "COMFYUI_SERVER_URL", "http://x/</script><script>window.OWNED=1;//")
 
     body = _page(viewer)
 
     assert "http://x/</script>" not in body, (
         "the setting was written into the page as written, so it closed the "
-        "script tag and everything after it became markup")
+        "script tag and everything after it became markup"
+    )
     assert "http://x/\\u003c/script\\u003e" in body, (
-        "the value did not arrive at all; this check only means something "
-        "while it does")
+        "the value did not arrive at all; this check only means something while it does"
+    )
 
 
 def test_no_template_keeps_its_own_copy_of_the_address():
@@ -192,30 +185,30 @@ def test_no_template_keeps_its_own_copy_of_the_address():
 
     assert offenders == [], (
         f"templates writing {_BUILTIN} out for themselves at {offenders}. "
-        f"Use window.SG_COMFY_URL, which carries COMFYUI_SERVER_URL.")
+        f"Use window.SG_COMFY_URL, which carries COMFYUI_SERVER_URL."
+    )
 
 
 def test_both_page_views_pass_the_address(gallery_tree):
     """Two views render the gallery template. One passing it and the other
     not would make this depend on how you arrived at the page."""
 
-
     tree = gallery_tree
 
-    renders = [node for node in ast.walk(tree)
-               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-               and node.func.id == "render_template"]
+    renders = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "render_template"
+    ]
     # The gallery page is the one that is given the file list.
-    gallery = [node for node in renders
-               if "files" in {kw.arg for kw in node.keywords if kw.arg}]
+    gallery = [node for node in renders if "files" in {kw.arg for kw in node.keywords if kw.arg}]
 
     assert len(gallery) >= 2, (
-        f"expected the two gallery renders, found {len(gallery)}; this check "
-        f"is looking at the wrong calls")
+        f"expected the two gallery renders, found {len(gallery)}; this check is looking at the wrong calls"
+    )
 
-    missing = [node.lineno for node in gallery
-               if "comfy_server_url" not in {kw.arg for kw in node.keywords
-                                             if kw.arg}]
+    missing = [node.lineno for node in gallery if "comfy_server_url" not in {kw.arg for kw in node.keywords if kw.arg}]
     assert missing == [], (
         f"render_template at lines {missing} builds the gallery page without "
-        f"comfy_server_url, so the page falls back to the built-in address")
+        f"comfy_server_url, so the page falls back to the built-in address"
+    )

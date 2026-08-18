@@ -24,6 +24,7 @@ the parent folder name. Configuration is env-only (no baked-in paths;
                         benchmarks/results/face_embedder_ab.json)
 Writes the results JSON and prints a table.
 """
+
 import glob
 import json
 import os
@@ -45,8 +46,7 @@ from smartgallery_ai.faces import OpenCVFaceBackend, _chinese_whispers, _neighbo
 def _required_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
-        sys.exit(f"{name} is required (see module docstring; "
-                 "`just bench face-ab` supplies the machine defaults)")
+        sys.exit(f"{name} is required (see module docstring; `just bench face-ab` supplies the machine defaults)")
     return value
 
 
@@ -54,9 +54,10 @@ MODELS = _required_env("FACE_AB_MODELS")
 MODELS_W600K = os.environ.get("FACE_AB_MODELS_W600K", "").strip()
 _ROOT = _required_env("FACE_AB_CORPUS_ROOT")
 # one relative glob per labeled corpus: "name=rel-glob;name=rel-glob"
-CORPORA = {name: os.path.join(_ROOT, rel)
-           for name, rel in (pair.split("=", 1)
-                             for pair in _required_env("FACE_AB_CORPORA").split(";"))}
+CORPORA = {
+    name: os.path.join(_ROOT, rel)
+    for name, rel in (pair.split("=", 1) for pair in _required_env("FACE_AB_CORPORA").split(";"))
+}
 
 
 def _corpus_images():
@@ -108,9 +109,9 @@ def collect_insightface(pack, root):
     """insightface's own quickstart pipeline: SCRFD joint 128+640 detect,
     upstream landmark alignment, pack recognizer -- their code end to end."""
 
-    app = FaceAnalysis(name=pack, root=root,
-                       allowed_modules=["detection", "recognition"],
-                       providers=["CPUExecutionProvider"])
+    app = FaceAnalysis(
+        name=pack, root=root, allowed_modules=["detection", "recognition"], providers=["CPUExecutionProvider"]
+    )
     app.prepare(ctx_id=0)
 
     def detect_best(path):
@@ -131,8 +132,8 @@ def pairwise_f1(pred_labels, true_labels):
     pred = np.asarray(pred_labels)
     n = len(true)
     iu = np.triu_indices(n, k=1)
-    same_true = (true[iu[0]] == true[iu[1]])
-    same_pred = (pred[iu[0]] == pred[iu[1]])
+    same_true = true[iu[0]] == true[iu[1]]
+    same_pred = pred[iu[0]] == pred[iu[1]]
     tp = int(np.sum(same_true & same_pred))
     fp = int(np.sum(~same_true & same_pred))
     fn = int(np.sum(same_true & ~same_pred))
@@ -160,11 +161,15 @@ def verification(labels, vecs):
         if f1 > best[1]:
             best = (float(thr), f1)
     return {
-        "n_genuine": int(genuine.size), "n_impostor": int(impostor.size),
-        "genuine_mean": float(genuine.mean()), "genuine_p05": float(np.percentile(genuine, 5)),
-        "impostor_mean": float(impostor.mean()), "impostor_p95": float(np.percentile(impostor, 95)),
+        "n_genuine": int(genuine.size),
+        "n_impostor": int(impostor.size),
+        "genuine_mean": float(genuine.mean()),
+        "genuine_p05": float(np.percentile(genuine, 5)),
+        "impostor_mean": float(impostor.mean()),
+        "impostor_p95": float(np.percentile(impostor, 95)),
         "separation": float(np.percentile(genuine, 5) - np.percentile(impostor, 95)),
-        "best_f1_threshold": best[0], "best_f1": best[1],
+        "best_f1_threshold": best[0],
+        "best_f1": best[1],
     }
 
 
@@ -176,8 +181,7 @@ if MODELS_W600K:
     VARIANTS["arcface-w600k-r50"] = lambda: collect("arcface", MODELS_W600K)
 _IF_ROOT = os.environ.get("FACE_AB_INSIGHTFACE_ROOT", "").strip()
 if _IF_ROOT:
-    VARIANTS["insightface-antelopev2"] = (
-        lambda: collect_insightface("antelopev2", _IF_ROOT))
+    VARIANTS["insightface-antelopev2"] = lambda: collect_insightface("antelopev2", _IF_ROOT)
 results = {}
 for variant, run in VARIANTS.items():
     labels, vecs, skipped, elapsed, version = run()
@@ -189,28 +193,44 @@ for variant, run in VARIANTS.items():
         graph, _backend = _neighbor_graph(vecs, thr)
         pred = _chinese_whispers(graph)
         prec, rec, f1 = pairwise_f1(pred, labels)
-        sweep.append({"threshold": thr, "clusters": len(set(pred)),
-                      "precision": round(prec, 4), "recall": round(rec, 4),
-                      "f1": round(f1, 4)})
+        sweep.append(
+            {
+                "threshold": thr,
+                "clusters": len(set(pred)),
+                "precision": round(prec, 4),
+                "recall": round(rec, 4),
+                "f1": round(f1, 4),
+            }
+        )
     results[embedder] = {
-        "model_version": version, "faces": len(labels),
-        "identities": len(set(labels)), "skipped": skipped,
+        "model_version": version,
+        "faces": len(labels),
+        "identities": len(set(labels)),
+        "skipped": skipped,
         "detect_embed_seconds": round(elapsed, 1),
-        "verification": ver, "cluster_sweep": sweep,
+        "verification": ver,
+        "cluster_sweep": sweep,
     }
-    print(f"\n== {embedder} ({version}) — {len(labels)} faces, "
-          f"{len(set(labels))} identities, {skipped} skipped, {elapsed:.0f}s")
+    print(
+        f"\n== {embedder} ({version}) — {len(labels)} faces, "
+        f"{len(set(labels))} identities, {skipped} skipped, {elapsed:.0f}s"
+    )
     v = ver
-    print(f"   genuine mean {v['genuine_mean']:.3f} (p05 {v['genuine_p05']:.3f})  "
-          f"impostor mean {v['impostor_mean']:.3f} (p95 {v['impostor_p95']:.3f})  "
-          f"separation {v['separation']:+.3f}")
+    print(
+        f"   genuine mean {v['genuine_mean']:.3f} (p05 {v['genuine_p05']:.3f})  "
+        f"impostor mean {v['impostor_mean']:.3f} (p95 {v['impostor_p95']:.3f})  "
+        f"separation {v['separation']:+.3f}"
+    )
     print(f"   verification best-F1 {v['best_f1']:.4f} @ thr {v['best_f1_threshold']:.2f}")
     for row in sweep:
-        print(f"   CW thr {row['threshold']:.2f}: {row['clusters']:4d} clusters  "
-              f"P {row['precision']:.3f}  R {row['recall']:.3f}  F1 {row['f1']:.3f}")
+        print(
+            f"   CW thr {row['threshold']:.2f}: {row['clusters']:4d} clusters  "
+            f"P {row['precision']:.3f}  R {row['recall']:.3f}  F1 {row['f1']:.3f}"
+        )
 
-out_path = os.environ.get("FACE_AB_OUT", os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "results", "face_embedder_ab.json"))
+out_path = os.environ.get(
+    "FACE_AB_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "face_embedder_ab.json")
+)
 with open(out_path, "w") as f:
     json.dump(results, f, indent=2)
 print(f"\nwrote {out_path}")

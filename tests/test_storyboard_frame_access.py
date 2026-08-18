@@ -65,8 +65,7 @@ def real_frame(smartgallery_app):
 
 
 @pytest.mark.parametrize("segment", ["..", "%2e%2e", ".%2e", "%2E%2E"])
-def test_the_cache_folder_cannot_be_escaped(smartgallery_app, victim_file,
-                                            monkeypatch, segment):
+def test_the_cache_folder_cannot_be_escaped(smartgallery_app, victim_file, monkeypatch, segment):
     """No session, logins required: this returned the file's contents."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
@@ -74,27 +73,23 @@ def test_the_cache_folder_cannot_be_escaped(smartgallery_app, victim_file,
 
     resp = client.get(f"/galleryout/storyboard_frame/{segment}/{victim_file}")
 
-    assert _PAYLOAD not in resp.get_data(as_text=True), (
-        f"{segment!r} escaped the frame cache and read the gallery root")
+    assert _PAYLOAD not in resp.get_data(as_text=True), f"{segment!r} escaped the frame cache and read the gallery root"
     assert resp.status_code != 200, resp.status_code
 
 
-def test_an_anonymous_caller_is_refused_when_logins_are_required(
-        smartgallery_app, real_frame, monkeypatch):
+def test_an_anonymous_caller_is_refused_when_logins_are_required(smartgallery_app, real_frame, monkeypatch):
     """Even a well-formed request: nothing is served to someone who has not
     logged in on a server that demands it."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     digest, filename = real_frame
 
-    resp = smartgallery_app.app.test_client().get(
-        f"/galleryout/storyboard_frame/{digest}/{filename}")
+    resp = smartgallery_app.app.test_client().get(f"/galleryout/storyboard_frame/{digest}/{filename}")
 
     assert resp.status_code == 403, resp.status_code
 
 
-def test_a_logged_in_caller_still_gets_their_frames(smartgallery_app, real_frame,
-                                                    monkeypatch):
+def test_a_logged_in_caller_still_gets_their_frames(smartgallery_app, real_frame, monkeypatch):
     """The counterpart -- without this, refusing everything would pass the
     tests above while breaking the storyboard for everyone."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
@@ -112,14 +107,12 @@ def test_a_logged_in_caller_still_gets_their_frames(smartgallery_app, real_frame
     assert resp.get_data().startswith(b"\xff\xd8"), "the frame did not come back"
 
 
-def test_the_default_local_install_still_serves_frames(smartgallery_app, real_frame,
-                                                       monkeypatch):
+def test_the_default_local_install_still_serves_frames(smartgallery_app, real_frame, monkeypatch):
     """No login configured: one person, and the frames are theirs."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     digest, filename = real_frame
 
-    resp = smartgallery_app.app.test_client().get(
-        f"/galleryout/storyboard_frame/{digest}/{filename}")
+    resp = smartgallery_app.app.test_client().get(f"/galleryout/storyboard_frame/{digest}/{filename}")
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]

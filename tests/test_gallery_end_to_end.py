@@ -52,13 +52,11 @@ def _purge(smartgallery_app):
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two images in the gallery root, scanned in-process."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     root = smartgallery_app.BASE_OUTPUT_PATH
     os.makedirs(root, exist_ok=True)
     made = []
-    for name, colour in ((f"{_PREFIX}alpha.png", (210, 40, 40)),
-                         (f"{_PREFIX}beta.jpg", (40, 210, 40))):
+    for name, colour in ((f"{_PREFIX}alpha.png", (210, 40, 40)), (f"{_PREFIX}beta.jpg", (40, 210, 40))):
         path = os.path.join(root, name)
         Image.new("RGB", (80, 60), colour).save(path)
         made.append((name, path))
@@ -81,9 +79,12 @@ def library(smartgallery_app, monkeypatch):
 def test_scanned_files_reach_the_database_with_their_metadata(smartgallery_app, library):
     conn = smartgallery_app.get_db_connection()
     try:
-        rows = {r["name"]: r for r in conn.execute(
-            f"SELECT name, type, dimensions, size FROM files "
-            f"WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        rows = {
+            r["name"]: r
+            for r in conn.execute(
+                f"SELECT name, type, dimensions, size FROM files WHERE name LIKE '{_PREFIX}%'"
+            ).fetchall()
+        }
     finally:
         conn.close()
 
@@ -111,11 +112,9 @@ def test_rescanning_an_unchanged_library_is_a_no_op(smartgallery_app, library):
     derived, and a scan that re-inserted would grow the library forever."""
     conn = smartgallery_app.get_db_connection()
     try:
-        before = conn.execute(
-            f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
+        before = conn.execute(f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
         smartgallery_app.full_sync_database(conn)
-        after = conn.execute(
-            f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
+        after = conn.execute(f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
     finally:
         conn.close()
     assert before == after == len(library)
@@ -131,8 +130,9 @@ def test_a_deleted_file_leaves_the_library_on_the_next_scan(smartgallery_app, li
     conn = smartgallery_app.get_db_connection()
     try:
         smartgallery_app.full_sync_database(conn)
-        remaining = sorted(r[0] for r in conn.execute(
-            f"SELECT name FROM files WHERE name LIKE '{_PREFIX}%'").fetchall())
+        remaining = sorted(
+            r[0] for r in conn.execute(f"SELECT name FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        )
     finally:
         conn.close()
 

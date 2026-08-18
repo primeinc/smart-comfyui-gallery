@@ -53,7 +53,8 @@ def accounts(smartgallery_app, monkeypatch):
             conn.execute(
                 "INSERT INTO users (username, password, full_name, role, is_active, "
                 "expiry_date) VALUES (?, ?, 'Visitor', 'CUSTOMER', 1, ?)",
-                (username, sg_auth.hash_password(_PASSWORD), expiry))
+                (username, sg_auth.hash_password(_PASSWORD), expiry),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -70,7 +71,8 @@ def accounts(smartgallery_app, monkeypatch):
 
 def _login(smartgallery_app, username, password=_PASSWORD):
     return smartgallery_app.app.test_client().post(
-        "/galleryout/login", json={"username": username, "password": password})
+        "/galleryout/login", json={"username": username, "password": password}
+    )
 
 
 @pytest.mark.parametrize("username", ["exp_past", "exp_dateonly_past"])
@@ -118,12 +120,10 @@ def test_a_wrong_password_is_refused_the_same_way_either_way(smartgallery_app, a
     live = _login(smartgallery_app, "exp_future", "wrong-password").get_json()
     unknown = _login(smartgallery_app, "no_such_user", "wrong-password").get_json()
 
-    assert expired == live == unknown, (
-        f"the answers differ: expired={expired} live={live} unknown={unknown}")
+    assert expired == live == unknown, f"the answers differ: expired={expired} live={live} unknown={unknown}"
 
 
-def test_the_admin_command_line_password_is_not_expirable(smartgallery_app,
-                                                          monkeypatch):
+def test_the_admin_command_line_password_is_not_expirable(smartgallery_app, monkeypatch):
     """The documented way back in has to keep working, or an expiry set on
     the only admin account is unrecoverable without a database editor."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
@@ -138,7 +138,8 @@ def test_the_admin_command_line_password_is_not_expirable(smartgallery_app,
         conn.execute(
             "INSERT INTO users (username, password, full_name, role, is_active, "
             "expiry_date) VALUES ('admin', ?, 'Admin', 'ADMIN', 1, '2020-01-01T00:00')",
-            (sg_auth.hash_password("stored-password-not-used"),))
+            (sg_auth.hash_password("stored-password-not-used"),),
+        )
         conn.commit()
     finally:
         conn.close()

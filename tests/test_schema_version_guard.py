@@ -45,15 +45,13 @@ def _version(conn):
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
-def test_a_first_run_does_not_announce_migrations(smartgallery_app, fresh_database,
-                                                  capsys):
+def test_a_first_run_does_not_announce_migrations(smartgallery_app, fresh_database, capsys):
     """The regression: six 'Updating Database Schema' lines on a database
     created a moment earlier."""
     smartgallery_app.init_db(fresh_database)
 
     printed = capsys.readouterr().out
-    assert "Updating Database Schema" not in printed, (
-        f"a brand new database reported migrations:\n{printed}")
+    assert "Updating Database Schema" not in printed, f"a brand new database reported migrations:\n{printed}"
 
 
 def test_a_first_run_still_builds_the_schema(smartgallery_app, fresh_database):
@@ -61,15 +59,13 @@ def test_a_first_run_still_builds_the_schema(smartgallery_app, fresh_database):
     above for ever."""
     smartgallery_app.init_db(fresh_database)
 
-    tables = {row[0] for row in fresh_database.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'")}
+    tables = {row[0] for row in fresh_database.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
     assert "files" in tables, f"init_db created no files table: {sorted(tables)}"
     assert _version(fresh_database) == smartgallery_app.DB_SCHEMA_VERSION
 
 
-def test_a_real_upgrade_still_announces_itself(smartgallery_app, fresh_database,
-                                               capsys):
+def test_a_real_upgrade_still_announces_itself(smartgallery_app, fresh_database, capsys):
     """The counterpart: silence on a fresh database must not mean silence
     on an actual migration, which is the one someone needs to see."""
     smartgallery_app.init_db(fresh_database)
@@ -80,12 +76,10 @@ def test_a_real_upgrade_still_announces_itself(smartgallery_app, fresh_database,
     smartgallery_app.init_db(fresh_database)
 
     printed = capsys.readouterr().out
-    assert "Updating Database Schema Version: 3 ->" in printed, (
-        f"an upgrade from version 3 said nothing:\n{printed}")
+    assert "Updating Database Schema Version: 3 ->" in printed, f"an upgrade from version 3 said nothing:\n{printed}"
 
 
-def test_a_newer_database_is_not_stamped_backwards(smartgallery_app,
-                                                   fresh_database):
+def test_a_newer_database_is_not_stamped_backwards(smartgallery_app, fresh_database):
     """The regression that matters: the marker recording that newer
     migrations ran must survive an older build opening the file."""
     smartgallery_app.init_db(fresh_database)
@@ -94,8 +88,7 @@ def test_a_newer_database_is_not_stamped_backwards(smartgallery_app,
 
     smartgallery_app.init_db(fresh_database)
 
-    assert _version(fresh_database) == 999, (
-        "the version marker was rewritten downwards")
+    assert _version(fresh_database) == 999, "the version marker was rewritten downwards"
 
 
 def test_a_newer_database_says_so_loudly(smartgallery_app, fresh_database, capsys):

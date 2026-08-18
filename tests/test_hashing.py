@@ -286,10 +286,10 @@ def test_find_near_duplicates_excludes_self_and_sorts_by_distance():
     base = 0b1010101010101010101010101010101010101010101010101010101010101010 & 0xFFFFFFFFFFFFFFFF
     entries = {
         "target": base,
-        "dist1": base ^ 0b1,          # hamming distance 1
-        "dist2": base ^ 0b11,         # hamming distance 2
-        "dist5": base ^ 0b11111,      # hamming distance 5
-        "far": base ^ 0xFFFFFFFF,     # hamming distance 32, excluded by max_distance
+        "dist1": base ^ 0b1,  # hamming distance 1
+        "dist2": base ^ 0b11,  # hamming distance 2
+        "dist5": base ^ 0b11111,  # hamming distance 5
+        "far": base ^ 0xFFFFFFFF,  # hamming distance 32, excluded by max_distance
     }
     conn = _phash_conn_with(entries)
 
@@ -373,21 +373,34 @@ def test_near_duplicate_query_is_per_bit_exact_at_the_threshold():
     # Arrange: the target plus one neighbor per flipped bit, plus one
     # two-bit neighbor.
     add_file(conn, "target")
-    upsert_hashes(conn, "target",
-                  HashResult(sha256="t" * 64, phash64=to_signed64(target_phash), dhash64=0),
-                  1000.0, "algo-v1", 2000.0)
+    upsert_hashes(
+        conn,
+        "target",
+        HashResult(sha256="t" * 64, phash64=to_signed64(target_phash), dhash64=0),
+        1000.0,
+        "algo-v1",
+        2000.0,
+    )
     for bit in range(64):
         fid = f"flip{bit:02d}"
         add_file(conn, fid)
-        upsert_hashes(conn, fid,
-                      HashResult(sha256=f"{bit:064d}"[:64],
-                                 phash64=to_signed64(target_phash ^ (1 << bit)), dhash64=0),
-                      1000.0, "algo-v1", 2000.0)
+        upsert_hashes(
+            conn,
+            fid,
+            HashResult(sha256=f"{bit:064d}"[:64], phash64=to_signed64(target_phash ^ (1 << bit)), dhash64=0),
+            1000.0,
+            "algo-v1",
+            2000.0,
+        )
     add_file(conn, "twobits")
-    upsert_hashes(conn, "twobits",
-                  HashResult(sha256="u" * 64,
-                             phash64=to_signed64(target_phash ^ 0b11), dhash64=0),
-                  1000.0, "algo-v1", 2000.0)
+    upsert_hashes(
+        conn,
+        "twobits",
+        HashResult(sha256="u" * 64, phash64=to_signed64(target_phash ^ 0b11), dhash64=0),
+        1000.0,
+        "algo-v1",
+        2000.0,
+    )
 
     # Act
     at_one = find_near_duplicates(conn, "target", max_distance=1)

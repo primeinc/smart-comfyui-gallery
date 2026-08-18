@@ -21,17 +21,20 @@ import pytest
 from smartgallery_ai import AIConfig
 
 
-@pytest.mark.parametrize(("name", "expected_default"), [
-    ("BASE_OUTPUT_PATH", "C:/ComfyUI/output"),
-    ("BASE_INPUT_PATH", "C:/ComfyUI/input"),
-    ("FFPROBE_MANUAL_PATH", "C:/ffmpeg/bin/ffprobe.exe"),
-])
+@pytest.mark.parametrize(
+    ("name", "expected_default"),
+    [
+        ("BASE_OUTPUT_PATH", "C:/ComfyUI/output"),
+        ("BASE_INPUT_PATH", "C:/ComfyUI/input"),
+        ("FFPROBE_MANUAL_PATH", "C:/ffmpeg/bin/ffprobe.exe"),
+    ],
+)
 def test_env_or_treats_blank_as_unset(smartgallery_app, monkeypatch, name, expected_default):
     monkeypatch.setenv(name, "")
     assert smartgallery_app.env_or(name, expected_default) == expected_default
-    monkeypatch.setenv(name, "   ")          # whitespace-only is still blank
+    monkeypatch.setenv(name, "   ")  # whitespace-only is still blank
     assert smartgallery_app.env_or(name, expected_default) == expected_default
-    monkeypatch.setenv(name, " D:/real/path ")   # a real value wins, trimmed
+    monkeypatch.setenv(name, " D:/real/path ")  # a real value wins, trimmed
     assert smartgallery_app.env_or(name, expected_default) == "D:/real/path"
     monkeypatch.delenv(name)
     assert smartgallery_app.env_or(name, expected_default) == expected_default
@@ -65,8 +68,7 @@ def test_launcher_template_has_no_personal_paths():
         text = fh.read()
     lowered = text.lower()
     for marker in ("users/will", "users\\will", "!comfy-output"):
-        assert marker not in lowered, (
-            f"launcher template contains a personal path ({marker!r})")
+        assert marker not in lowered, f"launcher template contains a personal path ({marker!r})"
 
 
 # --- ffprobe identity -----------------------------------------------------
@@ -75,28 +77,29 @@ def test_launcher_template_has_no_personal_paths():
 # FFPROBE_MANUAL_PATH aimed at ffmpeg.exe, which passed the old check and
 # then failed every metadata call, because ffmpeg rejects ffprobe's args.
 
+
 def _fake_run(banner: bytes):
 
     def run(cmd, **kwargs):
         return SimpleNamespace(stdout=banner, stderr=b"", returncode=0)
+
     return run
 
 
 def test_ffprobe_probe_rejects_an_ffmpeg_binary(smartgallery_app, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.subprocess, "run",
-                        _fake_run(b"ffmpeg version 2025-07-21 Copyright (c) 2000"))
+    monkeypatch.setattr(smartgallery_app.subprocess, "run", _fake_run(b"ffmpeg version 2025-07-21 Copyright (c) 2000"))
     assert smartgallery_app._is_ffprobe("C:/ffmpeg/bin/ffmpeg.exe") is False
 
 
 def test_ffprobe_probe_accepts_a_real_ffprobe(smartgallery_app, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.subprocess, "run",
-                        _fake_run(b"ffprobe version 2025-07-21 Copyright (c) 2007"))
+    monkeypatch.setattr(smartgallery_app.subprocess, "run", _fake_run(b"ffprobe version 2025-07-21 Copyright (c) 2007"))
     assert smartgallery_app._is_ffprobe("C:/ffmpeg/bin/ffprobe.exe") is True
 
 
 def test_ffprobe_probe_survives_a_missing_binary(smartgallery_app, monkeypatch):
     def boom(*_a, **_k):
         raise FileNotFoundError("nope")
+
     monkeypatch.setattr(smartgallery_app.subprocess, "run", boom)
     assert smartgallery_app._is_ffprobe("nothing-here") is False
 
@@ -111,8 +114,7 @@ def test_launcher_template_points_at_ffprobe():
             if "FFPROBE_MANUAL_PATH" in line and "=" in line:
                 value = line.split("=", 1)[1].strip().strip('"')
                 if value:
-                    assert "ffprobe" in value.lower(), (
-                        f"FFPROBE_MANUAL_PATH points at {value!r}, not ffprobe")
+                    assert "ffprobe" in value.lower(), f"FFPROBE_MANUAL_PATH points at {value!r}, not ffprobe"
 
 
 # --- numeric knobs --------------------------------------------------------
@@ -120,15 +122,18 @@ def test_launcher_template_points_at_ffprobe():
 # import: the gallery refused to start, with a traceback that never named
 # the offending variable.
 
-@pytest.mark.parametrize(("attr", "name", "default"), [
-    ("THUMBNAIL_WIDTH", "THUMBNAIL_WIDTH", 300),
-    ("PAGE_SIZE", "PAGE_SIZE", 100),
-    ("BATCH_SIZE", "BATCH_SIZE", 500),
-    ("STREAM_THRESHOLD_MB", "STREAM_THRESHOLD_MB", 20),
-    ("SERVER_PORT", "SERVER_PORT", 8189),
-])
-def test_numeric_knobs_survive_blank_and_garbage(smartgallery_app, monkeypatch,
-                                                  attr, name, default):
+
+@pytest.mark.parametrize(
+    ("attr", "name", "default"),
+    [
+        ("THUMBNAIL_WIDTH", "THUMBNAIL_WIDTH", 300),
+        ("PAGE_SIZE", "PAGE_SIZE", 100),
+        ("BATCH_SIZE", "BATCH_SIZE", 500),
+        ("STREAM_THRESHOLD_MB", "STREAM_THRESHOLD_MB", 20),
+        ("SERVER_PORT", "SERVER_PORT", 8189),
+    ],
+)
+def test_numeric_knobs_survive_blank_and_garbage(smartgallery_app, monkeypatch, attr, name, default):
     del attr  # the constant is already bound; env_num is what we exercise
     for bad in ("", "   ", "not-a-number", "12abc"):
         monkeypatch.setenv(name, bad)
@@ -148,13 +153,21 @@ def test_env_num_supports_floats(smartgallery_app, monkeypatch):
 
 def test_ai_config_numeric_knobs_survive_blanks(monkeypatch, tmp_path):
 
-    for name in ("AI_DAM_NEAR_DUP_DISTANCE", "AI_DAM_FACE_MIN_PX",
-                 "AI_DAM_SIMILAR_K", "AI_DAM_FACE_DETECT_MAX_SIDE",
-                 "AI_DAM_FACE_CLUSTER_THRESHOLD"):
+    for name in (
+        "AI_DAM_NEAR_DUP_DISTANCE",
+        "AI_DAM_FACE_MIN_PX",
+        "AI_DAM_SIMILAR_K",
+        "AI_DAM_FACE_DETECT_MAX_SIDE",
+        "AI_DAM_FACE_CLUSTER_THRESHOLD",
+    ):
         monkeypatch.setenv(name, "")
     cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
-    assert (cfg.near_dup_max_distance, cfg.face_min_px, cfg.similar_default_k,
-            cfg.face_detect_max_side) == (8, 24, 24, 1600)
+    assert (cfg.near_dup_max_distance, cfg.face_min_px, cfg.similar_default_k, cfg.face_detect_max_side) == (
+        8,
+        24,
+        24,
+        1600,
+    )
     # None means "use the embedder's own default" -- a blank must mean that
     # too, not float('').
     assert cfg.face_cluster_threshold is None
@@ -183,6 +196,7 @@ def test_enable_ai_dam_blank_does_not_silently_disable_the_layer(monkeypatch, tm
 # False, so clearing GENERATE_THUMBNAILS in the launcher silently turned
 # thumbnails off instead of restoring the documented default.
 
+
 @pytest.mark.parametrize("default", [True, False])
 def test_env_flag_blank_keeps_the_default(smartgallery_app, monkeypatch, default):
     for blank in ("", "   "):
@@ -192,11 +206,21 @@ def test_env_flag_blank_keeps_the_default(smartgallery_app, monkeypatch, default
     assert smartgallery_app.env_flag("SG_FLAG_PROBE", default) is default
 
 
-@pytest.mark.parametrize(("value", "expected"), [
-    ("1", True), ("true", True), ("TRUE", True), ("Yes", True), ("on", True),
-    ("0", False), ("false", False), ("No", False), ("off", False),
-    (" true ", True),
-])
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("Yes", True),
+        ("on", True),
+        ("0", False),
+        ("false", False),
+        ("No", False),
+        ("off", False),
+        (" true ", True),
+    ],
+)
 def test_env_flag_recognized_words(smartgallery_app, monkeypatch, value, expected):
     monkeypatch.setenv("SG_FLAG_PROBE", value)
     assert smartgallery_app.env_flag("SG_FLAG_PROBE", not expected) is expected
@@ -223,11 +247,9 @@ def test_configuration_doc_covers_the_user_facing_env_vars():
     appear in it. Derived from the source so a new knob is caught here."""
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    doc = open(os.path.join(root, "docs", "CONFIGURATION.md"),
-               encoding="utf-8").read()
+    doc = open(os.path.join(root, "docs", "CONFIGURATION.md"), encoding="utf-8").read()
     src = open(os.path.join(root, "smartgallery.py"), encoding="utf-8").read()
-    pattern = re.compile(
-        r"""\b(?:env_or|env_num|env_flag)\s*\(\s*['"]([A-Z][A-Z0-9_]{2,})['"]""")
+    pattern = re.compile(r"""\b(?:env_or|env_num|env_flag)\s*\(\s*['"]([A-Z][A-Z0-9_]{2,})['"]""")
     # PATH/DISPLAY-style environment probes are not settings; everything the
     # app reads through its own config helpers is.
     referenced = set(pattern.findall(src))
@@ -242,6 +264,7 @@ def test_configuration_doc_covers_the_user_facing_env_vars():
 # run -- raised NameError before the app could start. Only an install whose
 # <DELETE_TO>/SmartGallery folder already existed ever booted.
 
+
 def test_colors_is_defined_before_the_configuration_block_uses_it():
     """Ordering guard: the config block runs at import, so anything it
     references must already exist above it."""
@@ -250,8 +273,8 @@ def test_colors_is_defined_before_the_configuration_block_uses_it():
     definition = src.index("class Colors:")
     first_use = src.index("Colors.RED")
     assert definition < first_use, (
-        "class Colors is defined after its first use; the DELETE_TO "
-        "validation paths will raise NameError at import")
+        "class Colors is defined after its first use; the DELETE_TO validation paths will raise NameError at import"
+    )
 
 
 @pytest.fixture
@@ -295,8 +318,7 @@ def test_delete_to_moves_files_to_trash_without_overwriting(recoverable_deletes)
     gallery.safe_delete_file(victim)
 
     survivors = len(os.listdir(trash))
-    assert survivors == 2, (
-        f"a same-name delete overwrote the first ({survivors} file(s) in trash)")
+    assert survivors == 2, f"a same-name delete overwrote the first ({survivors} file(s) in trash)"
 
 
 def test_delete_to_covers_folder_deletion_too(recoverable_deletes, monkeypatch):
@@ -328,11 +350,11 @@ def test_delete_to_covers_folder_deletion_too(recoverable_deletes, monkeypatch):
     gallery.safe_delete_tree(album2)
 
     assert not os.path.exists(album2)
-    assert len(os.listdir(os.path.dirname(recovered))) == 1, (
-        "unexpected new trash entry")
+    assert len(os.listdir(os.path.dirname(recovered))) == 1, "unexpected new trash entry"
 
 
 # --- test-suite safety ----------------------------------------------------
+
 
 def test_suite_paths_are_confined_to_a_temp_directory(smartgallery_app):
     """The suite creates files in the gallery root, scans it end to end,
@@ -345,8 +367,8 @@ def test_suite_paths_are_confined_to_a_temp_directory(smartgallery_app):
     for attr in ("BASE_OUTPUT_PATH", "BASE_SMARTGALLERY_PATH", "BASE_INPUT_PATH"):
         resolved = os.path.realpath(getattr(smartgallery_app, attr))
         assert resolved.startswith(tmp_root), (
-            f"{attr} points outside the temp directory ({resolved}); a test "
-            f"run could modify a real collection")
+            f"{attr} points outside the temp directory ({resolved}); a test run could modify a real collection"
+        )
 
 
 def test_suite_does_not_inherit_a_real_trash_folder(smartgallery_app):
@@ -355,5 +377,5 @@ def test_suite_does_not_inherit_a_real_trash_folder(smartgallery_app):
     configured = smartgallery_app.DELETE_TO
     if configured:
         import tempfile
-        assert os.path.realpath(configured).startswith(
-            os.path.realpath(tempfile.gettempdir()))
+
+        assert os.path.realpath(configured).startswith(os.path.realpath(tempfile.gettempdir()))

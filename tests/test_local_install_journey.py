@@ -50,8 +50,7 @@ class _InlineExecutor:
 @pytest.fixture
 def local_gallery(smartgallery_app, monkeypatch):
     """No login configured, one picture carrying a prompt."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
@@ -66,10 +65,10 @@ def local_gallery(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        file_id = conn.execute("SELECT id FROM files WHERE name = ?",
-                               (f"{_PREFIX}pic.png",)).fetchone()[0]
-        conn.execute("UPDATE files SET workflow_prompt = ?, workflow_files = ? "
-                     "WHERE id = ?", (_PROMPT, _MODEL, file_id))
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}pic.png",)).fetchone()[0]
+        conn.execute(
+            "UPDATE files SET workflow_prompt = ?, workflow_files = ? WHERE id = ?", (_PROMPT, _MODEL, file_id)
+        )
         conn.commit()
     finally:
         conn.close()
@@ -95,8 +94,7 @@ def local_gallery(smartgallery_app, monkeypatch):
 def test_no_login_is_asked_for(smartgallery_app, local_gallery):
     """The first thing that would break if a guard were written for the
     wrong audience: the gallery opening at all."""
-    page = smartgallery_app.app.test_client().get("/galleryout/view/_root_",
-                                                  follow_redirects=True)
+    page = smartgallery_app.app.test_client().get("/galleryout/view/_root_", follow_redirects=True)
 
     assert page.status_code == 200, page.status_code
     body = page.get_data(as_text=True)
@@ -107,7 +105,8 @@ def test_no_login_is_asked_for(smartgallery_app, local_gallery):
     # test_force_login_mode uses to detect the interface leaking, read the
     # other way round.
     assert "lightbox-toolbar" in body or "gallery-item" in body, (
-        "the gallery interface did not render on a local install")
+        "the gallery interface did not render on a local install"
+    )
 
 
 def test_the_owner_sees_their_own_prompts(smartgallery_app, local_gallery):
@@ -123,8 +122,7 @@ def test_the_owner_sees_their_own_prompts(smartgallery_app, local_gallery):
 
     picture = client.get(f"/galleryout/file/{local_gallery}")
     assert picture.status_code == 200
-    assert _PROMPT.encode() in picture.get_data(), (
-        "the owner's own file was stripped on the way to them")
+    assert _PROMPT.encode() in picture.get_data(), "the owner's own file was stripped on the way to them"
 
 
 def test_the_owner_can_use_the_management_tools(smartgallery_app, local_gallery):
@@ -148,26 +146,29 @@ def test_the_owner_can_work_on_their_library(smartgallery_app, local_gallery):
     """Rate, comment, rename -- with the data still attached afterwards."""
     client = smartgallery_app.app.test_client()
 
-    assert client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": local_gallery, "rating": 5,
-                             "client_uuid": "admin"}).status_code == 200
-    assert client.post("/galleryout/api/exhibition/post_comment",
-                       json={"file_id": local_gallery, "text": "keep this one",
-                             "client_uuid": "admin"}).status_code == 200
+    assert (
+        client.post(
+            "/galleryout/api/exhibition/rate", json={"file_id": local_gallery, "rating": 5, "client_uuid": "admin"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/galleryout/api/exhibition/post_comment",
+            json={"file_id": local_gallery, "text": "keep this one", "client_uuid": "admin"},
+        ).status_code
+        == 200
+    )
 
-    renamed = client.post(f"/galleryout/rename_file/{local_gallery}",
-                          json={"new_name": f"{_PREFIX}renamed.png"})
+    renamed = client.post(f"/galleryout/rename_file/{local_gallery}", json={"new_name": f"{_PREFIX}renamed.png"})
     assert renamed.status_code == 200, renamed.get_data(as_text=True)
 
     conn = smartgallery_app.get_db_connection()
     try:
-        row = conn.execute("SELECT id FROM files WHERE name = ?",
-                           (f"{_PREFIX}renamed.png",)).fetchone()
+        row = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}renamed.png",)).fetchone()
         assert row, "the renamed file is not in the library"
-        rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?",
-                              (row[0],)).fetchone()
-        comments = conn.execute("SELECT COUNT(*) FROM file_comments WHERE file_id = ?",
-                                (row[0],)).fetchone()[0]
+        rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?", (row[0],)).fetchone()
+        comments = conn.execute("SELECT COUNT(*) FROM file_comments WHERE file_id = ?", (row[0],)).fetchone()[0]
     finally:
         conn.close()
 
@@ -181,8 +182,7 @@ def test_my_ratings_only_finds_what_the_owner_rated(smartgallery_app, local_gall
     first bug fixed in this branch, kept in the journey because it is
     invisible until someone turns the filter on."""
     client = smartgallery_app.app.test_client()
-    client.post("/galleryout/api/exhibition/rate",
-                json={"file_id": local_gallery, "rating": 4, "client_uuid": "admin"})
+    client.post("/galleryout/api/exhibition/rate", json={"file_id": local_gallery, "rating": 4, "client_uuid": "admin"})
 
     with client.session_transaction() as session:
         session["my_ratings_only"] = True
@@ -190,5 +190,4 @@ def test_my_ratings_only_finds_what_the_owner_rated(smartgallery_app, local_gall
     page = client.get("/galleryout/view/_root_?sort_by=rating")
 
     assert page.status_code == 200
-    assert local_gallery in page.get_data(as_text=True), (
-        "a file the owner rated is missing from their own ratings view")
+    assert local_gallery in page.get_data(as_text=True), "a file the owner rated is missing from their own ratings view"

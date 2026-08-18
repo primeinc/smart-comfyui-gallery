@@ -41,47 +41,42 @@ def _names(pairs):
 def test_a_single_folder_download_is_unchanged():
     """Over-reach guard, and the case almost every download is. These
     names must come back exactly as they went in."""
-    rows = [("/lib/a/one.png", "one.png"),
-            ("/lib/a/two.png", "two.png"),
-            ("/lib/a/three.mp4", "three.mp4")]
+    rows = [("/lib/a/one.png", "one.png"), ("/lib/a/two.png", "two.png"), ("/lib/a/three.mp4", "three.mp4")]
 
     assert _names(rows) == ["one.png", "two.png", "three.mp4"]
 
 
 def test_every_copy_of_a_repeated_name_says_where_it_came_from():
     """The bug. All three are ComfyUI_00001_.png."""
-    rows = [("/lib/portraits/ComfyUI_00001_.png", "ComfyUI_00001_.png"),
-            ("/lib/landscapes/ComfyUI_00001_.png", "ComfyUI_00001_.png"),
-            ("/lib/drafts/ComfyUI_00001_.png", "ComfyUI_00001_.png")]
+    rows = [
+        ("/lib/portraits/ComfyUI_00001_.png", "ComfyUI_00001_.png"),
+        ("/lib/landscapes/ComfyUI_00001_.png", "ComfyUI_00001_.png"),
+        ("/lib/drafts/ComfyUI_00001_.png", "ComfyUI_00001_.png"),
+    ]
 
     names = _names(rows)
 
     assert len(set(names)) == 3, f"names still collide: {names}"
-    assert names == ["ComfyUI_00001_ (portraits).png",
-                     "ComfyUI_00001_ (landscapes).png",
-                     "ComfyUI_00001_ (drafts).png"]
+    assert names == ["ComfyUI_00001_ (portraits).png", "ComfyUI_00001_ (landscapes).png", "ComfyUI_00001_ (drafts).png"]
 
 
 def test_nothing_keeps_a_bare_name_while_its_twin_is_qualified():
     """Qualifying from the second occurrence onwards would pass the
     uniqueness check above and still leave one file unattributable."""
-    rows = [("/lib/portraits/shot.png", "shot.png"),
-            ("/lib/drafts/shot.png", "shot.png")]
+    rows = [("/lib/portraits/shot.png", "shot.png"), ("/lib/drafts/shot.png", "shot.png")]
 
     names = _names(rows)
 
     assert "shot.png" not in names, (
-        f"one copy kept the bare name, so which folder it came from is "
-        f"anyone's guess: {names}")
+        f"one copy kept the bare name, so which folder it came from is anyone's guess: {names}"
+    )
 
 
 def test_two_files_from_one_folder_with_one_name_still_both_arrive():
     """The folder cannot tell these apart -- the same name twice in one
     place, which a rename or a mount overlap can produce. Uniqueness is
     the requirement; the qualifier is a nicety."""
-    rows = [("/lib/a/dup.png", "dup.png"),
-            ("/lib/a/dup.png", "dup.png"),
-            ("/lib/a/dup.png", "dup.png")]
+    rows = [("/lib/a/dup.png", "dup.png"), ("/lib/a/dup.png", "dup.png"), ("/lib/a/dup.png", "dup.png")]
 
     names = _names(rows)
 
@@ -91,12 +86,14 @@ def test_two_files_from_one_folder_with_one_name_still_both_arrive():
 def test_the_count_out_always_equals_the_count_in():
     """The property, over a mixed selection: whatever goes in, that many
     distinct names come out, in the same order."""
-    rows = [("/lib/a/x.png", "x.png"),
-            ("/lib/b/x.png", "x.png"),
-            ("/lib/a/y.png", "y.png"),
-            ("/lib/c/x.png", "x.png"),
-            ("/lib/b/y.png", "y.png"),
-            ("/lib/a/z.mov", "z.mov")]
+    rows = [
+        ("/lib/a/x.png", "x.png"),
+        ("/lib/b/x.png", "x.png"),
+        ("/lib/a/y.png", "y.png"),
+        ("/lib/c/x.png", "x.png"),
+        ("/lib/b/y.png", "y.png"),
+        ("/lib/a/z.mov", "z.mov"),
+    ]
 
     names = _names(rows)
 
@@ -107,15 +104,13 @@ def test_the_count_out_always_equals_the_count_in():
 
 def test_extensions_survive_being_qualified():
     """The suffix goes before the extension, or the file stops opening."""
-    rows = [("/lib/a/clip.tar.gz", "clip.tar.gz"),
-            ("/lib/b/clip.tar.gz", "clip.tar.gz")]
+    rows = [("/lib/a/clip.tar.gz", "clip.tar.gz"), ("/lib/b/clip.tar.gz", "clip.tar.gz")]
 
     for name in _names(rows):
         assert name.endswith(".gz"), name
 
 
-def test_the_zip_that_gets_built_holds_them_all(smartgallery_app, tmp_path,
-                                                monkeypatch):
+def test_the_zip_that_gets_built_holds_them_all(smartgallery_app, tmp_path, monkeypatch):
     """End to end through the real job, because the naming is only half of
     it -- the writing has to use it."""
     monkeypatch.setattr(smartgallery, "ZIP_CACHE_DIR", str(tmp_path / "zips"))
@@ -132,10 +127,9 @@ def test_the_zip_that_gets_built_holds_them_all(smartgallery_app, tmp_path,
     ids = [f"zipdup{i:026d}" for i in range(len(made))]
     try:
         conn.executemany(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-            "VALUES (?,?,?,?,?)",
-            [(ids[i], made[i], 1700000000.0, "ComfyUI_00001_.png", "image")
-             for i in range(len(made))])
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+            [(ids[i], made[i], 1700000000.0, "ComfyUI_00001_.png", "image") for i in range(len(made))],
+        )
         conn.commit()
     finally:
         conn.close()
@@ -155,28 +149,26 @@ def test_the_zip_that_gets_built_holds_them_all(smartgallery_app, tmp_path,
         assert len(set(entries)) == 3, f"the zip holds a repeated name: {entries}"
 
         extracted = sorted(os.listdir(str(tmp_path / "out")))
-        assert len(extracted) == 3, (
-            f"selected 3, extracted {len(extracted)}: {extracted}")
+        assert len(extracted) == 3, f"selected 3, extracted {len(extracted)}: {extracted}"
 
         contents = set()
         for name in extracted:
             with open(os.path.join(str(tmp_path / "out"), name), "rb") as f:
                 contents.add(f.read())
         assert contents == {b"png-portraits", b"png-landscapes", b"png-drafts"}, (
-            "the files arrived but some are copies of each other")
+            "the files arrived but some are copies of each other"
+        )
     finally:
         smartgallery.zip_jobs.pop("testjob", None)
         conn = smartgallery.get_db_connection()
         try:
-            conn.executemany("DELETE FROM files WHERE id = ?",
-                             [(i,) for i in ids])
+            conn.executemany("DELETE FROM files WHERE id = ?", [(i,) for i in ids])
             conn.commit()
         finally:
             conn.close()
 
 
-def test_a_single_folder_zip_still_has_the_original_names(smartgallery_app,
-                                                          tmp_path, monkeypatch):
+def test_a_single_folder_zip_still_has_the_original_names(smartgallery_app, tmp_path, monkeypatch):
     """Over-reach guard through the real job, so it holds against the
     build before this change as well as after it. Names that do not clash
     must arrive exactly as they were -- a fix that renamed everything
@@ -193,10 +185,9 @@ def test_a_single_folder_zip_still_has_the_original_names(smartgallery_app,
     conn = smartgallery.get_db_connection()
     try:
         conn.executemany(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-            "VALUES (?,?,?,?,?)",
-            [(ids[i], str(directory / wanted[i]), 1700000000.0, wanted[i],
-              "image") for i in range(len(wanted))])
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+            [(ids[i], str(directory / wanted[i]), 1700000000.0, wanted[i], "image") for i in range(len(wanted))],
+        )
         conn.commit()
     finally:
         conn.close()
@@ -213,8 +204,7 @@ def test_a_single_folder_zip_still_has_the_original_names(smartgallery_app,
         smartgallery.zip_jobs.pop("testjob_one", None)
         conn = smartgallery.get_db_connection()
         try:
-            conn.executemany("DELETE FROM files WHERE id = ?",
-                             [(i,) for i in ids])
+            conn.executemany("DELETE FROM files WHERE id = ?", [(i,) for i in ids])
             conn.commit()
         finally:
             conn.close()
@@ -235,17 +225,18 @@ def test_a_duplicate_name_would_have_been_lost(tmp_path):
 
     archive = tmp_path / "old.zip"
     import warnings
+
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with zipfile.ZipFile(archive, "w") as zf:
             for path in files:
                 zf.write(path, os.path.basename(path))  # the old way
 
-    assert any("Duplicate name" in str(w.message) for w in caught), (
-        "zipfile no longer warns about duplicate names")
+    assert any("Duplicate name" in str(w.message) for w in caught), "zipfile no longer warns about duplicate names"
 
     with zipfile.ZipFile(archive) as zf:
         zf.extractall(str(tmp_path / "old_out"))
     assert len(os.listdir(str(tmp_path / "old_out"))) == 1, (
         "two entries with one name no longer collapse on extraction, so the "
-        "checks above are guarding something that cannot happen")
+        "checks above are guarding something that cannot happen"
+    )

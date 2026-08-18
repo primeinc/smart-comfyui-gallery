@@ -58,12 +58,10 @@ def _scan(smartgallery_app):
 @pytest.fixture
 def rated_library(smartgallery_app, monkeypatch):
     """Two indexed images, one of them rated and commented on."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     os.makedirs(base, exist_ok=True)
-    made = [os.path.join(base, f"{_PREFIX}one.png"),
-            os.path.join(base, f"{_PREFIX}two.png")]
+    made = [os.path.join(base, f"{_PREFIX}one.png"), os.path.join(base, f"{_PREFIX}two.png")]
     for path in made:
         Image.new("RGB", (16, 16), (200, 30, 90)).save(path)
 
@@ -77,14 +75,18 @@ def rated_library(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        file_id = conn.execute(
-            "SELECT id FROM files WHERE name = ?", (f"{_PREFIX}one.png",)).fetchone()[0]
-        conn.execute("INSERT OR REPLACE INTO file_ratings "
-                     "(file_id, client_uuid, rating, created_at) VALUES (?, 'admin', 5, 1.0)",
-                     (file_id,))
-        conn.execute("INSERT INTO file_comments "
-                     "(file_id, client_uuid, author_name, comment_text, target_audience, created_at) "
-                     "VALUES (?, 'admin', 'Me', 'worth keeping', 'public', 1.0)", (file_id,))
+        file_id = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}one.png",)).fetchone()[0]
+        conn.execute(
+            "INSERT OR REPLACE INTO file_ratings "
+            "(file_id, client_uuid, rating, created_at) VALUES (?, 'admin', 5, 1.0)",
+            (file_id,),
+        )
+        conn.execute(
+            "INSERT INTO file_comments "
+            "(file_id, client_uuid, author_name, comment_text, target_audience, created_at) "
+            "VALUES (?, 'admin', 'Me', 'worth keeping', 'public', 1.0)",
+            (file_id,),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -105,12 +107,9 @@ def rated_library(smartgallery_app, monkeypatch):
 def _counts(smartgallery_app, file_id):
     conn = smartgallery_app.get_db_connection()
     try:
-        files = conn.execute(
-            f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
-        ratings = conn.execute(
-            "SELECT COUNT(*) FROM file_ratings WHERE file_id = ?", (file_id,)).fetchone()[0]
-        comments = conn.execute(
-            "SELECT COUNT(*) FROM file_comments WHERE file_id = ?", (file_id,)).fetchone()[0]
+        files = conn.execute(f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
+        ratings = conn.execute("SELECT COUNT(*) FROM file_ratings WHERE file_id = ?", (file_id,)).fetchone()[0]
+        comments = conn.execute("SELECT COUNT(*) FROM file_comments WHERE file_id = ?", (file_id,)).fetchone()[0]
         return files, ratings, comments
     finally:
         conn.close()
@@ -121,8 +120,7 @@ def test_the_fixture_really_is_indexed_and_rated(smartgallery_app, rated_library
     assert _counts(smartgallery_app, rated_library) == (2, 1, 1)
 
 
-def test_an_unreachable_gallery_root_does_not_wipe_the_library(
-        smartgallery_app, rated_library):
+def test_an_unreachable_gallery_root_does_not_wipe_the_library(smartgallery_app, rated_library):
     """The drive is moved out from under a running scan, then comes back.
 
     Nothing about the library should have changed: the files still exist,

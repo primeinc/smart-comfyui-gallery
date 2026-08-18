@@ -26,8 +26,7 @@ def client(smartgallery_app):
 
 def _key_for(smartgallery_app, path):
     folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
-    return next((k for k, v in folders.items()
-                 if os.path.normpath(v["path"]) == os.path.normpath(path)), None)
+    return next((k for k, v in folders.items() if os.path.normpath(v["path"]) == os.path.normpath(path)), None)
 
 
 class _InlineExecutor:
@@ -64,12 +63,10 @@ def _make_folder(smartgallery_app, name, with_file=True, monkeypatch=None):
     path = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, name)
     os.makedirs(path, exist_ok=True)
     if with_file:
-        Image.new("RGB", (16, 16), (200, 120, 40)).save(
-            os.path.join(path, f"{_PREFIX}inside.png"))
+        Image.new("RGB", (16, 16), (200, 120, 40)).save(os.path.join(path, f"{_PREFIX}inside.png"))
         os.makedirs(smartgallery_app.THUMBNAIL_CACHE_DIR, exist_ok=True)
         if monkeypatch is not None:
-            monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                                "ProcessPoolExecutor", _InlineExecutor)
+            monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
         conn = smartgallery_app.get_db_connection()
         try:
             smartgallery_app.full_sync_database(conn)
@@ -108,14 +105,12 @@ def _rows_under(smartgallery_app, path):
         rows = [r[0] for r in conn.execute("SELECT path FROM files").fetchall()]
     finally:
         conn.close()
-    return sum(1 for p in rows
-               if os.path.normcase(os.path.normpath(p)).startswith(wanted))
+    return sum(1 for p in rows if os.path.normcase(os.path.normpath(p)).startswith(wanted))
 
 
 def test_create_folder_makes_it_on_disk(smartgallery_app, client):
     name = f"{_PREFIX}created"
-    resp = client.post("/galleryout/create_folder",
-                       json={"folder_name": name, "parent_key": "_root_"})
+    resp = client.post("/galleryout/create_folder", json={"folder_name": name, "parent_key": "_root_"})
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert os.path.isdir(os.path.join(smartgallery_app.BASE_OUTPUT_PATH, name))
 
@@ -131,8 +126,7 @@ def test_delete_folder_removes_it_and_clears_its_rows(smartgallery_app, client, 
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert not os.path.exists(path), "the folder is still on disk"
-    assert _rows_under(smartgallery_app, path) == 0, (
-        "rows still point inside a folder that no longer exists")
+    assert _rows_under(smartgallery_app, path) == 0, "rows still point inside a folder that no longer exists"
 
 
 def test_delete_folder_refuses_a_protected_key(smartgallery_app, client):
@@ -154,22 +148,19 @@ def test_rename_folder_moves_it_and_carries_its_rows(smartgallery_app, client, m
     if key is None:
         pytest.skip("new folder is not exposed by the folder config")
 
-    resp = client.post(f"/galleryout/rename_folder/{key}",
-                       json={"new_name": f"{_PREFIX}after"})
+    resp = client.post(f"/galleryout/rename_folder/{key}", json={"new_name": f"{_PREFIX}after"})
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     new_path = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, f"{_PREFIX}after")
     assert os.path.isdir(new_path), "the folder was not renamed on disk"
     assert not os.path.exists(path)
-    assert _rows_under(smartgallery_app, new_path) == 1, (
-        "the file's row did not follow the folder rename")
+    assert _rows_under(smartgallery_app, new_path) == 1, "the file's row did not follow the folder rename"
     assert _rows_under(smartgallery_app, path) == 0, "a row still points at the old path"
 
 
 def test_rename_folder_refuses_a_protected_key(smartgallery_app, client):
     for key in smartgallery_app.PROTECTED_FOLDER_KEYS:
-        resp = client.post(f"/galleryout/rename_folder/{key}",
-                           json={"new_name": f"{_PREFIX}nope"})
+        resp = client.post(f"/galleryout/rename_folder/{key}", json={"new_name": f"{_PREFIX}nope"})
         assert resp.status_code == 403, f"{key} was not protected from renaming"
 
 
@@ -186,13 +177,15 @@ def test_rename_folder_rejects_empty_and_dot_names(smartgallery_app, client, bad
     assert os.path.isdir(path), "the folder changed despite an invalid name"
 
 
-@pytest.mark.parametrize(("attempt", "expected"), [
-    ("a/b", "ab"),
-    ("a" + chr(92) + "b", "ab"),
-    ("up:down", "updown"),
-])
-def test_rename_folder_strips_separators_instead_of_escaping(
-        smartgallery_app, client, attempt, expected):
+@pytest.mark.parametrize(
+    ("attempt", "expected"),
+    [
+        ("a/b", "ab"),
+        ("a" + chr(92) + "b", "ab"),
+        ("up:down", "updown"),
+    ],
+)
+def test_rename_folder_strips_separators_instead_of_escaping(smartgallery_app, client, attempt, expected):
     """Path characters are stripped rather than refused, which is fine --
     what matters is that the folder cannot land outside the gallery."""
     path = _make_folder(smartgallery_app, f"{_PREFIX}strip", with_file=False)
@@ -206,6 +199,5 @@ def test_rename_folder_strips_separators_instead_of_escaping(
     landed = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, expected)
     assert os.path.isdir(landed), f"expected the folder at {landed}"
     parent = os.path.abspath(os.path.join(smartgallery_app.BASE_OUTPUT_PATH, os.pardir))
-    assert not os.path.exists(os.path.join(parent, expected)), (
-        "the rename escaped the gallery root")
+    assert not os.path.exists(os.path.join(parent, expected)), "the rename escaped the gallery root"
     shutil.rmtree(landed, ignore_errors=True)

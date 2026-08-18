@@ -41,7 +41,10 @@ from omniquery.validation import AuthContext, ValidationError, validate
 # AuthContext -- this is purely "did I build something structurally and
 # semantically legal", not an authorization decision.
 PERMISSIVE_CTX = AuthContext(
-    role="ADMIN", user_id="omniquery-parser", client_uuid="omniquery-parser", ai_enabled=True,
+    role="ADMIN",
+    user_id="omniquery-parser",
+    client_uuid="omniquery-parser",
+    ai_enabled=True,
 )
 
 
@@ -52,7 +55,9 @@ class ParserOutcome:
     ``ast`` only to a dict that already passed :func:`try_validate`."""
 
     ast: dict | None  # validated JSON-compatible AST; None when the parse failed
-    confidence: float | None  # backend's self-reported confidence in [0, 1]; None when the backend emits none; not comparable across backends
+    confidence: (
+        float | None
+    )  # backend's self-reported confidence in [0, 1]; None when the backend emits none; not comparable across backends
     backend: str  # registry name of the producing backend
     unsupported: bool = False  # True: no usable AST was produced; `reason` says why
     reason: str | None = None  # failure diagnostics; on success, soft warnings (e.g. literals the AST missed)
@@ -120,6 +125,7 @@ def make_search_parser() -> ParserBackend:
 # Shared validation helper
 # ---------------------------------------------------------------------------
 
+
 def try_validate(ast_dict: dict) -> tuple[Query | None, str | None]:
     """Parse + validate an AST dict against PERMISSIVE_CTX.
 
@@ -143,6 +149,7 @@ def try_validate(ast_dict: dict) -> tuple[Query | None, str | None]:
 # ---------------------------------------------------------------------------
 # AST tree-walking helpers (dict-shaped ASTs, i.e. pre-parse_query() JSON)
 # ---------------------------------------------------------------------------
+
 
 def _walk_conds(node: Any) -> Iterator[dict]:
     """Yield every condition dict ({"field", "op", "value"}) under `node`,
@@ -222,45 +229,85 @@ _NUMBER_UNIT_RE = re.compile(
 # accepted AST encoding of it: sizes may be stored in MB or bytes, durations
 # in seconds, week/month counts in days; unitless kinds multiply by 1.
 _UNIT_MULTIPLIERS: dict[str, tuple[float, ...]] = {
-    "mb": (1.0, 1024.0 * 1024.0), "megabyte": (1.0, 1024.0 * 1024.0), "megabytes": (1.0, 1024.0 * 1024.0),
-    "gb": (1024.0, 1024.0 ** 3), "gigabyte": (1024.0, 1024.0 ** 3), "gigabytes": (1024.0, 1024.0 ** 3),
-    "kb": (1.0 / 1024.0, 1024.0), "kilobyte": (1.0 / 1024.0, 1024.0), "kilobytes": (1.0 / 1024.0, 1024.0),
-    "second": (1.0,), "seconds": (1.0,), "sec": (1.0,), "secs": (1.0,),
-    "minute": (60.0,), "minutes": (60.0,), "min": (60.0,), "mins": (60.0,),
-    "hour": (3600.0,), "hours": (3600.0,), "hr": (3600.0,), "hrs": (3600.0,),
-    "star": (1.0,), "stars": (1.0,),
-    "day": (1.0,), "days": (1.0,),
-    "week": (7.0,), "weeks": (7.0,),
-    "month": (30.0,), "months": (30.0,),
-    "megapixel": (1.0,), "megapixels": (1.0,), "mp": (1.0,),
+    "mb": (1.0, 1024.0 * 1024.0),
+    "megabyte": (1.0, 1024.0 * 1024.0),
+    "megabytes": (1.0, 1024.0 * 1024.0),
+    "gb": (1024.0, 1024.0**3),
+    "gigabyte": (1024.0, 1024.0**3),
+    "gigabytes": (1024.0, 1024.0**3),
+    "kb": (1.0 / 1024.0, 1024.0),
+    "kilobyte": (1.0 / 1024.0, 1024.0),
+    "kilobytes": (1.0 / 1024.0, 1024.0),
+    "second": (1.0,),
+    "seconds": (1.0,),
+    "sec": (1.0,),
+    "secs": (1.0,),
+    "minute": (60.0,),
+    "minutes": (60.0,),
+    "min": (60.0,),
+    "mins": (60.0,),
+    "hour": (3600.0,),
+    "hours": (3600.0,),
+    "hr": (3600.0,),
+    "hrs": (3600.0,),
+    "star": (1.0,),
+    "stars": (1.0,),
+    "day": (1.0,),
+    "days": (1.0,),
+    "week": (7.0,),
+    "weeks": (7.0,),
+    "month": (30.0,),
+    "months": (30.0,),
+    "megapixel": (1.0,),
+    "megapixels": (1.0,),
+    "mp": (1.0,),
 }
 
 _MEDIA_TYPE_RE = re.compile(
     r"\b(photos?|pictures?|images?|videos?|clips?|movies?|gifs?|animated[ -]images?|"
-    r"sounds?|music|songs?|audio|documents?|pdfs?)\b", re.IGNORECASE,
+    r"sounds?|music|songs?|audio|documents?|pdfs?)\b",
+    re.IGNORECASE,
 )
 # Normalized (singular, space-separated, lowercase) keyword -> AST enum value.
 # Kept in lockstep with the alternatives of _MEDIA_TYPE_RE above.
 _MEDIA_TYPE_NORMALIZE: dict[str, str] = {
-    "photo": "image", "picture": "image", "image": "image",
-    "video": "video", "clip": "video", "movie": "video",
-    "gif": "animated_image", "animated image": "animated_image",
-    "sound": "audio", "music": "audio", "song": "audio", "audio": "audio",
-    "document": "document", "pdf": "document",
+    "photo": "image",
+    "picture": "image",
+    "image": "image",
+    "video": "video",
+    "clip": "video",
+    "movie": "video",
+    "gif": "animated_image",
+    "animated image": "animated_image",
+    "sound": "audio",
+    "music": "audio",
+    "song": "audio",
+    "audio": "audio",
+    "document": "document",
+    "pdf": "document",
 }
 _STATUS_WORD_RE = re.compile(
-    r"\b(approved|rejected|needs?\s+review|in\s+review|review|to\s+edit|selected|select)\b", re.IGNORECASE,
+    r"\b(approved|rejected|needs?\s+review|in\s+review|review|to\s+edit|selected|select)\b",
+    re.IGNORECASE,
 )
 # Normalized keyword -> lowercased AST status_flag value ("To Edit" etc.).
 _STATUS_NORMALIZE: dict[str, str] = {
-    "approved": "approved", "rejected": "rejected",
-    "need review": "review", "needs review": "review", "in review": "review",
+    "approved": "approved",
+    "rejected": "rejected",
+    "need review": "review",
+    "needs review": "review",
+    "in review": "review",
     "review": "review",
     "to edit": "to edit",
-    "selected": "select", "select": "select",
+    "selected": "select",
+    "select": "select",
 }
-_FAVORITE_WORD_RE = re.compile(r"\bfavou?rite[sd]?\b", re.IGNORECASE)  # both spellings, optional plural/past-tense suffix
-_COUNT_WORD_RE = re.compile(r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.IGNORECASE)  # phrasings that demand result="count"
+_FAVORITE_WORD_RE = re.compile(
+    r"\bfavou?rite[sd]?\b", re.IGNORECASE
+)  # both spellings, optional plural/past-tense suffix
+_COUNT_WORD_RE = re.compile(
+    r"\bhow\s+many\b|\bcount\s+of\b|\bnumber\s+of\b", re.IGNORECASE
+)  # phrasings that demand result="count"
 
 
 def _number_candidates(raw: str, unit: str | None) -> list[float]:
@@ -339,7 +386,8 @@ def coverage_guard(text: str, ast_dict: dict) -> tuple[float, list[str]]:
     # unit: "images or videos" must find both 'image' and 'video' among
     # the AST's type-condition values, or the dropped half is a miss.
     mentioned_types = {
-        t for m in _MEDIA_TYPE_RE.finditer(text)
+        t
+        for m in _MEDIA_TYPE_RE.finditer(text)
         if (t := _normalize_keyword(m.group(1), _MEDIA_TYPE_NORMALIZE)) is not None
     }
     if mentioned_types:
@@ -352,7 +400,8 @@ def coverage_guard(text: str, ast_dict: dict) -> tuple[float, list[str]]:
                 missing.append(f"media-type {t!r} not reflected in any 'type' condition")
 
     mentioned_statuses = {
-        s for m in _STATUS_WORD_RE.finditer(text)
+        s
+        for m in _STATUS_WORD_RE.finditer(text)
         if (s := _normalize_keyword(m.group(1), _STATUS_NORMALIZE)) is not None
     }
     if mentioned_statuses:

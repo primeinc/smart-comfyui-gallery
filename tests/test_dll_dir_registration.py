@@ -34,8 +34,7 @@ def fake_nvidia_dirs(tmp_path, monkeypatch):
         d.mkdir(parents=True)
         made.append(str(d))
 
-    monkeypatch.setattr(faiss_runtime.sysconfig, "get_paths",
-                        lambda: {"purelib": str(purelib)})
+    monkeypatch.setattr(faiss_runtime.sysconfig, "get_paths", lambda: {"purelib": str(purelib)})
     monkeypatch.setattr(faiss_runtime, "_REGISTERED_DLL_DIRS", set())
     monkeypatch.setenv("PATH", "C:\\original\\path")
     return sorted(made)
@@ -60,8 +59,8 @@ def test_a_second_call_changes_nothing(fake_nvidia_dirs):
         faiss_runtime._register_cuda_dll_dirs()
 
     assert os.environ["PATH"] == after_first, (
-        "PATH grew on repeat registration; it went from "
-        f"{len(after_first)} to {len(os.environ['PATH'])} characters")
+        f"PATH grew on repeat registration; it went from {len(after_first)} to {len(os.environ['PATH'])} characters"
+    )
 
 
 def test_path_stays_a_sane_length_under_many_calls(fake_nvidia_dirs):
@@ -71,8 +70,8 @@ def test_path_stays_a_sane_length_under_many_calls(fake_nvidia_dirs):
         faiss_runtime._register_cuda_dll_dirs()
 
     assert len(os.environ["PATH"]) < 4000, (
-        f"PATH reached {len(os.environ['PATH'])} characters; Windows stops "
-        f"being able to spawn ffmpeg around 32000")
+        f"PATH reached {len(os.environ['PATH'])} characters; Windows stops being able to spawn ffmpeg around 32000"
+    )
 
 
 def test_an_entry_already_present_is_not_added_again(fake_nvidia_dirs, monkeypatch):

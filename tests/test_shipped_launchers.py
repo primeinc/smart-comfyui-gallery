@@ -32,10 +32,18 @@ _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # What a person downloads, copies, or pastes from. Not tests/ -- fixtures
 # there use obvious throwaways like 'correct-horse-battery' on purpose.
-_SHIPPED_GLOBS = ("*.bat", "*.bash", "*.sh", "*.yaml", "*.yml", "Dockerfile",
-                  "*.md", "justfile", "*.just")
-_SKIP_DIRS = {".git", ".venv", "tests", "node_modules", "__pycache__",
-              ".pytest_cache", ".AImodels", "vendor", "experiments"}
+_SHIPPED_GLOBS = ("*.bat", "*.bash", "*.sh", "*.yaml", "*.yml", "Dockerfile", "*.md", "justfile", "*.just")
+_SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "tests",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".AImodels",
+    "vendor",
+    "experiments",
+}
 
 # `--admin-pass VALUE`, `--admin-pass=VALUE`, `ADMIN_PASSWORD=VALUE`.
 # Backticks are excluded because most mentions live inside markdown code
@@ -47,10 +55,10 @@ _TRAILING = ",.);|"
 def _is_placeholder(value: str) -> bool:
     """True when the value could not possibly be somebody's real password."""
     if not value:
-        return True                                   # deliberately unset
-    if any(ch in value for ch in "%$<>{}"):           # %VAR%, ${VAR}, <pwd>
+        return True  # deliberately unset
+    if any(ch in value for ch in "%$<>{}"):  # %VAR%, ${VAR}, <pwd>
         return True
-    if re.fullmatch(r"[A-Z][A-Z_]*", value):          # PASSWORD, YOUR_PASSWORD
+    if re.fullmatch(r"[A-Z][A-Z_]*", value):  # PASSWORD, YOUR_PASSWORD
         return True
     return value.lower() in {"yourpassword", "your_password", "your-password"}
 
@@ -78,9 +86,12 @@ def _shipped_files():
 
 
 def _findings(text: str):
-    return [value for _quote, raw in _SECRET.findall(text)
-            for value in [raw.rstrip(_TRAILING)]
-            if not _is_placeholder(value)]
+    return [
+        value
+        for _quote, raw in _SECRET.findall(text)
+        for value in [raw.rstrip(_TRAILING)]
+        if not _is_placeholder(value)
+    ]
 
 
 def test_the_scan_actually_reaches_the_shipped_files():
@@ -90,12 +101,14 @@ def test_the_scan_actually_reaches_the_shipped_files():
     names = {p.name for p in files}
 
     assert len(files) > 10, f"only found {len(files)} shipped files"
-    assert {"sample_run_exhibition.bat", "sample_run_smartgallery.bat",
-            "README.md"} <= names, sorted(names)
+    assert {"sample_run_exhibition.bat", "sample_run_smartgallery.bat", "README.md"} <= names, sorted(names)
 
-    mentions = [p for p in files
-                if "--admin-pass" in p.read_text(encoding="utf-8", errors="replace")
-                or "ADMIN_PASSWORD=" in p.read_text(encoding="utf-8", errors="replace")]
+    mentions = [
+        p
+        for p in files
+        if "--admin-pass" in p.read_text(encoding="utf-8", errors="replace")
+        or "ADMIN_PASSWORD=" in p.read_text(encoding="utf-8", errors="replace")
+    ]
     assert mentions, "no shipped file mentions the password at all -- the "
     "sweep below would pass for the wrong reason"
 
@@ -104,8 +117,10 @@ def test_the_detector_catches_the_line_that_shipped():
     """Control for the matcher. Without this the sweep could be passing
     because the regex matches nothing, and a real credential would sail
     straight through."""
-    was_shipped = (r"..\python\python.exe smartgallery.py --port %SERVER_PORT% "
-                   r"--exhibition --admin-pass maffettone")
+    was_shipped = (
+        r"..\python\python.exe smartgallery.py --port %SERVER_PORT% "
+        r"--exhibition --admin-pass maffettone"
+    )
 
     assert _findings(was_shipped) == ["maffettone"]
     assert _findings('set "ADMIN_PASSWORD=hunter2222"') == ["hunter2222"]
@@ -123,8 +138,7 @@ def test_the_detector_catches_the_line_that_shipped():
     assert _findings("run `--admin-pass hunter2222`, then stop.") == ["hunter2222"]
 
 
-@pytest.mark.parametrize("path", _shipped_files(),
-                         ids=lambda p: str(p.relative_to(_REPO_ROOT)))
+@pytest.mark.parametrize("path", _shipped_files(), ids=lambda p: str(p.relative_to(_REPO_ROOT)))
 def test_no_shipped_file_carries_a_real_password(path):
     found = _findings(path.read_text(encoding="utf-8", errors="replace"))
 
@@ -136,7 +150,8 @@ def test_no_shipped_file_carries_a_real_password(path):
         f"If that is prose rather than a command, the next word after the "
         f"flag reads as its value -- reword so the flag is not followed by "
         f"one. Staying strict here is deliberate: a secret scanner that "
-        f"guesses at English is one that misses secrets.")
+        f"guesses at English is one that misses secrets."
+    )
 
 
 def _launch_lines(text):
@@ -159,8 +174,7 @@ def _launch_lines(text):
     return lines
 
 
-@pytest.mark.parametrize("name", ["sample_run_exhibition.bat",
-                                  "sample_run_exhibition.sh"])
+@pytest.mark.parametrize("name", ["sample_run_exhibition.bat", "sample_run_exhibition.sh"])
 def test_the_exhibition_sample_asks_for_a_password_without_supplying_one(name):
     """The specific shape of the fix: exhibition needs an admin account, so
     the sample has to prompt for one -- and must not put it on the command
@@ -172,16 +186,21 @@ def test_the_exhibition_sample_asks_for_a_password_without_supplying_one(name):
     launch = _launch_lines(text)
     assert launch, f"no launch line found in {name}"
 
-    assert 'ADMIN_PASSWORD=' in text, text
+    assert "ADMIN_PASSWORD=" in text, text
     for line in launch:
         assert "--admin-pass" not in line, line
     assert any("--exhibition" in line for line in launch), launch
 
 
-@pytest.mark.parametrize("name", ["sample_run_smartgallery.bat",
-                                  "sample_run_smartgallery.sh",
-                                  "sample_run_exhibition.bat",
-                                  "sample_run_exhibition.sh"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "sample_run_smartgallery.bat",
+        "sample_run_smartgallery.sh",
+        "sample_run_exhibition.bat",
+        "sample_run_exhibition.sh",
+    ],
+)
 def test_every_sample_launcher_looks_for_an_environment_first(name):
     """A launcher that runs the wrong interpreter fails in a way nobody can
     read. Each one has to look for .venv and venv, and say what to do when
@@ -195,5 +214,4 @@ def test_every_sample_launcher_looks_for_an_environment_first(name):
     assert "venv" in text, f"{name} never looks for venv"
     assert "uv sync" in text, f"{name} does not mention the uv route"
     assert "requirements.txt" in text, f"{name} does not mention the pip route"
-    assert "astral.sh/uv/install" in text, (
-        f"{name} tells people to run uv without saying how to get it")
+    assert "astral.sh/uv/install" in text, f"{name} tells people to run uv without saying how to get it"

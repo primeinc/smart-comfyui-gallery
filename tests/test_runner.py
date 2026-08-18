@@ -22,7 +22,8 @@ def _make_db(db_path: str) -> None:
     conn.execute(
         "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, "
         "mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT, "
-        "workflow_prompt TEXT DEFAULT '')")
+        "workflow_prompt TEXT DEFAULT '')"
+    )
     init_schema(conn)
     conn.commit()
     conn.close()
@@ -31,8 +32,9 @@ def _make_db(db_path: str) -> None:
 def _add_file(db_path: str, file_id: str, path: str, prompt: str = "") -> None:
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "INSERT INTO files (id, path, mtime, name, type, workflow_prompt) "
-        "VALUES (?, ?, 1000.0, ?, 'image', ?)", (file_id, path, file_id, prompt))
+        "INSERT INTO files (id, path, mtime, name, type, workflow_prompt) VALUES (?, ?, 1000.0, ?, 'image', ?)",
+        (file_id, path, file_id, prompt),
+    )
     conn.commit()
     conn.close()
 
@@ -48,8 +50,9 @@ def env(tmp_path):
             img.putpixel((x, y), (255, 0, 0))  # StubReviewer's red artifact
     img.save(img_path)
     _add_file(db_path, "f1", img_path, prompt="a red cube, a blue sphere")
-    config = AIConfig(enabled=True, base_path=str(tmp_path), db_path=db_path,
-                      cache_dir=str(tmp_path / "cache"), ephemeral_index=True)
+    config = AIConfig(
+        enabled=True, base_path=str(tmp_path), db_path=db_path, cache_dir=str(tmp_path / "cache"), ephemeral_index=True
+    )
     return config, db_path
 
 
@@ -101,11 +104,8 @@ def test_full_run_emits_every_step_in_order_and_stores(env):
 
     conn = sqlite3.connect(db_path)
     try:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM ai_reviews WHERE file_id='f1'").fetchone()[0] == 1
-        scan = conn.execute(
-            "SELECT input_key FROM ai_scan_log "
-            "WHERE file_id='f1' AND kind='review'").fetchone()
+        assert conn.execute("SELECT COUNT(*) FROM ai_reviews WHERE file_id='f1'").fetchone()[0] == 1
+        scan = conn.execute("SELECT input_key FROM ai_scan_log WHERE file_id='f1' AND kind='review'").fetchone()
         assert scan is not None
         assert scan[0] != "", "the scan must be keyed on the inputs it ran against"
     finally:
@@ -134,8 +134,7 @@ def test_validate_reports_scores_and_alignment_elements(env):
 def test_dry_run_stops_before_storing_and_leaves_the_db_untouched(env):
     config, db_path = env
     events = _drain(config, steps="resolve,load,critic,validate")
-    assert [e["step"] for e in events if e["status"] == "ok"] == [
-        "resolve", "load", "critic", "validate"]
+    assert [e["step"] for e in events if e["status"] == "ok"] == ["resolve", "load", "critic", "validate"]
 
     conn = sqlite3.connect(db_path)
     try:
@@ -192,14 +191,12 @@ class _EmittingCritic:
         del img, prompt_text, rubric_version, negative_text
         self._emit("describe")
         self._emit("assess", grounding_margin=0.42)
-        return {"quality_score": 5.0, "prompt_alignment_score": None,
-                "summary": "s", "findings": [], "alignment": []}
+        return {"quality_score": 5.0, "prompt_alignment_score": None, "summary": "s", "findings": [], "alignment": []}
 
 
 def test_critic_protocol_stages_are_forwarded_as_events(env):
     config, _ = env
-    events = list(runner.run_review(config, "f1", steps="resolve,load,critic",
-                                    critic=_EmittingCritic()))
+    events = list(runner.run_review(config, "f1", steps="resolve,load,critic", critic=_EmittingCritic()))
     assert "critic:describe" in _steps_of(events)
     assert _by(events, "critic:assess", "info")["detail"]["grounding_margin"] == 0.42
     # Stages must stream WHILE the step runs, i.e. before it completes --
@@ -243,11 +240,9 @@ def test_a_second_concurrent_run_is_refused_not_queued(env):
             del img, prompt_text, rubric_version, negative_text
             started.set()
             release.wait(timeout=5)
-            return {"quality_score": 1.0, "prompt_alignment_score": None,
-                    "summary": "s", "findings": []}
+            return {"quality_score": 1.0, "prompt_alignment_score": None, "summary": "s", "findings": []}
 
-    first = runner.run_review(config, "f1", steps="resolve,load,critic",
-                              critic=_BlockingCritic())
+    first = runner.run_review(config, "f1", steps="resolve,load,critic", critic=_BlockingCritic())
     consumed = []
     thread = threading.Thread(target=lambda: consumed.extend(first), daemon=True)
     thread.start()
@@ -268,6 +263,6 @@ def test_closing_the_generator_early_releases_the_lock(env):
     release-on-close every later run would be refused until restart."""
     config, _ = env
     gen = runner.run_review(config, "f1", critic=StubReviewer())
-    next(gen)          # take the 'run start' event, leaving the lock held
+    next(gen)  # take the 'run start' event, leaving the lock held
     gen.close()
     assert _drain(config)[-1]["status"] == "done"

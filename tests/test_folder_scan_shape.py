@@ -53,34 +53,28 @@ def _count_connections_for(smartgallery_app, monkeypatch, root, folder_count):
 def test_the_scan_really_sees_the_folders(smartgallery_app, tmp_path, monkeypatch):
     """Control: if the walk stopped finding anything, the comparison below
     would hold perfectly and mean nothing."""
-    _connections, found = _count_connections_for(
-        smartgallery_app, monkeypatch, tmp_path / "control", 40)
+    _connections, found = _count_connections_for(smartgallery_app, monkeypatch, tmp_path / "control", 40)
 
     assert found == 41, f"expected 40 folders plus the root, found {found}"
 
 
-def test_the_cost_does_not_grow_with_the_number_of_folders(smartgallery_app,
-                                                           tmp_path, monkeypatch):
+def test_the_cost_does_not_grow_with_the_number_of_folders(smartgallery_app, tmp_path, monkeypatch):
     """The regression this guards: a lookup moved inside the loop."""
-    small, small_found = _count_connections_for(
-        smartgallery_app, monkeypatch, tmp_path / "small", 20)
-    large, large_found = _count_connections_for(
-        smartgallery_app, monkeypatch, tmp_path / "large", 400)
+    small, small_found = _count_connections_for(smartgallery_app, monkeypatch, tmp_path / "small", 20)
+    large, large_found = _count_connections_for(smartgallery_app, monkeypatch, tmp_path / "large", 400)
 
     assert small_found == 21 and large_found == 401, (small_found, large_found)
     assert large <= small, (
         f"a scan of 400 folders opened {large} database connections against "
         f"{small} for 20. Something in the folder loop is querying per folder; "
         f"on a large library that is the difference between a page that loads "
-        f"and one that does not.")
+        f"and one that does not."
+    )
 
 
-def test_the_scan_opens_only_a_handful_of_connections(smartgallery_app,
-                                                      tmp_path, monkeypatch):
+def test_the_scan_opens_only_a_handful_of_connections(smartgallery_app, tmp_path, monkeypatch):
     """A ceiling in absolute terms too, so a constant-but-large number of
     lookups is not mistaken for fine."""
-    connections, _found = _count_connections_for(
-        smartgallery_app, monkeypatch, tmp_path / "ceiling", 100)
+    connections, _found = _count_connections_for(smartgallery_app, monkeypatch, tmp_path / "ceiling", 100)
 
-    assert connections <= 4, (
-        f"a single folder scan opened {connections} database connections")
+    assert connections <= 4, f"a single folder scan opened {connections} database connections"

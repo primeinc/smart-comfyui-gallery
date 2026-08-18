@@ -35,27 +35,33 @@ def reviewed_file(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute("INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
-                     "VALUES ('rev1', '/x/rev.png', 1.0, 'rev.png', 'image', 1)")
-        conn.execute("INSERT INTO collections (name, type, is_public, created_at) "
-                     "VALUES ('revalbum', 'user_album', 1, 1.0)")
+        conn.execute(
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
+            "VALUES ('rev1', '/x/rev.png', 1.0, 'rev.png', 'image', 1)"
+        )
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, created_at) VALUES ('revalbum', 'user_album', 1, 1.0)"
+        )
         coll_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                     "VALUES (?, 'rev1')", (coll_id,))
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, 'rev1')", (coll_id,))
         conn.execute(
             "INSERT INTO ai_reviews (file_id, rubric_version, model_id, model_version, "
             "quality_score, prompt_alignment_score, summary, source_mtime, computed_at) "
-            "VALUES ('rev1', 'v1', 'critic', '1', 7.5, 0.5, ?, 1.0, 1.0)", (_SUMMARY,))
+            "VALUES ('rev1', 'v1', 'critic', '1', 7.5, 0.5, ?, 1.0, 1.0)",
+            (_SUMMARY,),
+        )
         review_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.execute(
             "INSERT INTO ai_review_alignment (review_id, file_id, ordinal, text, "
             "satisfied, confidence) VALUES (?, 'rev1', 0, ?, 0, 0.9)",
-            (review_id, _PROMPT_SLICE))
+            (review_id, _PROMPT_SLICE),
+        )
         conn.execute(
             "INSERT INTO ai_review_findings (review_id, file_id, type, severity, "
             "confidence, localizable, description) "
             "VALUES (?, 'rev1', 'anatomy', 'low', 0.8, 0, 'an extra finger')",
-            (review_id,))
+            (review_id,),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -93,8 +99,7 @@ def test_staff_see_the_whole_review(smartgallery_app, reviewed_file):
 
 def test_a_visitor_does_not_get_the_prompt_back(smartgallery_app, reviewed_file):
     """The regression: the elements are slices of the prompt."""
-    resp = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/api/aidam/review/{reviewed_file}")
+    resp = _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/api/aidam/review/{reviewed_file}")
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
     body = resp.get_data(as_text=True)
@@ -105,8 +110,7 @@ def test_a_visitor_does_not_get_the_prompt_back(smartgallery_app, reviewed_file)
 def test_a_visitor_still_gets_the_verdict(smartgallery_app, reviewed_file):
     """Withholding the quotes must not empty the review: the scores and the
     findings describe the picture, not the request."""
-    body = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/api/aidam/review/{reviewed_file}").get_json()
+    body = _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/api/aidam/review/{reviewed_file}").get_json()
 
     assert body["review"]["scores"]["quality"] == 7.5
     assert body["findings"], "the findings went too"
@@ -120,11 +124,9 @@ def test_a_visitor_cannot_set_the_critic_running(smartgallery_app, reviewed_file
 
     Being able to make someone else's machine do that, on demand and as
     often as you like, is the larger half."""
-    resp = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/api/aidam/review/run/{reviewed_file}")
+    resp = _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/api/aidam/review/run/{reviewed_file}")
 
-    assert resp.status_code == 403, (
-        f"a visitor could start a review run ({resp.status_code})")
+    assert resp.status_code == 403, f"a visitor could start a review run ({resp.status_code})"
     assert _PROMPT_SLICE not in resp.get_data(as_text=True)
 
 
@@ -137,30 +139,25 @@ def test_staff_can_still_run_a_review(smartgallery_app, reviewed_file, monkeypat
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
 
-    resp = _as(smartgallery_app, "ADMIN").get(
-        f"/galleryout/api/aidam/review/run/{reviewed_file}?steps=resolve")
+    resp = _as(smartgallery_app, "ADMIN").get(f"/galleryout/api/aidam/review/run/{reviewed_file}?steps=resolve")
 
     assert resp.status_code != 403, resp.get_data(as_text=True)[:200]
 
 
-def test_a_customer_cannot_run_a_review_on_the_management_side_either(
-        smartgallery_app, reviewed_file, monkeypatch):
+def test_a_customer_cannot_run_a_review_on_the_management_side_either(smartgallery_app, reviewed_file, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
 
-    resp = _as(smartgallery_app, "CUSTOMER").get(
-        f"/galleryout/api/aidam/review/run/{reviewed_file}")
+    resp = _as(smartgallery_app, "CUSTOMER").get(f"/galleryout/api/aidam/review/run/{reviewed_file}")
 
     assert resp.status_code == 403, resp.status_code
 
 
-def test_the_default_local_install_sees_everything(smartgallery_app, reviewed_file,
-                                                    monkeypatch):
+def test_the_default_local_install_sees_everything(smartgallery_app, reviewed_file, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
 
-    body = smartgallery_app.app.test_client().get(
-        f"/galleryout/api/aidam/review/{reviewed_file}").get_json()
+    body = smartgallery_app.app.test_client().get(f"/galleryout/api/aidam/review/{reviewed_file}").get_json()
 
     assert body["review"]["alignment"][0]["text"] == _PROMPT_SLICE
     assert body["review"]["summary"] == _SUMMARY

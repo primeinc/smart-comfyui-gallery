@@ -81,6 +81,7 @@ from smartgallery_ai.worker import AIWorker
 
 try:
     from waitress import serve
+
     WAITRESS_AVAILABLE = True
 except ImportError:
     WAITRESS_AVAILABLE = False
@@ -127,10 +128,9 @@ def make_output_carry_any_filename(streams=None):
     of the modules above it writes anything while loading, so it still
     runs before the first line of output the gallery produces.
     """
-    for stream in (streams if streams is not None else
-                   (sys.stdout, sys.stderr)):
+    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding='utf-8', errors='replace')
+            stream.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             # Not every stream is reconfigurable -- a captured one, a
             # replaced one, a plain file object. Nothing here is worth
@@ -234,6 +234,7 @@ make_output_carry_any_filename()
 # Remember: environment variables take priority over these default values.
 # ============================================================================
 
+
 # --- CONSOLE STYLING ---
 # Defined before the configuration block below, which uses it: the
 # DELETE_TO validation prints coloured diagnostics at import time, and
@@ -241,15 +242,15 @@ make_output_carry_any_filename()
 # NameError instead -- including the ordinary first run, which has to
 # create the trash folder.
 class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
 
 
 def env_or(name, default):
@@ -297,15 +298,15 @@ def normalize_configured_path(raw):
     anyone whose setting does not match the disk -- the exact damage this
     is meant to avoid. looks_like_a_renamed_root covers that instead.
     """
-    text = str(raw or '').strip()
+    text = str(raw or "").strip()
     # Explorer's "Copy as path" hands you the path inside double quotes,
     # and a .bat written as set "X=%~dp0" can leave one behind.
-    while len(text) >= 2 and text[0] == text[-1] and text[0] in '"\'':
+    while len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
         text = text[1:-1].strip()
     if not text:
-        return ''
+        return ""
     # normpath('') is '.', so the emptiness check above is load-bearing.
-    return os.path.normpath(os.path.expanduser(text)).replace('\\', '/')
+    return os.path.normpath(os.path.expanduser(text)).replace("\\", "/")
 
 
 def env_path(name, default):
@@ -337,8 +338,7 @@ def env_num(name, default, cast=int, minimum=None):
     try:
         value = cast(raw.strip())
         if minimum is not None and value < minimum:
-            print(f"WARNING: {name}={raw!r} is below the minimum of {minimum}; "
-                  f"using {default}.")
+            print(f"WARNING: {name}={raw!r} is below the minimum of {minimum}; using {default}.")
             return default
         return value
     except (TypeError, ValueError):
@@ -372,17 +372,19 @@ def env_flag(name, default=False):
 # Common locations:
 #   Windows: C:/ComfyUI/output or C:/Users/YourName/ComfyUI/output
 #   Linux/Mac: /home/username/ComfyUI/output or ~/ComfyUI/output
-BASE_OUTPUT_PATH = env_path('BASE_OUTPUT_PATH', 'C:/ComfyUI/output')
+BASE_OUTPUT_PATH = env_path("BASE_OUTPUT_PATH", "C:/ComfyUI/output")
 
 # Path to the ComfyUI 'input' folder
-BASE_INPUT_PATH = env_path('BASE_INPUT_PATH', 'C:/ComfyUI/input')
+BASE_INPUT_PATH = env_path("BASE_INPUT_PATH", "C:/ComfyUI/input")
 
 # --- Granular Paths for Advanced Setups (Docker, Stability Matrix, extra_model_paths.yaml) ---
 # If not set, they fallback to the standard ComfyUI relative structure
-BASE_MODELS_PATH = env_path('BASE_MODELS_PATH', os.path.join(os.path.dirname(os.path.normpath(BASE_OUTPUT_PATH)), 'models'))
-LORAS_PATH = env_path('LORAS_PATH', os.path.join(BASE_MODELS_PATH, 'loras'))
-CHECKPOINTS_PATH = env_path('CHECKPOINTS_PATH', os.path.join(BASE_MODELS_PATH, 'checkpoints'))
-UNET_PATH = env_path('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
+BASE_MODELS_PATH = env_path(
+    "BASE_MODELS_PATH", os.path.join(os.path.dirname(os.path.normpath(BASE_OUTPUT_PATH)), "models")
+)
+LORAS_PATH = env_path("LORAS_PATH", os.path.join(BASE_MODELS_PATH, "loras"))
+CHECKPOINTS_PATH = env_path("CHECKPOINTS_PATH", os.path.join(BASE_MODELS_PATH, "checkpoints"))
+UNET_PATH = env_path("UNET_PATH", os.path.join(BASE_MODELS_PATH, "unet"))
 
 
 # Path for service folders (database, cache, zip files).
@@ -391,7 +393,7 @@ UNET_PATH = env_path('UNET_PATH', os.path.join(BASE_MODELS_PATH, 'unet'))
 # Change this if you want the cache stored separately for better performance
 # or to keep system files separate from gallery content.
 # Leave as-is if you are unsure.
-BASE_SMARTGALLERY_PATH = env_path('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
+BASE_SMARTGALLERY_PATH = env_path("BASE_SMARTGALLERY_PATH", BASE_OUTPUT_PATH)
 
 # Path to ffprobe executable (part of ffmpeg).
 # Common locations:
@@ -400,54 +402,54 @@ BASE_SMARTGALLERY_PATH = env_path('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
 #   Mac: /usr/local/bin/ffprobe or /opt/homebrew/bin/ffprobe
 # Required for extracting workflows from .mp4 files.
 # NOTE: A full ffmpeg installation is highly recommended.
-FFPROBE_MANUAL_PATH = env_path('FFPROBE_MANUAL_PATH', "C:/ffmpeg/bin/ffprobe.exe")
+FFPROBE_MANUAL_PATH = env_path("FFPROBE_MANUAL_PATH", "C:/ffmpeg/bin/ffprobe.exe")
 
 # Port on which the gallery web server will run.
 # Must be different from the ComfyUI port (usually 8188).
 # The gallery does not require ComfyUI to be running; it works independently.
-SERVER_PORT = env_num('SERVER_PORT', 8189, minimum=1)
+SERVER_PORT = env_num("SERVER_PORT", 8189, minimum=1)
 
 # Width (in pixels) of the generated thumbnails.
-THUMBNAIL_WIDTH = env_num('THUMBNAIL_WIDTH', 300, minimum=1)
+THUMBNAIL_WIDTH = env_num("THUMBNAIL_WIDTH", 300, minimum=1)
 
 # Assumed frame rate for animated WebP files.
 # Many tools, including ComfyUI, generate WebP animations at ~16 FPS.
 # Adjust this value if your WebPs use a different frame rate,
 # so that animation durations are calculated correctly.
-WEBP_ANIMATED_FPS = env_num('WEBP_ANIMATED_FPS', 16.0, float, minimum=0.1)
+WEBP_ANIMATED_FPS = env_num("WEBP_ANIMATED_FPS", 16.0, float, minimum=0.1)
 
 # Maximum number of files to load initially before showing a "Load more" button.
 # Use a very large number (e.g., 9999999) for "infinite" loading.
-PAGE_SIZE = env_num('PAGE_SIZE', 100, minimum=1)
+PAGE_SIZE = env_num("PAGE_SIZE", 100, minimum=1)
 
 # Names of special folders (e.g., 'video', 'audio').
 # These folders will appear in the menu only if they exist inside BASE_OUTPUT_PATH.
 # Leave as-is if unsure.
-SPECIAL_FOLDERS = ['video', 'audio']
+SPECIAL_FOLDERS = ["video", "audio"]
 
 # Number of files to process at once during database sync.
 # Higher values use more memory but may be faster.
 # Lower this if you run out of memory.
-BATCH_SIZE = env_num('BATCH_SIZE', 500, minimum=1)
+BATCH_SIZE = env_num("BATCH_SIZE", 500, minimum=1)
 
 # Threshold (in MB) above which videos will be streamed (transcoded)
 # instead of loaded natively in the gallery grid preview.
 # Default: 50 MB. Set to 0 to force streaming for all supported videos.
-STREAM_THRESHOLD_MB = env_num('STREAM_THRESHOLD_MB', 20, minimum=0)
+STREAM_THRESHOLD_MB = env_num("STREAM_THRESHOLD_MB", 20, minimum=0)
 STREAM_THRESHOLD_BYTES = STREAM_THRESHOLD_MB * 1024 * 1024
 
 # Number of parallel processes to use for thumbnail and metadata generation.
 # - None or empty string: use all available CPU cores (fastest, recommended)
 # - 1: disable parallel processing (slowest, like in previous versions)
 # - Specific number (e.g., 4): limit CPU usage on multi-core machines
-MAX_PARALLEL_WORKERS = env_num('MAX_PARALLEL_WORKERS', None, minimum=1)
+MAX_PARALLEL_WORKERS = env_num("MAX_PARALLEL_WORKERS", None, minimum=1)
 if MAX_PARALLEL_WORKERS is not None:
     pass  # explicit worker count honored as given
 # OS-Specific Safety Defaults
 # macOS (darwin) often crashes with BrokenProcessPool or runs out of file descriptors
 # when maxing out Apple Silicon cores on massive galleries (>3000 files).
 # Defaulting to 4 provides excellent speed while maintaining absolute stability.
-elif sys.platform == 'darwin':
+elif sys.platform == "darwin":
     MAX_PARALLEL_WORKERS = 4
 else:
     MAX_PARALLEL_WORKERS = None
@@ -467,7 +469,7 @@ else:
 # What is given up under the threshold is crash isolation -- a segfaulting
 # image takes the process rather than one worker -- which is why the bound is
 # low rather than clever.
-PARALLEL_SCAN_MIN_FILES = env_num('PARALLEL_SCAN_MIN_FILES', 12, minimum=1)
+PARALLEL_SCAN_MIN_FILES = env_num("PARALLEL_SCAN_MIN_FILES", 12, minimum=1)
 
 
 class InProcessExecutor:
@@ -507,10 +509,11 @@ def scan_executor(file_count):
         return concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS)
     return InProcessExecutor()
 
+
 # Flask secret key
 # You can set it in the environment variable SECRET_KEY
 # If not set, it will be generated randomly
-SECRET_KEY = env_or('SECRET_KEY', secrets.token_hex(32))
+SECRET_KEY = env_or("SECRET_KEY", secrets.token_hex(32))
 
 # Maximum number of items allowed in the "Prefix" dropdown to prevent UI lag.
 MAX_PREFIX_DROPDOWN_ITEMS = 100
@@ -521,14 +524,14 @@ MAX_PREFIX_DROPDOWN_ITEMS = 100
 # If not set (None or empty string), files will be permanently deleted as before.
 # The path MUST exist and be writable, or the application will exit with an error.
 # Example: /path/to/trash or C:/Trash
-DELETE_TO = env_or('DELETE_TO', None)
+DELETE_TO = env_or("DELETE_TO", None)
 # Normalised like the rest, but only when there is one: unset stays None,
 # which is what the startup banner distinguishes from a configured trash.
 if DELETE_TO:
     DELETE_TO = normalize_configured_path(DELETE_TO)
 if DELETE_TO and DELETE_TO.strip():
     DELETE_TO = DELETE_TO.strip()
-    TRASH_FOLDER = os.path.join(DELETE_TO, 'SmartGallery')
+    TRASH_FOLDER = os.path.join(DELETE_TO, "SmartGallery")
 
     # Validate that DELETE_TO path exists
     if not os.path.exists(DELETE_TO):
@@ -567,7 +570,7 @@ WORKFLOW_PROMPT_BLACKLIST = {
     "The white dragon warrior stands still, eyes full of determination and strength. The camera slowly moves closer or circles around the warrior, highlighting the powerful presence and heroic spirit of the character.",
     "undefined",
     "null",
-    "None"
+    "None",
 }
 
 # ============================================================================
@@ -601,12 +604,12 @@ IS_EXHIBITION_MODE = False
 #   Linux / Mac: export ENABLE_AI_SEARCH=false
 #   Docker:      -e ENABLE_AI_SEARCH=false
 #
-ENABLE_AI_SEARCH = env_flag('ENABLE_AI_SEARCH', False)
-GENERATE_WAVEFORMS = env_flag('GENERATE_WAVEFORMS', False)
+ENABLE_AI_SEARCH = env_flag("ENABLE_AI_SEARCH", False)
+GENERATE_WAVEFORMS = env_flag("GENERATE_WAVEFORMS", False)
 # Default for server-side thumbnail generation; a runtime toggle stored in
 # the DB (Tools menu / POST /galleryout/api/site_settings) overrides it.
-GENERATE_THUMBNAILS = env_flag('GENERATE_THUMBNAILS', True)
-COMFYUI_SERVER_URL = env_or('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
+GENERATE_THUMBNAILS = env_flag("GENERATE_THUMBNAILS", True)
+COMFYUI_SERVER_URL = env_or("COMFYUI_SERVER_URL", "http://127.0.0.1:8188")
 
 
 # ============================================================================
@@ -615,11 +618,11 @@ COMFYUI_SERVER_URL = env_or('COMFYUI_SERVER_URL', 'http://127.0.0.1:8188')
 
 
 # --- CACHE AND FOLDER NAMES ---
-THUMBNAIL_CACHE_FOLDER_NAME = '.thumbnails_cache'
-SQLITE_CACHE_FOLDER_NAME = '.sqlite_cache'
-DATABASE_FILENAME = 'gallery_cache.sqlite'
-ZIP_CACHE_FOLDER_NAME = '.zip_downloads'
-FFMPEG_FOLDER_NAME = '.ffmpeg'
+THUMBNAIL_CACHE_FOLDER_NAME = ".thumbnails_cache"
+SQLITE_CACHE_FOLDER_NAME = ".sqlite_cache"
+DATABASE_FILENAME = "gallery_cache.sqlite"
+ZIP_CACHE_FOLDER_NAME = ".zip_downloads"
+FFMPEG_FOLDER_NAME = ".ffmpeg"
 
 # What a comment may be. Generous for a remark about a picture -- roughly
 # two pages -- and small enough that no one visitor can fill the database
@@ -661,18 +664,18 @@ def parse_rating(value):
     if value is None:
         return None, None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None, 'A rating has to be a whole number from 1 to 5.'
+        return None, "A rating has to be a whole number from 1 to 5."
     if isinstance(value, float) and (not math.isfinite(value) or value != int(value)):
-        return None, 'A rating has to be a whole number from 1 to 5.'
+        return None, "A rating has to be a whole number from 1 to 5."
     number = int(value)
     if number == 0:
-        return None, None          # clearing a rating
+        return None, None  # clearing a rating
     if not 1 <= number <= 5:
-        return None, 'A rating has to be from 1 to 5.'
+        return None, "A rating has to be from 1 to 5."
     return number, None
 
 
-def comment_length_error(text, what='comment'):
+def comment_length_error(text, what="comment"):
     """None when it fits, otherwise the sentence to say back.
 
     One rule in one place because the first version of this was not.
@@ -688,10 +691,11 @@ def comment_length_error(text, what='comment'):
     lines further down. Every path that writes comment_text asks this.
     """
     if len(text) > COMMENT_MAX_CHARS:
-        return (f'That {what} is {len(text):,} characters. The limit is '
-                f'{COMMENT_MAX_CHARS:,}.')
+        return f"That {what} is {len(text):,} characters. The limit is {COMMENT_MAX_CHARS:,}."
     return None
-AI_MODELS_FOLDER_NAME = '.AImodels'
+
+
+AI_MODELS_FOLDER_NAME = ".AImodels"
 ENABLE_DAM_MODE = True
 
 # --- APP INFO ---
@@ -704,12 +708,15 @@ GITHUB_RAW_URL = "https://raw.githubusercontent.com/biagiomaf/smart-comfyui-gall
 # RUNTIME FLAGS (Set via command line arguments)
 # ============================================================================
 _parser = argparse.ArgumentParser(description="SmartGallery DAM for ComfyUI")
-_parser.add_argument('--exhibition', action='store_true', help="Start in Exhibition Mode")
-_parser.add_argument('--enable-guest-login', action='store_true', help="Allow anyone to login as Guest without password")
-_parser.add_argument('--port', type=int, default=None, help="Override server port")
-_parser.add_argument('--admin-pass', type=str, help="Set or reset the Admin password")
-_parser.add_argument('--force-login', action='store_true', help="Force login for the standard index.html interface")
-_parser.add_argument('--blind-rating', action='store_true', help="Hide global average ratings to prevent user bias")
+_parser.add_argument("--exhibition", action="store_true", help="Start in Exhibition Mode")
+_parser.add_argument(
+    "--enable-guest-login", action="store_true", help="Allow anyone to login as Guest without password"
+)
+_parser.add_argument("--port", type=int, default=None, help="Override server port")
+_parser.add_argument("--admin-pass", type=str, help="Set or reset the Admin password")
+_parser.add_argument("--force-login", action="store_true", help="Force login for the standard index.html interface")
+_parser.add_argument("--blind-rating", action="store_true", help="Hide global average ratings to prevent user bias")
+
 
 def refuse_unrecognised_flags(unknown, argv0, parser=None):
     """Stop rather than start when a flag was misspelt.
@@ -730,24 +737,24 @@ def refuse_unrecognised_flags(unknown, argv0, parser=None):
     reading it any other way costs a whole interpreter per case.
     """
     parser = parser if parser is not None else _parser
-    launched_directly = os.path.basename(str(argv0 or '')).lower() in (
-        'smartgallery.py', 'smartgallery')
-    stray = [a for a in unknown if a.startswith('-')]
+    launched_directly = os.path.basename(str(argv0 or "")).lower() in ("smartgallery.py", "smartgallery")
+    stray = [a for a in unknown if a.startswith("-")]
     if not (stray and launched_directly):
         return []
 
     # argparse exposes no public accessor for the flags it knows.
     known = sorted({s for a in parser._actions for s in a.option_strings})
-    print(f"{Colors.RED}{Colors.BOLD}Unrecognised option(s): "
-          f"{' '.join(stray)}{Colors.RESET}")
+    print(f"{Colors.RED}{Colors.BOLD}Unrecognised option(s): {' '.join(stray)}{Colors.RESET}")
     for flag in stray:
         near = difflib.get_close_matches(flag, known, n=1, cutoff=0.6)
         if near:
             print(f"  {flag}  ->  did you mean {Colors.YELLOW}{near[0]}{Colors.RESET}?")
     print(f"\nValid options: {', '.join(known)}")
-    print(f"{Colors.YELLOW}Refusing to start: a misspelt --force-login or "
-          f"--exhibition would leave the gallery open to anyone who can reach "
-          f"it.{Colors.RESET}")
+    print(
+        f"{Colors.YELLOW}Refusing to start: a misspelt --force-login or "
+        f"--exhibition would leave the gallery open to anyone who can reach "
+        f"it.{Colors.RESET}"
+    )
     sys.exit(2)
 
 
@@ -788,42 +795,46 @@ def derive_login_policy(admin_pass, exhibition, force_login):
 
 
 # Priority: CLI Param > Environment Variable
-ADMIN_PASS_INPUT = _args.admin_pass or env_or('ADMIN_PASSWORD', None)
+ADMIN_PASS_INPUT = _args.admin_pass or env_or("ADMIN_PASSWORD", None)
 
 FORCE_LOGIN, ADMIN_CONFIG_MISSING, ADMIN_PASS_TOO_SHORT = derive_login_policy(
-    ADMIN_PASS_INPUT, IS_EXHIBITION_MODE, FORCE_LOGIN)
+    ADMIN_PASS_INPUT, IS_EXHIBITION_MODE, FORCE_LOGIN
+)
+
 
 # --- HELPER FUNCTIONS (DEFINED FIRST) ---
 def path_to_key(relative_path):
     if not relative_path:
-        return '_root_'
-    return base64.urlsafe_b64encode(relative_path.replace(os.sep, '/').encode()).decode()
+        return "_root_"
+    return base64.urlsafe_b64encode(relative_path.replace(os.sep, "/").encode()).decode()
+
 
 def key_to_path(key):
-    if key == '_root_':
-        return ''
+    if key == "_root_":
+        return ""
     try:
-        return base64.urlsafe_b64decode(key.encode()).decode().replace('/', os.sep)
+        return base64.urlsafe_b64decode(key.encode()).decode().replace("/", os.sep)
     except Exception:
         return None
+
 
 # --- DERIVED SETTINGS ---
 DB_SCHEMA_VERSION = 27
 THUMBNAIL_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, THUMBNAIL_CACHE_FOLDER_NAME)
 SQLITE_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, SQLITE_CACHE_FOLDER_NAME)
 # Directory for metadata-stripped files (for client delivery)
-CLEAN_CACHE_FOLDER_NAME = '.clean_cache'
+CLEAN_CACHE_FOLDER_NAME = ".clean_cache"
 CLEAN_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, CLEAN_CACHE_FOLDER_NAME)
 DATABASE_FILE = os.path.join(SQLITE_CACHE_DIR, DATABASE_FILENAME)
-ENCRYPTION_KEY_FILE = os.path.join(SQLITE_CACHE_DIR, 'system.key')
+ENCRYPTION_KEY_FILE = os.path.join(SQLITE_CACHE_DIR, "system.key")
 # Written beside the cache, never inside it, so it survives whatever
 # removed the database and can tell a first run from a lost library.
-LIBRARY_MARKER_FILE = os.path.join(BASE_SMARTGALLERY_PATH, '.smartgallery_library')
+LIBRARY_MARKER_FILE = os.path.join(BASE_SMARTGALLERY_PATH, ".smartgallery_library")
 ZIP_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, ZIP_CACHE_FOLDER_NAME)
-IMPORTED_WORKFLOWS_FOLDER_NAME = '.imported_workflows'
+IMPORTED_WORKFLOWS_FOLDER_NAME = ".imported_workflows"
 IMPORTED_WORKFLOWS_DIR = os.path.join(BASE_SMARTGALLERY_PATH, IMPORTED_WORKFLOWS_FOLDER_NAME)
 PROTECTED_FOLDER_KEYS = {path_to_key(f) for f in SPECIAL_FOLDERS}
-PROTECTED_FOLDER_KEYS.add('_root_')
+PROTECTED_FOLDER_KEYS.add("_root_")
 
 # ============================================================================
 # AI DAM LAYER CONFIGURATION (NON-BLOCKING, OPT-OUT)
@@ -846,8 +857,8 @@ os.environ.setdefault("AI_DAM_MODELS_DIR", os.path.abspath(AI_CONFIG.models_dir)
 
 
 def get_omniquery_dictionary(reset=False):
-    omni_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery')
-    dict_path = os.path.join(omni_dir, 'omniquery_template.txt')
+    omni_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery")
+    dict_path = os.path.join(omni_dir, "omniquery_template.txt")
 
     # --- FACTORY PROMPT BASE ---
     # Edit this variable to permanently alter the default prompt structure in the codebase.
@@ -891,13 +902,13 @@ MY REQUEST (I will use my native language):
 
     if reset or not os.path.exists(dict_path):
         try:
-            with open(dict_path, 'w', encoding='utf-8') as f:
+            with open(dict_path, "w", encoding="utf-8") as f:
                 f.write(final_prompt)
         except Exception as e:
             print(f"WARN: Could not write omniquery_template.txt: {e}")
         return final_prompt
     try:
-        with open(dict_path, encoding='utf-8') as f:
+        with open(dict_path, encoding="utf-8") as f:
             return f.read()
     except Exception:
         # An unreadable template falls back to the factory base -- the
@@ -906,6 +917,7 @@ MY REQUEST (I will use my native language):
         # anywhere, so a read failure raised NameError instead of
         # degrading.
         return final_prompt
+
 
 def run_integrity_check():
     """
@@ -919,8 +931,11 @@ def run_integrity_check():
 
     # 1. Check Libraries
     required_libs = [
-        ('flask', 'Flask'), ('PIL', 'Pillow'), ('cv2', 'opencv-python'),
-        ('waitress', 'waitress'), ('cryptography', 'cryptography')
+        ("flask", "Flask"),
+        ("PIL", "Pillow"),
+        ("cv2", "opencv-python"),
+        ("waitress", "waitress"),
+        ("cryptography", "cryptography"),
     ]
 
     for lib_imp, lib_name in required_libs:
@@ -933,16 +948,16 @@ def run_integrity_check():
 
     # 2. Check Files & Version Headers
     critical_files = [
-        'templates/index.html',
-        'templates/exhibition.html',
-        'templates/exhibition_login.html',
-        'templates/modals/user_manager_module.html',
-        'templates/modals/remix_modal.html',
-        'templates/modals/omniquery_palette.html',
-        'templates/css/index.css',
-        'templates/collections.html',
-        'templates/list_view.html',
-        'templates/css/collections.css'
+        "templates/index.html",
+        "templates/exhibition.html",
+        "templates/exhibition_login.html",
+        "templates/modals/user_manager_module.html",
+        "templates/modals/remix_modal.html",
+        "templates/modals/omniquery_palette.html",
+        "templates/css/index.css",
+        "templates/collections.html",
+        "templates/list_view.html",
+        "templates/css/collections.css",
     ]
 
     mismatches = []
@@ -954,7 +969,7 @@ def run_integrity_check():
             continue
 
         try:
-            with open(f_path, encoding='utf-8') as f:
+            with open(f_path, encoding="utf-8") as f:
                 header = "".join([f.readline() for _ in range(15)])
                 if APP_VERSION not in header:
                     mismatches.append(f_path)
@@ -990,6 +1005,7 @@ def run_integrity_check():
 
     print(f"{Colors.GREEN}SUCCESS: System integrity verified (v{APP_VERSION}).{Colors.RESET}")
 
+
 # --- HELPER FOR AI PATH CONSISTENCY ---
 def get_standardized_path(filepath):
     """
@@ -1002,15 +1018,16 @@ def get_standardized_path(filepath):
         # Resolve absolute path (handles .. and current dir)
         abs_path = os.path.abspath(filepath)
         # Force forward slashes (works on Win/Linux/Mac for Python)
-        std_path = abs_path.replace('\\', '/')
+        std_path = abs_path.replace("\\", "/")
         # On Windows, filesystem is case-insensitive, so we lower for the DB unique key
-        if os.name == 'nt':
+        if os.name == "nt":
             return std_path.lower()
         return std_path
     except (TypeError, ValueError, OSError):
         # abspath rejects a non-path argument, an embedded NUL, or a name the
         # platform cannot resolve. The raw text is still a usable queue key.
         return str(filepath)
+
 
 def _normalize_fuzzy_string(s):
     """Reduce a model name to its letters and digits, for loose matching.
@@ -1024,7 +1041,7 @@ def _normalize_fuzzy_string(s):
     """
     if not s:
         return ""
-    return ''.join(c for c in str(s).casefold() if c.isalnum())
+    return "".join(c for c in str(s).casefold() if c.isalnum())
 
 
 def _word_key(s):
@@ -1041,9 +1058,9 @@ def _word_key(s):
             out.append(c)
             previous_was_word = True
         elif previous_was_word:
-            out.append(' ')
+            out.append(" ")
             previous_was_word = False
-    return ' ' + ''.join(out).strip() + ' '
+    return " " + "".join(out).strip() + " "
 
 
 def day_bounds(typed_date, browser_ts, is_end):
@@ -1067,11 +1084,11 @@ def day_bounds(typed_date, browser_ts, is_end):
     day the clocks go back: a 25-hour day ended at 22:59:59 and lost its
     last hour.
     """
-    if browser_ts not in (None, ''):
+    if browser_ts not in (None, ""):
         try:
             given = float(browser_ts)
         except (TypeError, ValueError):
-            given = None            # not a number; fall back to the date
+            given = None  # not a number; fall back to the date
         # float('NaN') and float('inf') both parse. A NaN boundary is worse
         # than no boundary: every comparison against it is false, so the
         # gallery empties with the filter still showing the date you asked
@@ -1081,7 +1098,7 @@ def day_bounds(typed_date, browser_ts, is_end):
     if not typed_date:
         return None
     try:
-        midnight = datetime.strptime(typed_date, '%Y-%m-%d')
+        midnight = datetime.strptime(typed_date, "%Y-%m-%d")
     except (TypeError, ValueError):
         return None
     if not is_end:
@@ -1120,8 +1137,9 @@ def model_condition(typed, column, is_not):
             # Too short to fold usefully, or punctuation only: compare the
             # text as it stands, still folding case in every script.
             expression, needle = f"ulower({column})", _unicode_lower(typed)
-    test = '= 0' if is_not else '> 0'
+    test = "= 0" if is_not else "> 0"
     return f"INSTR({expression}, ?) {test}", needle
+
 
 def normalize_smart_path(path_str):
     """
@@ -1131,32 +1149,66 @@ def normalize_smart_path(path_str):
     """
     if not path_str:
         return ""
-    return str(path_str).lower().replace('\\', '/')
+    return str(path_str).lower().replace("\\", "/")
+
 
 # Every environment variable this program reads, across all its packages.
 # tests/test_configuration_doc_matches_code.py holds this to the code, so it
 # cannot drift as settings are added.
 KNOWN_ENV_VARS = (
-    'ADMIN_PASSWORD', 'AI_DAM_AUTO_PROVISION', 'AI_DAM_CACHE_DIR',
-    'AI_DAM_CRITIC_BACKEND', 'AI_DAM_DEVICE',
-    'AI_DAM_EMBED_BATCH', 'AI_DAM_EPHEMERAL_INDEX', 'AI_DAM_FACE_BACKEND',
-    'AI_DAM_FACE_DETECT_MAX_SIDE', 'AI_DAM_FACE_EMBEDDER',
-    'AI_DAM_FACE_GRAPH_BACKEND', 'AI_DAM_FACE_MIN_PX', 'AI_DAM_FAISS_GPU',
-    'AI_DAM_ATTN', 'AI_DAM_CRITIC_MODEL',
-    'AI_DAM_MODELS_DIR', 'AI_DAM_NEAR_DUP_DISTANCE', 'AI_DAM_ORT_PROVIDERS',
-    'AI_DAM_SEGMENTER_BACKEND', 'AI_DAM_SEMANTIC_BACKEND', 'AI_DAM_SIMILAR_K',
-    'AI_DAM_VECTOR_GPU',
-    'AI_DAM_VISUAL_BACKEND', 'AI_DAM_WORKER_BATCH',
-    'AI_DAM_WORKER_POLL', 'BASE_INPUT_PATH', 'BASE_MODELS_PATH',
-    'BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BATCH_SIZE',
-    'CHECKPOINTS_PATH', 'COMFYUI_MAX_UPLOAD_MB', 'COMFYUI_SERVER_URL',
-    'DELETE_TO', 'ENABLE_AI_DAM', 'ENABLE_AI_SEARCH', 'FFMPEG_AUTO_DOWNLOAD',
-    'FFPROBE_MANUAL_PATH',
-    'GENERATE_THUMBNAILS', 'GENERATE_WAVEFORMS', 'GENPARAMS_BACKFILL',
-    'LORAS_PATH', 'MAX_PARALLEL_WORKERS',
-    'OMNIQUERY_NL2SQL_MODEL', 'PAGE_SIZE', 'PARALLEL_SCAN_MIN_FILES',
-    'SECRET_KEY', 'SERVER_PORT',
-    'STREAM_THRESHOLD_MB', 'THUMBNAIL_WIDTH', 'UNET_PATH', 'WEBP_ANIMATED_FPS',
+    "ADMIN_PASSWORD",
+    "AI_DAM_AUTO_PROVISION",
+    "AI_DAM_CACHE_DIR",
+    "AI_DAM_CRITIC_BACKEND",
+    "AI_DAM_DEVICE",
+    "AI_DAM_EMBED_BATCH",
+    "AI_DAM_EPHEMERAL_INDEX",
+    "AI_DAM_FACE_BACKEND",
+    "AI_DAM_FACE_CLUSTER_THRESHOLD",
+    "AI_DAM_FACE_DETECT_MAX_SIDE",
+    "AI_DAM_FACE_EMBEDDER",
+    "AI_DAM_FACE_GRAPH_BACKEND",
+    "AI_DAM_FACE_MIN_PX",
+    "AI_DAM_FAISS_GPU",
+    "AI_DAM_ATTN",
+    "AI_DAM_CRITIC_MODEL",
+    "AI_DAM_MODELS_DIR",
+    "AI_DAM_NEAR_DUP_DISTANCE",
+    "AI_DAM_ORT_PROVIDERS",
+    "AI_DAM_SEGMENTER_BACKEND",
+    "AI_DAM_SEMANTIC_BACKEND",
+    "AI_DAM_SIMILAR_K",
+    "AI_DAM_VECTOR_GPU",
+    "AI_DAM_VISUAL_BACKEND",
+    "AI_DAM_WORKER_BATCH",
+    "AI_DAM_WORKER_POLL",
+    "BASE_INPUT_PATH",
+    "BASE_MODELS_PATH",
+    "BASE_OUTPUT_PATH",
+    "BASE_SMARTGALLERY_PATH",
+    "BATCH_SIZE",
+    "CHECKPOINTS_PATH",
+    "COMFYUI_MAX_UPLOAD_MB",
+    "COMFYUI_SERVER_URL",
+    "DELETE_TO",
+    "ENABLE_AI_DAM",
+    "ENABLE_AI_SEARCH",
+    "FFMPEG_AUTO_DOWNLOAD",
+    "FFPROBE_MANUAL_PATH",
+    "GENERATE_THUMBNAILS",
+    "GENERATE_WAVEFORMS",
+    "GENPARAMS_BACKFILL",
+    "LORAS_PATH",
+    "MAX_PARALLEL_WORKERS",
+    "OMNIQUERY_NL2SQL_MODEL",
+    "PAGE_SIZE",
+    "PARALLEL_SCAN_MIN_FILES",
+    "SECRET_KEY",
+    "SERVER_PORT",
+    "STREAM_THRESHOLD_MB",
+    "THUMBNAIL_WIDTH",
+    "UNET_PATH",
+    "WEBP_ANIMATED_FPS",
 )
 
 
@@ -1201,9 +1253,11 @@ def warn_about_misspelt_env_vars():
     """Print a warning for each near-miss. Never fatal: the documented
     contract is that nothing in the environment stops the app starting."""
     for name, suggestion in find_misspelt_env_vars():
-        print(f"{Colors.YELLOW}WARNING: environment variable {name} is not a "
-              f"SmartGallery setting -- did you mean {suggestion}? "
-              f"It is being ignored.{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}WARNING: environment variable {name} is not a "
+            f"SmartGallery setting -- did you mean {suggestion}? "
+            f"It is being ignored.{Colors.RESET}"
+        )
 
 
 def print_configuration():
@@ -1231,7 +1285,7 @@ def print_configuration():
     if not cli_args:
         cli_display = "None"
     else:
-        masked_args =[]
+        masked_args = []
         skip_next = False
         for i, arg in enumerate(cli_args):
             if skip_next:
@@ -1239,14 +1293,14 @@ def print_configuration():
                 continue
 
             # Handle space-separated password argument
-            if arg == '--admin-pass':
-                masked_args.append('--admin-pass ********')
+            if arg == "--admin-pass":
+                masked_args.append("--admin-pass ********")
                 # If there is a value after --admin-pass, skip it in the next loop iteration
                 if i + 1 < len(cli_args):
                     skip_next = True
             # Handle equals-separated password argument (e.g. --admin-pass=12345)
-            elif arg.startswith('--admin-pass='):
-                masked_args.append('--admin-pass=********')
+            elif arg.startswith("--admin-pass="):
+                masked_args.append("--admin-pass=********")
             else:
                 masked_args.append(arg)
 
@@ -1263,42 +1317,49 @@ def print_configuration():
 
     # LoRA Synergy Paths (Optional Feature)
     print(f"\n{Colors.YELLOW}{Colors.BOLD}--- LoRA SYNERGY PATHS ---{Colors.RESET}")
+
     def print_lora_row(key, value):
         print(f" {Colors.BOLD}{key:<25}{Colors.RESET} : {Colors.YELLOW}{value}{Colors.RESET}")
+
     print_lora_row("LoRAs Path", LORAS_PATH)
     print_lora_row("Checkpoints Path", CHECKPOINTS_PATH)
     print_lora_row("UNET Path", UNET_PATH)
     print(f"{Colors.YELLOW}--------------------------{Colors.RESET}\n")
+
 
 def management_api_only(f):
     """
     Bulletproof Security Decorator: Blocks access to destructive or management APIs.
     Guarantees that Guests/Customers CANNOT execute these functions under ANY circumstance.
     """
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if IS_EXHIBITION_MODE:
-            return jsonify({
-                'status': 'error',
-                'message': 'Security Lockdown: This API is physically disabled in Exhibition Mode.'
-            }), 403
+            return jsonify(
+                {"status": "error", "message": "Security Lockdown: This API is physically disabled in Exhibition Mode."}
+            ), 403
 
-        user_role = session.get('role')
-        user_id = session.get('user_id')
+        user_role = session.get("role")
+        user_id = session.get("user_id")
 
         if user_id or user_role:
-            if user_role not in ['ADMIN', 'MANAGER', 'STAFF']:
-                return jsonify({'status': 'error', 'message': 'Forbidden: Insufficient privileges for this action.'}), 403
+            if user_role not in ["ADMIN", "MANAGER", "STAFF"]:
+                return jsonify(
+                    {"status": "error", "message": "Forbidden: Insufficient privileges for this action."}
+                ), 403
         elif FORCE_LOGIN:
-            return jsonify({'status': 'error', 'message': 'Unauthorized: Authentication required.'}), 401
+            return jsonify({"status": "error", "message": "Unauthorized: Authentication required."}), 401
 
         return f(*args, **kwargs)
+
     return decorated_function
+
 
 # --- FLASK APP INITIALIZATION ---
 # The templates directory doubles as the static folder, so every template is
 # also downloadable under /static/.
-app = Flask(__name__, static_folder='templates', static_url_path='/static')
+app = Flask(__name__, static_folder="templates", static_url_path="/static")
 app.secret_key = SECRET_KEY
 
 # Flask leaves SameSite unset by default ("Default: None", docs/config.rst,
@@ -1307,9 +1368,9 @@ app.secret_key = SECRET_KEY
 # a signed-in visitor's cookie rides along with somebody else's form post
 # should not depend on which browser they opened. Lax rather than Strict
 # so that following a link into the gallery still arrives signed in.
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 # Already Flask's default; stated so that it stays true.
-app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 
 folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
@@ -1352,16 +1413,20 @@ def refuse_writes_started_by_another_site():
     proxied setups where those legitimately differ, so it is not done
     here.
     """
-    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+    if request.method in ("GET", "HEAD", "OPTIONS"):
         return None
-    if request.headers.get('Sec-Fetch-Site') != 'cross-site':
+    if request.headers.get("Sec-Fetch-Site") != "cross-site":
         return None
-    return jsonify({
-        'status': 'error',
-        'message': ('This request came from another website, so the gallery '
-                    'refused it. If you meant to do this, do it from the '
-                    'gallery itself.')
-    }), 403
+    return jsonify(
+        {
+            "status": "error",
+            "message": (
+                "This request came from another website, so the gallery "
+                "refused it. If you meant to do this, do it from the "
+                "gallery itself."
+            ),
+        }
+    ), 403
 
 
 @app.before_request
@@ -1384,11 +1449,11 @@ def restrict_static_to_signed_in_callers():
     only index.html's two stylesheets come through here, and only for a
     session that has already signed in to be shown index.html.
     """
-    if request.endpoint != 'static':
+    if request.endpoint != "static":
         return
     if not (IS_EXHIBITION_MODE or FORCE_LOGIN):
         return
-    if 'user_id' in session:
+    if "user_id" in session:
         return
     abort(403)
 
@@ -1462,7 +1527,8 @@ VIEW_SNAPSHOTS = ViewSnapshotStore()
 def _view_owner():
     """Snapshot ownership key: the logged-in user id, or '' for the single
     anonymous local-admin session (no login modes)."""
-    return str(session.get('user_id') or '')
+    return str(session.get("user_id") or "")
+
 
 # --- AI DAM BLUEPRINT (WI-31, optional; every route no-ops when disabled) ---
 # file_access_check applies the gallery's per-file visibility policy to the
@@ -1471,32 +1537,52 @@ def _view_owner():
 # defined later in this module and resolved at request time).
 app.register_blueprint(
     ai_dam_service.create_ai_blueprint(
-        AI_CONFIG, guard=management_api_only,
+        AI_CONFIG,
+        guard=management_api_only,
         file_access_check=lambda fid: is_file_accessible(fid),
         # Seeing a picture and being told how it was made are different
         # permissions here: the same rule that strips prompts out of the
         # files and the listings decides whether a review may quote them.
         generation_metadata_visible=lambda: not should_strip_metadata(),
     ),
-    url_prefix='/galleryout/api/aidam',
+    url_prefix="/galleryout/api/aidam",
 )
 
 
 # Data structures for node categorization and analysis
 NODE_CATEGORIES_ORDER = ["input", "model", "processing", "output", "others"]
 NODE_CATEGORIES = {
-    "Load Checkpoint": "input", "CheckpointLoaderSimple": "input", "Empty Latent Image": "input",
-    "CLIPTextEncode": "input", "Load Image": "input",
+    "Load Checkpoint": "input",
+    "CheckpointLoaderSimple": "input",
+    "Empty Latent Image": "input",
+    "CLIPTextEncode": "input",
+    "Load Image": "input",
     "ModelMerger": "model",
-    "KSampler": "processing", "KSamplerAdvanced": "processing", "VAEDecode": "processing",
-    "VAEEncode": "processing", "LatentUpscale": "processing", "ConditioningCombine": "processing",
-    "PreviewImage": "output", "SaveImage": "output",
-     "LoadImageOutput": "input"
+    "KSampler": "processing",
+    "KSamplerAdvanced": "processing",
+    "VAEDecode": "processing",
+    "VAEEncode": "processing",
+    "LatentUpscale": "processing",
+    "ConditioningCombine": "processing",
+    "PreviewImage": "output",
+    "SaveImage": "output",
+    "LoadImageOutput": "input",
 }
 NODE_PARAM_NAMES = {
     "CLIPTextEncode": ["text"],
     "KSampler": ["seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "denoise"],
-    "KSamplerAdvanced": ["add_noise", "noise_seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "start_at_step", "end_at_step", "return_with_leftover_noise"],
+    "KSamplerAdvanced": [
+        "add_noise",
+        "noise_seed",
+        "control_after_generate",
+        "steps",
+        "cfg",
+        "sampler_name",
+        "scheduler",
+        "start_at_step",
+        "end_at_step",
+        "return_with_leftover_noise",
+    ],
     "Load Checkpoint": ["ckpt_name"],
     "CheckpointLoaderSimple": ["ckpt_name"],
     "Empty Latent Image": ["width", "height", "batch_size"],
@@ -1511,12 +1597,31 @@ NODE_PARAM_NAMES = {
     "LoadImageOutput": ["image"],
     "WanImageToVideo": ["width", "height", "length", "batch_size"],
     "ImageResize+": ["width", "height", "interpolation", "keep_proportion", "condition", "multiple_of"],
-    "VantageI2VDualLooper": ["text", "seed", "control_after_generate", "steps", "param4", "param5", "cfg", "param7", "sampler_name", "scheduler", "width", "height", "param12", "param13", "fps", "param15", "align"],
-    "VantageProject": ["project", "positive_text", "param2", "filename", "param4", "hash"]
+    "VantageI2VDualLooper": [
+        "text",
+        "seed",
+        "control_after_generate",
+        "steps",
+        "param4",
+        "param5",
+        "cfg",
+        "param7",
+        "sampler_name",
+        "scheduler",
+        "width",
+        "height",
+        "param12",
+        "param13",
+        "fps",
+        "param15",
+        "align",
+    ],
+    "VantageProject": ["project", "positive_text", "param2", "filename", "param4", "hash"],
 }
 
 # Cache for node colors
 _node_colors_cache = {}
+
 
 def get_node_color(node_type):
     """Generates a unique and consistent color for a node type."""
@@ -1527,19 +1632,22 @@ def get_node_color(node_type):
         _node_colors_cache[node_type] = f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
     return _node_colors_cache[node_type]
 
+
 def filter_enabled_nodes(workflow_data):
     """Filters and returns only active nodes and links (mode=0) from a workflow."""
     if not isinstance(workflow_data, dict):
-        return {'nodes': [], 'links': []}
+        return {"nodes": [], "links": []}
 
     active_nodes = [n for n in workflow_data.get("nodes", []) if n.get("mode", 0) == 0]
     active_node_ids = {str(n["id"]) for n in active_nodes}
 
     active_links = [
-        link for link in workflow_data.get("links", [])
+        link
+        for link in workflow_data.get("links", [])
         if str(link[1]) in active_node_ids and str(link[3]) in active_node_ids
     ]
     return {"nodes": active_nodes, "links": active_links}
+
 
 def generate_node_summary(workflow_json_string):
     """
@@ -1554,56 +1662,71 @@ def generate_node_summary(workflow_json_string):
     nodes = []
     is_api_format = False
 
-    if 'nodes' in workflow_data and isinstance(workflow_data['nodes'], list):
+    if "nodes" in workflow_data and isinstance(workflow_data["nodes"], list):
         active_workflow = filter_enabled_nodes(workflow_data)
-        nodes = active_workflow.get('nodes', [])
+        nodes = active_workflow.get("nodes", [])
     else:
         is_api_format = True
         for node_id, node_data in workflow_data.items():
-            if isinstance(node_data, dict) and 'class_type' in node_data:
+            if isinstance(node_data, dict) and "class_type" in node_data:
                 node_entry = node_data.copy()
-                node_entry['id'] = node_id
-                node_entry['type'] = node_data['class_type']
-                node_entry['inputs'] = node_data.get('inputs', {})
+                node_entry["id"] = node_id
+                node_entry["type"] = node_data["class_type"]
+                node_entry["inputs"] = node_data.get("inputs", {})
                 nodes.append(node_entry)
 
     if not nodes:
         return []
 
     def get_id_safe(n):
-        raw_id = str(n.get('id', '0'))
+        raw_id = str(n.get("id", "0"))
         try:
             # Handle nested Node IDs (e.g., "301:297" -> (301, 297)) for perfect sorting
-            return tuple(int(x) for x in raw_id.split(':'))
+            return tuple(int(x) for x in raw_id.split(":"))
         except Exception:
             # Fallback for pure string IDs (pushes them to the end of the list safely)
-            return (float('inf'), raw_id)
+            return (float("inf"), raw_id)
 
-    sorted_nodes = sorted(nodes, key=lambda n: (
-        NODE_CATEGORIES_ORDER.index(NODE_CATEGORIES.get(n.get('type'), 'others')),
-        get_id_safe(n)
-    ))
+    sorted_nodes = sorted(
+        nodes, key=lambda n: (NODE_CATEGORIES_ORDER.index(NODE_CATEGORIES.get(n.get("type"), "others")), get_id_safe(n))
+    )
 
     summary_list = []
 
     valid_media_exts = {
-        '.png', '.jpg', '.jpeg', '.webp', '.gif', '.jfif', '.bmp', '.tiff',
-        '.mp4', '.mov', '.webm', '.mkv', '.avi',
-        '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".gif",
+        ".jfif",
+        ".bmp",
+        ".tiff",
+        ".mp4",
+        ".mov",
+        ".webm",
+        ".mkv",
+        ".avi",
+        ".mp3",
+        ".wav",
+        ".ogg",
+        ".flac",
+        ".m4a",
+        ".aac",
     }
 
     for node in sorted_nodes:
-        node_type = node.get('type', 'Unknown')
+        node_type = node.get("type", "Unknown")
         params_list = []
 
         raw_params = {}
         if is_api_format:
-            raw_params = node.get('inputs', {})
+            raw_params = node.get("inputs", {})
         else:
-            widgets_values = node.get('widgets_values', [])
+            widgets_values = node.get("widgets_values", [])
             param_names_list = NODE_PARAM_NAMES.get(node_type, [])
             for i, value in enumerate(widgets_values):
-                name = param_names_list[i] if i < len(param_names_list) else f"param_{i+1}"
+                name = param_names_list[i] if i < len(param_names_list) else f"param_{i + 1}"
                 raw_params[name] = value
 
         for name, value in raw_params.items():
@@ -1616,9 +1739,9 @@ def generate_node_summary(workflow_json_string):
 
             if isinstance(value, str) and value.strip():
                 # 1. Aggressive cleanup to remove suffixes like " [output]" or " [input]"
-                clean_value = value.replace('\\', '/').strip()
+                clean_value = value.replace("\\", "/").strip()
                 # Remove common suffixes in square brackets at the end of the string
-                clean_value = re.sub(r'\s*\[.*?\]$', '', clean_value)
+                clean_value = re.sub(r"\s*\[.*?\]$", "", clean_value)
 
                 _, ext = os.path.splitext(clean_value)
 
@@ -1628,7 +1751,7 @@ def generate_node_summary(workflow_json_string):
                     candidates = [
                         os.path.join(BASE_INPUT_PATH, clean_value),
                         os.path.join(BASE_INPUT_PATH, filename_only),
-                        os.path.normpath(os.path.join(BASE_INPUT_PATH, clean_value))
+                        os.path.normpath(os.path.join(BASE_INPUT_PATH, clean_value)),
                     ]
 
                     for candidate_path in candidates:
@@ -1639,7 +1762,7 @@ def generate_node_summary(workflow_json_string):
 
                                 if abs_candidate.startswith(abs_base):
                                     is_input_file = True
-                                    rel_path = os.path.relpath(abs_candidate, abs_base).replace('\\', '/')
+                                    rel_path = os.path.relpath(abs_candidate, abs_base).replace("\\", "/")
                                     input_url = f"/galleryout/input_file/{rel_path}"
                                     # Also update the displayed value to clean it up
                                     display_value = clean_value
@@ -1647,22 +1770,22 @@ def generate_node_summary(workflow_json_string):
                         except Exception:
                             continue
 
-            params_list.append({
-                "name": name,
-                "value": display_value,
-                "is_input_file": is_input_file,
-                "input_url": input_url
-            })
+            params_list.append(
+                {"name": name, "value": display_value, "is_input_file": is_input_file, "input_url": input_url}
+            )
 
-        summary_list.append({
-            "id": node.get('id', 'N/A'),
-            "type": node_type,
-            "category": NODE_CATEGORIES.get(node_type, 'others'),
-            "color": get_node_color(node_type),
-            "params": params_list
-        })
+        summary_list.append(
+            {
+                "id": node.get("id", "N/A"),
+                "type": node_type,
+                "category": NODE_CATEGORIES.get(node_type, "others"),
+                "color": get_node_color(node_type),
+                "params": params_list,
+            }
+        )
 
     return summary_list
+
 
 # --- ALL UTILITY AND HELPER FUNCTIONS ARE DEFINED HERE, BEFORE ANY ROUTES ---
 
@@ -1677,6 +1800,7 @@ RE_LYCO_PROMPT = re.compile(r"<lyco:([\w_\s.]+):([\d.]+)>", re.IGNORECASE)
 RE_PARENS = re.compile(r"[\\/\[\](){}]+")
 RE_LORA_CLOSE = re.compile(r">\s+")
 
+
 def clean_prompt_text(x: str) -> dict[str, Any]:
     """
     Cleans a raw prompt string: removes LoRA tags, normalizes whitespace,
@@ -1685,7 +1809,7 @@ def clean_prompt_text(x: str) -> dict[str, Any]:
     if not x:
         return {"text": "", "loras": []}
 
-    x = re.sub(r'\sBREAK\s', ' , BREAK , ', x)
+    x = re.sub(r"\sBREAK\s", " , BREAK , ", x)
     x = re.sub(RE_LORA_CLOSE, "> , ", x)
     x = x.replace("，", ",").replace("-", " ").replace("_", " ")
 
@@ -1710,16 +1834,15 @@ def clean_prompt_text(x: str) -> dict[str, Any]:
             if clean_tag:
                 final_tags.append(clean_tag)
 
-    return {
-        "text": ", ".join(final_tags),
-        "loras": lora_list
-    }
+    return {"text": ", ".join(final_tags), "loras": lora_list}
+
 
 class ComfyMetadataParser:
     """
     Advanced parser that traces the workflow graph to find real generation parameters.
     Updated to resolve links for Width, Height, and other linked numeric values.
     """
+
     def __init__(self, workflow_json: dict):
         self.data = workflow_json
 
@@ -1728,10 +1851,18 @@ class ComfyMetadataParser:
         Main parsing method. Returns a standardized dictionary.
         """
         meta = {
-            "seed": None, "steps": None, "cfg": None, "sampler": None,
-            "scheduler": None, "model": None, "positive_prompt": "",
-            "negative_prompt": "", "positive_prompt_clean": "",
-            "width": None, "height": None, "loras": []
+            "seed": None,
+            "steps": None,
+            "cfg": None,
+            "sampler": None,
+            "scheduler": None,
+            "model": None,
+            "positive_prompt": "",
+            "negative_prompt": "",
+            "positive_prompt_clean": "",
+            "width": None,
+            "height": None,
+            "loras": [],
         }
 
         # Strategy A: Trace from KSampler (Most accurate for Prompts/Model)
@@ -1888,7 +2019,7 @@ class ComfyMetadataParser:
 
         # Handle Conditioning / Guidance nodes
         if "conditioning" in inputs:
-             return self._trace_text(inputs["conditioning"])
+            return self._trace_text(inputs["conditioning"])
 
         # Fallback to widgets for UI format nodes
         widgets = node.get("widgets_values", [])
@@ -1912,7 +2043,7 @@ class ComfyMetadataParser:
                         meta["model"] = node["inputs"]["ckpt_name"]
                     # Follow further if it's a LoRA or Model handler
                     elif "model" in node.get("inputs", {}) and isinstance(node["inputs"]["model"], list):
-                         self._extract_model_from_sampler(source_id, meta)
+                        self._extract_model_from_sampler(source_id, meta)
 
     def _fallback_scan(self, meta):
         """Scans all nodes for specific types if direct tracing missed data."""
@@ -1953,9 +2084,12 @@ class ComfyMetadataParser:
                         weight = 1.0
                     if not any(lora.get("name") == lora_name for lora in meta["loras"]):
                         meta["loras"].append({"name": lora_name, "value": weight})
+
+
 # ============================================================================
 # END OF INTEGRATED TOOLS
 # ============================================================================
+
 
 def safe_delete_file(filepath):
     """
@@ -1980,7 +2114,7 @@ def safe_delete_file(filepath):
 
 def _std_path(path):
     """A path with one separator style, for comparing stored paths."""
-    return str(path or '').replace('\\', '/')
+    return str(path or "").replace("\\", "/")
 
 
 def _is_under(path, root):
@@ -1990,21 +2124,24 @@ def _is_under(path, root):
     separator so a folder named `box` does not claim `box_archive`.
     """
     candidate = _std_path(path)
-    parent = _std_path(root).rstrip('/')
+    parent = _std_path(root).rstrip("/")
     if not parent:
         return False
-    if os.name == 'nt':
+    if os.name == "nt":
         candidate, parent = candidate.lower(), parent.lower()
-    return candidate.startswith(parent + '/')
+    return candidate.startswith(parent + "/")
 
 
 # The typed operators a prompt search understands, and the generation_params
 # column each text one looks in.
-_PROMPT_SEARCH_OPERATOR = re.compile(
-    r'^(neg|tool|model|sampler|scheduler|seed|steps|cfg):(.*)$', re.IGNORECASE)
-_PROMPT_SEARCH_TEXT_COLUMNS = {'neg': 'negative_prompt', 'tool': 'tool',
-                               'model': 'model', 'sampler': 'sampler',
-                               'scheduler': 'scheduler'}
+_PROMPT_SEARCH_OPERATOR = re.compile(r"^(neg|tool|model|sampler|scheduler|seed|steps|cfg):(.*)$", re.IGNORECASE)
+_PROMPT_SEARCH_TEXT_COLUMNS = {
+    "neg": "negative_prompt",
+    "tool": "tool",
+    "model": "model",
+    "sampler": "sampler",
+    "scheduler": "scheduler",
+}
 
 
 def prompt_search_condition(term, is_not, prompt_column):
@@ -2032,31 +2169,32 @@ def prompt_search_condition(term, is_not, prompt_column):
         if not value:
             return None
         if name in _PROMPT_SEARCH_TEXT_COLUMNS:
-            inner = (f"SELECT 1 FROM generation_params gp "
-                     f"WHERE gp.file_id = f.id "
-                     f"AND gp.{_PROMPT_SEARCH_TEXT_COLUMNS[name]} LIKE ?")
+            inner = (
+                f"SELECT 1 FROM generation_params gp "
+                f"WHERE gp.file_id = f.id "
+                f"AND gp.{_PROMPT_SEARCH_TEXT_COLUMNS[name]} LIKE ?"
+            )
             parameter = f"%{value}%"
         else:
             try:
-                parameter = float(value) if name == 'cfg' else int(value)
+                parameter = float(value) if name == "cfg" else int(value)
             except ValueError:
                 return None
-            inner = (f"SELECT 1 FROM generation_params gp "
-                     f"WHERE gp.file_id = f.id AND gp.{name} = ?")
+            inner = f"SELECT 1 FROM generation_params gp WHERE gp.file_id = f.id AND gp.{name} = ?"
         return f"{'NOT ' if is_not else ''}EXISTS ({inner})", parameter
 
     if term.startswith('"') and term.endswith('"') and len(term) > 2:
         # A quoted phrase matches whole words, so the separators become
         # spaces and the comparison is padded on both sides.
-        spaced = (f"(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
-                  f"REPLACE(REPLACE(REPLACE(REPLACE({prompt_column}, ',', ' '), "
-                  f"'|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), "
-                  f"')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')")
-        return (f"ulower({spaced}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)",
-                f"% {term[1:-1]} %")
+        spaced = (
+            f"(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+            f"REPLACE(REPLACE(REPLACE(REPLACE({prompt_column}, ',', ' '), "
+            f"'|', ' '), '.', ' '), '_', ' '), ':', ' '), '(', ' '), "
+            f"')', ' '), '[', ' '), ']', ' '), char(10), ' ') || ' ')"
+        )
+        return (f"ulower({spaced}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)", f"% {term[1:-1]} %")
 
-    return (f"ulower({prompt_column}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)",
-            f"%{term}%")
+    return (f"ulower({prompt_column}) {'NOT LIKE' if is_not else 'LIKE'} ulower(?)", f"%{term}%")
 
 
 def _descendant_filter(column, folder_path):
@@ -2077,9 +2215,9 @@ def _descendant_filter(column, folder_path):
     `box_archive`. LIKE wildcards in the folder name itself are escaped;
     a folder called `100%_keep` would otherwise match its neighbours.
     """
-    prefix = _std_path(folder_path).rstrip('/')
-    escaped = prefix.replace('!', '!!').replace('%', '!%').replace('_', '!_')
-    return f"REPLACE({column}, '\\', '/') LIKE ? ESCAPE '!'", escaped + '/%'
+    prefix = _std_path(folder_path).rstrip("/")
+    escaped = prefix.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    return f"REPLACE({column}, '\\', '/') LIKE ? ESCAPE '!'", escaped + "/%"
 
 
 def ensure_trash_folder():
@@ -2103,14 +2241,13 @@ def ensure_trash_folder():
         return False
     if os.path.isdir(TRASH_FOLDER):
         return True
-    if not os.path.isdir(DELETE_TO or ''):
+    if not os.path.isdir(DELETE_TO or ""):
         return False
     try:
         os.makedirs(TRASH_FOLDER, exist_ok=True)
     except OSError:
         return False
-    print(f"{Colors.YELLOW}INFO: The trash folder had gone; it has been "
-          f"recreated at {TRASH_FOLDER}.{Colors.RESET}")
+    print(f"{Colors.YELLOW}INFO: The trash folder had gone; it has been recreated at {TRASH_FOLDER}.{Colors.RESET}")
     return True
 
 
@@ -2127,8 +2264,9 @@ def _trash_destination(name):
         raise OSError(
             f"the trash folder {TRASH_FOLDER} is missing and cannot be "
             f"recreated because {DELETE_TO} is not there either; nothing "
-            f"was deleted")
-    timestamp = time.strftime('%Y%m%d_%H%M%S')
+            f"was deleted"
+        )
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
     candidate = os.path.join(TRASH_FOLDER, f"{timestamp}_{name}")
     counter = 1
     while os.path.exists(candidate):
@@ -2151,11 +2289,12 @@ def safe_delete_tree(folder_path):
     destroys nothing and must not relocate the target.
     """
     if DELETE_TO and TRASH_FOLDER:
-        destination = _trash_destination(os.path.basename(folder_path.rstrip(os.sep)) or 'folder')
+        destination = _trash_destination(os.path.basename(folder_path.rstrip(os.sep)) or "folder")
         shutil.move(folder_path, destination)
         print(f"INFO: Moved folder to trash: {destination}")
     else:
         shutil.rmtree(folder_path)
+
 
 # Two identity shapes a returning guest may legitimately present, both
 # unguessable: the `guest_<hex>` this server mints (secrets.token_hex), and
@@ -2163,8 +2302,9 @@ def safe_delete_tree(folder_path):
 # issued one (templates/exhibition.html, templates/index.html both use
 # crypto.randomUUID and store it under `sg_exh_uuid`).
 _GUEST_ID_RE = re.compile(
-    r'^(guest_[0-9a-f]{8,64}'
-    r'|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$')
+    r"^(guest_[0-9a-f]{8,64}"
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+)
 
 
 def _is_guest_uuid(value):
@@ -2178,7 +2318,7 @@ def _is_guest_uuid(value):
     trivially guessable. The two accepted shapes each carry 64+ bits of
     entropy, which makes presenting one proof of having been issued it.
     """
-    return bool(_GUEST_ID_RE.match(str(value or '').strip().lower()))
+    return bool(_GUEST_ID_RE.match(str(value or "").strip().lower()))
 
 
 # No external tool may block a request, a scan, or startup indefinitely.
@@ -2191,8 +2331,8 @@ def _is_guest_uuid(value):
 # subprocess.run kills the child when the timeout expires, and every caller
 # below already treats a failure as "no metadata" or "no thumbnail", so a
 # timeout costs that one file rather than the operation around it.
-FFPROBE_TIMEOUT = 30    # version check and metadata reads
-FFMPEG_TIMEOUT = 300    # thumbnail extraction and metadata stripping
+FFPROBE_TIMEOUT = 30  # version check and metadata reads
+FFMPEG_TIMEOUT = 300  # thumbnail extraction and metadata stripping
 
 # Playing a video transcodes it as it goes, so it has no total run time to
 # bound -- a two hour film legitimately streams for two hours. What it must
@@ -2238,9 +2378,12 @@ def _is_ffprobe(path_or_name):
     """
     try:
         proc = subprocess.run(
-            [path_or_name, "-version"], capture_output=True, check=True,
+            [path_or_name, "-version"],
+            capture_output=True,
+            check=True,
             timeout=FFPROBE_TIMEOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
     except Exception:
         return False
     banner = (proc.stdout or b"").decode("utf-8", "replace").lower()
@@ -2290,40 +2433,39 @@ def _announce_ffprobe(message):
 #
 # The sizes and digests below are the release's own published
 # checksums.sha256, read from the pinned tag.
-FFMPEG_AUTO_DOWNLOAD = env_flag('FFMPEG_AUTO_DOWNLOAD', True)
+FFMPEG_AUTO_DOWNLOAD = env_flag("FFMPEG_AUTO_DOWNLOAD", True)
 
 # Seconds the download may go without receiving a byte. A per-read
 # timeout, not a budget for the whole transfer, so a slow connection
 # still finishes; without it a stalled mirror blocks startup for ever.
 FFMPEG_DOWNLOAD_STALL_TIMEOUT = 60
 
-FFMPEG_RELEASE_TAG = 'autobuild-2026-07-31-14-10'
+FFMPEG_RELEASE_TAG = "autobuild-2026-07-31-14-10"
 FFMPEG_BUILDS = {
-    'win32': {
-        'asset': 'ffmpeg-n8.1.2-34-g9b6c8969e0-win64-gpl-8.1.zip',
-        'bytes': 167405723,
-        'sha256': 'cc4156d51387566ea8ba653fc3a04897bdf812fddf652428d9030bbf7ae24835',
-        'programs': ('ffprobe.exe', 'ffmpeg.exe'),
+    "win32": {
+        "asset": "ffmpeg-n8.1.2-34-g9b6c8969e0-win64-gpl-8.1.zip",
+        "bytes": 167405723,
+        "sha256": "cc4156d51387566ea8ba653fc3a04897bdf812fddf652428d9030bbf7ae24835",
+        "programs": ("ffprobe.exe", "ffmpeg.exe"),
     },
-    'linux': {
-        'asset': 'ffmpeg-n8.1.2-34-g9b6c8969e0-linux64-gpl-8.1.tar.xz',
-        'bytes': 124917816,
-        'sha256': '09fc77be269c7053e438b7e96548e4af97604faf96a42c4a3c56a1ad74c22c0a',
-        'programs': ('ffprobe', 'ffmpeg'),
+    "linux": {
+        "asset": "ffmpeg-n8.1.2-34-g9b6c8969e0-linux64-gpl-8.1.tar.xz",
+        "bytes": 124917816,
+        "sha256": "09fc77be269c7053e438b7e96548e4af97604faf96a42c4a3c56a1ad74c22c0a",
+        "programs": ("ffprobe", "ffmpeg"),
     },
     # No macOS build is published here. Rather than reach for a second,
     # less verifiable source, macOS is told what to run instead -- see
     # find_ffprobe_path.
 }
 
-FFMPEG_DOWNLOAD_BASE = ('https://github.com/BtbN/FFmpeg-Builds/releases/download/'
-                        f'{FFMPEG_RELEASE_TAG}/')
+FFMPEG_DOWNLOAD_BASE = f"https://github.com/BtbN/FFmpeg-Builds/releases/download/{FFMPEG_RELEASE_TAG}/"
 
 
 def ffmpeg_build_for_this_machine():
     """The pinned build for this platform, or None where none is published."""
-    if sys.platform.startswith('linux'):
-        return FFMPEG_BUILDS.get('linux')
+    if sys.platform.startswith("linux"):
+        return FFMPEG_BUILDS.get("linux")
     return FFMPEG_BUILDS.get(sys.platform)
 
 
@@ -2337,7 +2479,7 @@ def bundled_ffprobe_path():
     build = ffmpeg_build_for_this_machine()
     if not build:
         return None
-    candidate = os.path.join(bundled_ffmpeg_dir(), build['programs'][0])
+    candidate = os.path.join(bundled_ffmpeg_dir(), build["programs"][0])
     return candidate if os.path.isfile(candidate) else None
 
 
@@ -2359,9 +2501,9 @@ def _extract_ffmpeg_programs(archive_path, destination, programs, asset_name=Non
         if base not in wanted or base in taken:
             return
         target = os.path.join(destination, os.path.basename(name))
-        with open(target + '.part', 'wb') as out:
+        with open(target + ".part", "wb") as out:
             shutil.copyfileobj(reader, out)
-        os.replace(target + '.part', target)
+        os.replace(target + ".part", target)
         with contextlib.suppress(OSError):
             os.chmod(target, 0o755)
         taken[base] = target
@@ -2371,15 +2513,15 @@ def _extract_ffmpeg_programs(archive_path, destination, programs, asset_name=Non
     # in .zip answered no for every Windows build and then tried to open a
     # zip as tar.xz. Caught by test_a_good_download_is_kept.
     looks_like = (asset_name or archive_path).lower()
-    if looks_like.endswith('.zip'):
+    if looks_like.endswith(".zip"):
         with zipfile.ZipFile(archive_path) as archive:
             for member in archive.namelist():
-                if member.endswith('/'):
+                if member.endswith("/"):
                     continue
                 with archive.open(member) as reader:
                     _keep(member, reader)
     else:
-        with tarfile.open(archive_path, 'r:xz') as archive:
+        with tarfile.open(archive_path, "r:xz") as archive:
             for member in archive:
                 if not member.isfile():
                     continue
@@ -2412,25 +2554,24 @@ def download_progress_reporter(interval=1.0):
     except Exception:
         interactive = False
 
-    state = {'at': 0.0, 'shown': False}
+    state = {"at": 0.0, "shown": False}
 
     def report(done, total):
         now = time.monotonic()
         finished = total and done >= total
-        if not finished and now - state['at'] < interval:
+        if not finished and now - state["at"] < interval:
             return
-        state['at'] = now
-        state['shown'] = True
+        state["at"] = now
+        state["shown"] = True
         megabytes = done / (1024 * 1024)
         if total:
-            line = (f"      {100.0 * done / total:5.1f}%  "
-                    f"{megabytes:,.0f} of {total / (1024 * 1024):,.0f} MB")
+            line = f"      {100.0 * done / total:5.1f}%  {megabytes:,.0f} of {total / (1024 * 1024):,.0f} MB"
         else:
             line = f"      {megabytes:,.0f} MB"
         if interactive:
-            sys.stdout.write('\r' + line + '   ')
+            sys.stdout.write("\r" + line + "   ")
             if finished:
-                sys.stdout.write('\n')
+                sys.stdout.write("\n")
             sys.stdout.flush()
         else:
             print(line)
@@ -2457,29 +2598,30 @@ def fetch_ffmpeg(progress=None):
         return None
 
     destination = bundled_ffmpeg_dir()
-    url = FFMPEG_DOWNLOAD_BASE + build['asset']
-    megabytes = build['bytes'] / (1024 * 1024)
+    url = FFMPEG_DOWNLOAD_BASE + build["asset"]
+    megabytes = build["bytes"] / (1024 * 1024)
 
-    print(f"{Colors.BLUE}INFO: no ffmpeg found. Fetching the pinned build "
-          f"({megabytes:.0f} MB) from {url}{Colors.RESET}")
-    print(f"{Colors.DIM}      Set FFMPEG_AUTO_DOWNLOAD=false to stop this "
-          f"and install ffmpeg yourself instead.{Colors.RESET}")
+    print(
+        f"{Colors.BLUE}INFO: no ffmpeg found. Fetching the pinned build ({megabytes:.0f} MB) from {url}{Colors.RESET}"
+    )
+    print(
+        f"{Colors.DIM}      Set FFMPEG_AUTO_DOWNLOAD=false to stop this "
+        f"and install ffmpeg yourself instead.{Colors.RESET}"
+    )
 
     try:
         os.makedirs(destination, exist_ok=True)
     except OSError as exc:
-        print(f"{Colors.YELLOW}WARNING: cannot create {destination}: {exc}"
-              f"{Colors.RESET}")
+        print(f"{Colors.YELLOW}WARNING: cannot create {destination}: {exc}{Colors.RESET}")
         return None
 
-    archive = os.path.join(destination, build['asset'] + '.part')
+    archive = os.path.join(destination, build["asset"] + ".part")
     digest = hashlib.sha256()
     written = 0
     try:
-        with urllib.request.urlopen(url, timeout=FFMPEG_DOWNLOAD_STALL_TIMEOUT) as response, \
-                open(archive, 'wb') as out:
-            declared = response.headers.get('Content-Length')
-            expected = int(declared) if declared else build['bytes']
+        with urllib.request.urlopen(url, timeout=FFMPEG_DOWNLOAD_STALL_TIMEOUT) as response, open(archive, "wb") as out:
+            declared = response.headers.get("Content-Length")
+            expected = int(declared) if declared else build["bytes"]
             while True:
                 chunk = response.read(1 << 20)
                 if not chunk:
@@ -2490,29 +2632,28 @@ def fetch_ffmpeg(progress=None):
                 if progress is not None:
                     progress(written, expected)
 
-        if written != build['bytes']:
-            raise OSError(f"expected {build['bytes']:,} bytes, got {written:,} "
-                          f"-- the download stopped early or the pinned build "
-                          f"changed")
-        if digest.hexdigest() != build['sha256']:
-            raise OSError(f"SHA-256 mismatch: expected {build['sha256'][:16]}..., "
-                          f"got {digest.hexdigest()[:16]}...")
+        if written != build["bytes"]:
+            raise OSError(
+                f"expected {build['bytes']:,} bytes, got {written:,} "
+                f"-- the download stopped early or the pinned build "
+                f"changed"
+            )
+        if digest.hexdigest() != build["sha256"]:
+            raise OSError(f"SHA-256 mismatch: expected {build['sha256'][:16]}..., got {digest.hexdigest()[:16]}...")
 
-        taken = _extract_ffmpeg_programs(archive, destination, build['programs'],
-                                         asset_name=build['asset'])
-        ffprobe = taken[build['programs'][0].lower()]
+        taken = _extract_ffmpeg_programs(archive, destination, build["programs"], asset_name=build["asset"])
+        ffprobe = taken[build["programs"][0].lower()]
         if not _is_ffprobe(ffprobe):
-            raise OSError("the program that came out of the archive does not "
-                          "identify itself as ffprobe")
-        print(f"{Colors.GREEN}SUCCESS: ffmpeg is ready at {destination}"
-              f"{Colors.RESET}")
+            raise OSError("the program that came out of the archive does not identify itself as ffprobe")
+        print(f"{Colors.GREEN}SUCCESS: ffmpeg is ready at {destination}{Colors.RESET}")
         return ffprobe
     except Exception as exc:
-        print(f"{Colors.YELLOW}WARNING: could not fetch ffmpeg: {exc}"
-              f"{Colors.RESET}")
-        print(f"{Colors.YELLOW}Video features stay unavailable. Install "
-              f"ffmpeg yourself and point FFPROBE_MANUAL_PATH at it."
-              f"{Colors.RESET}")
+        print(f"{Colors.YELLOW}WARNING: could not fetch ffmpeg: {exc}{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}Video features stay unavailable. Install "
+            f"ffmpeg yourself and point FFPROBE_MANUAL_PATH at it."
+            f"{Colors.RESET}"
+        )
         return None
     finally:
         with contextlib.suppress(OSError):
@@ -2543,14 +2684,14 @@ def ffprobe_candidates_for(setting):
     """
     if not setting:
         return []
-    names = ('ffprobe.exe', 'ffprobe') if sys.platform == 'win32' else ('ffprobe',)
+    names = ("ffprobe.exe", "ffprobe") if sys.platform == "win32" else ("ffprobe",)
 
     candidates = []
     if os.path.isfile(setting):
         candidates.append(setting)
 
     folder = setting if os.path.isdir(setting) else os.path.dirname(setting)
-    for base in (folder, os.path.join(folder, 'bin')):
+    for base in (folder, os.path.join(folder, "bin")):
         if not base:
             continue
         for name in names:
@@ -2572,20 +2713,18 @@ def find_ffprobe_path():
     if FFPROBE_MANUAL_PATH:
         found = resolve_ffprobe_from(FFPROBE_MANUAL_PATH)
         if found:
-            same = (os.path.normcase(os.path.abspath(found))
-                    == os.path.normcase(os.path.abspath(FFPROBE_MANUAL_PATH)))
+            same = os.path.normcase(os.path.abspath(found)) == os.path.normcase(os.path.abspath(FFPROBE_MANUAL_PATH))
             _announce_ffprobe(
-                f"INFO: ffprobe: {found}" if same else
-                f"INFO: ffprobe: {found} (found from FFPROBE_MANUAL_PATH="
-                f"{FFPROBE_MANUAL_PATH})")
+                f"INFO: ffprobe: {found}"
+                if same
+                else f"INFO: ffprobe: {found} (found from FFPROBE_MANUAL_PATH={FFPROBE_MANUAL_PATH})"
+            )
             return found
-        print(f"WARNING: no ffprobe at or beside FFPROBE_MANUAL_PATH "
-              f"({FFPROBE_MANUAL_PATH}); falling back to PATH.")
+        print(f"WARNING: no ffprobe at or beside FFPROBE_MANUAL_PATH ({FFPROBE_MANUAL_PATH}); falling back to PATH.")
     base_name = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
     if _is_ffprobe(base_name):
         found = shutil.which(base_name) or base_name
-        _announce_ffprobe(f"INFO: ffprobe: {found} (found on PATH, not at "
-                          f"FFPROBE_MANUAL_PATH)")
+        _announce_ffprobe(f"INFO: ffprobe: {found} (found on PATH, not at FFPROBE_MANUAL_PATH)")
         return base_name
 
     # One this gallery fetched earlier. Checked before downloading again,
@@ -2605,14 +2744,16 @@ def find_ffprobe_path():
             return fetched
         return None
 
-    how = ("brew install ffmpeg" if sys.platform == "darwin" else
-           "install ffmpeg")
-    print(f"{Colors.YELLOW}WARNING: ffprobe not found. Video duration and "
-          f"dimensions, video thumbnails, waveforms and video metadata "
-          f"stripping are all unavailable. Run `{how}`, then point "
-          f"FFPROBE_MANUAL_PATH at it -- the ffprobe program, the ffmpeg "
-          f"program beside it, or the folder either lives in.{Colors.RESET}")
+    how = "brew install ffmpeg" if sys.platform == "darwin" else "install ffmpeg"
+    print(
+        f"{Colors.YELLOW}WARNING: ffprobe not found. Video duration and "
+        f"dimensions, video thumbnails, waveforms and video metadata "
+        f"stripping are all unavailable. Run `{how}`, then point "
+        f"FFPROBE_MANUAL_PATH at it -- the ffprobe program, the ffmpeg "
+        f"program beside it, or the folder either lives in.{Colors.RESET}"
+    )
     return None
+
 
 def _validate_and_get_workflow(json_string):
     try:
@@ -2634,35 +2775,36 @@ def _validate_and_get_workflow(json_string):
         # Check for UI format (has 'nodes')
         workflow_data = data
         if isinstance(data, dict):
-            workflow_data = data.get('workflow', data.get('prompt', data))
+            workflow_data = data.get("workflow", data.get("prompt", data))
 
         if isinstance(workflow_data, dict):
-            if 'nodes' in workflow_data:
-                return json.dumps(workflow_data), 'ui'
+            if "nodes" in workflow_data:
+                return json.dumps(workflow_data), "ui"
 
             # Check for API format (keys are IDs, values have class_type)
             is_api = False
             for v in workflow_data.values():
-                if isinstance(v, dict) and 'class_type' in v:
+                if isinstance(v, dict) and "class_type" in v:
                     is_api = True
                     break
             if is_api:
-                return json.dumps(workflow_data), 'api'
+                return json.dumps(workflow_data), "api"
 
         elif isinstance(workflow_data, list):
             # Check for Array API format
             is_api = False
             for v in workflow_data:
-                if isinstance(v, dict) and 'class_type' in v:
+                if isinstance(v, dict) and "class_type" in v:
                     is_api = True
                     break
             if is_api:
-                return json.dumps(workflow_data), 'api'
+                return json.dumps(workflow_data), "api"
 
     except Exception:
         pass
 
     return None, None
+
 
 def _scan_bytes_for_workflow(content_bytes):
     """
@@ -2670,13 +2812,13 @@ def _scan_bytes_for_workflow(content_bytes):
     Searches for matching curly braces.
     """
     try:
-        stream_str = content_bytes.decode('utf-8', errors='ignore')
+        stream_str = content_bytes.decode("utf-8", errors="ignore")
     except Exception:
         return
 
     start_pos = 0
     while True:
-        first_brace = stream_str.find('{', start_pos)
+        first_brace = stream_str.find("{", start_pos)
         if first_brace == -1:
             break
 
@@ -2685,9 +2827,9 @@ def _scan_bytes_for_workflow(content_bytes):
 
         for i in range(start_index, len(stream_str)):
             char = stream_str[i]
-            if char == '{':
+            if char == "{":
                 open_braces += 1
-            elif char == '}':
+            elif char == "}":
                 open_braces -= 1
 
             if open_braces == 0:
@@ -2706,7 +2848,8 @@ def _scan_bytes_for_workflow(content_bytes):
             # If loop finishes without open_braces hitting 0, no more valid JSON here
             break
 
-def extract_workflow(filepath, target_type='ui'):
+
+def extract_workflow(filepath, target_type="ui"):
     """
     Extracts workflow JSON from image/video files.
 
@@ -2716,9 +2859,9 @@ def extract_workflow(filepath, target_type='ui'):
                            Defaults to 'ui' to restore original compatibility.
     """
     ext = os.path.splitext(filepath)[1].lower()
-    video_exts = ['.mp4', '.mkv', '.webm', '.mov', '.avi']
+    video_exts = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
 
-    found_workflows = {} # Stores {'ui': json_str, 'api': json_str}
+    found_workflows = {}  # Stores {'ui': json_str, 'api': json_str}
 
     def analyze_json(json_str):
         # Helper to classify and store found workflows
@@ -2730,16 +2873,25 @@ def extract_workflow(filepath, target_type='ui'):
         # --- FIX: Path resolution in worker processes ---
         current_ffprobe_path = FFPROBE_EXECUTABLE_PATH
         if not current_ffprobe_path:
-             current_ffprobe_path = find_ffprobe_path()
+            current_ffprobe_path = find_ffprobe_path()
 
         if current_ffprobe_path:
             try:
-                cmd = [current_ffprobe_path, '-v', 'quiet', '-print_format', 'json', '-show_format', filepath]
-                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', check=True, timeout=FFPROBE_TIMEOUT, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                cmd = [current_ffprobe_path, "-v", "quiet", "-print_format", "json", "-show_format", filepath]
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore",
+                    check=True,
+                    timeout=FFPROBE_TIMEOUT,
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                )
                 data = json.loads(result.stdout)
-                if 'format' in data and 'tags' in data['format']:
-                    for value in data['format']['tags'].values():
-                        if isinstance(value, str) and value.strip().startswith('{'):
+                if "format" in data and "tags" in data["format"]:
+                    for value in data["format"]["tags"].values():
+                        if isinstance(value, str) and value.strip().startswith("{"):
                             analyze_json(value)
             except Exception:
                 pass
@@ -2747,20 +2899,20 @@ def extract_workflow(filepath, target_type='ui'):
         try:
             with Image.open(filepath) as img:
                 # Check standard keys
-                for key in ['workflow', 'prompt']:
+                for key in ["workflow", "prompt"]:
                     val = img.info.get(key)
                     if val:
                         analyze_json(val)
 
                 # Check Exif/UserComment (for WebP/JPG)
-                exif_data = img.info.get('exif')
+                exif_data = img.info.get("exif")
                 if exif_data and isinstance(exif_data, bytes):
                     try:
-                        exif_str = exif_data.decode('utf-8', errors='ignore')
+                        exif_str = exif_data.decode("utf-8", errors="ignore")
                         # Fast path: check for workflow marker
-                        if 'workflow:{' in exif_str:
-                            start = exif_str.find('workflow:{') + len('workflow:')
-                            for json_candidate in _scan_bytes_for_workflow(exif_str[start:].encode('utf-8')):
+                        if "workflow:{" in exif_str:
+                            start = exif_str.find("workflow:{") + len("workflow:")
+                            for json_candidate in _scan_bytes_for_workflow(exif_str[start:].encode("utf-8")):
                                 analyze_json(json_candidate)
                     except Exception:
                         pass
@@ -2774,7 +2926,7 @@ def extract_workflow(filepath, target_type='ui'):
     # Raw byte scan (ultimate fallback)
     if not found_workflows:
         try:
-            with open(filepath, 'rb') as f:
+            with open(filepath, "rb") as f:
                 content = f.read()
             for json_str in _scan_bytes_for_workflow(content):
                 analyze_json(json_str)
@@ -2795,14 +2947,16 @@ def extract_workflow(filepath, target_type='ui'):
 
     return None
 
+
 def is_webp_animated(filepath):
     try:
         with Image.open(filepath) as img:
-            return getattr(img, 'is_animated', False)
+            return getattr(img, "is_animated", False)
     except (OSError, ValueError):
         # Missing, unreadable, or not an image Pillow recognises. Not animated
         # is the safe answer for anything we cannot open.
         return False
+
 
 def format_duration(seconds):
     if not seconds or seconds < 0:
@@ -2811,92 +2965,113 @@ def format_duration(seconds):
     h, m = divmod(m, 60)
     return f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
 
+
 def analyze_file_metadata(filepath):
-    details = {'type': 'unknown', 'duration': '', 'dimensions': '', 'has_workflow': 0}
+    details = {"type": "unknown", "duration": "", "dimensions": "", "has_workflow": 0}
     ext_lower = os.path.splitext(filepath)[1].lower()
-    #https://aistudio.google.com/prompts/1uYTqxN6LAJZucWaoD5DlOlljhj0eB1uY#:~:text=function%20showItemAtIndex(index) = {'.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'animated_image', '.mp4': 'video', '.webm': 'video', '.mov': 'video', '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio'}
+    # https://aistudio.google.com/prompts/1uYTqxN6LAJZucWaoD5DlOlljhj0eB1uY#:~:text=function%20showItemAtIndex(index) = {'.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'animated_image', '.mp4': 'video', '.webm': 'video', '.mov': 'video', '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio'}
     # Extended Type Map for Professional Formats
     type_map = {
         # Images
-        '.png': 'image', '.jpg': 'image', '.jpeg': 'image',
-        '.bmp': 'image', '.tiff': 'image', '.tif': 'image',
+        ".png": "image",
+        ".jpg": "image",
+        ".jpeg": "image",
+        ".bmp": "image",
+        ".tiff": "image",
+        ".tif": "image",
         # Animations
-        '.gif': 'animated_image',
+        ".gif": "animated_image",
         # Videos (Standard & Pro)
-        '.mp4': 'video', '.webm': 'video', '.mov': 'video',
-        '.mkv': 'video', '.avi': 'video', '.m4v': 'video',
-        '.wmv': 'video', '.flv': 'video', '.mts': 'video', '.ts': 'video',
+        ".mp4": "video",
+        ".webm": "video",
+        ".mov": "video",
+        ".mkv": "video",
+        ".avi": "video",
+        ".m4v": "video",
+        ".wmv": "video",
+        ".flv": "video",
+        ".mts": "video",
+        ".ts": "video",
         # Audio
-        '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio', '.m4a': 'audio',
+        ".mp3": "audio",
+        ".wav": "audio",
+        ".ogg": "audio",
+        ".flac": "audio",
+        ".m4a": "audio",
         # Documents / Notes
-        '.txt': 'document', '.md': 'document'
+        ".txt": "document",
+        ".md": "document",
     }
-    details['type'] = type_map.get(ext_lower, 'unknown')
-    if details['type'] == 'unknown' and ext_lower == '.webp':
-        details['type'] = 'animated_image' if is_webp_animated(filepath) else 'image'
-    if 'image' in details['type']:
+    details["type"] = type_map.get(ext_lower, "unknown")
+    if details["type"] == "unknown" and ext_lower == ".webp":
+        details["type"] = "animated_image" if is_webp_animated(filepath) else "image"
+    if "image" in details["type"]:
         try:
             with Image.open(filepath) as img:
-                details['dimensions'] = f"{img.width}x{img.height}"
+                details["dimensions"] = f"{img.width}x{img.height}"
         except Exception:
             pass
     if extract_workflow(filepath):
-        details['has_workflow'] = 1
+        details["has_workflow"] = 1
     total_duration_sec = 0
-    if details['type'] == 'video':
+    if details["type"] == "video":
         try:
             cap = cv2.VideoCapture(filepath)
             if cap.isOpened():
                 fps, count = cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT)
                 if fps > 0 and count > 0:
                     total_duration_sec = count / fps
-                details['dimensions'] = f"{int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}"
+                details["dimensions"] = (
+                    f"{int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}"
+                )
                 cap.release()
         except Exception:
             pass
-    elif details['type'] == 'audio':
-
+    elif details["type"] == "audio":
         current_ffprobe = FFPROBE_EXECUTABLE_PATH or find_ffprobe_path()
 
         if current_ffprobe:
-
             try:
-
                 cmd_info = [
-
-                    current_ffprobe, '-v', 'error', '-show_entries', 'format=duration',
-
-                    '-of', 'default=noprint_wrappers=1:nokey=1', filepath
-
+                    current_ffprobe,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    filepath,
                 ]
 
                 res = subprocess.run(
-
-                    cmd_info, capture_output=True, text=True, timeout=3,
-
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-
+                    cmd_info,
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
                 )
 
                 if res.stdout.strip():
-
                     total_duration_sec = float(res.stdout.strip())
 
             except Exception:
                 pass
-    elif details['type'] == 'animated_image':
+    elif details["type"] == "animated_image":
         try:
             with Image.open(filepath) as img:
-                if getattr(img, 'is_animated', False):
-                    if ext_lower == '.gif':
-                        total_duration_sec = sum(frame.info.get('duration', 100) for frame in ImageSequence.Iterator(img)) / 1000
-                    elif ext_lower == '.webp':
-                        total_duration_sec = getattr(img, 'n_frames', 1) / WEBP_ANIMATED_FPS
+                if getattr(img, "is_animated", False):
+                    if ext_lower == ".gif":
+                        total_duration_sec = (
+                            sum(frame.info.get("duration", 100) for frame in ImageSequence.Iterator(img)) / 1000
+                        )
+                    elif ext_lower == ".webp":
+                        total_duration_sec = getattr(img, "n_frames", 1) / WEBP_ANIMATED_FPS
         except Exception:
             pass
     if total_duration_sec > 0:
-        details['duration'] = format_duration(total_duration_sec)
+        details["duration"] = format_duration(total_duration_sec)
     return details
+
 
 def ensure_thumbnail_cache_dir():
     """Put the thumbnail cache back if something removed it, and say so.
@@ -2920,23 +3095,28 @@ def ensure_thumbnail_cache_dir():
     if os.path.isdir(THUMBNAIL_CACHE_DIR):
         return True
     if not os.path.isdir(BASE_SMARTGALLERY_PATH):
-        print(f"{Colors.YELLOW}WARNING: The gallery folder {BASE_SMARTGALLERY_PATH} "
-              f"is not there, so no thumbnail can be written. Nothing has been "
-              f"created in its place.{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}WARNING: The gallery folder {BASE_SMARTGALLERY_PATH} "
+            f"is not there, so no thumbnail can be written. Nothing has been "
+            f"created in its place.{Colors.RESET}"
+        )
         return False
     try:
         os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
     except OSError as exc:
-        print(f"{Colors.YELLOW}WARNING: Could not recreate the thumbnail cache "
-              f"{THUMBNAIL_CACHE_DIR}: {exc}{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}WARNING: Could not recreate the thumbnail cache {THUMBNAIL_CACHE_DIR}: {exc}{Colors.RESET}"
+        )
         return False
-    print(f"{Colors.YELLOW}INFO: The thumbnail cache folder had gone; it has been "
-          f"recreated at {THUMBNAIL_CACHE_DIR}. Thumbnails will be rebuilt as "
-          f"files are viewed.{Colors.RESET}")
+    print(
+        f"{Colors.YELLOW}INFO: The thumbnail cache folder had gone; it has been "
+        f"recreated at {THUMBNAIL_CACHE_DIR}. Thumbnails will be rebuilt as "
+        f"files are viewed.{Colors.RESET}"
+    )
     return True
 
 
-_THUMBNAIL_KEY = re.compile(r'^[0-9a-f]{32}')
+_THUMBNAIL_KEY = re.compile(r"^[0-9a-f]{32}")
 
 
 def prune_thumbnail_cache(conn):
@@ -2978,8 +3158,7 @@ def prune_thumbnail_cache(conn):
     if not rows:
         return 0, 0
 
-    live = {hashlib.md5((row['path'] + str(row['mtime'])).encode()).hexdigest()
-            for row in rows}
+    live = {hashlib.md5((row["path"] + str(row["mtime"])).encode()).hexdigest() for row in rows}
 
     removed_files = removed_dirs = 0
     try:
@@ -2989,7 +3168,7 @@ def prune_thumbnail_cache(conn):
         return 0, 0
 
     for entry in entries:
-        if entry.startswith('tmp_'):
+        if entry.startswith("tmp_"):
             continue  # a render in flight; swept on its own at startup
         match = _THUMBNAIL_KEY.match(entry)
         if not match or match.group(0) in live:
@@ -3029,10 +3208,18 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
             ffmpeg_bin = ffmpeg_name
 
         # Generates a white waveform on black background
-        cmd =[
-            ffmpeg_bin, '-y', '-i', filepath,
-            '-filter_complex', f'volume={amp},showwavespic=s=1000x120:colors=white',
-            '-frames:v', '1', '-c:v', 'png', tmp_path
+        cmd = [
+            ffmpeg_bin,
+            "-y",
+            "-i",
+            filepath,
+            "-filter_complex",
+            f"volume={amp},showwavespic=s=1000x120:colors=white",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "png",
+            tmp_path,
         ]
         cf = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, creationflags=cf)
@@ -3040,14 +3227,15 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
             os.replace(tmp_path, cache_path)
             return cache_path
     except Exception:
-        pass # Silently fail if corrupted or timeout
+        pass  # Silently fail if corrupted or timeout
     with contextlib.suppress(OSError):
         os.remove(tmp_path)
     return None
 
+
 # Site setting cache for thumbnail_generation_enabled(); per-process, short
 # TTL so scan workers and the web process converge quickly after a toggle.
-_THUMBNAIL_SETTING_CACHE = {'value': None, 'read_at': 0.0}
+_THUMBNAIL_SETTING_CACHE = {"value": None, "read_at": 0.0}
 
 
 def thumbnail_generation_enabled():
@@ -3059,18 +3247,18 @@ def thumbnail_generation_enabled():
     md5(path + mtime), so cached thumbs keep serving either way and
     regeneration only ever happens for files whose content changed."""
     now = time.time()
-    if _THUMBNAIL_SETTING_CACHE['value'] is not None and now - _THUMBNAIL_SETTING_CACHE['read_at'] < 5:
-        return _THUMBNAIL_SETTING_CACHE['value']
+    if _THUMBNAIL_SETTING_CACHE["value"] is not None and now - _THUMBNAIL_SETTING_CACHE["read_at"] < 5:
+        return _THUMBNAIL_SETTING_CACHE["value"]
     value = GENERATE_THUMBNAILS
     try:
         with get_db_connection() as conn:
             row = conn.execute("SELECT value FROM ai_metadata WHERE key = 'thumbnail_generation'").fetchone()
         if row is not None:
-            value = (row[0] != '0')
+            value = row[0] != "0"
     except Exception:
         pass  # missing table (first boot): fall back to the env default
-    _THUMBNAIL_SETTING_CACHE['value'] = value
-    _THUMBNAIL_SETTING_CACHE['read_at'] = now
+    _THUMBNAIL_SETTING_CACHE["value"] = value
+    _THUMBNAIL_SETTING_CACHE["read_at"] = now
     return value
 
 
@@ -3090,30 +3278,30 @@ def create_thumbnail(filepath, file_hash, file_type):
     # partial file at the final name -- the caller's existence check would
     # treat the corrupt thumbnail as done forever. tmp_ does not match the
     # caller's f"{file_hash}.*" glob.
-    if file_type in ['image', 'animated_image']:
+    if file_type in ["image", "animated_image"]:
         tmp_path = None
         try:
             with Image.open(filepath) as img:
-                fmt = 'gif' if img.format == 'GIF' else 'webp' if img.format == 'WEBP' else 'jpeg'
+                fmt = "gif" if img.format == "GIF" else "webp" if img.format == "WEBP" else "jpeg"
                 cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.{fmt}")
                 tmp_path = os.path.join(THUMBNAIL_CACHE_DIR, f"tmp_{file_hash}.{fmt}")
 
                 # Handle Animations (Animated WebP / GIF)
-                if file_type == 'animated_image' and getattr(img, 'is_animated', False):
+                if file_type == "animated_image" and getattr(img, "is_animated", False):
                     frames = [fr.copy() for fr in ImageSequence.Iterator(img)]
                     if frames:
                         for frame in frames:
                             frame.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
 
-                        processed_frames = [frame.convert('RGBA').convert('RGB') for frame in frames]
+                        processed_frames = [frame.convert("RGBA").convert("RGB") for frame in frames]
                         if processed_frames:
                             processed_frames[0].save(
                                 tmp_path,
                                 save_all=True,
                                 append_images=processed_frames[1:],
-                                duration=img.info.get('duration', 100),
-                                loop=img.info.get('loop', 0),
-                                optimize=True
+                                duration=img.info.get("duration", 100),
+                                loop=img.info.get("loop", 0),
+                                optimize=True,
                             )
                             os.replace(tmp_path, cache_path)
                             return cache_path
@@ -3121,9 +3309,9 @@ def create_thumbnail(filepath, file_hash, file_type):
                 # Handle Static Images
                 else:
                     img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    img.save(tmp_path, 'JPEG', quality=85)
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                    img.save(tmp_path, "JPEG", quality=85)
                     os.replace(tmp_path, cache_path)
                     return cache_path
 
@@ -3134,7 +3322,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     os.remove(tmp_path)
 
     # --- VIDEOS (MP4, MOV, MKV, AVI, etc.) ---
-    elif file_type == 'video':
+    elif file_type == "video":
         cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.jpeg")
         tmp_path = os.path.join(THUMBNAIL_CACHE_DIR, f"tmp_{file_hash}.jpeg")
 
@@ -3148,7 +3336,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     img = Image.fromarray(frame_rgb)
                     img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                    img.save(tmp_path, 'JPEG', quality=80)
+                    img.save(tmp_path, "JPEG", quality=80)
                     os.replace(tmp_path, cache_path)
                     return cache_path
         except Exception:
@@ -3165,17 +3353,30 @@ def create_thumbnail(filepath, file_hash, file_type):
                     ffmpeg_bin = ffmpeg_name
 
                 cmd = [
-                    ffmpeg_bin, '-y',
-                    '-i', filepath,
-                    '-ss', '00:00:00', # Seek to start
-                    '-vframes', '1',   # Grab 1 frame
-                    '-vf', f'scale={THUMBNAIL_WIDTH}:-1', # Resize directly
-                    '-q:v', '2',       # High Quality
-                    tmp_path
+                    ffmpeg_bin,
+                    "-y",
+                    "-i",
+                    filepath,
+                    "-ss",
+                    "00:00:00",  # Seek to start
+                    "-vframes",
+                    "1",  # Grab 1 frame
+                    "-vf",
+                    f"scale={THUMBNAIL_WIDTH}:-1",  # Resize directly
+                    "-q:v",
+                    "2",  # High Quality
+                    tmp_path,
                 ]
 
                 creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=FFMPEG_TIMEOUT, creationflags=creation_flags)
+                subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                    timeout=FFMPEG_TIMEOUT,
+                    creationflags=creation_flags,
+                )
 
                 if os.path.exists(tmp_path):
                     os.replace(tmp_path, cache_path)
@@ -3186,6 +3387,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     os.remove(tmp_path)
 
     return None
+
 
 def extract_workflow_files_string(workflow_json_string):
     """
@@ -3206,26 +3408,48 @@ def extract_workflow_files_string(workflow_json_string):
     # Normalize structure (UI vs API format)
     nodes = []
     if isinstance(data, dict):
-        if 'nodes' in data and isinstance(data['nodes'], list):
-            nodes = data['nodes'] # UI Format
+        if "nodes" in data and isinstance(data["nodes"], list):
+            nodes = data["nodes"]  # UI Format
         else:
             # API Format fallback (Dict of nodes)
             # We convert it to a list for uniform processing
             nodes = list(data.values())
     elif isinstance(data, list):
-        nodes = data # Raw list format
+        nodes = data  # Raw list format
 
     # 1. Blocklist Nodes (Comments and structural nodes)
-    ignored_types = {'Note', 'NotePrimitive', 'Reroute', 'PrimitiveNode'}
+    ignored_types = {"Note", "NotePrimitive", "Reroute", "PrimitiveNode"}
 
     # 2. Whitelist Extensions (The most important filter)
     valid_extensions = {
         # Models
-        '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf', '.lora', '.sft',
+        ".safetensors",
+        ".ckpt",
+        ".pt",
+        ".pth",
+        ".bin",
+        ".gguf",
+        ".lora",
+        ".sft",
         # Images
-        '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff',
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".gif",
+        ".bmp",
+        ".tiff",
         # Video/Audio
-        '.mp4', '.mov', '.webm', '.mkv', '.avi', '.mp3', '.wav', '.ogg', '.flac', '.m4a'
+        ".mp4",
+        ".mov",
+        ".webm",
+        ".mkv",
+        ".avi",
+        ".mp3",
+        ".wav",
+        ".ogg",
+        ".flac",
+        ".m4a",
     }
 
     found_tokens = set()
@@ -3234,7 +3458,7 @@ def extract_workflow_files_string(workflow_json_string):
         if not isinstance(node, dict):
             continue
 
-        node_type = node.get('type', node.get('class_type', ''))
+        node_type = node.get("type", node.get("class_type", ""))
 
         # Skip comment nodes
         if node_type in ignored_types:
@@ -3244,12 +3468,12 @@ def extract_workflow_files_string(workflow_json_string):
         values_to_check = []
 
         # UI Format values
-        w_vals = node.get('widgets_values')
+        w_vals = node.get("widgets_values")
         if isinstance(w_vals, list):
             values_to_check.extend(w_vals)
 
         # API Format inputs
-        inputs = node.get('inputs')
+        inputs = node.get("inputs")
         if isinstance(inputs, dict):
             values_to_check.extend(inputs.values())
         elif isinstance(inputs, list):
@@ -3271,8 +3495,8 @@ def extract_workflow_files_string(workflow_json_string):
                 # Matches "c:/..." or "/home/..."
                 # Must be shorter than 260 chars to avoid catching long prompts starting with /
                 is_abs_path = (len(norm_val) < 260) and (
-                    (len(norm_val) > 2 and norm_val[1] == ':') or # Windows Drive (c:)
-                    norm_val.startswith('/') # Unix/Linux root
+                    (len(norm_val) > 2 and norm_val[1] == ":")  # Windows Drive (c:)
+                    or norm_val.startswith("/")  # Unix/Linux root
                 )
 
                 # Keep ONLY if it looks like a file/path
@@ -3280,6 +3504,7 @@ def extract_workflow_files_string(workflow_json_string):
                     found_tokens.add(norm_val)
 
     return " ||| ".join(sorted(found_tokens))
+
 
 # --- Helper to filter out garbage text (Markdown, Stats, Instructions, UI values) ---
 def _is_garbage_text(text):
@@ -3291,9 +3516,9 @@ def _is_garbage_text(text):
         return True
 
     # 1. Detect Markdown Tables / System Stats
-    if '|' in t and ('---' in t or 'VRAM' in t or 'Model' in t):
+    if "|" in t and ("---" in t or "VRAM" in t or "Model" in t):
         return True
-    if 'GPU:' in t or 'RTX' in t or 'it/s' in t:
+    if "GPU:" in t or "RTX" in t or "it/s" in t:
         return True
 
     # 2. Detect Instructions / Notes / Shortcuts / UI Trash
@@ -3302,34 +3527,79 @@ def _is_garbage_text(text):
     # List of phrases that identify non-prompt text.
     # Simply add or remove strings here to update the filter.
     GARBAGE_MARKERS = (
-        "ctrl +", "box-select", "don't forget to use", "partial - execution",
-        "creative prompt", "bad quality", "embedding:", "🟢", "select wildcard",
-        "by percentage", "what is art?", "send none", "you are an ai artist",
-        "jpeg压缩残留", "/", "select the wildcard"
+        "ctrl +",
+        "box-select",
+        "don't forget to use",
+        "partial - execution",
+        "creative prompt",
+        "bad quality",
+        "embedding:",
+        "🟢",
+        "select wildcard",
+        "by percentage",
+        "what is art?",
+        "send none",
+        "you are an ai artist",
+        "jpeg压缩残留",
+        "/",
+        "select the wildcard",
     )
 
     # If any of the markers are found in the text, it is considered garbage
     if any(marker in t_lower for marker in GARBAGE_MARKERS):
         return True
 
-
     # 3. Detect URLs
     if "http://" in t_lower or "https://" in t_lower:
         return True
 
     # 4. Detect Numbered Lists (common in notes: "1. do this")
-    if len(t) > 3 and t[0].isdigit() and t[1] == '.' and t[2] == ' ':
+    if len(t) > 3 and t[0].isdigit() and t[1] == "." and t[2] == " ":
         return True
 
     # 5. Detect Technical/UI Parameters (Extended Blacklist)
     ui_keywords = {
-        'enable', 'disable', 'fixed', 'randomize', 'auto', 'simple', 'always',
-        'center', 'left', 'top', 'bottom', 'right', 'nearest', 'bilinear',
-        'bicubic', 'lanczos', 'keep proportion', 'image', 'default', 'comfyui',
-        'wan', 'crop', 'input', 'output', 'float', 'int', 'boolean',
+        "enable",
+        "disable",
+        "fixed",
+        "randomize",
+        "auto",
+        "simple",
+        "always",
+        "center",
+        "left",
+        "top",
+        "bottom",
+        "right",
+        "nearest",
+        "bilinear",
+        "bicubic",
+        "lanczos",
+        "keep proportion",
+        "image",
+        "default",
+        "comfyui",
+        "wan",
+        "crop",
+        "input",
+        "output",
+        "float",
+        "int",
+        "boolean",
         # Samplers & Schedulers
-        'euler', 'euler_a', 'heun', 'dpm_2', 'dpmpp_2m', 'dpmpp_sde', 'ddim',
-        'uni_pc', 'lms', 'karras', 'exponential', 'sgd', 'normal'
+        "euler",
+        "euler_a",
+        "heun",
+        "dpm_2",
+        "dpmpp_2m",
+        "dpmpp_sde",
+        "ddim",
+        "uni_pc",
+        "lms",
+        "karras",
+        "exponential",
+        "sgd",
+        "normal",
     }
 
     # Check exact match or if it looks like a parameter
@@ -3337,7 +3607,7 @@ def _is_garbage_text(text):
         return True
 
     # 6. Detect Unresolved variables
-    return bool(t.startswith('%') or '${' in t)
+    return bool(t.startswith("%") or "${" in t)
 
 
 def extract_workflow_prompt_string(workflow_json_string):
@@ -3357,10 +3627,10 @@ def extract_workflow_prompt_string(workflow_json_string):
     # Normalize structure (UI vs API format)
     nodes = []
     if isinstance(data, dict):
-        if 'nodes' in data and isinstance(data['nodes'], list):
-            nodes = data['nodes'] # UI Format
+        if "nodes" in data and isinstance(data["nodes"], list):
+            nodes = data["nodes"]  # UI Format
         else:
-            nodes = list(data.values()) # API Format
+            nodes = list(data.values())  # API Format
     elif isinstance(data, list):
         nodes = data
 
@@ -3368,25 +3638,36 @@ def extract_workflow_prompt_string(workflow_json_string):
 
     # Nodes to strictly ignore for text extraction
     ignored_types = {
-        'Note', 'NotePrimitive', 'Reroute', 'PrimitiveNode',
-        'ShowText', 'Display Text', 'Simple Text', 'Text Box', 'ComfyUI', 'ExtraMetadata',
-        'SaveImage', 'PreviewImage', 'VHS_VideoCombine', 'VHS_LoadVideo'
+        "Note",
+        "NotePrimitive",
+        "Reroute",
+        "PrimitiveNode",
+        "ShowText",
+        "Display Text",
+        "Simple Text",
+        "Text Box",
+        "ComfyUI",
+        "ExtraMetadata",
+        "SaveImage",
+        "PreviewImage",
+        "VHS_VideoCombine",
+        "VHS_LoadVideo",
     }
 
     for node in nodes:
         if not isinstance(node, dict):
             continue
-        node_type = node.get('type', node.get('class_type', '')).strip()
+        node_type = node.get("type", node.get("class_type", "")).strip()
 
         if node_type in ignored_types:
             continue
 
         # Collect all possible string values from widgets and inputs
         values_to_check = []
-        if 'widgets_values' in node and isinstance(node['widgets_values'], list):
-            values_to_check.extend(node['widgets_values'])
-        if 'inputs' in node and isinstance(node['inputs'], dict):
-            values_to_check.extend(node['inputs'].values())
+        if "widgets_values" in node and isinstance(node["widgets_values"], list):
+            values_to_check.extend(node["widgets_values"])
+        if "inputs" in node and isinstance(node["inputs"], dict):
+            values_to_check.extend(node["inputs"].values())
 
         for val in values_to_check:
             if isinstance(val, str) and val.strip():
@@ -3403,7 +3684,7 @@ def extract_workflow_prompt_string(workflow_json_string):
                     continue
 
                 # C. Ignore filenames and short numeric strings
-                if text.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.safetensors', '.ckpt', '.pt')):
+                if text.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".safetensors", ".ckpt", ".pt")):
                     continue
 
                 # D. Minimum length for a searchable keyword
@@ -3415,6 +3696,7 @@ def extract_workflow_prompt_string(workflow_json_string):
     # Join everything with a separator for the Database field
     return " , ".join(list(found_texts))
 
+
 def process_single_file(filepath):
     """
     Worker function to perform all heavy processing for a single file.
@@ -3425,11 +3707,13 @@ def process_single_file(filepath):
         metadata = analyze_file_metadata(filepath)
         file_hash_for_thumbnail = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
 
-        if thumbnail_generation_enabled() and not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash_for_thumbnail}.*")):
-            create_thumbnail(filepath, file_hash_for_thumbnail, metadata['type'])
+        if thumbnail_generation_enabled() and not glob.glob(
+            os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash_for_thumbnail}.*")
+        ):
+            create_thumbnail(filepath, file_hash_for_thumbnail, metadata["type"])
 
-        if GENERATE_WAVEFORMS and metadata['type'] in ['video', 'audio']:
-            create_waveform(filepath, file_hash_for_thumbnail, metadata['type'])
+        if GENERATE_WAVEFORMS and metadata["type"] in ["video", "audio"]:
+            create_waveform(filepath, file_hash_for_thumbnail, metadata["type"])
 
         file_id = hashlib.md5(filepath.encode()).hexdigest()
         file_size = os.path.getsize(filepath)
@@ -3438,10 +3722,10 @@ def process_single_file(filepath):
         workflow_files_content = ""
         workflow_prompt_content = ""
 
-        if metadata['has_workflow']:
+        if metadata["has_workflow"]:
             # UPDATED: Request 'api' format for indexing to get real execution values (seeds, clean prompts)
             # If not found, extract_workflow will automatically fallback to 'ui'
-            wf_json = extract_workflow(filepath, target_type='api')
+            wf_json = extract_workflow(filepath, target_type="api")
 
             if wf_json:
                 workflow_files_content = extract_workflow_files_string(wf_json)
@@ -3452,8 +3736,7 @@ def process_single_file(filepath):
         # field and the typed generation_params row below.
         # Stealth (LSB) decoding stays off here -- too costly for bulk scans.
         parsed_meta = None
-        if (not (metadata['has_workflow'] and wf_json)
-                and metadata['type'] in ('image', 'animated_image')):
+        if not (metadata["has_workflow"] and wf_json) and metadata["type"] in ("image", "animated_image"):
             parsed_meta = metaparse.parse_file(filepath, allow_stealth=False)
         if not workflow_prompt_content and parsed_meta and parsed_meta.positive:
             workflow_prompt_content = parsed_meta.positive
@@ -3469,22 +3752,22 @@ def process_single_file(filepath):
         # metadata, never from this field.
         if not workflow_files_content and parsed_meta:
             foreign_models = []
-            model_name = str(parsed_meta.params.get('model') or '').strip()
+            model_name = str(parsed_meta.params.get("model") or "").strip()
             if model_name:
                 foreign_models.append(model_name)
-            for lora in re.finditer(r'<lora:([^:>]+)', parsed_meta.positive or ''):
+            for lora in re.finditer(r"<lora:([^:>]+)", parsed_meta.positive or ""):
                 name = lora.group(1).strip()
                 if name and name not in foreign_models:
                     foreign_models.append(name)
             if foreign_models:
-                workflow_files_content = ' ||| '.join(foreign_models)
+                workflow_files_content = " ||| ".join(foreign_models)
 
         # First-class typed generation parameters (metaparse.typed):
         # ComfyUI graphs go through the sampler-tracing parser; every
         # other tool through its metaparse adapter.
         gen_row = None
         try:
-            if metadata['has_workflow'] and wf_json:
+            if metadata["has_workflow"] and wf_json:
                 graph_meta = ComfyMetadataParser(json.loads(wf_json)).parse()
                 gp = metaparse_typed.GenerationParams.from_comfy(graph_meta)
                 if gp.has_content:
@@ -3496,20 +3779,30 @@ def process_single_file(filepath):
         except Exception:
             gen_row = None
 
-        hashable = metadata['has_workflow'] or metadata['type'] in ('image', 'animated_image')
-        wf_hash, pr_hash, md_hash = compute_workflow_hashes(filepath) if hashable else ('', '', '')
+        hashable = metadata["has_workflow"] or metadata["type"] in ("image", "animated_image")
+        wf_hash, pr_hash, md_hash = compute_workflow_hashes(filepath) if hashable else ("", "", "")
         return (
-            file_id, filepath, mtime, os.path.basename(filepath),
-            metadata['type'], metadata['duration'], metadata['dimensions'],
-            metadata['has_workflow'], file_size, time.time(),
+            file_id,
+            filepath,
+            mtime,
+            os.path.basename(filepath),
+            metadata["type"],
+            metadata["duration"],
+            metadata["dimensions"],
+            metadata["has_workflow"],
+            file_size,
+            time.time(),
             workflow_files_content,
             workflow_prompt_content,
-            wf_hash, pr_hash, md_hash,
-            gen_row
+            wf_hash,
+            pr_hash,
+            md_hash,
+            gen_row,
         )
     except Exception as e:
         print(f"ERROR: Failed to process file {os.path.basename(filepath)} in worker: {e}")
         return None
+
 
 def split_file_results(results):
     """process_file returns the 15-column files row plus its
@@ -3523,7 +3816,9 @@ def split_file_results(results):
 _GENPARAMS_UPSERT = (
     "INSERT OR REPLACE INTO generation_params ("
     + ", ".join(metaparse_typed.ROW_COLUMNS)
-    + ") VALUES (" + ", ".join("?" * len(metaparse_typed.ROW_COLUMNS)) + ")"
+    + ") VALUES ("
+    + ", ".join("?" * len(metaparse_typed.ROW_COLUMNS))
+    + ")"
 )
 
 
@@ -3578,25 +3873,31 @@ def check_library_continuity(is_new_database):
 
     replaced = bool(is_new_database and had_library)
     if replaced:
-        print(f"\n{Colors.RED}{Colors.BOLD}WARNING: This gallery folder has held "
-              f"a library before, but the database is empty.{Colors.RESET}")
-        print(f"{Colors.RED}{DATABASE_FILE} was missing, so a new empty one has "
-              f"been created.{Colors.RESET}")
-        print(f"{Colors.YELLOW}Your picture files are untouched. Ratings, "
-              f"comments, albums, collections and tags lived in that database "
-              f"and are not in the new one.{Colors.RESET}")
-        print(f"{Colors.YELLOW}If you have a backup of it, stop the gallery and "
-              f"put it back before browsing; a scan will refill the new "
-              f"database and there is nothing to merge afterwards.{Colors.RESET}\n")
+        print(
+            f"\n{Colors.RED}{Colors.BOLD}WARNING: This gallery folder has held "
+            f"a library before, but the database is empty.{Colors.RESET}"
+        )
+        print(f"{Colors.RED}{DATABASE_FILE} was missing, so a new empty one has been created.{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}Your picture files are untouched. Ratings, "
+            f"comments, albums, collections and tags lived in that database "
+            f"and are not in the new one.{Colors.RESET}"
+        )
+        print(
+            f"{Colors.YELLOW}If you have a backup of it, stop the gallery and "
+            f"put it back before browsing; a scan will refill the new "
+            f"database and there is nothing to merge afterwards.{Colors.RESET}\n"
+        )
 
     if not had_library:
         try:
-            with open(LIBRARY_MARKER_FILE, 'w', encoding='utf-8') as marker:
+            with open(LIBRARY_MARKER_FILE, "w", encoding="utf-8") as marker:
                 marker.write(
                     "This file records that a SmartGallery library was created "
                     "here.\nIt lets the gallery tell a first run apart from a "
                     "database that has gone missing.\nDeleting it is harmless; "
-                    "it only costs you that warning.\n")
+                    "it only costs you that warning.\n"
+                )
         except OSError:
             pass  # a read-only gallery folder must not stop the gallery
 
@@ -3623,8 +3924,10 @@ def ensure_sqlite_cache_dir():
     # simply being made, and telling someone it "had gone" would be a
     # false alarm on their very first run.
     if os.path.exists(LIBRARY_MARKER_FILE):
-        print(f"{Colors.YELLOW}INFO: The database folder had gone; it has been "
-              f"recreated at {SQLITE_CACHE_DIR}.{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}INFO: The database folder had gone; it has been "
+            f"recreated at {SQLITE_CACHE_DIR}.{Colors.RESET}"
+        )
     return True
 
 
@@ -3642,29 +3945,33 @@ def get_db_connection():
         conn = sqlite3.connect(DATABASE_FILE, timeout=60)
     conn.row_factory = sqlite3.Row
     # CONCURRENCY OPTIMIZATION:
-    conn.execute('PRAGMA journal_mode=WAL;')
-    conn.execute('PRAGMA synchronous=NORMAL;')
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
     # --- CRITICAL FOR DATA CONSISTENCY ---
     # Enables cascading updates/deletes for Categories/Collections
-    conn.execute('PRAGMA foreign_keys = ON;')
+    conn.execute("PRAGMA foreign_keys = ON;")
     # Case folding that covers every script, for the search conditions.
-    conn.create_function('ulower', 1, _unicode_lower, deterministic=True)
+    conn.create_function("ulower", 1, _unicode_lower, deterministic=True)
     # The model/LoRA filter folds the stored name and the typed one with
     # these same two functions, so the two sides cannot disagree.
-    conn.create_function('fuzzykey', 1, _normalize_fuzzy_string, deterministic=True)
-    conn.create_function('wordkey', 1, _word_key, deterministic=True)
+    conn.create_function("fuzzykey", 1, _normalize_fuzzy_string, deterministic=True)
+    conn.create_function("wordkey", 1, _word_key, deterministic=True)
 
     return conn
 
+
 def _file_id_tables(conn):
     """Every table carrying a `file_id` that points at `files(id)`."""
-    names = [row[0] for row in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' "
-        "AND name NOT LIKE 'sqlite_%'").fetchall()]
+    names = [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    ]
     tables = []
     for name in names:
         columns = [row[1] for row in conn.execute(f'PRAGMA table_info("{name}")').fetchall()]
-        if 'file_id' in columns:
+        if "file_id" in columns:
             tables.append(name)
     return tables
 
@@ -3697,12 +4004,11 @@ def _reassign_file_ids(conn, pairs):
     # that has only read so far is still in autocommit, where the setting
     # would be dropped again before the updates ran.
     if not conn.in_transaction:
-        conn.execute('BEGIN')
-    conn.execute('PRAGMA defer_foreign_keys = ON')
+        conn.execute("BEGIN")
+    conn.execute("PRAGMA defer_foreign_keys = ON")
     moves = [(new, old) for old, new in pairs]
     for table in _file_id_tables(conn):
-        conn.executemany(f'UPDATE OR REPLACE "{table}" SET file_id = ? WHERE file_id = ?',
-                         moves)
+        conn.executemany(f'UPDATE OR REPLACE "{table}" SET file_id = ? WHERE file_id = ?', moves)
 
 
 def init_db(conn=None):
@@ -3718,15 +4024,15 @@ def init_db(conn=None):
     # reads as "already out of date" rather than "created". The steps still
     # run; only the commentary is withheld.
     try:
-        is_new_database = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='files'"
-        ).fetchone() is None
+        is_new_database = (
+            conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='files'").fetchone() is None
+        )
     except Exception:
         is_new_database = False
 
     try:
         # 1. CORE TABLE CREATION
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS files (
                 id TEXT PRIMARY KEY,
                 path TEXT NOT NULL UNIQUE,
@@ -3746,13 +4052,13 @@ def init_db(conn=None):
                 ai_embedding BLOB,
                 ai_error TEXT
             )
-        ''')
+        """)
 
         # First-class generation parameters, one typed row per file
         # (metaparse.typed.GenerationParams.to_row order). Numeric fields
         # carry real SQL types; unmapped tool keys live verbatim in
         # `extra` JSON so no first-party field is ever dropped.
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS generation_params (
                 file_id TEXT PRIMARY KEY REFERENCES files(id)
                     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -3776,31 +4082,31 @@ def init_db(conn=None):
                 extra TEXT,
                 parsed_at REAL NOT NULL
             )
-        ''')
+        """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_genparams_tool ON generation_params(tool)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_genparams_model ON generation_params(model)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_genparams_seed ON generation_params(seed)")
 
         # 2. AI TABLES
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS omniquery_sessions (
                 session_id TEXT PRIMARY KEY,
                 raw_sql TEXT,
                 created_at REAL
             );
-        ''')
+        """)
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS omniquery_results (
                 session_id TEXT,
                 file_id TEXT,
                 FOREIGN KEY (session_id) REFERENCES omniquery_sessions(session_id) ON DELETE CASCADE
             );
-        ''')
+        """)
 
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_omniquery_results ON omniquery_results(session_id);')
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_omniquery_results ON omniquery_results(session_id);")
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_search_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL UNIQUE,
@@ -3810,9 +4116,9 @@ def init_db(conn=None):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP NULL
             );
-        ''')
+        """)
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_search_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL,
@@ -3820,12 +4126,12 @@ def init_db(conn=None):
                 score REAL NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES ai_search_queue(session_id)
             );
-        ''')
+        """)
 
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_queue_status ON ai_search_queue(status);')
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_results_session ON ai_search_results(session_id);')
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_queue_status ON ai_search_queue(status);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_results_session ON ai_search_results(session_id);")
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_indexing_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_path TEXT NOT NULL,
@@ -3838,30 +4144,30 @@ def init_db(conn=None):
                 error_msg TEXT,
                 UNIQUE(file_path) ON CONFLICT REPLACE
             );
-        ''')
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_ai_idx_status ON ai_indexing_queue(status);')
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_idx_status ON ai_indexing_queue(status);")
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_watched_folders (
                 path TEXT PRIMARY KEY,
                 recursive INTEGER DEFAULT 0,
                 added_at REAL
             );
-        ''')
+        """)
 
         conn.execute("CREATE TABLE IF NOT EXISTS ai_metadata (key TEXT PRIMARY KEY, value TEXT, updated_at REAL)")
 
         # MOUNT POINTS TABLE
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS mounted_folders (
                 path TEXT PRIMARY KEY,
                 target_source TEXT,
                 created_at REAL
             );
-        ''')
+        """)
 
         # 3. COLLECTIONS SYSTEM
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS collections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -3871,9 +4177,9 @@ def init_db(conn=None):
                 parent_id INTEGER DEFAULT NULL,
                 created_at REAL
             );
-        ''')
+        """)
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS collection_files (
                 collection_id INTEGER,
                 file_id TEXT,
@@ -3882,10 +4188,10 @@ def init_db(conn=None):
                 FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
             );
-        ''')
+        """)
 
         # 4. EXHIBITION MODE TABLES (Ratings & Comments)
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS file_ratings (
                 file_id TEXT,
                 client_uuid TEXT,
@@ -3894,9 +4200,9 @@ def init_db(conn=None):
                 PRIMARY KEY (file_id, client_uuid),
                 FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
             );
-        ''')
+        """)
 
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS file_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_id TEXT,
@@ -3907,15 +4213,15 @@ def init_db(conn=None):
                 created_at REAL,
                 FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
             );
-        ''')
+        """)
 
         # Pre-populate Standard Workflow Flags
         system_flags = [
-            ('Approved', 'system_flag', '#28a745'),
-            ('Review',   'system_flag', '#ffc107'),
-            ('To Edit',  'system_flag', '#17a2b8'),
-            ('Rejected', 'system_flag', '#dc3545'),
-            ('Select',   'system_flag', '#6f42c1')
+            ("Approved", "system_flag", "#28a745"),
+            ("Review", "system_flag", "#ffc107"),
+            ("To Edit", "system_flag", "#17a2b8"),
+            ("Rejected", "system_flag", "#dc3545"),
+            ("Select", "system_flag", "#6f42c1"),
         ]
 
         existing_cols = conn.execute("SELECT COUNT(*) FROM collections WHERE type='system_flag'").fetchone()[0]
@@ -3923,12 +4229,11 @@ def init_db(conn=None):
             print(f"{Colors.BLUE}INFO: Initializing standard workflow tags...{Colors.RESET}")
             conn.executemany(
                 "INSERT INTO collections (name, type, color, is_public, created_at) VALUES (?, ?, ?, 0, ?)",
-                [(n, t, c, time.time()) for n, t, c in system_flags]
+                [(n, t, c, time.time()) for n, t, c in system_flags],
             )
 
-
         # 5. USER MANAGEMENT (Always required now for messaging target resolution)
-        conn.execute('''
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
@@ -3941,15 +4246,15 @@ def init_db(conn=None):
                 expiry_date DATE,               -- Optional expiration date
                 is_active BOOLEAN DEFAULT 1     -- 1 = Active, 0 = Disabled
             );
-        ''')
+        """)
         # Index for faster login lookups
-        conn.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);')
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
 
         # --- MIGRATION: Add last_login to users table ---
         try:
             cursor_usr = conn.execute("PRAGMA table_info(users)")
-            usr_columns = {row['name'] for row in cursor_usr.fetchall()}
-            if 'last_login' not in usr_columns:
+            usr_columns = {row["name"] for row in cursor_usr.fetchall()}
+            if "last_login" not in usr_columns:
                 if not is_new_database:
                     print("INFO: Updating Database Schema... Adding 'last_login' to users")
                 conn.execute("ALTER TABLE users ADD COLUMN last_login REAL")
@@ -3958,25 +4263,25 @@ def init_db(conn=None):
 
         # 6. COLUMN MIGRATION
         required_columns = {
-            'size': 'INTEGER DEFAULT 0',
-            'last_scanned': 'REAL DEFAULT 0',
-            'workflow_files': "TEXT DEFAULT ''",
-            'workflow_prompt': "TEXT DEFAULT ''",
-            'ai_last_scanned': 'REAL DEFAULT 0',
-            'ai_caption': 'TEXT',
-            'ai_embedding': 'BLOB',
-            'ai_error': 'TEXT',
-            'workflow_hash': "TEXT DEFAULT ''",
-            'prompt_hash': "TEXT DEFAULT ''",
-            'models_hash': "TEXT DEFAULT ''",
-            'hash_failed': 'INTEGER DEFAULT 0'
+            "size": "INTEGER DEFAULT 0",
+            "last_scanned": "REAL DEFAULT 0",
+            "workflow_files": "TEXT DEFAULT ''",
+            "workflow_prompt": "TEXT DEFAULT ''",
+            "ai_last_scanned": "REAL DEFAULT 0",
+            "ai_caption": "TEXT",
+            "ai_embedding": "BLOB",
+            "ai_error": "TEXT",
+            "workflow_hash": "TEXT DEFAULT ''",
+            "prompt_hash": "TEXT DEFAULT ''",
+            "models_hash": "TEXT DEFAULT ''",
+            "hash_failed": "INTEGER DEFAULT 0",
         }
 
         # Handle comments target migration
         try:
             cursor_fc = conn.execute("PRAGMA table_info(file_comments)")
-            fc_columns = {row['name'] for row in cursor_fc.fetchall()}
-            if 'target_audience' not in fc_columns:
+            fc_columns = {row["name"] for row in cursor_fc.fetchall()}
+            if "target_audience" not in fc_columns:
                 if not is_new_database:
                     print("INFO: Updating Database Schema... Adding 'target_audience' to file_comments")
                 conn.execute("ALTER TABLE file_comments ADD COLUMN target_audience TEXT DEFAULT 'public'")
@@ -3986,18 +4291,20 @@ def init_db(conn=None):
         # Handle collections public flag migration
         try:
             cursor_col = conn.execute("PRAGMA table_info(collections)")
-            col_columns = {row['name'] for row in cursor_col.fetchall()}
+            col_columns = {row["name"] for row in cursor_col.fetchall()}
             # Auto-fix existing txt/md files in database from unknown to document
-            conn.execute("UPDATE files SET type = 'document' WHERE (type = 'unknown' OR type IS NULL OR type = '') AND (LOWER(name) LIKE '%.txt' OR LOWER(name) LIKE '%.md')")
-            if 'is_public' not in col_columns:
+            conn.execute(
+                "UPDATE files SET type = 'document' WHERE (type = 'unknown' OR type IS NULL OR type = '') AND (LOWER(name) LIKE '%.txt' OR LOWER(name) LIKE '%.md')"
+            )
+            if "is_public" not in col_columns:
                 if not is_new_database:
                     print("INFO: Updating Database Schema... Adding 'is_public' to collections")
                 conn.execute("ALTER TABLE collections ADD COLUMN is_public INTEGER DEFAULT 0")
-            if 'shared_users' not in col_columns:
+            if "shared_users" not in col_columns:
                 if not is_new_database:
                     print("INFO: Updating Database Schema... Adding 'shared_users' to collections")
                 conn.execute("ALTER TABLE collections ADD COLUMN shared_users TEXT DEFAULT ''")
-            if 'parent_id' not in col_columns:
+            if "parent_id" not in col_columns:
                 if not is_new_database:
                     print("INFO: Updating Database Schema... Adding 'parent_id' to collections")
                 conn.execute("ALTER TABLE collections ADD COLUMN parent_id INTEGER DEFAULT NULL")
@@ -4006,7 +4313,7 @@ def init_db(conn=None):
             print(f"WARNING: Could not migrate collections table: {e}")
 
         cursor = conn.execute("PRAGMA table_info(files)")
-        existing_columns = {row['name'] for row in cursor.fetchall()}
+        existing_columns = {row["name"] for row in cursor.fetchall()}
 
         for col_name, col_type in required_columns.items():
             if col_name not in existing_columns:
@@ -4020,7 +4327,9 @@ def init_db(conn=None):
         try:
             cleared = clear_synthetic_prompt_hashes(conn)
             if cleared:
-                print(f"INFO: Cleared {cleared} synthetic prompt hashes (promptless files no longer form fake prompt clusters)")
+                print(
+                    f"INFO: Cleared {cleared} synthetic prompt hashes (promptless files no longer form fake prompt clusters)"
+                )
         except Exception as e:
             print(f"WARNING: Could not clear synthetic prompt hashes: {e}")
 
@@ -4036,13 +4345,17 @@ def init_db(conn=None):
                 # gallery folder is how this happens -- a container and a
                 # local copy at different versions, or a rollback after an
                 # upgrade -- and `!=` treated it as an ordinary migration.
-                print(f"{Colors.RED}{Colors.BOLD}WARNING: this database was made by a "
-                      f"NEWER SmartGallery (schema {current_ver}; this build knows "
-                      f"{DB_SCHEMA_VERSION}).{Colors.RESET}")
-                print(f"{Colors.YELLOW}Its version marker is being left alone. Newer "
-                      f"data may not appear here, and changes made from this build may "
-                      f"not be understood by the newer one. Update SmartGallery, or "
-                      f"point BASE_SMARTGALLERY_PATH at a different folder.{Colors.RESET}")
+                print(
+                    f"{Colors.RED}{Colors.BOLD}WARNING: this database was made by a "
+                    f"NEWER SmartGallery (schema {current_ver}; this build knows "
+                    f"{DB_SCHEMA_VERSION}).{Colors.RESET}"
+                )
+                print(
+                    f"{Colors.YELLOW}Its version marker is being left alone. Newer "
+                    f"data may not appear here, and changes made from this build may "
+                    f"not be understood by the newer one. Update SmartGallery, or "
+                    f"point BASE_SMARTGALLERY_PATH at a different folder.{Colors.RESET}"
+                )
             elif current_ver < DB_SCHEMA_VERSION:
                 if not is_new_database:
                     print(f"INFO: Updating Database Schema Version: {current_ver} -> {DB_SCHEMA_VERSION}")
@@ -4075,14 +4388,15 @@ def init_db(conn=None):
         if close_conn:
             conn.close()
 
+
 def get_dynamic_folder_config(force_refresh=False):
     global folder_config_cache
     if folder_config_cache is not None and not force_refresh:
         return folder_config_cache
 
-    #print("INFO: Refreshing folder configuration by scanning directory tree...")
+    # print("INFO: Refreshing folder configuration by scanning directory tree...")
 
-    base_path_normalized = os.path.normpath(BASE_OUTPUT_PATH).replace('\\', '/')
+    base_path_normalized = os.path.normpath(BASE_OUTPUT_PATH).replace("\\", "/")
 
     try:
         root_mtime = os.path.getmtime(BASE_OUTPUT_PATH)
@@ -4090,18 +4404,18 @@ def get_dynamic_folder_config(force_refresh=False):
         root_mtime = time.time()
 
     dynamic_config = {
-        '_root_': {
-            'display_name': 'Main',
-            'path': base_path_normalized,
-            'relative_path': '',
-            'parent': None,
-            'children': [],
-            'mtime': root_mtime,
-            'is_watched': False,
-            'is_explicitly_watched': False,
-            'is_mount': False, # Root is never a mount
-            'file_count': 0,
-            'descendant_file_count': 0
+        "_root_": {
+            "display_name": "Main",
+            "path": base_path_normalized,
+            "relative_path": "",
+            "parent": None,
+            "children": [],
+            "mtime": root_mtime,
+            "is_watched": False,
+            "is_explicitly_watched": False,
+            "is_mount": False,  # Root is never a mount
+            "file_count": 0,
+            "descendant_file_count": 0,
         }
     }
 
@@ -4113,8 +4427,8 @@ def get_dynamic_folder_config(force_refresh=False):
                 with get_db_connection() as conn:
                     rows = conn.execute("SELECT path, recursive FROM ai_watched_folders").fetchall()
                     for r in rows:
-                        w_path = os.path.normpath(r['path']).replace('\\', '/')
-                        watched_rules.append((w_path, bool(r['recursive'])))
+                        w_path = os.path.normpath(r["path"]).replace("\\", "/")
+                        watched_rules.append((w_path, bool(r["recursive"])))
             except sqlite3.Error:
                 pass
 
@@ -4125,13 +4439,24 @@ def get_dynamic_folder_config(force_refresh=False):
                 rows = conn.execute("SELECT path FROM mounted_folders").fetchall()
                 for r in rows:
                     # Normalize for comparison
-                    mounted_paths.add(os.path.normpath(r['path']).replace('\\', '/'))
+                    mounted_paths.add(os.path.normpath(r["path"]).replace("\\", "/"))
         except sqlite3.Error:
             pass
 
         all_folders = {}
         for dirpath, dirnames, _ in os.walk(BASE_OUTPUT_PATH, followlinks=True):
-            dirnames[:] = [d for d in dirnames if (not d.startswith('.') or d == '.collection_notes') and d not in [THUMBNAIL_CACHE_FOLDER_NAME, SQLITE_CACHE_FOLDER_NAME, ZIP_CACHE_FOLDER_NAME, AI_MODELS_FOLDER_NAME]]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if (not d.startswith(".") or d == ".collection_notes")
+                and d
+                not in [
+                    THUMBNAIL_CACHE_FOLDER_NAME,
+                    SQLITE_CACHE_FOLDER_NAME,
+                    ZIP_CACHE_FOLDER_NAME,
+                    AI_MODELS_FOLDER_NAME,
+                ]
+            ]
             # The trash is excluded by PATH, not by name, because DELETE_TO can
             # be anywhere -- and pointing it inside the gallery is a reasonable
             # thing to do when you want deletions to stay on the same drive.
@@ -4140,37 +4465,34 @@ def get_dynamic_folder_config(force_refresh=False):
             # gone, since the new path means a new id.
             if DELETE_TO:
                 dirnames[:] = [
-                    d for d in dirnames
-                    if not _is_under(os.path.join(dirpath, d) + '/', DELETE_TO)
-                    and _std_path(os.path.join(dirpath, d)).rstrip('/').lower()
-                    != _std_path(DELETE_TO).rstrip('/').lower()
+                    d
+                    for d in dirnames
+                    if not _is_under(os.path.join(dirpath, d) + "/", DELETE_TO)
+                    and _std_path(os.path.join(dirpath, d)).rstrip("/").lower()
+                    != _std_path(DELETE_TO).rstrip("/").lower()
                 ]
             for dirname in dirnames:
-                full_path = os.path.normpath(os.path.join(dirpath, dirname)).replace('\\', '/')
-                relative_path = os.path.relpath(full_path, BASE_OUTPUT_PATH).replace('\\', '/')
+                full_path = os.path.normpath(os.path.join(dirpath, dirname)).replace("\\", "/")
+                relative_path = os.path.relpath(full_path, BASE_OUTPUT_PATH).replace("\\", "/")
                 try:
                     mtime = os.path.getmtime(full_path)
                 except OSError:
                     mtime = time.time()
 
-                all_folders[relative_path] = {
-                    'full_path': full_path,
-                    'display_name': dirname,
-                    'mtime': mtime
-                }
+                all_folders[relative_path] = {"full_path": full_path, "display_name": dirname, "mtime": mtime}
 
-        sorted_paths = sorted(all_folders.keys(), key=lambda x: x.count('/'))
+        sorted_paths = sorted(all_folders.keys(), key=lambda x: x.count("/"))
 
         for rel_path in sorted_paths:
             folder_data = all_folders[rel_path]
             key = path_to_key(rel_path)
-            parent_rel_path = os.path.dirname(rel_path).replace('\\', '/')
-            parent_key = '_root_' if parent_rel_path == '.' or parent_rel_path == '' else path_to_key(parent_rel_path)
+            parent_rel_path = os.path.dirname(rel_path).replace("\\", "/")
+            parent_key = "_root_" if parent_rel_path == "." or parent_rel_path == "" else path_to_key(parent_rel_path)
 
             if parent_key in dynamic_config:
-                dynamic_config[parent_key]['children'].append(key)
+                dynamic_config[parent_key]["children"].append(key)
 
-            current_path = folder_data['full_path']
+            current_path = folder_data["full_path"]
 
             # Watch Logic
             is_watched_folder = False
@@ -4180,30 +4502,30 @@ def get_dynamic_folder_config(force_refresh=False):
                     is_watched_folder = True
                     is_explicitly_watched = True
                     break
-                if is_recursive and current_path.startswith(w_path + '/'):
+                if is_recursive and current_path.startswith(w_path + "/"):
                     is_watched_folder = True
                     break
 
             # Mount Logic
-            is_mount = (current_path in mounted_paths)
+            is_mount = current_path in mounted_paths
 
             # NEW: Resolve the physical path (handles Symlinks/Junctions for subfolders too)
-            real_path = os.path.realpath(current_path).replace('\\', '/')
+            real_path = os.path.realpath(current_path).replace("\\", "/")
 
             dynamic_config[key] = {
-                'display_name': folder_data['display_name'],
-                'path': current_path,
-                'real_path': real_path, # <--- NEW FIELD
-                'relative_path': rel_path,
-                'parent': parent_key,
-                'children': [],
-                'mtime': folder_data['mtime'],
-                'is_watched': is_watched_folder,
-                'is_explicitly_watched': is_explicitly_watched,
-                'is_mount': is_mount,
-                'is_hidden': folder_data['display_name'] == '.collection_notes',
-                'file_count': 0,
-                'descendant_file_count': 0
+                "display_name": folder_data["display_name"],
+                "path": current_path,
+                "real_path": real_path,  # <--- NEW FIELD
+                "relative_path": rel_path,
+                "parent": parent_key,
+                "children": [],
+                "mtime": folder_data["mtime"],
+                "is_watched": is_watched_folder,
+                "is_explicitly_watched": is_explicitly_watched,
+                "is_mount": is_mount,
+                "is_hidden": folder_data["display_name"] == ".collection_notes",
+                "file_count": 0,
+                "descendant_file_count": 0,
             }
     except FileNotFoundError:
         print(f"WARNING: The base directory '{BASE_OUTPUT_PATH}' was not found.")
@@ -4211,32 +4533,35 @@ def get_dynamic_folder_config(force_refresh=False):
     # Calculate folder file counts from database
     try:
         with get_db_connection() as conn:
-            rows = conn.execute("SELECT path FROM files WHERE type != 'document' AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md'").fetchall()
+            rows = conn.execute(
+                "SELECT path FROM files WHERE type != 'document' AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md'"
+            ).fetchall()
             dir_counts = {}
             for r in rows:
-                f_dir = os.path.normpath(os.path.dirname(r['path'])).replace('\\', '/').lower().rstrip('/')
+                f_dir = os.path.normpath(os.path.dirname(r["path"])).replace("\\", "/").lower().rstrip("/")
                 dir_counts[f_dir] = dir_counts.get(f_dir, 0) + 1
 
             for key, info in dynamic_config.items():
-                info_path_norm = os.path.normpath(info['path']).replace('\\', '/').lower().rstrip('/')
-                info['file_count'] = dir_counts.get(info_path_norm, 0)
+                info_path_norm = os.path.normpath(info["path"]).replace("\\", "/").lower().rstrip("/")
+                info["file_count"] = dir_counts.get(info_path_norm, 0)
 
             def _calc_descendant_count(key):
                 info = dynamic_config[key]
                 sub_count = 0
-                for child_key in info.get('children', []):
+                for child_key in info.get("children", []):
                     if child_key in dynamic_config:
                         child_info = dynamic_config[child_key]
-                        sub_count += child_info.get('file_count', 0) + _calc_descendant_count(child_key)
-                info['descendant_file_count'] = sub_count
+                        sub_count += child_info.get("file_count", 0) + _calc_descendant_count(child_key)
+                info["descendant_file_count"] = sub_count
                 return sub_count
 
-            _calc_descendant_count('_root_')
+            _calc_descendant_count("_root_")
     except Exception as e:
         print(f"Error calculating folder file counts: {e}")
 
     folder_config_cache = dynamic_config
     return dynamic_config
+
 
 # --- BACKGROUND WATCHER THREAD ---
 QUEUE_STALE_SECONDS = 3 * 86400
@@ -4256,8 +4581,8 @@ def sweep_stale_index_queue(conn, now=None):
     """
     cutoff = (now if now is not None else time.time()) - QUEUE_STALE_SECONDS
     cur = conn.execute(
-        "DELETE FROM ai_indexing_queue WHERE status IN ('completed', 'pending') "
-        "AND created_at < ?", (cutoff,))
+        "DELETE FROM ai_indexing_queue WHERE status IN ('completed', 'pending') AND created_at < ?", (cutoff,)
+    )
     conn.commit()
     return cur.rowcount
 
@@ -4280,18 +4605,42 @@ def background_watcher_task():
                     watched = conn.execute("SELECT path, recursive FROM ai_watched_folders").fetchall()
 
                     for row in watched:
-                        folder_path = row['path']
-                        is_recursive = row['recursive']
+                        folder_path = row["path"]
+                        is_recursive = row["recursive"]
 
-                        valid_exts = {'.png','.jpg','.jpeg','.webp','.gif','.mp4','.mov','.avi','.webm','.txt','.md'}
-                        EXCLUDED = {'.thumbnails_cache', '.sqlite_cache', '.zip_downloads', '.AImodels', 'venv', 'venv-ai', '.git'}
+                        valid_exts = {
+                            ".png",
+                            ".jpg",
+                            ".jpeg",
+                            ".webp",
+                            ".gif",
+                            ".mp4",
+                            ".mov",
+                            ".avi",
+                            ".webm",
+                            ".txt",
+                            ".md",
+                        }
+                        EXCLUDED = {
+                            ".thumbnails_cache",
+                            ".sqlite_cache",
+                            ".zip_downloads",
+                            ".AImodels",
+                            "venv",
+                            "venv-ai",
+                            ".git",
+                        }
 
                         files_to_check = []
 
                         if os.path.isdir(folder_path):
                             if is_recursive:
                                 for root, dirs, files in os.walk(folder_path, topdown=True, followlinks=True):
-                                    dirs[:] = [d for d in dirs if (not d.startswith('.') or d == '.collection_notes') and d not in EXCLUDED]
+                                    dirs[:] = [
+                                        d
+                                        for d in dirs
+                                        if (not d.startswith(".") or d == ".collection_notes") and d not in EXCLUDED
+                                    ]
                                     for f in files:
                                         if os.path.splitext(f)[1].lower() in valid_exts:
                                             files_to_check.append(os.path.join(root, f))
@@ -4311,13 +4660,16 @@ def background_watcher_task():
                             # 1. CHECK ACTIVE STATUS
                             # Only skip if it is actively waiting or running.
                             # Do NOT skip if it is 'completed' or 'error' (we might need to retry/update).
-                            active_job = conn.execute("""
+                            active_job = conn.execute(
+                                """
                                 SELECT 1 FROM ai_indexing_queue
                                 WHERE file_path = ? AND status IN ('pending', 'processing', 'waiting_gpu')
-                            """, (p_key,)).fetchone()
+                            """,
+                                (p_key,),
+                            ).fetchone()
 
                             if active_job:
-                                continue # Busy, come back later
+                                continue  # Busy, come back later
 
                             # 2. CHECK FILE STATE IN DB
                             # We need to find the file ID and its scan timestamp
@@ -4325,12 +4677,17 @@ def background_watcher_task():
                             # to ensure we find the record even if slashes differ.
 
                             # Try exact match first
-                            file_row = conn.execute("SELECT id, mtime, ai_last_scanned FROM files WHERE path = ?", (raw_path,)).fetchone()
+                            file_row = conn.execute(
+                                "SELECT id, mtime, ai_last_scanned FROM files WHERE path = ?", (raw_path,)
+                            ).fetchone()
 
                             # Fallback: Normalized Match
                             if not file_row:
-                                norm_p = raw_path.replace('\\', '/')
-                                file_row = conn.execute("SELECT id, mtime, ai_last_scanned FROM files WHERE REPLACE(path, '\\', '/') = ?", (norm_p,)).fetchone()
+                                norm_p = raw_path.replace("\\", "/")
+                                file_row = conn.execute(
+                                    "SELECT id, mtime, ai_last_scanned FROM files WHERE REPLACE(path, '\\', '/') = ?",
+                                    (norm_p,),
+                                ).fetchone()
 
                             if not file_row:
                                 # File exists on disk but NOT in DB.
@@ -4338,22 +4695,23 @@ def background_watcher_task():
                                 # The main 'files' sync must run first. We skip it silently.
                                 continue
 
-                            file_id = file_row['id']
-                            last_scan_ts = file_row['ai_last_scanned'] if file_row['ai_last_scanned'] is not None else 0
-                            mtime = file_row['mtime']
+                            file_id = file_row["id"]
+                            last_scan_ts = file_row["ai_last_scanned"] if file_row["ai_last_scanned"] is not None else 0
+                            mtime = file_row["mtime"]
 
                             # 3. DIRTY CHECK (The Core Incremental Logic)
                             needs_index = False
 
                             if last_scan_ts == 0:
-                                needs_index = True # Never scanned or Reset by user
+                                needs_index = True  # Never scanned or Reset by user
                             elif last_scan_ts < mtime:
-                                needs_index = True # File modified on disk after last scan
+                                needs_index = True  # File modified on disk after last scan
 
                             if needs_index:
                                 # UPSERT: If exists (e.g. 'completed'), revive to 'pending'. If new, insert.
                                 # This fixes the issue where completed items were ignored even after reset.
-                                conn.execute("""
+                                conn.execute(
+                                    """
                                     INSERT INTO ai_indexing_queue
                                     (file_path, file_id, status, created_at, force_index, params)
                                     VALUES (?, ?, 'pending', ?, 0, '{}')
@@ -4361,14 +4719,17 @@ def background_watcher_task():
                                         status = 'pending',
                                         file_id = excluded.file_id,
                                         created_at = excluded.created_at
-                                """, (p_key, file_id, time.time()))
+                                """,
+                                    (p_key, file_id, time.time()),
+                                )
 
                     conn.commit()
 
         except Exception as e:
             print(f"Watcher Loop Error: {e}")
 
-        time.sleep(10) # Faster check cycle (10s instead of 60s) to feel responsive
+        time.sleep(10)  # Faster check cycle (10s instead of 60s) to feel responsive
+
 
 def looks_like_a_renamed_root(db_paths, to_delete, to_add):
     """True when the library is the same and only its address changed.
@@ -4385,8 +4746,7 @@ def looks_like_a_renamed_root(db_paths, to_delete, to_add):
     """
     if not db_paths or to_delete != db_paths:
         return False
-    return ({os.path.basename(p) for p in to_delete}
-            == {os.path.basename(p) for p in to_add})
+    return {os.path.basename(p) for p in to_delete} == {os.path.basename(p) for p in to_add}
 
 
 def full_sync_database(conn):
@@ -4394,16 +4754,39 @@ def full_sync_database(conn):
     start_time = time.time()
 
     all_folders = get_dynamic_folder_config(force_refresh=True)
-    db_files = {row['path']: row['mtime'] for row in conn.execute('SELECT path, mtime FROM files').fetchall()}
+    db_files = {row["path"]: row["mtime"] for row in conn.execute("SELECT path, mtime FROM files").fetchall()}
 
     disk_files = {}
     print("INFO: Scanning directories on disk...")
 
     # Whitelist approach: Only index valid media files
     valid_extensions = {
-        '.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp', '.gif',  # Images
-        '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv', '.mts', '.ts', # Videos
-        '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.txt', '.md' # Audio & Docs
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+        ".gif",  # Images
+        ".mp4",
+        ".mov",
+        ".webm",
+        ".mkv",
+        ".avi",
+        ".m4v",
+        ".wmv",
+        ".flv",
+        ".mts",
+        ".ts",  # Videos
+        ".mp3",
+        ".wav",
+        ".ogg",
+        ".flac",
+        ".m4a",
+        ".aac",
+        ".txt",
+        ".md",  # Audio & Docs
     }
 
     # Folders we could not read. "We looked and it is empty" and "we could
@@ -4413,7 +4796,7 @@ def full_sync_database(conn):
     unreadable_roots = []
 
     for folder_data in all_folders.values():
-        folder_path = folder_data['path']
+        folder_path = folder_data["path"]
         if not os.path.isdir(folder_path):
             continue
         try:
@@ -4474,22 +4857,30 @@ def full_sync_database(conn):
     if looks_like_a_renamed_root(db_paths, to_delete, to_add):
         was = os.path.dirname(min(to_delete))
         now = os.path.dirname(min(to_add))
-        print(f"\n{Colors.RED}{Colors.BOLD}WARNING: every file in the library "
-              f"is at a different address than the one recorded.{Colors.RESET}")
+        print(
+            f"\n{Colors.RED}{Colors.BOLD}WARNING: every file in the library "
+            f"is at a different address than the one recorded.{Colors.RESET}"
+        )
         print(f"{Colors.RED}recorded: {was}{Colors.RESET}")
         print(f"{Colors.RED}found   : {now}{Colors.RESET}")
-        print(f"{Colors.YELLOW}The same {len(to_add)} file(s) are all there, so "
-              f"this is the folder being reached by a different name rather "
-              f"than anything being deleted -- a changed mount, a moved "
-              f"library, or the same path typed in another case.{Colors.RESET}")
-        print(f"{Colors.YELLOW}Nothing has been removed. Ratings, comments, "
-              f"albums and tags are keyed to the recorded address, so they "
-              f"would all have gone. Point BASE_OUTPUT_PATH back at the "
-              f"recorded spelling to see them again.{Colors.RESET}")
-        print(f"{Colors.YELLOW}Until then the gallery lists both sets, so "
-              f"every picture appears twice. That is the cost of keeping "
-              f"them; it goes away as soon as the address matches."
-              f"{Colors.RESET}\n")
+        print(
+            f"{Colors.YELLOW}The same {len(to_add)} file(s) are all there, so "
+            f"this is the folder being reached by a different name rather "
+            f"than anything being deleted -- a changed mount, a moved "
+            f"library, or the same path typed in another case.{Colors.RESET}"
+        )
+        print(
+            f"{Colors.YELLOW}Nothing has been removed. Ratings, comments, "
+            f"albums and tags are keyed to the recorded address, so they "
+            f"would all have gone. Point BASE_OUTPUT_PATH back at the "
+            f"recorded spelling to see them again.{Colors.RESET}"
+        )
+        print(
+            f"{Colors.YELLOW}Until then the gallery lists both sets, so "
+            f"every picture appears twice. That is the cost of keeping "
+            f"them; it goes away as soon as the address matches."
+            f"{Colors.RESET}\n"
+        )
         to_delete = set()
     to_check = disk_paths & db_paths
     to_update = {path for path in to_check if int(disk_files.get(path, 0)) > int(db_files.get(path, 0))}
@@ -4497,7 +4888,9 @@ def full_sync_database(conn):
     files_to_process = list(to_add.union(to_update))
     # debug if files_to_process: print(f"{Colors.YELLOW}DEBUG - File to process: {files_to_process}{Colors.RESET}")
     if files_to_process:
-        print(f"INFO: Processing {len(files_to_process)} files in parallel using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores...")
+        print(
+            f"INFO: Processing {len(files_to_process)} files in parallel using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores..."
+        )
 
         results = []
         attempted = set()
@@ -4536,9 +4929,11 @@ def full_sync_database(conn):
         leftover = [p for p in files_to_process if p not in attempted]
         if leftover:
             if pool_failure is not None:
-                print(f"\nWARNING: parallel processing stopped ({type(pool_failure).__name__}: "
-                      f"{pool_failure}). Processing the remaining {len(leftover)} file(s) "
-                      f"one at a time -- slower, but nothing is skipped.")
+                print(
+                    f"\nWARNING: parallel processing stopped ({type(pool_failure).__name__}: "
+                    f"{pool_failure}). Processing the remaining {len(leftover)} file(s) "
+                    f"one at a time -- slower, but nothing is skipped."
+                )
             with tqdm(total=len(leftover), desc="Processing files (sequential)") as pbar:
                 for path in leftover:
                     try:
@@ -4552,8 +4947,9 @@ def full_sync_database(conn):
         if results:
             print(f"INFO: Inserting {len(results)} processed records into the database...")
             for i in range(0, len(results), BATCH_SIZE):
-                batch, gen_rows, gen_deletes = split_file_results(results[i:i + BATCH_SIZE])
-                conn.executemany("""
+                batch, gen_rows, gen_deletes = split_file_results(results[i : i + BATCH_SIZE])
+                conn.executemany(
+                    """
                     INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
@@ -4601,7 +4997,9 @@ def full_sync_database(conn):
 
                         -- Update mtime at the end
                         mtime = excluded.mtime
-                """, batch)
+                """,
+                    batch,
+                )
                 upsert_generation_params(conn, gen_rows, gen_deletes)
                 conn.commit()
 
@@ -4615,7 +5013,7 @@ def full_sync_database(conn):
         offline_prefixes = []
 
         for row in mount_rows:
-            m_path = row['path']
+            m_path = row["path"]
             # If the mount root itself is missing, assume the drive is offline.
             # note: os.path.exists returns False for broken symlinks/junctions
             if not os.path.exists(m_path):
@@ -4625,8 +5023,7 @@ def full_sync_database(conn):
         # A folder we failed to read counts the same as an offline mount:
         # its files are unaccounted for, not gone.
         for unreadable in unreadable_roots:
-            print(f"{Colors.YELLOW}WARN: Folder could not be read, keeping its entries: "
-                  f"{unreadable}{Colors.RESET}")
+            print(f"{Colors.YELLOW}WARN: Folder could not be read, keeping its entries: {unreadable}{Colors.RESET}")
             offline_prefixes.append(unreadable)
 
         # 2. Filter files to delete
@@ -4649,12 +5046,14 @@ def full_sync_database(conn):
                 safe_to_delete.append(path_to_remove)
 
         if protected_count > 0:
-            print(f"{Colors.YELLOW}PROTECTION ACTIVE: Skipped deletion of {protected_count} files because their source drive appears offline.{Colors.RESET}")
+            print(
+                f"{Colors.YELLOW}PROTECTION ACTIVE: Skipped deletion of {protected_count} files because their source drive appears offline.{Colors.RESET}"
+            )
 
         # 3. Proceed with safe deletion (protecting collection notes from being purged)
         if safe_to_delete:
-            notes_dir_smart = os.path.normpath(os.path.join(BASE_SMARTGALLERY_PATH, '.collection_notes')).lower()
-            notes_dir_out = os.path.normpath(os.path.join(BASE_OUTPUT_PATH, '.collection_notes')).lower()
+            notes_dir_smart = os.path.normpath(os.path.join(BASE_SMARTGALLERY_PATH, ".collection_notes")).lower()
+            notes_dir_out = os.path.normpath(os.path.join(BASE_OUTPUT_PATH, ".collection_notes")).lower()
 
             real_to_delete = []
             for p in safe_to_delete:
@@ -4680,25 +5079,54 @@ def full_sync_database(conn):
 
     print(f"INFO: Full scan completed in {time.time() - start_time:.2f} seconds.")
 
+
 def sync_folder_on_demand(folder_path):
     yield f"data: {json.dumps({'message': 'Checking folder for changes...', 'current': 0, 'total': 1})}\n\n"
 
     try:
         with get_db_connection() as conn:
-            disk_files, valid_extensions = {}, {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mkv', '.webm', '.mov', '.avi', '.mp3', '.wav', '.ogg', '.flac', '.txt', '.md'}
+            disk_files, valid_extensions = (
+                {},
+                {
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".gif",
+                    ".webp",
+                    ".mp4",
+                    ".mkv",
+                    ".webm",
+                    ".mov",
+                    ".avi",
+                    ".mp3",
+                    ".wav",
+                    ".ogg",
+                    ".flac",
+                    ".txt",
+                    ".md",
+                },
+            )
             if os.path.isdir(folder_path):
                 for name in os.listdir(folder_path):
                     filepath = os.path.join(folder_path, name)
                     if os.path.isfile(filepath) and os.path.splitext(name)[1].lower() in valid_extensions:
                         disk_files[filepath] = os.path.getmtime(filepath)
 
-            db_files_query = conn.execute("SELECT path, mtime FROM files WHERE path LIKE ?", (folder_path + os.sep + '%',)).fetchall()
-            db_files = {row['path']: row['mtime'] for row in db_files_query if os.path.normpath(os.path.dirname(row['path'])) == os.path.normpath(folder_path)}
+            db_files_query = conn.execute(
+                "SELECT path, mtime FROM files WHERE path LIKE ?", (folder_path + os.sep + "%",)
+            ).fetchall()
+            db_files = {
+                row["path"]: row["mtime"]
+                for row in db_files_query
+                if os.path.normpath(os.path.dirname(row["path"])) == os.path.normpath(folder_path)
+            }
 
             disk_filepaths, db_filepaths = set(disk_files.keys()), set(db_files.keys())
             files_to_add = disk_filepaths - db_filepaths
             files_to_delete = db_filepaths - disk_filepaths
-            files_to_update = {path for path in (disk_filepaths & db_filepaths) if int(disk_files[path]) > int(db_files[path])}
+            files_to_update = {
+                path for path in (disk_filepaths & db_filepaths) if int(disk_files[path]) > int(db_files[path])
+            }
 
             if not files_to_add and not files_to_update and not files_to_delete:
                 yield f"data: {json.dumps({'message': 'Folder is up-to-date.', 'status': 'no_changes', 'current': 1, 'total': 1})}\n\n"
@@ -4723,7 +5151,9 @@ def sync_folder_on_demand(folder_path):
                             if result:
                                 data_to_upsert.append(result)
                         except concurrent.futures.process.BrokenProcessPool as e:
-                            print(f"\nWARNING: A worker process crashed (likely due to a corrupted file). Recovering... Error: {e}")
+                            print(
+                                f"\nWARNING: A worker process crashed (likely due to a corrupted file). Recovering... Error: {e}"
+                            )
                         except Exception as e:
                             file_path_failed = futures[future]
                             print(f"\nWARNING: Unhandled error processing {os.path.basename(file_path_failed)}: {e}")
@@ -4731,15 +5161,16 @@ def sync_folder_on_demand(folder_path):
                         processed_count += 1
                         path = futures[future]
                         progress_data = {
-                            'message': f'Processing: {os.path.basename(path)}',
-                            'current': processed_count,
-                            'total': total_files
+                            "message": f"Processing: {os.path.basename(path)}",
+                            "current": processed_count,
+                            "total": total_files,
                         }
                         yield f"data: {json.dumps(progress_data)}\n\n"
 
                 if data_to_upsert:
                     file_rows_2, gen_rows_2, gen_deletes_2 = split_file_results(data_to_upsert)
-                    conn.executemany("""
+                    conn.executemany(
+                        """
                         INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(id) DO UPDATE SET
@@ -4779,7 +5210,9 @@ def sync_folder_on_demand(folder_path):
 
                             -- Update mtime at the end
                             mtime = excluded.mtime
-                    """, file_rows_2)
+                    """,
+                        file_rows_2,
+                    )
                     upsert_generation_params(conn, gen_rows_2, gen_deletes_2)
 
             if files_to_delete:
@@ -4792,6 +5225,7 @@ def sync_folder_on_demand(folder_path):
         error_message = f"Error during sync: {e}"
         print(f"ERROR: {error_message}")
         yield f"data: {json.dumps({'message': error_message, 'current': 1, 'total': 1, 'error': True})}\n\n"
+
 
 def scan_folder_and_extract_options(folder_path, recursive=True):
     """
@@ -4808,30 +5242,42 @@ def scan_folder_and_extract_options(folder_path, recursive=True):
             # Recursive scan using os.walk
             for _root, dirs, files in os.walk(folder_path, followlinks=True):
                 # Filter out hidden/protected folders in-place
-                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in [THUMBNAIL_CACHE_FOLDER_NAME, SQLITE_CACHE_FOLDER_NAME, ZIP_CACHE_FOLDER_NAME, AI_MODELS_FOLDER_NAME]]
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d
+                    not in [
+                        THUMBNAIL_CACHE_FOLDER_NAME,
+                        SQLITE_CACHE_FOLDER_NAME,
+                        ZIP_CACHE_FOLDER_NAME,
+                        AI_MODELS_FOLDER_NAME,
+                    ]
+                ]
                 for filename in files:
                     ext = os.path.splitext(filename)[1].lower()
-                    if ext and ext not in ['.json', '.sqlite']:
+                    if ext and ext not in [".json", ".sqlite"]:
                         file_count += 1
-                        extensions.add(ext.lstrip('.'))
-                        if '_' in filename:
-                            prefixes.add(filename.split('_')[0])
+                        extensions.add(ext.lstrip("."))
+                        if "_" in filename:
+                            prefixes.add(filename.split("_")[0])
         else:
             # Single folder scan using os.scandir (faster)
             for entry in os.scandir(folder_path):
                 if entry.is_file():
                     filename = entry.name
                     ext = os.path.splitext(filename)[1].lower()
-                    if ext and ext not in ['.json', '.sqlite']:
+                    if ext and ext not in [".json", ".sqlite"]:
                         file_count += 1
-                        extensions.add(ext.lstrip('.'))
-                        if '_' in filename:
-                            prefixes.add(filename.split('_')[0])
+                        extensions.add(ext.lstrip("."))
+                        if "_" in filename:
+                            prefixes.add(filename.split("_")[0])
 
     except Exception as e:
         print(f"ERROR: Could not scan folder '{folder_path}': {e}")
 
     return file_count, sorted(extensions), sorted(prefixes)
+
 
 def cleanup_invalid_watched_folders(conn):
     """
@@ -4843,7 +5289,7 @@ def cleanup_invalid_watched_folders(conn):
         rows = conn.execute("SELECT path FROM ai_watched_folders").fetchall()
 
         for row in rows:
-            path = row['path']
+            path = row["path"]
             if not os.path.exists(path) or not os.path.isdir(path):
                 # We just WARN the user, we do NOT delete the config.
                 print(f"{Colors.YELLOW}WARN: Watched folder not found (Offline or Deleted): {path}")
@@ -4852,6 +5298,7 @@ def cleanup_invalid_watched_folders(conn):
     except Exception as e:
         print(f"ERROR checking watched folders: {e}")
 
+
 def initialize_gallery_fast_no_db_check():
     print("INFO: Initializing gallery...")
     global FFPROBE_EXECUTABLE_PATH
@@ -4859,7 +5306,7 @@ def initialize_gallery_fast_no_db_check():
     os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
     os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
     # See initialize_gallery: sweep tmp_* strandings from killed encoders.
-    for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, 'tmp_*')):
+    for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, "tmp_*")):
         with contextlib.suppress(OSError):
             os.remove(stale)
     # Prepared downloads are full copies of what went into them, and their
@@ -4867,8 +5314,7 @@ def initialize_gallery_fast_no_db_check():
     # and no more left that copy in the gallery folder for good.
     _removed_zips, _forgotten_jobs = prune_zip_cache()
     if _removed_zips:
-        print(f"INFO: Cleared {_removed_zips} prepared download(s) older "
-              f"than {ZIP_RETENTION_SECONDS // 3600} hours.")
+        print(f"INFO: Cleared {_removed_zips} prepared download(s) older than {ZIP_RETENTION_SECONDS // 3600} hours.")
 
     with get_db_connection() as conn:
         try:
@@ -4908,9 +5354,9 @@ def pregenerate_exhibition_cache():
         rows = conn.execute(query).fetchall()
 
         for row in rows:
-            filepath = row['path']
-            mtime = row['mtime']
-            file_type = row['type']
+            filepath = row["path"]
+            mtime = row["mtime"]
+            file_type = row["type"]
 
             # CRITICAL: Calculate hash using the EXACT path string from the DB
             # to match the retrieval logic in serve_cleaned_file().
@@ -4925,18 +5371,22 @@ def pregenerate_exhibition_cache():
 
             # Only process if missing or corrupted (0 bytes)
             if not os.path.exists(safe_output_path) or os.path.getsize(safe_output_path) == 0:
-                files_to_process.append({
-                    'input_path': safe_input_path,
-                    'output_path': safe_output_path,
-                    'type': file_type,
-                    'name': row['name']
-                })
+                files_to_process.append(
+                    {
+                        "input_path": safe_input_path,
+                        "output_path": safe_output_path,
+                        "type": file_type,
+                        "name": row["name"],
+                    }
+                )
 
     if not files_to_process:
         print(f"{Colors.GREEN}INFO: Exhibition cache is up to date.{Colors.RESET}")
         return
 
-    print(f"INFO: Pre-generating {len(files_to_process)} clean files using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores...")
+    print(
+        f"INFO: Pre-generating {len(files_to_process)} clean files using up to {MAX_PARALLEL_WORKERS or 'all'} CPU cores..."
+    )
 
     success_count = 0
 
@@ -4945,7 +5395,7 @@ def pregenerate_exhibition_cache():
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
         # Submit jobs using the safely normalized OS paths
         futures = {
-            executor.submit(strip_media_metadata, f['input_path'], f['output_path'], f['type']): f
+            executor.submit(strip_media_metadata, f["input_path"], f["output_path"], f["type"]): f
             for f in files_to_process
         }
 
@@ -4959,7 +5409,10 @@ def pregenerate_exhibition_cache():
                     print(f"\nWARNING: Failed to clean {file_info['name']}: {e}")
                 pbar.update(1)
 
-    print(f"{Colors.GREEN}INFO: Successfully pre-generated {success_count}/{len(files_to_process)} clean files.{Colors.RESET}")
+    print(
+        f"{Colors.GREEN}INFO: Successfully pre-generated {success_count}/{len(files_to_process)} clean files.{Colors.RESET}"
+    )
+
 
 def check_exhibition_requirements():
     """
@@ -4991,7 +5444,9 @@ def check_exhibition_requirements():
             conn.row_factory = sqlite3.Row
 
             # Check if collections table exists
-            table_check = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='collections'").fetchone()
+            table_check = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='collections'"
+            ).fetchone()
             if not table_check:
                 print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL ERROR: Collections Table Missing{Colors.RESET}")
                 print(f"{Colors.RED}The database exists, but it's empty or outdated.{Colors.RESET}")
@@ -5010,8 +5465,12 @@ def check_exhibition_requirements():
 
             if accessible_colls == 0:
                 print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL ERROR: No Exhibition Collections Found{Colors.RESET}")
-                print(f"{Colors.RED}Exhibition Mode displays collections that are public or shared with at least one user.{Colors.RESET}")
-                print(f"{Colors.RED}Currently, your database has no accessible Exhibition collections, so the Exhibition would be completely empty.{Colors.RESET}")
+                print(
+                    f"{Colors.RED}Exhibition Mode displays collections that are public or shared with at least one user.{Colors.RESET}"
+                )
+                print(
+                    f"{Colors.RED}Currently, your database has no accessible Exhibition collections, so the Exhibition would be completely empty.{Colors.RESET}"
+                )
                 print(f"\n{Colors.CYAN}{Colors.BOLD}💡 HOW TO FIX IT:{Colors.RESET}")
                 print(f"1. Start the standard gallery: {Colors.YELLOW}python smartgallery.py{Colors.RESET}")
                 print("2. Log in, select some files, and click the 📚️ Add/Remove from collection button.")
@@ -5022,6 +5481,7 @@ def check_exhibition_requirements():
     except sqlite3.DatabaseError as e:
         print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL ERROR: Database corrupted or inaccessible: {e}{Colors.RESET}")
         sys.exit(1)
+
 
 def initialize_gallery():
     print("INFO: Initializing gallery...")
@@ -5035,12 +5495,12 @@ def initialize_gallery():
     os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
     os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
     os.makedirs(CLEAN_CACHE_DIR, exist_ok=True)
-    os.makedirs(os.path.join(BASE_SMARTGALLERY_PATH, '.collection_notes'), exist_ok=True)
+    os.makedirs(os.path.join(BASE_SMARTGALLERY_PATH, ".collection_notes"), exist_ok=True)
     os.makedirs(IMPORTED_WORKFLOWS_DIR, exist_ok=True)
     # Thumbnail/waveform encoders write tmp_* then os.replace() into place;
     # a hard process kill can strand the tmp_ file. Sweep leftovers here --
     # nothing references them, and their hashes retry naturally.
-    for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, 'tmp_*')):
+    for stale in glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, "tmp_*")):
         with contextlib.suppress(OSError):
             os.remove(stale)
     # Prepared downloads are full copies of what went into them, and their
@@ -5048,28 +5508,29 @@ def initialize_gallery():
     # and no more left that copy in the gallery folder for good.
     _removed_zips, _forgotten_jobs = prune_zip_cache()
     if _removed_zips:
-        print(f"INFO: Cleared {_removed_zips} prepared download(s) older "
-              f"than {ZIP_RETENTION_SECONDS // 3600} hours.")
+        print(f"INFO: Cleared {_removed_zips} prepared download(s) older than {ZIP_RETENTION_SECONDS // 3600} hours.")
 
     with get_db_connection() as conn:
         try:
             init_db(conn)
             # Auto-migrate collection notes paths if directory moved to BASE_SMARTGALLERY_PATH
             try:
-                old_notes_prefix = os.path.join(BASE_OUTPUT_PATH, '.collection_notes')
-                new_notes_prefix = os.path.join(BASE_SMARTGALLERY_PATH, '.collection_notes')
+                old_notes_prefix = os.path.join(BASE_OUTPUT_PATH, ".collection_notes")
+                new_notes_prefix = os.path.join(BASE_SMARTGALLERY_PATH, ".collection_notes")
                 if old_notes_prefix != new_notes_prefix:
-                    rows = conn.execute("SELECT id, path FROM files WHERE path LIKE ?", (old_notes_prefix + '%',)).fetchall()
+                    rows = conn.execute(
+                        "SELECT id, path FROM files WHERE path LIKE ?", (old_notes_prefix + "%",)
+                    ).fetchall()
                     for r in rows:
-                        old_p = r['path']
+                        old_p = r["path"]
                         new_p = old_p.replace(old_notes_prefix, new_notes_prefix, 1)
                         new_id = hashlib.md5(new_p.encode()).hexdigest()
                         # Everything referencing the old id moves with it. Updating
                         # files.id first used to raise a foreign key error that this
                         # block's own except swallowed into a one-line notice, so the
                         # migration never ran for anyone with a separate gallery path.
-                        _reassign_file_ids(conn, [(r['id'], new_id)])
-                        conn.execute("UPDATE files SET id = ?, path = ? WHERE id = ?", (new_id, new_p, r['id']))
+                        _reassign_file_ids(conn, [(r["id"], new_id)])
+                        conn.execute("UPDATE files SET id = ?, path = ? WHERE id = ?", (new_id, new_p, r["id"]))
                     conn.commit()
             except Exception as e:
                 print(f"Notes path migration notice: {e}")
@@ -5083,11 +5544,13 @@ def initialize_gallery():
             backfill_audio_durations(conn)
             ensure_genparams_backfill_async(conn)
             migration_report = sg_auth.migrate_legacy_passwords(conn, ENCRYPTION_KEY_FILE)
-            if migration_report['migrated'] or migration_report['failed']:
-                print(f"{Colors.BLUE}INFO: Password migration - "
-                      f"{migration_report['migrated']} migrated, "
-                      f"{migration_report['failed']} failed (unusable, needs admin reset), "
-                      f"key file deleted: {migration_report['key_deleted']}{Colors.RESET}")
+            if migration_report["migrated"] or migration_report["failed"]:
+                print(
+                    f"{Colors.BLUE}INFO: Password migration - "
+                    f"{migration_report['migrated']} migrated, "
+                    f"{migration_report['failed']} failed (unusable, needs admin reset), "
+                    f"key file deleted: {migration_report['key_deleted']}{Colors.RESET}"
+                )
             ensure_admin_user(conn)
 
             # After full_sync_database, the library rows are what is on
@@ -5095,15 +5558,18 @@ def initialize_gallery():
             # told apart from the thumbnails still in use.
             gone, gone_dirs = prune_thumbnail_cache(conn)
             if gone or gone_dirs:
-                print(f"{Colors.BLUE}INFO: Cleared {gone + gone_dirs} thumbnail "
-                      f"cache entries for files the library no longer has."
-                      f"{Colors.RESET}")
+                print(
+                    f"{Colors.BLUE}INFO: Cleared {gone + gone_dirs} thumbnail "
+                    f"cache entries for files the library no longer has."
+                    f"{Colors.RESET}"
+                )
 
             # Pre-generate clean files for Exhibition Mode (safe cross-platform call)
             pregenerate_exhibition_cache()
 
         except sqlite3.DatabaseError as e:
             print(f"ERROR initializing database: {e}")
+
 
 def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
     """
@@ -5117,7 +5583,7 @@ def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
     def safe_path_norm(p):
         if not p:
             return ""
-        return os.path.normpath(str(p).replace('\\', '/')).replace('\\', '/').lower().rstrip('/')
+        return os.path.normpath(str(p).replace("\\", "/")).replace("\\", "/").lower().rstrip("/")
 
     try:
         # We fetch all names and paths. For very large DBs (100k+ files),
@@ -5131,31 +5597,31 @@ def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
         # scope no path is looked at at all, and outside the strict-local
         # branch the directory never is -- both were computed for every
         # row regardless.
-        recursive_prefix = target_norm + '/'
+        recursive_prefix = target_norm + "/"
         for row in cursor:
-            f_name = row['name']
+            f_name = row["name"]
 
-            if scope == 'global':
+            if scope == "global":
                 show_file = True
             elif recursive:
                 # Check if it's inside the target folder tree
-                show_file = safe_path_norm(row['path']).startswith(recursive_prefix)
+                show_file = safe_path_norm(row["path"]).startswith(recursive_prefix)
             else:
                 # Strict local: must be in this exact folder
-                f_path_norm = safe_path_norm(row['path'])
+                f_path_norm = safe_path_norm(row["path"])
                 show_file = safe_path_norm(os.path.dirname(f_path_norm)) == target_norm
 
             if show_file:
                 # 1. Extensions
                 _, ext = os.path.splitext(f_name)
                 if ext:
-                    ext_clean = ext.lstrip('.').lower()
-                    if ext_clean not in ['txt', 'md']:
+                    ext_clean = ext.lstrip(".").lower()
+                    if ext_clean not in ["txt", "md"]:
                         extensions.add(ext_clean)
 
                 # 2. Prefixes
-                if not prefix_limit_reached and '_' in f_name:
-                    pfx = f_name.split('_')[0]
+                if not prefix_limit_reached and "_" in f_name:
+                    pfx = f_name.split("_")[0]
                     if pfx:
                         prefixes.add(pfx)
                         if len(prefixes) > MAX_PREFIX_DROPDOWN_ITEMS:
@@ -5167,10 +5633,12 @@ def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
 
     return sorted(extensions), sorted(prefixes), prefix_limit_reached
 
+
 # --- USER SECURITY ---
 # Passwords are one-way hashed by sg_auth (Argon2id); there is no decrypt
 # path. ENCRYPTION_KEY_FILE (defined above) is retained only as the path to
 # the legacy Fernet key consumed by sg_auth.migrate_legacy_passwords().
+
 
 def ensure_admin_user(conn):
     """Checks for admin user and applies password from startup config."""
@@ -5181,32 +5649,37 @@ def ensure_admin_user(conn):
     admin = conn.execute("SELECT password FROM users WHERE username = 'admin'").fetchone()
 
     if not admin:
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO users (username, password, full_name, role, is_active)
             VALUES ('admin', ?, 'System Administrator', 'ADMIN', 1)
-        """, (sg_auth.hash_password(ADMIN_PASS_INPUT),))
+        """,
+            (sg_auth.hash_password(ADMIN_PASS_INPUT),),
+        )
         print(f"{Colors.GREEN}USER SETUP: Admin account initialized.{Colors.RESET}")
     else:
         # Avoid rewriting the hash on every boot when the password hasn't changed.
-        valid, _ = sg_auth.verify_password(admin['password'], ADMIN_PASS_INPUT)
+        valid, _ = sg_auth.verify_password(admin["password"], ADMIN_PASS_INPUT)
         if valid:
             print(f"{Colors.CYAN}USER SETUP: Admin password verified.{Colors.RESET}")
         else:
-            conn.execute("UPDATE users SET password = ? WHERE username = 'admin'",
-                         (sg_auth.hash_password(ADMIN_PASS_INPUT),))
+            conn.execute(
+                "UPDATE users SET password = ? WHERE username = 'admin'", (sg_auth.hash_password(ADMIN_PASS_INPUT),)
+            )
             print(f"{Colors.CYAN}USER SETUP: Admin password updated.{Colors.RESET}")
     conn.commit()
+
 
 def is_file_accessible(file_id):
     """Checks if the current user has permission to access this specific file."""
     if not IS_EXHIBITION_MODE and not FORCE_LOGIN:
         return True
 
-    user_role = session.get('role', 'GUEST')
-    user_id = str(session.get('user_id', ''))
+    user_role = session.get("role", "GUEST")
+    user_id = str(session.get("user_id", ""))
 
     # Privileged roles always have full access to all files
-    if user_role in ['ADMIN', 'MANAGER', 'STAFF']:
+    if user_role in ["ADMIN", "MANAGER", "STAFF"]:
         return True
 
     if not IS_EXHIBITION_MODE:
@@ -5215,13 +5688,13 @@ def is_file_accessible(file_id):
 
     # Exhibition Mode: File MUST belong to a public collection OR a collection shared with this specific user
     with get_db_connection() as conn:
-        query = '''
+        query = """
             SELECT 1
             FROM collection_files cf
             JOIN collections c ON cf.collection_id = c.id
             WHERE cf.file_id = ?
             AND c.type = 'user_album'
-        '''
+        """
         if user_id:
             safe_uid = user_id.replace("'", "''")
             query += f" AND (c.is_public = 1 OR (',' || c.shared_users || ',') LIKE '%,{safe_uid},%')"
@@ -5231,10 +5704,11 @@ def is_file_accessible(file_id):
         result = conn.execute(query, (file_id,)).fetchone()
         return bool(result)
 
+
 def should_strip_metadata():
     """Helper to determine if metadata stripping is required based on session and flags."""
-    user_role = session.get('role', 'GUEST') # Default to GUEST if not set
-    privileged_roles = ['ADMIN', 'MANAGER', 'STAFF', 'FRIEND']
+    user_role = session.get("role", "GUEST")  # Default to GUEST if not set
+    privileged_roles = ["ADMIN", "MANAGER", "STAFF", "FRIEND"]
 
     is_guest = user_role not in privileged_roles
     # The protection is ACTIVE if we are in Exhibition mode OR Force Login is on
@@ -5242,17 +5716,22 @@ def should_strip_metadata():
     return (FORCE_LOGIN or IS_EXHIBITION_MODE) and is_guest
 
     # console log
-    #print(f"--- SECURITY CHECK ---")
-    #print(f"User Role in Session: {user_role}")
-    #print(f"Force Login: {FORCE_LOGIN} | Exhibition Mode: {IS_EXHIBITION_MODE}")
-    #print(f"Result: {'!!! STRIPPING ACTIVE !!!' if active else 'Serving Original'}")
+    # print(f"--- SECURITY CHECK ---")
+    # print(f"User Role in Session: {user_role}")
+    # print(f"Force Login: {FORCE_LOGIN} | Exhibition Mode: {IS_EXHIBITION_MODE}")
+    # print(f"Result: {'!!! STRIPPING ACTIVE !!!' if active else 'Serving Original'}")
 
 
 # Fields a visitor has no business reading: how the picture was made, and
 # where it lives on the server. The exhibition interface uses none of them.
 _HIDDEN_FROM_GUESTS = (
-    'path', 'workflow_prompt', 'workflow_files',
-    'workflow_hash', 'prompt_hash', 'models_hash', 'ai_embedding',
+    "path",
+    "workflow_prompt",
+    "workflow_files",
+    "workflow_hash",
+    "prompt_hash",
+    "models_hash",
+    "ai_embedding",
 )
 
 
@@ -5266,9 +5745,7 @@ def redact_file_listing(files):
     """
     if not should_strip_metadata():
         return files
-    return [{key: value for key, value in dict(row).items()
-             if key not in _HIDDEN_FROM_GUESTS}
-            for row in files]
+    return [{key: value for key, value in dict(row).items() if key not in _HIDDEN_FROM_GUESTS} for row in files]
 
 
 def strip_media_metadata(input_path, output_path, file_type):
@@ -5279,7 +5756,7 @@ def strip_media_metadata(input_path, output_path, file_type):
     """
     try:
         # --- CASE A: IMAGES & ANIMATIONS (PNG, JPG, WebP, GIF) ---
-        if file_type in ['image', 'animated_image']:
+        if file_type in ["image", "animated_image"]:
             with Image.open(input_path) as img:
                 # Check if it's an animation (Animated WebP or GIF)
                 if getattr(img, "is_animated", False):
@@ -5292,7 +5769,7 @@ def strip_media_metadata(input_path, output_path, file_type):
                         new_frame = frame.copy().convert(frame.mode)
                         frames.append(new_frame)
                         # Keep the original timing
-                        durations.append(frame.info.get('duration', 100))
+                        durations.append(frame.info.get("duration", 100))
 
                     # Save the new reconstructed animation
                     frames[0].save(
@@ -5300,10 +5777,10 @@ def strip_media_metadata(input_path, output_path, file_type):
                         save_all=True,
                         append_images=frames[1:],
                         duration=durations,
-                        loop=img.info.get('loop', 0),
+                        loop=img.info.get("loop", 0),
                         optimize=True,
-                        exif=b"", # Extra safety
-                        xmp=b""   # Extra safety
+                        exif=b"",  # Extra safety
+                        xmp=b"",  # Extra safety
                     )
                 else:
                     # Static image: Save pixel data only, explicitly stripping EXIF/XMP
@@ -5311,31 +5788,36 @@ def strip_media_metadata(input_path, output_path, file_type):
             return True
 
         # --- CASE C: DOCUMENTS (Bypass stripping, just copy safely) ---
-        if file_type == 'document' or input_path.lower().endswith(('.txt', '.md')):
+        if file_type == "document" or input_path.lower().endswith((".txt", ".md")):
             shutil.copy2(input_path, output_path)
             return True
 
         # --- CASE B: REAL VIDEOS & AUDIO (MP4, MOV, MKV, MP3, WAV...) ---
-        if file_type in ['video', 'audio'] and FFPROBE_EXECUTABLE_PATH:
+        if file_type in ["video", "audio"] and FFPROBE_EXECUTABLE_PATH:
             ffmpeg_dir = os.path.dirname(FFPROBE_EXECUTABLE_PATH)
-            ffmpeg_name = "ffmpeg.exe" if os.name == 'nt' else "ffmpeg"
+            ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
             ffmpeg_path = os.path.join(ffmpeg_dir, ffmpeg_name)
             if not os.path.exists(ffmpeg_path):
                 ffmpeg_path = ffmpeg_name
 
             cmd = [
-                ffmpeg_path, '-y',
-                '-i', input_path,
-                '-map_metadata', '-1',      # Strips global metadata
-                '-map_metadata:s:v', '-1',   # Strips video stream metadata
-                '-map_metadata:s:a', '-1',   # Strips audio stream metadata
-                '-c', 'copy',                # Fast stream copy (safe for these formats)
-                output_path
+                ffmpeg_path,
+                "-y",
+                "-i",
+                input_path,
+                "-map_metadata",
+                "-1",  # Strips global metadata
+                "-map_metadata:s:v",
+                "-1",  # Strips video stream metadata
+                "-map_metadata:s:a",
+                "-1",  # Strips audio stream metadata
+                "-c",
+                "copy",  # Fast stream copy (safe for these formats)
+                output_path,
             ]
 
-            cf = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            result = subprocess.run(cmd, capture_output=True, text=True,
-                                    timeout=FFMPEG_TIMEOUT, creationflags=cf)
+            cf = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT, creationflags=cf)
 
             if result.returncode == 0 and os.path.exists(output_path):
                 return True
@@ -5345,24 +5827,26 @@ def strip_media_metadata(input_path, output_path, file_type):
         print(f"RECONSTRUCTION STRIP ERROR: {e}")
     return False
 
-# --- FLASK ROUTES ---
-@app.route('/galleryout/')
-@app.route('/')
-def gallery_redirect_base():
-    return redirect(url_for('gallery_view', folder_key='_root_'))
 
-@app.route('/galleryout/aidam')
+# --- FLASK ROUTES ---
+@app.route("/galleryout/")
+@app.route("/")
+def gallery_redirect_base():
+    return redirect(url_for("gallery_view", folder_key="_root_"))
+
+
+@app.route("/galleryout/aidam")
 @management_api_only
 def aidam_dashboard():
     """The AI DAM dashboard: pipeline status, generation-parameter
     analytics, face workspace, and the detector comparison tool as a
     full page (the per-file modal keeps only quick context)."""
-    return render_template('aidam_dashboard.html',
-                           file_id=request.args.get('file', ''),
-                           view=request.args.get('view', 'status'))
+    return render_template(
+        "aidam_dashboard.html", file_id=request.args.get("file", ""), view=request.args.get("view", "status")
+    )
 
 
-@app.route('/galleryout/api/genparams/summary')
+@app.route("/galleryout/api/genparams/summary")
 @management_api_only
 def genparams_summary():
     """Aggregates over the first-class generation_params table: tracked
@@ -5371,34 +5855,61 @@ def genparams_summary():
     with get_db_connection() as conn:
         total_files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
         tracked = conn.execute("SELECT COUNT(*) FROM generation_params").fetchone()[0]
-        tools = [dict(r) for r in conn.execute(
-            "SELECT tool, COUNT(*) AS n FROM generation_params "
-            "GROUP BY tool ORDER BY n DESC")]
-        models = [dict(r) for r in conn.execute(
-            "SELECT model, COUNT(*) AS n FROM generation_params "
-            "WHERE model IS NOT NULL GROUP BY model ORDER BY n DESC LIMIT 15")]
-        samplers = [dict(r) for r in conn.execute(
-            "SELECT sampler, COUNT(*) AS n FROM generation_params "
-            "WHERE sampler IS NOT NULL GROUP BY sampler ORDER BY n DESC LIMIT 12")]
-        steps = [dict(r) for r in conn.execute(
-            "SELECT steps, COUNT(*) AS n FROM generation_params "
-            "WHERE steps IS NOT NULL GROUP BY steps ORDER BY n DESC LIMIT 12")]
-        cfg = [dict(r) for r in conn.execute(
-            "SELECT ROUND(cfg * 2) / 2.0 AS cfg, COUNT(*) AS n "
-            "FROM generation_params WHERE cfg IS NOT NULL "
-            "GROUP BY ROUND(cfg * 2) ORDER BY n DESC LIMIT 12")]
-        sizes = [dict(r) for r in conn.execute(
-            "SELECT width || 'x' || height AS size, COUNT(*) AS n "
-            "FROM generation_params WHERE width IS NOT NULL "
-            "GROUP BY width, height ORDER BY n DESC LIMIT 10")]
-        negatives = conn.execute(
-            "SELECT COUNT(*) FROM generation_params "
-            "WHERE negative_prompt != ''").fetchone()[0]
-    return jsonify({
-        "total_files": total_files, "tracked": tracked,
-        "with_negative": negatives, "tools": tools, "models": models,
-        "samplers": samplers, "steps": steps, "cfg": cfg, "sizes": sizes,
-    })
+        tools = [
+            dict(r)
+            for r in conn.execute("SELECT tool, COUNT(*) AS n FROM generation_params GROUP BY tool ORDER BY n DESC")
+        ]
+        models = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT model, COUNT(*) AS n FROM generation_params "
+                "WHERE model IS NOT NULL GROUP BY model ORDER BY n DESC LIMIT 15"
+            )
+        ]
+        samplers = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT sampler, COUNT(*) AS n FROM generation_params "
+                "WHERE sampler IS NOT NULL GROUP BY sampler ORDER BY n DESC LIMIT 12"
+            )
+        ]
+        steps = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT steps, COUNT(*) AS n FROM generation_params "
+                "WHERE steps IS NOT NULL GROUP BY steps ORDER BY n DESC LIMIT 12"
+            )
+        ]
+        cfg = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT ROUND(cfg * 2) / 2.0 AS cfg, COUNT(*) AS n "
+                "FROM generation_params WHERE cfg IS NOT NULL "
+                "GROUP BY ROUND(cfg * 2) ORDER BY n DESC LIMIT 12"
+            )
+        ]
+        sizes = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT width || 'x' || height AS size, COUNT(*) AS n "
+                "FROM generation_params WHERE width IS NOT NULL "
+                "GROUP BY width, height ORDER BY n DESC LIMIT 10"
+            )
+        ]
+        negatives = conn.execute("SELECT COUNT(*) FROM generation_params WHERE negative_prompt != ''").fetchone()[0]
+    return jsonify(
+        {
+            "total_files": total_files,
+            "tracked": tracked,
+            "with_negative": negatives,
+            "tools": tools,
+            "models": models,
+            "samplers": samplers,
+            "steps": steps,
+            "cfg": cfg,
+            "sizes": sizes,
+        }
+    )
 
 
 def account_expired_on(user_row):
@@ -5416,7 +5927,7 @@ def account_expired_on(user_row):
     field is optional to begin with.
     """
     try:
-        raw = (user_row['expiry_date'] or '').strip()
+        raw = (user_row["expiry_date"] or "").strip()
     except (KeyError, IndexError, TypeError):
         return None
     if not raw:
@@ -5425,25 +5936,27 @@ def account_expired_on(user_row):
         when = datetime.fromisoformat(raw)
     except ValueError:
         try:
-            when = datetime.strptime(raw[:10], '%Y-%m-%d')
+            when = datetime.strptime(raw[:10], "%Y-%m-%d")
         except ValueError:
-            print(f"WARNING: user {user_row['username']!r} has an unreadable "
-                  f"expiry_date ({raw!r}); treating the account as never expiring.")
+            print(
+                f"WARNING: user {user_row['username']!r} has an unreadable "
+                f"expiry_date ({raw!r}); treating the account as never expiring."
+            )
             return None
     return when if when < datetime.now() else None
 
 
-@app.route('/galleryout/login', methods=['POST'])
+@app.route("/galleryout/login", methods=["POST"])
 def exhibition_login():
 
     # Use silent=True to prevent 400 Bad Request if headers/content are malformed
     data = request.get_json(silent=True) or {}
-    username = data.get('username', '')
-    password = data.get('password', '')
-    provided_uuid = data.get('provided_uuid')
+    username = data.get("username", "")
+    password = data.get("password", "")
+    provided_uuid = data.get("provided_uuid")
 
     # Guest Login Logic
-    if ENABLE_GUEST_LOGIN and username and str(username).lower() == 'guest':
+    if ENABLE_GUEST_LOGIN and username and str(username).lower() == "guest":
         session.permanent = False
 
         # A returning guest may carry their previous id so their own
@@ -5457,31 +5970,33 @@ def exhibition_login():
         # power to edit and delete user 41's comments and overwrite their
         # ratings. Anything that is not a well-formed guest id is ignored
         # and a fresh one is minted instead.
-        candidate = str(provided_uuid) if provided_uuid is not None else ''
+        candidate = str(provided_uuid) if provided_uuid is not None else ""
         guest_uuid = candidate if _is_guest_uuid(candidate) else f"guest_{secrets.token_hex(8)}"
 
-        session['user_id'] = guest_uuid
-        session['username'] = 'guest'
-        session['role'] = 'GUEST'
-        session['full_name'] = 'Guest User'
-        return jsonify({'status': 'success', 'role': 'GUEST', 'client_uuid': guest_uuid})
+        session["user_id"] = guest_uuid
+        session["username"] = "guest"
+        session["role"] = "GUEST"
+        session["full_name"] = "Guest User"
+        return jsonify({"status": "success", "role": "GUEST", "client_uuid": guest_uuid})
 
     # Standard User Login Logic
     with get_db_connection() as conn:
         user = conn.execute("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,)).fetchone()
         is_valid = False
         if user:
-            if username == 'admin' and ADMIN_PASS_INPUT:
+            if username == "admin" and ADMIN_PASS_INPUT:
                 # Total constant-time compare: never raises on non-ASCII or
                 # non-string (JSON int/list) password input, so a crafted
                 # request can't 500 this path and a non-ASCII admin passphrase
                 # still authenticates.
                 is_valid = sg_auth.constant_time_equals(password, ADMIN_PASS_INPUT)
             else:
-                is_valid, needs_rehash = sg_auth.verify_password(user['password'], password)
+                is_valid, needs_rehash = sg_auth.verify_password(user["password"], password)
                 if is_valid and needs_rehash:
-                    conn.execute("UPDATE users SET password = ? WHERE user_id = ?",
-                                 (sg_auth.hash_password(password), user['user_id']))
+                    conn.execute(
+                        "UPDATE users SET password = ? WHERE user_id = ?",
+                        (sg_auth.hash_password(password), user["user_id"]),
+                    )
                     conn.commit()
         else:
             # No active user row: still perform one Argon2id verification
@@ -5500,33 +6015,38 @@ def exhibition_login():
         # route to their gallery except editing the database by hand.
         if user and is_valid:
             expired_on = account_expired_on(user)
-            if expired_on and not (username == 'admin' and ADMIN_PASS_INPUT):
-                return jsonify({
-                    'status': 'error',
-                    'message': f"This account expired on "
-                               f"{expired_on.strftime('%Y-%m-%d %H:%M')}. "
-                               f"Ask an administrator to extend it."}), 403
+            if expired_on and not (username == "admin" and ADMIN_PASS_INPUT):
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": f"This account expired on "
+                        f"{expired_on.strftime('%Y-%m-%d %H:%M')}. "
+                        f"Ask an administrator to extend it.",
+                    }
+                ), 403
 
         if user and is_valid:
             try:
-                conn.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (time.time(), user['user_id']))
+                conn.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (time.time(), user["user_id"]))
                 conn.commit()
             except Exception as e:
                 print(f"Login timestamp update error: {e}")
 
             session.permanent = False
-            session['user_id'] = str(user['user_id'])
-            session['username'] = user['username']
-            session['role'] = user['role']
-            session['full_name'] = user['full_name']
-            return jsonify({'status': 'success', 'role': user['role']})
+            session["user_id"] = str(user["user_id"])
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["full_name"] = user["full_name"]
+            return jsonify({"status": "success", "role": user["role"]})
 
-    return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
+    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
-@app.route('/galleryout/logout')
+
+@app.route("/galleryout/logout")
 def exhibition_logout():
     session.clear()
-    return redirect(url_for('gallery_view', folder_key='_root_'))
+    return redirect(url_for("gallery_view", folder_key="_root_"))
+
 
 def _user_write_error(exc):
     """What went wrong with a user, said so somebody can act on it.
@@ -5536,107 +6056,138 @@ def _user_write_error(exc):
     a person who has just typed a name that is already taken.
     """
     text = str(exc)
-    if 'users.username' in text:
-        return 'That username is already taken.'
-    if 'role IN' in text:
-        return 'That is not a role this gallery knows.'
+    if "users.username" in text:
+        return "That username is already taken."
+    if "role IN" in text:
+        return "That is not a role this gallery knows."
     return text
 
 
-@app.route('/galleryout/api/admin/users', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@app.route("/galleryout/api/admin/users", methods=["GET", "POST", "PUT", "DELETE"])
 def admin_manage_users():
-    user_role = session.get('role')
-    user_id = session.get('user_id')
+    user_role = session.get("role")
+    user_id = session.get("user_id")
 
     if user_id or user_role:
-        if user_role not in ['ADMIN', 'MANAGER']:
+        if user_role not in ["ADMIN", "MANAGER"]:
             abort(403)
     elif IS_EXHIBITION_MODE or FORCE_LOGIN:
         abort(401)
 
     with get_db_connection() as conn:
-        if request.method == 'GET':
+        if request.method == "GET":
             rows = conn.execute("SELECT * FROM users WHERE username != 'admin' ORDER BY user_id DESC").fetchall()
             users = []
             for r in rows:
                 d = dict(r)
-                d.pop('password', None)
+                d.pop("password", None)
                 users.append(d)
-            return jsonify({'status': 'success', 'users': users})
+            return jsonify({"status": "success", "users": users})
 
         data = request.json
 
         # --- SECURITY CHECK: Enforce 8-char minimum for all users ---
         # Passwords can never be displayed back (one-way hashes), so an edit
         # (PUT) may omit the password to keep the current one unchanged.
-        if request.method in ['POST', 'PUT']:
-            password_input = data.get('password', '').strip()
-            password_optional = (request.method == 'PUT' and not password_input)
+        if request.method in ["POST", "PUT"]:
+            password_input = data.get("password", "").strip()
+            password_optional = request.method == "PUT" and not password_input
             if not password_optional and len(password_input) < 8:
-                return jsonify({'status': 'error', 'message': 'Password must be at least 8 characters long.'}), 400
+                return jsonify({"status": "error", "message": "Password must be at least 8 characters long."}), 400
 
-        if request.method == 'POST':
+        if request.method == "POST":
             # CREATE
-            hashed_pass = sg_auth.hash_password(data['password'])
+            hashed_pass = sg_auth.hash_password(data["password"])
             try:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO users (username, password, full_name, role, email, phone_number, expiry_date, is_active)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (data['username'], hashed_pass, data['full_name'], data['role'],
-                      data.get('email'), data.get('phone_number'),
-                      data.get('expiry_date'), data.get('is_active', 1)))
+                """,
+                    (
+                        data["username"],
+                        hashed_pass,
+                        data["full_name"],
+                        data["role"],
+                        data.get("email"),
+                        data.get("phone_number"),
+                        data.get("expiry_date"),
+                        data.get("is_active", 1),
+                    ),
+                )
                 conn.commit()
-                return jsonify({'status': 'success'})
+                return jsonify({"status": "success"})
             except Exception as e:
-                return jsonify({'status': 'error', 'message': _user_write_error(e)}), 400
+                return jsonify({"status": "error", "message": _user_write_error(e)}), 400
 
-        if request.method == 'PUT':
+        if request.method == "PUT":
             # EDIT (empty password = keep the currently stored hash)
             # The same guard as creating one. Without it, renaming somebody
             # to a username that already exists -- an ordinary slip -- came
             # back as a 500 with no body at all, so the screen could not
             # even say what was wrong.
-            user_id = data.get('user_id')
+            user_id = data.get("user_id")
             try:
                 if password_input:
-                    conn.execute("""
+                    conn.execute(
+                        """
                         UPDATE users SET
                             username=?, password=?, full_name=?, role=?, email=?,
                             phone_number=?, expiry_date=?, is_active=?
                         WHERE user_id=? AND username != 'admin'
-                    """, (data['username'], sg_auth.hash_password(password_input),
-                          data['full_name'], data['role'],
-                          data.get('email'), data.get('phone_number'),
-                          data.get('expiry_date'), data.get('is_active'), user_id))
+                    """,
+                        (
+                            data["username"],
+                            sg_auth.hash_password(password_input),
+                            data["full_name"],
+                            data["role"],
+                            data.get("email"),
+                            data.get("phone_number"),
+                            data.get("expiry_date"),
+                            data.get("is_active"),
+                            user_id,
+                        ),
+                    )
                 else:
-                    conn.execute("""
+                    conn.execute(
+                        """
                         UPDATE users SET
                             username=?, full_name=?, role=?, email=?,
                             phone_number=?, expiry_date=?, is_active=?
                         WHERE user_id=? AND username != 'admin'
-                    """, (data['username'], data['full_name'], data['role'],
-                          data.get('email'), data.get('phone_number'),
-                          data.get('expiry_date'), data.get('is_active'), user_id))
+                    """,
+                        (
+                            data["username"],
+                            data["full_name"],
+                            data["role"],
+                            data.get("email"),
+                            data.get("phone_number"),
+                            data.get("expiry_date"),
+                            data.get("is_active"),
+                            user_id,
+                        ),
+                    )
                 conn.commit()
             except Exception as e:
-                return jsonify({'status': 'error', 'message': _user_write_error(e)}), 400
-            return jsonify({'status': 'success'})
+                return jsonify({"status": "error", "message": _user_write_error(e)}), 400
+            return jsonify({"status": "success"})
 
-        if request.method == 'DELETE':
+        if request.method == "DELETE":
             # DELETE
             data = request.json
-            user_id = data.get('user_id')
+            user_id = data.get("user_id")
             if not user_id:
-                return jsonify({'status': 'error', 'message': 'Missing User ID'}), 400
+                return jsonify({"status": "error", "message": "Missing User ID"}), 400
 
             # Perform physical deletion
             conn.execute("DELETE FROM users WHERE user_id = ? AND username != 'admin'", (user_id,))
             conn.commit()
-            return jsonify({'status': 'success'})
+            return jsonify({"status": "success"})
     return None
 
+
 # AI QUEUE SUBMISSION ROUTE
-@app.route('/galleryout/ai_queue', methods=['POST'])
+@app.route("/galleryout/ai_queue", methods=["POST"])
 @management_api_only
 def ai_queue_search():
     """
@@ -5644,12 +6195,12 @@ def ai_queue_search():
     Also performs basic housekeeping (cleaning old requests).
     """
     data = request.json
-    query = data.get('query', '').strip()
+    query = data.get("query", "").strip()
     # FIX: Leggi il limite dal JSON (default 100 se non presente)
-    limit = int(data.get('limit', 100))
+    limit = int(data.get("limit", 100))
 
     if not query:
-        return jsonify({'status': 'error', 'message': 'Query cannot be empty'}), 400
+        return jsonify({"status": "error", "message": "Query cannot be empty"}), 400
 
     session_id = str(uuid.uuid4())
 
@@ -5657,23 +6208,29 @@ def ai_queue_search():
         with get_db_connection() as conn:
             # 1. Housekeeping
             conn.execute("DELETE FROM ai_search_queue WHERE created_at < datetime('now', '-1 hour')")
-            conn.execute("DELETE FROM ai_search_results WHERE session_id NOT IN (SELECT session_id FROM ai_search_queue)")
+            conn.execute(
+                "DELETE FROM ai_search_results WHERE session_id NOT IN (SELECT session_id FROM ai_search_queue)"
+            )
 
             # 2. Insert new request WITH LIMIT
             # Assicurati che la query SQL includa la colonna limit_results
-            conn.execute('''
+            conn.execute(
+                """
                 INSERT INTO ai_search_queue (session_id, query, limit_results, status)
                 VALUES (?, ?, ?, 'pending')
-            ''', (session_id, query, limit))
+            """,
+                (session_id, query, limit),
+            )
             conn.commit()
 
-        return jsonify({'status': 'queued', 'session_id': session_id})
+        return jsonify({"status": "queued", "session_id": session_id})
     except Exception as e:
         print(f"AI Queue Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 # AI STATUS CHECK ROUTE (POLLING)
-@app.route('/galleryout/ai_check/<session_id>', methods=['GET'])
+@app.route("/galleryout/ai_check/<session_id>", methods=["GET"])
 @management_api_only
 def ai_check_status(session_id):
     """Checks the status of a specific search session."""
@@ -5681,11 +6238,12 @@ def ai_check_status(session_id):
         row = conn.execute("SELECT status FROM ai_search_queue WHERE session_id = ?", (session_id,)).fetchone()
 
         if not row:
-            return jsonify({'status': 'not_found'})
+            return jsonify({"status": "not_found"})
 
-        return jsonify({'status': row['status']})
+        return jsonify({"status": row["status"]})
 
-@app.route('/galleryout/sync_status/<string:folder_key>')
+
+@app.route("/galleryout/sync_status/<string:folder_key>")
 @management_api_only
 def sync_status(folder_key):
     # This does not report on a scan, it runs one: it walks the folder,
@@ -5694,37 +6252,39 @@ def sync_status(folder_key):
     # login-protected gallery could set that going as often as they liked and
     # read the filenames back.
     # --- FIX: SILENT RESPONSE FOR VIRTUAL COLLECTIONS ---
-    if folder_key.startswith('collection_'):
+    if folder_key.startswith("collection_"):
         # Return a dummy SSE stream that does nothing but prevents 404
         def dummy_stream():
             yield f"data: {json.dumps({'status': 'no_changes', 'message': 'Virtual collection'})}\n\n"
-        return Response(dummy_stream(), mimetype='text/event-stream')
+
+        return Response(dummy_stream(), mimetype="text/event-stream")
 
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
         abort(404, description="That folder is not in the gallery.")
-    folder_path = folders[folder_key]['path']
-    return Response(sync_folder_on_demand(folder_path), mimetype='text/event-stream')
+    folder_path = folders[folder_key]["path"]
+    return Response(sync_folder_on_demand(folder_path), mimetype="text/event-stream")
 
-@app.route('/galleryout/api/search_options')
+
+@app.route("/galleryout/api/search_options")
 def api_search_options():
-    scope = request.args.get('scope', 'local')
-    folder_key = request.args.get('folder_key', '_root_')
-    is_rec = request.args.get('recursive', 'true').lower() != 'false'
+    scope = request.args.get("scope", "local")
+    folder_key = request.args.get("folder_key", "_root_")
+    is_rec = request.args.get("recursive", "true").lower() != "false"
 
     exts, pfxs, limit_reached = [], [], False
-    user_role = session.get('role', 'GUEST')
+    user_role = session.get("role", "GUEST")
     safe_uid = _current_client_identity().replace("'", "''")
-    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-    is_privileged = is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    is_privileged = is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]
 
     with get_db_connection() as conn:
-        if folder_key.startswith('collection_') or IS_EXHIBITION_MODE:
-            coll_id_str = folder_key.replace('collection_', '') if folder_key.startswith('collection_') else 'all'
-            if scope == 'global':
-                coll_id_str = 'all'
+        if folder_key.startswith("collection_") or IS_EXHIBITION_MODE:
+            coll_id_str = folder_key.replace("collection_", "") if folder_key.startswith("collection_") else "all"
+            if scope == "global":
+                coll_id_str = "all"
 
-            is_all_mode = (coll_id_str == 'all')
+            is_all_mode = coll_id_str == "all"
             ext_query = "SELECT DISTINCT f.name FROM files f JOIN collection_files cf ON f.id = cf.file_id"
             if not is_all_mode and coll_id_str.isdigit():
                 coll_id_int = int(coll_id_str)
@@ -5755,13 +6315,13 @@ def api_search_options():
             prefixes = set()
             ext_rows = conn.execute(ext_query).fetchall()
             for r in ext_rows:
-                fname = r['name']
-                if '.' in fname:
-                    ext_clean = fname.split('.')[-1].lower()
-                    if ext_clean not in ['txt', 'md']:
+                fname = r["name"]
+                if "." in fname:
+                    ext_clean = fname.split(".")[-1].lower()
+                    if ext_clean not in ["txt", "md"]:
                         extensions.add(ext_clean)
-                if not limit_reached and '_' in fname:
-                    pfx = fname.split('_')[0]
+                if not limit_reached and "_" in fname:
+                    pfx = fname.split("_")[0]
                     if pfx:
                         prefixes.add(pfx)
                         if len(prefixes) > MAX_PREFIX_DROPDOWN_ITEMS:
@@ -5771,27 +6331,30 @@ def api_search_options():
             pfxs = sorted(prefixes) if not limit_reached else []
         else:
             folders = get_dynamic_folder_config()
-            folder_path = folders.get(folder_key, {}).get('path', BASE_OUTPUT_PATH)
+            folder_path = folders.get(folder_key, {}).get("path", BASE_OUTPUT_PATH)
             exts, pfxs, limit_reached = get_filter_options_from_db(conn, scope, folder_path, recursive=is_rec)
 
-    return jsonify({'extensions': exts, 'prefixes': pfxs, 'prefix_limit_reached': limit_reached})
+    return jsonify({"extensions": exts, "prefixes": pfxs, "prefix_limit_reached": limit_reached})
 
-@app.route('/galleryout/api/compare_files', methods=['POST'])
+
+@app.route("/galleryout/api/compare_files", methods=["POST"])
 def compare_files_api():
     if should_strip_metadata():
-        return jsonify({'status': 'error', 'message': 'Security Policy: Metadata comparison is restricted for your role.'}), 403
+        return jsonify(
+            {"status": "error", "message": "Security Policy: Metadata comparison is restricted for your role."}
+        ), 403
 
     data = request.json
-    id_a = data.get('id_a')
-    id_b = data.get('id_b')
+    id_a = data.get("id_a")
+    id_b = data.get("id_b")
 
     if not id_a or not id_b:
-        return jsonify({'status': 'error', 'message': 'Missing file IDs'}), 400
+        return jsonify({"status": "error", "message": "Missing file IDs"}), 400
 
     def get_flat_params(file_id):
         try:
             info = get_file_info_from_db(file_id)
-            wf_json = extract_workflow(info['path'])
+            wf_json = extract_workflow(info["path"])
             if not wf_json:
                 return {}
 
@@ -5801,10 +6364,10 @@ def compare_files_api():
 
             flat_params = {}
             for node in summary:
-                node_type = node['type']
-                for p in node['params']:
+                node_type = node["type"]
+                for p in node["params"]:
                     key = f"{node_type} > {p['name']}"
-                    flat_params[key] = str(p['value'])
+                    flat_params[key] = str(p["value"])
             return flat_params
         except Exception:
             # Three helpers deep -- database, workflow extraction, node
@@ -5820,27 +6383,23 @@ def compare_files_api():
 
         diff_table = []
         for key in all_keys:
-            val_a = params_a.get(key, 'N/A')
-            val_b = params_b.get(key, 'N/A')
+            val_a = params_a.get(key, "N/A")
+            val_b = params_b.get(key, "N/A")
 
             is_diff = str(val_a).lower() != str(val_b).lower()
 
-            diff_table.append({
-                'key': key,
-                'val_a': val_a,
-                'val_b': val_b,
-                'is_diff': is_diff
-            })
+            diff_table.append({"key": key, "val_a": val_a, "val_b": val_b, "is_diff": is_diff})
 
-        diff_table.sort(key=lambda x: (not x['is_diff'], x['key']))
+        diff_table.sort(key=lambda x: (not x["is_diff"], x["key"]))
 
-        return jsonify({'status': 'success', 'diff': diff_table})
+        return jsonify({"status": "success", "diff": diff_table})
 
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 # --- AI MANAGER API ROUTES ---
-@app.route('/galleryout/ai_indexing/reset', methods=['POST'])
+@app.route("/galleryout/ai_indexing/reset", methods=["POST"])
 @management_api_only
 def ai_indexing_reset():
     """
@@ -5848,15 +6407,15 @@ def ai_indexing_reset():
     CRITICAL: Also removes these files from the indexing queue to prevent re-processing.
     """
     if not ENABLE_AI_SEARCH:
-        return jsonify({'status':'error'})
+        return jsonify({"status": "error"})
     data = request.json
 
     # Mode 1: Batch IDs
-    file_ids = data.get('file_ids', [])
+    file_ids = data.get("file_ids", [])
 
     # Mode 2: Folder Path
-    folder_key = data.get('folder_key')
-    recursive = data.get('recursive', True)
+    folder_key = data.get("folder_key")
+    recursive = data.get("recursive", True)
 
     count = 0
 
@@ -5872,18 +6431,20 @@ def ai_indexing_reset():
             elif folder_key:
                 folders = get_dynamic_folder_config()
                 if folder_key in folders:
-                    folder_path = folders[folder_key]['path']
+                    folder_path = folders[folder_key]["path"]
                     # Normalize for robust DB lookup
-                    target_norm = os.path.normpath(folder_path).replace('\\', '/').lower()
-                    if not target_norm.endswith('/'):
-                        target_norm += '/'
+                    target_norm = os.path.normpath(folder_path).replace("\\", "/").lower()
+                    if not target_norm.endswith("/"):
+                        target_norm += "/"
 
                     # Fetch candidates to wipe
-                    cursor = conn.execute("SELECT id, path FROM files WHERE ai_caption IS NOT NULL OR ai_embedding IS NOT NULL")
+                    cursor = conn.execute(
+                        "SELECT id, path FROM files WHERE ai_caption IS NOT NULL OR ai_embedding IS NOT NULL"
+                    )
                     for row in cursor:
-                        f_path = row['path']
+                        f_path = row["path"]
                         # Normalize DB path
-                        f_path_norm = os.path.normpath(f_path).replace('\\', '/').lower()
+                        f_path_norm = os.path.normpath(f_path).replace("\\", "/").lower()
 
                         is_match = False
                         if recursive:
@@ -5891,52 +6452,61 @@ def ai_indexing_reset():
                                 is_match = True
                         else:
                             # Strict parent check
-                            parent_norm = os.path.dirname(f_path_norm).replace('\\', '/').lower() + '/'
+                            parent_norm = os.path.dirname(f_path_norm).replace("\\", "/").lower() + "/"
                             if parent_norm == target_norm:
                                 is_match = True
 
                         if is_match:
-                            ids_to_wipe.append(row['id'])
+                            ids_to_wipe.append(row["id"])
 
             if ids_to_wipe:
                 # Process in chunks to avoid SQL limits
                 chunk_size = 500
                 for i in range(0, len(ids_to_wipe), chunk_size):
-                    chunk = ids_to_wipe[i:i + chunk_size]
-                    placeholders = ','.join(['?'] * len(chunk))
+                    chunk = ids_to_wipe[i : i + chunk_size]
+                    placeholders = ",".join(["?"] * len(chunk))
 
                     # 1. WIPE METADATA (Instant)
-                    conn.execute(f"""
+                    conn.execute(
+                        f"""
                         UPDATE files
                         SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
                         WHERE id IN ({placeholders})
-                    """, chunk)
+                    """,
+                        chunk,
+                    )
 
                     # 2. REMOVE FROM PROCESSING QUEUE (Critical fix)
                     # We must delete pending jobs for these files to stop the worker from indexing them
-                    conn.execute(f"""
+                    conn.execute(
+                        f"""
                         DELETE FROM ai_indexing_queue
                         WHERE file_id IN ({placeholders})
-                    """, chunk)
+                    """,
+                        chunk,
+                    )
 
                 count = len(ids_to_wipe)
                 conn.commit()
 
-        return jsonify({'status': 'success', 'count': count, 'message': f'AI data erased and queue cleared for {count} files.'})
+        return jsonify(
+            {"status": "success", "count": count, "message": f"AI data erased and queue cleared for {count} files."}
+        )
 
     except Exception as e:
         print(f"AI Reset Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/ai_indexing/add_files', methods=['POST'])
+
+@app.route("/galleryout/ai_indexing/add_files", methods=["POST"])
 @management_api_only
 def ai_indexing_add_files():
     if not ENABLE_AI_SEARCH:
-        return jsonify({'status':'error'})
+        return jsonify({"status": "error"})
     data = request.json
-    file_ids = data.get('file_ids', [])
-    force_index = data.get('force', False)
-    params = json.dumps({'beams': data.get('beams', 3), 'precision': data.get('precision', 'fp16')})
+    file_ids = data.get("file_ids", [])
+    force_index = data.get("force", False)
+    params = json.dumps({"beams": data.get("beams", 3), "precision": data.get("precision", "fp16")})
 
     count = 0
     skipped = 0
@@ -5945,27 +6515,31 @@ def ai_indexing_add_files():
         # --- NEW: WIPE DATA IF FORCED ---
         if force_index and file_ids:
             # We must wipe database fields before queuing
-            placeholders = ','.join(['?'] * len(file_ids))
-            conn.execute(f"""
+            placeholders = ",".join(["?"] * len(file_ids))
+            conn.execute(
+                f"""
                 UPDATE files
                 SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
                 WHERE id IN ({placeholders})
-            """, file_ids)
+            """,
+                file_ids,
+            )
 
         for fid in file_ids:
             # Check current status
             row = conn.execute("SELECT path, ai_last_scanned FROM files WHERE id=?", (fid,)).fetchone()
             if row:
                 # --- INCREMENTAL LOGIC ---
-                has_ai_data = row['ai_last_scanned'] and row['ai_last_scanned'] > 0
+                has_ai_data = row["ai_last_scanned"] and row["ai_last_scanned"] > 0
 
                 if not force_index and has_ai_data:
                     skipped += 1
                     continue
 
-                p_key = get_standardized_path(row['path'])
+                p_key = get_standardized_path(row["path"])
                 # FIX: Use "ON CONFLICT DO UPDATE" to reset status to 'pending'
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO ai_indexing_queue (file_path, file_id, status, created_at, force_index, params)
                     VALUES (?, ?, 'pending', ?, ?, ?)
                     ON CONFLICT(file_path) DO UPDATE SET
@@ -5973,44 +6547,49 @@ def ai_indexing_add_files():
                         force_index = excluded.force_index,
                         created_at = excluded.created_at,
                         params = excluded.params
-                """, (p_key, fid, time.time(), 1 if force_index else 0, params))
+                """,
+                    (p_key, fid, time.time(), 1 if force_index else 0, params),
+                )
                 count += 1
         conn.commit()
 
     # --- FEEDBACK MESSAGES ---
     if count == 0 and skipped > 0:
-        return jsonify({
-            'status': 'warning',
-            'message': "All selected files are already indexed. Enable 'Force Re-Index' to overwrite.",
-            'count': 0
-        })
+        return jsonify(
+            {
+                "status": "warning",
+                "message": "All selected files are already indexed. Enable 'Force Re-Index' to overwrite.",
+                "count": 0,
+            }
+        )
 
     msg = f"Queued {count} files."
     if skipped > 0:
         msg += f" (Skipped {skipped} already indexed)"
 
-    return jsonify({'status': 'success', 'count': count, 'message': msg})
+    return jsonify({"status": "success", "count": count, "message": msg})
 
-@app.route('/galleryout/ai_indexing/add_folder', methods=['POST'])
+
+@app.route("/galleryout/ai_indexing/add_folder", methods=["POST"])
 @management_api_only
 def ai_indexing_add_folder():
     if not ENABLE_AI_SEARCH:
-        return jsonify({'status':'error'})
+        return jsonify({"status": "error"})
     data = request.json
 
-    folder_key = data.get('folder_key')
-    recursive = data.get('recursive', True)
-    watch = data.get('watch', False)
-    force = data.get('force', False)
+    folder_key = data.get("folder_key")
+    recursive = data.get("recursive", True)
+    watch = data.get("watch", False)
+    force = data.get("force", False)
 
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        return jsonify({'status':'error', 'message':'Folder not found'}), 404
+        return jsonify({"status": "error", "message": "Folder not found"}), 404
 
-    raw_path = folders[folder_key]['path']
+    raw_path = folders[folder_key]["path"]
     std_path = get_standardized_path(raw_path)
 
-    params = json.dumps({'beams': data.get('beams', 3), 'precision': data.get('precision', 'fp16')})
+    params = json.dumps({"beams": data.get("beams", 3), "precision": data.get("precision", "fp16")})
     msg = "Indexing queued."
 
     # 1. HANDLE WATCH LIST UPDATE
@@ -6019,19 +6598,22 @@ def ai_indexing_add_folder():
             existing = conn.execute("SELECT path, recursive FROM ai_watched_folders").fetchall()
             should_add = True
             for row in existing:
-                exist_std = get_standardized_path(row['path'])
+                exist_std = get_standardized_path(row["path"])
                 if exist_std == std_path:
                     # Update recursion if needed
-                    if recursive and not row['recursive']:
-                        conn.execute("UPDATE ai_watched_folders SET recursive=1 WHERE path=?", (row['path'],))
+                    if recursive and not row["recursive"]:
+                        conn.execute("UPDATE ai_watched_folders SET recursive=1 WHERE path=?", (row["path"],))
                     should_add = False
                     break
-                if std_path.startswith(exist_std + '/') and row['recursive']:
+                if std_path.startswith(exist_std + "/") and row["recursive"]:
                     should_add = False
                     msg = "Covered by parent watcher."
                     break
             if should_add:
-                conn.execute("INSERT OR REPLACE INTO ai_watched_folders (path, recursive, added_at) VALUES (?, ?, ?)", (raw_path, 1 if recursive else 0, time.time()))
+                conn.execute(
+                    "INSERT OR REPLACE INTO ai_watched_folders (path, recursive, added_at) VALUES (?, ?, ?)",
+                    (raw_path, 1 if recursive else 0, time.time()),
+                )
                 msg = "Folder added to Watch List & Queued."
         conn.commit()
 
@@ -6042,13 +6624,13 @@ def ai_indexing_add_folder():
 
     # 2. BACKGROUND SCAN & QUEUE
     def _scan():
-        valid = {'.png','.jpg','.jpeg','.webp','.gif','.mp4','.mov','.avi','.webm'}
-        exc = {'.thumbnails_cache', '.sqlite_cache', '.zip_downloads', '.AImodels', 'venv', '.git'}
+        valid = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".avi", ".webm"}
+        exc = {".thumbnails_cache", ".sqlite_cache", ".zip_downloads", ".AImodels", "venv", ".git"}
         files_found = []
         try:
             if recursive:
                 for r, d, f in os.walk(raw_path, topdown=True, followlinks=True):
-                    d[:] = [x for x in d if (not x.startswith('.') or x == '.collection_notes') and x not in exc]
+                    d[:] = [x for x in d if (not x.startswith(".") or x == ".collection_notes") and x not in exc]
                     for x in f:
                         if os.path.splitext(x)[1].lower() in valid:
                             files_found.append(os.path.join(r, x))
@@ -6061,7 +6643,6 @@ def ai_indexing_add_folder():
 
         # Optimize: Batch Operations
         with get_db_connection() as conn:
-
             ids_to_wipe = []
             queue_entries = []
 
@@ -6078,20 +6659,22 @@ def ai_indexing_add_folder():
 
                 # 3. Try Normalized Slash match (Fixes subfolder mismatch issues)
                 if not row:
-                    norm_p = fp.replace('\\', '/')
-                    row = conn.execute("SELECT id, mtime, ai_last_scanned FROM files WHERE REPLACE(path, '\\', '/') = ?", (norm_p,)).fetchone()
+                    norm_p = fp.replace("\\", "/")
+                    row = conn.execute(
+                        "SELECT id, mtime, ai_last_scanned FROM files WHERE REPLACE(path, '\\', '/') = ?", (norm_p,)
+                    ).fetchone()
                 # --- ROBUST LOOKUP END ---
 
                 should_queue = False
                 fid = None
 
                 if row:
-                    fid = row['id']
+                    fid = row["id"]
                     if force:
                         ids_to_wipe.append(fid)
                         should_queue = True
-                    elif (row['ai_last_scanned'] or 0) < row['mtime']:
-                        should_queue = True # Needs update (Incremental logic)
+                    elif (row["ai_last_scanned"] or 0) < row["mtime"]:
+                        should_queue = True  # Needs update (Incremental logic)
                 else:
                     # New file not in DB yet - queue it, worker will retry later
                     should_queue = True
@@ -6104,17 +6687,21 @@ def ai_indexing_add_folder():
             if ids_to_wipe:
                 chunk_size = 500
                 for i in range(0, len(ids_to_wipe), chunk_size):
-                    chunk = ids_to_wipe[i:i + chunk_size]
-                    placeholders = ','.join(['?'] * len(chunk))
-                    conn.execute(f"""
+                    chunk = ids_to_wipe[i : i + chunk_size]
+                    placeholders = ",".join(["?"] * len(chunk))
+                    conn.execute(
+                        f"""
                         UPDATE files
                         SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL
                         WHERE id IN ({placeholders})
-                    """, chunk)
+                    """,
+                        chunk,
+                    )
 
             # 4. BATCH INSERT INTO QUEUE (UPSERT)
             if queue_entries:
-                conn.executemany("""
+                conn.executemany(
+                    """
                     INSERT INTO ai_indexing_queue (file_path, file_id, status, created_at, force_index, params)
                     VALUES (?, ?, 'pending', ?, ?, ?)
                     ON CONFLICT(file_path) DO UPDATE SET
@@ -6122,26 +6709,29 @@ def ai_indexing_add_folder():
                         force_index = excluded.force_index,
                         created_at = excluded.created_at,
                         params = excluded.params
-                """, queue_entries)
+                """,
+                    queue_entries,
+                )
 
             conn.commit()
 
     threading.Thread(target=_scan, daemon=True).start()
-    return jsonify({'status': 'success', 'message': msg})
+    return jsonify({"status": "success", "message": msg})
 
-@app.route('/galleryout/ai_indexing/watched', methods=['GET', 'DELETE'])
+
+@app.route("/galleryout/ai_indexing/watched", methods=["GET", "DELETE"])
 @management_api_only
 def ai_watched_folders():
     if not ENABLE_AI_SEARCH:
         return jsonify({})
     with get_db_connection() as conn:
-        if request.method == 'DELETE':
-            path = request.json.get('folder_path')
+        if request.method == "DELETE":
+            path = request.json.get("folder_path")
             if not path:
-                key = request.json.get('folder_key')
+                key = request.json.get("folder_key")
                 folders = get_dynamic_folder_config()
                 if key in folders:
-                    path = folders[key]['path']
+                    path = folders[key]["path"]
 
             if path:
                 # 1. Stop Watching
@@ -6153,25 +6743,32 @@ def ai_watched_folders():
                 # Ensure we handle OS separators robustly.
                 std_path = get_standardized_path(path)
                 # Remove exact match or subfiles
-                conn.execute("DELETE FROM ai_indexing_queue WHERE file_path = ? OR file_path LIKE ?", (std_path, std_path + '/%'))
+                conn.execute(
+                    "DELETE FROM ai_indexing_queue WHERE file_path = ? OR file_path LIKE ?", (std_path, std_path + "/%")
+                )
 
                 # 3. WIPE DATA (Optional User Choice)
-                if request.json.get('reset_data'):
+                if request.json.get("reset_data"):
                     std_target = get_standardized_path(path)
-                    rows = conn.execute("SELECT id, path FROM files WHERE ai_caption IS NOT NULL OR ai_embedding IS NOT NULL").fetchall()
+                    rows = conn.execute(
+                        "SELECT id, path FROM files WHERE ai_caption IS NOT NULL OR ai_embedding IS NOT NULL"
+                    ).fetchall()
                     ids_to_wipe = []
                     for r in rows:
-                        p_std = get_standardized_path(r['path'])
-                        if p_std == std_target or p_std.startswith(std_target + '/'):
-                            ids_to_wipe.append(r['id'])
+                        p_std = get_standardized_path(r["path"])
+                        if p_std == std_target or p_std.startswith(std_target + "/"):
+                            ids_to_wipe.append(r["id"])
 
                     if ids_to_wipe:
                         # Chunk processing for huge folders
                         chunk_size = 500
                         for i in range(0, len(ids_to_wipe), chunk_size):
-                            chunk = ids_to_wipe[i:i+chunk_size]
-                            ph = ','.join(['?'] * len(chunk))
-                            conn.execute(f"UPDATE files SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL WHERE id IN ({ph})", chunk)
+                            chunk = ids_to_wipe[i : i + chunk_size]
+                            ph = ",".join(["?"] * len(chunk))
+                            conn.execute(
+                                f"UPDATE files SET ai_caption=NULL, ai_embedding=NULL, ai_last_scanned=0, ai_error=NULL WHERE id IN ({ph})",
+                                chunk,
+                            )
                             # (Queue already cleared above by path, but redundant check by ID is safe)
                             conn.execute(f"DELETE FROM ai_indexing_queue WHERE file_id IN ({ph})", chunk)
 
@@ -6179,29 +6776,46 @@ def ai_watched_folders():
                 # --- FORCE CONFIG REFRESH TO UPDATE UI COLORS IMMEDIATELY ---
                 get_dynamic_folder_config(force_refresh=True)
 
-                return jsonify({'status': 'success'})
-            return jsonify({'status': 'error'})
+                return jsonify({"status": "success"})
+            return jsonify({"status": "error"})
 
         rows = conn.execute("SELECT path, recursive FROM ai_watched_folders").fetchall()
         folders = get_dynamic_folder_config()
-        pmap = {info['path']: {'key': k, 'name': info['display_name']} for k, info in folders.items()}
+        pmap = {info["path"]: {"key": k, "name": info["display_name"]} for k, info in folders.items()}
         res = []
         for r in rows:
-            m = pmap.get(r['path'])
-            rel = r['path']
+            m = pmap.get(r["path"])
+            rel = r["path"]
             try:
-                rel = os.path.relpath(r['path'], BASE_OUTPUT_PATH)
+                rel = os.path.relpath(r["path"], BASE_OUTPUT_PATH)
             except (TypeError, ValueError):
                 # A watched folder on another Windows drive has no path
                 # relative to the output root. Show the absolute one.
                 pass
             if m:
-                res.append({'path': r['path'], 'rel_path': rel, 'key': m['key'], 'display_name': m['name'], 'recursive': bool(r['recursive'])})
+                res.append(
+                    {
+                        "path": r["path"],
+                        "rel_path": rel,
+                        "key": m["key"],
+                        "display_name": m["name"],
+                        "recursive": bool(r["recursive"]),
+                    }
+                )
             else:
-                res.append({'path': r['path'], 'rel_path': rel, 'key': '_unknown', 'display_name': os.path.basename(r['path']), 'recursive': bool(r['recursive'])})
-        return jsonify({'folders': res})
+                res.append(
+                    {
+                        "path": r["path"],
+                        "rel_path": rel,
+                        "key": "_unknown",
+                        "display_name": os.path.basename(r["path"]),
+                        "recursive": bool(r["recursive"]),
+                    }
+                )
+        return jsonify({"folders": res})
 
-@app.route('/galleryout/ai_indexing/status')
+
+@app.route("/galleryout/ai_indexing/status")
 @management_api_only
 def ai_indexing_status():
     if not ENABLE_AI_SEARCH:
@@ -6212,14 +6826,16 @@ def ai_indexing_status():
             processing = conn.execute("SELECT file_path FROM ai_indexing_queue WHERE status='processing'").fetchone()
 
             # Preview Next 10 files with PRIORITY INFO
-            next_rows = conn.execute("SELECT file_path, force_index FROM ai_indexing_queue WHERE status='pending' ORDER BY force_index DESC, created_at ASC LIMIT 10").fetchall()
+            next_rows = conn.execute(
+                "SELECT file_path, force_index FROM ai_indexing_queue WHERE status='pending' ORDER BY force_index DESC, created_at ASC LIMIT 10"
+            ).fetchall()
 
             avg = conn.execute("SELECT value FROM ai_metadata WHERE key='avg_processing_time'").fetchone()
             paused = conn.execute("SELECT value FROM ai_metadata WHERE key='indexing_paused'").fetchone()
             waiting = conn.execute("SELECT COUNT(*) FROM ai_indexing_queue WHERE status='waiting_gpu'").fetchone()[0]
 
             status = "Idle"
-            if paused and paused['value'] == '1':
+            if paused and paused["value"] == "1":
                 status = "Paused"
             elif waiting > 0:
                 status = "waiting_gpu"
@@ -6231,47 +6847,51 @@ def ai_indexing_status():
             curr_file = ""
             if processing:
                 try:
-                    curr_file = os.path.relpath(processing['file_path'], BASE_OUTPUT_PATH)
+                    curr_file = os.path.relpath(processing["file_path"], BASE_OUTPUT_PATH)
                 except (TypeError, ValueError):
-                    curr_file = os.path.basename(processing['file_path'])
+                    curr_file = os.path.basename(processing["file_path"])
 
             next_files = []
             for r in next_rows:
                 try:
-                    p = os.path.relpath(r['file_path'], BASE_OUTPUT_PATH)
+                    p = os.path.relpath(r["file_path"], BASE_OUTPUT_PATH)
                 except (TypeError, ValueError):
-                    p = os.path.basename(r['file_path'])
+                    p = os.path.basename(r["file_path"])
 
-                next_files.append({
-                    'path': p,
-                    'is_priority': bool(r['force_index'])
-                })
+                next_files.append({"path": p, "is_priority": bool(r["force_index"])})
 
-            return jsonify({
-                'global_status': status, 'pending_count': pending, 'current_file': curr_file,
-                'gpu_usage': 0, 'avg_time': float(avg['value']) if avg else 0.0,
-                'current_job_progress': 0, 'current_job_total': pending + (1 if processing else 0),
-                'next_files': next_files
-            })
+            return jsonify(
+                {
+                    "global_status": status,
+                    "pending_count": pending,
+                    "current_file": curr_file,
+                    "gpu_usage": 0,
+                    "avg_time": float(avg["value"]) if avg else 0.0,
+                    "current_job_progress": 0,
+                    "current_job_total": pending + (1 if processing else 0),
+                    "next_files": next_files,
+                }
+            )
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/galleryout/ai_indexing/control', methods=['POST'])
+
+@app.route("/galleryout/ai_indexing/control", methods=["POST"])
 @management_api_only
 def ai_indexing_control():
     if not ENABLE_AI_SEARCH:
-        return jsonify({'status':'error'})
-    action = request.json.get('action')
+        return jsonify({"status": "error"})
+    action = request.json.get("action")
     with get_db_connection() as conn:
-        if action == 'pause':
+        if action == "pause":
             conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value) VALUES ('indexing_paused', '1')")
-        elif action == 'resume':
+        elif action == "resume":
             conn.execute("INSERT OR REPLACE INTO ai_metadata (key, value) VALUES ('indexing_paused', '0')")
             conn.execute("UPDATE ai_indexing_queue SET status='pending' WHERE status='waiting_gpu'")
-        elif action == 'clear':
+        elif action == "clear":
             conn.execute("DELETE FROM ai_indexing_queue WHERE status != 'processing'")
         conn.commit()
-    return jsonify({'status': 'success', 'message': f'Queue {action}d'})
+    return jsonify({"status": "success", "message": f"Queue {action}d"})
 
 
 def _current_client_identity():
@@ -6283,12 +6903,12 @@ def _current_client_identity():
     take one from (see index.html), so the default single-user install must
     resolve to that and not to the empty string.
     """
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     if user_id:
         return str(user_id)
     if not FORCE_LOGIN and not IS_EXHIBITION_MODE:
-        return 'admin'
-    return ''
+        return "admin"
+    return ""
 
 
 def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope):
@@ -6313,46 +6933,49 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
     # The hash column that defines cluster identity for this mode. Files
     # missing it cannot belong to any cluster of this kind.
     primary_hash_key = {
-        'prompt': 'prompt_hash',
-        'models': 'models_hash',
-    }.get(cluster_mode, 'workflow_hash')
+        "prompt": "prompt_hash",
+        "models": "models_hash",
+    }.get(cluster_mode, "workflow_hash")
 
     result_files = []
 
-    if cluster_scope == 'global':
+    if cluster_scope == "global":
         with get_db_connection() as conn_target:
             safe_uuid = _current_client_identity().replace("'", "''")
-            user_role = session.get('role', 'GUEST')
-            is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
+            user_role = session.get("role", "GUEST")
+            is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
 
-            if is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']:
+            if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
                 comment_sub_filter = ""
             else:
                 comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
 
             if cluster_target_id:
-                target_row = conn_target.execute("SELECT workflow_hash, prompt_hash, models_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
+                target_row = conn_target.execute(
+                    "SELECT workflow_hash, prompt_hash, models_hash FROM files WHERE id = ?", (cluster_target_id,)
+                ).fetchone()
                 target_wf = target_row[0] if target_row else None
                 target_pr = target_row[1] if target_row else None
                 target_md = target_row[2] if target_row else None
 
                 where_clause = ""
                 params_t = ()
-                if cluster_mode == 'combo' and target_wf and target_pr:
+                if cluster_mode == "combo" and target_wf and target_pr:
                     where_clause = "f.workflow_hash = ? AND f.prompt_hash = ?"
                     params_t = (target_wf, target_pr)
-                elif cluster_mode == 'prompt' and target_pr:
+                elif cluster_mode == "prompt" and target_pr:
                     where_clause = "f.prompt_hash = ?"
                     params_t = (target_pr,)
-                elif cluster_mode == 'models' and target_md:
+                elif cluster_mode == "models" and target_md:
                     where_clause = "f.models_hash = ?"
                     params_t = (target_md,)
-                elif cluster_mode not in ('prompt', 'models') and target_wf:
+                elif cluster_mode not in ("prompt", "models") and target_wf:
                     where_clause = "f.workflow_hash = ?"
                     params_t = (target_wf,)
 
                 if where_clause:
-                    rows = conn_target.execute(f"""
+                    rows = conn_target.execute(
+                        f"""
                         SELECT DISTINCT f.*,
                         (SELECT c.color FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                         (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
@@ -6362,7 +6985,9 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                         (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
                         FROM files f
                         WHERE {where_clause}
-                    """, params_t).fetchall()
+                    """,
+                        params_t,
+                    ).fetchall()
                     result_files = [dict(r) for r in rows]
                 else:
                     result_files = []
@@ -6381,7 +7006,7 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                 result_files = [dict(r) for r in rows]
 
             for d in result_files:
-                d.pop('ai_embedding', None)
+                d.pop("ai_embedding", None)
     else:
         result_files = [dict(f) for f in current_files]
 
@@ -6390,60 +7015,66 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
         # whose hashes were computed moments ago. Re-read hashes for any row
         # that still looks unhashed.
         stale_ids = [
-            f['id'] for f in result_files
-            if not str(f.get('workflow_hash') or '').strip()
-            and not str(f.get('prompt_hash') or '').strip()
+            f["id"]
+            for f in result_files
+            if not str(f.get("workflow_hash") or "").strip() and not str(f.get("prompt_hash") or "").strip()
         ]
         if stale_ids:
             fresh_hashes = {}
             with get_db_connection() as conn_refresh:
                 for i in range(0, len(stale_ids), 500):
-                    chunk = stale_ids[i:i + 500]
-                    placeholders = ','.join('?' * len(chunk))
+                    chunk = stale_ids[i : i + 500]
+                    placeholders = ",".join("?" * len(chunk))
                     for r in conn_refresh.execute(
-                        f"SELECT id, workflow_hash, prompt_hash, models_hash FROM files WHERE id IN ({placeholders})", chunk
+                        f"SELECT id, workflow_hash, prompt_hash, models_hash FROM files WHERE id IN ({placeholders})",
+                        chunk,
                     ).fetchall():
-                        fresh_hashes[r['id']] = (r['workflow_hash'], r['prompt_hash'], r['models_hash'])
+                        fresh_hashes[r["id"]] = (r["workflow_hash"], r["prompt_hash"], r["models_hash"])
             for f in result_files:
-                if f['id'] in fresh_hashes:
-                    f['workflow_hash'], f['prompt_hash'], f['models_hash'] = fresh_hashes[f['id']]
+                if f["id"] in fresh_hashes:
+                    f["workflow_hash"], f["prompt_hash"], f["models_hash"] = fresh_hashes[f["id"]]
 
         if cluster_target_id:
             with get_db_connection() as conn_t:
-                t_row = conn_t.execute("SELECT workflow_hash, prompt_hash, models_hash FROM files WHERE id = ?", (cluster_target_id,)).fetchone()
+                t_row = conn_t.execute(
+                    "SELECT workflow_hash, prompt_hash, models_hash FROM files WHERE id = ?", (cluster_target_id,)
+                ).fetchone()
                 if t_row:
                     t_wf, t_pr, t_md = t_row[0], t_row[1], t_row[2]
-                    if cluster_mode == 'combo':
-                        result_files = [f for f in result_files if f.get('workflow_hash') == t_wf and f.get('prompt_hash') == t_pr]
-                    elif cluster_mode == 'prompt':
-                        result_files = [f for f in result_files if f.get('prompt_hash') == t_pr]
-                    elif cluster_mode == 'models':
-                        result_files = [f for f in result_files if f.get('models_hash') == t_md]
+                    if cluster_mode == "combo":
+                        result_files = [
+                            f for f in result_files if f.get("workflow_hash") == t_wf and f.get("prompt_hash") == t_pr
+                        ]
+                    elif cluster_mode == "prompt":
+                        result_files = [f for f in result_files if f.get("prompt_hash") == t_pr]
+                    elif cluster_mode == "models":
+                        result_files = [f for f in result_files if f.get("models_hash") == t_md]
                     else:
-                        result_files = [f for f in result_files if f.get('workflow_hash') == t_wf]
+                        result_files = [f for f in result_files if f.get("workflow_hash") == t_wf]
                 else:
                     result_files = []
 
-    result_files = [
-        f for f in result_files
-        if str(f.get(primary_hash_key) or '').strip()
-    ]
+    result_files = [f for f in result_files if str(f.get(primary_hash_key) or "").strip()]
 
     def get_inner_sort_key(item):
-        if cluster_sort == 'date_asc':
-            return item.get('mtime') or 0
-        if cluster_sort == 'rating_desc':
-            return -(item.get('avg_rating') or 0)
-        return -(item.get('mtime') or 0)
+        if cluster_sort == "date_asc":
+            return item.get("mtime") or 0
+        if cluster_sort == "rating_desc":
+            return -(item.get("avg_rating") or 0)
+        return -(item.get("mtime") or 0)
 
-    result_files.sort(key=lambda x: (x.get(primary_hash_key) or '', x.get('workflow_hash') or '', get_inner_sort_key(x)))
+    result_files.sort(
+        key=lambda x: (x.get(primary_hash_key) or "", x.get("workflow_hash") or "", get_inner_sort_key(x))
+    )
     return result_files
 
-@app.route('/galleryout/view/<string:folder_key>')
+
+@app.route("/galleryout/view/<string:folder_key>")
 def gallery_view(folder_key):
     # 1. SECURITY LOCKDOWN CHECK
     if ADMIN_CONFIG_MISSING:
-        return """
+        return (
+            """
         <body style="background:#0a0a0a; color:#eee; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; text-align:center;">
             <div style="border:1px solid #dc3545; padding:40px; border-radius:16px; background:#1a1a1a; max-width:500px;">
                 <h1 style="color:#dc3545;">🔒 Security Lockdown</h1>
@@ -6454,39 +7085,45 @@ def gallery_view(folder_key):
                 <p style="color:#888; font-size:0.9rem;">Please restart the server with the password parameter or set the ADMIN_PASSWORD environment variable.</p>
             </div>
         </body>
-        """, 403
+        """,
+            403,
+        )
 
     # 2. AUTHENTICATION & PERMISSIONS LOGIC
     is_management_side = not IS_EXHIBITION_MODE
-    is_logged_in = 'user_id' in session
+    is_logged_in = "user_id" in session
 
     must_authenticate = IS_EXHIBITION_MODE or FORCE_LOGIN
 
     if must_authenticate:
         if not is_logged_in:
-            return render_template('exhibition_login.html',
-                                   app_version=APP_VERSION,
-                                   enable_guest_login=ENABLE_GUEST_LOGIN if IS_EXHIBITION_MODE else False,
-                                   admin_side=is_management_side)
+            return render_template(
+                "exhibition_login.html",
+                app_version=APP_VERSION,
+                enable_guest_login=ENABLE_GUEST_LOGIN if IS_EXHIBITION_MODE else False,
+                admin_side=is_management_side,
+            )
 
         # --- NEW GRACEFUL ROLE PROTECTION ---
         if is_management_side:
-            user_role = session.get('role')
-            if user_role not in ['ADMIN', 'MANAGER', 'STAFF']:
+            user_role = session.get("role")
+            if user_role not in ["ADMIN", "MANAGER", "STAFF"]:
                 # Block GUESTs or CUSTOMERs from management interface
                 session.clear()
-                return render_template('exhibition_login.html',
-                                       app_version=APP_VERSION,
-                                       enable_guest_login=False,
-                                       admin_side=True,
-                                       error_msg="Unauthorized: Your role does not have management privileges.")
+                return render_template(
+                    "exhibition_login.html",
+                    app_version=APP_VERSION,
+                    enable_guest_login=False,
+                    admin_side=True,
+                    error_msg="Unauthorized: Your role does not have management privileges.",
+                )
 
     # 3. REDIRECT VIRTUAL COLLECTIONS
-    if folder_key.startswith('collection_'):
+    if folder_key.startswith("collection_"):
         try:
             # Extract ID part (can be 'all' or a numeric string)
-            coll_id_raw = folder_key.split('_', 1)[1]
-            if coll_id_raw == 'all' or coll_id_raw.isdigit():
+            coll_id_raw = folder_key.split("_", 1)[1]
+            if coll_id_raw == "all" or coll_id_raw.isdigit():
                 # FIX: Convert MultiDict to dict with lists to preserve multi-select filters
                 args_dict = request.args.to_dict(flat=False)
                 # A search answers with a list of files from across the
@@ -6498,10 +7135,9 @@ def gallery_view(folder_key):
                 # album is the ordinary way to arrive here, because the
                 # palette navigates to whichever key the page is showing
                 # and a collection's key is `collection_<id>`.
-                if 'omniquery_id' in args_dict or 'ai_session_id' in args_dict:
-                    return redirect(url_for('gallery_view', folder_key='_root_',
-                                            **args_dict))
-                return redirect(url_for('collection_view', coll_id=coll_id_raw, **args_dict))
+                if "omniquery_id" in args_dict or "ai_session_id" in args_dict:
+                    return redirect(url_for("gallery_view", folder_key="_root_", **args_dict))
+                return redirect(url_for("collection_view", coll_id=coll_id_raw, **args_dict))
         except IndexError:
             pass
 
@@ -6509,40 +7145,40 @@ def gallery_view(folder_key):
 
     # 4. EXHIBITION MODE SECURITY CHECK
     # Prevent browsing physical folders if in Exhibition mode
-    if IS_EXHIBITION_MODE and folder_key != '_root_':
-        return redirect(url_for('gallery_view', folder_key='_root_'))
+    if IS_EXHIBITION_MODE and folder_key != "_root_":
+        return redirect(url_for("gallery_view", folder_key="_root_"))
 
     # 5. FOLDER CONFIGURATION
     folders = get_dynamic_folder_config(force_refresh=True)
 
     # If root not found or invalid key
     if folder_key not in folders:
-        return redirect(url_for('gallery_view', folder_key='_root_'))
+        return redirect(url_for("gallery_view", folder_key="_root_"))
 
     current_folder_info = folders[folder_key]
-    folder_path = current_folder_info['path']
+    folder_path = current_folder_info["path"]
 
     # 1. Capture All Request Parameters
     # Subfolders are included by default (ComfyUI routinely scatters outputs
     # into date-stamped subfolders); only an explicit recursive=false narrows
     # the view to the folder itself.
-    is_recursive = request.args.get('recursive', 'true').lower() != 'false'
-    search_scope = request.args.get('scope', 'local')
-    is_global_search = (search_scope == 'global')
-    ai_session_id = request.args.get('ai_session_id')
-    omniquery_id = request.args.get('omniquery_id')
+    is_recursive = request.args.get("recursive", "true").lower() != "false"
+    search_scope = request.args.get("scope", "local")
+    is_global_search = search_scope == "global"
+    ai_session_id = request.args.get("ai_session_id")
+    omniquery_id = request.args.get("omniquery_id")
 
     # Text filters
-    search_term = request.args.get('search', '').strip()
-    wf_files = request.args.get('workflow_files', '').strip()
-    wf_prompt = request.args.get('workflow_prompt', '').strip()
-    comment_search = request.args.get('comment_search', '').strip()
-    start_date = request.args.get('start_date', '').strip()
-    end_date = request.args.get('end_date', '').strip()
-    selected_exts = request.args.getlist('extension')
-    selected_prefixes = request.args.getlist('prefix')
-    selected_raters = request.args.getlist('rated_by')
-    selected_rating_ranges = request.args.getlist('rating_range')
+    search_term = request.args.get("search", "").strip()
+    wf_files = request.args.get("workflow_files", "").strip()
+    wf_prompt = request.args.get("workflow_prompt", "").strip()
+    comment_search = request.args.get("comment_search", "").strip()
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
+    selected_exts = request.args.getlist("extension")
+    selected_prefixes = request.args.getlist("prefix")
+    selected_raters = request.args.getlist("rated_by")
+    selected_rating_ranges = request.args.getlist("rating_range")
 
     is_ai_search = False
     is_omniquery = False
@@ -6552,12 +7188,15 @@ def gallery_view(folder_key):
     if omniquery_id:
         with get_db_connection() as conn:
             try:
-                session_info = conn.execute("SELECT raw_sql FROM omniquery_sessions WHERE session_id = ?", (omniquery_id,)).fetchone()
+                session_info = conn.execute(
+                    "SELECT raw_sql FROM omniquery_sessions WHERE session_id = ?", (omniquery_id,)
+                ).fetchone()
                 if session_info:
                     is_omniquery = True
-                    omniquery_sql = session_info['raw_sql']
+                    omniquery_sql = session_info["raw_sql"]
                     safe_uuid = _current_client_identity().replace("'", "''")
-                    rows = conn.execute(f'''
+                    rows = conn.execute(
+                        f"""
                         SELECT f.*,
                         (SELECT c.color FROM collections c JOIN collection_files cf2 ON c.id = cf2.collection_id WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                         (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
@@ -6569,12 +7208,14 @@ def gallery_view(folder_key):
                         JOIN files f ON r.file_id = f.id
                         WHERE r.session_id = ?
                         ORDER BY r.rowid ASC
-                    ''', (omniquery_id,)).fetchall()
+                    """,
+                        (omniquery_id,),
+                    ).fetchall()
 
                     files_list = []
                     for row in rows:
                         d = dict(row)
-                        d.pop('ai_embedding', None)
+                        d.pop("ai_embedding", None)
                         files_list.append(d)
 
                     # --- FIX: Apply UI Sorting ONLY if query doesn't have custom ORDER BY ---
@@ -6585,27 +7226,27 @@ def gallery_view(folder_key):
                     # name unbound and answered 500.
                     has_custom_order = False
                     if omniquery_sql:
-                        has_custom_order = bool(re.search(r'\bORDER\s+BY\b', omniquery_sql, re.IGNORECASE))
+                        has_custom_order = bool(re.search(r"\bORDER\s+BY\b", omniquery_sql, re.IGNORECASE))
 
                     if not has_custom_order:
-                        omni_sort_by = request.args.get('sort_by', 'date')
-                        omni_sort_desc = request.args.get('sort_order', 'desc').lower() != 'asc'
+                        omni_sort_by = request.args.get("sort_by", "date")
+                        omni_sort_desc = request.args.get("sort_order", "desc").lower() != "asc"
 
-                        if omni_sort_by == 'name':
-                            files_list.sort(key=lambda x: (x.get('name') or '').lower(), reverse=omni_sort_desc)
-                        elif omni_sort_by == 'rating':
+                        if omni_sort_by == "name":
+                            files_list.sort(key=lambda x: (x.get("name") or "").lower(), reverse=omni_sort_desc)
+                        elif omni_sort_by == "rating":
                             if is_effectively_blind():
-                                files_list.sort(key=lambda x: x.get('my_rating') or 0, reverse=omni_sort_desc)
+                                files_list.sort(key=lambda x: x.get("my_rating") or 0, reverse=omni_sort_desc)
                             else:
-                                files_list.sort(key=lambda x: x.get('avg_rating') or 0, reverse=omni_sort_desc)
-                        elif omni_sort_by == 'comments':
-                            files_list.sort(key=lambda x: x.get('comment_count') or 0, reverse=omni_sort_desc)
-                        elif omni_sort_by in ['latest_comment', 'latestcomment']:
-                            files_list.sort(key=lambda x: x.get('latest_comment_time') or 0, reverse=omni_sort_desc)
-                        elif omni_sort_by in ['date', 'mtime']:
-                            files_list.sort(key=lambda x: x.get('mtime') or 0, reverse=omni_sort_desc)
+                                files_list.sort(key=lambda x: x.get("avg_rating") or 0, reverse=omni_sort_desc)
+                        elif omni_sort_by == "comments":
+                            files_list.sort(key=lambda x: x.get("comment_count") or 0, reverse=omni_sort_desc)
+                        elif omni_sort_by in ["latest_comment", "latestcomment"]:
+                            files_list.sort(key=lambda x: x.get("latest_comment_time") or 0, reverse=omni_sort_desc)
+                        elif omni_sort_by in ["date", "mtime"]:
+                            files_list.sort(key=lambda x: x.get("mtime") or 0, reverse=omni_sort_desc)
                         else:
-                            files_list.sort(key=lambda x: x.get('mtime') or 0, reverse=True)
+                            files_list.sort(key=lambda x: x.get("mtime") or 0, reverse=True)
                     # --------------------------------------------------
 
                     view_files = files_list
@@ -6617,20 +7258,25 @@ def gallery_view(folder_key):
     if ENABLE_AI_SEARCH and ai_session_id:
         with get_db_connection() as conn:
             try:
-                queue_info = conn.execute("SELECT query, status FROM ai_search_queue WHERE session_id = ?", (ai_session_id,)).fetchone()
-                if queue_info and queue_info['status'] == 'completed':
+                queue_info = conn.execute(
+                    "SELECT query, status FROM ai_search_queue WHERE session_id = ?", (ai_session_id,)
+                ).fetchone()
+                if queue_info and queue_info["status"] == "completed":
                     is_ai_search = True
-                    rows = conn.execute('''
+                    rows = conn.execute(
+                        """
                         SELECT f.*, r.score FROM ai_search_results r
                         JOIN files f ON r.file_id = f.id
                         WHERE r.session_id = ? ORDER BY r.score DESC
-                    ''', (ai_session_id,)).fetchall()
+                    """,
+                        (ai_session_id,),
+                    ).fetchall()
 
                     files_list = []
                     for row in rows:
                         d = dict(row)
-                        if 'ai_embedding' in d:
-                            del d['ai_embedding']
+                        if "ai_embedding" in d:
+                            del d["ai_embedding"]
                         files_list.append(d)
 
                     view_files = files_list
@@ -6641,15 +7287,18 @@ def gallery_view(folder_key):
     # --- PATH B: STANDARD VIEW / SEARCH ---
     if not is_ai_search and not is_omniquery:
         with get_db_connection() as conn:
-            conditions, params = ["f.type != 'document' AND LOWER(f.name) NOT LIKE '%.txt' AND LOWER(f.name) NOT LIKE '%.md'"], []
+            conditions, params = (
+                ["f.type != 'document' AND LOWER(f.name) NOT LIKE '%.txt' AND LOWER(f.name) NOT LIKE '%.md'"],
+                [],
+            )
 
             if search_term:
                 conditions.append("ulower(name) LIKE ulower(?)")
                 params.append(f"%{search_term}%")
 
             if wf_files:
-                for kw in [k.strip() for k in wf_files.split(',') if k.strip()]:
-                    sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+                for kw in [k.strip() for k in wf_files.split(",") if k.strip()]:
+                    sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
                     if not sub_kws:
                         continue
 
@@ -6657,14 +7306,13 @@ def gallery_view(folder_key):
                     not_conds = []
                     for s in sub_kws:
                         is_not = False
-                        if s.startswith('!'):
+                        if s.startswith("!"):
                             is_not = True
                             s = s[1:].strip()
                         if not s:
                             continue
 
-                        cond_str, param_val = model_condition(
-                            s, 'f.workflow_files', is_not)
+                        cond_str, param_val = model_condition(s, "f.workflow_files", is_not)
 
                         if is_not:
                             not_conds.append((cond_str, param_val))
@@ -6682,8 +7330,8 @@ def gallery_view(folder_key):
                         conditions.append(cond)
                         params.append(param)
             if wf_prompt:
-                for kw in [k.strip() for k in wf_prompt.split(',') if k.strip()]:
-                    sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+                for kw in [k.strip() for k in wf_prompt.split(",") if k.strip()]:
+                    sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
                     if not sub_kws:
                         continue
 
@@ -6691,13 +7339,13 @@ def gallery_view(folder_key):
                     not_conds = []
                     for s in sub_kws:
                         is_not = False
-                        if s.startswith('!'):
+                        if s.startswith("!"):
                             is_not = True
                             s = s[1:].strip()
                         if not s:
                             continue
 
-                        built = prompt_search_condition(s, is_not, 'workflow_prompt')
+                        built = prompt_search_condition(s, is_not, "workflow_prompt")
                         if built is None:
                             continue
                         cond_str, param_val = built
@@ -6718,8 +7366,8 @@ def gallery_view(folder_key):
                         conditions.append(cond)
                         params.append(param)
             if comment_search:
-                for kw in [k.strip() for k in comment_search.split(',') if k.strip()]:
-                    sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+                for kw in [k.strip() for k in comment_search.split(",") if k.strip()]:
+                    sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
                     if not sub_kws:
                         continue
 
@@ -6727,7 +7375,7 @@ def gallery_view(folder_key):
                     not_conds = []
                     for s in sub_kws:
                         is_not = False
-                        if s.startswith('!'):
+                        if s.startswith("!"):
                             is_not = True
                             s = s[1:].strip()
                         if not s:
@@ -6758,21 +7406,21 @@ def gallery_view(folder_key):
                     for cond, param in not_conds:
                         conditions.append(cond)
                         params.append(param)
-            if request.args.get('favorites') == 'true':
+            if request.args.get("favorites") == "true":
                 conditions.append("is_favorite = 1")
-            if request.args.get('no_workflow') == 'true':
+            if request.args.get("no_workflow") == "true":
                 conditions.append("has_workflow = 0")
-            if request.args.get('no_ai_caption') == 'true':
+            if request.args.get("no_ai_caption") == "true":
                 conditions.append("(ai_caption IS NULL OR ai_caption = '')")
 
             # Counted further down with the rest of them; active_filters_count
             # does not exist yet here, and the bare `except: pass` this
             # replaced was swallowing the UnboundLocalError that said so.
-            day_from = day_bounds(start_date, request.args.get('start_ts'), False)
+            day_from = day_bounds(start_date, request.args.get("start_ts"), False)
             if day_from is not None:
                 conditions.append("mtime >= ?")
                 params.append(day_from)
-            day_to = day_bounds(end_date, request.args.get('end_ts'), True)
+            day_to = day_bounds(end_date, request.args.get("end_ts"), True)
             if day_to is not None:
                 conditions.append("mtime <= ?")
                 params.append(day_to)
@@ -6781,40 +7429,40 @@ def gallery_view(folder_key):
                 r_conds = []
                 avg_sql = "IFNULL((SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id), 0)"
                 for rr in selected_rating_ranges:
-                    if rr == '0 stars':
+                    if rr == "0 stars":
                         r_conds.append(f"{avg_sql} = 0")
-                    elif rr == '1 star':
+                    elif rr == "1 star":
                         r_conds.append(f"ROUND({avg_sql}) = 1")
-                    elif rr == '2 stars':
+                    elif rr == "2 stars":
                         r_conds.append(f"ROUND({avg_sql}) = 2")
-                    elif rr == '3 stars':
+                    elif rr == "3 stars":
                         r_conds.append(f"ROUND({avg_sql}) = 3")
-                    elif rr == '4 stars':
+                    elif rr == "4 stars":
                         r_conds.append(f"ROUND({avg_sql}) = 4")
-                    elif rr == '5 stars':
+                    elif rr == "5 stars":
                         r_conds.append(f"ROUND({avg_sql}) = 5")
                     # Legacy support for old URLs/bookmarks
-                    elif rr == '1-2 stars':
+                    elif rr == "1-2 stars":
                         r_conds.append(f"({avg_sql} > 0 AND {avg_sql} <= 2)")
-                    elif rr == '2-3 stars':
+                    elif rr == "2-3 stars":
                         r_conds.append(f"({avg_sql} > 2 AND {avg_sql} <= 3)")
-                    elif rr == '3-4 stars':
+                    elif rr == "3-4 stars":
                         r_conds.append(f"({avg_sql} > 3 AND {avg_sql} <= 4)")
-                    elif rr == '4-5 stars':
+                    elif rr == "4-5 stars":
                         r_conds.append(f"({avg_sql} > 4 AND {avg_sql} <= 5)")
                 if r_conds:
                     conditions.append(f"({' OR '.join(r_conds)})")
 
             if selected_raters:
                 expanded_raters = list(selected_raters)
-                if 'admin' in expanded_raters:
+                if "admin" in expanded_raters:
                     try:
                         admin_id = conn.execute("SELECT user_id FROM users WHERE username = 'admin'").fetchone()
                         if admin_id and str(admin_id[0]) not in expanded_raters:
                             expanded_raters.append(str(admin_id[0]))
                     except sqlite3.Error:
                         pass
-                placeholders = ','.join(['?'] * len(expanded_raters))
+                placeholders = ",".join(["?"] * len(expanded_raters))
                 conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid IN ({placeholders}))")
                 params.extend(expanded_raters)
 
@@ -6830,17 +7478,17 @@ def gallery_view(folder_key):
                 if p_cond:
                     conditions.append(f"({' OR '.join(p_cond)})")
 
-            req_sort_by = request.args.get('sort_by', 'date')
-            sort_order = "ASC" if request.args.get('sort_order', 'desc').lower() == 'asc' else "DESC"
+            req_sort_by = request.args.get("sort_by", "date")
+            sort_order = "ASC" if request.args.get("sort_order", "desc").lower() == "asc" else "DESC"
 
             # --- COMMENT VISIBILITY FILTER FOR SORTING ---
-            user_role = session.get('role', 'GUEST')
+            user_role = session.get("role", "GUEST")
             safe_uuid = _current_client_identity().replace("'", "''")
 
             # Allow Local Admin (no force login) to see all comments during sort
-            is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
+            is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
 
-            if is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']:
+            if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
                 comment_sub_filter = ""
                 comment_exists_filter = "SELECT file_id FROM file_comments"
             else:
@@ -6848,51 +7496,49 @@ def gallery_view(folder_key):
                 comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
                 comment_exists_filter = f"SELECT file_id FROM file_comments WHERE (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
 
-            if req_sort_by == 'name':
+            if req_sort_by == "name":
                 order_clause = f"ulower(f.name) {sort_order}"
-            elif req_sort_by == 'rating':
+            elif req_sort_by == "rating":
                 if is_effectively_blind():
-
                     conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
 
                     order_clause = f"my_rating {sort_order}, f.mtime DESC"
 
                 else:
-
                     conditions.append("f.id IN (SELECT file_id FROM file_ratings)")
 
                     order_clause = f"avg_rating {sort_order}, f.mtime DESC"
-            elif req_sort_by == 'size':
-
+            elif req_sort_by == "size":
                 order_clause = f"f.size {sort_order}"
 
-            elif req_sort_by == 'type':
-
+            elif req_sort_by == "type":
                 order_clause = f"f.type {sort_order}, ulower(f.name) ASC"
 
-            elif req_sort_by == 'duration':
-
+            elif req_sort_by == "duration":
                 order_clause = f"f.duration {sort_order}"
 
-            elif req_sort_by == 'dimensions':
-
+            elif req_sort_by == "dimensions":
                 order_clause = f"(CAST(SUBSTR(f.dimensions, 1, INSTR(f.dimensions, 'x') - 1) AS INTEGER) * CAST(SUBSTR(f.dimensions, INSTR(f.dimensions, 'x') + 1) AS INTEGER)) {sort_order}"
-            elif req_sort_by == 'unrated':
+            elif req_sort_by == "unrated":
                 if is_effectively_blind():
-                    conditions.append(f"f.id NOT IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
+                    conditions.append(
+                        f"f.id NOT IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')"
+                    )
                 else:
                     conditions.append("f.id NOT IN (SELECT file_id FROM file_ratings)")
                 order_clause = f"f.mtime {sort_order}"
-            elif req_sort_by == 'uncommented':
+            elif req_sort_by == "uncommented":
                 if is_effectively_blind():
-                    conditions.append(f"f.id NOT IN (SELECT file_id FROM file_comments WHERE client_uuid = '{safe_uuid}')")
+                    conditions.append(
+                        f"f.id NOT IN (SELECT file_id FROM file_comments WHERE client_uuid = '{safe_uuid}')"
+                    )
                 else:
                     conditions.append("f.id NOT IN (SELECT file_id FROM file_comments)")
                 order_clause = f"f.mtime {sort_order}"
-            elif req_sort_by == 'comments':
+            elif req_sort_by == "comments":
                 conditions.append(f"f.id IN ({comment_exists_filter})")
                 order_clause = f"comment_count {sort_order}, f.mtime DESC"
-            elif req_sort_by == 'latest_comment':
+            elif req_sort_by == "latest_comment":
                 conditions.append(f"f.id IN ({comment_exists_filter})")
                 order_clause = f"latest_comment_time {sort_order}, f.mtime DESC"
             else:
@@ -6934,7 +7580,7 @@ def gallery_view(folder_key):
             def safe_path_norm(p):
                 if not p:
                     return ""
-                return os.path.normpath(str(p).replace('\\', '/')).replace('\\', '/').lower().rstrip('/')
+                return os.path.normpath(str(p).replace("\\", "/")).replace("\\", "/").lower().rstrip("/")
 
             target_norm = safe_path_norm(folder_path)
 
@@ -6944,18 +7590,18 @@ def gallery_view(folder_key):
             # need is simply not done. At 100,000 files this loop and its
             # twin in get_filter_options_from_db called safe_path_norm
             # 200,001 times per page load.
-            recursive_prefix = target_norm + '/'
+            recursive_prefix = target_norm + "/"
             for row in rows:
                 f_data = dict(row)
-                f_data.pop('ai_embedding', None)
+                f_data.pop("ai_embedding", None)
 
                 if is_global_search:
                     final_files.append(f_data)
                 elif is_recursive:
-                    if safe_path_norm(f_data['path']).startswith(recursive_prefix):
+                    if safe_path_norm(f_data["path"]).startswith(recursive_prefix):
                         final_files.append(f_data)
                 else:
-                    f_path_norm = safe_path_norm(f_data['path'])
+                    f_path_norm = safe_path_norm(f_data["path"])
                     if safe_path_norm(os.path.dirname(f_path_norm)) == target_norm:
                         final_files.append(f_data)
 
@@ -6968,7 +7614,7 @@ def gallery_view(folder_key):
         active_filters_count += 1
     if wf_prompt:
         active_filters_count += 1
-    if request.args.get('comment_search', '').strip():
+    if request.args.get("comment_search", "").strip():
         active_filters_count += 1
     # A date range narrows the view like anything else here, and was the
     # one filter the badge never counted.
@@ -6985,25 +7631,24 @@ def gallery_view(folder_key):
         active_filters_count += 1
     if selected_rating_ranges:
         active_filters_count += 1
-    if request.args.get('favorites') == 'true':
+    if request.args.get("favorites") == "true":
         active_filters_count += 1
-    if request.args.get('no_workflow') == 'true':
+    if request.args.get("no_workflow") == "true":
         active_filters_count += 1
-    if ENABLE_AI_SEARCH and request.args.get('no_ai_caption') == 'true':
+    if ENABLE_AI_SEARCH and request.args.get("no_ai_caption") == "true":
         active_filters_count += 1
     # Subtree inclusion is the browsing default; the narrowing states are
     # global search and the explicit folder-only opt-out.
     if is_global_search or not is_recursive:
         active_filters_count += 1
 
-
     # --- CLUSTER MODE OVERRIDE LOGIC & SCOPE SEARCH ---
     # Exhibition mode ships no clustering UI (banner/exit controls), so
     # crafted cluster URLs must not switch the view into an inescapable mode.
-    cluster_mode = None if IS_EXHIBITION_MODE else request.args.get('cluster_mode')
-    cluster_sort = request.args.get('cluster_sort', 'date_desc')
-    cluster_target_id = request.args.get('cluster_target_id')
-    cluster_scope = request.args.get('cluster_scope', 'global')
+    cluster_mode = None if IS_EXHIBITION_MODE else request.args.get("cluster_mode")
+    cluster_sort = request.args.get("cluster_sort", "date_desc")
+    cluster_target_id = request.args.get("cluster_target_id")
+    cluster_scope = request.args.get("cluster_scope", "global")
 
     view_files = process_clustering(view_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope)
 
@@ -7015,14 +7660,18 @@ def gallery_view(folder_key):
         except sqlite3.Error:
             total_db_files = 0
 
-        scope_for_opts = 'global' if is_global_search else 'local'
-        extensions, prefixes, pfx_limit = get_filter_options_from_db(conn_opts, scope_for_opts, folder_path, recursive=is_recursive)
+        scope_for_opts = "global" if is_global_search else "local"
+        extensions, prefixes, pfx_limit = get_filter_options_from_db(
+            conn_opts, scope_for_opts, folder_path, recursive=is_recursive
+        )
         try:
-            users_rows = conn_opts.execute("SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'").fetchall()
-            available_raters = [{'id': str(r['user_id']), 'name': r['full_name']} for r in users_rows]
+            users_rows = conn_opts.execute(
+                "SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'"
+            ).fetchall()
+            available_raters = [{"id": str(r["user_id"]), "name": r["full_name"]} for r in users_rows]
         except sqlite3.Error:
-            available_raters =[]
-        available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
+            available_raters = []
+        available_raters.insert(0, {"id": "admin", "name": "System Admin"})
 
     breadcrumbs, ancestor_keys = [], set()
 
@@ -7031,75 +7680,123 @@ def gallery_view(folder_key):
         curr = folder_key
         while curr and curr in folders:
             f_info = folders[curr]
-            breadcrumbs.append({'key': curr, 'display_name': f_info['display_name']})
+            breadcrumbs.append({"key": curr, "display_name": f_info["display_name"]})
             ancestor_keys.add(curr)
-            curr = f_info.get('parent')
+            curr = f_info.get("parent")
         breadcrumbs.reverse()
     else:
-        breadcrumbs.append({'key': '_root_', 'display_name': 'Exhibition Home'})
+        breadcrumbs.append({"key": "_root_", "display_name": "Exhibition Home"})
 
     # --- TEMPLATE SELECTION ---
     try:
         with get_db_connection() as conn_opts:
-            users_rows = conn_opts.execute("SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'").fetchall()
-            available_raters = [{'id': str(r['user_id']), 'name': r['full_name']} for r in users_rows]
+            users_rows = conn_opts.execute(
+                "SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'"
+            ).fetchall()
+            available_raters = [{"id": str(r["user_id"]), "name": r["full_name"]} for r in users_rows]
     except sqlite3.Error:
-        available_raters =[]
-    available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
-    template_name = 'exhibition.html' if IS_EXHIBITION_MODE else 'index.html'
+        available_raters = []
+    available_raters.insert(0, {"id": "admin", "name": "System Admin"})
+    template_name = "exhibition.html" if IS_EXHIBITION_MODE else "index.html"
 
-    return render_template(template_name,
-                           files=view_files[:PAGE_SIZE],
-                           total_files=len(view_files),
-                           view_token=VIEW_SNAPSHOTS.put(_view_owner(), view_files),
-                           total_folder_files=total_folder_files,
-                           total_db_files=total_db_files,
-                           folders=folders,
-                           current_folder_key=folder_key,
-                           current_folder_info=current_folder_info,
-                           breadcrumbs=breadcrumbs,
-                           ancestor_keys=list(ancestor_keys),
-                           available_extensions=extensions,
-                           available_prefixes=prefixes,
-                           prefix_limit_reached=pfx_limit,
-                           selected_extensions=selected_exts,
-                           selected_prefixes=selected_prefixes,
-                           available_raters=available_raters, selected_raters=selected_raters, selected_rating_ranges=selected_rating_ranges,
-                           protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
-                           show_favorites=request.args.get('favorites', 'false').lower() == 'true',
-                           generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, enable_ai_dam=AI_CONFIG.enabled, is_ai_search=False, ai_query="", is_omniquery=is_omniquery, omniquery_sql=omniquery_sql, omniquery_dictionary=get_omniquery_dictionary(),
-                           is_global_search=is_global_search,
-                           active_filters_count=active_filters_count,
-                           current_scope=search_scope,
-                           is_recursive=is_recursive,
-                           server_dam_default=ENABLE_DAM_MODE,
-                           is_exhibition_mode=IS_EXHIBITION_MODE, blind_rating=is_effectively_blind(), global_blind_active=BLIND_RATING, # Pass flag to template
-                           app_version=APP_VERSION, github_url=GITHUB_REPO_URL,
-                           update_available=UPDATE_AVAILABLE, remote_version=REMOTE_VERSION,
-                           ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
-                           comfy_server_url=COMFYUI_SERVER_URL,
-                           stream_threshold=STREAM_THRESHOLD_BYTES,
-                           page_size_from_backend=PAGE_SIZE,
-                           force_login=FORCE_LOGIN,
-                           session_username=session.get('username', 'Guest'),
-                           session_user_id=session.get('user_id'),
-                           session_role=session.get('role'),
-                           session_full_name=session.get('full_name'), has_notes=False, note_files=[])
+    return render_template(
+        template_name,
+        files=view_files[:PAGE_SIZE],
+        total_files=len(view_files),
+        view_token=VIEW_SNAPSHOTS.put(_view_owner(), view_files),
+        total_folder_files=total_folder_files,
+        total_db_files=total_db_files,
+        folders=folders,
+        current_folder_key=folder_key,
+        current_folder_info=current_folder_info,
+        breadcrumbs=breadcrumbs,
+        ancestor_keys=list(ancestor_keys),
+        available_extensions=extensions,
+        available_prefixes=prefixes,
+        prefix_limit_reached=pfx_limit,
+        selected_extensions=selected_exts,
+        selected_prefixes=selected_prefixes,
+        available_raters=available_raters,
+        selected_raters=selected_raters,
+        selected_rating_ranges=selected_rating_ranges,
+        protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
+        show_favorites=request.args.get("favorites", "false").lower() == "true",
+        generate_waveforms=GENERATE_WAVEFORMS,
+        enable_ai_search=ENABLE_AI_SEARCH,
+        enable_ai_dam=AI_CONFIG.enabled,
+        is_ai_search=False,
+        ai_query="",
+        is_omniquery=is_omniquery,
+        omniquery_sql=omniquery_sql,
+        omniquery_dictionary=get_omniquery_dictionary(),
+        is_global_search=is_global_search,
+        active_filters_count=active_filters_count,
+        current_scope=search_scope,
+        is_recursive=is_recursive,
+        server_dam_default=ENABLE_DAM_MODE,
+        is_exhibition_mode=IS_EXHIBITION_MODE,
+        blind_rating=is_effectively_blind(),
+        global_blind_active=BLIND_RATING,  # Pass flag to template
+        app_version=APP_VERSION,
+        github_url=GITHUB_REPO_URL,
+        update_available=UPDATE_AVAILABLE,
+        remote_version=REMOTE_VERSION,
+        ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
+        comfy_server_url=COMFYUI_SERVER_URL,
+        stream_threshold=STREAM_THRESHOLD_BYTES,
+        page_size_from_backend=PAGE_SIZE,
+        force_login=FORCE_LOGIN,
+        session_username=session.get("username", "Guest"),
+        session_user_id=session.get("user_id"),
+        session_role=session.get("role"),
+        session_full_name=session.get("full_name"),
+        has_notes=False,
+        note_files=[],
+    )
 
-@app.route('/galleryout/upload', methods=['POST'])
+
+@app.route("/galleryout/upload", methods=["POST"])
 @management_api_only
 def upload_files():
-    folder_key = request.form.get('folder_key')
+    folder_key = request.form.get("folder_key")
     if not folder_key:
-        return jsonify({'status': 'error', 'message': 'No destination folder provided.'}), 400
+        return jsonify({"status": "error", "message": "No destination folder provided."}), 400
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        return jsonify({'status': 'error', 'message': 'Destination folder not found.'}), 404
-    destination_path = folders[folder_key]['path']
-    if 'files' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No files were uploaded.'}), 400
-    uploaded_files, errors, success_count = request.files.getlist('files'), {}, 0
-    ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp', '.gif', '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv', '.mts', '.ts', '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.json', '.txt', '.md'}
+        return jsonify({"status": "error", "message": "Destination folder not found."}), 404
+    destination_path = folders[folder_key]["path"]
+    if "files" not in request.files:
+        return jsonify({"status": "error", "message": "No files were uploaded."}), 400
+    uploaded_files, errors, success_count = request.files.getlist("files"), {}, 0
+    ALLOWED_EXTENSIONS = {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+        ".gif",
+        ".mp4",
+        ".mov",
+        ".webm",
+        ".mkv",
+        ".avi",
+        ".m4v",
+        ".wmv",
+        ".flv",
+        ".mts",
+        ".ts",
+        ".mp3",
+        ".wav",
+        ".ogg",
+        ".flac",
+        ".m4a",
+        ".aac",
+        ".json",
+        ".txt",
+        ".md",
+    }
     for file in uploaded_files:
         if file and file.filename:
             filename = safe_media_filename(file.filename)
@@ -7124,31 +7821,37 @@ def upload_files():
     if errors:
         # It named which files failed and never said why: the reason was
         # collected here and then dropped.
-        said = f'Successfully uploaded {success_count} files. The following files failed: {", ".join(errors.keys())}'
-        why = next((explain_a_refused_write(e, destination_path)
-                    for e in errors.values()
-                    if explain_a_refused_write(e, destination_path)), None)
-        return jsonify({'status': 'partial_success',
-                        'message': f'{said} {why}' if why else said}), 207
-    return jsonify({'status': 'success', 'message': f'Successfully uploaded {success_count} files.'})
+        said = f"Successfully uploaded {success_count} files. The following files failed: {', '.join(errors.keys())}"
+        why = next(
+            (
+                explain_a_refused_write(e, destination_path)
+                for e in errors.values()
+                if explain_a_refused_write(e, destination_path)
+            ),
+            None,
+        )
+        return jsonify({"status": "partial_success", "message": f"{said} {why}" if why else said}), 207
+    return jsonify({"status": "success", "message": f"Successfully uploaded {success_count} files."})
+
 
 # Global dictionary to track active background jobs
 # Structure: { 'job_id': {'status': 'processing', 'current': 0, 'total': 100, 'folder_key': '...'} }
 rescan_jobs = {}
+
 
 def background_rescan_worker(job_id, files_to_process):
     """
     Background worker that updates a global job status so the UI can poll for progress.
     """
     if not files_to_process:
-        rescan_jobs[job_id]['status'] = 'done'
+        rescan_jobs[job_id]["status"] = "done"
         return
 
     print(f"INFO: [Background] Job {job_id}: Rescanning {len(files_to_process)} files...")
 
     try:
         total = len(files_to_process)
-        rescan_jobs[job_id]['total'] = total
+        rescan_jobs[job_id]["total"] = total
 
         with get_db_connection() as conn:
             processed_count = 0
@@ -7165,14 +7868,15 @@ def background_rescan_worker(job_id, files_to_process):
 
                         processed_count += 1
                         # UPDATE PROGRESS
-                        rescan_jobs[job_id]['current'] = processed_count
+                        rescan_jobs[job_id]["current"] = processed_count
 
                     except Exception as e:
                         print(f"ERROR: Worker failed for a file: {e}")
 
             if results:
                 file_rows_3, gen_rows_3, gen_deletes_3 = split_file_results(results)
-                conn.executemany("""
+                conn.executemany(
+                    """
                     INSERT INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, workflow_files, workflow_prompt, workflow_hash, prompt_hash, models_hash)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
@@ -7197,150 +7901,158 @@ def background_rescan_worker(job_id, files_to_process):
                         ai_embedding = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN NULL ELSE files.ai_embedding END,
                         ai_last_scanned = CASE WHEN ABS(files.mtime - excluded.mtime) > 0.1 THEN 0 ELSE files.ai_last_scanned END,
                         mtime = excluded.mtime
-                """, file_rows_3)
+                """,
+                    file_rows_3,
+                )
                 upsert_generation_params(conn, gen_rows_3, gen_deletes_3)
                 conn.commit()
 
         print(f"INFO: [Background] Job {job_id} finished.")
-        rescan_jobs[job_id]['status'] = 'done'
+        rescan_jobs[job_id]["status"] = "done"
 
     except Exception as e:
         print(f"CRITICAL ERROR in Background Rescan: {e}")
-        rescan_jobs[job_id]['status'] = 'error'
-        rescan_jobs[job_id]['error'] = str(e)
+        rescan_jobs[job_id]["status"] = "error"
+        rescan_jobs[job_id]["error"] = str(e)
 
-@app.route('/galleryout/rescan_folder', methods=['POST'])
+
+@app.route("/galleryout/rescan_folder", methods=["POST"])
 @management_api_only
 def rescan_folder():
     data = request.json
-    folder_key = data.get('folder_key')
-    mode = data.get('mode', 'all')
+    folder_key = data.get("folder_key")
+    mode = data.get("mode", "all")
 
     if not folder_key:
-        return jsonify({'status': 'error', 'message': 'No folder provided.'}), 400
+        return jsonify({"status": "error", "message": "No folder provided."}), 400
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        return jsonify({'status': 'error', 'message': 'Folder not found.'}), 404
+        return jsonify({"status": "error", "message": "Folder not found."}), 404
 
-    folder_path = folders[folder_key]['path']
-    folder_name = folders[folder_key]['display_name']
+    folder_path = folders[folder_key]["path"]
+    folder_name = folders[folder_key]["display_name"]
 
     try:
         files_to_process = []
         with get_db_connection() as conn:
             query = "SELECT path, last_scanned FROM files WHERE path LIKE ?"
-            rows = conn.execute(query, (folder_path + os.sep + '%',)).fetchall()
+            rows = conn.execute(query, (folder_path + os.sep + "%",)).fetchall()
 
             folder_path_norm = os.path.normpath(folder_path)
             files_in_folder = [
-                {'path': row['path'], 'last_scanned': row['last_scanned']}
+                {"path": row["path"], "last_scanned": row["last_scanned"]}
                 for row in rows
-                if os.path.normpath(os.path.dirname(row['path'])) == folder_path_norm
+                if os.path.normpath(os.path.dirname(row["path"])) == folder_path_norm
             ]
 
             current_time = time.time()
-            if mode == 'recent':
+            if mode == "recent":
                 cutoff_time = current_time - 3600
-                files_to_process = [f['path'] for f in files_in_folder if (f['last_scanned'] or 0) < cutoff_time]
+                files_to_process = [f["path"] for f in files_in_folder if (f["last_scanned"] or 0) < cutoff_time]
             else:
-                files_to_process = [f['path'] for f in files_in_folder]
+                files_to_process = [f["path"] for f in files_in_folder]
 
         if not files_to_process:
-            return jsonify({'status': 'success', 'message': 'No files needed rescanning.', 'count': 0})
+            return jsonify({"status": "success", "message": "No files needed rescanning.", "count": 0})
 
         # --- JOB CREATION ---
         job_id = str(uuid.uuid4())
         rescan_jobs[job_id] = {
-            'status': 'processing',
-            'current': 0,
-            'total': len(files_to_process),
-            'folder_key': folder_key,
-            'folder_name': folder_name
+            "status": "processing",
+            "current": 0,
+            "total": len(files_to_process),
+            "folder_key": folder_key,
+            "folder_name": folder_name,
         }
 
         # Start Worker with Job ID
         threading.Thread(target=background_rescan_worker, args=(job_id, files_to_process), daemon=True).start()
 
-        return jsonify({
-            'status': 'started',
-            'job_id': job_id,
-            'total': len(files_to_process),
-            'message': 'Background process started.'
-        })
+        return jsonify(
+            {
+                "status": "started",
+                "job_id": job_id,
+                "total": len(files_to_process),
+                "message": "Background process started.",
+            }
+        )
 
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/check_rescan_status/<job_id>')
+
+@app.route("/galleryout/check_rescan_status/<job_id>")
 @management_api_only
 def check_rescan_status(job_id):
     job = rescan_jobs.get(job_id)
     if not job:
-        return jsonify({'status': 'not_found'})
+        return jsonify({"status": "not_found"})
 
     # Return copy of job data
     return jsonify(job)
 
-@app.route('/galleryout/create_folder', methods=['POST'])
+
+@app.route("/galleryout/create_folder", methods=["POST"])
 @management_api_only
 def create_folder():
     data = request.json
-    parent_key = data.get('parent_key', '_root_')
+    parent_key = data.get("parent_key", "_root_")
 
-    raw_name = data.get('folder_name', '').strip()
-    folder_name = re.sub(r'[\\/:*?"<>|]', '', raw_name)
+    raw_name = data.get("folder_name", "").strip()
+    folder_name = re.sub(r'[\\/:*?"<>|]', "", raw_name)
 
-    if not folder_name or folder_name in ['.', '..']:
-        return jsonify({'status': 'error', 'message': 'Invalid folder name provided.'}), 400
+    if not folder_name or folder_name in [".", ".."]:
+        return jsonify({"status": "error", "message": "Invalid folder name provided."}), 400
 
     folders = get_dynamic_folder_config()
     if parent_key not in folders:
-        return jsonify({'status': 'error', 'message': 'Parent folder not found.'}), 404
-    parent_path = folders[parent_key]['path']
+        return jsonify({"status": "error", "message": "Parent folder not found."}), 404
+    parent_path = folders[parent_key]["path"]
     new_folder_path = os.path.join(parent_path, folder_name)
     try:
         os.makedirs(new_folder_path, exist_ok=False)
         sync_folder_on_demand(parent_path)
-        return jsonify({'status': 'success', 'message': f'Folder "{folder_name}" created successfully.'})
+        return jsonify({"status": "success", "message": f'Folder "{folder_name}" created successfully.'})
     except FileExistsError:
-        return jsonify({'status': 'error', 'message': 'Folder already exists.'}), 400
+        return jsonify({"status": "error", "message": "Folder already exists."}), 400
     except Exception as e:
         said = explain_a_refused_write(e, new_folder_path)
-        return jsonify({'status': 'error', 'message': said or str(e)}), 500
+        return jsonify({"status": "error", "message": said or str(e)}), 500
 
-@app.route('/galleryout/mount_folder', methods=['POST'])
+
+@app.route("/galleryout/mount_folder", methods=["POST"])
 @management_api_only
 def mount_folder():
     data = request.json
-    link_name_raw = data.get('link_name', '').strip()
-    target_path_raw = data.get('target_path', '').strip()
+    link_name_raw = data.get("link_name", "").strip()
+    target_path_raw = data.get("target_path", "").strip()
 
     # Sanitize name
-    link_name = re.sub(r'[\\/:*?"<>|]', '', link_name_raw)
+    link_name = re.sub(r'[\\/:*?"<>|]', "", link_name_raw)
 
     if not link_name or not target_path_raw:
-        return jsonify({'status': 'error', 'message': 'Missing name or target path.'}), 400
+        return jsonify({"status": "error", "message": "Missing name or target path."}), 400
 
     # Security: Normalize target path
     target_path = os.path.normpath(target_path_raw)
 
     if not os.path.exists(target_path) or not os.path.isdir(target_path):
-        return jsonify({'status': 'error', 'message': f'Target path does not exist: {target_path}'}), 404
+        return jsonify({"status": "error", "message": f"Target path does not exist: {target_path}"}), 404
 
     # Construct link path inside BASE_OUTPUT_PATH
     link_full_path = os.path.join(BASE_OUTPUT_PATH, link_name)
 
     if os.path.exists(link_full_path):
-        return jsonify({'status': 'error', 'message': 'A folder with this name already exists.'}), 409
+        return jsonify({"status": "error", "message": "A folder with this name already exists."}), 409
 
     try:
-        if os.name == 'nt':
+        if os.name == "nt":
             # --- WINDOWS ROBUST LOGIC ---
 
             # 1. Force Windows-style backslashes for cmd.exe compatibility
             # (Fixes issues with mixed slashes like Z:/path\folder)
-            win_link = link_full_path.replace('/', '\\')
-            win_target = target_path.replace('/', '\\')
+            win_link = link_full_path.replace("/", "\\")
+            win_target = target_path.replace("/", "\\")
 
             # Attempt 1: Junction (/J)
             # Ideal for local drives, does not require Admin usually.
@@ -7361,7 +8073,9 @@ def mount_folder():
                 # Necessary for Network Shares, Virtual Drives, or Cross-Volume links.
                 # NOTE: This usually requires Developer Mode enabled OR running ComfyUI as Administrator.
                 cmd_symlink = f'mklink /D "{win_link}" "{win_target}"'
-                result_sym = subprocess.run(cmd_symlink, shell=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT)
+                result_sym = subprocess.run(
+                    cmd_symlink, shell=True, capture_output=True, text=True, timeout=FFPROBE_TIMEOUT
+                )
 
                 if result_sym.returncode != 0:
                     err_sym = result_sym.stderr.strip() or result_sym.stdout.strip()
@@ -7381,15 +8095,17 @@ def mount_folder():
 
         # Register in DB
         with get_db_connection() as conn:
-            norm_link_path = os.path.normpath(link_full_path).replace('\\', '/')
-            conn.execute("INSERT OR REPLACE INTO mounted_folders (path, target_source, created_at) VALUES (?, ?, ?)",
-                         (norm_link_path, target_path, time.time()))
+            norm_link_path = os.path.normpath(link_full_path).replace("\\", "/")
+            conn.execute(
+                "INSERT OR REPLACE INTO mounted_folders (path, target_source, created_at) VALUES (?, ?, ?)",
+                (norm_link_path, target_path, time.time()),
+            )
             conn.commit()
 
         # Refresh Cache
         get_dynamic_folder_config(force_refresh=True)
 
-        return jsonify({'status': 'success', 'message': f'Successfully linked "{link_name}".'})
+        return jsonify({"status": "success", "message": f'Successfully linked "{link_name}".'})
 
     except Exception as e:
         print(f"Mount Error: {e}")
@@ -7400,36 +8116,37 @@ def mount_folder():
             with contextlib.suppress(OSError):
                 os.unlink(link_full_path)
 
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/unmount_folder', methods=['POST'])
+
+@app.route("/galleryout/unmount_folder", methods=["POST"])
 @management_api_only
 def unmount_folder():
     data = request.json
-    folder_key = data.get('folder_key')
+    folder_key = data.get("folder_key")
 
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        return jsonify({'status':'error', 'message':'Folder not found'}), 404
+        return jsonify({"status": "error", "message": "Folder not found"}), 404
 
     folder_info = folders[folder_key]
-    path_to_remove = folder_info['path']
+    path_to_remove = folder_info["path"]
 
     # Security Check: Ensure it is actually in the mounted_folders table
     # This prevents users from deleting real folders via this API
     is_safe_mount = False
     with get_db_connection() as conn:
-        norm_path = os.path.normpath(path_to_remove).replace('\\', '/')
+        norm_path = os.path.normpath(path_to_remove).replace("\\", "/")
         row = conn.execute("SELECT path FROM mounted_folders WHERE path = ?", (norm_path,)).fetchone()
         if row:
             is_safe_mount = True
 
     if not is_safe_mount:
-        return jsonify({'status':'error', 'message':'This folder is not a managed mount point. Cannot unmount.'}), 403
+        return jsonify({"status": "error", "message": "This folder is not a managed mount point. Cannot unmount."}), 403
 
     try:
         # Remove the Link (Not the content)
-        if os.name == 'nt':
+        if os.name == "nt":
             # On Windows, rmdir removes the Junction point safely without deleting content
             os.rmdir(path_to_remove)
         else:
@@ -7447,69 +8164,61 @@ def unmount_folder():
             # 3. CRITICAL: Remove the file records associated with this path
             # from the Gallery DB -- the folder and everything inside it,
             # at any depth.
-            cond, param = _descendant_filter('path', path_to_remove)
+            cond, param = _descendant_filter("path", path_to_remove)
             conn.execute(f"DELETE FROM files WHERE {cond}", (param,))
 
             # 4. Also clean pending AI jobs for these files
-            q_cond, q_param = _descendant_filter('file_path', path_to_remove)
+            q_cond, q_param = _descendant_filter("file_path", path_to_remove)
             conn.execute(f"DELETE FROM ai_indexing_queue WHERE {q_cond}", (q_param,))
 
             conn.commit()
 
         get_dynamic_folder_config(force_refresh=True)
-        return jsonify({'status': 'success', 'message': 'Folder unmounted successfully.'})
+        return jsonify({"status": "success", "message": "Folder unmounted successfully."})
 
     except Exception as e:
         print(f"Unmount Error: {e}")
-        return jsonify({'status':'error', 'message':f"Error unmounting: {e}"}), 500
+        return jsonify({"status": "error", "message": f"Error unmounting: {e}"}), 500
 
-@app.route('/galleryout/api/browse_filesystem', methods=['POST'])
+
+@app.route("/galleryout/api/browse_filesystem", methods=["POST"])
 @management_api_only
 def browse_filesystem():
     data = request.json
     # Get path safely, handling None
-    raw_path = data.get('path', '')
+    raw_path = data.get("path", "")
     if raw_path is None:
-        raw_path = ''
+        raw_path = ""
     current_path = str(raw_path).strip()
 
-    response_data = {
-        'current_path': '',
-        'parent_path': '',
-        'folders': [],
-        'error': None
-    }
+    response_data = {"current_path": "", "parent_path": "", "folders": [], "error": None}
 
     # --- BLOCK 1: LIST DRIVES (WINDOWS) OR ROOT ---
     # If path is empty or 'Computer', list drives only and EXIT immediately.
-    if not current_path or current_path == 'Computer':
-        response_data['current_path'] = 'Computer'
+    if not current_path or current_path == "Computer":
+        response_data["current_path"] = "Computer"
 
-        if os.name == 'nt':
+        if os.name == "nt":
             drives = []
             # Iterate from A to Z
             for letter in string.ascii_uppercase:
-                drive_path = f'{letter}:\\'
+                drive_path = f"{letter}:\\"
                 try:
                     # Use isdir which is specific for drives
                     # Fault-tolerant check inside its own try/except block
                     if os.path.isdir(drive_path):
-                        drives.append({
-                            'name': f'Drive ({letter}:)',
-                            'path': drive_path,
-                            'is_drive': True
-                        })
+                        drives.append({"name": f"Drive ({letter}:)", "path": drive_path, "is_drive": True})
                 except Exception:
                     # If a specific drive hangs, is not ready, or errors,
                     # skip it and continue to the next letter.
                     continue
 
-            response_data['folders'] = drives
+            response_data["folders"] = drives
             # Return JSON immediately. Do not execute further code.
             return jsonify(response_data)
 
         # On Linux/Mac, root is simply '/'
-        current_path = '/'
+        current_path = "/"
 
     # --- BLOCK 2: SCAN FOLDER CONTENT ---
     # We reach here only if browsing inside a specific drive or folder
@@ -7521,31 +8230,27 @@ def browse_filesystem():
         with os.scandir(current_path) as it:
             for entry in it:
                 try:
-                    if entry.is_dir() and not entry.name.startswith('.'):
-                        items.append({
-                            'name': entry.name,
-                            'path': entry.path,
-                            'is_drive': False
-                        })
+                    if entry.is_dir() and not entry.name.startswith("."):
+                        items.append({"name": entry.name, "path": entry.path, "is_drive": False})
                 except Exception:
                     # Skip individual unreadable folders without breaking the list
                     continue
 
-        items.sort(key=lambda x: x['name'].lower())
-        response_data['folders'] = items
-        response_data['current_path'] = current_path
+        items.sort(key=lambda x: x["name"].lower())
+        response_data["folders"] = items
+        response_data["current_path"] = current_path
 
         # Calculate "Up" button (Parent)
         parent = os.path.dirname(current_path)
         if parent == current_path:
             # If at drive root (e.g. C:\), parent is Computer list
-            parent = '' if os.name == 'nt' else ''
+            parent = "" if os.name == "nt" else ""
 
-        response_data['parent_path'] = parent
+        response_data["parent_path"] = parent
 
     except Exception as e:
         # Catch errors accessing the specific folder (not the drives)
-        response_data['error'] = f"Error accessing folder: {e!s}"
+        response_data["error"] = f"Error accessing folder: {e!s}"
 
     return jsonify(response_data)
 
@@ -7628,8 +8333,7 @@ def prune_zip_cache(now=None):
         for entry in os.listdir(ZIP_CACHE_DIR):
             path = os.path.join(ZIP_CACHE_DIR, entry)
             try:
-                if os.path.isfile(path) and \
-                        os.stat(path).st_mtime < now - ZIP_RETENTION_SECONDS:
+                if os.path.isfile(path) and os.stat(path).st_mtime < now - ZIP_RETENTION_SECONDS:
                     os.remove(path)
                     removed += 1
             except OSError:
@@ -7641,13 +8345,13 @@ def prune_zip_cache(now=None):
 
     forgotten = []
     for job_id, job in list(zip_jobs.items()):
-        if job.get('status') == 'processing':
+        if job.get("status") == "processing":
             continue  # still being built; its file does not exist yet
-        filename = job.get('filename')
+        filename = job.get("filename")
         if filename:
             if not os.path.exists(os.path.join(ZIP_CACHE_DIR, filename)):
                 forgotten.append(job_id)
-        elif now - job.get('created', now) > ZIP_RETENTION_SECONDS:
+        elif now - job.get("created", now) > ZIP_RETENTION_SECONDS:
             forgotten.append(job_id)  # a failure, with no file to check
     for job_id in forgotten:
         zip_jobs.pop(job_id, None)
@@ -7662,88 +8366,87 @@ def background_zip_task(job_id, file_ids):
                 os.makedirs(ZIP_CACHE_DIR, exist_ok=True)
             except Exception as e:
                 print(f"ERROR: Could not create zip directory: {e}")
-                zip_jobs[job_id] = {'status': 'error', 'created': time.time(),
-                                    'message': f'Server permission error: {e}'}
+                zip_jobs[job_id] = {
+                    "status": "error",
+                    "created": time.time(),
+                    "message": f"Server permission error: {e}",
+                }
                 return
 
         zip_filename = f"smartgallery_{job_id}.zip"
         zip_filepath = os.path.join(ZIP_CACHE_DIR, zip_filename)
 
         with get_db_connection() as conn:
-            placeholders = ','.join(['?'] * len(file_ids))
+            placeholders = ",".join(["?"] * len(file_ids))
             query = f"SELECT path, name FROM files WHERE id IN ({placeholders})"
             files_to_zip = conn.execute(query, file_ids).fetchall()
 
         if not files_to_zip:
-            zip_jobs[job_id] = {'status': 'error', 'created': time.time(),
-                                'message': 'No valid files found.'}
+            zip_jobs[job_id] = {"status": "error", "created": time.time(), "message": "No valid files found."}
             return
 
-        entry_names = zip_entry_names([(row['path'], row['name'])
-                                       for row in files_to_zip])
-        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+        entry_names = zip_entry_names([(row["path"], row["name"]) for row in files_to_zip])
+        with zipfile.ZipFile(zip_filepath, "w", zipfile.ZIP_DEFLATED) as zf:
             for file_row, file_name in zip(files_to_zip, entry_names, strict=False):
-                file_path = file_row['path']
+                file_path = file_row["path"]
                 # Check the file esists
                 if os.path.exists(file_path):
                     # Add file to zip
                     zf.write(file_path, file_name)
 
         # Job completed succesfully
-        zip_jobs[job_id] = {
-            'status': 'ready',
-            'filename': zip_filename,
-            'created': time.time()
-        }
+        zip_jobs[job_id] = {"status": "ready", "filename": zip_filename, "created": time.time()}
 
         prune_zip_cache()
 
     except Exception as e:
         print(f"Zip Error: {e}")
-        zip_jobs[job_id] = {'status': 'error', 'message': str(e),
-                            'created': time.time()}
+        zip_jobs[job_id] = {"status": "error", "message": str(e), "created": time.time()}
 
-@app.route('/galleryout/prepare_batch_zip', methods=['POST'])
+
+@app.route("/galleryout/prepare_batch_zip", methods=["POST"])
 @management_api_only
 def prepare_batch_zip():
     data = request.json
-    file_ids = data.get('file_ids', [])
+    file_ids = data.get("file_ids", [])
     if not file_ids:
-        return jsonify({'status': 'error', 'message': 'No files specified.'}), 400
+        return jsonify({"status": "error", "message": "No files specified."}), 400
 
     job_id = str(uuid.uuid4())
-    zip_jobs[job_id] = {'status': 'processing', 'created': time.time()}
+    zip_jobs[job_id] = {"status": "processing", "created": time.time()}
 
     thread = threading.Thread(target=background_zip_task, args=(job_id, file_ids))
     thread.daemon = True
     thread.start()
 
-    return jsonify({'status': 'success', 'job_id': job_id, 'message': 'Zip generation started.'})
+    return jsonify({"status": "success", "job_id": job_id, "message": "Zip generation started."})
 
-@app.route('/galleryout/check_zip_status/<job_id>')
+
+@app.route("/galleryout/check_zip_status/<job_id>")
 @management_api_only
 def check_zip_status(job_id):
     job = zip_jobs.get(job_id)
     if not job:
-        return jsonify({'status': 'error',
-                        'message': 'That download is no longer available. '
-                                   'Please prepare it again.'}), 404
+        return jsonify(
+            {"status": "error", "message": "That download is no longer available. Please prepare it again."}
+        ), 404
     response_data = job.copy()
-    response_data.pop('created', None)
-    if job['status'] == 'ready' and 'filename' in job:
+    response_data.pop("created", None)
+    if job["status"] == "ready" and "filename" in job:
         # Prepared downloads are cleared after a day, and the entry saying
         # so was never cleared with them: this answered ready and handed
         # out a link that returned an HTML 404. Ask the disk, not the note.
-        if not os.path.exists(os.path.join(ZIP_CACHE_DIR, job['filename'])):
+        if not os.path.exists(os.path.join(ZIP_CACHE_DIR, job["filename"])):
             zip_jobs.pop(job_id, None)
-            return jsonify({'status': 'error',
-                            'message': 'That download has expired and been '
-                                       'cleared. Please prepare it again.'}), 404
-        response_data['download_url'] = url_for('serve_zip_file', filename=job['filename'])
+            return jsonify(
+                {"status": "error", "message": "That download has expired and been cleared. Please prepare it again."}
+            ), 404
+        response_data["download_url"] = url_for("serve_zip_file", filename=job["filename"])
 
     return jsonify(response_data)
 
-@app.route('/galleryout/serve_zip/<filename>')
+
+@app.route("/galleryout/serve_zip/<filename>")
 @management_api_only
 def serve_zip_file(filename):
     # A zip holds the original files, prompts and all. Only staff can make
@@ -7751,17 +8454,18 @@ def serve_zip_file(filename):
     # of the protection before.
     return send_from_directory(ZIP_CACHE_DIR, filename, as_attachment=True)
 
-@app.route('/galleryout/rename_folder/<string:folder_key>', methods=['POST'])
+
+@app.route("/galleryout/rename_folder/<string:folder_key>", methods=["POST"])
 @management_api_only
 def rename_folder(folder_key):
     if folder_key in PROTECTED_FOLDER_KEYS:
-        return jsonify({'status': 'error', 'message': 'This folder cannot be renamed.'}), 403
+        return jsonify({"status": "error", "message": "This folder cannot be renamed."}), 403
 
-    raw_name = request.json.get('new_name', '').strip()
+    raw_name = request.json.get("new_name", "").strip()
     # Separators and the rest of what Windows forbids come out here; the
     # test above this route pins that, because what matters is that a
     # rename cannot land outside the gallery.
-    new_name = re.sub(r'[\\/:*?"<>|]', '', raw_name)
+    new_name = re.sub(r'[\\/:*?"<>|]', "", raw_name)
     # What was missing is the other kind: the characters Windows does not
     # refuse but silently removes. .strip() above catches a plain trailing
     # space; a trailing dot got through, and so did "holiday. ",
@@ -7783,21 +8487,21 @@ def rename_folder(folder_key):
     new_name = strip_what_windows_drops(new_name)
 
     if not new_name:
-        return jsonify({'status': 'error', 'message': 'Invalid name.'}), 400
+        return jsonify({"status": "error", "message": "Invalid name."}), 400
 
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        return jsonify({'status': 'error', 'message': 'Folder not found.'}), 400
+        return jsonify({"status": "error", "message": "Folder not found."}), 400
 
     # 1. GET EXACT FOLDER PATH FROM CONFIG (Usually has forward slashes '/')
-    old_folder_path = folders[folder_key]['path']
+    old_folder_path = folders[folder_key]["path"]
 
     # 2. CONSTRUCT NEW FOLDER PATH (Preserving forward slashes structure)
     # We do NOT use os.path.join here for the folder part because it might force backslashes on Windows,
     # breaking consistency with get_dynamic_folder_config which enforces '/'.
     # We strip the last segment and append the new name.
-    if '/' in old_folder_path:
-        parent_dir = old_folder_path.rsplit('/', 1)[0]
+    if "/" in old_folder_path:
+        parent_dir = old_folder_path.rsplit("/", 1)[0]
         new_folder_path = f"{parent_dir}/{new_name}"
     else:
         # Fallback for systems strictly using backslash (unlikely given your logs, but safe)
@@ -7806,7 +8510,7 @@ def rename_folder(folder_key):
 
     # Check existence (using normpath for OS safety check)
     if os.path.exists(os.path.normpath(new_folder_path)):
-        return jsonify({'status': 'error', 'message': 'A folder with this name already exists.'}), 400
+        return jsonify({"status": "error", "message": "A folder with this name already exists."}), 400
 
     try:
         with get_db_connection() as conn:
@@ -7817,27 +8521,27 @@ def rename_folder(folder_key):
 
             # Prepare check. Compare on '/' alone: stored paths mix
             # separators, so a raw comparison misses everything nested.
-            is_windows = (os.name == 'nt')
-            std_old = _std_path(old_folder_path).rstrip('/')
+            is_windows = os.name == "nt"
+            std_old = _std_path(old_folder_path).rstrip("/")
             check_old = std_old.lower() if is_windows else std_old
 
             for row in all_files_cursor:
-                current_path = row['path']
+                current_path = row["path"]
                 norm_curr = _std_path(current_path)
                 check_curr = norm_curr.lower() if is_windows else norm_curr
 
                 # The trailing separator is the whole check: without it,
                 # renaming "box" also drags in every file under a sibling
                 # called "box_archive".
-                if not check_curr.startswith(check_old + '/'):
+                if not check_curr.startswith(check_old + "/"):
                     continue
 
                 # 1. KEEP THE TAIL, NOT JUST THE FILENAME
                 # A file one level deeper is stored as ".../box/2026-08-15\a.png";
                 # rebuilding from the basename alone would move it to the top
                 # of the renamed folder, where no such file exists.
-                relative = norm_curr[len(check_old) + 1:]
-                subdirs, filename = relative.rsplit('/', 1) if '/' in relative else ('', relative)
+                relative = norm_curr[len(check_old) + 1 :]
+                subdirs, filename = relative.rsplit("/", 1) if "/" in relative else ("", relative)
 
                 # 2. CONSTRUCT NEW PATH EXACTLY LIKE THE SCANNER DOES
                 # Scanner logic: os.path.join(folder_path_from_config, filename),
@@ -7849,12 +8553,12 @@ def rename_folder(folder_key):
                 # 3. GENERATE ID
                 new_id = hashlib.md5(new_file_path.encode()).hexdigest()
 
-                update_data.append((new_id, new_file_path, row['id']))
+                update_data.append((new_id, new_file_path, row["id"]))
                 ids_to_clean_collisions.append(new_id)
 
             # Cleanup Ghost records
             if ids_to_clean_collisions:
-                placeholders = ','.join(['?'] * len(ids_to_clean_collisions))
+                placeholders = ",".join(["?"] * len(ids_to_clean_collisions))
                 conn.execute(f"DELETE FROM files WHERE id IN ({placeholders})", ids_to_clean_collisions)
 
             # Atomic DB Update. The rows move first and the folder second, so
@@ -7873,20 +8577,20 @@ def rename_folder(folder_key):
             # Update Watch List
             watched_folders = conn.execute("SELECT path FROM ai_watched_folders").fetchall()
             for row in watched_folders:
-                w_path = row['path']
+                w_path = row["path"]
                 w_std = _std_path(w_path)
                 w_check = w_std.lower() if is_windows else w_std
 
                 if w_check == check_old:
                     conn.execute("UPDATE ai_watched_folders SET path = ? WHERE path = ?", (new_folder_path, w_path))
-                elif w_check.startswith(check_old + '/'):
+                elif w_check.startswith(check_old + "/"):
                     # Subfolder logic: keep the tail below the renamed folder.
                     # The separator above matters here too -- otherwise a
                     # watched "box_archive" is rewritten when "box" is renamed.
                     if is_windows:
                         # Case insensitive replace is tricky, let's assume structure holds
                         # We reconstruct the tail
-                        suffix = w_std[len(check_old):]
+                        suffix = w_std[len(check_old) :]
                         new_w_path = new_folder_path + suffix
                         conn.execute("UPDATE ai_watched_folders SET path = ? WHERE path = ?", (new_w_path, w_path))
                     else:
@@ -7896,33 +8600,34 @@ def rename_folder(folder_key):
             conn.commit()
 
         get_dynamic_folder_config(force_refresh=True)
-        return jsonify({'status': 'success', 'message': 'Folder renamed.'})
+        return jsonify({"status": "success", "message": "Folder renamed."})
 
     except Exception as e:
         print(f"Rename Error: {e}")
         said = explain_a_refused_write(e)
-        return jsonify({'status': 'error', 'message': said or f'Error: {e}'}), 500
+        return jsonify({"status": "error", "message": said or f"Error: {e}"}), 500
 
-@app.route('/galleryout/delete_folder/<string:folder_key>', methods=['POST'])
+
+@app.route("/galleryout/delete_folder/<string:folder_key>", methods=["POST"])
 @management_api_only
 def delete_folder(folder_key):
     if folder_key in PROTECTED_FOLDER_KEYS:
-        return jsonify({'status': 'error', 'message': 'This folder cannot be deleted.'}), 403
+        return jsonify({"status": "error", "message": "This folder cannot be deleted."}), 403
     folders = get_dynamic_folder_config()
     if folder_key not in folders:
-        return jsonify({'status': 'error', 'message': 'Folder not found.'}), 404
+        return jsonify({"status": "error", "message": "Folder not found."}), 404
     try:
-        folder_path = folders[folder_key]['path']
+        folder_path = folders[folder_key]["path"]
         with get_db_connection() as conn:
             # 1. Remove files from DB, including everything in subfolders
-            cond, param = _descendant_filter('path', folder_path)
+            cond, param = _descendant_filter("path", folder_path)
             conn.execute(f"DELETE FROM files WHERE {cond}", (param,))
 
             # 2. AI WATCHED FOLDERS CLEANUP (Logic added)
             # Remove the folder itself from watched list
             conn.execute("DELETE FROM ai_watched_folders WHERE path = ?", (folder_path,))
             # Remove any subfolders that might be in the watched list
-            w_cond, w_param = _descendant_filter('path', folder_path)
+            w_cond, w_param = _descendant_filter("path", folder_path)
             conn.execute(f"DELETE FROM ai_watched_folders WHERE {w_cond}", (w_param,))
 
             conn.commit()
@@ -7934,7 +8639,7 @@ def delete_folder(folder_key):
         # destructive action, not just the least.
         if os.path.islink(folder_path):
             os.unlink(folder_path)
-        elif os.name == 'nt' and os.path.isdir(folder_path) and not os.path.exists(os.path.join(folder_path, '..')):
+        elif os.name == "nt" and os.path.isdir(folder_path) and not os.path.exists(os.path.join(folder_path, "..")):
             # Fallback for Windows Junctions acting weirdly with islink
             try:
                 os.rmdir(folder_path)
@@ -7949,37 +8654,39 @@ def delete_folder(folder_key):
                 safe_delete_tree(folder_path)
 
         get_dynamic_folder_config(force_refresh=True)
-        return jsonify({'status': 'success', 'message': 'Folder deleted/unlinked.'})
+        return jsonify({"status": "success", "message": "Folder deleted/unlinked."})
     except Exception as e:
         print(f"Delete Folder Error: {e}")
         said = explain_a_refused_write(e)
-        return jsonify({'status': 'error', 'message': said or f'Error: {e}'}), 500
+        return jsonify({"status": "error", "message": said or f"Error: {e}"}), 500
 
 
-@app.route('/galleryout/api/current_view_ids')
+@app.route("/galleryout/api/current_view_ids")
 def get_current_view_ids():
     """Returns all file IDs in the caller's view snapshot (by view_token)."""
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-    snapshot = VIEW_SNAPSHOTS.get(request.args.get('view_token', ''), _view_owner())
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    snapshot = VIEW_SNAPSHOTS.get(request.args.get("view_token", ""), _view_owner())
     if snapshot is None:
-        return jsonify({'status': 'error', 'message': 'View expired. Reload the page.', 'stale': True}), 410
-    return jsonify({'status': 'success', 'ids': [f['id'] for f in snapshot]})
+        return jsonify({"status": "error", "message": "View expired. Reload the page.", "stale": True}), 410
+    return jsonify({"status": "success", "ids": [f["id"] for f in snapshot]})
 
-@app.route('/galleryout/load_more')
+
+@app.route("/galleryout/load_more")
 def load_more():
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'files': []}), 401
-    snapshot = VIEW_SNAPSHOTS.get(request.args.get('view_token', ''), _view_owner())
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"files": []}), 401
+    snapshot = VIEW_SNAPSHOTS.get(request.args.get("view_token", ""), _view_owner())
     if snapshot is None:
-        return jsonify({'files': [], 'stale': True})
-    offset = request.args.get('offset', 0, type=int)
+        return jsonify({"files": [], "stale": True})
+    offset = request.args.get("offset", 0, type=int)
     if offset >= len(snapshot):
         return jsonify(files=[])
     # Same rows as the album listing, so the same audience rule applies.
-    return jsonify(files=redact_file_listing(snapshot[offset:offset + PAGE_SIZE]))
+    return jsonify(files=redact_file_listing(snapshot[offset : offset + PAGE_SIZE]))
 
-def get_file_info_from_db(file_id, column='*'):
+
+def get_file_info_from_db(file_id, column="*"):
     with get_db_connection() as conn:
         row = conn.execute(f"SELECT {column} FROM files WHERE id = ?", (file_id,)).fetchone()
     # Said in words, because the default text for a 404 is "The requested
@@ -7987,7 +8694,7 @@ def get_file_info_from_db(file_id, column='*'):
     # is a real one, the picture behind it is not.
     if not row:
         abort(404, description="That file is not in the gallery.")
-    return dict(row) if column == '*' else row[0]
+    return dict(row) if column == "*" else row[0]
 
 
 def explain_a_refused_write(error, path=None):
@@ -8013,13 +8720,13 @@ def explain_a_refused_write(error, path=None):
         return None
     if error.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
         return None
-    where = path or getattr(error, 'filename', None)
+    where = path or getattr(error, "filename", None)
     folder = os.path.dirname(str(where)) if where else None
     return (
-        ("The gallery is not allowed to change %s."
-         % (('anything in ' + folder) if folder else 'that file'))
+        ("The gallery is not allowed to change %s." % (("anything in " + folder) if folder else "that file"))
         + " The folder may be mounted read-only, or owned by a different"
-          " user than the one the gallery runs as. Nothing was changed.")
+        " user than the one the gallery runs as. Nothing was changed."
+    )
 
 
 def answer_an_abort_readably(stop):
@@ -8043,16 +8750,15 @@ def answer_an_abort_readably(stop):
 
     In JSON, because every caller of these addresses reads JSON.
     """
-    return jsonify({'status': 'error',
-                    'message': stop.description or stop.name}), stop.code
+    return jsonify({"status": "error", "message": stop.description or stop.name}), stop.code
+
 
 # Path separators, control characters, and the characters Windows forbids
 # in a name. Everything else -- including every non-Latin script -- is a
 # legitimate part of a filename.
 _UNSAFE_NAME_CHARS = re.compile(r'[\x00-\x1f<>:"/\\|?*]')
 _WINDOWS_DEVICE_NAMES = (
-    {'CON', 'PRN', 'AUX', 'NUL'}
-    | {f'COM{i}' for i in range(1, 10)} | {f'LPT{i}' for i in range(1, 10)}
+    {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
 )
 
 
@@ -8072,10 +8778,10 @@ def strip_what_windows_drops(name):
     `holiday` when asked whether it exists, so a lookup agrees and only a
     directory listing disagrees. Scans list.
     """
-    return str(name or '').rstrip('. ')
+    return str(name or "").rstrip(". ")
 
 
-def safe_media_filename(filename, fallback='upload'):
+def safe_media_filename(filename, fallback="upload"):
     """Make a filename safe to write while keeping the name the user gave it.
 
     secure_filename() transliterates to ASCII and drops whatever will not
@@ -8090,22 +8796,22 @@ def safe_media_filename(filename, fallback='upload'):
     spaces Windows silently strips, and the reserved device names (CON,
     COM1, ...) which are not usable as files even with an extension.
     """
-    raw = str(filename or '').replace('\\', '/')
-    name = os.path.basename(raw.rstrip('/'))
-    name = _UNSAFE_NAME_CHARS.sub('_', name).strip()
+    raw = str(filename or "").replace("\\", "/")
+    name = os.path.basename(raw.rstrip("/"))
+    name = _UNSAFE_NAME_CHARS.sub("_", name).strip()
     # Only TRAILING dots and spaces: Windows drops them silently, so a name
     # ending in one never round-trips. A leading dot is left alone -- it is
     # how a hidden file is spelled, and stripping it would recreate the very
     # bug this function exists to fix.
     name = strip_what_windows_drops(name)
     # Whatever is left must be more than dots: "." and ".." are directories.
-    if not name.strip('.'):
+    if not name.strip("."):
         return fallback
 
     stem, ext = os.path.splitext(name)
     if stem.upper() in _WINDOWS_DEVICE_NAMES:
-        stem = f'_{stem}'
-    return f'{stem}{ext}'
+        stem = f"_{stem}"
+    return f"{stem}{ext}"
 
 
 def _get_unique_filepath(destination_folder, filename):
@@ -8129,23 +8835,24 @@ def _get_unique_filepath(destination_folder, filename):
 
     return full_path
 
-@app.route('/galleryout/move_batch', methods=['POST'])
+
+@app.route("/galleryout/move_batch", methods=["POST"])
 @management_api_only
 def move_batch():
     data = request.json
-    file_ids = data.get('file_ids', [])
-    dest_key = data.get('destination_folder')
+    file_ids = data.get("file_ids", [])
+    dest_key = data.get("destination_folder")
 
     folders = get_dynamic_folder_config()
 
     if not all([file_ids, dest_key, dest_key in folders]):
-        return jsonify({'status': 'error', 'message': 'Invalid data provided.'}), 400
+        return jsonify({"status": "error", "message": "Invalid data provided."}), 400
 
     moved_count, renamed_count, skipped_count = 0, 0, 0
     failed_files = []
 
     # Get destination path from config
-    dest_path_raw = folders[dest_key]['path']
+    dest_path_raw = folders[dest_key]["path"]
 
     with get_db_connection() as conn:
         for file_id in file_ids:
@@ -8167,32 +8874,36 @@ def move_batch():
 
                 file_info = dict(file_info_row)
 
-                source_path = file_info['path']
-                source_filename = file_info['name']
+                source_path = file_info["path"]
+                source_filename = file_info["name"]
 
                 # Metadata Pack
                 meta = {
-                    'size': file_info['size'],
-                    'has_workflow': file_info['has_workflow'],
-                    'is_favorite': file_info['is_favorite'],
-                    'type': file_info['type'],
-                    'duration': file_info['duration'],
-                    'dimensions': file_info['dimensions'],
-                    'ai_last_scanned': file_info['ai_last_scanned'],
-                    'ai_caption': file_info['ai_caption'],
-                    'ai_embedding': file_info['ai_embedding'],
-                    'ai_error': file_info['ai_error'],
-                    'workflow_files': file_info['workflow_files'],
-                    'workflow_prompt': file_info['workflow_prompt'],
-                    'workflow_hash': file_info.get('workflow_hash', ''),
-                    'prompt_hash': file_info.get('prompt_hash', ''),
-                    'models_hash': file_info.get('models_hash', '')
+                    "size": file_info["size"],
+                    "has_workflow": file_info["has_workflow"],
+                    "is_favorite": file_info["is_favorite"],
+                    "type": file_info["type"],
+                    "duration": file_info["duration"],
+                    "dimensions": file_info["dimensions"],
+                    "ai_last_scanned": file_info["ai_last_scanned"],
+                    "ai_caption": file_info["ai_caption"],
+                    "ai_embedding": file_info["ai_embedding"],
+                    "ai_error": file_info["ai_error"],
+                    "workflow_files": file_info["workflow_files"],
+                    "workflow_prompt": file_info["workflow_prompt"],
+                    "workflow_hash": file_info.get("workflow_hash", ""),
+                    "prompt_hash": file_info.get("prompt_hash", ""),
+                    "models_hash": file_info.get("models_hash", ""),
                 }
 
                 # Check Source vs Dest (OS Agnostic comparison)
                 source_dir_norm = os.path.normpath(os.path.dirname(source_path))
                 dest_dir_norm = os.path.normpath(dest_path_raw)
-                is_same_folder = (source_dir_norm.lower() == dest_dir_norm.lower()) if os.name == 'nt' else (source_dir_norm == dest_dir_norm)
+                is_same_folder = (
+                    (source_dir_norm.lower() == dest_dir_norm.lower())
+                    if os.name == "nt"
+                    else (source_dir_norm == dest_dir_norm)
+                )
 
                 if is_same_folder:
                     skipped_count += 1
@@ -8238,16 +8949,30 @@ def move_batch():
                             workflow_hash = ?, prompt_hash = ?, models_hash = ?
                         WHERE id = ?
                     """
-                    conn.execute(query_merge, (
-                        final_dest_path, final_filename, time.time(),
-                        meta['size'], meta['has_workflow'], meta['is_favorite'],
-                        meta['type'], meta['duration'], meta['dimensions'],
-                        meta['ai_last_scanned'], meta['ai_caption'], meta['ai_embedding'], meta['ai_error'],
-                        meta['workflow_files'],
-                        meta['workflow_prompt'],
-                        meta['workflow_hash'], meta['prompt_hash'], meta['models_hash'],
-                        new_id
-                    ))
+                    conn.execute(
+                        query_merge,
+                        (
+                            final_dest_path,
+                            final_filename,
+                            time.time(),
+                            meta["size"],
+                            meta["has_workflow"],
+                            meta["is_favorite"],
+                            meta["type"],
+                            meta["duration"],
+                            meta["dimensions"],
+                            meta["ai_last_scanned"],
+                            meta["ai_caption"],
+                            meta["ai_embedding"],
+                            meta["ai_error"],
+                            meta["workflow_files"],
+                            meta["workflow_prompt"],
+                            meta["workflow_hash"],
+                            meta["prompt_hash"],
+                            meta["models_hash"],
+                            new_id,
+                        ),
+                    )
                     # The ratings and comments belong to the file being moved,
                     # so they move onto the surviving row before the old one is
                     # deleted -- the delete cascades them away otherwise.
@@ -8256,8 +8981,10 @@ def move_batch():
                 else:
                     # STANDARD: Update existing record path/name.
                     _reassign_file_ids(conn, [(file_id, new_id)])
-                    conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?",
-                                (new_id, final_dest_path, final_filename, file_id))
+                    conn.execute(
+                        "UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?",
+                        (new_id, final_dest_path, final_filename, file_id),
+                    )
 
                 shutil.move(source_path, final_dest_path)
                 conn.execute("RELEASE move_one")
@@ -8283,26 +9010,27 @@ def move_batch():
     if failed_files:
         message += f" Failed: {len(failed_files)}."
 
-    status = 'success'
+    status = "success"
     if failed_files or (skipped_count > 0 and moved_count == 0):
-        status = 'partial_success'
+        status = "partial_success"
 
-    return jsonify({'status': status, 'message': message})
+    return jsonify({"status": status, "message": message})
 
-@app.route('/galleryout/copy_batch', methods=['POST'])
+
+@app.route("/galleryout/copy_batch", methods=["POST"])
 @management_api_only
 def copy_batch():
     data = request.json
-    file_ids = data.get('file_ids', [])
-    dest_key = data.get('destination_folder')
-    keep_favorites = data.get('keep_favorites', False)
+    file_ids = data.get("file_ids", [])
+    dest_key = data.get("destination_folder")
+    keep_favorites = data.get("keep_favorites", False)
 
     folders = get_dynamic_folder_config()
 
     if not all([file_ids, dest_key, dest_key in folders]):
-        return jsonify({'status': 'error', 'message': 'Invalid data provided.'}), 400
+        return jsonify({"status": "error", "message": "Invalid data provided."}), 400
 
-    dest_path_raw = folders[dest_key]['path']
+    dest_path_raw = folders[dest_key]["path"]
     copied_count = 0
     failed_files = []
 
@@ -8315,8 +9043,8 @@ def copy_batch():
                     continue
                 file_info = dict(file_info_row)
 
-                source_path = file_info['path']
-                source_filename = file_info['name']
+                source_path = file_info["path"]
+                source_filename = file_info["name"]
 
                 if not os.path.exists(source_path):
                     failed_files.append(f"{source_filename} (not found)")
@@ -8332,30 +9060,45 @@ def copy_batch():
 
                 # 4. Create DB Record
                 new_id = hashlib.md5(final_dest_path.encode()).hexdigest()
-                new_mtime = time.time() # New file gets new import time
+                new_mtime = time.time()  # New file gets new import time
 
                 # Logic for Favorites
-                is_fav = file_info['is_favorite'] if keep_favorites else 0
+                is_fav = file_info["is_favorite"] if keep_favorites else 0
 
                 # Insert Copy
                 # We copy AI data too because the image content is identical!
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO files (
                         id, path, mtime, name, type, duration, dimensions, has_workflow,
                         size, is_favorite, last_scanned, workflow_files, workflow_prompt,
                         ai_last_scanned, ai_caption, ai_embedding, ai_error,
                         workflow_hash, prompt_hash, models_hash
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    new_id, final_dest_path, new_mtime, final_filename,
-                    file_info['type'], file_info['duration'], file_info['dimensions'],
-                    file_info['has_workflow'], file_info['size'],
-                    is_fav, # User Choice
-                    file_info['last_scanned'],
-                    file_info['workflow_files'], file_info['workflow_prompt'],
-                    file_info['ai_last_scanned'], file_info['ai_caption'], file_info['ai_embedding'], file_info['ai_error'],
-                    file_info.get('workflow_hash', ''), file_info.get('prompt_hash', ''), file_info.get('models_hash', '')
-                ))
+                """,
+                    (
+                        new_id,
+                        final_dest_path,
+                        new_mtime,
+                        final_filename,
+                        file_info["type"],
+                        file_info["duration"],
+                        file_info["dimensions"],
+                        file_info["has_workflow"],
+                        file_info["size"],
+                        is_fav,  # User Choice
+                        file_info["last_scanned"],
+                        file_info["workflow_files"],
+                        file_info["workflow_prompt"],
+                        file_info["ai_last_scanned"],
+                        file_info["ai_caption"],
+                        file_info["ai_embedding"],
+                        file_info["ai_error"],
+                        file_info.get("workflow_hash", ""),
+                        file_info.get("prompt_hash", ""),
+                        file_info.get("models_hash", ""),
+                    ),
+                )
 
                 copied_count += 1
 
@@ -8366,23 +9109,24 @@ def copy_batch():
         conn.commit()
 
     msg = f"Successfully copied {copied_count} files."
-    status = 'success'
+    status = "success"
     if failed_files:
-        status = 'partial_success'
+        status = "partial_success"
         msg += f" Failed: {len(failed_files)}"
 
-    return jsonify({'status': status, 'message': msg})
+    return jsonify({"status": status, "message": msg})
 
-@app.route('/galleryout/delete_batch', methods=['POST'])
+
+@app.route("/galleryout/delete_batch", methods=["POST"])
 @management_api_only
 def delete_batch():
     try:
         # Preveniamo il crash gestendo tutto in un blocco try/except
         data = request.json
-        file_ids = data.get('file_ids', [])
+        file_ids = data.get("file_ids", [])
 
         if not file_ids:
-            return jsonify({'status': 'error', 'message': 'No files selected.'}), 400
+            return jsonify({"status": "error", "message": "No files selected."}), 400
 
         deleted_count = 0
         failed_files = []
@@ -8391,15 +9135,15 @@ def delete_batch():
         with get_db_connection() as conn:
             # 1. Generazione corretta e sicura dei placeholder SQL (?,?,?)
             # Usiamo una lista esplicita per evitare errori di sintassi python
-            placeholders = ','.join(['?'] * len(file_ids))
+            placeholders = ",".join(["?"] * len(file_ids))
 
             # Selezioniamo i file per verificare i percorsi
             query_select = f"SELECT id, path FROM files WHERE id IN ({placeholders})"
             files_to_delete = conn.execute(query_select, file_ids).fetchall()
 
             for row in files_to_delete:
-                file_path = row['path']
-                file_id = row['id']
+                file_path = row["path"]
+                file_id = row["id"]
 
                 try:
                     # Cancellazione Fisica (o spostamento nel cestino)
@@ -8419,63 +9163,66 @@ def delete_batch():
             # 2. Pulizia Database (Massiva)
             if ids_to_remove_from_db:
                 # Generiamo nuovi placeholder solo per gli ID effettivamente cancellati
-                db_placeholders = ','.join(['?'] * len(ids_to_remove_from_db))
+                db_placeholders = ",".join(["?"] * len(ids_to_remove_from_db))
                 query_delete = f"DELETE FROM files WHERE id IN ({db_placeholders})"
                 conn.execute(query_delete, ids_to_remove_from_db)
                 conn.commit()
 
         # Costruzione messaggio finale
         action = "moved to trash" if DELETE_TO else "deleted"
-        message = f'Successfully {action} {deleted_count} files.'
+        message = f"Successfully {action} {deleted_count} files."
 
-        status = 'success'
+        status = "success"
         if failed_files:
             message += f" Failed to delete {len(failed_files)} files."
-            status = 'partial_success'
+            status = "partial_success"
 
-        return jsonify({'status': status, 'message': message})
+        return jsonify({"status": status, "message": message})
 
     except Exception as e:
         # THIS solves the "doctype is not json" issue:
         # If there is a critical error, return an error JSON instead of a broken HTML page.
         print(f"CRITICAL ERROR in delete_batch: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/favorite_batch', methods=['POST'])
+
+@app.route("/galleryout/favorite_batch", methods=["POST"])
 @management_api_only
 def favorite_batch():
     data = request.json
-    file_ids, status = data.get('file_ids', []), data.get('status', False)
+    file_ids, status = data.get("file_ids", []), data.get("status", False)
     if not file_ids:
-        return jsonify({'status': 'error', 'message': 'No files selected'}), 400
+        return jsonify({"status": "error", "message": "No files selected"}), 400
     with get_db_connection() as conn:
-        placeholders = ','.join('?' * len(file_ids))
+        placeholders = ",".join("?" * len(file_ids))
         conn.execute(f"UPDATE files SET is_favorite = ? WHERE id IN ({placeholders})", [1 if status else 0] + file_ids)
         conn.commit()
-    return jsonify({'status': 'success', 'message': f"Updated favorites for {len(file_ids)} files."})
+    return jsonify({"status": "success", "message": f"Updated favorites for {len(file_ids)} files."})
 
-@app.route('/galleryout/toggle_favorite/<string:file_id>', methods=['POST'])
+
+@app.route("/galleryout/toggle_favorite/<string:file_id>", methods=["POST"])
 @management_api_only
 def toggle_favorite(file_id):
     with get_db_connection() as conn:
         current = conn.execute("SELECT is_favorite FROM files WHERE id = ?", (file_id,)).fetchone()
         if not current:
             abort(404, description="That file is not in the gallery.")
-        new_status = 1 - current['is_favorite']
+        new_status = 1 - current["is_favorite"]
         conn.execute("UPDATE files SET is_favorite = ? WHERE id = ?", (new_status, file_id))
         conn.commit()
-        return jsonify({'status': 'success', 'is_favorite': bool(new_status)})
+        return jsonify({"status": "success", "is_favorite": bool(new_status)})
+
 
 # --- FIX: ROBUST DELETE ROUTE ---
-@app.route('/galleryout/delete/<string:file_id>', methods=['POST'])
+@app.route("/galleryout/delete/<string:file_id>", methods=["POST"])
 @management_api_only
 def delete_file(file_id):
     with get_db_connection() as conn:
         file_info = conn.execute("SELECT path FROM files WHERE id = ?", (file_id,)).fetchone()
         if not file_info:
-            return jsonify({'status': 'success', 'message': 'File already deleted from database.'})
+            return jsonify({"status": "success", "message": "File already deleted from database."})
 
-        filepath = file_info['path']
+        filepath = file_info["path"]
 
         try:
             if os.path.exists(filepath):
@@ -8485,26 +9232,26 @@ def delete_file(file_id):
             # A real OS error occurred (e.g., permissions).
             print(f"ERROR: Could not delete file {filepath} from disk: {e}")
             said = explain_a_refused_write(e, filepath)
-            return jsonify({'status': 'error',
-                            'message': said or f'Could not delete file from disk: {e}'}), 500
+            return jsonify({"status": "error", "message": said or f"Could not delete file from disk: {e}"}), 500
 
         # Whether the file was deleted now or was already gone, we clean up the DB.
         conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
         conn.commit()
         action = "moved to trash" if DELETE_TO else "deleted"
-        return jsonify({'status': 'success', 'message': f'File {action} successfully.'})
+        return jsonify({"status": "success", "message": f"File {action} successfully."})
+
 
 # --- RENAME FILE ---
-@app.route('/galleryout/rename_file/<string:file_id>', methods=['POST'])
+@app.route("/galleryout/rename_file/<string:file_id>", methods=["POST"])
 @management_api_only
 def rename_file(file_id):
     data = request.json
-    new_name = data.get('new_name', '').strip()
+    new_name = data.get("new_name", "").strip()
 
     if not new_name or len(new_name) > 250:
-        return jsonify({'status': 'error', 'message': 'Invalid filename.'}), 400
+        return jsonify({"status": "error", "message": "Invalid filename."}), 400
     if re.search(r'[\\/:"*?<>|]', new_name):
-        return jsonify({'status': 'error', 'message': 'Invalid characters.'}), 400
+        return jsonify({"status": "error", "message": "Invalid characters."}), 400
 
     try:
         with get_db_connection() as conn:
@@ -8519,33 +9266,33 @@ def rename_file(file_id):
             file_info_row = conn.execute(query_fetch, (file_id,)).fetchone()
 
             if not file_info_row:
-                return jsonify({'status': 'error', 'message': 'File not found.'}), 404
+                return jsonify({"status": "error", "message": "File not found."}), 404
 
             # A sqlite3.Row has no .get(), and the metadata pack below uses
             # it -- so every rename raised AttributeError and returned 500.
             # move_batch/copy_batch already convert here for the same reason.
             file_info = dict(file_info_row)
 
-            old_path = file_info['path']
-            old_name = file_info['name']
+            old_path = file_info["path"]
+            old_name = file_info["name"]
 
             # Metadata Pack
             meta = {
-                'size': file_info['size'],
-                'has_workflow': file_info['has_workflow'],
-                'is_favorite': file_info['is_favorite'],
-                'type': file_info['type'],
-                'duration': file_info['duration'],
-                'dimensions': file_info['dimensions'],
-                'ai_last_scanned': file_info['ai_last_scanned'],
-                'ai_caption': file_info['ai_caption'],
-                'ai_embedding': file_info['ai_embedding'],
-                'ai_error': file_info['ai_error'],
-                'workflow_files': file_info['workflow_files'],
-                'workflow_prompt': file_info['workflow_prompt'],
-                'workflow_hash': file_info.get('workflow_hash', ''),
-                'prompt_hash': file_info.get('prompt_hash', ''),
-                'models_hash': file_info.get('models_hash', '')
+                "size": file_info["size"],
+                "has_workflow": file_info["has_workflow"],
+                "is_favorite": file_info["is_favorite"],
+                "type": file_info["type"],
+                "duration": file_info["duration"],
+                "dimensions": file_info["dimensions"],
+                "ai_last_scanned": file_info["ai_last_scanned"],
+                "ai_caption": file_info["ai_caption"],
+                "ai_embedding": file_info["ai_embedding"],
+                "ai_error": file_info["ai_error"],
+                "workflow_files": file_info["workflow_files"],
+                "workflow_prompt": file_info["workflow_prompt"],
+                "workflow_hash": file_info.get("workflow_hash", ""),
+                "prompt_hash": file_info.get("prompt_hash", ""),
+                "models_hash": file_info.get("models_hash", ""),
             }
 
             # Extension logic
@@ -8554,7 +9301,7 @@ def rename_file(file_id):
             final_new_name = new_name if new_ext else new_name + old_ext
 
             if final_new_name == old_name:
-                return jsonify({'status': 'error', 'message': 'Name unchanged.'}), 400
+                return jsonify({"status": "error", "message": "Name unchanged."}), 400
 
             # 2. Construct Path NATIVELY using os.path.join
             # This respects the OS separator (Mixed on Win, Forward on Linux)
@@ -8563,7 +9310,7 @@ def rename_file(file_id):
             new_path = os.path.join(dir_name, final_new_name)
 
             if os.path.exists(new_path):
-                 return jsonify({'status': 'error', 'message': f'File "{final_new_name}" already exists.'}), 409
+                return jsonify({"status": "error", "message": f'File "{final_new_name}" already exists.'}), 409
 
             new_id = hashlib.md5(new_path.encode()).hexdigest()
             existing_db = conn.execute("SELECT id FROM files WHERE id = ?", (new_id,)).fetchone()
@@ -8580,16 +9327,30 @@ def rename_file(file_id):
                         workflow_hash = ?, prompt_hash = ?, models_hash = ?
                     WHERE id = ?
                 """
-                conn.execute(query_merge, (
-                    new_path, final_new_name, time.time(),
-                    meta['size'], meta['has_workflow'], meta['is_favorite'],
-                    meta['type'], meta['duration'], meta['dimensions'],
-                    meta['ai_last_scanned'], meta['ai_caption'], meta['ai_embedding'], meta['ai_error'],
-                    meta['workflow_files'],
-                    meta['workflow_prompt'],
-                    meta['workflow_hash'], meta['prompt_hash'], meta['models_hash'],
-                    new_id
-                ))
+                conn.execute(
+                    query_merge,
+                    (
+                        new_path,
+                        final_new_name,
+                        time.time(),
+                        meta["size"],
+                        meta["has_workflow"],
+                        meta["is_favorite"],
+                        meta["type"],
+                        meta["duration"],
+                        meta["dimensions"],
+                        meta["ai_last_scanned"],
+                        meta["ai_caption"],
+                        meta["ai_embedding"],
+                        meta["ai_error"],
+                        meta["workflow_files"],
+                        meta["workflow_prompt"],
+                        meta["workflow_hash"],
+                        meta["prompt_hash"],
+                        meta["models_hash"],
+                        new_id,
+                    ),
+                )
                 # The ratings, comments and album membership belong to the
                 # file being renamed, so they move onto the row that survives
                 # -- deleting the old row cascades them away otherwise.
@@ -8598,8 +9359,10 @@ def rename_file(file_id):
             else:
                 # STANDARD SCENARIO
                 _reassign_file_ids(conn, [(file_id, new_id)])
-                conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?",
-                            (new_id, new_path, final_new_name, file_id))
+                conn.execute(
+                    "UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?",
+                    (new_id, new_path, final_new_name, file_id),
+                )
 
             # The file moves last: if this raises, the rows roll back with it
             # rather than leaving the database describing a file that is no
@@ -8608,19 +9371,17 @@ def rename_file(file_id):
 
             conn.commit()
 
-            return jsonify({
-                'status': 'success',
-                'message': 'File renamed.',
-                'new_name': final_new_name,
-                'new_id': new_id
-            })
+            return jsonify(
+                {"status": "success", "message": "File renamed.", "new_name": final_new_name, "new_id": new_id}
+            )
 
     except Exception as e:
         print(f"ERROR: Rename failed: {e}")
         said = explain_a_refused_write(e)
-        return jsonify({'status': 'error', 'message': said or f'Error: {e}'}), 500
+        return jsonify({"status": "error", "message": said or f"Error: {e}"}), 500
 
-@app.route('/galleryout/file_clean/<string:file_id>')
+
+@app.route("/galleryout/file_clean/<string:file_id>")
 def serve_cleaned_file(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
@@ -8630,10 +9391,10 @@ def serve_cleaned_file(file_id):
     requests a retry, it deletes the cache and regenerates it.
     """
     # Check if the frontend is forcing a regeneration
-    force_retry = request.args.get('retry') == 'true'
+    force_retry = request.args.get("retry") == "true"
 
     info = get_file_info_from_db(file_id)
-    filepath, mtime, file_type = info['path'], info['mtime'], info['type']
+    filepath, mtime, file_type = info["path"], info["mtime"], info["type"]
 
     # Calculate unique cache filename
     cache_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
@@ -8666,30 +9427,37 @@ def serve_cleaned_file(file_id):
                 # ffmpeg was found at all. The gallery kept working and quietly
                 # published the prompts, with a warning on a console nobody
                 # reads.
-                print(f"{Colors.RED}SECURITY: refusing to serve {info['name']} -- "
-                      f"its metadata could not be removed.{Colors.RESET}")
-                message = ("This file cannot be shown right now: its metadata could "
-                           "not be removed, and showing it unchanged would reveal the "
-                           "prompt and workflow stored inside it.")
-                if file_type in ('video', 'audio'):
-                    message += (" Removing metadata from video and audio needs ffmpeg:"
-                                " install it on PATH, or point FFPROBE_MANUAL_PATH at"
-                                " the folder holding ffmpeg and ffprobe.")
+                print(
+                    f"{Colors.RED}SECURITY: refusing to serve {info['name']} -- "
+                    f"its metadata could not be removed.{Colors.RESET}"
+                )
+                message = (
+                    "This file cannot be shown right now: its metadata could "
+                    "not be removed, and showing it unchanged would reveal the "
+                    "prompt and workflow stored inside it."
+                )
+                if file_type in ("video", "audio"):
+                    message += (
+                        " Removing metadata from video and audio needs ffmpeg:"
+                        " install it on PATH, or point FFPROBE_MANUAL_PATH at"
+                        " the folder holding ffmpeg and ffprobe."
+                    )
                 abort(503, description=message)
 
             # Not a protected request -- this caller is entitled to the
             # original, so an unstrippable file is served as it is.
             print(f"WARNING: Metadata stripping failed for {info['name']}. Falling back to original file.")
-            if filepath.lower().endswith('.webp'):
-                return send_file(filepath, mimetype='image/webp')
+            if filepath.lower().endswith(".webp"):
+                return send_file(filepath, mimetype="image/webp")
             return send_file(filepath)
 
     # Serve the file with correct mimetype for WebP
-    if filepath.lower().endswith('.webp'):
-        return send_file(clean_path, mimetype='image/webp')
+    if filepath.lower().endswith(".webp"):
+        return send_file(clean_path, mimetype="image/webp")
     return send_file(clean_path)
 
-@app.route('/galleryout/file/<string:file_id>')
+
+@app.route("/galleryout/file/<string:file_id>")
 def serve_file(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
@@ -8697,20 +9465,20 @@ def serve_file(file_id):
         return serve_cleaned_file(file_id)
 
     # Default: serve original
-    filepath = get_file_info_from_db(file_id, 'path')
-    if filepath.lower().endswith('.webp'):
-        return send_file(filepath, mimetype='image/webp')
+    filepath = get_file_info_from_db(file_id, "path")
+    if filepath.lower().endswith(".webp"):
+        return send_file(filepath, mimetype="image/webp")
     return send_file(filepath)
 
 
-@app.route('/galleryout/download/<string:file_id>')
+@app.route("/galleryout/download/<string:file_id>")
 def download_file(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
     if should_strip_metadata():
         # Logic for download is identical but we ensure serve_cleaned_file handles the cache
         info = get_file_info_from_db(file_id)
-        filepath, mtime, file_type = info['path'], info['mtime'], info['type']
+        filepath, mtime, file_type = info["path"], info["mtime"], info["type"]
 
         cache_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
         _, ext = os.path.splitext(filepath)
@@ -8723,24 +9491,31 @@ def download_file(file_id):
                 # Same refusal as the view route, and it matters more here:
                 # a download hands the visitor the file itself, prompt and
                 # workflow included, to keep and read at leisure.
-                print(f"{Colors.RED}SECURITY: refusing to hand out {info['name']} -- "
-                      f"its metadata could not be removed.{Colors.RESET}")
-                message = ("This file cannot be downloaded right now: its metadata "
-                           "could not be removed, and the original carries the prompt "
-                           "and workflow used to make it.")
-                if file_type in ('video', 'audio'):
-                    message += (" Removing metadata from video and audio needs ffmpeg:"
-                                " install it on PATH, or point FFPROBE_MANUAL_PATH at"
-                                " the folder holding ffmpeg and ffprobe.")
+                print(
+                    f"{Colors.RED}SECURITY: refusing to hand out {info['name']} -- "
+                    f"its metadata could not be removed.{Colors.RESET}"
+                )
+                message = (
+                    "This file cannot be downloaded right now: its metadata "
+                    "could not be removed, and the original carries the prompt "
+                    "and workflow used to make it."
+                )
+                if file_type in ("video", "audio"):
+                    message += (
+                        " Removing metadata from video and audio needs ffmpeg:"
+                        " install it on PATH, or point FFPROBE_MANUAL_PATH at"
+                        " the folder holding ffmpeg and ffprobe."
+                    )
                 abort(503, description=message)
 
-        return send_file(clean_path, as_attachment=True, download_name=info['name'])
+        return send_file(clean_path, as_attachment=True, download_name=info["name"])
 
     # Admin/Staff: serve original
-    filepath = get_file_info_from_db(file_id, 'path')
+    filepath = get_file_info_from_db(file_id, "path")
     return send_file(filepath, as_attachment=True)
 
-@app.route('/galleryout/workflow/<string:file_id>')
+
+@app.route("/galleryout/workflow/<string:file_id>")
 def download_workflow(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
@@ -8748,36 +9523,39 @@ def download_workflow(file_id):
         abort(403, description="Security Policy: Access to raw workflow metadata is restricted for your role.")
 
     info = get_file_info_from_db(file_id)
-    filepath = info['path']
-    original_filename = info['name']
+    filepath = info["path"]
+    original_filename = info["name"]
 
-    workflow_json = extract_workflow(filepath, target_type='ui')
+    workflow_json = extract_workflow(filepath, target_type="ui")
 
     if workflow_json:
         base_name, _ = os.path.splitext(original_filename)
         new_filename = f"{base_name}.json"
-        headers = {'Content-Disposition': f'attachment;filename="{new_filename}"'}
-        return Response(workflow_json, mimetype='application/json', headers=headers)
+        headers = {"Content-Disposition": f'attachment;filename="{new_filename}"'}
+        return Response(workflow_json, mimetype="application/json", headers=headers)
     abort(404, description="That file has no workflow saved in it.")
     return None
 
-@app.route('/galleryout/node_summary/<string:file_id>')
+
+@app.route("/galleryout/node_summary/<string:file_id>")
 def get_node_summary(file_id):
     if should_strip_metadata():
-        return jsonify({'status': 'error', 'message': 'Security Policy: Access to node summary is restricted for your role.'}), 403
+        return jsonify(
+            {"status": "error", "message": "Security Policy: Access to node summary is restricted for your role."}
+        ), 403
 
     try:
         file_info = get_file_info_from_db(file_id)
-        filepath = file_info['path']
-        db_dimensions = file_info.get('dimensions')
+        filepath = file_info["path"]
+        db_dimensions = file_info.get("dimensions")
 
-        ui_json = extract_workflow(filepath, target_type='ui')
+        ui_json = extract_workflow(filepath, target_type="ui")
         if not ui_json:
-            return jsonify({'status': 'error', 'message': 'Workflow not found for this file.'}), 404
+            return jsonify({"status": "error", "message": "Workflow not found for this file."}), 404
 
         summary_data = generate_node_summary(ui_json)
 
-        api_json = extract_workflow(filepath, target_type='api')
+        api_json = extract_workflow(filepath, target_type="api")
         meta_data = {}
 
         try:
@@ -8790,58 +9568,76 @@ def get_node_summary(file_id):
             parsed_meta = parser.parse()
 
             tech_count = 0
-            if parsed_meta.get('seed'):
+            if parsed_meta.get("seed"):
                 tech_count += 1
-            if parsed_meta.get('model'):
+            if parsed_meta.get("model"):
                 tech_count += 1
-            if parsed_meta.get('steps'):
+            if parsed_meta.get("steps"):
                 tech_count += 1
-            if parsed_meta.get('sampler'):
+            if parsed_meta.get("sampler"):
                 tech_count += 1
 
-            has_prompt = len(parsed_meta.get('positive_prompt', '')) > 5
-            has_loras = len(parsed_meta.get('loras', [])) > 0
+            has_prompt = len(parsed_meta.get("positive_prompt", "")) > 5
+            has_loras = len(parsed_meta.get("loras", [])) > 0
 
             if (has_prompt and tech_count >= 2) or has_loras:
                 meta_data = parsed_meta
-                if meta_data.get('loras'):
+                if meta_data.get("loras"):
                     enriched_loras = []
-                    for lora in meta_data['loras']:
-                        l_name = lora.get('name', '')
-                        l_val = lora.get('value', 1.0)
-                        l_dict = {"name": l_name, "value": l_val, "preview_image": None, "civitai_url": None, "civitai_id": None}
+                    for lora in meta_data["loras"]:
+                        l_name = lora.get("name", "")
+                        l_val = lora.get("value", 1.0)
+                        l_dict = {
+                            "name": l_name,
+                            "value": l_val,
+                            "preview_image": None,
+                            "civitai_url": None,
+                            "civitai_id": None,
+                        }
                         try:
-                            norm_name = os.path.normpath(l_name).replace(chr(92), '/')
+                            norm_name = os.path.normpath(l_name).replace(chr(92), "/")
                             clean_name = os.path.splitext(norm_name)[0]
                             base_path = os.path.join(LORAS_PATH, clean_name)
                             raw_path = os.path.join(LORAS_PATH, norm_name)
 
                             img_paths = [
-                                base_path + '.preview.png', base_path + '.png', base_path + '.jpg', base_path + '.jpeg',
-                                raw_path + '.preview.png', raw_path + '.png', raw_path + '.jpg', raw_path + '.jpeg'
+                                base_path + ".preview.png",
+                                base_path + ".png",
+                                base_path + ".jpg",
+                                base_path + ".jpeg",
+                                raw_path + ".preview.png",
+                                raw_path + ".png",
+                                raw_path + ".jpg",
+                                raw_path + ".jpeg",
                             ]
                             for ip in img_paths:
                                 if os.path.exists(ip):
-                                    with open(ip, 'rb') as f:
-                                        encoded = base64.b64encode(f.read()).decode('utf-8')
+                                    with open(ip, "rb") as f:
+                                        encoded = base64.b64encode(f.read()).decode("utf-8")
                                         mime = "image/png" if "png" in ip.lower() else "image/jpeg"
-                                        l_dict['preview_image'] = f"data:{mime};base64," + encoded
+                                        l_dict["preview_image"] = f"data:{mime};base64," + encoded
                                     break
 
                             json_paths = [
-                                base_path + '.civitai.info', base_path + '.metadata.json', base_path + '.info', base_path + '.json',
-                                raw_path + '.civitai.info', raw_path + '.metadata.json', raw_path + '.info', raw_path + '.json'
+                                base_path + ".civitai.info",
+                                base_path + ".metadata.json",
+                                base_path + ".info",
+                                base_path + ".json",
+                                raw_path + ".civitai.info",
+                                raw_path + ".metadata.json",
+                                raw_path + ".info",
+                                raw_path + ".json",
                             ]
                             for jp in json_paths:
                                 if os.path.exists(jp):
-                                    with open(jp, encoding='utf-8') as f:
+                                    with open(jp, encoding="utf-8") as f:
                                         jdata = json.load(f)
-                                    cid = jdata.get('modelId') or jdata.get('id')
-                                    if not cid and 'civitai' in jdata:
-                                        cid = jdata['civitai'].get('modelId') or jdata['civitai'].get('id')
+                                    cid = jdata.get("modelId") or jdata.get("id")
+                                    if not cid and "civitai" in jdata:
+                                        cid = jdata["civitai"].get("modelId") or jdata["civitai"].get("id")
                                     if cid:
-                                        l_dict['civitai_id'] = cid
-                                        l_dict['civitai_url'] = "https://civitai.com/models/" + str(cid)
+                                        l_dict["civitai_id"] = cid
+                                        l_dict["civitai_url"] = "https://civitai.com/models/" + str(cid)
                                         break
                         except Exception:
                             # Sidecar preview/metadata is decoration: a missing,
@@ -8849,11 +9645,11 @@ def get_node_summary(file_id):
                             # listed without its thumbnail, not the page broken.
                             pass
                         enriched_loras.append(l_dict)
-                    meta_data['loras'] = enriched_loras
-                if not meta_data.get('width') or not meta_data.get('height'):
-                    if db_dimensions and 'x' in db_dimensions:
-                        w, h = db_dimensions.split('x')
-                        meta_data['width'], meta_data['height'] = w.strip(), h.strip()
+                    meta_data["loras"] = enriched_loras
+                if not meta_data.get("width") or not meta_data.get("height"):
+                    if db_dimensions and "x" in db_dimensions:
+                        w, h = db_dimensions.split("x")
+                        meta_data["width"], meta_data["height"] = w.strip(), h.strip()
             else:
                 meta_data = {}
 
@@ -8861,11 +9657,7 @@ def get_node_summary(file_id):
             print(f"Metadata Validation Warning: {e}")
             meta_data = {}
 
-        return jsonify({
-            'status': 'success',
-            'summary': summary_data,
-            'meta': meta_data
-        })
+        return jsonify({"status": "success", "summary": summary_data, "meta": meta_data})
 
     except HTTPException as stop:
         # Answered 200 with the 404's own text pasted into the message, so
@@ -8873,21 +9665,22 @@ def get_node_summary(file_id):
         return answer_an_abort_readably(stop)
     except Exception as e:
         print(f"ERROR generating node summary: {e}")
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({"status": "error", "message": str(e)})
 
-@app.route('/galleryout/waveform/<string:file_id>')
+
+@app.route("/galleryout/waveform/<string:file_id>")
 def serve_waveform(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
     if not GENERATE_WAVEFORMS:
         abort(404, description="Waveforms are switched off in the settings.")
     info = get_file_info_from_db(file_id)
-    filepath = info['path']
-    file_type = info['type']
-    file_hash = hashlib.md5((filepath + str(info['mtime'])).encode()).hexdigest()
+    filepath = info["path"]
+    file_type = info["type"]
+    file_hash = hashlib.md5((filepath + str(info["mtime"])).encode()).hexdigest()
 
     try:
-        amp = float(request.args.get('amp', '1.0'))
+        amp = float(request.args.get("amp", "1.0"))
     except ValueError:
         amp = 1.0
 
@@ -8896,29 +9689,33 @@ def serve_waveform(file_id):
 
     # 1. Return cached waveform if it exists
     if os.path.exists(cache_path):
-        return send_file(cache_path, mimetype='image/png')
+        return send_file(cache_path, mimetype="image/png")
 
     # 2. On-the-fly generation for old/existing files
-    if file_type in ['video', 'audio']:
+    if file_type in ["video", "audio"]:
         new_cache_path = create_waveform(filepath, file_hash, file_type, amp)
         if new_cache_path and os.path.exists(new_cache_path):
-            return send_file(new_cache_path, mimetype='image/png')
+            return send_file(new_cache_path, mimetype="image/png")
 
     abort(404, description="No waveform could be made for that file.")
     return None
 
-@app.route('/galleryout/thumbnail/<string:file_id>')
+
+@app.route("/galleryout/thumbnail/<string:file_id>")
 def serve_thumbnail(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
     info = get_file_info_from_db(file_id)
-    filepath, mtime = info['path'], info['mtime']
+    filepath, mtime = info["path"], info["mtime"]
     file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
     existing_thumbnails = glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*"))
     if existing_thumbnails:
         return send_file(existing_thumbnails[0])
-    if (not thumbnail_generation_enabled() and info['type'] in ('image', 'animated_image')
-            and not should_strip_metadata()):
+    if (
+        not thumbnail_generation_enabled()
+        and info["type"] in ("image", "animated_image")
+        and not should_strip_metadata()
+    ):
         # Site setting says no thumbnail compute: serve the original and let
         # the browser downscale. Videos fall through — a raw video file can't
         # act as an <img> tile, so a single poster frame is still rendered
@@ -8934,13 +9731,14 @@ def serve_thumbnail(file_id):
             return send_file(filepath)
         abort(404, description="That thumbnail is not in the cache.")
     print(f"WARN: Thumbnail not found for {os.path.basename(filepath)}, generating...")
-    cache_path = create_thumbnail(filepath, file_hash, info['type'])
+    cache_path = create_thumbnail(filepath, file_hash, info["type"])
     if cache_path and os.path.exists(cache_path):
         return send_file(cache_path)
     return "Thumbnail generation failed", 404
 
+
 # --- STORYBOARD (GRID SYSTEM) - FAST + SMART CORRUPTION DETECTION ---
-@app.route('/galleryout/storyboard/<string:file_id>')
+@app.route("/galleryout/storyboard/<string:file_id>")
 @management_api_only
 def get_storyboard(file_id):
     # One request here is a probe, sometimes a transcode, and eleven ffmpeg
@@ -8954,14 +9752,14 @@ def get_storyboard(file_id):
 
     try:
         info = get_file_info_from_db(file_id)
-        if info['type'] not in ['video', 'animated_image']:
-            return jsonify({'status': 'error', 'message': 'Not a video or animated file'}), 400
+        if info["type"] not in ["video", "animated_image"]:
+            return jsonify({"status": "error", "message": "Not a video or animated file"}), 400
 
-        if info['type'] == 'video' and not has_ffmpeg:
-             return jsonify({'status': 'error', 'message': 'FFmpeg not available'}), 501
+        if info["type"] == "video" and not has_ffmpeg:
+            return jsonify({"status": "error", "message": "FFmpeg not available"}), 501
 
-        filepath = info['path']
-        mtime = info['mtime']
+        filepath = info["path"]
+        mtime = info["mtime"]
 
         # 2. Cache Strategy
         file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
@@ -8972,7 +9770,7 @@ def get_storyboard(file_id):
             cached_files = sorted(glob.glob(os.path.join(cache_subdir, "frame_*.jpg")))
             if len(cached_files) > 0:
                 urls = [f"/galleryout/storyboard_frame/{file_hash}/{os.path.basename(f)}" for f in cached_files]
-                return jsonify({'status': 'success', 'cached': True, 'frames': urls})
+                return jsonify({"status": "success", "cached": True, "frames": urls})
 
         os.makedirs(cache_subdir, exist_ok=True)
 
@@ -8981,31 +9779,35 @@ def get_storyboard(file_id):
         fps = 0
         total_video_frames = 0
 
-        if info['type'] == 'video' and has_ffmpeg:
+        if info["type"] == "video" and has_ffmpeg:
             # Get duration, fps, and frame count in ONE call
             try:
                 cmd_info = [
                     FFPROBE_EXECUTABLE_PATH,
-                    '-v', 'error',
-                    '-select_streams', 'v:0',
-                    '-show_entries', 'stream=duration,r_frame_rate,nb_frames',
-                    '-of', 'csv=p=0',
-                    filepath
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=duration,r_frame_rate,nb_frames",
+                    "-of",
+                    "csv=p=0",
+                    filepath,
                 ]
                 res = subprocess.run(
                     cmd_info,
                     capture_output=True,
                     text=True,
                     timeout=3,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
                 )
                 if res.stdout.strip():
-                    parts = res.stdout.strip().split(',')
+                    parts = res.stdout.strip().split(",")
 
                     if len(parts) > 0 and parts[0]:
                         fps_str = parts[0]
-                        if '/' in fps_str:
-                            num, den = fps_str.split('/')
+                        if "/" in fps_str:
+                            num, den = fps_str.split("/")
                             fps = float(num) / float(den)
                         else:
                             fps = float(fps_str)
@@ -9020,9 +9822,9 @@ def get_storyboard(file_id):
                 print(f"Info probe error: {e}")
 
             # Fallback: Try DB duration
-            if duration <= 0 and info.get('duration'):
+            if duration <= 0 and info.get("duration"):
                 try:
-                    parts = info['duration'].split(':')
+                    parts = info["duration"].split(":")
                     parts.reverse()
                     duration += float(parts[0])
                     if len(parts) > 1:
@@ -9039,17 +9841,20 @@ def get_storyboard(file_id):
                 try:
                     cmd_dur2 = [
                         FFPROBE_EXECUTABLE_PATH,
-                        '-v', 'error',
-                        '-show_entries', 'format=duration',
-                        '-of', 'default=noprint_wrappers=1:nokey=1',
-                        filepath
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        filepath,
                     ]
                     res2 = subprocess.run(
                         cmd_dur2,
                         capture_output=True,
                         text=True,
                         timeout=3,
-                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
                     )
                     if res2.stdout.strip():
                         duration = float(res2.stdout.strip())
@@ -9065,15 +9870,15 @@ def get_storyboard(file_id):
                 fps = total_video_frames / duration
 
         # Final fallback
-        if duration <= 0 and info['type'] == 'video':
+        if duration <= 0 and info["type"] == "video":
             duration = 60
-        if fps <= 0 and info['type'] == 'video':
+        if fps <= 0 and info["type"] == "video":
             fps = 25
 
         # 4. SMART CORRUPTION TEST - Test at 50% instead of end (faster + reliable)
         needs_transcode = False
 
-        if info['type'] == 'video' and has_ffmpeg and duration > 15:
+        if info["type"] == "video" and has_ffmpeg and duration > 15:
             print("🔍 Quick test...")
 
             ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
@@ -9091,13 +9896,19 @@ def get_storyboard(file_id):
             test_timeout = min(20, max(8, int(duration / 100)))  # 8-20s range
 
             cmd_test = [
-                ffmpeg_bin, '-y',
-                '-ss', f"{test_timestamp:.3f}",
-                '-i', filepath,
-                '-frames:v', '1',
-                '-vf', 'scale=-2:240:flags=fast_bilinear',
-                '-q:v', '5',
-                test_path
+                ffmpeg_bin,
+                "-y",
+                "-ss",
+                f"{test_timestamp:.3f}",
+                "-i",
+                filepath,
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=-2:240:flags=fast_bilinear",
+                "-q:v",
+                "5",
+                test_path,
             ]
 
             try:
@@ -9107,7 +9918,7 @@ def get_storyboard(file_id):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=test_timeout,
-                    creationflags=creation_flags
+                    creationflags=creation_flags,
                 )
 
                 if os.path.exists(test_path) and os.path.getsize(test_path) > 100:
@@ -9145,26 +9956,27 @@ def get_storyboard(file_id):
                 temp_transcoded = os.path.join(cache_subdir, f"temp_proxy_{uuid.uuid4().hex}.mp4")
 
                 cmd_transcode = [
-                    ffmpeg_bin, '-y',
-                    '-i', filepath,
-                    '-vf', 'scale=-2:480',
-                    '-c:v', 'libx264',
-                    '-preset', 'ultrafast',
-                    '-crf', '28',
-                    '-an',
-                    '-movflags', '+faststart',
-                    temp_transcoded
+                    ffmpeg_bin,
+                    "-y",
+                    "-i",
+                    filepath,
+                    "-vf",
+                    "scale=-2:480",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-crf",
+                    "28",
+                    "-an",
+                    "-movflags",
+                    "+faststart",
+                    temp_transcoded,
                 ]
 
                 creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
-                subprocess.run(
-                    cmd_transcode,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    creationflags=creation_flags
-                )
+                subprocess.run(cmd_transcode, capture_output=True, text=True, timeout=300, creationflags=creation_flags)
 
                 if os.path.exists(temp_transcoded) and os.path.getsize(temp_transcoded) > 1000:
                     print("✅ Transcoded")
@@ -9174,26 +9986,30 @@ def get_storyboard(file_id):
                     try:
                         cmd_info = [
                             FFPROBE_EXECUTABLE_PATH,
-                            '-v', 'error',
-                            '-select_streams', 'v:0',
-                            '-show_entries', 'stream=duration,r_frame_rate,nb_frames',
-                            '-of', 'csv=p=0',
-                            temp_transcoded
+                            "-v",
+                            "error",
+                            "-select_streams",
+                            "v:0",
+                            "-show_entries",
+                            "stream=duration,r_frame_rate,nb_frames",
+                            "-of",
+                            "csv=p=0",
+                            temp_transcoded,
                         ]
                         res = subprocess.run(
                             cmd_info,
                             capture_output=True,
                             text=True,
                             timeout=2,
-                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
                         )
                         if res.stdout.strip():
-                            parts = res.stdout.strip().split(',')
+                            parts = res.stdout.strip().split(",")
 
                             if len(parts) > 0 and parts[0]:
                                 fps_str = parts[0]
-                                if '/' in fps_str:
-                                    num, den = fps_str.split('/')
+                                if "/" in fps_str:
+                                    num, den = fps_str.split("/")
                                     fps = float(num) / float(den)
                                 else:
                                     fps = float(fps_str)
@@ -9226,7 +10042,7 @@ def get_storyboard(file_id):
                 actual_frame_number = None
 
                 # A. Video Extraction
-                if info['type'] == 'video' and has_ffmpeg:
+                if info["type"] == "video" and has_ffmpeg:
                     actual_timestamp = timestamp
 
                     if fps > 0:
@@ -9241,14 +10057,21 @@ def get_storyboard(file_id):
 
                     # Fast extraction
                     cmd = [
-                        ffmpeg_bin, '-y',
-                        '-ss', f"{timestamp:.3f}",
-                        '-i', source_for_extraction,
-                        '-frames:v', '1',
-                        '-vf', 'scale=-2:360:flags=fast_bilinear',
-                        '-q:v', '4',
-                        '-preset', 'ultrafast',
-                        out_path
+                        ffmpeg_bin,
+                        "-y",
+                        "-ss",
+                        f"{timestamp:.3f}",
+                        "-i",
+                        source_for_extraction,
+                        "-frames:v",
+                        "1",
+                        "-vf",
+                        "scale=-2:360:flags=fast_bilinear",
+                        "-q:v",
+                        "4",
+                        "-preset",
+                        "ultrafast",
+                        out_path,
                     ]
 
                     try:
@@ -9258,7 +10081,7 @@ def get_storyboard(file_id):
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             timeout=8,
-                            creationflags=creation_flags
+                            creationflags=creation_flags,
                         )
 
                         if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
@@ -9271,13 +10094,19 @@ def get_storyboard(file_id):
 
                         # Slow seek fallback
                         cmd_slow = [
-                            ffmpeg_bin, '-y',
-                            '-i', source_for_extraction,
-                            '-ss', f"{timestamp:.3f}",
-                            '-frames:v', '1',
-                            '-vf', 'scale=-2:360:flags=fast_bilinear',
-                            '-q:v', '4',
-                            out_path
+                            ffmpeg_bin,
+                            "-y",
+                            "-i",
+                            source_for_extraction,
+                            "-ss",
+                            f"{timestamp:.3f}",
+                            "-frames:v",
+                            "1",
+                            "-vf",
+                            "scale=-2:360:flags=fast_bilinear",
+                            "-q:v",
+                            "4",
+                            out_path,
                         ]
 
                         try:
@@ -9286,7 +10115,7 @@ def get_storyboard(file_id):
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
                                 timeout=40,
-                                creationflags=creation_flags
+                                creationflags=creation_flags,
                             )
 
                             if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
@@ -9298,14 +10127,14 @@ def get_storyboard(file_id):
                             pass
 
                 # B. Animation Extraction
-                elif info['type'] == 'animated_image':
+                elif info["type"] == "animated_image":
                     with Image.open(filepath) as source_img:
-                        is_anim = getattr(source_img, 'is_animated', False)
+                        is_anim = getattr(source_img, "is_animated", False)
                         total_frames = source_img.n_frames if is_anim else 1
                         pct = index / 10.0
                         target_frame_idx = int(pct * (total_frames - 1))
                         source_img.seek(target_frame_idx)
-                        img = source_img.copy().convert('RGB')
+                        img = source_img.copy().convert("RGB")
                         img.thumbnail((640, 360))
 
                         actual_timestamp = None
@@ -9319,7 +10148,7 @@ def get_storyboard(file_id):
                     if actual_timestamp is None:
                         # Animation
                         with Image.open(filepath) as temp_img:
-                            total_frames = temp_img.n_frames if getattr(temp_img, 'is_animated', False) else 1
+                            total_frames = temp_img.n_frames if getattr(temp_img, "is_animated", False) else 1
                         time_str = f"#{actual_frame_number}/{total_frames}"
                     else:
                         # Video: timestamp + frame
@@ -9370,7 +10199,7 @@ def get_storyboard(file_id):
         # 7. Parallel Execution
         timestamps = []
 
-        if info['type'] == 'video':
+        if info["type"] == "video":
             safe_end = max(0, duration - 0.1)
             # Generate 11 evenly spaced timestamps, but force the last one (index 10) to be the exact last frame
             base_timestamps = [(i, (safe_end / 10) * i) for i in range(11)]
@@ -9410,9 +10239,9 @@ def get_storyboard(file_id):
         final_urls = [url for url in frame_urls if url is not None]
 
         if not final_urls:
-             return jsonify({'status': 'error', 'message': 'Extraction failed completely.'}), 500
+            return jsonify({"status": "error", "message": "Extraction failed completely."}), 500
 
-        return jsonify({'status': 'success', 'cached': False, 'frames': final_urls})
+        return jsonify({"status": "success", "cached": False, "frames": final_urls})
 
     except HTTPException as stop:
         # Its own 404 or 403, not a fault to report as one.
@@ -9420,17 +10249,18 @@ def get_storyboard(file_id):
     except Exception as e:
         print(f"Storyboard error: {e}")
         traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/storyboard_frame/<string:file_hash>/<string:filename>')
+
+@app.route("/galleryout/storyboard_frame/<string:file_hash>/<string:filename>")
 def serve_storyboard_frame(file_hash, filename):
     # send_from_directory guards the filename but takes the directory on
     # trust, and the default converter matches any segment without a slash
     # -- `..` included. That made this route read the gallery root, which is
     # where the pictures are, for a caller with no session at all.
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
         abort(403, description="Access Denied.")
-    if not re.fullmatch(r'[0-9a-f]{32}', file_hash or ''):
+    if not re.fullmatch(r"[0-9a-f]{32}", file_hash or ""):
         abort(404, description="That is not the name of a stored frame.")
 
     # Frames are written by this app as frame_NN.jpg, so nothing is lost
@@ -9444,25 +10274,31 @@ def serve_storyboard_frame(file_hash, filename):
     if not _is_under(os.path.realpath(directory), os.path.realpath(THUMBNAIL_CACHE_DIR)):
         abort(404, description="That is not the name of a stored frame.")
     return send_from_directory(directory, safe_name)
+
+
 # Route to serve the cached frames
 
-@app.route('/galleryout/api/remix/object_info', methods=['POST'])
+
+@app.route("/galleryout/api/remix/object_info", methods=["POST"])
 @management_api_only
 def api_remix_object_info():
     try:
-        target_url = request.json.get('target_url', COMFYUI_SERVER_URL).strip()
+        target_url = request.json.get("target_url", COMFYUI_SERVER_URL).strip()
         if not target_url:
             target_url = COMFYUI_SERVER_URL
-        req = urllib.request.Request(f"{target_url.rstrip('/')}/object_info", headers={'Content-Type': 'application/json'})
+        req = urllib.request.Request(
+            f"{target_url.rstrip('/')}/object_info", headers={"Content-Type": "application/json"}
+        )
         with urllib.request.urlopen(req, timeout=10) as r:
-            return Response(r.read(), mimetype='application/json')
+            return Response(r.read(), mimetype="application/json")
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/input_file/<path:filename>')
+
+@app.route("/galleryout/input_file/<path:filename>")
 def serve_input_file(filename):
-    user_role = session.get('role', 'GUEST')
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and user_role not in ['ADMIN', 'MANAGER', 'STAFF']:
+    user_role = session.get("role", "GUEST")
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and user_role not in ["ADMIN", "MANAGER", "STAFF"]:
         abort(403, description="Access Denied.")
     """Serves input files directly from the ComfyUI Input folder."""
     try:
@@ -9486,8 +10322,8 @@ def serve_input_file(filename):
             abort(403)
 
         # For webp, frocing the correct mimetype
-        if filename.lower().endswith('.webp'):
-            return send_from_directory(BASE_INPUT_PATH, filename, mimetype='image/webp', as_attachment=False)
+        if filename.lower().endswith(".webp"):
+            return send_from_directory(BASE_INPUT_PATH, filename, mimetype="image/webp", as_attachment=False)
 
         # For all the other files, I let Flask guessing the mimetype, but disable the attachment, just a lil trick
         return send_from_directory(BASE_INPUT_PATH, filename, as_attachment=False)
@@ -9496,51 +10332,56 @@ def serve_input_file(filename):
         # the answer to the person asking is the same one sentence.
         abort(404, description="That file is not in the input folder.")
 
-@app.route('/galleryout/check_metadata/<string:file_id>')
+
+@app.route("/galleryout/check_metadata/<string:file_id>")
 def check_metadata(file_id):
     """
     Lightweight endpoint to check real-time status of metadata.
     Now includes Real Path resolution for mounted folders.
     """
     if not is_file_accessible(file_id):
-        return jsonify({'status': 'error', 'message': 'Access Denied'}), 403
+        return jsonify({"status": "error", "message": "Access Denied"}), 403
     try:
         with get_db_connection() as conn:
             # Added 'path' to selection to resolve symlinks
-            row = conn.execute("SELECT path, has_workflow, ai_caption, ai_last_scanned FROM files WHERE id = ?", (file_id,)).fetchone()
+            row = conn.execute(
+                "SELECT path, has_workflow, ai_caption, ai_last_scanned FROM files WHERE id = ?", (file_id,)
+            ).fetchone()
 
         if not row:
-            return jsonify({'status': 'error', 'message': 'File not found'}), 404
+            return jsonify({"status": "error", "message": "File not found"}), 404
 
         # Resolve Real Path (Handles Windows Junctions and Linux Symlinks)
-        internal_path = row['path']
+        internal_path = row["path"]
         real_path_resolved = os.path.realpath(internal_path)
 
         # Check if they differ (ignore case on Windows for safety)
         is_different = False
-        if os.name == 'nt':
+        if os.name == "nt":
             if internal_path.lower() != real_path_resolved.lower():
                 is_different = True
         elif internal_path != real_path_resolved:
             is_different = True
 
-        return jsonify({
-            'status': 'success',
-            'has_workflow': bool(row['has_workflow']),
-            'has_ai_caption': bool(row['ai_caption']),
-            'ai_caption': row['ai_caption'] or "",
-            'ai_last_scanned': row['ai_last_scanned'] or 0,
-            # Send real_path only if it's actually different (a link), and
-            # never to someone who is not meant to know where the library
-            # lives on disk.
-            'real_path': (real_path_resolved
-                          if is_different and not should_strip_metadata() else None)
-        })
+        return jsonify(
+            {
+                "status": "success",
+                "has_workflow": bool(row["has_workflow"]),
+                "has_ai_caption": bool(row["ai_caption"]),
+                "ai_caption": row["ai_caption"] or "",
+                "ai_last_scanned": row["ai_last_scanned"] or 0,
+                # Send real_path only if it's actually different (a link), and
+                # never to someone who is not meant to know where the library
+                # lives on disk.
+                "real_path": (real_path_resolved if is_different and not should_strip_metadata() else None),
+            }
+        )
     except Exception as e:
         print(f"Metadata Check Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-def stream_media_process(process, label='', stall_timeout=None):
+
+def stream_media_process(process, label="", stall_timeout=None):
     """Hand a transcoder's output to the caller, and give up if it goes quiet.
 
     The reading thread is the one serving the request, so it cannot watch
@@ -9563,8 +10404,7 @@ def stream_media_process(process, label='', stall_timeout=None):
         while not stopped.wait(min(1.0, max(stall_timeout / 4.0, 0.05))):
             if time.monotonic() - last_output[0] > stall_timeout:
                 gave_up.append(True)
-                print(f"Stream Stalled: no output for {stall_timeout}s, "
-                      f"stopping the transcode of {label or 'a file'}.")
+                print(f"Stream Stalled: no output for {stall_timeout}s, stopping the transcode of {label or 'a file'}.")
                 with contextlib.suppress(Exception):
                     process.kill()
                 return
@@ -9595,11 +10435,13 @@ def stream_media_process(process, label='', stall_timeout=None):
         # A stream that produced nothing at all reaches the player as an
         # empty video with no explanation, so say so where it can be read.
         if not delivered[0] and not gave_up:
-            print(f"Stream Empty: the transcode of {label or 'a file'} "
-                  f"produced no output (exit code {process.returncode}).")
+            print(
+                f"Stream Empty: the transcode of {label or 'a file'} "
+                f"produced no output (exit code {process.returncode})."
+            )
 
 
-@app.route('/galleryout/stream/<string:file_id>')
+@app.route("/galleryout/stream/<string:file_id>")
 def stream_video(file_id):
     if not is_file_accessible(file_id):
         abort(403, description="Access Denied.")
@@ -9608,7 +10450,7 @@ def stream_video(file_id):
     This allows professional formats like ProRes to be viewed in any browser.
     Includes a safety scale filter to ensure smooth playback even for 4K+ sources.
     """
-    filepath = get_file_info_from_db(file_id, 'path')
+    filepath = get_file_info_from_db(file_id, "path")
 
     if not FFPROBE_EXECUTABLE_PATH:
         abort(404, description="FFmpeg/FFprobe not found on system.")
@@ -9627,19 +10469,31 @@ def stream_video(file_id):
     # ADDED: -map_metadata -1 to ensure NO workflow info is streamed to the client
     cmd = [
         ffmpeg_path,
-        '-i', filepath,
-        '-map_metadata', '-1',             # <--- STRIP METADATA FROM STREAM
-        '-map_metadata:s:v', '-1',          # <--- STRIP VIDEO STREAM DATA
-        '-map_metadata:s:a', '-1',          # <--- STRIP AUDIO STREAM DATA
-        '-vcodec', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-vf', "scale='min(1280,iw)':-2",
-        '-acodec', 'aac',
-        '-b:a', '128k',
-        '-f', 'mp4',
-        '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-        'pipe:1'
+        "-i",
+        filepath,
+        "-map_metadata",
+        "-1",  # <--- STRIP METADATA FROM STREAM
+        "-map_metadata:s:v",
+        "-1",  # <--- STRIP VIDEO STREAM DATA
+        "-map_metadata:s:a",
+        "-1",  # <--- STRIP AUDIO STREAM DATA
+        "-vcodec",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-tune",
+        "zerolatency",
+        "-vf",
+        "scale='min(1280,iw)':-2",
+        "-acodec",
+        "aac",
+        "-b:a",
+        "128k",
+        "-f",
+        "mp4",
+        "-movflags",
+        "frag_keyframe+empty_moov+default_base_moof",
+        "pipe:1",
     ]
 
     def generate():
@@ -9648,21 +10502,24 @@ def stream_video(file_id):
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
-        return stream_media_process(process, os.path.basename(filepath or ''))
+        return stream_media_process(process, os.path.basename(filepath or ""))
 
-    return Response(generate(), mimetype='video/mp4')
+    return Response(generate(), mimetype="video/mp4")
+
 
 # --- COLLECTIONS / CATEGORIES API ---
+
 
 def get_descendant_file_counts(conn, countable_collection_ids):
     """Count unique files in descendant collections, excluding direct membership."""
     if not countable_collection_ids:
         return {}
 
-    placeholders = ','.join('?' for _ in countable_collection_ids)
-    rows = conn.execute(f"""
+    placeholders = ",".join("?" for _ in countable_collection_ids)
+    rows = conn.execute(
+        f"""
         WITH RECURSIVE counted_descendants(id) AS (
             SELECT DISTINCT collection_id
             FROM collection_files
@@ -9683,16 +10540,18 @@ def get_descendant_file_counts(conn, countable_collection_ids):
         JOIN collection_files cf ON cf.collection_id = a.descendant_id
         WHERE a.ancestor_id != a.descendant_id
         GROUP BY a.ancestor_id
-    """, countable_collection_ids).fetchall()
-    return {row['ancestor_id']: row['descendant_file_count'] for row in rows}
+    """,
+        countable_collection_ids,
+    ).fetchall()
+    return {row["ancestor_id"]: row["descendant_file_count"] for row in rows}
 
 
-@app.route('/galleryout/api/collections', methods=['GET'])
+@app.route("/galleryout/api/collections", methods=["GET"])
 def get_collections():
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-    user_id = str(session.get('user_id', '')).strip()
-    user_role = session.get('role', 'GUEST')
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    user_id = str(session.get("user_id", "")).strip()
+    user_role = session.get("role", "GUEST")
     with get_db_connection() as conn:
         rows = conn.execute("""
             SELECT c.*,
@@ -9703,10 +10562,10 @@ def get_collections():
         """).fetchall()
 
         all_cols = [dict(r) for r in rows]
-        flags = [c for c in all_cols if c['type'] == 'system_flag']
-        albums = [c for c in all_cols if c['type'] == 'user_album']
+        flags = [c for c in all_cols if c["type"] == "system_flag"]
+        albums = [c for c in all_cols if c["type"] == "user_album"]
         for flag in flags:
-            flag.pop('file_count', None)
+            flag.pop("file_count", None)
 
         filtered_albums = []
 
@@ -9716,96 +10575,93 @@ def get_collections():
         # every album, its file counts, and the shared_users list naming who
         # each private album is shared with. With no login configured there is
         # one person and they own the library, so they are privileged.
-        is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-        is_privileged = is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']
+        is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+        is_privileged = is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]
 
         if not is_privileged:
             explicit_access_ids = set()
-            album_dict = {c['id']: c for c in albums}
+            album_dict = {c["id"]: c for c in albums}
 
             # Step 1: Identify explicitly accessible collections
             for c in albums:
-                is_public = int(c.get('is_public', 0)) == 1
-                shared_raw = str(c.get('shared_users', '')).split(',')
+                is_public = int(c.get("is_public", 0)) == 1
+                shared_raw = str(c.get("shared_users", "")).split(",")
                 shared_list = [str(uid).strip() for uid in shared_raw if uid.strip()]
 
                 if is_public or str(user_id) in shared_list:
-                    explicit_access_ids.add(c['id'])
+                    explicit_access_ids.add(c["id"])
                     if str(user_id) in shared_list:
-                        c['is_shared_access'] = True
+                        c["is_shared_access"] = True
 
             # Step 2: Traverse upwards to unlock ancestor paths for the tree
             required_ancestors = set()
             for cid in explicit_access_ids:
                 curr = album_dict.get(cid)
-                while curr and curr.get('parent_id'):
-                    pid = curr['parent_id']
+                while curr and curr.get("parent_id"):
+                    pid = curr["parent_id"]
                     required_ancestors.add(pid)
                     curr = album_dict.get(pid)
 
             # Step 3: Build final list with locked/unlocked flags
             for c in albums:
-                if c['id'] in explicit_access_ids:
-                    c['restricted_access'] = False
+                if c["id"] in explicit_access_ids:
+                    c["restricted_access"] = False
                     filtered_albums.append(c)
-                elif c['id'] in required_ancestors:
-                    c['restricted_access'] = True
+                elif c["id"] in required_ancestors:
+                    c["restricted_access"] = True
                     filtered_albums.append(c)
 
         elif IS_EXHIBITION_MODE:
             for c in albums:
-                shared_raw = str(c.get('shared_users', '')).split(',')
+                shared_raw = str(c.get("shared_users", "")).split(",")
                 shared_list = [str(uid).strip() for uid in shared_raw if uid.strip()]
                 if shared_list:
-                    c['is_shared_access'] = True
-                c['restricted_access'] = False
+                    c["is_shared_access"] = True
+                c["restricted_access"] = False
             filtered_albums = albums
 
         else:
             for c in albums:
-                c['restricted_access'] = False
+                c["restricted_access"] = False
             filtered_albums = albums
 
         if not is_privileged:
             # Ancestors are listed so the tree can be drawn, but their
             # contents are not this caller's to count.
             count_album_ids = [
-                c['id'] for c in filtered_albums
-                if not c.get('restricted_access') and (c.get('is_public') or c.get('is_shared_access'))
+                c["id"]
+                for c in filtered_albums
+                if not c.get("restricted_access") and (c.get("is_public") or c.get("is_shared_access"))
             ]
         else:
-            count_album_ids = [c['id'] for c in filtered_albums]
+            count_album_ids = [c["id"] for c in filtered_albums]
 
         all_count = 0
         if count_album_ids:
-            placeholders = ','.join('?' for _ in count_album_ids)
+            placeholders = ",".join("?" for _ in count_album_ids)
             all_count = conn.execute(
                 f"SELECT COUNT(DISTINCT file_id) FROM collection_files WHERE collection_id IN ({placeholders})",
-                count_album_ids
+                count_album_ids,
             ).fetchone()[0]
 
         # Map user names for shared collections tooltip
         user_rows = conn.execute("SELECT user_id, full_name FROM users").fetchall()
-        user_map = {str(r['user_id']): r['full_name'] for r in user_rows}
+        user_map = {str(r["user_id"]): r["full_name"] for r in user_rows}
 
         descendant_counts = get_descendant_file_counts(conn, count_album_ids)
         for c in filtered_albums:
-            c['descendant_file_count'] = descendant_counts.get(c['id'], 0)
-            if c.get('restricted_access'):
-                c['file_count'] = None
-            if c.get('shared_users'):
-                uids = [u.strip() for u in str(c['shared_users']).split(',') if u.strip()]
+            c["descendant_file_count"] = descendant_counts.get(c["id"], 0)
+            if c.get("restricted_access"):
+                c["file_count"] = None
+            if c.get("shared_users"):
+                uids = [u.strip() for u in str(c["shared_users"]).split(",") if u.strip()]
                 names = [user_map.get(u, "Unknown User") for u in uids]
-                c['shared_user_names'] = ", ".join(names)
+                c["shared_user_names"] = ", ".join(names)
+
+        return jsonify({"flags": flags, "albums": filtered_albums, "all_count": all_count})
 
 
-        return jsonify({
-            'flags': flags,
-            'albums': filtered_albums,
-            'all_count': all_count
-        })
-
-@app.route('/galleryout/api/sidebar_state')
+@app.route("/galleryout/api/sidebar_state")
 @management_api_only
 def get_sidebar_state():
     """Returns the current state of folders and collections for real-time sync.
@@ -9847,91 +10703,89 @@ def get_sidebar_state():
         album_dicts = [dict(r) for r in albums]
 
         user_rows = conn.execute("SELECT user_id, full_name FROM users").fetchall()
-        user_map = {str(r['user_id']): r['full_name'] for r in user_rows}
+        user_map = {str(r["user_id"]): r["full_name"] for r in user_rows}
 
         for album in album_dicts:
-            if album.get('shared_users'):
-                uids = [u.strip() for u in str(album['shared_users']).split(',') if u.strip()]
+            if album.get("shared_users"):
+                uids = [u.strip() for u in str(album["shared_users"]).split(",") if u.strip()]
                 names = [user_map.get(u, "Unknown User") for u in uids]
-                album['shared_user_names'] = ", ".join(names)
+                album["shared_user_names"] = ", ".join(names)
 
         if not IS_EXHIBITION_MODE:
-            descendant_counts = get_descendant_file_counts(conn, [album['id'] for album in album_dicts])
+            descendant_counts = get_descendant_file_counts(conn, [album["id"] for album in album_dicts])
             for album in album_dicts:
-                album['descendant_file_count'] = descendant_counts.get(album['id'], 0)
+                album["descendant_file_count"] = descendant_counts.get(album["id"], 0)
 
-    collections = {
-        'flags': [dict(r) for r in flags],
-        'albums': album_dicts
-    }
+    collections = {"flags": [dict(r) for r in flags], "albums": album_dicts}
     if all_count is not None:
-        collections['all_count'] = all_count
+        collections["all_count"] = all_count
 
-    return jsonify({
-        'folders': folders,
-        'collections': collections
-    })
+    return jsonify({"folders": folders, "collections": collections})
 
-@app.route('/galleryout/api/collections/rename', methods=['POST'])
+
+@app.route("/galleryout/api/collections/rename", methods=["POST"])
 @management_api_only
 def rename_collection_api():
     data = request.json
-    coll_id = data.get('id')
-    new_name = data.get('name', '').strip()
+    coll_id = data.get("id")
+    new_name = data.get("name", "").strip()
 
     if not coll_id or not new_name:
-        return jsonify({'status': 'error', 'message': 'ID and Name required'}), 400
+        return jsonify({"status": "error", "message": "ID and Name required"}), 400
 
     try:
         with get_db_connection() as conn:
             # Prevent renaming system flags
             row = conn.execute("SELECT type FROM collections WHERE id=?", (coll_id,)).fetchone()
-            if not row or row['type'] == 'system_flag':
-                return jsonify({'status': 'error', 'message': 'Cannot rename system tags'}), 403
+            if not row or row["type"] == "system_flag":
+                return jsonify({"status": "error", "message": "Cannot rename system tags"}), 403
 
             conn.execute("UPDATE collections SET name = ? WHERE id = ?", (new_name, coll_id))
             conn.commit()
 
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/collections/create', methods=['POST'])
+
+@app.route("/galleryout/api/collections/create", methods=["POST"])
 @management_api_only
 def create_collection():
     data = request.json
-    name = data.get('name', '').strip()
-    is_public = data.get('is_public', False)
-    parent_id = data.get('parent_id', None)
-    shared_users = data.get('shared_users', '')
+    name = data.get("name", "").strip()
+    is_public = data.get("is_public", False)
+    parent_id = data.get("parent_id", None)
+    shared_users = data.get("shared_users", "")
 
     if not name:
-        return jsonify({'status': 'error', 'message': 'Name required'}), 400
+        return jsonify({"status": "error", "message": "Name required"}), 400
 
     try:
         with get_db_connection() as conn:
             # Execute insert and get the cursor to retrieve the lastrowid
             cursor = conn.execute(
                 "INSERT INTO collections (name, type, color, is_public, shared_users, parent_id, created_at) VALUES (?, 'user_album', '#ffffff', ?, ?, ?, ?)",
-                (name, 1 if is_public else 0, shared_users, parent_id, time.time())
+                (name, 1 if is_public else 0, shared_users, parent_id, time.time()),
             )
-            new_id = cursor.lastrowid # <--- Get the newly created ID
+            new_id = cursor.lastrowid  # <--- Get the newly created ID
             conn.commit()
 
-        return jsonify({'status': 'success', 'id': new_id}) # <--- Return the ID
+        return jsonify({"status": "success", "id": new_id})  # <--- Return the ID
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/collections/delete', methods=['POST'])
+
+@app.route("/galleryout/api/collections/delete", methods=["POST"])
 @management_api_only
 def delete_collection():
-    coll_id = request.json.get('id')
+    coll_id = request.json.get("id")
     with get_db_connection() as conn:
         row = conn.execute("SELECT type FROM collections WHERE id=?", (coll_id,)).fetchone()
-        if not row or row['type'] == 'system_flag':
-            return jsonify({'status': 'error', 'message': 'Cannot delete system tags'}), 403
+        if not row or row["type"] == "system_flag":
+            return jsonify({"status": "error", "message": "Cannot delete system tags"}), 403
         # Use Recursive CTE to safely delete the collection and all its nested sub-collections
-        conn.execute('''
+        conn.execute(
+            """
             WITH RECURSIVE cols_to_delete AS (
                 SELECT id FROM collections WHERE id = ?
                 UNION ALL
@@ -9939,73 +10793,80 @@ def delete_collection():
                 INNER JOIN cols_to_delete cd ON c.parent_id = cd.id
             )
             DELETE FROM collections WHERE id IN cols_to_delete;
-        ''', (coll_id,))
+        """,
+            (coll_id,),
+        )
         # The collection_files table relationships are handled automatically by SQLite ON DELETE CASCADE
         conn.commit()
-    return jsonify({'status': 'success'})
+    return jsonify({"status": "success"})
 
-@app.route('/galleryout/api/collections/toggle_public', methods=['POST'])
+
+@app.route("/galleryout/api/collections/toggle_public", methods=["POST"])
 @management_api_only
 def toggle_collection_public():
     try:
         data = request.json
-        coll_id = int(data.get('id', 0))
+        coll_id = int(data.get("id", 0))
 
         if not coll_id:
-            return jsonify({'status': 'error', 'message': 'ID required'}), 400
+            return jsonify({"status": "error", "message": "ID required"}), 400
 
         with get_db_connection() as conn:
             row = conn.execute("SELECT is_public FROM collections WHERE id=?", (coll_id,)).fetchone()
             if not row:
-                return jsonify({'status': 'error', 'message': 'Collection not found'}), 404
+                return jsonify({"status": "error", "message": "Collection not found"}), 404
 
-            current_val = row['is_public'] if row['is_public'] is not None else 0
+            current_val = row["is_public"] if row["is_public"] is not None else 0
             new_state = 0 if current_val else 1
 
             conn.execute("UPDATE collections SET is_public = ? WHERE id = ?", (new_state, coll_id))
             conn.commit()
 
-        return jsonify({'status': 'success', 'new_state': bool(new_state)})
+        return jsonify({"status": "success", "new_state": bool(new_state)})
 
     except Exception as e:
         print(f"Toggle Public Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/galleryout/api/collections/share', methods=['POST'])
+@app.route("/galleryout/api/collections/share", methods=["POST"])
 @management_api_only
 def share_collection():
     data = request.json
-    coll_id = data.get('id')
-    user_ids = data.get('user_ids', []) # List of user ID strings
+    coll_id = data.get("id")
+    user_ids = data.get("user_ids", [])  # List of user ID strings
 
     if not coll_id:
-        return jsonify({'status': 'error', 'message': 'ID required'}), 400
+        return jsonify({"status": "error", "message": "ID required"}), 400
 
     try:
         # Join IDs with commas
-        shared_str = ','.join(str(uid) for uid in user_ids)
+        shared_str = ",".join(str(uid) for uid in user_ids)
 
         with get_db_connection() as conn:
             # Force is_public to 0 if we are setting specific users (to avoid logic conflicts)
             if shared_str:
-                conn.execute("UPDATE collections SET shared_users = ?, is_public = 0 WHERE id = ?", (shared_str, coll_id))
+                conn.execute(
+                    "UPDATE collections SET shared_users = ?, is_public = 0 WHERE id = ?", (shared_str, coll_id)
+                )
             else:
                 conn.execute("UPDATE collections SET shared_users = ? WHERE id = ?", (shared_str, coll_id))
             conn.commit()
 
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/file_full_details/<string:file_id>')
+
+@app.route("/galleryout/api/file_full_details/<string:file_id>")
 def get_file_full_details(file_id):
     if not is_file_accessible(file_id):
-        return jsonify({'status': 'error', 'message': 'Access Denied'}), 403
+        return jsonify({"status": "error", "message": "Access Denied"}), 403
 
     try:
         with get_db_connection() as conn:
-            row = conn.execute("""
+            row = conn.execute(
+                """
                 SELECT f.*,
                 (SELECT c.color FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                 (SELECT c.name FROM collections c JOIN collection_files cf ON c.id = cf.collection_id WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_name,
@@ -10013,42 +10874,42 @@ def get_file_full_details(file_id):
                 (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
                 (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id) as comment_count
                 FROM files f WHERE f.id = ?
-            """, (file_id,)).fetchone()
+            """,
+                (file_id,),
+            ).fetchone()
 
             if not row:
-                return jsonify({'status': 'error', 'message': 'File not found'}), 404
+                return jsonify({"status": "error", "message": "File not found"}), 404
 
             file_data = dict(row)
-            file_data.pop('ai_embedding', None)
+            file_data.pop("ai_embedding", None)
 
             if should_strip_metadata():
-                file_data['has_workflow'] = 0
+                file_data["has_workflow"] = 0
 
             generation_metadata_text = None
             generation_tool = None
-            if not should_strip_metadata() and file_data.get('type') in ('image', 'animated_image'):
-                parsed = metaparse.parse_file(file_data['path'], allow_stealth=True)
+            if not should_strip_metadata() and file_data.get("type") in ("image", "animated_image"):
+                parsed = metaparse.parse_file(file_data["path"], allow_stealth=True)
                 if parsed:
                     generation_tool = parsed.tool
                     generation_metadata_text = metaparse.render_report(parsed)
-            file_data['generation_metadata'] = generation_metadata_text
-            file_data['generation_tool'] = generation_tool
+            file_data["generation_metadata"] = generation_metadata_text
+            file_data["generation_tool"] = generation_tool
 
             # First-class stored data: the typed generation_params row and
             # per-face attributes, so the details modal reflects what is
             # actually tracked instead of only a live re-parse.
-            file_data['generation_params'] = None
+            file_data["generation_params"] = None
             if not should_strip_metadata():
-                gen_row = conn.execute(
-                    "SELECT * FROM generation_params WHERE file_id = ?",
-                    (file_id,)).fetchone()
+                gen_row = conn.execute("SELECT * FROM generation_params WHERE file_id = ?", (file_id,)).fetchone()
                 if gen_row:
                     g = dict(gen_row)
-                    for k in ('loras', 'extra'):
+                    for k in ("loras", "extra"):
                         if g.get(k):
                             with contextlib.suppress(Exception):
                                 g[k] = json.loads(g[k])
-                    file_data['generation_params'] = g
+                    file_data["generation_params"] = g
             try:
                 # Face rows are provenance-scoped per pipeline; serve the
                 # most recently computed model's rows (after a backend
@@ -10059,22 +10920,24 @@ def get_file_full_details(file_id):
                     "WHERE file_id = ? AND model_id = ("
                     "  SELECT model_id FROM ai_face_instances WHERE file_id = ? "
                     "  ORDER BY computed_at DESC LIMIT 1) "
-                    "ORDER BY face_id", (file_id, file_id)).fetchall()
-                file_data['faces'] = [dict(r) for r in face_rows]
+                    "ORDER BY face_id",
+                    (file_id, file_id),
+                ).fetchall()
+                file_data["faces"] = [dict(r) for r in face_rows]
             except Exception:
-                file_data['faces'] = []
+                file_data["faces"] = []
 
             folders_config = get_dynamic_folder_config()
-            abs_path = file_data['path']
-            real_path = os.path.realpath(abs_path).replace('\\', '/')
-            is_link = (os.path.normpath(abs_path).lower() != os.path.normpath(real_path).lower())
+            abs_path = file_data["path"]
+            real_path = os.path.realpath(abs_path).replace("\\", "/")
+            is_link = os.path.normpath(abs_path).lower() != os.path.normpath(real_path).lower()
 
             parent_dir = os.path.dirname(abs_path)
             folder_hierarchy = []
 
             curr_key = None
             for fk, finfo in folders_config.items():
-                if os.path.normpath(finfo['path']).lower() == os.path.normpath(parent_dir).lower():
+                if os.path.normpath(finfo["path"]).lower() == os.path.normpath(parent_dir).lower():
                     curr_key = fk
                     break
 
@@ -10082,50 +10945,55 @@ def get_file_full_details(file_id):
                 chain = []
                 k = curr_key
                 while k and k in folders_config:
-                    chain.append(folders_config[k]['display_name'])
-                    k = folders_config[k].get('parent')
+                    chain.append(folders_config[k]["display_name"])
+                    k = folders_config[k].get("parent")
                 chain.reverse()
                 folder_hierarchy = chain
             else:
                 try:
-                    rel_dir = os.path.relpath(parent_dir, BASE_OUTPUT_PATH).replace('\\', '/')
-                    if rel_dir and rel_dir != '.':
-                        folder_hierarchy = ['Main'] + [p for p in rel_dir.split('/') if p]
+                    rel_dir = os.path.relpath(parent_dir, BASE_OUTPUT_PATH).replace("\\", "/")
+                    if rel_dir and rel_dir != ".":
+                        folder_hierarchy = ["Main"] + [p for p in rel_dir.split("/") if p]
                     else:
-                        folder_hierarchy = ['Main']
+                        folder_hierarchy = ["Main"]
                 except Exception:
                     folder_hierarchy = [os.path.basename(parent_dir)]
 
-            coll_rows = conn.execute("""
+            coll_rows = conn.execute(
+                """
                 SELECT c.id, c.name, c.color, c.type, c.parent_id, c.is_public
                 FROM collections c
                 JOIN collection_files cf ON c.id = cf.collection_id
                 WHERE cf.file_id = ? AND c.type = 'user_album'
                 ORDER BY ulower(c.name)
-            """, (file_id,)).fetchall()
+            """,
+                (file_id,),
+            ).fetchall()
 
             all_colls = conn.execute("SELECT id, name, parent_id FROM collections WHERE type = 'user_album'").fetchall()
-            coll_map = {c['id']: c for c in all_colls}
+            coll_map = {c["id"]: c for c in all_colls}
 
             collections_list = []
             for cr in coll_rows:
-                cid = cr['id']
+                cid = cr["id"]
                 chain = []
                 curr_cid = cid
                 visited = set()
                 while curr_cid and curr_cid in coll_map and curr_cid not in visited:
                     visited.add(curr_cid)
-                    chain.append(coll_map[curr_cid]['name'])
-                    curr_cid = coll_map[curr_cid]['parent_id']
+                    chain.append(coll_map[curr_cid]["name"])
+                    curr_cid = coll_map[curr_cid]["parent_id"]
                 chain.reverse()
 
-                collections_list.append({
-                    'id': cid,
-                    'name': cr['name'],
-                    'color': cr['color'],
-                    'is_public': bool(cr['is_public']),
-                    'hierarchy': chain
-                })
+                collections_list.append(
+                    {
+                        "id": cid,
+                        "name": cr["name"],
+                        "color": cr["color"],
+                        "is_public": bool(cr["is_public"]),
+                        "hierarchy": chain,
+                    }
+                )
 
             cluster_wf_count = 0
             cluster_pr_count = 0
@@ -10133,36 +11001,44 @@ def get_file_full_details(file_id):
             nodes_pipeline = []
             models_used = []
 
-            wf_h = file_data.get('workflow_hash')
-            pr_h = file_data.get('prompt_hash')
-            md_h = file_data.get('models_hash')
+            wf_h = file_data.get("workflow_hash")
+            pr_h = file_data.get("prompt_hash")
+            md_h = file_data.get("models_hash")
             if wf_h:
-                cluster_wf_count = conn.execute("SELECT COUNT(*) FROM files WHERE workflow_hash = ?", (wf_h,)).fetchone()[0]
+                cluster_wf_count = conn.execute(
+                    "SELECT COUNT(*) FROM files WHERE workflow_hash = ?", (wf_h,)
+                ).fetchone()[0]
             if pr_h:
-                cluster_pr_count = conn.execute("SELECT COUNT(*) FROM files WHERE prompt_hash = ?", (pr_h,)).fetchone()[0]
+                cluster_pr_count = conn.execute("SELECT COUNT(*) FROM files WHERE prompt_hash = ?", (pr_h,)).fetchone()[
+                    0
+                ]
             if md_h:
-                cluster_md_count = conn.execute("SELECT COUNT(*) FROM files WHERE models_hash = ?", (md_h,)).fetchone()[0]
+                cluster_md_count = conn.execute("SELECT COUNT(*) FROM files WHERE models_hash = ?", (md_h,)).fetchone()[
+                    0
+                ]
 
-            if file_data.get('has_workflow'):
-                wf_json = extract_workflow(abs_path, target_type='ui')
+            if file_data.get("has_workflow"):
+                wf_json = extract_workflow(abs_path, target_type="ui")
                 if not wf_json:
-                    wf_json = extract_workflow(abs_path, target_type='api')
+                    wf_json = extract_workflow(abs_path, target_type="api")
                 if wf_json:
                     try:
                         summary = generate_node_summary(wf_json)
                         if summary:
                             for n in summary:
-                                nodes_pipeline.append({
-                                    'id': n.get('id'),
-                                    'type': n.get('type'),
-                                    'category': n.get('category'),
-                                    'color': n.get('color')
-                                })
+                                nodes_pipeline.append(
+                                    {
+                                        "id": n.get("id"),
+                                        "type": n.get("type"),
+                                        "category": n.get("category"),
+                                        "color": n.get("color"),
+                                    }
+                                )
                     except Exception:
                         pass
 
-                if file_data.get('workflow_files'):
-                    for item in file_data['workflow_files'].split(' ||| '):
+                if file_data.get("workflow_files"):
+                    for item in file_data["workflow_files"].split(" ||| "):
                         if item.strip():
                             models_used.append(os.path.basename(item.strip()))
 
@@ -10179,31 +11055,33 @@ def get_file_full_details(file_id):
                 nodes_pipeline = []
                 models_used = []
 
-            return jsonify({
-                'status': 'success',
-                'file': file_data,
-                'is_link': is_link,
-                'real_path': real_path if is_link else None,
-                'folder_hierarchy': folder_hierarchy,
-                'collections': collections_list,
-                'cluster_wf_count': cluster_wf_count,
-                'cluster_pr_count': cluster_pr_count,
-                'cluster_md_count': cluster_md_count,
-                'nodes_pipeline': nodes_pipeline,
-                'models_used': sorted(set(models_used))
-            })
+            return jsonify(
+                {
+                    "status": "success",
+                    "file": file_data,
+                    "is_link": is_link,
+                    "real_path": real_path if is_link else None,
+                    "folder_hierarchy": folder_hierarchy,
+                    "collections": collections_list,
+                    "cluster_wf_count": cluster_wf_count,
+                    "cluster_pr_count": cluster_pr_count,
+                    "cluster_md_count": cluster_md_count,
+                    "nodes_pipeline": nodes_pipeline,
+                    "models_used": sorted(set(models_used)),
+                }
+            )
 
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/galleryout/api/file_collections/<string:file_id>')
+@app.route("/galleryout/api/file_collections/<string:file_id>")
 def get_file_collections(file_id):
     """Returns a list of all collections and status flags associated with a file."""
     if not is_file_accessible(file_id):
-        return jsonify({'status': 'error', 'message': 'Access Denied'}), 403
+        return jsonify({"status": "error", "message": "Access Denied"}), 403
     # Check if frontend specifically requested only public collections (Exhibition mode)
-    public_only = request.args.get('public_only', 'false').lower() == 'true'
+    public_only = request.args.get("public_only", "false").lower() == "true"
 
     query = """
         SELECT c.name, c.type, c.color, c.is_public
@@ -10222,14 +11100,12 @@ def get_file_collections(file_id):
         with get_db_connection() as conn:
             rows = conn.execute(query, (file_id,)).fetchall()
 
-        return jsonify({
-            'status': 'success',
-            'collections': [dict(r) for r in rows]
-        })
+        return jsonify({"status": "success", "collections": [dict(r) for r in rows]})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/collections/tag_batch', methods=['POST'])
+
+@app.route("/galleryout/api/collections/tag_batch", methods=["POST"])
 @management_api_only
 def tag_batch():
     """
@@ -10237,12 +11113,12 @@ def tag_batch():
     Ensures data consistency and provides precise results for UI updates.
     """
     data = request.json
-    file_ids = data.get('file_ids', [])
-    collection_id = data.get('collection_id')
-    action = data.get('action', 'add') # 'add', 'remove', 'toggle', 'remove_all_status'
+    file_ids = data.get("file_ids", [])
+    collection_id = data.get("collection_id")
+    action = data.get("action", "add")  # 'add', 'remove', 'toggle', 'remove_all_status'
 
     if not file_ids:
-        return jsonify({'status': 'error', 'message': 'No files selected'}), 400
+        return jsonify({"status": "error", "message": "No files selected"}), 400
 
     results_map = {}
 
@@ -10250,32 +11126,35 @@ def tag_batch():
         with get_db_connection() as conn:
             # --- CASE 1: REMOVE ALL STATUS (Shortcut '0') ---
             # This doesn't need a specific collection_id check, it targets all 'system_flag' types
-            if action == 'remove_all_status':
-                placeholders = ','.join(['?'] * len(file_ids))
-                conn.execute(f"""
+            if action == "remove_all_status":
+                placeholders = ",".join(["?"] * len(file_ids))
+                conn.execute(
+                    f"""
                     DELETE FROM collection_files
                     WHERE file_id IN ({placeholders})
                     AND collection_id IN (SELECT id FROM collections WHERE type='system_flag')
-                """, file_ids)
+                """,
+                    file_ids,
+                )
 
                 for fid in file_ids:
-                    results_map[fid] = 'removed'
+                    results_map[fid] = "removed"
 
                 conn.commit()
-                return jsonify({'status': 'success', 'results': results_map})
+                return jsonify({"status": "success", "results": results_map})
 
             # --- PRE-REQUISITE: FETCH COLLECTION TYPE ---
             if not collection_id:
-                return jsonify({'status': 'error', 'message': 'Missing collection ID'}), 400
+                return jsonify({"status": "error", "message": "Missing collection ID"}), 400
 
             coll_row = conn.execute("SELECT type FROM collections WHERE id=?", (collection_id,)).fetchone()
             if not coll_row:
-                return jsonify({'status': 'error', 'message': 'Collection not found'}), 404
+                return jsonify({"status": "error", "message": "Collection not found"}), 404
 
-            coll_type = coll_row['type']
+            coll_type = coll_row["type"]
 
             # --- CASE 2: SMART LOGIC FOR STATUS COLORS (system_flag) ---
-            if coll_type == 'system_flag' and action == 'toggle':
+            if coll_type == "system_flag" and action == "toggle":
                 # NEW LOGIC:
                 # If multiple files are selected, we ALWAYS 'add' (overwrite) to prevent
                 # accidental desaturation of files that were already in that state.
@@ -10285,98 +11164,107 @@ def tag_batch():
                 for fid in file_ids:
                     # Check current status for this specific file
                     exists = conn.execute(
-                        "SELECT 1 FROM collection_files WHERE collection_id=? AND file_id=?",
-                        (collection_id, fid)
+                        "SELECT 1 FROM collection_files WHERE collection_id=? AND file_id=?", (collection_id, fid)
                     ).fetchone()
 
                     if exists and not is_multiple:
                         # SCENARIO A: Single file and already this color -> REMOVE
                         conn.execute(
-                            "DELETE FROM collection_files WHERE collection_id=? AND file_id=?",
-                            (collection_id, fid)
+                            "DELETE FROM collection_files WHERE collection_id=? AND file_id=?", (collection_id, fid)
                         )
-                        results_map[fid] = 'removed'
+                        results_map[fid] = "removed"
                     else:
                         # SCENARIO B: Multi-select OR file is not this color -> ASSIGN/OVERWRITE
                         # First, clear any OTHER system flags (mutual exclusivity)
-                        conn.execute("""
+                        conn.execute(
+                            """
                             DELETE FROM collection_files
                             WHERE file_id = ?
                             AND collection_id IN (SELECT id FROM collections WHERE type='system_flag')
-                        """, (fid,))
+                        """,
+                            (fid,),
+                        )
 
                         # Add the new color
                         conn.execute(
                             "INSERT INTO collection_files (collection_id, file_id, added_at) VALUES (?, ?, ?)",
-                            (collection_id, fid, time.time())
+                            (collection_id, fid, time.time()),
                         )
-                        results_map[fid] = 'added'
+                        results_map[fid] = "added"
 
             # --- CASE 3: EXPLICIT ADD/REMOVE (For User Collections/Albums) ---
             else:
                 # If adding a system flag explicitly, still maintain mutual exclusivity
-                if coll_type == 'system_flag' and action == 'add':
-                    placeholders = ','.join(['?'] * len(file_ids))
-                    conn.execute(f"""
+                if coll_type == "system_flag" and action == "add":
+                    placeholders = ",".join(["?"] * len(file_ids))
+                    conn.execute(
+                        f"""
                         DELETE FROM collection_files
                         WHERE file_id IN ({placeholders})
                         AND collection_id IN (SELECT id FROM collections WHERE type='system_flag')
-                    """, file_ids)
+                    """,
+                        file_ids,
+                    )
 
                 for fid in file_ids:
-                    if action == 'add':
+                    if action == "add":
                         try:
                             conn.execute(
                                 "INSERT INTO collection_files (collection_id, file_id, added_at) VALUES (?, ?, ?)",
-                                (collection_id, fid, time.time())
+                                (collection_id, fid, time.time()),
                             )
-                            results_map[fid] = 'added'
+                            results_map[fid] = "added"
                         except sqlite3.IntegrityError:
-                            results_map[fid] = 'added' # Already exists
+                            results_map[fid] = "added"  # Already exists
 
-                    elif action == 'remove':
+                    elif action == "remove":
                         conn.execute(
-                            "DELETE FROM collection_files WHERE collection_id=? AND file_id=?",
-                            (collection_id, fid)
+                            "DELETE FROM collection_files WHERE collection_id=? AND file_id=?", (collection_id, fid)
                         )
-                        results_map[fid] = 'removed'
+                        results_map[fid] = "removed"
 
-                    elif action == 'toggle':
+                    elif action == "toggle":
                         # Generic toggle for albums (multi-assignment allowed)
                         exists = conn.execute(
-                            "SELECT 1 FROM collection_files WHERE collection_id=? AND file_id=?",
-                            (collection_id, fid)
+                            "SELECT 1 FROM collection_files WHERE collection_id=? AND file_id=?", (collection_id, fid)
                         ).fetchone()
                         if exists:
-                            conn.execute("DELETE FROM collection_files WHERE collection_id=? AND file_id=?", (collection_id, fid))
-                            results_map[fid] = 'removed'
+                            conn.execute(
+                                "DELETE FROM collection_files WHERE collection_id=? AND file_id=?", (collection_id, fid)
+                            )
+                            results_map[fid] = "removed"
                         else:
-                            conn.execute("INSERT INTO collection_files (collection_id, file_id, added_at) VALUES (?, ?, ?)", (collection_id, fid, time.time()))
-                            results_map[fid] = 'added'
+                            conn.execute(
+                                "INSERT INTO collection_files (collection_id, file_id, added_at) VALUES (?, ?, ?)",
+                                (collection_id, fid, time.time()),
+                            )
+                            results_map[fid] = "added"
 
             conn.commit()
-            return jsonify({'status': 'success', 'results': results_map})
+            return jsonify({"status": "success", "results": results_map})
 
     except Exception as e:
         print(f"ERROR in tag_batch: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # Updated route to accept both integer IDs and the string "all"
-@app.route('/galleryout/collection/<coll_id>')
+@app.route("/galleryout/collection/<coll_id>")
 def collection_view(coll_id):
     # AUTHENTICATION CHECK FOR EXHIBITION / FORCE_LOGIN MODES
     is_management_side = not IS_EXHIBITION_MODE
-    is_logged_in = 'user_id' in session
+    is_logged_in = "user_id" in session
     must_authenticate = IS_EXHIBITION_MODE or FORCE_LOGIN
 
     if must_authenticate and not is_logged_in:
-        if request.headers.get('Accept') == 'application/json':
-            return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-        return render_template('exhibition_login.html',
-                               app_version=APP_VERSION,
-                               enable_guest_login=ENABLE_GUEST_LOGIN if IS_EXHIBITION_MODE else False,
-                               admin_side=is_management_side)
+        if request.headers.get("Accept") == "application/json":
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+        return render_template(
+            "exhibition_login.html",
+            app_version=APP_VERSION,
+            enable_guest_login=ENABLE_GUEST_LOGIN if IS_EXHIBITION_MODE else False,
+            admin_side=is_management_side,
+        )
 
     # Decided once, because several of the query builders below read them.
     # is_privileged used to be set only inside the branch that handles a
@@ -10385,23 +11273,23 @@ def collection_view(coll_id):
     # reached that read with the name unbound and answered 500. `not
     # is_privileged` is evaluated as soon as exhibition mode is on, so staff
     # were locked out of albums as thoroughly as visitors.
-    user_role = session.get('role', 'GUEST')
-    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-    is_privileged = is_local_admin or (user_role in ['ADMIN', 'MANAGER', 'STAFF'])
+    user_role = session.get("role", "GUEST")
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    is_privileged = is_local_admin or (user_role in ["ADMIN", "MANAGER", "STAFF"])
     safe_uid = _current_client_identity().replace("'", "''")
 
     # 1. Handle Virtual "All Categories" vs Specific Collection
     coll_info = None
-    is_all_mode = (coll_id == 'all')
+    is_all_mode = coll_id == "all"
 
     if is_all_mode:
         # Create virtual metadata for the "All Categories" view
         coll_info = {
-            'id': 'all',
-            'name': 'All Collections',
-            'type': 'user_album',
-            'is_public': 1,
-            'color': '#ffffff' # Default white for the virtual category
+            "id": "all",
+            "name": "All Collections",
+            "type": "user_album",
+            "is_public": 1,
+            "color": "#ffffff",  # Default white for the virtual category
         }
     else:
         # Standard logic: Fetch specific Collection Metadata from DB
@@ -10412,10 +11300,10 @@ def collection_view(coll_id):
                 if row:
                     coll_info = dict(row)
         except ValueError:
-            return redirect(url_for('gallery_view', folder_key='_root_'))
+            return redirect(url_for("gallery_view", folder_key="_root_"))
 
     if not coll_info:
-        return redirect(url_for('gallery_view', folder_key='_root_'))
+        return redirect(url_for("gallery_view", folder_key="_root_"))
 
     # --- ACCESS: only public or shared content, for anyone not staff ---
     # This was written as `if IS_EXHIBITION_MODE`, so the same non-staff
@@ -10425,37 +11313,39 @@ def collection_view(coll_id):
     if not is_privileged:
         # "all" is allowed and filtered below; a specific collection must be
         # public or shared with this user.
-        if not is_all_mode and coll_info['type'] == 'system_flag':
-            return redirect(url_for('gallery_view', folder_key='_root_'))
+        if not is_all_mode and coll_info["type"] == "system_flag":
+            return redirect(url_for("gallery_view", folder_key="_root_"))
 
-        if not is_all_mode and not coll_info['is_public']:
-            user_id = str(session.get('user_id', ''))
-            shared_list = [u.strip() for u in str(coll_info.get('shared_users', '')).split(',') if u.strip()]
+        if not is_all_mode and not coll_info["is_public"]:
+            user_id = str(session.get("user_id", ""))
+            shared_list = [u.strip() for u in str(coll_info.get("shared_users", "")).split(",") if u.strip()]
 
             if user_id not in shared_list:
-                return redirect(url_for('gallery_view', folder_key='_root_'))
+                return redirect(url_for("gallery_view", folder_key="_root_"))
 
     # 2. Capture Filter Parameters
-    search_term = request.args.get('search', '').strip()
-    wf_files = request.args.get('workflow_files', '').strip()
-    wf_prompt = request.args.get('workflow_prompt', '').strip()
-    comment_search = request.args.get('comment_search', '').strip()
-    start_date = request.args.get('start_date', '').strip()
-    end_date = request.args.get('end_date', '').strip()
-    selected_exts = request.args.getlist('extension')
-    selected_prefixes = request.args.getlist('prefix')
-    selected_raters = request.args.getlist('rated_by')
-    selected_rating_ranges = request.args.getlist('rating_range')
+    search_term = request.args.get("search", "").strip()
+    wf_files = request.args.get("workflow_files", "").strip()
+    wf_prompt = request.args.get("workflow_prompt", "").strip()
+    comment_search = request.args.get("comment_search", "").strip()
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
+    selected_exts = request.args.getlist("extension")
+    selected_prefixes = request.args.getlist("prefix")
+    selected_raters = request.args.getlist("rated_by")
+    selected_rating_ranges = request.args.getlist("rating_range")
 
-    req_sort_by = request.args.get('sort_by')
-    req_sort_order = request.args.get('sort_order', 'desc').upper()
-    if req_sort_order not in ['ASC', 'DESC']:
-        req_sort_order = 'DESC'
+    req_sort_by = request.args.get("sort_by")
+    req_sort_order = request.args.get("sort_order", "desc").upper()
+    if req_sort_order not in ["ASC", "DESC"]:
+        req_sort_order = "DESC"
 
     active_filters_count = 0
 
     # 3. Build Dynamic Query Conditions
-    conditions = ["f.id IN (SELECT id FROM files WHERE type != 'document' AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md')"]
+    conditions = [
+        "f.id IN (SELECT id FROM files WHERE type != 'document' AND LOWER(name) NOT LIKE '%.txt' AND LOWER(name) NOT LIKE '%.md')"
+    ]
     params = []
 
     if is_all_mode:
@@ -10473,13 +11363,13 @@ def collection_view(coll_id):
         # Sub-collections are included by default; only an explicit
         # recursive=false narrows to this collection alone (counted as a
         # filter, since it is the non-default narrowing state).
-        is_recursive = request.args.get('recursive', 'true').lower() != 'false'
+        is_recursive = request.args.get("recursive", "true").lower() != "false"
         if not is_recursive:
             active_filters_count += 1
         if is_recursive:
-            user_role = session.get('role', 'GUEST')
+            user_role = session.get("role", "GUEST")
             safe_uid = _current_client_identity().replace("'", "''")
-            is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
+            is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
 
             sub_query = f"""
                 WITH RECURSIVE children AS (
@@ -10503,8 +11393,8 @@ def collection_view(coll_id):
 
     if search_term:
         active_filters_count += 1
-        for kw in [k.strip() for k in search_term.split(',') if k.strip()]:
-            sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+        for kw in [k.strip() for k in search_term.split(",") if k.strip()]:
+            sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
             if not sub_kws:
                 continue
 
@@ -10512,7 +11402,7 @@ def collection_view(coll_id):
             not_conds = []
             for s in sub_kws:
                 is_not = False
-                if s.startswith('!'):
+                if s.startswith("!"):
                     is_not = True
                     s = s[1:].strip()
                 if not s:
@@ -10543,8 +11433,8 @@ def collection_view(coll_id):
 
     if wf_files:
         active_filters_count += 1
-        for kw in [k.strip() for k in wf_files.split(',') if k.strip()]:
-            sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+        for kw in [k.strip() for k in wf_files.split(",") if k.strip()]:
+            sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
             if not sub_kws:
                 continue
 
@@ -10552,14 +11442,13 @@ def collection_view(coll_id):
             not_conds = []
             for s in sub_kws:
                 is_not = False
-                if s.startswith('!'):
+                if s.startswith("!"):
                     is_not = True
                     s = s[1:].strip()
                 if not s:
                     continue
 
-                cond_str, param_val = model_condition(
-                    s, 'f.workflow_files', is_not)
+                cond_str, param_val = model_condition(s, "f.workflow_files", is_not)
 
                 if is_not:
                     not_conds.append((cond_str, param_val))
@@ -10579,8 +11468,8 @@ def collection_view(coll_id):
 
     if wf_prompt:
         active_filters_count += 1
-        for kw in [k.strip() for k in wf_prompt.split(',') if k.strip()]:
-            sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+        for kw in [k.strip() for k in wf_prompt.split(",") if k.strip()]:
+            sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
             if not sub_kws:
                 continue
 
@@ -10588,13 +11477,13 @@ def collection_view(coll_id):
             not_conds = []
             for s in sub_kws:
                 is_not = False
-                if s.startswith('!'):
+                if s.startswith("!"):
                     is_not = True
                     s = s[1:].strip()
                 if not s:
                     continue
 
-                built = prompt_search_condition(s, is_not, 'f.workflow_prompt')
+                built = prompt_search_condition(s, is_not, "f.workflow_prompt")
                 if built is None:
                     continue
                 cond_str, param_val = built
@@ -10617,8 +11506,8 @@ def collection_view(coll_id):
 
     if comment_search:
         active_filters_count += 1
-        for kw in [k.strip() for k in comment_search.split(',') if k.strip()]:
-            sub_kws = [s.strip() for s in kw.split(';') if s.strip()]
+        for kw in [k.strip() for k in comment_search.split(",") if k.strip()]:
+            sub_kws = [s.strip() for s in kw.split(";") if s.strip()]
             if not sub_kws:
                 continue
 
@@ -10626,7 +11515,7 @@ def collection_view(coll_id):
             not_conds = []
             for s in sub_kws:
                 is_not = False
-                if s.startswith('!'):
+                if s.startswith("!"):
                     is_not = True
                     s = s[1:].strip()
                 if not s:
@@ -10636,10 +11525,14 @@ def collection_view(coll_id):
                 if s.startswith('"') and s.endswith('"') and len(s) > 2:
                     clean_s = s[1:-1]
                     col_expr = "(' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(comment_text, ',', ' '), '?', ' '), '.', ' '), '!', ' '), char(10), ' ') || ' ')"
-                    cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower({col_expr}) LIKE ulower(?))"
+                    cond_str = (
+                        f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower({col_expr}) LIKE ulower(?))"
+                    )
                     param_val = f"% {clean_s} %"
                 else:
-                    cond_str = f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower(comment_text) LIKE ulower(?))"
+                    cond_str = (
+                        f"f.id {op_in} (SELECT file_id FROM file_comments WHERE ulower(comment_text) LIKE ulower(?))"
+                    )
                     param_val = f"%{s}%"
 
                 if is_not:
@@ -10658,24 +11551,24 @@ def collection_view(coll_id):
                 conditions.append(cond)
                 params.append(param)
 
-    if request.args.get('favorites') == 'true':
+    if request.args.get("favorites") == "true":
         conditions.append("f.is_favorite = 1")
         active_filters_count += 1
 
-    if request.args.get('no_workflow') == 'true':
+    if request.args.get("no_workflow") == "true":
         conditions.append("f.has_workflow = 0")
         active_filters_count += 1
 
-    if ENABLE_AI_SEARCH and request.args.get('no_ai_caption') == 'true':
+    if ENABLE_AI_SEARCH and request.args.get("no_ai_caption") == "true":
         conditions.append("(f.ai_caption IS NULL OR f.ai_caption = '')")
         active_filters_count += 1
 
-    day_from = day_bounds(start_date, request.args.get('start_ts'), False)
+    day_from = day_bounds(start_date, request.args.get("start_ts"), False)
     if day_from is not None:
         conditions.append("f.mtime >= ?")
         params.append(day_from)
         active_filters_count += 1
-    day_to = day_bounds(end_date, request.args.get('end_ts'), True)
+    day_to = day_bounds(end_date, request.args.get("end_ts"), True)
     if day_to is not None:
         conditions.append("f.mtime <= ?")
         params.append(day_to)
@@ -10686,26 +11579,26 @@ def collection_view(coll_id):
         r_conds = []
         avg_sql = "IFNULL((SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id), 0)"
         for rr in selected_rating_ranges:
-            if rr == '0 stars':
+            if rr == "0 stars":
                 r_conds.append(f"{avg_sql} = 0")
-            elif rr == '1 star':
+            elif rr == "1 star":
                 r_conds.append(f"ROUND({avg_sql}) = 1")
-            elif rr == '2 stars':
+            elif rr == "2 stars":
                 r_conds.append(f"ROUND({avg_sql}) = 2")
-            elif rr == '3 stars':
+            elif rr == "3 stars":
                 r_conds.append(f"ROUND({avg_sql}) = 3")
-            elif rr == '4 stars':
+            elif rr == "4 stars":
                 r_conds.append(f"ROUND({avg_sql}) = 4")
-            elif rr == '5 stars':
+            elif rr == "5 stars":
                 r_conds.append(f"ROUND({avg_sql}) = 5")
             # Legacy support for old URLs/bookmarks
-            elif rr == '1-2 stars':
+            elif rr == "1-2 stars":
                 r_conds.append(f"({avg_sql} > 0 AND {avg_sql} <= 2)")
-            elif rr == '2-3 stars':
+            elif rr == "2-3 stars":
                 r_conds.append(f"({avg_sql} > 2 AND {avg_sql} <= 3)")
-            elif rr == '3-4 stars':
+            elif rr == "3-4 stars":
                 r_conds.append(f"({avg_sql} > 3 AND {avg_sql} <= 4)")
-            elif rr == '4-5 stars':
+            elif rr == "4-5 stars":
                 r_conds.append(f"({avg_sql} > 4 AND {avg_sql} <= 5)")
         if r_conds:
             conditions.append(f"({' OR '.join(r_conds)})")
@@ -10713,7 +11606,7 @@ def collection_view(coll_id):
     if selected_raters:
         active_filters_count += 1
         expanded_raters = list(selected_raters)
-        if 'admin' in expanded_raters:
+        if "admin" in expanded_raters:
             try:
                 # FIX: Ensure a database connection is explicitly opened to fetch the admin ID.
                 # Solves the missing ID bug in "All Collections" mode where 'conn' is not yet defined.
@@ -10723,7 +11616,7 @@ def collection_view(coll_id):
                         expanded_raters.append(str(admin_id[0]))
             except sqlite3.Error:
                 pass
-        placeholders = ','.join(['?'] * len(expanded_raters))
+        placeholders = ",".join(["?"] * len(expanded_raters))
         conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid IN ({placeholders}))")
         params.extend(expanded_raters)
 
@@ -10743,47 +11636,45 @@ def collection_view(coll_id):
 
     # --- SORTING LOGIC ---
     safe_uuid = _current_client_identity().replace("'", "''")
-    if req_sort_by == 'name':
+    if req_sort_by == "name":
         order_clause = f"ulower(f.name) {req_sort_order}"
-    elif req_sort_by == 'rating':
+    elif req_sort_by == "rating":
         if is_effectively_blind():
-
             conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
 
             order_clause = f"my_rating {req_sort_order}, f.mtime DESC"
 
         else:
-
             conditions.append("f.id IN (SELECT file_id FROM file_ratings)")
 
             order_clause = f"avg_rating {req_sort_order}, f.mtime DESC"
-    elif req_sort_by == 'unrated':
+    elif req_sort_by == "unrated":
         if is_effectively_blind():
             conditions.append(f"f.id NOT IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
         else:
             conditions.append("f.id NOT IN (SELECT file_id FROM file_ratings)")
         order_clause = f"f.mtime {req_sort_order}"
-    elif req_sort_by == 'uncommented':
+    elif req_sort_by == "uncommented":
         if is_effectively_blind():
             conditions.append(f"f.id NOT IN (SELECT file_id FROM file_comments WHERE client_uuid = '{safe_uuid}')")
         else:
             conditions.append("f.id NOT IN (SELECT file_id FROM file_comments)")
         order_clause = f"f.mtime {req_sort_order}"
-    elif req_sort_by in['comments', 'latest_comment', 'latestcomment']:
+    elif req_sort_by in ["comments", "latest_comment", "latestcomment"]:
         conditions.append("f.id IN (SELECT file_id FROM file_comments)")
-        if req_sort_by == 'comments':
+        if req_sort_by == "comments":
             order_clause = f"comment_count {req_sort_order}, f.mtime DESC"
         else:
             order_clause = f"latest_comment_time {req_sort_order}, f.mtime DESC"
-    elif req_sort_by == 'size':
+    elif req_sort_by == "size":
         order_clause = f"f.size {req_sort_order}"
-    elif req_sort_by == 'type':
+    elif req_sort_by == "type":
         order_clause = f"f.type {req_sort_order}, ulower(f.name) ASC"
-    elif req_sort_by == 'duration':
+    elif req_sort_by == "duration":
         order_clause = f"f.duration {req_sort_order}"
-    elif req_sort_by == 'dimensions':
+    elif req_sort_by == "dimensions":
         order_clause = f"(CAST(SUBSTR(f.dimensions, 1, INSTR(f.dimensions, 'x') - 1) AS INTEGER) * CAST(SUBSTR(f.dimensions, INSTR(f.dimensions, 'x') + 1) AS INTEGER)) {req_sort_order}"
-    elif req_sort_by == 'date' or req_sort_by == 'mtime':
+    elif req_sort_by == "date" or req_sort_by == "mtime":
         order_clause = f"f.mtime {req_sort_order}"
     else:
         order_clause = "f.mtime DESC"
@@ -10817,8 +11708,7 @@ def collection_view(coll_id):
             ).fetchone()[0]
         else:
             total_folder_files = conn.execute(
-                "SELECT COUNT(*) FROM collection_files WHERE collection_id = ?",
-                (int(coll_id),)
+                "SELECT COUNT(*) FROM collection_files WHERE collection_id = ?", (int(coll_id),)
             ).fetchone()[0]
 
         with contextlib.suppress(sqlite3.Error):
@@ -10827,13 +11717,13 @@ def collection_view(coll_id):
         where_clause = " AND ".join(conditions)
 
         # We use DISTINCT to avoid showing the same file twice if it's in multiple albums
-        user_role = session.get('role', 'GUEST')
+        user_role = session.get("role", "GUEST")
         safe_uuid = _current_client_identity().replace("'", "''")
 
         # Allow Local Admin (no force login) to see all comments during sort
-        is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
+        is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
 
-        if is_local_admin or user_role in ['ADMIN', 'MANAGER', 'STAFF']:
+        if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
             comment_sub_filter = ""
         else:
             comment_sub_filter = f" AND (target_audience = 'public' OR target_audience = 'user:{safe_uuid}' OR client_uuid = '{safe_uuid}')"
@@ -10856,22 +11746,24 @@ def collection_view(coll_id):
 
         for r in rows:
             d = dict(r)
-            d.pop('ai_embedding', None)
+            d.pop("ai_embedding", None)
             final_files.append(d)
 
         try:
-            users_rows = conn.execute("SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'").fetchall()
-            available_raters = [{'id': str(r['user_id']), 'name': r['full_name']} for r in users_rows]
+            users_rows = conn.execute(
+                "SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'"
+            ).fetchall()
+            available_raters = [{"id": str(r["user_id"]), "name": r["full_name"]} for r in users_rows]
         except sqlite3.Error:
-            available_raters =[]
-        available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
+            available_raters = []
+        available_raters.insert(0, {"id": "admin", "name": "System Admin"})
 
     # --- CLUSTER MODE OVERRIDE LOGIC & SCOPE SEARCH ---
     # Exhibition mode ships no clustering UI; ignore crafted cluster URLs.
-    cluster_mode = None if IS_EXHIBITION_MODE else request.args.get('cluster_mode')
-    cluster_sort = request.args.get('cluster_sort', 'date_desc')
-    cluster_target_id = request.args.get('cluster_target_id')
-    cluster_scope = request.args.get('cluster_scope', 'global')
+    cluster_mode = None if IS_EXHIBITION_MODE else request.args.get("cluster_mode")
+    cluster_sort = request.args.get("cluster_sort", "date_desc")
+    cluster_target_id = request.args.get("cluster_target_id")
+    cluster_scope = request.args.get("cluster_scope", "global")
 
     final_files = process_clustering(final_files, cluster_mode, cluster_sort, cluster_target_id, cluster_scope)
 
@@ -10882,15 +11774,15 @@ def collection_view(coll_id):
     note_files = []
     try:
         with get_db_connection() as conn_notes:
-            query = '''
+            query = """
                 SELECT DISTINCT f.id, f.name, f.path, f.mtime, f.type
                 FROM files f
                 JOIN collection_files cf ON f.id = cf.file_id
                 WHERE (cf.collection_id = ? OR ? = 'all')
                 AND (f.type = 'document' OR LOWER(f.name) LIKE '%.txt' OR LOWER(f.name) LIKE '%.md')
                 ORDER BY f.mtime DESC
-            '''
-            rows = conn_notes.execute(query, (coll_id if coll_id != 'all' else -1, coll_id)).fetchall()
+            """
+            rows = conn_notes.execute(query, (coll_id if coll_id != "all" else -1, coll_id)).fetchall()
             note_files = [dict(r) for r in rows]
             has_notes = len(note_files) > 0
     except Exception:
@@ -10929,13 +11821,13 @@ def collection_view(coll_id):
 
         ext_rows = conn_ext.execute(ext_query).fetchall()
         for r in ext_rows:
-            fname = r['name']
-            if '.' in fname:
-                ext_clean = fname.split('.')[-1].lower()
-                if ext_clean not in ['txt', 'md']:
+            fname = r["name"]
+            if "." in fname:
+                ext_clean = fname.split(".")[-1].lower()
+                if ext_clean not in ["txt", "md"]:
                     extensions.add(ext_clean)
-            if not prefix_limit_reached and '_' in fname:
-                pfx = fname.split('_')[0]
+            if not prefix_limit_reached and "_" in fname:
+                pfx = fname.split("_")[0]
                 if pfx:
                     prefixes.add(pfx)
                     if len(prefixes) > MAX_PREFIX_DROPDOWN_ITEMS:
@@ -10943,144 +11835,166 @@ def collection_view(coll_id):
                         prefixes.clear()
 
     # --- JSON RESPONSE FOR AJAX/EXHIBITION ---
-    if request.headers.get('Accept') == 'application/json':
-        return jsonify({
-            'status': 'success',
-            'collection_name': coll_info['name'],
-            'files': redact_file_listing(final_files),
-            'total_count': total_folder_files,
-            'has_notes': has_notes,
-            'note_files': note_files,
-            'available_extensions': sorted(extensions)
-        })
+    if request.headers.get("Accept") == "application/json":
+        return jsonify(
+            {
+                "status": "success",
+                "collection_name": coll_info["name"],
+                "files": redact_file_listing(final_files),
+                "total_count": total_folder_files,
+                "has_notes": has_notes,
+                "note_files": note_files,
+                "available_extensions": sorted(extensions),
+            }
+        )
 
     # --- TEMPLATE RENDERING ---
-    is_system_flag = (coll_info.get('type') == 'system_flag')
+    is_system_flag = coll_info.get("type") == "system_flag"
     parent_name = "Status" if is_system_flag else "Collections"
 
     breadcrumbs = []
     if not IS_EXHIBITION_MODE:
         breadcrumbs = [
-            {'key': '_root_', 'display_name': 'Main'},
-            {'key': None, 'display_name': parent_name},
-            {'key': fake_folder_key, 'display_name': coll_info['name']}
+            {"key": "_root_", "display_name": "Main"},
+            {"key": None, "display_name": parent_name},
+            {"key": fake_folder_key, "display_name": coll_info["name"]},
         ]
     else:
         breadcrumbs = [
-            {'key': '_root_', 'display_name': 'Exhibition Home'},
-            {'key': fake_folder_key, 'display_name': coll_info['name']}
+            {"key": "_root_", "display_name": "Exhibition Home"},
+            {"key": fake_folder_key, "display_name": coll_info["name"]},
         ]
 
     current_folder_info = {
-        'display_name': coll_info['name'],
-        'path': f"{parent_name}: {coll_info['name']}",
-        'is_watched': False,
-        'is_mount': False,
-        'is_collection': True,
-        'collection_id': coll_id, # Can be 'all' or int
-        'collection_color': coll_info.get('color', '#ffffff'),
-        'collection_type': coll_info.get('type', 'user_album')
+        "display_name": coll_info["name"],
+        "path": f"{parent_name}: {coll_info['name']}",
+        "is_watched": False,
+        "is_mount": False,
+        "is_collection": True,
+        "collection_id": coll_id,  # Can be 'all' or int
+        "collection_color": coll_info.get("color", "#ffffff"),
+        "collection_type": coll_info.get("type", "user_album"),
     }
 
     folders = get_dynamic_folder_config()
 
     try:
         with get_db_connection() as conn_opts:
-            users_rows = conn_opts.execute("SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'").fetchall()
-            available_raters = [{'id': str(r['user_id']), 'name': r['full_name']} for r in users_rows]
+            users_rows = conn_opts.execute(
+                "SELECT user_id, full_name FROM users WHERE is_active=1 AND username != 'admin'"
+            ).fetchall()
+            available_raters = [{"id": str(r["user_id"]), "name": r["full_name"]} for r in users_rows]
     except sqlite3.Error:
-        available_raters =[]
-    available_raters.insert(0, {'id': 'admin', 'name': 'System Admin'})
-    template_name = 'exhibition.html' if IS_EXHIBITION_MODE else 'index.html'
+        available_raters = []
+    available_raters.insert(0, {"id": "admin", "name": "System Admin"})
+    template_name = "exhibition.html" if IS_EXHIBITION_MODE else "index.html"
 
-    return render_template(template_name,
-                           files=final_files[:PAGE_SIZE],
-                           total_files=len(final_files),
-                           view_token=VIEW_SNAPSHOTS.put(_view_owner(), final_files),
-                           total_folder_files=total_folder_files,
-                           total_db_files=total_db_files,
-                           folders=folders,
-                           current_folder_key=fake_folder_key,
-                           current_folder_info=current_folder_info,
-                           breadcrumbs=breadcrumbs,
-                           ancestor_keys=[],
-                           available_extensions=sorted(extensions),
-                           available_prefixes=sorted(prefixes),
-                           prefix_limit_reached=prefix_limit_reached,
-                           selected_extensions=selected_exts, selected_prefixes=selected_prefixes,
-                           available_raters=available_raters, selected_raters=selected_raters, selected_rating_ranges=selected_rating_ranges, protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
-                           show_favorites=request.args.get('favorites', 'false').lower() == 'true',
-                           generate_waveforms=GENERATE_WAVEFORMS, enable_ai_search=ENABLE_AI_SEARCH, enable_ai_dam=AI_CONFIG.enabled, is_ai_search=False, ai_query="", is_omniquery=False, omniquery_sql="", omniquery_dictionary=get_omniquery_dictionary(),
-                           is_global_search=False,
-                           active_filters_count=active_filters_count,
-                           current_scope='local', is_recursive=True,
-                           server_dam_default=ENABLE_DAM_MODE,
-                           is_exhibition_mode=IS_EXHIBITION_MODE, blind_rating=is_effectively_blind(), global_blind_active=BLIND_RATING,
-                           app_version=APP_VERSION, github_url=GITHUB_REPO_URL,
-                           update_available=UPDATE_AVAILABLE, remote_version=REMOTE_VERSION,
-                           ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
-                           comfy_server_url=COMFYUI_SERVER_URL,
-                           stream_threshold=STREAM_THRESHOLD_BYTES,
-                           has_notes=has_notes, note_files=note_files)
+    return render_template(
+        template_name,
+        files=final_files[:PAGE_SIZE],
+        total_files=len(final_files),
+        view_token=VIEW_SNAPSHOTS.put(_view_owner(), final_files),
+        total_folder_files=total_folder_files,
+        total_db_files=total_db_files,
+        folders=folders,
+        current_folder_key=fake_folder_key,
+        current_folder_info=current_folder_info,
+        breadcrumbs=breadcrumbs,
+        ancestor_keys=[],
+        available_extensions=sorted(extensions),
+        available_prefixes=sorted(prefixes),
+        prefix_limit_reached=prefix_limit_reached,
+        selected_extensions=selected_exts,
+        selected_prefixes=selected_prefixes,
+        available_raters=available_raters,
+        selected_raters=selected_raters,
+        selected_rating_ranges=selected_rating_ranges,
+        protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
+        show_favorites=request.args.get("favorites", "false").lower() == "true",
+        generate_waveforms=GENERATE_WAVEFORMS,
+        enable_ai_search=ENABLE_AI_SEARCH,
+        enable_ai_dam=AI_CONFIG.enabled,
+        is_ai_search=False,
+        ai_query="",
+        is_omniquery=False,
+        omniquery_sql="",
+        omniquery_dictionary=get_omniquery_dictionary(),
+        is_global_search=False,
+        active_filters_count=active_filters_count,
+        current_scope="local",
+        is_recursive=True,
+        server_dam_default=ENABLE_DAM_MODE,
+        is_exhibition_mode=IS_EXHIBITION_MODE,
+        blind_rating=is_effectively_blind(),
+        global_blind_active=BLIND_RATING,
+        app_version=APP_VERSION,
+        github_url=GITHUB_REPO_URL,
+        update_available=UPDATE_AVAILABLE,
+        remote_version=REMOTE_VERSION,
+        ffmpeg_available=(FFPROBE_EXECUTABLE_PATH is not None),
+        comfy_server_url=COMFYUI_SERVER_URL,
+        stream_threshold=STREAM_THRESHOLD_BYTES,
+        has_notes=has_notes,
+        note_files=note_files,
+    )
+
 
 # --- EXHIBITION API: RATINGS & COMMENTS ---
 
-@app.route('/galleryout/api/exhibition/rating_details', methods=['GET'])
+
+@app.route("/galleryout/api/exhibition/rating_details", methods=["GET"])
 @management_api_only
 def get_rating_details():
-    file_id = request.args.get('file_id')
+    file_id = request.args.get("file_id")
     if not file_id:
-        return jsonify({'status': 'error', 'message': 'Missing file ID'}), 400
+        return jsonify({"status": "error", "message": "Missing file ID"}), 400
 
     try:
         with get_db_connection() as conn:
             # Join ratings with users to get real names
-            query = '''
+            query = """
                 SELECT r.rating, r.client_uuid, u.full_name
                 FROM file_ratings r
                 LEFT JOIN users u ON r.client_uuid = CAST(u.user_id AS TEXT)
                 WHERE r.file_id = ?
                 ORDER BY r.rating DESC, r.created_at DESC
-            '''
+            """
             rows = conn.execute(query, (file_id,)).fetchall()
 
             details = []
             for row in rows:
                 name = "Guest (Anonymous)"
-                if row['client_uuid'] == 'admin':
+                if row["client_uuid"] == "admin":
                     name = "System Admin"
-                elif row['full_name']:
-                    name = row['full_name']
+                elif row["full_name"]:
+                    name = row["full_name"]
 
-                details.append({
-                    'rating': row['rating'],
-                    'name': name
-                })
+                details.append({"rating": row["rating"], "name": name})
 
-            return jsonify({'status': 'success', 'details': details})
+            return jsonify({"status": "success", "details": details})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/galleryout/api/exhibition/rate', methods=['POST'])
+@app.route("/galleryout/api/exhibition/rate", methods=["POST"])
 def exhibition_rate_file():
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     data = request.json
-    file_id = data.get('file_id')
+    file_id = data.get("file_id")
 
-    current_user_id = session.get('user_id')
+    current_user_id = session.get("user_id")
     # Spoofing Protection: Force server-side ID if authenticated
-    client_uuid = str(current_user_id) if current_user_id else data.get('client_uuid')
+    client_uuid = str(current_user_id) if current_user_id else data.get("client_uuid")
 
-    rating = data.get('rating')  # 1-5 integer, or None/0 to delete
+    rating = data.get("rating")  # 1-5 integer, or None/0 to delete
 
     if not all([file_id, client_uuid]):
-        return jsonify({'status': 'error', 'message': 'Missing data'}), 400
+        return jsonify({"status": "error", "message": "Missing data"}), 400
 
     rating, rating_error = parse_rating(rating)
     if rating_error:
-        return jsonify({'status': 'error', 'message': rating_error}), 400
+        return jsonify({"status": "error", "message": rating_error}), 400
 
     # Rating asked only whether the file existed, never whether this caller
     # was allowed to see it -- so a visitor could score a picture that was
@@ -11090,34 +12004,43 @@ def exhibition_rate_file():
     # cannot be told apart: answering 404 for one and 200 for the other let
     # a visitor discover which ids exist.
     if not is_file_accessible(file_id):
-        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+        return jsonify({"status": "error", "message": "File not found"}), 404
 
     try:
         with get_db_connection() as conn:
             if not conn.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
-                return jsonify({'status': 'error', 'message': 'File not found'}), 404
+                return jsonify({"status": "error", "message": "File not found"}), 404
 
             if rating is None or rating == 0:
-                conn.execute("""
+                conn.execute(
+                    """
                     DELETE FROM file_ratings
                     WHERE file_id = ? AND client_uuid = ?
-                """, (file_id, client_uuid))
+                """,
+                    (file_id, client_uuid),
+                )
                 conn.commit()
             else:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO file_ratings (file_id, client_uuid, rating, created_at)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT(file_id, client_uuid) DO UPDATE SET
                         rating = excluded.rating,
                         created_at = excluded.created_at
-                """, (file_id, client_uuid, rating, time.time()))
+                """,
+                    (file_id, client_uuid, rating, time.time()),
+                )
                 conn.commit()
 
-            result = conn.execute("""
+            result = conn.execute(
+                """
                 SELECT AVG(rating), COUNT(*)
                 FROM file_ratings
                 WHERE file_id=?
-            """, (file_id,)).fetchone()
+            """,
+                (file_id,),
+            ).fetchone()
 
             avg = result[0] if result[0] is not None else 0.0
             vote_count = result[1] if result[1] is not None else 0
@@ -11127,39 +12050,35 @@ def exhibition_rate_file():
         # in the JSON on every vote, where anyone with the network tab open
         # could read it. A guarantee that holds only in the markup is not one.
         if is_effectively_blind():
-            return jsonify({'status': 'success', 'new_average': None,
-                            'vote_count': None})
+            return jsonify({"status": "success", "new_average": None, "vote_count": None})
 
-        return jsonify({
-            'status': 'success',
-            'new_average': avg,
-            'vote_count': vote_count
-        })
+        return jsonify({"status": "success", "new_average": avg, "vote_count": vote_count})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/exhibition/rate_batch', methods=['POST'])
+
+@app.route("/galleryout/api/exhibition/rate_batch", methods=["POST"])
 def exhibition_rate_batch():
     # The single-file route has always checked this; the batch one did not,
     # so an unauthenticated caller could write or clear ratings in bulk under
     # any identity it named.
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     data = request.json
-    file_ids = data.get('file_ids', [])
+    file_ids = data.get("file_ids", [])
 
-    current_user_id = session.get('user_id')
+    current_user_id = session.get("user_id")
     # Spoofing Protection: Force server-side ID if authenticated
-    client_uuid = str(current_user_id) if current_user_id else data.get('client_uuid')
+    client_uuid = str(current_user_id) if current_user_id else data.get("client_uuid")
 
-    rating = data.get('rating')
+    rating = data.get("rating")
 
     if not file_ids or not client_uuid:
-        return jsonify({'status': 'error', 'message': 'Missing data'}), 400
+        return jsonify({"status": "error", "message": "Missing data"}), 400
 
     rating, rating_error = parse_rating(rating)
     if rating_error:
-        return jsonify({'status': 'error', 'message': rating_error}), 400
+        return jsonify({"status": "error", "message": rating_error}), 400
 
     # The same rule as the single-file route above, and for the same
     # reason. Also the reason this route no longer answers with a raw
@@ -11168,19 +12087,20 @@ def exhibition_rate_batch():
     # "FOREIGN KEY constraint failed".
     allowed = [fid for fid in file_ids if is_file_accessible(fid)]
     if not allowed:
-        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+        return jsonify({"status": "error", "message": "File not found"}), 404
 
     try:
         with get_db_connection() as conn:
-            placeholders = ','.join(['?'] * len(allowed))
-            present = {row[0] for row in conn.execute(
-                f"SELECT id FROM files WHERE id IN ({placeholders})", allowed).fetchall()}
+            placeholders = ",".join(["?"] * len(allowed))
+            present = {
+                row[0] for row in conn.execute(f"SELECT id FROM files WHERE id IN ({placeholders})", allowed).fetchall()
+            }
             file_ids = [fid for fid in allowed if fid in present]
             if not file_ids:
-                return jsonify({'status': 'error', 'message': 'File not found'}), 404
+                return jsonify({"status": "error", "message": "File not found"}), 404
 
             if rating is None or rating == 0:
-                placeholders = ','.join(['?'] * len(file_ids))
+                placeholders = ",".join(["?"] * len(file_ids))
                 query = f"""
                     DELETE FROM file_ratings
                     WHERE file_id IN ({placeholders}) AND client_uuid = ?
@@ -11191,33 +12111,37 @@ def exhibition_rate_batch():
                 current_time = time.time()
                 records = [(fid, client_uuid, rating, current_time) for fid in file_ids]
 
-                conn.executemany("""
+                conn.executemany(
+                    """
                     INSERT INTO file_ratings (file_id, client_uuid, rating, created_at)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT(file_id, client_uuid) DO UPDATE SET
                         rating = excluded.rating,
                         created_at = excluded.created_at
-                """, records)
+                """,
+                    records,
+                )
 
             conn.commit()
 
-        return jsonify({'status': 'success', 'message': f'Successfully updated {len(file_ids)} files.'})
+        return jsonify({"status": "success", "message": f"Successfully updated {len(file_ids)} files."})
 
     except Exception as e:
         print(f"Batch Rating Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/exhibition/comments', methods=['GET'])
+
+@app.route("/galleryout/api/exhibition/comments", methods=["GET"])
 def exhibition_get_comments():
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-    file_id = request.args.get('file_id')
-    current_user_id = session.get('user_id')
-    current_role = session.get('role', 'GUEST')
-    client_uuid = str(current_user_id) if current_user_id else request.args.get('client_uuid', '')
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    file_id = request.args.get("file_id")
+    current_user_id = session.get("user_id")
+    current_role = session.get("role", "GUEST")
+    client_uuid = str(current_user_id) if current_user_id else request.args.get("client_uuid", "")
 
     if not file_id:
-        return jsonify({'status': 'error', 'message': 'File ID missing'}), 400
+        return jsonify({"status": "error", "message": "File ID missing"}), 400
 
     # Reading comments asked only for a session, never whether this caller
     # may see the picture the comments are about -- so a visitor given one
@@ -11225,13 +12149,13 @@ def exhibition_get_comments():
     # library, including ones the gallery refuses to send them. The answer
     # matches a file that is not there, so the two cannot be told apart.
     if not is_file_accessible(file_id):
-        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+        return jsonify({"status": "error", "message": "File not found"}), 404
 
     with get_db_connection() as conn:
         # --- FIX: LOCAL ADMIN EQUIVALENCE ---
         # If FORCE_LOGIN is False and we are in the main interface, the user is implicitly Admin
-        is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-        is_privileged = is_local_admin or (current_role in ['ADMIN', 'MANAGER', 'STAFF'])
+        is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+        is_privileged = is_local_admin or (current_role in ["ADMIN", "MANAGER", "STAFF"])
 
         if is_privileged:
             # Admins, Managers, and Staff see EVERYTHING
@@ -11266,32 +12190,37 @@ def exhibition_get_comments():
         # 2. PERSONAL RATING
         my_rating = 0
         if client_uuid:
-            r = conn.execute("SELECT rating FROM file_ratings WHERE file_id=? AND client_uuid=?", (file_id, client_uuid)).fetchone()
+            r = conn.execute(
+                "SELECT rating FROM file_ratings WHERE file_id=? AND client_uuid=?", (file_id, client_uuid)
+            ).fetchone()
             if r:
-                my_rating = r['rating']
+                my_rating = r["rating"]
 
         # 3. GLOBAL STATS (Fresh Calculation for Real-Time Polling)
         stats = conn.execute("SELECT AVG(rating), COUNT(*) FROM file_ratings WHERE file_id=?", (file_id,)).fetchone()
         avg_rating = stats[0] if stats[0] is not None else 0.0
         vote_count = stats[1] if stats[1] is not None else 0
 
-    return jsonify({
-        'status': 'success',
-        'comments': [dict(c) for c in comments],
-        'my_rating': my_rating,
-        # Send fresh stats to frontend
-        'avg_rating': avg_rating,
-        'vote_count': vote_count
-    })
+    return jsonify(
+        {
+            "status": "success",
+            "comments": [dict(c) for c in comments],
+            "my_rating": my_rating,
+            # Send fresh stats to frontend
+            "avg_rating": avg_rating,
+            "vote_count": vote_count,
+        }
+    )
 
-@app.route('/galleryout/api/users/simple_list', methods=['GET'])
+
+@app.route("/galleryout/api/users/simple_list", methods=["GET"])
 def get_users_simple_list():
     # --- FIX: LOCAL ADMIN EQUIVALENCE ---
-    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-    if not is_local_admin and session.get('role') not in ['ADMIN', 'MANAGER', 'STAFF']:
-        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    if not is_local_admin and session.get("role") not in ["ADMIN", "MANAGER", "STAFF"]:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
 
-    exclude_staff = request.args.get('exclude_staff', 'false').lower() == 'true'
+    exclude_staff = request.args.get("exclude_staff", "false").lower() == "true"
     try:
         with get_db_connection() as conn:
             query = "SELECT user_id, full_name, username FROM users WHERE is_active = 1 AND username != 'admin'"
@@ -11299,17 +12228,18 @@ def get_users_simple_list():
                 query += " AND role NOT IN ('ADMIN', 'MANAGER', 'STAFF')"
             query += " ORDER BY full_name ASC"
             rows = conn.execute(query).fetchall()
-            return jsonify({'status': 'success', 'users': [dict(r) for r in rows]})
+            return jsonify({"status": "success", "users": [dict(r) for r in rows]})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/exhibition/post_comment', methods=['POST'])
+
+@app.route("/galleryout/api/exhibition/post_comment", methods=["POST"])
 def exhibition_post_comment():
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     data = request.json
-    file_id = data.get('file_id')
-    text = data.get('text', '').strip()
+    file_id = data.get("file_id")
+    text = data.get("text", "").strip()
 
     # Nothing bounded this. Measured: a 40,000,000 character comment was
     # accepted with a 200 and stored whole, and four posts put 45 MB into
@@ -11324,46 +12254,47 @@ def exhibition_post_comment():
     # already, which is the collection note.
     too_long = comment_length_error(text)
     if too_long:
-        return jsonify({'status': 'error', 'message': too_long}), 400
+        return jsonify({"status": "error", "message": too_long}), 400
 
     # The same for the name shown beside it. Only a real visitor can set
     # this -- a signed-in user gets their account name and the local owner
     # gets "System Admin" -- so it is exactly the unauthenticated path.
-    if len(str(data.get('author', ''))) > COMMENT_AUTHOR_MAX_CHARS:
-        return jsonify({
-            'status': 'error',
-            'message': (f'That name is too long. The limit is '
-                        f'{COMMENT_AUTHOR_MAX_CHARS} characters.')
-        }), 400
+    if len(str(data.get("author", ""))) > COMMENT_AUTHOR_MAX_CHARS:
+        return jsonify(
+            {
+                "status": "error",
+                "message": (f"That name is too long. The limit is {COMMENT_AUTHOR_MAX_CHARS} characters."),
+            }
+        ), 400
 
     # The same rule as reading them: a visitor may only write about a
     # picture that was actually shared with them. Without this, a comment
     # could be attached to any picture in the library by anyone who had
     # been given a single album.
     if file_id and not is_file_accessible(file_id):
-        return jsonify({'status': 'error', 'message': 'File not found'}), 404
+        return jsonify({"status": "error", "message": "File not found"}), 404
 
-    target_audience = data.get('target_audience', 'public').strip()
+    target_audience = data.get("target_audience", "public").strip()
     if not target_audience:
         # Se sono un Admin "locale" (non force_login), default = internal
-        target_audience = 'internal' if not FORCE_LOGIN and not IS_EXHIBITION_MODE else 'public'
+        target_audience = "internal" if not FORCE_LOGIN and not IS_EXHIBITION_MODE else "public"
     # Get User Context from Session
-    user_id = session.get('user_id')
-    role = session.get('role', 'GUEST')
-    real_full_name = session.get('full_name', 'Guest')
+    user_id = session.get("user_id")
+    role = session.get("role", "GUEST")
+    real_full_name = session.get("full_name", "Guest")
 
     # --- FIX: LOCAL ADMIN EQUIVALENCE ---
-    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-    is_privileged = is_local_admin or (role in ['ADMIN', 'MANAGER', 'STAFF'])
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    is_privileged = is_local_admin or (role in ["ADMIN", "MANAGER", "STAFF"])
 
     # Security: Non-privileged users can ONLY post 'public' or 'internal' (Staff Only).
     # They cannot DM specific users (e.g., 'user:123').
-    if not is_privileged and target_audience not in ['public', 'internal']:
-        target_audience = 'public'
+    if not is_privileged and target_audience not in ["public", "internal"]:
+        target_audience = "public"
 
-    client_uuid = str(user_id) if user_id else data.get('client_uuid')
+    client_uuid = str(user_id) if user_id else data.get("client_uuid")
 
-    if role != 'GUEST' and user_id:
+    if role != "GUEST" and user_id:
         author = real_full_name
     elif is_local_admin:
         # If we are the Local Admin (no login), override the author name to System Admin
@@ -11371,126 +12302,140 @@ def exhibition_post_comment():
         author = "System Admin"
         client_uuid = "admin"
     else:
-        author = data.get('author', 'Guest').strip()
+        author = data.get("author", "Guest").strip()
 
     if not all([file_id, client_uuid, text]):
-        return jsonify({'status': 'error', 'message': 'Missing data'}), 400
+        return jsonify({"status": "error", "message": "Missing data"}), 400
 
     try:
         with get_db_connection() as conn:
             # --- SECURITY CHECK: Ensure target user actually exists ---
-            if target_audience.startswith('user:'):
-                target_user_id = target_audience.split(':')[1]
+            if target_audience.startswith("user:"):
+                target_user_id = target_audience.split(":")[1]
                 # We check if it's a registered user ID (guests don't have integer IDs)
                 if target_user_id.isdigit():
                     user_exists = conn.execute("SELECT 1 FROM users WHERE user_id = ?", (target_user_id,)).fetchone()
                     if not user_exists:
-                        return jsonify({'status': 'error', 'message': 'Target user has been deleted or does not exist.'}), 404
+                        return jsonify(
+                            {"status": "error", "message": "Target user has been deleted or does not exist."}
+                        ), 404
 
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO file_comments (file_id, client_uuid, author_name, comment_text, target_audience, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (file_id, client_uuid, author, text, target_audience, time.time()))
+            """,
+                (file_id, client_uuid, author, text, target_audience, time.time()),
+            )
             conn.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/exhibition/delete_comment', methods=['POST'])
+
+@app.route("/galleryout/api/exhibition/delete_comment", methods=["POST"])
 def exhibition_delete_comment():
     # Ownership below is decided by comparing the row's client_uuid against
     # one taken from the request body, which is only meaningful once we know
     # a caller. Without this, an anonymous request supplied both halves --
     # and comment ids are AUTOINCREMENT integers, so they can be counted
     # through until one matches the identity being claimed.
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     data = request.json
-    comment_id = data.get('comment_id')
-    current_user_id = session.get('user_id')
-    current_role = session.get('role')
+    comment_id = data.get("comment_id")
+    current_user_id = session.get("user_id")
+    current_role = session.get("role")
 
-    client_uuid = str(current_user_id) if current_user_id else data.get('client_uuid')
+    client_uuid = str(current_user_id) if current_user_id else data.get("client_uuid")
 
     is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE) and not current_user_id
-    is_privileged = is_local_admin or (current_role in ['ADMIN', 'MANAGER', 'STAFF'])
+    is_privileged = is_local_admin or (current_role in ["ADMIN", "MANAGER", "STAFF"])
 
     try:
         with get_db_connection() as conn:
             if not is_privileged:
                 if not client_uuid:
-                    return jsonify({'status': 'error', 'message': 'Auth required'}), 403
+                    return jsonify({"status": "error", "message": "Auth required"}), 403
                 res = conn.execute("DELETE FROM file_comments WHERE id=? AND client_uuid=?", (comment_id, client_uuid))
                 if res.rowcount == 0:
-                    return jsonify({'status': 'error', 'message': 'Permission denied: Not your comment.'}), 403
+                    return jsonify({"status": "error", "message": "Permission denied: Not your comment."}), 403
             else:
                 conn.execute("DELETE FROM file_comments WHERE id=?", (comment_id,))
 
             conn.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/exhibition/edit_comment', methods=['POST'])
+
+@app.route("/galleryout/api/exhibition/edit_comment", methods=["POST"])
 def exhibition_edit_comment():
     # Same as delete: ownership is checked against an identity supplied by
     # the caller, so there has to be a caller.
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     data = request.json
-    comment_id = data.get('comment_id')
-    new_text = data.get('new_text', '').strip()
+    comment_id = data.get("comment_id")
+    new_text = data.get("new_text", "").strip()
 
-    current_user_id = session.get('user_id')
-    current_role = session.get('role')
-    client_uuid = str(current_user_id) if current_user_id else data.get('client_uuid')
+    current_user_id = session.get("user_id")
+    current_role = session.get("role")
+    client_uuid = str(current_user_id) if current_user_id else data.get("client_uuid")
 
     if not all([comment_id, client_uuid, new_text]):
-        return jsonify({'status': 'error', 'message': 'Missing data'}), 400
+        return jsonify({"status": "error", "message": "Missing data"}), 400
 
     # The same rule as posting one. Without this the cap on posting was a
     # cap on nothing: post something short, then edit it to any size.
     too_long = comment_length_error(new_text)
     if too_long:
-        return jsonify({'status': 'error', 'message': too_long}), 400
+        return jsonify({"status": "error", "message": too_long}), 400
 
     is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE) and not current_user_id
-    is_privileged = is_local_admin or (current_role in ['ADMIN', 'MANAGER', 'STAFF'])
+    is_privileged = is_local_admin or (current_role in ["ADMIN", "MANAGER", "STAFF"])
 
     try:
         with get_db_connection() as conn:
             if not is_privileged:
-                res = conn.execute("""
+                res = conn.execute(
+                    """
                     UPDATE file_comments
                     SET comment_text = ?
                     WHERE id = ? AND client_uuid = ?
-                """, (new_text, comment_id, client_uuid))
+                """,
+                    (new_text, comment_id, client_uuid),
+                )
 
                 if res.rowcount == 0:
-                    return jsonify({'status': 'error', 'message': 'Permission denied: Cannot edit this comment (Not owner)'}), 403
+                    return jsonify(
+                        {"status": "error", "message": "Permission denied: Cannot edit this comment (Not owner)"}
+                    ), 403
             else:
-                conn.execute("""
+                conn.execute(
+                    """
                     UPDATE file_comments
                     SET comment_text = ?
                     WHERE id = ?
-                """, (new_text, comment_id))
+                """,
+                    (new_text, comment_id),
+                )
 
             conn.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # --- OMNIQUERY API ---
-@app.route('/galleryout/api/omniquery/execute', methods=['POST'])
+@app.route("/galleryout/api/omniquery/execute", methods=["POST"])
 @management_api_only
 def execute_omniquery():
     data = request.json
-    raw_sql = data.get('sql', '').strip()
-    raw_sql = raw_sql.replace('\r\n', '\n').replace('\n', ' \n')
+    raw_sql = data.get("sql", "").strip()
+    raw_sql = raw_sql.replace("\r\n", "\n").replace("\n", " \n")
     if not raw_sql:
-        return jsonify({'status': 'error', 'message': 'SQL query cannot be empty.'}), 400
+        return jsonify({"status": "error", "message": "SQL query cannot be empty."}), 400
 
     # The ONE sandboxed SQL gate (omniquery.sqlexec): SELECT-prefix check,
     # true read-only URI connection, and the C-engine authorizer. The
@@ -11501,11 +12446,13 @@ def execute_omniquery():
     exec_result = run_readonly_select(DATABASE_FILE, raw_sql)
     if not exec_result.ok:
         status = 403 if "only SELECT" in (exec_result.error or "") else 400
-        return jsonify({'status': 'error', 'message': exec_result.error}), status
+        return jsonify({"status": "error", "message": exec_result.error}), status
     result_ids = exec_result.ids
 
     if not result_ids:
-        return jsonify({'status': 'success', 'session_id': None, 'message': 'Query executed successfully, but returned 0 results.'})
+        return jsonify(
+            {"status": "success", "session_id": None, "message": "Query executed successfully, but returned 0 results."}
+        )
 
     # Save results to main Read-Write connection
     try:
@@ -11513,16 +12460,19 @@ def execute_omniquery():
             # Housekeeping: delete sessions older than 2 hours
             rw_conn.execute("DELETE FROM omniquery_sessions WHERE created_at < ?", (time.time() - 7200,))
 
-            rw_conn.execute("INSERT INTO omniquery_sessions (session_id, raw_sql, created_at) VALUES (?, ?, ?)",
-                            (session_id, raw_sql, time.time()))
+            rw_conn.execute(
+                "INSERT INTO omniquery_sessions (session_id, raw_sql, created_at) VALUES (?, ?, ?)",
+                (session_id, raw_sql, time.time()),
+            )
 
             records = [(session_id, fid) for fid in result_ids]
             rw_conn.executemany("INSERT INTO omniquery_results (session_id, file_id) VALUES (?, ?)", records)
             rw_conn.commit()
 
-        return jsonify({'status': 'success', 'session_id': session_id, 'count': len(result_ids)})
+        return jsonify({"status": "success", "session_id": session_id, "count": len(result_ids)})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f"Database Error: {e!s}"}), 500
+        return jsonify({"status": "error", "message": f"Database Error: {e!s}"}), 500
+
 
 # --- OMNIQUERY SEARCH (the LLM pretending to be a search field) ---
 # Fusion of two answerers, each used where it is strong:
@@ -11538,6 +12488,7 @@ _omniquery_parser = None
 _omniquery_sqlsearch = None
 _omniquery_lock = threading.Lock()
 
+
 def _get_omniquery_parser():
     """Lazy singleton for the deterministic nlq parser (zero-dependency,
     always available)."""
@@ -11546,6 +12497,7 @@ def _get_omniquery_parser():
         with _omniquery_lock:
             if _omniquery_parser is None:
                 import omniquery.parsers as omniquery_parsers
+
                 _omniquery_parser = omniquery_parsers.make_search_parser()
     return _omniquery_parser
 
@@ -11559,6 +12511,7 @@ def _get_omniquery_sqlsearch():
         with _omniquery_lock:
             if _omniquery_sqlsearch is None:
                 from omniquery.parsers.nl2sql import SqlSearch
+
                 _omniquery_sqlsearch = SqlSearch(db_path=DATABASE_FILE)
     return _omniquery_sqlsearch
 
@@ -11571,11 +12524,12 @@ def _omniquery_run_ast(ast_dict, query_text):
     # admin case (see is_effectively_blind / management_api_only): when
     # neither FORCE_LOGIN nor exhibition mode is active, an unauthenticated
     # session is the local admin; otherwise it's an unauthenticated guest.
-    role = session.get('role', 'ADMIN' if not (FORCE_LOGIN or IS_EXHIBITION_MODE) else 'GUEST')
-    user_id = session.get('user_id')
+    role = session.get("role", "ADMIN" if not (FORCE_LOGIN or IS_EXHIBITION_MODE) else "GUEST")
+    user_id = session.get("user_id")
     ctx = AuthContext(role=role, user_id=user_id, client_uuid=user_id, ai_enabled=AI_CONFIG.enabled)
     engine = OmniQueryEngine(
-        DATABASE_FILE, BASE_OUTPUT_PATH,
+        DATABASE_FILE,
+        BASE_OUTPUT_PATH,
         ai_resolvers=ai_dam_service.create_ai_resolvers(AI_CONFIG),
     )
     try:
@@ -11584,7 +12538,7 @@ def _omniquery_run_ast(ast_dict, query_text):
         return None, None, str(e)
     if not result.ok:
         return None, None, result.error
-    if result.kind == 'count':
+    if result.kind == "count":
         return None, result.count, None
     return (result.ids or []), None, None
 
@@ -11593,7 +12547,7 @@ def _omniquery_store_session(query_text, result_ids, bookkeeping_sql):
     """Persist a result set as an omniquery session for gallery
     navigation; returns the session id."""
     session_id = str(uuid.uuid4())
-    safe_nl_text = query_text.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    safe_nl_text = query_text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
     raw_sql = f"-- OmniQuery: {safe_nl_text}\n{bookkeeping_sql}"
     with get_db_connection() as rw_conn:
         rw_conn.execute("DELETE FROM omniquery_sessions WHERE created_at < ?", (time.time() - 7200,))
@@ -11603,12 +12557,13 @@ def _omniquery_store_session(query_text, result_ids, bookkeeping_sql):
         )
         rw_conn.executemany(
             "INSERT INTO omniquery_results (session_id, file_id) VALUES (?, ?)",
-            [(session_id, fid) for fid in result_ids])
+            [(session_id, fid) for fid in result_ids],
+        )
         rw_conn.commit()
     return session_id
 
 
-@app.route('/galleryout/api/omniquery/nlq', methods=['POST'])
+@app.route("/galleryout/api/omniquery/nlq", methods=["POST"])
 @management_api_only
 def omniquery_nlq():
     """The search palette's engine: question in, tiles out.
@@ -11625,50 +12580,47 @@ def omniquery_nlq():
 
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        return jsonify({'status': 'error', 'message': 'Request body must be JSON.'}), 400
+        return jsonify({"status": "error", "message": "Request body must be JSON."}), 400
 
-    query_text = str(data.get('query', '') or '').strip()
+    query_text = str(data.get("query", "") or "").strip()
     if not query_text:
-        return jsonify({'status': 'error', 'message': 'Query text cannot be empty.'}), 400
-    live = bool(data.get('live'))
+        return jsonify({"status": "error", "message": "Query text cannot be empty."}), 400
+    live = bool(data.get("live"))
 
     outcome = _get_omniquery_parser().parse(query_text, time.time())
     if outcome.ast is None:
-        return jsonify({'status': 'error',
-                        'message': outcome.reason or 'parse failed'}), 500
+        return jsonify({"status": "error", "message": outcome.reason or "parse failed"}), 500
     raw = outcome.raw or {}
-    chips = list(raw.get('interpretation', []))
-    base = {'status': 'success', 'backend': outcome.backend,
-            'interpretation': chips, 'query': query_text}
+    chips = list(raw.get("interpretation", []))
+    base = {"status": "success", "backend": outcome.backend, "interpretation": chips, "query": query_text}
 
     def _card_payload(ids=None, stat_value=None, session_id=None):
         """Classify a result into one of the palette's result cards:
         stat (aggregate value), spotlight (single hit), empty, or tiles."""
         if stat_value is not None:
-            return {'kind': 'count', 'card': 'stat', 'count': stat_value}
+            return {"kind": "count", "card": "stat", "count": stat_value}
         ids = ids or []
-        payload = {'kind': 'ids', 'count': len(ids),
-                   'preview_ids': ids[:24], 'session_id': session_id}
+        payload = {"kind": "ids", "count": len(ids), "preview_ids": ids[:24], "session_id": session_id}
         if not ids:
-            payload['card'] = 'empty'
+            payload["card"] = "empty"
         elif len(ids) == 1:
-            payload['card'] = 'spotlight'
+            payload["card"] = "spotlight"
         else:
-            payload['card'] = 'tiles'
+            payload["card"] = "tiles"
         return payload
 
-    _AGG_RE = _re.compile(r'\s*SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(', _re.IGNORECASE)
+    _AGG_RE = _re.compile(r"\s*SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(", _re.IGNORECASE)
 
     # The model answers when the query carries free language the rules
     # could not type precisely -- and only on the non-live path.
-    rules_exact = not raw.get('text_terms')
+    rules_exact = not raw.get("text_terms")
     if not live and not rules_exact:
         sqlsearch = _get_omniquery_sqlsearch()
         if sqlsearch.available():
             ids, model_sql, err = sqlsearch.search(query_text)
             if ids is not None:
-                base['backend'] = 'nl2sql'
-                base['interpretation'] = [*chips, {'label': 'ai search', 'field': None}]
+                base["backend"] = "nl2sql"
+                base["interpretation"] = [*chips, {"label": "ai search", "field": None}]
                 if model_sql and _AGG_RE.match(model_sql):
                     value = float(ids[0]) if ids else 0
                     value = int(value) if value == int(value) else value
@@ -11678,54 +12630,56 @@ def omniquery_nlq():
                     try:
                         session_id = _omniquery_store_session(query_text, ids, model_sql)
                     except Exception as e:
-                        return jsonify({'status': 'error',
-                                        'message': f"Database Error: {e!s}"}), 500
+                        return jsonify({"status": "error", "message": f"Database Error: {e!s}"}), 500
                 return jsonify({**base, **_card_payload(ids=ids, session_id=session_id)})
             # Model produced nothing usable: the deterministic answer stands.
 
     result_ids, count, err = _omniquery_run_ast(outcome.ast, query_text)
     if err is not None:
-        return jsonify({'status': 'error', 'message': err}), 400
+        return jsonify({"status": "error", "message": err}), 400
     if count is not None:
         return jsonify({**base, **_card_payload(stat_value=count)})
     session_id = None
     if not live and result_ids:
         try:
-            session_id = _omniquery_store_session(
-                query_text, result_ids, 'typed-engine result set')
+            session_id = _omniquery_store_session(query_text, result_ids, "typed-engine result set")
         except Exception as e:
-            return jsonify({'status': 'error', 'message': f"Database Error: {e!s}"}), 500
+            return jsonify({"status": "error", "message": f"Database Error: {e!s}"}), 500
     return jsonify({**base, **_card_payload(ids=result_ids, session_id=session_id)})
+
 
 # --- ADMIN BLIND RATING OVERRIDE ---
 def is_effectively_blind():
     """Determines if blind rating should be applied for the current user session."""
     if not BLIND_RATING:
         # User opt-in if server doesn't enforce it globally
-        return session.get('my_ratings_only', False)
+        return session.get("my_ratings_only", False)
     # Check if user is privileged
-    role = session.get('role', 'GUEST')
-    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-    if is_local_admin or role in ['ADMIN', 'MANAGER', 'STAFF']:
+    role = session.get("role", "GUEST")
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    if is_local_admin or role in ["ADMIN", "MANAGER", "STAFF"]:
         # If they toggled the override, disable blind mode
-        if session.get('override_blind', False):
+        if session.get("override_blind", False):
             return False
     return True
 
-@app.route('/galleryout/api/exhibition/toggle_my_ratings', methods=['POST'])
+
+@app.route("/galleryout/api/exhibition/toggle_my_ratings", methods=["POST"])
 def toggle_my_ratings():
-    session['my_ratings_only'] = not session.get('my_ratings_only', False)
-    return jsonify({'status': 'success'})
+    session["my_ratings_only"] = not session.get("my_ratings_only", False)
+    return jsonify({"status": "success"})
 
-@app.route('/galleryout/api/exhibition/toggle_blind', methods=['POST'])
+
+@app.route("/galleryout/api/exhibition/toggle_blind", methods=["POST"])
 def toggle_blind_override():
-    role = session.get('role', 'GUEST')
-    is_local_admin = (not FORCE_LOGIN and not IS_EXHIBITION_MODE)
-    if not is_local_admin and role not in ['ADMIN', 'MANAGER', 'STAFF']:
-        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+    role = session.get("role", "GUEST")
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    if not is_local_admin and role not in ["ADMIN", "MANAGER", "STAFF"]:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
 
-    session['override_blind'] = not session.get('override_blind', False)
-    return jsonify({'status': 'success'})
+    session["override_blind"] = not session.get("override_blind", False)
+    return jsonify({"status": "success"})
+
 
 def print_startup_banner():
     banner = rf"""
@@ -11761,9 +12715,11 @@ def print_startup_banner():
     print(f"   Contributor: {Colors.CYAN}Martial Michel (Docker & Codebase){Colors.RESET}")
     print()
 
+
 # --- GLOBAL STATE FOR UPDATES ---
 UPDATE_AVAILABLE = False
 REMOTE_VERSION = None  # New global variable
+
 
 def check_for_updates():
     """Checks the GitHub repo for a newer version without external libs."""
@@ -11772,7 +12728,7 @@ def check_for_updates():
     try:
         # Timeout (3s) not blocking start if no internet connection
         with urllib.request.urlopen(GITHUB_RAW_URL, timeout=3) as response:
-            content = response.read().decode('utf-8')
+            content = response.read().decode("utf-8")
 
             # Regex modified to handle APP_VERSION="1.41" (string) or APP_VERSION=1.41 (number)
             match = re.search(r'APP_VERSION\s*=\s*["\']?([0-9.]+)["\']?', content)
@@ -11781,16 +12737,16 @@ def check_for_updates():
             if match:
                 remote_version_str = match.group(1)
             else:
-                match_header = re.search(r'#\s*Version:\s*([0-9.]+)', content)
+                match_header = re.search(r"#\s*Version:\s*([0-9.]+)", content)
                 if match_header:
                     remote_version_str = match_header.group(1)
 
             if remote_version_str:
-                local_clean = re.sub(r'[^0-9.]', '', str(APP_VERSION))
-                remote_clean = re.sub(r'[^0-9.]', '', str(remote_version_str))
+                local_clean = re.sub(r"[^0-9.]", "", str(APP_VERSION))
+                remote_clean = re.sub(r"[^0-9.]", "", str(remote_version_str))
 
-                local_dots = local_clean.count('.')
-                remote_dots = remote_clean.count('.')
+                local_dots = local_clean.count(".")
+                remote_dots = remote_clean.count(".")
 
                 is_update_available = False
 
@@ -11799,14 +12755,16 @@ def check_for_updates():
                         is_update_available = float(remote_clean) > float(local_clean)
 
                 if not is_update_available:
-                    local_v = tuple(map(int, local_clean.split('.'))) if local_clean else (0,)
-                    remote_v = tuple(map(int, remote_clean.split('.'))) if remote_clean else (0,)
+                    local_v = tuple(map(int, local_clean.split("."))) if local_clean else (0,)
+                    remote_v = tuple(map(int, remote_clean.split("."))) if remote_clean else (0,)
                     is_update_available = remote_v > local_v
 
                 if is_update_available:
                     UPDATE_AVAILABLE = True
-                    REMOTE_VERSION = remote_version_str # Store the version string
-                    print(f"\n{Colors.YELLOW}{Colors.BOLD}NOTICE: A new version ({remote_version_str}) is available!{Colors.RESET}")
+                    REMOTE_VERSION = remote_version_str  # Store the version string
+                    print(
+                        f"\n{Colors.YELLOW}{Colors.BOLD}NOTICE: A new version ({remote_version_str}) is available!{Colors.RESET}"
+                    )
                 else:
                     print("You are up to date.")
             else:
@@ -11814,6 +12772,7 @@ def check_for_updates():
 
     except Exception:
         print("Skipped (Offline or GitHub unreachable).")
+
 
 # --- STARTUP CHECKS AND MAIN ENTRY POINT ---
 def show_config_error_and_exit(path):
@@ -11830,14 +12789,15 @@ def show_config_error_and_exit(path):
         # "Copy as path" on a file rather than its folder is one keystroke
         # away, and the FFPROBE setting directly below this one in the
         # launcher IS a file, which makes it an easy line to copy.
-        what = (f"❌ CRITICAL ERROR: BASE_OUTPUT_PATH is a file, not a folder:"
-                f"\n\n👉 {path}\n\n"
-                f"The gallery shows the contents of a folder, so this needs "
-                f"to be the folder your images are in -- most likely the one "
-                f"containing the file above.\n\n")
+        what = (
+            f"❌ CRITICAL ERROR: BASE_OUTPUT_PATH is a file, not a folder:"
+            f"\n\n👉 {path}\n\n"
+            f"The gallery shows the contents of a folder, so this needs "
+            f"to be the folder your images are in -- most likely the one "
+            f"containing the file above.\n\n"
+        )
     else:
-        what = (f"❌ CRITICAL ERROR: The specified path does not exist or is "
-                f"not accessible:\n\n👉 {path}\n\n")
+        what = f"❌ CRITICAL ERROR: The specified path does not exist or is not accessible:\n\n👉 {path}\n\n"
 
     msg = (
         f"{what}"
@@ -11850,16 +12810,17 @@ def show_config_error_and_exit(path):
     if TKINTER_AVAILABLE:
         root = tk.Tk()
         root.withdraw()
-        root.attributes('-topmost', True)
+        root.attributes("-topmost", True)
         messagebox.showerror("SmartGallery - Configuration Error", msg)
         root.destroy()
     else:
         # Fallback for headless environments (Docker, etc.)
-        print(f"\n{Colors.RED}{Colors.BOLD}" + "="*70 + f"{Colors.RESET}")
+        print(f"\n{Colors.RED}{Colors.BOLD}" + "=" * 70 + f"{Colors.RESET}")
         print(f"{Colors.RED}{Colors.BOLD}{msg}{Colors.RESET}")
-        print(f"{Colors.RED}{Colors.BOLD}" + "="*70 + f"{Colors.RESET}\n")
+        print(f"{Colors.RED}{Colors.BOLD}" + "=" * 70 + f"{Colors.RESET}\n")
 
     sys.exit(1)
+
 
 def show_ffmpeg_warning():
     """Shows a non-blocking warning message for missing FFmpeg."""
@@ -11876,14 +12837,15 @@ def show_ffmpeg_warning():
     if TKINTER_AVAILABLE:
         root = tk.Tk()
         root.withdraw()
-        root.attributes('-topmost', True)
+        root.attributes("-topmost", True)
         messagebox.showwarning("SmartGallery - Feature Limitation", msg)
         root.destroy()
     else:
         # Fallback for headless environments (Docker, etc.)
-        print(f"\n{Colors.YELLOW}{Colors.BOLD}" + "="*70 + f"{Colors.RESET}")
+        print(f"\n{Colors.YELLOW}{Colors.BOLD}" + "=" * 70 + f"{Colors.RESET}")
         print(f"{Colors.YELLOW}{msg}{Colors.RESET}")
-        print(f"{Colors.YELLOW}{Colors.BOLD}" + "="*70 + f"{Colors.RESET}\n")
+        print(f"{Colors.YELLOW}{Colors.BOLD}" + "=" * 70 + f"{Colors.RESET}\n")
+
 
 def install_shutdown_signals(handler, names=None):
     """Take the shutdown signals, except any the launcher told us to ignore.
@@ -11907,9 +12869,9 @@ def install_shutdown_signals(handler, names=None):
     """
 
     if names is None:
-        names = ['SIGINT', 'SIGTERM']
-        if os.name != 'nt':
-            names.append('SIGHUP')
+        names = ["SIGINT", "SIGTERM"]
+        if os.name != "nt":
+            names.append("SIGHUP")
 
     installed, left_alone = [], []
     for name in names:
@@ -11948,13 +12910,13 @@ def check_port_available(port):
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
-                         s.getsockopt(socket.SOL_SOCKET,
-                                      socket.SO_REUSEADDR) | 1)
+            s.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) | 1
+            )
         except OSError:
             pass  # same tolerance waitress has; the bind is what matters
         try:
-            s.bind(('0.0.0.0', port))
+            s.bind(("0.0.0.0", port))
             return True
         except OSError:
             return False
@@ -11966,6 +12928,7 @@ def check_port_available(port):
 # Windows ignores this block automatically.
 try:
     import resource
+
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     target_soft = 4096
     if soft < target_soft:
@@ -12003,9 +12966,8 @@ def derive_upload_ceilings(max_upload_mb):
 
 
 # Increase max request body size to handle large workflow JSON payloads (if users manually upload them, though we now read from disk)
-MAX_UPLOAD_MB = env_num('COMFYUI_MAX_UPLOAD_MB', 2000, minimum=1)
-app.config['MAX_CONTENT_LENGTH'], MAX_REQUEST_BODY_BYTES = derive_upload_ceilings(
-    MAX_UPLOAD_MB)
+MAX_UPLOAD_MB = env_num("COMFYUI_MAX_UPLOAD_MB", 2000, minimum=1)
+app.config["MAX_CONTENT_LENGTH"], MAX_REQUEST_BODY_BYTES = derive_upload_ceilings(MAX_UPLOAD_MB)
 
 
 def _caller_is_reading_json():
@@ -12016,15 +12978,12 @@ def _caller_is_reading_json():
     person nothing at all.
     """
     try:
-        if request.path.startswith('/galleryout/api/'):
+        if request.path.startswith("/galleryout/api/"):
             return True
         if request.is_json:
             return True
-        best = request.accept_mimetypes.best_match(
-            ['application/json', 'text/html'])
-        return (best == 'application/json'
-                and request.accept_mimetypes[best]
-                > request.accept_mimetypes['text/html'])
+        best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+        return best == "application/json" and request.accept_mimetypes[best] > request.accept_mimetypes["text/html"]
     except Exception:
         return False
 
@@ -12052,19 +13011,23 @@ def _unexpected_error_still_answers_readably(error):
     console is the owner's.
     """
     if isinstance(error, HTTPException):
-        return error          # 404, 405, 403 and the rest keep their meaning
+        return error  # 404, 405, 403 and the rest keep their meaning
 
     traceback.print_exc()
 
     if not _caller_is_reading_json():
         return InternalServerError()
 
-    return jsonify({
-        'status': 'error',
-        'message': ('Something went wrong handling that request '
-                    f'({type(error).__name__}). The gallery console has the '
-                    f'details.')
-    }), 500
+    return jsonify(
+        {
+            "status": "error",
+            "message": (
+                "Something went wrong handling that request "
+                f"({type(error).__name__}). The gallery console has the "
+                f"details."
+            ),
+        }
+    ), 500
 
 
 @app.errorhandler(413)
@@ -12074,37 +13037,42 @@ def _upload_too_large(error):
     Without this the reply is an HTML error page, and the upload screen has
     nothing to show but the number 413.
     """
-    return jsonify({
-        'status': 'error',
-        'message': (f'That file is larger than this gallery accepts. The '
-                    f'limit is {MAX_UPLOAD_MB} MB, and is set by '
-                    f'COMFYUI_MAX_UPLOAD_MB.')
-    }), 413
+    return jsonify(
+        {
+            "status": "error",
+            "message": (
+                f"That file is larger than this gallery accepts. The "
+                f"limit is {MAX_UPLOAD_MB} MB, and is set by "
+                f"COMFYUI_MAX_UPLOAD_MB."
+            ),
+        }
+    ), 413
 
 
 # Experimental Remix API Module
 
+
 def clean_workflow_paths(data):
-    '''
+    """
     Recursively cleans multiple forward slashes (//) and backslashes (\\)
     from string values in the workflow data, reducing them to a single slash,
     without normalizing all slashes to a single type.
     Preserves UNC paths (\\server or //server) and skips URLs (://).
-    '''
+    """
     if isinstance(data, dict):
         for k, v in data.items():
             if isinstance(v, str):
-                if '://' not in v:
-                    is_unc_slash = v.startswith('//')
-                    is_unc_back = v.startswith(r'\\')
+                if "://" not in v:
+                    is_unc_slash = v.startswith("//")
+                    is_unc_back = v.startswith(r"\\")
 
-                    cleaned = re.sub(r'/+', '/', v)
-                    cleaned = re.sub(r'\\+', lambda m: '\\', cleaned)
+                    cleaned = re.sub(r"/+", "/", v)
+                    cleaned = re.sub(r"\\+", lambda m: "\\", cleaned)
 
-                    if is_unc_slash and not cleaned.startswith('//'):
-                        cleaned = '/' + cleaned
-                    if is_unc_back and not cleaned.startswith(r'\\'):
-                        cleaned = '\\' + cleaned
+                    if is_unc_slash and not cleaned.startswith("//"):
+                        cleaned = "/" + cleaned
+                    if is_unc_back and not cleaned.startswith(r"\\"):
+                        cleaned = "\\" + cleaned
 
                     data[k] = cleaned
             else:
@@ -12112,17 +13080,17 @@ def clean_workflow_paths(data):
     elif isinstance(data, list):
         for i in range(len(data)):
             if isinstance(data[i], str):
-                if '://' not in data[i]:
-                    is_unc_slash = data[i].startswith('//')
-                    is_unc_back = data[i].startswith(r'\\')
+                if "://" not in data[i]:
+                    is_unc_slash = data[i].startswith("//")
+                    is_unc_back = data[i].startswith(r"\\")
 
-                    cleaned = re.sub(r'/+', '/', data[i])
-                    cleaned = re.sub(r'\\+', lambda m: '\\', cleaned)
+                    cleaned = re.sub(r"/+", "/", data[i])
+                    cleaned = re.sub(r"\\+", lambda m: "\\", cleaned)
 
-                    if is_unc_slash and not cleaned.startswith('//'):
-                        cleaned = '/' + cleaned
-                    if is_unc_back and not cleaned.startswith(r'\\'):
-                        cleaned = '\\' + cleaned
+                    if is_unc_slash and not cleaned.startswith("//"):
+                        cleaned = "/" + cleaned
+                    if is_unc_back and not cleaned.startswith(r"\\"):
+                        cleaned = "\\" + cleaned
 
                     data[i] = cleaned
             else:
@@ -12131,152 +13099,161 @@ def clean_workflow_paths(data):
 
 
 # --- OMNIQUERY EXTENDED APIs ---
-@app.route('/galleryout/api/omniquery/prompts/factory', methods=['GET'])
+@app.route("/galleryout/api/omniquery/prompts/factory", methods=["GET"])
 @management_api_only
 def get_factory_omniquery_prompt():
     try:
         new_text = get_omniquery_dictionary(reset=True)
-        return jsonify({'status': 'success', 'template': new_text})
+        return jsonify({"status": "success", "template": new_text})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/prompts/list', methods=['GET'])
+
+@app.route("/galleryout/api/omniquery/prompts/list", methods=["GET"])
 @management_api_only
 def list_omniquery_prompts():
     try:
-        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
+        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_prompts")
         os.makedirs(p_dir, exist_ok=True)
         prompts = []
         for f in os.listdir(p_dir):
-            if f.lower().endswith('.txt'):
+            if f.lower().endswith(".txt"):
                 path = os.path.join(p_dir, f)
                 mtime = os.path.getmtime(path)
                 desc = ""
                 try:
-                    with open(path, encoding='utf-8') as pf:
+                    with open(path, encoding="utf-8") as pf:
                         first_line = pf.readline().strip()
-                        if first_line.startswith('-- Description:'):
-                            desc = first_line.replace('-- Description:', '', 1).strip()
+                        if first_line.startswith("-- Description:"):
+                            desc = first_line.replace("-- Description:", "", 1).strip()
                 except Exception:
                     pass
-                prompts.append({'name': f, 'mtime': mtime, 'description': desc})
-        return jsonify({'status': 'success', 'prompts': prompts})
+                prompts.append({"name": f, "mtime": mtime, "description": desc})
+        return jsonify({"status": "success", "prompts": prompts})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/prompts/save', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/prompts/save", methods=["POST"])
 @management_api_only
 def save_omniquery_prompt():
     data = request.json
-    name = data.get('name', '').strip()
-    text = data.get('text', '').strip()
+    name = data.get("name", "").strip()
+    text = data.get("text", "").strip()
 
     if not name or not text:
-        return jsonify({'status': 'error', 'message': 'Name and Prompt text required.'}), 400
-    if not name.lower().endswith('.txt'):
-        name += '.txt'
-    safe_name = safe_media_filename(name, fallback='untitled')
+        return jsonify({"status": "error", "message": "Name and Prompt text required."}), 400
+    if not name.lower().endswith(".txt"):
+        name += ".txt"
+    safe_name = safe_media_filename(name, fallback="untitled")
 
     try:
-        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
+        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_prompts")
         os.makedirs(p_dir, exist_ok=True)
-        with open(os.path.join(p_dir, safe_name), 'w', encoding='utf-8') as f:
+        with open(os.path.join(p_dir, safe_name), "w", encoding="utf-8") as f:
             f.write(text)
-        return jsonify({'status': 'success', 'message': 'Prompt saved.'})
+        return jsonify({"status": "success", "message": "Prompt saved."})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/prompts/load', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/prompts/load", methods=["POST"])
 @management_api_only
 def load_omniquery_prompt():
-    name = request.json.get('name')
-    safe_name = safe_media_filename(name, fallback='untitled')
+    name = request.json.get("name")
+    safe_name = safe_media_filename(name, fallback="untitled")
     try:
-        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
-        with open(os.path.join(p_dir, safe_name), encoding='utf-8') as f:
+        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_prompts")
+        with open(os.path.join(p_dir, safe_name), encoding="utf-8") as f:
             text = f.read()
-        return jsonify({'status': 'success', 'text': text})
+        return jsonify({"status": "success", "text": text})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/prompts/delete', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/prompts/delete", methods=["POST"])
 @management_api_only
 def delete_omniquery_prompt():
-    name = request.json.get('name')
-    safe_name = safe_media_filename(name, fallback='untitled')
+    name = request.json.get("name")
+    safe_name = safe_media_filename(name, fallback="untitled")
     try:
-        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
+        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_prompts")
         path = os.path.join(p_dir, safe_name)
         if os.path.exists(path):
             os.remove(path)
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/prompts/rename', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/prompts/rename", methods=["POST"])
 @management_api_only
 def rename_omniquery_prompt():
     data = request.json
-    old_name = safe_media_filename(data.get('old_name', ''), fallback='untitled')
-    new_name = data.get('new_name', '').strip()
-    if not new_name.lower().endswith('.txt'):
-        new_name += '.txt'
-    safe_new = safe_media_filename(new_name, fallback='untitled')
+    old_name = safe_media_filename(data.get("old_name", ""), fallback="untitled")
+    new_name = data.get("new_name", "").strip()
+    if not new_name.lower().endswith(".txt"):
+        new_name += ".txt"
+    safe_new = safe_media_filename(new_name, fallback="untitled")
     try:
-        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_prompts')
+        p_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_prompts")
         old_path = os.path.join(p_dir, old_name)
         new_path = os.path.join(p_dir, safe_new)
         if os.path.exists(old_path) and not os.path.exists(new_path):
             os.rename(old_path, new_path)
-            return jsonify({'status': 'success'})
-        return jsonify({'status': 'error', 'message': 'File not found or destination exists.'}), 400
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error", "message": "File not found or destination exists."}), 400
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/queries/list', methods=['GET'])
+
+@app.route("/galleryout/api/omniquery/queries/list", methods=["GET"])
 @management_api_only
 def list_omniquery_queries():
     try:
-        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
+        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries")
         os.makedirs(q_dir, exist_ok=True)
         queries = []
         for f in os.listdir(q_dir):
-            if f.lower().endswith('.txt'):
+            if f.lower().endswith(".txt"):
                 path = os.path.join(q_dir, f)
                 mtime = os.path.getmtime(path)
                 desc = ""
                 # Read description and prompt from SQL comment
                 try:
-                    with open(path, encoding='utf-8') as qf:
+                    with open(path, encoding="utf-8") as qf:
                         file_content = qf.read()
-                        desc_match = re.search(r'^--\s*Description:\s*(.*)', file_content, re.IGNORECASE | re.MULTILINE)
+                        desc_match = re.search(r"^--\s*Description:\s*(.*)", file_content, re.IGNORECASE | re.MULTILINE)
                         desc = desc_match.group(1).strip() if desc_match else ""
 
-                        prompt_match = re.search(r'/\*\s*Prompt Request:\s*(.*?)\s*\*/', file_content, re.IGNORECASE | re.DOTALL)
+                        prompt_match = re.search(
+                            r"/\*\s*Prompt Request:\s*(.*?)\s*\*/", file_content, re.IGNORECASE | re.DOTALL
+                        )
                         if prompt_match:
                             prompt_text = prompt_match.group(1).strip()
                             if prompt_text:
                                 desc = desc + f" 💡 {prompt_text}" if desc else f"💡 {prompt_text}"
                 except Exception:
                     pass
-                queries.append({'name': f, 'mtime': mtime, 'description': desc})
-        return jsonify({'status': 'success', 'queries': queries})
+                queries.append({"name": f, "mtime": mtime, "description": desc})
+        return jsonify({"status": "success", "queries": queries})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/queries/save', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/queries/save", methods=["POST"])
 @management_api_only
 def save_omniquery_query():
     data = request.json
-    name = data.get('name', '').strip()
-    desc = data.get('description', '').strip()
-    sql = data.get('sql', '').strip()
+    name = data.get("name", "").strip()
+    desc = data.get("description", "").strip()
+    sql = data.get("sql", "").strip()
 
     if not name or not sql:
-        return jsonify({'status': 'error', 'message': 'Name and SQL required.'}), 400
-    if not name.lower().endswith('.txt'):
-        name += '.txt'
-    safe_name = safe_media_filename(name, fallback='untitled')
+        return jsonify({"status": "error", "message": "Name and SQL required."}), 400
+    if not name.lower().endswith(".txt"):
+        name += ".txt"
+    safe_name = safe_media_filename(name, fallback="untitled")
 
     # /list advertises a description read back out of a leading
     # `-- Description:` comment, so that is where a supplied one has to go --
@@ -12288,75 +13265,80 @@ def save_omniquery_query():
         final_sql = "-- Description: " + " ".join(desc.split()) + "\n" + sql
 
     try:
-        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
+        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries")
         os.makedirs(q_dir, exist_ok=True)
-        with open(os.path.join(q_dir, safe_name), 'w', encoding='utf-8') as f:
+        with open(os.path.join(q_dir, safe_name), "w", encoding="utf-8") as f:
             f.write(final_sql)
-        return jsonify({'status': 'success', 'message': 'Query saved.'})
+        return jsonify({"status": "success", "message": "Query saved."})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/queries/load', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/queries/load", methods=["POST"])
 @management_api_only
 def load_omniquery_query():
-    name = request.json.get('name')
-    safe_name = safe_media_filename(name, fallback='untitled')
+    name = request.json.get("name")
+    safe_name = safe_media_filename(name, fallback="untitled")
     try:
-        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
-        with open(os.path.join(q_dir, safe_name), encoding='utf-8') as f:
+        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries")
+        with open(os.path.join(q_dir, safe_name), encoding="utf-8") as f:
             sql = f.read()
-        return jsonify({'status': 'success', 'sql': sql})
+        return jsonify({"status": "success", "sql": sql})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/queries/delete', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/queries/delete", methods=["POST"])
 @management_api_only
 def delete_omniquery_query():
-    name = request.json.get('name')
-    safe_name = safe_media_filename(name, fallback='untitled')
+    name = request.json.get("name")
+    safe_name = safe_media_filename(name, fallback="untitled")
     try:
-        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
+        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries")
         path = os.path.join(q_dir, safe_name)
         if os.path.exists(path):
             os.remove(path)
-        return jsonify({'status': 'success'})
+        return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/queries/rename', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/queries/rename", methods=["POST"])
 @management_api_only
 def rename_omniquery_query():
     data = request.json
-    old_name = safe_media_filename(data.get('old_name', ''), fallback='untitled')
-    new_name = data.get('new_name', '').strip()
-    if not new_name.lower().endswith('.txt'):
-        new_name += '.txt'
-    safe_new = safe_media_filename(new_name, fallback='untitled')
+    old_name = safe_media_filename(data.get("old_name", ""), fallback="untitled")
+    new_name = data.get("new_name", "").strip()
+    if not new_name.lower().endswith(".txt"):
+        new_name += ".txt"
+    safe_new = safe_media_filename(new_name, fallback="untitled")
     try:
-        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.omniquery', 'saved_queries')
+        q_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries")
         old_path = os.path.join(q_dir, old_name)
         new_path = os.path.join(q_dir, safe_new)
         if os.path.exists(old_path) and not os.path.exists(new_path):
             os.rename(old_path, new_path)
-            return jsonify({'status': 'success'})
-        return jsonify({'status': 'error', 'message': 'File not found or destination exists.'}), 400
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error", "message": "File not found or destination exists."}), 400
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/galleryout/api/omniquery/preview', methods=['POST'])
+
+@app.route("/galleryout/api/omniquery/preview", methods=["POST"])
 @management_api_only
 def preview_omniquery_query():
     data = request.json
-    raw_sql = data.get('sql', '').strip()
+    raw_sql = data.get("sql", "").strip()
     if not raw_sql:
-        return jsonify({'status': 'error', 'message': 'Empty query.'}), 400
+        return jsonify({"status": "error", "message": "Empty query."}), 400
 
-    clean_sql = re.sub(r'(/\*.*?\*/)|(--.*?\n)', '', raw_sql, flags=re.DOTALL).strip()
-    if not re.match(r'^SELECT\b', clean_sql, re.IGNORECASE):
-        return jsonify({'status': 'error', 'message': 'Security Block: Only SELECT statements are allowed.'}), 403
+    clean_sql = re.sub(r"(/\*.*?\*/)|(--.*?\n)", "", raw_sql, flags=re.DOTALL).strip()
+    if not re.match(r"^SELECT\b", clean_sql, re.IGNORECASE):
+        return jsonify({"status": "error", "message": "Security Block: Only SELECT statements are allowed."}), 403
 
     db_uri = f"file:{os.path.abspath(DATABASE_FILE)}?mode=ro"
     try:
+
         def query_authorizer(action, arg1, arg2, dbname, source):
             if action in (21, 20, 31):
                 return sqlite3.SQLITE_OK
@@ -12368,40 +13350,41 @@ def preview_omniquery_query():
             rows = cursor.fetchall()
             cols = [description[0] for description in cursor.description] if cursor.description else []
             result = [dict(zip(cols, row, strict=False)) for row in rows]
-            return jsonify({'status': 'success', 'columns': cols, 'rows': result, 'count': len(result)})
+            return jsonify({"status": "success", "columns": cols, "rows": result, "count": len(result)})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 400
+        return jsonify({"status": "error", "message": str(e)}), 400
+
 
 def _register_remix_routes_inline():
 
     def parse_workflow(raw_json, wf_type, raw_ui_json=None):
         wf_data = json.loads(raw_json)
-        ui_data = json.loads(raw_ui_json) if raw_ui_json else (wf_data if wf_type == 'ui' else {})
+        ui_data = json.loads(raw_ui_json) if raw_ui_json else (wf_data if wf_type == "ui" else {})
 
         extract = {
-            'workflow_type': wf_type,
-            'texts': [],
-            'seeds': [],
-            'numbers': [],
-            'images': [],
-            'save_prefix': None,
-            'save_node_type': None,
-            'default_comfy_url': COMFYUI_SERVER_URL,
-            'has_app_mode': False
+            "workflow_type": wf_type,
+            "texts": [],
+            "seeds": [],
+            "numbers": [],
+            "images": [],
+            "save_prefix": None,
+            "save_node_type": None,
+            "default_comfy_url": COMFYUI_SERVER_URL,
+            "has_app_mode": False,
         }
 
         app_params = []
         if isinstance(ui_data, dict):
-            extra = ui_data.get('extra', {})
-            linear_data = extra.get('linearData', {})
-            if isinstance(linear_data, dict) and 'inputs' in linear_data:
-                app_params = linear_data['inputs']
-                extract['has_app_mode'] = True
+            extra = ui_data.get("extra", {})
+            linear_data = extra.get("linearData", {})
+            if isinstance(linear_data, dict) and "inputs" in linear_data:
+                app_params = linear_data["inputs"]
+                extract["has_app_mode"] = True
             else:
-                app_data = ui_data.get('app', extra.get('app', {}))
-                if isinstance(app_data, dict) and 'parameters' in app_data:
-                    app_params = app_data['parameters']
-                    extract['has_app_mode'] = True
+                app_data = ui_data.get("app", extra.get("app", {}))
+                if isinstance(app_data, dict) and "parameters" in app_data:
+                    app_params = app_data["parameters"]
+                    extract["has_app_mode"] = True
 
         def check_is_app(n_id, k, n_type, n_title):
             for p in app_params:
@@ -12409,9 +13392,9 @@ def _register_remix_routes_inline():
                     if str(p[0]) == str(n_id) and str(p[1]) == k:
                         return True
                 elif isinstance(p, dict):
-                    if str(p.get('node_id')) == str(n_id) and (not p.get('widget_name') or p.get('widget_name') == k):
+                    if str(p.get("node_id")) == str(n_id) and (not p.get("widget_name") or p.get("widget_name") == k):
                         return True
-            return bool(n_type == 'PrimitiveNode' and n_title and n_title != 'PrimitiveNode')
+            return bool(n_type == "PrimitiveNode" and n_title and n_title != "PrimitiveNode")
 
         def check_is_app_by_index(n_id, widget_idx):
             # Match by position: count app_params entries for this node_id;
@@ -12423,7 +13406,9 @@ def _register_remix_routes_inline():
             # We also do a direct index match against the linearData order.
             all_node_widgets = []
             for p in app_params:
-                if (isinstance(p, list) and len(p) >= 2 and str(p[0]) == str(n_id)) or (isinstance(p, dict) and str(p.get('node_id', '')) == str(n_id)):
+                if (isinstance(p, list) and len(p) >= 2 and str(p[0]) == str(n_id)) or (
+                    isinstance(p, dict) and str(p.get("node_id", "")) == str(n_id)
+                ):
                     all_node_widgets.append(p)
             return len(all_node_widgets) > 0 and widget_idx < len(all_node_widgets)
 
@@ -12433,169 +13418,443 @@ def _register_remix_routes_inline():
                 return param_names[idx]
             return f"widget_{idx}"
 
-        save_classes = ['SaveImage', 'SaveAnimatedWEBP', 'SaveAnimatedPNG', 'VHS_VideoCombine', 'SaveVideo', 'SaveLatent']
+        save_classes = [
+            "SaveImage",
+            "SaveAnimatedWEBP",
+            "SaveAnimatedPNG",
+            "VHS_VideoCombine",
+            "SaveVideo",
+            "SaveLatent",
+        ]
 
-        if wf_type == 'api':
+        if wf_type == "api":
             if isinstance(wf_data, list):
                 wf_data = {str(i): n for i, n in enumerate(wf_data)}
             for node_id, node in wf_data.items():
                 if not isinstance(node, dict):
                     continue
-                inputs = node.get('inputs', {})
-                n_type = node.get('class_type', 'Unknown')
-                n_title = node.get('_meta', {}).get('title', n_type)
+                inputs = node.get("inputs", {})
+                n_type = node.get("class_type", "Unknown")
+                n_title = node.get("_meta", {}).get("title", n_type)
                 type_title_lower = (n_type + " " + n_title).lower()
 
                 if n_type in save_classes or any(c in n_type for c in save_classes):
-                    fp = inputs.get('filename_prefix')
+                    fp = inputs.get("filename_prefix")
                     if fp and isinstance(fp, str):
-                        extract['save_prefix'] = fp
-                        extract['save_node_type'] = n_title
+                        extract["save_prefix"] = fp
+                        extract["save_node_type"] = n_title
 
                 for key, val in inputs.items():
                     key_l = key.lower()
                     is_app_field = check_is_app(node_id, key, n_type, n_title)
                     if is_app_field:
-                        extract['has_app_mode'] = True
+                        extract["has_app_mode"] = True
 
-                    if isinstance(val, str) and any(val.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.jfif', '.bmp']):
-                        extract['images'].append({'node_id': node_id, 'value': val, 'key': key, 'node_type': n_type, 'title': n_title, 'is_app_field': is_app_field, 'label': n_title if is_app_field else 'Image'})
+                    if isinstance(val, str) and any(
+                        val.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp", ".jfif", ".bmp"]
+                    ):
+                        extract["images"].append(
+                            {
+                                "node_id": node_id,
+                                "value": val,
+                                "key": key,
+                                "node_type": n_type,
+                                "title": n_title,
+                                "is_app_field": is_app_field,
+                                "label": n_title if is_app_field else "Image",
+                            }
+                        )
                     elif isinstance(val, bool):
-                        is_target = is_app_field or any(x in key_l for x in ['enable', 'keep', 'save', 'preview'])
+                        is_target = is_app_field or any(x in key_l for x in ["enable", "keep", "save", "preview"])
                         if is_target:
-                            extract['numbers'].append({'node_id': node_id, 'key': key, 'value': val, 'node_type': n_type, 'title': n_title, 'label': n_title if is_app_field else key.capitalize(), 'is_app_field': is_app_field, 'is_bool': True})
-                    elif ('seed' in key_l or 'seed' in type_title_lower) and isinstance(val, (int, float)) and not isinstance(val, bool):
-                        extract['seeds'].append({'node_id': node_id, 'key': key, 'value': val, 'node_type': n_type, 'title': n_title, 'is_app_field': is_app_field, 'label': n_title if is_app_field else 'Seed'})
+                            extract["numbers"].append(
+                                {
+                                    "node_id": node_id,
+                                    "key": key,
+                                    "value": val,
+                                    "node_type": n_type,
+                                    "title": n_title,
+                                    "label": n_title if is_app_field else key.capitalize(),
+                                    "is_app_field": is_app_field,
+                                    "is_bool": True,
+                                }
+                            )
+                    elif (
+                        ("seed" in key_l or "seed" in type_title_lower)
+                        and isinstance(val, (int, float))
+                        and not isinstance(val, bool)
+                    ):
+                        extract["seeds"].append(
+                            {
+                                "node_id": node_id,
+                                "key": key,
+                                "value": val,
+                                "node_type": n_type,
+                                "title": n_title,
+                                "is_app_field": is_app_field,
+                                "label": n_title if is_app_field else "Seed",
+                            }
+                        )
                     elif isinstance(val, int) and not isinstance(val, bool) and val > 10000:
-                        if 'width' not in key_l and 'height' not in key_l and 'width' not in type_title_lower and 'height' not in type_title_lower:
-                            if not any(s['node_id'] == node_id and s['key'] == key for s in extract['seeds']):
-                                extract['seeds'].append({'node_id': node_id, 'key': key, 'value': val, 'node_type': n_type, 'title': n_title, 'is_app_field': is_app_field, 'label': n_title if is_app_field else 'Seed'})
+                        if (
+                            "width" not in key_l
+                            and "height" not in key_l
+                            and "width" not in type_title_lower
+                            and "height" not in type_title_lower
+                        ):
+                            if not any(s["node_id"] == node_id and s["key"] == key for s in extract["seeds"]):
+                                extract["seeds"].append(
+                                    {
+                                        "node_id": node_id,
+                                        "key": key,
+                                        "value": val,
+                                        "node_type": n_type,
+                                        "title": n_title,
+                                        "is_app_field": is_app_field,
+                                        "label": n_title if is_app_field else "Seed",
+                                    }
+                                )
                     elif isinstance(val, (int, float)) and not isinstance(val, bool):
-                        is_target = is_app_field or any(x in key_l or x in type_title_lower for x in ['step', 'cfg', 'guidance', 'denoise', 'width', 'height', 'batch', 'literal', 'scale', 'length', 'frame', 'total_second', 'num_frame', 'video_length', 'num_frames', 'fps', 'frame_rate', 'duration', 'second'])
+                        is_target = is_app_field or any(
+                            x in key_l or x in type_title_lower
+                            for x in [
+                                "step",
+                                "cfg",
+                                "guidance",
+                                "denoise",
+                                "width",
+                                "height",
+                                "batch",
+                                "literal",
+                                "scale",
+                                "length",
+                                "frame",
+                                "total_second",
+                                "num_frame",
+                                "video_length",
+                                "num_frames",
+                                "fps",
+                                "frame_rate",
+                                "duration",
+                                "second",
+                            ]
+                        )
                         if is_target:
                             label = n_title if is_app_field else "Param"
                             if not is_app_field:
-                                if 'step' in key_l or 'step' in type_title_lower:
+                                if "step" in key_l or "step" in type_title_lower:
                                     label = "Steps"
-                                elif 'cfg' in key_l or 'cfg' in type_title_lower or 'scale' in type_title_lower:
+                                elif "cfg" in key_l or "cfg" in type_title_lower or "scale" in type_title_lower:
                                     label = "CFG"
-                                elif 'width' in key_l or 'width' in type_title_lower:
+                                elif "width" in key_l or "width" in type_title_lower:
                                     label = "Width"
-                                elif 'height' in key_l or 'height' in type_title_lower:
+                                elif "height" in key_l or "height" in type_title_lower:
                                     label = "Height"
-                                elif 'denoise' in key_l or 'denoise' in type_title_lower:
+                                elif "denoise" in key_l or "denoise" in type_title_lower:
                                     label = "Denoise"
-                                elif any(x in key_l for x in ['fps', 'frame_rate']):
+                                elif any(x in key_l for x in ["fps", "frame_rate"]):
                                     label = "FPS"
-                                elif any(x in key_l for x in ['length', 'num_frame', 'video_length', 'num_frames', 'frame_count']) or 'frame' in key_l:
+                                elif (
+                                    any(
+                                        x in key_l
+                                        for x in ["length", "num_frame", "video_length", "num_frames", "frame_count"]
+                                    )
+                                    or "frame" in key_l
+                                ):
                                     label = "Frames"
                                 elif n_title and n_title != n_type:
                                     label = n_title
-                            if not any(s['node_id'] == node_id and s['key'] == key for s in extract['seeds']):
-                                extract['numbers'].append({'node_id': node_id, 'key': key, 'value': val, 'node_type': n_type, 'title': n_title, 'label': label, 'is_app_field': is_app_field, 'orig_type': 'number'})
+                            if not any(s["node_id"] == node_id and s["key"] == key for s in extract["seeds"]):
+                                extract["numbers"].append(
+                                    {
+                                        "node_id": node_id,
+                                        "key": key,
+                                        "value": val,
+                                        "node_type": n_type,
+                                        "title": n_title,
+                                        "label": label,
+                                        "is_app_field": is_app_field,
+                                        "orig_type": "number",
+                                    }
+                                )
                     elif isinstance(val, str):
-                        num_keys = ['fps', 'frame_rate', 'steps', 'length', 'num_frames', 'width', 'height', 'seed', 'cfg', 'denoise', 'overlap', 'batch']
-                        if any(x in key_l for x in num_keys) and val.strip().lstrip('-').replace('.','',1).isdigit():
-                            num_val = float(val) if '.' in val else int(val)
-                            label = n_title if is_app_field else ("FPS" if any(x in key_l for x in ['fps', 'frame_rate']) else "Frames" if any(x in key_l for x in ['length', 'num_frames']) else "Steps" if 'step' in key_l else "Width" if 'width' in key_l else "Height" if 'height' in key_l else n_title if (n_title and n_title != n_type) else "Param")
-                            if not any(s['node_id'] == node_id and s['key'] == key for s in extract['seeds']):
-                                extract['numbers'].append({'node_id': node_id, 'key': key, 'value': num_val, 'node_type': n_type, 'title': n_title, 'label': label, 'is_app_field': is_app_field, 'orig_type': 'string'})
+                        num_keys = [
+                            "fps",
+                            "frame_rate",
+                            "steps",
+                            "length",
+                            "num_frames",
+                            "width",
+                            "height",
+                            "seed",
+                            "cfg",
+                            "denoise",
+                            "overlap",
+                            "batch",
+                        ]
+                        if any(x in key_l for x in num_keys) and val.strip().lstrip("-").replace(".", "", 1).isdigit():
+                            num_val = float(val) if "." in val else int(val)
+                            label = (
+                                n_title
+                                if is_app_field
+                                else (
+                                    "FPS"
+                                    if any(x in key_l for x in ["fps", "frame_rate"])
+                                    else "Frames"
+                                    if any(x in key_l for x in ["length", "num_frames"])
+                                    else "Steps"
+                                    if "step" in key_l
+                                    else "Width"
+                                    if "width" in key_l
+                                    else "Height"
+                                    if "height" in key_l
+                                    else n_title
+                                    if (n_title and n_title != n_type)
+                                    else "Param"
+                                )
+                            )
+                            if not any(s["node_id"] == node_id and s["key"] == key for s in extract["seeds"]):
+                                extract["numbers"].append(
+                                    {
+                                        "node_id": node_id,
+                                        "key": key,
+                                        "value": num_val,
+                                        "node_type": n_type,
+                                        "title": n_title,
+                                        "label": label,
+                                        "is_app_field": is_app_field,
+                                        "orig_type": "string",
+                                    }
+                                )
                         else:
-                            is_explicit_prompt = any(x in type_title_lower or x in key_l for x in ['prompt', 'positive', 'negative'])
-                            if (is_app_field or is_explicit_prompt) and not val.endswith(('.ckpt', '.safetensors', '.pth', '.bin', '.gguf', '.pt', '.json')) and '|' not in val:
+                            is_explicit_prompt = any(
+                                x in type_title_lower or x in key_l for x in ["prompt", "positive", "negative"]
+                            )
+                            if (
+                                (is_app_field or is_explicit_prompt)
+                                and not val.endswith((".ckpt", ".safetensors", ".pth", ".bin", ".gguf", ".pt", ".json"))
+                                and "|" not in val
+                            ):
                                 label = n_title if is_app_field else "Text"
                                 if not is_app_field:
-                                    if 'positive' in type_title_lower or 'positive' in key_l:
+                                    if "positive" in type_title_lower or "positive" in key_l:
                                         label = "Positive Prompt"
-                                    elif 'negative' in type_title_lower or 'negative' in key_l:
+                                    elif "negative" in type_title_lower or "negative" in key_l:
                                         label = "Negative Prompt"
-                                    elif 'system' in type_title_lower:
+                                    elif "system" in type_title_lower:
                                         label = "System Prompt"
-                                    elif 'wildcard' in type_title_lower:
+                                    elif "wildcard" in type_title_lower:
                                         label = "Wildcard Text"
                                     elif n_title and n_title != n_type:
                                         label = n_title
-                                extract['texts'].append({'node_id': node_id, 'value': val, 'key': key, 'node_type': n_type, 'title': n_title, 'label': label, 'is_app_field': is_app_field})
+                                extract["texts"].append(
+                                    {
+                                        "node_id": node_id,
+                                        "value": val,
+                                        "key": key,
+                                        "node_type": n_type,
+                                        "title": n_title,
+                                        "label": label,
+                                        "is_app_field": is_app_field,
+                                    }
+                                )
         else:
             # Use filter_enabled_nodes to exclude disabled/muted nodes (mode!=0)
             # and Note/Reroute nodes — same filtering used elsewhere in the codebase.
-            _filtered = filter_enabled_nodes(wf_data) if isinstance(wf_data, dict) else {'nodes': wf_data}
-            nodes = _filtered.get('nodes', [])
+            _filtered = filter_enabled_nodes(wf_data) if isinstance(wf_data, dict) else {"nodes": wf_data}
+            nodes = _filtered.get("nodes", [])
             for node in nodes:
                 if not isinstance(node, dict):
                     continue
-                n_id = str(node.get('id', ''))
-                n_type = node.get('type', node.get('class_type', 'Unknown'))
-                n_title = node.get('title', n_type)
-                widgets = node.get('widgets_values', [])
+                n_id = str(node.get("id", ""))
+                n_type = node.get("type", node.get("class_type", "Unknown"))
+                n_title = node.get("title", n_type)
+                widgets = node.get("widgets_values", [])
                 if not widgets:
                     continue
-                if ('Note' in n_type and 'Project' not in n_type) or n_type == 'Reroute':
+                if ("Note" in n_type and "Project" not in n_type) or n_type == "Reroute":
                     continue
                 type_title_lower = (n_type + " " + n_title).lower()
                 for i, w in enumerate(widgets):
-                    k = f'widget_{i}'
+                    k = f"widget_{i}"
                     w_name = get_widget_name_by_index(n_type, i)
-                    is_app_field = (check_is_app(n_id, w_name, n_type, n_title)
-                                    or check_is_app(n_id, k, n_type, n_title)
-                                    or check_is_app_by_index(n_id, i))
+                    is_app_field = (
+                        check_is_app(n_id, w_name, n_type, n_title)
+                        or check_is_app(n_id, k, n_type, n_title)
+                        or check_is_app_by_index(n_id, i)
+                    )
                     if is_app_field:
-                        extract['has_app_mode'] = True
-                    if isinstance(w, str) and any(w.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.jfif', '.bmp']):
-                        extract['images'].append({'node_id': n_id, 'value': w, 'widget_index': i, 'node_type': n_type, 'title': n_title, 'is_app_field': is_app_field, 'label': n_title if is_app_field else 'Image'})
+                        extract["has_app_mode"] = True
+                    if isinstance(w, str) and any(
+                        w.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp", ".jfif", ".bmp"]
+                    ):
+                        extract["images"].append(
+                            {
+                                "node_id": n_id,
+                                "value": w,
+                                "widget_index": i,
+                                "node_type": n_type,
+                                "title": n_title,
+                                "is_app_field": is_app_field,
+                                "label": n_title if is_app_field else "Image",
+                            }
+                        )
                     elif isinstance(w, bool):
-                        is_target = is_app_field or any(x in type_title_lower for x in ['enable', 'keep', 'save', 'preview'])
+                        is_target = is_app_field or any(
+                            x in type_title_lower for x in ["enable", "keep", "save", "preview"]
+                        )
                         if is_target:
-                            extract['numbers'].append({'node_id': n_id, 'key': k, 'value': w, 'widget_index': i, 'node_type': n_type, 'title': n_title, 'label': n_title if is_app_field else k.capitalize(), 'is_app_field': is_app_field, 'is_bool': True})
-                    elif isinstance(w, (int, float)) and not isinstance(w, bool) and (w > 10000 or (n_type.endswith('Looper') and i == 1) or 'seed' in type_title_lower):
-                        if not any(s['node_id'] == n_id for s in extract['seeds']):
-                            extract['seeds'].append({'node_id': n_id, 'key': k, 'value': w, 'widget_index': i, 'node_type': n_type, 'title': n_title, 'is_app_field': is_app_field, 'label': n_title if is_app_field else 'Seed'})
+                            extract["numbers"].append(
+                                {
+                                    "node_id": n_id,
+                                    "key": k,
+                                    "value": w,
+                                    "widget_index": i,
+                                    "node_type": n_type,
+                                    "title": n_title,
+                                    "label": n_title if is_app_field else k.capitalize(),
+                                    "is_app_field": is_app_field,
+                                    "is_bool": True,
+                                }
+                            )
+                    elif (
+                        isinstance(w, (int, float))
+                        and not isinstance(w, bool)
+                        and (w > 10000 or (n_type.endswith("Looper") and i == 1) or "seed" in type_title_lower)
+                    ):
+                        if not any(s["node_id"] == n_id for s in extract["seeds"]):
+                            extract["seeds"].append(
+                                {
+                                    "node_id": n_id,
+                                    "key": k,
+                                    "value": w,
+                                    "widget_index": i,
+                                    "node_type": n_type,
+                                    "title": n_title,
+                                    "is_app_field": is_app_field,
+                                    "label": n_title if is_app_field else "Seed",
+                                }
+                            )
                     elif isinstance(w, (int, float)) and not isinstance(w, bool):
-                        is_target_param = is_app_field or any(x in type_title_lower or x in n_type.lower() for x in ['sampler', 'noise', 'step', 'cfg', 'guidance', 'detailer', 'scale', 'denoise', 'literal', 'width', 'height', 'resolution', 'video', 'latent', 'looper', 'wan', 'hunyuan', 'mochi', 'framepack', 'frame', 'vantage', 'i2v', 't2v', 'combine', 'fps'])
+                        is_target_param = is_app_field or any(
+                            x in type_title_lower or x in n_type.lower()
+                            for x in [
+                                "sampler",
+                                "noise",
+                                "step",
+                                "cfg",
+                                "guidance",
+                                "detailer",
+                                "scale",
+                                "denoise",
+                                "literal",
+                                "width",
+                                "height",
+                                "resolution",
+                                "video",
+                                "latent",
+                                "looper",
+                                "wan",
+                                "hunyuan",
+                                "mochi",
+                                "framepack",
+                                "frame",
+                                "vantage",
+                                "i2v",
+                                "t2v",
+                                "combine",
+                                "fps",
+                            ]
+                        )
                         if is_target_param:
                             label = n_title if is_app_field else "Param"
                             if not is_app_field:
-                                if 'step' in type_title_lower:
+                                if "step" in type_title_lower:
                                     label = "Steps"
-                                elif 'cfg' in type_title_lower or 'scale' in type_title_lower:
+                                elif "cfg" in type_title_lower or "scale" in type_title_lower:
                                     label = "CFG"
-                                elif 'denoise' in type_title_lower:
+                                elif "denoise" in type_title_lower:
                                     label = "Denoise"
-                                elif 'width' in type_title_lower:
+                                elif "width" in type_title_lower:
                                     label = "Width"
-                                elif 'height' in type_title_lower:
+                                elif "height" in type_title_lower:
                                     label = "Height"
-                                elif any(x in n_type.lower() for x in ['combine', 'save']) and 1 <= w <= 240:
+                                elif any(x in n_type.lower() for x in ["combine", "save"]) and 1 <= w <= 240:
                                     label = "FPS"
-                                elif any(x in n_type.lower() for x in ['video', 'latent', 'looper', 'wan', 'hunyuan', 'mochi', 'framepack', 'vantage', 'i2v', 't2v']) and isinstance(w, int) and 1 < w < 10000:
+                                elif (
+                                    any(
+                                        x in n_type.lower()
+                                        for x in [
+                                            "video",
+                                            "latent",
+                                            "looper",
+                                            "wan",
+                                            "hunyuan",
+                                            "mochi",
+                                            "framepack",
+                                            "vantage",
+                                            "i2v",
+                                            "t2v",
+                                        ]
+                                    )
+                                    and isinstance(w, int)
+                                    and 1 < w < 10000
+                                ):
                                     label = "Frames"
                                 elif n_title and n_title != n_type:
                                     label = n_title
-                            if not any(s['node_id'] == n_id and s['key'] == k for s in extract['seeds']):
-                                extract['numbers'].append({'node_id': n_id, 'key': k, 'value': w, 'widget_index': i, 'node_type': n_type, 'title': n_title, 'label': label, 'is_app_field': is_app_field, 'orig_type': 'number'})
+                            if not any(s["node_id"] == n_id and s["key"] == k for s in extract["seeds"]):
+                                extract["numbers"].append(
+                                    {
+                                        "node_id": n_id,
+                                        "key": k,
+                                        "value": w,
+                                        "widget_index": i,
+                                        "node_type": n_type,
+                                        "title": n_title,
+                                        "label": label,
+                                        "is_app_field": is_app_field,
+                                        "orig_type": "number",
+                                    }
+                                )
                     elif isinstance(w, str):
-                        is_explicit_prompt = any(x in type_title_lower for x in ['prompt', 'positive', 'negative'])
-                        if (is_app_field or is_explicit_prompt) and not w.endswith(('.ckpt', '.safetensors', '.pth', '.bin', '.gguf', '.pt', '.json')) and '|' not in w:
+                        is_explicit_prompt = any(x in type_title_lower for x in ["prompt", "positive", "negative"])
+                        if (
+                            (is_app_field or is_explicit_prompt)
+                            and not w.endswith((".ckpt", ".safetensors", ".pth", ".bin", ".gguf", ".pt", ".json"))
+                            and "|" not in w
+                        ):
                             label = n_title if is_app_field else "Text"
                             if not is_app_field:
-                                if 'positive' in type_title_lower:
+                                if "positive" in type_title_lower:
                                     label = "Positive Prompt"
-                                elif 'negative' in type_title_lower:
+                                elif "negative" in type_title_lower:
                                     label = "Negative Prompt"
-                                elif 'system' in type_title_lower:
+                                elif "system" in type_title_lower:
                                     label = "System Prompt"
-                                elif 'wildcard' in type_title_lower:
+                                elif "wildcard" in type_title_lower:
                                     label = "Wildcard Text"
                                 elif n_title and n_title != n_type:
                                     label = n_title
-                            extract['texts'].append({'node_id': n_id, 'value': w, 'widget_index': i, 'node_type': n_type, 'title': n_title, 'label': label, 'is_app_field': is_app_field})
+                            extract["texts"].append(
+                                {
+                                    "node_id": n_id,
+                                    "value": w,
+                                    "widget_index": i,
+                                    "node_type": n_type,
+                                    "title": n_title,
+                                    "label": label,
+                                    "is_app_field": is_app_field,
+                                }
+                            )
 
         # Sort app-flagged fields by their position in app_params (App Builder order)
-        if app_params and extract.get('has_app_mode'):
+        if app_params and extract.get("has_app_mode"):
+
             def _app_order(field):
-                n_id = str(field.get('node_id', ''))
-                k    = str(field.get('key', ''))
-                wi   = field.get('widget_index')
+                n_id = str(field.get("node_id", ""))
+                k = str(field.get("key", ""))
+                wi = field.get("widget_index")
                 for idx, p in enumerate(app_params):
                     if isinstance(p, list) and len(p) >= 2:
                         if str(p[0]) == n_id:
@@ -12603,30 +13862,31 @@ def _register_remix_routes_inline():
                                 return idx
                             if wi is not None and str(p[1]) == str(wi):
                                 return idx
-                    elif isinstance(p, dict) and str(p.get('node_id', '')) == n_id:
-                        wname = str(p.get('widget_name', ''))
+                    elif isinstance(p, dict) and str(p.get("node_id", "")) == n_id:
+                        wname = str(p.get("widget_name", ""))
                         if not wname or wname == k:
                             return idx
-                        if wi is not None and str(p.get('widget_index', '')) == str(wi):
+                        if wi is not None and str(p.get("widget_index", "")) == str(wi):
                             return idx
                 # Positional fallback for index-matched app fields
                 if wi is not None:
                     count = 0
                     for idx, p in enumerate(app_params):
-                        p_nid = str(p[0]) if isinstance(p, list) else str(p.get('node_id', ''))
+                        p_nid = str(p[0]) if isinstance(p, list) else str(p.get("node_id", ""))
                         if p_nid == n_id:
                             if count == wi:
                                 return idx
                             count += 1
                 return 99999
-            extract['texts']   = sorted(extract['texts'],   key=_app_order)
-            extract['seeds']   = sorted(extract['seeds'],   key=_app_order)
-            extract['numbers'] = sorted(extract['numbers'], key=_app_order)
-            extract['images']  = sorted(extract['images'],  key=_app_order)
+
+            extract["texts"] = sorted(extract["texts"], key=_app_order)
+            extract["seeds"] = sorted(extract["seeds"], key=_app_order)
+            extract["numbers"] = sorted(extract["numbers"], key=_app_order)
+            extract["images"] = sorted(extract["images"], key=_app_order)
 
         return extract
 
-    @app.route('/galleryout/api/remix/workflows', methods=['GET'])
+    @app.route("/galleryout/api/remix/workflows", methods=["GET"])
     @management_api_only
     def api_remix_list_workflows():
         try:
@@ -12634,7 +13894,7 @@ def _register_remix_routes_inline():
                 os.makedirs(IMPORTED_WORKFLOWS_DIR, exist_ok=True)
             files = []
             for f in os.listdir(IMPORTED_WORKFLOWS_DIR):
-                if not f.lower().endswith('.json'):
+                if not f.lower().endswith(".json"):
                     continue
                 path = os.path.join(IMPORTED_WORKFLOWS_DIR, f)
                 if os.path.isfile(path):
@@ -12643,84 +13903,97 @@ def _register_remix_routes_inline():
                     has_custom = False
                     source_file_id = None
                     try:
-                        with open(path, encoding='utf-8') as jf:
+                        with open(path, encoding="utf-8") as jf:
                             data = json.load(jf)
-                            ui_data = data.get('ui', {})
-                            extra = ui_data.get('extra', {})
-                            if 'linearData' in extra or 'app' in extra or 'app' in ui_data:
+                            ui_data = data.get("ui", {})
+                            extra = ui_data.get("extra", {})
+                            if "linearData" in extra or "app" in extra or "app" in ui_data:
                                 has_app = True
-                            source_file_id = data.get('sg_meta', {}).get('source_file_id')
-                            has_custom = bool(data.get('sg_meta', {}).get('custom_app'))
+                            source_file_id = data.get("sg_meta", {}).get("source_file_id")
+                            has_custom = bool(data.get("sg_meta", {}).get("custom_app"))
                     except (OSError, json.JSONDecodeError, AttributeError):
                         # An unreadable or non-JSON template still gets listed,
                         # just without its app/custom flags.
                         pass
-                    files.append({'name': f, 'mtime': mtime, 'has_app_mode': has_app, 'has_custom_mode': has_custom, 'source_file_id': source_file_id})
-            return jsonify({'status': 'success', 'workflows': files})
+                    files.append(
+                        {
+                            "name": f,
+                            "mtime": mtime,
+                            "has_app_mode": has_app,
+                            "has_custom_mode": has_custom,
+                            "source_file_id": source_file_id,
+                        }
+                    )
+            return jsonify({"status": "success", "workflows": files})
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/galleryout/api/remix/workflows/save_template', methods=['POST'])
+    @app.route("/galleryout/api/remix/workflows/save_template", methods=["POST"])
     @management_api_only
     def api_remix_save_template():
         try:
             data = request.json
-            file_id = data.get('file_id')
-            name = data.get('name', '').strip()
-            companion_path = data.get('companion_path')
-            custom_app = data.get('custom_app', [])
-            workflow_file = data.get('workflow_file') # PATCH: Get workflow file name
-            save_mode = data.get('save_mode', 'modified')
-            modifications = data.get('modifications', {})
-            raw_override = data.get('raw_override')
-            override_type = data.get('override_type', 'api')
-            favorite_nodes = data.get('favorite_nodes', {})
+            file_id = data.get("file_id")
+            name = data.get("name", "").strip()
+            companion_path = data.get("companion_path")
+            custom_app = data.get("custom_app", [])
+            workflow_file = data.get("workflow_file")  # PATCH: Get workflow file name
+            save_mode = data.get("save_mode", "modified")
+            modifications = data.get("modifications", {})
+            raw_override = data.get("raw_override")
+            override_type = data.get("override_type", "api")
+            favorite_nodes = data.get("favorite_nodes", {})
 
             if not name:
-                return jsonify({'status': 'error', 'message': 'Missing name'}), 400
+                return jsonify({"status": "error", "message": "Missing name"}), 400
 
-            safe_name = safe_media_filename(name, fallback='untitled')
-            if not safe_name.lower().endswith('.json'):
-                safe_name += '.json'
+            safe_name = safe_media_filename(name, fallback="untitled")
+            if not safe_name.lower().endswith(".json"):
+                safe_name += ".json"
 
             raw_api, raw_ui = None, None
             source_file_id = file_id
 
             if workflow_file:
                 # PATCH: Read workflow data directly from the existing template instead of extracting from media
-                tpl_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(workflow_file, fallback='untitled'))
+                tpl_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(workflow_file, fallback="untitled"))
                 if os.path.exists(tpl_path):
-                    with open(tpl_path, encoding='utf-8') as f:
+                    with open(tpl_path, encoding="utf-8") as f:
                         tpl_data = json.load(f)
-                        raw_api = json.dumps(tpl_data.get('api', {}))
-                        raw_ui = json.dumps(tpl_data.get('ui', {}))
-                        source_file_id = tpl_data.get('sg_meta', {}).get('source_file_id', file_id)
+                        raw_api = json.dumps(tpl_data.get("api", {}))
+                        raw_ui = json.dumps(tpl_data.get("ui", {}))
+                        source_file_id = tpl_data.get("sg_meta", {}).get("source_file_id", file_id)
             else:
                 # Standard extraction from media file
                 if not file_id:
-                    return jsonify({'status': 'error', 'message': 'Missing file ID'}), 400
+                    return jsonify({"status": "error", "message": "Missing file ID"}), 400
                 info = get_file_info_from_db(file_id)
-                target_path = companion_path if companion_path and os.path.exists(companion_path) else info['path']
+                target_path = companion_path if companion_path and os.path.exists(companion_path) else info["path"]
 
-                raw_api = extract_workflow(target_path, target_type='api')
-                raw_ui  = extract_workflow(target_path, target_type='ui')
+                raw_api = extract_workflow(target_path, target_type="api")
+                raw_ui = extract_workflow(target_path, target_type="ui")
 
                 if not raw_api or not raw_ui:
                     stem = os.path.splitext(target_path)[0]
-                    for ext in ('.png', '.PNG'):
+                    for ext in (".png", ".PNG"):
                         companion = stem + ext
                         if os.path.isfile(companion):
-                            raw_api = extract_workflow(companion, target_type='api')
-                            raw_ui  = extract_workflow(companion, target_type='ui')
+                            raw_api = extract_workflow(companion, target_type="api")
+                            raw_ui = extract_workflow(companion, target_type="ui")
                             break
 
             if not raw_api or not raw_ui or raw_api == "{}" or raw_ui == "{}":
-                return jsonify({'status': 'error', 'message': 'Media lacks complete workflow data (API + UI). Cannot save template.'}), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "message": "Media lacks complete workflow data (API + UI). Cannot save template.",
+                    }
+                ), 400
 
             # --- APPLY USER MODIFICATIONS BEFORE SAVING ---
-            if save_mode == 'modified':
+            if save_mode == "modified":
                 if raw_override:
-                    if override_type == 'api':
+                    if override_type == "api":
                         raw_api = raw_override
                     else:
                         raw_ui = raw_override
@@ -12728,12 +14001,12 @@ def _register_remix_routes_inline():
                     if raw_api and raw_api != "{}":
                         try:
                             api_data = json.loads(raw_api)
-                            for mod in modifications.get('texts', []):
-                                if mod['node_id'] in api_data:
-                                    api_data[mod['node_id']]['inputs'][mod.get('key', 'text')] = mod['value']
-                            for mod in modifications.get('seeds', []) + modifications.get('numbers', []):
-                                if mod['node_id'] in api_data:
-                                    api_data[mod['node_id']]['inputs'][mod['key']] = mod['value']
+                            for mod in modifications.get("texts", []):
+                                if mod["node_id"] in api_data:
+                                    api_data[mod["node_id"]]["inputs"][mod.get("key", "text")] = mod["value"]
+                            for mod in modifications.get("seeds", []) + modifications.get("numbers", []):
+                                if mod["node_id"] in api_data:
+                                    api_data[mod["node_id"]]["inputs"][mod["key"]] = mod["value"]
                             raw_api = json.dumps(api_data)
                         except Exception as e:
                             print(f"Save API mod error: {e}")
@@ -12741,12 +14014,16 @@ def _register_remix_routes_inline():
                     if raw_ui and raw_ui != "{}":
                         try:
                             ui_data = json.loads(raw_ui)
-                            nodes = ui_data.get('nodes', []) if isinstance(ui_data, dict) else ui_data
-                            all_mods = modifications.get('texts', []) + modifications.get('seeds', []) + modifications.get('numbers', [])
+                            nodes = ui_data.get("nodes", []) if isinstance(ui_data, dict) else ui_data
+                            all_mods = (
+                                modifications.get("texts", [])
+                                + modifications.get("seeds", [])
+                                + modifications.get("numbers", [])
+                            )
                             for mod in all_mods:
-                                target_node = next((n for n in nodes if str(n.get('id')) == str(mod['node_id'])), None)
-                                if target_node and 'widgets_values' in target_node:
-                                    orig_val_str = str(mod.get('orig_value', ''))
+                                target_node = next((n for n in nodes if str(n.get("id")) == str(mod["node_id"])), None)
+                                if target_node and "widgets_values" in target_node:
+                                    orig_val_str = str(mod.get("orig_value", ""))
                                     is_numeric = False
                                     orig_val_float = 0.0
                                     try:
@@ -12755,20 +14032,20 @@ def _register_remix_routes_inline():
                                     except ValueError:
                                         pass
                                     matched = False
-                                    for i, w in enumerate(target_node['widgets_values']):
+                                    for i, w in enumerate(target_node["widgets_values"]):
                                         if str(w) == orig_val_str:
-                                            target_node['widgets_values'][i] = mod['value']
+                                            target_node["widgets_values"][i] = mod["value"]
                                             matched = True
                                             break
                                         if is_numeric and isinstance(w, (int, float)):
                                             if abs(w - orig_val_float) < 0.0001:
-                                                target_node['widgets_values'][i] = mod['value']
+                                                target_node["widgets_values"][i] = mod["value"]
                                                 matched = True
                                                 break
                                     if not matched:
-                                        idx = mod.get('widget_index')
-                                        if idx is not None and 0 <= idx < len(target_node['widgets_values']):
-                                            target_node['widgets_values'][idx] = mod['value']
+                                        idx = mod.get("widget_index")
+                                        if idx is not None and 0 <= idx < len(target_node["widgets_values"]):
+                                            target_node["widgets_values"][idx] = mod["value"]
                             raw_ui = json.dumps(ui_data)
                         except Exception as e:
                             print(f"Save UI mod error: {e}")
@@ -12781,80 +14058,84 @@ def _register_remix_routes_inline():
             clean_workflow_paths(ui_data_to_save)
 
             template_data = {
-                'api': api_data_to_save,
-                'ui': ui_data_to_save,
-                'sg_meta': {'source_file_id': source_file_id, 'custom_app': custom_app, 'favorite_nodes': favorite_nodes}
+                "api": api_data_to_save,
+                "ui": ui_data_to_save,
+                "sg_meta": {
+                    "source_file_id": source_file_id,
+                    "custom_app": custom_app,
+                    "favorite_nodes": favorite_nodes,
+                },
             }
 
             os.makedirs(IMPORTED_WORKFLOWS_DIR, exist_ok=True)
-            with open(os.path.join(IMPORTED_WORKFLOWS_DIR, safe_name), 'w', encoding='utf-8') as f:
+            with open(os.path.join(IMPORTED_WORKFLOWS_DIR, safe_name), "w", encoding="utf-8") as f:
                 json.dump(template_data, f)
 
-            return jsonify({'status': 'success', 'message': 'Template saved!'})
+            return jsonify({"status": "success", "message": "Template saved!"})
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/galleryout/api/remix/workflows/rename', methods=['POST'])
+    @app.route("/galleryout/api/remix/workflows/rename", methods=["POST"])
     @management_api_only
     def api_remix_rename_workflow():
         try:
-            old_name = request.json.get('old_name')
-            new_name = request.json.get('new_name')
+            old_name = request.json.get("old_name")
+            new_name = request.json.get("new_name")
             if not old_name or not new_name:
-                return jsonify({'status': 'error'}), 400
-            safe_old = safe_media_filename(old_name, fallback='untitled')
-            safe_new = safe_media_filename(new_name, fallback='untitled')
-            if not safe_new.lower().endswith('.json'):
-                safe_new += '.json'
+                return jsonify({"status": "error"}), 400
+            safe_old = safe_media_filename(old_name, fallback="untitled")
+            safe_new = safe_media_filename(new_name, fallback="untitled")
+            if not safe_new.lower().endswith(".json"):
+                safe_new += ".json"
             old_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_old)
             new_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_new)
             if not os.path.exists(old_path):
-                return jsonify({'status': 'error', 'message': 'Original template not found'}), 404
+                return jsonify({"status": "error", "message": "Original template not found"}), 404
             if os.path.exists(new_path):
-                return jsonify({'status': 'error', 'message': 'A template with this name already exists'}), 400
+                return jsonify({"status": "error", "message": "A template with this name already exists"}), 400
             os.rename(old_path, new_path)
-            return jsonify({'status': 'success'})
+            return jsonify({"status": "success"})
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/galleryout/api/remix/workflows/delete', methods=['POST'])
+    @app.route("/galleryout/api/remix/workflows/delete", methods=["POST"])
     @management_api_only
     def api_remix_delete_workflow():
         try:
-            filename = request.json.get('filename')
-            if not filename or not filename.lower().endswith('.json'):
-                return jsonify({'status': 'error'}), 400
-            path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(filename, fallback='untitled'))
+            filename = request.json.get("filename")
+            if not filename or not filename.lower().endswith(".json"):
+                return jsonify({"status": "error"}), 400
+            path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(filename, fallback="untitled"))
             if os.path.exists(path):
                 os.remove(path)
-                return jsonify({'status': 'success'})
-            return jsonify({'status': 'error', 'message': 'Not found'}), 404
+                return jsonify({"status": "success"})
+            return jsonify({"status": "error", "message": "Not found"}), 404
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     def _convert_ui_to_api(ui_data, object_info):
-        nodes = ui_data.get('nodes', [])
-        links = ui_data.get('links', [])
+        nodes = ui_data.get("nodes", [])
+        links = ui_data.get("links", [])
         link_map = {}
         for lnk in links:
             if len(lnk) >= 4:
                 link_map[lnk[0]] = [str(lnk[1]), lnk[2]]
         api = {}
         for node in nodes:
-            node_id = str(node.get('id'))
-            node_type = node.get('type', '')
-            if node_type in ('Note', 'PrimitiveNode', 'Reroute'):
+            node_id = str(node.get("id"))
+            node_type = node.get("type", "")
+            if node_type in ("Note", "PrimitiveNode", "Reroute"):
                 continue
 
-            node_inputs_connected = node.get('inputs', [])
-            widgets_values = node.get('widgets_values', [])
+            node_inputs_connected = node.get("inputs", [])
+            widgets_values = node.get("widgets_values", [])
             inputs = {}
             linked_names = set()
             for inp in node_inputs_connected:
-                link_id = inp.get('link')
+                link_id = inp.get("link")
                 if link_id is not None and link_id in link_map:
-                    inputs[inp['name']] = link_map[link_id]
-                    linked_names.add(inp['name'])
+                    inputs[inp["name"]] = link_map[link_id]
+                    linked_names.add(inp["name"])
 
             if isinstance(widgets_values, dict):
                 for k, v in widgets_values.items():
@@ -12870,9 +14151,9 @@ def _register_remix_routes_inline():
                             inputs[wname] = w_val
                 elif node_type in object_info:
                     node_def = object_info[node_type]
-                    required = node_def.get('input', {}).get('required', {})
-                    optional = node_def.get('input', {}).get('optional', {})
-                    hidden  = node_def.get('input', {}).get('hidden', {})
+                    required = node_def.get("input", {}).get("required", {})
+                    optional = node_def.get("input", {}).get("optional", {})
+                    hidden = node_def.get("input", {}).get("hidden", {})
                     all_inputs = list(required.items()) + list(optional.items())
                     hidden_names = set(hidden.keys())
                     widget_names = []
@@ -12880,7 +14161,11 @@ def _register_remix_routes_inline():
                         if inp_name in linked_names:
                             continue
                         inp_type = inp_def[0] if (isinstance(inp_def, (list, tuple)) and inp_def) else inp_def
-                        is_connection = isinstance(inp_type, str) and inp_type == inp_type.upper() and inp_type not in ('INT', 'FLOAT', 'STRING', 'BOOLEAN')
+                        is_connection = (
+                            isinstance(inp_type, str)
+                            and inp_type == inp_type.upper()
+                            and inp_type not in ("INT", "FLOAT", "STRING", "BOOLEAN")
+                        )
                         if not is_connection:
                             widget_names.append((inp_name, inp_name in hidden_names))
                     for inp_name in hidden_names:
@@ -12897,18 +14182,20 @@ def _register_remix_routes_inline():
                         if wname not in linked_names:
                             inputs[wname] = w_val
 
-            title = node.get('title') or node_type
-            api[node_id] = {'class_type': node_type, '_meta': {'title': title}, 'inputs': inputs}
+            title = node.get("title") or node_type
+            api[node_id] = {"class_type": node_type, "_meta": {"title": title}, "inputs": inputs}
         return api
 
     def _get_unified_workflow(file_id, workflow_override, companion_override, target_comfy_url=COMFYUI_SERVER_URL):
         if workflow_override:
-            override_path = os.path.join(IMPORTED_WORKFLOWS_DIR, safe_media_filename(workflow_override, fallback='untitled'))
+            override_path = os.path.join(
+                IMPORTED_WORKFLOWS_DIR, safe_media_filename(workflow_override, fallback="untitled")
+            )
             if os.path.isfile(override_path):
-                with open(override_path, encoding='utf-8') as wf_f:
+                with open(override_path, encoding="utf-8") as wf_f:
                     tpl_data = json.load(wf_f)
-                    raw_api = json.dumps(tpl_data.get('api', {}))
-                    raw_ui  = json.dumps(tpl_data.get('ui', {}))
+                    raw_api = json.dumps(tpl_data.get("api", {}))
+                    raw_ui = json.dumps(tpl_data.get("ui", {}))
 
                     # Convert UI to API if the template was an old JSON lacking API data
                     if raw_ui and raw_api == "{}":
@@ -12916,9 +14203,12 @@ def _register_remix_routes_inline():
                             ui_data = json.loads(raw_ui)
                             object_info = {}
                             try:
-                                info_req = urllib.request.Request(f"{target_comfy_url.rstrip('/')}/object_info", headers={'Content-Type': 'application/json'})
+                                info_req = urllib.request.Request(
+                                    f"{target_comfy_url.rstrip('/')}/object_info",
+                                    headers={"Content-Type": "application/json"},
+                                )
                                 with urllib.request.urlopen(info_req, timeout=3) as r:
-                                    object_info = json.loads(r.read().decode('utf-8'))
+                                    object_info = json.loads(r.read().decode("utf-8"))
                             except Exception:
                                 pass
                             converted_api = _convert_ui_to_api(ui_data, object_info)
@@ -12927,212 +14217,234 @@ def _register_remix_routes_inline():
                         except Exception:
                             pass
 
-                    sg_meta = tpl_data.get('sg_meta', {})
+                    sg_meta = tpl_data.get("sg_meta", {})
                     return raw_api, raw_ui, sg_meta, None
             return None, None, {}, "Template file not found."
 
-        target_path = companion_override if companion_override and os.path.isfile(companion_override) else get_file_info_from_db(file_id)['path']
-        raw_api = extract_workflow(target_path, target_type='api')
-        raw_ui  = extract_workflow(target_path, target_type='ui')
+        target_path = (
+            companion_override
+            if companion_override and os.path.isfile(companion_override)
+            else get_file_info_from_db(file_id)["path"]
+        )
+        raw_api = extract_workflow(target_path, target_type="api")
+        raw_ui = extract_workflow(target_path, target_type="ui")
 
         if not raw_api and not raw_ui:
             stem = os.path.splitext(target_path)[0]
-            for ext in ('.png', '.PNG'):
+            for ext in (".png", ".PNG"):
                 companion = stem + ext
                 if os.path.isfile(companion):
-                    raw_api = extract_workflow(companion, target_type='api')
-                    raw_ui  = extract_workflow(companion, target_type='ui')
+                    raw_api = extract_workflow(companion, target_type="api")
+                    raw_ui = extract_workflow(companion, target_type="ui")
                     break
         return raw_api, raw_ui, {}, None
 
-    @app.route('/galleryout/api/remix/info/<string:file_id>')
+    @app.route("/galleryout/api/remix/info/<string:file_id>")
     def api_remix_info(file_id):
         if should_strip_metadata():
-            return jsonify({'status': 'error', 'message': 'Security Policy: Access to remix workflow is restricted for your role.'}), 403
+            return jsonify(
+                {"status": "error", "message": "Security Policy: Access to remix workflow is restricted for your role."}
+            ), 403
 
         try:
-            workflow_override = request.args.get('workflow_file')
-            companion_override = request.args.get('companion')
+            workflow_override = request.args.get("workflow_file")
+            companion_override = request.args.get("companion")
 
             raw_api, raw_ui, sg_meta, err = _get_unified_workflow(file_id, workflow_override, companion_override)
             if err:
-                return jsonify({'status': 'error', 'message': err}), 404
+                return jsonify({"status": "error", "message": err}), 404
 
             extract = None
             if raw_api:
-                extract = parse_workflow(raw_api, 'api', raw_ui)
-                if len(extract['texts']) == 0 and len(extract['seeds']) == 0 and len(extract['images']) == 0 and len(extract['numbers']) == 0:
+                extract = parse_workflow(raw_api, "api", raw_ui)
+                if (
+                    len(extract["texts"]) == 0
+                    and len(extract["seeds"]) == 0
+                    and len(extract["images"]) == 0
+                    and len(extract["numbers"]) == 0
+                ):
                     extract = None
 
             if not extract and raw_ui:
-                extract = parse_workflow(raw_ui, 'ui', raw_ui)
+                extract = parse_workflow(raw_ui, "ui", raw_ui)
 
-            if not extract or (len(extract['texts']) == 0 and len(extract['seeds']) == 0 and len(extract['images']) == 0):
-                return jsonify({'status': 'error', 'message': 'No editable fields found in this file format.'}), 404
+            if not extract or (
+                len(extract["texts"]) == 0 and len(extract["seeds"]) == 0 and len(extract["images"]) == 0
+            ):
+                return jsonify({"status": "error", "message": "No editable fields found in this file format."}), 404
 
             try:
                 _api_check = json.loads(raw_api) if raw_api else None
                 if isinstance(_api_check, dict):
-                    _api_nodes = [v for v in _api_check.values() if isinstance(v, dict) and 'class_type' in v]
-                    extract['has_api'] = len(_api_nodes) > 0
+                    _api_nodes = [v for v in _api_check.values() if isinstance(v, dict) and "class_type" in v]
+                    extract["has_api"] = len(_api_nodes) > 0
                 else:
-                    extract['has_api'] = False
+                    extract["has_api"] = False
             except Exception:
-                extract['has_api'] = False
+                extract["has_api"] = False
 
             try:
                 _ui_check = json.loads(raw_ui) if raw_ui else None
-                _ui_nodes = _ui_check.get('nodes', []) if isinstance(_ui_check, dict) else (_ui_check if isinstance(_ui_check, list) else [])
-                extract['has_ui'] = bool(raw_ui) and len(_ui_nodes) > 0
+                _ui_nodes = (
+                    _ui_check.get("nodes", [])
+                    if isinstance(_ui_check, dict)
+                    else (_ui_check if isinstance(_ui_check, list) else [])
+                )
+                extract["has_ui"] = bool(raw_ui) and len(_ui_nodes) > 0
             except Exception:
-                extract['has_ui'] = False
+                extract["has_ui"] = False
 
-            extract['default_comfy_url'] = COMFYUI_SERVER_URL
-            extract['custom_app'] = sg_meta.get('custom_app', [])
-            extract['favorite_nodes'] = sg_meta.get('favorite_nodes', {})
-            if extract['custom_app']:
-                extract['has_custom_mode'] = True
-            extract['raw_api_json'] = raw_api or ""
-            extract['raw_ui_json'] = raw_ui or ""
-            if 'raw_json' in extract:
-                del extract['raw_json']
-            return jsonify({'status': 'success', 'data': extract})
+            extract["default_comfy_url"] = COMFYUI_SERVER_URL
+            extract["custom_app"] = sg_meta.get("custom_app", [])
+            extract["favorite_nodes"] = sg_meta.get("favorite_nodes", {})
+            if extract["custom_app"]:
+                extract["has_custom_mode"] = True
+            extract["raw_api_json"] = raw_api or ""
+            extract["raw_ui_json"] = raw_ui or ""
+            if "raw_json" in extract:
+                del extract["raw_json"]
+            return jsonify({"status": "success", "data": extract})
         except HTTPException as stop:
             return answer_an_abort_readably(stop)
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     def _read_safetensors_metadata(filepath):
         try:
-            with open(filepath, 'rb') as f:
+            with open(filepath, "rb") as f:
                 header_size_bytes = f.read(8)
                 if len(header_size_bytes) < 8:
                     return {}
-                header_size = struct.unpack('<Q', header_size_bytes)[0]
+                header_size = struct.unpack("<Q", header_size_bytes)[0]
                 if header_size > 10000000:
                     return {}
-                header_json = f.read(header_size).decode('utf-8', errors='ignore')
+                header_json = f.read(header_size).decode("utf-8", errors="ignore")
                 header = json.loads(header_json)
-                return header.get('__metadata__', {})
+                return header.get("__metadata__", {})
         except Exception:
             return {}
 
     def _guess_architecture(filename, metadata):
-        arch = 'unknown'
+        arch = "unknown"
         if metadata:
-            ss_base = metadata.get('ss_base_model_version', '').lower()
-            modelspec = metadata.get('modelspec.architecture', '').lower()
-            if 'sdxl' in ss_base or 'sdxl' in modelspec:
-                arch = 'sdxl'
-            elif 'flux' in ss_base or 'flux' in modelspec:
-                arch = 'flux'
-            elif 'sd_1_5' in ss_base or 'sd15' in modelspec or 'sd1.5' in ss_base:
-                arch = 'sd1.5'
-            elif 'sd3' in ss_base or 'sd3' in modelspec:
-                arch = 'sd3'
-            elif 'hunyuan' in ss_base or 'hunyuan' in modelspec:
-                arch = 'hunyuan'
-            elif 'wan' in ss_base or 'wan' in modelspec:
-                arch = 'wan'
+            ss_base = metadata.get("ss_base_model_version", "").lower()
+            modelspec = metadata.get("modelspec.architecture", "").lower()
+            if "sdxl" in ss_base or "sdxl" in modelspec:
+                arch = "sdxl"
+            elif "flux" in ss_base or "flux" in modelspec:
+                arch = "flux"
+            elif "sd_1_5" in ss_base or "sd15" in modelspec or "sd1.5" in ss_base:
+                arch = "sd1.5"
+            elif "sd3" in ss_base or "sd3" in modelspec:
+                arch = "sd3"
+            elif "hunyuan" in ss_base or "hunyuan" in modelspec:
+                arch = "hunyuan"
+            elif "wan" in ss_base or "wan" in modelspec:
+                arch = "wan"
 
-        if arch == 'unknown' and filename:
+        if arch == "unknown" and filename:
             name_lower = filename.lower()
-            if 'flux' in name_lower:
-                arch = 'flux'
-            elif 'sdxl' in name_lower or '/xl/' in name_lower or 'xl_' in name_lower or '_xl' in name_lower:
-                arch = 'sdxl'
-            elif 'sd3' in name_lower:
-                arch = 'sd3'
-            elif '1.5' in name_lower or '15' in name_lower or 'v1-5' in name_lower:
-                arch = 'sd1.5'
+            if "flux" in name_lower:
+                arch = "flux"
+            elif "sdxl" in name_lower or "/xl/" in name_lower or "xl_" in name_lower or "_xl" in name_lower:
+                arch = "sdxl"
+            elif "sd3" in name_lower:
+                arch = "sd3"
+            elif "1.5" in name_lower or "15" in name_lower or "v1-5" in name_lower:
+                arch = "sd1.5"
         return arch
 
-    @app.route('/galleryout/api/remix/job_status/<string:job_id>', methods=['POST'])
+    @app.route("/galleryout/api/remix/job_status/<string:job_id>", methods=["POST"])
     @management_api_only
     def api_remix_job_status(job_id):
-        target_url = request.json.get('target_url', COMFYUI_SERVER_URL).strip()
+        target_url = request.json.get("target_url", COMFYUI_SERVER_URL).strip()
         try:
             # 1. Check History
             try:
-                req = urllib.request.Request(f"{target_url.rstrip('/')}/history/{job_id}", headers={'Content-Type': 'application/json'})
+                req = urllib.request.Request(
+                    f"{target_url.rstrip('/')}/history/{job_id}", headers={"Content-Type": "application/json"}
+                )
                 with urllib.request.urlopen(req, timeout=3) as response:
-                    data = json.loads(response.read().decode('utf-8'))
+                    data = json.loads(response.read().decode("utf-8"))
                     if job_id in data:
-                        status_obj = data[job_id].get('status', {})
-                        if status_obj.get('status_str') == 'error':
-                            msgs = status_obj.get('messages', [])
+                        status_obj = data[job_id].get("status", {})
+                        if status_obj.get("status_str") == "error":
+                            msgs = status_obj.get("messages", [])
                             err_detail = "Execution Error"
                             for m in msgs:
-                                if m[0] == 'execution_error':
+                                if m[0] == "execution_error":
                                     err_detail = f"[Node {m[1].get('node_id')}] {m[1].get('exception_type')}: {m[1].get('exception_message')}"
-                            return jsonify({'status': 'error', 'message': err_detail})
-                        if status_obj.get('completed'):
-                            return jsonify({'status': 'completed'})
+                            return jsonify({"status": "error", "message": err_detail})
+                        if status_obj.get("completed"):
+                            return jsonify({"status": "completed"})
             except Exception:
                 pass
 
             # 2. Check Queue (Using item[1] to match prompt_id correctly)
-            req_queue = urllib.request.Request(f"{target_url.rstrip('/')}/queue", headers={'Content-Type': 'application/json'})
+            req_queue = urllib.request.Request(
+                f"{target_url.rstrip('/')}/queue", headers={"Content-Type": "application/json"}
+            )
             with urllib.request.urlopen(req_queue, timeout=3) as response:
-                q_data = json.loads(response.read().decode('utf-8'))
+                q_data = json.loads(response.read().decode("utf-8"))
 
-                for item in q_data.get('queue_running', []):
+                for item in q_data.get("queue_running", []):
                     if len(item) > 1 and str(item[1]) == str(job_id):
-                        return jsonify({'status': 'running'})
+                        return jsonify({"status": "running"})
 
-                for idx, item in enumerate(q_data.get('queue_pending', [])):
+                for idx, item in enumerate(q_data.get("queue_pending", [])):
                     if len(item) > 1 and str(item[1]) == str(job_id):
-                        return jsonify({'status': 'pending', 'position': idx + 1})
+                        return jsonify({"status": "pending", "position": idx + 1})
 
-            return jsonify({'status': 'vanished'})
+            return jsonify({"status": "vanished"})
         except Exception as e:
             print(f"Remix job-status poll error: {e}")
-            return jsonify({'status': 'connection_error'})
+            return jsonify({"status": "connection_error"})
 
-    @app.route('/galleryout/api/remix/comfy_console_peek', methods=['POST'])
+    @app.route("/galleryout/api/remix/comfy_console_peek", methods=["POST"])
     @management_api_only
     def api_remix_console_peek():
-        target_url = request.json.get('target_url', COMFYUI_SERVER_URL).strip()
+        target_url = request.json.get("target_url", COMFYUI_SERVER_URL).strip()
         try:
-            req = urllib.request.Request(f"{target_url.rstrip('/')}/history", headers={'Content-Type': 'application/json'})
+            req = urllib.request.Request(
+                f"{target_url.rstrip('/')}/history", headers={"Content-Type": "application/json"}
+            )
             with urllib.request.urlopen(req, timeout=3) as response:
-                history_data = json.loads(response.read().decode('utf-8'))
+                history_data = json.loads(response.read().decode("utf-8"))
 
             if not history_data:
-                return jsonify({'status': 'empty', 'message': 'ComfyUI history is empty.'})
+                return jsonify({"status": "empty", "message": "ComfyUI history is empty."})
 
             last_job_id = list(history_data.keys())[-1]
             last_job = history_data[last_job_id]
-            status_obj = last_job.get('status', {})
+            status_obj = last_job.get("status", {})
 
-            if status_obj.get('status_str') == 'error':
-                msgs = status_obj.get('messages', [])
+            if status_obj.get("status_str") == "error":
+                msgs = status_obj.get("messages", [])
                 err_detail = "Unknown execution error."
                 for m in msgs:
-                    if m[0] == 'execution_error':
+                    if m[0] == "execution_error":
                         err_detail = f"[Node {m[1].get('node_id')}] {m[1].get('exception_type')}: {m[1].get('exception_message')}"
-                return jsonify({'status': 'found_error', 'message': err_detail})
+                return jsonify({"status": "found_error", "message": err_detail})
 
-            return jsonify({'status': 'clean'})
+            return jsonify({"status": "clean"})
         except Exception as e:
             print(f"Remix console peek error: {e}")
-            return jsonify({'status': 'error'})
+            return jsonify({"status": "error"})
 
-    @app.route('/galleryout/api/remix/lora_intelligence', methods=['POST'])
+    @app.route("/galleryout/api/remix/lora_intelligence", methods=["POST"])
     @management_api_only
     def api_remix_lora_intelligence():
         try:
             data = request.json or {}
-            action = data.get('action')
+            action = data.get("action")
 
             if not action:
-                action = 'triggers' if 'lora' in data else 'matchmaker'
+                action = "triggers" if "lora" in data else "matchmaker"
 
             # --- ACTION 1: TRIGGER MINING & CIVITAI METADATA ---
-            if action == 'triggers':
-                lora_name = data.get('lora')
-                res = {'db_triggers': [], 'civitai_triggers': [], 'preview_image': None, 'civitai_url': None}
+            if action == "triggers":
+                lora_name = data.get("lora")
+                res = {"db_triggers": [], "civitai_triggers": [], "preview_image": None, "civitai_url": None}
                 if lora_name:
                     try:
                         if os.path.exists(LORAS_PATH):
@@ -13144,50 +14456,69 @@ def _register_remix_routes_inline():
                             full_raw_path = os.path.join(LORAS_PATH, lora_norm)
 
                             json_paths = [
-                                full_base_path + '.civitai.info', full_base_path + '.metadata.json',
-                                full_base_path + '.info', full_base_path + '.json',
-                                full_raw_path + '.civitai.info', full_raw_path + '.metadata.json',
-                                full_raw_path + '.info', full_raw_path + '.json'
+                                full_base_path + ".civitai.info",
+                                full_base_path + ".metadata.json",
+                                full_base_path + ".info",
+                                full_base_path + ".json",
+                                full_raw_path + ".civitai.info",
+                                full_raw_path + ".metadata.json",
+                                full_raw_path + ".info",
+                                full_raw_path + ".json",
                             ]
 
                             civitai_id = None
                             for jp in json_paths:
                                 if os.path.exists(jp):
                                     try:
-                                        with open(jp, encoding='utf-8') as f:
+                                        with open(jp, encoding="utf-8") as f:
                                             meta = json.load(f)
                                         if isinstance(meta, dict):
+
                                             def _get_all_tw(d):
                                                 found = []
                                                 if isinstance(d, dict):
-                                                    tw = d.get('trainedWords') or d.get('trained_words') or d.get('activation_text')
+                                                    tw = (
+                                                        d.get("trainedWords")
+                                                        or d.get("trained_words")
+                                                        or d.get("activation_text")
+                                                    )
                                                     if tw:
                                                         if isinstance(tw, list):
                                                             found.extend(tw)
                                                         elif isinstance(tw, str):
                                                             found.append(tw)
-                                                    if 'modelVersions' in d and isinstance(d['modelVersions'], list):
-                                                        for mv in d['modelVersions']:
+                                                    if "modelVersions" in d and isinstance(d["modelVersions"], list):
+                                                        for mv in d["modelVersions"]:
                                                             found.extend(_get_all_tw(mv))
-                                                    if 'civitai' in d and isinstance(d['civitai'], dict):
-                                                        found.extend(_get_all_tw(d['civitai']))
+                                                    if "civitai" in d and isinstance(d["civitai"], dict):
+                                                        found.extend(_get_all_tw(d["civitai"]))
                                                 return found
 
-                                            if not res['civitai_triggers']:
+                                            if not res["civitai_triggers"]:
                                                 raw_tw = _get_all_tw(meta)
                                                 for t in raw_tw:
                                                     if isinstance(t, str):
-                                                        res['civitai_triggers'].extend([x.strip() for x in t.split(',') if x.strip()])
-                                                res['civitai_triggers'] = list(dict.fromkeys(res['civitai_triggers'])) # deduplicate
+                                                        res["civitai_triggers"].extend(
+                                                            [x.strip() for x in t.split(",") if x.strip()]
+                                                        )
+                                                res["civitai_triggers"] = list(
+                                                    dict.fromkeys(res["civitai_triggers"])
+                                                )  # deduplicate
 
                                             if not civitai_id:
-                                                civitai_id = meta.get('modelId') or meta.get('id')
-                                                if not civitai_id and 'civitai' in meta and isinstance(meta['civitai'], dict):
-                                                    civitai_id = meta['civitai'].get('modelId') or meta['civitai'].get('id')
+                                                civitai_id = meta.get("modelId") or meta.get("id")
+                                                if (
+                                                    not civitai_id
+                                                    and "civitai" in meta
+                                                    and isinstance(meta["civitai"], dict)
+                                                ):
+                                                    civitai_id = meta["civitai"].get("modelId") or meta["civitai"].get(
+                                                        "id"
+                                                    )
                                     except Exception:
                                         pass
 
-                                if res['civitai_triggers'] and civitai_id:
+                                if res["civitai_triggers"] and civitai_id:
                                     break
 
                             if not civitai_id:
@@ -13195,152 +14526,178 @@ def _register_remix_routes_inline():
                                 if os.path.exists(st_path):
                                     st_meta = _read_safetensors_metadata(st_path)
                                     if st_meta:
-                                        civitai_id = st_meta.get('modelspec.civitai_model_id') or st_meta.get('ss_civitai_model_id')
+                                        civitai_id = st_meta.get("modelspec.civitai_model_id") or st_meta.get(
+                                            "ss_civitai_model_id"
+                                        )
 
                             if civitai_id:
-                                res['civitai_url'] = f"https://civitai.com/models/{civitai_id}"
+                                res["civitai_url"] = f"https://civitai.com/models/{civitai_id}"
 
                             img_paths = [
-                                full_base_path + '.preview.png', full_base_path + '.png', full_base_path + '.jpg', full_base_path + '.jpeg',
-                                full_raw_path + '.preview.png', full_raw_path + '.png', full_raw_path + '.jpg', full_raw_path + '.jpeg'
+                                full_base_path + ".preview.png",
+                                full_base_path + ".png",
+                                full_base_path + ".jpg",
+                                full_base_path + ".jpeg",
+                                full_raw_path + ".preview.png",
+                                full_raw_path + ".png",
+                                full_raw_path + ".jpg",
+                                full_raw_path + ".jpeg",
                             ]
                             for ip in img_paths:
                                 if os.path.exists(ip):
-                                    with open(ip, 'rb') as f:
-                                        encoded = base64.b64encode(f.read()).decode('utf-8')
+                                    with open(ip, "rb") as f:
+                                        encoded = base64.b64encode(f.read()).decode("utf-8")
                                         mime = "image/png" if "png" in ip.lower() else "image/jpeg"
-                                        res['preview_image'] = f"data:{mime};base64,{encoded}"
+                                        res["preview_image"] = f"data:{mime};base64,{encoded}"
                                     break
                     except Exception as e:
                         print(f"LoRA Synergy Error (Passive): {e}")
 
                     with get_db_connection() as conn:
-                        norm_lora_query = lora_name.lower().replace('\\', '/')
-                        rows = conn.execute("SELECT workflow_prompt FROM files WHERE workflow_files LIKE ?", (f"%{norm_lora_query}%",)).fetchall()
+                        norm_lora_query = lora_name.lower().replace("\\", "/")
+                        rows = conn.execute(
+                            "SELECT workflow_prompt FROM files WHERE workflow_files LIKE ?", (f"%{norm_lora_query}%",)
+                        ).fetchall()
                         word_counts = {}
-                        ignore_words = {'masterpiece', 'best', 'quality', 'highres', 'high', 'resolution', 'intricate', 'details', '1girl', 'solo', 'text', 'watermark'}
+                        ignore_words = {
+                            "masterpiece",
+                            "best",
+                            "quality",
+                            "highres",
+                            "high",
+                            "resolution",
+                            "intricate",
+                            "details",
+                            "1girl",
+                            "solo",
+                            "text",
+                            "watermark",
+                        }
                         for r in rows:
-                            prompt = r['workflow_prompt']
+                            prompt = r["workflow_prompt"]
                             if prompt:
-                                tags = [t.strip().lower() for t in prompt.split(',')]
+                                tags = [t.strip().lower() for t in prompt.split(",")]
                                 for t in tags:
-                                    clean_t = re.sub(r'[()\[\]:]|[0-9.]+', '', t).strip()
+                                    clean_t = re.sub(r"[()\[\]:]|[0-9.]+", "", t).strip()
                                     if len(clean_t) > 3 and clean_t not in ignore_words and len(clean_t.split()) <= 3:
                                         word_counts[clean_t] = word_counts.get(clean_t, 0) + 1
 
-                        civitai_lower = [t.lower() for t in res['civitai_triggers']]
+                        civitai_lower = [t.lower() for t in res["civitai_triggers"]]
                         sorted_triggers = sorted(word_counts.items(), key=lambda item: item[1], reverse=True)
-                        res['db_triggers'] = [k for k, v in sorted_triggers[:15] if k.lower() not in civitai_lower]
+                        res["db_triggers"] = [k for k, v in sorted_triggers[:15] if k.lower() not in civitai_lower]
 
-                return jsonify({'status': 'success', 'data': res})
+                return jsonify({"status": "success", "data": res})
 
             # --- ACTION 2: MATCHMAKER ---
-            if action == 'matchmaker':
-                ckpt_name = data.get('checkpoint')
-                all_loras = data.get('all_loras', [])
+            if action == "matchmaker":
+                ckpt_name = data.get("checkpoint")
+                all_loras = data.get("all_loras", [])
 
-                res = {
-                    'perfect_match': [],
-                    'proven_match': [],
-                    'possible_match': [],
-                    'incompatible': []
-                }
+                res = {"perfect_match": [], "proven_match": [], "possible_match": [], "incompatible": []}
 
-                ckpt_arch = 'unknown'
+                ckpt_arch = "unknown"
                 if ckpt_name and ckpt_name != "Unknown":
                     ckpt_paths = [os.path.join(CHECKPOINTS_PATH, ckpt_name), os.path.join(UNET_PATH, ckpt_name)]
                     for cp in ckpt_paths:
-                        if os.path.exists(cp) and cp.endswith('.safetensors'):
+                        if os.path.exists(cp) and cp.endswith(".safetensors"):
                             meta = _read_safetensors_metadata(cp)
                             ckpt_arch = _guess_architecture(ckpt_name, meta)
                             break
-                    if ckpt_arch == 'unknown':
+                    if ckpt_arch == "unknown":
                         ckpt_arch = _guess_architecture(ckpt_name, {})
 
                 proven_loras_norm = set()
                 with get_db_connection() as conn:
                     if ckpt_name and ckpt_name != "Unknown":
-                        norm_ckpt = ckpt_name.lower().replace('\\', '/')
-                        rows = conn.execute("SELECT workflow_files FROM files WHERE workflow_files LIKE ?", (f"%{norm_ckpt}%",)).fetchall()
+                        norm_ckpt = ckpt_name.lower().replace("\\", "/")
+                        rows = conn.execute(
+                            "SELECT workflow_files FROM files WHERE workflow_files LIKE ?", (f"%{norm_ckpt}%",)
+                        ).fetchall()
                         for r in rows:
-                            wf_files = r['workflow_files'].split(' ||| ')
+                            wf_files = r["workflow_files"].split(" ||| ")
                             for f in wf_files:
-                                if f != norm_ckpt and f.endswith(('.safetensors', '.pt', '.ckpt')) and ('lora' in f or '/' in f):
-                                    proven_loras_norm.add(f.replace('\\', '/'))
+                                if (
+                                    f != norm_ckpt
+                                    and f.endswith((".safetensors", ".pt", ".ckpt"))
+                                    and ("lora" in f or "/" in f)
+                                ):
+                                    proven_loras_norm.add(f.replace("\\", "/"))
 
                 for lora in all_loras:
-                    norm_lora = lora.lower().replace('\\', '/')
+                    norm_lora = lora.lower().replace("\\", "/")
                     if norm_lora in proven_loras_norm:
-                        res['proven_match'].append(lora)
+                        res["proven_match"].append(lora)
                         continue
 
                     lora_path = os.path.join(LORAS_PATH, norm_lora)
-                    lora_arch = 'unknown'
+                    lora_arch = "unknown"
 
-                    if os.path.exists(lora_path) and norm_lora.endswith('.safetensors'):
+                    if os.path.exists(lora_path) and norm_lora.endswith(".safetensors"):
                         meta = _read_safetensors_metadata(lora_path)
                         lora_arch = _guess_architecture(norm_lora, meta)
                     else:
                         lora_arch = _guess_architecture(norm_lora, {})
 
-                    if ckpt_arch != 'unknown' and lora_arch == ckpt_arch:
-                        res['perfect_match'].append(lora)
-                    elif lora_arch != 'unknown' and ckpt_arch != 'unknown' and lora_arch != ckpt_arch:
-                        res['incompatible'].append(lora)
+                    if ckpt_arch != "unknown" and lora_arch == ckpt_arch:
+                        res["perfect_match"].append(lora)
+                    elif lora_arch != "unknown" and ckpt_arch != "unknown" and lora_arch != ckpt_arch:
+                        res["incompatible"].append(lora)
                     else:
-                        res['possible_match'].append(lora)
+                        res["possible_match"].append(lora)
 
-                return jsonify({'status': 'success', 'data': res, 'detected_arch': ckpt_arch.upper()})
+                return jsonify({"status": "success", "data": res, "detected_arch": ckpt_arch.upper()})
 
-            return jsonify({'status': 'error', 'message': 'Unknown action.'}), 400
+            return jsonify({"status": "error", "message": "Unknown action."}), 400
 
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/galleryout/api/remix/submit', methods=['POST'])
+    @app.route("/galleryout/api/remix/submit", methods=["POST"])
     @management_api_only
     def api_remix_submit():
         try:
-            file_id = request.form.get('file_id')
-            action_req = request.form.get('action_type', 'api')
-            modifications = json.loads(request.form.get('modifications', '{}'))
-            wf_type = request.form.get('workflow_type', 'api')
-            target_comfy_url = request.form.get('target_url', COMFYUI_SERVER_URL).strip()
+            file_id = request.form.get("file_id")
+            action_req = request.form.get("action_type", "api")
+            modifications = json.loads(request.form.get("modifications", "{}"))
+            wf_type = request.form.get("workflow_type", "api")
+            target_comfy_url = request.form.get("target_url", COMFYUI_SERVER_URL).strip()
 
-            file_name = request.form.get('file_name', 'workflow.json')
+            file_name = request.form.get("file_name", "workflow.json")
             base_name = os.path.splitext(file_name)[0]
 
-            workflow_override = request.form.get('workflow_file')
-            companion_path = request.form.get('companion_path')
+            workflow_override = request.form.get("workflow_file")
+            companion_path = request.form.get("companion_path")
 
-            raw_api, raw_ui, _, err = _get_unified_workflow(file_id, workflow_override, companion_path, target_comfy_url)
+            raw_api, raw_ui, _, err = _get_unified_workflow(
+                file_id, workflow_override, companion_path, target_comfy_url
+            )
             if err:
-                return jsonify({'status': 'error', 'message': err}), 400
-            raw_json = raw_api if wf_type == 'api' else raw_ui
+                return jsonify({"status": "error", "message": err}), 400
+            raw_json = raw_api if wf_type == "api" else raw_ui
             if not raw_json:
-                raw_json = raw_ui if wf_type == 'api' else raw_api
+                raw_json = raw_ui if wf_type == "api" else raw_api
 
             if not raw_json:
-                return jsonify({'status': 'error', 'message': 'Could not read workflow data.'}), 400
-            raw_override = request.form.get('raw_override')
+                return jsonify({"status": "error", "message": "Could not read workflow data."}), 400
+            raw_override = request.form.get("raw_override")
             if raw_override:
                 wf_data = json.loads(raw_override)
                 # Nodepad Patch: Keep media node data so backend saves the file physically!
-                modifications['texts'] = []
-                modifications['seeds'] = []
-                modifications['numbers'] = []
+                modifications["texts"] = []
+                modifications["seeds"] = []
+                modifications["numbers"] = []
             else:
                 wf_data = json.loads(raw_json)
 
-            if wf_type == 'api':
-                for mod in modifications.get('texts', []):
-                    if mod['node_id'] in wf_data:
-                        wf_data[mod['node_id']]['inputs'][mod.get('key', 'text')] = mod['value']
-                for mod in modifications.get('seeds', []) + modifications.get('numbers', []):
-                    if mod['node_id'] in wf_data:
-                        wf_data[mod['node_id']]['inputs'][mod['key']] = mod['value']
-                if 'image_upload' in request.files and modifications.get('image_node_id'):
-                    img_file = request.files['image_upload']
+            if wf_type == "api":
+                for mod in modifications.get("texts", []):
+                    if mod["node_id"] in wf_data:
+                        wf_data[mod["node_id"]]["inputs"][mod.get("key", "text")] = mod["value"]
+                for mod in modifications.get("seeds", []) + modifications.get("numbers", []):
+                    if mod["node_id"] in wf_data:
+                        wf_data[mod["node_id"]]["inputs"][mod["key"]] = mod["value"]
+                if "image_upload" in request.files and modifications.get("image_node_id"):
+                    img_file = request.files["image_upload"]
                     if img_file.filename:
                         filename = safe_media_filename("remix_" + img_file.filename)
                         # Never clobber an input already queued for another
@@ -13351,16 +14708,18 @@ def _register_remix_routes_inline():
                         saved_path = _get_unique_filepath(BASE_INPUT_PATH, filename)
                         img_file.save(saved_path)
                         filename = os.path.basename(saved_path)
-                        img_node_id = modifications['image_node_id']
+                        img_node_id = modifications["image_node_id"]
                         if img_node_id in wf_data:
-                            wf_data[img_node_id]['inputs'][modifications.get('image_key', 'image')] = filename
+                            wf_data[img_node_id]["inputs"][modifications.get("image_key", "image")] = filename
             else:
-                nodes = wf_data.get('nodes', []) if isinstance(wf_data, dict) else wf_data
-                all_mods = modifications.get('texts', []) + modifications.get('seeds', []) + modifications.get('numbers', [])
+                nodes = wf_data.get("nodes", []) if isinstance(wf_data, dict) else wf_data
+                all_mods = (
+                    modifications.get("texts", []) + modifications.get("seeds", []) + modifications.get("numbers", [])
+                )
                 for mod in all_mods:
-                    target_node = next((n for n in nodes if str(n.get('id')) == str(mod['node_id'])), None)
-                    if target_node and 'widgets_values' in target_node:
-                        orig_val_str = str(mod.get('orig_value', ''))
+                    target_node = next((n for n in nodes if str(n.get("id")) == str(mod["node_id"])), None)
+                    if target_node and "widgets_values" in target_node:
+                        orig_val_str = str(mod.get("orig_value", ""))
                         is_numeric = False
                         orig_val_float = 0.0
                         try:
@@ -13369,22 +14728,22 @@ def _register_remix_routes_inline():
                         except ValueError:
                             pass
                         matched = False
-                        for i, w in enumerate(target_node['widgets_values']):
+                        for i, w in enumerate(target_node["widgets_values"]):
                             if str(w) == orig_val_str:
-                                target_node['widgets_values'][i] = mod['value']
+                                target_node["widgets_values"][i] = mod["value"]
                                 matched = True
                                 break
                             if is_numeric and isinstance(w, (int, float)):
                                 if abs(w - orig_val_float) < 0.0001:
-                                    target_node['widgets_values'][i] = mod['value']
+                                    target_node["widgets_values"][i] = mod["value"]
                                     matched = True
                                     break
                         if not matched:
-                            idx = mod.get('widget_index')
-                            if idx is not None and 0 <= idx < len(target_node['widgets_values']):
-                                target_node['widgets_values'][idx] = mod['value']
-                if 'image_upload' in request.files and modifications.get('image_node_id'):
-                    img_file = request.files['image_upload']
+                            idx = mod.get("widget_index")
+                            if idx is not None and 0 <= idx < len(target_node["widgets_values"]):
+                                target_node["widgets_values"][idx] = mod["value"]
+                if "image_upload" in request.files and modifications.get("image_node_id"):
+                    img_file = request.files["image_upload"]
                     if img_file.filename:
                         filename = safe_media_filename("remix_" + img_file.filename)
                         # Never clobber an input already queued for another
@@ -13395,129 +14754,155 @@ def _register_remix_routes_inline():
                         saved_path = _get_unique_filepath(BASE_INPUT_PATH, filename)
                         img_file.save(saved_path)
                         filename = os.path.basename(saved_path)
-                        target_node = next((n for n in nodes if str(n.get('id')) == str(modifications['image_node_id'])), None)
-                        if target_node and 'widgets_values' in target_node:
-                            orig_img = str(modifications.get('image_orig_value', ''))
+                        target_node = next(
+                            (n for n in nodes if str(n.get("id")) == str(modifications["image_node_id"])), None
+                        )
+                        if target_node and "widgets_values" in target_node:
+                            orig_img = str(modifications.get("image_orig_value", ""))
                             matched = False
-                            for i, w in enumerate(target_node['widgets_values']):
+                            for i, w in enumerate(target_node["widgets_values"]):
                                 if str(w) == orig_img:
-                                    target_node['widgets_values'][i] = filename
+                                    target_node["widgets_values"][i] = filename
                                     matched = True
                                     break
                             if not matched:
-                                idx = modifications.get('image_widget_index')
-                                if idx is not None and 0 <= idx < len(target_node['widgets_values']):
-                                    target_node['widgets_values'][idx] = filename
+                                idx = modifications.get("image_widget_index")
+                                if idx is not None and 0 <= idx < len(target_node["widgets_values"]):
+                                    target_node["widgets_values"][idx] = filename
 
             # Clean multiple slashes from all string values before queuing
             clean_workflow_paths(wf_data)
 
-            if action_req in ['copy', 'download']:
+            if action_req in ["copy", "download"]:
                 modified_json_string = json.dumps(wf_data, indent=2)
-                headers = {'X-Workflow-Type': wf_type}
-                if action_req == 'download':
-                    headers['Content-Disposition'] = f'attachment;filename="remixed_{base_name}.json"'
-                return Response(modified_json_string, mimetype='application/json', headers=headers)
+                headers = {"X-Workflow-Type": wf_type}
+                if action_req == "download":
+                    headers["Content-Disposition"] = f'attachment;filename="remixed_{base_name}.json"'
+                return Response(modified_json_string, mimetype="application/json", headers=headers)
 
-            if action_req == 'api':
-                if wf_type == 'ui':
-                    return jsonify({'status': 'error', 'message': 'Cannot queue UI-format workflow via API. Use Copy/Download instead.'}), 400
+            if action_req == "api":
+                if wf_type == "ui":
+                    return jsonify(
+                        {
+                            "status": "error",
+                            "message": "Cannot queue UI-format workflow via API. Use Copy/Download instead.",
+                        }
+                    ), 400
                 if not target_comfy_url:
-                    return jsonify({'status': 'error', 'message': 'ComfyUI URL is required.'}), 400
+                    return jsonify({"status": "error", "message": "ComfyUI URL is required."}), 400
                 try:
-                    ping_req = urllib.request.Request(f"{target_comfy_url.rstrip('/')}/system_stats", headers={'Content-Type': 'application/json'})
+                    ping_req = urllib.request.Request(
+                        f"{target_comfy_url.rstrip('/')}/system_stats", headers={"Content-Type": "application/json"}
+                    )
                     urllib.request.urlopen(ping_req, timeout=4)
                 except urllib.error.URLError:
-                    return jsonify({'status': 'error', 'message': f'Cannot reach ComfyUI at {target_comfy_url}.'}), 502
+                    return jsonify({"status": "error", "message": f"Cannot reach ComfyUI at {target_comfy_url}."}), 502
                 except Exception:
                     pass
 
                 invalid_nodes = []
                 for node_id, node_val in wf_data.items():
-                    if not isinstance(node_val, dict) or 'class_type' not in node_val or 'inputs' not in node_val:
+                    if not isinstance(node_val, dict) or "class_type" not in node_val or "inputs" not in node_val:
                         invalid_nodes.append(str(node_id))
                 if invalid_nodes:
-                    return jsonify({'status': 'error', 'message': 'Workflow data is not in valid ComfyUI API format.'}), 400
+                    return jsonify(
+                        {"status": "error", "message": "Workflow data is not in valid ComfyUI API format."}
+                    ), 400
 
-                payload = json.dumps({"prompt": wf_data}).encode('utf-8')
-                req = urllib.request.Request(f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={'Content-Type': 'application/json'})
+                payload = json.dumps({"prompt": wf_data}).encode("utf-8")
+                req = urllib.request.Request(
+                    f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={"Content-Type": "application/json"}
+                )
                 try:
                     with urllib.request.urlopen(req, timeout=5) as response:
-                        resp_data = json.loads(response.read().decode('utf-8'))
+                        resp_data = json.loads(response.read().decode("utf-8"))
 
-                        node_errors = resp_data.get('node_errors')
-                        error_obj = resp_data.get('error')
+                        node_errors = resp_data.get("node_errors")
+                        error_obj = resp_data.get("error")
 
                         if (node_errors and isinstance(node_errors, dict) and len(node_errors) > 0) or error_obj:
                             err_msg = "<strong>ComfyUI Validation Error (Partial Execution Blocked):</strong>"
                             if node_errors and isinstance(node_errors, dict):
                                 for nid, ndata in node_errors.items():
-                                    ctype = ndata.get('class_type', 'Unknown Node')
-                                    errs = ndata.get('errors', [{}])
+                                    ctype = ndata.get("class_type", "Unknown Node")
+                                    errs = ndata.get("errors", [{}])
                                     for err in errs:
                                         err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
                             elif error_obj:
-                                err_msg += f" {error_obj.get('message', 'Unknown Error')}" if isinstance(error_obj, dict) else f" {error_obj!s}"
-                            return jsonify({'status': 'error', 'message': err_msg}), 400
+                                err_msg += (
+                                    f" {error_obj.get('message', 'Unknown Error')}"
+                                    if isinstance(error_obj, dict)
+                                    else f" {error_obj!s}"
+                                )
+                            return jsonify({"status": "error", "message": err_msg}), 400
 
-                        job_id = resp_data.get('prompt_id', 'Unknown')
-                        return jsonify({'status': 'success', 'action': 'queued', 'job_id': job_id, 'message': f'Job queued! ID: {job_id}'})
+                        job_id = resp_data.get("prompt_id", "Unknown")
+                        return jsonify(
+                            {
+                                "status": "success",
+                                "action": "queued",
+                                "job_id": job_id,
+                                "message": f"Job queued! ID: {job_id}",
+                            }
+                        )
                 except urllib.error.HTTPError as e:
-                    err_msg = f'ComfyUI rejected the workflow: HTTP {e.code}'
+                    err_msg = f"ComfyUI rejected the workflow: HTTP {e.code}"
                     try:
-                        raw_body = e.read().decode('utf-8')
+                        raw_body = e.read().decode("utf-8")
                         err_body = json.loads(raw_body)
-                        if 'error' in err_body or 'node_errors' in err_body:
+                        if "error" in err_body or "node_errors" in err_body:
                             err_msg = f"<strong>ComfyUI Validation Error:</strong> {err_body.get('error', {}).get('message', '')}"
-                            node_errors = err_body.get('node_errors') or err_body.get('error', {}).get('node_errors', {})
+                            node_errors = err_body.get("node_errors") or err_body.get("error", {}).get(
+                                "node_errors", {}
+                            )
                             if node_errors and isinstance(node_errors, dict):
                                 for nid, ndata in node_errors.items():
-                                    ctype = ndata.get('class_type', 'Unknown Node')
-                                    errs = ndata.get('errors', [{}])
+                                    ctype = ndata.get("class_type", "Unknown Node")
+                                    errs = ndata.get("errors", [{}])
                                     for err in errs:
                                         err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
                     except Exception:
                         pass
-                    return jsonify({'status': 'error', 'message': err_msg}), 400
+                    return jsonify({"status": "error", "message": err_msg}), 400
                 except urllib.error.URLError:
-                    return jsonify({'status': 'error', 'message': 'Failed to connect to ComfyUI.'}), 502
+                    return jsonify({"status": "error", "message": "Failed to connect to ComfyUI."}), 502
 
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     def _convert_ui_to_api(ui_data, object_info):
-        nodes = ui_data.get('nodes', [])
-        links = ui_data.get('links', [])
+        nodes = ui_data.get("nodes", [])
+        links = ui_data.get("links", [])
         link_map = {}
         for lnk in links:
             if len(lnk) >= 4:
                 link_map[lnk[0]] = [str(lnk[1]), lnk[2]]
         api = {}
         for node in nodes:
-            node_id = str(node.get('id'))
-            node_type = node.get('type', '')
-            if node_type in ('Note', 'PrimitiveNode', 'Reroute'):
+            node_id = str(node.get("id"))
+            node_type = node.get("type", "")
+            if node_type in ("Note", "PrimitiveNode", "Reroute"):
                 continue
             if node_type not in object_info:
                 continue
-            node_inputs_connected = node.get('inputs', [])
-            widgets_values = node.get('widgets_values', [])
+            node_inputs_connected = node.get("inputs", [])
+            widgets_values = node.get("widgets_values", [])
             inputs = {}
             linked_names = set()
             for inp in node_inputs_connected:
-                link_id = inp.get('link')
+                link_id = inp.get("link")
                 if link_id is not None and link_id in link_map:
-                    inputs[inp['name']] = link_map[link_id]
-                    linked_names.add(inp['name'])
+                    inputs[inp["name"]] = link_map[link_id]
+                    linked_names.add(inp["name"])
             if isinstance(widgets_values, dict):
                 for k, v in widgets_values.items():
                     if isinstance(v, (str, int, float, bool)):
                         inputs[k] = v
             elif node_type in object_info:
                 node_def = object_info[node_type]
-                required = node_def.get('input', {}).get('required', {})
-                optional = node_def.get('input', {}).get('optional', {})
-                hidden  = node_def.get('input', {}).get('hidden', {})
+                required = node_def.get("input", {}).get("required", {})
+                optional = node_def.get("input", {}).get("optional", {})
+                hidden = node_def.get("input", {}).get("hidden", {})
                 all_inputs = list(required.items()) + list(optional.items())
                 hidden_names = set(hidden.keys())
                 widget_names = []
@@ -13525,7 +14910,11 @@ def _register_remix_routes_inline():
                     if inp_name in linked_names:
                         continue
                     inp_type = inp_def[0] if (isinstance(inp_def, (list, tuple)) and inp_def) else inp_def
-                    is_connection = isinstance(inp_type, str) and inp_type == inp_type.upper() and inp_type not in ('INT', 'FLOAT', 'STRING', 'BOOLEAN')
+                    is_connection = (
+                        isinstance(inp_type, str)
+                        and inp_type == inp_type.upper()
+                        and inp_type not in ("INT", "FLOAT", "STRING", "BOOLEAN")
+                    )
                     if not is_connection:
                         widget_names.append((inp_name, inp_name in hidden_names))
                 for inp_name in hidden_names:
@@ -13535,180 +14924,209 @@ def _register_remix_routes_inline():
                 for i, (wname, is_hidden) in enumerate(widget_names):
                     if i < len(wv_list) and not is_hidden:
                         inputs[wname] = wv_list[i]
-            title = node.get('title') or node_type
-            api[node_id] = {'class_type': node_type, '_meta': {'title': title}, 'inputs': inputs}
+            title = node.get("title") or node_type
+            api[node_id] = {"class_type": node_type, "_meta": {"title": title}, "inputs": inputs}
         return api
 
-    @app.route('/galleryout/api/remix/companion/<string:file_id>')
+    @app.route("/galleryout/api/remix/companion/<string:file_id>")
     @management_api_only
     def api_remix_companion(file_id):
         try:
             info = get_file_info_from_db(file_id)
-            file_path = info['path']
+            file_path = info["path"]
             stem = os.path.splitext(file_path)[0]
-            for ext in ('.png', '.PNG'):
+            for ext in (".png", ".PNG"):
                 companion_path = stem + ext
                 if os.path.isfile(companion_path):
-                    candidate_api = extract_workflow(companion_path, target_type='api')
+                    candidate_api = extract_workflow(companion_path, target_type="api")
                     if candidate_api:
                         try:
                             _check = json.loads(candidate_api)
-                            _nodes = [v for v in _check.values() if isinstance(v, dict) and 'class_type' in v]
+                            _nodes = [v for v in _check.values() if isinstance(v, dict) and "class_type" in v]
                             if _nodes:
                                 companion_name = os.path.basename(companion_path)
-                                return jsonify({'status': 'success', 'companion_path': companion_path, 'companion_name': companion_name})
+                                return jsonify(
+                                    {
+                                        "status": "success",
+                                        "companion_path": companion_path,
+                                        "companion_name": companion_name,
+                                    }
+                                )
                         except Exception:
                             pass
-            return jsonify({'status': 'error', 'message': 'No companion PNG found.'}), 404
+            return jsonify({"status": "error", "message": "No companion PNG found."}), 404
         except HTTPException as stop:
             return answer_an_abort_readably(stop)
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/galleryout/api/remix/autofix', methods=['POST'])
+    @app.route("/galleryout/api/remix/autofix", methods=["POST"])
     @management_api_only
     def api_remix_autofix():
         try:
-            file_id = request.form.get('file_id')
-            companion_path = request.form.get('companion_path')
-            target_comfy_url = request.form.get('target_url', COMFYUI_SERVER_URL).strip()
-            workflow_override = request.form.get('workflow_file')
+            file_id = request.form.get("file_id")
+            companion_path = request.form.get("companion_path")
+            target_comfy_url = request.form.get("target_url", COMFYUI_SERVER_URL).strip()
+            workflow_override = request.form.get("workflow_file")
 
             if not target_comfy_url:
-                return jsonify({'status': 'error', 'message': 'ComfyUI URL is required.'}), 400
+                return jsonify({"status": "error", "message": "ComfyUI URL is required."}), 400
 
-            raw_api, raw_ui, _, err = _get_unified_workflow(file_id, workflow_override, companion_path, target_comfy_url)
+            raw_api, raw_ui, _, err = _get_unified_workflow(
+                file_id, workflow_override, companion_path, target_comfy_url
+            )
             if err:
-                return jsonify({'status': 'error', 'message': err}), 404
+                return jsonify({"status": "error", "message": err}), 404
 
             if not raw_ui and not raw_api:
-                return jsonify({'status': 'error', 'message': 'No workflow data found.'}), 400
+                return jsonify({"status": "error", "message": "No workflow data found."}), 400
             object_info = {}
             try:
-                info_req = urllib.request.Request(f"{target_comfy_url.rstrip('/')}/object_info", headers={'Content-Type': 'application/json'})
+                info_req = urllib.request.Request(
+                    f"{target_comfy_url.rstrip('/')}/object_info", headers={"Content-Type": "application/json"}
+                )
                 with urllib.request.urlopen(info_req, timeout=5) as r:
-                    object_info = json.loads(r.read().decode('utf-8'))
+                    object_info = json.loads(r.read().decode("utf-8"))
             except Exception:
                 pass
             if raw_api:
                 api_wf = json.loads(raw_api)
             else:
                 ui_data = json.loads(raw_ui)
-                nodes = ui_data.get('nodes', []) if isinstance(ui_data, dict) else []
+                nodes = ui_data.get("nodes", []) if isinstance(ui_data, dict) else []
                 if not nodes:
-                    return jsonify({'status': 'error', 'message': 'UI workflow contains no nodes.'}), 400
+                    return jsonify({"status": "error", "message": "UI workflow contains no nodes."}), 400
                 api_wf = _convert_ui_to_api(ui_data, object_info)
             clean_workflow_paths(api_wf)
-            if request.form.get('debug') == '1':
-                return jsonify({'status': 'debug', 'converted': api_wf, 'object_info_keys': list(object_info.keys())})
-            payload = json.dumps({"prompt": api_wf}).encode('utf-8')
-            req = urllib.request.Request(f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={'Content-Type': 'application/json'})
+            if request.form.get("debug") == "1":
+                return jsonify({"status": "debug", "converted": api_wf, "object_info_keys": list(object_info.keys())})
+            payload = json.dumps({"prompt": api_wf}).encode("utf-8")
+            req = urllib.request.Request(
+                f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={"Content-Type": "application/json"}
+            )
             try:
                 with urllib.request.urlopen(req, timeout=5) as response:
-                    resp_data = json.loads(response.read().decode('utf-8'))
-                    job_id = resp_data.get('prompt_id', 'Unknown')
-                    return jsonify({'status': 'success', 'message': f'Autofix succeeded! Job ID: {job_id}'})
+                    resp_data = json.loads(response.read().decode("utf-8"))
+                    job_id = resp_data.get("prompt_id", "Unknown")
+                    return jsonify({"status": "success", "message": f"Autofix succeeded! Job ID: {job_id}"})
             except urllib.error.HTTPError as e:
-                return jsonify({'status': 'error', 'message': f'ComfyUI rejected it: HTTP {e.code}'}), 400
+                return jsonify({"status": "error", "message": f"ComfyUI rejected it: HTTP {e.code}"}), 400
             except urllib.error.URLError:
-                return jsonify({'status': 'error', 'message': 'Failed to connect to ComfyUI.'}), 502
+                return jsonify({"status": "error", "message": "Failed to connect to ComfyUI."}), 502
         except Exception as e:
-            return jsonify({'status': 'error', 'message': f'Autofix error: {e!s}'}), 500
+            return jsonify({"status": "error", "message": f"Autofix error: {e!s}"}), 500
 
-    @app.route('/galleryout/api/remix/autofix_apply', methods=['POST'])
+    @app.route("/galleryout/api/remix/autofix_apply", methods=["POST"])
     @management_api_only
     def api_remix_autofix_apply():
         try:
-            file_id = request.form.get('file_id')
-            companion_path = request.form.get('companion_path')
-            choices_json = request.form.get('choices')
-            target_comfy_url = request.form.get('target_url', COMFYUI_SERVER_URL).strip()
-            workflow_override = request.form.get('workflow_file')
+            file_id = request.form.get("file_id")
+            companion_path = request.form.get("companion_path")
+            choices_json = request.form.get("choices")
+            target_comfy_url = request.form.get("target_url", COMFYUI_SERVER_URL).strip()
+            workflow_override = request.form.get("workflow_file")
 
             if not choices_json:
-                return jsonify({'status': 'error', 'message': 'Missing data.'}), 400
+                return jsonify({"status": "error", "message": "Missing data."}), 400
 
-            raw_api, _raw_ui, _, err = _get_unified_workflow(file_id, workflow_override, companion_path, target_comfy_url)
+            raw_api, _raw_ui, _, err = _get_unified_workflow(
+                file_id, workflow_override, companion_path, target_comfy_url
+            )
             if err:
-                return jsonify({'status': 'error', 'message': err}), 404
+                return jsonify({"status": "error", "message": err}), 404
 
             if not raw_api:
-                return jsonify({'status': 'error', 'message': 'Could not read API workflow.'}), 400
+                return jsonify({"status": "error", "message": "Could not read API workflow."}), 400
             api_wf = json.loads(raw_api)
             choices = json.loads(choices_json)
             applied = []
             for c in choices:
-                n_id = c['node_id']
-                inp_name = c['inp_name']
-                chosen = c['chosen']
+                n_id = c["node_id"]
+                inp_name = c["inp_name"]
+                chosen = c["chosen"]
                 if n_id in api_wf:
-                    api_wf[n_id]['inputs'][inp_name] = chosen
-                    applied.append(f"[Node {n_id} ({c.get('node_title','')})] '{inp_name}' -> {chosen!r}")
+                    api_wf[n_id]["inputs"][inp_name] = chosen
+                    applied.append(f"[Node {n_id} ({c.get('node_title', '')})] '{inp_name}' -> {chosen!r}")
 
             clean_workflow_paths(api_wf)
-            payload = json.dumps({"prompt": api_wf}).encode('utf-8')
-            req = urllib.request.Request(f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={'Content-Type': 'application/json'})
+            payload = json.dumps({"prompt": api_wf}).encode("utf-8")
+            req = urllib.request.Request(
+                f"{target_comfy_url.rstrip('/')}/prompt", data=payload, headers={"Content-Type": "application/json"}
+            )
             try:
                 with urllib.request.urlopen(req, timeout=5) as response:
-                    resp_data = json.loads(response.read().decode('utf-8'))
-                    node_errors = resp_data.get('node_errors')
-                    error_obj = resp_data.get('error')
+                    resp_data = json.loads(response.read().decode("utf-8"))
+                    node_errors = resp_data.get("node_errors")
+                    error_obj = resp_data.get("error")
 
                     if (node_errors and isinstance(node_errors, dict) and len(node_errors) > 0) or error_obj:
                         err_msg = "<strong>ComfyUI Validation Error:</strong>"
                         if node_errors and isinstance(node_errors, dict):
                             for nid, ndata in node_errors.items():
-                                ctype = ndata.get('class_type', 'Unknown Node')
-                                errs = ndata.get('errors', [{}])
+                                ctype = ndata.get("class_type", "Unknown Node")
+                                errs = ndata.get("errors", [{}])
                                 for err in errs:
                                     err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
                         elif error_obj:
-                            err_msg += f" {error_obj.get('message', 'Unknown Error')}" if isinstance(error_obj, dict) else f" {error_obj!s}"
-                        return jsonify({'status': 'error', 'message': err_msg}), 400
+                            err_msg += (
+                                f" {error_obj.get('message', 'Unknown Error')}"
+                                if isinstance(error_obj, dict)
+                                else f" {error_obj!s}"
+                            )
+                        return jsonify({"status": "error", "message": err_msg}), 400
 
-                    job_id = resp_data.get('prompt_id', 'Unknown')
-                    return jsonify({'status': 'success', 'job_id': job_id, 'message': f'Queued successfully! Job ID: {job_id}<br><small>Applied: {" | ".join(applied)}</small>'})
+                    job_id = resp_data.get("prompt_id", "Unknown")
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "job_id": job_id,
+                            "message": f"Queued successfully! Job ID: {job_id}<br><small>Applied: {' | '.join(applied)}</small>",
+                        }
+                    )
             except urllib.error.HTTPError as e:
-                err_msg = f'ComfyUI rejected even after corrections: HTTP {e.code}'
+                err_msg = f"ComfyUI rejected even after corrections: HTTP {e.code}"
                 try:
-                    raw_body = e.read().decode('utf-8')
+                    raw_body = e.read().decode("utf-8")
                     err_body = json.loads(raw_body)
-                    if 'error' in err_body or 'node_errors' in err_body:
-                        err_msg = f"<strong>ComfyUI Validation Error:</strong> {err_body.get('error', {}).get('message', '')}"
-                        node_errors = err_body.get('node_errors') or err_body.get('error', {}).get('node_errors', {})
+                    if "error" in err_body or "node_errors" in err_body:
+                        err_msg = (
+                            f"<strong>ComfyUI Validation Error:</strong> {err_body.get('error', {}).get('message', '')}"
+                        )
+                        node_errors = err_body.get("node_errors") or err_body.get("error", {}).get("node_errors", {})
                         if node_errors and isinstance(node_errors, dict):
                             for nid, ndata in node_errors.items():
-                                ctype = ndata.get('class_type', 'Unknown Node')
-                                errs = ndata.get('errors', [{}])
+                                ctype = ndata.get("class_type", "Unknown Node")
+                                errs = ndata.get("errors", [{}])
                                 for err in errs:
                                     err_msg += f"<br>• [{ctype} {nid}]: <span style='color:#ffaaaa;'>{err.get('message', '')}</span>"
                 except Exception:
                     pass
-                return jsonify({'status': 'error', 'message': err_msg}), 400
+                return jsonify({"status": "error", "message": err_msg}), 400
             except urllib.error.URLError:
-                return jsonify({'status': 'error', 'message': 'Cannot reach ComfyUI.'}), 502
+                return jsonify({"status": "error", "message": "Cannot reach ComfyUI."}), 502
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({"status": "error", "message": str(e)}), 500
+
 
 _register_remix_routes_inline()
 
 
-@app.route('/galleryout/api/collections/upload_note', methods=['POST'])
+@app.route("/galleryout/api/collections/upload_note", methods=["POST"])
 @management_api_only
 def upload_collection_note():
-    coll_id = request.form.get('collection_id')
+    coll_id = request.form.get("collection_id")
     if not coll_id:
-        return jsonify({'status': 'error', 'message': 'Missing collection ID'}), 400
+        return jsonify({"status": "error", "message": "Missing collection ID"}), 400
 
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file uploaded'}), 400
-    file = request.files['file']
+    if "file" not in request.files:
+        return jsonify({"status": "error", "message": "No file uploaded"}), 400
+    file = request.files["file"]
 
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ['.txt', '.md']:
-        return jsonify({'status': 'error', 'message': 'Only .txt and .md files are allowed as notes.'}), 400
+    if ext not in [".txt", ".md"]:
+        return jsonify({"status": "error", "message": "Only .txt and .md files are allowed as notes."}), 400
 
-    notes_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.collection_notes')
+    notes_dir = os.path.join(BASE_SMARTGALLERY_PATH, ".collection_notes")
     os.makedirs(notes_dir, exist_ok=True)
 
     safe_name = f"note_c{coll_id}_{int(time.time())}_{safe_media_filename(file.filename)}"
@@ -13721,21 +15139,27 @@ def upload_collection_note():
         file_size = os.path.getsize(dest_path)
 
         with get_db_connection() as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO files (id, path, mtime, name, type, size)
                 VALUES (?, ?, ?, ?, 'document', ?)
-            """, (file_id, dest_path, mtime, file.filename, file_size))
+            """,
+                (file_id, dest_path, mtime, file.filename, file_size),
+            )
 
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR IGNORE INTO collection_files (collection_id, file_id, added_at)
                 VALUES (?, ?, ?)
-            """, (int(coll_id), file_id, time.time()))
+            """,
+                (int(coll_id), file_id, time.time()),
+            )
 
             conn.commit()
 
-        return jsonify({'status': 'success', 'message': 'Note added successfully to the collection.'})
+        return jsonify({"status": "success", "message": "Note added successfully to the collection."})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # --- SMART WORKFLOW FILES SEARCH, SUGGESTIONS & CLUSTERING HASHES ---
@@ -13745,11 +15169,24 @@ def upload_collection_note():
 # widget values. Keys containing "time" (generation_time, prep_time) are
 # excluded by pattern.
 _FOREIGN_EPHEMERAL_KEYS = {
-    'seed', 'variationseed', 'variationseedstrength', 'steps', 'cfg',
-    'cfgscale', 'images', 'batchsize', 'denoise', 'clip_skip', 'size',
-    'model_hash', 'version', 'swarm_version', 'date', 'original_prompt',
+    "seed",
+    "variationseed",
+    "variationseedstrength",
+    "steps",
+    "cfg",
+    "cfgscale",
+    "images",
+    "batchsize",
+    "denoise",
+    "clip_skip",
+    "size",
+    "model_hash",
+    "version",
+    "swarm_version",
+    "date",
+    "original_prompt",
 }
-_FOREIGN_MODEL_KEY_RE = re.compile(r'model|lora|vae|refiner|controlnet', re.IGNORECASE)
+_FOREIGN_MODEL_KEY_RE = re.compile(r"model|lora|vae|refiner|controlnet", re.IGNORECASE)
 
 
 def _foreign_cluster_hashes(parsed):
@@ -13764,12 +15201,12 @@ def _foreign_cluster_hashes(parsed):
     The prompt hash uses the same normalization as the ComfyUI path so
     identical prompts cluster across tools."""
     if parsed is None:
-        return '', '', ''
-    prompt_hash = ''
+        return "", "", ""
+    prompt_hash = ""
     if parsed.positive:
-        prompt_hash = hashlib.md5(parsed.positive.strip().lower().encode('utf-8')).hexdigest()
-    loras = {m.group(1).strip().lower() for m in re.finditer(r'<lora:([^:>]+)', parsed.positive or '')}
-    for key in ('loras', 'used_loras', 'lora_hashes', 'Lora hashes', 'used models'):
+        prompt_hash = hashlib.md5(parsed.positive.strip().lower().encode("utf-8")).hexdigest()
+    loras = {m.group(1).strip().lower() for m in re.finditer(r"<lora:([^:>]+)", parsed.positive or "")}
+    for key in ("loras", "used_loras", "lora_hashes", "Lora hashes", "used models"):
         value = parsed.extra.get(key)
         if value:
             loras.add(str(value).strip().lower())
@@ -13778,24 +15215,24 @@ def _foreign_cluster_hashes(parsed):
     model_values = set()
     for key, value in {**parsed.extra, **parsed.params}.items():
         k = str(key).strip().lower()
-        if k in _FOREIGN_EPHEMERAL_KEYS or 'time' in k:
+        if k in _FOREIGN_EPHEMERAL_KEYS or "time" in k:
             continue
         keys.append(k)
         if _FOREIGN_MODEL_KEY_RE.search(k):
             model_values.add(str(value).strip().lower())
-    workflow_hash = ''
+    workflow_hash = ""
     if keys or loras:
         identity = json.dumps(
-            {'keys': sorted(keys), 'models': sorted(model_values), 'loras': sorted(loras)},
+            {"keys": sorted(keys), "models": sorted(model_values), "loras": sorted(loras)},
             sort_keys=True,
         )
-        workflow_hash = hashlib.md5(identity.encode('utf-8')).hexdigest()
+        workflow_hash = hashlib.md5(identity.encode("utf-8")).hexdigest()
 
-    models_hash = ''
-    model = str(parsed.params.get('model') or '').strip().lower()
+    models_hash = ""
+    model = str(parsed.params.get("model") or "").strip().lower()
     if model:
-        identity = json.dumps({'model': model, 'loras': sorted(loras)}, sort_keys=True)
-        models_hash = hashlib.md5(identity.encode('utf-8')).hexdigest()
+        identity = json.dumps({"model": model, "loras": sorted(loras)}, sort_keys=True)
+        models_hash = hashlib.md5(identity.encode("utf-8")).hexdigest()
     return workflow_hash, prompt_hash, models_hash
 
 
@@ -13810,7 +15247,7 @@ def compute_workflow_hashes(filepath):
     Files without an embedded ComfyUI graph fall back to metaparse identities.
     """
     if not filepath or not os.path.exists(filepath):
-        return '', '', ''
+        return "", "", ""
     try:
         # Marker-detected non-ComfyUI files skip extract_workflow: its raw
         # byte-scan fallback reads the whole file twice, which is what made
@@ -13822,78 +15259,96 @@ def compute_workflow_hashes(filepath):
 
         wf_json = None
         if foreign is None:
-            wf_json = extract_workflow(filepath, target_type='api')
+            wf_json = extract_workflow(filepath, target_type="api")
             if not wf_json:
-                wf_json = extract_workflow(filepath, target_type='ui')
+                wf_json = extract_workflow(filepath, target_type="ui")
         if not wf_json:
             return _foreign_cluster_hashes(foreign)
 
         data = json.loads(wf_json)
         prompt_text = extract_workflow_prompt_string(wf_json)
-        prompt_hash = hashlib.md5(prompt_text.strip().lower().encode('utf-8')).hexdigest() if prompt_text else ''
+        prompt_hash = hashlib.md5(prompt_text.strip().lower().encode("utf-8")).hexdigest() if prompt_text else ""
 
-        MODEL_EXTENSIONS = ('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf', '.lora', '.sft', '.vae', '.onnx', '.engine')
-        IGNORED_NODES = {'Note', 'NotePrimitive', 'Reroute', 'ShowText', 'Display Text', 'SaveImage', 'PreviewImage', 'VHS_VideoCombine', 'PrimitiveNode'}
+        MODEL_EXTENSIONS = (
+            ".safetensors",
+            ".ckpt",
+            ".pt",
+            ".pth",
+            ".bin",
+            ".gguf",
+            ".lora",
+            ".sft",
+            ".vae",
+            ".onnx",
+            ".engine",
+        )
+        IGNORED_NODES = {
+            "Note",
+            "NotePrimitive",
+            "Reroute",
+            "ShowText",
+            "Display Text",
+            "SaveImage",
+            "PreviewImage",
+            "VHS_VideoCombine",
+            "PrimitiveNode",
+        }
 
         node_descriptors = []
 
         # CASE A: UI Format ({'nodes': [...], 'links': [...]})
-        if isinstance(data, dict) and 'nodes' in data and isinstance(data['nodes'], list):
+        if isinstance(data, dict) and "nodes" in data and isinstance(data["nodes"], list):
             node_type_by_id = {}
-            for node in data['nodes']:
+            for node in data["nodes"]:
                 if isinstance(node, dict):
-                    nid = str(node.get('id'))
-                    ntype = str(node.get('type', '')).strip()
+                    nid = str(node.get("id"))
+                    ntype = str(node.get("type", "")).strip()
                     node_type_by_id[nid] = ntype
 
             links_map = {}
-            if 'links' in data and isinstance(data['links'], list):
-                for link in data['links']:
+            if "links" in data and isinstance(data["links"], list):
+                for link in data["links"]:
                     if isinstance(link, list) and len(link) >= 4:
                         link_id = link[0]
                         from_id = str(link[1])
-                        from_type = node_type_by_id.get(from_id, 'Unknown')
+                        from_type = node_type_by_id.get(from_id, "Unknown")
                         links_map[link_id] = from_type
 
-            for node in data['nodes']:
+            for node in data["nodes"]:
                 if not isinstance(node, dict):
                     continue
-                node_type = str(node.get('type', '')).strip()
+                node_type = str(node.get("type", "")).strip()
                 if not node_type or node_type in IGNORED_NODES:
                     continue
 
                 connections = []
-                inputs = node.get('inputs', [])
+                inputs = node.get("inputs", [])
                 if isinstance(inputs, list):
                     for inp in inputs:
                         if isinstance(inp, dict):
-                            link_id = inp.get('link')
-                            inp_name = str(inp.get('name', '')).lower()
+                            link_id = inp.get("link")
+                            inp_name = str(inp.get("name", "")).lower()
                             if link_id is not None and link_id in links_map:
                                 connections.append((inp_name, links_map[link_id]))
 
                 models = []
-                widgets = node.get('widgets_values', [])
+                widgets = node.get("widgets_values", [])
                 if isinstance(widgets, list):
                     for w in widgets:
                         if isinstance(w, str) and w.strip():
-                            w_clean = w.strip().replace(chr(92), '/')
+                            w_clean = w.strip().replace(chr(92), "/")
                             base = os.path.basename(w_clean).lower()
                             if any(base.endswith(ext) for ext in MODEL_EXTENSIONS):
                                 models.append(base)
                 elif isinstance(widgets, dict):
                     for k, v in widgets.items():
                         if isinstance(v, str) and v.strip():
-                            v_clean = v.strip().replace(chr(92), '/')
+                            v_clean = v.strip().replace(chr(92), "/")
                             base = os.path.basename(v_clean).lower()
                             if any(base.endswith(ext) for ext in MODEL_EXTENSIONS):
                                 models.append(base)
 
-                descriptor = {
-                    'type': node_type,
-                    'connections': sorted(connections),
-                    'models': sorted(set(models))
-                }
+                descriptor = {"type": node_type, "connections": sorted(connections), "models": sorted(set(models))}
                 node_descriptors.append(descriptor)
 
         # CASE B: API Format ({ '1': {'class_type': '...', 'inputs': {...}}, ... })
@@ -13901,60 +15356,57 @@ def compute_workflow_hashes(filepath):
             node_type_by_id = {}
             for nid, node in data.items():
                 if isinstance(node, dict):
-                    ntype = str(node.get('class_type', node.get('type', ''))).strip()
+                    ntype = str(node.get("class_type", node.get("type", ""))).strip()
                     node_type_by_id[str(nid)] = ntype
 
             for nid, node in data.items():
                 if not isinstance(node, dict):
                     continue
-                node_type = str(node.get('class_type', node.get('type', ''))).strip()
+                node_type = str(node.get("class_type", node.get("type", ""))).strip()
                 if not node_type or node_type in IGNORED_NODES:
                     continue
 
                 connections = []
                 models = []
-                inputs = node.get('inputs', {})
+                inputs = node.get("inputs", {})
 
                 if isinstance(inputs, dict):
                     for k, v in inputs.items():
                         k_str = str(k).lower()
                         if isinstance(v, list) and len(v) >= 1:
                             from_id = str(v[0])
-                            from_type = node_type_by_id.get(from_id, 'Unknown')
+                            from_type = node_type_by_id.get(from_id, "Unknown")
                             connections.append((k_str, from_type))
                         elif isinstance(v, str) and v.strip():
-                            v_clean = v.strip().replace(chr(92), '/')
+                            v_clean = v.strip().replace(chr(92), "/")
                             base = os.path.basename(v_clean).lower()
                             if any(base.endswith(ext) for ext in MODEL_EXTENSIONS):
                                 models.append(base)
 
-                descriptor = {
-                    'type': node_type,
-                    'connections': sorted(connections),
-                    'models': sorted(set(models))
-                }
+                descriptor = {"type": node_type, "connections": sorted(connections), "models": sorted(set(models))}
                 node_descriptors.append(descriptor)
 
-        node_descriptors.sort(key=lambda d: (d['type'], json.dumps(d['connections']), json.dumps(d['models'])))
+        node_descriptors.sort(key=lambda d: (d["type"], json.dumps(d["connections"]), json.dumps(d["models"])))
 
         if not node_descriptors:
-            return '', prompt_hash, ''
+            return "", prompt_hash, ""
 
         struct_str = json.dumps(node_descriptors, sort_keys=True)
-        workflow_hash = hashlib.md5(struct_str.encode('utf-8')).hexdigest()
+        workflow_hash = hashlib.md5(struct_str.encode("utf-8")).hexdigest()
 
         # Coarse identity: just the set of model files the graph loads.
-        all_models = sorted({m for d in node_descriptors for m in d['models']})
-        models_hash = ''
+        all_models = sorted({m for d in node_descriptors for m in d["models"]})
+        models_hash = ""
         if all_models:
-            models_hash = hashlib.md5(json.dumps(all_models).encode('utf-8')).hexdigest()
+            models_hash = hashlib.md5(json.dumps(all_models).encode("utf-8")).hexdigest()
 
         # prompt_hash stays empty when the workflow has no positive prompt:
         # prompt clusters mean "identical prompt text", and a synthesized
         # value would group files that share no prompt at all.
         return workflow_hash, prompt_hash, models_hash
     except Exception:
-        return '', '', ''
+        return "", "", ""
+
 
 GENPARAMS_SCHEMA = "genparams-v1"
 
@@ -13968,11 +15420,11 @@ def _genparams_backfill_worker(item):
             return file_id, None
         gp = None
         if has_workflow:
-            wf_json = extract_workflow(path, target_type='api')
+            wf_json = extract_workflow(path, target_type="api")
             if wf_json:
                 graph_meta = ComfyMetadataParser(json.loads(wf_json)).parse()
                 gp = metaparse_typed.GenerationParams.from_comfy(graph_meta)
-        if (gp is None or not gp.has_content) and ftype in ('image', 'animated_image'):
+        if (gp is None or not gp.has_content) and ftype in ("image", "animated_image"):
             parsed = metaparse.parse_file(path, allow_stealth=False)
             if parsed is not None:
                 candidate = metaparse_typed.GenerationParams.from_parsed(parsed)
@@ -13990,13 +15442,10 @@ def ensure_genparams_backfill_async(conn):
     the generation_params table existed. Marker-gated like the cluster
     hash migration: recorded only on completion, so an interrupted run
     resumes next startup (already-written rows are skipped by query)."""
-    if not env_flag('GENPARAMS_BACKFILL', True):
-        print("INFO: [GenParams] Backfill disabled by GENPARAMS_BACKFILL=0; "
-              "new scans still track parameters.")
+    if not env_flag("GENPARAMS_BACKFILL", True):
+        print("INFO: [GenParams] Backfill disabled by GENPARAMS_BACKFILL=0; new scans still track parameters.")
         return
-    stored = conn.execute(
-        "SELECT value FROM ai_metadata WHERE key = 'genparams_schema'"
-    ).fetchone()
+    stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'genparams_schema'").fetchone()
     if (stored[0] if stored else None) == GENPARAMS_SCHEMA:
         return
 
@@ -14011,14 +15460,15 @@ def ensure_genparams_backfill_async(conn):
                 ).fetchall()
                 written = 0
                 if todo:
-                    print(f"{Colors.BLUE}INFO: [GenParams] Backfilling typed generation "
-                          f"parameters for {len(todo)} files...{Colors.RESET}", flush=True)
+                    print(
+                        f"{Colors.BLUE}INFO: [GenParams] Backfilling typed generation "
+                        f"parameters for {len(todo)} files...{Colors.RESET}",
+                        flush=True,
+                    )
                     done = 0
                     batch = []
                     with ThreadPoolExecutor(max_workers=8) as pool:
-                        for _file_id, row in pool.map(
-                                _genparams_backfill_worker,
-                                [tuple(r) for r in todo]):
+                        for _file_id, row in pool.map(_genparams_backfill_worker, [tuple(r) for r in todo]):
                             done += 1
                             if row is not None:
                                 batch.append(row)
@@ -14028,22 +15478,26 @@ def ensure_genparams_backfill_async(conn):
                                 written += len(batch)
                                 batch = []
                             if done % 2000 == 0:
-                                print(f"INFO: [GenParams] {done}/{len(todo)} scanned, "
-                                      f"{written + len(batch)} with parameters...",
-                                      flush=True)
+                                print(
+                                    f"INFO: [GenParams] {done}/{len(todo)} scanned, "
+                                    f"{written + len(batch)} with parameters...",
+                                    flush=True,
+                                )
                     if batch:
                         bconn.executemany(_GENPARAMS_UPSERT, batch)
                         bconn.commit()
                         written += len(batch)
-                total = bconn.execute(
-                    "SELECT COUNT(*) FROM generation_params").fetchone()[0]
+                total = bconn.execute("SELECT COUNT(*) FROM generation_params").fetchone()[0]
                 bconn.execute(
-                    "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) "
-                    "VALUES ('genparams_schema', ?, ?)",
-                    (GENPARAMS_SCHEMA, time.time()))
+                    "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('genparams_schema', ?, ?)",
+                    (GENPARAMS_SCHEMA, time.time()),
+                )
                 bconn.commit()
-                print(f"{Colors.GREEN}SUCCESS: [GenParams] Typed generation parameters "
-                      f"tracked for {total} files.{Colors.RESET}", flush=True)
+                print(
+                    f"{Colors.GREEN}SUCCESS: [GenParams] Typed generation parameters "
+                    f"tracked for {total} files.{Colors.RESET}",
+                    flush=True,
+                )
         except Exception as e:
             print(f"ERROR in genparams backfill: {e}")
 
@@ -14060,20 +15514,25 @@ def backfill_audio_durations(conn=None):
         close_conn = True
 
     try:
-        rows = conn.execute("SELECT id, path FROM files WHERE type = 'audio' AND (duration IS NULL OR duration = '')").fetchall()
+        rows = conn.execute(
+            "SELECT id, path FROM files WHERE type = 'audio' AND (duration IS NULL OR duration = '')"
+        ).fetchall()
         if not rows:
             if close_conn:
                 conn.close()
             return 0
 
-        uncalculated = [(r['id'], r['path']) for r in rows if os.path.exists(r['path'])]
+        uncalculated = [(r["id"], r["path"]) for r in rows if os.path.exists(r["path"])]
         total_uncalc = len(uncalculated)
         if total_uncalc == 0:
             if close_conn:
                 conn.close()
             return 0
 
-        print(f"{Colors.BLUE}INFO: [Audio] Starting duration calculation for {total_uncalc} audio files...{Colors.RESET}", flush=True)
+        print(
+            f"{Colors.BLUE}INFO: [Audio] Starting duration calculation for {total_uncalc} audio files...{Colors.RESET}",
+            flush=True,
+        )
 
         def _work(item):
             fid, fpath = item
@@ -14082,12 +15541,21 @@ def backfill_audio_durations(conn=None):
             if current_ffprobe:
                 try:
                     cmd_info = [
-                        current_ffprobe, '-v', 'error', '-show_entries', 'format=duration',
-                        '-of', 'default=noprint_wrappers=1:nokey=1', fpath
+                        current_ffprobe,
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        fpath,
                     ]
                     res = subprocess.run(
-                        cmd_info, capture_output=True, text=True, timeout=3,
-                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                        cmd_info,
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
                     )
                     if res.stdout.strip():
                         total_duration_sec = float(res.stdout.strip())
@@ -14114,17 +15582,24 @@ def backfill_audio_durations(conn=None):
                 pct = int((completed / total_uncalc) * 100)
                 if pct % 5 == 0 and pct != last_reported_pct:
                     last_reported_pct = pct
-                    print(f"\r   [Audio Progress] Calculated {completed}/{total_uncalc} files ({pct}%)...", end="", flush=True)
+                    print(
+                        f"\r   [Audio Progress] Calculated {completed}/{total_uncalc} files ({pct}%)...",
+                        end="",
+                        flush=True,
+                    )
 
         if results:
             batch_size = 500
             for i in range(0, len(results), batch_size):
-                batch = results[i:i + batch_size]
+                batch = results[i : i + batch_size]
                 conn.executemany("UPDATE files SET duration = ? WHERE id = ?", batch)
                 conn.commit()
 
         print()
-        print(f"{Colors.GREEN}SUCCESS: [Audio] Successfully calculated durations for {len(results)}/{total_uncalc} files!{Colors.RESET}", flush=True)
+        print(
+            f"{Colors.GREEN}SUCCESS: [Audio] Successfully calculated durations for {len(results)}/{total_uncalc} files!{Colors.RESET}",
+            flush=True,
+        )
         return len(results)
     except Exception as e:
         print(f"ERROR in backfill_audio_durations: {e}")
@@ -14132,6 +15607,7 @@ def backfill_audio_durations(conn=None):
     finally:
         if close_conn and conn:
             conn.close()
+
 
 def clear_synthetic_prompt_hashes(conn):
     """One-time data repair: prompt_hash used to be synthesized as
@@ -14142,8 +15618,9 @@ def clear_synthetic_prompt_hashes(conn):
         "SELECT id, workflow_hash, prompt_hash FROM files WHERE prompt_hash != '' AND workflow_hash != ''"
     ).fetchall()
     synthetic = [
-        (r['id'],) for r in rows
-        if r['prompt_hash'] == hashlib.md5((r['workflow_hash'] + "_prompt").encode('utf-8')).hexdigest()
+        (r["id"],)
+        for r in rows
+        if r["prompt_hash"] == hashlib.md5((r["workflow_hash"] + "_prompt").encode("utf-8")).hexdigest()
     ]
     if synthetic:
         conn.executemany("UPDATE files SET prompt_hash = '' WHERE id = ?", synthetic)
@@ -14158,7 +15635,7 @@ def _backfill_hash_worker(item):
     wf_h, pr_h, md_h = compute_workflow_hashes(fpath)
     # Rows indexed before foreign-metadata support have no searchable
     # prompt; the file is already open here, so fill it in one pass.
-    prompt_text = ''
+    prompt_text = ""
     if not had_prompt:
         parsed = metaparse.parse_file(fpath)
         if parsed and parsed.positive:
@@ -14181,7 +15658,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
     Fast parallel execution, safe, non-destructive. Sets the state 'aborted'
     flag on any incomplete run so completion hooks don't fire.
     """
-    _CLUSTER_BACKFILL_STATE['aborted'] = False
+    _CLUSTER_BACKFILL_STATE["aborted"] = False
     close_conn = False
     if conn is None:
         conn = get_db_connection()
@@ -14214,13 +15691,14 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
             return 0
 
         unhashed = [
-            (r['id'], r['path'], bool(str(r['workflow_prompt'] or '').strip()))
-            for r in rows if os.path.exists(r['path'])
+            (r["id"], r["path"], bool(str(r["workflow_prompt"] or "").strip()))
+            for r in rows
+            if os.path.exists(r["path"])
         ]
 
         # Rows whose file vanished can never hash; mark them failed so they
         # stop re-triggering this backfill on every clustered page view.
-        missing_ids = [(r['id'],) for r in rows if not os.path.exists(r['path'])]
+        missing_ids = [(r["id"],) for r in rows if not os.path.exists(r["path"])]
         if missing_ids:
             conn.executemany("UPDATE files SET hash_failed = 1 WHERE id = ?", missing_ids)
             conn.commit()
@@ -14231,9 +15709,12 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
                 conn.close()
             return 0
 
-        _CLUSTER_BACKFILL_STATE['total'] = total_unhashed
-        _CLUSTER_BACKFILL_STATE['done'] = 0
-        print(f"{Colors.BLUE}INFO: [Clustering] Starting hash indexing for {total_unhashed} files...{Colors.RESET}", flush=True)
+        _CLUSTER_BACKFILL_STATE["total"] = total_unhashed
+        _CLUSTER_BACKFILL_STATE["done"] = 0
+        print(
+            f"{Colors.BLUE}INFO: [Clustering] Starting hash indexing for {total_unhashed} files...{Colors.RESET}",
+            flush=True,
+        )
 
         results = []
         failed_ids = []
@@ -14261,30 +15742,40 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
                     except Exception:
                         failed_ids.append((futures[future],))
 
-                    _CLUSTER_BACKFILL_STATE['done'] = completed
+                    _CLUSTER_BACKFILL_STATE["done"] = completed
                     pct = int((completed / total_unhashed) * 100)
                     if pct % 5 == 0 and pct != last_reported_pct:
                         last_reported_pct = pct
-                        print(f"\r   [Clustering Progress] Indexed {completed}/{total_unhashed} files ({pct}%)...", end="", flush=True)
+                        print(
+                            f"\r   [Clustering Progress] Indexed {completed}/{total_unhashed} files ({pct}%)...",
+                            end="",
+                            flush=True,
+                        )
         except concurrent.futures.process.BrokenProcessPool:
             # A crashed worker pool must not mass-mark the uncollected rows as
             # failed: write what was collected, leave the rest pending so the
             # next trigger resumes them.
-            _CLUSTER_BACKFILL_STATE['aborted'] = True
-            print(f"\n{Colors.YELLOW}WARN: [Clustering] Worker pool died mid-run; "
-                  f"{len(results)} results kept, the rest stay pending.{Colors.RESET}", flush=True)
+            _CLUSTER_BACKFILL_STATE["aborted"] = True
+            print(
+                f"\n{Colors.YELLOW}WARN: [Clustering] Worker pool died mid-run; "
+                f"{len(results)} results kept, the rest stay pending.{Colors.RESET}",
+                flush=True,
+            )
 
         batch_size = 500
         if results:
             hash_rows = [(wf, pr, md, fid) for wf, pr, md, _, fid in results]
             prompt_rows = [(text, fid) for _, _, _, text, fid in results if text]
             for i in range(0, len(hash_rows), batch_size):
-                conn.executemany("UPDATE files SET workflow_hash = ?, prompt_hash = ?, models_hash = ?, hash_failed = 0 WHERE id = ?", hash_rows[i:i + batch_size])
+                conn.executemany(
+                    "UPDATE files SET workflow_hash = ?, prompt_hash = ?, models_hash = ?, hash_failed = 0 WHERE id = ?",
+                    hash_rows[i : i + batch_size],
+                )
                 conn.commit()
             for i in range(0, len(prompt_rows), batch_size):
                 conn.executemany(
                     "UPDATE files SET workflow_prompt = ? WHERE id = ? AND (workflow_prompt IS NULL OR workflow_prompt = '')",
-                    prompt_rows[i:i + batch_size],
+                    prompt_rows[i : i + batch_size],
                 )
                 conn.commit()
 
@@ -14293,25 +15784,29 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         # flag and earns them another attempt.
         if failed_ids:
             for i in range(0, len(failed_ids), batch_size):
-                conn.executemany("UPDATE files SET hash_failed = 1 WHERE id = ?", failed_ids[i:i + batch_size])
+                conn.executemany("UPDATE files SET hash_failed = 1 WHERE id = ?", failed_ids[i : i + batch_size])
                 conn.commit()
 
         print()
-        print(f"{Colors.GREEN}SUCCESS: [Clustering] Successfully indexed {len(results)}/{total_unhashed} files!{Colors.RESET}", flush=True)
+        print(
+            f"{Colors.GREEN}SUCCESS: [Clustering] Successfully indexed {len(results)}/{total_unhashed} files!{Colors.RESET}",
+            flush=True,
+        )
         return len(results)
     except Exception as e:
-        _CLUSTER_BACKFILL_STATE['aborted'] = True
+        _CLUSTER_BACKFILL_STATE["aborted"] = True
         print(f"ERROR in backfill_unhashed_workflows: {e}")
         return 0
     finally:
         if close_conn and conn:
             conn.close()
 
+
 # Live progress of the cluster-hash backfill, readable from any thread.
 # 'running' is owned by ensure_cluster_backfill_async(); done/total are
 # written by backfill_unhashed_workflows() itself, so synchronous callers
 # (tests, scripts) report progress the same way.
-_CLUSTER_BACKFILL_STATE = {'running': False, 'done': 0, 'total': 0}
+_CLUSTER_BACKFILL_STATE = {"running": False, "done": 0, "total": 0}
 _CLUSTER_BACKFILL_LOCK = threading.Lock()
 
 
@@ -14330,22 +15825,22 @@ def ensure_cluster_backfill_async(force_all=False, on_complete=None):
     (observed live: models_hash empty across the gallery with the schema
     marker claiming done)."""
     with _CLUSTER_BACKFILL_LOCK:
-        if _CLUSTER_BACKFILL_STATE['running']:
+        if _CLUSTER_BACKFILL_STATE["running"]:
             return False
-        _CLUSTER_BACKFILL_STATE['running'] = True
-        _CLUSTER_BACKFILL_STATE['done'] = 0
-        _CLUSTER_BACKFILL_STATE['total'] = 0
+        _CLUSTER_BACKFILL_STATE["running"] = True
+        _CLUSTER_BACKFILL_STATE["done"] = 0
+        _CLUSTER_BACKFILL_STATE["total"] = 0
 
     def _run():
         try:
             backfill_unhashed_workflows(force_all=force_all)
-            if on_complete is not None and not _CLUSTER_BACKFILL_STATE.get('aborted'):
+            if on_complete is not None and not _CLUSTER_BACKFILL_STATE.get("aborted"):
                 on_complete()
         finally:
             with _CLUSTER_BACKFILL_LOCK:
-                _CLUSTER_BACKFILL_STATE['running'] = False
+                _CLUSTER_BACKFILL_STATE["running"] = False
 
-    threading.Thread(target=_run, name='ClusterHashBackfill', daemon=True).start()
+    threading.Thread(target=_run, name="ClusterHashBackfill", daemon=True).start()
     return True
 
 
@@ -14356,7 +15851,7 @@ def ensure_cluster_backfill_async(force_all=False, on_complete=None):
 #     prompt_hash, models_hash. ('2' was the same scheme, but the old code
 #     recorded the marker BEFORE the migration ran, so a '2' marker can sit
 #     on a DB whose models_hash was never filled — '3' re-runs those once.)
-CLUSTER_HASH_SCHEMA = '3'
+CLUSTER_HASH_SCHEMA = "3"
 
 
 def _write_cluster_schema_marker():
@@ -14369,7 +15864,10 @@ def _write_cluster_schema_marker():
                 (CLUSTER_HASH_SCHEMA, time.time()),
             )
             conn.commit()
-        print(f"{Colors.GREEN}SUCCESS: [Clustering] Hash scheme {CLUSTER_HASH_SCHEMA} migration complete.{Colors.RESET}", flush=True)
+        print(
+            f"{Colors.GREEN}SUCCESS: [Clustering] Hash scheme {CLUSTER_HASH_SCHEMA} migration complete.{Colors.RESET}",
+            flush=True,
+        )
     except Exception as e:
         print(f"ERROR recording cluster schema marker: {e}")
 
@@ -14382,70 +15880,81 @@ def check_and_update_workflow_hashes(conn):
     is recorded only when that recalculation completes, so an interrupted
     migration re-runs on the next startup instead of being silently skipped.
     """
-    stored = conn.execute(
-        "SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'"
-    ).fetchone()
+    stored = conn.execute("SELECT value FROM ai_metadata WHERE key = 'cluster_hash_schema'").fetchone()
     if (stored[0] if stored else None) != CLUSTER_HASH_SCHEMA:
         conn.execute("DELETE FROM ai_metadata WHERE key = 'foreign_arch_identity_mode'")
         conn.commit()
-        print(f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities in the background...{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}INFO: Cluster hash scheme updated. Re-indexing all cluster identities in the background...{Colors.RESET}"
+        )
         ensure_cluster_backfill_async(force_all=True, on_complete=_write_cluster_schema_marker)
         return
 
-    sample = conn.execute("SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3").fetchall()
+    sample = conn.execute(
+        "SELECT id, path, workflow_hash FROM files WHERE has_workflow = 1 AND workflow_hash IS NOT NULL AND workflow_hash != '' LIMIT 3"
+    ).fetchall()
 
     needs_update = False
     for row in sample:
-        if os.path.exists(row['path']):
-            new_wf_hash, _, _ = compute_workflow_hashes(row['path'])
+        if os.path.exists(row["path"]):
+            new_wf_hash, _, _ = compute_workflow_hashes(row["path"])
             # If the newly computed hash differs from the one in the DB, the algorithm changed!
-            if new_wf_hash and new_wf_hash != row['workflow_hash']:
+            if new_wf_hash and new_wf_hash != row["workflow_hash"]:
                 needs_update = True
                 break
 
     if needs_update:
-        print(f"{Colors.YELLOW}INFO: Workflow clustering algorithm updated. Re-indexing architectures in the background...{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}INFO: Workflow clustering algorithm updated. Re-indexing architectures in the background...{Colors.RESET}"
+        )
         ensure_cluster_backfill_async(force_all=True)
     else:
         # Standard check for newly added files that missed the hash
         ensure_cluster_backfill_async(force_all=False)
 
-@app.route('/galleryout/api/workflow_files_suggestions', methods=['GET'])
+
+@app.route("/galleryout/api/workflow_files_suggestions", methods=["GET"])
 def api_workflow_files_suggestions():
     """
     Returns unique model/LoRA filenames from DB and calculates 'Did you mean?'
     fuzzy suggestions using Python's native difflib without any external AI model.
     """
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
 
     if should_strip_metadata():
-        return jsonify({'status': 'error', 'message': 'Security Policy: Access to workflow metadata is restricted for your role.'}), 403
+        return jsonify(
+            {"status": "error", "message": "Security Policy: Access to workflow metadata is restricted for your role."}
+        ), 403
 
-    query = request.args.get('q', '').strip()
+    query = request.args.get("q", "").strip()
     with get_db_connection() as conn:
-        rows = conn.execute("SELECT DISTINCT workflow_files FROM files WHERE workflow_files IS NOT NULL AND workflow_files != ''").fetchall()
+        rows = conn.execute(
+            "SELECT DISTINCT workflow_files FROM files WHERE workflow_files IS NOT NULL AND workflow_files != ''"
+        ).fetchall()
 
     all_files = set()
     for r in rows:
-        wf_str = r['workflow_files']
+        wf_str = r["workflow_files"]
         if wf_str:
-            for item in wf_str.split(' ||| '):
+            for item in wf_str.split(" ||| "):
                 item_clean = item.strip()
                 if item_clean:
                     all_files.add(item_clean)
 
     all_files_list = sorted(all_files)
     if not query:
-        return jsonify({'status': 'success', 'suggestions': all_files_list[:20], 'did_you_mean': None})
+        return jsonify({"status": "success", "suggestions": all_files_list[:20], "did_you_mean": None})
 
     norm_query = _normalize_fuzzy_string(query)
-    query_tokens = [t for t in re.split(r'[^a-zA-Z0-9]+', query) if len(t) > 1]
+    query_tokens = [t for t in re.split(r"[^a-zA-Z0-9]+", query) if len(t) > 1]
 
     matching_suggestions = []
     for f in all_files_list:
         norm_f = _normalize_fuzzy_string(f)
-        if (norm_query and norm_query in norm_f) or (query_tokens and all(_normalize_fuzzy_string(tok) in norm_f for tok in query_tokens)):
+        if (norm_query and norm_query in norm_f) or (
+            query_tokens and all(_normalize_fuzzy_string(tok) in norm_f for tok in query_tokens)
+        ):
             matching_suggestions.append(f)
 
     did_you_mean = None
@@ -14459,45 +15968,43 @@ def api_workflow_files_suggestions():
             if close_full:
                 did_you_mean = close_full[0]
 
-    return jsonify({
-        'status': 'success',
-        'suggestions': matching_suggestions[:15],
-        'did_you_mean': did_you_mean
-    })
+    return jsonify({"status": "success", "suggestions": matching_suggestions[:15], "did_you_mean": did_you_mean})
 
 
-@app.route('/galleryout/api/site_settings', methods=['GET'])
+@app.route("/galleryout/api/site_settings", methods=["GET"])
 def api_site_settings_get():
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-    return jsonify({
-        'status': 'success',
-        'thumbnail_generation': thumbnail_generation_enabled(),
-    })
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    return jsonify(
+        {
+            "status": "success",
+            "thumbnail_generation": thumbnail_generation_enabled(),
+        }
+    )
 
 
-@app.route('/galleryout/api/site_settings', methods=['POST'])
+@app.route("/galleryout/api/site_settings", methods=["POST"])
 @management_api_only
 def api_site_settings_set():
     data = request.get_json(silent=True) or {}
-    if 'thumbnail_generation' not in data:
-        return jsonify({'status': 'error', 'message': 'No known setting in payload'}), 400
-    enabled = bool(data['thumbnail_generation'])
+    if "thumbnail_generation" not in data:
+        return jsonify({"status": "error", "message": "No known setting in payload"}), 400
+    enabled = bool(data["thumbnail_generation"])
     with get_db_connection() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO ai_metadata (key, value, updated_at) VALUES ('thumbnail_generation', ?, ?)",
-            ('1' if enabled else '0', time.time()),
+            ("1" if enabled else "0", time.time()),
         )
         conn.commit()
-    _THUMBNAIL_SETTING_CACHE['value'] = None  # re-read on next check
-    return jsonify({'status': 'success', 'thumbnail_generation': enabled})
+    _THUMBNAIL_SETTING_CACHE["value"] = None  # re-read on next check
+    return jsonify({"status": "success", "thumbnail_generation": enabled})
 
 
-@app.route('/galleryout/api/cluster_hash_status')
+@app.route("/galleryout/api/cluster_hash_status")
 def api_cluster_hash_status():
     """Progress of the background cluster-hash backfill, for the banner."""
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     with get_db_connection() as conn:
         pending = conn.execute(
             """SELECT COUNT(*) FROM files
@@ -14506,103 +16013,123 @@ def api_cluster_hash_status():
                AND (prompt_hash IS NULL OR prompt_hash = '')
                AND hash_failed = 0"""
         ).fetchone()[0]
-    return jsonify({
-        'status': 'success',
-        'running': _CLUSTER_BACKFILL_STATE['running'],
-        'done': _CLUSTER_BACKFILL_STATE['done'],
-        'total': _CLUSTER_BACKFILL_STATE['total'],
-        'pending': pending,
-    })
+    return jsonify(
+        {
+            "status": "success",
+            "running": _CLUSTER_BACKFILL_STATE["running"],
+            "done": _CLUSTER_BACKFILL_STATE["done"],
+            "total": _CLUSTER_BACKFILL_STATE["total"],
+            "pending": pending,
+        }
+    )
 
 
 # --- CLUSTER INFO INSPECTOR API ROUTE ---
-@app.route('/galleryout/api/cluster_info/<string:hash_type>/<string:hash_val>')
+@app.route("/galleryout/api/cluster_info/<string:hash_type>/<string:hash_val>")
 def api_cluster_info(hash_type, hash_val):
-    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get('user_id'):
-        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+    if (IS_EXHIBITION_MODE or FORCE_LOGIN) and not session.get("user_id"):
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
 
     if should_strip_metadata():
-        return jsonify({'status': 'error', 'message': 'Security Policy: Access to cluster metadata is restricted for your role.'}), 403
+        return jsonify(
+            {"status": "error", "message": "Security Policy: Access to cluster metadata is restricted for your role."}
+        ), 403
 
-    if hash_type not in ('workflow', 'prompt', 'models'):
-        return jsonify({'status': 'error', 'message': 'Invalid hash type'}), 400
+    if hash_type not in ("workflow", "prompt", "models"):
+        return jsonify({"status": "error", "message": "Invalid hash type"}), 400
 
-    col_name = {'workflow': 'workflow_hash', 'prompt': 'prompt_hash', 'models': 'models_hash'}[hash_type]
-    requested_file_id = request.args.get('file_id')
+    col_name = {"workflow": "workflow_hash", "prompt": "prompt_hash", "models": "models_hash"}[hash_type]
+    requested_file_id = request.args.get("file_id")
 
     try:
         with get_db_connection() as conn:
-            rows = conn.execute(f"SELECT id, name, path, type, mtime, dimensions, workflow_files, workflow_prompt FROM files WHERE {col_name} = ? ORDER BY mtime DESC", (hash_val,)).fetchall()
+            rows = conn.execute(
+                f"SELECT id, name, path, type, mtime, dimensions, workflow_files, workflow_prompt FROM files WHERE {col_name} = ? ORDER BY mtime DESC",
+                (hash_val,),
+            ).fetchall()
 
             if not rows:
-                return jsonify({'status': 'error', 'message': 'No matching cluster assets found'}), 404
+                return jsonify({"status": "error", "message": "No matching cluster assets found"}), 404
 
             matching_files = [dict(r) for r in rows]
 
             if IS_EXHIBITION_MODE:
-                matching_files = [f for f in matching_files if is_file_accessible(f['id'])]
+                matching_files = [f for f in matching_files if is_file_accessible(f["id"])]
                 if not matching_files:
-                    return jsonify({'status': 'error', 'message': 'Access Denied'}), 403
+                    return jsonify({"status": "error", "message": "Access Denied"}), 403
 
             total_count = len(matching_files)
 
             sample = matching_files[0]
             if requested_file_id:
-                matched_sample = next((f for f in matching_files if f['id'] == requested_file_id), None)
-                if matched_sample and is_file_accessible(matched_sample['id']):
+                matched_sample = next((f for f in matching_files if f["id"] == requested_file_id), None)
+                if matched_sample and is_file_accessible(matched_sample["id"]):
                     sample = matched_sample
 
             nodes_pipeline = []
             models_used = []
-            sample_prompt = sample.get('workflow_prompt', '')
+            sample_prompt = sample.get("workflow_prompt", "")
 
-            wf_json = extract_workflow(sample['path'], target_type='ui')
+            wf_json = extract_workflow(sample["path"], target_type="ui")
             if not wf_json:
-                wf_json = extract_workflow(sample['path'], target_type='api')
+                wf_json = extract_workflow(sample["path"], target_type="api")
 
             if wf_json:
                 try:
                     summary = generate_node_summary(wf_json)
                     if summary:
                         for n in summary:
-                            nodes_pipeline.append({
-                                'id': n.get('id'),
-                                'type': n.get('type'),
-                                'category': n.get('category'),
-                                'color': n.get('color')
-                            })
+                            nodes_pipeline.append(
+                                {
+                                    "id": n.get("id"),
+                                    "type": n.get("type"),
+                                    "category": n.get("category"),
+                                    "color": n.get("color"),
+                                }
+                            )
                 except Exception:
                     pass
 
-            if sample.get('workflow_files'):
-                for item in sample['workflow_files'].split(' ||| '):
+            if sample.get("workflow_files"):
+                for item in sample["workflow_files"].split(" ||| "):
                     if item.strip():
                         models_used.append(os.path.basename(item.strip()))
 
             distinct_other_hashes = 0
-            if hash_type == 'prompt':
-                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE prompt_hash = ? AND workflow_hash != ''", (hash_val,)).fetchone()[0]
-            elif hash_type == 'models':
-                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE models_hash = ? AND workflow_hash != ''", (hash_val,)).fetchone()[0]
+            if hash_type == "prompt":
+                distinct_other_hashes = conn.execute(
+                    "SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE prompt_hash = ? AND workflow_hash != ''",
+                    (hash_val,),
+                ).fetchone()[0]
+            elif hash_type == "models":
+                distinct_other_hashes = conn.execute(
+                    "SELECT COUNT(DISTINCT workflow_hash) FROM files WHERE models_hash = ? AND workflow_hash != ''",
+                    (hash_val,),
+                ).fetchone()[0]
             else:
-                distinct_other_hashes = conn.execute("SELECT COUNT(DISTINCT prompt_hash) FROM files WHERE workflow_hash = ? AND prompt_hash != ''", (hash_val,)).fetchone()[0]
+                distinct_other_hashes = conn.execute(
+                    "SELECT COUNT(DISTINCT prompt_hash) FROM files WHERE workflow_hash = ? AND prompt_hash != ''",
+                    (hash_val,),
+                ).fetchone()[0]
 
-            return jsonify({
-                'status': 'success',
-                'hash_type': hash_type,
-                'hash_val': hash_val,
-                'total_count': total_count,
-                'sample_file': sample,
-                'nodes_pipeline': nodes_pipeline,
-                'models_used': sorted(set(models_used)),
-                'sample_prompt': sample_prompt,
-                'distinct_counterparts': distinct_other_hashes
-            })
+            return jsonify(
+                {
+                    "status": "success",
+                    "hash_type": hash_type,
+                    "hash_val": hash_val,
+                    "total_count": total_count,
+                    "sample_file": sample,
+                    "nodes_pipeline": nodes_pipeline,
+                    "models_used": sorted(set(models_used)),
+                    "sample_prompt": sample_prompt,
+                    "distinct_counterparts": distinct_other_hashes,
+                }
+            )
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-if __name__ == '__main__':
 
+if __name__ == "__main__":
     # --- OS SIGNAL HANDLER FOR TMUX/LINUX/MAC PORT RELEASE ---
     import socket
 
@@ -14611,12 +16138,15 @@ if __name__ == '__main__':
         Aggressive shutdown sequence to prevent 'Port already in use' errors
         in persistent terminal multiplexers like tmux/screen on Linux/macOS.
         """
-        print(f"\n{Colors.YELLOW}INFO: Shutdown signal ({signum}) received. Releasing port {SERVER_PORT}...{Colors.RESET}")
+        print(
+            f"\n{Colors.YELLOW}INFO: Shutdown signal ({signum}) received. Releasing port {SERVER_PORT}...{Colors.RESET}"
+        )
 
         # 1. Kill the entire Process Group (terminates zombie Waitress threads and ProcessPools)
         try:
-            if os.name != 'nt':
+            if os.name != "nt":
                 import signal
+
                 os.killpg(os.getpgrp(), signal.SIGKILL)
         except Exception:
             # Best effort on the way out. If the group kill is unavailable or
@@ -14628,10 +16158,11 @@ if __name__ == '__main__':
 
     _installed, _left_alone = install_shutdown_signals(force_hard_kill)
     if _left_alone:
-        print(f"INFO: Leaving {', '.join(_left_alone)} as the launcher set "
-              f"it; the gallery keeps running when the terminal closes.")
+        print(
+            f"INFO: Leaving {', '.join(_left_alone)} as the launcher set "
+            f"it; the gallery keeps running when the terminal closes."
+        )
     # ---------------------------------------------------------
-
 
     run_integrity_check()
     # --- CHECK: PORT AVAILABILITY ---
@@ -14660,14 +16191,22 @@ if __name__ == '__main__':
     if ADMIN_CONFIG_MISSING:
         print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL SECURITY ERROR: Missing Admin Password{Colors.RESET}")
         if IS_EXHIBITION_MODE:
-            print(f"{Colors.RED}You started the server with '--exhibition', which requires an admin account.{Colors.RESET}")
+            print(
+                f"{Colors.RED}You started the server with '--exhibition', which requires an admin account.{Colors.RESET}"
+            )
         else:
-            print(f"{Colors.RED}You started the server with '--force-login', which requires an admin account.{Colors.RESET}")
+            print(
+                f"{Colors.RED}You started the server with '--force-login', which requires an admin account.{Colors.RESET}"
+            )
 
         print(f"\n{Colors.CYAN}{Colors.BOLD}💡 HOW TO FIX IT:{Colors.RESET}")
         print("Please restart the application and provide the password using one of these methods:")
-        print(f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py {'--exhibition' if IS_EXHIBITION_MODE else '--force-login'} --admin-pass YOUR_PASSWORD{Colors.RESET}")
-        print(f"  2. Environment Variable: Set {Colors.YELLOW}ADMIN_PASSWORD=YOUR_PASSWORD{Colors.RESET} before running.")
+        print(
+            f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py {'--exhibition' if IS_EXHIBITION_MODE else '--force-login'} --admin-pass YOUR_PASSWORD{Colors.RESET}"
+        )
+        print(
+            f"  2. Environment Variable: Set {Colors.YELLOW}ADMIN_PASSWORD=YOUR_PASSWORD{Colors.RESET} before running."
+        )
         print("\nThe server cannot start in this state and will now exit.\n")
 
         # Cross-platform safe wait (Docker friendly)
@@ -14683,12 +16222,20 @@ if __name__ == '__main__':
     # Stops the server if the user provided a password but it is too weak (under 8 chars).
     if ADMIN_PASS_TOO_SHORT:
         print(f"\n{Colors.RED}{Colors.BOLD}❌ CRITICAL SECURITY ERROR: Weak Admin Password{Colors.RESET}")
-        print(f"{Colors.RED}The provided admin password is too short. It must be at least 8 characters long.{Colors.RESET}")
+        print(
+            f"{Colors.RED}The provided admin password is too short. It must be at least 8 characters long.{Colors.RESET}"
+        )
 
         print(f"\n{Colors.CYAN}{Colors.BOLD}💡 HOW TO FIX IT:{Colors.RESET}")
-        print("Please restart the application and provide a stronger password (8+ characters) using one of these methods:")
-        print(f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py {'--exhibition' if IS_EXHIBITION_MODE else '--force-login'} --admin-pass YOUR_STRONG_PASSWORD{Colors.RESET}")
-        print(f"  2. Environment Variable: Set {Colors.YELLOW}ADMIN_PASSWORD=YOUR_STRONG_PASSWORD{Colors.RESET} before running.")
+        print(
+            "Please restart the application and provide a stronger password (8+ characters) using one of these methods:"
+        )
+        print(
+            f"  1. CLI Argument: {Colors.YELLOW}python smartgallery.py {'--exhibition' if IS_EXHIBITION_MODE else '--force-login'} --admin-pass YOUR_STRONG_PASSWORD{Colors.RESET}"
+        )
+        print(
+            f"  2. Environment Variable: Set {Colors.YELLOW}ADMIN_PASSWORD=YOUR_STRONG_PASSWORD{Colors.RESET} before running."
+        )
         print("\nThe server cannot start in this state and will now exit.\n")
 
         # Cross-platform safe wait (Docker friendly)
@@ -14730,10 +16277,9 @@ if __name__ == '__main__':
     # Initialize the gallery (Creates DB, Migrations, etc.)
     initialize_gallery()
 
-
     # --- CHECK: FFMPEG WARNING ---
     if not FFPROBE_EXECUTABLE_PATH:
-        if os.environ.get('DISPLAY') or os.name == 'nt':
+        if os.environ.get("DISPLAY") or os.name == "nt":
             try:
                 show_ffmpeg_warning()
             except Exception:
@@ -14759,7 +16305,8 @@ if __name__ == '__main__':
     if AI_CONFIG.enabled and not IS_EXHIBITION_MODE:
         try:
             ai_dam_worker = AIWorker(
-                AI_CONFIG, DATABASE_FILE,
+                AI_CONFIG,
+                DATABASE_FILE,
                 poll_interval=env_num("AI_DAM_WORKER_POLL", 25.0, float),
                 batch_size=env_num("AI_DAM_WORKER_BATCH", 150),
             )
@@ -14776,6 +16323,7 @@ if __name__ == '__main__':
     # Safely attempt to discover the local network IP
     try:
         import socket
+
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # We don't actually send any data. We just use UDP to ask the OS
         # which network interface it would use to reach an external IP.
@@ -14786,7 +16334,9 @@ if __name__ == '__main__':
 
         # Only print if it's a valid LAN IP (ignoring local loopback)
         if local_ip and local_ip != "127.0.0.1":
-            print(f"👉 Network Access: {Colors.CYAN}{Colors.BOLD}http://{local_ip}:{SERVER_PORT}/galleryout/{Colors.RESET}")
+            print(
+                f"👉 Network Access: {Colors.CYAN}{Colors.BOLD}http://{local_ip}:{SERVER_PORT}/galleryout/{Colors.RESET}"
+            )
     except Exception:
         # If the machine is completely offline or strict Docker network rules apply,
         # fail silently to prevent application crashes.
@@ -14809,10 +16359,19 @@ if __name__ == '__main__':
         # threads=8 allows handling multiple concurrent requests (images/video thumbnails)
         # channel_timeout avoids drops during heavy video streaming
         print(f"{Colors.GREEN}INFO: Starting Production WSGI Server (Waitress)...{Colors.RESET}")
-        serve(app, host='0.0.0.0', port=SERVER_PORT, threads=8, connection_limit=150, channel_timeout=120, asyncore_use_poll=True, max_request_body_size=MAX_REQUEST_BODY_BYTES, _quiet=True)
+        serve(
+            app,
+            host="0.0.0.0",
+            port=SERVER_PORT,
+            threads=8,
+            connection_limit=150,
+            channel_timeout=120,
+            asyncore_use_poll=True,
+            max_request_body_size=MAX_REQUEST_BODY_BYTES,
+            _quiet=True,
+        )
     else:
         # DEVELOPMENT MODE: Falling back to Flask built-in server
         print(f"{Colors.YELLOW}WARNING: 'waitress' not found. Using Flask development server.{Colors.RESET}")
         print("INFO: For better performance, install it with: pip install waitress")
-        app.run(host='0.0.0.0', port=SERVER_PORT, debug=False)
-
+        app.run(host="0.0.0.0", port=SERVER_PORT, debug=False)

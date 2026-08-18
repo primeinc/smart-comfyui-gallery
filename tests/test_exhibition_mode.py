@@ -28,13 +28,13 @@ import sqlite3
 import pytest
 
 _DESTRUCTIVE = [
-    ('/galleryout/delete_batch', {'file_ids': ['x']}),
-    ('/galleryout/move_batch', {'file_ids': ['x'], 'destination_folder': '_root_'}),
-    ('/galleryout/copy_batch', {'file_ids': ['x'], 'destination_folder': '_root_'}),
-    ('/galleryout/delete_folder/_root_', {}),
-    ('/galleryout/rename_file/x', {'new_name': 'y.png'}),
-    ('/galleryout/prepare_batch_zip', {'file_ids': ['x']}),
-    ('/galleryout/create_folder', {'folder_name': 'x', 'parent_key': '_root_'}),
+    ("/galleryout/delete_batch", {"file_ids": ["x"]}),
+    ("/galleryout/move_batch", {"file_ids": ["x"], "destination_folder": "_root_"}),
+    ("/galleryout/copy_batch", {"file_ids": ["x"], "destination_folder": "_root_"}),
+    ("/galleryout/delete_folder/_root_", {}),
+    ("/galleryout/rename_file/x", {"new_name": "y.png"}),
+    ("/galleryout/prepare_batch_zip", {"file_ids": ["x"]}),
+    ("/galleryout/create_folder", {"folder_name": "x", "parent_key": "_root_"}),
 ]
 
 
@@ -49,8 +49,7 @@ def exhibiting(smartgallery_app, monkeypatch):
     answer 403. Setting only IS_EXHIBITION_MODE left folder browsing
     answering 200 -- a state the launcher cannot actually produce.
     """
-    force_login, missing, _short = smartgallery_app.derive_login_policy(
-        None, exhibition=True, force_login=False)
+    force_login, missing, _short = smartgallery_app.derive_login_policy(None, exhibition=True, force_login=False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", force_login)
     monkeypatch.setattr(smartgallery_app, "ADMIN_CONFIG_MISSING", missing)
@@ -59,7 +58,8 @@ def exhibiting(smartgallery_app, monkeypatch):
     try:
         conn.execute(
             "INSERT INTO collections (name, type, color, is_public, created_at) "
-            "VALUES ('Public Show', 'user_album', '#fff', 1, 1000.0)")
+            "VALUES ('Public Show', 'user_album', '#fff', 1, 1000.0)"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -87,12 +87,11 @@ def test_exhibition_hides_the_underlying_folders(exhibiting):
     it."""
     client = exhibiting.app.test_client()
 
-    entrance = client.get('/galleryout/')
-    browse = client.get('/galleryout/view/_root_')
+    entrance = client.get("/galleryout/")
+    browse = client.get("/galleryout/view/_root_")
 
     assert entrance.status_code in (301, 302), entrance.status_code
-    assert browse.status_code == 403, (
-        f'raw folder browsing answered {browse.status_code} in exhibition mode')
+    assert browse.status_code == 403, f"raw folder browsing answered {browse.status_code} in exhibition mode"
 
 
 @pytest.mark.parametrize(("path", "payload"), _DESTRUCTIVE)
@@ -101,43 +100,38 @@ def test_exhibition_refuses_the_destructive_apis(exhibiting, path, payload):
     session claims -- these are the routes that delete and move media."""
     client = exhibiting.app.test_client()
     with client.session_transaction() as session:
-        session['role'] = 'ADMIN'          # even claiming admin must not help
-        session['user_id'] = 1
+        session["role"] = "ADMIN"  # even claiming admin must not help
+        session["user_id"] = 1
 
     resp = client.post(path, json=payload)
 
-    assert resp.status_code == 403, f'not locked down: {path} -> {resp.status_code}'
+    assert resp.status_code == 403, f"not locked down: {path} -> {resp.status_code}"
 
 
-def test_exhibition_exits_rather_than_create_a_ghost_database(
-        smartgallery_app, monkeypatch, capsys, tmp_path):
+def test_exhibition_exits_rather_than_create_a_ghost_database(smartgallery_app, monkeypatch, capsys, tmp_path):
     """Pointed at a gallery that was never run normally, the mode must stop
     with an explanation instead of quietly making an empty database beside
     the real one."""
     never_used = tmp_path / "never_used"
     never_used.mkdir()
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
-    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE",
-                        str(never_used / "gallery_cache.sqlite"))
+    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE", str(never_used / "gallery_cache.sqlite"))
 
     with pytest.raises(SystemExit) as refused:
         smartgallery_app.check_exhibition_requirements()
 
     assert refused.value.code == 1, "a misconfigured exhibition launch was allowed"
-    assert "Database Not Found" in capsys.readouterr().out, (
-        "the refusal did not explain itself")
+    assert "Database Not Found" in capsys.readouterr().out, "the refusal did not explain itself"
     leftovers = list(never_used.rglob("*.sqlite"))
     assert not leftovers, f"a ghost database was created anyway: {leftovers}"
 
 
-def test_exhibition_exits_when_there_is_nothing_to_exhibit(
-        smartgallery_app, monkeypatch, capsys, tmp_path):
+def test_exhibition_exits_when_there_is_nothing_to_exhibit(smartgallery_app, monkeypatch, capsys, tmp_path):
     """A database with no public or shared collection would come up empty,
     which looks identical to a broken install from the visitor's side."""
     database = tmp_path / "empty_show.sqlite"
     with sqlite3.connect(database) as conn:
-        conn.execute("CREATE TABLE collections (name TEXT, type TEXT, "
-                     "is_public INTEGER, shared_users TEXT)")
+        conn.execute("CREATE TABLE collections (name TEXT, type TEXT, is_public INTEGER, shared_users TEXT)")
         conn.commit()
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "DATABASE_FILE", str(database))
@@ -149,13 +143,11 @@ def test_exhibition_exits_when_there_is_nothing_to_exhibit(
     assert "No Exhibition Collections Found" in capsys.readouterr().out
 
 
-def test_the_preflight_says_nothing_when_the_mode_is_off(
-        smartgallery_app, monkeypatch, capsys):
+def test_the_preflight_says_nothing_when_the_mode_is_off(smartgallery_app, monkeypatch, capsys):
     """The counterpart: a normal launch must not be pre-flighted at all, or
     every ordinary start would refuse on a fresh install."""
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
-    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE",
-                        os.path.join("definitely", "not", "here.sqlite"))
+    monkeypatch.setattr(smartgallery_app, "DATABASE_FILE", os.path.join("definitely", "not", "here.sqlite"))
 
     smartgallery_app.check_exhibition_requirements()
 
@@ -168,14 +160,21 @@ def test_startup_still_runs_the_preflight(gallery_tree):
     import ast
 
     gallery_init = next(
-        (node for node in ast.walk(gallery_tree)
-         if isinstance(node, ast.FunctionDef) and node.name == "initialize_gallery"),
-        None)
+        (
+            node
+            for node in ast.walk(gallery_tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "initialize_gallery"
+        ),
+        None,
+    )
     assert gallery_init is not None, "initialize_gallery is gone; this check is stale"
 
-    called = {node.func.id for node in ast.walk(gallery_init)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    called = {
+        node.func.id
+        for node in ast.walk(gallery_init)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
 
     assert "check_exhibition_requirements" in called, (
-        "initialize_gallery no longer pre-flights, so a misconfigured "
-        "exhibition can create a ghost database again")
+        "initialize_gallery no longer pre-flights, so a misconfigured exhibition can create a ghost database again"
+    )

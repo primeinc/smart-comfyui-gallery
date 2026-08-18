@@ -38,8 +38,7 @@ import pytest
 
 import smartgallery
 
-_ROUTES = ["/galleryout/api/exhibition/rate",
-           "/galleryout/api/exhibition/rate_batch"]
+_ROUTES = ["/galleryout/api/exhibition/rate", "/galleryout/api/exhibition/rate_batch"]
 
 
 @pytest.fixture
@@ -48,9 +47,9 @@ def a_picture(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-            "VALUES (?,?,?,?,?)",
-            (file_id, "/lib/rated.png", 1700000000.0, "rated.png", "image"))
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+            (file_id, "/lib/rated.png", 1700000000.0, "rated.png", "image"),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -84,19 +83,26 @@ def _rows(smartgallery_app, file_id):
     conn = smartgallery_app.get_db_connection()
     try:
         return conn.execute(
-            "SELECT rating, typeof(rating) AS kind FROM file_ratings "
-            "WHERE file_id = ?", (file_id,)).fetchall()
+            "SELECT rating, typeof(rating) AS kind FROM file_ratings WHERE file_id = ?", (file_id,)
+        ).fetchall()
     finally:
         conn.close()
 
 
 # --- the rule on its own --------------------------------------------------
 
-@pytest.mark.parametrize(("value", "expected"), [
-    (1, 1), (3, 3), (5, 5),
-    (3.0, 3),                 # a client with one number type
-    (0, None), (None, None),  # clearing
-])
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (1, 1),
+        (3, 3),
+        (5, 5),
+        (3.0, 3),  # a client with one number type
+        (0, None),
+        (None, None),  # clearing
+    ],
+)
 def test_what_a_rating_may_be(value, expected):
     rating, error = smartgallery.parse_rating(value)
 
@@ -104,10 +110,26 @@ def test_what_a_rating_may_be(value, expected):
     assert rating == expected
 
 
-@pytest.mark.parametrize("value", [
-    "3", "abc", "", [3], {}, (3,), True, False,
-    3.5, 2.25, -1, 6, 99, float("nan"), float("inf"),
-])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "3",
+        "abc",
+        "",
+        [3],
+        {},
+        (3,),
+        True,
+        False,
+        3.5,
+        2.25,
+        -1,
+        6,
+        99,
+        float("nan"),
+        float("inf"),
+    ],
+)
 def test_what_a_rating_may_not_be(value):
     rating, error = smartgallery.parse_rating(value)
 
@@ -123,10 +145,10 @@ def test_a_boolean_is_not_one_star():
 
 # --- through both routes --------------------------------------------------
 
+
 @pytest.mark.parametrize("route", _ROUTES)
 @pytest.mark.parametrize("value", ["3", "abc", [3], {}])
-def test_a_rating_of_the_wrong_type_answers_readably(smartgallery_app, visitor,
-                                                     a_picture, route, value):
+def test_a_rating_of_the_wrong_type_answers_readably(smartgallery_app, visitor, a_picture, route, value):
     """The bug: a 500 carrying an HTML page, to a caller doing res.json()."""
     response = _rate(visitor, route, a_picture, value)
 
@@ -138,32 +160,27 @@ def test_a_rating_of_the_wrong_type_answers_readably(smartgallery_app, visitor,
 
 @pytest.mark.parametrize("route", _ROUTES)
 @pytest.mark.parametrize("value", [3.5, 2.25, True])
-def test_nothing_that_is_not_a_whole_star_is_stored(smartgallery_app, visitor,
-                                                    a_picture, route, value):
+def test_nothing_that_is_not_a_whole_star_is_stored(smartgallery_app, visitor, a_picture, route, value):
     """The half that skewed what everyone sees."""
     response = _rate(visitor, route, a_picture, value)
 
     assert response.status_code == 400, (value, response.get_json())
-    assert _rows(smartgallery_app, a_picture) == [], (
-        f"{value!r} was stored as a rating")
+    assert _rows(smartgallery_app, a_picture) == [], f"{value!r} was stored as a rating"
 
 
 @pytest.mark.parametrize("route", _ROUTES)
-def test_an_ordinary_rating_still_works(smartgallery_app, visitor, a_picture,
-                                        route):
+def test_an_ordinary_rating_still_works(smartgallery_app, visitor, a_picture, route):
     """Over-reach guard, and the whole feature."""
     assert _rate(visitor, route, a_picture, 4).status_code == 200
 
     rows = _rows(smartgallery_app, a_picture)
     assert len(rows) == 1
     assert rows[0]["rating"] == 4
-    assert rows[0]["kind"] == "integer", (
-        f"stored as {rows[0]['kind']} rather than a whole number")
+    assert rows[0]["kind"] == "integer", f"stored as {rows[0]['kind']} rather than a whole number"
 
 
 @pytest.mark.parametrize("route", _ROUTES)
-def test_clearing_a_rating_still_works(smartgallery_app, visitor, a_picture,
-                                       route):
+def test_clearing_a_rating_still_works(smartgallery_app, visitor, a_picture, route):
     """Over-reach guard: 0 and null mean "I take it back", and the star
     widget sends one of them when you click the star you already chose."""
     assert _rate(visitor, route, a_picture, 4).status_code == 200
@@ -182,12 +199,9 @@ def test_both_routes_ask_the_same_rule(gallery_tree):
     tree = gallery_tree
 
     for name in ("exhibition_rate_file", "exhibition_rate_batch"):
-        fn = next((node for node in ast.walk(tree)
-                   if isinstance(node, ast.FunctionDef) and node.name == name),
-                  None)
+        fn = next((node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name), None)
         assert fn is not None, f"{name} is gone"
-        called = {node.func.id for node in ast.walk(fn)
-                  if isinstance(node, ast.Call)
-                  and isinstance(node.func, ast.Name)}
-        assert "parse_rating" in called, (
-            f"{name} decides for itself what a rating may be")
+        called = {
+            node.func.id for node in ast.walk(fn) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        assert "parse_rating" in called, f"{name} decides for itself what a rating may be"

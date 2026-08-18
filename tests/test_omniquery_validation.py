@@ -42,6 +42,7 @@ def _cond(field, op, value=None):
 # Field / op / value checks
 # ---------------------------------------------------------------------------
 
+
 def test_unknown_field_rejected():
     q = _q(where=_cond("not_a_real_field", "eq", "x"))
     with pytest.raises(ValidationError, match="unknown field"):
@@ -183,6 +184,7 @@ def test_file_ref_rejects_missing_file_id_key():
 # Authorization: privileged roles
 # ---------------------------------------------------------------------------
 
+
 def test_privileged_field_denied_for_guest():
     q = _q(where=_cond("rated_by_user", "eq", "carol"))
     with pytest.raises(ValidationError, match="privileged role"):
@@ -207,6 +209,7 @@ def test_privileged_field_denied_for_non_privileged_named_role():
 # Authorization: AI gating
 # ---------------------------------------------------------------------------
 
+
 def test_requires_ai_field_denied_when_ai_disabled():
     q = _q(where=_cond("has_faces", "eq", True))
     with pytest.raises(ValidationError, match="AI layer"):
@@ -228,6 +231,7 @@ def test_requires_ai_order_by_denied_when_ai_disabled():
 # my_rating needs client_uuid regardless of role
 # ---------------------------------------------------------------------------
 
+
 def test_my_rating_without_client_uuid_rejected():
     ctx = AuthContext(role="ADMIN", user_id="5", client_uuid=None, ai_enabled=False)
     q = _q(where=_cond("my_rating", "ge", 4))
@@ -244,6 +248,7 @@ def test_my_rating_with_client_uuid_accepted():
 # ---------------------------------------------------------------------------
 # limit handling
 # ---------------------------------------------------------------------------
+
 
 def test_default_limit_applied_when_absent():
     vq = validate(_q(), GUEST)
@@ -268,6 +273,7 @@ def test_limit_over_cap_rejected():
 # ---------------------------------------------------------------------------
 # order_by validation
 # ---------------------------------------------------------------------------
+
 
 def test_order_by_unknown_field_rejected():
     q = _q(order_by=[{"field": "not_a_field", "dir": "asc"}])
@@ -299,9 +305,13 @@ def test_random_is_not_a_registered_orderable_field():
 # ---------------------------------------------------------------------------
 
 _CORRELATED_SAMPLE = [
-    ("rating_avg", "ge", 1), ("rating_count", "ge", 0), ("comment_count", "ge", 0),
-    ("comment_contains", "contains", "hi"), ("collection", "eq", "Portfolio"),
-    ("status_flag", "eq", "Approved"), ("rated_by_user", "eq", "carol"),
+    ("rating_avg", "ge", 1),
+    ("rating_count", "ge", 0),
+    ("comment_count", "ge", 0),
+    ("comment_contains", "contains", "hi"),
+    ("collection", "eq", "Portfolio"),
+    ("status_flag", "eq", "Approved"),
+    ("rated_by_user", "eq", "carol"),
     ("commented_by_user", "eq", "dave"),
 ]
 
@@ -335,6 +345,7 @@ def test_repeated_use_of_same_correlated_field_does_not_count_twice():
 # ValidatedQuery construction guard
 # ---------------------------------------------------------------------------
 
+
 def test_validated_query_cannot_be_constructed_directly():
     q = _q()
     with pytest.raises(TypeError, match="cannot be constructed directly"):
@@ -366,8 +377,10 @@ def test_validate_returns_validated_query_wrapping_original_query():
 # isn't one of the real Kind members (validate() never builds one).
 # ---------------------------------------------------------------------------
 
+
 def test_validate_value_rejects_unhandled_kind():
-    bogus_spec = fields.FieldSpec(name="x", kind="not_a_real_kind", ops=frozenset({"eq"}),
-                                   strategy=fields.Strategy.COLUMN)
+    bogus_spec = fields.FieldSpec(
+        name="x", kind="not_a_real_kind", ops=frozenset({"eq"}), strategy=fields.Strategy.COLUMN
+    )
     with pytest.raises(ValidationError, match="unhandled kind"):
         _validate_value(bogus_spec, "eq", "v")

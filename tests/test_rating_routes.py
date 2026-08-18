@@ -42,9 +42,9 @@ def rated_files(smartgallery_app):
             Image.new("RGB", (16, 16), (30, 90, 30)).save(path)
             file_id = f"{_PREFIX}{n}"
             conn.execute(
-                "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
-                "VALUES (?, ?, ?, ?, 'image', ?)",
-                (file_id, path, os.path.getmtime(path), name, os.path.getsize(path)))
+                "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) VALUES (?, ?, ?, ?, 'image', ?)",
+                (file_id, path, os.path.getmtime(path), name, os.path.getsize(path)),
+            )
             ids.append(file_id)
         conn.commit()
     finally:
@@ -67,9 +67,12 @@ def rated_files(smartgallery_app):
 def _ratings_for(smartgallery_app, file_id):
     conn = smartgallery_app.get_db_connection()
     try:
-        return [(r[0], r[1]) for r in conn.execute(
-            "SELECT client_uuid, rating FROM file_ratings WHERE file_id = ? "
-            "ORDER BY client_uuid", (file_id,)).fetchall()]
+        return [
+            (r[0], r[1])
+            for r in conn.execute(
+                "SELECT client_uuid, rating FROM file_ratings WHERE file_id = ? ORDER BY client_uuid", (file_id,)
+            ).fetchall()
+        ]
     finally:
         conn.close()
 
@@ -84,8 +87,7 @@ def test_rating_is_recorded_against_the_session_user(smartgallery_app, client, r
     file_id = rated_files[0]
     _sign_in(client)
 
-    resp = client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": file_id, "rating": 4})
+    resp = client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 4})
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert _ratings_for(smartgallery_app, file_id) == [(str(_ME), 4)]
@@ -98,12 +100,10 @@ def test_the_body_cannot_forge_a_different_rater(smartgallery_app, client, rated
     file_id = rated_files[0]
     _sign_in(client)
 
-    client.post("/galleryout/api/exhibition/rate",
-                json={"file_id": file_id, "rating": 5, "client_uuid": _SOMEONE_ELSE})
+    client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 5, "client_uuid": _SOMEONE_ELSE})
 
     recorded = _ratings_for(smartgallery_app, file_id)
-    assert recorded == [(str(_ME), 5)], (
-        f"the request body chose the rater identity: {recorded}")
+    assert recorded == [(str(_ME), 5)], f"the request body chose the rater identity: {recorded}"
 
 
 def test_rating_again_replaces_rather_than_accumulates(smartgallery_app, client, rated_files):
@@ -111,11 +111,11 @@ def test_rating_again_replaces_rather_than_accumulates(smartgallery_app, client,
     _sign_in(client)
 
     client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 1})
-    resp = client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": file_id, "rating": 5})
+    resp = client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 5})
 
     assert _ratings_for(smartgallery_app, file_id) == [(str(_ME), 5)], (
-        "a second vote was added instead of replacing the first")
+        "a second vote was added instead of replacing the first"
+    )
     assert resp.get_json()["vote_count"] == 1
 
 
@@ -124,8 +124,7 @@ def test_rating_zero_withdraws_the_vote(smartgallery_app, client, rated_files):
     _sign_in(client)
     client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 3})
 
-    resp = client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": file_id, "rating": 0})
+    resp = client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 0})
 
     assert resp.status_code == 200
     assert _ratings_for(smartgallery_app, file_id) == []
@@ -138,8 +137,7 @@ def test_out_of_range_ratings_are_refused(smartgallery_app, client, rated_files,
     file_id = rated_files[0]
     _sign_in(client)
 
-    resp = client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": file_id, "rating": bad})
+    resp = client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": bad})
 
     assert resp.status_code == 400, f"rating {bad} was accepted"
     assert _ratings_for(smartgallery_app, file_id) == []
@@ -147,24 +145,21 @@ def test_out_of_range_ratings_are_refused(smartgallery_app, client, rated_files,
 
 def test_rating_an_unknown_file_is_refused(smartgallery_app, client):
     _sign_in(client)
-    resp = client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": f"{_PREFIX}ghost", "rating": 3})
+    resp = client.post("/galleryout/api/exhibition/rate", json={"file_id": f"{_PREFIX}ghost", "rating": 3})
     assert resp.status_code == 404
 
 
 def test_batch_rating_applies_to_every_file_once(smartgallery_app, client, rated_files):
     _sign_in(client)
 
-    resp = client.post("/galleryout/api/exhibition/rate_batch",
-                       json={"file_ids": rated_files, "rating": 2})
+    resp = client.post("/galleryout/api/exhibition/rate_batch", json={"file_ids": rated_files, "rating": 2})
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     for file_id in rated_files:
         assert _ratings_for(smartgallery_app, file_id) == [(str(_ME), 2)]
 
     # Re-running must not double up.
-    client.post("/galleryout/api/exhibition/rate_batch",
-                json={"file_ids": rated_files, "rating": 4})
+    client.post("/galleryout/api/exhibition/rate_batch", json={"file_ids": rated_files, "rating": 4})
     for file_id in rated_files:
         assert _ratings_for(smartgallery_app, file_id) == [(str(_ME), 4)]
 
@@ -172,19 +167,22 @@ def test_batch_rating_applies_to_every_file_once(smartgallery_app, client, rated
 def test_batch_rating_cannot_forge_the_rater(smartgallery_app, client, rated_files):
     _sign_in(client)
 
-    client.post("/galleryout/api/exhibition/rate_batch",
-                json={"file_ids": rated_files, "rating": 5,
-                      "client_uuid": _SOMEONE_ELSE})
+    client.post(
+        "/galleryout/api/exhibition/rate_batch",
+        json={"file_ids": rated_files, "rating": 5, "client_uuid": _SOMEONE_ELSE},
+    )
 
     for file_id in rated_files:
         assert _ratings_for(smartgallery_app, file_id) == [(str(_ME), 5)]
 
 
-@pytest.mark.parametrize("payload", [
-    {"file_ids": [], "rating": 3},
-    {"rating": 3},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"file_ids": [], "rating": 3},
+        {"rating": 3},
+    ],
+)
 def test_batch_rating_needs_files(client, payload):
     _sign_in(client)
-    assert client.post("/galleryout/api/exhibition/rate_batch",
-                       json=payload).status_code == 400
+    assert client.post("/galleryout/api/exhibition/rate_batch", json=payload).status_code == 400

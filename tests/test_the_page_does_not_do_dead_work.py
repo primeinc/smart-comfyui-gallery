@@ -42,8 +42,7 @@ def _norm(p):
     """safe_path_norm, as both copies in the app spell it."""
     if not p:
         return ""
-    return os.path.normpath(str(p).replace("\\", "/")) \
-        .replace("\\", "/").lower().rstrip("/")
+    return os.path.normpath(str(p).replace("\\", "/")).replace("\\", "/").lower().rstrip("/")
 
 
 def _original_decision(path, target_norm, scope, recursive):
@@ -82,7 +81,7 @@ _PATHS = [
     "C:/lib//sub//pic.png",
     "C:/lib/./sub/pic.png",
     "C:/lib/other/../sub/pic.png",
-    "C:/library/pic.png",          # a sibling that must not match "lib"
+    "C:/library/pic.png",  # a sibling that must not match "lib"
 ]
 
 
@@ -99,8 +98,8 @@ def test_the_decision_is_unchanged(scope, recursive, target):
         before = _original_decision(path, target_norm, scope, recursive)
         after = _current_decision(path, target_norm, scope, recursive)
         assert before == after, (
-            f"{path!r} under {target!r} (scope={scope}, recursive={recursive}) "
-            f"was {before} and is now {after}")
+            f"{path!r} under {target!r} (scope={scope}, recursive={recursive}) was {before} and is now {after}"
+        )
 
 
 def test_a_sibling_folder_is_still_not_inside(smartgallery_app):
@@ -108,8 +107,7 @@ def test_a_sibling_folder_is_still_not_inside(smartgallery_app):
     as being inside `lib`."""
     target_norm = _norm("C:/lib")
 
-    assert not _current_decision("C:/library/pic.png", target_norm,
-                                 "folder", True)
+    assert not _current_decision("C:/library/pic.png", target_norm, "folder", True)
     assert _current_decision("C:/lib/sub/pic.png", target_norm, "folder", True)
 
 
@@ -121,9 +119,7 @@ def test_neither_walk_normalises_what_it_does_not_read(gallery_tree):
     tree = gallery_tree
 
     for name in ("gallery_view", "get_filter_options_from_db"):
-        fn = next((node for node in ast.walk(tree)
-                   if isinstance(node, ast.FunctionDef) and node.name == name),
-                  None)
+        fn = next((node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name), None)
         assert fn is not None, f"{name} is gone"
 
         # Every dirname() must sit inside a branch, never at the top of a
@@ -134,13 +130,16 @@ def test_neither_walk_normalises_what_it_does_not_read(gallery_tree):
                 if not isinstance(statement, (ast.Assign, ast.Expr)):
                     continue
                 for call in ast.walk(statement):
-                    if isinstance(call, ast.Call) and \
-                            isinstance(call.func, ast.Attribute) and \
-                            call.func.attr == "dirname":
+                    if (
+                        isinstance(call, ast.Call)
+                        and isinstance(call.func, ast.Attribute)
+                        and call.func.attr == "dirname"
+                    ):
                         direct.append(statement.lineno)
             assert direct == [], (
                 f"{name} works out a directory at line {direct} for every row "
-                f"before deciding whether the branch taken needs it")
+                f"before deciding whether the branch taken needs it"
+            )
 
 
 def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
@@ -164,10 +163,9 @@ def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
     try:
         for index, path in enumerate(made):
             conn.execute(
-                "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-                "VALUES (?,?,?,?,?)",
-                (f"page{index:028d}", path, 1700000000.0,
-                 os.path.basename(path), "image"))
+                "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+                (f"page{index:028d}", path, 1700000000.0, os.path.basename(path), "image"),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -175,31 +173,32 @@ def test_the_page_still_lists_what_it_should(smartgallery_app, monkeypatch):
     try:
         smartgallery_app.folder_config_cache = None
         folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
-        key = next((k for k, v in folders.items()
-                    if os.path.normcase(os.path.normpath(v["path"]))
-                    == os.path.normcase(os.path.normpath(here))), None)
+        key = next(
+            (
+                k
+                for k, v in folders.items()
+                if os.path.normcase(os.path.normpath(v["path"])) == os.path.normcase(os.path.normpath(here))
+            ),
+            None,
+        )
         if key is None:
             pytest.skip("the probe folder is not in the folder config")
 
         client = smartgallery_app.app.test_client()
-        deep = client.get(f"/galleryout/view/{key}?recursive=true",
-                          follow_redirects=True).get_data(as_text=True)
-        shallow = client.get(f"/galleryout/view/{key}?recursive=false",
-                             follow_redirects=True).get_data(as_text=True)
+        deep = client.get(f"/galleryout/view/{key}?recursive=true", follow_redirects=True).get_data(as_text=True)
+        shallow = client.get(f"/galleryout/view/{key}?recursive=false", follow_redirects=True).get_data(as_text=True)
 
-        assert "top.png" in deep and "under.png" in deep, (
-            "a recursive view lost a file below the folder")
+        assert "top.png" in deep and "under.png" in deep, "a recursive view lost a file below the folder"
         assert "top.png" in shallow, "the folder's own file went missing"
-        assert "under.png" not in shallow, (
-            "a non-recursive view listed a file from a folder below it")
+        assert "under.png" not in shallow, "a non-recursive view listed a file from a folder below it"
     finally:
         conn = smartgallery_app.get_db_connection()
         try:
-            conn.execute("DELETE FROM files WHERE path LIKE ?",
-                         ("%pagecheck%",))
+            conn.execute("DELETE FROM files WHERE path LIKE ?", ("%pagecheck%",))
             conn.commit()
         finally:
             conn.close()
         import shutil
+
         shutil.rmtree(here, ignore_errors=True)
         smartgallery_app.folder_config_cache = None

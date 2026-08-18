@@ -25,9 +25,7 @@ import shutil
 import sys
 import sysconfig
 
-_VENDOR_ROOT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "vendor", "faiss-gpu-win64")
+_VENDOR_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor", "faiss-gpu-win64")
 
 # Directories already handed to the DLL loader and prepended to PATH.
 _REGISTERED_DLL_DIRS: set = set()
@@ -87,12 +85,12 @@ def import_faiss():
         sys.path.insert(0, _VENDOR_ROOT)
         try:
             import faiss
+
             return faiss
         except (Exception, SystemExit):
             # missing CUDA wheel DLLs, wrong arch, partial vendor dir --
             # purge the half-imported package and fall back to faiss-cpu
-            for name in [m for m in sys.modules
-                         if m == "faiss" or m.startswith("faiss.")]:
+            for name in [m for m in sys.modules if m == "faiss" or m.startswith("faiss.")]:
                 del sys.modules[name]
             importlib.invalidate_caches()
         finally:
@@ -107,4 +105,5 @@ def import_faiss():
     # macOS, any Windows box with no nvidia-smi, and anyone setting
     # AI_DAM_FAISS_GPU=0 -- so the documented fallback never once happened.
     import faiss
+
     return faiss

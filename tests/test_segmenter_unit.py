@@ -53,7 +53,8 @@ def _install_fake_runtime(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
-        sys.modules, "mobile_sam",
+        sys.modules,
+        "mobile_sam",
         _fake_module(
             "mobile_sam",
             SamPredictor=lambda m: types.SimpleNamespace(model=m),
@@ -94,11 +95,8 @@ def test_missing_weights_check_never_imports_torch_or_mobile_sam(tmp_path):
         MobileSamSegmenter(str(tmp_path))
 
     newly = set(sys.modules) - before
-    leaked = sorted(name for name in newly
-                    if name in _HEAVY or name.split(".")[0] in _HEAVY)
-    assert not leaked, (
-        f"MobileSamSegmenter imported {leaked} just to notice its weights "
-        f"were missing")
+    leaked = sorted(name for name in newly if name in _HEAVY or name.split(".")[0] in _HEAVY)
+    assert not leaked, f"MobileSamSegmenter imported {leaked} just to notice its weights were missing"
 
 
 def test_ctor_missing_runtime_raises_backend_unavailable(tmp_path, monkeypatch):
@@ -123,7 +121,8 @@ def test_ctor_wraps_weight_load_failure(tmp_path, monkeypatch):
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
-        sys.modules, "mobile_sam",
+        sys.modules,
+        "mobile_sam",
         _fake_module(
             "mobile_sam",
             SamPredictor=lambda _m: None,
@@ -152,7 +151,8 @@ def test_ctor_contains_third_party_warning_and_stderr_noise(tmp_path, monkeypatc
 
     monkeypatch.setitem(sys.modules, "torch", _fake_module("torch"))
     monkeypatch.setitem(
-        sys.modules, "mobile_sam",
+        sys.modules,
+        "mobile_sam",
         _fake_module(
             "mobile_sam",
             SamPredictor=lambda m: types.SimpleNamespace(model=m),

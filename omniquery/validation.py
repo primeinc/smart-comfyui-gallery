@@ -19,7 +19,7 @@ from omniquery import fields
 from omniquery.ast import Query, iter_conditions
 
 DEFAULT_LIMIT = 500  # row cap applied when the query specifies no limit
-MAX_LIMIT = 2000     # hard ceiling on any requested limit
+MAX_LIMIT = 2000  # hard ceiling on any requested limit
 MAX_CORRELATED_FIELDS = 8  # distinct join/subquery-backed fields allowed per query
 
 PRIVILEGED_ROLES = {"ADMIN", "MANAGER", "STAFF"}  # roles allowed to query privileged fields
@@ -55,14 +55,12 @@ class ValidatedQuery:
 
     __slots__ = ("_ctx", "_effective_limit", "_query")
 
-    def __init__(self, query: Query, effective_limit: int, ctx: AuthContext,
-                 *, _sentinel: Any = None):
+    def __init__(self, query: Query, effective_limit: int, ctx: AuthContext, *, _sentinel: Any = None):
         """Blocked outside this module: without the private sentinel the call
         fails, so validate() stays the only construction path."""
         if _sentinel is not _CONSTRUCTOR_SENTINEL:
             raise TypeError(
-                "ValidatedQuery cannot be constructed directly; "
-                "call omniquery.validation.validate() instead"
+                "ValidatedQuery cannot be constructed directly; call omniquery.validation.validate() instead"
             )
         object.__setattr__(self, "_query", query)
         object.__setattr__(self, "_effective_limit", effective_limit)
@@ -88,8 +86,7 @@ class ValidatedQuery:
         return self._ctx
 
 
-def _new_validated_query(query: Query, effective_limit: int,
-                          ctx: AuthContext) -> ValidatedQuery:
+def _new_validated_query(query: Query, effective_limit: int, ctx: AuthContext) -> ValidatedQuery:
     """Module-private factory: the one sanctioned ValidatedQuery constructor."""
     return ValidatedQuery(query, effective_limit, ctx, _sentinel=_CONSTRUCTOR_SENTINEL)
 
@@ -124,8 +121,7 @@ def _check_date_string(value: str, field_name: str) -> None:
         except ValueError:
             continue
     raise ValidationError(
-        f"field '{field_name}': invalid date string {value!r} "
-        "(expected 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS')"
+        f"field '{field_name}': invalid date string {value!r} (expected 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS')"
     )
 
 
@@ -141,17 +137,13 @@ def _check_datetime_value(spec: fields.FieldSpec, value: Any) -> None:
             key = next(iter(keys))
             n = value[key]
             if isinstance(n, bool) or not isinstance(n, (int, float)) or n < 0:
-                raise ValidationError(
-                    f"field '{spec.name}': '{key}' must be a non-negative number"
-                )
+                raise ValidationError(f"field '{spec.name}': '{key}' must be a non-negative number")
             return
         raise ValidationError(
             f"field '{spec.name}': relative date must be {{'days_ago': N}} "
             f"or {{'hours_ago': N}}, got keys {sorted(keys)}"
         )
-    raise ValidationError(
-        f"field '{spec.name}': expected a date string or relative-date object, got {value!r}"
-    )
+    raise ValidationError(f"field '{spec.name}': expected a date string or relative-date object, got {value!r}")
 
 
 def _check_file_ref_value(spec: fields.FieldSpec, value: Any) -> None:
@@ -164,15 +156,11 @@ def _check_file_ref_value(spec: fields.FieldSpec, value: Any) -> None:
         return
     if isinstance(value, dict):
         if spec.name == "near_dup_of":
-            raise ValidationError(
-                f"field '{spec.name}': requires a plain file id string, not an object"
-            )
+            raise ValidationError(f"field '{spec.name}': requires a plain file id string, not an object")
         allowed_keys = {"file_id", "k"}
         keys = set(value.keys())
         if not keys <= allowed_keys or "file_id" not in keys:
-            raise ValidationError(
-                f"field '{spec.name}': object value must have 'file_id' and optional 'k'"
-            )
+            raise ValidationError(f"field '{spec.name}': object value must have 'file_id' and optional 'k'")
         file_id = value["file_id"]
         if not isinstance(file_id, str) or not file_id:
             raise ValidationError(f"field '{spec.name}': 'file_id' must be a non-empty string")
@@ -181,10 +169,7 @@ def _check_file_ref_value(spec: fields.FieldSpec, value: Any) -> None:
             if isinstance(k, bool) or not isinstance(k, int) or not (1 <= k <= 200):
                 raise ValidationError(f"field '{spec.name}': 'k' must be an integer in [1, 200]")
         return
-    raise ValidationError(
-        f"field '{spec.name}': expected a file id string or {{'file_id', 'k'}} object, "
-        f"got {value!r}"
-    )
+    raise ValidationError(f"field '{spec.name}': expected a file id string or {{'file_id', 'k'}} object, got {value!r}")
 
 
 def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
@@ -202,9 +187,7 @@ def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
     elif spec.kind == fields.Kind.NUMBER:
         if op == "between":
             if not isinstance(value, list) or len(value) != 2:
-                raise ValidationError(
-                    f"field '{spec.name}': op 'between' requires a 2-item list"
-                )
+                raise ValidationError(f"field '{spec.name}': op 'between' requires a 2-item list")
             for v in value:
                 _check_number(v, spec.name)
         else:
@@ -217,9 +200,7 @@ def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
     elif spec.kind == fields.Kind.ENUM:
         if op == "in":
             if not isinstance(value, list) or not value:
-                raise ValidationError(
-                    f"field '{spec.name}': op 'in' requires a non-empty list"
-                )
+                raise ValidationError(f"field '{spec.name}': op 'in' requires a non-empty list")
             for v in value:
                 _check_enum_member(spec, v)
         else:
@@ -228,9 +209,7 @@ def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
     elif spec.kind == fields.Kind.DATETIME:
         if op == "between":
             if not isinstance(value, list) or len(value) != 2:
-                raise ValidationError(
-                    f"field '{spec.name}': op 'between' requires a 2-item list"
-                )
+                raise ValidationError(f"field '{spec.name}': op 'between' requires a 2-item list")
             for v in value:
                 _check_datetime_value(spec, v)
         else:
@@ -247,12 +226,12 @@ def _validate_value(spec: fields.FieldSpec, op: str, value: Any) -> None:
 # Top-level validation
 # ---------------------------------------------------------------------------
 
+
 def _check_field_authorization(spec: fields.FieldSpec, ctx: AuthContext) -> None:
     """Enforce role and AI-layer entitlements for one field."""
     if spec.privileged and ctx.role not in PRIVILEGED_ROLES:
         raise ValidationError(
-            f"field '{spec.name}': requires a privileged role ({sorted(PRIVILEGED_ROLES)}), "
-            f"got {ctx.role!r}"
+            f"field '{spec.name}': requires a privileged role ({sorted(PRIVILEGED_ROLES)}), got {ctx.role!r}"
         )
     if spec.requires_ai and not ctx.ai_enabled:
         raise ValidationError(f"field '{spec.name}': requires the AI layer to be enabled")
@@ -272,10 +251,7 @@ def validate(query: Query, ctx: AuthContext) -> ValidatedQuery:
         if spec is None:
             raise ValidationError(f"unknown field {cond.field!r}")
         if cond.op not in spec.ops:
-            raise ValidationError(
-                f"field '{spec.name}': op {cond.op!r} not supported "
-                f"(allowed: {sorted(spec.ops)})"
-            )
+            raise ValidationError(f"field '{spec.name}': op {cond.op!r} not supported (allowed: {sorted(spec.ops)})")
         _validate_value(spec, cond.op, cond.value)
         _check_field_authorization(spec, ctx)
         if spec.needs_client_uuid and not ctx.client_uuid:

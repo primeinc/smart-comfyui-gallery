@@ -38,19 +38,21 @@ def pytest_configure(config):
     # the explicit opt-out so browsing-path tests exercise the disabled
     # contract, and with auto-provisioning off so no test can ever download.
     # (Default-enabled itself is pinned in tests/test_provision.py.)
-    for name, value in (('ENABLE_AI_DAM', 'false'),
-                        ('AI_DAM_AUTO_PROVISION', 'false'),
-                        # A machine with no ffmpeg would otherwise pull a
-                        # ~170 MB build the first time anything resolved
-                        # ffprobe. The fetch has its own tests, which drive
-                        # it through a fake response.
-                        ('FFMPEG_AUTO_DOWNLOAD', 'false'),
-                        # 'auto' would import torch into this process,
-                        # breaking the browsing-never-imports-torch guard, and
-                        # would make clustering tests depend on whatever
-                        # accelerators the host has. Backend-specific tests
-                        # call their implementations directly.
-                        ('AI_DAM_FACE_GRAPH_BACKEND', 'numpy')):
+    for name, value in (
+        ("ENABLE_AI_DAM", "false"),
+        ("AI_DAM_AUTO_PROVISION", "false"),
+        # A machine with no ffmpeg would otherwise pull a
+        # ~170 MB build the first time anything resolved
+        # ffprobe. The fetch has its own tests, which drive
+        # it through a fake response.
+        ("FFMPEG_AUTO_DOWNLOAD", "false"),
+        # 'auto' would import torch into this process,
+        # breaking the browsing-never-imports-torch guard, and
+        # would make clustering tests depend on whatever
+        # accelerators the host has. Backend-specific tests
+        # call their implementations directly.
+        ("AI_DAM_FACE_GRAPH_BACKEND", "numpy"),
+    ):
         if not os.environ.get(name):
             _ENVIRONMENT.setenv(name, value)
 
@@ -60,27 +62,30 @@ def pytest_configure(config):
     # their real library: tests create files in the gallery root, scan it end
     # to end, and delete rows. A test run must never be able to touch a real
     # collection, whatever the shell says.
-    for var, leaf in (('BASE_OUTPUT_PATH', 'output'),
-                      ('BASE_SMARTGALLERY_PATH', 'gallery'),
-                      ('BASE_INPUT_PATH', 'input')):
+    for var, leaf in (
+        ("BASE_OUTPUT_PATH", "output"),
+        ("BASE_SMARTGALLERY_PATH", "gallery"),
+        ("BASE_INPUT_PATH", "input"),
+    ):
         _ENVIRONMENT.setenv(var, os.path.join(_SESSION_TMP_DIR, leaf))
         os.makedirs(os.environ[var], exist_ok=True)
 
     # DELETE_TO decides whether deletions are recoverable; inheriting a real
     # one would scatter test files through the developer's trash folder.
-    _ENVIRONMENT.delenv('DELETE_TO', raising=False)
+    _ENVIRONMENT.delenv("DELETE_TO", raising=False)
 
     # Belt and braces: if a future edit ever reintroduces an inherited path,
     # fail before collection with an explanation rather than quietly writing
     # into somebody's library.
     tmp_root = os.path.realpath(tempfile.gettempdir())
-    for var in ('BASE_OUTPUT_PATH', 'BASE_SMARTGALLERY_PATH', 'BASE_INPUT_PATH'):
+    for var in ("BASE_OUTPUT_PATH", "BASE_SMARTGALLERY_PATH", "BASE_INPUT_PATH"):
         resolved = os.path.realpath(os.environ[var])
         if not resolved.startswith(tmp_root):
             raise RuntimeError(
                 f"refusing to run the test suite against {var}={resolved!r}: it "
                 f"is outside the temp directory ({tmp_root}). Tests create, "
-                f"scan and delete files under these paths.")
+                f"scan and delete files under these paths."
+            )
 
 
 def pytest_unconfigure(config):
@@ -107,8 +112,7 @@ def pytest_collection_modifyitems(config, items):
     if os.environ.get("RUN_TOOL_TESTS") == "1":
         return
 
-    held_back = pytest.mark.skip(
-        reason="starts a child process; run with RUN_TOOL_TESTS=1")
+    held_back = pytest.mark.skip(reason="starts a child process; run with RUN_TOOL_TESTS=1")
     for item in items:
         if "spawns" in item.keywords:
             item.add_marker(held_back)

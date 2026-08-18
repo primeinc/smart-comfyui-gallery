@@ -41,39 +41,75 @@ from omniquery.parsers import ParserBackend, ParserOutcome, try_validate
 
 # Surface phrase -> AST 'type' enum value.
 _TYPE_SYNONYMS: dict[str, str] = {
-    "animated images": "animated_image", "animated image": "animated_image",
-    "photos": "image", "photo": "image", "pictures": "image", "picture": "image",
-    "pics": "image", "pic": "image",
-    "images": "image", "image": "image",
-    "videos": "video", "video": "video", "clips": "video", "clip": "video",
-    "movies": "video", "movie": "video", "vids": "video", "vid": "video",
-    "gifs": "animated_image", "gif": "animated_image",
-    "sounds": "audio", "sound": "audio", "music": "audio",
-    "songs": "audio", "song": "audio", "audio": "audio",
-    "documents": "document", "document": "document", "pdfs": "document", "pdf": "document",
+    "animated images": "animated_image",
+    "animated image": "animated_image",
+    "photos": "image",
+    "photo": "image",
+    "pictures": "image",
+    "picture": "image",
+    "pics": "image",
+    "pic": "image",
+    "images": "image",
+    "image": "image",
+    "videos": "video",
+    "video": "video",
+    "clips": "video",
+    "clip": "video",
+    "movies": "video",
+    "movie": "video",
+    "vids": "video",
+    "vid": "video",
+    "gifs": "animated_image",
+    "gif": "animated_image",
+    "sounds": "audio",
+    "sound": "audio",
+    "music": "audio",
+    "songs": "audio",
+    "song": "audio",
+    "audio": "audio",
+    "documents": "document",
+    "document": "document",
+    "pdfs": "document",
+    "pdf": "document",
 }
 
 # Surface word -> filename suffixes: "pngs" means files whose name ends
 # .png. Families with two spellings on disk carry both suffixes. gif and
 # pdf stay type synonyms above (the broader semantic).
 _EXT_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "pngs": (".png",), "png": (".png",),
-    "jpgs": (".jpg", ".jpeg"), "jpg": (".jpg", ".jpeg"),
-    "jpegs": (".jpg", ".jpeg"), "jpeg": (".jpg", ".jpeg"),
-    "webps": (".webp",), "webp": (".webp",),
-    "heics": (".heic",), "heic": (".heic",),
-    "bmps": (".bmp",), "bmp": (".bmp",),
-    "svgs": (".svg",), "svg": (".svg",),
-    "tiffs": (".tif", ".tiff"), "tiff": (".tif", ".tiff"),
-    "tifs": (".tif", ".tiff"), "tif": (".tif", ".tiff"),
-    "mp4s": (".mp4",), "mp4": (".mp4",),
-    "webms": (".webm",), "webm": (".webm",),
-    "mkvs": (".mkv",), "mkv": (".mkv",),
-    "movs": (".mov",), "mov": (".mov",),
+    "pngs": (".png",),
+    "png": (".png",),
+    "jpgs": (".jpg", ".jpeg"),
+    "jpg": (".jpg", ".jpeg"),
+    "jpegs": (".jpg", ".jpeg"),
+    "jpeg": (".jpg", ".jpeg"),
+    "webps": (".webp",),
+    "webp": (".webp",),
+    "heics": (".heic",),
+    "heic": (".heic",),
+    "bmps": (".bmp",),
+    "bmp": (".bmp",),
+    "svgs": (".svg",),
+    "svg": (".svg",),
+    "tiffs": (".tif", ".tiff"),
+    "tiff": (".tif", ".tiff"),
+    "tifs": (".tif", ".tiff"),
+    "tif": (".tif", ".tiff"),
+    "mp4s": (".mp4",),
+    "mp4": (".mp4",),
+    "webms": (".webm",),
+    "webm": (".webm",),
+    "mkvs": (".mkv",),
+    "mkv": (".mkv",),
+    "movs": (".mov",),
+    "mov": (".mov",),
     "avi": (".avi",),
-    "mp3s": (".mp3",), "mp3": (".mp3",),
-    "wavs": (".wav",), "wav": (".wav",),
-    "flacs": (".flac",), "flac": (".flac",),
+    "mp3s": (".mp3",),
+    "mp3": (".mp3",),
+    "wavs": (".wav",),
+    "wav": (".wav",),
+    "flacs": (".flac",),
+    "flac": (".flac",),
 }
 
 
@@ -89,43 +125,147 @@ def _ext_condition(key: str) -> dict | None:
 
 # Surface phrase -> AST status_flag value (canonical capitalization).
 _STATUS_SYNONYMS: dict[str, str] = {
-    "needs review": "Review", "in review": "Review",
-    "approved": "Approved", "rejected": "Rejected",
-    "needs edit": "To Edit", "to edit": "To Edit",
+    "needs review": "Review",
+    "in review": "Review",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "needs edit": "To Edit",
+    "to edit": "To Edit",
     "selected": "Select",
 }
 
 # Surface phrase -> AST review_issue enum value.
 _ISSUE_SYNONYMS: dict[str, str] = {
-    "anatomy": "anatomy", "artifact": "artifact", "artifacts": "artifact",
-    "composition": "composition", "lighting": "lighting",
-    "text render": "text_render", "text rendering": "text_render",
-    "prompt mismatch": "prompt_mismatch", "style": "style",
+    "anatomy": "anatomy",
+    "artifact": "artifact",
+    "artifacts": "artifact",
+    "composition": "composition",
+    "lighting": "lighting",
+    "text render": "text_render",
+    "text rendering": "text_render",
+    "prompt mismatch": "prompt_mismatch",
+    "style": "style",
     "detail loss": "detail_loss",
 }
 
 _MONTHS: dict[str, int] = {
-    "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3,
-    "april": 4, "apr": 4, "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
-    "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9,
-    "october": 10, "oct": 10, "november": 11, "nov": 11, "december": 12, "dec": 12,
+    "january": 1,
+    "jan": 1,
+    "february": 2,
+    "feb": 2,
+    "march": 3,
+    "mar": 3,
+    "april": 4,
+    "apr": 4,
+    "may": 5,
+    "june": 6,
+    "jun": 6,
+    "july": 7,
+    "jul": 7,
+    "august": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "october": 10,
+    "oct": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
 }
 
 # Query scaffolding tokens: never significant on their own, and never worth
 # a text search. Anything NOT here that survives the rules becomes a text
 # phrase -- so this list is deliberately conservative.
-STOPWORDS = frozenset({
-    "a", "an", "the", "of", "in", "on", "at", "is", "are", "was", "were",
-    "be", "been", "being", "with", "to", "for", "and", "or", "that", "this",
-    "these", "those", "it", "its", "from", "as", "by", "than", "then", "me",
-    "my", "i", "show", "find", "get", "give", "please", "all", "any", "some",
-    "want", "need", "list", "search", "query", "which", "what", "files",
-    "file", "items", "item", "everything", "things", "thing", "let", "lets",
-    "there", "have", "has", "had", "do", "does", "did", "containing",
-    "contains", "about", "featuring", "whose", "media", "either", "first",
-    "not", "but", "except", "without", "excluding",
-    "more", "less", "better", "above", "below", "over", "under",
-})
+STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "in",
+        "on",
+        "at",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "with",
+        "to",
+        "for",
+        "and",
+        "or",
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "its",
+        "from",
+        "as",
+        "by",
+        "than",
+        "then",
+        "me",
+        "my",
+        "i",
+        "show",
+        "find",
+        "get",
+        "give",
+        "please",
+        "all",
+        "any",
+        "some",
+        "want",
+        "need",
+        "list",
+        "search",
+        "query",
+        "which",
+        "what",
+        "files",
+        "file",
+        "items",
+        "item",
+        "everything",
+        "things",
+        "thing",
+        "let",
+        "lets",
+        "there",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "containing",
+        "contains",
+        "about",
+        "featuring",
+        "whose",
+        "media",
+        "either",
+        "first",
+        "not",
+        "but",
+        "except",
+        "without",
+        "excluding",
+        "more",
+        "less",
+        "better",
+        "above",
+        "below",
+        "over",
+        "under",
+    }
+)
 
 # Quoted substrings are replaced with qzq<N>qzq tokens: stable under
 # lowercasing and never a substring of real query vocabulary.
@@ -158,31 +298,55 @@ _RATING_STARS_RE = re.compile(r"\b(\d+)\s*stars?\b", re.IGNORECASE)
 _RATING_EXACT_RE = re.compile(r"\brated\s+(\d+)(?:\s*stars?)?\b", re.IGNORECASE)
 
 _SIZE_OP_MAP = {
-    "over": "gt", "bigger than": "gt", "larger than": "gt", "more than": "gt",
-    "under": "lt", "smaller than": "lt", "less than": "lt", "at least": "ge",
+    "over": "gt",
+    "bigger than": "gt",
+    "larger than": "gt",
+    "more than": "gt",
+    "under": "lt",
+    "smaller than": "lt",
+    "less than": "lt",
+    "at least": "ge",
 }
 _SIZE_RE = re.compile(
     r"\b(over|under|bigger\s+than|larger\s+than|smaller\s+than|less\s+than|"
-    r"more\s+than|at\s+least)\s+(\d+(?:\.\d+)?)\s*(mb|gb|megabytes?|gigabytes?)\b", re.IGNORECASE,
+    r"more\s+than|at\s+least)\s+(\d+(?:\.\d+)?)\s*(mb|gb|megabytes?|gigabytes?)\b",
+    re.IGNORECASE,
 )
 
-_DURATION_OP_MAP = {"longer than": "gt", "over": "gt", "shorter than": "lt",
-                     "under": "lt", "at least": "ge"}
+_DURATION_OP_MAP = {"longer than": "gt", "over": "gt", "shorter than": "lt", "under": "lt", "at least": "ge"}
 _DURATION_UNIT_SECONDS = {
-    "second": 1, "seconds": 1, "sec": 1, "secs": 1,
-    "minute": 60, "minutes": 60, "min": 60, "mins": 60,
-    "hour": 3600, "hours": 3600, "hr": 3600, "hrs": 3600,
+    "second": 1,
+    "seconds": 1,
+    "sec": 1,
+    "secs": 1,
+    "minute": 60,
+    "minutes": 60,
+    "min": 60,
+    "mins": 60,
+    "hour": 3600,
+    "hours": 3600,
+    "hr": 3600,
+    "hrs": 3600,
 }
 _DURATION_RE = re.compile(
     r"\b(longer\s+than|shorter\s+than|over|under|at\s+least)\s+(\d+(?:\.\d+)?)\s*"
-    r"(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b", re.IGNORECASE,
+    r"(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b",
+    re.IGNORECASE,
 )
 
-_MP_OP_MAP = {"over": "gt", "above": "gt", "more than": "gt",
-              "under": "lt", "below": "lt", "less than": "lt", "at least": "ge"}
+_MP_OP_MAP = {
+    "over": "gt",
+    "above": "gt",
+    "more than": "gt",
+    "under": "lt",
+    "below": "lt",
+    "less than": "lt",
+    "at least": "ge",
+}
 _MEGAPIXELS_RE = re.compile(
     r"\b(?:(over|under|at\s+least|above|below|more\s+than|less\s+than)\s+)?"
-    r"(\d+(?:\.\d+)?)\s*(?:megapixels?|mp)\b", re.IGNORECASE,
+    r"(\d+(?:\.\d+)?)\s*(?:megapixels?|mp)\b",
+    re.IGNORECASE,
 )
 
 _QUALITY_OP_MAP = {"above": "gt", "over": "gt", "at least": "ge", "below": "lt", "under": "lt"}
@@ -191,8 +355,11 @@ _QUALITY_RE = re.compile(r"\bquality\s+(above|over|at\s+least|below|under)\s+(\d
 # wider/taller comparisons; "shorter than N" requires an explicit pixel
 # unit so it can never shadow duration's "shorter than 2 minutes".
 _WIDTH_RE = re.compile(r"\b(wider|narrower)\s+than\s+(\d+)(?:\s*(?:pixels?|px))?\b", re.IGNORECASE)
-_HEIGHT_RE = re.compile(r"\btaller\s+than\s+(\d+)(?:\s*(?:pixels?|px))?\b"
-                         r"|\bshorter\s+than\s+(\d+)\s*(?:pixels?|px)\b", re.IGNORECASE)
+_HEIGHT_RE = re.compile(
+    r"\btaller\s+than\s+(\d+)(?:\s*(?:pixels?|px))?\b"
+    r"|\bshorter\s+than\s+(\d+)\s*(?:pixels?|px)\b",
+    re.IGNORECASE,
+)
 _PATH_RE = re.compile(r"\b(?:under|in)\s+the\s+([a-z0-9_\-/]+)\s+path\b", re.IGNORECASE)
 _FACE_CLUSTER_RE = re.compile(r"\bface\s+cluster\s+(\d+)\b", re.IGNORECASE)
 _NEAR_DUP_RE = re.compile(r"\bnear[\s-]?duplicates?\s+of\s+([a-z0-9_\-.]+)\b", re.IGNORECASE)
@@ -271,25 +438,51 @@ _STRUCT_HINT_RE = re.compile(
     r"bigger|smaller|longer|shorter|mb|gb|kb|seconds?|minutes?|hours?|days?|"
     r"weeks?|months?|years?|stars?|rated|january|jan|february|feb|march|mar|"
     r"april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|"
-    r"oct|november|nov|december|dec)\b", re.IGNORECASE)
+    r"oct|november|nov|december|dec)\b",
+    re.IGNORECASE,
+)
 
 # Field -> short human label for interpretation chips (UI never sees SQL;
 # these chips ARE the explanation of what will run).
 _CHIP_LABELS: dict[str, str] = {
-    "type": "type", "status_flag": "status", "is_favorite": "favorite",
-    "has_workflow": "workflow", "has_faces": "faces", "rating_avg": "rating",
-    "size_mb": "size MB", "size_bytes": "size", "duration_seconds": "duration s",
-    "megapixels": "megapixels", "mtime": "date", "folder": "folder",
-    "collection": "collection", "name": "name", "workflow_prompt": "prompt",
-    "ai_caption": "caption", "comment_contains": "comment",
-    "comment_count": "comments", "review_quality": "quality",
-    "review_issue": "issue", "text": "text",
-    "gen_seed": "seed", "gen_steps": "steps", "gen_cfg": "cfg",
-    "gen_model": "model", "gen_lora": "lora", "gen_sampler": "sampler",
+    "type": "type",
+    "status_flag": "status",
+    "is_favorite": "favorite",
+    "has_workflow": "workflow",
+    "has_faces": "faces",
+    "rating_avg": "rating",
+    "size_mb": "size MB",
+    "size_bytes": "size",
+    "duration_seconds": "duration s",
+    "megapixels": "megapixels",
+    "mtime": "date",
+    "folder": "folder",
+    "collection": "collection",
+    "name": "name",
+    "workflow_prompt": "prompt",
+    "ai_caption": "caption",
+    "comment_contains": "comment",
+    "comment_count": "comments",
+    "review_quality": "quality",
+    "review_issue": "issue",
+    "text": "text",
+    "gen_seed": "seed",
+    "gen_steps": "steps",
+    "gen_cfg": "cfg",
+    "gen_model": "model",
+    "gen_lora": "lora",
+    "gen_sampler": "sampler",
 }
 _CHIP_OPS: dict[str, str] = {
-    "eq": "=", "ne": "≠", "lt": "<", "le": "≤", "gt": ">",
-    "ge": "≥", "contains": "~", "between": "between", "prefix": "starts",
+    "eq": "=",
+    "ne": "≠",
+    "lt": "<",
+    "le": "≤",
+    "gt": ">",
+    "ge": "≥",
+    "contains": "~",
+    "between": "between",
+    "prefix": "starts",
     "suffix": "ends",
 }
 
@@ -298,8 +491,8 @@ _CHIP_OPS: dict[str, str] = {
 # Rule application machinery
 # ---------------------------------------------------------------------------
 
-def _apply_rule(text: str, consumed: list[bool], pattern: re.Pattern,
-                 builder) -> list[tuple[int, int, Any]]:
+
+def _apply_rule(text: str, consumed: list[bool], pattern: re.Pattern, builder) -> list[tuple[int, int, Any]]:
     """Every non-overlapping (with already-consumed spans) match of
     `pattern`, run through `builder(match)`; a None result means "matched
     the shape but not a value we recognize" and consumes nothing."""
@@ -345,8 +538,7 @@ def _chip(cond: dict) -> dict | None:
         inners = [c for ch in (cond.get("children") or []) if (c := _chip(ch)) is not None]
         if not inners:
             return None
-        return {"label": " or ".join(c["label"] for c in inners),
-                "field": inners[0].get("field")}
+        return {"label": " or ".join(c["label"] for c in inners), "field": inners[0].get("field")}
     field = cond.get("field")
     label = _CHIP_LABELS.get(field, field)
     op = _CHIP_OPS.get(cond.get("op"), cond.get("op"))
@@ -388,65 +580,103 @@ class NlqParser(ParserBackend):
                 if entry is None:
                     return None
                 return {"field": field, "op": "contains", "value": entry[1]}
+
             return builder
 
         def _orig_slice(m: re.Match, group: int = 1) -> str:
-            return placeheld[m.start(group):m.end(group)].strip()
+            return placeheld[m.start(group) : m.end(group)].strip()
 
         def _tail_builder(field: str):
             """Unquoted-tail capture: the original-case rest of the text,
             placeholders restored verbatim (quote chars included)."""
+
             def builder(m: re.Match) -> dict | None:
                 value = _restore_placeholders(_orig_slice(m), quotes)
                 return {"field": field, "op": "contains", "value": value} if value else None
+
             return builder
 
         # -- booleans with their own negative forms first ------------------
-        spanned_conds += _apply_rule(working, consumed, _WORKFLOW_WITH_RE,
-                                      lambda _m: {"field": "has_workflow", "op": "eq", "value": True})
-        spanned_conds += _apply_rule(working, consumed, _WORKFLOW_WITHOUT_RE,
-                                      lambda _m: {"field": "has_workflow", "op": "eq", "value": False})
-        spanned_conds += _apply_rule(working, consumed, _FACES_WITH_RE,
-                                      lambda _m: {"field": "has_faces", "op": "eq", "value": True})
-        spanned_conds += _apply_rule(working, consumed, _FACES_WITHOUT_RE,
-                                      lambda _m: {"field": "has_faces", "op": "eq", "value": False})
         spanned_conds += _apply_rule(
-            working, consumed, _UNFAVORITED_RE,
+            working, consumed, _WORKFLOW_WITH_RE, lambda _m: {"field": "has_workflow", "op": "eq", "value": True}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _WORKFLOW_WITHOUT_RE, lambda _m: {"field": "has_workflow", "op": "eq", "value": False}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _FACES_WITH_RE, lambda _m: {"field": "has_faces", "op": "eq", "value": True}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _FACES_WITHOUT_RE, lambda _m: {"field": "has_faces", "op": "eq", "value": False}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _UNFAVORITED_RE,
             lambda _m: {"op": "not", "child": {"field": "is_favorite", "op": "eq", "value": True}},
         )
         spanned_conds += _apply_rule(
-            working, consumed, _CAPTION_NULL_RE,
-            lambda _m: {"field": "ai_caption", "op": "is_null"})
+            working, consumed, _CAPTION_NULL_RE, lambda _m: {"field": "ai_caption", "op": "is_null"}
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _CAPTION_NOT_NULL_RE,
-            lambda _m: {"field": "ai_caption", "op": "not_null"})
+            working, consumed, _CAPTION_NOT_NULL_RE, lambda _m: {"field": "ai_caption", "op": "not_null"}
+        )
 
         # -- ratings by ME / by count / by user run BEFORE the generic star
         # rules, whose broader patterns would otherwise claim their spans --
-        spanned_conds += _apply_rule(working, consumed, _MY_RATING_AT_LEAST_RE,
-                                      lambda m: {"field": "my_rating", "op": "ge", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _RATING_COUNT_RE,
-                                      lambda m: {"field": "rating_count", "op": "ge", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _RATED_BY_USER_RE,
-                                      lambda m: {"field": "rated_by_user", "op": "eq", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _COMMENTED_BY_USER_RE,
-                                      lambda m: {"field": "commented_by_user", "op": "eq", "value": _orig_slice(m)})
         spanned_conds += _apply_rule(
-            working, consumed, _RATING_BETWEEN_RE,
-            lambda m: {"field": "rating_avg", "op": "between",
-                       "value": [int(m.group(1)), int(m.group(2))]})
+            working,
+            consumed,
+            _MY_RATING_AT_LEAST_RE,
+            lambda m: {"field": "my_rating", "op": "ge", "value": int(m.group(1))},
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _RATING_COUNT_RE,
+            lambda m: {"field": "rating_count", "op": "ge", "value": int(m.group(1))},
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _RATED_BY_USER_RE,
+            lambda m: {"field": "rated_by_user", "op": "eq", "value": _orig_slice(m)},
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _COMMENTED_BY_USER_RE,
+            lambda m: {"field": "commented_by_user", "op": "eq", "value": _orig_slice(m)},
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _RATING_BETWEEN_RE,
+            lambda m: {"field": "rating_avg", "op": "between", "value": [int(m.group(1)), int(m.group(2))]},
+        )
 
         # -- star ratings (protects "N stars or better"'s "or") ------------
-        spanned_conds += _apply_rule(working, consumed, _RATING_AT_LEAST_RE,
-                                      lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _RATING_OR_BETTER_RE,
-                                      lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _RATING_PLUS_RE,
-                                      lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _RATING_EXACT_RE,
-                                      lambda m: {"field": "rating_avg", "op": "eq", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _RATING_STARS_RE,
-                                      lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))})
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _RATING_AT_LEAST_RE,
+            lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))},
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _RATING_OR_BETTER_RE,
+            lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))},
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _RATING_PLUS_RE, lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _RATING_EXACT_RE, lambda m: {"field": "rating_avg", "op": "eq", "value": int(m.group(1))}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _RATING_STARS_RE, lambda m: {"field": "rating_avg", "op": "ge", "value": int(m.group(1))}
+        )
 
         # -- size / duration / megapixels / review quality ------------------
         def _size_builder(m: re.Match) -> dict:
@@ -480,43 +710,75 @@ class NlqParser(ParserBackend):
 
         # -- pixel dimensions / path / face cluster / similarity refs ------
         spanned_conds += _apply_rule(
-            working, consumed, _WIDTH_RE,
-            lambda m: {"field": "width",
-                       "op": "gt" if m.group(1).lower() == "wider" else "lt",
-                       "value": int(m.group(2))})
+            working,
+            consumed,
+            _WIDTH_RE,
+            lambda m: {
+                "field": "width",
+                "op": "gt" if m.group(1).lower() == "wider" else "lt",
+                "value": int(m.group(2)),
+            },
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _HEIGHT_RE,
-            lambda m: ({"field": "height", "op": "gt", "value": int(m.group(1))}
-                       if m.group(1) is not None
-                       else {"field": "height", "op": "lt", "value": int(m.group(2))}))
-        spanned_conds += _apply_rule(working, consumed, _PATH_RE,
-                                      lambda m: {"field": "path", "op": "contains", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _FACE_CLUSTER_RE,
-                                      lambda m: {"field": "face_cluster", "op": "eq", "value": int(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _NEAR_DUP_RE,
-                                      lambda m: {"field": "near_dup_of", "op": "eq", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _VISUALLY_SIMILAR_RE,
-                                      lambda m: {"field": "similar_to_visual", "op": "eq", "value": _orig_slice(m)})
+            working,
+            consumed,
+            _HEIGHT_RE,
+            lambda m: (
+                {"field": "height", "op": "gt", "value": int(m.group(1))}
+                if m.group(1) is not None
+                else {"field": "height", "op": "lt", "value": int(m.group(2))}
+            ),
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _SIMILAR_RE,
-            lambda m: {"field": "similar_to_semantic", "op": "eq",
-                       "value": {"file_id": _orig_slice(m), "k": 10}})
+            working, consumed, _PATH_RE, lambda m: {"field": "path", "op": "contains", "value": _orig_slice(m)}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _FACE_CLUSTER_RE,
+            lambda m: {"field": "face_cluster", "op": "eq", "value": int(m.group(1))},
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _NEAR_DUP_RE, lambda m: {"field": "near_dup_of", "op": "eq", "value": _orig_slice(m)}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _VISUALLY_SIMILAR_RE,
+            lambda m: {"field": "similar_to_visual", "op": "eq", "value": _orig_slice(m)},
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _SIMILAR_RE,
+            lambda m: {"field": "similar_to_semantic", "op": "eq", "value": {"file_id": _orig_slice(m), "k": 10}},
+        )
 
         # -- typed generation parameters -----------------------------------
-        spanned_conds += _apply_rule(working, consumed, _SEED_RE,
-                                      lambda m: {"field": "gen_seed", "op": "eq", "value": int(m.group(1))})
         spanned_conds += _apply_rule(
-            working, consumed, _STEPS_RE,
-            lambda m: {"field": "gen_steps", "op": "eq",
-                       "value": int(m.group(1) or m.group(2))})
-        spanned_conds += _apply_rule(working, consumed, _CFG_RE,
-                                      lambda m: {"field": "gen_cfg", "op": "eq", "value": float(m.group(1))})
-        spanned_conds += _apply_rule(working, consumed, _MODEL_RE,
-                                      lambda m: {"field": "gen_model", "op": "contains", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _LORA_RE,
-                                      lambda m: {"field": "gen_lora", "op": "contains", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _SAMPLER_RE,
-                                      lambda m: {"field": "gen_sampler", "op": "contains", "value": _orig_slice(m)})
+            working, consumed, _SEED_RE, lambda m: {"field": "gen_seed", "op": "eq", "value": int(m.group(1))}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _STEPS_RE,
+            lambda m: {"field": "gen_steps", "op": "eq", "value": int(m.group(1) or m.group(2))},
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _CFG_RE, lambda m: {"field": "gen_cfg", "op": "eq", "value": float(m.group(1))}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _MODEL_RE, lambda m: {"field": "gen_model", "op": "contains", "value": _orig_slice(m)}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _LORA_RE, lambda m: {"field": "gen_lora", "op": "contains", "value": _orig_slice(m)}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _SAMPLER_RE,
+            lambda m: {"field": "gen_sampler", "op": "contains", "value": _orig_slice(m)},
+        )
 
         # -- dates ------------------------------------------------------------
         def _last_n_builder(m: re.Match) -> dict:
@@ -539,24 +801,31 @@ class NlqParser(ParserBackend):
         week_start_iso = week_start.isoformat()
         week_end_iso = (week_start + timedelta(days=6)).isoformat()
         month_start_iso = local_today.replace(day=1).isoformat()
-        month_end_iso = local_today.replace(
-            day=calendar.monthrange(local_today.year, local_today.month)[1]).isoformat()
+        month_end_iso = local_today.replace(day=calendar.monthrange(local_today.year, local_today.month)[1]).isoformat()
         spanned_conds += _apply_rule(
-            working, consumed, _YESTERDAY_RE,
-            lambda _m: {"field": "mtime", "op": "between",
-                       "value": [yesterday_iso, yesterday_iso]})
+            working,
+            consumed,
+            _YESTERDAY_RE,
+            lambda _m: {"field": "mtime", "op": "between", "value": [yesterday_iso, yesterday_iso]},
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _TODAY_RE,
-            lambda _m: {"field": "mtime", "op": "between",
-                       "value": [local_today.isoformat(), local_today.isoformat()]})
+            working,
+            consumed,
+            _TODAY_RE,
+            lambda _m: {"field": "mtime", "op": "between", "value": [local_today.isoformat(), local_today.isoformat()]},
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _THIS_WEEK_RE,
-            lambda _m: {"field": "mtime", "op": "between",
-                       "value": [week_start_iso, week_end_iso]})
+            working,
+            consumed,
+            _THIS_WEEK_RE,
+            lambda _m: {"field": "mtime", "op": "between", "value": [week_start_iso, week_end_iso]},
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _THIS_MONTH_RE,
-            lambda _m: {"field": "mtime", "op": "between",
-                       "value": [month_start_iso, month_end_iso]})
+            working,
+            consumed,
+            _THIS_MONTH_RE,
+            lambda _m: {"field": "mtime", "op": "between", "value": [month_start_iso, month_end_iso]},
+        )
 
         def _from_month_year_builder(m: re.Match) -> dict | None:
             month = _MONTHS.get(m.group(1).lower())
@@ -564,36 +833,52 @@ class NlqParser(ParserBackend):
                 return None
             year = int(m.group(2))
             last_day = calendar.monthrange(year, month)[1]
-            return {"field": "mtime", "op": "between",
-                    "value": [f"{year:04d}-{month:02d}-01",
-                              f"{year:04d}-{month:02d}-{last_day:02d}"]}
+            return {
+                "field": "mtime",
+                "op": "between",
+                "value": [f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"],
+            }
 
         spanned_conds += _apply_rule(working, consumed, _FROM_MONTH_YEAR_RE, _from_month_year_builder)
         spanned_conds += _apply_rule(
-            working, consumed, _IN_YEAR_RE,
-            lambda m: {"field": "mtime", "op": "between",
-                       "value": [f"{m.group(1)}-01-01", f"{m.group(1)}-12-31"]})
-        spanned_conds += _apply_rule(working, consumed, _SINCE_AFTER_RE,
-                                      lambda m: {"field": "mtime", "op": "ge", "value": m.group(1)})
-        spanned_conds += _apply_rule(working, consumed, _BEFORE_RE,
-                                      lambda m: {"field": "mtime", "op": "lt", "value": m.group(1)})
+            working,
+            consumed,
+            _IN_YEAR_RE,
+            lambda m: {"field": "mtime", "op": "between", "value": [f"{m.group(1)}-01-01", f"{m.group(1)}-12-31"]},
+        )
         spanned_conds += _apply_rule(
-            working, consumed, _BETWEEN_DATES_RE,
-            lambda m: {"field": "mtime", "op": "between", "value": [m.group(1), m.group(2)]})
+            working, consumed, _SINCE_AFTER_RE, lambda m: {"field": "mtime", "op": "ge", "value": m.group(1)}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _BEFORE_RE, lambda m: {"field": "mtime", "op": "lt", "value": m.group(1)}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _BETWEEN_DATES_RE,
+            lambda m: {"field": "mtime", "op": "between", "value": [m.group(1), m.group(2)]},
+        )
 
         # -- generic negation runs before every positive rule it can wrap:
         # favorite / type / status below, and collection membership here --
         spanned_conds += _try_negation(working, consumed)
 
         # -- folder / collection / quoted-text targets ------------------------
-        spanned_conds += _apply_rule(working, consumed, _FOLDER_IN_THE_RE,
-                                      lambda m: {"field": "folder", "op": "eq", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _FOLDER_IN_FOLDER_RE,
-                                      lambda m: {"field": "folder", "op": "eq", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _FOLDER_UNDER_RE,
-                                      lambda m: {"field": "folder", "op": "contains", "value": _orig_slice(m)})
-        spanned_conds += _apply_rule(working, consumed, _COLLECTION_RE,
-                                      lambda m: {"field": "collection", "op": "eq", "value": _orig_slice(m)})
+        spanned_conds += _apply_rule(
+            working, consumed, _FOLDER_IN_THE_RE, lambda m: {"field": "folder", "op": "eq", "value": _orig_slice(m)}
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _FOLDER_IN_FOLDER_RE, lambda m: {"field": "folder", "op": "eq", "value": _orig_slice(m)}
+        )
+        spanned_conds += _apply_rule(
+            working,
+            consumed,
+            _FOLDER_UNDER_RE,
+            lambda m: {"field": "folder", "op": "contains", "value": _orig_slice(m)},
+        )
+        spanned_conds += _apply_rule(
+            working, consumed, _COLLECTION_RE, lambda m: {"field": "collection", "op": "eq", "value": _orig_slice(m)}
+        )
         spanned_conds += _apply_rule(working, consumed, _NAME_RE, _quote_builder("name"))
         spanned_conds += _apply_rule(working, consumed, _PROMPT_MENTIONS_RE, _quote_builder("workflow_prompt"))
         spanned_conds += _apply_rule(working, consumed, _PROMPT_IN_RE, _quote_builder("workflow_prompt"))
@@ -603,8 +888,9 @@ class NlqParser(ParserBackend):
         # "named"/"prompt contains" to end of text, restored verbatim.
         spanned_conds += _apply_rule(working, consumed, _NAME_TAIL_RE, _tail_builder("name"))
         spanned_conds += _apply_rule(working, consumed, _PROMPT_TAIL_RE, _tail_builder("workflow_prompt"))
-        spanned_conds += _apply_rule(working, consumed, _COMMENTED_RE,
-                                      lambda _m: {"field": "comment_count", "op": "gt", "value": 0})
+        spanned_conds += _apply_rule(
+            working, consumed, _COMMENTED_RE, lambda _m: {"field": "comment_count", "op": "gt", "value": 0}
+        )
 
         # -- review issues ------------------------------------------------
         def _issue_builder(m: re.Match) -> dict | None:
@@ -632,8 +918,9 @@ class NlqParser(ParserBackend):
             meta.setdefault("order", ("mtime", "desc"))
 
         # -- plain positives (negated forms were claimed above) -------------
-        spanned_conds += _apply_rule(working, consumed, _FAVORITE_RE,
-                                      lambda _m: {"field": "is_favorite", "op": "eq", "value": True})
+        spanned_conds += _apply_rule(
+            working, consumed, _FAVORITE_RE, lambda _m: {"field": "is_favorite", "op": "eq", "value": True}
+        )
 
         def _type_builder(m: re.Match) -> dict | None:
             key = re.sub(r"\s+", " ", m.group(1).lower())
@@ -641,8 +928,7 @@ class NlqParser(ParserBackend):
             return None if value is None else {"field": "type", "op": "eq", "value": value}
 
         spanned_conds += _apply_rule(working, consumed, _TYPE_RE, _type_builder)
-        spanned_conds += _apply_rule(working, consumed, _EXT_RE,
-                                      lambda m: _ext_condition(m.group(1).lower()))
+        spanned_conds += _apply_rule(working, consumed, _EXT_RE, lambda m: _ext_condition(m.group(1).lower()))
 
         def _status_builder(m: re.Match) -> dict | None:
             key = re.sub(r"\s+", " ", m.group(1).lower())
@@ -683,18 +969,17 @@ class NlqParser(ParserBackend):
         # subject phrase) and the left has more than one condition, the
         # "or" binds locally to its nearest left neighbor; everything else
         # stays ANDed around it. --------------------------------------------
-        or_matches = [m for m in _OR_TOKEN_RE.finditer(working) if not any(consumed[m.start():m.end()])]
+        or_matches = [m for m in _OR_TOKEN_RE.finditer(working) if not any(consumed[m.start() : m.end()])]
         where: dict | None
         if or_matches:
             or_m = or_matches[0]
             left_spanned = sorted(
-                [(cs, ce, c) for (cs, ce, c) in spanned_conds if ce <= or_m.start()],
-                key=lambda t: t[0])
+                [(cs, ce, c) for (cs, ce, c) in spanned_conds if ce <= or_m.start()], key=lambda t: t[0]
+            )
             left = [c for (_, _, c) in left_spanned]
             right = [c for (cs, ce, c) in spanned_conds if cs >= or_m.end()]
             if left and right:
-                right_is_new_subject = any(
-                    isinstance(c, dict) and c.get("field") == "type" for c in right)
+                right_is_new_subject = any(isinstance(c, dict) and c.get("field") == "type" for c in right)
                 if len(right) == 1 and len(left) > 1 and not right_is_new_subject:
                     rest = left[:-1]
                     local = {"op": "or", "children": [left[-1], right[0]]}
@@ -720,8 +1005,15 @@ class NlqParser(ParserBackend):
         if err is not None:
             # Should be unreachable for anything this module builds; still,
             # never raise out of parse().
-            return ParserOutcome(ast=None, confidence=None, backend=self.name, unsupported=True,
-                                  reason=err, coverage=None, latency_ms=latency_ms)
+            return ParserOutcome(
+                ast=None,
+                confidence=None,
+                backend=self.name,
+                unsupported=True,
+                reason=err,
+                coverage=None,
+                latency_ms=latency_ms,
+            )
 
         chips = [c for (_, _, cond) in spanned_conds if (c := _chip(cond)) is not None]
         if meta.get("result") == "count":
@@ -733,10 +1025,14 @@ class NlqParser(ParserBackend):
 
         model_hint = any(_STRUCT_HINT_RE.search(t) for t in text_terms)
         return ParserOutcome(
-            ast=query.to_dict(), confidence=1.0, backend=self.name,
-            unsupported=False, reason=None, coverage=1.0, latency_ms=latency_ms,
-            raw={"interpretation": chips, "text_terms": text_terms,
-                 "model_hint": model_hint},
+            ast=query.to_dict(),
+            confidence=1.0,
+            backend=self.name,
+            unsupported=False,
+            reason=None,
+            coverage=1.0,
+            latency_ms=latency_ms,
+            raw={"interpretation": chips, "text_terms": text_terms, "model_hint": model_hint},
         )
 
 
@@ -805,6 +1101,7 @@ def _try_negation(text: str, consumed: list[bool]) -> list[tuple[int, int, dict]
 # Quote extraction and leftover-phrase assembly
 # ---------------------------------------------------------------------------
 
+
 def _extract_quotes(text: str) -> tuple[str, dict[int, tuple[str, str]]]:
     """Replace each (properly paired) quoted substring with a qzq<N>qzq
     placeholder; quotes[N] = (quote_char, literal) so literals keep their
@@ -825,14 +1122,15 @@ def _extract_quotes(text: str) -> tuple[str, dict[int, tuple[str, str]]]:
 def _restore_placeholders(s: str, quotes: dict[int, tuple[str, str]]) -> str:
     """Inverse of _extract_quotes over a text slice: each placeholder
     becomes its original quoted literal, quote characters and all."""
+
     def _put_back(m: re.Match) -> str:
         char, literal = quotes.get(int(m.group(1)), ("", ""))
         return f"{char}{literal}{char}"
+
     return _PLACEHOLDER_RE.sub(_put_back, s)
 
 
-def _leftover_phrases(placeheld: str, working: str,
-                      consumed: list[bool]) -> list[tuple[int, int, str]]:
+def _leftover_phrases(placeheld: str, working: str, consumed: list[bool]) -> list[tuple[int, int, str]]:
     """Maximal runs of adjacent unconsumed non-stopword tokens, joined into
     original-case phrases: (start, end, phrase) spans covering exactly the
     tokens, so intervening consumed/stopword spans break the run."""
@@ -840,12 +1138,12 @@ def _leftover_phrases(placeheld: str, working: str,
         (m.start(), m.end())
         for m in _TOKEN_RE.finditer(working)
         if m.group(0) not in STOPWORDS
-        and not any(consumed[m.start():m.end()])
-        and not _PLACEHOLDER_RE.fullmatch(working[m.start():m.end()])
+        and not any(consumed[m.start() : m.end()])
+        and not _PLACEHOLDER_RE.fullmatch(working[m.start() : m.end()])
     ]
     phrases: list[tuple[int, int, str]] = []
     for s, e in tokens:
-        if phrases and working[phrases[-1][1]:s].strip() == "" :
+        if phrases and working[phrases[-1][1] : s].strip() == "":
             ps, _, _ = phrases[-1]
             phrases[-1] = (ps, e, placeheld[ps:e].strip())
         else:

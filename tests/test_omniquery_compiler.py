@@ -24,8 +24,9 @@ NOW = 1735689600.0  # 2025-01-01T00:00:00 local
 
 def _compile(obj, ctx=STAFF, ai_resolutions=None, base_path="/gallery"):
     vq = validate(parse_query(obj), ctx)
-    params = CompileParams(now_epoch=NOW, base_path=base_path, client_uuid=ctx.client_uuid,
-                            ai_resolutions=ai_resolutions or {})
+    params = CompileParams(
+        now_epoch=NOW, base_path=base_path, client_uuid=ctx.client_uuid, ai_resolutions=ai_resolutions or {}
+    )
     return compile_query(vq, params)
 
 
@@ -33,20 +34,16 @@ def _compile(obj, ctx=STAFF, ai_resolutions=None, base_path="/gallery"):
 # Golden SQL snapshots
 # ---------------------------------------------------------------------------
 
+
 def test_golden_simple_eq():
     cq = _compile({"where": {"field": "name", "op": "eq", "value": "sunset.png"}})
-    assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f WHERE f.name LIKE ? ESCAPE '\\' "
-        "ORDER BY f.id ASC LIMIT ?"
-    )
+    assert cq.sql == ("SELECT DISTINCT f.id FROM files f WHERE f.name LIKE ? ESCAPE '\\' ORDER BY f.id ASC LIMIT ?")
     assert cq.params == ("sunset.png", 500)
 
 
 def test_golden_enum_in():
     cq = _compile({"where": {"field": "type", "op": "in", "value": ["image", "video"]}})
-    assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f WHERE f.type IN (?,?) ORDER BY f.id ASC LIMIT ?"
-    )
+    assert cq.sql == ("SELECT DISTINCT f.id FROM files f WHERE f.type IN (?,?) ORDER BY f.id ASC LIMIT ?")
     assert cq.params == ("image", "video", 500)
 
 
@@ -71,24 +68,24 @@ def test_golden_folder_eq():
 def test_folder_predicates_match_windows_separators():
     """Folder predicates must match rows regardless of which separator the
     scanning host stored, and accept backslashes in base_path/value."""
-    cq = _compile({"where": {"field": "folder", "op": "eq", "value": "landscapes\\2024"}},
-                  base_path="C:\\gallery")
+    cq = _compile({"where": {"field": "folder", "op": "eq", "value": "landscapes\\2024"}}, base_path="C:\\gallery")
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT)")
-    conn.executemany("INSERT INTO files VALUES (?, ?)", [
-        ("p1", "C:/gallery/landscapes/2024/b.png"),
-        ("w1", "C:\\gallery\\landscapes\\2024\\a.png"),
-        ("x1", "C:\\gallery\\other\\c.png"),
-    ])
+    conn.executemany(
+        "INSERT INTO files VALUES (?, ?)",
+        [
+            ("p1", "C:/gallery/landscapes/2024/b.png"),
+            ("w1", "C:\\gallery\\landscapes\\2024\\a.png"),
+            ("x1", "C:\\gallery\\other\\c.png"),
+        ],
+    )
     assert [r[0] for r in conn.execute(cq.sql, cq.params)] == ["p1", "w1"]
 
-    cq2 = _compile({"where": {"field": "folder", "op": "contains", "value": "landscapes"}},
-                   base_path="C:\\gallery")
+    cq2 = _compile({"where": {"field": "folder", "op": "contains", "value": "landscapes"}}, base_path="C:\\gallery")
     assert [r[0] for r in conn.execute(cq2.sql, cq2.params)] == ["p1", "w1"]
 
 
-@pytest.mark.skipif(not hasattr(time, "tzset"),
-                    reason="requires time.tzset (POSIX) to control the process timezone")
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="requires time.tzset (POSIX) to control the process timezone")
 def test_between_bare_dates_dst_transition_days():
     """A bare-date 'between' upper bound extends to the next local calendar
     midnight, which is 23h away on spring-forward day and 25h on fall-back
@@ -98,12 +95,10 @@ def test_between_bare_dates_dst_transition_days():
     _os.environ["TZ"] = "America/New_York"
     _time.tzset()
     try:
-        spring = _compile({"where": {"field": "mtime", "op": "between",
-                                     "value": ["2025-03-09", "2025-03-09"]}})
+        spring = _compile({"where": {"field": "mtime", "op": "between", "value": ["2025-03-09", "2025-03-09"]}})
         lo, hi, _ = spring.params
         assert hi - lo == 23 * 3600.0
-        fall = _compile({"where": {"field": "mtime", "op": "between",
-                                   "value": ["2025-11-02", "2025-11-02"]}})
+        fall = _compile({"where": {"field": "mtime", "op": "between", "value": ["2025-11-02", "2025-11-02"]}})
         lo2, hi2, _ = fall.params
         assert hi2 - lo2 == 25 * 3600.0
     finally:
@@ -119,25 +114,23 @@ def test_duration_seconds_expr_handles_hms_and_ms():
     cq = _compile({"where": {"field": "duration_seconds", "op": "ge", "value": 3600}})
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, duration TEXT)")
-    conn.executemany("INSERT INTO files VALUES (?, '', ?)", [
-        ("long", "1:02:03"),   # 3723s
-        ("short", "02:03"),    # 123s
-        ("nodur", None),
-    ])
+    conn.executemany(
+        "INSERT INTO files VALUES (?, '', ?)",
+        [
+            ("long", "1:02:03"),  # 3723s
+            ("short", "02:03"),  # 123s
+            ("nodur", None),
+        ],
+    )
     assert [r[0] for r in conn.execute(cq.sql, cq.params)] == ["long"]
 
-    cq2 = _compile({"where": {"field": "duration_seconds", "op": "between",
-                              "value": [120, 300]}})
+    cq2 = _compile({"where": {"field": "duration_seconds", "op": "between", "value": [120, 300]}})
     assert [r[0] for r in conn.execute(cq2.sql, cq2.params)] == ["short"]
 
 
 def test_golden_mtime_between_bare_dates_covers_whole_days():
-    cq = _compile({"where": {"field": "mtime", "op": "between",
-                              "value": ["2025-01-01", "2025-01-31"]}})
-    assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f WHERE f.mtime >= ? AND f.mtime < ? "
-        "ORDER BY f.id ASC LIMIT ?"
-    )
+    cq = _compile({"where": {"field": "mtime", "op": "between", "value": ["2025-01-01", "2025-01-31"]}})
+    assert cq.sql == ("SELECT DISTINCT f.id FROM files f WHERE f.mtime >= ? AND f.mtime < ? ORDER BY f.id ASC LIMIT ?")
     lo, hi, limit = cq.params
     assert hi - lo == 31 * 86400.0  # Jan 1 00:00 .. Feb 1 00:00, half-open
     assert limit == 500
@@ -164,8 +157,7 @@ def test_golden_status_flag_ne_is_not_exists():
 
 
 def test_golden_review_issue_in():
-    cq = _compile({"where": {"field": "review_issue", "op": "in",
-                              "value": ["anatomy", "artifact"]}})
+    cq = _compile({"where": {"field": "review_issue", "op": "in", "value": ["anatomy", "artifact"]}})
     assert cq.sql == (
         "SELECT DISTINCT f.id FROM files f WHERE EXISTS "
         "(SELECT 1 FROM ai_review_findings rf WHERE rf.file_id = f.id AND rf.type IN (?,?)) "
@@ -193,12 +185,8 @@ def test_golden_no_where_no_order_by_uses_id_tiebreak():
 
 
 def test_golden_multi_order_by_appends_id_tiebreak():
-    cq = _compile({"order_by": [{"field": "name", "dir": "asc"},
-                                 {"field": "mtime", "dir": "desc"}], "limit": 10})
-    assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f "
-        "ORDER BY f.name ASC, f.mtime DESC, f.id ASC LIMIT ?"
-    )
+    cq = _compile({"order_by": [{"field": "name", "dir": "asc"}, {"field": "mtime", "dir": "desc"}], "limit": 10})
+    assert cq.sql == ("SELECT DISTINCT f.id FROM files f ORDER BY f.name ASC, f.mtime DESC, f.id ASC LIMIT ?")
     assert cq.params == (10,)
 
 
@@ -209,13 +197,19 @@ def test_golden_is_null():
 
 
 def test_golden_and_not_group():
-    cq = _compile({"where": {"op": "and", "children": [
-        {"field": "type", "op": "eq", "value": "image"},
-        {"op": "not", "child": {"field": "is_favorite", "op": "eq", "value": True}},
-    ]}})
+    cq = _compile(
+        {
+            "where": {
+                "op": "and",
+                "children": [
+                    {"field": "type", "op": "eq", "value": "image"},
+                    {"op": "not", "child": {"field": "is_favorite", "op": "eq", "value": True}},
+                ],
+            }
+        }
+    )
     assert cq.sql == (
-        "SELECT DISTINCT f.id FROM files f WHERE "
-        "(f.type = ? AND NOT (f.is_favorite = ?)) ORDER BY f.id ASC LIMIT ?"
+        "SELECT DISTINCT f.id FROM files f WHERE (f.type = ? AND NOT (f.is_favorite = ?)) ORDER BY f.id ASC LIMIT ?"
     )
     assert cq.params == ("image", 1, 500)
 
@@ -223,6 +217,7 @@ def test_golden_and_not_group():
 # ---------------------------------------------------------------------------
 # Injection safety
 # ---------------------------------------------------------------------------
+
 
 def test_injection_attempt_stays_a_bound_value():
     payload = "x' OR 1=1 --"
@@ -234,8 +229,7 @@ def test_injection_attempt_stays_a_bound_value():
     # And it genuinely behaves as an inert literal against a real DB.
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE files (id TEXT, name TEXT)")
-    conn.executemany("INSERT INTO files VALUES (?, ?)",
-                      [("f1", "real.png"), ("f2", "other.png")])
+    conn.executemany("INSERT INTO files VALUES (?, ?)", [("f1", "real.png"), ("f2", "other.png")])
     rows = conn.execute("SELECT id FROM files WHERE name LIKE ? ESCAPE '\\'", (payload,)).fetchall()
     assert rows == []
 
@@ -247,8 +241,7 @@ def test_like_metacharacters_in_value_are_escaped():
 
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE files (id TEXT, name TEXT)")
-    conn.executemany("INSERT INTO files VALUES (?, ?)",
-                      [("f1", "100%_done_report.png"), ("f2", "100Xdone_report.png")])
+    conn.executemany("INSERT INTO files VALUES (?, ?)", [("f1", "100%_done_report.png"), ("f2", "100Xdone_report.png")])
     rows = conn.execute("SELECT id FROM files WHERE name LIKE ? ESCAPE '\\'", (pattern,)).fetchall()
     assert [r[0] for r in rows] == ["f1"]
 
@@ -257,11 +250,19 @@ def test_like_metacharacters_in_value_are_escaped():
 # Determinism
 # ---------------------------------------------------------------------------
 
+
 def test_compiling_same_query_twice_is_byte_identical():
-    obj = {"where": {"op": "or", "children": [
-        {"field": "type", "op": "eq", "value": "image"},
-        {"field": "rating_avg", "op": "ge", "value": 4},
-    ]}, "order_by": [{"field": "rating_avg", "dir": "desc"}], "limit": 25}
+    obj = {
+        "where": {
+            "op": "or",
+            "children": [
+                {"field": "type", "op": "eq", "value": "image"},
+                {"field": "rating_avg", "op": "ge", "value": 4},
+            ],
+        },
+        "order_by": [{"field": "rating_avg", "dir": "desc"}],
+        "limit": 25,
+    }
     cq1 = _compile(obj)
     cq2 = _compile(obj)
     assert cq1.sql == cq2.sql
@@ -269,14 +270,24 @@ def test_compiling_same_query_twice_is_byte_identical():
 
 
 def test_reordered_and_children_compile_to_different_but_stable_sql():
-    obj_a = {"where": {"op": "and", "children": [
-        {"field": "type", "op": "eq", "value": "image"},
-        {"field": "is_favorite", "op": "eq", "value": True},
-    ]}}
-    obj_b = {"where": {"op": "and", "children": [
-        {"field": "is_favorite", "op": "eq", "value": True},
-        {"field": "type", "op": "eq", "value": "image"},
-    ]}}
+    obj_a = {
+        "where": {
+            "op": "and",
+            "children": [
+                {"field": "type", "op": "eq", "value": "image"},
+                {"field": "is_favorite", "op": "eq", "value": True},
+            ],
+        }
+    }
+    obj_b = {
+        "where": {
+            "op": "and",
+            "children": [
+                {"field": "is_favorite", "op": "eq", "value": True},
+                {"field": "type", "op": "eq", "value": "image"},
+            ],
+        }
+    }
     cq_a1 = _compile(obj_a)
     cq_a2 = _compile(obj_a)
     cq_b = _compile(obj_b)
@@ -288,6 +299,7 @@ def test_reordered_and_children_compile_to_different_but_stable_sql():
 # ---------------------------------------------------------------------------
 # Date resolution against a fixed now_epoch
 # ---------------------------------------------------------------------------
+
 
 def test_days_ago_resolves_against_injected_now_epoch():
     cq = _compile({"where": {"field": "mtime", "op": "ge", "value": {"days_ago": 7}}})
@@ -306,8 +318,9 @@ def test_bare_date_resolves_to_local_midnight():
 
 
 def test_full_datetime_between_is_not_day_shifted():
-    cq = _compile({"where": {"field": "mtime", "op": "between",
-                              "value": ["2025-01-01T08:00:00", "2025-01-01T20:00:00"]}})
+    cq = _compile(
+        {"where": {"field": "mtime", "op": "between", "value": ["2025-01-01T08:00:00", "2025-01-01T20:00:00"]}}
+    )
     lo, hi, _ = cq.params
     assert hi - lo == 12 * 3600.0  # exact span, no whole-day rounding
 
@@ -316,18 +329,19 @@ def test_full_datetime_between_is_not_day_shifted():
 # file_ref resolution hand-off
 # ---------------------------------------------------------------------------
 
+
 def test_near_dup_in_list_expansion():
     key = resolution_key("near_dup_of", "f001")
-    cq = _compile({"where": {"field": "near_dup_of", "op": "eq", "value": "f001"}},
-                   ai_resolutions={key: ["f002", "f003", "f004"]})
+    cq = _compile(
+        {"where": {"field": "near_dup_of", "op": "eq", "value": "f001"}}, ai_resolutions={key: ["f002", "f003", "f004"]}
+    )
     assert cq.sql == "SELECT DISTINCT f.id FROM files f WHERE f.id IN (?,?,?) ORDER BY f.id ASC LIMIT ?"
     assert cq.params == ("f002", "f003", "f004", 500)
 
 
 def test_empty_resolution_compiles_to_false_predicate():
     key = resolution_key("near_dup_of", "f001")
-    cq = _compile({"where": {"field": "near_dup_of", "op": "eq", "value": "f001"}},
-                   ai_resolutions={key: []})
+    cq = _compile({"where": {"field": "near_dup_of", "op": "eq", "value": "f001"}}, ai_resolutions={key: []})
     assert cq.sql == "SELECT DISTINCT f.id FROM files f WHERE 0=1 ORDER BY f.id ASC LIMIT ?"
     assert cq.params == (500,)
 
@@ -351,6 +365,7 @@ def test_similar_to_dict_value_resolution_key_distinguishes_k():
 # ---------------------------------------------------------------------------
 # compile() requires a validated query
 # ---------------------------------------------------------------------------
+
 
 def test_compile_rejects_non_validated_query_object():
     with pytest.raises(AssertionError):
@@ -392,28 +407,26 @@ def test_like_clause_rejects_unhandled_text_op():
 
 
 def test_build_text_rejects_unhandled_strategy():
-    spec = fields.FieldSpec(name="x", kind=fields.Kind.TEXT, ops=frozenset({"eq"}),
-                             strategy=fields.Strategy.EXPR)
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.TEXT, ops=frozenset({"eq"}), strategy=fields.Strategy.EXPR)
     with pytest.raises(CompileError, match="unhandled text strategy"):
         compiler._build_text(spec, "eq", "v", _PARAMS)
 
 
 def test_build_number_rejects_unhandled_strategy():
-    spec = fields.FieldSpec(name="x", kind=fields.Kind.NUMBER, ops=frozenset({"eq"}),
-                             strategy=fields.Strategy.EXISTS_BOOL)
+    spec = fields.FieldSpec(
+        name="x", kind=fields.Kind.NUMBER, ops=frozenset({"eq"}), strategy=fields.Strategy.EXISTS_BOOL
+    )
     with pytest.raises(CompileError, match="unhandled number strategy"):
         compiler._build_number(spec, "eq", 1, _PARAMS)
 
 
 def test_build_bool_rejects_unhandled_strategy():
-    spec = fields.FieldSpec(name="x", kind=fields.Kind.BOOL, ops=frozenset({"eq"}),
-                             strategy=fields.Strategy.EXPR)
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.BOOL, ops=frozenset({"eq"}), strategy=fields.Strategy.EXPR)
     with pytest.raises(CompileError, match="unhandled bool strategy"):
         compiler._build_bool(spec, "eq", True)
 
 
 def test_build_enum_rejects_unhandled_strategy():
-    spec = fields.FieldSpec(name="x", kind=fields.Kind.ENUM, ops=frozenset({"eq"}),
-                             strategy=fields.Strategy.EXPR)
+    spec = fields.FieldSpec(name="x", kind=fields.Kind.ENUM, ops=frozenset({"eq"}), strategy=fields.Strategy.EXPR)
     with pytest.raises(CompileError, match="unhandled enum strategy"):
         compiler._build_enum(spec, "eq", "v")

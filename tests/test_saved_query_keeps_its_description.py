@@ -32,18 +32,17 @@ def client(smartgallery_app, monkeypatch, tmp_path):
 
 
 def _saved(smartgallery_app, name):
-    path = os.path.join(smartgallery_app.BASE_SMARTGALLERY_PATH,
-                        ".omniquery", "saved_queries", name)
+    path = os.path.join(smartgallery_app.BASE_SMARTGALLERY_PATH, ".omniquery", "saved_queries", name)
     return open(path, encoding="utf-8").read()
 
 
 def test_a_description_survives_the_round_trip(smartgallery_app, client):
     """The bug: save accepted it, list always answered with ''."""
     # Arrange / Act
-    saved = client.post("/galleryout/api/omniquery/queries/save",
-                        json={"name": "recent",
-                              "description": "everything from this week",
-                              "sql": "SELECT 1"}).get_json()
+    saved = client.post(
+        "/galleryout/api/omniquery/queries/save",
+        json={"name": "recent", "description": "everything from this week", "sql": "SELECT 1"},
+    ).get_json()
     listed = client.get("/galleryout/api/omniquery/queries/list").get_json()
 
     # Assert
@@ -55,8 +54,7 @@ def test_a_description_survives_the_round_trip(smartgallery_app, client):
 def test_a_query_saved_without_one_is_left_alone(smartgallery_app, client):
     """No description means no comment: the SQL is stored as it arrived."""
     # Arrange / Act
-    client.post("/galleryout/api/omniquery/queries/save",
-                json={"name": "bare", "sql": "SELECT 1"})
+    client.post("/galleryout/api/omniquery/queries/save", json={"name": "bare", "sql": "SELECT 1"})
 
     # Assert
     assert _saved(smartgallery_app, "bare.txt") == "SELECT 1"
@@ -65,10 +63,10 @@ def test_a_query_saved_without_one_is_left_alone(smartgallery_app, client):
 def test_a_description_cannot_carry_sql_of_its_own(smartgallery_app, client):
     """A newline would end the comment and leave the rest executable."""
     # Arrange / Act
-    client.post("/galleryout/api/omniquery/queries/save",
-                json={"name": "injected",
-                      "description": "harmless\nDROP TABLE files; --",
-                      "sql": "SELECT 1"})
+    client.post(
+        "/galleryout/api/omniquery/queries/save",
+        json={"name": "injected", "description": "harmless\nDROP TABLE files; --", "sql": "SELECT 1"},
+    )
     body = _saved(smartgallery_app, "injected.txt")
 
     # Assert
@@ -80,10 +78,10 @@ def test_a_description_cannot_carry_sql_of_its_own(smartgallery_app, client):
 def test_the_description_it_reads_back_is_the_one_it_wrote(smartgallery_app, client):
     """Flattening happens on the way in, so the picker shows one line."""
     # Arrange / Act
-    client.post("/galleryout/api/omniquery/queries/save",
-                json={"name": "wrapped",
-                      "description": "line one\nline two",
-                      "sql": "SELECT 1"})
+    client.post(
+        "/galleryout/api/omniquery/queries/save",
+        json={"name": "wrapped", "description": "line one\nline two", "sql": "SELECT 1"},
+    )
     listed = client.get("/galleryout/api/omniquery/queries/list").get_json()
 
     # Assert

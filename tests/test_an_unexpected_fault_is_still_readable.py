@@ -99,8 +99,8 @@ def test_the_console_still_gets_the_whole_story(caller, capsys):
 
     printed = capsys.readouterr()
     assert "Traceback" in (printed.out + printed.err), (
-        "the fault was answered and never logged, so nothing can be "
-        "diagnosed from it")
+        "the fault was answered and never logged, so nothing can be diagnosed from it"
+    )
 
 
 def test_a_missing_page_is_still_a_missing_page(caller):
@@ -125,18 +125,20 @@ def test_a_refusal_keeps_its_own_answer(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     client = smartgallery_app.app.test_client()
 
-    response = client.get("/galleryout/storyboard_frame/%s/frame_001.jpg"
-                          % ("a" * 32))
+    response = client.get("/galleryout/storyboard_frame/%s/frame_001.jpg" % ("a" * 32))
 
     assert response.status_code in (403, 404), response.status_code
 
 
-@pytest.mark.parametrize(("path", "headers", "expected"), [
-    ("/galleryout/api/anything", {}, True),
-    ("/galleryout/favorite_batch", {"Content-Type": "application/json"}, True),
-    ("/galleryout/view/abc", {"Accept": "text/html"}, False),
-    ("/galleryout/view/abc", {}, False),
-])
+@pytest.mark.parametrize(
+    ("path", "headers", "expected"),
+    [
+        ("/galleryout/api/anything", {}, True),
+        ("/galleryout/favorite_batch", {"Content-Type": "application/json"}, True),
+        ("/galleryout/view/abc", {"Accept": "text/html"}, False),
+        ("/galleryout/view/abc", {}, False),
+    ],
+)
 def test_who_is_told_in_json(smartgallery_app, path, headers, expected):
     """A page navigation should keep Flask's error page; anything calling
     with fetch should get something it can parse."""
@@ -154,5 +156,4 @@ def test_the_fault_used_for_these_checks_is_a_real_one(smartgallery_app):
     # reaches the database as one-character ids rather than being refused.
     assert isinstance(ids, str)
     assert len(ids) > 1
-    assert list(ids) == ["a", "b", "c"], (
-        "the value used here is no longer the shape that provoked the fault")
+    assert list(ids) == ["a", "b", "c"], "the value used here is no longer the shape that provoked the fault"

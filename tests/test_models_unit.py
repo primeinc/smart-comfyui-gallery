@@ -96,17 +96,14 @@ class FakeProcessor:
         if geometry:
             self.image_processor.patch_size = 16
             self.image_processor.merge_size = 2
-            self.image_processor.size = types.SimpleNamespace(
-                longest_edge=16777216, shortest_edge=65536)
+            self.image_processor.size = types.SimpleNamespace(longest_edge=16777216, shortest_edge=65536)
         self.tokenizer = self._tokenize
 
-    def apply_chat_template(self, messages, tokenize=False,
-                            add_generation_prompt=False, tools=None):
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, tools=None):
         assert tokenize is False, "Chat must render text here, never tokenize"
         parts = []
         if tools:
-            parts.append("<tools:" + ",".join(
-                tool["function"]["name"] for tool in tools) + ">")
+            parts.append("<tools:" + ",".join(tool["function"]["name"] for tool in tools) + ">")
         for message in messages:
             body = ""
             for item in message["content"]:
@@ -115,26 +112,21 @@ class FakeProcessor:
         if add_generation_prompt:
             parts.append("<gen>")
         text = "".join(parts)
-        self.renders.append({"text": text, "tools": tools,
-                             "generation_prompt": add_generation_prompt})
+        self.renders.append({"text": text, "tools": tools, "generation_prompt": add_generation_prompt})
         return text
 
     def __call__(self, text="", images=None, return_tensors=None, **kwargs):
         del return_tensors  # accepted for call-signature compatibility
-        self.processor_calls.append(
-            {"text": text, "images": images, "kwargs": kwargs})
-        return Batch({"input_ids": Ids(ord(c) for c in text),
-                      "pixel_values": Ids([0]), "token_type_ids": Ids([0])})
+        self.processor_calls.append({"text": text, "images": images, "kwargs": kwargs})
+        return Batch({"input_ids": Ids(ord(c) for c in text), "pixel_values": Ids([0]), "token_type_ids": Ids([0])})
 
     def _tokenize(self, text, add_special_tokens=True, return_tensors=None):
         del return_tensors  # accepted for call-signature compatibility
-        assert add_special_tokens is False, (
-            "the template already emitted the special tokens")
+        assert add_special_tokens is False, "the template already emitted the special tokens"
         self.tokenizer_calls.append(text)
         return {"input_ids": Ids(ord(c) for c in text)}
 
-    def batch_decode(self, ids, skip_special_tokens=True,
-                     clean_up_tokenization_spaces=True):
+    def batch_decode(self, ids, skip_special_tokens=True, clean_up_tokenization_spaces=True):
         del skip_special_tokens  # the fake emits no special tokens
         assert clean_up_tokenization_spaces is False
         return ["".join(chr(value) for value in ids.row)]
@@ -148,11 +140,10 @@ class FakeModel:
         self.calls = []
         self.device = "cpu"
 
-    def generate(self, past_key_values=None, do_sample=None,
-                 max_new_tokens=None, **inputs):
-        self.calls.append({"inputs": inputs, "cache": past_key_values,
-                           "do_sample": do_sample,
-                           "max_new_tokens": max_new_tokens})
+    def generate(self, past_key_values=None, do_sample=None, max_new_tokens=None, **inputs):
+        self.calls.append(
+            {"inputs": inputs, "cache": past_key_values, "do_sample": do_sample, "max_new_tokens": max_new_tokens}
+        )
         prompt = inputs["input_ids"]
         return Ids(prompt.row + [ord(c) for c in self.replies.pop(0)])
 
@@ -178,8 +169,7 @@ def bare_chat(replies, images=(), system=None, tools=None, geometry=True):
     chat._image_kwargs = ai_models.vision_budget(processor, 576) if images else {}
     chat._messages = []
     if system:
-        chat._messages.append(
-            {"role": "system", "content": [{"type": "text", "text": system}]})
+        chat._messages.append({"role": "system", "content": [{"type": "text", "text": system}]})
     chat._cache = None
     chat._ids = None
     return chat, processor, model
@@ -206,8 +196,7 @@ def fake_cache_utils(monkeypatch):
     def import_module(name):
         return FakeCacheModule() if name == "transformers.cache_utils" else real(name)
 
-    monkeypatch.setattr(ai_models, "importlib",
-                        types.SimpleNamespace(import_module=import_module))
+    monkeypatch.setattr(ai_models, "importlib", types.SimpleNamespace(import_module=import_module))
 
 
 def fake_transformers(from_pretrained, vision=True):
@@ -222,14 +211,11 @@ def fake_transformers(from_pretrained, vision=True):
     return types.SimpleNamespace(
         AutoConfig=types.SimpleNamespace(from_pretrained=lambda *a, **k: config),
         MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING=mapping,
-        AutoProcessor=types.SimpleNamespace(
-            from_pretrained=lambda *a, **k: "processor"),
-        AutoTokenizer=types.SimpleNamespace(
-            from_pretrained=lambda *a, **k: "tokenizer"),
-        AutoModelForImageTextToText=types.SimpleNamespace(
-            from_pretrained=from_pretrained),
-        AutoModelForCausalLM=types.SimpleNamespace(
-            from_pretrained=from_pretrained))
+        AutoProcessor=types.SimpleNamespace(from_pretrained=lambda *a, **k: "processor"),
+        AutoTokenizer=types.SimpleNamespace(from_pretrained=lambda *a, **k: "tokenizer"),
+        AutoModelForImageTextToText=types.SimpleNamespace(from_pretrained=from_pretrained),
+        AutoModelForCausalLM=types.SimpleNamespace(from_pretrained=from_pretrained),
+    )
 
 
 def an_image(size=(64, 64)):
@@ -315,8 +301,7 @@ def test_the_vision_budget_reaches_the_processor(fake_cache_utils):
     chat.ask("one")
 
     # Assert
-    assert processor.processor_calls[0]["kwargs"]["size"] == {
-        "shortest_edge": 65536, "longest_edge": 589824}
+    assert processor.processor_calls[0]["kwargs"]["size"] == {"shortest_edge": 65536, "longest_edge": 589824}
 
 
 def test_the_image_placeholders_belong_to_the_first_user_turn_only(fake_cache_utils):
@@ -335,8 +320,7 @@ def test_the_image_placeholders_belong_to_the_first_user_turn_only(fake_cache_ut
 def test_a_later_turn_carries_the_whole_sequence_not_just_the_delta(fake_cache_utils):
     # Arrange: passing only the new tokens alongside a populated cache
     # slices to zero inside generate, which raises. The full sequence goes.
-    chat, processor, model = bare_chat(["Reply one.", "Reply two."],
-                                       images=[an_image()])
+    chat, processor, model = bare_chat(["Reply one.", "Reply two."], images=[an_image()])
 
     # Act
     chat.ask("one")
@@ -354,8 +338,7 @@ def test_a_later_turn_carries_the_whole_sequence_not_just_the_delta(fake_cache_u
 
 def test_the_delta_is_only_the_text_the_template_added(fake_cache_utils):
     # Arrange
-    chat, processor, _ = bare_chat(["Reply one.", "Reply two."],
-                                   images=[an_image()])
+    chat, processor, _ = bare_chat(["Reply one.", "Reply two."], images=[an_image()])
 
     # Act
     chat.ask("first question")
@@ -407,8 +390,7 @@ def test_only_the_newly_generated_tokens_become_the_reply(fake_cache_utils):
 
 def test_the_reply_is_recorded_as_the_assistant_turn(fake_cache_utils):
     # Arrange
-    chat, processor, _ = bare_chat(["first reply", "second reply"],
-                                   images=[an_image()])
+    chat, processor, _ = bare_chat(["first reply", "second reply"], images=[an_image()])
 
     # Act
     chat.ask("one")
@@ -432,8 +414,7 @@ def test_a_processor_key_generate_will_not_accept_is_dropped(fake_cache_utils):
 def test_a_system_turn_is_rendered_first(fake_cache_utils):
     # Arrange: the templates test messages[0].role == 'system' and ignore a
     # system turn found at any other index.
-    chat, processor, _ = bare_chat(["A."], images=[an_image()],
-                                   system="be terse")
+    chat, processor, _ = bare_chat(["A."], images=[an_image()], system="be terse")
 
     # Act
     chat.ask("one")
@@ -476,8 +457,7 @@ def test_the_same_tools_are_rendered_on_every_turn(fake_cache_utils):
 def test_the_cached_render_stays_a_prefix_of_the_full_render(fake_cache_utils):
     # Arrange
     tools = [ai_models.tool("report", "Report.", {"type": "object"})]
-    chat, processor, _ = bare_chat(["A.", "B."], images=[an_image()],
-                                   system="be terse", tools=tools)
+    chat, processor, _ = bare_chat(["A.", "B."], images=[an_image()], system="be terse", tools=tools)
 
     # Act
     chat.ask("one")
@@ -499,8 +479,9 @@ def test_ask_json_refuses_when_no_tools_were_declared(fake_cache_utils):
 def test_ask_json_returns_the_tool_call_arguments(fake_cache_utils):
     # Arrange
     reply = '<tool_call>{"name": "report", "arguments": {"shapes": 2}}</tool_call>'
-    chat, _, _ = bare_chat([reply], images=[an_image()],
-                           tools=[ai_models.tool("report", "Report.", {"type": "object"})])
+    chat, _, _ = bare_chat(
+        [reply], images=[an_image()], tools=[ai_models.tool("report", "Report.", {"type": "object"})]
+    )
 
     # Act
     payload = chat.ask_json("call report")
@@ -511,10 +492,11 @@ def test_ask_json_returns_the_tool_call_arguments(fake_cache_utils):
 
 def test_ask_json_retries_an_unusable_reply_then_gives_up(fake_cache_utils):
     # Arrange
-    chat, processor, _ = bare_chat(["not json at all", "still not json"],
-                                   images=[an_image()],
-                                   tools=[ai_models.tool("report", "Report.",
-                                                   {"type": "object"})])
+    chat, processor, _ = bare_chat(
+        ["not json at all", "still not json"],
+        images=[an_image()],
+        tools=[ai_models.tool("report", "Report.", {"type": "object"})],
+    )
 
     # Act / Assert
     with pytest.raises(ValueError, match="no JSON object"):
@@ -524,9 +506,11 @@ def test_ask_json_retries_an_unusable_reply_then_gives_up(fake_cache_utils):
 
 def test_ask_json_accepts_a_reply_on_the_second_attempt(fake_cache_utils):
     # Arrange
-    chat, _, _ = bare_chat(["junk", '{"name": "report", "arguments": {"ok": true}}'],
-                           images=[an_image()],
-                           tools=[ai_models.tool("report", "Report.", {"type": "object"})])
+    chat, _, _ = bare_chat(
+        ["junk", '{"name": "report", "arguments": {"ok": true}}'],
+        images=[an_image()],
+        tools=[ai_models.tool("report", "Report.", {"type": "object"})],
+    )
 
     # Act
     payload = chat.ask_json("call report", attempts=2)
@@ -543,8 +527,10 @@ def test_tool_builds_the_schema_shape_the_templates_expect():
     definition = ai_models.tool("locate", "Give a box.", schema)
 
     # Assert
-    assert definition == {"type": "function", "function": {
-        "name": "locate", "description": "Give a box.", "parameters": schema}}
+    assert definition == {
+        "type": "function",
+        "function": {"name": "locate", "description": "Give a box.", "parameters": schema},
+    }
 
 
 # --- extraction -------------------------------------------------------------
@@ -617,8 +603,7 @@ def test_a_directory_under_the_models_dir_is_loaded_offline(tmp_path):
     (tmp_path / "Qwen" / "Qwen3-VL-2B-Instruct").mkdir(parents=True)
 
     # Act
-    location, local_only = ai_models._weights_location(
-        "Qwen/Qwen3-VL-2B-Instruct", str(tmp_path))
+    location, local_only = ai_models._weights_location("Qwen/Qwen3-VL-2B-Instruct", str(tmp_path))
 
     # Assert
     assert local_only is True
@@ -630,8 +615,7 @@ def test_a_flat_directory_named_for_the_leaf_also_counts(tmp_path):
     (tmp_path / "Qwen3-VL-2B-Instruct").mkdir()
 
     # Act
-    location, local_only = ai_models._weights_location(
-        "Qwen/Qwen3-VL-2B-Instruct", str(tmp_path))
+    location, local_only = ai_models._weights_location("Qwen/Qwen3-VL-2B-Instruct", str(tmp_path))
 
     # Assert
     assert local_only is True
@@ -640,8 +624,7 @@ def test_a_flat_directory_named_for_the_leaf_also_counts(tmp_path):
 
 def test_an_unprovisioned_reference_stays_a_hub_repo_id(tmp_path):
     # Act
-    location, local_only = ai_models._weights_location(
-        "Qwen/Qwen3-VL-2B-Instruct", str(tmp_path))
+    location, local_only = ai_models._weights_location("Qwen/Qwen3-VL-2B-Instruct", str(tmp_path))
 
     # Assert
     assert (location, local_only) == ("Qwen/Qwen3-VL-2B-Instruct", False)
@@ -693,8 +676,7 @@ def test_weights_are_cached_per_model_device_and_backend(monkeypatch):
             return types.SimpleNamespace()
         return fake_transformers(from_pretrained, vision=True)
 
-    monkeypatch.setattr(ai_models, "importlib",
-                        types.SimpleNamespace(import_module=import_module))
+    monkeypatch.setattr(ai_models, "importlib", types.SimpleNamespace(import_module=import_module))
 
     # Act
     ai_models.load("some/model", device="cpu")
@@ -713,8 +695,7 @@ def test_a_missing_runtime_is_reported_as_unavailable(monkeypatch):
     def import_module(name):
         raise ImportError("no module named torch")
 
-    monkeypatch.setattr(ai_models, "importlib",
-                        types.SimpleNamespace(import_module=import_module))
+    monkeypatch.setattr(ai_models, "importlib", types.SimpleNamespace(import_module=import_module))
 
     # Act / Assert: callers report the capability off rather than crashing.
     with pytest.raises(ai_models.ModelUnavailable, match="runtime unavailable"):
@@ -731,10 +712,10 @@ def test_absent_weights_are_reported_as_unavailable(monkeypatch):
             return types.SimpleNamespace()
         return types.SimpleNamespace(
             AutoProcessor=types.SimpleNamespace(from_pretrained=absent),
-            AutoModelForImageTextToText=types.SimpleNamespace(from_pretrained=absent))
+            AutoModelForImageTextToText=types.SimpleNamespace(from_pretrained=absent),
+        )
 
-    monkeypatch.setattr(ai_models, "importlib",
-                        types.SimpleNamespace(import_module=import_module))
+    monkeypatch.setattr(ai_models, "importlib", types.SimpleNamespace(import_module=import_module))
 
     # Act / Assert
     with pytest.raises(ai_models.ModelUnavailable, match="cannot load"):
@@ -770,8 +751,7 @@ class FakeTokenizer(FakeProcessor):
 
     def __call__(self, text="", images=None, return_tensors=None, **kwargs):
         assert images is None, "a text-only checkpoint takes no images"
-        return super().__call__(text=text, images=None,
-                                return_tensors=return_tensors, **kwargs)
+        return super().__call__(text=text, images=None, return_tensors=return_tensors, **kwargs)
 
 
 def test_a_bare_tokenizer_serves_as_its_own_tokenizer(fake_cache_utils):
@@ -813,9 +793,11 @@ def test_a_text_only_config_loads_through_the_causal_lm_class(monkeypatch):
         return types.SimpleNamespace(to=lambda device: None, eval=lambda: None)
 
     fake = fake_transformers(from_pretrained, vision=False)
-    monkeypatch.setattr(ai_models, "importlib", types.SimpleNamespace(
-        import_module=lambda name: (fake if name == "transformers"
-                                    else types.SimpleNamespace())))
+    monkeypatch.setattr(
+        ai_models,
+        "importlib",
+        types.SimpleNamespace(import_module=lambda name: fake if name == "transformers" else types.SimpleNamespace()),
+    )
 
     # Act
     processor, _model = ai_models.load("some/text-model", device="cpu")

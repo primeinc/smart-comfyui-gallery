@@ -27,10 +27,13 @@ def albums(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute("DELETE FROM collections WHERE name LIKE 'cla_%'")
-        conn.execute("INSERT INTO collections (name, type, is_public, created_at) "
-                     "VALUES ('cla_public', 'user_album', 1, 1.0)")
-        conn.execute("INSERT INTO collections (name, type, is_public, shared_users, created_at) "
-                     "VALUES ('cla_private', 'user_album', 0, '41', 1.0)")
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, created_at) VALUES ('cla_public', 'user_album', 1, 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO collections (name, type, is_public, shared_users, created_at) "
+            "VALUES ('cla_private', 'user_album', 0, '41', 1.0)"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -79,11 +82,11 @@ def test_a_customer_does_not_learn_the_private_albums(smartgallery_app, albums, 
     resp = _client(smartgallery_app, "CUSTOMER").get("/galleryout/api/collections")
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
-    assert "cla_private" not in _names(resp), (
-        "a customer was told a private album exists")
+    assert "cla_private" not in _names(resp), "a customer was told a private album exists"
     body = resp.get_data(as_text=True)
     assert '"shared_users": "41"' not in body and "'shared_users': '41'" not in body, (
-        "the response named who a private album is shared with")
+        "the response named who a private album is shared with"
+    )
 
 
 def test_the_user_it_is_shared_with_still_sees_it(smartgallery_app, albums, monkeypatch):
@@ -94,8 +97,7 @@ def test_the_user_it_is_shared_with_still_sees_it(smartgallery_app, albums, monk
 
     resp = _client(smartgallery_app, "CUSTOMER", user_id=41).get("/galleryout/api/collections")
 
-    assert "cla_private" in _names(resp), (
-        "the account the album was shared with cannot see it")
+    assert "cla_private" in _names(resp), "the account the album was shared with cannot see it"
 
 
 def test_the_default_local_install_sees_everything(smartgallery_app, albums, monkeypatch):
@@ -107,5 +109,4 @@ def test_the_default_local_install_sees_everything(smartgallery_app, albums, mon
     resp = smartgallery_app.app.test_client().get("/galleryout/api/collections")
 
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
-    assert _names(resp) == ["cla_private", "cla_public"], (
-        "the local administrator lost sight of their own albums")
+    assert _names(resp) == ["cla_private", "cla_public"], "the local administrator lost sight of their own albums"

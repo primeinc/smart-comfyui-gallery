@@ -82,16 +82,9 @@ def _store_one_finding(conn, file_id, localizable, bbox=None, points=None):
         bbox=bbox,
         points=points,
     )
-    result = ReviewResult(
-        quality_score=5.0, prompt_alignment_score=None, summary="s", findings=[finding]
-    )
-    review_id = store_review(
-        conn, file_id, result, "critic-x", "v1", "rubric-1", None, 1000.0, 2000.0
-    )
-    return conn.execute(
-        "SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)
-    ).fetchone()[0]
-
+    result = ReviewResult(quality_score=5.0, prompt_alignment_score=None, summary="s", findings=[finding])
+    review_id = store_review(conn, file_id, result, "critic-x", "v1", "rubric-1", None, 1000.0, 2000.0)
+    return conn.execute("SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (review_id,)).fetchone()[0]
 
 
 # --- extract_json_object -----------------------------------------------------
@@ -137,9 +130,7 @@ def test_extract_json_object_escaped_quote_inside_string_parses():
 def test_stub_reviewer_clean_image_yields_no_findings_and_full_score():
     """A bright, red-free image triggers neither heuristic: zero findings and quality 10.0."""
     critic = StubReviewer()
-    raw = critic.review(
-        solid_color_image(color=(200, 200, 200)), prompt_text=None, rubric_version="r-v1"
-    )
+    raw = critic.review(solid_color_image(color=(200, 200, 200)), prompt_text=None, rubric_version="r-v1")
     result = validate_review_payload(raw)
     assert result.findings == []
     assert result.quality_score == 10.0
@@ -151,9 +142,7 @@ def test_stub_reviewer_dark_image_with_red_square_yields_both_findings():
     """Both heuristics can fire on one image, and each finding costs 2 points: quality 6.0."""
     arr = np.full((64, 64, 3), (5, 5, 5), dtype=np.uint8)
     arr[24:40, 24:40] = (255, 0, 0)  # 16x16 = 1/16 of the image
-    raw = StubReviewer().review(
-        Image.fromarray(arr, mode="RGB"), prompt_text="a dark scene", rubric_version="r-v1"
-    )
+    raw = StubReviewer().review(Image.fromarray(arr, mode="RGB"), prompt_text="a dark scene", rubric_version="r-v1")
     result = validate_review_payload(raw)
     assert sorted(f.type for f in result.findings) == ["artifact", "lighting"]
     assert result.quality_score == 6.0
@@ -167,12 +156,9 @@ def test_store_review_points_only_finding_writes_points_json_and_null_bbox():
     """A localizable points-only finding persists its points as JSON with all four bbox columns NULL."""
     conn = make_conn()
     add_file(conn, "f1")
-    finding_id = _store_one_finding(
-        conn, "f1", localizable=True, points=[(0.2, 0.3), (0.4, 0.5)]
-    )
+    finding_id = _store_one_finding(conn, "f1", localizable=True, points=[(0.2, 0.3), (0.4, 0.5)])
     row = conn.execute(
-        "SELECT localizable, bbox_x, bbox_y, bbox_w, bbox_h, points "
-        "FROM ai_review_findings WHERE finding_id = ?",
+        "SELECT localizable, bbox_x, bbox_y, bbox_w, bbox_h, points FROM ai_review_findings WHERE finding_id = ?",
         (finding_id,),
     ).fetchone()
     assert row[:5] == (1, None, None, None, None)
@@ -186,13 +172,9 @@ def test_generate_finding_mask_points_only_masks_points_bounding_box(tmp_path):
     """A points-only finding produces a 0/255 mask covering exactly the points' bounding box."""
     conn = make_conn()
     add_file(conn, "f1")
-    finding_id = _store_one_finding(
-        conn, "f1", localizable=True, points=[(0.25, 0.25), (0.75, 0.75)]
-    )
+    finding_id = _store_one_finding(conn, "f1", localizable=True, points=[(0.25, 0.25), (0.75, 0.75)])
     img = solid_color_image(size=(40, 40))
-    mask_path = generate_finding_mask(
-        conn, str(tmp_path / "cache"), img, "f1", finding_id, StubSegmenter()
-    )
+    mask_path = generate_finding_mask(conn, str(tmp_path / "cache"), img, "f1", finding_id, StubSegmenter())
     with Image.open(mask_path) as mask_img:
         assert mask_img.mode == "RGBA"
         arr = np.asarray(mask_img)[..., 3]
@@ -206,9 +188,7 @@ def test_generate_finding_mask_unknown_finding_id_raises_value_error(tmp_path):
     conn = make_conn()
     add_file(conn, "f1")
     with pytest.raises(ValueError, match=r"no finding 999 for file 'f1'"):
-        generate_finding_mask(
-            conn, str(tmp_path / "cache"), solid_color_image(), "f1", 999, StubSegmenter()
-        )
+        generate_finding_mask(conn, str(tmp_path / "cache"), solid_color_image(), "f1", 999, StubSegmenter())
 
 
 def test_generate_finding_mask_finding_of_other_file_raises_value_error(tmp_path):
@@ -218,12 +198,8 @@ def test_generate_finding_mask_finding_of_other_file_raises_value_error(tmp_path
     add_file(conn, "f2")
     finding_id = _store_one_finding(conn, "f1", localizable=True, bbox=(0.1, 0.1, 0.5, 0.5))
     with pytest.raises(ValueError, match="no finding"):
-        generate_finding_mask(
-            conn, str(tmp_path / "cache"), solid_color_image(), "f2", finding_id, StubSegmenter()
-        )
-    row = conn.execute(
-        "SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)
-    ).fetchone()
+        generate_finding_mask(conn, str(tmp_path / "cache"), solid_color_image(), "f2", finding_id, StubSegmenter())
+    row = conn.execute("SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)).fetchone()
     assert row == (None,)
 
 
@@ -235,9 +211,7 @@ def test_generate_finding_mask_geometryless_localizable_raises_mask_not_allowed(
     # with all-NULL geometry, so such a row can legitimately exist.
     finding_id = _store_one_finding(conn, "f1", localizable=True, bbox=None, points=None)
     with pytest.raises(MaskNotAllowedError, match="no grounding geometry"):
-        generate_finding_mask(
-            conn, str(tmp_path / "cache"), solid_color_image(), "f1", finding_id, StubSegmenter()
-        )
+        generate_finding_mask(conn, str(tmp_path / "cache"), solid_color_image(), "f1", finding_id, StubSegmenter())
 
 
 def test_generate_finding_mask_symlinked_file_dir_cannot_escape_cache_dir(tmp_path):
@@ -254,13 +228,9 @@ def test_generate_finding_mask_symlinked_file_dir_cannot_escape_cache_dir(tmp_pa
     os.symlink(str(outside), str(masks_dir / "f1"))
 
     with pytest.raises(ValueError, match="escapes cache_dir"):
-        generate_finding_mask(
-            conn, str(cache_dir), solid_color_image(), "f1", finding_id, StubSegmenter()
-        )
+        generate_finding_mask(conn, str(cache_dir), solid_color_image(), "f1", finding_id, StubSegmenter())
     assert list(outside.iterdir()) == []
-    row = conn.execute(
-        "SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)
-    ).fetchone()
+    row = conn.execute("SELECT mask_path FROM ai_review_findings WHERE finding_id = ?", (finding_id,)).fetchone()
     assert row == (None,)
 
 
@@ -280,15 +250,9 @@ def test_store_review_replacement_tolerates_already_missing_mask_file(tmp_path):
     )
     conn.commit()
 
-    replacement = ReviewResult(
-        quality_score=6.0, prompt_alignment_score=None, summary="replacement", findings=[]
-    )
-    new_id = store_review(
-        conn, "f1", replacement, "critic-x", "v1", "rubric-1", None, 1000.0, 3000.0
-    )
-    assert conn.execute("SELECT review_id, summary FROM ai_reviews").fetchall() == [
-        (new_id, "replacement")
-    ]
+    replacement = ReviewResult(quality_score=6.0, prompt_alignment_score=None, summary="replacement", findings=[])
+    new_id = store_review(conn, "f1", replacement, "critic-x", "v1", "rubric-1", None, 1000.0, 3000.0)
+    assert conn.execute("SELECT review_id, summary FROM ai_reviews").fetchall() == [(new_id, "replacement")]
 
 
 # --- StubSegmenter fallbacks --------------------------------------------------
@@ -318,20 +282,13 @@ def test_stub_segmenter_points_fallback_rasterizes_points_bounding_box():
 def test_get_segmenter_backend_mobilesam_raises_and_auto_degrades(tmp_path):
     """Explicit 'mobilesam' without weights raises BackendUnavailable; 'auto' degrades to None."""
     with pytest.raises(BackendUnavailable, match="mobile_sam weights not found"):
-        get_segmenter_backend(
-            AIConfig(segmenter_backend="mobilesam", models_dir=str(tmp_path))
-        )
-    assert (
-        get_segmenter_backend(AIConfig(segmenter_backend="auto", models_dir=str(tmp_path)))
-        is None
-    )
+        get_segmenter_backend(AIConfig(segmenter_backend="mobilesam", models_dir=str(tmp_path)))
+    assert get_segmenter_backend(AIConfig(segmenter_backend="auto", models_dir=str(tmp_path))) is None
 
 
 def test_get_segmenter_backend_stub_none_and_unknown():
     """'stub' resolves to StubSegmenter, 'none' to None, and an unknown name raises ValueError naming it."""
-    assert isinstance(
-        get_segmenter_backend(AIConfig(segmenter_backend="stub")), StubSegmenter
-    )
+    assert isinstance(get_segmenter_backend(AIConfig(segmenter_backend="stub")), StubSegmenter)
     assert get_segmenter_backend(AIConfig(segmenter_backend="none")) is None
     with pytest.raises(ValueError, match="bogus"):
         get_segmenter_backend(AIConfig(segmenter_backend="bogus"))
@@ -349,11 +306,7 @@ def test_auto_critic_gate_non_numeric_sweep_rates_fail_closed(tmp_path):
     assert _auto_critic_measurement_passed() is True
 
     report = copy.deepcopy(real)
-    row = next(
-        s
-        for s in report["sweep"]
-        if abs(float(s["margin_threshold"]) - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9
-    )
+    row = next(s for s in report["sweep"] if abs(float(s["margin_threshold"]) - DEFAULT_GROUNDING_MIN_MARGIN) < 1e-9)
     row["false_accept_rate"] = "not-a-number"
     path = str(tmp_path / "bad_rates.json")
     with open(path, "w", encoding="utf-8") as fh:

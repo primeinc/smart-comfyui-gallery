@@ -12,14 +12,11 @@ def _fresh_user(smartgallery, username, password):
     with smartgallery.get_db_connection() as conn:
         conn.execute("DELETE FROM users WHERE username = ?", (username,))
         conn.execute(
-            "INSERT INTO users (username, password, full_name, role, is_active) "
-            "VALUES (?, ?, ?, 'USER', 1)",
+            "INSERT INTO users (username, password, full_name, role, is_active) VALUES (?, ?, ?, 'USER', 1)",
             (username, sg_auth.hash_password(password), "Edit Target"),
         )
         conn.commit()
-        return conn.execute(
-            "SELECT user_id, password FROM users WHERE username = ?", (username,)
-        ).fetchone()
+        return conn.execute("SELECT user_id, password FROM users WHERE username = ?", (username,)).fetchone()
 
 
 def test_put_with_empty_password_keeps_existing_hash(smartgallery_app):
@@ -70,9 +67,7 @@ def test_put_with_new_password_replaces_hash(smartgallery_app):
     assert resp.status_code == 200
 
     with sg.get_db_connection() as conn:
-        after = conn.execute(
-            "SELECT password FROM users WHERE user_id = ?", (row["user_id"],)
-        ).fetchone()
+        after = conn.execute("SELECT password FROM users WHERE user_id = ?", (row["user_id"],)).fetchone()
     assert after["password"] != row["password"]
     assert after["password"].startswith("$argon2")
     assert sg_auth.verify_password(after["password"], "brandnewpass9")[0]
@@ -98,7 +93,5 @@ def test_put_with_short_password_rejected(smartgallery_app):
     assert resp.status_code == 400
 
     with sg.get_db_connection() as conn:
-        after = conn.execute(
-            "SELECT password FROM users WHERE user_id = ?", (row["user_id"],)
-        ).fetchone()
+        after = conn.execute("SELECT password FROM users WHERE user_id = ?", (row["user_id"],)).fetchone()
     assert after["password"] == row["password"]

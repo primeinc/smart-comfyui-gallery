@@ -120,8 +120,7 @@ class VectorStore:
             self._conn_factory = db
         else:
             db_path = db
-            self._conn_factory = lambda: schema.connect(db_path,
-                                                         row_factory=None)
+            self._conn_factory = lambda: schema.connect(db_path, row_factory=None)
         self.cache_dir = cache_dir
         self.ephemeral = ephemeral
 
@@ -225,9 +224,7 @@ class VectorStore:
 
         q = np.asarray(query_vec, dtype=np.float32).reshape(-1)
         if q.shape[0] != sm.matrix.shape[1]:
-            raise ValueError(
-                f"query dim {q.shape[0]} does not match space {space!r} dim {sm.matrix.shape[1]}"
-            )
+            raise ValueError(f"query dim {q.shape[0]} does not match space {space!r} dim {sm.matrix.shape[1]}")
         norm = np.linalg.norm(q)
         if norm == 0:
             return []
@@ -236,6 +233,7 @@ class VectorStore:
         excluded = set(exclude)
         try:
             from smartgallery_ai.faiss_runtime import import_faiss
+
             faiss = import_faiss()
         except ImportError:
             faiss = None
@@ -251,17 +249,18 @@ class VectorStore:
                     # Same exact search on the GPU. Falls back to the CPU
                     # index when the copy fails (VRAM pressure, driver).
                     try:
-                        index = faiss.index_cpu_to_gpu(
-                            _faiss_gpu_resources(faiss), 0, index)
+                        index = faiss.index_cpu_to_gpu(_faiss_gpu_resources(faiss), 0, index)
                         sm.faiss_gpu = True
                     except Exception:
                         pass
                 sm.faiss_index = index
             if excluded and sm.id_to_row is None:
                 sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
-            rows = (np.array(
-                sorted(sm.id_to_row[f] for f in excluded if f in sm.id_to_row),
-                dtype=np.int64) if excluded else np.empty(0, np.int64))
+            rows = (
+                np.array(sorted(sm.id_to_row[f] for f in excluded if f in sm.id_to_row), dtype=np.int64)
+                if excluded
+                else np.empty(0, np.int64)
+            )
             if sm.faiss_gpu:
                 # GPU indexes support neither SearchParameters/IDSelector
                 # nor k > 2048 (faiss wiki), and are not thread-safe even
@@ -269,8 +268,7 @@ class VectorStore:
                 # module lock, filter after.
                 fetch = min(sm.row_count, k + len(rows), 2048)
                 with _FAISS_GPU_SEARCH_LOCK:
-                    sims_f, ids_f = sm.faiss_index.search(
-                        q[None, :].astype(np.float32), fetch)
+                    sims_f, ids_f = sm.faiss_index.search(q[None, :].astype(np.float32), fetch)
                 pairs = [
                     (sm.ids[int(i)], float(s))
                     for s, i in zip(sims_f[0], ids_f[0], strict=False)
@@ -283,18 +281,11 @@ class VectorStore:
                     # the scan itself (faiss wiki "Setting search parameters
                     # for one query"; tests/test_search_params.py), instead
                     # of over-fetching and filtering here.
-                    params = faiss.SearchParameters(
-                        sel=faiss.IDSelectorNot(faiss.IDSelectorBatch(rows))
-                    )
+                    params = faiss.SearchParameters(sel=faiss.IDSelectorNot(faiss.IDSelectorBatch(rows)))
                 sims_f, ids_f = sm.faiss_index.search(
-                    q[None, :].astype(np.float32), min(sm.row_count, k),
-                    params=params
+                    q[None, :].astype(np.float32), min(sm.row_count, k), params=params
                 )
-                pairs = [
-                    (sm.ids[int(i)], float(s))
-                    for s, i in zip(sims_f[0], ids_f[0], strict=False)
-                    if int(i) >= 0
-                ]
+                pairs = [(sm.ids[int(i)], float(s)) for s, i in zip(sims_f[0], ids_f[0], strict=False) if int(i) >= 0]
             pairs.sort(key=lambda t: (-t[1], t[0]))
             return pairs[:k]
 
@@ -333,8 +324,7 @@ class VectorStore:
         """(row_count, max computed_at) for the pair -- the cheap staleness
         stamp compared against memory and disk caches."""
         row = conn.execute(
-            "SELECT COUNT(*), COALESCE(MAX(computed_at), 0.0) FROM ai_embeddings "
-            "WHERE space = ? AND model_version = ?",
+            "SELECT COUNT(*), COALESCE(MAX(computed_at), 0.0) FROM ai_embeddings WHERE space = ? AND model_version = ?",
             (space, model_version),
         ).fetchone()
         return int(row[0]), float(row[1])
@@ -361,8 +351,9 @@ class VectorStore:
         if fresh.row_count > 0 and not self.ephemeral:
             self._save_disk_cache(space, fresh)
 
-    def _get_matrix(self, conn: sqlite3.Connection, space: str,
-                    model_version: str | None = None) -> _SpaceMatrix | None:
+    def _get_matrix(
+        self, conn: sqlite3.Connection, space: str, model_version: str | None = None
+    ) -> _SpaceMatrix | None:
         """Current generation for `space`: registry first, then disk mirror,
         then a rebuild from SQLite. `model_version` defaults to the most
         recently computed one; None means the space holds no rows.
@@ -421,8 +412,7 @@ class VectorStore:
         for i, (_, blob, row_dim, computed_at) in enumerate(rows):
             if row_dim != dim:
                 raise ValueError(
-                    f"inconsistent dim within space={space!r} model_version={model_version!r}: "
-                    f"{dim} vs {row_dim}"
+                    f"inconsistent dim within space={space!r} model_version={model_version!r}: {dim} vs {row_dim}"
                 )
             raw[i] = np.frombuffer(blob, dtype=_VECTOR_DTYPE)
             max_computed_at = max(max_computed_at, computed_at)

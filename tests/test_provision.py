@@ -38,9 +38,7 @@ from smartgallery_ai.worker import AIWorker, _ClickConsoleHandler, provision_gro
 def _plentiful_disk(monkeypatch):
     """provision()'s disk preflight reads the real volume; the suite must
     not depend on this machine's free space. Preflight tests re-patch."""
-    monkeypatch.setattr(
-        P.shutil, "disk_usage",
-        lambda _p: type("U", (), {"free": 200 * 1024 ** 3})())
+    monkeypatch.setattr(P.shutil, "disk_usage", lambda _p: type("U", (), {"free": 200 * 1024**3})())
 
 
 # --- group resolution / plan --------------------------------------------------
@@ -95,8 +93,7 @@ def _fake_downloaders(written: dict, content: bytes = b"weights"):
             import zipfile
 
             with zipfile.ZipFile(dest, "w") as zf:
-                for member in {a.unzip_member for g in P.GROUPS
-                               for a in g.artifacts if a.unzip_member}:
+                for member in {a.unzip_member for g in P.GROUPS for a in g.artifacts if a.unzip_member}:
                     zf.writestr(member, content)
             return
         with open(dest, "wb") as fh:
@@ -130,12 +127,15 @@ def test_provision_dispatches_by_source_kind_and_skips_present(tmp_path):
     pack.mkdir(parents=True)
     (pack / "glintr100.onnx").write_bytes(b"x")
 
-    result = P.provision(str(tmp_path), ["faces", "visual"], log=lambda _m: None,
-                         downloaders=_fake_downloaders(written))
+    result = P.provision(
+        str(tmp_path), ["faces", "visual"], log=lambda _m: None, downloaders=_fake_downloaders(written)
+    )
 
-    assert result["skipped"] == ["face_detection_yunet_2023mar.onnx",
-                                 "face_recognition_sface_2021dec.onnx",
-                                 "insightface/models/antelopev2"]
+    assert result["skipped"] == [
+        "face_detection_yunet_2023mar.onnx",
+        "face_recognition_sface_2021dec.onnx",
+        "insightface/models/antelopev2",
+    ]
     assert result["downloaded"] == ["dinov2-small"]
     dest = str(tmp_path / "dinov2-small")
     assert written[dest] == ("hf_snapshot", "facebook/dinov2-small")
@@ -147,8 +147,9 @@ def test_provision_hash_mismatch_deletes_and_raises(tmp_path):
     removed and the run fails loudly, never leaving a poisoned file."""
     written: dict = {}
     with pytest.raises(P.ProvisionError, match="SHA-256 mismatch"):
-        P.provision(str(tmp_path), ["faces"], log=lambda _m: None,
-                    downloaders=_fake_downloaders(written, content=b"tampered"))
+        P.provision(
+            str(tmp_path), ["faces"], log=lambda _m: None, downloaders=_fake_downloaders(written, content=b"tampered")
+        )
     assert not os.path.exists(tmp_path / "face_detection_yunet_2023mar.onnx")
 
 
@@ -159,8 +160,7 @@ def test_provision_download_failure_names_artifact(tmp_path):
         raise OSError("connection refused")
 
     with pytest.raises(P.ProvisionError, match="face_detection_yunet_2023mar.onnx"):
-        P.provision(str(tmp_path), ["faces"], log=lambda _m: None,
-                    downloaders={"url": boom})
+        P.provision(str(tmp_path), ["faces"], log=lambda _m: None, downloaders={"url": boom})
 
 
 # --- worker mapping + async auto-provisioning ---------------------------------
@@ -168,8 +168,11 @@ def test_provision_download_failure_names_artifact(tmp_path):
 
 def _cfg(tmp_path, **overrides) -> AIConfig:
     defaults = {
-        "enabled": True, "base_path": str(tmp_path), "db_path": str(tmp_path / "g.sqlite"),
-        "models_dir": str(tmp_path / "models"), "cache_dir": str(tmp_path / "cache"),
+        "enabled": True,
+        "base_path": str(tmp_path),
+        "db_path": str(tmp_path / "g.sqlite"),
+        "models_dir": str(tmp_path / "models"),
+        "cache_dir": str(tmp_path / "cache"),
         "ephemeral_index": True,
     }
     defaults.update(overrides)
@@ -178,8 +181,10 @@ def _cfg(tmp_path, **overrides) -> AIConfig:
 
 def _make_db(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
-                 " mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT)")
+    conn.execute(
+        "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
+        " mtime REAL NOT NULL, name TEXT NOT NULL, type TEXT)"
+    )
     init_schema(conn)
     conn.commit()
     conn.close()
@@ -189,16 +194,34 @@ def test_provision_groups_for_maps_backends_and_critic_pulls_semantic(tmp_path):
     """Each real-backend selector maps to its group; qwen-vl critic adds
     the semantic (grounding-gate) weights; 'none'/'stub' map to nothing."""
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="none", segmenter_backend="none", critic_backend="vlm")
+    cfg = _cfg(
+        tmp_path,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        segmenter_backend="none",
+        critic_backend="vlm",
+    )
     assert provision_groups_for(cfg) == ["critic", "semantic"]
 
-    cfg2 = _cfg(tmp_path, semantic_backend="stub", visual_backend="stub",
-                face_backend="stub", segmenter_backend="stub", critic_backend="stub")
+    cfg2 = _cfg(
+        tmp_path,
+        semantic_backend="stub",
+        visual_backend="stub",
+        face_backend="stub",
+        segmenter_backend="stub",
+        critic_backend="stub",
+    )
     assert provision_groups_for(cfg2) == []
 
-    cfg3 = _cfg(tmp_path, semantic_backend="none", visual_backend="auto",
-                face_backend="auto", segmenter_backend="none", critic_backend="none")
+    cfg3 = _cfg(
+        tmp_path,
+        semantic_backend="none",
+        visual_backend="auto",
+        face_backend="auto",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     assert provision_groups_for(cfg3) == ["visual", "faces"]
 
 
@@ -211,8 +234,14 @@ def test_provision_groups_for_omits_groups_already_on_disk(tmp_path):
     pack = models / "insightface" / "models" / "antelopev2"
     pack.mkdir(parents=True)
     (pack / "glintr100.onnx").write_bytes(b"x")
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="auto", segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="auto",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     assert provision_groups_for(cfg) == []
 
 
@@ -232,15 +261,20 @@ def test_worker_auto_provisions_missing_groups_async(tmp_path, monkeypatch):
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, auto_provision=True, semantic_backend="none",
-               visual_backend="none", face_backend="auto",
-               segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        auto_provision=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="auto",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     calls = []
 
-    def fake_provision(models_dir, groups, force=False, log=print,
-                       downloaders=None, progress=None):
+    def fake_provision(models_dir, groups, force=False, log=print, downloaders=None, progress=None):
         # force/log/downloaders/progress accepted (log, progress kept named
         # since the real call site passes them by keyword) only for
         # provision()'s call-signature compatibility; this stub ignores them.
@@ -271,9 +305,15 @@ def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, mo
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, auto_provision=True, semantic_backend="none",
-               visual_backend="none", face_backend="auto",
-               segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        auto_provision=True,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="auto",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     def refuse(*_a, **_k):
@@ -282,8 +322,7 @@ def test_worker_auto_provision_failure_degrades_and_worker_survives(tmp_path, mo
     monkeypatch.setattr(W.provisioning, "provision", refuse)
     worker.start()
     try:
-        assert _wait_until(
-            lambda: str(worker.provision_state["state"]).startswith("failed"))
+        assert _wait_until(lambda: str(worker.provision_state["state"]).startswith("failed"))
         assert _wait_until(lambda: worker.stats["cycles"] > 0)
         assert worker.stats["errors"] >= 1
     finally:
@@ -296,9 +335,15 @@ def test_worker_auto_provision_disabled_never_downloads(tmp_path, monkeypatch):
 
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="auto",
-               visual_backend="auto", face_backend="auto",
-               segmenter_backend="auto", critic_backend="auto")
+    cfg = _cfg(
+        tmp_path,
+        auto_provision=False,
+        semantic_backend="auto",
+        visual_backend="auto",
+        face_backend="auto",
+        segmenter_backend="auto",
+        critic_backend="auto",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     def must_not_run(*_a, **_k):
@@ -317,11 +362,16 @@ def test_worker_provision_state_exposed_by_status_endpoint(tmp_path):
     """/status reports the worker's provisioning state so the UI can show
     download progress instead of a bare empty tab."""
 
-
     _make_db(str(tmp_path / "g.sqlite"))
     os.makedirs(tmp_path / "models", exist_ok=True)
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="none", segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
     worker.provision_state = {"state": "downloading", "groups": ["semantic"]}
     set_worker(worker)
@@ -329,8 +379,7 @@ def test_worker_provision_state_exposed_by_status_endpoint(tmp_path):
         app = Flask(__name__)
         app.register_blueprint(create_ai_blueprint(cfg), url_prefix="/aidam")
         status = app.test_client().get("/aidam/status").get_json()
-        assert status["worker"]["provisioning"] == {
-            "state": "downloading", "groups": ["semantic"]}
+        assert status["worker"]["provisioning"] == {"state": "downloading", "groups": ["semantic"]}
     finally:
         set_worker(None)
 
@@ -379,8 +428,7 @@ def test_runtime_missing_reports_only_unimportable(monkeypatch):
     group = next(g for g in P.GROUPS if g.name == "semantic")
     real_find = IU.find_spec
 
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda name: None if name == "open_clip" else real_find(name))
+    monkeypatch.setattr(P.importlib.util, "find_spec", lambda name: None if name == "open_clip" else real_find(name))
     assert [req for _, req in P.runtime_missing(group)] == ["open_clip_torch"]
 
 
@@ -396,12 +444,12 @@ def test_every_torch_group_also_declares_torchvision():
     for group in P.GROUPS:
         probes = [probe for probe, _ in group.runtime]
         if "torch" in probes:
-            assert "torchvision" in probes, (
-                f"group {group.name!r} installs torch without torchvision")
+            assert "torchvision" in probes, f"group {group.name!r} installs torch without torchvision"
             for dependent in torchvision_dependents & set(probes):
                 assert probes.index("torchvision") < probes.index(dependent), (
                     f"group {group.name!r} must install torchvision before "
-                    f"{dependent!r} or pip pulls an unpaired PyPI build")
+                    f"{dependent!r} or pip pulls an unpaired PyPI build"
+                )
 
 
 def test_hub_bars_silenced_disables_bars_then_restores():
@@ -434,8 +482,7 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
     """With a structured progress callback the default HF downloaders run
     inside the hub-bar silencer (the caller owns console rendering); the
     bar-rendering CLI path -- no callback -- leaves the hub's bars on."""
-    monkeypatch.setattr(P.importlib.util, "find_spec",
-                        lambda _name: SimpleNamespace(origin="stub.py"))
+    monkeypatch.setattr(P.importlib.util, "find_spec", lambda _name: SimpleNamespace(origin="stub.py"))
     entered = []
 
     @contextlib.contextmanager
@@ -451,8 +498,7 @@ def test_provision_silences_hub_bars_only_in_structured_progress_mode(tmp_path, 
     monkeypatch.setattr(P, "_hub_bars_silenced", recording_silencer)
     monkeypatch.setattr(P, "_download_hf_snapshot", fake_hf_snapshot)
 
-    P.provision(str(tmp_path / "with_progress"), ["visual"],
-                log=lambda _m: None, progress=lambda _e: None)
+    P.provision(str(tmp_path / "with_progress"), ["visual"], log=lambda _m: None, progress=lambda _e: None)
     assert entered == [True]
 
     entered.clear()
@@ -467,20 +513,23 @@ def test_provision_groups_for_includes_runtime_missing_groups(tmp_path, monkeypa
     os.makedirs(models / "dinov2-small", exist_ok=True)
     (models / "dinov2-small" / "model.safetensors").write_bytes(b"x")
 
-
-    monkeypatch.setattr(W.provisioning, "runtime_missing",
-                        lambda g: [("torch", "torch")] if g.name == "visual" else [])
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="auto",
-               face_backend="none", segmenter_backend="none", critic_backend="none")
+    monkeypatch.setattr(W.provisioning, "runtime_missing", lambda g: [("torch", "torch")] if g.name == "visual" else [])
+    cfg = _cfg(
+        tmp_path,
+        semantic_backend="none",
+        visual_backend="auto",
+        face_backend="none",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     assert provision_groups_for(cfg) == ["visual"]
 
 
 def test_format_plan_lists_runtime_rows(tmp_path, monkeypatch):
     """The plan shows runtime requirements with present/MISSING state."""
     monkeypatch.setattr(
-        P.importlib.util, "find_spec",
-        lambda name: None if name == "open_clip"
-        else SimpleNamespace(origin="stub.py"))
+        P.importlib.util, "find_spec", lambda name: None if name == "open_clip" else SimpleNamespace(origin="stub.py")
+    )
     plan = P.format_plan(str(tmp_path), ["semantic"])
     assert "present  runtime torch" in plan
     assert "MISSING  runtime open_clip_torch" in plan
@@ -509,13 +558,8 @@ def test_pick_torch_device_prefers_cuda_then_cpu(monkeypatch):
     """Device selection: forced env wins, else CUDA when available, else
     CPU (MPS covered on mac hardware)."""
 
-
-    fake_cuda = SimpleNamespace(
-        cuda=SimpleNamespace(is_available=lambda: True),
-        backends=SimpleNamespace())
-    fake_cpu = SimpleNamespace(
-        cuda=SimpleNamespace(is_available=lambda: False),
-        backends=SimpleNamespace())
+    fake_cuda = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True), backends=SimpleNamespace())
+    fake_cpu = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False), backends=SimpleNamespace())
 
     monkeypatch.delenv("AI_DAM_DEVICE", raising=False)
     assert pick_torch_device(fake_cuda) == "cuda"
@@ -533,8 +577,7 @@ def test_copy_with_progress_reports_running_totals():
     src = io.BytesIO(b"x" * 2500)
     dst = io.BytesIO()
     seen = []
-    P._copy_with_progress(src, dst, 2500, lambda done, total: seen.append((done, total)),
-                          chunk_size=1000)
+    P._copy_with_progress(src, dst, 2500, lambda done, total: seen.append((done, total)), chunk_size=1000)
     assert dst.getvalue() == b"x" * 2500
     assert seen == [(1000, 2500), (2000, 2500), (2500, 2500)]
 
@@ -544,9 +587,9 @@ def test_provision_emits_structured_progress_events(tmp_path):
     order. There are no runtime events -- it installs nothing. uv owns
     dependency management; this owns model weights."""
     events = []
-    P.provision(str(tmp_path), ["visual"], log=lambda _m: None,
-                downloaders=_fake_downloaders({}),
-                progress=events.append)
+    P.provision(
+        str(tmp_path), ["visual"], log=lambda _m: None, downloaders=_fake_downloaders({}), progress=events.append
+    )
     assert [(e["kind"], e["phase"], e["item"]) for e in events] == [
         ("artifact", "start", "dinov2-small"),
         ("artifact", "done", "dinov2-small"),
@@ -560,25 +603,38 @@ def test_worker_folds_progress_events_into_served_state(tmp_path):
     item, human-readable byte detail, completed list — and swaps the dict
     instead of mutating it (another thread snapshots it)."""
     _make_db(str(tmp_path / "g.sqlite"))
-    cfg = _cfg(tmp_path, semantic_backend="none", visual_backend="none",
-               face_backend="none", segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
     worker.provision_state = {"state": "downloading", "groups": ["semantic"]}
     snapshot = worker.provision_state
 
-    worker._on_provision_event({"kind": "artifact", "phase": "start",
-                                "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
-                                "size": "605 MB"})
+    worker._on_provision_event(
+        {"kind": "artifact", "phase": "start", "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin", "size": "605 MB"}
+    )
     assert worker.provision_state["current"].endswith(".bin")
     assert "605 MB" in worker.provision_state["detail"]
 
-    worker._on_provision_event({"kind": "artifact", "phase": "bytes",
-                                "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
-                                "bytes_done": 302_500_000, "bytes_total": 605_000_000})
+    worker._on_provision_event(
+        {
+            "kind": "artifact",
+            "phase": "bytes",
+            "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
+            "bytes_done": 302_500_000,
+            "bytes_total": 605_000_000,
+        }
+    )
     assert "(50%)" in worker.provision_state["detail"]
 
-    worker._on_provision_event({"kind": "artifact", "phase": "done",
-                                "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin"})
+    worker._on_provision_event(
+        {"kind": "artifact", "phase": "done", "item": "open_clip/ViT-B-32_laion2b_s34b_b79k.bin"}
+    )
     assert worker.provision_state["done"] == ["open_clip/ViT-B-32_laion2b_s34b_b79k.bin"]
     assert worker.provision_state["current"] is None
     assert snapshot == {"state": "downloading", "groups": ["semantic"]}  # never mutated
@@ -589,9 +645,15 @@ def test_worker_start_makes_info_logging_visible(tmp_path):
     console even though the host app never configures logging."""
 
     _make_db(str(tmp_path / "g.sqlite"))
-    cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="none",
-               visual_backend="none", face_backend="none",
-               segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        auto_provision=False,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     # Simulate production: no root handlers (pytest installs its own, which
@@ -615,11 +677,16 @@ def test_console_handler_prefixes_a_timestamp(capsys):
     """Every console line carries an HH:MM:SS timestamp so long indexing
     runs are readable; the message text follows unchanged."""
 
-
     handler = _ClickConsoleHandler()
     record = logging.LogRecord(
-        name="smartgallery_ai.worker", level=logging.INFO, pathname=__file__,
-        lineno=1, msg="[AIWorker] indexed: +50 hashed", args=(), exc_info=None)
+        name="smartgallery_ai.worker",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="[AIWorker] indexed: +50 hashed",
+        args=(),
+        exc_info=None,
+    )
     handler.emit(record)
 
     out = capsys.readouterr().out
@@ -680,17 +747,19 @@ def test_cuda_summary_lists_every_gpu_separately(monkeypatch):
     monkeypatch.setattr(P, "_cuda_compute_capability", lambda: 12.0)
 
     def fake_run(cmd, **_kw):
-        assert ("--query-gpu=name,driver_version,compute_cap,"
-                "memory.total,memory.used") in cmd
+        assert ("--query-gpu=name,driver_version,compute_cap,memory.total,memory.used") in cmd
         return SimpleNamespace(
-            returncode=0, stderr="",
-            stdout=("NVIDIA GeForce RTX 3070 Ti, 591.86, 8.6, 8192 MiB, 512 MiB\n"
-                    "NVIDIA GeForce RTX 5060 Ti, 591.86, 12.0, 16384 MiB, 15020 MiB\n"))
+            returncode=0,
+            stderr="",
+            stdout=(
+                "NVIDIA GeForce RTX 3070 Ti, 591.86, 8.6, 8192 MiB, 512 MiB\n"
+                "NVIDIA GeForce RTX 5060 Ti, 591.86, 12.0, 16384 MiB, 15020 MiB\n"
+            ),
+        )
 
     monkeypatch.setattr(P.subprocess, "run", fake_run)
     summary = P.cuda_summary()
-    assert [g["name"] for g in summary["gpus"]] == [
-        "NVIDIA GeForce RTX 3070 Ti", "NVIDIA GeForce RTX 5060 Ti"]
+    assert [g["name"] for g in summary["gpus"]] == ["NVIDIA GeForce RTX 3070 Ti", "NVIDIA GeForce RTX 5060 Ti"]
     assert summary["gpus"][0]["compute_capability"] == 8.6
     assert summary["gpus"][1]["vram"] == "16384 MiB"
     assert summary["gpus"][1]["vram_used"] == "15020 MiB"
@@ -701,8 +770,6 @@ def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, 
     """A broken Windows console handle (click raising OSError) permanently
     drops the handler to plain stderr writes: the line still lands, no
     handleError traceback, and click is not retried per line."""
-
-
 
     attempts = []
 
@@ -715,8 +782,14 @@ def test_console_handler_falls_back_to_plain_after_console_failure(monkeypatch, 
 
     def rec(msg):
         return logging.LogRecord(
-            name="smartgallery_ai.worker", level=logging.INFO, pathname=__file__,
-            lineno=1, msg=msg, args=(), exc_info=None)
+            name="smartgallery_ai.worker",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg=msg,
+            args=(),
+            exc_info=None,
+        )
 
     handler.emit(rec("[AIWorker] line one"))
     handler.emit(rec("[AIWorker] line two"))
@@ -733,9 +806,15 @@ def test_worker_start_disables_propagation_to_a_late_root_logger(tmp_path):
     configured LATER must not double-print every line (propagate off)."""
 
     _make_db(str(tmp_path / "g.sqlite"))
-    cfg = _cfg(tmp_path, auto_provision=False, semantic_backend="none",
-               visual_backend="none", face_backend="none",
-               segmenter_backend="none", critic_backend="none")
+    cfg = _cfg(
+        tmp_path,
+        auto_provision=False,
+        semantic_backend="none",
+        visual_backend="none",
+        face_backend="none",
+        segmenter_backend="none",
+        critic_backend="none",
+    )
     worker = AIWorker(cfg, cfg.db_path, poll_interval=0.05, batch_size=10)
 
     root = logging.getLogger()
@@ -757,7 +836,6 @@ def test_download_zip_member_extracts_one_file(tmp_path):
     """unzip_member artifacts: the zip is fetched, exactly the named
     member lands at dest, and the zip is removed."""
 
-
     src_zip = tmp_path / "pack.zip"
     with zipfile.ZipFile(src_zip, "w") as zf:
         zf.writestr("keep.onnx", b"weights-bytes")
@@ -769,8 +847,7 @@ def test_download_zip_member_extracts_one_file(tmp_path):
         assert url == "https://example.test/pack.zip"
         _sh.copyfile(src_zip, path)
 
-    _download_zip_member(fake_dl, "https://example.test/pack.zip",
-                         "keep.onnx", str(dest))
+    _download_zip_member(fake_dl, "https://example.test/pack.zip", "keep.onnx", str(dest))
     assert dest.read_bytes() == b"weights-bytes"
     assert not (tmp_path / "out" / "keep.onnx.zip").exists()
     assert not (tmp_path / "out" / "keep.onnx.part").exists()
@@ -780,53 +857,46 @@ def test_download_zip_member_extracts_one_file(tmp_path):
 # Disk-space preflight: downloads that cannot fit are refused up front
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(("text", "expected_mb"), [
-    ("232 KB", 0),                    # rounds below 1 MB; still nonzero bytes
-    ("37 MB", 37),
-    ("2.5 GB", 2560),
-    ("407 MB (344 MB zip)", 751),     # archive + extraction coexist on disk
-    ("see notes", 0),                 # unparseable -> 0 (no false refusal)
-])
+
+@pytest.mark.parametrize(
+    ("text", "expected_mb"),
+    [
+        ("232 KB", 0),  # rounds below 1 MB; still nonzero bytes
+        ("37 MB", 37),
+        ("2.5 GB", 2560),
+        ("407 MB (344 MB zip)", 751),  # archive + extraction coexist on disk
+        ("see notes", 0),  # unparseable -> 0 (no false refusal)
+    ],
+)
 def test_approx_bytes_parses_declared_sizes(text, expected_mb):
-    assert P._approx_bytes(text) // (1024 ** 2) == expected_mb
+    assert P._approx_bytes(text) // (1024**2) == expected_mb
 
 
 def _fake_artifact(size_text):
-    return P.Artifact(dest="x.bin", approx_size=size_text, license="MIT",
-                      url="https://example.invalid/x.bin")
+    return P.Artifact(dest="x.bin", approx_size=size_text, license="MIT", url="https://example.invalid/x.bin")
 
 
 def test_disk_preflight_refuses_when_weights_cannot_fit(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        P.shutil, "disk_usage",
-        lambda _p: type("U", (), {"free": 500 * 1024 ** 2})())
+    monkeypatch.setattr(P.shutil, "disk_usage", lambda _p: type("U", (), {"free": 500 * 1024**2})())
     with pytest.raises(P.ProvisionError) as exc:
         P._check_disk_space(str(tmp_path), [_fake_artifact("2.5 GB")])
     assert "not enough disk space" in str(exc.value)
     assert "AI_DAM_MODELS_DIR" in str(exc.value)
 
 
-def test_disk_preflight_passes_with_room_and_skips_when_nothing_missing(
-        tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        P.shutil, "disk_usage",
-        lambda _p: type("U", (), {"free": 200 * 1024 ** 3})())
+def test_disk_preflight_passes_with_room_and_skips_when_nothing_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(P.shutil, "disk_usage", lambda _p: type("U", (), {"free": 200 * 1024**3})())
     P._check_disk_space(str(tmp_path), [_fake_artifact("2.5 GB")])  # no raise
     # Nothing missing -> never even stats the volume.
-    monkeypatch.setattr(P.shutil, "disk_usage",
-                        lambda _p: (_ for _ in ()).throw(AssertionError))
+    monkeypatch.setattr(P.shutil, "disk_usage", lambda _p: (_ for _ in ()).throw(AssertionError))
     P._check_disk_space(str(tmp_path), [])
 
 
 def test_provision_surfaces_disk_refusal_before_any_download(tmp_path, monkeypatch):
     """The full provision() path refuses before its download loop runs."""
-    monkeypatch.setattr(
-        P.shutil, "disk_usage",
-        lambda _p: type("U", (), {"free": 10 * 1024 ** 2})())
+    monkeypatch.setattr(P.shutil, "disk_usage", lambda _p: type("U", (), {"free": 10 * 1024**2})())
     calls = []
-    dl = {k: (lambda *a, **k2: calls.append(k)) for k in
-          ("url", "hf_file", "hf_snapshot")}
+    dl = {k: (lambda *a, **k2: calls.append(k)) for k in ("url", "hf_file", "hf_snapshot")}
     with pytest.raises(P.ProvisionError, match="not enough disk space"):
-        P.provision(str(tmp_path / "models"), ["faces"],
-                    downloaders=dl)
+        P.provision(str(tmp_path / "models"), ["faces"], downloaders=dl)
     assert calls == []

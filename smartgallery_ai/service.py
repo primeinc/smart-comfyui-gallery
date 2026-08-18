@@ -118,7 +118,8 @@ def _was_scanned(conn: sqlite3.Connection, file_id: str, kind: str):
         WHERE sl.file_id = ? AND sl.kind = ?
           AND ABS(sl.source_mtime - f.mtime) <= ?
         """,
-        (file_id, kind, _MTIME_EPSILON)).fetchone()
+        (file_id, kind, _MTIME_EPSILON),
+    ).fetchone()
 
 
 def _disabled_response():
@@ -167,8 +168,7 @@ def create_ai_resolvers(config: AIConfig) -> dict:
         conn = _connect(config)
         try:
             row = conn.execute(
-                "SELECT vector, model_version FROM ai_embeddings "
-                "WHERE file_id = ? AND space = ?",
+                "SELECT vector, model_version FROM ai_embeddings WHERE file_id = ? AND space = ?",
                 (file_id, space),
             ).fetchone()
             if row is None:
@@ -176,8 +176,7 @@ def create_ai_resolvers(config: AIConfig) -> dict:
             query_vec = np.frombuffer(row["vector"], dtype="<f4")
             store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
             # Pin to the query row's model version (see /similar).
-            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id],
-                                   model_version=row["model_version"])
+            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id], model_version=row["model_version"])
         finally:
             conn.close()
         return [fid for fid, _score in neighbors]
@@ -189,14 +188,11 @@ def create_ai_resolvers(config: AIConfig) -> dict:
     }
 
 
-def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite3.Row,
-                     force: bool) -> dict:
+def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite3.Row, force: bool) -> dict:
     """Synchronously bring one file's derived state up to date. Used by the
     `POST /index/<file_id>` endpoint -- the request thread blocks on this,
     unlike the background worker, so it is only ever one file at a time."""
-    file_id, path, mtime, file_type = (
-        file_row["id"], file_row["path"], file_row["mtime"], file_row["type"]
-    )
+    file_id, path, mtime, file_type = (file_row["id"], file_row["path"], file_row["mtime"], file_row["type"])
     now = time.time()
     result: dict = {"file_id": file_id, "hashed": False, "embedded": [], "faces": False, "reviewed": False}
 
@@ -213,9 +209,9 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
         "SELECT source_mtime, algo_version FROM ai_file_hashes WHERE file_id = ?", (file_id,)
     ).fetchone()
     needs_hash = (
-        force or existing_hash is None
-        or invalidation.is_stale(existing_hash["source_mtime"], mtime,
-                                  existing_hash["algo_version"], HASH_ALGO_VERSION)
+        force
+        or existing_hash is None
+        or invalidation.is_stale(existing_hash["source_mtime"], mtime, existing_hash["algo_version"], HASH_ALGO_VERSION)
     )
     if needs_hash:
         hash_result = hashing.compute_hashes_for_file(path, file_type)
@@ -232,17 +228,13 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
         if backend is None or img is None:
             continue
         existing = conn.execute(
-            "SELECT source_mtime, model_id, model_version FROM ai_embeddings "
-            "WHERE file_id = ? AND space = ?",
+            "SELECT source_mtime, model_id, model_version FROM ai_embeddings WHERE file_id = ? AND space = ?",
             (file_id, space),
         ).fetchone()
         model_key = f"{backend.model_id}::{backend.model_version}"
-        existing_key = (
-            f"{existing['model_id']}::{existing['model_version']}" if existing is not None else None
-        )
+        existing_key = f"{existing['model_id']}::{existing['model_version']}" if existing is not None else None
         needs = (
-            force or existing is None
-            or invalidation.is_stale(existing["source_mtime"], mtime, existing_key, model_key)
+            force or existing is None or invalidation.is_stale(existing["source_mtime"], mtime, existing_key, model_key)
         )
         if needs:
             vec = backend.embed_image(img)
@@ -274,19 +266,19 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     # review scan-log entry so the background worker re-reviews it (and
     # regenerates masks) on its next cycle.
     if force:
-        conn.execute(
-            "DELETE FROM ai_scan_log WHERE file_id = ? AND kind = 'review'",
-            (file_id,))
+        conn.execute("DELETE FROM ai_scan_log WHERE file_id = ? AND kind = 'review'", (file_id,))
         conn.commit()
         result["review_rescheduled"] = True
 
     return result
 
 
-def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
-                        file_access_check: Callable[[str], bool] | None = None,
-                        generation_metadata_visible: Callable[[], bool] | None = None,
-                        ) -> Blueprint:
+def create_ai_blueprint(
+    config: AIConfig,
+    guard: Callable | None = None,
+    file_access_check: Callable[[str], bool] | None = None,
+    generation_metadata_visible: Callable[[], bool] | None = None,
+) -> Blueprint:
     """Build the AI DAM Flask blueprint.
 
     `guard`, if given, is applied to the mutating endpoints (recluster,
@@ -315,12 +307,14 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
 
     def _requires_enabled(view_func: Callable) -> Callable:
         """Decorator: short-circuit to the disabled response while the layer is off."""
+
         @wraps(view_func)
         def wrapper(*args, **kwargs):
             """Answer the disabled body instead of running the view while the layer is off."""
             if not config.enabled:
                 return _disabled_response()
             return view_func(*args, **kwargs)
+
         return wrapper
 
     def _wrap(view_func: Callable, guarded: bool = False) -> Callable:
@@ -379,10 +373,7 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             group = provisioning.resolve_groups([group_name])[0]
         except Exception:
             return False
-        weights_ok = all(
-            provisioning.artifact_present(config.models_dir, a)
-            for a in group.artifacts
-        )
+        weights_ok = all(provisioning.artifact_present(config.models_dir, a) for a in group.artifacts)
         return weights_ok and not provisioning.runtime_missing(group)
 
     def _probe_backends() -> dict:
@@ -390,8 +381,7 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         running worker's already-loaded instances when it has them (ground
         truth), falling back to the cheap weights+runtime check."""
         if not config.enabled:
-            return {"semantic": False, "visual": False, "face": False,
-                    "critic": False, "segmenter": False}
+            return {"semantic": False, "visual": False, "face": False, "critic": False, "segmenter": False}
         if not backend_probe_cache:
             worker = get_worker()
             loaded = dict(getattr(worker, "_backend_cache", {}) or {}) if worker else {}
@@ -428,15 +418,19 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
                 # Faces are provenance-scoped per pipeline; count the active
                 # model's rows so a backend switch doesn't double-count.
                 "face_instances": (
-                    conn.execute("SELECT COUNT(*) FROM ai_face_instances "
-                                 "WHERE model_id = ?", (face_model,)).fetchone()[0]
-                    if (face_model := _active_face_model()) else
-                    conn.execute("SELECT COUNT(*) FROM ai_face_instances").fetchone()[0]),
+                    conn.execute("SELECT COUNT(*) FROM ai_face_instances WHERE model_id = ?", (face_model,)).fetchone()[
+                        0
+                    ]
+                    if (face_model := _active_face_model())
+                    else conn.execute("SELECT COUNT(*) FROM ai_face_instances").fetchone()[0]
+                ),
                 "face_clusters": (
-                    conn.execute("SELECT COUNT(*) FROM ai_face_clusters "
-                                 "WHERE model_id = ?", (face_model,)).fetchone()[0]
-                    if face_model else
-                    conn.execute("SELECT COUNT(*) FROM ai_face_clusters").fetchone()[0]),
+                    conn.execute("SELECT COUNT(*) FROM ai_face_clusters WHERE model_id = ?", (face_model,)).fetchone()[
+                        0
+                    ]
+                    if face_model
+                    else conn.execute("SELECT COUNT(*) FROM ai_face_clusters").fetchone()[0]
+                ),
                 "reviews": conn.execute("SELECT COUNT(*) FROM ai_reviews").fetchone()[0],
             }
             indexing = indexing_totals(conn)
@@ -445,32 +439,42 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
 
         worker = get_worker()
         worker_info = (
-            {"running": bool(worker.is_running), "stats": dict(worker.stats),
-             "provisioning": dict(getattr(worker, "provision_state", {}) or {}),
-             "priority_queued": len(getattr(worker, "_priority_ids", []) or []),
-             "recent_errors": list(getattr(worker, "recent_errors", []) or []),
-             "review_seconds": getattr(worker, "_last_review_seconds", None),
-             "stage_pace": {k: round(v, 4) for k, v in
-                            (getattr(worker, "_stage_pace", {}) or {}).items()}}
+            {
+                "running": bool(worker.is_running),
+                "stats": dict(worker.stats),
+                "provisioning": dict(getattr(worker, "provision_state", {}) or {}),
+                "priority_queued": len(getattr(worker, "_priority_ids", []) or []),
+                "recent_errors": list(getattr(worker, "recent_errors", []) or []),
+                "review_seconds": getattr(worker, "_last_review_seconds", None),
+                "stage_pace": {k: round(v, 4) for k, v in (getattr(worker, "_stage_pace", {}) or {}).items()},
+            }
             if worker is not None
-            else {"running": False, "stats": {}, "provisioning": {},
-                  "priority_queued": 0, "recent_errors": [],
-                  "review_seconds": None, "stage_pace": {}}
+            else {
+                "running": False,
+                "stats": {},
+                "provisioning": {},
+                "priority_queued": 0,
+                "recent_errors": [],
+                "review_seconds": None,
+                "stage_pace": {},
+            }
         )
         try:
             gpu = provisioning.cuda_summary()
         except Exception:  # inventory is best-effort
             gpu = None
-        return jsonify({
-            "enabled": config.enabled,
-            "app_git_ref": app_git_ref(),
-            "backends": backends,
-            "devices": _backend_devices(),
-            "gpu": gpu,
-            "counts": counts,
-            "indexing": indexing,
-            "worker": worker_info,
-        })
+        return jsonify(
+            {
+                "enabled": config.enabled,
+                "app_git_ref": app_git_ref(),
+                "backends": backends,
+                "devices": _backend_devices(),
+                "gpu": gpu,
+                "counts": counts,
+                "indexing": indexing,
+                "worker": worker_info,
+            }
+        )
 
     # -- GET /duplicates/<file_id> -----------------------------------------------
 
@@ -489,18 +493,12 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             # Duplicate detection needs this file's hashes; until they exist
             # an empty result means "not indexed yet", not "no duplicates" --
             # but only for files that actually exist to be hashed.
-            exists = conn.execute(
-                "SELECT 1 FROM files WHERE id = ?", (file_id,)
-            ).fetchone() is not None
-            hashed = conn.execute(
-                "SELECT 1 FROM ai_file_hashes WHERE file_id = ?", (file_id,)
-            ).fetchone() is not None
+            exists = conn.execute("SELECT 1 FROM files WHERE id = ?", (file_id,)).fetchone() is not None
+            hashed = conn.execute("SELECT 1 FROM ai_file_hashes WHERE file_id = ?", (file_id,)).fetchone() is not None
         finally:
             conn.close()
-        near = [{"file_id": fid, "distance": distance}
-                for fid, distance in near_pairs if _visible(fid)]
-        return jsonify({"enabled": True, "exact": exact, "near": near,
-                        "pending": exists and not hashed})
+        near = [{"file_id": fid, "distance": distance} for fid, distance in near_pairs if _visible(fid)]
+        return jsonify({"enabled": True, "exact": exact, "near": near, "pending": exists and not hashed})
 
     # -- GET /similar/<file_id> --------------------------------------------------
 
@@ -514,35 +512,38 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         conn = _connect(config)
         try:
             row = conn.execute(
-                "SELECT vector, model_version FROM ai_embeddings "
-                "WHERE file_id = ? AND space = ?", (file_id, space)
+                "SELECT vector, model_version FROM ai_embeddings WHERE file_id = ? AND space = ?", (file_id, space)
             ).fetchone()
             if row is None:
                 # pending separates "the worker has not reached this file"
                 # (results will arrive) from "no stage will ever embed it".
                 pending = _renderable(conn, file_id)
-                return jsonify({
-                    "enabled": True, "space": space, "neighbors": [],
-                    "pending": pending,
-                    "note": ("not indexed yet" if pending
-                             else "no embedding for this file"),
-                })
+                return jsonify(
+                    {
+                        "enabled": True,
+                        "space": space,
+                        "neighbors": [],
+                        "pending": pending,
+                        "note": ("not indexed yet" if pending else "no embedding for this file"),
+                    }
+                )
             query_vec = np.frombuffer(row["vector"], dtype="<f4")
             store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
             # Pin candidates to the query row's OWN model version: mid-
             # migration, the space's most recent version may differ, and
             # cross-version cosine is meaningless (or a dim mismatch).
-            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id],
-                                   model_version=row["model_version"])
+            neighbors = store.topk(conn, space, query_vec, k, exclude=[file_id], model_version=row["model_version"])
         finally:
             conn.close()
         # Hidden neighbors are dropped, not backfilled: the response may
         # carry fewer than k entries rather than leak hidden file ids.
-        return jsonify({
-            "enabled": True, "space": space,
-            "neighbors": [{"file_id": fid, "score": score}
-                          for fid, score in neighbors if _visible(fid)],
-        })
+        return jsonify(
+            {
+                "enabled": True,
+                "space": space,
+                "neighbors": [{"file_id": fid, "score": score} for fid, score in neighbors if _visible(fid)],
+            }
+        )
 
     # -- faces read scoping ---------------------------------------------------------
 
@@ -577,8 +578,7 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             ).fetchall()
             # Zero faces means two very different things depending on whether
             # a detector has actually looked at this file yet.
-            pending = (not rows and _was_scanned(conn, file_id, "faces") is None
-                       and _renderable(conn, file_id))
+            pending = not rows and _was_scanned(conn, file_id, "faces") is None and _renderable(conn, file_id)
         finally:
             conn.close()
         result = [
@@ -591,9 +591,11 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
                 "attributes": json.loads(row["attributes"]) if row["attributes"] else None,
                 "age": row["age"],
                 "sex": row["sex"],
-                "pose": ({"pitch": row["pose_pitch"], "yaw": row["pose_yaw"],
-                          "roll": row["pose_roll"]}
-                         if row["pose_yaw"] is not None else None),
+                "pose": (
+                    {"pitch": row["pose_pitch"], "yaw": row["pose_yaw"], "roll": row["pose_roll"]}
+                    if row["pose_yaw"] is not None
+                    else None
+                ),
                 "cluster_id": row["cluster_id"],
             }
             for row in rows
@@ -617,16 +619,17 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             clusters = []
             for crow in cluster_rows:
                 sample_rows = conn.execute(
-                    "SELECT DISTINCT file_id FROM ai_face_instances "
-                    "WHERE cluster_id = ? ORDER BY file_id LIMIT 4",
+                    "SELECT DISTINCT file_id FROM ai_face_instances WHERE cluster_id = ? ORDER BY file_id LIMIT 4",
                     (crow["cluster_id"],),
                 ).fetchall()
-                clusters.append({
-                    "cluster_id": crow["cluster_id"],
-                    "label": crow["label"],
-                    "size": crow["size"],
-                    "sample_file_ids": [s["file_id"] for s in sample_rows],
-                })
+                clusters.append(
+                    {
+                        "cluster_id": crow["cluster_id"],
+                        "label": crow["label"],
+                        "size": crow["size"],
+                        "sample_file_ids": [s["file_id"] for s in sample_rows],
+                    }
+                )
         finally:
             conn.close()
         return jsonify({"enabled": True, "clusters": clusters})
@@ -676,8 +679,9 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             for row in member_rows
         ]
         cluster = {"cluster_id": crow["cluster_id"], "label": crow["label"], "size": crow["size"]}
-        return jsonify({"enabled": True, "cluster": cluster, "members": members,
-                        "attributes": dict(agg) if agg else None})
+        return jsonify(
+            {"enabled": True, "cluster": cluster, "members": members, "attributes": dict(agg) if agg else None}
+        )
 
     # -- POST /faces/recluster (guarded) --------------------------------------------
 
@@ -689,7 +693,9 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         conn = _connect(config)
         try:
             new_cluster_ids = faces.cluster_faces(
-                conn, backend.model_id, backend.model_version,
+                conn,
+                backend.model_id,
+                backend.model_version,
                 faces.resolve_cluster_threshold(config, backend),
             )
         finally:
@@ -709,12 +715,16 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
                 "FROM ai_face_instances "
                 + ("WHERE model_id = ? " if model_id else "")
                 + "GROUP BY file_id ORDER BY latest DESC LIMIT 24",
-                (model_id,) if model_id else ()).fetchall()
+                (model_id,) if model_id else (),
+            ).fetchall()
         finally:
             conn.close()
-        return jsonify({"enabled": True, "files": [
-            {"file_id": r["file_id"], "faces": r["faces"]}
-            for r in rows if _visible(r["file_id"])]})
+        return jsonify(
+            {
+                "enabled": True,
+                "files": [{"file_id": r["file_id"], "faces": r["faces"]} for r in rows if _visible(r["file_id"])],
+            }
+        )
 
     # -- GET /faces/compare/<file_id> (guarded) -------------------------------------
 
@@ -727,17 +737,14 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         _check_file_access(file_id)
         conn = _connect(config)
         try:
-            row = conn.execute(
-                "SELECT path, type FROM files WHERE id = ?", (file_id,)
-            ).fetchone()
+            row = conn.execute("SELECT path, type FROM files WHERE id = ?", (file_id,)).fetchone()
         finally:
             conn.close()
         if row is None:
             abort(404)
         img = load_source_image(row["path"], row["type"])
         if img is None:
-            return jsonify({"enabled": True,
-                            "error": "file has no renderable frame"}), 422
+            return jsonify({"enabled": True, "error": "file has no renderable frame"}), 422
         try:
             result = faces.compare_detectors(img, config)
         finally:
@@ -769,8 +776,9 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
                 scan = _was_scanned(conn, file_id, "review")
                 pending = scan is None and _renderable(conn, file_id)
                 failed = scan is not None and scan["result_count"] == -1
-                return jsonify({"enabled": True, "review": None, "findings": [],
-                                "pending": pending, "scan_failed": failed})
+                return jsonify(
+                    {"enabled": True, "review": None, "findings": [], "pending": pending, "scan_failed": failed}
+                )
 
             finding_rows = conn.execute(
                 "SELECT finding_id, type, severity, confidence, localizable, "
@@ -806,9 +814,7 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
                 if frow["points"]:
                     entry["points"] = json.loads(frow["points"])
                 if frow["mask_path"]:
-                    entry["mask_url"] = url_for(
-                        "aidam.review_mask", finding_id=frow["finding_id"]
-                    )
+                    entry["mask_url"] = url_for("aidam.review_mask", finding_id=frow["finding_id"])
             findings.append(entry)
 
         # Each element's text is a verbatim slice of the positive prompt, so
@@ -829,11 +835,9 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
                 "bbox": None,
             }
             if satisfied and arow["bbox_x"] is not None:
-                entry["bbox"] = [arow["bbox_x"], arow["bbox_y"],
-                                 arow["bbox_w"], arow["bbox_h"]]
+                entry["bbox"] = [arow["bbox_x"], arow["bbox_y"], arow["bbox_w"], arow["bbox_h"]]
                 if arow["mask_path"]:
-                    entry["mask_url"] = url_for(
-                        "aidam.review_alignment_mask", element_id=arow["element_id"])
+                    entry["mask_url"] = url_for("aidam.review_alignment_mask", element_id=arow["element_id"])
             alignment.append(entry)
 
         review_dict = {
@@ -853,8 +857,9 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             },
             "computed_at": review_row["computed_at"],
         }
-        return jsonify({"enabled": True, "review": review_dict, "findings": findings,
-                        "prompt_available": prompt_available})
+        return jsonify(
+            {"enabled": True, "review": review_dict, "findings": findings, "prompt_available": prompt_available}
+        )
 
     # -- GET /review/mask/<int:finding_id> -------------------------------------------
 
@@ -913,8 +918,7 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         """
         _check_file_access(file_id)
         try:
-            events = runner.run_review(config, file_id,
-                                       steps=request.args.get("steps"))
+            events = runner.run_review(config, file_id, steps=request.args.get("steps"))
             first = next(events)
         except runner.RunnerBusy as exc:
             return jsonify({"enabled": True, "error": str(exc)}), 409
@@ -933,12 +937,16 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             except Exception as exc:  # a stream must end, not hang
                 yield f"data: {json.dumps({'step': 'run', 'status': 'error', 'detail': {'error': str(exc)}})}\n\n"
 
-        return Response(stream(), mimetype="text/event-stream", headers={
-            "Cache-Control": "no-cache",
-            # Long-lived streams die behind proxies that buffer; this is the
-            # conventional opt-out and is inert when no proxy is present.
-            "X-Accel-Buffering": "no",
-        })
+        return Response(
+            stream(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                # Long-lived streams die behind proxies that buffer; this is the
+                # conventional opt-out and is inert when no proxy is present.
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # -- POST /review/feedback (guarded) / GET /review/feedback/export --------------
 
@@ -992,20 +1000,18 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         defer = worker is not None and worker.is_running
         conn = _connect(config)
         try:
-            file_row = conn.execute(
-                "SELECT * FROM files WHERE id = ?", (file_id,)
-            ).fetchone()
+            file_row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
             if file_row is None:
                 return jsonify({"enabled": True, "error": f"unknown file_id: {file_id!r}"}), 404
             if defer:
                 if force:
-                    conn.execute(
-                        "DELETE FROM ai_scan_log WHERE file_id = ? AND kind = 'review'",
-                        (file_id,))
+                    conn.execute("DELETE FROM ai_scan_log WHERE file_id = ? AND kind = 'review'", (file_id,))
                     conn.commit()
-                result = {"file_id": file_id,
-                          "review_rescheduled": force,
-                          "worker_queued": worker.request_priority_index(file_id)}
+                result = {
+                    "file_id": file_id,
+                    "review_rescheduled": force,
+                    "worker_queued": worker.request_priority_index(file_id),
+                }
             else:
                 result = _index_one_file(conn, config, file_row, force=force)
                 result["worker_queued"] = False
@@ -1050,22 +1056,23 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         k = request.args.get("k", config.similar_default_k, type=int)
         embedder = _search_embedder()
         if embedder is None:
-            return jsonify({"enabled": True, "query": query, "results": [],
-                            "note": "semantic backend not available yet"})
+            return jsonify(
+                {"enabled": True, "query": query, "results": [], "note": "semantic backend not available yet"}
+            )
         query_vec = embedder.embed_text(query)
         conn = _connect(config)
         try:
-            store = vectors.VectorStore(cache_dir=config.cache_dir,
-                                        ephemeral=config.ephemeral_index)
-            neighbors = store.topk(conn, SPACE_SEMANTIC, query_vec, k,
-                                   model_version=embedder.model_version)
+            store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
+            neighbors = store.topk(conn, SPACE_SEMANTIC, query_vec, k, model_version=embedder.model_version)
         finally:
             conn.close()
-        return jsonify({
-            "enabled": True, "query": query,
-            "results": [{"file_id": fid, "score": score}
-                        for fid, score in neighbors if _visible(fid)],
-        })
+        return jsonify(
+            {
+                "enabled": True,
+                "query": query,
+                "results": [{"file_id": fid, "score": score} for fid, score in neighbors if _visible(fid)],
+            }
+        )
 
     # -- GET /reviews (guarded): gallery-wide review browser ------------------------
 
@@ -1085,14 +1092,12 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         sort = request.args.get("sort", "quality_asc")
         order = _REVIEW_SORTS.get(sort)
         if order is None:
-            return jsonify({"enabled": True,
-                            "error": f"invalid sort: {sort!r}"}), 400
+            return jsonify({"enabled": True, "error": f"invalid sort: {sort!r}"}), 400
         limit = min(max(request.args.get("limit", 60, type=int), 1), 200)
         offset = max(request.args.get("offset", 0, type=int), 0)
         conn = _connect(config)
         try:
-            total = conn.execute(
-                "SELECT COUNT(DISTINCT file_id) FROM ai_reviews").fetchone()[0]
+            total = conn.execute("SELECT COUNT(DISTINCT file_id) FROM ai_reviews").fetchone()[0]
             rows = conn.execute(
                 f"""
                 SELECT r.file_id, r.quality_score, r.prompt_alignment_score,
@@ -1109,18 +1114,25 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             ).fetchall()
         finally:
             conn.close()
-        return jsonify({
-            "enabled": True, "sort": sort, "total": total, "offset": offset,
-            "reviews": [
-                {"file_id": row["file_id"],
-                 "quality": row["quality_score"],
-                 "prompt_alignment": row["prompt_alignment_score"],
-                 "summary": row["summary"],
-                 "computed_at": row["computed_at"],
-                 "finding_count": row["finding_count"]}
-                for row in rows
-            ],
-        })
+        return jsonify(
+            {
+                "enabled": True,
+                "sort": sort,
+                "total": total,
+                "offset": offset,
+                "reviews": [
+                    {
+                        "file_id": row["file_id"],
+                        "quality": row["quality_score"],
+                        "prompt_alignment": row["prompt_alignment_score"],
+                        "summary": row["summary"],
+                        "computed_at": row["computed_at"],
+                        "finding_count": row["finding_count"],
+                    }
+                    for row in rows
+                ],
+            }
+        )
 
     # -- GET /duplicates (guarded): gallery-wide duplicate sweep --------------------
 
@@ -1135,23 +1147,24 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
             for group in groups:
                 placeholders = ",".join("?" for _ in group)
                 size_rows = conn.execute(
-                    f"SELECT id, COALESCE(size, 0) AS size FROM files "
-                    f"WHERE id IN ({placeholders})", list(group)).fetchall()
+                    f"SELECT id, COALESCE(size, 0) AS size FROM files WHERE id IN ({placeholders})", list(group)
+                ).fetchall()
                 sizes = [row["size"] for row in size_rows]
                 reclaimable = max(sum(sizes) - max(sizes), 0) if sizes else 0
                 total_reclaimable += reclaimable
-                out.append({"file_ids": list(group), "count": len(group),
-                            "bytes_reclaimable": reclaimable})
+                out.append({"file_ids": list(group), "count": len(group), "bytes_reclaimable": reclaimable})
         finally:
             conn.close()
         out.sort(key=lambda g: g["bytes_reclaimable"], reverse=True)
-        return jsonify({
-            "enabled": True,
-            "group_count": len(out),
-            "redundant_files": sum(g["count"] - 1 for g in out),
-            "total_bytes_reclaimable": total_reclaimable,
-            "groups": out,
-        })
+        return jsonify(
+            {
+                "enabled": True,
+                "group_count": len(out),
+                "redundant_files": sum(g["count"] - 1 for g in out),
+                "total_bytes_reclaimable": total_reclaimable,
+                "groups": out,
+            }
+        )
 
     # -- POST /faces/clusters/<id>/label (guarded) ----------------------------------
 
@@ -1162,15 +1175,12 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
         label = (data.get("label") or "").strip()[:80] or None
         conn = _connect(config)
         try:
-            cur = conn.execute(
-                "UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?",
-                (label, cluster_id))
+            cur = conn.execute("UPDATE ai_face_clusters SET label = ? WHERE cluster_id = ?", (label, cluster_id))
             conn.commit()
         finally:
             conn.close()
         if cur.rowcount == 0:
-            return jsonify({"enabled": True,
-                            "error": f"unknown cluster_id: {cluster_id}"}), 404
+            return jsonify({"enabled": True, "error": f"unknown cluster_id: {cluster_id}"}), 404
         return jsonify({"enabled": True, "cluster_id": cluster_id, "label": label})
 
     # -- route table -----------------------------------------------------------------
@@ -1180,64 +1190,64 @@ def create_ai_blueprint(config: AIConfig, guard: Callable | None = None,
     # say so. It reports across the whole library -- worker errors quote the
     # path of the file that failed -- so it belongs with the other cross-file
     # routes rather than open to anyone who can reach the port.
-    bp.add_url_rule("/status", "status",
-                    guard(status) if guard is not None else status, methods=["GET"])
+    bp.add_url_rule("/status", "status", guard(status) if guard is not None else status, methods=["GET"])
     bp.add_url_rule("/duplicates/<file_id>", "duplicates", _wrap(duplicates), methods=["GET"])
     bp.add_url_rule("/similar/<file_id>", "similar", _wrap(similar), methods=["GET"])
     bp.add_url_rule("/faces/<file_id>", "faces_for_file", _wrap(faces_for_file), methods=["GET"])
     # Cluster listings enumerate metadata ACROSS files, so per-file
     # visibility checks cannot scope them; they carry the management guard
     # (open in local mode, privileged-only in restricted modes).
-    bp.add_url_rule("/faces/clusters", "faces_clusters",
-                    _wrap(faces_clusters, guarded=True), methods=["GET"])
+    bp.add_url_rule("/faces/clusters", "faces_clusters", _wrap(faces_clusters, guarded=True), methods=["GET"])
     bp.add_url_rule(
-        "/faces/clusters/<int:cluster_id>", "faces_cluster_detail",
-        _wrap(faces_cluster_detail, guarded=True), methods=["GET"],
+        "/faces/clusters/<int:cluster_id>",
+        "faces_cluster_detail",
+        _wrap(faces_cluster_detail, guarded=True),
+        methods=["GET"],
     )
+    bp.add_url_rule("/faces/recent", "faces_recent", _wrap(faces_recent, guarded=True), methods=["GET"])
+    bp.add_url_rule("/faces/compare/<file_id>", "faces_compare", _wrap(faces_compare, guarded=True), methods=["GET"])
     bp.add_url_rule(
-        "/faces/recent", "faces_recent",
-        _wrap(faces_recent, guarded=True), methods=["GET"])
-    bp.add_url_rule(
-        "/faces/compare/<file_id>", "faces_compare",
-        _wrap(faces_compare, guarded=True), methods=["GET"])
-    bp.add_url_rule(
-        "/faces/recluster", "faces_recluster",
-        _wrap(faces_recluster, guarded=True), methods=["POST"],
+        "/faces/recluster",
+        "faces_recluster",
+        _wrap(faces_recluster, guarded=True),
+        methods=["POST"],
     )
     bp.add_url_rule("/review/<file_id>", "review_for_file", _wrap(review_for_file), methods=["GET"])
+    bp.add_url_rule("/review/mask/<int:finding_id>", "review_mask", _wrap(review_mask), methods=["GET"])
     bp.add_url_rule(
-        "/review/mask/<int:finding_id>", "review_mask", _wrap(review_mask), methods=["GET"]
-    )
-    bp.add_url_rule(
-        "/review/alignment/mask/<int:element_id>", "review_alignment_mask",
-        _wrap(review_alignment_mask), methods=["GET"]
+        "/review/alignment/mask/<int:element_id>",
+        "review_alignment_mask",
+        _wrap(review_alignment_mask),
+        methods=["GET"],
     )
     # Guarded despite being a GET. The guard was applied to the "mutating"
     # endpoints, and this one reads as a read -- but it runs the critic for
     # minutes, holds the run lock while it does, and writes a review at the
     # end. Left open it is both a way to make the machine work on demand and
     # a way to watch the prompt arrive element by element in the stream.
+    bp.add_url_rule("/review/run/<file_id>", "review_run", _wrap(review_run, guarded=True), methods=["GET"])
     bp.add_url_rule(
-        "/review/run/<file_id>", "review_run", _wrap(review_run, guarded=True),
-        methods=["GET"]
+        "/review/feedback",
+        "review_feedback_post",
+        _wrap(review_feedback_post, guarded=True),
+        methods=["POST"],
     )
     bp.add_url_rule(
-        "/review/feedback", "review_feedback_post",
-        _wrap(review_feedback_post, guarded=True), methods=["POST"],
-    )
-    bp.add_url_rule(
-        "/review/feedback/export", "review_feedback_export",
-        _wrap(review_feedback_export, guarded=True), methods=["GET"],
+        "/review/feedback/export",
+        "review_feedback_export",
+        _wrap(review_feedback_export, guarded=True),
+        methods=["GET"],
     )
     bp.add_url_rule("/index/<file_id>", "index_file", _wrap(index_file, guarded=True), methods=["POST"])
-    bp.add_url_rule("/search/semantic", "search_semantic",
-                    _wrap(search_semantic), methods=["GET"])
+    bp.add_url_rule("/search/semantic", "search_semantic", _wrap(search_semantic), methods=["GET"])
     # Cross-file listings carry the management guard, like cluster listings.
-    bp.add_url_rule("/reviews", "reviews_list",
-                    _wrap(reviews_list, guarded=True), methods=["GET"])
-    bp.add_url_rule("/duplicates", "duplicates_overview",
-                    _wrap(duplicates_overview, guarded=True), methods=["GET"])
-    bp.add_url_rule("/faces/clusters/<int:cluster_id>/label", "faces_cluster_label",
-                    _wrap(faces_cluster_label, guarded=True), methods=["POST"])
+    bp.add_url_rule("/reviews", "reviews_list", _wrap(reviews_list, guarded=True), methods=["GET"])
+    bp.add_url_rule("/duplicates", "duplicates_overview", _wrap(duplicates_overview, guarded=True), methods=["GET"])
+    bp.add_url_rule(
+        "/faces/clusters/<int:cluster_id>/label",
+        "faces_cluster_label",
+        _wrap(faces_cluster_label, guarded=True),
+        methods=["POST"],
+    )
 
     return bp

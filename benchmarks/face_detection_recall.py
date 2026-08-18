@@ -47,9 +47,7 @@ BANDS = [
 # one synthesized min-side target inside each band; >=300 also gets natives
 TARGETS = [12, 20, 30, 56, 110, 220, 380]
 
-RESULTS_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "results", "face_detection_recall.json"
-)
+RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "face_detection_recall.json")
 
 _IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
@@ -116,7 +114,6 @@ def collect_ground_truth(backend, root, limit):
 def main() -> None:
     load_repo()
 
-
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dir", required=True, help="image corpus root")
     ap.add_argument("--models-dir", required=True)
@@ -164,7 +161,7 @@ def main() -> None:
             img = img.convert("RGB")
             scale = 1.0
             if tag.startswith("scale->"):
-                target = int(tag[len("scale->"):-2])
+                target = int(tag[len("scale->") : -2])
                 scale = target / min(gt_boxes[0][2], gt_boxes[0][3])
             if scale != 1.0:
                 nw = max(1, round(img.size[0] * scale))
@@ -224,10 +221,7 @@ def main() -> None:
         s = stats[name]
         if not s["faces"]:
             continue
-        print(
-            f"{name:<9} {s['faces']:>6} {s['tp']:>9} "
-            f"{s['tp'] / s['faces']:>7.1%} {s['gated_tp'] / s['faces']:>9.1%}"
-        )
+        print(f"{name:<9} {s['faces']:>6} {s['tp']:>9} {s['tp'] / s['faces']:>7.1%} {s['gated_tp'] / s['faces']:>9.1%}")
     print(
         f"overall: recall {tp / faces:.1%}, precision "
         f"{tp / max(tp + fp_total, 1):.1%}, {fp_total} false positives "
@@ -244,14 +238,10 @@ def main() -> None:
         "false_negative_count": faces - tp,
         "false_positive_count": fp_total,
         "recall_by_min_side_band": {
-            n: round(stats[n]["tp"] / stats[n]["faces"], 4)
-            for n, _l, _h in BANDS
-            if stats[n]["faces"]
+            n: round(stats[n]["tp"] / stats[n]["faces"], 4) for n, _l, _h in BANDS if stats[n]["faces"]
         },
         "post_gate_recall_by_min_side_band": {
-            n: round(stats[n]["gated_tp"] / stats[n]["faces"], 4)
-            for n, _l, _h in BANDS
-            if stats[n]["faces"]
+            n: round(stats[n]["gated_tp"] / stats[n]["faces"], 4) for n, _l, _h in BANDS if stats[n]["faces"]
         },
         "rows": rows,
     }

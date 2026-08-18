@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 _MASK64 = (1 << 64) - 1  # keeps the low 64 bits of an arbitrary Python int
-_SIGN_BIT64 = 1 << 63    # sign bit of a 64-bit two's complement integer
+_SIGN_BIT64 = 1 << 63  # sign bit of a 64-bit two's complement integer
 
 # Host-app file_type values whose frames decode via PIL / cv2 respectively.
 IMAGE_FILE_TYPES = frozenset({"image", "animated_image"})
@@ -191,9 +191,7 @@ def upsert_hashes(
 
 def find_exact_duplicates(conn) -> list[list[str]]:
     """Groups (>=2 members) of file_ids sharing an identical sha256."""
-    rows = conn.execute(
-        "SELECT sha256, file_id FROM ai_file_hashes ORDER BY sha256, file_id"
-    ).fetchall()
+    rows = conn.execute("SELECT sha256, file_id FROM ai_file_hashes ORDER BY sha256, file_id").fetchall()
     groups: dict[str, list[str]] = {}
     for sha256, file_id in rows:
         groups.setdefault(sha256, []).append(file_id)
@@ -202,21 +200,15 @@ def find_exact_duplicates(conn) -> list[list[str]]:
 
 def find_near_duplicates(conn, file_id: str, max_distance: int) -> list[tuple[str, int]]:
     """Brute-force nearest phash64 neighbors of `file_id`, self excluded."""
-    row = conn.execute(
-        "SELECT phash64 FROM ai_file_hashes WHERE file_id = ?", (file_id,)
-    ).fetchone()
+    row = conn.execute("SELECT phash64 FROM ai_file_hashes WHERE file_id = ?", (file_id,)).fetchone()
     if row is None or row[0] is None:
         return []
     target = row[0]
     others = conn.execute(
-        "SELECT file_id, phash64 FROM ai_file_hashes "
-        "WHERE file_id != ? AND phash64 IS NOT NULL",
+        "SELECT file_id, phash64 FROM ai_file_hashes WHERE file_id != ? AND phash64 IS NOT NULL",
         (file_id,),
     ).fetchall()
-    results = [
-        (other_id, hamming64(target, other_phash))
-        for other_id, other_phash in others
-    ]
+    results = [(other_id, hamming64(target, other_phash)) for other_id, other_phash in others]
     results = [pair for pair in results if pair[1] <= max_distance]
     results.sort(key=lambda pair: (pair[1], pair[0]))
     return results
@@ -246,8 +238,7 @@ def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
     identical pair set, sorted by (distance, file_id, file_id).
     """
     rows = conn.execute(
-        "SELECT file_id, phash64 FROM ai_file_hashes "
-        "WHERE phash64 IS NOT NULL ORDER BY file_id"
+        "SELECT file_id, phash64 FROM ai_file_hashes WHERE phash64 IS NOT NULL ORDER BY file_id"
     ).fetchall()
     if len(rows) < 2:
         return []
@@ -258,6 +249,7 @@ def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
 
     try:
         from smartgallery_ai.faiss_runtime import import_faiss
+
         faiss = import_faiss()
     except ImportError:
         faiss = None

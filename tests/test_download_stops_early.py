@@ -41,8 +41,7 @@ class _Stream:
 
     def __init__(self, body, declared=None):
         self._body = io.BytesIO(body)
-        self.headers = {"Content-Length": str(
-            len(body) if declared is None else declared)}
+        self.headers = {"Content-Length": str(len(body) if declared is None else declared)}
 
     def read(self, size=-1):
         return self._body.read(size)
@@ -65,9 +64,10 @@ class _NoLength(_Stream):
 @pytest.fixture
 def serve(monkeypatch):
     """Answer the next urlopen with a given stream."""
+
     def _serve(stream):
-        monkeypatch.setattr(provision.urllib.request, "urlopen",
-                            lambda url, timeout=None: stream)
+        monkeypatch.setattr(provision.urllib.request, "urlopen", lambda url, timeout=None: stream)
+
     return _serve
 
 
@@ -93,12 +93,12 @@ def test_nothing_is_left_behind_after_a_short_download(serve, tmp_path):
     with pytest.raises(provision.ProvisionError):
         provision._download_url("https://example.invalid/weights.bin", str(dest))
 
-    assert os.listdir(str(tmp_path)) == [], (
-        f"left behind: {os.listdir(str(tmp_path))}")
+    assert os.listdir(str(tmp_path)) == [], f"left behind: {os.listdir(str(tmp_path))}"
 
 
 def test_nothing_is_left_behind_when_the_connection_raises(serve, tmp_path):
     """The other way a download ends: an error part way through."""
+
     class _Breaks(_Stream):
         def read(self, size=-1):
             chunk = super().read(size)
@@ -112,8 +112,7 @@ def test_nothing_is_left_behind_when_the_connection_raises(serve, tmp_path):
     with pytest.raises(ConnectionResetError):
         provision._download_url("https://example.invalid/weights.bin", str(dest))
 
-    assert os.listdir(str(tmp_path)) == [], (
-        f"left behind: {os.listdir(str(tmp_path))}")
+    assert os.listdir(str(tmp_path)) == [], f"left behind: {os.listdir(str(tmp_path))}"
 
 
 def test_a_complete_download_is_kept(serve, tmp_path):
@@ -149,8 +148,9 @@ def test_progress_still_reports_while_it_downloads(serve, tmp_path):
     seen = []
     dest = tmp_path / "weights.bin"
 
-    provision._download_url("https://example.invalid/weights.bin", str(dest),
-                            progress=lambda done, total: seen.append((done, total)))
+    provision._download_url(
+        "https://example.invalid/weights.bin", str(dest), progress=lambda done, total: seen.append((done, total))
+    )
 
     assert seen, "no progress was reported"
     assert seen[-1] == (3 << 20, 3 << 20), seen[-1]
@@ -168,8 +168,8 @@ def test_a_truncated_stream_raises_nothing_by_itself():
     provision._copy_with_progress(stream, sink, 1000, None)
 
     assert sink.getvalue() == b"x" * 400, (
-        "copying a body shorter than its declared length now fails on its "
-        "own, so there is nothing here to add")
+        "copying a body shorter than its declared length now fails on its own, so there is nothing here to add"
+    )
 
 
 def test_every_artifact_has_something_checking_it():
@@ -183,10 +183,13 @@ def test_every_artifact_has_something_checking_it():
             if artifact.sha256 is None and artifact.url and not artifact.hf_repo:
                 unchecked.append(artifact.dest)
 
-    assert sorted(unchecked) == sorted([
-        "insightface/models/antelopev2",
-    ]), (
+    assert sorted(unchecked) == sorted(
+        [
+            "insightface/models/antelopev2",
+        ]
+    ), (
         f"the set of direct-URL artifacts with no pinned digest changed: "
         f"{sorted(unchecked)}. Each one has only the declared length "
         f"standing between it and a half-download; pin a sha256 where you "
-        f"can, and update this list where you cannot.")
+        f"can, and update this list where you cannot."
+    )

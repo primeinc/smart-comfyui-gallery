@@ -91,8 +91,8 @@ def a_library_by_the_hour(smartgallery_app, tmp_path, monkeypatch):
             conn.execute(
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
                 "has_workflow, size, last_scanned) VALUES (?,?,?,?,?,?,?,?)",
-                (fid, path, base + hour * 3600, "h%02d.png" % hour, "image",
-                 0, 64, 1.0))
+                (fid, path, base + hour * 3600, "h%02d.png" % hour, "image", 0, 64, 1.0),
+            )
             ids[hour] = fid
         conn.commit()
 
@@ -102,8 +102,9 @@ def a_library_by_the_hour(smartgallery_app, tmp_path, monkeypatch):
         session["role"] = "ADMIN"
 
     def shown(**args):
-        page = client.get("/galleryout/view/_root_", query_string=dict(
-            args, scope="global", recursive="true"), follow_redirects=True)
+        page = client.get(
+            "/galleryout/view/_root_", query_string=dict(args, scope="global", recursive="true"), follow_redirects=True
+        )
         assert page.status_code == 200, page.status_code
         body = page.get_data(as_text=True)
         return {hour for hour, fid in ids.items() if fid in body}
@@ -121,8 +122,7 @@ def test_the_date_filter_narrows_at_all(a_library_by_the_hour):
     shown = a_library_by_the_hour
 
     assert shown() == {2, 11, 30}, "no filter should show every picture"
-    assert shown(start_date=DAY, end_date=DAY) == {2, 11}, \
-        "the server's own day is hours 0..24, so 30 is the next day"
+    assert shown(start_date=DAY, end_date=DAY) == {2, 11}, "the server's own day is hours 0..24, so 30 is the next day"
 
 
 def test_a_bookmarked_link_still_reads_as_the_servers_day(a_library_by_the_hour):
@@ -146,8 +146,7 @@ def test_the_two_clocks_cannot_agree_by_luck():
 
     picture = base + 30 * 3600
     assert theirs[0] <= picture <= theirs[1], "on the day they asked for"
-    assert not servers_day[0] <= picture <= servers_day[1], \
-        "and outside the day the server would have filtered"
+    assert not servers_day[0] <= picture <= servers_day[1], "and outside the day the server would have filtered"
 
 
 def test_the_boundaries_the_page_sends_are_the_ones_used(a_library_by_the_hour):
@@ -157,16 +156,14 @@ def test_the_boundaries_the_page_sends_are_the_ones_used(a_library_by_the_hour):
     shown = a_library_by_the_hour
     base = server_midnight()
 
-    theirs = shown(start_date=DAY, end_date=DAY,
-                   start_ts=str(base + 10 * 3600),
-                   end_ts=str(base + 34 * 3600 - 1))
+    theirs = shown(start_date=DAY, end_date=DAY, start_ts=str(base + 10 * 3600), end_ts=str(base + 34 * 3600 - 1))
 
     assert 30 in theirs, (
         "a picture the viewer sees dated on the chosen day was left out, "
-        "because the server's clock put it on the next one")
+        "because the server's clock put it on the next one"
+    )
     assert 11 in theirs
-    assert 2 not in theirs, (
-        "a picture from before the viewer's day began was included")
+    assert 2 not in theirs, "a picture from before the viewer's day began was included"
 
 
 def test_only_one_end_can_be_given(a_library_by_the_hour):
@@ -188,22 +185,29 @@ def test_something_that_is_not_a_number_is_ignored(a_library_by_the_hour):
     # against every row, so the gallery empties while the filter still
     # shows the date that was asked for.
     for rubbish in ("", "abc", "2026-08-15", "NaN", "nan", "inf", "-inf", "[]"):
-        assert shown(start_date=DAY, end_date=DAY,
-                     start_ts=rubbish, end_ts=rubbish) == {2, 11}, rubbish
+        assert shown(start_date=DAY, end_date=DAY, start_ts=rubbish, end_ts=rubbish) == {2, 11}, rubbish
 
 
 class TestTheEndOfADay:
     """The end of a day is the next midnight, not 86399 seconds later."""
 
-    @pytest.mark.parametrize("day", [
-        "2026-01-15", "2026-03-08", "2026-06-21", "2026-08-15",
-        "2026-10-25", "2026-11-01", "2026-12-31", "2026-02-28",
-    ])
+    @pytest.mark.parametrize(
+        "day",
+        [
+            "2026-01-15",
+            "2026-03-08",
+            "2026-06-21",
+            "2026-08-15",
+            "2026-10-25",
+            "2026-11-01",
+            "2026-12-31",
+            "2026-02-28",
+        ],
+    )
     def test_it_is_the_last_second_before_the_next_one(self, day):
         """True in every timezone: where there is no change of clocks this
         is the same as +86399, and where there is, it is not."""
-        next_midnight = (datetime.strptime(day, "%Y-%m-%d")
-                         + timedelta(days=1)).timestamp()
+        next_midnight = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).timestamp()
 
         assert smartgallery.day_bounds(day, None, True) == next_midnight - 1
 
@@ -215,18 +219,18 @@ class TestTheEndOfADay:
         timezone never changes its clocks -- the check above still holds
         the rule there."""
         odd = []
-        for day in ("2026-03-08", "2026-03-29", "2026-10-25", "2026-11-01",
-                    "2026-04-05", "2026-09-27"):
+        for day in ("2026-03-08", "2026-03-29", "2026-10-25", "2026-11-01", "2026-04-05", "2026-09-27"):
             midnight = datetime.strptime(day, "%Y-%m-%d").timestamp()
-            following = (datetime.strptime(day, "%Y-%m-%d")
-                         + timedelta(days=1)).timestamp()
+            following = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).timestamp()
             if following - midnight != 86400:
                 odd.append((day, midnight, following))
 
         if not odd:
-            pytest.skip("this machine's timezone has no daylight saving; "
-                        "test_it_is_the_last_second_before_the_next_one "
-                        "holds the rule regardless")
+            pytest.skip(
+                "this machine's timezone has no daylight saving; "
+                "test_it_is_the_last_second_before_the_next_one "
+                "holds the rule regardless"
+            )
 
         for day, midnight, following in odd:
             was = midnight + 86399
@@ -249,19 +253,15 @@ def test_the_filters_button_counts_a_date_range(smartgallery_app):
         session["role"] = "ADMIN"
 
     def counted(**args):
-        page = client.get("/galleryout/view/_root_", query_string=args,
-                          follow_redirects=True)
+        page = client.get("/galleryout/view/_root_", query_string=args, follow_redirects=True)
         assert page.status_code == 200, page.status_code
-        found = re.search(r"const activeFiltersCount = (\d+);",
-                          page.get_data(as_text=True))
+        found = re.search(r"const activeFiltersCount = (\d+);", page.get_data(as_text=True))
         assert found, "the page no longer states how many filters are on"
         return int(found.group(1))
 
     none_at_all = counted()
-    assert counted(start_date=DAY) == none_at_all + 1, \
-        "a start date is a filter and was not counted"
-    assert counted(end_date=DAY) == none_at_all + 1, \
-        "an end date is a filter and was not counted"
+    assert counted(start_date=DAY) == none_at_all + 1, "a start date is a filter and was not counted"
+    assert counted(end_date=DAY) == none_at_all + 1, "an end date is a filter and was not counted"
     assert counted(start_date=DAY, end_date=DAY) == none_at_all + 2
 
 
@@ -270,8 +270,7 @@ class TestThePageSendsThem:
 
     def _page(self):
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(here, "templates", "index.html"),
-                  encoding="utf-8") as handle:
+        with open(os.path.join(here, "templates", "index.html"), encoding="utf-8") as handle:
             return handle.read()
 
     def test_the_two_boundaries_are_in_the_filter_form(self):
@@ -285,8 +284,7 @@ class TestThePageSendsThem:
         is what knows this timezone and its changes of clock."""
         page = self._page()
 
-        assert "localDayEdge" in page, \
-            "nothing works out the boundaries of the chosen day"
+        assert "localDayEdge" in page, "nothing works out the boundaries of the chosen day"
         assert "new Date(Number(parts[1]), Number(parts[2]) - 1," in page
 
     def test_they_are_not_carried_back_from_the_url(self):
@@ -296,7 +294,6 @@ class TestThePageSendsThem:
 
         for field in ("start_ts", "end_ts"):
             spot = page.index(f'name="{field}"')
-            line = page[spot:page.index(">", spot)]
-            assert "request.args" not in line, \
-                f"{field} is refilled from the URL: {line}"
+            line = page[spot : page.index(">", spot)]
+            assert "request.args" not in line, f"{field} is refilled from the URL: {line}"
             assert 'value=""' in line, line

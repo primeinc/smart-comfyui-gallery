@@ -128,8 +128,10 @@ def _weights_location(model_ref: str, models_dir: str) -> tuple:
     """`(location, local_only)`. A directory under `models_dir` is loaded
     offline; anything else is treated as a Hugging Face repo id."""
     if models_dir:
-        for candidate in (os.path.join(models_dir, *model_ref.split("/")),
-                          os.path.join(models_dir, model_ref.rsplit("/", maxsplit=1)[-1])):
+        for candidate in (
+            os.path.join(models_dir, *model_ref.split("/")),
+            os.path.join(models_dir, model_ref.rsplit("/", maxsplit=1)[-1]),
+        ):
             if os.path.isdir(candidate):
                 return candidate, True
     return model_ref, False
@@ -146,8 +148,7 @@ def is_provisioned(model_ref: str, models_dir: str) -> bool:
     return _weights_location(model_ref, models_dir)[1]
 
 
-def load(model_ref: str, models_dir: str = "", device: str = "",
-         attn: str = "") -> tuple:
+def load(model_ref: str, models_dir: str = "", device: str = "", attn: str = "") -> tuple:
     """`(processor, model)` for `model_ref`, cached per device and backend."""
     device, attn_impl = resolve_device(device), resolve_attn(attn)
     key = (model_ref, models_dir, device, attn_impl)
@@ -169,27 +170,28 @@ def load(model_ref: str, models_dir: str = "", device: str = "",
     if attn_impl:
         options["attn_implementation"] = attn_impl
     try:
-        config = transformers.AutoConfig.from_pretrained(
-            location, local_files_only=local_only)
+        config = transformers.AutoConfig.from_pretrained(location, local_files_only=local_only)
         vision = type(config) in transformers.MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING
         # AutoProcessor wraps a tokenizer plus the image processor; a
         # text-only checkpoint has no processor to wrap, so it loads its
         # tokenizer directly. Chat only ever needs apply_chat_template,
         # batch_decode and a callable -- both satisfy that.
-        loader = (transformers.AutoProcessor if vision
-                  else transformers.AutoTokenizer)
+        loader = transformers.AutoProcessor if vision else transformers.AutoTokenizer
         processor = loader.from_pretrained(location, local_files_only=local_only)
-        auto_model = (transformers.AutoModelForImageTextToText if vision
-                      else transformers.AutoModelForCausalLM)
+        auto_model = transformers.AutoModelForImageTextToText if vision else transformers.AutoModelForCausalLM
         model = auto_model.from_pretrained(location, **options)
         model.to(device)
         model.eval()
     except Exception as exc:
-        raise ModelUnavailable(
-            f"cannot load weights '{model_ref}' from {location}: {exc}") from exc
-    _logger.info("[AI] %s model %s on %s (%s, attn=%s)",
-                 "vision-language" if vision else "text", model_ref, device,
-                 "local" if local_only else "hub", attn_impl or "default")
+        raise ModelUnavailable(f"cannot load weights '{model_ref}' from {location}: {exc}") from exc
+    _logger.info(
+        "[AI] %s model %s on %s (%s, attn=%s)",
+        "vision-language" if vision else "text",
+        model_ref,
+        device,
+        "local" if local_only else "hub",
+        attn_impl or "default",
+    )
     _cache[key] = (processor, model)
     return _cache[key]
 
@@ -221,13 +223,14 @@ def vision_budget(processor, max_vision_tokens: int) -> dict:
         _logger.warning(
             "[AI] %s does not declare patch/merge geometry; vision budget of "
             "%d tokens not applied, using the checkpoint default",
-            type(image_processor).__name__, max_vision_tokens)
+            type(image_processor).__name__,
+            max_vision_tokens,
+        )
         return {}
     per_token = (patch * merge) ** 2
     ceiling = max_vision_tokens * per_token
     floor = getattr(size, "shortest_edge", None) or per_token
-    return {"size": {"shortest_edge": min(floor, ceiling),
-                     "longest_edge": ceiling}}
+    return {"size": {"shortest_edge": min(floor, ceiling), "longest_edge": ceiling}}
 
 
 class Chat:
@@ -241,11 +244,18 @@ class Chat:
     module docstring.
     """
 
-    def __init__(self, model_ref: str, images: Sequence = (), *,
-                 models_dir: str = "", device: str = "", attn: str = "",
-                 system: str | None = None,
-                 tools: list | None = None,
-                 max_vision_tokens: int = DEFAULT_MAX_VISION_TOKENS):
+    def __init__(
+        self,
+        model_ref: str,
+        images: Sequence = (),
+        *,
+        models_dir: str = "",
+        device: str = "",
+        attn: str = "",
+        system: str | None = None,
+        tools: list | None = None,
+        max_vision_tokens: int = DEFAULT_MAX_VISION_TOKENS,
+    ):
         self._processor, self._model = load(model_ref, models_dir, device, attn)
         # AutoProcessor nests its tokenizer; AutoTokenizer IS one.
         self._tokenizer = getattr(self._processor, "tokenizer", self._processor)
@@ -253,19 +263,17 @@ class Chat:
         self._torch: Any = importlib.import_module("torch")
         self._images = [image.convert("RGB") for image in images]
         self._tools = list(tools) if tools else None
-        self._image_kwargs = (vision_budget(self._processor, max_vision_tokens)
-                              if self._images else {})
+        self._image_kwargs = vision_budget(self._processor, max_vision_tokens) if self._images else {}
         self._messages: list = []
         if system:
-            self._messages.append(
-                {"role": "system", "content": [{"type": "text", "text": system}]})
+            self._messages.append({"role": "system", "content": [{"type": "text", "text": system}]})
         self._cache = None
         self._ids = None
 
     def _render(self, messages: list, generation_prompt: bool) -> str:
         return self._processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=generation_prompt,
-            tools=self._tools)
+            messages, tokenize=False, add_generation_prompt=generation_prompt, tools=self._tools
+        )
 
     def ask(self, prompt: str, max_new_tokens: int = 256) -> str:
         """One greedy turn. Returns the reply text."""
@@ -281,8 +289,9 @@ class Chat:
         full_text = self._render(self._messages, True)
 
         if first:
-            inputs = self._processor(text=full_text, images=self._images or None,
-                                     return_tensors="pt", **self._image_kwargs)
+            inputs = self._processor(
+                text=full_text, images=self._images or None, return_tensors="pt", **self._image_kwargs
+            )
             inputs.pop("token_type_ids", None)
             inputs = inputs.to(self._model.device)
             prompt_length = inputs["input_ids"].shape[1]
@@ -294,27 +303,25 @@ class Chat:
             # came out of the processor with the image placeholders already
             # expanded, so the sequence stays aligned with the cache without
             # the vision tower running again.
-            delta = self._tokenizer(
-                full_text[len(cached_text):], add_special_tokens=False,
-                return_tensors="pt")["input_ids"].to(self._model.device)
+            delta = self._tokenizer(full_text[len(cached_text) :], add_special_tokens=False, return_tensors="pt")[
+                "input_ids"
+            ].to(self._model.device)
             input_ids = self._torch.cat([self._ids, delta], dim=-1)
             prompt_length = input_ids.shape[1]
             call = {"input_ids": input_ids}
 
         with self._torch.no_grad():
             generated = self._model.generate(
-                **call, past_key_values=self._cache, do_sample=False,
-                max_new_tokens=max_new_tokens)
+                **call, past_key_values=self._cache, do_sample=False, max_new_tokens=max_new_tokens
+            )
         self._ids = generated
         reply = self._processor.batch_decode(
-            generated[:, prompt_length:], skip_special_tokens=True,
-            clean_up_tokenization_spaces=False)[0].strip()
-        self._messages.append(
-            {"role": "assistant", "content": [{"type": "text", "text": reply}]})
+            generated[:, prompt_length:], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0].strip()
+        self._messages.append({"role": "assistant", "content": [{"type": "text", "text": reply}]})
         return reply
 
-    def ask_json(self, prompt: str, name: str = "", max_new_tokens: int = 512,
-                 attempts: int = 2) -> Any:
+    def ask_json(self, prompt: str, name: str = "", max_new_tokens: int = 512, attempts: int = 2) -> Any:
         """Like `ask`, but returns the parsed arguments of the tool call.
 
         Requires `tools` to have been declared on the Chat. `name` demands
@@ -330,7 +337,8 @@ class Chat:
         if not self._tools:
             raise ValueError(
                 "ask_json needs tools declared on the Chat: they render into "
-                "the system block and cannot be introduced mid-conversation")
+                "the system block and cannot be introduced mid-conversation"
+            )
         if name and not any(t["function"]["name"] == name for t in self._tools):
             raise ValueError(f"tool {name!r} was not declared on this Chat")
         failure: Exception = ValueError("no attempts made")
@@ -340,21 +348,19 @@ class Chat:
                 return tool_arguments(reply, expect=name)
             except ValueError as exc:
                 failure = exc
-                _logger.debug("[AI] unusable reply (attempt %d/%d): %s",
-                              attempt + 1, attempts, reply[:200])
-                prompt = (f"That was not a call to {name}. Answer again as a "
-                          f"single <tool_call> block calling {name}."
-                          if name else
-                          "That was not a tool call. Answer again as a single "
-                          "<tool_call> block.")
+                _logger.debug("[AI] unusable reply (attempt %d/%d): %s", attempt + 1, attempts, reply[:200])
+                prompt = (
+                    f"That was not a call to {name}. Answer again as a single <tool_call> block calling {name}."
+                    if name
+                    else "That was not a tool call. Answer again as a single <tool_call> block."
+                )
         raise failure
 
 
 def tool(name: str, description: str, schema: dict) -> dict:
     """A tool definition in the JSON-schema shape every chat template
     expects (chat_templating_writing.md:210-234)."""
-    return {"type": "function", "function": {
-        "name": name, "description": description, "parameters": schema}}
+    return {"type": "function", "function": {"name": name, "description": description, "parameters": schema}}
 
 
 def extract_json_object(text: str) -> Any:
@@ -385,7 +391,7 @@ def extract_json_object(text: str) -> Any:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start:index + 1])
+                        return json.loads(text[start : index + 1])
                     except json.JSONDecodeError:
                         break
         start = text.find("{", start + 1)
@@ -408,8 +414,7 @@ def tool_arguments(text: str, expect: str = "") -> Any:
     opening = text.find("<tool_call>")
     if opening != -1:
         closing = text.find("</tool_call>", opening)
-        call = text[opening + len("<tool_call>"):
-                    closing if closing != -1 else len(text)]
+        call = text[opening + len("<tool_call>") : closing if closing != -1 else len(text)]
     obj = extract_json_object(call)
     if isinstance(obj, dict) and "arguments" in obj:
         called = obj.get("name")

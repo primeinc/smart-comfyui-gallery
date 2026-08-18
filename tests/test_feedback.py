@@ -74,9 +74,7 @@ def test_record_feedback_defaults_now_to_current_time():
     before = __import__("time").time()
     feedback_id = record_feedback(conn, "duplicate", "d1", "reject")
     after = __import__("time").time()
-    created_at = conn.execute(
-        "SELECT created_at FROM ai_feedback WHERE feedback_id = ?", (feedback_id,)
-    ).fetchone()[0]
+    created_at = conn.execute("SELECT created_at FROM ai_feedback WHERE feedback_id = ?", (feedback_id,)).fetchone()[0]
     assert before <= created_at <= after
 
 
@@ -116,9 +114,7 @@ def test_record_feedback_rejects_non_integer_rating():
 def test_record_feedback_accepts_boundary_ratings(good_rating):
     conn = make_conn()
     feedback_id = record_feedback(conn, "review", "1", "rating", rating=good_rating)
-    got = conn.execute(
-        "SELECT rating FROM ai_feedback WHERE feedback_id = ?", (feedback_id,)
-    ).fetchone()[0]
+    got = conn.execute("SELECT rating FROM ai_feedback WHERE feedback_id = ?", (feedback_id,)).fetchone()[0]
     assert got == good_rating
 
 
@@ -181,8 +177,16 @@ def test_export_feedback_round_trip_jsonl_and_stamps_exported_at(tmp_path):
 
     # all columns present
     expected_columns = {
-        "feedback_id", "target_kind", "target_id", "file_id", "verdict",
-        "rating", "note", "created_by", "created_at", "exported_at",
+        "feedback_id",
+        "target_kind",
+        "target_id",
+        "file_id",
+        "verdict",
+        "rating",
+        "note",
+        "created_by",
+        "created_at",
+        "exported_at",
     }
     assert set(by_id[id1].keys()) == expected_columns
 
@@ -201,10 +205,7 @@ def test_export_feedback_preserves_original_exported_at_on_second_export():
 
     record_feedback(conn, "review", "2", "accept", now=200.0)
     export_feedback(conn, mark=True)
-    exported_ats = [
-        r[0]
-        for r in conn.execute("SELECT exported_at FROM ai_feedback ORDER BY feedback_id")
-    ]
+    exported_ats = [r[0] for r in conn.execute("SELECT exported_at FROM ai_feedback ORDER BY feedback_id")]
     assert exported_ats[0] == pytest.approx(first_exported_at)
     assert exported_ats[1] is not None
 

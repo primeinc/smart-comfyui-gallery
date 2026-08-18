@@ -34,9 +34,10 @@ import pytest
 from PIL import Image
 
 _PREFIX = "sortcase_"
-_NAMES = [f"{_PREFIX}{part}" for part in
-          ("apple.png", "Banana.png", "cherry.png", "Date.png",
-           "IMG_001.png", "img_002.png", "zebra.png")]
+_NAMES = [
+    f"{_PREFIX}{part}"
+    for part in ("apple.png", "Banana.png", "cherry.png", "Date.png", "IMG_001.png", "img_002.png", "zebra.png")
+]
 _ACCENTED = f"{_PREFIX}Ähnlich.png"
 
 
@@ -61,8 +62,7 @@ class _InlineExecutor:
 
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
@@ -76,8 +76,10 @@ def library(smartgallery_app, monkeypatch):
         conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r["name"]: r["id"] for r in conn.execute(
-            f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        ids = {
+            r["name"]: r["id"]
+            for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+        }
     finally:
         conn.close()
 
@@ -96,11 +98,12 @@ def library(smartgallery_app, monkeypatch):
 
 def _order(smartgallery_app, ids, direction="ASC"):
     """The names as the grid lays them out, top to bottom."""
-    page = smartgallery_app.app.test_client().get(
-        f"/galleryout/view/_root_?sort_by=name&sort_order={direction}"
-    ).get_data(as_text=True)
-    seen = [(page.find(file_id), name) for name, file_id in ids.items()
-            if page.find(file_id) >= 0]
+    page = (
+        smartgallery_app.app.test_client()
+        .get(f"/galleryout/view/_root_?sort_by=name&sort_order={direction}")
+        .get_data(as_text=True)
+    )
+    seen = [(page.find(file_id), name) for name, file_id in ids.items() if page.find(file_id) >= 0]
     return [name for _at, name in sorted(seen)]
 
 
@@ -116,7 +119,8 @@ def test_capitals_no_longer_come_first(smartgallery_app, library):
     order = _order(smartgallery_app, library)
 
     assert order.index(f"{_PREFIX}IMG_001.png") + 1 == order.index(f"{_PREFIX}img_002.png"), (
-        f"IMG_001 and img_002 are not adjacent: {order}")
+        f"IMG_001 and img_002 are not adjacent: {order}"
+    )
     assert order[:7] == sorted(_NAMES, key=str.lower), order
 
 
@@ -139,8 +143,7 @@ def test_the_grid_agrees_with_the_folder_list(smartgallery_app, library):
 def test_another_sort_is_untouched(smartgallery_app, library):
     """Control against over-reach: only the name ordering changed, so a
     different sort must still answer and still list everything."""
-    page = smartgallery_app.app.test_client().get(
-        "/galleryout/view/_root_?sort_by=date&sort_order=DESC")
+    page = smartgallery_app.app.test_client().get("/galleryout/view/_root_?sort_by=date&sort_order=DESC")
 
     assert page.status_code == 200
     body = page.get_data(as_text=True)

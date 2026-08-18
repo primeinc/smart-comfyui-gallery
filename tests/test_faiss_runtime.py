@@ -15,13 +15,11 @@ from smartgallery_ai import faiss_runtime
 def _isolate_faiss_modules(monkeypatch):
     """Never let a test leak a fake faiss into the process, and never let
     a previously imported real faiss short-circuit a test."""
-    saved = {name: mod for name, mod in sys.modules.items()
-             if name == "faiss" or name.startswith("faiss.")}
+    saved = {name: mod for name, mod in sys.modules.items() if name == "faiss" or name.startswith("faiss.")}
     for name in saved:
         monkeypatch.delitem(sys.modules, name, raising=False)
     yield
-    for name in [n for n in list(sys.modules)
-                 if n == "faiss" or n.startswith("faiss.")]:
+    for name in [n for n in list(sys.modules) if n == "faiss" or n.startswith("faiss.")]:
         del sys.modules[name]
     sys.modules.update(saved)
 

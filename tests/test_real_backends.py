@@ -30,8 +30,7 @@ from smartgallery_ai.worker import AIWorker
 
 MODELS_DIR = os.environ.get(
     "AI_DAM_MODELS_DIR",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                 ".AImodels"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".AImodels"),
 )
 
 pytestmark = pytest.mark.skipif(
@@ -51,13 +50,10 @@ def _test_images():
     smooth gradient. (Two independent noise textures are NOT a good
     dissimilar pair: DINOv2 legitimately embeds them close together.)"""
     rng = np.random.default_rng(20)
-    base = Image.fromarray(
-        (rng.random((64, 64, 3)) * 255).astype("uint8")
-    ).resize((448, 448), Image.LANCZOS)
+    base = Image.fromarray((rng.random((64, 64, 3)) * 255).astype("uint8")).resize((448, 448), Image.LANCZOS)
     edited = ImageEnhance.Contrast(base).enhance(1.3)
     yy, xx = np.mgrid[0:448, 0:448].astype(np.float32) / 448.0
-    gradient = Image.fromarray(
-        np.stack([xx * 255, yy * 255, (1 - xx) * 255], axis=-1).astype("uint8"))
+    gradient = Image.fromarray(np.stack([xx * 255, yy * 255, (1 - xx) * 255], axis=-1).astype("uint8"))
     return base, edited, gradient
 
 
@@ -79,8 +75,7 @@ def test_real_visual_backend_dinov2_separates_similarity():
 
 
 def test_real_semantic_backend_openclip_text_to_image():
-    if not os.path.isfile(os.path.join(
-            MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
+    if not os.path.isfile(os.path.join(MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         pytest.skip("open_clip weights not provisioned")
 
     sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
@@ -98,8 +93,7 @@ def test_real_semantic_backend_openclip_text_to_image():
 
 
 def test_real_face_backend_yunet_sface():
-    for f in ("face_detection_yunet_2023mar.onnx",
-              "face_recognition_sface_2021dec.onnx"):
+    for f in ("face_detection_yunet_2023mar.onnx", "face_recognition_sface_2021dec.onnx"):
         if not os.path.isfile(os.path.join(MODELS_DIR, f)):
             pytest.skip(f"{f} not provisioned")
 
@@ -129,9 +123,7 @@ def test_real_segmenter_mobilesam_box_prompt_iou():
     # Solid red square on a textured background; a loose box prompt around
     # it must segment the square precisely (high IoU vs ground truth).
     rng = np.random.default_rng(31)
-    base = Image.fromarray(
-        (rng.random((64, 64, 3)) * 255).astype("uint8")
-    ).resize((512, 512), Image.LANCZOS)
+    base = Image.fromarray((rng.random((64, 64, 3)) * 255).astype("uint8")).resize((512, 512), Image.LANCZOS)
     ImageDraw.Draw(base).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
     gt = np.zeros((512, 512), bool)
     gt[300:420, 300:420] = True
@@ -145,19 +137,13 @@ def test_segmenter_factory_resolution(tmp_path):
     """Factory policy: 'auto' degrades to None without weights; 'mobilesam'
     raises; 'none'/'stub' behave as documented. Model-free (empty dir)."""
 
-    assert get_segmenter_backend(
-        AIConfig(enabled=True, models_dir=str(tmp_path),
-                 segmenter_backend="none")) is None
-    assert get_segmenter_backend(
-        AIConfig(enabled=True, models_dir=str(tmp_path),
-                 segmenter_backend="auto")) is None
-    assert isinstance(get_segmenter_backend(
-        AIConfig(enabled=True, models_dir=str(tmp_path),
-                 segmenter_backend="stub")), StubSegmenter)
+    assert get_segmenter_backend(AIConfig(enabled=True, models_dir=str(tmp_path), segmenter_backend="none")) is None
+    assert get_segmenter_backend(AIConfig(enabled=True, models_dir=str(tmp_path), segmenter_backend="auto")) is None
+    assert isinstance(
+        get_segmenter_backend(AIConfig(enabled=True, models_dir=str(tmp_path), segmenter_backend="stub")), StubSegmenter
+    )
     with pytest.raises(BackendUnavailable):
-        get_segmenter_backend(
-            AIConfig(enabled=True, models_dir=str(tmp_path),
-                     segmenter_backend="mobilesam"))
+        get_segmenter_backend(AIConfig(enabled=True, models_dir=str(tmp_path), segmenter_backend="mobilesam"))
 
 
 def test_real_grounding_gate_negative_cases():
@@ -165,8 +151,7 @@ def test_real_grounding_gate_negative_cases():
     space without loading the VLM: a grounded description passes, the
     previously-measured fabricated description and an unrelated one raise
     UngroundedReviewError."""
-    if not os.path.isfile(os.path.join(
-            MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
+    if not os.path.isfile(os.path.join(MODELS_DIR, "open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         pytest.skip("open_clip weights not provisioned")
 
     sem = get_semantic_backend(_cfg(semantic_backend="open_clip"))
@@ -183,16 +168,16 @@ def test_real_grounding_gate_negative_cases():
     # rejects what the v1 absolute-cosine gate accepted:
     # (a) vacuous description == the baseline -> margin ~ 0
     with pytest.raises(UngroundedReviewError):
-        check_grounding(sem,
-                        "This is an image. It contains some shapes and colors.",
-                        red)
+        check_grounding(sem, "This is an image. It contains some shapes and colors.", red)
     # (b) the parroted schema example on an image it does not describe
     with pytest.raises(UngroundedReviewError):
-        check_grounding(sem,
-                        "Good portrait with one artifact. The image shows a "
-                        "red square artifact in the lower right and slightly "
-                        "flat lighting.",
-                        Image.new("RGB", (224, 224), (20, 20, 220)))
+        check_grounding(
+            sem,
+            "Good portrait with one artifact. The image shows a "
+            "red square artifact in the lower right and slightly "
+            "flat lighting.",
+            Image.new("RGB", (224, 224), (20, 20, 220)),
+        )
 
 
 def test_real_critic_to_mask_chain():
@@ -205,21 +190,15 @@ def test_real_critic_to_mask_chain():
 
     if not ai_models.is_provisioned(DEFAULT_REVIEW_MODEL, MODELS_DIR):
         pytest.skip(f"{DEFAULT_REVIEW_MODEL} not provisioned")
-    for f in ("mobile_sam.pt",
-              os.path.join("open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
+    for f in ("mobile_sam.pt", os.path.join("open_clip", "ViT-B-32_laion2b_s34b_b79k.bin")):
         if not os.path.isfile(os.path.join(MODELS_DIR, f)):
             pytest.skip(f"{f} not provisioned")
-
-
-
 
     tmp = tempfile.mkdtemp(prefix="sg_critic_chain_")
     media = os.path.join(tmp, "m")
     os.makedirs(media)
     rng = np.random.default_rng(17)
-    img = Image.fromarray(
-        (rng.random((64, 64, 3)) * 255).astype("uint8")
-    ).resize((512, 512), Image.LANCZOS)
+    img = Image.fromarray((rng.random((64, 64, 3)) * 255).astype("uint8")).resize((512, 512), Image.LANCZOS)
     ImageDraw.Draw(img).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
     path = os.path.join(media, "flawed.png")
     img.save(path)
@@ -228,18 +207,26 @@ def test_real_critic_to_mask_chain():
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE,"
-        " mtime REAL NOT NULL, name TEXT, type TEXT, workflow_prompt TEXT)")
+        " mtime REAL NOT NULL, name TEXT, type TEXT, workflow_prompt TEXT)"
+    )
     schema.init_schema(conn)
     conn.execute(
-        "INSERT INTO files VALUES ('fc1', ?, ?, 'flawed.png', 'image',"
-        " 'abstract colorful texture')", (path, os.path.getmtime(path)))
+        "INSERT INTO files VALUES ('fc1', ?, ?, 'flawed.png', 'image', 'abstract colorful texture')",
+        (path, os.path.getmtime(path)),
+    )
     conn.commit()
     conn.close()
 
-    cfg = _cfg(base_path=tmp, db_path=db, cache_dir=os.path.join(tmp, "cache"),
-               semantic_backend="open_clip", visual_backend="none",
-               face_backend="none", critic_backend="vlm",
-               segmenter_backend="auto")
+    cfg = _cfg(
+        base_path=tmp,
+        db_path=db,
+        cache_dir=os.path.join(tmp, "cache"),
+        semantic_backend="open_clip",
+        visual_backend="none",
+        face_backend="none",
+        critic_backend="vlm",
+        segmenter_backend="auto",
+    )
     worker = AIWorker(cfg, db, poll_interval=0.2)
     worker.start()
     try:
@@ -247,9 +234,7 @@ def test_real_critic_to_mask_chain():
         stored = False
         while _time.time() < deadline and not stored:
             c = sqlite3.connect(db)
-            stored = c.execute(
-                "SELECT 1 FROM ai_scan_log WHERE file_id='fc1' AND kind='review'"
-            ).fetchone() is not None
+            stored = c.execute("SELECT 1 FROM ai_scan_log WHERE file_id='fc1' AND kind='review'").fetchone() is not None
             c.close()
             if not stored:
                 _time.sleep(5)
@@ -260,8 +245,7 @@ def test_real_critic_to_mask_chain():
     c = sqlite3.connect(db)
     c.row_factory = sqlite3.Row
     review_row = c.execute("SELECT * FROM ai_reviews WHERE file_id='fc1'").fetchone()
-    findings = c.execute(
-        "SELECT * FROM ai_review_findings WHERE file_id='fc1'").fetchall()
+    findings = c.execute("SELECT * FROM ai_review_findings WHERE file_id='fc1'").fetchall()
     c.close()
     assert review_row is not None
     assert 0.0 <= review_row["quality_score"] <= 10.0
@@ -323,10 +307,8 @@ def test_real_vlm_vision_budget_shrinks_the_encoded_image():
     img = _shapes_image()
 
     def image_tokens(**kwargs):
-        messages = [{"role": "user", "content": [
-            {"type": "image"}, {"type": "text", "text": "Describe."}]}]
-        text = processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True)
+        messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": "Describe."}]}]
+        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         out = processor(text=text, images=[img], return_tensors="pt", **kwargs)
         ids = out["input_ids"][0]
         return int((ids == processor.image_token_id).sum())
@@ -346,9 +328,11 @@ def test_real_vlm_vision_budget_shrinks_the_encoded_image():
 def test_real_vlm_cached_turns_answer_the_same_as_a_full_re_encode():
     ai_models, _ = _chat_model_or_skip()
     img = _shapes_image()
-    questions = ["What colour is the circle? One word.",
-                 "How many shapes are there? One word.",
-                 "Is the background dark or light? One word."]
+    questions = [
+        "What colour is the circle? One word.",
+        "How many shapes are there? One word.",
+        "Is the background dark or light? One word.",
+    ]
     system = "Answer in one short sentence."
 
     # Cached: one Chat, image encoded once, three questions.
@@ -356,9 +340,10 @@ def test_real_vlm_cached_turns_answer_the_same_as_a_full_re_encode():
     cached = [chat.ask(question, max_new_tokens=24) for question in questions]
 
     # Re-encoded: a fresh Chat per question, image encoded three times.
-    fresh = [ai_models.Chat(CHAT_REF, [img], models_dir=MODELS_DIR,
-                      system=system).ask(question, max_new_tokens=24)
-             for question in questions]
+    fresh = [
+        ai_models.Chat(CHAT_REF, [img], models_dir=MODELS_DIR, system=system).ask(question, max_new_tokens=24)
+        for question in questions
+    ]
 
     assert all(answer.strip() for answer in cached)
     # Greedy decoding plus an intact prefix means these must agree exactly.
@@ -371,14 +356,21 @@ def test_real_vlm_cached_turns_answer_the_same_as_a_full_re_encode():
 
 def test_real_vlm_returns_a_parsed_tool_call():
     ai_models, _ = _chat_model_or_skip()
-    schema = {"type": "object", "properties": {
-        "shapes": {"type": "integer", "description": "How many shapes"},
-        "dominant_colour": {"type": "string"}},
-        "required": ["shapes", "dominant_colour"]}
-    chat = ai_models.Chat(CHAT_REF, [_shapes_image()], models_dir=MODELS_DIR,
-                    system="You inspect images precisely.",
-                    tools=[ai_models.tool("report", "Report the image contents.",
-                                    schema)])
+    schema = {
+        "type": "object",
+        "properties": {
+            "shapes": {"type": "integer", "description": "How many shapes"},
+            "dominant_colour": {"type": "string"},
+        },
+        "required": ["shapes", "dominant_colour"],
+    }
+    chat = ai_models.Chat(
+        CHAT_REF,
+        [_shapes_image()],
+        models_dir=MODELS_DIR,
+        system="You inspect images precisely.",
+        tools=[ai_models.tool("report", "Report the image contents.", schema)],
+    )
 
     payload = chat.ask_json("Call report for this image.")
 

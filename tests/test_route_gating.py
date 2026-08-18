@@ -68,8 +68,7 @@ def test_an_anonymous_caller_is_refused(locked, method, path):
     """The regression: each of these answered with data."""
     resp = _call(locked.app.test_client(), method, path)
 
-    assert resp.status_code in (401, 403), (
-        f"{path} answered {resp.status_code} to a caller with no session")
+    assert resp.status_code in (401, 403), f"{path} answered {resp.status_code} to a caller with no session"
 
 
 @pytest.mark.parametrize(("method", "path"), _ROUTES)
@@ -83,8 +82,7 @@ def test_a_logged_in_customer_is_refused(locked, method, path):
 
     resp = _call(client, method, path)
 
-    assert resp.status_code == 403, (
-        f"{path} answered a customer with {resp.status_code}")
+    assert resp.status_code == 403, f"{path} answered a customer with {resp.status_code}"
 
 
 @pytest.mark.parametrize(("method", "path"), _ROUTES)
@@ -99,15 +97,13 @@ def test_staff_still_reach_them(locked, method, path):
 
     resp = _call(client, method, path)
 
-    assert resp.status_code not in (401, 403), (
-        f"{path} refused staff with {resp.status_code}")
+    assert resp.status_code not in (401, 403), f"{path} refused staff with {resp.status_code}"
 
 
 def test_an_anonymous_caller_cannot_set_a_scan_going(locked):
     """Status codes are the symptom; this is the property. The sync route
     walks the folder and writes what it finds, so a refusal has to mean the
     work never happened -- not merely that the reply looked like a refusal."""
-
 
     base = locked.BASE_OUTPUT_PATH
     path = os.path.join(base, "gating_unindexed.png")
@@ -127,9 +123,7 @@ def test_an_anonymous_caller_cannot_set_a_scan_going(locked):
         conn = locked.get_db_connection()
         try:
             after = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-            indexed = conn.execute(
-                "SELECT COUNT(*) FROM files WHERE name = 'gating_unindexed.png'"
-            ).fetchone()[0]
+            indexed = conn.execute("SELECT COUNT(*) FROM files WHERE name = 'gating_unindexed.png'").fetchone()[0]
         finally:
             conn.close()
 
@@ -140,13 +134,11 @@ def test_an_anonymous_caller_cannot_set_a_scan_going(locked):
 
 
 @pytest.mark.parametrize(("method", "path"), _ROUTES)
-def test_the_default_local_install_reaches_them(smartgallery_app, monkeypatch,
-                                                method, path):
+def test_the_default_local_install_reaches_them(smartgallery_app, monkeypatch, method, path):
     """No login configured: one person, and the gallery is theirs."""
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
     resp = _call(smartgallery_app.app.test_client(), method, path)
 
-    assert resp.status_code not in (401, 403), (
-        f"{path} refused the local administrator with {resp.status_code}")
+    assert resp.status_code not in (401, 403), f"{path} refused the local administrator with {resp.status_code}"

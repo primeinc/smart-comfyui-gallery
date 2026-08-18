@@ -59,9 +59,11 @@ def _cuda_compute_capability():
     try:
         proc = subprocess.run(
             ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=10)
-        caps = [float(line.strip()) for line in proc.stdout.splitlines()
-                if line.strip()]
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        caps = [float(line.strip()) for line in proc.stdout.splitlines() if line.strip()]
         cap = max(caps) if caps else None
     except (OSError, subprocess.SubprocessError, ValueError):
         cap = None
@@ -76,8 +78,7 @@ def _driver_cuda_version():
         return _driver_cuda_cache[0]
     value = None
     try:
-        proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True,
-                              timeout=10)
+        proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
         match = re.search(r"CUDA Version:\s*([\d.]+)", proc.stdout or "")
         if match:
             value = float(match.group(1))
@@ -98,10 +99,15 @@ def cuda_summary():
     driver = None
     try:
         proc = subprocess.run(
-            ["nvidia-smi",
-             "--query-gpu=name,driver_version,compute_cap,memory.total,memory.used",
-             "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=10)
+            [
+                "nvidia-smi",
+                "--query-gpu=name,driver_version,compute_cap,memory.total,memory.used",
+                "--format=csv,noheader",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         for line in proc.stdout.splitlines():
             parts = [part.strip() for part in line.split(",")]
             if len(parts) >= 4:
@@ -110,9 +116,14 @@ def cuda_summary():
                     cap = float(parts[2])
                 except ValueError:
                     cap = None
-                gpus.append({"name": parts[0], "compute_capability": cap,
-                             "vram": parts[3],
-                             "vram_used": parts[4] if len(parts) >= 5 else None})
+                gpus.append(
+                    {
+                        "name": parts[0],
+                        "compute_capability": cap,
+                        "vram": parts[3],
+                        "vram_used": parts[4] if len(parts) >= 5 else None,
+                    }
+                )
     except (OSError, subprocess.SubprocessError, ValueError):
         pass
     return {
@@ -168,22 +179,26 @@ GROUPS = (
         # similarity graph (exact IndexFlatIP; NumPy fallback exists).
         # insightface + onnxruntime power the SCRFD pipeline used by the
         # detector-compare endpoint (and FaceAnalysis generally).
-        runtime=(("faiss", "faiss-cpu"),
-                 ("insightface", "insightface"),
-                 ("onnxruntime", "onnxruntime")),
+        runtime=(("faiss", "faiss-cpu"), ("insightface", "insightface"), ("onnxruntime", "onnxruntime")),
         artifacts=(
             Artifact(
                 dest="face_detection_yunet_2023mar.onnx",
-                approx_size="232 KB", license="MIT",
-                url=("https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
-                     "models/face_detection_yunet/face_detection_yunet_2023mar.onnx"),
+                approx_size="232 KB",
+                license="MIT",
+                url=(
+                    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
+                    "models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+                ),
                 sha256="8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
             ),
             Artifact(
                 dest="face_recognition_sface_2021dec.onnx",
-                approx_size="37 MB", license="Apache-2.0",
-                url=("https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
-                     "models/face_recognition_sface/face_recognition_sface_2021dec.onnx"),
+                approx_size="37 MB",
+                license="Apache-2.0",
+                url=(
+                    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
+                    "models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
+                ),
                 sha256="0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
             ),
             # insightface antelopev2 pack (official release asset), laid
@@ -198,8 +213,7 @@ GROUPS = (
                 dest="insightface/models/antelopev2",
                 approx_size="407 MB (344 MB zip)",
                 license="non-commercial research (insightface)",
-                url=("https://github.com/deepinsight/insightface/releases/"
-                     "download/v0.7/antelopev2.zip"),
+                url=("https://github.com/deepinsight/insightface/releases/download/v0.7/antelopev2.zip"),
                 unzip_all=True,
             ),
         ),
@@ -207,12 +221,12 @@ GROUPS = (
     Group(
         name="semantic",
         enables="Similar tab (semantic space), critic grounding gate, prompt alignment",
-        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
-                 ("open_clip", "open_clip_torch")),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"), ("open_clip", "open_clip_torch")),
         artifacts=(
             Artifact(
                 dest="open_clip/ViT-B-32_laion2b_s34b_b79k.bin",
-                approx_size="605 MB", license="MIT",
+                approx_size="605 MB",
+                license="MIT",
                 hf_repo="laion/CLIP-ViT-B-32-laion2B-s34b-b79k",
                 hf_filename="open_clip_pytorch_model.bin",
                 sha256="1bd3c7172de5b207ceac554f5ab5266166f3b9baccc9af5989bc801016d080ad",
@@ -222,12 +236,12 @@ GROUPS = (
     Group(
         name="visual",
         enables="Similar tab (visual space)",
-        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
-                 ("transformers", "transformers")),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"), ("transformers", "transformers")),
         artifacts=(
             Artifact(
                 dest="dinov2-small",  # snapshot directory
-                approx_size="90 MB", license="Apache-2.0",
+                approx_size="90 MB",
+                license="Apache-2.0",
                 hf_repo="facebook/dinov2-small",
             ),
         ),
@@ -235,14 +249,17 @@ GROUPS = (
     Group(
         name="segmenter",
         enables="Defect masks for localizable review findings",
-        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
-                 ("timm", "timm"),
-                 ("mobile_sam",
-                  "mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git")),
+        runtime=(
+            ("torch", "torch"),
+            ("torchvision", "torchvision"),
+            ("timm", "timm"),
+            ("mobile_sam", "mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git"),
+        ),
         artifacts=(
             Artifact(
                 dest="mobile_sam.pt",
-                approx_size="40 MB", license="Apache-2.0",
+                approx_size="40 MB",
+                license="Apache-2.0",
                 hf_repo="dhkim2810/MobileSAM",
                 hf_filename="mobile_sam.pt",
                 sha256="6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f",
@@ -251,14 +268,12 @@ GROUPS = (
     ),
     Group(
         name="omniquery",
-        enables="Search palette AI answerer (free-language questions via "
-                "read-only nl2sql)",
+        enables="Search palette AI answerer (free-language questions via read-only nl2sql)",
         # torchvision even though this checkpoint is text-only:
         # smartgallery_ai.models imports it before transformers so the
         # availability flag is set for the whole process, and a torch group
         # without a paired torchvision resolves an unmatched PyPI build.
-        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
-                 ("transformers", "transformers")),
+        runtime=(("torch", "torch"), ("torchvision", "torchvision"), ("transformers", "transformers")),
         artifacts=(
             # The safetensors source the previously-shipped 4-bit GGUF was
             # quantized from, so the prompt contract and the 98-entry
@@ -267,7 +282,8 @@ GROUPS = (
             # when the deterministic nlq parse flags structural leftovers.
             Artifact(
                 dest="distil-qwen3-4b-text2sql",
-                approx_size="8.1 GB", license="Apache-2.0",
+                approx_size="8.1 GB",
+                license="Apache-2.0",
                 hf_repo="distil-labs/distil-qwen3-4b-text2sql",
             ),
         ),
@@ -275,9 +291,12 @@ GROUPS = (
     Group(
         name="critic",
         enables="Review tab (quality/alignment scores + typed findings); needs 'semantic' too",
-        runtime=(("torch", "torch"), ("torchvision", "torchvision"),
-                 ("transformers", "transformers"),
-                 ("open_clip", "open_clip_torch")),
+        runtime=(
+            ("torch", "torch"),
+            ("torchvision", "torchvision"),
+            ("transformers", "transformers"),
+            ("open_clip", "open_clip_torch"),
+        ),
         artifacts=(
             # A full snapshot, not a single file: transformers loads a
             # checkpoint directory. The reviewer runs ANY image-text-to-text
@@ -285,7 +304,8 @@ GROUPS = (
             # default rather than a hard-coded dependency.
             Artifact(
                 dest="Qwen3-VL-2B-Instruct",
-                approx_size="4.4 GB", license="Apache-2.0",
+                approx_size="4.4 GB",
+                license="Apache-2.0",
                 hf_repo="Qwen/Qwen3-VL-2B-Instruct",
             ),
         ),
@@ -315,13 +335,13 @@ def _verify(path: str, expected: str | None, label: str) -> None:
     actual = _sha256_of(path)
     if actual != expected:
         raise ProvisionError(
-            f"{label}: SHA-256 mismatch (expected {expected[:16]}..., got "
-            f"{actual[:16]}...); refusing to keep the file")
+            f"{label}: SHA-256 mismatch (expected {expected[:16]}..., got {actual[:16]}...); refusing to keep the file"
+        )
 
 
-def _copy_with_progress(reader, writer, total: int | None,
-                        progress: Callable[[int, int | None], None] | None,
-                        chunk_size: int = 1 << 20) -> int:
+def _copy_with_progress(
+    reader, writer, total: int | None, progress: Callable[[int, int | None], None] | None, chunk_size: int = 1 << 20
+) -> int:
     """Chunked stream copy that reports (bytes_done, bytes_total) after
     every chunk; total may be None when the server sent no length.
 
@@ -351,8 +371,7 @@ def _copy_with_progress(reader, writer, total: int | None,
 DOWNLOAD_STALL_TIMEOUT = 60
 
 
-def _download_url(url: str, dest_path: str,
-                  progress: Callable[[int, int | None], None] | None = None) -> None:
+def _download_url(url: str, dest_path: str, progress: Callable[[int, int | None], None] | None = None) -> None:
     """Stream one direct URL to dest_path via a temp file, reporting byte
     progress as it goes.
 
@@ -384,8 +403,7 @@ def _download_url(url: str, dest_path: str,
     """
     tmp = dest_path + ".part"
     try:
-        with urllib.request.urlopen(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, \
-                open(tmp, "wb") as out:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_STALL_TIMEOUT) as resp, open(tmp, "wb") as out:
             length = resp.headers.get("Content-Length")
             expected = int(length) if length else None
             written = _copy_with_progress(resp, out, expected, progress)
@@ -394,7 +412,8 @@ def _download_url(url: str, dest_path: str,
             raise ProvisionError(
                 f"{os.path.basename(dest_path)}: the download stopped early "
                 f"-- {written:,} of {expected:,} bytes arrived from {url}. "
-                f"Nothing was kept; run provisioning again to retry.")
+                f"Nothing was kept; run provisioning again to retry."
+            )
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -410,9 +429,7 @@ def _download_zip_member(url_dl, url: str, member: str, dest_path: str) -> None:
     zip_tmp = dest_path + ".zip"
     url_dl(url, zip_tmp)
     try:
-        with zipfile.ZipFile(zip_tmp) as zf, \
-                zf.open(member) as src, \
-                open(dest_path + ".part", "wb") as out:
+        with zipfile.ZipFile(zip_tmp) as zf, zf.open(member) as src, open(dest_path + ".part", "wb") as out:
             shutil.copyfileobj(src, out)
         os.replace(dest_path + ".part", dest_path)
     finally:
@@ -433,12 +450,11 @@ def _download_zip_all(url_dl, url: str, dest_dir: str) -> None:
         with zipfile.ZipFile(zip_tmp) as zf:
             names = [n for n in zf.namelist() if not n.endswith("/")]
             roots = {n.split("/", 1)[0] for n in names}
-            strip = (len(roots) == 1 and all("/" in n for n in names))
+            strip = len(roots) == 1 and all("/" in n for n in names)
             for name in names:
                 rel = name.split("/", 1)[1] if strip else name
                 target = os.path.join(dest_dir, *rel.split("/"))
-                if not os.path.abspath(target).startswith(
-                        os.path.abspath(dest_dir) + os.sep):
+                if not os.path.abspath(target).startswith(os.path.abspath(dest_dir) + os.sep):
                     raise ProvisionError(f"zip member escapes dest: {name}")
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 with zf.open(name) as src, open(target + ".part", "wb") as out:
@@ -501,8 +517,7 @@ def _module_installed(probe: str) -> bool:
 def runtime_missing(group: Group) -> list:
     """The group's runtime requirements whose probe modules cannot be
     imported right now, as (probe_module, pip_requirement) pairs."""
-    return [(probe, req) for probe, req in group.runtime
-            if not _module_installed(probe)]
+    return [(probe, req) for probe, req in group.runtime if not _module_installed(probe)]
 
 
 def artifact_present(models_dir: str, artifact: Artifact) -> bool:
@@ -518,17 +533,16 @@ def artifact_present(models_dir: str, artifact: Artifact) -> bool:
 # figure in the string is summed ("407 MB (344 MB zip)" needs the archive
 # and the extraction on disk at the same time).
 _SIZE_TOKEN_RE = re.compile(r"([\d.]+)\s*(KB|MB|GB)", re.IGNORECASE)
-_SIZE_UNITS = {"KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3}
+_SIZE_UNITS = {"KB": 1024, "MB": 1024**2, "GB": 1024**3}
 # Headroom the preflight insists on beyond the artifact bytes: caches,
 # thumbnails, and SQLite growth share the volume, and filling a system
 # drive to zero takes the whole machine down, not just this app.
-_DISK_HEADROOM_BYTES = 1024 ** 3
+_DISK_HEADROOM_BYTES = 1024**3
 
 
 def _approx_bytes(size_text: str) -> int:
     """Byte estimate of an approx_size string; 0 when nothing parses."""
-    return sum(int(float(num) * _SIZE_UNITS[unit.upper()])
-               for num, unit in _SIZE_TOKEN_RE.findall(size_text))
+    return sum(int(float(num) * _SIZE_UNITS[unit.upper()]) for num, unit in _SIZE_TOKEN_RE.findall(size_text))
 
 
 def _check_disk_space(models_dir: str, artifacts) -> None:
@@ -551,10 +565,11 @@ def _check_disk_space(models_dir: str, artifacts) -> None:
     if free < needed + _DISK_HEADROOM_BYTES:
         raise ProvisionError(
             f"not enough disk space for the requested weights: "
-            f"~{needed // 1024 ** 2} MB to download plus "
-            f"{_DISK_HEADROOM_BYTES // 1024 ** 2} MB headroom, but only "
-            f"{free // 1024 ** 2} MB free on the volume of {probe}. Free up "
-            "space or point AI_DAM_MODELS_DIR at a roomier drive.")
+            f"~{needed // 1024**2} MB to download plus "
+            f"{_DISK_HEADROOM_BYTES // 1024**2} MB headroom, but only "
+            f"{free // 1024**2} MB free on the volume of {probe}. Free up "
+            "space or point AI_DAM_MODELS_DIR at a roomier drive."
+        )
 
 
 def resolve_groups(names) -> list:
@@ -564,9 +579,7 @@ def resolve_groups(names) -> list:
         return list(GROUPS)
     unknown = [n for n in names if n not in _GROUPS_BY_NAME]
     if unknown:
-        raise ValueError(
-            f"unknown group(s) {unknown}; valid: "
-            f"{[g.name for g in GROUPS] + ['all']}")
+        raise ValueError(f"unknown group(s) {unknown}; valid: {[g.name for g in GROUPS] + ['all']}")
     return [_GROUPS_BY_NAME[n] for n in names]
 
 
@@ -598,8 +611,8 @@ def provision(
     start/done)."""
     if not models_dir:
         raise ProvisionError(
-            "models_dir is required (an empty value would scatter weight "
-            "files relative to the working directory)")
+            "models_dir is required (an empty value would scatter weight files relative to the working directory)"
+        )
     dl = {
         "url": _download_url,
         "hf_file": _download_hf_file,
@@ -613,9 +626,9 @@ def provision(
             progress(event)
 
     groups = resolve_groups(group_names)
-    _check_disk_space(models_dir, [
-        a for g in groups for a in g.artifacts
-        if force or not artifact_present(models_dir, a)])
+    _check_disk_space(
+        models_dir, [a for g in groups for a in g.artifacts if force or not artifact_present(models_dir, a)]
+    )
 
     downloaded: list = []
     skipped: list = []
@@ -628,26 +641,36 @@ def provision(
                 continue
             os.makedirs(os.path.dirname(dest_path) or models_dir, exist_ok=True)
             log(f"  + {artifact.dest} ({artifact.approx_size}, {artifact.license})")
-            emit({"kind": "artifact", "phase": "start", "item": artifact.dest,
-                  "size": artifact.approx_size})
+            emit({"kind": "artifact", "phase": "start", "item": artifact.dest, "size": artifact.approx_size})
             url_dl = dl["url"]
             if url_dl is _download_url and progress is not None:
+
                 def url_dl(u, d, _dest=artifact.dest):
-                    _download_url(u, d, progress=lambda done, total: emit(
-                        {"kind": "artifact", "phase": "bytes", "item": _dest,
-                         "bytes_done": done, "bytes_total": total}))
+                    _download_url(
+                        u,
+                        d,
+                        progress=lambda done, total: emit(
+                            {
+                                "kind": "artifact",
+                                "phase": "bytes",
+                                "item": _dest,
+                                "bytes_done": done,
+                                "bytes_total": total,
+                            }
+                        ),
+                    )
+
             # Structured-progress mode owns the console: the hub's own
             # carriage-return bars would interleave with the caller's log
             # lines, so silence them around the default hub downloaders.
             def hf_quiet(fn, default):
-                return (_hub_bars_silenced if progress is not None
-                        and fn is default else contextlib.nullcontext)
+                return _hub_bars_silenced if progress is not None and fn is default else contextlib.nullcontext
+
             try:
                 if artifact.url is not None and artifact.unzip_all:
                     _download_zip_all(url_dl, artifact.url, dest_path)
                 elif artifact.url is not None and artifact.unzip_member is not None:
-                    _download_zip_member(
-                        url_dl, artifact.url, artifact.unzip_member, dest_path)
+                    _download_zip_member(url_dl, artifact.url, artifact.unzip_member, dest_path)
                 elif artifact.url is not None:
                     url_dl(artifact.url, dest_path)
                 elif artifact.hf_filename is not None:
@@ -678,11 +701,9 @@ def format_plan(models_dir: str, group_names) -> str:
     for group in resolve_groups(group_names):
         lines.append(f"\n[{group.name}] {group.enables}")
         for probe, requirement in group.runtime:
-            state = ("present" if importlib.util.find_spec(probe) is not None
-                     else "MISSING")
+            state = "present" if importlib.util.find_spec(probe) is not None else "MISSING"
             lines.append(f"  {state:8s} runtime {requirement}")
         for artifact in group.artifacts:
             state = "present" if artifact_present(models_dir, artifact) else "MISSING"
-            lines.append(f"  {state:8s} {artifact.dest} "
-                         f"({artifact.approx_size}, {artifact.license})")
+            lines.append(f"  {state:8s} {artifact.dest} ({artifact.approx_size}, {artifact.license})")
     return "\n".join(lines)

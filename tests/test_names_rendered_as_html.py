@@ -41,12 +41,12 @@ pytestmark = pytest.mark.spawns  # every check here runs another program
 _TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "templates"
 
 _PAYLOADS = [
-    '<img src=x onerror=alert(1)>.png',
+    "<img src=x onerror=alert(1)>.png",
     '"><script>alert(1)</script>.png',
     "' onmouseover='alert(1)",
-    'a & b.png',
-    'plain.png',
-    'Ordner-Größe.png',
+    "a & b.png",
+    "plain.png",
+    "Ordner-Größe.png",
 ]
 
 
@@ -59,8 +59,7 @@ def _node():
 
 def _escape_html_source():
     source = (_TEMPLATES / "index.html").read_text(encoding="utf-8")
-    match = re.search(r"function escapeHTML\(value\) \{.*?\n {8}\}",
-                      source, re.DOTALL)
+    match = re.search(r"function escapeHTML\(value\) \{.*?\n {8}\}", source, re.DOTALL)
     assert match, "index.html no longer defines escapeHTML"
     body = match.group(0)
     # Counting `case '` finds only four: the fifth is written `case "'"`,
@@ -69,17 +68,20 @@ def _escape_html_source():
     for entity in ("&amp;", "&lt;", "&gt;", "&quot;", "&#39;"):
         assert entity in body, (
             f"escapeHTML has no branch producing {entity}; either it was cut "
-            f"short by the extraction or it no longer escapes that:\n{body}")
+            f"short by the extraction or it no longer escapes that:\n{body}"
+        )
     return body
 
 
 def _run(values):
-    script = _escape_html_source() + r"""
+    script = (
+        _escape_html_source()
+        + r"""
 const values = JSON.parse(process.argv[1]);
 console.log(JSON.stringify(values.map(v => escapeHTML(v))));
 """
-    done = subprocess.run([_node(), "-e", script, json.dumps(values)],
-                          capture_output=True, text=True, timeout=300)
+    )
+    done = subprocess.run([_node(), "-e", script, json.dumps(values)], capture_output=True, text=True, timeout=300)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -111,17 +113,17 @@ def test_the_grid_escapes_the_filename_before_it_becomes_html():
     offenders = []
     pattern = re.compile(
         r'(?:title|alt)="\$\{(?:file|item|c|w|folder)\.(?:name|display_name)\}"'
-        r'|<(?:span|strong|p)[^>]*>\$\{(?:file|item|c)\.name\}')
+        r"|<(?:span|strong|p)[^>]*>\$\{(?:file|item|c)\.name\}"
+    )
 
     for template in sorted(_TEMPLATES.rglob("*.html")):
-        for number, line in enumerate(
-                template.read_text(encoding="utf-8").splitlines(), 1):
+        for number, line in enumerate(template.read_text(encoding="utf-8").splitlines(), 1):
             if pattern.search(line):
                 offenders.append(f"{template.name}:{number}")
 
     assert not offenders, (
-        f"{len(offenders)} place(s) put a name into markup unescaped; wrap "
-        f"it in escapeHTML: {offenders[:4]}")
+        f"{len(offenders)} place(s) put a name into markup unescaped; wrap it in escapeHTML: {offenders[:4]}"
+    )
 
 
 def test_the_rule_is_looking_at_the_right_files():
@@ -131,8 +133,7 @@ def test_the_rule_is_looking_at_the_right_files():
     assert len(templates) > 10, len(templates)
 
     index = (_TEMPLATES / "index.html").read_text(encoding="utf-8")
-    assert "escapeHTML(file.name)" in index, (
-        "the grid no longer escapes the filename at all")
+    assert "escapeHTML(file.name)" in index, "the grid no longer escapes the filename at all"
     assert index.count("escapeHTML(file.name)") >= 6, (
-        f"only {index.count('escapeHTML(file.name)')} escaped uses; the "
-        f"grid has several and they should all be covered")
+        f"only {index.count('escapeHTML(file.name)')} escaped uses; the grid has several and they should all be covered"
+    )

@@ -63,6 +63,7 @@ def engine(tmp_path_factory):
 # Structural integrity
 # ---------------------------------------------------------------------------
 
+
 def test_corpus_has_unique_ids(corpus):
     ids = [e["id"] for e in corpus]
     assert len(ids) == len(set(ids)), "duplicate corpus entry ids"
@@ -83,9 +84,20 @@ def test_corpus_covers_required_categories(corpus):
     all_tags = set()
     for entry in corpus:
         all_tags.update(entry["tags"])
-    required = {"simple", "boolean", "negation", "disjunction", "join", "count",
-                "privileged", "date", "duration", "text-search", "adversarial",
-                "genparams"}
+    required = {
+        "simple",
+        "boolean",
+        "negation",
+        "disjunction",
+        "join",
+        "count",
+        "privileged",
+        "date",
+        "duration",
+        "text-search",
+        "adversarial",
+        "genparams",
+    }
     missing = required - all_tags
     assert not missing, f"corpus is missing tag categories: {missing}"
 
@@ -100,14 +112,14 @@ def test_corpus_has_no_unsupported_entries(corpus):
 
 
 def test_corpus_adversarial_sql_literals_land_as_plain_text_values(corpus):
-    sql_entries = [e for e in corpus
-                   if "adversarial" in e["tags"] and "sql" in e["id"]]
+    sql_entries = [e for e in corpus if "adversarial" in e["tags"] and "sql" in e["id"]]
     assert sql_entries
     for entry in sql_entries:
         query = parse_query(entry["expected"]["ast"])
         values = [c.value for c in _iter_all_conds(query.where)]
-        assert any(isinstance(v, str) and ("DROP" in v or "UPDATE" in v or "OR '1'='1" in v)
-                   for v in values), entry["id"]
+        assert any(isinstance(v, str) and ("DROP" in v or "UPDATE" in v or "OR '1'='1" in v) for v in values), entry[
+            "id"
+        ]
 
 
 def _iter_all_conds(node):
@@ -126,6 +138,7 @@ def _iter_all_conds(node):
 # parse + validate + execute every supported entry; unsupported ones are
 # explicitly excluded from this round-trip (there is no AST to run).
 # ---------------------------------------------------------------------------
+
 
 def test_every_supported_entry_parses_validates_and_executes(corpus, engine):
     n_supported = 0
@@ -173,6 +186,7 @@ def test_file_ref_literal_ids_exist_in_fixture(corpus):
 # Harness smoke test (nlq backend only -- model-free, fast)
 # ---------------------------------------------------------------------------
 
+
 def test_harness_smoke_nlq_only(tmp_path):
     out_path = str(tmp_path / "report.json")
     report = run_benchmark(["nlq"], corpus_path=str(CORPUS_PATH), out_path=out_path)
@@ -182,10 +196,20 @@ def test_harness_smoke_nlq_only(tmp_path):
     assert "nlq" in report["backends"]
 
     metrics = report["backends"]["nlq"]
-    for key in ("ast_exact_rate", "execution_match_rate", "invalid_rate",
-                "unsupported_correct", "unsupported_incorrect", "unsupported_correct_rate",
-                "false_confident_rate", "latency_ms", "peak_rss_kb",
-                "n_entries", "n_supported_expected", "n_unsupported_expected"):
+    for key in (
+        "ast_exact_rate",
+        "execution_match_rate",
+        "invalid_rate",
+        "unsupported_correct",
+        "unsupported_incorrect",
+        "unsupported_correct_rate",
+        "false_confident_rate",
+        "latency_ms",
+        "peak_rss_kb",
+        "n_entries",
+        "n_supported_expected",
+        "n_unsupported_expected",
+    ):
         assert key in metrics, key
 
     assert 0.0 <= metrics["ast_exact_rate"] <= 1.0
@@ -194,9 +218,7 @@ def test_harness_smoke_nlq_only(tmp_path):
     assert metrics["invalid_rate"] == 0.0  # nlq must never emit an invalid AST
     assert metrics["n_entries"] == report["corpus_size"]
 
-    assert set(metrics["false_confident_rate"]) == {
-        str(round(i * 0.1, 1)) for i in range(10)
-    }
+    assert set(metrics["false_confident_rate"]) == {str(round(i * 0.1, 1)) for i in range(10)}
     assert metrics["latency_ms"]["p50"] is not None
     assert metrics["peak_rss_kb"] > 0
 

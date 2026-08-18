@@ -70,20 +70,19 @@ def _survives_a_round_trip(tmp_path, name):
     return os.listdir(str(tmp_path))[0]
 
 
-@pytest.mark.parametrize("requested", ["holiday ", "holiday.", "holiday. ",
-                                       "holiday.."])
+@pytest.mark.parametrize("requested", ["holiday ", "holiday.", "holiday. ", "holiday.."])
 def test_a_name_the_filesystem_would_change_is_changed_first(requested):
     """The bug. What is stored has to be what the disk will hold."""
-    cleaned = smartgallery.safe_media_filename(requested, fallback='')
+    cleaned = smartgallery.safe_media_filename(requested, fallback="")
 
-    assert cleaned == cleaned.rstrip('. '), (
+    assert cleaned == cleaned.rstrip(". "), (
         f"{requested!r} was cleaned to {cleaned!r}, which still ends in a "
         f"dot or space -- Windows drops those when it creates the folder, "
-        f"and the rows keep them")
+        f"and the rows keep them"
+    )
 
 
-@pytest.mark.parametrize("requested", ["holiday.", "holiday. ", "holiday..",
-                                       "holiday  ."])
+@pytest.mark.parametrize("requested", ["holiday.", "holiday. ", "holiday..", "holiday  ."])
 def test_the_rule_that_was_there_let_it_through(requested):
     """Control, modelling the route exactly -- .strip() and then the old
     regex. Without it the checks above prove nothing was ever wrong.
@@ -91,17 +90,15 @@ def test_the_rule_that_was_there_let_it_through(requested):
     A plain trailing space is deliberately not in this list: .strip()
     already caught that one, and claiming otherwise would overstate what
     was broken."""
-    old = _OLD_RULE.sub('', requested.strip())
+    old = _OLD_RULE.sub("", requested.strip())
 
-    assert old != old.rstrip('. '), (
-        f"the previous rule already handled {requested!r}, so there was "
-        f"nothing to fix")
+    assert old != old.rstrip(". "), f"the previous rule already handled {requested!r}, so there was nothing to fix"
 
 
 def test_a_plain_trailing_space_was_already_handled():
     """The other half of being accurate about it: .strip() ran first, so
     this case never reached the disk wrong."""
-    assert _OLD_RULE.sub('', "holiday ".strip()) == "holiday"
+    assert _OLD_RULE.sub("", "holiday ".strip()) == "holiday"
 
 
 def test_windows_really_does_drop_them(tmp_path):
@@ -134,28 +131,30 @@ def a_folder_with_a_picture(smartgallery_app, monkeypatch):
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-            "VALUES (?,?,?,?,?)",
-            (file_id, stored, os.path.getmtime(picture),
-             "ComfyUI_00001_.png", "image"))
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+            (file_id, stored, os.path.getmtime(picture), "ComfyUI_00001_.png", "image"),
+        )
         conn.commit()
     finally:
         conn.close()
 
     smartgallery_app.folder_config_cache = None
     folders = smartgallery_app.get_dynamic_folder_config()
-    key = next((k for k, v in folders.items()
-                if os.path.normcase(os.path.normpath(v["path"]))
-                == os.path.normcase(os.path.normpath(folder))), None)
+    key = next(
+        (
+            k
+            for k, v in folders.items()
+            if os.path.normcase(os.path.normpath(v["path"])) == os.path.normcase(os.path.normpath(folder))
+        ),
+        None,
+    )
 
     yield key, file_id, folder
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute("DELETE FROM files WHERE path LIKE ?",
-                     (root.replace(os.sep, "/") + "/rename_probe%",))
-        conn.execute("DELETE FROM files WHERE path LIKE ?",
-                     (root.replace(os.sep, "/") + "/holiday%",))
+        conn.execute("DELETE FROM files WHERE path LIKE ?", (root.replace(os.sep, "/") + "/rename_probe%",))
+        conn.execute("DELETE FROM files WHERE path LIKE ?", (root.replace(os.sep, "/") + "/holiday%",))
         conn.commit()
     finally:
         conn.close()
@@ -167,9 +166,7 @@ def a_folder_with_a_picture(smartgallery_app, monkeypatch):
 
 
 @pytest.mark.parametrize("requested", ["holiday ", "holiday."])
-def test_after_renaming_every_stored_path_is_really_there(smartgallery_app,
-                                                          a_folder_with_a_picture,
-                                                          requested):
+def test_after_renaming_every_stored_path_is_really_there(smartgallery_app, a_folder_with_a_picture, requested):
     """The symptom, through the route: rename a folder to a name the
     filesystem will not keep, and the database must still describe where
     the files actually are."""
@@ -178,16 +175,15 @@ def test_after_renaming_every_stored_path_is_really_there(smartgallery_app,
         pytest.skip("the probe folder is not in the folder config")
 
     client = smartgallery_app.app.test_client()
-    response = client.post(f"/galleryout/rename_folder/{key}",
-                           json={"new_name": requested})
+    response = client.post(f"/galleryout/rename_folder/{key}", json={"new_name": requested})
     assert response.status_code == 200, response.get_json()
 
     conn = smartgallery_app.get_db_connection()
     try:
         rows = conn.execute(
             "SELECT path FROM files WHERE path LIKE ?",
-            (smartgallery_app.BASE_OUTPUT_PATH.replace(os.sep, "/")
-             + "/holiday%",)).fetchall()
+            (smartgallery_app.BASE_OUTPUT_PATH.replace(os.sep, "/") + "/holiday%",),
+        ).fetchall()
     finally:
         conn.close()
 
@@ -206,18 +202,17 @@ def test_after_renaming_every_stored_path_is_really_there(smartgallery_app,
             f"{folder_name!r}, and the folder on disk is one of {listing}. "
             f"A scan walks the disk, so it finds a picture with no row and "
             f"a row with no picture -- and deletes the row, with its "
-            f"ratings, comments and album membership.")
+            f"ratings, comments and album membership."
+        )
 
 
 def test_an_ordinary_name_is_untouched():
     """Over-reach guard, and every rename anybody actually does."""
-    for name in ["holiday", "Renders 2026", "第一章", "Ordner-Größe",
-                 "my.folder.v2"]:
-        assert smartgallery.safe_media_filename(name, fallback='') == name, name
+    for name in ["holiday", "Renders 2026", "第一章", "Ordner-Größe", "my.folder.v2"]:
+        assert smartgallery.safe_media_filename(name, fallback="") == name, name
 
 
-def test_a_name_that_cleans_away_to_nothing_is_refused(smartgallery_app,
-                                                       monkeypatch):
+def test_a_name_that_cleans_away_to_nothing_is_refused(smartgallery_app, monkeypatch):
     """The old rule rejected '.' and '..' by name. The new one has to
     refuse them too, rather than renaming the folder to a fallback nobody
     asked for."""
@@ -226,8 +221,7 @@ def test_a_name_that_cleans_away_to_nothing_is_refused(smartgallery_app,
     client = smartgallery_app.app.test_client()
 
     for name in [".", "..", "   ", "..."]:
-        response = client.post("/galleryout/rename_folder/bm90X3JlYWw=",
-                               json={"new_name": name})
+        response = client.post("/galleryout/rename_folder/bm90X3JlYWw=", json={"new_name": name})
         body = response.get_json()
         assert response.status_code == 400, (name, response.status_code, body)
         assert body["message"] == "Invalid name.", (name, body)
@@ -239,18 +233,18 @@ def test_both_names_go_through_one_trailing_rule(gallery_tree):
 
     tree = gallery_tree
 
-    fn = next((node for node in ast.walk(tree)
-               if isinstance(node, ast.FunctionDef)
-               and node.name == "rename_folder"), None)
+    fn = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "rename_folder"), None
+    )
     assert fn is not None, "rename_folder is gone"
 
-    called = {node.func.id for node in ast.walk(fn)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    called = {node.func.id for node in ast.walk(fn) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     assert "strip_what_windows_drops" in called, (
-        "rename_folder does not remove what Windows removes, so the name it "
-        "records is not the name the folder gets")
+        "rename_folder does not remove what Windows removes, so the name it records is not the name the folder gets"
+    )
 
     body = inspect.getsource(smartgallery.safe_media_filename)
     assert "strip_what_windows_drops" in body, (
         "safe_media_filename has its own copy of the trailing rule again; "
-        "one idea, two spellings, is how they came apart in the first place")
+        "one idea, two spellings, is how they came apart in the first place"
+    )

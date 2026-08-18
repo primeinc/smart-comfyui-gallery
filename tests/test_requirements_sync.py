@@ -75,5 +75,5 @@ def test_ai_models_group_documented_as_opt_in():
     uncommented, commented = _requirement_lines("requirements-ai.txt")
     missing = declared - uncommented - commented
     assert not missing, (
-        f"requirements-ai.txt does not mention 'ai-models' deps even as "
-        f"commented opt-ins: {sorted(missing)}")
+        f"requirements-ai.txt does not mention 'ai-models' deps even as commented opt-ins: {sorted(missing)}"
+    )

@@ -28,8 +28,7 @@ import smartgallery
 
 def test_the_guard_is_on():
     """The regression: this was None, meaning no ceiling at all."""
-    assert Image.MAX_IMAGE_PIXELS is not None, (
-        "Pillow's decompression guard is disabled process-wide")
+    assert Image.MAX_IMAGE_PIXELS is not None, "Pillow's decompression guard is disabled process-wide"
     assert Image.MAX_IMAGE_PIXELS == smartgallery.MAX_DECODED_PIXELS
 
 
@@ -40,8 +39,8 @@ def test_a_large_upscale_is_still_allowed():
     upscale_16k = 16384 * 16384
 
     assert upscale_16k < smartgallery.MAX_DECODED_PIXELS, (
-        f"the ceiling ({smartgallery.MAX_DECODED_PIXELS}) would refuse a "
-        f"16384x16384 upscale ({upscale_16k})")
+        f"the ceiling ({smartgallery.MAX_DECODED_PIXELS}) would refuse a 16384x16384 upscale ({upscale_16k})"
+    )
 
 
 def test_an_absurd_header_is_refused():
@@ -49,8 +48,7 @@ def test_an_absurd_header_is_refused():
     asks for ~13 GB and must not be attempted."""
     bogus = 65535 * 65535
 
-    assert bogus > 2 * smartgallery.MAX_DECODED_PIXELS, (
-        "a 65535x65535 header would still be decoded")
+    assert bogus > 2 * smartgallery.MAX_DECODED_PIXELS, "a 65535x65535 header would still be decoded"
 
 
 def test_making_a_thumbnail_does_not_switch_the_guard_off(tmp_path):
@@ -64,8 +62,7 @@ def test_making_a_thumbnail_does_not_switch_the_guard_off(tmp_path):
     before = Image.MAX_IMAGE_PIXELS
     result = smartgallery.create_thumbnail(str(source), "ceilingprobe", "image")
 
-    assert before == Image.MAX_IMAGE_PIXELS, (
-        "making a thumbnail changed the process-wide pixel ceiling")
+    assert before == Image.MAX_IMAGE_PIXELS, "making a thumbnail changed the process-wide pixel ceiling"
     assert result and os.path.exists(result), "the ordinary thumbnail stopped working"
     os.remove(result)
 

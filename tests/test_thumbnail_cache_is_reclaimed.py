@@ -49,14 +49,13 @@ def cache(smartgallery_app, tmp_path, monkeypatch):
 @pytest.fixture
 def library(smartgallery_app):
     """Three files the library knows about, cleaned up afterwards."""
-    rows = [(f"prune{i:027d}", f"/lib/pic_{i}.png", 1700000000.0 + i)
-            for i in range(3)]
+    rows = [(f"prune{i:027d}", f"/lib/pic_{i}.png", 1700000000.0 + i) for i in range(3)]
     conn = smartgallery_app.get_db_connection()
     try:
         conn.executemany(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) "
-            "VALUES (?,?,?,?,?)",
-            [(i, p, m, os.path.basename(p), "image") for i, p, m in rows])
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type) VALUES (?,?,?,?,?)",
+            [(i, p, m, os.path.basename(p), "image") for i, p, m in rows],
+        )
         conn.commit()
     finally:
         conn.close()
@@ -65,8 +64,7 @@ def library(smartgallery_app):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.executemany("DELETE FROM files WHERE id = ?",
-                         [(r[0],) for r in rows])
+        conn.executemany("DELETE FROM files WHERE id = ?", [(r[0],) for r in rows])
         conn.commit()
     finally:
         conn.close()
@@ -99,13 +97,13 @@ def test_touching_a_file_really_does_orphan_its_thumbnail():
     assert before != after, (
         "a file's thumbnail name no longer changes with its mtime, so "
         "editing one does not leave the old one behind and there is "
-        "nothing here to collect")
+        "nothing here to collect"
+    )
     assert len(before) == 32
     assert before.isalnum()
 
 
-def test_a_thumbnail_whose_file_is_gone_is_removed(smartgallery_app, cache,
-                                                   library):
+def test_a_thumbnail_whose_file_is_gone_is_removed(smartgallery_app, cache, library):
     """The bug: deleting a picture left its thumbnail for good."""
     live = cache / f"{_key(library[0][1], library[0][2])}.jpeg"
     live.write_bytes(b"live")
@@ -119,8 +117,7 @@ def test_a_thumbnail_whose_file_is_gone_is_removed(smartgallery_app, cache,
     assert live.exists(), "a thumbnail still in use was removed"
 
 
-def test_the_old_thumbnail_of_a_touched_file_is_removed(smartgallery_app,
-                                                        cache, library):
+def test_the_old_thumbnail_of_a_touched_file_is_removed(smartgallery_app, cache, library):
     """The one that adds up. Same file, same path, different mtime: the
     name changes and the old one is never asked for again."""
     path, mtime = library[0][1], library[0][2]
@@ -159,8 +156,7 @@ def test_every_kind_of_cache_entry_is_covered(smartgallery_app, cache, library):
     assert not frames.exists()
 
 
-def test_a_storyboard_folder_still_in_use_is_kept(smartgallery_app, cache,
-                                                  library):
+def test_a_storyboard_folder_still_in_use_is_kept(smartgallery_app, cache, library):
     """Over-reach guard for the directory branch, which is the one that
     removes more than a single file."""
     keep = cache / _key(library[1][1], library[1][2])
@@ -185,8 +181,7 @@ def test_a_render_in_flight_is_left_alone(smartgallery_app, cache, library):
     assert in_flight.exists()
 
 
-def test_anything_not_named_like_a_thumbnail_is_left_alone(smartgallery_app,
-                                                           cache, library):
+def test_anything_not_named_like_a_thumbnail_is_left_alone(smartgallery_app, cache, library):
     """Over-reach guard. This runs inside a folder in somebody's gallery;
     it may only remove what it can positively identify."""
     stranger = cache / "notes.txt"
@@ -210,8 +205,7 @@ def test_an_empty_library_removes_nothing(smartgallery_app, cache):
     finally:
         conn.close()
 
-    entries = [cache / f"{_key('/lib/a.png', 1.0)}.jpeg",
-               cache / f"{_key('/lib/b.png', 2.0)}.jpeg"]
+    entries = [cache / f"{_key('/lib/a.png', 1.0)}.jpeg", cache / f"{_key('/lib/b.png', 2.0)}.jpeg"]
     for entry in entries:
         entry.write_bytes(b"x")
 
@@ -225,16 +219,13 @@ def test_an_empty_library_removes_nothing(smartgallery_app, cache):
     removed_files, removed_dirs = smartgallery.prune_thumbnail_cache(_Empty())
 
     assert (removed_files, removed_dirs) == (0, 0)
-    assert all(entry.exists() for entry in entries), (
-        "an unreadable or unscanned library emptied the whole cache")
+    assert all(entry.exists() for entry in entries), "an unreadable or unscanned library emptied the whole cache"
 
 
-def test_a_missing_cache_directory_is_not_an_error(smartgallery_app, tmp_path,
-                                                   monkeypatch, library):
+def test_a_missing_cache_directory_is_not_an_error(smartgallery_app, tmp_path, monkeypatch, library):
     """The cache folder gets removed by disk cleaners -- there is already
     a fix for that elsewhere. This must not be what fails first."""
-    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR",
-                        str(tmp_path / "not_there"))
+    monkeypatch.setattr(smartgallery_app, "THUMBNAIL_CACHE_DIR", str(tmp_path / "not_there"))
 
     assert _prune(smartgallery_app) == (0, 0)
 
@@ -245,18 +236,19 @@ def test_startup_runs_the_sweep(gallery_tree):
 
     tree = gallery_tree
 
-    start = next((node for node in ast.walk(tree)
-                  if isinstance(node, ast.FunctionDef)
-                  and node.name == "initialize_gallery"), None)
+    start = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "initialize_gallery"),
+        None,
+    )
     assert start is not None, "initialize_gallery is gone"
 
-    calls = [node for node in ast.walk(start)
-             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
+    calls = [node for node in ast.walk(start) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
     names = [node.func.id for node in calls]
 
     assert "prune_thumbnail_cache" in names, (
-        "startup never clears thumbnails for files the library no longer "
-        "has, so the cache only grows")
+        "startup never clears thumbnails for files the library no longer has, so the cache only grows"
+    )
     assert names.index("full_sync_database") < names.index("prune_thumbnail_cache"), (
         "the sweep runs before the scan, so it would judge the cache "
-        "against rows that do not yet describe what is on disk")
+        "against rows that do not yet describe what is on disk"
+    )

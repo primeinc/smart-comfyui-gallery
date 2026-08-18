@@ -46,8 +46,7 @@ def test_static_image_thumbnail_is_a_real_downscaled_jpeg(smartgallery_app, cach
 
 def test_animated_gif_keeps_its_frames(smartgallery_app, cache_dir, tmp_path):
     src = str(tmp_path / "anim.gif")
-    frames = [Image.new("RGB", (400, 300), c)
-              for c in ((255, 0, 0), (0, 255, 0), (0, 0, 255))]
+    frames = [Image.new("RGB", (400, 300), c) for c in ((255, 0, 0), (0, 255, 0), (0, 0, 255))]
     frames[0].save(src, save_all=True, append_images=frames[1:], duration=100, loop=0)
 
     out = smartgallery_app.create_thumbnail(src, "t_anim", "animated_image")
@@ -70,11 +69,11 @@ def test_unreadable_source_returns_none_and_strands_nothing(smartgallery_app, ca
     assert not _tmp_leftovers(cache_dir)
     assert not glob.glob(os.path.join(cache_dir, "t_bad.*")), (
         "a failed encode left a file at the final cache name, which the "
-        "app's existence check would treat as a finished thumbnail")
+        "app's existence check would treat as a finished thumbnail"
+    )
 
 
-def test_encoder_dying_mid_write_leaves_no_partial_thumbnail(
-        smartgallery_app, cache_dir, tmp_path, monkeypatch):
+def test_encoder_dying_mid_write_leaves_no_partial_thumbnail(smartgallery_app, cache_dir, tmp_path, monkeypatch):
     """The disk-full case this design exists for: a save that writes some
     bytes and then fails must not leave those bytes at the final name."""
     src = str(tmp_path / "ok.png")
@@ -84,7 +83,7 @@ def test_encoder_dying_mid_write_leaves_no_partial_thumbnail(
 
     def dying_save(self, fp, *args, **kwargs):
         if isinstance(fp, str) and os.path.basename(fp).startswith("tmp_"):
-            with open(fp, "wb") as fh:      # partial output, as a full disk gives
+            with open(fp, "wb") as fh:  # partial output, as a full disk gives
                 fh.write(b"\xff\xd8\xff\xe0 truncated")
             raise OSError(28, "No space left on device")
         return real_save(self, fp, *args, **kwargs)
@@ -92,8 +91,7 @@ def test_encoder_dying_mid_write_leaves_no_partial_thumbnail(
     monkeypatch.setattr(Image.Image, "save", dying_save)
 
     assert smartgallery_app.create_thumbnail(src, "t_full", "image") is None
-    assert not glob.glob(os.path.join(cache_dir, "t_full.*")), (
-        "partial bytes landed at the final cache name")
+    assert not glob.glob(os.path.join(cache_dir, "t_full.*")), "partial bytes landed at the final cache name"
     assert not _tmp_leftovers(cache_dir), "the failed temp file was not cleaned up"
 
 
@@ -104,8 +102,9 @@ def test_retry_after_a_failed_encode_succeeds(smartgallery_app, cache_dir, tmp_p
     Image.new("RGB", (600, 400), (30, 200, 90)).save(src)
 
     real_save = Image.Image.save
-    monkeypatch.setattr(Image.Image, "save", lambda self, fp, *a, **k: (_ for _ in ()).throw(
-        OSError(28, "No space left on device")))
+    monkeypatch.setattr(
+        Image.Image, "save", lambda self, fp, *a, **k: (_ for _ in ()).throw(OSError(28, "No space left on device"))
+    )
     assert smartgallery_app.create_thumbnail(src, "t_retry", "image") is None
 
     monkeypatch.setattr(Image.Image, "save", real_save)

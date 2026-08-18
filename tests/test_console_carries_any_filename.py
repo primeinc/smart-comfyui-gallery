@@ -53,8 +53,9 @@ def _run(body):
     environment = dict(os.environ, PYTHONPATH=_REPO)
     environment.pop("PYTHONUTF8", None)
     environment.pop("PYTHONIOENCODING", None)
-    return subprocess.run([sys.executable, "-X", "utf8=0", "-c", body],
-                          env=environment, capture_output=True, timeout=600)
+    return subprocess.run(
+        [sys.executable, "-X", "utf8=0", "-c", body], env=environment, capture_output=True, timeout=600
+    )
 
 
 def test_the_condition_is_real():
@@ -69,7 +70,8 @@ def test_the_condition_is_real():
     assert finished.returncode != 0, (
         "a Chinese filename printed to a redirected stream succeeded with "
         "no help, so this machine is not reproducing the condition and none "
-        "of the checks below mean anything")
+        "of the checks below mean anything"
+    )
     assert b"UnicodeEncodeError" in finished.stderr, finished.stderr[-400:]
 
 
@@ -88,20 +90,16 @@ def test_every_name_survives_a_real_redirected_pipe():
     survives each name, the names arrive intact rather than as question
     marks, and ordinary English is untouched.
     """
-    printed = "".join(
-        "print('%s')\n" % name.encode("unicode_escape").decode()
-        for name in _NAMES)
+    printed = "".join("print('%s')\n" % name.encode("unicode_escape").decode() for name in _NAMES)
     finished = _run(
         "import sys; sys.argv = ['smartgallery.py']\n"
-        "import smartgallery\n"
-        + printed
-        + "print('INFO: Starting full file scan...')\n"
+        "import smartgallery\n" + printed + "print('INFO: Starting full file scan...')\n"
         "print('still running')\n"
     )
 
     assert finished.returncode == 0, (
-        "printing the names ended the process:\n"
-        + finished.stderr.decode("utf-8", "replace")[-1500:])
+        "printing the names ended the process:\n" + finished.stderr.decode("utf-8", "replace")[-1500:]
+    )
     assert b"still running" in finished.stdout, finished.stdout[-400:]
 
     out = finished.stdout.decode("utf-8", "replace")
@@ -120,6 +118,7 @@ def test_a_stream_that_cannot_be_reconfigured_is_left_alone():
     """Over-reach guard. Output is not always a file: under a test runner,
     a service wrapper, or an embedding host it can be an object with no
     reconfigure at all, and reaching for one must not be what breaks."""
+
     class Plain:
         def __init__(self):
             self.written = []
@@ -161,18 +160,22 @@ def test_it_runs_before_anything_can_print(gallery_tree):
 
     tree = gallery_tree
 
-    called_at = [node.lineno for node in ast.walk(tree)
-                 if isinstance(node, ast.Call)
-                 and isinstance(node.func, ast.Name)
-                 and node.func.id == "make_output_carry_any_filename"]
+    called_at = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "make_output_carry_any_filename"
+    ]
     assert called_at, "nothing calls make_output_carry_any_filename"
 
-    printed_at = [node.lineno for node in ast.walk(tree)
-                  if isinstance(node, ast.Call)
-                  and isinstance(node.func, ast.Name)
-                  and node.func.id == "print"]
+    printed_at = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print"
+    ]
     assert printed_at, "no print() calls found; this check is stale"
 
     assert min(called_at) < min(printed_at), (
-        f"the first print() is at line {min(printed_at)} and the streams are "
-        f"not set up until line {min(called_at)}")
+        f"the first print() is at line {min(printed_at)} and the streams are not set up until line {min(called_at)}"
+    )

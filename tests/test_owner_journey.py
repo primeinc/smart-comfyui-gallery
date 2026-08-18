@@ -53,8 +53,7 @@ class _InlineExecutor:
 @pytest.fixture
 def team_gallery(smartgallery_app, monkeypatch):
     """A login-protected gallery with one admin and two pictures."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures,
-                        "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", True)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 
@@ -71,11 +70,12 @@ def team_gallery(smartgallery_app, monkeypatch):
         conn.execute("DELETE FROM users WHERE username = 'owner_admin'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r[0]: r[1] for r in conn.execute(
-            f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
-        conn.execute("INSERT INTO users (username, password, full_name, role, "
-                     "is_active) VALUES ('owner_admin', ?, 'Owner', 'ADMIN', 1)",
-                     (sg_auth.hash_password(_PASSWORD),))
+        ids = {r[0]: r[1] for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        conn.execute(
+            "INSERT INTO users (username, password, full_name, role, "
+            "is_active) VALUES ('owner_admin', ?, 'Owner', 'ADMIN', 1)",
+            (sg_auth.hash_password(_PASSWORD),),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -101,8 +101,7 @@ def team_gallery(smartgallery_app, monkeypatch):
 
 def _signed_in(smartgallery_app):
     client = smartgallery_app.app.test_client()
-    resp = client.post("/galleryout/login",
-                       json={"username": "owner_admin", "password": _PASSWORD})
+    resp = client.post("/galleryout/login", json={"username": "owner_admin", "password": _PASSWORD})
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert resp.get_json()["status"] == "success", resp.get_json()
     return client
@@ -130,34 +129,30 @@ def test_the_owner_can_run_their_gallery(smartgallery_app, team_gallery):
         assert resp.status_code == 200, f"{label} answered {resp.status_code}"
 
     # Work on a picture: rate it, comment on it, read the details.
-    assert client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": first, "rating": 5}).status_code == 200
-    assert client.post("/galleryout/api/exhibition/post_comment",
-                       json={"file_id": first, "text": "keep"}).status_code == 200
+    assert client.post("/galleryout/api/exhibition/rate", json={"file_id": first, "rating": 5}).status_code == 200
+    assert (
+        client.post("/galleryout/api/exhibition/post_comment", json={"file_id": first, "text": "keep"}).status_code
+        == 200
+    )
     details = client.get(f"/galleryout/api/file_full_details/{first}")
     assert details.status_code == 200, details.get_data(as_text=True)[:200]
 
     # Tidy: make a folder, move the picture into it, and check it followed.
-    made = client.post("/galleryout/create_folder",
-                       json={"folder_name": f"{_PREFIX}kept", "parent_key": "_root_"})
+    made = client.post("/galleryout/create_folder", json={"folder_name": f"{_PREFIX}kept", "parent_key": "_root_"})
     assert made.status_code == 200, made.get_data(as_text=True)
 
     folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
-    dest = next((k for k, v in folders.items()
-                 if str(v["path"]).replace("\\", "/").endswith(f"{_PREFIX}kept")), None)
+    dest = next((k for k, v in folders.items() if str(v["path"]).replace("\\", "/").endswith(f"{_PREFIX}kept")), None)
     assert dest, "the new folder is not in the folder list"
 
-    moved = client.post("/galleryout/move_batch",
-                        json={"file_ids": [first], "destination_folder": dest})
+    moved = client.post("/galleryout/move_batch", json={"file_ids": [first], "destination_folder": dest})
     assert moved.status_code == 200, moved.get_data(as_text=True)
     assert "Failed" not in moved.get_json()["message"], moved.get_json()
 
     conn = smartgallery_app.get_db_connection()
     try:
-        row = conn.execute("SELECT id FROM files WHERE name = ?",
-                           (f"{_PREFIX}one.png",)).fetchone()
-        rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?",
-                              (row[0],)).fetchone()
+        row = conn.execute("SELECT id FROM files WHERE name = ?", (f"{_PREFIX}one.png",)).fetchone()
+        rating = conn.execute("SELECT rating FROM file_ratings WHERE file_id = ?", (row[0],)).fetchone()
     finally:
         conn.close()
     assert rating and rating[0] == 5, "the rating did not follow the move"

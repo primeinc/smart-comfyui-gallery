@@ -59,19 +59,19 @@ import smartgallery
 
 # name as ComfyUI would record it, and what makes it interesting
 MODELS = [
-    ('detail_tweaker_xl.safetensors', 'underscores'),
-    ('add-detail-xl.safetensors', 'hyphens'),
-    ('anime style v2.safetensors', 'spaces'),
-    ('epiCRealism.safetensors', 'mixed case'),
-    ('loras/portrait/skin.safetensors', 'in a subfolder'),
-    ('niji+animation.safetensors', 'a plus'),
-    ("artist's_style.safetensors", 'an apostrophe'),
-    ('flux@dev.safetensors', 'an at sign'),
-    ('90s_anime!.safetensors', 'an exclamation mark'),
-    ('color#grade.safetensors', 'a hash'),
-    ('straße.safetensors', 'German sharp s'),
-    ('写真_v1.safetensors', 'Japanese'),
-    ('рисунок_v2.safetensors', 'Russian'),
+    ("detail_tweaker_xl.safetensors", "underscores"),
+    ("add-detail-xl.safetensors", "hyphens"),
+    ("anime style v2.safetensors", "spaces"),
+    ("epiCRealism.safetensors", "mixed case"),
+    ("loras/portrait/skin.safetensors", "in a subfolder"),
+    ("niji+animation.safetensors", "a plus"),
+    ("artist's_style.safetensors", "an apostrophe"),
+    ("flux@dev.safetensors", "an at sign"),
+    ("90s_anime!.safetensors", "an exclamation mark"),
+    ("color#grade.safetensors", "a hash"),
+    ("straße.safetensors", "German sharp s"),
+    ("写真_v1.safetensors", "Japanese"),
+    ("рисунок_v2.safetensors", "Russian"),
 ]
 
 
@@ -101,8 +101,8 @@ def a_library_of_models(smartgallery_app, tmp_path, monkeypatch):
                 "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
                 "has_workflow, size, workflow_files, last_scanned) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
-                (fid, path, 1.0, "m%02d.png" % index, "image", 1, 64,
-                 stored, 1.0))
+                (fid, path, 1.0, "m%02d.png" % index, "image", 1, 64, stored, 1.0),
+            )
             ids[model] = fid
         conn.commit()
 
@@ -112,9 +112,11 @@ def a_library_of_models(smartgallery_app, tmp_path, monkeypatch):
         session["role"] = "ADMIN"
 
     def shown_for(typed):
-        page = client.get("/galleryout/view/_root_", query_string={
-            "workflow_files": typed, "scope": "global", "recursive": "true"},
-            follow_redirects=True)
+        page = client.get(
+            "/galleryout/view/_root_",
+            query_string={"workflow_files": typed, "scope": "global", "recursive": "true"},
+            follow_redirects=True,
+        )
         assert page.status_code == 200, page.status_code
         body = page.get_data(as_text=True)
         return {model for model, fid in ids.items() if fid in body}
@@ -132,26 +134,23 @@ def test_the_filter_is_actually_applied(a_library_of_models):
     _client, ids, shown_for = a_library_of_models
 
     assert shown_for("") == set(ids), "no filter should show every file"
-    assert shown_for("zzqqxxnothinghasthis") == set(), \
-        "a word in no model should show nothing"
+    assert shown_for("zzqqxxnothinghasthis") == set(), "a word in no model should show nothing"
 
 
-@pytest.mark.parametrize(('model', 'what'), MODELS)
+@pytest.mark.parametrize(("model", "what"), MODELS)
 def test_typing_a_models_name_finds_it(a_library_of_models, model, what):
     """The defect. Six of these found nothing before."""
     _client, _ids, shown_for = a_library_of_models
 
-    assert model in shown_for(model), (
-        f"typing the name of a model with {what} found nothing")
+    assert model in shown_for(model), f"typing the name of a model with {what} found nothing"
 
 
-@pytest.mark.parametrize(('model', 'what'), MODELS)
+@pytest.mark.parametrize(("model", "what"), MODELS)
 def test_the_quoted_form_finds_the_whole_name(a_library_of_models, model, what):
     """The quoted form is documented as exact; an exact name is exact."""
     _client, _ids, shown_for = a_library_of_models
 
-    assert model in shown_for(f'"{model}"'), (
-        f'"{model}" ({what}) found nothing')
+    assert model in shown_for(f'"{model}"'), f'"{model}" ({what}) found nothing'
 
 
 def test_the_gallery_can_find_what_it_suggests(a_library_of_models):
@@ -159,8 +158,7 @@ def test_the_gallery_can_find_what_it_suggests(a_library_of_models):
     suggestions, take the file name the page would insert, search."""
     client, _ids, shown_for = a_library_of_models
 
-    offered = client.get("/galleryout/api/workflow_files_suggestions",
-                         query_string={"q": ""})
+    offered = client.get("/galleryout/api/workflow_files_suggestions", query_string={"q": ""})
     assert offered.status_code == 200, offered.status_code
     suggestions = json.loads(offered.get_data(as_text=True))["suggestions"]
     assert suggestions, "the gallery suggested nothing at all"
@@ -173,8 +171,8 @@ def test_the_gallery_can_find_what_it_suggests(a_library_of_models):
             unfindable.append(basename)
 
     assert not unfindable, (
-        f"the gallery offered {len(unfindable)} name(s) and then found "
-        f"nothing for them: {unfindable}")
+        f"the gallery offered {len(unfindable)} name(s) and then found nothing for them: {unfindable}"
+    )
 
 
 def test_a_quoted_word_still_means_the_whole_word(a_library_of_models):
@@ -187,11 +185,9 @@ def test_a_quoted_word_still_means_the_whole_word(a_library_of_models):
     assert "add-detail-xl.safetensors" in loose
 
     exact = shown_for('"detail"')
-    assert "add-detail-xl.safetensors" in exact, \
-        "add-detail-xl has detail as a whole word"
-    assert "detail_tweaker_xl.safetensors" in exact, \
-        "detail_tweaker_xl has detail as a whole word"
-    assert '写真_v1.safetensors' not in exact
+    assert "add-detail-xl.safetensors" in exact, "add-detail-xl has detail as a whole word"
+    assert "detail_tweaker_xl.safetensors" in exact, "detail_tweaker_xl has detail as a whole word"
+    assert "写真_v1.safetensors" not in exact
 
 
 def test_a_quoted_word_does_not_match_inside_a_longer_one(a_library_of_models):
@@ -200,8 +196,9 @@ def test_a_quoted_word_does_not_match_inside_a_longer_one(a_library_of_models):
     _client, _ids, shown_for = a_library_of_models
 
     assert "epiCRealism.safetensors" in shown_for("realism")
-    assert "epiCRealism.safetensors" not in shown_for('"realism"'), \
+    assert "epiCRealism.safetensors" not in shown_for('"realism"'), (
         "epicrealism is one word; a quoted realism must not match inside it"
+    )
 
 
 def test_excluding_still_excludes(a_library_of_models):
@@ -226,8 +223,7 @@ def test_and_and_or_still_mean_what_they_say(a_library_of_models):
     assert both == {"flux@dev.safetensors"}, both
 
 
-def test_a_file_made_without_any_model_answers_an_exclusion(smartgallery_app,
-                                                            a_library_of_models):
+def test_a_file_made_without_any_model_answers_an_exclusion(smartgallery_app, a_library_of_models):
     """Over-reach guard: a picture that used no LoRA at all is one of the
     pictures that is not using the one you are excluding."""
     sg = smartgallery_app
@@ -242,14 +238,16 @@ def test_a_file_made_without_any_model_answers_an_exclusion(smartgallery_app,
             "INSERT OR REPLACE INTO files (id, path, mtime, name, type, "
             "has_workflow, size, workflow_files, last_scanned) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            (fid, path, 1.0, "plain.png", "image", 1, 64, "", 1.0))
+            (fid, path, 1.0, "plain.png", "image", 1, 64, "", 1.0),
+        )
         conn.commit()
 
-    page = _client.get("/galleryout/view/_root_", query_string={
-        "workflow_files": "!detail", "scope": "global", "recursive": "true"},
-        follow_redirects=True)
-    assert fid in page.get_data(as_text=True), \
-        "a picture with no model recorded was excluded by !detail"
+    page = _client.get(
+        "/galleryout/view/_root_",
+        query_string={"workflow_files": "!detail", "scope": "global", "recursive": "true"},
+        follow_redirects=True,
+    )
+    assert fid in page.get_data(as_text=True), "a picture with no model recorded was excluded by !detail"
 
 
 def test_typed_text_is_not_read_as_a_pattern(a_library_of_models):
@@ -260,13 +258,13 @@ def test_typed_text_is_not_read_as_a_pattern(a_library_of_models):
 
     # Under LIKE the `_` matches any single character, so this needle
     # would find epicrealism by having `_` stand in for the `c`.
-    assert "epiCRealism.safetensors" not in shown_for('"epi_realism"'), \
+    assert "epiCRealism.safetensors" not in shown_for('"epi_realism"'), (
         "an underscore in the typed text matched a letter, as a wildcard"
+    )
 
     # And `%` stood for anything at all, so a quoted term containing one
     # matched every file in the library.
-    assert not shown_for('"epi%"'), \
-        "a percent sign in the typed text was treated as a wildcard"
+    assert not shown_for('"epi%"'), "a percent sign in the typed text was treated as a wildcard"
 
 
 class TestTheFoldingRuleItself:
@@ -278,19 +276,15 @@ class TestTheFoldingRuleItself:
         assert smartgallery._normalize_fuzzy_string("写真") == "写真"
 
     def test_it_drops_punctuation(self):
-        assert smartgallery._normalize_fuzzy_string(
-            "niji+animation.safetensors") == "nijianimationsafetensors"
-        assert smartgallery._normalize_fuzzy_string(
-            "artist's_style") == "artistsstyle"
+        assert smartgallery._normalize_fuzzy_string("niji+animation.safetensors") == "nijianimationsafetensors"
+        assert smartgallery._normalize_fuzzy_string("artist's_style") == "artistsstyle"
 
     def test_sharp_s_meets_ss(self):
         """casefold, not lower: STRASSE and straße are the same word."""
-        assert (smartgallery._normalize_fuzzy_string("straße")
-                == smartgallery._normalize_fuzzy_string("STRASSE"))
+        assert smartgallery._normalize_fuzzy_string("straße") == smartgallery._normalize_fuzzy_string("STRASSE")
 
     def test_a_word_key_pads_every_word(self):
-        assert smartgallery._word_key("detail_tweaker_xl.safetensors") == \
-            " detail tweaker xl safetensors "
+        assert smartgallery._word_key("detail_tweaker_xl.safetensors") == " detail tweaker xl safetensors "
         assert smartgallery._word_key("") == " "
         assert smartgallery._word_key(None) == " "
 

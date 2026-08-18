@@ -53,16 +53,15 @@ def test_guest_stays_blind_even_when_claiming_the_override(blind_server):
     setting the same session key the operator's toggle uses."""
     assert _blind_with(blind_server, role="GUEST") is True
     assert _blind_with(blind_server, role="GUEST", override_blind=True) is True, (
-        "a guest disabled blind rating by setting override_blind")
+        "a guest disabled blind rating by setting override_blind"
+    )
     assert _blind_with(blind_server, role="CUSTOMER", override_blind=True) is True
 
 
 @pytest.mark.parametrize("role", ["ADMIN", "MANAGER", "STAFF"])
 def test_staff_can_lift_it_for_themselves(blind_server, role):
-    assert _blind_with(blind_server, role=role) is True, (
-        f"{role} was not blind before opting out")
-    assert _blind_with(blind_server, role=role, override_blind=True) is False, (
-        f"{role} could not lift blind rating")
+    assert _blind_with(blind_server, role=role) is True, f"{role} was not blind before opting out"
+    assert _blind_with(blind_server, role=role, override_blind=True) is False, f"{role} could not lift blind rating"
 
 
 def test_without_the_flag_blindness_is_opt_in_per_session(smartgallery_app, monkeypatch):
@@ -80,8 +79,7 @@ def test_the_toggle_endpoint_refuses_a_guest(blind_server, client):
 
     assert resp.status_code == 403, "a guest was allowed to toggle blind rating"
     with client.session_transaction() as session:
-        assert not session.get("override_blind"), (
-            "the refused request still set the override")
+        assert not session.get("override_blind"), "the refused request still set the override"
 
 
 def test_the_toggle_endpoint_flips_for_staff(blind_server, client):
@@ -114,8 +112,7 @@ def _rate(smartgallery_app, file_id, role="GUEST", **session_values):
         session["user_id"] = 7
         session["role"] = role
         session.update(session_values)
-    return client.post("/galleryout/api/exhibition/rate",
-                       json={"file_id": file_id, "rating": 4})
+    return client.post("/galleryout/api/exhibition/rate", json={"file_id": file_id, "rating": 4})
 
 
 @pytest.fixture
@@ -124,21 +121,22 @@ def rated_file(smartgallery_app):
     average to leak."""
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute("INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
-                     "VALUES ('blindf1', '/x/b.png', 1.0, 'b.png', 'image', 1)")
-        conn.execute("INSERT OR REPLACE INTO file_ratings "
-                     "(file_id, client_uuid, rating, created_at) "
-                     "VALUES ('blindf1', 'someone_else', 2, 1.0)")
+        conn.execute(
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
+            "VALUES ('blindf1', '/x/b.png', 1.0, 'b.png', 'image', 1)"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO file_ratings "
+            "(file_id, client_uuid, rating, created_at) "
+            "VALUES ('blindf1', 'someone_else', 2, 1.0)"
+        )
         # In a public album, so a visitor is allowed to rate it. Rating now
         # refuses a file the caller may not see, and a picture in no album
         # at all is one nobody could have reached to vote on.
         conn.execute("DELETE FROM collections WHERE name = 'Blind Album'")
-        conn.execute("INSERT INTO collections (name, type, is_public) "
-                     "VALUES ('Blind Album', 'user_album', 1)")
-        album = conn.execute("SELECT id FROM collections WHERE name = 'Blind Album'"
-                             ).fetchone()[0]
-        conn.execute("INSERT INTO collection_files (collection_id, file_id) "
-                     "VALUES (?, 'blindf1')", (album,))
+        conn.execute("INSERT INTO collections (name, type, is_public) VALUES ('Blind Album', 'user_album', 1)")
+        album = conn.execute("SELECT id FROM collections WHERE name = 'Blind Album'").fetchone()[0]
+        conn.execute("INSERT INTO collection_files (collection_id, file_id) VALUES (?, 'blindf1')", (album,))
         conn.commit()
     finally:
         conn.close()
@@ -152,8 +150,7 @@ def rated_file(smartgallery_app):
         conn.close()
 
 
-def test_the_reply_to_a_vote_withholds_the_crowd_average(blind_server, rated_file,
-                                                         monkeypatch):
+def test_the_reply_to_a_vote_withholds_the_crowd_average(blind_server, rated_file, monkeypatch):
     """The interface honoured blind rating and the reply did not: the
     average came back in the JSON on every vote, readable from the network
     tab. A guarantee that holds only in the markup is not one.
@@ -170,12 +167,10 @@ def test_the_reply_to_a_vote_withholds_the_crowd_average(blind_server, rated_fil
     body = _rate(blind_server, rated_file).get_json()
 
     assert body.get("status") == "success", body
-    assert body.get("new_average") is None, (
-        f"the crowd average was returned to a blind rater: {body}")
+    assert body.get("new_average") is None, f"the crowd average was returned to a blind rater: {body}"
 
 
-def test_the_reply_still_carries_the_average_when_not_blind(smartgallery_app,
-                                                            rated_file, monkeypatch):
+def test_the_reply_still_carries_the_average_when_not_blind(smartgallery_app, rated_file, monkeypatch):
     """The counterpart: with blind rating off the badge needs those figures,
     so withholding them always would break the ordinary gallery."""
     monkeypatch.setattr(smartgallery_app, "BLIND_RATING", False)

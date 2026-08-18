@@ -28,9 +28,7 @@ AiResolver = Callable[[Any], list[str]]  # validated file_ref value -> matching 
 # 21 = SQLITE_SELECT, 20 = SQLITE_READ, 31 = SQLITE_FUNCTION. Everything else
 # (INSERT/UPDATE/DELETE/ATTACH/PRAGMA/...) is denied at the C-engine level,
 # matching smartgallery.py's execute_omniquery authorizer pattern.
-_ALLOWED_AUTHORIZER_ACTIONS = frozenset(
-    {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
-)
+_ALLOWED_AUTHORIZER_ACTIONS = frozenset({sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION})
 
 
 def _authorizer(action: int, _arg1, _arg2, _dbname, _source) -> int:
@@ -47,12 +45,12 @@ class QueryOutcome:
     with an error message -- run() never raises for input-level failures."""
 
     ok: bool
-    kind: str | None = None          # "ids" | "count"
-    ids: list[str] | None = None     # file ids as strings; set when kind == "ids"
-    count: int | None = None         # set when kind == "count"
-    sql: str | None = None           # compiled statement, for logging/diagnostics
-    params: tuple | None = None      # its bind values
-    error: str | None = None         # human-readable failure reason when ok is False
+    kind: str | None = None  # "ids" | "count"
+    ids: list[str] | None = None  # file ids as strings; set when kind == "ids"
+    count: int | None = None  # set when kind == "count"
+    sql: str | None = None  # compiled statement, for logging/diagnostics
+    params: tuple | None = None  # its bind values
+    error: str | None = None  # human-readable failure reason when ok is False
 
 
 class OmniQueryEngine:
@@ -60,8 +58,7 @@ class OmniQueryEngine:
     configuration; every execution opens its own short-lived read-only
     connection."""
 
-    def __init__(self, db_path: str, base_path: str,
-                 ai_resolvers: dict[str, AiResolver] | None = None):
+    def __init__(self, db_path: str, base_path: str, ai_resolvers: dict[str, AiResolver] | None = None):
         """ai_resolvers maps file_ref field names to resolver callables; a
         file_ref condition whose field has no resolver fails the query with
         an 'AI feature unavailable' error."""
@@ -69,15 +66,15 @@ class OmniQueryEngine:
         self.base_path = base_path
         self.ai_resolvers = ai_resolvers or {}
 
-    def run(self, ast_dict_or_query: dict | str | Query, ctx: AuthContext,
-            now_epoch: float | None = None) -> QueryOutcome:
+    def run(
+        self, ast_dict_or_query: dict | str | Query, ctx: AuthContext, now_epoch: float | None = None
+    ) -> QueryOutcome:
         """Execute one query end to end (parse, validate, resolve file_refs,
         compile, run). Every input-level failure comes back as an error
         QueryOutcome rather than an exception. now_epoch overrides the wall
         clock, making relative-date queries reproducible."""
         try:
-            query = (ast_dict_or_query if isinstance(ast_dict_or_query, Query)
-                      else parse_query(ast_dict_or_query))
+            query = ast_dict_or_query if isinstance(ast_dict_or_query, Query) else parse_query(ast_dict_or_query)
         except ASTError as exc:
             return QueryOutcome(ok=False, error=f"invalid query: {exc}")
 
@@ -92,8 +89,12 @@ class OmniQueryEngine:
             return QueryOutcome(ok=False, error=str(exc))
 
         effective_now = now_epoch if now_epoch is not None else time.time()
-        params = CompileParams(now_epoch=effective_now, base_path=self.base_path,
-                                client_uuid=ctx.client_uuid, ai_resolutions=ai_resolutions)
+        params = CompileParams(
+            now_epoch=effective_now,
+            base_path=self.base_path,
+            client_uuid=ctx.client_uuid,
+            ai_resolutions=ai_resolutions,
+        )
         try:
             compiled = compile_query(vq, params)
         except CompileError as exc:
@@ -105,12 +106,12 @@ class OmniQueryEngine:
             return QueryOutcome(ok=False, error=f"SQL execution error: {exc}")
 
         if query.result == "count":
-            return QueryOutcome(ok=True, kind="count", count=int(rows[0][0]) if rows else 0,
-                                 sql=compiled.sql, params=compiled.params)
+            return QueryOutcome(
+                ok=True, kind="count", count=int(rows[0][0]) if rows else 0, sql=compiled.sql, params=compiled.params
+            )
 
         ids = [str(row[0]) for row in rows]
-        return QueryOutcome(ok=True, kind="ids", ids=ids,
-                             sql=compiled.sql, params=compiled.params)
+        return QueryOutcome(ok=True, kind="ids", ids=ids, sql=compiled.sql, params=compiled.params)
 
     def _resolve_ai_predicates(self, query: Query) -> dict[Any, list[str]]:
         """Resolve every file_ref Cond's value to a concrete id list *before*
@@ -129,9 +130,7 @@ class OmniQueryEngine:
             try:
                 resolved = resolver(cond.value)
             except Exception as exc:  # resolver failure is not a validation bug
-                raise ValidationError(
-                    f"AI feature unavailable: '{cond.field}' resolver failed: {exc}"
-                ) from exc
+                raise ValidationError(f"AI feature unavailable: '{cond.field}' resolver failed: {exc}") from exc
             resolutions[key] = [str(x) for x in resolved]
         return resolutions
 

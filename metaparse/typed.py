@@ -75,7 +75,7 @@ class GenerationParams:
     """First-class, typed generation parameters for one file."""
 
     tool: str
-    detection: str                      # marker | heuristic | stealth | graph
+    detection: str  # marker | heuristic | stealth | graph
     positive_prompt: str = ""
     negative_prompt: str = ""
     model: str | None = None
@@ -90,7 +90,7 @@ class GenerationParams:
     denoise: float | None = None
     clip_skip: int | None = None
     version: str | None = None
-    loras: list[dict] = field(default_factory=list)   # [{"name": ..., "weight": ...}]
+    loras: list[dict] = field(default_factory=list)  # [{"name": ..., "weight": ...}]
     extra: dict[str, object] = field(default_factory=dict)  # unmapped keys, verbatim
 
     _INT_FIELDS = ("seed", "steps", "clip_skip")
@@ -102,9 +102,12 @@ class GenerationParams:
         """Type a metaparse result. Canonical slots coerce to their real
         types; a slot that fails coercion moves to extra under its
         canonical key; every adapter-preserved extra key rides along."""
-        gp = cls(tool=parsed.tool, detection=parsed.detection,
-                 positive_prompt=parsed.positive or "",
-                 negative_prompt=parsed.negative or "")
+        gp = cls(
+            tool=parsed.tool,
+            detection=parsed.detection,
+            positive_prompt=parsed.positive or "",
+            negative_prompt=parsed.negative or "",
+        )
         params = dict(parsed.params)
         for name in cls._STR_FIELDS:
             value = params.pop(name, None)
@@ -141,15 +144,15 @@ class GenerationParams:
         ComfyMetadataParser.parse() dict). Graph values are native JSON
         types; coercion is a guard, not a translation."""
         meta = dict(meta)
-        gp = cls(tool="ComfyUI", detection="graph",
-                 positive_prompt=str(meta.pop("positive_prompt", "") or ""),
-                 negative_prompt=str(meta.pop("negative_prompt", "") or ""))
-        gp.model = (str(meta.pop("model")) if meta.get("model") is not None
-                    else meta.pop("model", None))
-        gp.sampler = (str(meta.pop("sampler")) if meta.get("sampler") is not None
-                      else meta.pop("sampler", None))
-        gp.scheduler = (str(meta.pop("scheduler")) if meta.get("scheduler") is not None
-                        else meta.pop("scheduler", None))
+        gp = cls(
+            tool="ComfyUI",
+            detection="graph",
+            positive_prompt=str(meta.pop("positive_prompt", "") or ""),
+            negative_prompt=str(meta.pop("negative_prompt", "") or ""),
+        )
+        gp.model = str(meta.pop("model")) if meta.get("model") is not None else meta.pop("model", None)
+        gp.sampler = str(meta.pop("sampler")) if meta.get("sampler") is not None else meta.pop("sampler", None)
+        gp.scheduler = str(meta.pop("scheduler")) if meta.get("scheduler") is not None else meta.pop("scheduler", None)
         gp.seed = to_int(meta.pop("seed", None))
         gp.steps = to_int(meta.pop("steps", None))
         gp.cfg = to_float(meta.pop("cfg", None))
@@ -168,17 +171,27 @@ class GenerationParams:
 
     @property
     def has_content(self) -> bool:
-        return bool(self.positive_prompt or self.negative_prompt
-                    or self.model or self.seed is not None)
+        return bool(self.positive_prompt or self.negative_prompt or self.model or self.seed is not None)
 
     def to_row(self, file_id: str, parsed_at: float) -> tuple:
         """The generation_params DB row, column order matching schema."""
         return (
-            file_id, self.tool, self.detection,
-            self.positive_prompt, self.negative_prompt,
-            self.model, self.model_hash, self.sampler, self.scheduler,
-            self.seed, self.steps, self.cfg,
-            self.width, self.height, self.denoise, self.clip_skip,
+            file_id,
+            self.tool,
+            self.detection,
+            self.positive_prompt,
+            self.negative_prompt,
+            self.model,
+            self.model_hash,
+            self.sampler,
+            self.scheduler,
+            self.seed,
+            self.steps,
+            self.cfg,
+            self.width,
+            self.height,
+            self.denoise,
+            self.clip_skip,
             self.version,
             json.dumps(self.loras) if self.loras else None,
             json.dumps(self.extra, default=str) if self.extra else None,
@@ -188,8 +201,24 @@ class GenerationParams:
 
 # Column list matching to_row(), for INSERT statements and readers.
 ROW_COLUMNS = (
-    "file_id", "tool", "detection", "positive_prompt", "negative_prompt",
-    "model", "model_hash", "sampler", "scheduler", "seed", "steps", "cfg",
-    "width", "height", "denoise", "clip_skip", "version", "loras", "extra",
+    "file_id",
+    "tool",
+    "detection",
+    "positive_prompt",
+    "negative_prompt",
+    "model",
+    "model_hash",
+    "sampler",
+    "scheduler",
+    "seed",
+    "steps",
+    "cfg",
+    "width",
+    "height",
+    "denoise",
+    "clip_skip",
+    "version",
+    "loras",
+    "extra",
     "parsed_at",
 )

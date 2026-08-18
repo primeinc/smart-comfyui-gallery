@@ -34,8 +34,7 @@ pytestmark = pytest.mark.spawns  # every check here runs another program
 _REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
 
 # What the README tells the reader to create for themselves.
-_PERSONAL = ("run_smartgallery.bat", "run_exhibition.bat",
-             "run_smartgallery.sh", "run_exhibition.sh")
+_PERSONAL = ("run_smartgallery.bat", "run_exhibition.bat", "run_smartgallery.sh", "run_exhibition.sh")
 # What ships as the template for those.
 _TEMPLATES = ("sample_run_smartgallery.bat", "sample_run_exhibition.bat")
 
@@ -43,8 +42,7 @@ _TEMPLATES = ("sample_run_smartgallery.bat", "sample_run_exhibition.bat")
 def _git(*args):
     if shutil.which("git") is None:
         pytest.skip("git is not on PATH; tracking cannot be inspected here")
-    return subprocess.run(("git", *args), cwd=str(_REPO_ROOT),
-                          capture_output=True, text=True, timeout=120)
+    return subprocess.run(("git", *args), cwd=str(_REPO_ROOT), capture_output=True, text=True, timeout=120)
 
 
 def _lines(done):
@@ -75,7 +73,8 @@ def test_nothing_gitignore_matches_is_tracked():
     assert not offenders, (
         f"tracked although .gitignore matches them: {offenders}. Adding the "
         f"rule did nothing; the file keeps shipping. Untrack it with "
-        f"`git rm --cached <path>`, which leaves your own copy on disk.")
+        f"`git rm --cached <path>`, which leaves your own copy on disk."
+    )
 
 
 @pytest.mark.parametrize("name", _PERSONAL)
@@ -89,7 +88,8 @@ def test_personal_launchers_are_not_tracked(name):
     assert name not in tracked, (
         f"{name} is in the repository. The README has each person create "
         f"that file and carry it across upgrades; shipping one overwrites "
-        f"theirs.")
+        f"theirs."
+    )
 
 
 @pytest.mark.parametrize("name", _PERSONAL)
@@ -99,8 +99,8 @@ def test_personal_launchers_are_ignored(name):
     done = _git("check-ignore", "--no-index", "-q", name)
 
     assert done.returncode == 0, (
-        f".gitignore does not match {name}; someone's paths and password "
-        f"can be committed by accident.")
+        f".gitignore does not match {name}; someone's paths and password can be committed by accident."
+    )
 
 
 @pytest.mark.parametrize("name", _TEMPLATES)
@@ -113,4 +113,5 @@ def test_the_templates_are_still_shipped(name):
 
     assert name in tracked, f"{name} is what people copy; it has to ship"
     assert _git("check-ignore", "--no-index", "-q", name).returncode != 0, (
-        f"{name} is ignored, so it will not reach anyone")
+        f"{name} is ignored, so it will not reach anyone"
+    )

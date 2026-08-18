@@ -7,8 +7,12 @@ from .model import ParsedMetadata
 _LORA_RE = re.compile(r"<lora:([^:>]+):([\d.]+)>")
 
 _EMOJI = {
-    "sampling": "\U0001F3AF", "dimensions": "\U0001F4CF", "prompts": "\U0001F4DD",
-    "models": "\U0001F9E0", "lora": "\U0001F3A8", "advanced": "⚙️",
+    "sampling": "\U0001f3af",
+    "dimensions": "\U0001f4cf",
+    "prompts": "\U0001f4dd",
+    "models": "\U0001f9e0",
+    "lora": "\U0001f3a8",
+    "advanced": "⚙️",
 }
 
 
@@ -32,9 +36,12 @@ def render_report(parsed: ParsedMetadata, include_emojis: bool = True) -> str:
     out.append("")
 
     sampling = [
-        ("Seed", params.get("seed")), ("Steps", params.get("steps")),
-        ("CFG Scale", params.get("cfg")), ("Sampler", params.get("sampler")),
-        ("Scheduler", params.get("scheduler")), ("Denoise", params.get("denoise")),
+        ("Seed", params.get("seed")),
+        ("Steps", params.get("steps")),
+        ("CFG Scale", params.get("cfg")),
+        ("Sampler", params.get("sampler")),
+        ("Scheduler", params.get("scheduler")),
+        ("Denoise", params.get("denoise")),
     ]
     if any(v for _, v in sampling):
         out.append(f"{emoji['sampling']} SAMPLING SETTINGS:")

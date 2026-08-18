@@ -64,7 +64,8 @@ def test_every_variable_used_is_the_one_documented(path):
     assert used == documented, (
         f"{path.name} uses {sorted(used)} but its own instructions document "
         f"{sorted(documented)}. Anyone following the file gets an empty "
-        f"substitution.")
+        f"substitution."
+    )
 
 
 @pytest.mark.parametrize("path", _COMPOSE, ids=lambda p: p.name)
@@ -74,17 +75,19 @@ def test_every_variable_is_mandatory(path):
     for name, rest in _references(path.read_text(encoding="utf-8")).items():
         assert rest.startswith((":?", "?")), (
             f"{path.name}: ${{{name}{rest}}} expands to nothing when unset. "
-            f"Use ${{{name}:?message}} so compose stops and says what to set.")
+            f"Use ${{{name}:?message}} so compose stops and says what to set."
+        )
 
 
 def test_the_checks_catch_the_file_as_it_was():
     """Control for both matchers. Without this they could be passing because
     the regexes match nothing, and the next mismatch would sail through."""
     was_shipped = (
-        '      CLI_ARGS: --exhibition --port 8190 --admin-pass ${EXHIBITION_PASS}\n'
-        '# Example:\n'
-        '# MAIN_PASS=your_main_password\n'
-        '# EXHIBIT_PASS=your_exhibition_password\n')
+        "      CLI_ARGS: --exhibition --port 8190 --admin-pass ${EXHIBITION_PASS}\n"
+        "# Example:\n"
+        "# MAIN_PASS=your_main_password\n"
+        "# EXHIBIT_PASS=your_exhibition_password\n"
+    )
 
     used = _references(was_shipped)
     assert set(used) == {"EXHIBITION_PASS"}
@@ -92,7 +95,7 @@ def test_the_checks_catch_the_file_as_it_was():
     assert set(used) != _documented(was_shipped), "the mismatch went unnoticed"
     assert used["EXHIBITION_PASS"] == "", "it was not mandatory either"
 
-    fixed = '${EXHIBITION_PASS:?set it in .env}\n# EXHIBITION_PASS=x\n'
+    fixed = "${EXHIBITION_PASS:?set it in .env}\n# EXHIBITION_PASS=x\n"
     assert set(_references(fixed)) == _documented(fixed)
     assert _references(fixed)["EXHIBITION_PASS"].startswith(":?")
 
@@ -102,8 +105,10 @@ def test_the_compose_files_are_valid_yaml(path):
     """The mandatory-variable message contains a comma and a colon, so the
     value has to stay quoted to remain one scalar."""
     yaml = pytest.importorskip(
-        "yaml", reason="PyYAML is not a declared dependency; the name checks "
-                       "above are the ones that matter and they need nothing")
+        "yaml",
+        reason="PyYAML is not a declared dependency; the name checks "
+        "above are the ones that matter and they need nothing",
+    )
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
 
     assert document.get("services"), path.name
@@ -131,10 +136,11 @@ def test_the_password_does_not_travel_inside_cli_args(path):
         if not isinstance(environment, dict):
             continue
         assert "--admin-pass" not in (environment.get("CLI_ARGS") or ""), (
-            f"{path.name}: {name} passes the password inside CLI_ARGS, which "
-            f"is word-split. Use ADMIN_PASSWORD.")
-        if "--force-login" in (environment.get("CLI_ARGS") or "") or \
-                "--exhibition" in (environment.get("CLI_ARGS") or ""):
+            f"{path.name}: {name} passes the password inside CLI_ARGS, which is word-split. Use ADMIN_PASSWORD."
+        )
+        if "--force-login" in (environment.get("CLI_ARGS") or "") or "--exhibition" in (
+            environment.get("CLI_ARGS") or ""
+        ):
             assert environment.get("ADMIN_PASSWORD"), (
-                f"{path.name}: {name} forces a login but sets no "
-                f"ADMIN_PASSWORD, so it cannot start")
+                f"{path.name}: {name} forces a login but sets no ADMIN_PASSWORD, so it cannot start"
+            )

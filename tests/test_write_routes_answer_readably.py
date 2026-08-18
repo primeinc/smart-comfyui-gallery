@@ -44,16 +44,16 @@ _CALLS = [
     ("POST", "/galleryout/api/site_settings", {}),
     ("POST", "/galleryout/api/site_settings", {"key": "x" * 300, "value": None}),
     ("POST", "/galleryout/api/exhibition/rate", {}),
-    ("POST", "/galleryout/api/exhibition/rate",
-     {"file_id": _MISSING_FILE, "rating": 99}),
+    ("POST", "/galleryout/api/exhibition/rate", {"file_id": _MISSING_FILE, "rating": 99}),
     ("POST", "/galleryout/api/exhibition/rate_batch", {}),
     ("POST", "/galleryout/api/exhibition/post_comment", {}),
     ("POST", "/galleryout/api/admin/users", {}),
-    ("POST", "/galleryout/api/admin/users",
-     {"username": "x", "password": "short", "full_name": "X", "role": "STAFF"}),
-    ("PUT", "/galleryout/api/admin/users",
-     {"user_id": 999999, "username": "y", "full_name": "Y", "role": "NOT_A_ROLE",
-      "is_active": 1}),
+    ("POST", "/galleryout/api/admin/users", {"username": "x", "password": "short", "full_name": "X", "role": "STAFF"}),
+    (
+        "PUT",
+        "/galleryout/api/admin/users",
+        {"user_id": 999999, "username": "y", "full_name": "Y", "role": "NOT_A_ROLE", "is_active": 1},
+    ),
 ]
 
 
@@ -71,23 +71,24 @@ def owner(smartgallery_app, monkeypatch):
 
 
 def _send(client, method, url, payload):
-    call = {"POST": client.post, "PUT": client.put,
-            "DELETE": client.delete}[method]
+    call = {"POST": client.post, "PUT": client.put, "DELETE": client.delete}[method]
     return call(url, json=payload)
 
 
-@pytest.mark.parametrize(("method", "url", "payload"), _CALLS,
-                         ids=[f"{m} {u.split('/')[-1]} {sorted(p)}"
-                              for m, u, p in _CALLS])
+@pytest.mark.parametrize(
+    ("method", "url", "payload"), _CALLS, ids=[f"{m} {u.split('/')[-1]} {sorted(p)}" for m, u, p in _CALLS]
+)
 def test_it_answers_below_500_and_in_json(owner, method, url, payload):
     response = _send(owner, method, url, payload)
 
     assert response.status_code < 500, (
         f"{method} {url} with {payload} answered {response.status_code}; a "
-        f"page calling this does res.json() and gets an HTML error instead")
+        f"page calling this does res.json() and gets an HTML error instead"
+    )
     assert response.get_json() is not None, (
         f"{method} {url} with {payload} answered {response.status_code} with "
-        f"a body that is not JSON: {response.get_data(as_text=True)[:200]}")
+        f"a body that is not JSON: {response.get_data(as_text=True)[:200]}"
+    )
 
 
 def test_the_calls_actually_reach_the_routes(owner):
@@ -105,14 +106,12 @@ def test_the_calls_actually_reach_the_routes(owner):
 
     assert refusals >= 5, (
         f"only {refusals} of {len(_CALLS)} calls were refused with a 400; "
-        f"these are meant to be inputs the routes reject")
-    assert successes >= 3, (
-        f"only {successes} answered 200; the calls may not be reaching the "
-        f"routes at all")
+        f"these are meant to be inputs the routes reject"
+    )
+    assert successes >= 3, f"only {successes} answered 200; the calls may not be reaching the routes at all"
 
 
-def test_a_write_that_the_database_refuses_still_answers_readably(smartgallery_app,
-                                                                  owner):
+def test_a_write_that_the_database_refuses_still_answers_readably(smartgallery_app, owner):
     """The case the table above cannot reach, and the one that mattered.
 
     A bad edit aimed at user 999999 changes no rows, so the constraint
@@ -129,29 +128,34 @@ def test_a_write_that_the_database_refuses_still_answers_readably(smartgallery_a
     finally:
         conn.close()
 
-    made = owner.post("/galleryout/api/admin/users",
-                      json={"username": "readable_t", "password": "longenough1",
-                            "full_name": "Readable", "role": "STAFF"})
+    made = owner.post(
+        "/galleryout/api/admin/users",
+        json={"username": "readable_t", "password": "longenough1", "full_name": "Readable", "role": "STAFF"},
+    )
     assert made.status_code == 200, made.get_json()
 
     conn = smartgallery_app.get_db_connection()
     try:
-        user_id = conn.execute("SELECT user_id FROM users WHERE username = ?",
-                               ("readable_t",)).fetchone()["user_id"]
+        user_id = conn.execute("SELECT user_id FROM users WHERE username = ?", ("readable_t",)).fetchone()["user_id"]
     finally:
         conn.close()
 
     try:
-        refused = owner.put("/galleryout/api/admin/users",
-                            json={"user_id": user_id, "username": "readable_t",
-                                  "full_name": "Readable", "role": "NOT_A_ROLE",
-                                  "is_active": 1})
+        refused = owner.put(
+            "/galleryout/api/admin/users",
+            json={
+                "user_id": user_id,
+                "username": "readable_t",
+                "full_name": "Readable",
+                "role": "NOT_A_ROLE",
+                "is_active": 1,
+            },
+        )
 
         assert refused.status_code < 500, (
-            f"the database refused the write and the route answered "
-            f"{refused.status_code} with an HTML page")
-        assert refused.get_json() is not None, (
-            f"body was not JSON: {refused.get_data(as_text=True)[:200]}")
+            f"the database refused the write and the route answered {refused.status_code} with an HTML page"
+        )
+        assert refused.get_json() is not None, f"body was not JSON: {refused.get_data(as_text=True)[:200]}"
     finally:
         conn = smartgallery_app.get_db_connection()
         try:
@@ -179,5 +183,5 @@ def test_a_route_that_raises_would_be_caught():
 
     assert response.status_code >= 500, response.status_code
     assert response.get_json() is None, (
-        "an unhandled exception produced readable JSON, so the checks above "
-        "would not notice one")
+        "an unhandled exception produced readable JSON, so the checks above would not notice one"
+    )

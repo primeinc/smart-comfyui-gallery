@@ -58,7 +58,7 @@ _BACKSLASH = chr(92)
 def _canonical_as_the_scan_does(raw):
     """What get_dynamic_folder_config computes for a folder, which is the
     string every file id is built on top of."""
-    return os.path.normpath(raw).replace(_BACKSLASH, '/')
+    return os.path.normpath(raw).replace(_BACKSLASH, "/")
 
 
 def test_the_scan_already_treated_these_spellings_as_one_folder():
@@ -85,37 +85,42 @@ def test_the_scan_already_treated_these_spellings_as_one_folder():
     assert canonical == {"C:/ComfyUI/output"}, canonical
 
 
-@pytest.mark.parametrize("written", [
-    "C:/ComfyUI/output",
-    "C:" + _BACKSLASH + "ComfyUI" + _BACKSLASH + "output",
-    "C:/ComfyUI/output/",
-    "C:" + _BACKSLASH + "ComfyUI" + _BACKSLASH + "output" + _BACKSLASH,
-    "C:/ComfyUI//output",
-    "C:/ComfyUI/./output",
-    "C:/ComfyUI/sub/../output",
-    '"C:' + _BACKSLASH + 'ComfyUI' + _BACKSLASH + 'output"',
-    "  C:/ComfyUI/output  ",
-])
+@pytest.mark.parametrize(
+    "written",
+    [
+        "C:/ComfyUI/output",
+        "C:" + _BACKSLASH + "ComfyUI" + _BACKSLASH + "output",
+        "C:/ComfyUI/output/",
+        "C:" + _BACKSLASH + "ComfyUI" + _BACKSLASH + "output" + _BACKSLASH,
+        "C:/ComfyUI//output",
+        "C:/ComfyUI/./output",
+        "C:/ComfyUI/sub/../output",
+        '"C:' + _BACKSLASH + "ComfyUI" + _BACKSLASH + 'output"',
+        "  C:/ComfyUI/output  ",
+    ],
+)
 def test_every_way_of_writing_one_folder_means_one_folder(written):
     """The point of the change: stop making people spell it our way."""
     assert smartgallery.normalize_configured_path(written) == "C:/ComfyUI/output"
 
 
-@pytest.mark.parametrize("written", [
-    "C:/ComfyUI/output",
-    "C:" + _BACKSLASH + "ComfyUI" + _BACKSLASH + "output",
-    "C:/ComfyUI/output/",
-    "C:/ComfyUI//output",
-    "C:/ComfyUI/sub/../output",
-    "C:/ComfyUI/OUTPUT",
-])
+@pytest.mark.parametrize(
+    "written",
+    [
+        "C:/ComfyUI/output",
+        "C:" + _BACKSLASH + "ComfyUI" + _BACKSLASH + "output",
+        "C:/ComfyUI/output/",
+        "C:/ComfyUI//output",
+        "C:/ComfyUI/sub/../output",
+        "C:/ComfyUI/OUTPUT",
+    ],
+)
 def test_normalising_does_not_re_identify_anybody_s_library(written):
     """The check that made this safe to do at all. The normalised form has
     to be the exact string the scan already builds file ids from -- one
     character of difference and every rating in every library moves to a
     file that does not exist."""
-    assert (smartgallery.normalize_configured_path(written)
-            == _canonical_as_the_scan_does(written))
+    assert smartgallery.normalize_configured_path(written) == _canonical_as_the_scan_does(written)
 
 
 def test_case_is_left_alone():
@@ -152,8 +157,9 @@ def test_the_settings_actually_go_through_it(gallery_tree):
 
     read_with = {}
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Name)):
+        if not (
+            isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+        ):
             continue
         if node.value.func.id not in ("env_or", "env_path"):
             continue
@@ -161,15 +167,23 @@ def test_the_settings_actually_go_through_it(gallery_tree):
             if isinstance(target, ast.Name):
                 read_with[target.id] = node.value.func.id
 
-    for name in ("BASE_OUTPUT_PATH", "BASE_INPUT_PATH", "BASE_SMARTGALLERY_PATH",
-                 "BASE_MODELS_PATH", "LORAS_PATH", "CHECKPOINTS_PATH",
-                 "UNET_PATH", "FFPROBE_MANUAL_PATH"):
+    for name in (
+        "BASE_OUTPUT_PATH",
+        "BASE_INPUT_PATH",
+        "BASE_SMARTGALLERY_PATH",
+        "BASE_MODELS_PATH",
+        "LORAS_PATH",
+        "CHECKPOINTS_PATH",
+        "UNET_PATH",
+        "FFPROBE_MANUAL_PATH",
+    ):
         assert read_with.get(name) == "env_path", (
-            f"{name} is read with {read_with.get(name)}, so whatever the "
-            f"person typed is used as-is")
+            f"{name} is read with {read_with.get(name)}, so whatever the person typed is used as-is"
+        )
 
 
 # --- ffmpeg ---------------------------------------------------------------
+
 
 def _fake_install(tmp_path, names):
     """An ffmpeg-shaped folder holding programs that answer -version."""
@@ -184,24 +198,19 @@ def _fake_install(tmp_path, names):
 
 
 @pytest.mark.parametrize("point_at", ["ffprobe", "ffmpeg", "bin", "install"])
-def test_ffprobe_is_found_from_anything_in_the_install(tmp_path, monkeypatch,
-                                                       point_at):
+def test_ffprobe_is_found_from_anything_in_the_install(tmp_path, monkeypatch, point_at):
     """The bug: only the exact ffprobe path was accepted."""
     exe = ".exe" if os.name == "nt" else ""
-    root, bin_dir, made = _fake_install(
-        tmp_path, [f"ffprobe{exe}", f"ffmpeg{exe}"])
+    root, bin_dir, made = _fake_install(tmp_path, [f"ffprobe{exe}", f"ffmpeg{exe}"])
 
     # Everything in the fake install answers as ffprobe except ffmpeg,
     # so the resolver has to pick the right neighbour rather than the
     # first file it is handed.
-    monkeypatch.setattr(smartgallery, "_is_ffprobe",
-                        lambda path: os.path.basename(path).lower()
-                        .startswith("ffprobe"))
+    monkeypatch.setattr(smartgallery, "_is_ffprobe", lambda path: os.path.basename(path).lower().startswith("ffprobe"))
 
-    setting = {"ffprobe": made[f"ffprobe{exe}"],
-               "ffmpeg": made[f"ffmpeg{exe}"],
-               "bin": bin_dir,
-               "install": root}[point_at]
+    setting = {"ffprobe": made[f"ffprobe{exe}"], "ffmpeg": made[f"ffmpeg{exe}"], "bin": bin_dir, "install": root}[
+        point_at
+    ]
 
     found = smartgallery.resolve_ffprobe_from(setting)
 
@@ -252,9 +261,7 @@ def test_ffmpeg_is_not_accepted_as_ffprobe(tmp_path, monkeypatch):
     exe = ".exe" if os.name == "nt" else ""
     _root, bin_dir, made = _fake_install(tmp_path, [f"ffmpeg{exe}"])
 
-    monkeypatch.setattr(smartgallery, "_is_ffprobe",
-                        lambda path: os.path.basename(path).lower()
-                        .startswith("ffprobe"))
+    monkeypatch.setattr(smartgallery, "_is_ffprobe", lambda path: os.path.basename(path).lower().startswith("ffprobe"))
 
     assert smartgallery.resolve_ffprobe_from(made[f"ffmpeg{exe}"]) is None
     assert smartgallery.resolve_ffprobe_from(bin_dir) is None

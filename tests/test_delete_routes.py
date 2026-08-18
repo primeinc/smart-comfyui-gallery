@@ -35,9 +35,9 @@ def _add_file(smartgallery_app, name, colour=(120, 40, 200)):
     conn = smartgallery_app.get_db_connection()
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) "
-            "VALUES (?, ?, ?, ?, 'image', ?)",
-            (file_id, path, os.path.getmtime(path), name, os.path.getsize(path)))
+            "INSERT OR REPLACE INTO files (id, path, mtime, name, type, size) VALUES (?, ?, ?, ?, 'image', ?)",
+            (file_id, path, os.path.getmtime(path), name, os.path.getsize(path)),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -57,8 +57,7 @@ def _cleanup(smartgallery_app):
     yield
     conn = smartgallery_app.get_db_connection()
     try:
-        rows = conn.execute(
-            f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()
+        rows = conn.execute(f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()
         for row in rows:
             with contextlib.suppress(OSError):
                 os.remove(row[0])
@@ -95,8 +94,7 @@ def test_delete_batch_tolerates_a_file_already_gone_from_disk(smartgallery_app, 
     real_id, real_path = _add_file(smartgallery_app, f"{_PREFIX}real.png")
     os.remove(ghost_path)
 
-    resp = client.post("/galleryout/delete_batch",
-                       json={"file_ids": [ghost_id, real_id]})
+    resp = client.post("/galleryout/delete_batch", json={"file_ids": [ghost_id, real_id]})
 
     assert resp.status_code == 200
     assert not _row_exists(smartgallery_app, ghost_id), "stale row survived"
@@ -136,12 +134,10 @@ def test_single_delete_of_an_unknown_id_is_not_an_error(client):
 def test_favorite_batch_and_toggle_round_trip(smartgallery_app, client):
     file_id, _path = _add_file(smartgallery_app, f"{_PREFIX}fav.png")
 
-    assert client.post("/galleryout/favorite_batch",
-                       json={"file_ids": [file_id], "status": True}).status_code == 200
+    assert client.post("/galleryout/favorite_batch", json={"file_ids": [file_id], "status": True}).status_code == 200
     conn = smartgallery_app.get_db_connection()
     try:
-        assert conn.execute("SELECT is_favorite FROM files WHERE id = ?",
-                            (file_id,)).fetchone()[0] == 1
+        assert conn.execute("SELECT is_favorite FROM files WHERE id = ?", (file_id,)).fetchone()[0] == 1
     finally:
         conn.close()
 
@@ -154,8 +150,7 @@ def test_toggle_favorite_on_unknown_file_is_404(client):
     assert client.post(f"/galleryout/toggle_favorite/{_PREFIX}nope").status_code == 404
 
 
-def test_delete_batch_route_honours_delete_to(smartgallery_app, monkeypatch,
-                                             tmp_path):
+def test_delete_batch_route_honours_delete_to(smartgallery_app, monkeypatch, tmp_path):
     """The guarantee users actually rely on, through the endpoint the UI
     calls: with DELETE_TO configured, a batch delete must be recoverable.
 
@@ -181,22 +176,20 @@ def test_delete_batch_route_honours_delete_to(smartgallery_app, monkeypatch,
         conn.execute(
             "INSERT INTO files (id, path, mtime, name, type, size) "
             "VALUES (?, ?, 1000.0, 'batch_victim.png', 'image', 19)",
-            (file_id, str(victim)))
+            (file_id, str(victim)),
+        )
         conn.commit()
     finally:
         conn.close()
 
-    resp = smartgallery_app.app.test_client().post(
-        "/galleryout/delete_batch", json={"file_ids": [file_id]})
+    resp = smartgallery_app.app.test_client().post("/galleryout/delete_batch", json={"file_ids": [file_id]})
 
     body = resp.get_json()
     assert resp.status_code == 200, resp.status_code
     assert body["status"] == "success", body
-    assert "trash" in body["message"], (
-        f"message does not mention the trash: {body['message']}")
+    assert "trash" in body["message"], f"message does not mention the trash: {body['message']}"
 
     assert not victim.exists(), "file left in the gallery"
     recovered = list(trash_folder.iterdir())
     assert len(recovered) == 1, f"expected the file in the trash, found {recovered}"
-    assert recovered[0].read_bytes() == b"pretend image bytes", (
-        "the recovered file does not match what was deleted")
+    assert recovered[0].read_bytes() == b"pretend image bytes", "the recovered file does not match what was deleted"

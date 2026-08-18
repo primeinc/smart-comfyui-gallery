@@ -37,8 +37,7 @@ import pathlib
 
 import pytest
 
-_SERVICE = (pathlib.Path(__file__).resolve().parent.parent
-            / "smartgallery_ai" / "service.py")
+_SERVICE = pathlib.Path(__file__).resolve().parent.parent / "smartgallery_ai" / "service.py"
 
 _PER_FILE_MARKERS = {"_check_file_access", "_serve_mask"}
 _FILTER_MARKERS = {"_visible"}
@@ -52,9 +51,9 @@ def _registrations(tree):
     """(endpoint, view_name, guarded) for every bp.add_url_rule call."""
     found = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "add_url_rule"):
+        if not (
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add_url_rule"
+        ):
             continue
         if len(node.args) < 3:
             continue
@@ -68,12 +67,11 @@ def _registrations(tree):
             found.append((endpoint, next(iter(names), "?"), True))
             continue
 
-        if isinstance(view, ast.Call) and isinstance(view.func, ast.Name) \
-                and view.func.id == "_wrap":
-            guarded = any(kw.arg == "guarded"
-                          and isinstance(kw.value, ast.Constant)
-                          and kw.value.value is True
-                          for kw in view.keywords)
+        if isinstance(view, ast.Call) and isinstance(view.func, ast.Name) and view.func.id == "_wrap":
+            guarded = any(
+                kw.arg == "guarded" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                for kw in view.keywords
+            )
             name = view.args[0].id if isinstance(view.args[0], ast.Name) else "?"
             found.append((endpoint, name, guarded))
             continue
@@ -84,8 +82,7 @@ def _registrations(tree):
 
 def _classify(source: str):
     tree = ast.parse(source)
-    bodies = {node.name: node for node in ast.walk(tree)
-              if isinstance(node, ast.FunctionDef)}
+    bodies = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
 
     verdict = {}
     for endpoint, view_name, guarded in _registrations(tree):
@@ -128,8 +125,8 @@ def test_it_can_tell_the_policies_apart(classified):
     assert classified["faces_clusters"] == "guarded"
     assert classified["similar"] == "per-file"
     assert classified["review_mask"] == "per-file", (
-        "the mask routes take a finding id, not a file id; _serve_mask is "
-        "what resolves it and checks the file")
+        "the mask routes take a finding id, not a file id; _serve_mask is what resolves it and checks the file"
+    )
 
 
 def test_no_ai_route_answers_everybody(classified):
@@ -139,7 +136,8 @@ def test_no_ai_route_answers_everybody(classified):
         f"{open_routes} are registered without the management guard and "
         f"never check the file they talk about. Either register them "
         f"_wrap(view, guarded=True), or call _check_file_access(file_id) "
-        f"in the body.")
+        f"in the body."
+    )
 
 
 def test_the_classifier_catches_a_route_that_checks_nothing():
@@ -162,7 +160,8 @@ def test_the_classifier_catches_a_route_that_checks_nothing():
         "        return 1\n"
         "    bp.add_url_rule('/good/<file_id>', 'good', _wrap(good))\n"
         "    bp.add_url_rule('/careless/<file_id>', 'careless', _wrap(careless))\n"
-        "    bp.add_url_rule('/safe', 'safe', _wrap(careless, guarded=True))\n")
+        "    bp.add_url_rule('/safe', 'safe', _wrap(careless, guarded=True))\n"
+    )
 
     verdict = _classify(source)
 

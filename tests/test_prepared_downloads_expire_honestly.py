@@ -97,9 +97,7 @@ def test_a_download_from_this_morning_is_left_alone(zip_cache):
 
 
 def test_the_job_is_forgotten_with_its_file(zip_cache):
-    smartgallery.zip_jobs["gone"] = {"status": "ready",
-                                     "filename": "smartgallery_gone.zip",
-                                     "created": time.time()}
+    smartgallery.zip_jobs["gone"] = {"status": "ready", "filename": "smartgallery_gone.zip", "created": time.time()}
 
     _removed, forgotten = smartgallery.prune_zip_cache()
 
@@ -110,8 +108,7 @@ def test_the_job_is_forgotten_with_its_file(zip_cache):
 def test_a_job_still_being_built_is_left_alone(zip_cache):
     """Over-reach guard: a zip in progress has no file yet, and forgetting
     it would lose the download somebody is waiting on."""
-    smartgallery.zip_jobs["busy"] = {"status": "processing",
-                                     "created": time.time()}
+    smartgallery.zip_jobs["busy"] = {"status": "processing", "created": time.time()}
 
     smartgallery.prune_zip_cache()
 
@@ -122,12 +119,8 @@ def test_a_failure_is_forgotten_once_it_is_old(zip_cache):
     """A failed job has no file to go with it, so nothing would ever
     remove it -- which is how the registry grew for the life of the
     process."""
-    smartgallery.zip_jobs["failed_now"] = {"status": "error",
-                                           "message": "no",
-                                           "created": time.time()}
-    smartgallery.zip_jobs["failed_old"] = {"status": "error",
-                                           "message": "no",
-                                           "created": time.time() - 25 * 3600}
+    smartgallery.zip_jobs["failed_now"] = {"status": "error", "message": "no", "created": time.time()}
+    smartgallery.zip_jobs["failed_old"] = {"status": "error", "message": "no", "created": time.time() - 25 * 3600}
 
     smartgallery.prune_zip_cache()
 
@@ -138,16 +131,13 @@ def test_a_failure_is_forgotten_once_it_is_old(zip_cache):
 def test_a_cleared_download_is_not_offered(zip_cache, staff):
     """The bug, through the route the download panel actually polls: the
     entry says ready, the file is gone, and it handed out a link anyway."""
-    smartgallery.zip_jobs["stale"] = {"status": "ready",
-                                      "filename": "smartgallery_stale.zip",
-                                      "created": time.time()}
+    smartgallery.zip_jobs["stale"] = {"status": "ready", "filename": "smartgallery_stale.zip", "created": time.time()}
 
     response = staff.get("/galleryout/check_zip_status/stale")
     body = response.get_json()
 
     assert body is not None, response.get_data(as_text=True)[:200]
-    assert body["status"] != "ready", (
-        f"offered a download whose file is gone: {body}")
+    assert body["status"] != "ready", f"offered a download whose file is gone: {body}"
     assert "download_url" not in body, body
     assert "prepare it again" in body["message"].lower(), body["message"]
 
@@ -156,9 +146,7 @@ def test_a_download_that_is_there_is_still_offered(zip_cache, staff):
     """Over-reach guard, and the ordinary case: checking the disk must not
     take away downloads that exist."""
     _write(zip_cache, "smartgallery_here.zip")
-    smartgallery.zip_jobs["here"] = {"status": "ready",
-                                     "filename": "smartgallery_here.zip",
-                                     "created": time.time()}
+    smartgallery.zip_jobs["here"] = {"status": "ready", "filename": "smartgallery_here.zip", "created": time.time()}
 
     response = staff.get("/galleryout/check_zip_status/here")
     body = response.get_json()
@@ -168,24 +156,21 @@ def test_a_download_that_is_there_is_still_offered(zip_cache, staff):
     assert body["download_url"].endswith("smartgallery_here.zip"), body
 
     fetched = staff.get(body["download_url"])
-    assert fetched.status_code == 200, (
-        "the link it handed out does not serve the file")
+    assert fetched.status_code == 200, "the link it handed out does not serve the file"
     assert fetched.get_data().startswith(b"PK")
 
 
 def test_the_answer_is_always_something_the_panel_can_read(zip_cache, staff):
     """Control for the shape: the panel does res.json() and reads .message,
     so every one of these has to be JSON whatever went wrong."""
-    smartgallery.zip_jobs["stale"] = {"status": "ready",
-                                      "filename": "smartgallery_missing.zip",
-                                      "created": time.time()}
+    smartgallery.zip_jobs["stale"] = {"status": "ready", "filename": "smartgallery_missing.zip", "created": time.time()}
 
     for job_id in ("stale", "never_existed"):
         response = staff.get(f"/galleryout/check_zip_status/{job_id}")
         body = response.get_json()
         assert body is not None, (
-            f"{job_id} answered {response.status_code} with "
-            f"{response.get_data(as_text=True)[:120]}")
+            f"{job_id} answered {response.status_code} with {response.get_data(as_text=True)[:120]}"
+        )
         assert body.get("message"), body
 
 
@@ -197,7 +182,8 @@ def test_the_link_would_have_answered_with_a_page(zip_cache, staff):
     assert dead.status_code == 404
     assert dead.get_json() is None, (
         "a missing zip now answers in JSON, so handing out a dead link "
-        "would no longer be the failure these checks are about")
+        "would no longer be the failure these checks are about"
+    )
 
 
 def test_startup_clears_what_it_finds(gallery_tree):
@@ -207,15 +193,18 @@ def test_startup_clears_what_it_finds(gallery_tree):
 
     tree = gallery_tree
 
-    starters = [node for node in ast.walk(tree)
-                if isinstance(node, ast.FunctionDef)
-                and node.name.startswith("initialize_gallery")]
+    starters = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("initialize_gallery")
+    ]
     assert starters, "no initialize_gallery function found; this check is stale"
 
     for start in starters:
-        called = {node.func.id for node in ast.walk(start)
-                  if isinstance(node, ast.Call)
-                  and isinstance(node.func, ast.Name)}
+        called = {
+            node.func.id for node in ast.walk(start) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
         assert "prune_zip_cache" in called, (
             f"{start.name} does not clear old prepared downloads, so a "
-            f"gallery that never prepares another one keeps them")
+            f"gallery that never prepares another one keeps them"
+        )

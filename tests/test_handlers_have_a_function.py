@@ -29,17 +29,69 @@ _HANDLER = re.compile(r'\bon[a-z]+\s*=\s*"([^"]*)"')
 _CALL = re.compile(r"""(?<![.\w$'"])([A-Za-z_$][\w$]*)\s*\(""")
 _STRING = re.compile(r"'[^']*'")
 
-_KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "typeof",
-             "new", "delete", "void", "function", "else", "do", "in", "of"}
+_KEYWORDS = {
+    "if",
+    "for",
+    "while",
+    "switch",
+    "catch",
+    "return",
+    "typeof",
+    "new",
+    "delete",
+    "void",
+    "function",
+    "else",
+    "do",
+    "in",
+    "of",
+}
 _BUILTINS = {
-    "alert", "confirm", "prompt", "setTimeout", "setInterval", "fetch",
-    "parseInt", "parseFloat", "String", "Number", "Boolean", "Array",
-    "Object", "JSON", "Math", "Date", "RegExp", "Error", "Promise", "Map",
-    "Set", "encodeURIComponent", "decodeURIComponent", "encodeURI",
-    "decodeURI", "isNaN", "console", "event", "window", "document",
-    "navigator", "location", "history", "localStorage", "sessionStorage",
-    "URL", "Blob", "FormData", "Image", "FileReader", "XMLHttpRequest",
-    "EventSource", "AbortController", "requestAnimationFrame", "Intl",
+    "alert",
+    "confirm",
+    "prompt",
+    "setTimeout",
+    "setInterval",
+    "fetch",
+    "parseInt",
+    "parseFloat",
+    "String",
+    "Number",
+    "Boolean",
+    "Array",
+    "Object",
+    "JSON",
+    "Math",
+    "Date",
+    "RegExp",
+    "Error",
+    "Promise",
+    "Map",
+    "Set",
+    "encodeURIComponent",
+    "decodeURIComponent",
+    "encodeURI",
+    "decodeURI",
+    "isNaN",
+    "console",
+    "event",
+    "window",
+    "document",
+    "navigator",
+    "location",
+    "history",
+    "localStorage",
+    "sessionStorage",
+    "URL",
+    "Blob",
+    "FormData",
+    "Image",
+    "FileReader",
+    "XMLHttpRequest",
+    "EventSource",
+    "AbortController",
+    "requestAnimationFrame",
+    "Intl",
 }
 
 
@@ -54,17 +106,18 @@ def _called(page: str):
 
 
 def _defined(page: str):
-    return (set(re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", page))
-            | set(re.findall(r"\bwindow\.([A-Za-z_$][\w$]*)\s*=", page))
-            | set(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", page))
-            | set(re.findall(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s+)?function\b", page))
-            | set(re.findall(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s*)?\([^)]*\)\s*=>", page)))
+    return (
+        set(re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", page))
+        | set(re.findall(r"\bwindow\.([A-Za-z_$][\w$]*)\s*=", page))
+        | set(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", page))
+        | set(re.findall(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s+)?function\b", page))
+        | set(re.findall(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s*)?\([^)]*\)\s*=>", page))
+    )
 
 
 def _missing(page: str):
     defined = _defined(page)
-    return {name: where for name, where in _called(page).items()
-            if name not in defined and name not in _BUILTINS}
+    return {name: where for name, where in _called(page).items() if name not in defined and name not in _BUILTINS}
 
 
 @pytest.fixture
@@ -110,11 +163,11 @@ def test_every_handler_on_the_management_page_has_a_function(client):
 
     assert not missing, (
         f"{len(missing)} handler(s) call something that is not declared on "
-        f"the page, so the button does nothing: {missing}")
+        f"the page, so the button does nothing: {missing}"
+    )
 
 
-def test_every_handler_on_the_exhibition_page_has_a_function(smartgallery_app,
-                                                             monkeypatch):
+def test_every_handler_on_the_exhibition_page_has_a_function(smartgallery_app, monkeypatch):
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     client = smartgallery_app.app.test_client()
@@ -124,8 +177,7 @@ def test_every_handler_on_the_exhibition_page_has_a_function(smartgallery_app,
         session["full_name"] = "A Visitor"
 
     page = client.get("/galleryout/view/_root_").get_data(as_text=True)
-    assert len(_HANDLER.findall(page)) > 20, (
-        "few handlers found; this may be the login screen, not the portal")
+    assert len(_HANDLER.findall(page)) > 20, "few handlers found; this may be the login screen, not the portal"
 
     missing = _missing(page)
 

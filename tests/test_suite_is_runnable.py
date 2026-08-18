@@ -43,14 +43,15 @@ def test_the_setting_that_makes_the_documented_command_work(pytestconfig):
         "pytest.ini no longer sets `pythonpath`. Without it only "
         "`python -m pytest` works, because that form prepends the working "
         "directory by accident; `uv run pytest` and a bare `pytest` fail in "
-        "conftest at `import smartgallery`.")
+        "conftest at `import smartgallery`."
+    )
     # pytest resolves the setting against the rootdir, so what comes back is
     # already absolute -- which is the thing worth asserting: not that the
     # file says ".", but that "." lands on this repo.
     resolved = {pathlib.Path(entry).resolve() for entry in configured}
     assert _REPO_ROOT in resolved, (
-        f"pythonpath resolves to {sorted(map(str, resolved))} rather than "
-        f"the repo root {_REPO_ROOT}")
+        f"pythonpath resolves to {sorted(map(str, resolved))} rather than the repo root {_REPO_ROOT}"
+    )
 
 
 def test_the_rootdir_is_the_repo_not_wherever_you_were_standing(pytestconfig):
@@ -58,8 +59,8 @@ def test_the_rootdir_is_the_repo_not_wherever_you_were_standing(pytestconfig):
     by walking up to pytest.ini -- so the directory that gets added is the
     repo root whatever directory the command was typed in."""
     assert pathlib.Path(pytestconfig.rootpath).resolve() == _REPO_ROOT, (
-        f"rootdir resolved to {pytestconfig.rootpath}, so `pythonpath = .` "
-        f"would add the wrong directory")
+        f"rootdir resolved to {pytestconfig.rootpath}, so `pythonpath = .` would add the wrong directory"
+    )
 
 
 def test_the_repo_root_really_is_on_the_path():
@@ -68,8 +69,8 @@ def test_the_repo_root_really_is_on_the_path():
     on_path = {pathlib.Path(entry).resolve() for entry in sys.path if entry}
 
     assert _REPO_ROOT in on_path, (
-        f"{_REPO_ROOT} is not on sys.path, so `import smartgallery` works "
-        f"here only by whatever accident supplied it")
+        f"{_REPO_ROOT} is not on sys.path, so `import smartgallery` works here only by whatever accident supplied it"
+    )
 
 
 def test_the_monolith_imports_from_there(smartgallery_app):
@@ -78,4 +79,5 @@ def test_the_monolith_imports_from_there(smartgallery_app):
     on."""
     assert smartgallery_app.__name__ == "smartgallery"
     assert pathlib.Path(smartgallery_app.__file__).resolve().parent == _REPO_ROOT, (
-        "the monolith was imported from somewhere other than this repo")
+        "the monolith was imported from somewhere other than this repo"
+    )

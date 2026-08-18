@@ -58,8 +58,9 @@ def _sha256_pixels(img):
     """SHA-256 over (width, height, raw RGB bytes): identical pixels hash
     identically regardless of file format or encoding."""
     return hashlib.sha256(
-        img.size[0].to_bytes(4, "big") + img.size[1].to_bytes(4, "big")
-        + img.convert("RGB").tobytes()).hexdigest()
+        img.size[0].to_bytes(4, "big") + img.size[1].to_bytes(4, "big") + img.convert("RGB").tobytes()
+    ).hexdigest()
+
 
 # Description classes the gate must reject, regardless of image.
 # Vacuous: content-free text that fits any image equally well.
@@ -70,8 +71,10 @@ VACUOUS = [
 ]
 # Parroted: restates the schema's worked example instead of the image.
 PARROTED = [
-    ("Good portrait with one artifact. The image shows a red square artifact "
-    "in the lower right and slightly flat lighting."),
+    (
+        "Good portrait with one artifact. The image shows a red square artifact "
+        "in the lower right and slightly flat lighting."
+    ),
     "A portrait with a red square artifact and slightly flat lighting.",
 ]
 # Unrelated: concrete, well-formed text about an entirely different scene.
@@ -94,8 +97,7 @@ def build_images():
         """Register one calibration image with its grounded description and
         its manifest row."""
         imgs[name] = (img, desc)
-        row = {"image": name, "source": source,
-               "pixels_sha256": _sha256_pixels(img)}
+        row = {"image": name, "source": source, "pixels_sha256": _sha256_pixels(img)}
         if file_path is not None:
             row["file"] = os.path.relpath(file_path, REPO)
             row["file_sha256"] = _sha256_file(file_path)
@@ -104,37 +106,54 @@ def build_images():
     astro_path = os.environ.get("CAL_PORTRAIT_IMAGE", DEFAULT_PORTRAIT)
     if astro_path and os.path.isfile(astro_path):
         astro = Image.open(astro_path).convert("RGB").resize((512, 512))
-        _add("portrait", astro,
-             "a person wearing an orange astronaut space suit with patches, "
-             "in front of a flag",
-             "portrait file, resized to 512x512", file_path=astro_path)
+        _add(
+            "portrait",
+            astro,
+            "a person wearing an orange astronaut space suit with patches, in front of a flag",
+            "portrait file, resized to 512x512",
+            file_path=astro_path,
+        )
         flawed = astro.copy()
         ImageDraw.Draw(flawed).rectangle([300, 300, 419, 419], fill=(255, 20, 20))
-        _add("portrait-defect", flawed,
-             "a person in an orange space suit, with a solid red square "
-             "artifact in the lower right",
-             "portrait + planted 120px red square at (300,300)",
-             file_path=astro_path)
-        _add("portrait-dark", ImageEnhance.Brightness(astro).enhance(0.12),
-             "a very dark, underexposed photo of a person in a space suit",
-             "portrait at brightness 0.12", file_path=astro_path)
+        _add(
+            "portrait-defect",
+            flawed,
+            "a person in an orange space suit, with a solid red square artifact in the lower right",
+            "portrait + planted 120px red square at (300,300)",
+            file_path=astro_path,
+        )
+        _add(
+            "portrait-dark",
+            ImageEnhance.Brightness(astro).enhance(0.12),
+            "a very dark, underexposed photo of a person in a space suit",
+            "portrait at brightness 0.12",
+            file_path=astro_path,
+        )
     noise = Image.fromarray((rng.random((512, 512, 3)) * 255).astype("uint8"))
-    _add("noise", noise, "dense multicolored static noise with no subject",
-         "np.random.default_rng(23) uniform noise 512x512")
+    _add(
+        "noise",
+        noise,
+        "dense multicolored static noise with no subject",
+        "np.random.default_rng(23) uniform noise 512x512",
+    )
     yy, xx = np.mgrid[0:512, 0:512].astype(np.float32) / 512.0
-    _add("gradient",
-         Image.fromarray(np.stack([xx * 255, yy * 255, (1 - xx) * 255],
-                                  axis=-1).astype("uint8")),
-         "a smooth colorful gradient from orange to blue with no objects",
-         "deterministic RGB gradient 512x512")
-    _add("red", Image.new("RGB", (512, 512), (220, 20, 20)),
-         "a plain solid red image", "solid RGB(220,20,20) 512x512")
+    _add(
+        "gradient",
+        Image.fromarray(np.stack([xx * 255, yy * 255, (1 - xx) * 255], axis=-1).astype("uint8")),
+        "a smooth colorful gradient from orange to blue with no objects",
+        "deterministic RGB gradient 512x512",
+    )
+    _add("red", Image.new("RGB", (512, 512), (220, 20, 20)), "a plain solid red image", "solid RGB(220,20,20) 512x512")
     for name in ("filter_panel.png", "compare.png"):
         p = os.path.join(REPO, "assets", name)
         if os.path.isfile(p):
-            _add(f"screenshot:{name}", Image.open(p).convert("RGB"),
-                 "a screenshot of a software user interface with panels and text",
-                 "repo asset", file_path=p)
+            _add(
+                f"screenshot:{name}",
+                Image.open(p).convert("RGB"),
+                "a screenshot of a software user interface with panels and text",
+                "repo asset",
+                file_path=p,
+            )
     return imgs, manifest
 
 
@@ -143,13 +162,10 @@ def main() -> int:
     JSON report. Returns the process exit code: 0 on success, 2 when the
     model weights are not provisioned."""
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models-dir",
-                    default=os.path.join(REPO, ".AImodels"))
+    ap.add_argument("--models-dir", default=os.path.join(REPO, ".AImodels"))
     args = ap.parse_args()
 
-
-    sem = get_semantic_backend(AIConfig(enabled=True, models_dir=args.models_dir,
-                                        semantic_backend="open_clip"))
+    sem = get_semantic_backend(AIConfig(enabled=True, models_dir=args.models_dir, semantic_backend="open_clip"))
     if sem is None:
         print("FAIL: OpenCLIP weights not provisioned")
         return 2
@@ -171,8 +187,7 @@ def main() -> int:
         cases += [("unrelated", d) for d in UNRELATED]
         for cls, desc in cases:
             c = cos(sem.embed_text(desc), iv)
-            rows.append({"image": img_name, "class": cls, "cos": round(c, 4),
-                         "margin": round(c - base_cos, 4)})
+            rows.append({"image": img_name, "class": cls, "cos": round(c, 4), "margin": round(c - base_cos, 4)})
 
     sweep = []
     for thr in [round(0.01 * t, 2) for t in range(16)]:
@@ -180,30 +195,34 @@ def main() -> int:
         frr = [r for r in rows if r["class"] == "grounded" and r["margin"] < thr]
         n_bad = sum(1 for r in rows if r["class"] != "grounded")
         n_good = sum(1 for r in rows if r["class"] == "grounded")
-        sweep.append({"margin_threshold": thr,
-                      "false_accept_rate": round(len(far) / n_bad, 3),
-                      "false_reject_rate": round(len(frr) / n_good, 3)})
+        sweep.append(
+            {
+                "margin_threshold": thr,
+                "false_accept_rate": round(len(far) / n_bad, 3),
+                "false_reject_rate": round(len(frr) / n_good, 3),
+            }
+        )
 
     report = {
         "baseline_text": GENERIC_BASELINE,
         "backend": {"model_id": sem.model_id, "model_version": sem.model_version},
         "inputs": manifest,
         "description_classes": {
-            "vacuous": VACUOUS, "parroted": PARROTED, "unrelated": UNRELATED,
+            "vacuous": VACUOUS,
+            "parroted": PARROTED,
+            "unrelated": UNRELATED,
         },
         "pairs": rows,
         "sweep": sweep,
     }
-    out = os.path.join(REPO, "benchmarks", "results",
-                       "grounding_calibration.json")
+    out = os.path.join(REPO, "benchmarks", "results", "grounding_calibration.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
         json.dump(report, f, indent=1)
 
     print(f"{'thr':>5} {'FAR':>6} {'FRR':>6}")
     for s in sweep:
-        print(f"{s['margin_threshold']:>5} {s['false_accept_rate']:>6} "
-              f"{s['false_reject_rate']:>6}")
+        print(f"{s['margin_threshold']:>5} {s['false_accept_rate']:>6} {s['false_reject_rate']:>6}")
     print(f"\nwrote {out}")
     return 0
 

@@ -58,20 +58,23 @@ def main() -> int:
 
     rng = np.random.default_rng(11)
     for i in range(3):
-        Image.fromarray((rng.random((96, 96, 3)) * 255).astype("uint8")).save(
-            os.path.join(media, f"img{i}.png"))
-
-
+        Image.fromarray((rng.random((96, 96, 3)) * 255).astype("uint8")).save(os.path.join(media, f"img{i}.png"))
 
     db = os.path.join(tmp, "probe.sqlite")
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
-    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL,"
-                 " name TEXT, type TEXT)")
+    conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT, mtime REAL, name TEXT, type TEXT)")
     schema.init_schema(conn)
 
-    cfg = AIConfig(enabled=True, base_path=tmp, db_path=db, models_dir="",
-                   cache_dir=cache, semantic_backend="stub", visual_backend="stub")
+    cfg = AIConfig(
+        enabled=True,
+        base_path=tmp,
+        db_path=db,
+        models_dir="",
+        cache_dir=cache,
+        semantic_backend="stub",
+        visual_backend="stub",
+    )
 
     before = snapshot(media)
 
@@ -82,41 +85,58 @@ def main() -> int:
         path = os.path.join(media, f"img{i}.png")
         fid = f"file{i}"
         mtime = os.path.getmtime(path)
-        conn.execute("INSERT INTO files VALUES (?,?,?,?,?)",
-                     (fid, path, mtime, os.path.basename(path), "image"))
+        conn.execute("INSERT INTO files VALUES (?,?,?,?,?)", (fid, path, mtime, os.path.basename(path), "image"))
         res = compute_hashes_for_file(path, "image")
         upsert_hashes(conn, fid, res, mtime, HASH_ALGO_VERSION, now)
         img = Image.open(path)
-        vs.add(conn, fid, "semantic", sem.model_id, sem.model_version,
-               sem.embed_image(img), mtime)
-        vs.add(conn, fid, "visual", vis.model_id, vis.model_version,
-               vis.embed_image(img), mtime)
+        vs.add(conn, fid, "semantic", sem.model_id, sem.model_version, sem.embed_image(img), mtime)
+        vs.add(conn, fid, "visual", vis.model_id, vis.model_version, vis.embed_image(img), mtime)
     conn.commit()
 
     # Review with a localizable finding + mask generation (stub segmenter).
     payload = {
-        "quality_score": 6.0, "prompt_alignment_score": None, "summary": "probe",
-        "findings": [{"type": "artifact", "severity": "low", "confidence": 0.9,
-                      "localizable": True, "description": "probe finding",
-                      "bbox": [0.25, 0.25, 0.5, 0.5]}],
+        "quality_score": 6.0,
+        "prompt_alignment_score": None,
+        "summary": "probe",
+        "findings": [
+            {
+                "type": "artifact",
+                "severity": "low",
+                "confidence": 0.9,
+                "localizable": True,
+                "description": "probe finding",
+                "bbox": [0.25, 0.25, 0.5, 0.5],
+            }
+        ],
     }
     result = R.validate_review_payload(payload)
-    rid = R.store_review(conn, "file0", result, "critic-stub", "v1",
-                         RUBRIC_VERSION, "{}", os.path.getmtime(
-                             os.path.join(media, "img0.png")), now)
-    finding_id = conn.execute(
-        "SELECT finding_id FROM ai_review_findings WHERE review_id = ?",
-        (rid,)).fetchone()[0]
+    rid = R.store_review(
+        conn,
+        "file0",
+        result,
+        "critic-stub",
+        "v1",
+        RUBRIC_VERSION,
+        "{}",
+        os.path.getmtime(os.path.join(media, "img0.png")),
+        now,
+    )
+    finding_id = conn.execute("SELECT finding_id FROM ai_review_findings WHERE review_id = ?", (rid,)).fetchone()[0]
     mask_path = R.generate_finding_mask(
-        conn, cache, Image.open(os.path.join(media, "img0.png")),
-        "file0", finding_id, R.StubSegmenter())
+        conn, cache, Image.open(os.path.join(media, "img0.png")), "file0", finding_id, R.StubSegmenter()
+    )
 
     after = snapshot(media)
 
     ok = before == after
     mask_inside_cache = os.path.commonpath(
-        [os.path.abspath(os.path.join(cache, mask_path)) if not os.path.isabs(mask_path)
-         else os.path.abspath(mask_path), os.path.abspath(cache)]) == os.path.abspath(cache)
+        [
+            os.path.abspath(os.path.join(cache, mask_path))
+            if not os.path.isabs(mask_path)
+            else os.path.abspath(mask_path),
+            os.path.abspath(cache),
+        ]
+    ) == os.path.abspath(cache)
 
     evidence = {
         "source_files": len(before),

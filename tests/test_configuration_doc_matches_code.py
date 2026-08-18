@@ -28,18 +28,19 @@ import re
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Standard environment, not settings of ours.
-_NOT_OURS = {"PATH", "DISPLAY", "HOME", "USERPROFILE", "TEMP", "TMP",
-             "FAISS_DISABLE_CPU_FEATURES"}
+_NOT_OURS = {"PATH", "DISPLAY", "HOME", "USERPROFILE", "TEMP", "TMP", "FAISS_DISABLE_CPU_FEATURES"}
 
 _READERS = re.compile(
+    # \s* after the paren: a call whose setting name wrapped onto the next
+    # line was invisible to this, so the audit silently under-reported.
     r"""(?:os\.environ\.get\(|os\.getenv\(|env_or\(|env_num\(|env_flag\(
         |_env_str\(|_env_num\(|_env_bool\(|ENV_MODEL_PATH\s*=\s*)
-        ["']([A-Z][A-Z0-9_]{2,})["']""",
-    re.VERBOSE)
+        \s*["']([A-Z][A-Z0-9_]{2,})["']""",
+    re.VERBOSE,
+)
 
 
-_NOT_THE_APP = {".venv", "tests", "benchmarks", "probes", "vendor",
-                ".git", "__pycache__", ".AImodels"}
+_NOT_THE_APP = {".venv", "tests", "benchmarks", "probes", "vendor", ".git", "__pycache__", ".AImodels"}
 
 
 @functools.cache
@@ -102,31 +103,38 @@ def test_the_audit_sees_something():
 def test_every_documented_setting_is_read_somewhere():
     """The regression this file exists for."""
     non_python = ""
-    for name in ("docker_init.bash", "compose.yaml", "compose-exhibit.yaml",
-                 "Makefile", "Dockerfile", "run_smartgallery.bat"):
+    for name in (
+        "docker_init.bash",
+        "compose.yaml",
+        "compose-exhibit.yaml",
+        "Makefile",
+        "Dockerfile",
+        "run_smartgallery.bat",
+    ):
         path = _ROOT / name
         if path.exists():
             non_python += open(path, encoding="utf-8", errors="replace").read()
 
     all_python = "\n".join(text for _p, text in _source_text())
 
-    orphans = sorted(name for name in _documented_in_tables()
-                     if name not in _NOT_OURS
-                     and name not in all_python
-                     and name not in non_python)
+    orphans = sorted(
+        name
+        for name in _documented_in_tables()
+        if name not in _NOT_OURS and name not in all_python and name not in non_python
+    )
 
     assert orphans == [], (
         f"documented but read by nothing: {orphans}. Either the setting was "
         f"removed and the row should go, or it never worked -- say so in the "
-        f"row rather than leaving it looking functional.")
+        f"row rather than leaving it looking functional."
+    )
 
 
 def test_every_setting_the_code_reads_is_documented():
     docs = "\n".join(text for _p, text in _doc_text())
 
-    undocumented = sorted(name for name in _variables_the_code_reads()
-                          if name not in _NOT_OURS and name not in docs)
+    undocumented = sorted(name for name in _variables_the_code_reads() if name not in _NOT_OURS and name not in docs)
 
     assert undocumented == [], (
-        f"read by the code but in no doc: {undocumented}. A setting nobody "
-        f"can find is a setting nobody can use.")
+        f"read by the code but in no doc: {undocumented}. A setting nobody can find is a setting nobody can use."
+    )

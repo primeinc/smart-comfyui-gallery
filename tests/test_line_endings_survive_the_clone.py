@@ -52,8 +52,7 @@ _BELLWETHER = "smartgallery.py"
 
 
 def _git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=str(cwd or _ROOT),
-                          capture_output=True, timeout=900)
+    return subprocess.run(["git", *args], cwd=str(cwd or _ROOT), capture_output=True, timeout=900)
 
 
 def _endings(path):
@@ -76,16 +75,14 @@ def checkouts(tmp_path_factory):
     made = {}
     for autocrlf in ("true", "false"):
         target = tmp_path_factory.mktemp(f"co_{autocrlf}")
-        result = _git("-c", f"core.autocrlf={autocrlf}", "checkout-index",
-                      "-a", "-f", f"--prefix={target}/")
+        result = _git("-c", f"core.autocrlf={autocrlf}", "checkout-index", "-a", "-f", f"--prefix={target}/")
         if result.returncode != 0:
             pytest.skip(result.stderr.decode(errors="replace")[:200])
         made[autocrlf] = target
     return made
 
 
-@pytest.mark.parametrize(("autocrlf", "expect_crlf"), [("true", True),
-                                                  ("false", False)])
+@pytest.mark.parametrize(("autocrlf", "expect_crlf"), [("true", True), ("false", False)])
 def test_the_checkout_is_really_in_that_mode(checkouts, autocrlf, expect_crlf):
     """Control, one per mode, and the thing the rest of the file rests on.
 
@@ -98,18 +95,19 @@ def test_the_checkout_is_really_in_that_mode(checkouts, autocrlf, expect_crlf):
         assert crlf > 0 and bare == 0, (
             f"with core.autocrlf=true a file with no rule came out with "
             f"{bare} bare newlines; this checkout is not converting, so the "
-            f"checks here would pass against no policy at all")
+            f"checks here would pass against no policy at all"
+        )
     else:
         assert bare > 0 and crlf == 0, (
             f"with core.autocrlf=false a file with no rule came out with "
             f"{crlf} CRLF; this checkout is converting on its own, so the "
-            f"CRLF checks below would pass without any policy")
+            f"CRLF checks below would pass without any policy"
+        )
 
 
 @pytest.mark.parametrize("autocrlf", ["true", "false"])
 @pytest.mark.parametrize("name", _MUST_BE_LF)
-def test_a_script_that_runs_on_linux_keeps_bare_newlines(checkouts, autocrlf,
-                                                          name):
+def test_a_script_that_runs_on_linux_keeps_bare_newlines(checkouts, autocrlf, name):
     """The bug: checked out on Windows, the container's own command
     arrived with a carriage return in its shebang."""
     data = (checkouts[autocrlf] / name).read_bytes()
@@ -122,21 +120,19 @@ def test_a_script_that_runs_on_linux_keeps_bare_newlines(checkouts, autocrlf,
     assert b"\r" not in data, (
         f"with core.autocrlf={autocrlf}, {name} has carriage returns; its "
         f"first line is {first_line!r} and Linux will look for an "
-        f"interpreter with that in the name")
+        f"interpreter with that in the name"
+    )
 
 
 @pytest.mark.parametrize("autocrlf", ["true", "false"])
 @pytest.mark.parametrize("name", _MUST_BE_CRLF)
-def test_a_launcher_that_runs_on_windows_gets_windows_newlines(checkouts,
-                                                               autocrlf, name):
+def test_a_launcher_that_runs_on_windows_gets_windows_newlines(checkouts, autocrlf, name):
     """The other half, and the one a Windows machine cannot show on its
     own: checked out anywhere else these came with bare LF."""
     crlf, bare = _endings(checkouts[autocrlf] / name)
 
     assert crlf > 0, f"with core.autocrlf={autocrlf}, {name} has no CRLF"
-    assert bare == 0, (
-        f"with core.autocrlf={autocrlf}, {name} has {bare} bare newlines "
-        f"mixed in with its CRLF")
+    assert bare == 0, f"with core.autocrlf={autocrlf}, {name} has {bare} bare newlines mixed in with its CRLF"
 
 
 @pytest.mark.parametrize("autocrlf", ["true", "false"])
@@ -181,18 +177,18 @@ def test_the_index_reading_finds_the_text_files():
     assert len(endings) > 100, f"only read {len(endings)} tracked files"
     assert sum(1 for kind in endings.values() if kind == "lf") > 50, (
         f"no committed file reads as lf: {sorted(set(endings.values()))}. "
-        f"The parse is not reaching the i/<eolinfo> field.")
+        f"The parse is not reaching the i/<eolinfo> field."
+    )
 
 
 def test_nothing_committed_holds_a_carriage_return():
     """The repository's own side of it. A file committed with CRLF is
     handed out that way to everyone, whatever their checkout does."""
-    offenders = sorted(path for path, kind in _committed_line_endings().items()
-                       if kind in {"crlf", "mixed"})
+    offenders = sorted(path for path, kind in _committed_line_endings().items() if kind in {"crlf", "mixed"})
 
     assert offenders == [], (
-        f"committed with CRLF: {offenders}. Everyone gets those bytes "
-        f"whatever their own Git is set to.")
+        f"committed with CRLF: {offenders}. Everyone gets those bytes whatever their own Git is set to."
+    )
 
 
 def test_the_policy_travels_with_the_repository():
@@ -200,10 +196,10 @@ def test_the_policy_travels_with_the_repository():
     default there is not the one this needs."""
     assert (_ROOT / ".gitattributes").exists(), (
         "no .gitattributes, so what a checkout does to these scripts is "
-        "whatever the person cloning happens to have configured")
+        "whatever the person cloning happens to have configured"
+    )
 
-    for name, expected in ([(n, "lf") for n in _MUST_BE_LF] +
-                           [(n, "crlf") for n in _MUST_BE_CRLF]):
+    for name, expected in [(n, "lf") for n in _MUST_BE_LF] + [(n, "crlf") for n in _MUST_BE_CRLF]:
         result = _git("check-attr", "eol", "--", name)
         assert result.returncode == 0, result.stderr.decode(errors="replace")
         line = result.stdout.decode("utf-8", "replace").strip()

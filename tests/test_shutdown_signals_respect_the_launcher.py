@@ -57,8 +57,7 @@ def _handler(signum, frame):  # never actually delivered in these tests
 @pytest.fixture
 def restore_signals():
     """Put every handler back, whatever the test did."""
-    names = [n for n in ("SIGINT", "SIGTERM", "SIGHUP")
-             if getattr(signal, n, None) is not None]
+    names = [n for n in ("SIGINT", "SIGTERM", "SIGHUP") if getattr(signal, n, None) is not None]
     saved = {n: signal.getsignal(getattr(signal, n)) for n in names}
     yield names
     for name, previous in saved.items():
@@ -70,12 +69,11 @@ def test_a_signal_the_launcher_ignores_is_left_ignored(restore_signals):
     protecting."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    installed, left_alone = smartgallery.install_shutdown_signals(
-        _handler, names=["SIGINT"])
+    installed, left_alone = smartgallery.install_shutdown_signals(_handler, names=["SIGINT"])
 
     assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN, (
-        "the gallery took over a signal the launcher had ignored, so "
-        "nohup no longer keeps it running")
+        "the gallery took over a signal the launcher had ignored, so nohup no longer keeps it running"
+    )
     assert left_alone == ["SIGINT"]
     assert installed == []
 
@@ -85,8 +83,7 @@ def test_a_signal_nobody_touched_is_taken(restore_signals):
     Ctrl+C must still stop the gallery."""
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-    installed, left_alone = smartgallery.install_shutdown_signals(
-        _handler, names=["SIGINT"])
+    installed, left_alone = smartgallery.install_shutdown_signals(_handler, names=["SIGINT"])
 
     assert signal.getsignal(signal.SIGINT) is _handler
     assert installed == ["SIGINT"]
@@ -101,8 +98,7 @@ def test_each_signal_is_decided_on_its_own(restore_signals):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
-    installed, left_alone = smartgallery.install_shutdown_signals(
-        _handler, names=["SIGINT", "SIGTERM"])
+    installed, left_alone = smartgallery.install_shutdown_signals(_handler, names=["SIGINT", "SIGTERM"])
 
     assert installed == ["SIGTERM"]
     assert left_alone == ["SIGINT"]
@@ -113,11 +109,9 @@ def test_each_signal_is_decided_on_its_own(restore_signals):
 def test_a_signal_this_platform_lacks_is_skipped(restore_signals):
     """Windows has no SIGHUP; asking for it must not stop the rest being
     installed, and must not raise."""
-    installed, left_alone = smartgallery.install_shutdown_signals(
-        _handler, names=["SIGHUP", "SIGTERM"])
+    installed, left_alone = smartgallery.install_shutdown_signals(_handler, names=["SIGHUP", "SIGTERM"])
 
-    expected = [n for n in ("SIGHUP", "SIGTERM")
-                if getattr(signal, n, None) is not None]
+    expected = [n for n in ("SIGHUP", "SIGTERM") if getattr(signal, n, None) is not None]
     assert installed == expected, (installed, left_alone)
 
 
@@ -143,7 +137,8 @@ def test_installing_a_handler_replaces_an_ignore(restore_signals):
 
     assert signal.getsignal(signal.SIGINT) is _handler, (
         "signal.signal no longer replaces SIG_IGN, so nohup's protection "
-        "was never at risk and these checks guard nothing")
+        "was never at risk and these checks guard nothing"
+    )
 
 
 def test_the_startup_path_goes_through_the_guard(gallery_tree):
@@ -152,22 +147,26 @@ def test_the_startup_path_goes_through_the_guard(gallery_tree):
 
     tree = gallery_tree
 
-    installs = [node for node in ast.walk(tree)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "signal"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "signal"]
+    installs = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "signal"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "signal"
+    ]
 
     outside = []
     for call in installs:
-        enclosing = [f.name for f in ast.walk(tree)
-                     if isinstance(f, ast.FunctionDef)
-                     and any(n is call for n in ast.walk(f))]
+        enclosing = [
+            f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and any(n is call for n in ast.walk(f))
+        ]
         if "install_shutdown_signals" not in enclosing:
             outside.append(call.lineno)
 
     assert outside == [], (
         f"signal.signal called at lines {outside} outside "
         f"install_shutdown_signals, so a signal the launcher chose to "
-        f"ignore can be taken over again")
+        f"ignore can be taken over again"
+    )

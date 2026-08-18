@@ -66,17 +66,14 @@ def owner(smartgallery_app, monkeypatch):
     return smartgallery_app.app.test_client()
 
 
-@pytest.mark.parametrize(("method", "url"), _WRITES,
-                         ids=[u.split("/")[2] + ":" + u.split("/")[-1][:12]
-                              for _m, u in _WRITES])
+@pytest.mark.parametrize(
+    ("method", "url"), _WRITES, ids=[u.split("/")[2] + ":" + u.split("/")[-1][:12] for _m, u in _WRITES]
+)
 def test_a_write_from_another_site_is_refused(owner, method, url):
     """The bug: a form on any page reached these."""
-    response = owner.open(url, method=method,
-                          headers={"Sec-Fetch-Site": "cross-site"})
+    response = owner.open(url, method=method, headers={"Sec-Fetch-Site": "cross-site"})
 
-    assert response.status_code == 403, (
-        f"{method} {url} was accepted from another site with "
-        f"{response.status_code}")
+    assert response.status_code == 403, f"{method} {url} was accepted from another site with {response.status_code}"
     body = response.get_json()
     assert body is not None, response.get_data(as_text=True)[:160]
     assert "another website" in body["message"], body
@@ -87,31 +84,28 @@ def test_the_gallery_can_still_act_on_itself(owner, origin):
     """Over-reach guard, and the whole product. Its own page sends
     same-origin; a proxied setup can produce same-site; a bookmark or the
     address bar sends none, which the spec says may be trusted."""
-    response = owner.post("/galleryout/api/site_settings",
-                          json={"key": "x", "value": "y"},
-                          headers={"Sec-Fetch-Site": origin})
+    response = owner.post(
+        "/galleryout/api/site_settings", json={"key": "x", "value": "y"}, headers={"Sec-Fetch-Site": origin}
+    )
 
-    assert response.status_code != 403, (
-        f"a {origin} request was refused as though it came from elsewhere")
+    assert response.status_code != 403, f"a {origin} request was refused as though it came from elsewhere"
 
 
 def test_something_that_is_not_a_browser_is_unaffected(owner):
     """Over-reach guard: scripts, curl and the container's own health
     checks send no such header, and refusing those would break every
     non-browser caller there is."""
-    response = owner.post("/galleryout/api/site_settings",
-                          json={"key": "x", "value": "y"})
+    response = owner.post("/galleryout/api/site_settings", json={"key": "x", "value": "y"})
 
     assert response.status_code != 403, (
-        "a caller with no Sec-Fetch-Site header was refused; nothing but a "
-        "browser sends one")
+        "a caller with no Sec-Fetch-Site header was refused; nothing but a browser sends one"
+    )
 
 
 def test_reading_is_not_affected(owner):
     """Over-reach guard: a cross-site GET is an ordinary link. Refusing
     those would break sharing a gallery URL."""
-    response = owner.get("/galleryout/api/search_options",
-                         headers={"Sec-Fetch-Site": "cross-site"})
+    response = owner.get("/galleryout/api/search_options", headers={"Sec-Fetch-Site": "cross-site"})
 
     assert response.status_code != 403
 
@@ -119,9 +113,11 @@ def test_reading_is_not_affected(owner):
 def test_an_unknown_value_is_not_treated_as_hostile(owner):
     """The spec: servers SHOULD ignore the header if it holds a value they
     do not recognise, so a future one cannot lock people out."""
-    response = owner.post("/galleryout/api/site_settings",
-                          json={"key": "x", "value": "y"},
-                          headers={"Sec-Fetch-Site": "some-future-value"})
+    response = owner.post(
+        "/galleryout/api/site_settings",
+        json={"key": "x", "value": "y"},
+        headers={"Sec-Fetch-Site": "some-future-value"},
+    )
 
     assert response.status_code != 403
 
@@ -141,12 +137,12 @@ def test_a_form_post_cannot_carry_a_json_body():
     satisfy one."""
     client = smartgallery.app.test_client()
 
-    response = client.post("/galleryout/api/collections/delete",
-                           data={"collection_id": "1"})
+    response = client.post("/galleryout/api/collections/delete", data={"collection_id": "1"})
 
     assert response.status_code != 200, (
         "a route that reads request.json accepted a plain form body, so "
-        "the JSON content type is not the protection it was taken for")
+        "the JSON content type is not the protection it was taken for"
+    )
 
 
 def test_the_write_routes_are_the_ones_that_were_swept(gallery_tree):
@@ -158,27 +154,34 @@ def test_the_write_routes_are_the_ones_that_were_swept(gallery_tree):
 
     def touches_state(fn):
         for node in ast.walk(fn):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str) \
-                    and write_sql.search(node.value):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and write_sql.search(node.value):
                 return True
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                    and node.func.attr in ("remove", "rmtree", "rename",
-                                           "replace", "unlink", "move"):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("remove", "rmtree", "rename", "replace", "unlink", "move")
+            ):
                 return True
         return False
 
     def reads(fn, attr):
-        return any(isinstance(n, ast.Attribute) and n.attr == attr
-                   and isinstance(n.value, ast.Name) and n.value.id == "request"
-                   for n in ast.walk(fn))
+        return any(
+            isinstance(n, ast.Attribute)
+            and n.attr == attr
+            and isinstance(n.value, ast.Name)
+            and n.value.id == "request"
+            for n in ast.walk(fn)
+        )
 
     formish = []
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.FunctionDef):
             continue
-        routes = [d for d in fn.decorator_list
-                  if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                  and d.func.attr == "route" and d.args]
+        routes = [
+            d
+            for d in fn.decorator_list
+            if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "route" and d.args
+        ]
         if not routes:
             continue
         methods = []
@@ -193,14 +196,17 @@ def test_the_write_routes_are_the_ones_that_were_swept(gallery_tree):
             continue
         formish.append(routes[0].args[0].value)
 
-    assert sorted(formish) == sorted([
-        "/galleryout/api/collections/upload_note",
-        "/galleryout/api/site_settings",
-        "/galleryout/delete/<string:file_id>",
-        "/galleryout/delete_folder/<string:folder_key>",
-        "/galleryout/login",
-        "/galleryout/toggle_favorite/<string:file_id>",
-    ]), (
+    assert sorted(formish) == sorted(
+        [
+            "/galleryout/api/collections/upload_note",
+            "/galleryout/api/site_settings",
+            "/galleryout/delete/<string:file_id>",
+            "/galleryout/delete_folder/<string:folder_key>",
+            "/galleryout/login",
+            "/galleryout/toggle_favorite/<string:file_id>",
+        ]
+    ), (
         f"the set of state-changing routes a plain form can reach changed: "
         f"{sorted(formish)}. Each one is reachable from any web page a "
-        f"person happens to have open.")
+        f"person happens to have open."
+    )
