@@ -40,7 +40,7 @@ import uuid
 import zipfile
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
 from typing import Any
 
@@ -1140,7 +1140,16 @@ def day_bounds(typed_date, browser_ts, is_end):
     if not typed_date:
         return None
     try:
-        midnight = datetime.strptime(typed_date, "%Y-%m-%d")
+        # A calendar date, kept naive on purpose, then resolved to an instant
+        # by .timestamp() -- which reads it as local time.
+        #
+        # It must stay naive to be right. Adding a day to an AWARE datetime
+        # adds exactly 24 hours; adding it to a naive one and resolving
+        # afterwards lands on the next local midnight, which is 23 or 25
+        # hours away on the days the clocks change. That is the whole point
+        # of the end boundary, and tests/test_a_day_means_the_viewers_day.py
+        # pins both DST days.
+        midnight = datetime.combine(date.fromisoformat(typed_date), datetime.min.time())
     except (TypeError, ValueError):
         return None
     if not is_end:
@@ -4614,7 +4623,7 @@ def get_dynamic_folder_config(force_refresh=False):
             folder_data = all_folders[rel_path]
             key = path_to_key(rel_path)
             parent_rel_path = os.path.dirname(rel_path).replace("\\", "/")
-            parent_key = "_root_" if parent_rel_path == "." or parent_rel_path == "" else path_to_key(parent_rel_path)
+            parent_key = "_root_" if parent_rel_path in {".", ""} else path_to_key(parent_rel_path)
 
             if parent_key in dynamic_config:
                 dynamic_config[parent_key]["children"].append(key)
@@ -6112,17 +6121,22 @@ def account_expired_on(user_row):
     if not raw:
         return None
     try:
-        when = datetime.fromisoformat(raw)
+        # Both branches end up aware, in this machine's zone. fromisoformat
+        # returns an AWARE datetime when the stored value carries an offset,
+        # and comparing one of those with a naive now() raises TypeError --
+        # so an expiry_date written with a timezone took the account down
+        # rather than expiring it.
+        when = datetime.fromisoformat(raw).astimezone()
     except ValueError:
         try:
-            when = datetime.strptime(raw[:10], "%Y-%m-%d")
+            when = datetime.strptime(raw[:10], "%Y-%m-%d").astimezone()
         except ValueError:
             print(
                 f"WARNING: user {user_row['username']!r} has an unreadable "
                 f"expiry_date ({raw!r}); treating the account as never expiring."
             )
             return None
-    return when if when < datetime.now() else None
+    return when if when < datetime.now().astimezone() else None
 
 
 @app.route("/galleryout/login", methods=["POST"])
@@ -12048,7 +12062,7 @@ def collection_view(coll_id):
         order_clause = f"f.duration {req_sort_order}"
     elif req_sort_by == "dimensions":
         order_clause = f"{MEGAPIXELS_SQL} {req_sort_order}"
-    elif req_sort_by == "date" or req_sort_by == "mtime":
+    elif req_sort_by in {"date", "mtime"}:
         order_clause = f"f.mtime {req_sort_order}"
     else:
         order_clause = "f.mtime DESC"
@@ -15064,7 +15078,7 @@ def _register_remix_routes_inline():
 
                     if ckpt_arch != "unknown" and lora_arch == ckpt_arch:
                         res["perfect_match"].append(lora)
-                    elif lora_arch != "unknown" and ckpt_arch != "unknown" and lora_arch != ckpt_arch:
+                    elif lora_arch != "unknown" and ckpt_arch not in ("unknown", lora_arch):
                         res["incompatible"].append(lora)
                     else:
                         res["possible_match"].append(lora)

@@ -90,7 +90,7 @@ def test_every_name_survives_a_real_redirected_pipe():
     survives each name, the names arrive intact rather than as question
     marks, and ordinary English is untouched.
     """
-    printed = "".join("print('%s')\n" % name.encode("unicode_escape").decode() for name in _NAMES)
+    printed = "".join("print('{}')\n".format(name.encode("unicode_escape").decode()) for name in _NAMES)
     finished = _run(
         "import sys; sys.argv = ['smartgallery.py']\n"
         "import smartgallery\n" + printed + "print('INFO: Starting full file scan...')\n"

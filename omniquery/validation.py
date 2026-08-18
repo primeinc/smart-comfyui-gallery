@@ -133,7 +133,7 @@ def _check_datetime_value(spec: fields.FieldSpec, value: Any) -> None:
         return
     if isinstance(value, dict):
         keys = set(value.keys())
-        if keys == {"days_ago"} or keys == {"hours_ago"}:
+        if keys in ({"days_ago"}, {"hours_ago"}):
             key = next(iter(keys))
             n = value[key]
             if isinstance(n, bool) or not isinstance(n, (int, float)) or n < 0:
