@@ -26,11 +26,16 @@ Two decisions worth arguing with, both deliberate:
 
 from __future__ import annotations
 
+import secrets
+
 import pytest
 
 import sg_auth
 
-_PASSWORD = "visitor-password-123"
+# Generated per run rather than written down: these are throwaway
+# credentials for this file's fixtures, and a literal one is something
+# somebody eventually pastes into a real config.
+_PASSWORD = secrets.token_urlsafe(16)
 
 
 @pytest.fixture

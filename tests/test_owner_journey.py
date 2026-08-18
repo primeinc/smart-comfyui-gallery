@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import secrets
 import time
 
 import pytest
@@ -28,7 +29,10 @@ from PIL import Image
 import sg_auth
 
 _PREFIX = "owner_"
-_PASSWORD = "correct-horse-battery"
+# Generated per run rather than written down: these are throwaway
+# credentials for this file's fixtures, and a literal one is something
+# somebody eventually pastes into a real config.
+_PASSWORD = secrets.token_urlsafe(16)
 
 
 @pytest.fixture

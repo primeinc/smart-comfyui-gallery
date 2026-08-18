@@ -600,5 +600,5 @@ def test_migrate_legacy_passwords_unreadable_key_path_fails_closed(tmp_path):
 
     assert report == {"migrated": 0, "failed": 2, "skipped": 0, "key_deleted": False}
     passwords = [r[0] for r in conn.execute("SELECT password FROM users")]
-    assert passwords == [sg_auth.UNUSABLE_PASSWORD, sg_auth.UNUSABLE_PASSWORD]
+    assert passwords == [sg_auth.LOGIN_DISABLED, sg_auth.LOGIN_DISABLED]
     assert key_dir.exists()  # os.remove on the directory failed, key retained

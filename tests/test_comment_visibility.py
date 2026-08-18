@@ -21,9 +21,14 @@ attributes set per test now rather than argv read once at import.
 
 from __future__ import annotations
 
+import secrets
+
 import pytest
 
-_PASSWORD = "correct-horse-battery"
+# Generated per run rather than written down: these are throwaway
+# credentials for this file's fixtures, and a literal one is something
+# somebody eventually pastes into a real config.
+_PASSWORD = secrets.token_urlsafe(16)
 _FILE = "comment_visibility_f1"
 
 _COMMENTS = [

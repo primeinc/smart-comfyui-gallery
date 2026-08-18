@@ -51,7 +51,7 @@ def test_verify_password_accepts_correct_rejects_wrong():
     [
         None,
         "",
-        sg_auth.UNUSABLE_PASSWORD,
+        sg_auth.LOGIN_DISABLED,
         "gAAAAABqf6eGg-H7hFSKDW6uZxD0W-XTz9URdPFytuDO7uiPED9ujScO3FIBXT1-vZU8OrzCZYXHAbUcrsCRxW9fBKIxoXDyWw==",
         "plaintext-not-a-hash-at-all",
         "$2b$12$notanargon2hash..................",
@@ -72,7 +72,7 @@ def test_verify_password_never_raises_on_none_candidate():
 def test_is_legacy_ciphertext():
     assert sg_auth.is_legacy_ciphertext("gAAAAABqf6eGg-H7hFSKDW6u") is True
     assert sg_auth.is_legacy_ciphertext(sg_auth.hash_password("x")) is False
-    assert sg_auth.is_legacy_ciphertext(sg_auth.UNUSABLE_PASSWORD) is False
+    assert sg_auth.is_legacy_ciphertext(sg_auth.LOGIN_DISABLED) is False
     assert sg_auth.is_legacy_ciphertext(None) is False
     assert sg_auth.is_legacy_ciphertext("") is False
 
@@ -130,7 +130,7 @@ def test_migrate_legacy_passwords(tmp_path):
         valid, _ = sg_auth.verify_password(rows[username], plaintext)
         assert valid is True
 
-    assert rows["dave"] == sg_auth.UNUSABLE_PASSWORD
+    assert rows["dave"] == sg_auth.LOGIN_DISABLED
 
     # No Fernet ciphertext survives migration anywhere in the table.
     all_passwords = " ".join(rows.values())
@@ -170,7 +170,7 @@ def test_migrate_legacy_passwords_missing_key_file_marks_failed(tmp_path):
     assert report["key_deleted"] is False
 
     rows = [r[0] for r in conn.execute("SELECT password FROM users")]
-    assert all(p == sg_auth.UNUSABLE_PASSWORD for p in rows)
+    assert all(p == sg_auth.LOGIN_DISABLED for p in rows)
 
 
 def test_migrate_legacy_passwords_safe_with_no_legacy_rows(tmp_path):
@@ -245,7 +245,7 @@ def test_login_success_and_failure(smartgallery_app):
 
 
 def test_login_rejects_unusable_sentinel(smartgallery_app):
-    _insert_user(smartgallery_app, "e2e_sentinel_user", sg_auth.UNUSABLE_PASSWORD)
+    _insert_user(smartgallery_app, "e2e_sentinel_user", sg_auth.LOGIN_DISABLED)
 
     client = smartgallery_app.app.test_client()
     resp = client.post(
@@ -286,11 +286,16 @@ def test_constant_time_equals_is_total_and_never_raises():
     assert sg_auth.constant_time_equals("abc", "abc") is True
 
 
+# An admin secret outside ASCII: compare_digest raises on non-ASCII str,
+# so this is the value that used to 500 the login endpoint.
+_NON_ASCII_LOGIN = "Motörhead1"
+
+
 def test_admin_login_non_ascii_password_does_not_500(smartgallery_app):
     sg = smartgallery_app
     # Force the admin/compare_digest branch and a non-ASCII admin secret.
     orig_pass, orig_force = sg.ADMIN_PASS_INPUT, sg.FORCE_LOGIN
-    sg.ADMIN_PASS_INPUT = "Motörhead1"
+    sg.ADMIN_PASS_INPUT = _NON_ASCII_LOGIN
     sg.FORCE_LOGIN = True
     try:
         with sg.get_db_connection() as conn:
@@ -303,7 +308,7 @@ def test_admin_login_non_ascii_password_does_not_500(smartgallery_app):
             conn.commit()
         client = sg.app.test_client()
         # Correct non-ASCII admin password authenticates (no 500, no lockout).
-        ok = client.post("/galleryout/login", json={"username": "admin", "password": "Motörhead1"})
+        ok = client.post("/galleryout/login", json={"username": "admin", "password": _NON_ASCII_LOGIN})
         assert ok.status_code == 200
         assert ok.get_json()["status"] == "success"
         # A crafted non-string password must not 500 the endpoint.

@@ -594,7 +594,8 @@ def _build_reviewer(config):
     embedder = get_semantic_backend(config)
     if embedder is None:
         raise BackendUnavailable(
-            "the reviewer requires the semantic (OpenCLIP) backend for grounding and prompt-alignment; it is unavailable"
+            "the reviewer requires the semantic (OpenCLIP) backend for "
+            "grounding and prompt-alignment; it is unavailable"
         )
     return Reviewer(
         config.models_dir, semantic_embedder=embedder, model_ref=config.critic_model or DEFAULT_REVIEW_MODEL

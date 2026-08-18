@@ -31,7 +31,7 @@ from inline_executor import InlineExecutor
 from PIL import Image, PngImagePlugin
 
 _PREFIX = "strip_"
-_SECRET = "a very secret prompt: nobody should read this"
+_HIDDEN_PROMPT = "a very secret prompt: nobody should read this"
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def guarded(smartgallery_app, monkeypatch):
     path = os.path.join(base, f"{_PREFIX}pic.png")
     image = Image.new("RGB", (32, 32), (140, 20, 60))
     info = PngImagePlugin.PngInfo()
-    info.add_text("prompt", _SECRET)  # exactly how ComfyUI records it
+    info.add_text("prompt", _HIDDEN_PROMPT)  # exactly how ComfyUI records it
     image.save(path, pnginfo=info)
 
     conn = smartgallery_app.get_db_connection()
@@ -96,7 +96,7 @@ def test_the_secret_really_is_in_the_file(smartgallery_app, guarded):
     finding no prompt in the response proves nothing at all."""
     path = os.path.join(smartgallery_app.BASE_OUTPUT_PATH, f"{_PREFIX}pic.png")
     with open(path, "rb") as handle:
-        assert _SECRET.encode() in handle.read(), "the fixture embedded no prompt"
+        assert _HIDDEN_PROMPT.encode() in handle.read(), "the fixture embedded no prompt"
 
 
 def test_a_guest_is_refused_when_stripping_fails(smartgallery_app, guarded, monkeypatch):
@@ -107,7 +107,7 @@ def test_a_guest_is_refused_when_stripping_fails(smartgallery_app, guarded, monk
 
     resp = client.get(f"/galleryout/file/{guarded}")
 
-    assert _SECRET.encode() not in resp.get_data(), "the prompt was served to a guest because stripping failed"
+    assert _HIDDEN_PROMPT.encode() not in resp.get_data(), "the prompt was served to a guest because stripping failed"
     assert resp.status_code != 200, f"a guest got a 200 for a file that could not be cleaned ({resp.status_code})"
 
 
@@ -120,7 +120,7 @@ def test_staff_still_get_the_original(smartgallery_app, guarded, monkeypatch):
     resp = client.get(f"/galleryout/file/{guarded}")
 
     assert resp.status_code == 200, resp.status_code
-    assert _SECRET.encode() in resp.get_data(), "staff were denied their own metadata"
+    assert _HIDDEN_PROMPT.encode() in resp.get_data(), "staff were denied their own metadata"
 
 
 def test_a_guest_cannot_download_what_could_not_be_cleaned(smartgallery_app, guarded, monkeypatch):
@@ -131,7 +131,9 @@ def test_a_guest_cannot_download_what_could_not_be_cleaned(smartgallery_app, gua
 
     resp = client.get(f"/galleryout/download/{guarded}")
 
-    assert _SECRET.encode() not in resp.get_data(), "the original file was handed to a guest because stripping failed"
+    assert _HIDDEN_PROMPT.encode() not in resp.get_data(), (
+        "the original file was handed to a guest because stripping failed"
+    )
     assert resp.status_code != 200, resp.status_code
 
 
@@ -160,7 +162,9 @@ def test_thumbnails_do_not_become_a_way_round_the_stripping(smartgallery_app, gu
 
     resp = client.get(f"/galleryout/thumbnail/{guarded}")
 
-    assert _SECRET.encode() not in resp.get_data(), "the thumbnail route handed a visitor the original, prompt and all"
+    assert _HIDDEN_PROMPT.encode() not in resp.get_data(), (
+        "the thumbnail route handed a visitor the original, prompt and all"
+    )
 
 
 def test_thumbnails_still_reach_staff_with_generation_off(smartgallery_app, guarded, monkeypatch):
@@ -173,7 +177,7 @@ def test_thumbnails_still_reach_staff_with_generation_off(smartgallery_app, guar
     resp = client.get(f"/galleryout/thumbnail/{guarded}")
 
     assert resp.status_code == 200, resp.status_code
-    assert _SECRET.encode() in resp.get_data()
+    assert _HIDDEN_PROMPT.encode() in resp.get_data()
 
 
 def test_the_workflow_itself_stays_behind_its_own_gate(smartgallery_app, guarded):
@@ -197,4 +201,4 @@ def test_a_guest_gets_the_picture_when_stripping_works(smartgallery_app, guarded
     assert resp.status_code == 200, resp.get_data(as_text=True)[:200]
     body = resp.get_data()
     assert body[:8] == b"\x89PNG\r\n\x1a\n", "a guest did not receive a PNG"
-    assert _SECRET.encode() not in body, "the cleaned copy still carries the prompt"
+    assert _HIDDEN_PROMPT.encode() not in body, "the cleaned copy still carries the prompt"

@@ -23,10 +23,11 @@ _logger = logging.getLogger(__name__)
 # type=Argon2id) are appropriate here; no tuning required.
 ph = PasswordHasher()
 
-# Sentinel stored for accounts whose password cannot be used to log in
-# (e.g. undecryptable legacy ciphertext). An admin must set a new password
-# via the User Manager before the account can authenticate again.
-UNUSABLE_PASSWORD = "!"
+# Stored in the password column for accounts that cannot log in (e.g.
+# undecryptable legacy ciphertext). It is not a password and no password
+# hashes to it, so nothing can match; an admin must set a new one via the
+# User Manager before the account authenticates again.
+LOGIN_DISABLED = "!"
 
 # Fernet tokens are urlsafe-base64 and always start with the encoded
 # version byte 0x80 -> "gAAAA...". Argon2 hashes always start with
@@ -50,7 +51,7 @@ def verify_password(stored: str, candidate: str) -> tuple[bool, bool]:
     """Verify `candidate` against `stored`.
 
     Returns (valid, needs_rehash). Never raises: any input that isn't a
-    well-formed Argon2 hash (None, empty, the UNUSABLE_PASSWORD sentinel,
+    well-formed Argon2 hash (None, empty, the LOGIN_DISABLED sentinel,
     a legacy Fernet ciphertext, or arbitrary garbage) simply fails
     verification rather than raising.
     """
@@ -129,7 +130,7 @@ def migrate_legacy_passwords(conn: sqlite3.Connection, key_file_path: str) -> di
     For every `users` row whose password is legacy ciphertext: decrypt with
     the key at `key_file_path` (if present), hash the plaintext with
     Argon2id, and overwrite the column. Rows that fail to decrypt (or for
-    which no key file exists) are set to UNUSABLE_PASSWORD and reported as
+    which no key file exists) are set to LOGIN_DISABLED and reported as
     failed — the account needs an admin-issued password reset. Once no
     legacy ciphertext remains in `users`, the key file is deleted.
 
@@ -164,7 +165,7 @@ def migrate_legacy_passwords(conn: sqlite3.Connection, key_file_path: str) -> di
         else:
             conn.execute(
                 "UPDATE users SET password = ? WHERE user_id = ?",
-                (UNUSABLE_PASSWORD, user_id),
+                (LOGIN_DISABLED, user_id),
             )
             report["failed"] += 1
 

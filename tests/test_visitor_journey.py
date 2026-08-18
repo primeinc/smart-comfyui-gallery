@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import secrets
 
 import pytest
 from inline_executor import InlineExecutor
@@ -29,7 +30,10 @@ import sg_auth
 
 _PREFIX = "journey_"
 _PROMPT = "JOURNEYPROMPT a lighthouse in fog"
-_PASSWORD = "visitor-password-123"
+# Generated per run rather than written down: these are throwaway
+# credentials for this file's fixtures, and a literal one is something
+# somebody eventually pastes into a real config.
+_PASSWORD = secrets.token_urlsafe(16)
 
 
 @pytest.fixture

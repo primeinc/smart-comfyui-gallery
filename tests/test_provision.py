@@ -539,20 +539,21 @@ def test_format_plan_lists_runtime_rows(tmp_path, monkeypatch):
 # --- opt-out defaults ---------------------------------------------------------
 
 
-def test_ai_layer_enabled_by_default_from_env(monkeypatch):
+def test_ai_layer_enabled_by_default_from_env(monkeypatch, tmp_path):
     """The layer is opt-OUT: a clean environment enables it; only an
     explicit false disables."""
     for var in ("ENABLE_AI_DAM", "AI_DAM_AUTO_PROVISION"):
         monkeypatch.delenv(var, raising=False)
-    cfg = AIConfig.from_env("/tmp/base", "/tmp/db.sqlite")
+    base, db = str(tmp_path / "base"), str(tmp_path / "db.sqlite")
+    cfg = AIConfig.from_env(base, db)
     assert cfg.enabled is True
     assert cfg.auto_provision is True
 
     monkeypatch.setenv("ENABLE_AI_DAM", "false")
-    assert AIConfig.from_env("/tmp/base", "/tmp/db.sqlite").enabled is False
+    assert AIConfig.from_env(base, db).enabled is False
     monkeypatch.setenv("ENABLE_AI_DAM", "true")
     monkeypatch.setenv("AI_DAM_AUTO_PROVISION", "false")
-    assert AIConfig.from_env("/tmp/base", "/tmp/db.sqlite").auto_provision is False
+    assert AIConfig.from_env(base, db).auto_provision is False
 
 
 def test_pick_torch_device_prefers_cuda_then_cpu(monkeypatch):

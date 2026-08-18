@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import secrets
 import shutil
 import subprocess
 
@@ -39,8 +40,11 @@ pytestmark = pytest.mark.spawns  # every check here runs another program
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 _INIT = _REPO_ROOT / "docker_init.bash"
 
-_PASSWORD = "hunter2222"
-_PASSPHRASE = "s3cr3t-passphrase"
+# Generated per run rather than written down: these are throwaway
+# credentials for this file's fixtures, and a literal one is something
+# somebody eventually pastes into a real config.
+_PASSWORD = secrets.token_urlsafe(16)
+_PASSPHRASE = secrets.token_urlsafe(16)
 _DUMP = (
     f"CLI_ARGS=--port 8189 --admin-pass {_PASSWORD} --force-login\n"
     f"ADMIN_PASSWORD={_PASSPHRASE}\n"
