@@ -65,6 +65,7 @@ def _cuda_compute_capability():
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         caps = [float(line.strip()) for line in proc.stdout.splitlines() if line.strip()]
         cap = max(caps) if caps else None
@@ -81,7 +82,7 @@ def _driver_cuda_version():
         return _driver_cuda_cache[0]
     value = None
     try:
-        proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
+        proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10, check=False)
         match = re.search(r"CUDA Version:\s*([\d.]+)", proc.stdout or "")
         if match:
             value = float(match.group(1))
@@ -110,6 +111,7 @@ def cuda_summary():
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         for line in proc.stdout.splitlines():
             parts = [part.strip() for part in line.split(",")]

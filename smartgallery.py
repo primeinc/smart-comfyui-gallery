@@ -10339,7 +10339,7 @@ def get_storyboard(file_id):
 
                 creation_flags = no_console_window()
 
-                subprocess.run(cmd_transcode, capture_output=True, text=True, timeout=300, creationflags=creation_flags)
+                run_media_tool(cmd_transcode, timeout=300)
 
                 if os.path.exists(temp_transcoded) and os.path.getsize(temp_transcoded) > 1000:
                     print("✅ Transcoded")
@@ -10469,13 +10469,7 @@ def get_storyboard(file_id):
                         ]
 
                         try:
-                            subprocess.run(
-                                cmd_slow,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                                timeout=40,
-                                creationflags=creation_flags,
-                            )
+                            run_media_tool(cmd_slow, timeout=40, capture=False)
 
                             if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
                                 img = Image.open(out_path)

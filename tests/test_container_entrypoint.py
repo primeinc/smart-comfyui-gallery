@@ -88,6 +88,7 @@ def _run(functions, tmp_path, script):
         text=True,
         timeout=300,
         env=env,
+        check=False,
     )
     return done.stdout + done.stderr
 
@@ -131,6 +132,6 @@ def test_the_values_that_reach_the_app_are_unchanged(functions, tmp_path):
 
 def test_the_entrypoint_is_valid_bash():
     """`bash -n` on the whole file, not just the part sourced above."""
-    done = subprocess.run([_bash(), "-n", str(_INIT)], capture_output=True, text=True, timeout=300)
+    done = subprocess.run([_bash(), "-n", str(_INIT)], capture_output=True, text=True, timeout=300, check=False)
 
     assert done.returncode == 0, done.stderr

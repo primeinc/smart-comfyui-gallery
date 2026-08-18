@@ -135,6 +135,7 @@ def _detect_gpus():
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
     except OSError:
         return []
@@ -150,7 +151,9 @@ def _detect_gpus():
 def _run_cell(snippet: str, env_extra: dict, timeout: int = 300) -> dict:
     env = {**os.environ, "PROBE_REPO": REPO, **env_extra}
     try:
-        proc = subprocess.run([sys.executable, "-c", snippet], capture_output=True, text=True, timeout=timeout, env=env)
+        proc = subprocess.run(
+            [sys.executable, "-c", snippet], capture_output=True, text=True, timeout=timeout, env=env, check=False
+        )
     except subprocess.TimeoutExpired:
         return {"status": "FAIL", "detail": f"timeout after {timeout}s"}
     lines = [ln for ln in proc.stdout.strip().splitlines() if ln.startswith("{")]

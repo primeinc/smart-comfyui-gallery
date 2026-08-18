@@ -150,6 +150,7 @@ def check_idle(seconds: int = 3, busy_frac: float = 0.15) -> int:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         if out.returncode == 0:
             for i, line in enumerate(out.stdout.split()):

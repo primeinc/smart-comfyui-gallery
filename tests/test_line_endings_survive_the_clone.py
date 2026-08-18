@@ -52,7 +52,7 @@ _BELLWETHER = "smartgallery.py"
 
 
 def _git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=str(cwd or _ROOT), capture_output=True, timeout=900)
+    return subprocess.run(["git", *args], cwd=str(cwd or _ROOT), capture_output=True, timeout=900, check=False)
 
 
 def _endings(path):

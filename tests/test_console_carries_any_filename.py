@@ -54,7 +54,11 @@ def _run(body):
     environment.pop("PYTHONUTF8", None)
     environment.pop("PYTHONIOENCODING", None)
     return subprocess.run(
-        [sys.executable, "-X", "utf8=0", "-c", body], env=environment, capture_output=True, timeout=600
+        [sys.executable, "-X", "utf8=0", "-c", body],
+        env=environment,
+        capture_output=True,
+        timeout=600,
+        check=False,
     )
 
 
