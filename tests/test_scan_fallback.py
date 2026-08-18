@@ -28,29 +28,10 @@ import os
 import pytest
 from PIL import Image
 
-
-class _InlineExecutor:
-    """Runs each submission immediately, in-process."""
-
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:  # mirror executor semantics
-            future.set_exception(exc)
-        return future
+from inline_executor import InlineExecutor
 
 
-class _DeadPoolExecutor(_InlineExecutor):
+class _DeadPoolExecutor(InlineExecutor):
     """Every future fails the way a collapsed pool reports itself."""
 
     def submit(self, fn, *args, **kwargs):
@@ -115,7 +96,7 @@ def _scan(smartgallery_app):
 
 
 def test_scan_indexes_files_when_the_pool_works(smartgallery_app, gallery_files, monkeypatch):
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_b.png", "scanprobe_c.png"]
 
 
@@ -154,7 +135,7 @@ def test_one_unreadable_file_does_not_cost_the_others(smartgallery_app, gallery_
             raise ValueError("simulated decode failure")
         return real_process(path, *args, **kwargs)
 
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "process_single_file", explode_on_b)
 
     assert _scan(smartgallery_app) == ["scanprobe_a.png", "scanprobe_c.png"]
@@ -189,7 +170,7 @@ def test_a_large_enough_scan_still_uses_the_pool(smartgallery_app, gallery_files
     monkeypatch.setattr(smartgallery_app, "PARALLEL_SCAN_MIN_FILES", 2)
     built = []
 
-    class _Counted(_InlineExecutor):
+    class _Counted(InlineExecutor):
         def __init__(self, max_workers=None):
             super().__init__(max_workers)
             built.append(max_workers)

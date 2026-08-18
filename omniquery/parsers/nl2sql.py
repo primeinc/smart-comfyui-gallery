@@ -175,6 +175,7 @@ class SqlSearch:
         try:
             from smartgallery_ai import models as ai_models
         except Exception:
+            _logger.debug("handled a failure in available", exc_info=True)
             return False
         return ai_models.is_provisioned(self.model_ref, self.models_dir)
 
@@ -206,10 +207,12 @@ class SqlSearch:
         try:
             schema = schema_block(self.db_path)
         except Exception as exc:
+            _logger.debug("handled a failure in search", exc_info=True)
             return None, None, f"schema read error: {exc}"
         try:
             chat = self._chat()
         except Exception as exc:
+            _logger.debug("handled a failure in search", exc_info=True)
             return None, None, f"model load error: {exc}"
         # The schema block is the bulk of the prompt and never changes, so
         # it is encoded once on this first turn and every retry below
@@ -222,6 +225,7 @@ class SqlSearch:
             try:
                 content = chat.ask(turn, max_new_tokens=self.max_tokens)
             except Exception as exc:
+                _logger.debug("handled a failure in search", exc_info=True)
                 return None, last_sql, f"generation error: {exc}"
             sql = _extract_sql(content)
             if not sql:

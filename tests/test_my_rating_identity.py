@@ -27,26 +27,9 @@ from PIL import Image
 
 from smartgallery import get_db_connection
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "ratingid_"
-
-
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
 
 
 def _purge(smartgallery_app):
@@ -62,7 +45,7 @@ def _purge(smartgallery_app):
 @pytest.fixture
 def library(smartgallery_app, monkeypatch):
     """Two images in the gallery root, scanned in-process."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     root = smartgallery_app.BASE_OUTPUT_PATH
     os.makedirs(root, exist_ok=True)
     made = []

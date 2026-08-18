@@ -17,10 +17,10 @@ import errno
 import glob
 import hashlib
 import json
+import logging
 import math
 import os
 import re
-import re as _re
 import secrets
 import shutil
 import signal
@@ -79,6 +79,14 @@ from omniquery.validation import AuthContext
 from smartgallery_ai import service as ai_dam_service
 from smartgallery_ai.worker import AIWorker
 
+# Same convention as smartgallery_ai.*, which has had one of these per
+# module all along; the monolith was the one place still throwing every
+# traceback away. The console messages below are unchanged -- they are what
+# the operator reads, and several are asserted on. What this adds is the
+# traceback behind them, at DEBUG, so a failure that today prints one line
+# can be opened up without editing the source to find out what raised.
+_logger = logging.getLogger(__name__)
+
 try:
     from waitress import serve
 
@@ -135,7 +143,7 @@ def make_output_carry_any_filename(streams=None):
             # Not every stream is reconfigurable -- a captured one, a
             # replaced one, a plain file object. Nothing here is worth
             # failing over; the point is to try before anything prints.
-            pass
+            _logger.debug("ignored a failure in make_output_carry_any_filename", exc_info=True)
 
 
 make_output_carry_any_filename()
@@ -493,6 +501,7 @@ class InProcessExecutor:
         try:
             future.set_result(fn(*args, **kwargs))
         except Exception as exc:  # the pool reports failures the same way
+            _logger.debug("handled a failure in submit", exc_info=True)
             future.set_exception(exc)
         return future
 
@@ -817,6 +826,7 @@ def key_to_path(key):
     try:
         return base64.urlsafe_b64decode(key.encode()).decode().replace("/", os.sep)
     except Exception:
+        _logger.debug("handled a failure in key_to_path", exc_info=True)
         return None
 
 
@@ -933,6 +943,7 @@ MY REQUEST (I will use my native language):
             with open(dict_path, "w", encoding="utf-8") as f:
                 f.write(final_prompt)
         except Exception as e:
+            _logger.debug("handled a failure in get_omniquery_dictionary", exc_info=True)
             print(f"WARN: Could not write omniquery_template.txt: {e}")
         return final_prompt
     try:
@@ -944,6 +955,7 @@ MY REQUEST (I will use my native language):
         # splice in a `dynamic_statuses` that no longer exists
         # anywhere, so a read failure raised NameError instead of
         # degrading.
+        _logger.debug("handled a failure in get_omniquery_dictionary", exc_info=True)
         return final_prompt
 
 
@@ -1003,7 +1015,7 @@ def run_integrity_check():
                     mismatches.append(f_path)
                     issues_found = True
         except Exception:
-            pass
+            _logger.debug("ignored a failure in run_integrity_check", exc_info=True)
 
     if mismatches:
         print(f"\n{Colors.YELLOW}⚠️  VERSION WARNING: Some files are outdated or modified:{Colors.RESET}")
@@ -1713,6 +1725,7 @@ def generate_node_summary(workflow_json_string):
             return tuple(int(x) for x in raw_id.split(":"))
         except Exception:
             # Fallback for pure string IDs (pushes them to the end of the list safely)
+            _logger.debug("handled a failure in get_id_safe", exc_info=True)
             return (float("inf"), raw_id)
 
     sorted_nodes = sorted(
@@ -1796,6 +1809,7 @@ def generate_node_summary(workflow_json_string):
                                     display_value = clean_value
                                     break
                         except Exception:
+                            _logger.debug("handled a failure in generate_node_summary", exc_info=True)
                             continue
 
             params_list.append(
@@ -2478,6 +2492,7 @@ def _is_ffprobe(path_or_name):
             creationflags=no_console_window(),
         )
     except Exception:
+        _logger.debug("handled a failure in _is_ffprobe", exc_info=True)
         return False
     banner = (proc.stdout or b"").decode("utf-8", "replace").lower()
     return banner.startswith("ffprobe")
@@ -2645,6 +2660,7 @@ def download_progress_reporter(interval=1.0):
     try:
         interactive = bool(sys.stdout.isatty())
     except Exception:
+        _logger.debug("handled a failure in download_progress_reporter", exc_info=True)
         interactive = False
 
     state = {"at": 0.0, "shown": False}
@@ -2741,6 +2757,7 @@ def fetch_ffmpeg(progress=None):
         print(f"{Colors.GREEN}SUCCESS: ffmpeg is ready at {destination}{Colors.RESET}")
         return ffprobe
     except Exception as exc:
+        _logger.debug("handled a failure in fetch_ffmpeg", exc_info=True)
         print(f"{Colors.YELLOW}WARNING: could not fetch ffmpeg: {exc}{Colors.RESET}")
         print(
             f"{Colors.YELLOW}Video features stay unavailable. Install "
@@ -2894,7 +2911,7 @@ def _validate_and_get_workflow(json_string):
                 return json.dumps(workflow_data), "api"
 
     except Exception:
-        pass
+        _logger.debug("ignored a failure in _validate_and_get_workflow", exc_info=True)
 
     return None, None
 
@@ -2907,6 +2924,7 @@ def _scan_bytes_for_workflow(content_bytes):
     try:
         stream_str = content_bytes.decode("utf-8", errors="ignore")
     except Exception:
+        _logger.debug("handled a failure in _scan_bytes_for_workflow", exc_info=True)
         return
 
     start_pos = 0
@@ -2932,7 +2950,7 @@ def _scan_bytes_for_workflow(content_bytes):
                     json.loads(candidate)
                     yield candidate
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in _scan_bytes_for_workflow", exc_info=True)
 
                 # Move start_pos to after this candidate to find the next one
                 start_pos = i + 1
@@ -2987,7 +3005,7 @@ def extract_workflow(filepath, target_type="ui"):
                         if isinstance(value, str) and value.strip().startswith("{"):
                             analyze_json(value)
             except Exception:
-                pass
+                _logger.debug("ignored a failure in extract_workflow", exc_info=True)
     else:
         try:
             with Image.open(filepath) as img:
@@ -3008,13 +3026,13 @@ def extract_workflow(filepath, target_type="ui"):
                             for json_candidate in _scan_bytes_for_workflow(exif_str[start:].encode("utf-8")):
                                 analyze_json(json_candidate)
                     except Exception:
-                        pass
+                        _logger.debug("ignored a failure in extract_workflow", exc_info=True)
 
                     # Full scan fallback
                     for json_str in _scan_bytes_for_workflow(exif_data):
                         analyze_json(json_str)
         except Exception:
-            pass
+            _logger.debug("ignored a failure in extract_workflow", exc_info=True)
 
     # Raw byte scan (ultimate fallback)
     if not found_workflows:
@@ -3027,7 +3045,7 @@ def extract_workflow(filepath, target_type="ui"):
                 if target_type in found_workflows:
                     break
         except Exception:
-            pass
+            _logger.debug("ignored a failure in extract_workflow", exc_info=True)
 
     # Return Logic:
     # 1. Return the requested type if found
@@ -3102,7 +3120,7 @@ def analyze_file_metadata(filepath):
             with Image.open(filepath) as img:
                 details["dimensions"] = f"{img.width}x{img.height}"
         except Exception:
-            pass
+            _logger.debug("ignored a failure in analyze_file_metadata", exc_info=True)
     if extract_workflow(filepath):
         details["has_workflow"] = 1
     total_duration_sec = 0
@@ -3118,7 +3136,7 @@ def analyze_file_metadata(filepath):
                 )
                 cap.release()
         except Exception:
-            pass
+            _logger.debug("ignored a failure in analyze_file_metadata", exc_info=True)
     elif details["type"] == "audio":
         current_ffprobe = FFPROBE_EXECUTABLE_PATH or find_ffprobe_path()
 
@@ -3141,7 +3159,7 @@ def analyze_file_metadata(filepath):
                     total_duration_sec = float(res.stdout.strip())
 
             except Exception:
-                pass
+                _logger.debug("ignored a failure in analyze_file_metadata", exc_info=True)
     elif details["type"] == "animated_image":
         try:
             with Image.open(filepath) as img:
@@ -3153,7 +3171,7 @@ def analyze_file_metadata(filepath):
                     elif ext_lower == ".webp":
                         total_duration_sec = getattr(img, "n_frames", 1) / WEBP_ANIMATED_FPS
         except Exception:
-            pass
+            _logger.debug("ignored a failure in analyze_file_metadata", exc_info=True)
     if total_duration_sec > 0:
         details["duration"] = format_duration(total_duration_sec)
     return details
@@ -3312,7 +3330,7 @@ def create_waveform(filepath, file_hash, file_type, amp=1.0):
             os.replace(tmp_path, cache_path)
             return cache_path
     except Exception:
-        pass  # Silently fail if corrupted or timeout
+        _logger.debug("ignored a failure in create_waveform", exc_info=True)  # Silently fail if corrupted or timeout
     with contextlib.suppress(OSError):
         os.remove(tmp_path)
     return None
@@ -3341,7 +3359,9 @@ def thumbnail_generation_enabled():
         if row is not None:
             value = row[0] != "0"
     except Exception:
-        pass  # missing table (first boot): fall back to the env default
+        _logger.debug(
+            "ignored a failure in thumbnail_generation_enabled", exc_info=True
+        )  # missing table (first boot): fall back to the env default
     _THUMBNAIL_SETTING_CACHE["value"] = value
     _THUMBNAIL_SETTING_CACHE["read_at"] = now
     return value
@@ -3401,6 +3421,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     return cache_path
 
         except Exception as e:
+            _logger.debug("handled a failure in create_thumbnail", exc_info=True)
             print(f"ERROR (Pillow): Thumbnail failed for {os.path.basename(filepath)}: {e}")
             if tmp_path:
                 with contextlib.suppress(OSError):
@@ -3425,6 +3446,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     os.replace(tmp_path, cache_path)
                     return cache_path
         except Exception:
+            _logger.debug("handled a failure in create_thumbnail", exc_info=True)
             with contextlib.suppress(OSError):
                 os.remove(tmp_path)
             # Fallback silently to FFmpeg
@@ -3467,6 +3489,7 @@ def create_thumbnail(filepath, file_hash, file_type):
                     os.replace(tmp_path, cache_path)
                     return cache_path
             except Exception as e:
+                _logger.debug("handled a failure in create_thumbnail", exc_info=True)
                 print(f"ERROR (FFmpeg): Thumbnail failed for {os.path.basename(filepath)}: {e}")
                 with contextlib.suppress(OSError):
                     os.remove(tmp_path)
@@ -3862,6 +3885,7 @@ def process_single_file(filepath):
                 if gp.has_content or parsed_meta.params:
                     gen_row = gp.to_row(file_id, time.time())
         except Exception:
+            _logger.debug("handled a failure in process_single_file", exc_info=True)
             gen_row = None
 
         hashable = metadata["has_workflow"] or metadata["type"] in ("image", "animated_image")
@@ -3885,6 +3909,7 @@ def process_single_file(filepath):
             gen_row,
         )
     except Exception as e:
+        _logger.debug("handled a failure in process_single_file", exc_info=True)
         print(f"ERROR: Failed to process file {os.path.basename(filepath)} in worker: {e}")
         return None
 
@@ -4113,6 +4138,7 @@ def init_db(conn=None):
             conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='files'").fetchone() is None
         )
     except Exception:
+        _logger.debug("handled a failure in init_db", exc_info=True)
         is_new_database = False
 
     try:
@@ -4346,6 +4372,7 @@ def init_db(conn=None):
                     print("INFO: Updating Database Schema... Adding 'last_login' to users")
                 conn.execute("ALTER TABLE users ADD COLUMN last_login REAL")
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not migrate users table: {e}")
 
         # 6. COLUMN MIGRATION
@@ -4373,6 +4400,7 @@ def init_db(conn=None):
                     print("INFO: Updating Database Schema... Adding 'target_audience' to file_comments")
                 conn.execute("ALTER TABLE file_comments ADD COLUMN target_audience TEXT DEFAULT 'public'")
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not migrate file_comments table: {e}")
 
         # Handle collections public flag migration
@@ -4399,6 +4427,7 @@ def init_db(conn=None):
                 conn.execute("ALTER TABLE collections ADD COLUMN parent_id INTEGER DEFAULT NULL")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id)")
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not migrate collections table: {e}")
 
         cursor = conn.execute("PRAGMA table_info(files)")
@@ -4411,6 +4440,7 @@ def init_db(conn=None):
                 try:
                     conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
                 except Exception as e:
+                    _logger.debug("handled a failure in init_db", exc_info=True)
                     print(f"WARNING: Could not add column {col_name}: {e}")
 
         try:
@@ -4421,6 +4451,7 @@ def init_db(conn=None):
                     f"(promptless files no longer form fake prompt clusters)"
                 )
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not clear synthetic prompt hashes: {e}")
 
         # 6. SCHEMA VERSION
@@ -4451,6 +4482,7 @@ def init_db(conn=None):
                     print(f"INFO: Updating Database Schema Version: {current_ver} -> {DB_SCHEMA_VERSION}")
                 conn.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not update DB schema version: {e}")
 
         # 7. AI DAM SCHEMA (WI-31) -- derived, rebuildable tables; always kept
@@ -4459,6 +4491,7 @@ def init_db(conn=None):
         try:
             smartgallery_ai.schema.init_schema(conn)
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not initialize AI DAM schema: {e}")
 
         conn.commit()
@@ -4469,9 +4502,11 @@ def init_db(conn=None):
         try:
             check_library_continuity(is_new_database)
         except Exception as e:
+            _logger.debug("handled a failure in init_db", exc_info=True)
             print(f"WARNING: Could not check library continuity: {e}")
 
     except Exception as e:
+        _logger.debug("handled a failure in init_db", exc_info=True)
         print(f"CRITICAL DATABASE ERROR: {e}")
 
     finally:
@@ -4648,6 +4683,7 @@ def get_dynamic_folder_config(force_refresh=False):
 
             _calc_descendant_count("_root_")
     except Exception as e:
+        _logger.debug("handled a failure in get_dynamic_folder_config", exc_info=True)
         print(f"Error calculating folder file counts: {e}")
 
     folder_config_cache = dynamic_config
@@ -4817,6 +4853,7 @@ def background_watcher_task():
                     conn.commit()
 
         except Exception as e:
+            _logger.debug("handled a failure in background_watcher_task", exc_info=True)
             print(f"Watcher Loop Error: {e}")
 
         time.sleep(10)  # Faster check cycle (10s instead of 60s) to feel responsive
@@ -5012,10 +5049,12 @@ def full_sync_database(conn):
                             pool_failure = e
                             break  # the pool is gone; the rest runs sequentially
                         except Exception as e:
+                            _logger.debug("handled a failure in full_sync_database", exc_info=True)
                             attempted.add(file_path)  # tried and failed on its own merits
                             print(f"\nWARNING: Unhandled error processing {os.path.basename(file_path)}: {e}")
                         pbar.update(1)
         except Exception as e:  # pool creation, or shutdown after a break
+            _logger.debug("handled a failure in full_sync_database", exc_info=True)
             pool_failure = pool_failure or e
 
         leftover = [p for p in files_to_process if p not in attempted]
@@ -5033,6 +5072,7 @@ def full_sync_database(conn):
                         if result:
                             results.append(result)
                     except Exception as e:
+                        _logger.debug("handled a failure in full_sync_database", exc_info=True)
                         print(f"\nWARNING: Unhandled error processing {os.path.basename(path)}: {e}")
                     pbar.update(1)
 
@@ -5267,6 +5307,7 @@ def sync_folder_on_demand(folder_path):
                                 f" corrupted file). Recovering... Error: {e}"
                             )
                         except Exception as e:
+                            _logger.debug("handled a failure in sync_folder_on_demand", exc_info=True)
                             file_path_failed = futures[future]
                             print(f"\nWARNING: Unhandled error processing {os.path.basename(file_path_failed)}: {e}")
 
@@ -5343,6 +5384,7 @@ def sync_folder_on_demand(folder_path):
             )
 
     except Exception as e:
+        _logger.debug("handled a failure in sync_folder_on_demand", exc_info=True)
         error_message = f"Error during sync: {e}"
         print(f"ERROR: {error_message}")
         yield sse(message=error_message, current=1, total=1, error=True)
@@ -5395,6 +5437,7 @@ def scan_folder_and_extract_options(folder_path, recursive=True):
                             prefixes.add(filename.split("_")[0])
 
     except Exception as e:
+        _logger.debug("handled a failure in scan_folder_and_extract_options", exc_info=True)
         print(f"ERROR: Could not scan folder '{folder_path}': {e}")
 
     return file_count, sorted(extensions), sorted(prefixes)
@@ -5417,6 +5460,7 @@ def cleanup_invalid_watched_folders(conn):
                 print(f"      Skipping AI checks for this folder. Config preserved.{Colors.RESET}")
 
     except Exception as e:
+        _logger.debug("handled a failure in cleanup_invalid_watched_folders", exc_info=True)
         print(f"ERROR checking watched folders: {e}")
 
 
@@ -5528,6 +5572,7 @@ def pregenerate_exhibition_cache():
                     if future.result():
                         success_count += 1
                 except Exception as e:
+                    _logger.debug("handled a failure in pregenerate_exhibition_cache", exc_info=True)
                     print(f"\nWARNING: Failed to clean {file_info['name']}: {e}")
                 pbar.update(1)
 
@@ -5658,6 +5703,7 @@ def initialize_gallery():
                         conn.execute("UPDATE files SET id = ?, path = ? WHERE id = ?", (new_id, new_p, r["id"]))
                     conn.commit()
             except Exception as e:
+                _logger.debug("handled a failure in initialize_gallery", exc_info=True)
                 print(f"Notes path migration notice: {e}")
             # Cleanup invalid watched folders before full sync
             if ENABLE_AI_SEARCH:
@@ -5754,6 +5800,7 @@ def get_filter_options_from_db(conn, scope, folder_path=None, recursive=True):
                             prefixes.clear()
 
     except Exception as e:
+        _logger.debug("handled a failure in get_filter_options_from_db", exc_info=True)
         print(f"Error extracting options: {e}")
 
     return sorted(extensions), sorted(prefixes), prefix_limit_reached
@@ -5953,6 +6000,7 @@ def strip_media_metadata(input_path, output_path, file_type):
             print(f"FFMPEG VIDEO STRIP ERROR: {result.stderr}")
 
     except Exception as e:
+        _logger.debug("handled a failure in strip_media_metadata", exc_info=True)
         print(f"RECONSTRUCTION STRIP ERROR: {e}")
     return False
 
@@ -6159,6 +6207,7 @@ def exhibition_login():
                 conn.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (time.time(), user["user_id"]))
                 conn.commit()
             except Exception as e:
+                _logger.debug("handled a failure in exhibition_login", exc_info=True)
                 print(f"Login timestamp update error: {e}")
 
             session.permanent = False
@@ -6247,6 +6296,7 @@ def admin_manage_users():
                 conn.commit()
                 return jsonify({"status": "success"})
             except Exception as e:
+                _logger.debug("handled a failure in admin_manage_users", exc_info=True)
                 return jsonify({"status": "error", "message": _user_write_error(e)}), 400
 
         if request.method == "PUT":
@@ -6298,6 +6348,7 @@ def admin_manage_users():
                     )
                 conn.commit()
             except Exception as e:
+                _logger.debug("handled a failure in admin_manage_users", exc_info=True)
                 return jsonify({"status": "error", "message": _user_write_error(e)}), 400
             return jsonify({"status": "success"})
 
@@ -6354,6 +6405,7 @@ def ai_queue_search():
 
         return jsonify({"status": "queued", "session_id": session_id})
     except Exception as e:
+        _logger.debug("handled a failure in ai_queue_search", exc_info=True)
         print(f"AI Queue Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -6583,6 +6635,7 @@ def compare_files_api():
             # Three helpers deep -- database, workflow extraction, node
             # summarising -- and the comparison view degrades to "no
             # parameters" for whatever any of them raises.
+            _logger.debug("handled a failure in get_flat_params", exc_info=True)
             return {}
 
     try:
@@ -6605,6 +6658,7 @@ def compare_files_api():
         return jsonify({"status": "success", "diff": diff_table})
 
     except Exception as e:
+        _logger.debug("handled a failure in compare_files_api", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -6704,6 +6758,7 @@ def ai_indexing_reset():
         )
 
     except Exception as e:
+        _logger.debug("handled a failure in ai_indexing_reset", exc_info=True)
         print(f"AI Reset Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -7085,6 +7140,7 @@ def ai_indexing_status():
                 }
             )
     except Exception as e:
+        _logger.debug("handled a failure in ai_indexing_status", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -7491,6 +7547,7 @@ def gallery_view(folder_key):
 
                     view_files = files_list
             except Exception as e:
+                _logger.debug("handled a failure in gallery_view", exc_info=True)
                 print(f"OmniQuery Search Error: {e}")
                 is_omniquery = False
 
@@ -7521,6 +7578,7 @@ def gallery_view(folder_key):
 
                     view_files = files_list
             except Exception as e:
+                _logger.debug("handled a failure in gallery_view", exc_info=True)
                 print(f"AI Search Error: {e}")
                 is_ai_search = False
 
@@ -8074,6 +8132,7 @@ def upload_files():
                 file.save(_get_unique_filepath(destination_path, filename))
                 success_count += 1
             except Exception as e:
+                _logger.debug("handled a failure in upload_files", exc_info=True)
                 print(f"ERROR: Upload of {filename} failed: {e}")
                 errors[filename] = e
     if success_count > 0:
@@ -8131,6 +8190,7 @@ def background_rescan_worker(job_id, files_to_process):
                         rescan_jobs[job_id]["current"] = processed_count
 
                     except Exception as e:
+                        _logger.debug("handled a failure in background_rescan_worker", exc_info=True)
                         print(f"ERROR: Worker failed for a file: {e}")
 
             if results:
@@ -8178,6 +8238,7 @@ def background_rescan_worker(job_id, files_to_process):
         rescan_jobs[job_id]["status"] = "done"
 
     except Exception as e:
+        _logger.debug("handled a failure in background_rescan_worker", exc_info=True)
         print(f"CRITICAL ERROR in Background Rescan: {e}")
         rescan_jobs[job_id]["status"] = "error"
         rescan_jobs[job_id]["error"] = str(e)
@@ -8245,6 +8306,7 @@ def rescan_folder():
         )
 
     except Exception as e:
+        _logger.debug("handled a failure in rescan_folder", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -8283,6 +8345,7 @@ def create_folder():
     except FileExistsError:
         return jsonify({"status": "error", "message": "Folder already exists."}), 400
     except Exception as e:
+        _logger.debug("handled a failure in create_folder", exc_info=True)
         said = explain_a_refused_write(e, new_folder_path)
         return jsonify({"status": "error", "message": said or str(e)}), 500
 
@@ -8383,6 +8446,7 @@ def mount_folder():
         return jsonify({"status": "success", "message": f'Successfully linked "{link_name}".'})
 
     except Exception as e:
+        _logger.debug("handled a failure in mount_folder", exc_info=True)
         print(f"Mount Error: {e}")
         # Clean up if partially created
         if os.path.exists(link_full_path):
@@ -8452,6 +8516,7 @@ def unmount_folder():
         return jsonify({"status": "success", "message": "Folder unmounted successfully."})
 
     except Exception as e:
+        _logger.debug("handled a failure in unmount_folder", exc_info=True)
         print(f"Unmount Error: {e}")
         return jsonify({"status": "error", "message": f"Error unmounting: {e}"}), 500
 
@@ -8486,6 +8551,7 @@ def browse_filesystem():
                 except Exception:
                     # If a specific drive hangs, is not ready, or errors,
                     # skip it and continue to the next letter.
+                    _logger.debug("handled a failure in browse_filesystem", exc_info=True)
                     continue
 
             response_data["folders"] = drives
@@ -8509,6 +8575,7 @@ def browse_filesystem():
                         items.append({"name": entry.name, "path": entry.path, "is_drive": False})
                 except Exception:
                     # Skip individual unreadable folders without breaking the list
+                    _logger.debug("handled a failure in browse_filesystem", exc_info=True)
                     continue
 
         items.sort(key=lambda x: x["name"].lower())
@@ -8525,6 +8592,7 @@ def browse_filesystem():
 
     except Exception as e:
         # Catch errors accessing the specific folder (not the drives)
+        _logger.debug("handled a failure in browse_filesystem", exc_info=True)
         response_data["error"] = f"Error accessing folder: {e!s}"
 
     return jsonify(response_data)
@@ -8640,6 +8708,7 @@ def background_zip_task(job_id, file_ids):
             try:
                 os.makedirs(ZIP_CACHE_DIR, exist_ok=True)
             except Exception as e:
+                _logger.debug("handled a failure in background_zip_task", exc_info=True)
                 print(f"ERROR: Could not create zip directory: {e}")
                 zip_jobs[job_id] = {
                     "status": "error",
@@ -8675,6 +8744,7 @@ def background_zip_task(job_id, file_ids):
         prune_zip_cache()
 
     except Exception as e:
+        _logger.debug("handled a failure in background_zip_task", exc_info=True)
         print(f"Zip Error: {e}")
         zip_jobs[job_id] = {"status": "error", "message": str(e), "created": time.time()}
 
@@ -8878,6 +8948,7 @@ def rename_folder(folder_key):
         return jsonify({"status": "success", "message": "Folder renamed."})
 
     except Exception as e:
+        _logger.debug("handled a failure in rename_folder", exc_info=True)
         print(f"Rename Error: {e}")
         said = explain_a_refused_write(e)
         return jsonify({"status": "error", "message": said or f"Error: {e}"}), 500
@@ -8931,6 +9002,7 @@ def delete_folder(folder_key):
         get_dynamic_folder_config(force_refresh=True)
         return jsonify({"status": "success", "message": "Folder deleted/unlinked."})
     except Exception as e:
+        _logger.debug("handled a failure in delete_folder", exc_info=True)
         print(f"Delete Folder Error: {e}")
         said = explain_a_refused_write(e)
         return jsonify({"status": "error", "message": said or f"Error: {e}"}), 500
@@ -9266,6 +9338,7 @@ def move_batch():
                 moved_count += 1
 
             except Exception as e:
+                _logger.debug("handled a failure in move_batch", exc_info=True)
                 try:
                     conn.execute("ROLLBACK TO move_one")
                     conn.execute("RELEASE move_one")
@@ -9378,6 +9451,7 @@ def copy_batch():
                 copied_count += 1
 
             except Exception as e:
+                _logger.debug("handled a failure in copy_batch", exc_info=True)
                 print(f"COPY ERROR: {e}")
                 failed_files.append(source_filename)
 
@@ -9432,6 +9506,7 @@ def delete_batch():
 
                 except Exception as e:
                     # Se fallisce la cancellazione fisica di un file, lo annotiamo ma continuiamo
+                    _logger.debug("handled a failure in delete_batch", exc_info=True)
                     print(f"ERROR: Could not delete {file_path}: {e}")
                     failed_files.append(os.path.basename(file_path))
 
@@ -9457,6 +9532,7 @@ def delete_batch():
     except Exception as e:
         # THIS solves the "doctype is not json" issue:
         # If there is a critical error, return an error JSON instead of a broken HTML page.
+        _logger.debug("handled a failure in delete_batch", exc_info=True)
         print(f"CRITICAL ERROR in delete_batch: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -9651,6 +9727,7 @@ def rename_file(file_id):
             )
 
     except Exception as e:
+        _logger.debug("handled a failure in rename_file", exc_info=True)
         print(f"ERROR: Rename failed: {e}")
         said = explain_a_refused_write(e)
         return jsonify({"status": "error", "message": said or f"Error: {e}"}), 500
@@ -9686,6 +9763,7 @@ def serve_cleaned_file(file_id):
             try:
                 os.remove(clean_path)
             except Exception as e:
+                _logger.debug("handled a failure in serve_cleaned_file", exc_info=True)
                 print(f"DEBUG: Could not remove corrupted cache: {e}")
 
     # Generate if not exists (either new or just deleted above)
@@ -9918,7 +9996,7 @@ def get_node_summary(file_id):
                             # Sidecar preview/metadata is decoration: a missing,
                             # unreadable, or malformed file leaves the LoRA
                             # listed without its thumbnail, not the page broken.
-                            pass
+                            _logger.debug("ignored a failure in get_node_summary", exc_info=True)
                         enriched_loras.append(l_dict)
                     meta_data["loras"] = enriched_loras
                 if not meta_data.get("width") or not meta_data.get("height"):
@@ -9929,6 +10007,7 @@ def get_node_summary(file_id):
                 meta_data = {}
 
         except Exception as e:
+            _logger.debug("handled a failure in get_node_summary", exc_info=True)
             print(f"Metadata Validation Warning: {e}")
             meta_data = {}
 
@@ -9939,6 +10018,7 @@ def get_node_summary(file_id):
         # the page was told the request had succeeded.
         return answer_an_abort_readably(stop)
     except Exception as e:
+        _logger.debug("handled a failure in get_node_summary", exc_info=True)
         print(f"ERROR generating node summary: {e}")
         return jsonify({"status": "error", "message": str(e)})
 
@@ -10088,6 +10168,7 @@ def get_storyboard(file_id):
                         total_video_frames = int(parts[2])
 
             except Exception as e:
+                _logger.debug("handled a failure in get_storyboard", exc_info=True)
                 print(f"Info probe error: {e}")
 
             # Fallback: Try DB duration
@@ -10196,6 +10277,7 @@ def get_storyboard(file_id):
                 print("⏱️ Slow seek (normal for large files)")
                 needs_transcode = False
             except Exception as e:
+                _logger.debug("handled a failure in get_storyboard", exc_info=True)
                 print(f"⚠️ Corrupted: {e}")
                 needs_transcode = True
 
@@ -10282,6 +10364,7 @@ def get_storyboard(file_id):
                         pass
 
             except Exception as e:
+                _logger.debug("handled a failure in get_storyboard", exc_info=True)
                 print(f"❌ Transcode failed: {e}")
                 if temp_transcoded and os.path.exists(temp_transcoded):
                     with contextlib.suppress(OSError):
@@ -10345,6 +10428,7 @@ def get_storyboard(file_id):
                             img = Image.open(out_path)
 
                     except Exception:
+                        _logger.debug("handled a failure in extract_and_save_frame", exc_info=True)
                         if os.path.exists(out_path):
                             with contextlib.suppress(OSError):
                                 os.remove(out_path)
@@ -10449,6 +10533,7 @@ def get_storyboard(file_id):
                     return f"/galleryout/storyboard_frame/{file_hash}/{out_filename}"
 
             except Exception as e:
+                _logger.debug("handled a failure in extract_and_save_frame", exc_info=True)
                 print(f"Worker error {index}: {e}")
 
             return None
@@ -10504,6 +10589,7 @@ def get_storyboard(file_id):
         # Its own 404 or 403, not a fault to report as one.
         return answer_an_abort_readably(stop)
     except Exception as e:
+        _logger.debug("handled a failure in get_storyboard", exc_info=True)
         print(f"Storyboard error: {e}")
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -10549,6 +10635,7 @@ def api_remix_object_info():
         with urllib.request.urlopen(req, timeout=10) as r:
             return Response(r.read(), mimetype="application/json")
     except Exception as e:
+        _logger.debug("handled a failure in api_remix_object_info", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -10587,6 +10674,7 @@ def serve_input_file(filename):
     except Exception:
         # Whatever went wrong -- missing, unreadable, outside the folder --
         # the answer to the person asking is the same one sentence.
+        _logger.debug("handled a failure in serve_input_file", exc_info=True)
         abort(404, description="That file is not in the input folder.")
 
 
@@ -10634,6 +10722,7 @@ def check_metadata(file_id):
             }
         )
     except Exception as e:
+        _logger.debug("handled a failure in check_metadata", exc_info=True)
         print(f"Metadata Check Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -11014,6 +11103,7 @@ def rename_collection_api():
 
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in rename_collection_api", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -11043,6 +11133,7 @@ def create_collection():
 
         return jsonify({"status": "success", "id": new_id})  # <--- Return the ID
     except Exception as e:
+        _logger.debug("handled a failure in create_collection", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -11096,6 +11187,7 @@ def toggle_collection_public():
         return jsonify({"status": "success", "new_state": bool(new_state)})
 
     except Exception as e:
+        _logger.debug("handled a failure in toggle_collection_public", exc_info=True)
         print(f"Toggle Public Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -11126,6 +11218,7 @@ def share_collection():
 
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in share_collection", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -11200,6 +11293,7 @@ def get_file_full_details(file_id):
                 ).fetchall()
                 file_data["faces"] = [dict(r) for r in face_rows]
             except Exception:
+                _logger.debug("handled a failure in get_file_full_details", exc_info=True)
                 file_data["faces"] = []
 
             folders_config = get_dynamic_folder_config()
@@ -11232,6 +11326,7 @@ def get_file_full_details(file_id):
                     else:
                         folder_hierarchy = ["Main"]
                 except Exception:
+                    _logger.debug("handled a failure in get_file_full_details", exc_info=True)
                     folder_hierarchy = [os.path.basename(parent_dir)]
 
             coll_rows = conn.execute(
@@ -11310,7 +11405,7 @@ def get_file_full_details(file_id):
                                     }
                                 )
                     except Exception:
-                        pass
+                        _logger.debug("ignored a failure in get_file_full_details", exc_info=True)
 
                 if file_data.get("workflow_files"):
                     for item in file_data["workflow_files"].split(" ||| "):
@@ -11347,6 +11442,7 @@ def get_file_full_details(file_id):
             )
 
     except Exception as e:
+        _logger.debug("handled a failure in get_file_full_details", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -11377,6 +11473,7 @@ def get_file_collections(file_id):
 
         return jsonify({"status": "success", "collections": [dict(r) for r in rows]})
     except Exception as e:
+        _logger.debug("handled a failure in get_file_collections", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -11519,6 +11616,7 @@ def tag_batch():
             return jsonify({"status": "success", "results": results_map})
 
     except Exception as e:
+        _logger.debug("handled a failure in tag_batch", exc_info=True)
         print(f"ERROR in tag_batch: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -12069,7 +12167,7 @@ def collection_view(coll_id):
             note_files = [dict(r) for r in rows]
             has_notes = len(note_files) > 0
     except Exception:
-        pass
+        _logger.debug("ignored a failure in collection_view", exc_info=True)
 
     # Standard metadata extraction for UI filters
     extensions = set()
@@ -12244,6 +12342,7 @@ def get_rating_details():
 
             return jsonify({"status": "success", "details": details})
     except Exception as e:
+        _logger.debug("handled a failure in get_rating_details", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -12325,6 +12424,7 @@ def exhibition_rate_file():
 
         return jsonify({"status": "success", "new_average": avg, "vote_count": vote_count})
     except Exception as e:
+        _logger.debug("handled a failure in exhibition_rate_file", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -12398,6 +12498,7 @@ def exhibition_rate_batch():
         return jsonify({"status": "success", "message": f"Successfully updated {len(file_ids)} files."})
 
     except Exception as e:
+        _logger.debug("handled a failure in exhibition_rate_batch", exc_info=True)
         print(f"Batch Rating Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -12501,6 +12602,7 @@ def get_users_simple_list():
             rows = conn.execute(query).fetchall()
             return jsonify({"status": "success", "users": [dict(r) for r in rows]})
     except Exception as e:
+        _logger.debug("handled a failure in get_users_simple_list", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -12601,6 +12703,7 @@ def exhibition_post_comment():
             conn.commit()
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in exhibition_post_comment", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -12637,6 +12740,7 @@ def exhibition_delete_comment():
             conn.commit()
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in exhibition_delete_comment", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -12695,6 +12799,7 @@ def exhibition_edit_comment():
             conn.commit()
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in exhibition_edit_comment", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -12742,6 +12847,7 @@ def execute_omniquery():
 
         return jsonify({"status": "success", "session_id": session_id, "count": len(result_ids)})
     except Exception as e:
+        _logger.debug("handled a failure in execute_omniquery", exc_info=True)
         return jsonify({"status": "error", "message": f"Database Error: {e!s}"}), 500
 
 
@@ -12806,6 +12912,7 @@ def _omniquery_run_ast(ast_dict, query_text):
     try:
         result = engine.run(ast_dict, ctx)
     except Exception as e:
+        _logger.debug("handled a failure in _omniquery_run_ast", exc_info=True)
         return None, None, str(e)
     if not result.ok:
         return None, None, result.error
@@ -12880,7 +12987,7 @@ def omniquery_nlq():
             payload["card"] = "tiles"
         return payload
 
-    _AGG_RE = _re.compile(r"\s*SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(", _re.IGNORECASE)
+    _AGG_RE = re.compile(r"\s*SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(", re.IGNORECASE)
 
     # The model answers when the query carries free language the rules
     # could not type precisely -- and only on the non-live path.
@@ -12901,6 +13008,7 @@ def omniquery_nlq():
                     try:
                         session_id = _omniquery_store_session(query_text, ids, model_sql)
                     except Exception as e:
+                        _logger.debug("handled a failure in omniquery_nlq", exc_info=True)
                         return jsonify({"status": "error", "message": f"Database Error: {e!s}"}), 500
                 return jsonify({**base, **_card_payload(ids=ids, session_id=session_id)})
             # Model produced nothing usable: the deterministic answer stands.
@@ -12915,6 +13023,7 @@ def omniquery_nlq():
         try:
             session_id = _omniquery_store_session(query_text, result_ids, "typed-engine result set")
         except Exception as e:
+            _logger.debug("handled a failure in omniquery_nlq", exc_info=True)
             return jsonify({"status": "error", "message": f"Database Error: {e!s}"}), 500
     return jsonify({**base, **_card_payload(ids=result_ids, session_id=session_id)})
 
@@ -13043,6 +13152,7 @@ def check_for_updates():
                 print("Could not parse remote version.")
 
     except Exception:
+        _logger.debug("handled a failure in check_for_updates", exc_info=True)
         print("Skipped (Offline or GitHub unreachable).")
 
 
@@ -13159,6 +13269,7 @@ def install_shutdown_signals(handler, names=None):
             signal.signal(number, handler)
             installed.append(name)
         except Exception as exc:
+            _logger.debug("handled a failure in install_shutdown_signals", exc_info=True)
             print(f"WARN: Could not bind {name}: {exc}")
     return installed, left_alone
 
@@ -13209,7 +13320,7 @@ try:
         new_soft = min(target_soft, hard) if hard != resource.RLIM_INFINITY else target_soft
         resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
 except Exception:
-    pass
+    _logger.debug("ignored a failure in module scope", exc_info=True)
 
 # --- EXPERIMENTAL REMIX API (INLINE) ---
 
@@ -13260,6 +13371,7 @@ def _caller_is_reading_json():
         best = request.accept_mimetypes.best_match(["application/json", "text/html"])
         return best == "application/json" and request.accept_mimetypes[best] > request.accept_mimetypes["text/html"]
     except Exception:
+        _logger.debug("handled a failure in _caller_is_reading_json", exc_info=True)
         return False
 
 
@@ -13381,6 +13493,7 @@ def get_factory_omniquery_prompt():
         new_text = get_omniquery_dictionary(reset=True)
         return jsonify({"status": "success", "template": new_text})
     except Exception as e:
+        _logger.debug("handled a failure in get_factory_omniquery_prompt", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13402,10 +13515,11 @@ def list_omniquery_prompts():
                         if first_line.startswith("-- Description:"):
                             desc = first_line.replace("-- Description:", "", 1).strip()
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in list_omniquery_prompts", exc_info=True)
                 prompts.append({"name": f, "mtime": mtime, "description": desc})
         return jsonify({"status": "success", "prompts": prompts})
     except Exception as e:
+        _logger.debug("handled a failure in list_omniquery_prompts", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13429,6 +13543,7 @@ def save_omniquery_prompt():
             f.write(text)
         return jsonify({"status": "success", "message": "Prompt saved."})
     except Exception as e:
+        _logger.debug("handled a failure in save_omniquery_prompt", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13443,6 +13558,7 @@ def load_omniquery_prompt():
             text = f.read()
         return jsonify({"status": "success", "text": text})
     except Exception as e:
+        _logger.debug("handled a failure in load_omniquery_prompt", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13458,6 +13574,7 @@ def delete_omniquery_prompt():
             os.remove(path)
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in delete_omniquery_prompt", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13479,6 +13596,7 @@ def rename_omniquery_prompt():
             return jsonify({"status": "success"})
         return jsonify({"status": "error", "message": "File not found or destination exists."}), 400
     except Exception as e:
+        _logger.debug("handled a failure in rename_omniquery_prompt", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13509,10 +13627,11 @@ def list_omniquery_queries():
                             if prompt_text:
                                 desc = desc + f" 💡 {prompt_text}" if desc else f"💡 {prompt_text}"
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in list_omniquery_queries", exc_info=True)
                 queries.append({"name": f, "mtime": mtime, "description": desc})
         return jsonify({"status": "success", "queries": queries})
     except Exception as e:
+        _logger.debug("handled a failure in list_omniquery_queries", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13546,6 +13665,7 @@ def save_omniquery_query():
             f.write(final_sql)
         return jsonify({"status": "success", "message": "Query saved."})
     except Exception as e:
+        _logger.debug("handled a failure in save_omniquery_query", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13560,6 +13680,7 @@ def load_omniquery_query():
             sql = f.read()
         return jsonify({"status": "success", "sql": sql})
     except Exception as e:
+        _logger.debug("handled a failure in load_omniquery_query", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13575,6 +13696,7 @@ def delete_omniquery_query():
             os.remove(path)
         return jsonify({"status": "success"})
     except Exception as e:
+        _logger.debug("handled a failure in delete_omniquery_query", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13596,6 +13718,7 @@ def rename_omniquery_query():
             return jsonify({"status": "success"})
         return jsonify({"status": "error", "message": "File not found or destination exists."}), 400
     except Exception as e:
+        _logger.debug("handled a failure in rename_omniquery_query", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -13627,6 +13750,7 @@ def preview_omniquery_query():
             result = [dict(zip(cols, row, strict=False)) for row in rows]
             return jsonify({"status": "success", "columns": cols, "rows": result, "count": len(result)})
     except Exception as e:
+        _logger.debug("handled a failure in preview_omniquery_query", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 400
 
 
@@ -14201,6 +14325,7 @@ def _register_remix_routes_inline():
                     )
             return jsonify({"status": "success", "workflows": files})
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_list_workflows", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/galleryout/api/remix/workflows/save_template", methods=["POST"])
@@ -14284,6 +14409,7 @@ def _register_remix_routes_inline():
                                     api_data[mod["node_id"]]["inputs"][mod["key"]] = mod["value"]
                             raw_api = json.dumps(api_data)
                         except Exception as e:
+                            _logger.debug("handled a failure in api_remix_save_template", exc_info=True)
                             print(f"Save API mod error: {e}")
 
                     if raw_ui and raw_ui != "{}":
@@ -14323,6 +14449,7 @@ def _register_remix_routes_inline():
                                             target_node["widgets_values"][idx] = mod["value"]
                             raw_ui = json.dumps(ui_data)
                         except Exception as e:
+                            _logger.debug("handled a failure in api_remix_save_template", exc_info=True)
                             print(f"Save UI mod error: {e}")
             # --- END MODIFICATIONS ---
 
@@ -14348,6 +14475,7 @@ def _register_remix_routes_inline():
 
             return jsonify({"status": "success", "message": "Template saved!"})
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_save_template", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/galleryout/api/remix/workflows/rename", methods=["POST"])
@@ -14371,6 +14499,7 @@ def _register_remix_routes_inline():
             os.rename(old_path, new_path)
             return jsonify({"status": "success"})
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_rename_workflow", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/galleryout/api/remix/workflows/delete", methods=["POST"])
@@ -14386,6 +14515,7 @@ def _register_remix_routes_inline():
                 return jsonify({"status": "success"})
             return jsonify({"status": "error", "message": "Not found"}), 404
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_delete_workflow", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     def _convert_ui_to_api(ui_data, object_info):
@@ -14485,12 +14615,12 @@ def _register_remix_routes_inline():
                                 with urllib.request.urlopen(info_req, timeout=3) as r:
                                     object_info = json.loads(r.read().decode("utf-8"))
                             except Exception:
-                                pass
+                                _logger.debug("ignored a failure in _get_unified_workflow", exc_info=True)
                             converted_api = _convert_ui_to_api(ui_data, object_info)
                             if converted_api:
                                 raw_api = json.dumps(converted_api)
                         except Exception:
-                            pass
+                            _logger.debug("ignored a failure in _get_unified_workflow", exc_info=True)
 
                     sg_meta = tpl_data.get("sg_meta", {})
                     return raw_api, raw_ui, sg_meta, None
@@ -14556,6 +14686,7 @@ def _register_remix_routes_inline():
                 else:
                     extract["has_api"] = False
             except Exception:
+                _logger.debug("handled a failure in api_remix_info", exc_info=True)
                 extract["has_api"] = False
 
             try:
@@ -14567,6 +14698,7 @@ def _register_remix_routes_inline():
                 )
                 extract["has_ui"] = bool(raw_ui) and len(_ui_nodes) > 0
             except Exception:
+                _logger.debug("handled a failure in api_remix_info", exc_info=True)
                 extract["has_ui"] = False
 
             extract["default_comfy_url"] = COMFYUI_SERVER_URL
@@ -14582,6 +14714,7 @@ def _register_remix_routes_inline():
         except HTTPException as stop:
             return answer_an_abort_readably(stop)
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_info", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     def _read_safetensors_metadata(filepath):
@@ -14597,6 +14730,7 @@ def _register_remix_routes_inline():
                 header = json.loads(header_json)
                 return header.get("__metadata__", {})
         except Exception:
+            _logger.debug("handled a failure in _read_safetensors_metadata", exc_info=True)
             return {}
 
     def _guess_architecture(filename, metadata):
@@ -14657,7 +14791,7 @@ def _register_remix_routes_inline():
                         if status_obj.get("completed"):
                             return jsonify({"status": "completed"})
             except Exception:
-                pass
+                _logger.debug("ignored a failure in api_remix_job_status", exc_info=True)
 
             # 2. Check Queue (Using item[1] to match prompt_id correctly)
             req_queue = urllib.request.Request(
@@ -14676,6 +14810,7 @@ def _register_remix_routes_inline():
 
             return jsonify({"status": "vanished"})
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_job_status", exc_info=True)
             print(f"Remix job-status poll error: {e}")
             return jsonify({"status": "connection_error"})
 
@@ -14711,6 +14846,7 @@ def _register_remix_routes_inline():
 
             return jsonify({"status": "clean"})
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_console_peek", exc_info=True)
             print(f"Remix console peek error: {e}")
             return jsonify({"status": "error"})
 
@@ -14799,7 +14935,7 @@ def _register_remix_routes_inline():
                                                         "id"
                                                     )
                                     except Exception:
-                                        pass
+                                        _logger.debug("ignored a failure in api_remix_lora_intelligence", exc_info=True)
 
                                 if res["civitai_triggers"] and civitai_id:
                                     break
@@ -14834,6 +14970,7 @@ def _register_remix_routes_inline():
                                         res["preview_image"] = f"data:{mime};base64,{encoded}"
                                     break
                     except Exception as e:
+                        _logger.debug("handled a failure in api_remix_lora_intelligence", exc_info=True)
                         print(f"LoRA Synergy Error (Passive): {e}")
 
                     with get_db_connection() as conn:
@@ -14933,6 +15070,7 @@ def _register_remix_routes_inline():
             return jsonify({"status": "error", "message": "Unknown action."}), 400
 
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_lora_intelligence", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/galleryout/api/remix/submit", methods=["POST"])
@@ -15081,7 +15219,7 @@ def _register_remix_routes_inline():
                 except urllib.error.URLError:
                     return jsonify({"status": "error", "message": f"Cannot reach ComfyUI at {target_comfy_url}."}), 502
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in api_remix_submit", exc_info=True)
 
                 invalid_nodes = []
                 for node_id, node_val in wf_data.items():
@@ -15148,12 +15286,13 @@ def _register_remix_routes_inline():
                                     for err in errs:
                                         err_msg += node_error_html(ctype, nid, err)
                     except Exception:
-                        pass
+                        _logger.debug("ignored a failure in api_remix_submit", exc_info=True)
                     return jsonify({"status": "error", "message": err_msg}), 400
                 except urllib.error.URLError:
                     return jsonify({"status": "error", "message": "Failed to connect to ComfyUI."}), 502
 
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_submit", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     def _convert_ui_to_api(ui_data, object_info):
@@ -15239,11 +15378,12 @@ def _register_remix_routes_inline():
                                     }
                                 )
                         except Exception:
-                            pass
+                            _logger.debug("ignored a failure in api_remix_companion", exc_info=True)
             return jsonify({"status": "error", "message": "No companion PNG found."}), 404
         except HTTPException as stop:
             return answer_an_abort_readably(stop)
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_companion", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/galleryout/api/remix/autofix", methods=["POST"])
@@ -15274,7 +15414,7 @@ def _register_remix_routes_inline():
                 with urllib.request.urlopen(info_req, timeout=5) as r:
                     object_info = json.loads(r.read().decode("utf-8"))
             except Exception:
-                pass
+                _logger.debug("ignored a failure in api_remix_autofix", exc_info=True)
             if raw_api:
                 api_wf = json.loads(raw_api)
             else:
@@ -15300,6 +15440,7 @@ def _register_remix_routes_inline():
             except urllib.error.URLError:
                 return jsonify({"status": "error", "message": "Failed to connect to ComfyUI."}), 502
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_autofix", exc_info=True)
             return jsonify({"status": "error", "message": f"Autofix error: {e!s}"}), 500
 
     @app.route("/galleryout/api/remix/autofix_apply", methods=["POST"])
@@ -15389,11 +15530,12 @@ def _register_remix_routes_inline():
                                 for err in errs:
                                     err_msg += node_error_html(ctype, nid, err)
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in api_remix_autofix_apply", exc_info=True)
                 return jsonify({"status": "error", "message": err_msg}), 400
             except urllib.error.URLError:
                 return jsonify({"status": "error", "message": "Cannot reach ComfyUI."}), 502
         except Exception as e:
+            _logger.debug("handled a failure in api_remix_autofix_apply", exc_info=True)
             return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -15448,6 +15590,7 @@ def upload_collection_note():
 
         return jsonify({"status": "success", "message": "Note added successfully to the collection."})
     except Exception as e:
+        _logger.debug("handled a failure in upload_collection_note", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -15694,6 +15837,7 @@ def compute_workflow_hashes(filepath):
         # value would group files that share no prompt at all.
         return workflow_hash, prompt_hash, models_hash
     except Exception:
+        _logger.debug("handled a failure in compute_workflow_hashes", exc_info=True)
         return "", "", ""
 
 
@@ -15723,6 +15867,7 @@ def _genparams_backfill_worker(item):
             return file_id, gp.to_row(file_id, time.time())
         return file_id, None
     except Exception:
+        _logger.debug("handled a failure in _genparams_backfill_worker", exc_info=True)
         return file_id, None
 
 
@@ -15788,6 +15933,7 @@ def ensure_genparams_backfill_async(conn):
                     flush=True,
                 )
         except Exception as e:
+            _logger.debug("handled a failure in run", exc_info=True)
             print(f"ERROR in genparams backfill: {e}")
 
     threading.Thread(target=run, daemon=True, name="genparams-backfill").start()
@@ -15844,7 +15990,7 @@ def backfill_audio_durations(conn=None):
                         total_duration_sec = float(res.stdout.strip())
                         dur = format_duration(total_duration_sec)
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in _work", exc_info=True)
             return (dur, fid) if dur else None
 
         results = []
@@ -15860,7 +16006,7 @@ def backfill_audio_durations(conn=None):
                     if res:
                         results.append(res)
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in backfill_audio_durations", exc_info=True)
 
                 pct = int((completed / total_uncalc) * 100)
                 if pct % 5 == 0 and pct != last_reported_pct:
@@ -15886,6 +16032,7 @@ def backfill_audio_durations(conn=None):
         )
         return len(results)
     except Exception as e:
+        _logger.debug("handled a failure in backfill_audio_durations", exc_info=True)
         print(f"ERROR in backfill_audio_durations: {e}")
         return 0
     finally:
@@ -16020,6 +16167,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
                     except concurrent.futures.process.BrokenProcessPool:
                         raise
                     except Exception:
+                        _logger.debug("handled a failure in backfill_unhashed_workflows", exc_info=True)
                         failed_ids.append((futures[future],))
 
                     _CLUSTER_BACKFILL_STATE["done"] = completed
@@ -16077,6 +16225,7 @@ def backfill_unhashed_workflows(conn=None, force_all=False):
         )
         return len(results)
     except Exception as e:
+        _logger.debug("handled a failure in backfill_unhashed_workflows", exc_info=True)
         _CLUSTER_BACKFILL_STATE["aborted"] = True
         print(f"ERROR in backfill_unhashed_workflows: {e}")
         return 0
@@ -16152,6 +16301,7 @@ def _write_cluster_schema_marker():
             flush=True,
         )
     except Exception as e:
+        _logger.debug("handled a failure in _write_cluster_schema_marker", exc_info=True)
         print(f"ERROR recording cluster schema marker: {e}")
 
 
@@ -16375,7 +16525,7 @@ def api_cluster_info(hash_type, hash_val):
                                 }
                             )
                 except Exception:
-                    pass
+                    _logger.debug("ignored a failure in api_cluster_info", exc_info=True)
 
             if sample.get("workflow_files"):
                 for item in sample["workflow_files"].split(" ||| "):
@@ -16413,6 +16563,7 @@ def api_cluster_info(hash_type, hash_val):
                 }
             )
     except Exception as e:
+        _logger.debug("handled a failure in api_cluster_info", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -16438,7 +16589,7 @@ if __name__ == "__main__":
         except Exception:
             # Best effort on the way out. If the group kill is unavailable or
             # refused, os._exit below still ends this process.
-            pass
+            _logger.debug("ignored a failure in force_hard_kill", exc_info=True)
 
         # 2. Absolute final fallback
         os._exit(0)
@@ -16581,6 +16732,7 @@ if __name__ == "__main__":
             except Exception:
                 # A dialog toolkit that is absent, misconfigured, or has no
                 # display to draw on. The console still gets told.
+                _logger.debug("handled a failure in module scope", exc_info=True)
                 print(f"{Colors.RED}WARNING: FFmpeg not found.{Colors.RESET}")
         else:
             print(f"{Colors.RED}WARNING: FFmpeg not found.{Colors.RESET}")
@@ -16593,6 +16745,7 @@ if __name__ == "__main__":
             watcher.start()
             print(f"{Colors.BLUE}INFO: AI Background Watcher started.{Colors.RESET}")
         except Exception as e:
+            _logger.debug("handled a failure in module scope", exc_info=True)
             print(f"{Colors.RED}ERROR: Failed to start AI Watcher: {e}{Colors.RESET}")
 
     # --- START AI DAM BACKGROUND WORKER (Optional, WI-31) ---
@@ -16610,6 +16763,7 @@ if __name__ == "__main__":
             ai_dam_service.set_worker(ai_dam_worker)
             print(f"{Colors.BLUE}INFO: AI DAM background worker started.{Colors.RESET}")
         except Exception as e:
+            _logger.debug("handled a failure in module scope", exc_info=True)
             print(f"{Colors.RED}ERROR: Failed to start AI DAM worker: {e}{Colors.RESET}")
 
     print(f"{Colors.GREEN}{Colors.BOLD}🚀 Gallery started successfully!{Colors.RESET}")
@@ -16636,7 +16790,7 @@ if __name__ == "__main__":
     except Exception:
         # If the machine is completely offline or strict Docker network rules apply,
         # fail silently to prevent application crashes.
-        pass
+        _logger.debug("ignored a failure in module scope", exc_info=True)
 
     print("   (Press CTRL+C to stop)")
 

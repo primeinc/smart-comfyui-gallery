@@ -27,6 +27,9 @@ from PIL import Image
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai.faces import get_face_backend
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 def load_repo():
@@ -107,6 +110,7 @@ def collect_ground_truth(backend, root, limit):
                 if min(box[2], box[3]) >= 300:
                     sources.append((path, box))
         except Exception:
+            _logger.debug("handled a failure in collect_ground_truth", exc_info=True)
             continue
     return sources
 

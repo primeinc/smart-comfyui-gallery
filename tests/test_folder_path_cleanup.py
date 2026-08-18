@@ -26,28 +26,11 @@ import os
 import pytest
 from PIL import Image
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "fpc_"
 _BOX = f"{_PREFIX}box"
 _SIBLING = f"{_PREFIX}box_archive"  # shares a string prefix with _BOX
-
-
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
 
 
 def _rows(smartgallery_app):
@@ -70,7 +53,7 @@ def _key_for(smartgallery_app, suffix):
 def library(smartgallery_app, monkeypatch):
     """A folder with a file in it and a file one level deeper, plus a
     sibling folder whose name starts with the same string."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     deep_dir = os.path.join(base, _BOX, "2026-08-15")
     os.makedirs(deep_dir, exist_ok=True)
@@ -163,7 +146,7 @@ def test_unmounting_forgets_files_in_subfolders_of_the_mount(smartgallery_app, c
 
     This drives the real routes, so it needs a real link; on Windows that
     is a junction, which normally needs no privileges."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     external = tmp_path / "external"
     (external / "dated").mkdir(parents=True)
     flat = external / f"{_PREFIX}mflat.png"

@@ -26,34 +26,17 @@ import os
 import pytest
 from PIL import Image
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "leaksweep_"
 _PROMPT = "CANARYPROMPT a brass diving helmet at dusk"
 _MODEL = "CANARYMODEL_v3.safetensors"
 
 
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
-
-
 @pytest.fixture
 def canary(smartgallery_app, monkeypatch):
     """A public-album file carrying every marker a visitor must not see."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app.AI_CONFIG, "enabled", True)

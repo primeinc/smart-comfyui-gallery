@@ -24,6 +24,9 @@ import os
 import shutil
 import sys
 import sysconfig
+import logging
+
+_logger = logging.getLogger(__name__)
 
 _VENDOR_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor", "faiss-gpu-win64")
 

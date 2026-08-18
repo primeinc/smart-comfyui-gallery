@@ -27,34 +27,17 @@ from PIL import Image, PngImagePlugin
 
 import sg_auth
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "journey_"
 _PROMPT = "JOURNEYPROMPT a lighthouse in fog"
 _PASSWORD = "visitor-password-123"
 
 
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
-
-
 @pytest.fixture
 def exhibition(smartgallery_app, monkeypatch):
     """An exhibition with one public album, one picture, and one visitor."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", True)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
 

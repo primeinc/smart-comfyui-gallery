@@ -23,34 +23,17 @@ import os
 import pytest
 from PIL import Image, PngImagePlugin
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "local_"
 _PROMPT = "LOCALPROMPT a red barn at sunrise"
 _MODEL = "LOCALMODEL_v2.safetensors"
 
 
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
-
-
 @pytest.fixture
 def local_gallery(smartgallery_app, monkeypatch):
     """No login configured, one picture carrying a prompt."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     monkeypatch.setattr(smartgallery_app, "FORCE_LOGIN", False)
     monkeypatch.setattr(smartgallery_app, "IS_EXHIBITION_MODE", False)
 

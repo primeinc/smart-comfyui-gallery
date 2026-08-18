@@ -23,32 +23,15 @@ import os
 import pytest
 from PIL import Image
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "trashx_"
-
-
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
 
 
 @pytest.fixture
 def gallery_with_inside_trash(smartgallery_app, monkeypatch):
     """A gallery whose trash folder sits inside it, holding one indexed file."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     base = smartgallery_app.BASE_OUTPUT_PATH
     delete_to = os.path.join(base, f"{_PREFIX}recycle")
     trash = os.path.join(delete_to, "SmartGallery")

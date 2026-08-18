@@ -13,6 +13,9 @@ Signatures:
 import gzip
 
 import numpy as np
+import logging
+
+_logger = logging.getLogger(__name__)
 
 _SIG_LEN_BITS = 15 * 8  # every signature is 15 ascii bytes
 _ALPHA_SIGS = {"stealth_pnginfo": False, "stealth_pngcomp": True}
@@ -27,6 +30,7 @@ def _bits_to_text(bits: np.ndarray, compressed: bool):
             data = gzip.decompress(data)
         return data.decode("utf-8", errors="ignore")
     except Exception:
+        _logger.debug("handled a failure in _bits_to_text", exc_info=True)
         return None
 
 

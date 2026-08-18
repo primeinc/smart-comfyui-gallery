@@ -109,6 +109,7 @@ def resolve_device(explicit: str = "") -> str:
                 best, best_free = index, free
         return f"cuda:{best}"
     except Exception:
+        _logger.debug("handled a failure in resolve_device", exc_info=True)
         return "cpu"
 
 

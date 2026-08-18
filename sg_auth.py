@@ -15,6 +15,9 @@ import sqlite3
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error, InvalidHashError, VerificationError, VerifyMismatchError
 from cryptography.fernet import Fernet  # Lazy: only migration needs this.
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # Library defaults (time_cost, memory_cost, parallelism, hash_len, salt_len,
 # type=Argon2id) are appropriate here; no tuning required.
@@ -62,11 +65,13 @@ def verify_password(stored: str, candidate: str) -> tuple[bool, bool]:
         return False, False
     except Exception:
         # Defense in depth: verification must never raise into caller code.
+        _logger.debug("handled a failure in verify_password", exc_info=True)
         return False, False
 
     try:
         needs_rehash = ph.check_needs_rehash(stored)
     except Exception:
+        _logger.debug("handled a failure in verify_password", exc_info=True)
         needs_rehash = False
 
     return True, needs_rehash
@@ -84,6 +89,7 @@ def constant_time_equals(a, b) -> bool:
         ab = a if isinstance(a, bytes) else str(a).encode("utf-8")
         bb = b if isinstance(b, bytes) else str(b).encode("utf-8")
     except Exception:
+        _logger.debug("handled a failure in constant_time_equals", exc_info=True)
         return False
     return secrets.compare_digest(ab, bb)
 
@@ -113,6 +119,7 @@ def _decrypt_legacy(ciphertext: str, key: bytes) -> str | None:
     try:
         return Fernet(key).decrypt(ciphertext.encode()).decode()
     except Exception:
+        _logger.debug("handled a failure in _decrypt_legacy", exc_info=True)
         return None
 
 

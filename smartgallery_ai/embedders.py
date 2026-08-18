@@ -164,7 +164,7 @@ def pick_torch_device(torch_module, role: str | None = None) -> str:
 
                 return f"cuda:{max(range(count), key=rank)}"
         except Exception:  # enumeration is best-effort; cuda:0 still works
-            pass
+            _logger.debug("ignored a failure in pick_torch_device", exc_info=True)
         return "cuda"
     mps = getattr(getattr(torch_module, "backends", None), "mps", None)
     if mps is not None and mps.is_available():
@@ -193,6 +193,7 @@ def warn_if_vram_pressure(torch_module, device: str, model_id: str) -> None:
         else:
             free, total = cuda.mem_get_info()
     except Exception:  # pressure check must never block loading
+        _logger.debug("handled a failure in warn_if_vram_pressure", exc_info=True)
         return
     if free < _VRAM_PRESSURE_FLOOR_BYTES:
         _logger.warning(

@@ -52,6 +52,9 @@ from smartgallery_ai.worker import (
     mark_faces_cluster_pending,
     record_scan,
 )
+import logging
+
+_logger = logging.getLogger(__name__)
 
 __all__ = ["create_ai_blueprint", "create_ai_resolvers", "get_worker", "set_worker"]
 
@@ -372,6 +375,7 @@ def create_ai_blueprint(
         try:
             group = provisioning.resolve_groups([group_name])[0]
         except Exception:
+            _logger.debug("handled a failure in _cheap_available", exc_info=True)
             return False
         weights_ok = all(provisioning.artifact_present(config.models_dir, a) for a in group.artifacts)
         return weights_ok and not provisioning.runtime_missing(group)
@@ -462,6 +466,7 @@ def create_ai_blueprint(
         try:
             gpu = provisioning.cuda_summary()
         except Exception:  # inventory is best-effort
+            _logger.debug("handled a failure in status", exc_info=True)
             gpu = None
         return jsonify(
             {
@@ -556,6 +561,7 @@ def create_ai_blueprint(
         try:
             backend = faces.get_face_backend(config)
         except Exception:
+            _logger.debug("handled a failure in _active_face_model", exc_info=True)
             return None
         return backend.model_id if backend is not None else None
 
@@ -935,6 +941,7 @@ def create_ai_blueprint(
                 events.close()
                 raise
             except Exception as exc:  # a stream must end, not hang
+                _logger.debug("handled a failure in stream", exc_info=True)
                 yield f"data: {json.dumps({'step': 'run', 'status': 'error', 'detail': {'error': str(exc)}})}\n\n"
 
         return Response(
@@ -1042,6 +1049,7 @@ def create_ai_blueprint(
                 try:
                     search_embedder_cache["semantic"] = embedders.get_semantic_backend(config)
                 except Exception:  # unavailable, not fatal
+                    _logger.debug("handled a failure in _search_embedder", exc_info=True)
                     search_embedder_cache["semantic"] = None
             return search_embedder_cache["semantic"]
 

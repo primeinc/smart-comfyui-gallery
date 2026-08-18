@@ -30,6 +30,9 @@ import sys
 import tempfile
 import time
 import urllib.request
+import logging
+
+_logger = logging.getLogger(__name__)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root (parent of probes/)
 PORT = 18911  # loopback-only port the probe's server listens on
@@ -73,6 +76,7 @@ def wait_for(url: str, timeout: float = 60.0) -> None:
                 resp.read()
                 return
         except Exception as exc:  # retry loop
+            _logger.debug("handled a failure in wait_for", exc_info=True)
             last = exc
             time.sleep(0.5)
     raise RuntimeError(f"server never came up: {last}")
@@ -96,6 +100,7 @@ def stage2() -> int:
         print("FAIL: egress unexpectedly possible inside the namespace")
         return 2
     except Exception:
+        _logger.debug("handled a failure in stage2", exc_info=True)
         pass  # good: no route out
 
     tmp = tempfile.mkdtemp(prefix="sg_egress_probe_")
@@ -107,7 +112,7 @@ def stage2() -> int:
 
         Image.new("RGB", (64, 64), (120, 40, 200)).save(os.path.join(gallery, "probe_img.png"))
     except Exception:
-        pass
+        _logger.debug("ignored a failure in stage2", exc_info=True)
 
     env = dict(os.environ)
     env.update(
@@ -155,6 +160,7 @@ def stage2() -> int:
                 if status != 200:
                     ok = False
             except Exception as exc:
+                _logger.debug("handled a failure in stage2", exc_info=True)
                 evidence["requests"].append({"name": name, "error": str(exc)})
                 ok = False
 
@@ -172,6 +178,7 @@ def stage2() -> int:
             }
             ok = ok and outcome.ast is not None
         except Exception as exc:
+            _logger.debug("handled a failure in stage2", exc_info=True)
             evidence["omniquery_nlq"] = {"error": str(exc)}
             ok = False
 
@@ -185,10 +192,11 @@ def stage2() -> int:
             server.kill()
             server.wait(timeout=5)
         except Exception:
-            pass
+            _logger.debug("ignored a failure in stage2", exc_info=True)
         shutil.rmtree(tmp, ignore_errors=True)
         os._exit(0 if ok else 1)
     except Exception as exc:
+        _logger.debug("handled a failure in stage2", exc_info=True)
         print(f"FAIL: {exc}", flush=True)
         with contextlib.suppress(Exception):
             server.kill()

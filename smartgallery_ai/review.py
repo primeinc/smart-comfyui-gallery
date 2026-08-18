@@ -31,6 +31,9 @@ from PIL import Image
 
 from smartgallery_ai import AIConfig
 from smartgallery_ai.embedders import BackendUnavailable
+import logging
+
+_logger = logging.getLogger(__name__)
 
 __all__ = [
     "FINDING_TYPES",
@@ -577,6 +580,7 @@ def _auto_critic_measurement_passed(report_path: str | None = None) -> bool:
             and float(row["false_reject_rate"]) <= _AUTO_CRITIC_MAX_FRR
         )
     except Exception:
+        _logger.debug("handled a failure in _auto_critic_measurement_passed", exc_info=True)
         return False
 
 

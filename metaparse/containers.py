@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from PIL import Image
 
 from .stealth import read_stealth_metadata
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # EXIF tags used by the tools we support.
 _TAG_MAKE = 0x010F  # ComfyUI WebP: "workflow:{...}"
@@ -81,6 +84,7 @@ class RawMetadata:
                 try:
                     self._stealth_text = read_stealth_metadata(self._img)
                 except Exception:
+                    _logger.debug("handled a failure in stealth", exc_info=True)
                     self._stealth_text = None
         return self._stealth_text
 
@@ -92,6 +96,7 @@ class RawMetadata:
         try:
             parsed = json.loads(value)
         except Exception:
+            _logger.debug("handled a failure in text_json", exc_info=True)
             return None
         return parsed
 
@@ -133,6 +138,7 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
             try:
                 exif = img.getexif()
             except Exception:
+                _logger.debug("handled a failure in load_raw", exc_info=True)
                 exif = None
             if exif:
                 raw.exif_make = _as_text(exif.get(_TAG_MAKE))
@@ -141,6 +147,7 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
                 try:
                     exif_ifd = exif.get_ifd(_IFD_EXIF)
                 except Exception:
+                    _logger.debug("handled a failure in load_raw", exc_info=True)
                     exif_ifd = {}
                 raw.user_comment = decode_user_comment(exif_ifd.get(_TAG_USER_COMMENT))
                 maker = exif_ifd.get(_TAG_MAKER_NOTE)
@@ -160,4 +167,5 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
                 raw._img = None
             return raw
     except Exception:
+        _logger.debug("handled a failure in load_raw", exc_info=True)
         return None

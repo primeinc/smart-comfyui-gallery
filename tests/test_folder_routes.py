@@ -16,6 +16,8 @@ import shutil
 import pytest
 from PIL import Image
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "fldroute_"
 
 
@@ -27,27 +29,6 @@ def client(smartgallery_app):
 def _key_for(smartgallery_app, path):
     folders = smartgallery_app.get_dynamic_folder_config(force_refresh=True)
     return next((k for k, v in folders.items() if os.path.normpath(v["path"]) == os.path.normpath(path)), None)
-
-
-class _InlineExecutor:
-    """Runs scan work in-process; these tests must not spawn workers."""
-
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
 
 
 def _make_folder(smartgallery_app, name, with_file=True, monkeypatch=None):
@@ -66,7 +47,7 @@ def _make_folder(smartgallery_app, name, with_file=True, monkeypatch=None):
         Image.new("RGB", (16, 16), (200, 120, 40)).save(os.path.join(path, f"{_PREFIX}inside.png"))
         os.makedirs(smartgallery_app.THUMBNAIL_CACHE_DIR, exist_ok=True)
         if monkeypatch is not None:
-            monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+            monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
         conn = smartgallery_app.get_db_connection()
         try:
             smartgallery_app.full_sync_database(conn)

@@ -744,4 +744,5 @@ class Reviewer:
                 chat.ask_json(f"Call locate for this: {what}", name="locate", max_new_tokens=96, attempts=1)
             )
         except Exception:  # a failed localization is a global finding
+            _logger.debug("handled a failure in _locate", exc_info=True)
             return None

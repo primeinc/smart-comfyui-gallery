@@ -42,6 +42,9 @@ from dataclasses import dataclass, field
 from smartgallery_ai import RUBRIC_VERSION, AIConfig, schema
 from smartgallery_ai import review as review_mod
 from smartgallery_ai.worker import load_source_image, record_scan, stage_input_key
+import logging
+
+_logger = logging.getLogger(__name__)
 
 __all__ = ["STEPS", "RunContext", "RunnerBusy", "parse_steps", "run_review"]
 
@@ -220,6 +223,7 @@ def _step_masks(ctx: RunContext) -> dict:
             )
             generated += 1
         except Exception as exc:
+            _logger.debug("handled a failure in _step_masks", exc_info=True)
             failures.append(f"finding {finding_id}: {exc}")
     element_ids = [
         r[0]
@@ -236,6 +240,7 @@ def _step_masks(ctx: RunContext) -> dict:
             )
             generated += 1
         except Exception as exc:
+            _logger.debug("handled a failure in _step_masks", exc_info=True)
             failures.append(f"element {element_id}: {exc}")
     ctx.masks = generated
     return {"generated": generated, "failures": failures}
@@ -311,6 +316,7 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
             segmenter = review_mod.get_segmenter_backend(config)
     except Exception as exc:
         # An unavailable backend is a legitimate outcome, reported as data.
+        _logger.debug("handled a failure in _run_locked", exc_info=True)
         yield _event("run", "error", error=f"backend resolution failed: {exc}")
         conn.close()
         return
@@ -338,6 +344,7 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
             try:
                 detail = _IMPL[name](ctx) or {}
             except Exception as exc:
+                _logger.debug("handled a failure in _run_locked", exc_info=True)
                 yield _event(name, "error", error=str(exc), seconds=round(time.monotonic() - started, 3))
                 break
             yield _event(name, "ok", seconds=round(time.monotonic() - started, 3), **detail)
@@ -360,6 +367,7 @@ def _run_threaded(ctx: RunContext, name: str, sink: queue.Queue, started: float)
         try:
             box["detail"] = _IMPL[name](ctx) or {}
         except Exception as exc:  # carried out, re-reported as an event
+            _logger.debug("handled a failure in work", exc_info=True)
             box["error"] = str(exc)
         finally:
             sink.put(None)  # sentinel: the step is finished

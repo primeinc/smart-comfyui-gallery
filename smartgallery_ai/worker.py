@@ -100,11 +100,13 @@ def load_source_image(path: str, file_type: str) -> Image.Image | None:
             with Image.open(path) as img:
                 return img.copy()
         except Exception:
+            _logger.debug("handled a failure in load_source_image", exc_info=True)
             return None
     if file_type in hashing.VIDEO_FILE_TYPES:
         try:
             return _first_video_frame(path)
         except Exception:
+            _logger.debug("handled a failure in load_source_image", exc_info=True)
             return None
     return None
 
@@ -174,6 +176,7 @@ class _ClickConsoleHandler(logging.Handler):
         try:
             message = record.getMessage()
         except Exception:  # malformed record; report once
+            _logger.debug("handled a failure in emit", exc_info=True)
             self.handleError(record)
             return
         stamp = time.strftime("%H:%M:%S", time.localtime(record.created))
@@ -186,11 +189,12 @@ class _ClickConsoleHandler(logging.Handler):
                 click.echo(f"{click.style(stamp, dim=True)} {styled}")
                 return
             except Exception:  # broken console; fall to plain
+                _logger.debug("handled a failure in emit", exc_info=True)
                 self._plain = True
         try:
             sys.stderr.write(f"{stamp} {message}\n")
         except Exception:  # logging must never crash the app
-            pass
+            _logger.debug("ignored a failure in emit", exc_info=True)
 
 
 def mark_faces_cluster_pending(conn: sqlite3.Connection, backend) -> None:
@@ -476,6 +480,7 @@ class AIWorker:
         try:
             gpu = provisioning.cuda_summary()
         except Exception:  # inventory is best-effort
+            _logger.debug("handled a failure in start", exc_info=True)
             gpu = None
         if gpu is not None:
             for idx, card in enumerate(gpu.get("gpus") or []):
@@ -530,6 +535,7 @@ class AIWorker:
         try:
             missing = provision_groups_for(self.config)
         except Exception as exc:  # startup must not fail on this
+            _logger.debug("handled a failure in _maybe_start_auto_provision", exc_info=True)
             self._note_error("provision:plan", f"auto-provision planning failed: {exc}")
             return
         if not missing:
@@ -603,6 +609,7 @@ class AIWorker:
                 len(result["skipped"]),
             )
         except Exception as exc:  # downloads may fail; never fatal
+            _logger.debug("handled a failure in _provision_worker", exc_info=True)
             self.provision_state = {
                 "state": f"failed: {exc}",
                 "groups": list(groups),
@@ -621,7 +628,7 @@ class AIWorker:
 
             _service.invalidate_backend_probe_cache()
         except Exception:  # status cache refresh is best-effort
-            pass
+            _logger.debug("ignored a failure in _provision_worker", exc_info=True)
 
     def stop(self, timeout: float | None = None) -> None:
         """Signal the thread to stop and join it. Safe to call repeatedly."""
@@ -957,6 +964,7 @@ class AIWorker:
         try:
             backend = resolver(self.config)
         except Exception as exc:  # resolution must not kill the cycle
+            _logger.debug("handled a failure in _backend", exc_info=True)
             self._note_error(f"backend:{key}", f"backend {key}: {exc}")
             backend = None
         with self._lock:
@@ -999,6 +1007,7 @@ class AIWorker:
             try:
                 result = hashing.compute_hashes_for_file(path, file_type)
             except Exception as exc:
+                _logger.debug("handled a failure in _process_hashes", exc_info=True)
                 self._note_error(f"hash:{file_id}", f"hash: could not read {path}: {exc}")
                 continue
             hashing.upsert_hashes(conn, file_id, result, mtime, HASH_ALGO_VERSION, now)
@@ -1053,11 +1062,13 @@ class AIWorker:
             except Exception:
                 # A poisoned image inside the batch: fall back to singles so
                 # one bad file costs one file, not the chunk.
+                _logger.debug("handled a failure in _process_embedding_space", exc_info=True)
                 vecs = []
                 for row, img in loaded:
                     try:
                         vecs.append(backend.embed_image(img))
                     except Exception as exc:
+                        _logger.debug("handled a failure in _process_embedding_space", exc_info=True)
                         self._note_error(
                             f"embed:{space}:{row['id']}",
                             f"embed[{space}]: failed for {row['path']}: {exc}",
@@ -1274,6 +1285,7 @@ class AIWorker:
                 )
                 self._log_scan(conn, file_id, "faces", backend, mtime, now, len(detections))
             except Exception as exc:
+                _logger.debug("handled a failure in _process_faces", exc_info=True)
                 self._note_error(f"faces:{file_id}", f"faces: failed for {path}: {exc}")
                 continue
             with self._lock:
@@ -1293,6 +1305,7 @@ class AIWorker:
                 )
                 self._clear_state(conn, pending_key)
             except Exception as exc:
+                _logger.debug("handled a failure in _process_faces", exc_info=True)
                 self._note_error("faces:cluster", f"face clustering failed: {exc}")
         return len(rows)
 
@@ -1406,6 +1419,7 @@ class AIWorker:
                     self._log_masks_if_complete(conn, file_id, review_id, segmenter, mtime, now, generated)
                 self._log_scan(conn, file_id, "review", backend, mtime, now, len(result.findings), input_key)
             except Exception as exc:
+                _logger.debug("handled a failure in _process_reviews", exc_info=True)
                 self._note_error(f"review:{file_id}", f"review: failed for {path}: {exc}")
                 # Record the FAILED attempt too (result_count = -1): a
                 # grounding rejection or malformed generation must not put a
@@ -1439,6 +1453,7 @@ class AIWorker:
                 review.generate_finding_mask(conn, self.config.cache_dir, img, file_id, finding_id, segmenter)
                 generated += 1
             except Exception as exc:
+                _logger.debug("handled a failure in _generate_masks", exc_info=True)
                 self._note_error(f"mask:{finding_id}", f"mask: failed for finding {finding_id}: {exc}")
         element_ids = [
             r[0]
@@ -1454,6 +1469,7 @@ class AIWorker:
                 review.generate_alignment_mask(conn, self.config.cache_dir, img, file_id, element_id, segmenter)
                 generated += 1
             except Exception as exc:
+                _logger.debug("handled a failure in _generate_masks", exc_info=True)
                 self._note_error(f"alignmask:{element_id}", f"mask: failed for prompt element {element_id}: {exc}")
         return generated
 

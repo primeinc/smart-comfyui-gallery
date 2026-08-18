@@ -41,6 +41,9 @@ from insightface.app import FaceAnalysis
 from PIL import Image
 
 from smartgallery_ai.faces import OpenCVFaceBackend, _chinese_whispers, _neighbor_graph
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 def _required_env(name: str) -> str:
@@ -76,6 +79,7 @@ def _accumulate(detect_best):
         try:
             v = detect_best(path)
         except Exception:
+            _logger.debug("handled a failure in _accumulate", exc_info=True)
             v = None
         if v is None:
             skipped += 1

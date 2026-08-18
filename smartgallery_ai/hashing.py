@@ -14,6 +14,9 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from PIL import Image
+import logging
+
+_logger = logging.getLogger(__name__)
 
 _MASK64 = (1 << 64) - 1  # keeps the low 64 bits of an arbitrary Python int
 _SIGN_BIT64 = 1 << 63  # sign bit of a 64-bit two's complement integer
@@ -145,6 +148,7 @@ def compute_hashes_for_file(path: str, file_type: str) -> HashResult:
             with Image.open(path) as img:
                 frame = img.copy()
         except Exception:
+            _logger.debug("handled a failure in compute_hashes_for_file", exc_info=True)
             frame = None
     elif file_type in VIDEO_FILE_TYPES:
         frame = _first_video_frame(path)

@@ -39,6 +39,9 @@ from PIL import Image
 from smartgallery_ai import AIConfig
 from smartgallery_ai.embedders import BackendUnavailable
 from smartgallery_ai.faiss_runtime import import_faiss
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate()
 # API; skimage 0.26 deprecates it with a FutureWarning that fires on
@@ -277,6 +280,7 @@ class OpenCVFaceBackend(FaceBackend):
                 prev_level = cv2_log.getLogLevel()
                 cv2_log.setLogLevel(cv2_log.LOG_LEVEL_ERROR)
             except Exception:  # log tuning must never block loading
+                _logger.debug("handled a failure in __init__", exc_info=True)
                 prev_level = None
         try:
             self._detector = cv2.FaceDetectorYN.create(detector_path, "", (320, 320), score_threshold=min_det_score)
@@ -452,7 +456,7 @@ def _ort_providers() -> list:
         if "CUDAExecutionProvider" in ort.get_available_providers():
             return ["CUDAExecutionProvider", "CPUExecutionProvider"]
     except Exception:
-        pass
+        _logger.debug("ignored a failure in _ort_providers", exc_info=True)
     return ["CPUExecutionProvider"]
 
 
@@ -866,7 +870,7 @@ def _neighbor_graph(normed: np.ndarray, threshold: float) -> tuple:
     try:
         return _neighbor_graph_torch_cuda(normed, threshold), "torch-cuda"
     except Exception:
-        pass
+        _logger.debug("ignored a failure in _neighbor_graph", exc_info=True)
     try:
         return _neighbor_graph_faiss(normed, threshold), "faiss-cpu"
     except ImportError:

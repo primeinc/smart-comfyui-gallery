@@ -38,6 +38,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from huggingface_hub import hf_hub_download, snapshot_download
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 def cuda_hardware_present() -> bool:
@@ -474,6 +477,7 @@ def _hub_bars_silenced():
     try:
         from huggingface_hub import utils as hub_utils
     except Exception:  # no hub, nothing to silence
+        _logger.debug("handled a failure in _hub_bars_silenced", exc_info=True)
         yield
         return
     was_disabled = hub_utils.are_progress_bars_disabled()

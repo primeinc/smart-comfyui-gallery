@@ -26,6 +26,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from smartgallery_ai import schema
+import logging
+
+_logger = logging.getLogger(__name__)
 
 _VECTOR_DTYPE = "<f4"  # little-endian float32, per schema.py contract
 
@@ -252,7 +255,7 @@ class VectorStore:
                         index = faiss.index_cpu_to_gpu(_faiss_gpu_resources(faiss), 0, index)
                         sm.faiss_gpu = True
                     except Exception:
-                        pass
+                        _logger.debug("ignored a failure in topk", exc_info=True)
                 sm.faiss_index = index
             if excluded and sm.id_to_row is None:
                 sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
@@ -457,5 +460,6 @@ class VectorStore:
                 row_count = int(data["row_count"])
                 max_computed_at = float(data["max_computed_at"])
         except Exception:
+            _logger.debug("handled a failure in _load_disk_cache", exc_info=True)
             return None
         return _SpaceMatrix(model_version, ids, matrix, row_count, max_computed_at)

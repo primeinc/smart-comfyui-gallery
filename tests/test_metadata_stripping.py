@@ -30,33 +30,16 @@ import os
 import pytest
 from PIL import Image, PngImagePlugin
 
+from inline_executor import InlineExecutor
+
 _PREFIX = "strip_"
 _SECRET = "a very secret prompt: nobody should read this"
-
-
-class _InlineExecutor:
-    def __init__(self, max_workers=None):
-        self.max_workers = max_workers
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def submit(self, fn, *args, **kwargs):
-        future = concurrent.futures.Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
 
 
 @pytest.fixture
 def guarded(smartgallery_app, monkeypatch):
     """A file in the library, and a server that owes guests a cleaned copy."""
-    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", _InlineExecutor)
+    monkeypatch.setattr(smartgallery_app.concurrent.futures, "ProcessPoolExecutor", InlineExecutor)
     # Exhibition mode is where this matters: it is the mode that shows the
     # library to visitors, and the only one where a non-staff caller may
     # fetch a file at all (is_file_accessible refuses them outright under

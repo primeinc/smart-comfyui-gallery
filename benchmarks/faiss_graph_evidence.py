@@ -46,6 +46,9 @@ from PIL import Image
 from smartgallery_ai import AIConfig
 from smartgallery_ai.faces import FaceDetection, cluster_faces, get_face_backend, replace_faces_for_file
 from smartgallery_ai.schema import init_schema
+import logging
+
+_logger = logging.getLogger(__name__)
 
 RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "faiss_graph_evidence.json")
 
@@ -256,6 +259,7 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
             with Image.open(path) as img:
                 detections = backend.detect(img)
         except Exception:
+            _logger.debug("handled a failure in load_images", exc_info=True)
             decode_failures += 1
             continue
         for det in detections:

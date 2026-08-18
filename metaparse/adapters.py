@@ -25,6 +25,9 @@ from xml.dom import minidom
 
 from .containers import RawMetadata, load_raw
 from .model import ParsedMetadata, set_param, size_string
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # A1111 infotext grammar (ported from modules/infotext_utils.py)
@@ -55,6 +58,7 @@ def _unquote(text: str) -> str:
     try:
         return json.loads(text)
     except Exception:
+        _logger.debug("handled a failure in _unquote", exc_info=True)
         return text
 
 
@@ -123,6 +127,7 @@ class SwarmUIAdapter:
             obj = json.loads(payload)
             params = dict(obj["sui_image_params"])
         except Exception:
+            _logger.debug("handled a failure in parse_text", exc_info=True)
             return None
         result = ParsedMetadata(tool=cls.tool, raw=payload, detection=detection)
         result.positive = str(params.pop("prompt", "") or "").strip()
@@ -168,6 +173,7 @@ class FooocusAdapter:
                 try:
                     obj = json.loads(value)
                 except Exception:
+                    _logger.debug("handled a failure in _scheme_and_payload", exc_info=True)
                     continue
                 if isinstance(obj, dict) and set(obj) >= FooocusAdapter._JSON_KEYS:
                     return "fooocus", value
@@ -190,6 +196,7 @@ class FooocusAdapter:
         try:
             data = json.loads(payload)
         except Exception:
+            _logger.debug("handled a failure in parse", exc_info=True)
             return None
         if not isinstance(data, dict):
             return None
@@ -231,6 +238,7 @@ class InvokeAIAdapter:
         try:
             data = json.loads(payload)
         except Exception:
+            _logger.debug("handled a failure in _parse_v3", exc_info=True)
             return None
         result = ParsedMetadata(tool=cls.tool, raw=payload, detection="marker")
         result.positive = str(data.pop("positive_prompt", "") or "").strip()
@@ -256,6 +264,7 @@ class InvokeAIAdapter:
             data = json.loads(payload)
             image = data.pop("image")
         except Exception:
+            _logger.debug("handled a failure in _parse_v2", exc_info=True)
             return None
         prompt = image.pop("prompt", "")
         if isinstance(prompt, list) and prompt:
@@ -331,6 +340,7 @@ class NovelAIAdapter:
             try:
                 comment = json.loads(comment)
             except Exception:
+                _logger.debug("handled a failure in parse_stealth_json", exc_info=True)
                 comment = {}
         cls._apply_comment(result, comment or {})
         for key, value in data.items():
@@ -440,6 +450,7 @@ class DrawThingsAdapter:
                     stack.extend(getattr(child, "childNodes", []))
             data = json.loads(texts[0])
         except Exception:
+            _logger.debug("handled a failure in parse", exc_info=True)
             return None
         if not isinstance(data, dict):
             return None
@@ -534,6 +545,7 @@ def _json_or_none(text: str | None):
     try:
         return json.loads(text)
     except Exception:
+        _logger.debug("handled a failure in _json_or_none", exc_info=True)
         return None
 
 
@@ -588,6 +600,7 @@ def parse_raw(raw: RawMetadata) -> ParsedMetadata | None:
                 if result is not None:
                     return result
         except Exception:
+            _logger.debug("handled a failure in parse_raw", exc_info=True)
             continue
     for adapter in HEURISTIC_ADAPTERS:
         try:
@@ -597,6 +610,7 @@ def parse_raw(raw: RawMetadata) -> ParsedMetadata | None:
                     result.detection = "heuristic"
                     return result
         except Exception:
+            _logger.debug("handled a failure in parse_raw", exc_info=True)
             continue
     stealth_text = raw.stealth()
     if stealth_text:

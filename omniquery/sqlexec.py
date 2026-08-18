@@ -24,6 +24,9 @@ import os
 import re
 import sqlite3
 from dataclasses import dataclass
+import logging
+
+_logger = logging.getLogger(__name__)
 
 _COMMENT_RE = re.compile(r"(/\*.*?\*/)|(--.*?(\n|$))", re.DOTALL)
 _SELECT_RE = re.compile(r"^SELECT\b", re.IGNORECASE)
@@ -69,6 +72,7 @@ def run_readonly_select(db_path: str, sql: str, max_rows: int = 5000) -> SqlExec
             cursor = conn.execute(sql)
             rows = cursor.fetchmany(max_rows)
     except Exception as exc:
+        _logger.debug("handled a failure in run_readonly_select", exc_info=True)
         return SqlExecResult(ids=None, error=f"SQL execution error: {exc}")
 
     ids = [str(row[0]) for row in rows if row and row[0] is not None]
