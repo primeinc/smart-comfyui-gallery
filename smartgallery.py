@@ -6510,6 +6510,62 @@ def node_error_html(ctype, nid, err):
 
 
 # width * height, parsed out of the "WIDTHxHEIGHT" dimensions column.
+
+# Whose rating shows and which comments count both depend on who is asking.
+# The identity is bound, never pasted into the statement: it comes from the
+# session today, and a query assembled by hand around it is one change away
+# from being assembled around something a caller sends.
+#
+# The leading `?` of each comment subquery is the sees-everything switch, so
+# staff and a single-user install run the same statement as everybody else.
+# Four copies of these columns had drifted apart; the OmniQuery result grid
+# counted comments its reader is not allowed to open.
+PER_CALLER_COLUMNS = """
+                (SELECT rating FROM file_ratings
+                 WHERE file_id = f.id AND client_uuid = ?) as my_rating,
+                (SELECT COUNT(*) FROM file_comments
+                 WHERE file_id = f.id
+                   AND (? = 1 OR target_audience = 'public'
+                        OR target_audience = ? OR client_uuid = ?)) as comment_count,
+                (SELECT MAX(created_at) FROM file_comments
+                 WHERE file_id = f.id
+                   AND (? = 1 OR target_audience = 'public'
+                        OR target_audience = ? OR client_uuid = ?)) as latest_comment_time
+"""
+
+# WHERE fragments naming the caller. Each binds one identity, in the order
+# it appears, so a caller appends the fragment and its value together.
+RATED_BY_CALLER = "f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid = ?)"
+NOT_RATED_BY_CALLER = "f.id NOT IN (SELECT file_id FROM file_ratings WHERE client_uuid = ?)"
+NOT_COMMENTED_BY_CALLER = "f.id NOT IN (SELECT file_id FROM file_comments WHERE client_uuid = ?)"
+HAS_A_COMMENT_THE_CALLER_MAY_READ = (
+    "f.id IN (SELECT file_id FROM file_comments"
+    " WHERE (? = 1 OR target_audience = 'public'"
+    " OR target_audience = ? OR client_uuid = ?))"
+)
+
+
+def sees_every_comment():
+    """Whether this caller reads comments addressed to other people.
+
+    Staff do, and so does a single-user install with no login, because
+    there is nobody else for a comment to belong to.
+    """
+    is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
+    return is_local_admin or session.get("role", "GUEST") in ("ADMIN", "MANAGER", "STAFF")
+
+
+def caller_comment_params(identity, sees_all):
+    """The three values HAS_A_COMMENT_THE_CALLER_MAY_READ binds."""
+    return [1 if sees_all else 0, f"user:{identity}", identity]
+
+
+def per_caller_params(identity, sees_all):
+    """The seven values PER_CALLER_COLUMNS binds, in order."""
+    comments = caller_comment_params(identity, sees_all)
+    return [identity, *comments, *comments]
+
+
 MEGAPIXELS_SQL = (
     "(CAST(SUBSTR(f.dimensions, 1, INSTR(f.dimensions, 'x') - 1) AS INTEGER)"
     " * CAST(SUBSTR(f.dimensions, INSTR(f.dimensions, 'x') + 1) AS INTEGER))"
@@ -7260,18 +7316,8 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
 
     if cluster_scope == "global":
         with get_db_connection() as conn_target:
-            safe_uuid = _current_client_identity().replace("'", "''")
-            user_role = session.get("role", "GUEST")
-            is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
-
-            if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
-                comment_sub_filter = ""
-            else:
-                comment_sub_filter = (
-                    f" AND (target_audience = 'public'"
-                    f" OR target_audience = 'user:{safe_uuid}'"
-                    f" OR client_uuid = '{safe_uuid}')"
-                )
+            identity = _current_client_identity()
+            caller = per_caller_params(identity, sees_every_comment())
 
             if cluster_target_id:
                 target_row = conn_target.execute(
@@ -7305,35 +7351,30 @@ def process_clustering(current_files, cluster_mode, cluster_sort, cluster_target
                          WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                         (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                         (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-                        (SELECT rating FROM file_ratings
-                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
-                        (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
-                        (SELECT MAX(created_at) FROM file_comments
-                         WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
+                        {PER_CALLER_COLUMNS}
                         FROM files f
                         WHERE {where_clause}
                     """,
-                        params_t,
+                        [*caller, *params_t],
                     ).fetchall()
                     result_files = [dict(r) for r in rows]
                 else:
                     result_files = []
             else:
-                rows = conn_target.execute(f"""
+                rows = conn_target.execute(
+                    f"""
                     SELECT DISTINCT f.*,
                     (SELECT c.color FROM collections c
                          JOIN collection_files cf ON c.id = cf.collection_id
                          WHERE cf.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                     (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                     (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-                    (SELECT rating FROM file_ratings
-                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
-                    (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
-                    (SELECT MAX(created_at) FROM file_comments
-                         WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
+                    {PER_CALLER_COLUMNS}
                     FROM files f
                     WHERE f.{primary_hash_key} IS NOT NULL AND f.{primary_hash_key} != ''
-                """).fetchall()
+                """,
+                    caller,
+                ).fetchall()
                 result_files = [dict(r) for r in rows]
 
             for d in result_files:
@@ -7538,7 +7579,7 @@ def gallery_view(folder_key):
                 if session_info:
                     is_omniquery = True
                     omniquery_sql = session_info["raw_sql"]
-                    safe_uuid = _current_client_identity().replace("'", "''")
+                    caller = per_caller_params(_current_client_identity(), sees_every_comment())
                     rows = conn.execute(
                         f"""
                         SELECT f.*,
@@ -7547,16 +7588,13 @@ def gallery_view(folder_key):
                          WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
                         (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
                         (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-                        (SELECT rating FROM file_ratings
-                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
-                        (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id) as comment_count,
-                        (SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id) as latest_comment_time
+                        {PER_CALLER_COLUMNS}
                         FROM omniquery_results r
                         JOIN files f ON r.file_id = f.id
                         WHERE r.session_id = ?
                         ORDER BY r.rowid ASC
                     """,
-                        (omniquery_id,),
+                        [*caller, omniquery_id],
                     ).fetchall()
 
                     files_list = []
@@ -7834,36 +7872,15 @@ def gallery_view(folder_key):
             req_sort_by = request.args.get("sort_by", "date")
             sort_order = "ASC" if request.args.get("sort_order", "desc").lower() == "asc" else "DESC"
 
-            # --- COMMENT VISIBILITY FILTER FOR SORTING ---
-            user_role = session.get("role", "GUEST")
-            safe_uuid = _current_client_identity().replace("'", "''")
-
-            # Allow Local Admin (no force login) to see all comments during sort
-            is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
-
-            if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
-                comment_sub_filter = ""
-                comment_exists_filter = "SELECT file_id FROM file_comments"
-            else:
-                # Regular users only consider public comments or comments involving them
-                comment_sub_filter = (
-                    f" AND (target_audience = 'public'"
-                    f" OR target_audience = 'user:{safe_uuid}'"
-                    f" OR client_uuid = '{safe_uuid}')"
-                )
-                comment_exists_filter = (
-                    f"SELECT file_id FROM file_comments"
-                    f" WHERE (target_audience = 'public'"
-                    f" OR target_audience = 'user:{safe_uuid}'"
-                    f" OR client_uuid = '{safe_uuid}')"
-                )
+            identity = _current_client_identity()
+            sees_all = sees_every_comment()
 
             if req_sort_by == "name":
                 order_clause = f"ulower(f.name) {sort_order}"
             elif req_sort_by == "rating":
                 if is_effectively_blind():
-                    conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
-
+                    conditions.append(RATED_BY_CALLER)
+                    params.append(identity)
                     order_clause = f"my_rating {sort_order}, f.mtime DESC"
 
                 else:
@@ -7883,25 +7900,25 @@ def gallery_view(folder_key):
                 order_clause = f"{MEGAPIXELS_SQL} {sort_order}"
             elif req_sort_by == "unrated":
                 if is_effectively_blind():
-                    conditions.append(
-                        f"f.id NOT IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')"
-                    )
+                    conditions.append(NOT_RATED_BY_CALLER)
+                    params.append(identity)
                 else:
                     conditions.append("f.id NOT IN (SELECT file_id FROM file_ratings)")
                 order_clause = f"f.mtime {sort_order}"
             elif req_sort_by == "uncommented":
                 if is_effectively_blind():
-                    conditions.append(
-                        f"f.id NOT IN (SELECT file_id FROM file_comments WHERE client_uuid = '{safe_uuid}')"
-                    )
+                    conditions.append(NOT_COMMENTED_BY_CALLER)
+                    params.append(identity)
                 else:
                     conditions.append("f.id NOT IN (SELECT file_id FROM file_comments)")
                 order_clause = f"f.mtime {sort_order}"
             elif req_sort_by == "comments":
-                conditions.append(f"f.id IN ({comment_exists_filter})")
+                conditions.append(HAS_A_COMMENT_THE_CALLER_MAY_READ)
+                params.extend(caller_comment_params(identity, sees_all))
                 order_clause = f"comment_count {sort_order}, f.mtime DESC"
             elif req_sort_by == "latest_comment":
-                conditions.append(f"f.id IN ({comment_exists_filter})")
+                conditions.append(HAS_A_COMMENT_THE_CALLER_MAY_READ)
+                params.extend(caller_comment_params(identity, sees_all))
                 order_clause = f"latest_comment_time {sort_order}, f.mtime DESC"
             else:
                 order_clause = f"f.mtime {sort_order}"
@@ -7923,20 +7940,13 @@ def gallery_view(folder_key):
                 (
                     SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id
                 ) as vote_count,
-            (SELECT rating FROM file_ratings
-                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
-                (
-                    SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}
-                ) as comment_count,
-                (
-                    SELECT MAX(created_at) FROM file_comments WHERE file_id = f.id {comment_sub_filter}
-                ) as latest_comment_time
+                {PER_CALLER_COLUMNS}
                 FROM files f
                 {where_clause}
                 ORDER BY {order_clause}
             """
 
-            rows = conn.execute(query, params).fetchall()
+            rows = conn.execute(query, [*per_caller_params(identity, sees_all), *params]).fetchall()
 
             final_files = []
 
@@ -12057,13 +12067,13 @@ def collection_view(coll_id):
             conditions.append(f"({' OR '.join(p_cond)})")
 
     # --- SORTING LOGIC ---
-    safe_uuid = _current_client_identity().replace("'", "''")
+    identity = _current_client_identity()
     if req_sort_by == "name":
         order_clause = f"ulower(f.name) {req_sort_order}"
     elif req_sort_by == "rating":
         if is_effectively_blind():
-            conditions.append(f"f.id IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
-
+            conditions.append(RATED_BY_CALLER)
+            params.append(identity)
             order_clause = f"my_rating {req_sort_order}, f.mtime DESC"
 
         else:
@@ -12072,13 +12082,15 @@ def collection_view(coll_id):
             order_clause = f"avg_rating {req_sort_order}, f.mtime DESC"
     elif req_sort_by == "unrated":
         if is_effectively_blind():
-            conditions.append(f"f.id NOT IN (SELECT file_id FROM file_ratings WHERE client_uuid = '{safe_uuid}')")
+            conditions.append(NOT_RATED_BY_CALLER)
+            params.append(identity)
         else:
             conditions.append("f.id NOT IN (SELECT file_id FROM file_ratings)")
         order_clause = f"f.mtime {req_sort_order}"
     elif req_sort_by == "uncommented":
         if is_effectively_blind():
-            conditions.append(f"f.id NOT IN (SELECT file_id FROM file_comments WHERE client_uuid = '{safe_uuid}')")
+            conditions.append(NOT_COMMENTED_BY_CALLER)
+            params.append(identity)
         else:
             conditions.append("f.id NOT IN (SELECT file_id FROM file_comments)")
         order_clause = f"f.mtime {req_sort_order}"
@@ -12142,21 +12154,6 @@ def collection_view(coll_id):
         where_clause = " AND ".join(conditions)
 
         # We use DISTINCT to avoid showing the same file twice if it's in multiple albums
-        user_role = session.get("role", "GUEST")
-        safe_uuid = _current_client_identity().replace("'", "''")
-
-        # Allow Local Admin (no force login) to see all comments during sort
-        is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
-
-        if is_local_admin or user_role in ["ADMIN", "MANAGER", "STAFF"]:
-            comment_sub_filter = ""
-        else:
-            comment_sub_filter = (
-                f" AND (target_audience = 'public'"
-                f" OR target_audience = 'user:{safe_uuid}'"
-                f" OR client_uuid = '{safe_uuid}')"
-            )
-
         query = f"""
             SELECT DISTINCT f.*,
             (SELECT c.color FROM collections c
@@ -12164,18 +12161,14 @@ def collection_view(coll_id):
                          WHERE cf2.file_id = f.id AND c.type = 'system_flag' LIMIT 1) as status_color,
             (SELECT AVG(rating) FROM file_ratings WHERE file_id = f.id) as avg_rating,
             (SELECT COUNT(*) FROM file_ratings WHERE file_id = f.id) as vote_count,
-            (SELECT rating FROM file_ratings
-                         WHERE file_id = f.id AND client_uuid = '{safe_uuid}') as my_rating,
-            (SELECT COUNT(*) FROM file_comments WHERE file_id = f.id {comment_sub_filter}) as comment_count,
-            (SELECT MAX(created_at) FROM file_comments
-                         WHERE file_id = f.id {comment_sub_filter}) as latest_comment_time
+            {PER_CALLER_COLUMNS}
             FROM files f
             JOIN collection_files cf ON f.id = cf.file_id
             WHERE {where_clause}
             ORDER BY {order_clause}
         """
 
-        rows = conn.execute(query, params).fetchall()
+        rows = conn.execute(query, [*per_caller_params(identity, sees_every_comment()), *params]).fetchall()
 
         for r in rows:
             d = dict(r)
