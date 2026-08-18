@@ -261,7 +261,7 @@ def test_get_face_backend_auto_without_models_returns_none(tmp_path):
 
 def test_get_face_backend_unknown_name_raises():
     config = AIConfig(face_backend="not-a-real-backend")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unknown face_backend"):
         get_face_backend(config)
 
 
@@ -544,7 +544,7 @@ def test_neighbor_graph_unknown_backend_request_raises(monkeypatch):
     never silently fall back."""
 
     monkeypatch.setenv("AI_DAM_FACE_GRAPH_BACKEND", "quantum")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="not one of auto/torch-cuda/faiss/numpy"):
         _neighbor_graph(_backend_fixture(), 0.6)
 
 

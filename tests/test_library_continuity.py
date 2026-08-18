@@ -30,6 +30,7 @@ from __future__ import annotations
 import glob
 import os
 import shutil
+import sqlite3
 
 import pytest
 
@@ -118,7 +119,7 @@ def test_no_database_is_started_outside_an_existing_gallery(smartgallery_app, tm
     monkeypatch.setattr(smartgallery_app, "SQLITE_CACHE_DIR", str(absent / ".sqlite_cache"))
     monkeypatch.setattr(smartgallery_app, "DATABASE_FILE", str(absent / ".sqlite_cache" / "gallery_cache.sqlite"))
 
-    with pytest.raises(Exception):
+    with pytest.raises(sqlite3.OperationalError):
         smartgallery_app.get_db_connection()
 
     assert not absent.exists(), "a second, invisible library was started"

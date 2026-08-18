@@ -177,7 +177,7 @@ def test_find_missing_hashes():
 def test_find_missing_embeddings_requires_space():
     conn = make_conn()
     add_file(conn, "f1")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="space is required"):
         find_missing(conn, "ai_embeddings")
 
 
@@ -193,7 +193,7 @@ def test_find_missing_embeddings_scoped_to_space():
 
 def test_find_missing_unsupported_table_raises():
     conn = make_conn()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unsupported table for find_missing"):
         find_missing(conn, "not_a_real_table")
 
 

@@ -10,7 +10,6 @@ import sqlite3
 
 import numpy as np
 import pytest
-import pytest as _pytest
 from PIL import Image
 
 from smartgallery_ai import AIConfig
@@ -480,7 +479,7 @@ def test_get_reviewer_stub_explicit_only():
     # behavior on an unprovisioned system, not the old always-None policy.
     assert get_reviewer(AIConfig(critic_backend="auto")) is None
     assert isinstance(get_reviewer(AIConfig(critic_backend="stub")), StubReviewer)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unknown critic_backend"):
         get_reviewer(AIConfig(critic_backend="bogus"))
 
 
@@ -577,7 +576,7 @@ def test_qwen_critic_requires_semantic_embedder():
 
     # Class-level invariant: embedder=None is rejected before anything else
     # (no weights needed for this check to fire).
-    with _pytest.raises(BackendUnavailable, match="grounding"):
+    with pytest.raises(BackendUnavailable, match="grounding"):
         Reviewer("/nonexistent", semantic_embedder=None)
 
     # Factory 'auto': no semantic backend available -> critic unavailable
@@ -587,7 +586,7 @@ def test_qwen_critic_requires_semantic_embedder():
 
     # Factory explicit 'qwen-vl': surfaces the configuration error.
     cfg2 = AIConfig(enabled=True, models_dir="/nonexistent", semantic_backend="none", critic_backend="vlm")
-    with _pytest.raises(BackendUnavailable):
+    with pytest.raises(BackendUnavailable):
         get_reviewer(cfg2)
 
 

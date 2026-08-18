@@ -68,7 +68,7 @@ def test_a_stalled_download_gives_up(silent_server, tmp_path, monkeypatch):
     dest = str(tmp_path / "model.bin")
 
     started = time.monotonic()
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(TimeoutError) as excinfo:
         provision._download_url(f"http://127.0.0.1:{silent_server}/model.bin", dest)
     elapsed = time.monotonic() - started
 

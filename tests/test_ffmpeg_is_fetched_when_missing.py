@@ -153,7 +153,7 @@ def test_an_archive_without_the_programs_is_an_error(tmp_path):
     archive = tmp_path / "build.zip"
     _make_zip(archive, {"ffmpeg-n8.1.2/README.txt": b"nothing useful"})
 
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match="did not contain"):
         smartgallery._extract_ffmpeg_programs(str(archive), str(tmp_path / "d"), build["programs"])
 
 

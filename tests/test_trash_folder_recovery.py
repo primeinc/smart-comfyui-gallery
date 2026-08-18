@@ -89,7 +89,7 @@ def test_a_file_is_never_destroyed_when_the_trash_is_unreachable(smartgallery_ap
     shutil.rmtree(delete_to)
     victim = _victim(tmp_path)
 
-    with pytest.raises(OSError) as raised:
+    with pytest.raises(OSError, match="trash folder") as raised:
         smartgallery_app.safe_delete_file(str(victim))
 
     assert victim.exists(), "the file was destroyed with no trash to hold it"
@@ -119,7 +119,7 @@ def test_a_folder_is_never_destroyed_when_the_trash_is_unreachable(smartgallery_
     doomed.mkdir()
     (doomed / "keepme.png").write_bytes(b"x")
 
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match="trash folder"):
         smartgallery_app.safe_delete_tree(str(doomed))
 
     assert (doomed / "keepme.png").exists(), "an entire folder was destroyed"

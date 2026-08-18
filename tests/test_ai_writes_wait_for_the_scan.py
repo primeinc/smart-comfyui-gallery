@@ -121,9 +121,10 @@ def test_a_write_survives_a_scan_holding_the_lock(gallery_db):
 
     # Control, in the same window: a connection that refuses to wait fails.
     impatient = sqlite3.connect(gallery_db, timeout=0)
+    # The execute is the write, and the write is what the lock refuses --
+    # the commit below it never ran.
     with pytest.raises(sqlite3.OperationalError) as refused:
         impatient.execute("INSERT INTO files VALUES ('by_default', 'x')")
-        impatient.commit()
     impatient.close()
     assert "locked" in str(refused.value), refused.value
 

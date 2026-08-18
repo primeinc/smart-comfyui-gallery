@@ -145,9 +145,10 @@ def test_a_code_page_stream_stops_raising():
     raw = io.BytesIO()
     stream = io.TextIOWrapper(raw, encoding="cp1252", newline="")
 
+    # TextIOWrapper encodes on write, so that is where it fails; the
+    # flush that used to sit here never ran.
     with pytest.raises(UnicodeEncodeError):
         stream.write("测试图片.png")
-        stream.flush()
 
     raw = io.BytesIO()
     stream = io.TextIOWrapper(raw, encoding="cp1252", newline="")

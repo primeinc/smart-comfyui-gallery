@@ -126,7 +126,7 @@ def test_add_rejects_dim_mismatch_within_space_and_version(tmp_path):
     add_files(conn, ["f1", "f2"])
     store = VectorStore(cache_dir=str(tmp_path), ephemeral=False)
     store.add(conn, "f1", "semantic", "modelA", "v1", np.zeros(8, dtype=np.float32), 1000.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="dim mismatch"):
         store.add(conn, "f2", "semantic", "modelA", "v1", np.zeros(16, dtype=np.float32), 1000.0)
 
 
