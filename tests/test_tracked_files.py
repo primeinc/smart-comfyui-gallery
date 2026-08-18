@@ -40,9 +40,10 @@ _TEMPLATES = ("sample_run_smartgallery.bat", "sample_run_exhibition.bat")
 
 
 def _git(*args):
-    if shutil.which("git") is None:
+    git = shutil.which("git")
+    if git is None:
         pytest.skip("git is not on PATH; tracking cannot be inspected here")
-    return subprocess.run(("git", *args), cwd=str(_REPO_ROOT), capture_output=True, text=True, timeout=120, check=False)
+    return subprocess.run((git, *args), cwd=str(_REPO_ROOT), capture_output=True, text=True, timeout=120, check=False)
 
 
 def _lines(done):

@@ -26,6 +26,7 @@ import importlib
 import json
 import os
 import platform
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -146,7 +147,11 @@ def check_idle(seconds: int = 3, busy_frac: float = 0.15) -> int:
     gpu_busy = False
     try:
         out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            [
+                shutil.which("nvidia-smi") or "nvidia-smi",
+                "--query-gpu=utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
             capture_output=True,
             text=True,
             timeout=10,

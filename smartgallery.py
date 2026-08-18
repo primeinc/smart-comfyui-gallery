@@ -8425,8 +8425,11 @@ def _link_folder_on_windows(link_full_path, target_path):
 
     # Linking a target on unreachable network storage can sit there; the
     # caller is a request waiting on the answer.
+    # COMSPEC is where Windows says its command interpreter lives; taking
+    # the name off PATH would run whichever cmd came first.
+    cmd = os.environ.get("COMSPEC") or "cmd.exe"
     junction = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", win_link, win_target],
+        [cmd, "/c", "mklink", "/J", win_link, win_target],
         capture_output=True,
         text=True,
         timeout=FFPROBE_TIMEOUT,
@@ -8439,7 +8442,7 @@ def _link_folder_on_windows(link_full_path, target_path):
     print(f"WARN: Junction failed ({err_junction}). Trying Symlink fallback...")
 
     symlink = subprocess.run(
-        ["cmd", "/c", "mklink", "/D", win_link, win_target],
+        [cmd, "/c", "mklink", "/D", win_link, win_target],
         capture_output=True,
         text=True,
         timeout=FFPROBE_TIMEOUT,

@@ -99,7 +99,10 @@ def test_the_known_list_matches_what_the_code_reads():
             \s*["']([A-Z][A-Z0-9_]{2,})["']""",
         re.VERBOSE,
     )
-    skip = {"PATH", "DISPLAY", "HOME", "TEMP", "TMP", "USERPROFILE"}
+    # Read by the code, but set by the operating system rather than by
+    # anyone configuring the gallery. COMSPEC is where Windows publishes
+    # the path to its command interpreter.
+    skip = {"PATH", "DISPLAY", "HOME", "TEMP", "TMP", "USERPROFILE", "COMSPEC"}
 
     # Pruned during the walk rather than filtered afterwards: rglob descends
     # into .venv and .AImodels in full before anything is discarded, which is

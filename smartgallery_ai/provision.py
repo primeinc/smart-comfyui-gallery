@@ -43,6 +43,17 @@ from huggingface_hub import hf_hub_download, snapshot_download
 _logger = logging.getLogger(__name__)
 
 
+def _nvidia_smi() -> str:
+    """The full path to nvidia-smi.
+
+    Looked up rather than named: whichever nvidia-smi is first on PATH is
+    not necessarily the driver's. Every caller runs inside a try that
+    already treats "no such program" as "no NVIDIA card here", so the bare
+    name is a fine thing to hand OSError when the lookup finds nothing.
+    """
+    return shutil.which("nvidia-smi") or "nvidia-smi"
+
+
 def cuda_hardware_present() -> bool:
     """Whether an NVIDIA driver is installed (nvidia-smi on PATH) — the
     pre-torch signal for choosing CUDA-capable wheels."""
@@ -61,7 +72,7 @@ def _cuda_compute_capability():
     cap = None
     try:
         proc = subprocess.run(
-            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+            [_nvidia_smi(), "--query-gpu=compute_cap", "--format=csv,noheader"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -82,7 +93,7 @@ def _driver_cuda_version():
         return _driver_cuda_cache[0]
     value = None
     try:
-        proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10, check=False)
+        proc = subprocess.run([_nvidia_smi()], capture_output=True, text=True, timeout=10, check=False)
         match = re.search(r"CUDA Version:\s*([\d.]+)", proc.stdout or "")
         if match:
             value = float(match.group(1))
@@ -104,7 +115,7 @@ def cuda_summary():
     try:
         proc = subprocess.run(
             [
-                "nvidia-smi",
+                _nvidia_smi(),
                 "--query-gpu=name,driver_version,compute_cap,memory.total,memory.used",
                 "--format=csv,noheader",
             ],

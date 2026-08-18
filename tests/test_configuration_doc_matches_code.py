@@ -28,7 +28,7 @@ import re
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Standard environment, not settings of ours.
-_NOT_OURS = {"PATH", "DISPLAY", "HOME", "USERPROFILE", "TEMP", "TMP", "FAISS_DISABLE_CPU_FEATURES"}
+_NOT_OURS = {"PATH", "DISPLAY", "HOME", "USERPROFILE", "TEMP", "TMP", "COMSPEC", "FAISS_DISABLE_CPU_FEATURES"}
 
 _READERS = re.compile(
     # \s* after the paren: a call whose setting name wrapped onto the next

@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -131,7 +132,7 @@ def _detect_gpus():
     """[(index, name)] from nvidia-smi; empty when no NVIDIA driver."""
     try:
         proc = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader"],
+            [shutil.which("nvidia-smi") or "nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader"],
             capture_output=True,
             text=True,
             timeout=30,
