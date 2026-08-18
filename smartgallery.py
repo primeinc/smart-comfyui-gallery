@@ -79,6 +79,7 @@ from omniquery.sqlexec import run_readonly_select
 from omniquery.validation import AuthContext
 from smartgallery_ai import service as ai_dam_service
 from smartgallery_ai.worker import AIWorker
+from sqlbind import with_id_placeholders
 
 # Same convention as smartgallery_ai.*, which has had one of these per
 # module all along; the monolith was the one place still throwing every
@@ -1110,17 +1111,6 @@ def _word_key(s):
             out.append(" ")
             previous_was_word = False
     return " " + "".join(out).strip() + " "
-
-
-def with_id_placeholders(statement, ids):
-    """`statement` with its `{ids}` slot filled: one question mark per id.
-
-    SQLite binds values, never lists, so a list of n ids has to become n
-    placeholders in the statement text. One function does that, and all it
-    can ever insert is question marks -- anything else a call site wants in
-    its SQL still has to be written out where it can be seen.
-    """
-    return statement.format(ids=",".join("?" * len(ids)))
 
 
 # Two statements the AI routes run against a list of ids from four places
@@ -7139,11 +7129,7 @@ def ai_watched_folders():
                         chunk_size = 500
                         for i in range(0, len(ids_to_wipe), chunk_size):
                             chunk = ids_to_wipe[i : i + chunk_size]
-                            ph = ",".join(["?"] * len(chunk))
-                            conn.execute(
-                                with_id_placeholders(FORGET_AI_RESULTS, chunk),
-                                chunk,
-                            )
+                            conn.execute(with_id_placeholders(FORGET_AI_RESULTS, chunk), chunk)
                             # (Queue already cleared above by path, but redundant check by ID is safe)
                             conn.execute(with_id_placeholders(CANCEL_AI_JOBS, chunk), chunk)
 

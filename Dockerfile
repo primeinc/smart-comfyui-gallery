@@ -94,6 +94,7 @@ RUN --mount=type=cache,target=/uv_cache,uid=1025,gid=1025,mode=0755 \
 # of smartgallery.py because they change far less often, so editing the
 # monolith does not invalidate their layers.
 COPY sg_auth.py /app/sg_auth.py
+COPY sqlbind.py /app/sqlbind.py
 COPY smartgallery_ai/ /app/smartgallery_ai/
 COPY metaparse/ /app/metaparse/
 COPY omniquery/ /app/omniquery/

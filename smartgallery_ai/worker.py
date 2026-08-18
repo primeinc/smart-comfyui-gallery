@@ -50,6 +50,7 @@ from smartgallery_ai import (
     vectors,
 )
 from smartgallery_ai import provision as provisioning
+from sqlbind import with_id_placeholders
 
 __all__ = ["AIWorker", "load_source_image", "provision_groups_for"]
 
@@ -316,14 +317,15 @@ def indexing_totals(conn: sqlite3.Connection) -> dict:
     stage has covered so far. Approximate BY DESIGN (a model-version bump
     re-queues files without resetting these counters) — meant for progress
     display in /status, the panel, and the cycle log, never scheduling."""
-    type_placeholders = ",".join("?" for _ in _VISUAL_TYPES)
 
     def one(sql, params=()):
         return conn.execute(sql, params).fetchone()[0]
 
     return {
         "files_total": one("SELECT COUNT(*) FROM files"),
-        "visual_files_total": one(f"SELECT COUNT(*) FROM files WHERE type IN ({type_placeholders})", _VISUAL_TYPES),
+        "visual_files_total": one(
+            with_id_placeholders("SELECT COUNT(*) FROM files WHERE type IN ({ids})", _VISUAL_TYPES), _VISUAL_TYPES
+        ),
         "hashed": one("SELECT COUNT(*) FROM ai_file_hashes"),
         "embeddings_semantic": one("SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_SEMANTIC,)),
         "embeddings_visual": one("SELECT COUNT(*) FROM ai_embeddings WHERE space = ?", (SPACE_VISUAL,)),
@@ -356,12 +358,10 @@ def _fetch_candidates(
     rows: list = []
     for start in range(0, len(ids), CHUNK):
         chunk = ids[start : start + CHUNK]
-        id_placeholders = ",".join("?" for _ in chunk)
-        query = f"SELECT id, path, mtime, type FROM files WHERE id IN ({id_placeholders})"
+        query = with_id_placeholders("SELECT id, path, mtime, type FROM files WHERE id IN ({ids})", chunk)
         params: list = list(chunk)
         if allowed_types is not None:
-            type_placeholders = ",".join("?" for _ in allowed_types)
-            query += f" AND type IN ({type_placeholders})"
+            query += with_id_placeholders(" AND type IN ({ids})", allowed_types)
             params.extend(allowed_types)
         query += " ORDER BY mtime DESC, id ASC LIMIT ?"
         params.append(limit)

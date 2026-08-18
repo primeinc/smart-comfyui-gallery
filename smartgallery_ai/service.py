@@ -53,6 +53,7 @@ from smartgallery_ai.worker import (
     mark_faces_cluster_pending,
     record_scan,
 )
+from sqlbind import with_id_placeholders
 
 _logger = logging.getLogger(__name__)
 
@@ -1153,9 +1154,9 @@ def create_ai_blueprint(
             out = []
             total_reclaimable = 0
             for group in groups:
-                placeholders = ",".join("?" for _ in group)
                 size_rows = conn.execute(
-                    f"SELECT id, COALESCE(size, 0) AS size FROM files WHERE id IN ({placeholders})", list(group)
+                    with_id_placeholders("SELECT id, COALESCE(size, 0) AS size FROM files WHERE id IN ({ids})", group),
+                    list(group),
                 ).fetchall()
                 sizes = [row["size"] for row in size_rows]
                 reclaimable = max(sum(sizes) - max(sizes), 0) if sizes else 0

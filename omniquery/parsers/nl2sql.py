@@ -34,6 +34,7 @@ import time
 
 from omniquery.sqlexec import run_readonly_select
 from smartgallery_ai import models as ai_models
+from sqlbind import with_id_placeholders
 
 _logger = logging.getLogger(__name__)
 
@@ -98,10 +99,12 @@ def schema_block(db_path: str) -> str:
     cached = _SCHEMA_CACHE.get(db_path)
     if cached is not None and now - cached[0] < _SCHEMA_TTL_SECONDS:
         return cached[1]
-    placeholders = ",".join("?" for _ in _SCHEMA_TABLES)
     with sqlite3.connect(f"file:{os.path.abspath(db_path)}?mode=ro", uri=True) as conn:
         rows = conn.execute(
-            f"SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ({placeholders}) ORDER BY name",
+            with_id_placeholders(
+                "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ({ids}) ORDER BY name",
+                _SCHEMA_TABLES,
+            ),
             _SCHEMA_TABLES,
         ).fetchall()
         # Live value hints for the enum-ish columns the DDL cannot show
