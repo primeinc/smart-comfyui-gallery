@@ -36,9 +36,7 @@ def _sql_of(node):
         return ""
     parts = []
     for arg in node.args[:1]:
-        for sub in ast.walk(arg):
-            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                parts.append(sub.value)
+        parts.extend(sub.value for sub in ast.walk(arg) if isinstance(sub, ast.Constant) and isinstance(sub.value, str))
     return " ".join(parts)
 
 

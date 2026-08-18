@@ -467,22 +467,21 @@ def _generate(seed: int) -> dict[str, Any]:
         genparams[0].update(seed=424242, steps=30, cfg=7.5, model="flux1-dev-fp8")
 
     review_candidates = files[::4][:15]
-    reviews: list[dict[str, Any]] = []
-    for f in review_candidates:
-        reviews.append(
-            {
-                "file_id": f["id"],
-                "rubric_version": RUBRIC_VERSION,
-                "model_id": "stub-critic",
-                "model_version": "v1",
-                "quality_score": round(draw_float(1, 10), 2),
-                "prompt_alignment_score": round(draw_float(0, 1), 3),
-                "summary": "",
-                "raw_response": "{}",
-                "source_mtime": f["mtime"],
-                "computed_at": f["mtime"] + 2.0,
-            }
-        )
+    reviews: list[dict[str, Any]] = [
+        {
+            "file_id": f["id"],
+            "rubric_version": RUBRIC_VERSION,
+            "model_id": "stub-critic",
+            "model_version": "v1",
+            "quality_score": round(draw_float(1, 10), 2),
+            "prompt_alignment_score": round(draw_float(0, 1), 3),
+            "summary": "",
+            "raw_response": "{}",
+            "source_mtime": f["mtime"],
+            "computed_at": f["mtime"] + 2.0,
+        }
+        for f in review_candidates
+    ]
 
     issue_values = sorted(REVIEW_ISSUE_VALUES)
     findings: list[dict[str, Any]] = []

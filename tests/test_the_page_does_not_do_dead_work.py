@@ -129,13 +129,13 @@ def test_neither_walk_normalises_what_it_does_not_read(gallery_tree):
             for statement in loop.body:
                 if not isinstance(statement, (ast.Assign, ast.Expr)):
                     continue
-                for call in ast.walk(statement):
-                    if (
-                        isinstance(call, ast.Call)
-                        and isinstance(call.func, ast.Attribute)
-                        and call.func.attr == "dirname"
-                    ):
-                        direct.append(statement.lineno)
+                direct.extend(
+                    statement.lineno
+                    for call in ast.walk(statement)
+                    if isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "dirname"
+                )
             assert direct == [], (
                 f"{name} works out a directory at line {direct} for every row "
                 f"before deciding whether the branch taken needs it"

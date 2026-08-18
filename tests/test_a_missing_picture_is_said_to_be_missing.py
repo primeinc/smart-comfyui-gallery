@@ -66,8 +66,7 @@ def file_id_routes(app):
     for rule in app.url_map.iter_rules():
         if set(rule.arguments or ()) != {"file_id"}:
             continue
-        for method in sorted((rule.methods or set()) - {"HEAD", "OPTIONS"}):
-            found.append((method, str(rule)))
+        found.extend((method, str(rule)) for method in sorted((rule.methods or set()) - {"HEAD", "OPTIONS"}))
     return sorted(found)
 
 
@@ -155,9 +154,11 @@ def test_the_refusal_does_not_quote_the_machine(a_gallery_with_one_picture):
         if not answer.is_json:
             continue
         text = json.dumps(answer.get_json())
-        for giveaway in ("Traceback", "SELECT ", "sqlite", ".py", "C:\\", "/home/", "smartgallery."):
-            if giveaway in text:
-                leaked.append(f"{method} {template} leaked {giveaway!r}: {text[:120]}")
+        leaked.extend(
+            f"{method} {template} leaked {giveaway!r}: {text[:120]}"
+            for giveaway in ("Traceback", "SELECT ", "sqlite", ".py", "C:\\", "/home/", "smartgallery.")
+            if giveaway in text
+        )
 
     assert not leaked, "\n  ".join(leaked)
 

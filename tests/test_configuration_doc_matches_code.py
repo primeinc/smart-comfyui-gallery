@@ -63,11 +63,11 @@ def _source_text():
 
 @functools.cache
 def _doc_text():
-    parts = []
-    for path in [*sorted((_ROOT / "docs").rglob("*.md")), _ROOT / "README.md"]:
-        if path.exists():
-            parts.append((path, path.read_text(encoding="utf-8")))
-    return parts
+    return [
+        (path, path.read_text(encoding="utf-8"))
+        for path in [*sorted((_ROOT / "docs").rglob("*.md")), _ROOT / "README.md"]
+        if path.exists()
+    ]
 
 
 def _documented_in_tables():

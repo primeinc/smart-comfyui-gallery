@@ -897,7 +897,9 @@ def test_provision_surfaces_disk_refusal_before_any_download(tmp_path, monkeypat
     """The full provision() path refuses before its download loop runs."""
     monkeypatch.setattr(P.shutil, "disk_usage", lambda _p: type("U", (), {"free": 10 * 1024**2})())
     calls = []
-    dl = {k: (lambda *a, **k2: calls.append(k)) for k in ("url", "hf_file", "hf_snapshot")}
+    # k bound per entry: a plain closure over the comprehension variable
+    # would make all three record the last name.
+    dl = {k: (lambda *a, _name=k, **k2: calls.append(_name)) for k in ("url", "hf_file", "hf_snapshot")}
     with pytest.raises(P.ProvisionError, match="not enough disk space"):
         P.provision(str(tmp_path / "models"), ["faces"], downloaders=dl)
     assert calls == []

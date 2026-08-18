@@ -353,7 +353,7 @@ def _build_enum(spec: fields.FieldSpec, op: str, value: Any) -> tuple[str, list[
 
 
 def _local_epoch(dt: datetime) -> float:
-    """Naive datetime -> epoch seconds in the machine's local timezone."""
+    """Wall-clock datetime -> epoch seconds in the machine's local timezone."""
     # Naive datetimes mean local wall-clock time (a bare date is 00:00
     # local). mktime is a pure conversion; the only clock input to
     # compilation is the injected now_epoch.
@@ -367,9 +367,12 @@ def _resolve_datetime(value: Any, now_epoch: float) -> tuple[float, bool]:
         if "days_ago" in value:
             return now_epoch - float(value["days_ago"]) * 86400.0, False
         return now_epoch - float(value["hours_ago"]) * 3600.0, False
+    # astimezone() reads the parsed wall clock as local, which is what a
+    # date in a query means. It leaves the fields alone and its dst() is
+    # None, so _local_epoch below still resolves the day itself.
     if len(value) == 10:
-        return _local_epoch(datetime.strptime(value, "%Y-%m-%d")), True
-    return _local_epoch(datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")), False
+        return _local_epoch(datetime.strptime(value, "%Y-%m-%d").astimezone()), True
+    return _local_epoch(datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone()), False
 
 
 def _build_datetime(spec: fields.FieldSpec, op: str, value: Any, params: CompileParams) -> tuple[str, list[Any]]:
@@ -385,7 +388,7 @@ def _build_datetime(spec: fields.FieldSpec, op: str, value: Any, params: Compile
             # constructed as a date rather than midnight + 86400s -- on DST
             # transition days the local day is 23 or 25 hours long, so a
             # fixed offset would land an hour off the boundary.
-            next_day = datetime.strptime(hi_raw, "%Y-%m-%d") + timedelta(days=1)
+            next_day = datetime.strptime(hi_raw, "%Y-%m-%d").astimezone() + timedelta(days=1)
             hi_epoch = _local_epoch(next_day)
         return f"{column} >= ? AND {column} < ?", [lo_epoch, hi_epoch]
     epoch, _ = _resolve_datetime(value, params.now_epoch)

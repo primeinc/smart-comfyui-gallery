@@ -236,9 +236,11 @@ def test_none_of_them_hands_back_errno(a_folder_that_refuses_writes):
     for label, url, kwargs in every_action(file_id, folder_key):
         answer = post(client, url, kwargs)
         said = answer.get_data(as_text=True)
-        for giveaway in ("Errno", "errno", "Traceback", "Permission denied"):
-            if giveaway in said:
-                machine_speak.append(f"{label} leaked {giveaway!r}: {said[:160]}")
+        machine_speak.extend(
+            f"{label} leaked {giveaway!r}: {said[:160]}"
+            for giveaway in ("Errno", "errno", "Traceback", "Permission denied")
+            if giveaway in said
+        )
     assert not machine_speak, "\n  ".join(machine_speak)
 
 

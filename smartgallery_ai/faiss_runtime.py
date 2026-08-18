@@ -91,7 +91,10 @@ def import_faiss():
 
         except (Exception, SystemExit):
             # missing CUDA wheel DLLs, wrong arch, partial vendor dir --
-            # purge the half-imported package and fall back to faiss-cpu
+            # purge the half-imported package and fall back to faiss-cpu.
+            # Logged because the fallback is otherwise invisible: the GPU
+            # index quietly becomes a CPU one and only the speed says so.
+            _logger.debug("the vendored GPU faiss did not load; using faiss-cpu", exc_info=True)
             for name in [m for m in sys.modules if m == "faiss" or m.startswith("faiss.")]:
                 del sys.modules[name]
             importlib.invalidate_caches()

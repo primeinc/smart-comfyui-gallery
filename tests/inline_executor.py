@@ -17,6 +17,9 @@ test module without making tests/ a package.
 from __future__ import annotations
 
 import concurrent.futures
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class InlineExecutor:
@@ -39,5 +42,8 @@ class InlineExecutor:
             # Mirrors the executor contract: whatever the work raised is
             # carried on the future and re-raised by .result(), so nothing
             # is swallowed here -- it is handed to the caller instead.
+            # Logged as well, because concurrent.futures says nothing about
+            # a future whose exception is never retrieved.
+            _logger.debug("an inline submission raised", exc_info=True)
             future.set_exception(exc)
         return future

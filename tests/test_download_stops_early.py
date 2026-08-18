@@ -180,9 +180,11 @@ def test_every_artifact_has_something_checking_it():
     choice, so the count is pinned."""
     unchecked = []
     for group in provision.GROUPS:
-        for artifact in group.artifacts:
-            if artifact.sha256 is None and artifact.url and not artifact.hf_repo:
-                unchecked.append(artifact.dest)
+        unchecked.extend(
+            artifact.dest
+            for artifact in group.artifacts
+            if artifact.sha256 is None and artifact.url and not artifact.hf_repo
+        )
 
     assert sorted(unchecked) == sorted(
         [

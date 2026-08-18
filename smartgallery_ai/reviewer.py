@@ -693,7 +693,7 @@ class Reviewer:
             )
             raw = reply.get("elements") if isinstance(reply, dict) else None
         except Exception as exc:
-            _logger.debug("[AI] ALIGN failed, the review continues: %s", exc)
+            _logger.debug("[AI] ALIGN failed, the review continues: %s", exc, exc_info=True)
             return []
         if not isinstance(raw, list) or len(raw) != len(expected):
             # A short or long list cannot be zipped to the elements without

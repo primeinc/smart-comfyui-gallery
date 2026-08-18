@@ -178,9 +178,11 @@ def test_an_html_entity_escaper_is_never_used_inside_a_javascript_string():
     least pass through an escaper". They did; it was the wrong one."""
     offenders = []
     for template in _TEMPLATES.rglob("*.html"):
-        for line in template.read_text(encoding="utf-8").splitlines():
-            if re.search(r"'\$\{escapeHTML\(|'\$\{escapeHtml\(", line):
-                offenders.append(f"{template.name}: {line.strip()[:70]}")
+        offenders.extend(
+            f"{template.name}: {line.strip()[:70]}"
+            for line in template.read_text(encoding="utf-8").splitlines()
+            if re.search(r"'\$\{escapeHTML\(|'\$\{escapeHtml\(", line)
+        )
 
     assert not offenders, (
         f"{len(offenders)} site(s) put an HTML-entity-escaped value inside a "

@@ -1714,6 +1714,18 @@ def filter_enabled_nodes(workflow_data):
     return {"nodes": active_nodes, "links": active_links}
 
 
+def pipeline_nodes(workflow_json_string):
+    """The node strip the details panel and the cluster view both draw.
+
+    Each entry is what the strip renders: an id, a type, the category it
+    was sorted into and the colour that category is drawn in.
+    """
+    return [
+        {"id": n.get("id"), "type": n.get("type"), "category": n.get("category"), "color": n.get("color")}
+        for n in generate_node_summary(workflow_json_string) or []
+    ]
+
+
 def generate_node_summary(workflow_json_string):
     """
     Analyzes a workflow JSON, extracts active nodes, and identifies input media.
@@ -1878,7 +1890,9 @@ def clean_prompt_text(x: str) -> dict[str, Any]:
 
     x = re.sub(r"\sBREAK\s", " , BREAK , ", x)
     x = re.sub(RE_LORA_CLOSE, "> , ", x)
-    x = x.replace("，", ",").replace("-", " ").replace("_", " ")
+    # U+FF0C, the fullwidth comma a CJK keyboard produces. Spelled as an
+    # escape because on screen it is indistinguishable from ",".
+    x = x.replace("\uff0c", ",").replace("-", " ").replace("_", " ")
 
     tag_list = [t.strip() for t in x.split(",")]
     lora_list = []
@@ -9799,16 +9813,15 @@ def serve_cleaned_file(file_id):
     clean_path = os.path.join(CLEAN_CACHE_DIR, clean_filename)
 
     # --- AUTO-HEALING LOGIC ---
-    if os.path.exists(clean_path):
-        # 1. Check if file is empty (often happens after a crash)
-        # 2. Or if the client explicitly asked for a retry due to loading errors
-        if os.path.getsize(clean_path) == 0 or force_retry:
-            print(f"DEBUG: Cache corrupted or retry requested for {clean_filename}. Regenerating...")
-            try:
-                os.remove(clean_path)
-            except Exception as e:
-                _logger.debug("handled a failure in serve_cleaned_file", exc_info=True)
-                print(f"DEBUG: Could not remove corrupted cache: {e}")
+    # An empty file is what a crash mid-write leaves behind; force_retry is
+    # the client saying the copy it got would not load.
+    if os.path.exists(clean_path) and (os.path.getsize(clean_path) == 0 or force_retry):
+        print(f"DEBUG: Cache corrupted or retry requested for {clean_filename}. Regenerating...")
+        try:
+            os.remove(clean_path)
+        except Exception as e:
+            _logger.debug("handled a failure in serve_cleaned_file", exc_info=True)
+            print(f"DEBUG: Could not remove corrupted cache: {e}")
 
     # Generate if not exists (either new or just deleted above)
     if not os.path.exists(clean_path):
@@ -10043,10 +10056,11 @@ def get_node_summary(file_id):
                             _logger.debug("ignored a failure in get_node_summary", exc_info=True)
                         enriched_loras.append(l_dict)
                     meta_data["loras"] = enriched_loras
-                if not meta_data.get("width") or not meta_data.get("height"):
-                    if db_dimensions and "x" in db_dimensions:
-                        w, h = db_dimensions.split("x")
-                        meta_data["width"], meta_data["height"] = w.strip(), h.strip()
+                if (not meta_data.get("width") or not meta_data.get("height")) and (
+                    db_dimensions and "x" in db_dimensions
+                ):
+                    w, h = db_dimensions.split("x")
+                    meta_data["width"], meta_data["height"] = w.strip(), h.strip()
             else:
                 meta_data = {}
 
@@ -11431,17 +11445,7 @@ def get_file_full_details(file_id):
                     wf_json = extract_workflow(abs_path, target_type="api")
                 if wf_json:
                     try:
-                        summary = generate_node_summary(wf_json)
-                        if summary:
-                            for n in summary:
-                                nodes_pipeline.append(
-                                    {
-                                        "id": n.get("id"),
-                                        "type": n.get("type"),
-                                        "category": n.get("category"),
-                                        "color": n.get("color"),
-                                    }
-                                )
+                        nodes_pipeline.extend(pipeline_nodes(wf_json))
                     except Exception:
                         _logger.debug("ignored a failure in get_file_full_details", exc_info=True)
 
@@ -13071,10 +13075,9 @@ def is_effectively_blind():
     # Check if user is privileged
     role = session.get("role", "GUEST")
     is_local_admin = not FORCE_LOGIN and not IS_EXHIBITION_MODE
-    if is_local_admin or role in ["ADMIN", "MANAGER", "STAFF"]:
-        # If they toggled the override, disable blind mode
-        if session.get("override_blind", False):
-            return False
+    # Only the privileged get the override, and only if they turned it on.
+    if (is_local_admin or role in ["ADMIN", "MANAGER", "STAFF"]) and session.get("override_blind", False):
+        return False
     return True
 
 
@@ -13821,12 +13824,14 @@ def _register_remix_routes_inline():
 
         def check_is_app(n_id, k, n_type, n_title):
             for p in app_params:
-                if isinstance(p, list) and len(p) >= 2:
-                    if str(p[0]) == str(n_id) and str(p[1]) == k:
-                        return True
-                elif isinstance(p, dict):
-                    if str(p.get("node_id")) == str(n_id) and (not p.get("widget_name") or p.get("widget_name") == k):
-                        return True
+                if isinstance(p, list) and len(p) >= 2 and str(p[0]) == str(n_id) and str(p[1]) == k:
+                    return True
+                if (
+                    isinstance(p, dict)
+                    and str(p.get("node_id")) == str(n_id)
+                    and (not p.get("widget_name") or p.get("widget_name") == k)
+                ):
+                    return True
             return bool(n_type == "PrimitiveNode" and n_title and n_title != "PrimitiveNode")
 
         def check_is_app_by_index(n_id, widget_idx):
@@ -14471,11 +14476,14 @@ def _register_remix_routes_inline():
                                             target_node["widgets_values"][i] = mod["value"]
                                             matched = True
                                             break
-                                        if is_numeric and isinstance(w, (int, float)):
-                                            if abs(w - orig_val_float) < 0.0001:
-                                                target_node["widgets_values"][i] = mod["value"]
-                                                matched = True
-                                                break
+                                        if (
+                                            is_numeric
+                                            and isinstance(w, (int, float))
+                                            and abs(w - orig_val_float) < 0.0001
+                                        ):
+                                            target_node["widgets_values"][i] = mod["value"]
+                                            matched = True
+                                            break
                                     if not matched:
                                         idx = mod.get("widget_index")
                                         if idx is not None and 0 <= idx < len(target_node["widgets_values"]):
@@ -15185,11 +15193,10 @@ def _register_remix_routes_inline():
                                 target_node["widgets_values"][i] = mod["value"]
                                 matched = True
                                 break
-                            if is_numeric and isinstance(w, (int, float)):
-                                if abs(w - orig_val_float) < 0.0001:
-                                    target_node["widgets_values"][i] = mod["value"]
-                                    matched = True
-                                    break
+                            if is_numeric and isinstance(w, (int, float)) and abs(w - orig_val_float) < 0.0001:
+                                target_node["widgets_values"][i] = mod["value"]
+                                matched = True
+                                break
                         if not matched:
                             idx = mod.get("widget_index")
                             if idx is not None and 0 <= idx < len(target_node["widgets_values"]):
@@ -16544,24 +16551,14 @@ def api_cluster_info(hash_type, hash_val):
 
             if wf_json:
                 try:
-                    summary = generate_node_summary(wf_json)
-                    if summary:
-                        for n in summary:
-                            nodes_pipeline.append(
-                                {
-                                    "id": n.get("id"),
-                                    "type": n.get("type"),
-                                    "category": n.get("category"),
-                                    "color": n.get("color"),
-                                }
-                            )
+                    nodes_pipeline.extend(pipeline_nodes(wf_json))
                 except Exception:
                     _logger.debug("ignored a failure in api_cluster_info", exc_info=True)
 
             if sample.get("workflow_files"):
-                for item in sample["workflow_files"].split(" ||| "):
-                    if item.strip():
-                        models_used.append(os.path.basename(item.strip()))
+                models_used.extend(
+                    os.path.basename(item.strip()) for item in sample["workflow_files"].split(" ||| ") if item.strip()
+                )
 
             distinct_other_hashes = 0
             if hash_type == "prompt":

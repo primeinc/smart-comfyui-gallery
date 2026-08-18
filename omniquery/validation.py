@@ -11,8 +11,8 @@ list/dict sizes, and string length).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from omniquery import fields
@@ -113,10 +113,16 @@ def _check_enum_member(spec: fields.FieldSpec, value: Any) -> None:
 
 
 def _check_date_string(value: str, field_name: str) -> None:
-    """Require 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS'."""
+    """Require 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS'.
+
+    time.strptime rather than datetime's: only whether the string parses
+    matters here, and nothing is done with the result. The compiler is
+    where the value becomes an instant, and where the timezone question
+    gets an answer.
+    """
     for fmt in (_ISO_DATE_FMT, _ISO_DATETIME_FMT):
         try:
-            datetime.strptime(value, fmt)
+            time.strptime(value, fmt)
         except ValueError:
             continue
         else:

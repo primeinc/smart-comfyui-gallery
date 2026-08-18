@@ -312,7 +312,9 @@ def test_hours_ago_resolves_against_injected_now_epoch():
 
 def test_bare_date_resolves_to_local_midnight():
     cq = _compile({"where": {"field": "mtime", "op": "ge", "value": "2025-06-15"}})
-    expected = time.mktime(datetime(2025, 6, 15).timetuple())
+    # astimezone() leaves the wall-clock fields alone and its dst() is
+    # None, so timetuple() -- all mktime reads -- is unchanged by it.
+    expected = time.mktime(datetime(2025, 6, 15).astimezone().timetuple())
     assert cq.params[0] == expected
 
 

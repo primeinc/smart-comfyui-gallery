@@ -151,7 +151,7 @@ def test_a_visitor_name_has_a_size_too(smartgallery_app, visitor, a_picture):
 
 def test_an_ordinary_name_is_fine(smartgallery_app, visitor, a_picture):
     """Over-reach guard. Names are not short in every language."""
-    for name in ["Jo", "Bartholomew Featherstonehaugh", "第一章のゲスト", "Ααααα Βββββ"]:
+    for name in ["Jo", "Bartholomew Featherstonehaugh", "第一章のゲスト", "김철수", "مرحبا بالعالم"]:
         response = _post(visitor, a_picture, "hi", author=name)
         assert response.status_code == 200, (name, response.get_json())
 

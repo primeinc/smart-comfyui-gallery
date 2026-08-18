@@ -114,8 +114,8 @@ def test_date_relative_days_ago(engine):
 
 
 def test_date_between_bare_dates_matches_calendar_days(engine):
-    lo = time.mktime(datetime(2024, 1, 1).timetuple())
-    hi = time.mktime(datetime(2025, 6, 1).timetuple())
+    lo = time.mktime(datetime(2024, 1, 1).astimezone().timetuple())
+    hi = time.mktime(datetime(2025, 6, 1).astimezone().timetuple())
     out = engine.run(
         {"where": {"field": "mtime", "op": "between", "value": ["2024-01-01", "2025-05-31"]}, "limit": 200},
         GUEST,

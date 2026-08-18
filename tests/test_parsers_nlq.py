@@ -572,7 +572,7 @@ def _where(nl: str, now_epoch: float):
 
 
 def _epoch(*args):
-    return _time.mktime(_dt(*args).timetuple())
+    return _time.mktime(_dt(*args).astimezone().timetuple())
 
 
 def test_calendar_yesterday_is_previous_calendar_day():

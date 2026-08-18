@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -65,8 +65,14 @@ DAY = "2026-08-15"
 
 
 def server_midnight(day=DAY):
-    """Midnight on this machine, the way the app reads a typed date."""
-    return datetime.strptime(day, "%Y-%m-%d").timestamp()
+    """Midnight on this machine, built the way the app builds it.
+
+    Naive on purpose, as day_bounds is: .timestamp() reads a naive value
+    as local time, and that is what "the server's midnight" means. An
+    aware value here would make every day exactly 24 hours long, and the
+    daylight-saving checks below would agree with a broken app.
+    """
+    return datetime.combine(date.fromisoformat(day), datetime.min.time()).timestamp()
 
 
 @pytest.fixture
@@ -206,7 +212,7 @@ class TestTheEndOfADay:
     def test_it_is_the_last_second_before_the_next_one(self, day):
         """True in every timezone: where there is no change of clocks this
         is the same as +86399, and where there is, it is not."""
-        next_midnight = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).timestamp()
+        next_midnight = server_midnight((date.fromisoformat(day) + timedelta(days=1)).isoformat())
 
         assert smartgallery.day_bounds(day, None, True) == next_midnight - 1
 
@@ -219,8 +225,8 @@ class TestTheEndOfADay:
         the rule there."""
         odd = []
         for day in ("2026-03-08", "2026-03-29", "2026-10-25", "2026-11-01", "2026-04-05", "2026-09-27"):
-            midnight = datetime.strptime(day, "%Y-%m-%d").timestamp()
-            following = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).timestamp()
+            midnight = server_midnight(day)
+            following = server_midnight((date.fromisoformat(day) + timedelta(days=1)).isoformat())
             if following - midnight != 86400:
                 odd.append((day, midnight, following))
 
