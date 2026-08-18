@@ -176,11 +176,10 @@ class SqlSearch:
         """True when the runtime imports and the checkpoint is provisioned;
         never triggers the (expensive) model load."""
         try:
-            from smartgallery_ai import models as ai_models
+            return ai_models.is_provisioned(self.model_ref, self.models_dir)
         except Exception:
             _logger.debug("handled a failure in available", exc_info=True)
             return False
-        return ai_models.is_provisioned(self.model_ref, self.models_dir)
 
     def _chat(self):
         """One conversation for a whole search.

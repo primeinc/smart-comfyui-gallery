@@ -22,7 +22,7 @@ import warnings
 import numpy as np
 from PIL import Image
 
-from smartgallery_ai.embedders import BackendUnavailable
+from smartgallery_ai.embedders import BackendUnavailable, pick_torch_device, warn_if_vram_pressure
 from smartgallery_ai.review import SegmenterBackend
 
 WEIGHTS_FILENAME = "mobile_sam.pt"
@@ -62,11 +62,6 @@ class MobileSamSegmenter(SegmenterBackend):
             except Exception as exc:
                 raise BackendUnavailable(f"mobile_sam unavailable: {exc}") from exc
             try:
-                from smartgallery_ai.embedders import (
-                    pick_torch_device,
-                    warn_if_vram_pressure,
-                )
-
                 device = pick_torch_device(torch, role="segmenter")
                 self._device = device
                 _logger.info("[AI] %s on device %s", self.model_id, device)

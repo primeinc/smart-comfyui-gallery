@@ -16,6 +16,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from smartgallery_ai.faiss_runtime import import_faiss
+
 _logger = logging.getLogger(__name__)
 
 _MASK64 = (1 << 64) - 1  # keeps the low 64 bits of an arbitrary Python int
@@ -252,8 +254,6 @@ def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
     pairs: list[tuple[str, str, int]] = []
 
     try:
-        from smartgallery_ai.faiss_runtime import import_faiss
-
         faiss = import_faiss()
     except ImportError:
         faiss = None

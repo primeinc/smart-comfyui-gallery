@@ -37,8 +37,6 @@ import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from huggingface_hub import hf_hub_download, snapshot_download
-
 from urlfetch import open_url
 
 _logger = logging.getLogger(__name__)
@@ -516,7 +514,14 @@ def _hub_bars_silenced():
 
 def _download_hf_file(repo: str, filename: str, dest_path: str) -> None:
     """Fetch one file from a Hugging Face repo into dest_path, using the
-    hub's cache/resume machinery."""
+    hub's cache/resume machinery.
+
+    huggingface_hub is imported here rather than at the top because it
+    belongs to the optional AI layer. At module scope it made the whole
+    gallery refuse to start without it -- and the shipped container
+    installs requirements.txt alone, which does not carry it.
+    """
+    from huggingface_hub import hf_hub_download
 
     cached = hf_hub_download(repo_id=repo, filename=filename)
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
@@ -525,6 +530,7 @@ def _download_hf_file(repo: str, filename: str, dest_path: str) -> None:
 
 def _download_hf_snapshot(repo: str, dest_dir: str) -> None:
     """Materialize a full Hugging Face repo snapshot at dest_dir."""
+    from huggingface_hub import snapshot_download
 
     snapshot_download(repo_id=repo, local_dir=dest_dir)
 

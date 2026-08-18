@@ -16,10 +16,17 @@ copies, then read every import in every file of it. Module-scope and
 request-time imports look the same to a reader, which is the point --
 booting the assembly would only have proved the first kind.
 
+A third case, and the one that shipped: the image installs
+requirements.txt and nothing else, so a module-scope import of a package
+from the optional AI layer stops the container at import. provision.py
+imported huggingface_hub at the top, worker imports provision, service
+imports worker and smartgallery.py imports service -- so
+`ModuleNotFoundError: No module named 'huggingface_hub'` on line 82,
+before any of the AI layer was asked to do anything. An import inside a
+function is fine and is the fix; only what runs at import time has to be
+in the core requirements.
+
 Nothing here needs docker installed, and nothing starts a process.
-requirements.txt alone is enough to import the app -- verified against a
-venv built from it -- so the AI layer being absent from the image is not
-the problem here.
 """
 
 from __future__ import annotations
@@ -28,6 +35,8 @@ import ast
 import pathlib
 import re
 import shutil
+import sys
+from importlib import metadata
 
 import pytest
 
@@ -255,3 +264,90 @@ def test_nothing_the_dockerfile_copies_is_excluded():
         )
 
     assert "experiments" not in ignored, "make build_exp copies experiments/, so it has to stay in the context"
+
+
+def _canonical(name):
+    """PEP 503 normalised distribution name."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _core_requirements():
+    """The distributions `pip install -r requirements.txt` provides."""
+    text = (_REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    names = set()
+    for raw in text.splitlines():
+        line = raw.split("#")[0].strip()
+        if line:
+            names.add(_canonical(re.split(r"[<>=!\[; ]", line)[0]))
+    return names
+
+
+def _import_time_third_party(root):
+    """{module: [file, ...]} for every non-stdlib, non-first-party module
+    imported at IMPORT TIME beneath `root`.
+
+    Imports inside a function or a class body are skipped on purpose: those
+    run when something calls them, which is exactly how an optional
+    dependency is supposed to be reached.
+    """
+    first_party = _first_party_names()
+    wanted = {}
+    for source in sorted(root.rglob("*.py")):
+        try:
+            tree = ast.parse(source.read_text(encoding="utf-8"))
+        except SyntaxError:  # not ours to police here
+            continue
+        stack = list(tree.body)
+        while stack:
+            node = stack.pop()
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue  # runs on call, not on import
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                names = [node.module or ""]
+            else:
+                stack.extend(ast.iter_child_nodes(node))
+                continue
+            for dotted in names:
+                head = dotted.split(".")[0]
+                if head and head not in first_party and head not in sys.stdlib_module_names:
+                    wanted.setdefault(head, []).append(str(source.relative_to(root)))
+    return wanted
+
+
+def test_the_import_time_scan_sees_the_obvious_ones(assembled_image):
+    """Control. The check below is an absence, and a walk that understood
+    nothing would report the same absence."""
+    found = _import_time_third_party(assembled_image)
+
+    assert "flask" in found, sorted(found)
+    assert "PIL" in found, sorted(found)
+    # Reached only from inside a function, so it must NOT be listed --
+    # that distinction is the whole check.
+    assert "torch" not in found, found.get("torch")
+    assert "huggingface_hub" not in found, found.get("huggingface_hub")
+
+
+def test_nothing_the_container_imports_is_missing_from_its_requirements(assembled_image):
+    """The failure as it shipped: the image installs requirements.txt and
+    nothing else, and an AI-layer package imported at module scope stops
+    it before it prints a line."""
+    core = _core_requirements()
+    provided_by = {
+        module: {_canonical(d) for d in dists} for module, dists in metadata.packages_distributions().items()
+    }
+
+    missing = {}
+    for module, importers in _import_time_third_party(assembled_image).items():
+        dists = provided_by.get(module)
+        if dists is None:
+            missing[module] = (sorted(set(importers)), "no installed distribution provides it")
+        elif not dists & core:
+            missing[module] = (sorted(set(importers)), f"comes from {sorted(dists)}, which requirements.txt omits")
+
+    assert not missing, (
+        f"the container installs requirements.txt alone, and these are imported at import "
+        f"time from something it does not install: {missing}. Move the import inside the "
+        f"function that needs it, or add the package to requirements.txt."
+    )

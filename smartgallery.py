@@ -70,11 +70,13 @@ from tqdm import tqdm
 from werkzeug.exceptions import HTTPException, InternalServerError
 
 import metaparse
+import omniquery.parsers as omniquery_parsers
 import sg_auth
 import smartgallery_ai
 import smartgallery_ai.schema
 from metaparse import typed as metaparse_typed
 from omniquery.engine import OmniQueryEngine
+from omniquery.parsers.nl2sql import SqlSearch
 from omniquery.sqlexec import run_readonly_select
 from omniquery.validation import AuthContext
 from smartgallery_ai import service as ai_dam_service
@@ -12902,8 +12904,6 @@ def _get_omniquery_parser():
     if _omniquery_parser is None:
         with _omniquery_lock:
             if _omniquery_parser is None:
-                import omniquery.parsers as omniquery_parsers
-
                 _omniquery_parser = omniquery_parsers.make_search_parser()
     return _omniquery_parser
 
@@ -12916,8 +12916,6 @@ def _get_omniquery_sqlsearch():
     if _omniquery_sqlsearch is None:
         with _omniquery_lock:
             if _omniquery_sqlsearch is None:
-                from omniquery.parsers.nl2sql import SqlSearch
-
                 _omniquery_sqlsearch = SqlSearch(db_path=DATABASE_FILE)
     return _omniquery_sqlsearch
 

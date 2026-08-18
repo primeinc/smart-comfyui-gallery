@@ -27,6 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from smartgallery_ai import schema
+from smartgallery_ai.faiss_runtime import import_faiss
 
 _logger = logging.getLogger(__name__)
 
@@ -235,8 +236,6 @@ class VectorStore:
 
         excluded = set(exclude)
         try:
-            from smartgallery_ai.faiss_runtime import import_faiss
-
             faiss = import_faiss()
         except ImportError:
             faiss = None
