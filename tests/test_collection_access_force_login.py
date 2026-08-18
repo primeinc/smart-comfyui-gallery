@@ -44,7 +44,7 @@ def library(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
         smartgallery_app.full_sync_database(conn)
         ids = {}
@@ -69,8 +69,8 @@ def library(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
-        conn.execute(f"DELETE FROM collections WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
+        conn.execute("DELETE FROM collections WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()

@@ -33,7 +33,7 @@ _PREFIX = "ratingid_"
 def _purge(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM file_ratings WHERE client_uuid IN ('admin', '')")
         conn.commit()
     finally:
@@ -58,7 +58,7 @@ def library(smartgallery_app, monkeypatch):
         smartgallery_app.full_sync_database(conn)
         ids = {
             r["name"]: r["id"]
-            for r in conn.execute(f"SELECT id, name FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+            for r in conn.execute("SELECT id, name FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchall()
         }
     finally:
         conn.close()

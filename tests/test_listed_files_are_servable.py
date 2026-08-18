@@ -40,13 +40,13 @@ def exhibition(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM collections WHERE name = 'Servable Album'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
         ids = {
             r["name"]: r["id"]
-            for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+            for r in conn.execute("SELECT name, id FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchall()
         }
         conn.execute(
             "INSERT INTO collections (name, type, is_public) VALUES (?, ?, 1)", ("Servable Album", "user_album")
@@ -70,7 +70,7 @@ def exhibition(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM collections WHERE name = 'Servable Album'")
         conn.commit()
     finally:

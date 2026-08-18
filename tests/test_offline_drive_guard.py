@@ -48,7 +48,7 @@ def rated_library(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()
@@ -76,7 +76,7 @@ def rated_library(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()
@@ -88,7 +88,7 @@ def rated_library(smartgallery_app, monkeypatch):
 def _counts(smartgallery_app, file_id):
     conn = smartgallery_app.get_db_connection()
     try:
-        files = conn.execute(f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
+        files = conn.execute("SELECT COUNT(*) FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchone()[0]
         ratings = conn.execute("SELECT COUNT(*) FROM file_ratings WHERE file_id = ?", (file_id,)).fetchone()[0]
         comments = conn.execute("SELECT COUNT(*) FROM file_comments WHERE file_id = ?", (file_id,)).fetchone()[0]
         return files, ratings, comments

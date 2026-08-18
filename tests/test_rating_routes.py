@@ -57,8 +57,8 @@ def rated_files(smartgallery_app):
             if row:
                 with contextlib.suppress(OSError):
                     os.remove(row[0])
-        conn.execute(f"DELETE FROM file_ratings WHERE file_id LIKE '{_PREFIX}%'")
-        conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM file_ratings WHERE file_id LIKE ?", (f"{_PREFIX}%",))
+        conn.execute("DELETE FROM files WHERE id LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()

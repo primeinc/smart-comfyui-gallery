@@ -87,13 +87,13 @@ def both_views(smartgallery_app):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM collections WHERE name = 'Both Views'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
         ids = {
             r["name"]: r["id"]
-            for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+            for r in conn.execute("SELECT name, id FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchall()
         }
 
         conn.execute("INSERT INTO collections (name, type) VALUES (?, ?)", ("Both Views", "user_album"))
@@ -117,7 +117,7 @@ def both_views(smartgallery_app):
     smartgallery_app.FORCE_LOGIN, smartgallery_app.IS_EXHIBITION_MODE = original[1:]
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM collections WHERE name = 'Both Views'")
         conn.commit()
     finally:

@@ -57,11 +57,11 @@ def _cleanup(smartgallery_app):
     yield
     conn = smartgallery_app.get_db_connection()
     try:
-        rows = conn.execute(f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()
+        rows = conn.execute("SELECT path FROM files WHERE id LIKE ?", (f"{_PREFIX}%",)).fetchall()
         for row in rows:
             with contextlib.suppress(OSError):
                 os.remove(row[0])
-        conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE id LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()

@@ -302,27 +302,27 @@ def _generate(seed: int) -> dict[str, Any]:
     for f in files:
         if rng.random() < 0.55:
             n = rng.randint(1, 3)
-            for cu in rng.sample(_RATING_CLIENT_POOL, k=n):
-                ratings.append(
-                    {
-                        "file_id": f["id"],
-                        "client_uuid": cu,
-                        "rating": rng.randint(1, 5),
-                        "created_at": f["mtime"] + 10.0,
-                    }
-                )
+            ratings.extend(
+                {
+                    "file_id": f["id"],
+                    "client_uuid": cu,
+                    "rating": rng.randint(1, 5),
+                    "created_at": f["mtime"] + 10.0,
+                }
+                for cu in rng.sample(_RATING_CLIENT_POOL, k=n)
+            )
         if rng.random() < 0.4:
             n = rng.randint(1, 2)
-            for cu in rng.sample(_COMMENT_CLIENT_POOL, k=n):
-                comments.append(
-                    {
-                        "file_id": f["id"],
-                        "client_uuid": cu,
-                        "author_name": _USERNAME_BY_UUID.get(cu, cu),
-                        "comment_text": rng.choice(_COMMENT_POOL),
-                        "created_at": f["mtime"] + 20.0,
-                    }
-                )
+            comments.extend(
+                {
+                    "file_id": f["id"],
+                    "client_uuid": cu,
+                    "author_name": _USERNAME_BY_UUID.get(cu, cu),
+                    "comment_text": rng.choice(_COMMENT_POOL),
+                    "created_at": f["mtime"] + 20.0,
+                }
+                for cu in rng.sample(_COMMENT_CLIENT_POOL, k=n)
+            )
 
     all_ids = [f["id"] for f in files]
     shuffled = all_ids[:]

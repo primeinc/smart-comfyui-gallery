@@ -127,7 +127,8 @@ def test_an_anonymous_caller_is_refused_entirely(exhibited_file):
 
     assert resp.status_code == 401, resp.status_code
     body = resp.get_data(as_text=True)
-    assert "private note" not in body and "internal staff note" not in body
+    assert "private note" not in body
+    assert "internal staff note" not in body
 
 
 def test_a_guest_sees_only_public_and_their_own(exhibited_file):

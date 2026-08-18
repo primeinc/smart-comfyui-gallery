@@ -4779,9 +4779,11 @@ def background_watcher_task():
                                         for d in dirs
                                         if (not d.startswith(".") or d == ".collection_notes") and d not in EXCLUDED
                                     ]
-                                    for f in files:
-                                        if os.path.splitext(f)[1].lower() in valid_exts:
-                                            files_to_check.append(os.path.join(root, f))
+                                    files_to_check.extend(
+                                        os.path.join(root, f)
+                                        for f in files
+                                        if os.path.splitext(f)[1].lower() in valid_exts
+                                    )
                             else:
                                 try:
                                     for f in os.listdir(folder_path):
@@ -6912,13 +6914,13 @@ def ai_indexing_add_folder():
             if recursive:
                 for r, d, f in os.walk(raw_path, topdown=True, followlinks=True):
                     d[:] = [x for x in d if (not x.startswith(".") or x == ".collection_notes") and x not in exc]
-                    for x in f:
-                        if os.path.splitext(x)[1].lower() in valid:
-                            files_found.append(os.path.join(r, x))
+                    files_found.extend(os.path.join(r, x) for x in f if os.path.splitext(x)[1].lower() in valid)
             else:
-                for entry in os.scandir(raw_path):
-                    if entry.is_file() and os.path.splitext(entry.name)[1].lower() in valid:
-                        files_found.append(entry.path)
+                files_found.extend(
+                    entry.path
+                    for entry in os.scandir(raw_path)
+                    if entry.is_file() and os.path.splitext(entry.name)[1].lower() in valid
+                )
         except OSError:
             return
 
@@ -11424,9 +11426,11 @@ def get_file_full_details(file_id):
                         _logger.debug("ignored a failure in get_file_full_details", exc_info=True)
 
                 if file_data.get("workflow_files"):
-                    for item in file_data["workflow_files"].split(" ||| "):
-                        if item.strip():
-                            models_used.append(os.path.basename(item.strip()))
+                    models_used.extend(
+                        os.path.basename(item.strip())
+                        for item in file_data["workflow_files"].split(" ||| ")
+                        if item.strip()
+                    )
 
             # This one answer carried everything the mode exists to hide:
             # the prompt and model names out of the file row, the workflow's
@@ -13821,12 +13825,12 @@ def _register_remix_routes_inline():
             # If this node has ANY app_params entries, check if widget_idx
             # falls within the range of defined app params for this node.
             # We also do a direct index match against the linearData order.
-            all_node_widgets = []
-            for p in app_params:
-                if (isinstance(p, list) and len(p) >= 2 and str(p[0]) == str(n_id)) or (
-                    isinstance(p, dict) and str(p.get("node_id", "")) == str(n_id)
-                ):
-                    all_node_widgets.append(p)
+            all_node_widgets = [
+                p
+                for p in app_params
+                if (isinstance(p, list) and len(p) >= 2 and str(p[0]) == str(n_id))
+                or (isinstance(p, dict) and str(p.get("node_id", "")) == str(n_id))
+            ]
             return len(all_node_widgets) > 0 and widget_idx < len(all_node_widgets)
 
         def get_widget_name_by_index(n_type, idx):
@@ -13918,19 +13922,18 @@ def _register_remix_routes_inline():
                             and "height" not in key_l
                             and "width" not in type_title_lower
                             and "height" not in type_title_lower
-                        ):
-                            if not any(s["node_id"] == node_id and s["key"] == key for s in extract["seeds"]):
-                                extract["seeds"].append(
-                                    {
-                                        "node_id": node_id,
-                                        "key": key,
-                                        "value": val,
-                                        "node_type": n_type,
-                                        "title": n_title,
-                                        "is_app_field": is_app_field,
-                                        "label": n_title if is_app_field else "Seed",
-                                    }
-                                )
+                        ) and not any(s["node_id"] == node_id and s["key"] == key for s in extract["seeds"]):
+                            extract["seeds"].append(
+                                {
+                                    "node_id": node_id,
+                                    "key": key,
+                                    "value": val,
+                                    "node_type": n_type,
+                                    "title": n_title,
+                                    "is_app_field": is_app_field,
+                                    "label": n_title if is_app_field else "Seed",
+                                }
+                            )
                     elif isinstance(val, (int, float)) and not isinstance(val, bool):
                         is_target = is_app_field or any(
                             x in key_l or x in type_title_lower

@@ -53,13 +53,13 @@ def album(smartgallery_app, monkeypatch):
     session_id = f"test-{uuid.uuid4()}"
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM collections WHERE name = 'Search Test Album'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
         ids = {
             r["name"]: r["id"]
-            for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+            for r in conn.execute("SELECT name, id FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchall()
         }
 
         conn.execute("INSERT INTO collections (name, type) VALUES (?, ?)", ("Search Test Album", "user_album"))
@@ -84,7 +84,7 @@ def album(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM collections WHERE name = 'Search Test Album'")
         conn.execute("DELETE FROM omniquery_results WHERE session_id = ?", (session_id,))
         conn.execute("DELETE FROM omniquery_sessions WHERE session_id = ?", (session_id,))

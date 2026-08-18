@@ -47,11 +47,14 @@ def team_gallery(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM users WHERE username = 'owner_admin'")
         conn.commit()
         smartgallery_app.full_sync_database(conn)
-        ids = {r[0]: r[1] for r in conn.execute(f"SELECT name, id FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()}
+        ids = {
+            r[0]: r[1]
+            for r in conn.execute("SELECT name, id FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchall()
+        }
         conn.execute(
             "INSERT INTO users (username, password, full_name, role, "
             "is_active) VALUES ('owner_admin', ?, 'Owner', 'ADMIN', 1)",
@@ -65,7 +68,7 @@ def team_gallery(smartgallery_app, monkeypatch):
 
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.execute("DELETE FROM users WHERE username = 'owner_admin'")
         conn.commit()
     finally:

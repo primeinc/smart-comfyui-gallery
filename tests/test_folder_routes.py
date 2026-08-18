@@ -63,7 +63,7 @@ def _cleanup(smartgallery_app):
             shutil.rmtree(os.path.join(root, entry), ignore_errors=True)
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE id LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()

@@ -68,8 +68,8 @@ def library(smartgallery_app):
             if row:
                 with contextlib.suppress(OSError):
                     os.remove(row[0])
-        conn.execute(f"DELETE FROM files WHERE id LIKE '{_PREFIX}%'")
-        conn.execute(f"DELETE FROM collections WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE id LIKE ?", (f"{_PREFIX}%",))
+        conn.execute("DELETE FROM collections WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()
@@ -89,7 +89,7 @@ def _members(smartgallery_app, coll_id):
 def _file_rows(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
-        return sorted(r[0] for r in conn.execute(f"SELECT id FROM files WHERE id LIKE '{_PREFIX}%'").fetchall())
+        return sorted(r[0] for r in conn.execute("SELECT id FROM files WHERE id LIKE ?", (f"{_PREFIX}%",)).fetchall())
     finally:
         conn.close()
 
@@ -100,7 +100,7 @@ def test_deleting_a_collection_keeps_every_file(smartgallery_app, client, librar
     paths = []
     conn = smartgallery_app.get_db_connection()
     try:
-        paths = [r[0] for r in conn.execute(f"SELECT path FROM files WHERE id LIKE '{_PREFIX}%'").fetchall()]
+        paths = [r[0] for r in conn.execute("SELECT path FROM files WHERE id LIKE ?", (f"{_PREFIX}%",)).fetchall()]
     finally:
         conn.close()
 

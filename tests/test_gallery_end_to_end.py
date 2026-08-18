@@ -24,7 +24,7 @@ _PREFIX = "e2eprobe_"
 def _purge(smartgallery_app):
     conn = smartgallery_app.get_db_connection()
     try:
-        conn.execute(f"DELETE FROM files WHERE name LIKE '{_PREFIX}%'")
+        conn.execute("DELETE FROM files WHERE name LIKE ?", (f"{_PREFIX}%",))
         conn.commit()
     finally:
         conn.close()
@@ -63,7 +63,7 @@ def test_scanned_files_reach_the_database_with_their_metadata(smartgallery_app, 
         rows = {
             r["name"]: r
             for r in conn.execute(
-                f"SELECT name, type, dimensions, size FROM files WHERE name LIKE '{_PREFIX}%'"
+                "SELECT name, type, dimensions, size FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)
             ).fetchall()
         }
     finally:
@@ -93,9 +93,9 @@ def test_rescanning_an_unchanged_library_is_a_no_op(smartgallery_app, library):
     derived, and a scan that re-inserted would grow the library forever."""
     conn = smartgallery_app.get_db_connection()
     try:
-        before = conn.execute(f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
+        before = conn.execute("SELECT COUNT(*) FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchone()[0]
         smartgallery_app.full_sync_database(conn)
-        after = conn.execute(f"SELECT COUNT(*) FROM files WHERE name LIKE '{_PREFIX}%'").fetchone()[0]
+        after = conn.execute("SELECT COUNT(*) FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchone()[0]
     finally:
         conn.close()
     assert before == after == len(library)
@@ -112,7 +112,7 @@ def test_a_deleted_file_leaves_the_library_on_the_next_scan(smartgallery_app, li
     try:
         smartgallery_app.full_sync_database(conn)
         remaining = sorted(
-            r[0] for r in conn.execute(f"SELECT name FROM files WHERE name LIKE '{_PREFIX}%'").fetchall()
+            r[0] for r in conn.execute("SELECT name FROM files WHERE name LIKE ?", (f"{_PREFIX}%",)).fetchall()
         )
     finally:
         conn.close()

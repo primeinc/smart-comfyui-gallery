@@ -240,9 +240,7 @@ def load_images(root: str, models_dir: str, cache: str) -> tuple:
 
     paths = []
     for dirpath, _dirnames, filenames in os.walk(root):
-        for fn in filenames:
-            if fn.lower().endswith(_IMAGE_EXTS):
-                paths.append(os.path.join(dirpath, fn))
+        paths.extend(os.path.join(dirpath, fn) for fn in filenames if fn.lower().endswith(_IMAGE_EXTS))
     paths.sort()
     print(f"embedding {len(paths)} images under {root} via {backend.model_id} ...")
 

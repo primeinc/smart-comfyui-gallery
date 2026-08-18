@@ -90,9 +90,7 @@ def collect_ground_truth(backend, root, limit):
     sources = []
     paths = []
     for dirpath, _dirs, files in os.walk(root):
-        for fn in files:
-            if fn.lower().endswith(_IMAGE_EXTS):
-                paths.append(os.path.join(dirpath, fn))
+        paths.extend(os.path.join(dirpath, fn) for fn in files if fn.lower().endswith(_IMAGE_EXTS))
     paths.sort()
     for path in paths:
         if len(sources) >= limit:
@@ -138,8 +136,9 @@ def main() -> None:
     cases = []  # (image_or_path, gt_boxes_px, tag)
     if args.labels:
         with open(args.labels, encoding="utf-8") as f:
-            for entry in json.load(f):
-                cases.append((entry["image"], [tuple(fc["bbox"]) for fc in entry["faces"]], "labeled"))
+            cases.extend(
+                (entry["image"], [tuple(fc["bbox"]) for fc in entry["faces"]], "labeled") for entry in json.load(f)
+            )
         print(f"{len(cases)} labeled images from {args.labels}")
     else:
         t0 = time.perf_counter()
@@ -150,8 +149,7 @@ def main() -> None:
             f"in {time.perf_counter() - t0:.0f}s"
         )
         for path, box in sources:
-            for target in TARGETS:
-                cases.append((path, [box], f"scale->{target}px"))
+            cases.extend((path, [box], f"scale->{target}px") for target in TARGETS)
             cases.append((path, [box], "native"))
 
     stats = {name: {"faces": 0, "tp": 0, "gated_tp": 0} for name, _lo, _hi in BANDS}
