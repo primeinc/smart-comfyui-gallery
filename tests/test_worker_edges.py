@@ -674,11 +674,12 @@ def test_mask_stage_unreadable_file_counts_error_stays_retryable(tmp_path):
 
 def test_cycle_runs_review_stage_with_stub_critic(tmp_path):
     """The review stage is wired into _run_cycle: one full cycle with a
-    stub critic produces the ai_reviews row itself."""
+    stub critic and the crawl enabled produces the ai_reviews row itself."""
     db_path = str(tmp_path / "g.sqlite")
     _make_db(db_path)
     _add_file(db_path, "cy1", _save_png(tmp_path, "cy1.png"), 1000.0)
-    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"), db_path, batch_size=50)
+    config = _config(tmp_path, db_path, critic_backend="stub", review_crawl=True)
+    worker = AIWorker(config, db_path, batch_size=50)
 
     worker._run_cycle()
 
@@ -690,6 +691,23 @@ def test_cycle_runs_review_stage_with_stub_critic(tmp_path):
     log = _query_one(db_path, "SELECT result_count FROM ai_scan_log WHERE file_id='cy1' AND kind='review'")
     assert log is not None
     assert log[0] >= 0
+
+
+def test_the_cycle_does_not_review_unless_asked_to_crawl(tmp_path):
+    """The default: a review is a multi-minute VLM pass, so the worker never
+    starts one on its own. Same file, same stub critic, crawl off -- nothing
+    is reviewed and no scan row is written, because a scan row would tell a
+    later crawl the file is already current."""
+    db_path = str(tmp_path / "g.sqlite")
+    _make_db(db_path)
+    _add_file(db_path, "cy2", _save_png(tmp_path, "cy2.png"), 1000.0)
+    worker = AIWorker(_config(tmp_path, db_path, critic_backend="stub"), db_path, batch_size=50)
+
+    worker._run_cycle()
+
+    assert worker.stats["reviewed"] == 0
+    assert _query_one(db_path, "SELECT 1 FROM ai_reviews WHERE file_id = 'cy2'") is None
+    assert _query_one(db_path, "SELECT 1 FROM ai_scan_log WHERE file_id = 'cy2' AND kind = 'review'") is None
 
 
 # -- orphaned-mask sweep ------------------------------------------------------

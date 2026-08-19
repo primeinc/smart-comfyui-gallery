@@ -760,8 +760,17 @@ class AIWorker:
                     self._note_skip(skips, "masks", self.config.segmenter_backend)
 
             self._cycles_since_review += 1
-            critic_backend = self._backend("critic", review.get_reviewer)
-            if critic_backend is None:
+            # A review is a multi-minute VLM pass over one picture, so the
+            # crawl is opt-in: without AI_DAM_REVIEW_CRAWL the critic runs
+            # only where a person asked for one, through
+            # GET /review/run/<file_id>. The backend is not even resolved
+            # here in that case -- resolving it loads a multi-GB checkpoint,
+            # which is a lot of work to decide not to use it.
+            critic_backend = self._backend("critic", review.get_reviewer) if self.config.review_crawl else None
+            if not self.config.review_crawl:
+                if self.config.critic_backend not in ("none", "stub"):
+                    skips.setdefault("reviews", "on demand only (AI_DAM_REVIEW_CRAWL=true to crawl)")
+            elif critic_backend is None:
                 self._note_skip(skips, "reviews", self.config.critic_backend)
             elif fast_consumed == 0 or self._cycles_since_review >= self._review_interval:
                 n = max(1, self.batch_size // 10) if fast_consumed == 0 else 1
@@ -871,9 +880,15 @@ class AIWorker:
             face_backend = self._backend("face", faces.get_face_backend)
             if face_backend is not None:
                 self._process_faces(conn, face_backend, 1, only_file_id=file_id)
-            critic = self._backend("critic", review.get_reviewer)
-            if critic is not None:
-                self._process_reviews(conn, critic, 1, only_file_id=file_id)
+            # No review here. Indexing a file is seconds of hashing and
+            # embedding; a review is minutes of VLM. Asking for one is a
+            # separate act -- GET /review/run/<file_id> -- and piggybacking
+            # it on every index made "index this file" quietly mean "and
+            # spend the next few minutes forming an opinion about it".
+            if self.config.review_crawl:
+                critic = self._backend("critic", review.get_reviewer)
+                if critic is not None:
+                    self._process_reviews(conn, critic, 1, only_file_id=file_id)
 
     def _log_cycle_progress(self, conn: sqlite3.Connection, stats_before: dict, skips: dict | None = None) -> None:
         """One INFO line per cycle that did work — what was indexed, how far

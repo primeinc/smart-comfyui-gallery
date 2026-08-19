@@ -704,6 +704,7 @@ def test_review_pacing_rides_along_and_backs_off(tmp_path, monkeypatch):
         visual_backend="none",
         face_backend="none",
         critic_backend="stub",
+        review_crawl=True,  # pacing is a property of the crawl, which is opt-in
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
 
@@ -754,6 +755,7 @@ def test_review_pacing_resets_when_reviews_are_fast(tmp_path, monkeypatch):
         visual_backend="none",
         face_backend="none",
         critic_backend="stub",
+        review_crawl=True,  # pacing is a property of the crawl, which is opt-in
     )
     worker = AIWorker(config, db_path, poll_interval=0.05, batch_size=10)
     worker._review_interval = 8  # pretend an earlier slow phase

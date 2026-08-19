@@ -85,6 +85,7 @@ The AI layer is **on by default** and provisions itself; see
 | `AI_DAM_FACE_MIN_PX` / `AI_DAM_FACE_DETECT_MAX_SIDE` | `24` / `1600` | Smallest kept face box, and the detection input cap. |
 | `AI_DAM_FACE_EMBEDDER` | `auto` | `arcface` (512-d) or `sface` (128-d). |
 | `AI_DAM_CRITIC_MODEL` | `Qwen/Qwen3-VL-2B-Instruct` | Which image-text-to-text checkpoint reviews images. Any transformers checkpoint works — a provisioned directory name or a Hugging Face repo id. |
+| `AI_DAM_REVIEW_CRAWL` | `false` | `true` lets the background worker review the whole library on its own. Off by default: a review is a multi-minute pass over one picture, so the critic runs only where someone asked for one, on that file. |
 | `AI_DAM_EPHEMERAL_INDEX` | `false` | Keep the vector index in memory only. |
 | `OMNIQUERY_NL2SQL_MODEL` | `distil-labs/distil-qwen3-4b-text2sql` | Override the model the search palette uses to turn a question into SQL. |
 

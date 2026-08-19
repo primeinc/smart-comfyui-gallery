@@ -820,11 +820,15 @@ def test_model_stages_share_the_budget_evenly(tmp_path):
 
 
 def test_backlog_reviews_ride_along_never_starved(tmp_path, monkeypatch):
-    """While embeddings/faces still have backlog, reviews are paced, not
-    held: exactly one review rides along per eligible cycle (measured
-    backoff may stretch the interval; it never reaches zero). Reviews keep
-    running after the fast stages go idle."""
-    cfg = _cfg(tmp_path)
+    """With the crawl enabled, reviews are paced but never starved by a busy
+    crawl: exactly one review rides along per eligible cycle (measured
+    backoff may stretch the interval; it never reaches zero), and they keep
+    running after the fast stages go idle.
+
+    The crawl is opt-in -- see
+    test_worker_edges.test_the_cycle_does_not_review_unless_asked_to_crawl
+    for the default, where none of this runs at all."""
+    cfg = _cfg(tmp_path, review_crawl=True)
     conn = _make_db(cfg.db_path)
     for i in range(3):
         _add_image_file(conn, tmp_path, f"rev{i}", mtime=1000.0 + i)

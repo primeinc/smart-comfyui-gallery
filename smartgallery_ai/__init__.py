@@ -105,6 +105,20 @@ class AIConfig:
     critic_model: str = ""
     segmenter_backend: str = "auto"
 
+    # False (default): the critic runs ONLY when a person asks for one file
+    # -- `GET /review/run/<file_id>`, the Review button on an image. True:
+    # the worker also crawls the library reviewing whatever has no review
+    # yet.
+    #
+    # Off by default because a review is a multi-minute VLM pass over one
+    # picture. Crawling means the machine spends hours generating opinions
+    # nobody asked for, and each one writes an ai_scan_log row that says
+    # "current" -- so a review that fails leaves a file that will never be
+    # retried, which reads as a missing review rather than a stuck one.
+    # Indexing a file does not imply wanting it reviewed either: hashes and
+    # embeddings are seconds, a review is not.
+    review_crawl: bool = False
+
     # True: the background worker installs missing runtime packages and
     # downloads missing model weights once, asynchronously, on startup
     # (the request path never downloads; network failure degrades to
@@ -151,6 +165,7 @@ class AIConfig:
             face_backend=_env_str("AI_DAM_FACE_BACKEND", "auto"),
             critic_backend=_env_str("AI_DAM_CRITIC_BACKEND", "auto"),
             critic_model=_env_str("AI_DAM_CRITIC_MODEL", ""),
+            review_crawl=_env_bool("AI_DAM_REVIEW_CRAWL"),
             segmenter_backend=_env_str("AI_DAM_SEGMENTER_BACKEND", "auto"),
             near_dup_max_distance=_env_num("AI_DAM_NEAR_DUP_DISTANCE", 8),
             # None keeps the per-embedder default; a blank value must mean
