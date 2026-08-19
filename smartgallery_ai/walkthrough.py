@@ -23,6 +23,8 @@ from __future__ import annotations
 import logging
 import sqlite3
 
+import numpy as np
+
 from smartgallery_ai import (
     HASH_ALGO_VERSION,
     RUBRIC_VERSION,
@@ -32,7 +34,9 @@ from smartgallery_ai import (
     backends,
     hashing,
     invalidation,
+    vectors,
 )
+from sqlbind import with_id_placeholders
 
 _logger = logging.getLogger(__name__)
 
@@ -60,8 +64,122 @@ _STAGE_BACKEND = {
 }
 
 
+# What each stage actually computes, in the terms someone would need to
+# decide whether its answer is the one they want. Static per stage: the
+# state and the evidence change per file, the mechanism does not. Every
+# number here is read off the implementation, not the docs -- see the
+# module each line names.
+_STAGE_DOES = {
+    "indexed": (
+        "The gallery's own scan wrote this file's row: path, mtime, size, type. Everything below keys off "
+        "that row, and a changed mtime is what makes all of it stale at once."
+    ),
+    "metadata": (
+        "Pulls the ComfyUI workflow out of the PNG and traces the positive prompt through it. That text is "
+        "what prompt alignment compares the picture against, and what a review is allowed to quote."
+    ),
+    "thumbnail": (
+        "A downscaled JPEG cached under a digest of path+mtime, so editing a file misses the old cache entry "
+        "rather than serving a stale picture."
+    ),
+    "metadata_visibility": (
+        "Whether this viewer may see how a picture was made. Seeing the image and reading its prompt are "
+        "separate permissions: alignment elements are verbatim slices of the prompt, so a gallery that hides "
+        "prompts must withhold them here too."
+    ),
+    "hashes": (
+        "sha256 over the raw bytes gives exact identity. phash64 is perceptual: grayscale, resize to 32x32, "
+        "2D DCT-II, keep the top-left 8x8 low-frequency block, and set each bit where the coefficient beats "
+        "the median of the 63 AC terms. dhash64 is a 9x8 horizontal gradient, one bit per left>right "
+        "comparison. Both survive re-encoding and mild edits, which sha256 does not."
+    ),
+    "semantic": (
+        "open_clip ViT-B-32 (laion2b_s34b_b79k) maps the image to a 512-d L2-normalized vector in a space it "
+        "SHARES with its own text tower. That shared space is the whole trick: 'a red car at night' goes "
+        "through the text side of the same model and lands near matching pixels, so cosine similarity is "
+        "meaningful between a sentence and a picture."
+    ),
+    "visual": (
+        "facebook/dinov2-small, a self-supervised ViT, takes its CLS token as a 384-d L2-normalized "
+        "descriptor. No text side, no labels, trained only to be consistent with itself under augmentation -- "
+        "so it matches on appearance and composition and will hand you a different neighbour set than CLIP "
+        "does for the same picture. That is why both spaces exist."
+    ),
+    "faces": (
+        "insightface antelopev2: SCRFD-10GF finds each box and its 5 landmarks, those landmarks drive a "
+        "similarity-transform crop to a canonical layout, and glintr100 (ResNet100 trained on Glint360K) "
+        "embeds the aligned crop to a 512-d ArcFace vector; genderage adds age and sex. The OpenCV lane "
+        "swaps in YuNet detection with SFace (128-d) or the same ArcFace weights through cv2.dnn."
+    ),
+    "clustering": (
+        "Builds a cosine-similarity graph over the face vectors -- an edge wherever two faces clear the "
+        "threshold -- then runs Chinese Whispers label propagation (dlib's algorithm) over it. Nobody tells "
+        "it how many people are in the library; the clusters fall out of the graph. Faces below the "
+        "threshold stay unassigned rather than being forced into a bucket. The graph itself is built by "
+        "torch-CUDA, FAISS, or numpy, whichever is available."
+    ),
+    "review": (
+        "A vision-language critic looks at the picture and returns typed findings -- severity, confidence, "
+        "and whether it can actually point at the defect -- plus a quality score, validated against a strict "
+        "schema before a row is written. A finding that claims a location must also survive a crop check."
+    ),
+    "alignment": (
+        "Splits the positive prompt into its elements and asks, per element, whether the image satisfies it "
+        "and where. The answer is 'cat: yes, here / neon sign: no' rather than one number for the whole "
+        "prompt."
+    ),
+    "masks": (
+        "MobileSAM segments the region a localizable finding pointed at, turning its bounding rectangle into "
+        "a mask that follows the actual shape of the defect."
+    ),
+    "near_dup": (
+        "FAISS IndexBinaryFlat over the 64-bit phash values: exact Hamming search using popcount "
+        "instructions, with a chunked numpy XOR+popcount sweep as the fallback when FAISS is absent. Both "
+        "paths return the same pairs. Two files count as near-duplicates when their distance is at or under "
+        "AI_DAM_NEAR_DUP_DISTANCE."
+    ),
+    "similar": (
+        "FAISS IndexFlatIP over the L2-normalized vectors. Inner product on unit vectors IS cosine "
+        "similarity, and Flat means exhaustive -- every candidate is scored, no approximation, so the "
+        "neighbours are exact. Results are pinned to the model version the query file was embedded at, so "
+        "vectors produced by two different models are never compared."
+    ),
+}
+
+
 def _provision_hint(group: str) -> str:
     return f"python -m smartgallery_ai provision {group}"
+
+
+def _neighbours(ctx, space: str, model_version: str, k: int) -> list:
+    """This file's k nearest neighbours in `space`, as (file_id, cosine).
+
+    Empty when anything goes wrong: an example is worth having, never worth
+    failing the page for. Shared by the embedding stages and the similarity
+    row so both report the same ranking.
+    """
+    try:
+        row = ctx.conn.execute(
+            "SELECT vector FROM ai_embeddings WHERE file_id = ? AND space = ?", (ctx.file_id, space)
+        ).fetchone()
+        if row is None:
+            return []
+        query = np.frombuffer(row["vector"], dtype="<f4")
+        store = vectors.VectorStore(cache_dir=ctx.config.cache_dir, ephemeral=ctx.config.ephemeral_index)
+        return store.topk(ctx.conn, space, query, k, exclude=[ctx.file_id], model_version=model_version)
+    except Exception:
+        _logger.debug("handled a failure in _neighbours", exc_info=True)
+        return []
+
+
+def _example(caption: str, rows: list) -> dict:
+    """A worked example computed from THIS file, not a description of one.
+
+    `rows` are (label, value) pairs the page renders as a small table, so a
+    reader can check the mechanism against the numbers it actually produced
+    rather than take the prose on trust.
+    """
+    return {"caption": caption, "rows": [[str(a), str(b)] for a, b in rows]}
 
 
 def _row(key, group, label, state, detail, **extra) -> dict:
@@ -133,6 +251,17 @@ class _Ctx:
                 fix=_provision_hint(provision_group),
             )
         return None
+
+    def names(self, file_ids) -> dict:
+        """file_id -> display name, for turning ids in an example into
+        something a person can recognise on the page."""
+        ids = list(file_ids)
+        if not ids:
+            return {}
+        rows = self.conn.execute(
+            with_id_placeholders("SELECT id, name FROM files WHERE id IN ({ids})", ids), ids
+        ).fetchall()
+        return {r["id"]: r["name"] for r in rows}
 
     def scan(self, kind: str):
         """The most recent ai_scan_log row for this file and stage kind."""
@@ -206,6 +335,28 @@ def _stage_hashes(ctx: _Ctx) -> dict:
             f"hashed at algo {row['algo_version']}; current is {HASH_ALGO_VERSION}",
             action="index",
         )
+    # The bits themselves, plus what they measure against a real neighbour:
+    # a Hamming distance is only meaningful next to the threshold it is
+    # compared with.
+    phash = hashing.to_unsigned64(row["phash64"]) if row["phash64"] is not None else None
+    dhash = hashing.to_unsigned64(row["dhash64"]) if row["dhash64"] is not None else None
+    example_rows = [
+        ("sha256", row["sha256"][:32] + "…"),
+        ("phash64 (hex)", f"{phash:016x}" if phash is not None else "—"),
+        ("phash64 (bits)", f"{phash:064b}"[:32] + "…" if phash is not None else "—"),
+        ("dhash64 (hex)", f"{dhash:016x}" if dhash is not None else "—"),
+    ]
+    others = ctx.conn.execute(
+        "SELECT file_id, phash64 FROM ai_file_hashes WHERE file_id != ? AND phash64 IS NOT NULL LIMIT 4",
+        (ctx.file_id,),
+    ).fetchall()
+    names = ctx.names(r["file_id"] for r in others)
+    for other in others:
+        distance = hashing.hamming64(row["phash64"], other["phash64"])
+        verdict = "near-duplicate" if distance <= ctx.config.near_dup_max_distance else "different image"
+        example_rows.append(
+            (f"vs {names.get(other['file_id'], other['file_id'])}", f"{distance} bits apart → {verdict}")
+        )
     return _row(
         "hashes",
         "ai",
@@ -213,6 +364,11 @@ def _stage_hashes(ctx: _Ctx) -> dict:
         DONE,
         "sha256 + phash64 + dhash64",
         evidence={"phash64": row["phash64"], "dhash64": row["dhash64"], "algo_version": row["algo_version"]},
+        example=_example(
+            f"this file's hashes, and the distance to every other hashed file "
+            f"(threshold {ctx.config.near_dup_max_distance})",
+            example_rows,
+        ),
     )
 
 
@@ -231,6 +387,21 @@ def _embedding_stage(ctx: _Ctx, key: str, space: str, label: str) -> dict:
     stored = f"{row['model_id']}::{row['model_version']}"
     if invalidation.is_stale(row["source_mtime"], ctx.mtime, stored, stored):
         return _row(key, "ai", label, STALE, "the file changed after it was embedded", action="index")
+    # The neighbours this space actually returns for this file. Semantic and
+    # visual disagreeing on the same picture is the point of having both, and
+    # a list of names with scores shows that in a way prose cannot.
+    neighbours = _neighbours(ctx, space, row["model_version"], 5)
+    names = ctx.names(fid for fid, _score in neighbours)
+    example_rows = [(names.get(fid, fid), f"cosine {score:.4f}") for fid, score in neighbours]
+
+    example = (
+        _example(f"nearest neighbours in the {space} space, scored by cosine similarity", example_rows)
+        if example_rows
+        else _example(
+            "no other file is embedded in this space yet, so there is nothing to compare against",
+            [("corpus", "1 file (this one)")],
+        )
+    )
     return _row(
         key,
         "ai",
@@ -238,6 +409,7 @@ def _embedding_stage(ctx: _Ctx, key: str, space: str, label: str) -> dict:
         DONE,
         f"{row['dim']}-d vector from {row['model_id']}",
         evidence={"model_id": row["model_id"], "model_version": row["model_version"], "dim": row["dim"]},
+        example=example,
     )
 
 
@@ -262,6 +434,32 @@ def _stage_faces(ctx: _Ctx) -> dict:
     if invalidation.is_stale(scan["source_mtime"], ctx.mtime, scan["model_version"], scan["model_version"]):
         return _row("faces", "ai", "Face detection", STALE, "the file changed after it was scanned", action="index")
     detail = f"{count} face{'' if count == 1 else 's'} detected" if count else "scanned, no faces found"
+    # The actual detections: box, confidence, embedding width, cluster. A
+    # reader can check a low det_score against a box they think is wrong.
+    detections = ctx.conn.execute(
+        "SELECT face_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score, dim, cluster_id, age, sex "
+        "FROM ai_face_instances WHERE file_id = ? ORDER BY det_score DESC LIMIT 6",
+        (ctx.file_id,),
+    ).fetchall()
+    rows = [
+        (
+            f"face {d['face_id']}",
+            f"box ({d['bbox_x']:.3f}, {d['bbox_y']:.3f}, {d['bbox_w']:.3f}, {d['bbox_h']:.3f}) · "
+            f"det_score {d['det_score']:.3f} · {d['dim']}-d vector · "
+            + (f"cluster {d['cluster_id']}" if d["cluster_id"] is not None else "unclustered")
+            + (f" · {d['sex']} ~{d['age']}" if d["sex"] and d["age"] is not None else ""),
+        )
+        for d in detections
+    ]
+    example = (
+        _example(
+            f"the highest-confidence detections (of {count}); boxes are fractions of the image, "
+            f"kept only above det_score {ctx.config.face_min_det_score}",
+            rows,
+        )
+        if rows
+        else _example("the detector ran and returned nothing", [("faces", "0")])
+    )
     return _row(
         "faces",
         "ai",
@@ -269,6 +467,7 @@ def _stage_faces(ctx: _Ctx) -> dict:
         DONE,
         detail,
         evidence={"faces": count, "model_id": scan["model_id"], "scanned_at": scan["scanned_at"]},
+        example=example,
     )
 
 
@@ -287,6 +486,32 @@ def _stage_clustering(ctx: _Ctx) -> dict:
             f"0 of {len(rows)} faces clustered",
             fix="the worker clusters after its next faces scan, or POST /faces/recluster",
         )
+
+    # Which bucket each face landed in, how big that bucket is library-wide,
+    # and the threshold that decided it -- the three numbers needed to judge
+    # whether a cluster is too greedy or too shy.
+    threshold = ctx.conn.execute(
+        "SELECT params FROM ai_face_clusters WHERE params IS NOT NULL ORDER BY updated_at DESC LIMIT 1"
+    ).fetchone()
+    members = ctx.conn.execute(
+        "SELECT i.cluster_id, c.label, c.size, COUNT(*) AS here FROM ai_face_instances i "
+        "JOIN ai_face_clusters c ON c.cluster_id = i.cluster_id "
+        "WHERE i.file_id = ? GROUP BY i.cluster_id ORDER BY here DESC",
+        (ctx.file_id,),
+    ).fetchall()
+    example_rows = [
+        (
+            f"cluster {m['cluster_id']}" + (f" ({m['label']})" if m["label"] else ""),
+            f"{m['here']} of this file's faces · {m['size']} faces library-wide",
+        )
+        for m in members
+    ]
+    if clustered < len(rows):
+        example_rows.append(("unclustered", f"{len(rows) - clustered} faces below the similarity threshold"))
+    if threshold is not None:
+        example_rows.append(("params", str(threshold["params"])[:120]))
+    example = _example("the buckets this file's faces landed in", example_rows)
+
     if clustered < len(rows):
         return _row(
             "clustering",
@@ -295,6 +520,7 @@ def _stage_clustering(ctx: _Ctx) -> dict:
             PARTIAL,
             f"{clustered} of {len(rows)} faces clustered; the rest sit below the similarity threshold",
             evidence={"clustered": clustered, "total": len(rows)},
+            example=example,
         )
     return _row(
         "clustering",
@@ -303,6 +529,7 @@ def _stage_clustering(ctx: _Ctx) -> dict:
         DONE,
         f"all {clustered} faces clustered",
         evidence={"clustered": clustered, "total": len(rows)},
+        example=example,
     )
 
 
@@ -429,6 +656,13 @@ def _stage_near_dup(ctx: _Ctx) -> dict:
             action="index",
         )
     corpus = ctx.conn.execute("SELECT COUNT(*) FROM ai_file_hashes WHERE phash64 IS NOT NULL").fetchone()[0]
+    hits = hashing.find_near_duplicates(ctx.conn, ctx.file_id, ctx.config.near_dup_max_distance)
+    names = ctx.names(fid for fid, _distance in hits)
+    example_rows = [(names.get(fid, fid), f"{distance} bits apart") for fid, distance in hits[:6]]
+    example = _example(
+        f"what this query returns right now, at threshold {ctx.config.near_dup_max_distance}",
+        example_rows or [("result", f"no file within {ctx.config.near_dup_max_distance} bits of this one")],
+    )
     return _row(
         "near_dup",
         "query",
@@ -436,6 +670,7 @@ def _stage_near_dup(ctx: _Ctx) -> dict:
         DONE,
         f"answerable against {corpus} hashed file{'' if corpus == 1 else 's'}",
         evidence={"corpus": corpus, "max_distance": ctx.config.near_dup_max_distance},
+        example=example,
     )
 
 
@@ -464,7 +699,24 @@ def _stage_similar(ctx: _Ctx) -> dict:
     detail = ", ".join(
         f"{space}: {n} neighbour candidate{'' if n == 1 else 's'}" for space, n in sorted(spaces.items())
     )
-    return _row("similar", "query", "Similarity search", DONE, detail, evidence=spaces)
+
+    # Both rankings, interleaved by position. Where rank 1 differs between the
+    # spaces you can see directly that "similar" is two questions rather than
+    # one -- which a single merged list would hide.
+    ranked = {r["space"]: _neighbours(ctx, r["space"], r["model_version"], 3) for r in rows}
+    lookup = ctx.names(fid for hits in ranked.values() for fid, _score in hits)
+    example_rows = []
+    for position in range(max((len(hits) for hits in ranked.values()), default=0)):
+        for space in sorted(ranked):
+            hits = ranked[space]
+            if position < len(hits):
+                fid, score = hits[position]
+                example_rows.append((f"{space} #{position + 1}", f"{lookup.get(fid, fid)} — cosine {score:.4f}"))
+    example = _example(
+        "what each space returns for this file, best first",
+        example_rows or [("result", "no other file is embedded yet, so both spaces return nothing")],
+    )
+    return _row("similar", "query", "Similarity search", DONE, detail, evidence=spaces, example=example)
 
 
 _STAGES = (
@@ -517,6 +769,14 @@ def walk(conn: sqlite3.Connection, config: AIConfig, file_id: str, worker=None, 
         # trailing the AI stages they come before in reality.
         after = max((i for i, stage in enumerate(stages) if stage["group"] == "ingest"), default=-1) + 1
         stages[after:after] = extra
+
+    # Attached here rather than inside each probe: what a stage computes does
+    # not depend on what it found, and repeating it down every branch is how
+    # two descriptions of one mechanism start to disagree.
+    for stage in stages:
+        does = _STAGE_DOES.get(stage["key"])
+        if does:
+            stage["does"] = does
 
     counts: dict = {}
     for stage in stages:

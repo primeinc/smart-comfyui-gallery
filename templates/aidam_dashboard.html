@@ -86,6 +86,19 @@
         border-left-width: 3px; border-radius: 10px; padding: 11px 14px; margin-bottom: 7px; }
     .wt-row .wt-label { font-weight: 600; font-size: 0.87rem; }
     .wt-row .wt-detail { color: var(--text-muted); font-size: 0.82rem; margin-top: 1px; }
+    .wt-does { font-size: 0.81rem; line-height: 1.55; color: var(--text-color); opacity: 0.9;
+        margin-top: 8px; padding: 8px 11px; background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-color); border-radius: 7px; max-width: 78ch; }
+    .wt-does b { color: var(--ai-color); font-weight: 600; font-size: 0.66rem;
+        text-transform: uppercase; letter-spacing: 1.2px; display: block; margin-bottom: 3px; }
+    .wt-eg { margin-top: 8px; border: 1px solid var(--border-color); border-radius: 7px; overflow: hidden;
+        max-width: 82ch; }
+    .wt-eg .cap { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1.2px;
+        color: var(--lane-b); padding: 7px 11px 5px 11px; }
+    .wt-eg table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.76rem; }
+    .wt-eg td { padding: 4px 11px; border-top: 1px solid var(--border-color); vertical-align: top;
+        overflow-wrap: anywhere; }
+    .wt-eg td:first-child { color: var(--text-muted); white-space: nowrap; width: 1%; }
     .wt-why { font-size: 0.8rem; margin-top: 6px; padding-left: 9px; border-left: 2px solid var(--border-color); }
     .wt-fix { margin-top: 6px; }
     .wt-fix code { font-family: var(--mono); font-size: 0.78rem; background: var(--surface-hover);
@@ -255,7 +268,9 @@
         <h2>Pipeline walkthrough</h2>
         <p class="lede">Every stage for one file: what ran, what did not, and why. A blocked row carries the backend&rsquo;s own message and the command that clears it &mdash; answering that means resolving the backend, which loads whatever is provisioned, so it lives here rather than on the status page.</p>
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-            <input type="text" id="wt-file" placeholder="file id" style="width:280px;" value="{{ file_id }}">
+            <input type="text" id="wt-file" placeholder="file id, or paste any URL containing one"
+                   style="width:420px;" value="{{ file_id }}"
+                   onkeydown="if (event.key === 'Enter') wtRun();">
             <button class="glass-btn" onclick="wtRun()">Walk this file</button>
             <span style="flex:1"></span>
             <span class="mono muted" id="wt-summary"></span>
@@ -670,8 +685,24 @@ function loadWalkthrough() {
     if (input && input.value.trim()) wtRun();
 }
 
+// Accepts a bare id, a path, or a whole URL pasted out of the address bar
+// (/galleryout/thumbnail/<id>, ?file=<id>, .../aidam/walkthrough/<id>) and
+// keeps the last path segment. Every id-bearing route in this app puts the
+// id last, so that one rule covers all of them.
+function wtFileId(raw) {
+    let value = (raw || '').trim();
+    if (!value) return '';
+    const asParam = value.match(/[?&]file=([^&#]+)/);
+    if (asParam) return decodeURIComponent(asParam[1]);
+    value = value.split('#')[0].split('?')[0];
+    const segments = value.split('/').filter(Boolean);
+    return decodeURIComponent(segments.length ? segments[segments.length - 1] : value);
+}
+
 async function wtRun() {
-    const fileId = document.getElementById('wt-file').value.trim();
+    const input = document.getElementById('wt-file');
+    const fileId = wtFileId(input.value);
+    input.value = fileId;  // show what it resolved to, so a bad paste is visible
     const body = document.getElementById('wt-body');
     const summary = document.getElementById('wt-summary');
     summary.textContent = '';
@@ -724,6 +755,10 @@ function wtRender(d, fileId) {
 
 function wtRow(s, fileId) {
     const cls = s.state === 'n/a' ? 'na' : s.state;
+    const does = s.does ? `<div class="wt-does"><b>What this does</b>${esc(s.does)}</div>` : '';
+    const eg = s.example ? `<div class="wt-eg"><div class="cap">${esc(s.example.caption)}</div><table>${
+        s.example.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
+    }</table></div>` : '';
     const why = s.blocked_reason ? `<div class="wt-why">${esc(s.blocked_reason)}</div>` : '';
     const fix = s.fix ? `<div class="wt-fix"><code>${esc(s.fix)}</code></div>` : '';
     const ev = s.evidence
@@ -737,7 +772,7 @@ function wtRow(s, fileId) {
         <div>
             <div class="wt-label">${esc(s.label)}</div>
             <div class="wt-detail">${esc(s.detail)}</div>
-            ${why}${fix}${ev}
+            ${does}${eg}${why}${fix}${ev}
         </div>
         <div>${act}</div>
     </div>`;

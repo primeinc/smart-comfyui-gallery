@@ -249,6 +249,33 @@ def test_the_layer_being_off_is_said_once_per_stage(tmp_path):
         assert stages[key]["fix"] == "set ENABLE_AI_DAM=true and restart", key
 
 
+def test_every_stage_says_what_it_actually_computes(tmp_path):
+    """A state without a mechanism is not an explanation. Each row carries
+    the model, dimension, metric, or algorithm behind it -- named concretely
+    enough to tell you whether its answer is the one you wanted."""
+    cfg = _cfg(tmp_path)
+    conn = _make_db(cfg.db_path)
+    _add_image(conn, tmp_path, "explained", prompt="a red car at night")
+    stages = _by_key(walkthrough.walk(conn, cfg, "explained"))
+    conn.close()
+
+    for key, stage in stages.items():
+        assert stage.get("does"), f"{key} reports a state with no mechanism behind it"
+
+    # The two embedding spaces must not read as interchangeable: the reason
+    # both exist is that they answer different questions.
+    assert "512-d" in stages["semantic"]["does"]
+    assert "text tower" in stages["semantic"]["does"]
+    assert "384-d" in stages["visual"]["does"]
+    assert "No text side" in stages["visual"]["does"]
+    # Index type AND metric, since "similar" is meaningless without them.
+    assert "IndexFlatIP" in stages["similar"]["does"]
+    assert "cosine" in stages["similar"]["does"]
+    assert "IndexBinaryFlat" in stages["near_dup"]["does"]
+    assert "Hamming" in stages["near_dup"]["does"]
+    assert "Chinese Whispers" in stages["clustering"]["does"]
+
+
 def test_an_unknown_file_has_no_walkthrough(tmp_path):
     """None, so the route can answer 404 rather than inventing stages."""
     cfg = _cfg(tmp_path)
