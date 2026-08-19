@@ -172,14 +172,27 @@ def _neighbours(ctx, space: str, model_version: str, k: int) -> list:
         return []
 
 
-def _example(caption: str, rows: list) -> dict:
+def _example(caption: str, rows: list, tiles: list | None = None, boxes: list | None = None) -> dict:
     """A worked example computed from THIS file, not a description of one.
 
     `rows` are (label, value) pairs the page renders as a small table, so a
     reader can check the mechanism against the numbers it actually produced
     rather than take the prose on trust.
+
+    `tiles` are {file_id, caption} -- the page draws each as a thumbnail, so
+    a neighbour list is pictures rather than filenames. This is a gallery:
+    "these two images scored 0.24" is an assertion, the two images side by
+    side is the evidence.
+
+    `boxes` are {x, y, w, h, label} in image fractions, drawn over this
+    file's own thumbnail. A face box is only checkable by looking at it.
     """
-    return {"caption": caption, "rows": [[str(a), str(b)] for a, b in rows]}
+    example: dict = {"caption": caption, "rows": [[str(a), str(b)] for a, b in rows]}
+    if tiles:
+        example["tiles"] = tiles
+    if boxes:
+        example["boxes"] = boxes
+    return example
 
 
 def _row(key, group, label, state, detail, **extra) -> dict:
@@ -395,7 +408,13 @@ def _embedding_stage(ctx: _Ctx, key: str, space: str, label: str) -> dict:
     example_rows = [(names.get(fid, fid), f"cosine {score:.4f}") for fid, score in neighbours]
 
     example = (
-        _example(f"nearest neighbours in the {space} space, scored by cosine similarity", example_rows)
+        _example(
+            f"nearest neighbours in the {space} space, scored by cosine similarity",
+            example_rows,
+            tiles=[
+                {"file_id": fid, "caption": f"{score:.4f}", "title": names.get(fid, fid)} for fid, score in neighbours
+            ],
+        )
         if example_rows
         else _example(
             "no other file is embedded in this space yet, so there is nothing to compare against",
@@ -451,11 +470,31 @@ def _stage_faces(ctx: _Ctx) -> dict:
         )
         for d in detections
     ]
+    # Every box, not just the six listed: the overlay is the only place the
+    # detector's actual behaviour is checkable, and a missed face is visible
+    # there and nowhere else.
+    all_boxes = ctx.conn.execute(
+        "SELECT face_id, bbox_x, bbox_y, bbox_w, bbox_h, det_score, cluster_id "
+        "FROM ai_face_instances WHERE file_id = ? ORDER BY face_id",
+        (ctx.file_id,),
+    ).fetchall()
+    boxes = [
+        {
+            "x": b["bbox_x"],
+            "y": b["bbox_y"],
+            "w": b["bbox_w"],
+            "h": b["bbox_h"],
+            "label": f"{b['det_score']:.2f}",
+            "clustered": b["cluster_id"] is not None,
+        }
+        for b in all_boxes
+    ]
     example = (
         _example(
-            f"the highest-confidence detections (of {count}); boxes are fractions of the image, "
+            f"every detection drawn over the image, and the {len(rows)} most confident in full; "
             f"kept only above det_score {ctx.config.face_min_det_score}",
             rows,
+            boxes=boxes,
         )
         if rows
         else _example("the detector ran and returned nothing", [("faces", "0")])
@@ -510,7 +549,33 @@ def _stage_clustering(ctx: _Ctx) -> dict:
         example_rows.append(("unclustered", f"{len(rows) - clustered} faces below the similarity threshold"))
     if threshold is not None:
         example_rows.append(("params", str(threshold["params"])[:120]))
-    example = _example("the buckets this file's faces landed in", example_rows)
+
+    # The other files whose faces landed in the same bucket -- the claim
+    # "these are the same person" is only judgeable by seeing them.
+    cluster_ids = [m["cluster_id"] for m in members]
+    siblings = []
+    if cluster_ids:
+        siblings = ctx.conn.execute(
+            with_id_placeholders(
+                "SELECT DISTINCT i.file_id, i.cluster_id FROM ai_face_instances i "
+                "WHERE i.cluster_id IN ({ids}) AND i.file_id != ? LIMIT 12",
+                cluster_ids,
+            ),
+            [*cluster_ids, ctx.file_id],
+        ).fetchall()
+    sibling_names = ctx.names(s["file_id"] for s in siblings)
+    example = _example(
+        "the buckets this file's faces landed in",
+        example_rows,
+        tiles=[
+            {
+                "file_id": s["file_id"],
+                "caption": f"cluster {s['cluster_id']}",
+                "title": sibling_names.get(s["file_id"], s["file_id"]),
+            }
+            for s in siblings
+        ],
+    )
 
     if clustered < len(rows):
         return _row(
@@ -662,6 +727,9 @@ def _stage_near_dup(ctx: _Ctx) -> dict:
     example = _example(
         f"what this query returns right now, at threshold {ctx.config.near_dup_max_distance}",
         example_rows or [("result", f"no file within {ctx.config.near_dup_max_distance} bits of this one")],
+        tiles=[
+            {"file_id": fid, "caption": f"{distance} bits", "title": names.get(fid, fid)} for fid, distance in hits[:6]
+        ],
     )
     return _row(
         "near_dup",
@@ -712,9 +780,17 @@ def _stage_similar(ctx: _Ctx) -> dict:
             if position < len(hits):
                 fid, score = hits[position]
                 example_rows.append((f"{space} #{position + 1}", f"{lookup.get(fid, fid)} — cosine {score:.4f}"))
+    # Tiles carry the space in the caption, so a file appearing under one
+    # space and not the other is visible rather than inferred.
+    tiles = [
+        {"file_id": fid, "caption": f"{space} {score:.3f}", "title": lookup.get(fid, fid)}
+        for space in sorted(ranked)
+        for fid, score in ranked[space][:3]
+    ]
     example = _example(
         "what each space returns for this file, best first",
         example_rows or [("result", "no other file is embedded yet, so both spaces return nothing")],
+        tiles=tiles,
     )
     return _row("similar", "query", "Similarity search", DONE, detail, evidence=spaces, example=example)
 

@@ -91,6 +91,20 @@
         border: 1px solid var(--border-color); border-radius: 7px; max-width: 78ch; }
     .wt-does b { color: var(--ai-color); font-weight: 600; font-size: 0.66rem;
         text-transform: uppercase; letter-spacing: 1.2px; display: block; margin-bottom: 3px; }
+    .wt-shot { position: relative; display: inline-block; max-width: 460px; line-height: 0;
+        border: 1px solid var(--border-color); border-radius: 7px; overflow: hidden; margin: 8px 0 0 0; }
+    .wt-shot img { width: 100%; height: auto; display: block; }
+    .wt-shot .bb { position: absolute; border: 2px solid var(--lane-b); border-radius: 2px;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.55); }
+    .wt-shot .bb.loose { border-color: var(--lane-a); border-style: dashed; }
+    .wt-shot .bb i { position: absolute; top: -1px; left: 100%; margin-left: 3px; font-style: normal;
+        font-family: var(--mono); font-size: 0.58rem; line-height: 1; padding: 1px 3px; border-radius: 3px;
+        background: rgba(0,0,0,0.75); color: var(--text-color); white-space: nowrap; }
+    .wt-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+        gap: 8px; margin-top: 8px; max-width: 82ch; }
+    .wt-hero { display: flex; gap: 14px; align-items: flex-start; }
+    .wt-hero img { width: 132px; height: 132px; object-fit: cover; border-radius: 8px;
+        border: 1px solid var(--border-color); flex: none; }
     .wt-eg { margin-top: 8px; border: 1px solid var(--border-color); border-radius: 7px; overflow: hidden;
         max-width: 82ch; }
     .wt-eg .cap { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1.2px;
@@ -737,11 +751,18 @@ function wtRender(d, fileId) {
 
     const head = `<div class="panel">
         <h3>File</h3>
-        <div class="mono" style="font-size:0.82rem;">${esc(d.file.name || d.file.file_id)}</div>
-        <div class="muted" style="font-size:0.78rem; margin-top:3px;">${esc(d.file.path)}</div>
-        <div class="muted" style="font-size:0.78rem; margin-top:6px;">${esc(d.file.type || 'unknown type')} &middot;
-            ${d.file.renderable ? 'a frame can be rendered from it' : 'no stage can render a frame from it'} &middot;
-            ${esc(d.worker.note)}</div>
+        <div class="wt-hero">
+            ${d.file.renderable ? `<img src="${thumb(d.file.file_id)}" alt=""
+                 onclick="window.open('/galleryout/file/${encodeURIComponent(d.file.file_id)}', '_blank')"
+                 style="cursor:pointer;" title="Open the full file">` : ''}
+            <div>
+                <div class="mono" style="font-size:0.82rem;">${esc(d.file.name || d.file.file_id)}</div>
+                <div class="muted" style="font-size:0.78rem; margin-top:3px;">${esc(d.file.path)}</div>
+                <div class="muted" style="font-size:0.78rem; margin-top:6px;">${esc(d.file.type || 'unknown type')} &middot;
+                    ${d.file.renderable ? 'a frame can be rendered from it' : 'no stage can render a frame from it'} &middot;
+                    ${esc(d.worker.note)}</div>
+            </div>
+        </div>
     </div>`;
 
     const groups = WT_GROUPS.map(([key, title]) => {
@@ -753,12 +774,44 @@ function wtRender(d, fileId) {
     document.getElementById('wt-body').innerHTML = head + groups;
 }
 
+// Boxes ride on the thumbnail in image fractions, the same way the detector
+// comparison draws its lanes -- a face box is only checkable by looking at it.
+function wtShot(fileId, boxes) {
+    const marks = (boxes || []).map(b => `<div class="bb ${b.clustered === false ? 'loose' : ''}"
+        style="left:${b.x * 100}%; top:${b.y * 100}%; width:${b.w * 100}%; height:${b.h * 100}%;"
+        title="${esc(b.label || '')}"></div>`).join('');
+    return `<div class="wt-shot"><img src="${thumb(fileId)}" alt="" loading="lazy">${marks}</div>`;
+}
+
+function wtExample(ex, fileId) {
+    const table = ex.rows && ex.rows.length
+        ? `<div class="wt-eg"><div class="cap">${esc(ex.caption)}</div><table>${
+            ex.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
+          }</table></div>`
+        : '';
+    const shot = ex.boxes && ex.boxes.length ? wtShot(fileId, ex.boxes) : '';
+    const tiles = ex.tiles && ex.tiles.length
+        ? `<div class="wt-tiles">${ex.tiles.map(t => `
+            <div class="thumb-tile" title="${esc(t.title || t.file_id)}"
+                 onclick="wtJump('${esc(t.file_id)}')">
+                <img src="${thumb(t.file_id)}" alt="" loading="lazy">
+                <span class="tag">${esc(t.caption || '')}</span>
+            </div>`).join('')}</div>`
+        : '';
+    return shot + tiles + table;
+}
+
+// A neighbour is a lead, not a destination: walking it keeps you on this page.
+function wtJump(fileId) {
+    document.getElementById('wt-file').value = fileId;
+    wtRun();
+    document.getElementById('view-walkthrough').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function wtRow(s, fileId) {
     const cls = s.state === 'n/a' ? 'na' : s.state;
     const does = s.does ? `<div class="wt-does"><b>What this does</b>${esc(s.does)}</div>` : '';
-    const eg = s.example ? `<div class="wt-eg"><div class="cap">${esc(s.example.caption)}</div><table>${
-        s.example.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
-    }</table></div>` : '';
+    const eg = s.example ? wtExample(s.example, fileId) : '';
     const why = s.blocked_reason ? `<div class="wt-why">${esc(s.blocked_reason)}</div>` : '';
     const fix = s.fix ? `<div class="wt-fix"><code>${esc(s.fix)}</code></div>` : '';
     const ev = s.evidence
