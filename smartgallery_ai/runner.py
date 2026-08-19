@@ -40,7 +40,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
-from smartgallery_ai import RUBRIC_VERSION, AIConfig, schema
+from smartgallery_ai import RUBRIC_VERSION, AIConfig, backends, schema
 from smartgallery_ai import review as review_mod
 from smartgallery_ai.worker import load_source_image, record_scan, stage_input_key
 
@@ -284,15 +284,23 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
     # "no such table: ai_review_alignment" after a ~90s review had already
     # been computed and was then thrown away.
     schema.init_schema(conn)
+    leases = contextlib.ExitStack()
     try:
         if critic is None:
             critic = review_mod.get_reviewer(config)
         if segmenter is None:
-            segmenter = review_mod.get_segmenter_backend(config)
+            # Leased, not constructed: MobileSAM is a torch checkpoint load
+            # and declares no thread safety, so the registry hands this run
+            # the process instance and holds it exclusively until the
+            # generator closes -- the worker's mask stage waits rather than
+            # loading a second copy. Same lifetime as _RUN_LOCK, which this
+            # generator already owns for exactly as long.
+            segmenter = leases.enter_context(backends.lease("segmenter", config))
     except Exception as exc:
         # An unavailable backend is a legitimate outcome, reported as data.
         _logger.debug("handled a failure in _run_locked", exc_info=True)
         yield _event("run", "error", error=f"backend resolution failed: {exc}")
+        leases.close()
         conn.close()
         return
 
@@ -329,6 +337,7 @@ def _run_locked(config, file_id, steps, critic, segmenter, connect):
         if ctx.img is not None:
             with contextlib.suppress(Exception):
                 ctx.img.close()
+        leases.close()
         conn.close()
 
     yield _event("run", "done", review_id=ctx.review_id, masks=ctx.masks)

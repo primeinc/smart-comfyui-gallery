@@ -10,7 +10,7 @@ import pytest
 from PIL import Image
 
 import smartgallery_ai.faces as F
-from smartgallery_ai import AIConfig
+from smartgallery_ai import AIConfig, backends
 from smartgallery_ai.embedders import BackendUnavailable
 from smartgallery_ai.faces import (
     _ARCFACE_DST,
@@ -734,7 +734,10 @@ def test_compare_detectors_reports_every_lane(tmp_path, monkeypatch):
     monkeypatch.setattr(F, "OpenCVFaceBackend", _FakeCv)
     monkeypatch.setattr(F, "InsightFaceBackend", _boom)
     cfg = AIConfig(face_backend="auto", models_dir=str(tmp_path))
-    out = F.compare_detectors(Image.new("RGB", (10, 10)), cfg)
+    # The registry is passed in rather than imported by faces (which it
+    # imports); reset so the lanes resolve against the fakes above.
+    backends.reset()
+    out = F.compare_detectors(Image.new("RGB", (10, 10)), cfg, backends)
     assert out["lanes"]["yunet"]["faces"][0]["det_score"] == 0.9
     assert out["lanes"]["yunet"]["faces"][0]["landmarks"] == [(0.15, 0.15)]
     assert "antelopev2" in out["lanes"]["scrfd"]["error"]

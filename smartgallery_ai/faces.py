@@ -145,6 +145,11 @@ class FaceBackend(ABC):
     model_id: str  # provenance recorded on every ai_face_instances row
     model_version: str  # scopes stored instances and clusters; versions never mix
     default_cluster_threshold: float = 0.55  # per-embedder operating point
+    # No face backend declares itself callable from two threads at once:
+    # cv2.FaceDetectorYN and insightface's FaceAnalysis both carry per-call
+    # state inside the native object. `smartgallery_ai.backends` therefore
+    # leases them exclusively. See SemanticEmbedder.thread_safe.
+    thread_safe: bool = False
 
     @abstractmethod
     def detect(self, img: Image.Image) -> list:
@@ -560,55 +565,57 @@ def installed_pipelines(config: AIConfig) -> list:
     ]
 
 
-def compare_detectors(img: Image.Image, config: AIConfig) -> dict:
+# Lane name -> the backend registry kind that supplies it. Lanes are the
+# distinct DETECTION stacks (the two opencv embedder variants share YuNet
+# boxes, so one opencv lane runs with the configured embedder). Both kinds
+# construct their pipeline explicitly rather than through the `auto`
+# selector, so the comparison always shows every lane whichever one
+# production uses.
+COMPARE_LANES = {"yunet": "faces_opencv", "scrfd": "faces_insightface"}
+
+
+def compare_detectors(img: Image.Image, config: AIConfig, registry) -> dict:
     """Run every installed face pipeline on one image and report raw
     detections side by side — a diagnostic, never persisted. Returns
     {"lanes": {name: {model, elapsed_ms, faces|error}},
      "installed": installed_pipelines(...)} with normalized coords and
-    per-face landmarks. Lanes are the distinct DETECTION stacks (the two
-    opencv embedder variants share YuNet boxes, so one opencv lane runs
-    with the configured embedder); pipelines are constructed explicitly,
-    never via the `auto` selector, so the comparison always shows every
-    lane whichever one production uses."""
+    per-face landmarks.
 
-    def _run(make_backend):
-        backend = make_backend()
-        t0 = time.perf_counter()
-        dets = backend.detect(img)
-        return {
-            "model": f"{backend.model_id} ({backend.model_version})",
-            "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
-            "faces": [
-                {"bbox": list(d.bbox), "landmarks": d.landmarks, "det_score": d.det_score, "attributes": d.attributes}
-                for d in dets
-            ],
-        }
+    `registry` is `smartgallery_ai.backends`, passed in rather than
+    imported: that module imports this one to resolve face backends, so the
+    dependency can only run one way. It supplies the loaded instances —
+    re-reading the YuNet and ArcFace ONNX graphs on every call to this
+    diagnostic is what passing it in avoids — and holds each lane
+    exclusively while it runs, since no face backend is safe to call from
+    two threads.
+    """
 
-    lanes: dict = {}
-    lane_makers = {
-        "yunet": lambda: OpenCVFaceBackend(
-            config.models_dir,
-            config.face_min_det_score,
-            config.face_min_px,
-            config.face_detect_max_side,
-            config.face_embedder,
-        ),
-        "scrfd": lambda: InsightFaceBackend(config.models_dir, config.face_min_det_score, config.face_min_px),
-    }
-
-    def _lane(lane, make_backend):
+    def _lane(lane: str, kind: str) -> dict:
         """One lane's timings and detections, or why it could not run.
 
         A lane whose weights are missing reports that and the comparison
         still shows the others.
         """
-        try:
-            return _run(make_backend)
-        except (BackendUnavailable, ValueError) as exc:
-            return {"model": lane, "error": str(exc)}
+        with registry.lease(kind, config) as backend:
+            if backend is None:
+                return {"model": lane, "error": registry.why_unavailable(kind, config) or "unavailable"}
+            t0 = time.perf_counter()
+            dets = backend.detect(img)
+            return {
+                "model": f"{backend.model_id} ({backend.model_version})",
+                "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "faces": [
+                    {
+                        "bbox": list(d.bbox),
+                        "landmarks": d.landmarks,
+                        "det_score": d.det_score,
+                        "attributes": d.attributes,
+                    }
+                    for d in dets
+                ],
+            }
 
-    for lane, make_backend in lane_makers.items():
-        lanes[lane] = _lane(lane, make_backend)
+    lanes = {lane: _lane(lane, kind) for lane, kind in COMPARE_LANES.items()}
     return {"lanes": lanes, "installed": installed_pipelines(config)}
 
 

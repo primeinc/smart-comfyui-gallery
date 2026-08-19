@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import sqlite3
-import threading
 import time
 from collections.abc import Callable
 from functools import wraps
@@ -34,7 +33,7 @@ from smartgallery_ai import (
     SPACE_SEMANTIC,
     SPACE_VISUAL,
     AIConfig,
-    embedders,
+    backends,
     faces,
     feedback,
     hashing,
@@ -43,6 +42,7 @@ from smartgallery_ai import (
     runner,
     schema,
     vectors,
+    walkthrough,
 )
 from smartgallery_ai import provision as provisioning
 from smartgallery_ai.worker import (
@@ -84,9 +84,16 @@ _PROBE_CACHES: list = []
 
 def invalidate_backend_probe_cache() -> None:
     """Clear every blueprint's cached backend-availability probe; the next
-    `/status` re-probes against the current models_dir contents."""
+    `/status` re-probes against the current models_dir contents.
+
+    The process backend registry drops its unavailable entries too, so a
+    backend whose weights just landed can load instead of answering None
+    from a decision made before they existed. Instances already loaded are
+    kept: they are still valid and reloading them costs the weights again.
+    """
     for cache in _PROBE_CACHES:
         cache.clear()
+    backends.forget_unavailable()
 
 
 # File types the embedding/faces/review stages can render a frame from --
@@ -200,15 +207,6 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
     now = time.time()
     result: dict = {"file_id": file_id, "hashed": False, "embedded": [], "faces": False, "reviewed": False}
 
-    def _backend_for(factory):
-        """Fresh backend resolve for the no-worker inline path. NEVER hands
-        out the worker's cached instances: the worker thread runs inference
-        on those concurrently, and the detectors/predictors are stateful
-        (a shared cv2 FaceDetectorYN or SamPredictor is a data race). With
-        a running worker the endpoint defers to its priority queue instead
-        of calling this at all."""
-        return factory(config)
-
     existing_hash = conn.execute(
         "SELECT source_mtime, algo_version FROM ai_file_hashes WHERE file_id = ?", (file_id,)
     ).fetchone()
@@ -224,43 +222,49 @@ def _index_one_file(conn: sqlite3.Connection, config: AIConfig, file_row: sqlite
 
     img = load_source_image(path, file_type)
 
-    for space, get_backend in (
-        (SPACE_SEMANTIC, embedders.get_semantic_backend),
-        (SPACE_VISUAL, embedders.get_visual_backend),
-    ):
-        backend = _backend_for(get_backend)
-        if backend is None or img is None:
-            continue
-        existing = conn.execute(
-            "SELECT source_mtime, model_id, model_version FROM ai_embeddings WHERE file_id = ? AND space = ?",
-            (file_id, space),
-        ).fetchone()
-        model_key = f"{backend.model_id}::{backend.model_version}"
-        existing_key = f"{existing['model_id']}::{existing['model_version']}" if existing is not None else None
-        needs = (
-            force or existing is None or invalidation.is_stale(existing["source_mtime"], mtime, existing_key, model_key)
-        )
-        if needs:
-            vec = backend.embed_image(img)
-            store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
-            store.add(conn, file_id, space, backend.model_id, backend.model_version, vec, mtime)
-            result["embedded"].append(space)
+    # Backends come from the process registry, which owns their lifetime: a
+    # request thread must not load a torch model of its own, and the stateful
+    # detectors (cv2 FaceDetectorYN, SamPredictor) must not be called by two
+    # threads at once. `lease` answers both -- it reuses the loaded instance
+    # and holds it exclusively for the block unless the backend serializes
+    # its own forwards. With a running worker the endpoint defers to its
+    # priority queue instead of calling this at all.
+    for space, kind in ((SPACE_SEMANTIC, "semantic"), (SPACE_VISUAL, "visual")):
+        with backends.lease(kind, config) as backend:
+            if backend is None or img is None:
+                continue
+            existing = conn.execute(
+                "SELECT source_mtime, model_id, model_version FROM ai_embeddings WHERE file_id = ? AND space = ?",
+                (file_id, space),
+            ).fetchone()
+            model_key = f"{backend.model_id}::{backend.model_version}"
+            existing_key = f"{existing['model_id']}::{existing['model_version']}" if existing is not None else None
+            needs = (
+                force
+                or existing is None
+                or invalidation.is_stale(existing["source_mtime"], mtime, existing_key, model_key)
+            )
+            if needs:
+                vec = backend.embed_image(img)
+                store = vectors.VectorStore(cache_dir=config.cache_dir, ephemeral=config.ephemeral_index)
+                store.add(conn, file_id, space, backend.model_id, backend.model_version, vec, mtime)
+                result["embedded"].append(space)
 
-    face_backend = _backend_for(faces.get_face_backend)
-    if face_backend is not None and img is not None:
-        detections = face_backend.detect(img)
-        faces.replace_faces_for_file(
-            conn, file_id, detections, face_backend.model_id, face_backend.model_version, mtime, now
-        )
-        # Mark the scan like the worker does: without this row the worker
-        # re-detects this file next cycle and the panel cannot tell
-        # "scanned, zero faces" apart from "not scanned yet".
-        record_scan(conn, file_id, "faces", face_backend, mtime, now, len(detections))
-        # And queue a recluster: these faces were stored outside the
-        # worker's scan loop, which otherwise only clusters after its own
-        # scans -- they would stay unclustered indefinitely.
-        mark_faces_cluster_pending(conn, face_backend)
-        result["faces"] = True
+    with backends.lease("faces", config) as face_backend:
+        if face_backend is not None and img is not None:
+            detections = face_backend.detect(img)
+            faces.replace_faces_for_file(
+                conn, file_id, detections, face_backend.model_id, face_backend.model_version, mtime, now
+            )
+            # Mark the scan like the worker does: without this row the worker
+            # re-detects this file next cycle and the panel cannot tell
+            # "scanned, zero faces" apart from "not scanned yet".
+            record_scan(conn, file_id, "faces", face_backend, mtime, now, len(detections))
+            # And queue a recluster: these faces were stored outside the
+            # worker's scan loop, which otherwise only clusters after its own
+            # scans -- they would stay unclustered indefinitely.
+            mark_faces_cluster_pending(conn, face_backend)
+            result["faces"] = True
 
     # Reviews are NEVER run synchronously here: constructing the critic can
     # load a multi-GB VLM and one review takes minutes — that does not
@@ -282,6 +286,7 @@ def create_ai_blueprint(
     guard: Callable | None = None,
     file_access_check: Callable[[str], bool] | None = None,
     generation_metadata_visible: Callable[[], bool] | None = None,
+    walkthrough_extra_stages: Callable[[str], list] | None = None,
 ) -> Blueprint:
     """Build the AI DAM Flask blueprint.
 
@@ -303,7 +308,13 @@ def create_ai_blueprint(
     elements are verbatim slices of the positive prompt, so a host that
     hides prompts from its visitors would otherwise publish them here, one
     element at a time, for every file those visitors are allowed to see.
-    Absent, everything is visible."""
+    Absent, everything is visible.
+
+    `walkthrough_extra_stages(file_id) -> list`, if given, contributes the
+    ingest rows only the host can compute -- thumbnail cache, query-engine
+    visibility -- to `/walkthrough/<file_id>`. This package cannot answer
+    those without reaching into the gallery's own caches, and a walkthrough
+    that stops at the AI boundary is not the file's pipeline."""
     bp = Blueprint("aidam", __name__)
 
     def _may_see_generation_metadata() -> bool:
@@ -753,7 +764,7 @@ def create_ai_blueprint(
         if img is None:
             return jsonify({"enabled": True, "error": "file has no renderable frame"}), 422
         try:
-            result = faces.compare_detectors(img, config)
+            result = faces.compare_detectors(img, config, backends)
         finally:
             img.close()
         return jsonify({"enabled": True, "file_id": file_id, **result})
@@ -992,6 +1003,26 @@ def create_ai_blueprint(
             headers={"Content-Disposition": "attachment; filename=ai_feedback_export.jsonl"},
         )
 
+    # -- GET /walkthrough/<file_id> (guarded) ---------------------------------------
+
+    def walkthrough_for_file(file_id: str):
+        """Every pipeline stage's state for one file, and for each stage that
+        has not run, why — the backend's own loader message, not a flag.
+
+        Guarded because answering "why is this backend unavailable" means
+        resolving it, which loads whatever is provisioned. `/status` stays the
+        cheap probe that never constructs anything.
+        """
+        _check_file_access(file_id)
+        conn = _connect(config)
+        try:
+            result = walkthrough.walk(conn, config, file_id, get_worker(), walkthrough_extra_stages)
+        finally:
+            conn.close()
+        if result is None:
+            abort(404)
+        return jsonify(result)
+
     # -- POST /index/<file_id> (guarded) --------------------------------------------
 
     def index_file(file_id: str):
@@ -999,8 +1030,8 @@ def create_ai_blueprint(
         its priority queue and the worker (whose thread owns every loaded
         model) runs all stages immediately -- sharing its live backend
         instances with this request thread would be a data race. Only
-        without a worker does the request run the fast stages inline,
-        with backends it constructs itself. `force` additionally
+        without a worker does the request run the fast stages inline, on
+        backends leased from the process registry. `force` additionally
         reschedules the file's background review."""
         data = request.get_json(silent=True) or {}
         force = bool(data.get("force", False))
@@ -1029,30 +1060,20 @@ def create_ai_blueprint(
 
     # -- GET /search/semantic?q= ----------------------------------------------------
 
-    # Fallback text encoder for deployments without a running worker;
-    # request threads share one instance (the real backend serializes its
-    # forwards internally). Registered for post-provision invalidation so
-    # a freshly landed backend replaces a cached None.
-    search_embedder_cache: dict = {}
-    _PROBE_CACHES.append(search_embedder_cache)
-    search_embedder_lock = threading.Lock()
-
     def _search_embedder():
         """The worker's loaded semantic embedder when available (cheapest,
-        already in memory), else one lazily constructed for this blueprint."""
+        it is already in memory), else the process registry's.
+
+        Either source yields ONE instance for every request thread: the real
+        backend serializes its own forwards, and both `semantic_embedder_for_search`
+        and `shared` refuse to hand out an instance that does not.
+        """
         worker = get_worker()
         if worker is not None:
             borrowed = worker.semantic_embedder_for_search()
             if borrowed is not None:
                 return borrowed
-        with search_embedder_lock:
-            if "semantic" not in search_embedder_cache:
-                try:
-                    search_embedder_cache["semantic"] = embedders.get_semantic_backend(config)
-                except Exception:  # unavailable, not fatal
-                    _logger.debug("handled a failure in _search_embedder", exc_info=True)
-                    search_embedder_cache["semantic"] = None
-            return search_embedder_cache["semantic"]
+        return backends.shared("semantic", config)
 
     def search_semantic():
         """Free-text semantic image search: the query text goes through the
@@ -1248,6 +1269,7 @@ def create_ai_blueprint(
         methods=["GET"],
     )
     bp.add_url_rule("/index/<file_id>", "index_file", _wrap(index_file, guarded=True), methods=["POST"])
+    bp.add_url_rule("/walkthrough/<file_id>", "walkthrough", _wrap(walkthrough_for_file, guarded=True), methods=["GET"])
     bp.add_url_rule("/search/semantic", "search_semantic", _wrap(search_semantic), methods=["GET"])
     # Cross-file listings carry the management guard, like cluster listings.
     bp.add_url_rule("/reviews", "reviews_list", _wrap(reviews_list, guarded=True), methods=["GET"])

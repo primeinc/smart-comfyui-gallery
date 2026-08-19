@@ -1629,6 +1629,71 @@ def _ai_file_access_check(file_id):
     return is_file_accessible(file_id)
 
 
+def _ai_walkthrough_extra_stages(file_id):
+    """The ingest rows only this module can answer, for /walkthrough.
+
+    Both are settings-dependent facts that silently change what the rest of
+    the pipeline can show, and neither is visible from inside smartgallery_ai:
+    a thumbnail is keyed by a digest of path+mtime under this module's cache
+    directory, and metadata stripping is decided per request by this module's
+    policy. Same late-binding indirection as _ai_file_access_check.
+    """
+    info = get_file_info_from_db(file_id)
+    if not info:
+        return []
+
+    if not thumbnail_generation_enabled():
+        thumbnail = {
+            "key": "thumbnail",
+            "group": "ingest",
+            "label": "Thumbnail",
+            "state": "n/a",
+            "detail": "thumbnail generation is switched off",
+            "fix": "enable thumbnail generation to have one built",
+        }
+    else:
+        digest = content_digest(info["path"] + str(info["mtime"]))
+        cached = glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{digest}.*"))
+        thumbnail = (
+            {
+                "key": "thumbnail",
+                "group": "ingest",
+                "label": "Thumbnail",
+                "state": "done",
+                "detail": f"cached as {os.path.basename(cached[0])}",
+            }
+            if cached
+            else {
+                "key": "thumbnail",
+                "group": "ingest",
+                "label": "Thumbnail",
+                "state": "pending",
+                "detail": "no thumbnail cached for this file at its current mtime",
+                "fix": "re-scan the folder, or open the file in the gallery to build one on demand",
+            }
+        )
+
+    stripped = should_strip_metadata()
+    visibility = {
+        "key": "metadata_visibility",
+        "group": "ingest",
+        "label": "Metadata visibility",
+        "state": "blocked" if stripped else "done",
+        "detail": (
+            "prompts are stripped from responses for this viewer"
+            if stripped
+            else "generation metadata is served to this viewer"
+        ),
+    }
+    if stripped:
+        # Not a failure -- a policy. But it explains an empty prompt panel and
+        # a review that quotes nothing, which otherwise read as missing data.
+        visibility["blocked_reason"] = "the gallery is stripping generation metadata, so prompts are withheld"
+        visibility["fix"] = "turn off metadata stripping to expose prompts here"
+
+    return [thumbnail, visibility]
+
+
 class _RuntimeState:
     """What the process works out for itself while it runs.
 
@@ -1668,6 +1733,9 @@ app.register_blueprint(
         # permissions here: the same rule that strips prompts out of the
         # files and the listings decides whether a review may quote them.
         generation_metadata_visible=lambda: not should_strip_metadata(),
+        # The thumbnail cache and the metadata-stripping policy live here, so
+        # the per-file walkthrough gets them from here too.
+        walkthrough_extra_stages=_ai_walkthrough_extra_stages,
     ),
     url_prefix="/galleryout/api/aidam",
 )

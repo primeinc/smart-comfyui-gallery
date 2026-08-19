@@ -19,7 +19,16 @@ from PIL import Image
 
 from omniquery.engine import OmniQueryEngine
 from omniquery.validation import AuthContext
-from smartgallery_ai import HASH_ALGO_VERSION, RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig, hashing, vectors
+from smartgallery_ai import (
+    HASH_ALGO_VERSION,
+    RUBRIC_VERSION,
+    SPACE_SEMANTIC,
+    SPACE_VISUAL,
+    AIConfig,
+    backends,
+    hashing,
+    vectors,
+)
 from smartgallery_ai import faces as F
 from smartgallery_ai.faces import FaceDetection, StubFaceBackend, cluster_faces, replace_faces_for_file
 from smartgallery_ai.review import (
@@ -800,8 +809,9 @@ def test_faces_compare_reports_lanes_and_inventory(fixture, monkeypatch):
     installed-pipeline inventory; a lane that cannot load reports its
     error in place instead of failing the request."""
 
-    def fake_compare(img, config):
+    def fake_compare(img, config, registry):
         assert img.size == (32, 32)
+        assert registry is backends  # the route passes the process registry in
         return {
             "lanes": {
                 "yunet": {"model": "opencv/yunet+sface (v)", "elapsed_ms": 1.2, "faces": []},

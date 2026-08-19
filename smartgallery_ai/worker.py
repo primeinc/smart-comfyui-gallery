@@ -41,6 +41,7 @@ from smartgallery_ai import (
     SPACE_VISUAL,
     AIConfig,
     _env_num,
+    backends,
     embedders,
     faces,
     hashing,
@@ -934,15 +935,14 @@ class AIWorker:
 
     def semantic_embedder_for_search(self):
         """The worker's loaded semantic embedder for TEXT queries, or None.
-        Safe to call from request threads ONLY because the real embedder
-        serializes its forwards internally (`_infer_lock`) — instances
-        without that lock (stubs, fakes) are not lent out. Never resolves:
+        Safe to call from request threads ONLY when the instance serializes
+        its own forwards; `backends.serializes_internally` is the single
+        answer to that question, shared with the process registry, so the
+        two cannot disagree about what may be lent out. Never resolves:
         loading models stays worker-only."""
         with self._lock:
             cached = self._backend_cache.get("semantic")
-        if cached is not None and hasattr(cached, "_infer_lock"):
-            return cached
-        return None
+        return cached if backends.serializes_internally(cached) else None
 
     def _backend(self, key: str, resolver):
         """Resolve a backend and reuse the instance. Constructing real

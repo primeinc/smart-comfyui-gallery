@@ -78,6 +78,34 @@
     input[type="text"] { background: var(--surface-hover); border: 1px solid var(--border-color);
         color: var(--text-color); border-radius: 8px; padding: 7px 10px; font-size: 0.85rem; }
 
+    /* walkthrough: one row per pipeline stage */
+    .wt-group { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--text-muted); margin: 18px 0 8px 2px; }
+    .wt-row { display: grid; grid-template-columns: 78px 1fr auto; gap: 12px; align-items: start;
+        background: var(--surface-color); border: 1px solid var(--border-color);
+        border-left-width: 3px; border-radius: 10px; padding: 11px 14px; margin-bottom: 7px; }
+    .wt-row .wt-label { font-weight: 600; font-size: 0.87rem; }
+    .wt-row .wt-detail { color: var(--text-muted); font-size: 0.82rem; margin-top: 1px; }
+    .wt-why { font-size: 0.8rem; margin-top: 6px; padding-left: 9px; border-left: 2px solid var(--border-color); }
+    .wt-fix { margin-top: 6px; }
+    .wt-fix code { font-family: var(--mono); font-size: 0.78rem; background: var(--surface-hover);
+        border: 1px solid var(--border-color); border-radius: 5px; padding: 3px 7px; display: inline-block; }
+    .wt-ev { font-family: var(--mono); font-size: 0.74rem; color: var(--text-muted); margin-top: 5px; }
+    .wt-state { font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.6px;
+        text-align: center; border-radius: 5px; padding: 3px 0; font-weight: 700; }
+    .s-done    { background: rgba(52,219,152,0.16); color: #34db98; }
+    .s-partial { background: rgba(230,162,60,0.16); color: #e6a23c; }
+    .s-stale   { background: rgba(230,162,60,0.16); color: #e6a23c; }
+    .s-pending { background: rgba(0,123,255,0.16);  color: #63a8ff; }
+    .s-blocked { background: rgba(255,74,74,0.16);  color: #ff6b6b; }
+    .s-na      { background: var(--surface-hover);  color: var(--text-muted); }
+    .wt-row.r-done    { border-left-color: #34db98; }
+    .wt-row.r-partial { border-left-color: #e6a23c; }
+    .wt-row.r-stale   { border-left-color: #e6a23c; }
+    .wt-row.r-pending { border-left-color: #63a8ff; }
+    .wt-row.r-blocked { border-left-color: #ff6b6b; }
+    .wt-row.r-na      { border-left-color: var(--border-color); opacity: 0.72; }
+
     /* clusters */
     .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
     .cluster-card { background: var(--surface-color); border: 1px solid var(--border-color);
@@ -152,6 +180,7 @@
         <button class="glass-btn" data-view="dupes" onclick="switchView('dupes')">Duplicates</button>
         <button class="glass-btn" data-view="reviews" onclick="switchView('reviews')">Reviews</button>
         <button class="glass-btn" data-view="search" onclick="switchView('search')">Meaning search</button>
+        <button class="glass-btn" data-view="walkthrough" onclick="switchView('walkthrough')">Walkthrough</button>
         <button class="glass-btn" data-view="compare" onclick="switchView('compare')">Detector compare</button>
     </nav>
     <span class="spacer"></span>
@@ -220,6 +249,18 @@
             <button class="glass-btn" onclick="searchRun()">Search</button>
         </div>
         <div id="search-content"></div>
+    </section>
+
+    <section id="view-walkthrough">
+        <h2>Pipeline walkthrough</h2>
+        <p class="lede">Every stage for one file: what ran, what did not, and why. A blocked row carries the backend&rsquo;s own message and the command that clears it &mdash; answering that means resolving the backend, which loads whatever is provisioned, so it lives here rather than on the status page.</p>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+            <input type="text" id="wt-file" placeholder="file id" style="width:280px;" value="{{ file_id }}">
+            <button class="glass-btn" onclick="wtRun()">Walk this file</button>
+            <span style="flex:1"></span>
+            <span class="mono muted" id="wt-summary"></span>
+        </div>
+        <div id="wt-body"><div class="status-msg">Enter a file id to see its pipeline state.</div></div>
     </section>
 
     <section id="view-compare">
@@ -620,10 +661,110 @@ async function searchRun() {
     }
 }
 
+// ---- walkthrough ----
+const WT_GROUPS = [['ingest', 'Ingest'], ['ai', 'AI stages'], ['query', 'Derived queries']];
+const WT_ACTIONS = { index: 'Index now', review: 'Re-run review' };
+
+function loadWalkthrough() {
+    const input = document.getElementById('wt-file');
+    if (input && input.value.trim()) wtRun();
+}
+
+async function wtRun() {
+    const fileId = document.getElementById('wt-file').value.trim();
+    const body = document.getElementById('wt-body');
+    const summary = document.getElementById('wt-summary');
+    summary.textContent = '';
+    if (!fileId) {
+        body.innerHTML = '<div class="status-msg">Enter a file id to see its pipeline state.</div>';
+        return;
+    }
+    body.innerHTML = '<div class="status-msg">Resolving backends&hellip;</div>';
+    let d;
+    try {
+        const r = await fetch(`${API}/walkthrough/${encodeURIComponent(fileId)}`);
+        if (r.status === 404) {
+            body.innerHTML = '<div class="status-msg">No such file, or it is not visible to you.</div>';
+            return;
+        }
+        d = await r.json();
+    } catch (e) {
+        body.innerHTML = '<div class="status-msg">Could not load the walkthrough.</div>';
+        return;
+    }
+    if (d.enabled === false) {
+        body.innerHTML = '<div class="status-msg">The AI layer is switched off (ENABLE_AI_DAM).</div>';
+        return;
+    }
+    wtRender(d, fileId);
+}
+
+function wtRender(d, fileId) {
+    const counts = d.counts || {};
+    document.getElementById('wt-summary').textContent =
+        Object.keys(counts).sort().map(k => `${counts[k]} ${k}`).join('  ·  ');
+
+    const head = `<div class="panel">
+        <h3>File</h3>
+        <div class="mono" style="font-size:0.82rem;">${esc(d.file.name || d.file.file_id)}</div>
+        <div class="muted" style="font-size:0.78rem; margin-top:3px;">${esc(d.file.path)}</div>
+        <div class="muted" style="font-size:0.78rem; margin-top:6px;">${esc(d.file.type || 'unknown type')} &middot;
+            ${d.file.renderable ? 'a frame can be rendered from it' : 'no stage can render a frame from it'} &middot;
+            ${esc(d.worker.note)}</div>
+    </div>`;
+
+    const groups = WT_GROUPS.map(([key, title]) => {
+        const rows = (d.stages || []).filter(s => s.group === key);
+        if (!rows.length) return '';
+        return `<div class="wt-group">${title}</div>` + rows.map(s => wtRow(s, fileId)).join('');
+    }).join('');
+
+    document.getElementById('wt-body').innerHTML = head + groups;
+}
+
+function wtRow(s, fileId) {
+    const cls = s.state === 'n/a' ? 'na' : s.state;
+    const why = s.blocked_reason ? `<div class="wt-why">${esc(s.blocked_reason)}</div>` : '';
+    const fix = s.fix ? `<div class="wt-fix"><code>${esc(s.fix)}</code></div>` : '';
+    const ev = s.evidence
+        ? `<div class="wt-ev">${esc(Object.entries(s.evidence).map(([k, v]) => `${k}=${v}`).join('  '))}</div>`
+        : '';
+    const act = s.action
+        ? `<button class="glass-btn" onclick="wtAct('${esc(fileId)}','${esc(s.action)}')">${WT_ACTIONS[s.action] || 'Run'}</button>`
+        : '';
+    return `<div class="wt-row r-${cls}">
+        <span class="wt-state s-${cls}">${esc(s.state)}</span>
+        <div>
+            <div class="wt-label">${esc(s.label)}</div>
+            <div class="wt-detail">${esc(s.detail)}</div>
+            ${why}${fix}${ev}
+        </div>
+        <div>${act}</div>
+    </div>`;
+}
+
+async function wtAct(fileId, action) {
+    document.getElementById('wt-body').insertAdjacentHTML(
+        'afterbegin', '<div class="status-msg">Working&hellip;</div>');
+    try {
+        // Both actions are the same endpoint. `force` additionally reschedules
+        // the file's background review, which is what unsticks a scan-log row
+        // claiming the file is current when nothing was stored for it.
+        await fetch(`${API}/index/${encodeURIComponent(fileId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: action === 'review' }),
+        });
+    } catch (e) {
+        /* the re-walk below reports the real state either way */
+    }
+    await wtRun();
+}
+
 // ---- view switching ----
 const LOADERS = { status: loadStatus, generation: loadGeneration, faces: loadFaces,
                   dupes: loadDupes, reviews: loadReviews, search: loadSearchView,
-                  compare: loadRecentFaces };
+                  compare: loadRecentFaces, walkthrough: loadWalkthrough };
 function switchView(view) {
     if (!LOADERS[view]) view = 'status';
     document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === 'view-' + view));
@@ -633,7 +774,12 @@ function switchView(view) {
 }
 const initialView = '{{ view }}' || (location.hash || '#status').slice(1);
 switchView(initialView === 'status' && location.hash ? location.hash.slice(1) : initialView);
-if ('{{ file_id }}') { switchView('compare'); cmpRun(); }
+// A file id still lands on the comparison tool, so existing ?file= deep links
+// keep their destination; naming a view explicitly overrides that.
+if ('{{ file_id }}') {
+    if (LOADERS['{{ view }}'] && '{{ view }}' !== 'status') { switchView('{{ view }}'); }
+    else { switchView('compare'); cmpRun(); }
+}
 </script>
 </body>
 </html>

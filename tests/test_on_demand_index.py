@@ -7,8 +7,8 @@ The AI panel's contract when a file has no derived rows yet:
   - POST /index front-queues the file with the running worker (whose
     thread owns every loaded model -- nothing runs inline then, avoiding
     cross-thread model sharing) and wakes it; without a worker it runs
-    the fast stages inline with freshly constructed backends, recording
-    scans the same way the worker would;
+    the fast stages inline on backends leased from the process registry,
+    recording scans the same way the worker would;
   - /status carries gallery-wide backlog totals for progress display;
   - the worker wakes on a priority request instead of sleeping out its
     poll interval, and its cycle log shows progress only when work happened.
@@ -29,9 +29,9 @@ import pytest
 from flask import Flask
 from PIL import Image
 
-from smartgallery_ai import RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig, hashing, vectors
+from smartgallery_ai import RUBRIC_VERSION, SPACE_SEMANTIC, SPACE_VISUAL, AIConfig, backends, hashing, vectors
 from smartgallery_ai import worker as W
-from smartgallery_ai.embedders import StubSemanticEmbedder
+from smartgallery_ai.embedders import StubSemanticEmbedder, StubVisualEmbedder
 from smartgallery_ai.faces import (
     FaceDetection,
     StubFaceBackend,
@@ -84,6 +84,17 @@ def _add_typed_file(conn, file_id: str, file_type: str) -> None:
         (file_id, f"/gallery/{file_id}", file_id, file_type),
     )
     conn.commit()
+
+
+def _stub_resolver(monkeypatch, kind: str, resolve):
+    """Point one backend-registry kind at `resolve` for this test.
+
+    The rest of the kind's spec -- which AIConfig fields select a distinct
+    instance, whether "stub" bypasses the cache -- stays exactly as
+    production declares it, so a test cannot accidentally exercise keying
+    the real code does not use.
+    """
+    monkeypatch.setitem(backends._KINDS, kind, backends._KINDS[kind]._replace(resolve=resolve))
 
 
 def _cfg(tmp_path, **overrides) -> AIConfig:
@@ -221,6 +232,128 @@ def test_sync_index_faces_scan_suppresses_worker_rescan(tmp_path):
     remaining = worker._scan_candidates(conn, "faces", StubFaceBackend(lambda _img: []), 10)
     conn.close()
     assert [r["id"] for r in remaining] == []
+
+
+def test_sync_index_loads_each_backend_once_across_requests(tmp_path, monkeypatch):
+    """The inline path leases from the process registry, so N requests load
+    each backend ONCE.
+
+    Resolving per call is what this pins against: with the real backends that
+    is an open_clip and a dinov2 torch model loaded on every HTTP request,
+    none of which is ever freed.
+    """
+    cfg = _cfg(tmp_path, semantic_backend="auto", visual_backend="auto")
+    conn = _make_db(cfg.db_path)
+    _add_image_file(conn, tmp_path, "first")
+    _add_image_file(conn, tmp_path, "second")
+
+    resolved = {"semantic": 0, "visual": 0}
+
+    def _counting(kind, make):
+        def resolve(_config):
+            resolved[kind] += 1
+            return make()
+
+        return resolve
+
+    _stub_resolver(monkeypatch, "semantic", _counting("semantic", StubSemanticEmbedder))
+    _stub_resolver(monkeypatch, "visual", _counting("visual", StubVisualEmbedder))
+    backends.reset()
+
+    for file_id in ("first", "second"):
+        row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
+        assert _index_one_file(conn, cfg, row, force=False)["embedded"] == [SPACE_SEMANTIC, SPACE_VISUAL]
+    conn.close()
+
+    assert resolved == {"semantic": 1, "visual": 1}
+
+
+def test_lease_excludes_concurrent_callers_of_an_unsafe_backend(tmp_path, monkeypatch):
+    """A backend that does not declare `thread_safe` is leased exclusively:
+    the second thread waits rather than calling a stateful detector that is
+    already mid-inference on another thread."""
+    cfg = _cfg(tmp_path, face_backend="auto")
+
+    class _Unsafe(StubFaceBackend):
+        thread_safe = False
+
+    _stub_resolver(monkeypatch, "faces", lambda _config: _Unsafe(lambda _img: []))
+    backends.reset()
+
+    inside = threading.Semaphore(0)
+    release = threading.Event()
+    overlapped = []
+
+    def hold():
+        with backends.lease("faces", cfg):
+            inside.release()
+            release.wait(5.0)
+
+    def probe():
+        with backends.lease("faces", cfg):
+            overlapped.append(release.is_set())
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    assert inside.acquire(timeout=5.0), "first lease never entered"
+
+    prober = threading.Thread(target=probe)
+    prober.start()
+    prober.join(timeout=0.5)
+    assert prober.is_alive(), "second caller entered while the backend was leased"
+
+    release.set()
+    holder.join(timeout=5.0)
+    prober.join(timeout=5.0)
+    assert overlapped == [True]  # it got in only after the holder let go
+
+
+def test_shared_refuses_a_backend_that_is_not_thread_safe(tmp_path, monkeypatch):
+    """`shared` hands out an instance callers may keep past the block only
+    when it is safe unguarded; anything else answers None rather than
+    escaping without its lock."""
+    cfg = _cfg(tmp_path, semantic_backend="auto", visual_backend="auto")
+
+    class _Unsafe(StubVisualEmbedder):
+        thread_safe = False
+
+    _stub_resolver(monkeypatch, "visual", lambda _config: _Unsafe())
+    _stub_resolver(monkeypatch, "semantic", lambda _config: StubSemanticEmbedder())
+    backends.reset()
+
+    assert backends.shared("visual", cfg) is None
+    assert isinstance(backends.shared("semantic", cfg), StubSemanticEmbedder)
+
+
+def test_forget_unavailable_reresolves_only_the_missing_backends(tmp_path, monkeypatch):
+    """Weights landing mid-process must be able to activate a backend that
+    previously answered None, without discarding the instances already
+    loaded (reloading those costs the weights again)."""
+    cfg = _cfg(tmp_path, semantic_backend="auto", visual_backend="auto")
+
+    available = {"visual": False}
+    resolved = {"semantic": 0, "visual": 0}
+
+    def _semantic(_config):
+        resolved["semantic"] += 1
+        return StubSemanticEmbedder()
+
+    def _visual(_config):
+        resolved["visual"] += 1
+        return StubVisualEmbedder() if available["visual"] else None
+
+    _stub_resolver(monkeypatch, "semantic", _semantic)
+    _stub_resolver(monkeypatch, "visual", _visual)
+    backends.reset()
+
+    assert backends.shared("semantic", cfg) is not None
+    assert backends.shared("visual", cfg) is None
+
+    available["visual"] = True
+    backends.forget_unavailable()
+
+    assert backends.shared("visual", cfg) is not None
+    assert resolved == {"semantic": 1, "visual": 2}  # the loaded one was kept
 
 
 # --- indexing totals -----------------------------------------------------------
@@ -932,23 +1065,28 @@ def test_cluster_label_roundtrip_and_unknown_404(surf):
     assert surf.client.post(f"{_PREFIX}/faces/clusters/99999/label", json={"label": "x"}).status_code == 404
 
 
-def test_semantic_embedder_for_search_only_lends_locked_instances(tmp_path):
-    """The worker lends its semantic embedder to request threads ONLY when
-    the instance serializes its own forwards (_infer_lock); stubs and
-    fakes without the lock are never shared across threads."""
+def test_semantic_embedder_for_search_only_lends_thread_safe_instances(tmp_path):
+    """The worker lends its semantic embedder to request threads ONLY when the
+    instance declares `thread_safe`; anything that does not -- including a
+    backend that simply forgot to answer the question -- is never shared."""
     cfg = _cfg(tmp_path)
     _make_db(cfg.db_path).close()
     worker = AIWorker(cfg, cfg.db_path, poll_interval=999.0, batch_size=0)
 
     assert worker.semantic_embedder_for_search() is None  # nothing cached
 
-    worker._backend_cache["semantic"] = StubSemanticEmbedder()  # no lock
+    class _Unsafe(StubSemanticEmbedder):
+        thread_safe = False
+
+    worker._backend_cache["semantic"] = _Unsafe()
     assert worker.semantic_embedder_for_search() is None
 
-    class _Locked(StubSemanticEmbedder):
-        def __init__(self):
-            self._infer_lock = threading.Lock()
+    class _Undeclared:
+        """Declares nothing; the unsafe answer is the default."""
 
-    locked = _Locked()
-    worker._backend_cache["semantic"] = locked
-    assert worker.semantic_embedder_for_search() is locked
+    worker._backend_cache["semantic"] = _Undeclared()
+    assert worker.semantic_embedder_for_search() is None
+
+    safe = StubSemanticEmbedder()  # thread_safe: pure function of its argument
+    worker._backend_cache["semantic"] = safe
+    assert worker.semantic_embedder_for_search() is safe

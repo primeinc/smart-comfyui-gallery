@@ -44,6 +44,11 @@ class SemanticEmbedder(ABC):
     model_id: str  # identifies the producing model; stored with every vector
     model_version: str  # separates incompatible vector generations; versions never mix
     dim: int  # length of every embedding this backend returns
+    # True only when any number of threads may call this instance at once --
+    # either it keeps no per-call state or it guards its own forwards. The
+    # default is the safe answer; `smartgallery_ai.backends` leases anything
+    # still False exclusively rather than letting two callers share it.
+    thread_safe: bool = False
 
     @abstractmethod
     def embed_image(self, img: Image.Image) -> np.ndarray:
@@ -67,6 +72,7 @@ class VisualEmbedder(ABC):
     model_id: str  # identifies the producing model; stored with every vector
     model_version: str  # separates incompatible vector generations; versions never mix
     dim: int  # length of every embedding this backend returns
+    thread_safe: bool = False  # see SemanticEmbedder.thread_safe
 
     @abstractmethod
     def embed_image(self, img: Image.Image) -> np.ndarray:
@@ -92,6 +98,7 @@ class StubSemanticEmbedder(SemanticEmbedder):
     model_id = "stub-semantic"
     model_version = "stub-v1"
     dim = 64
+    thread_safe = True  # both methods are pure functions of their argument
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """Pseudo-embedding seeded from a hash of the 8x8 quantized grayscale
@@ -123,6 +130,7 @@ class StubVisualEmbedder(VisualEmbedder):
     model_id = "stub-visual"
     model_version = "stub-v1"
     dim = 64  # 4x4x4 RGB color histogram
+    thread_safe = True  # embed_image is a pure function of its argument
 
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """L2-normalized 4x4x4 RGB histogram: reflects palette overlap only,
@@ -217,6 +225,7 @@ class OpenClipSemanticEmbedder(SemanticEmbedder):
     model_id = "open_clip/ViT-B-32/laion2b_s34b_b79k"
     model_version = "open_clip-vit-b-32-laion2b_s34b_b79k-v1"
     dim = 512
+    thread_safe = True  # every forward runs under self._infer_lock
 
     def __init__(self, models_dir: str):
         """Raises `BackendUnavailable` when the weights file or the

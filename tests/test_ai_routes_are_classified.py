@@ -8,18 +8,18 @@ nothing checked it, which is the same shape as the bug that let /static/
 serve the management interface unguarded: an exclusion written once, in
 prose, and then trusted.
 
-Twenty endpoints hang off this blueprint. Seven are registered without the
-management guard, and those are meant to police themselves by calling
+Twenty-one endpoints hang off this blueprint. Seven are registered without
+the management guard, and those are meant to police themselves by calling
 _check_file_access on the file they are about to talk about. Nothing made
 them. One added without either would answer anybody who can reach the port,
 would look exactly like its neighbours, and no test in the suite would
 notice.
 
-Audited at the time of writing, all twenty are accounted for: 13 guarded,
-6 per-file -- including both mask routes, which take a finding id rather
-than a file id and resolve it through _serve_mask before serving anything
--- and search_semantic, which returns ids from across the library and so
-passes every one of them through _visible instead.
+Audited at the time of writing, all twenty-one are accounted for: 14
+guarded, 6 per-file -- including both mask routes, which take a finding id
+rather than a file id and resolve it through _serve_mask before serving
+anything -- and search_semantic, which returns ids from across the library
+and so passes every one of them through _visible instead.
 
 The policies, as the code expresses them:
 
@@ -111,8 +111,8 @@ def classified():
 def test_the_classifier_sees_the_whole_blueprint(classified):
     """Control. A parser that matched nothing would leave every assertion
     below passing over an empty dictionary."""
-    assert len(classified) == 20, sorted(classified)
-    assert {"status", "similar", "review_mask", "search_semantic"} <= set(classified)
+    assert len(classified) == 21, sorted(classified)
+    assert {"status", "similar", "review_mask", "search_semantic", "walkthrough"} <= set(classified)
 
 
 def test_it_can_tell_the_policies_apart(classified):
@@ -127,6 +127,11 @@ def test_it_can_tell_the_policies_apart(classified):
     assert classified["similar"] == "per-file"
     assert classified["review_mask"] == "per-file", (
         "the mask routes take a finding id, not a file id; _serve_mask is what resolves it and checks the file"
+    )
+    assert classified["walkthrough"] == "guarded", (
+        "the walkthrough resolves backends to report WHY one is unavailable, which loads whatever is "
+        "provisioned; it checks the file as well, but the guard is what keeps that cost behind the "
+        "management interface"
     )
 
 

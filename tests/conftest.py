@@ -135,6 +135,19 @@ def _isolate_vector_generations():
     vectors.set_writer_active(False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_backend_registry():
+    """The backend registry is process-global and keyed partly on
+    `models_dir`; tests point configs at throwaway directories that are
+    recreated per test, so an instance loaded for one test's directory must
+    not answer another's."""
+    from smartgallery_ai import backends
+
+    backends.reset()
+    yield
+    backends.reset()
+
+
 @pytest.fixture(scope="session")
 def smartgallery_app():
     """Import smartgallery, initialize its database, and return the module."""
