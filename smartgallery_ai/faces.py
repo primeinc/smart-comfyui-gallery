@@ -448,8 +448,9 @@ def _ort_providers() -> list:
     priority-list form (docs/python/api_summary.rst: kernels are chosen
     in the order given; anything a provider lacks runs on CPU).
     AI_DAM_ORT_PROVIDERS: 'auto' (default -- CUDA first when the
-    installed onnxruntime build offers it; the provisioner swaps in
-    onnxruntime-gpu on NVIDIA boxes), 'cpu', or an explicit comma list."""
+    installed onnxruntime build offers it, which means installing
+    onnxruntime-gpu yourself; nothing swaps it in), 'cpu', or an explicit
+    comma list."""
     value = os.environ.get("AI_DAM_ORT_PROVIDERS", "auto").strip()
     if value.lower() == "cpu":
         return ["CPUExecutionProvider"]
@@ -824,13 +825,25 @@ def _neighbor_graph_faiss(normed: np.ndarray, threshold: float) -> tuple:
     (lims, D, I) result already IS a CSR triple — only self-edges are
     filtered out, vectorized. Raises ImportError when faiss is not
     installed.
+
+    The radius is nudged one float32 step BELOW the threshold because this
+    backend's comparison is strict where the others' are not. For a
+    similarity metric, range_search keeps `dis > radius`:
+    IndexFlat.cpp:73 -> distances.cpp:909-923 -> ResultHandler.h:760 picks
+    CMin for METRIC_INNER_PRODUCT (MetricType.h:56-58), and
+    ordered_key_value.h:46 defines CMin::cmp(a, b) as `a < b`. A face
+    sitting exactly on the threshold would therefore be dropped here and
+    kept by the numpy and torch paths, which use `>=` — the same library,
+    the same threshold, two different cluster memberships. Stepping the
+    radius down by one ULP makes `dis > radius` mean `dis >= threshold`.
     """
     faiss = import_faiss()
 
     n = normed.shape[0]
     index = faiss.IndexFlatIP(int(normed.shape[1]))
     index.add(normed)
-    lims, sims, ids = index.range_search(normed, float(threshold))
+    inclusive = float(np.nextafter(np.float32(threshold), np.float32("-inf")))
+    lims, sims, ids = index.range_search(normed, inclusive)
     rows = np.repeat(np.arange(n, dtype=np.int64), np.diff(lims).astype(np.int64))
     keep = ids != rows
     return _csr_from_edges(rows[keep], ids[keep], sims[keep], n)

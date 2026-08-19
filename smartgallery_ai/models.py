@@ -167,19 +167,28 @@ def load(model_ref: str, models_dir: str = "", device: str = "", attn: str = "")
     except Exception as exc:
         raise ModelUnavailable(f"transformers runtime unavailable: {exc}") from exc
 
-    location, local_only = _weights_location(model_ref, models_dir)
-    options: dict = {"local_files_only": local_only}
+    location, provisioned = _weights_location(model_ref, models_dir)
+    # ALWAYS offline. Loading a backend is not a provisioning action: a
+    # deployment configured for no egress must not reach the Hub because a
+    # checkpoint happens to be absent, and an unpinned fetch at load time
+    # would decide which weights run without a revision or a digest saying
+    # which ones those are. `local_files_only=True` still resolves a hub id
+    # out of the local huggingface cache when it is already there
+    # (transformers/utils/hub.py: "will only try to load ... from local
+    # files"), so a previously fetched model keeps working; one that was
+    # never fetched raises ModelUnavailable instead of downloading.
+    options: dict = {"local_files_only": True}
     if attn_impl:
         options["attn_implementation"] = attn_impl
     try:
-        config = transformers.AutoConfig.from_pretrained(location, local_files_only=local_only)
+        config = transformers.AutoConfig.from_pretrained(location, local_files_only=True)
         vision = type(config) in transformers.MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING
         # AutoProcessor wraps a tokenizer plus the image processor; a
         # text-only checkpoint has no processor to wrap, so it loads its
         # tokenizer directly. Chat only ever needs apply_chat_template,
         # batch_decode and a callable -- both satisfy that.
         loader = transformers.AutoProcessor if vision else transformers.AutoTokenizer
-        processor = loader.from_pretrained(location, local_files_only=local_only)
+        processor = loader.from_pretrained(location, local_files_only=True)
         auto_model = transformers.AutoModelForImageTextToText if vision else transformers.AutoModelForCausalLM
         model = auto_model.from_pretrained(location, **options)
         model.to(device)
@@ -191,7 +200,7 @@ def load(model_ref: str, models_dir: str = "", device: str = "", attn: str = "")
         "vision-language" if vision else "text",
         model_ref,
         device,
-        "local" if local_only else "hub",
+        "models_dir" if provisioned else "huggingface cache",
         attn_impl or "default",
     )
     _cache[key] = (processor, model)

@@ -19,7 +19,14 @@ huggingface_hub              # cached/resumable weight downloads for
 
 # --- faces (SCRFD + glintr100, the default face backend) ---
 insightface>=1.0.1           # FaceAnalysis pipeline (weights via provisioning)
-onnxruntime                  # ONNX inference for insightface / YuNet / SFace
+onnxruntime-gpu; sys_platform == 'linux' or sys_platform == 'win32'
+                             # ONNX inference for insightface / YuNet / SFace.
+                             #   Needs no nvidia wheels: it finds the CUDA
+                             #   runtime in torch's lib dir when the CUDA
+                             #   major matches. AI_DAM_ORT_PROVIDERS=cpu
+                             #   forces CPU.
+onnxruntime; sys_platform == 'darwin'
+                             # no CUDA build for macOS
 
 # --- OmniQuery local natural-language search ---
 # The deterministic nlq rules parser is dependency-free. The search

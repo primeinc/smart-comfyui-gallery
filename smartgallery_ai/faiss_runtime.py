@@ -34,9 +34,28 @@ _VENDOR_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 _REGISTERED_DLL_DIRS: set = set()
 
 
+def _cuda_dll_dirs() -> list:
+    """Directories that may hold the CUDA runtime DLLs the vendored build
+    needs (cublas64_13, cublasLt64_13, cudart64_13, nvJitLink_130_0).
+
+    TORCH FIRST, because on a CUDA torch install it already has them:
+    `torch/lib` ships the same four DLLs, so a GPU box that can run the
+    embedders can run GPU faiss with nothing extra installed. Looking only
+    in the `nvidia/*/bin` wheel layout meant the vendored build failed for
+    want of files that were already on disk, and silently became faiss-cpu.
+    The nvidia wheel dirs stay in the list for installs that have them and
+    no torch.
+    """
+    purelib = sysconfig.get_paths().get("purelib") or ""
+    dirs = [os.path.join(purelib, "torch", "lib")]
+    for pattern in ("bin", os.path.join("bin", "x86_64")):
+        dirs.extend(sorted(glob.glob(os.path.join(purelib, "nvidia", "*", pattern))))
+    return dirs
+
+
 def _register_cuda_dll_dirs() -> int:
-    """Register every nvidia wheel bin dir with the DLL loader; returns
-    how many dirs were registered.
+    """Register every candidate CUDA DLL dir with the loader; returns how
+    many were registered.
 
     Repeat calls add nothing. import_faiss runs this whenever faiss is not
     already imported, so on a machine where BOTH the vendored GPU build and
@@ -47,23 +66,19 @@ def _register_cuda_dll_dirs() -> int:
     spawnable at all, which reads as video breaking rather than as faiss
     being missing.
     """
-    purelib = sysconfig.get_paths().get("purelib") or ""
     registered = 0
-    for pattern in ("bin", os.path.join("bin", "x86_64")):
-        for d in sorted(glob.glob(os.path.join(purelib, "nvidia", "*", pattern))):
-            if not os.path.isdir(d):
-                continue
-            if d in _REGISTERED_DLL_DIRS:
-                continue
-            _REGISTERED_DLL_DIRS.add(d)
-            try:
-                os.add_dll_directory(d)
-                registered += 1
-            except OSError:
-                pass
-            current = os.environ.get("PATH", "")
-            if d not in current.split(os.pathsep):
-                os.environ["PATH"] = d + os.pathsep + current
+    for d in _cuda_dll_dirs():
+        if not os.path.isdir(d) or d in _REGISTERED_DLL_DIRS:
+            continue
+        _REGISTERED_DLL_DIRS.add(d)
+        try:
+            os.add_dll_directory(d)
+            registered += 1
+        except OSError:
+            pass
+        current = os.environ.get("PATH", "")
+        if d not in current.split(os.pathsep):
+            os.environ["PATH"] = d + os.pathsep + current
     return registered
 
 
@@ -92,9 +107,19 @@ def import_faiss():
         except (Exception, SystemExit):
             # missing CUDA wheel DLLs, wrong arch, partial vendor dir --
             # purge the half-imported package and fall back to faiss-cpu.
-            # Logged because the fallback is otherwise invisible: the GPU
-            # index quietly becomes a CPU one and only the speed says so.
-            _logger.debug("the vendored GPU faiss did not load; using faiss-cpu", exc_info=True)
+            # WARNING, not debug: the worker sets this package's logger to
+            # INFO, so a debug line here made the one thing worth saying
+            # invisible. The GPU index quietly becomes a CPU one and only
+            # the speed says so, on a machine that shipped 102 MB of
+            # binaries specifically to avoid that.
+            _logger.warning(
+                "the vendored GPU faiss did not load; using faiss-cpu. Its CUDA runtime DLLs "
+                "normally come from the installed torch's lib directory (a CUDA build ships "
+                "cublas64_13, cublasLt64_13, cudart64_13 and nvJitLink_130_0), else the nvidia "
+                "wheels or a system CUDA 13 toolkit on PATH; AI_DAM_FAISS_GPU=0 silences this "
+                "by choosing faiss-cpu deliberately",
+                exc_info=True,
+            )
             for name in [m for m in sys.modules if m == "faiss" or m.startswith("faiss.")]:
                 del sys.modules[name]
             importlib.invalidate_caches()

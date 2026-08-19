@@ -481,8 +481,14 @@ def _edge_set(graph):
 
 
 def _backend_fixture():
-    """Two tight cliques + spread noise, all sims kept >= 1e-3 away from the
-    0.6 threshold except the deliberately exact boundary pair below."""
+    """Two tight cliques + spread noise, every sim kept >= 1e-3 away from the
+    0.6 threshold.
+
+    Deliberately contains NO pair sitting on the threshold: perturbed random
+    vectors cannot be relied on to land exactly on it, so the boundary is
+    tested separately, by construction, in
+    test_every_backend_keeps_a_pair_sitting_on_the_threshold.
+    """
     rng = np.random.default_rng(7)
     base_a = rng.standard_normal(64).astype(np.float32)
     base_b = rng.standard_normal(64).astype(np.float32)
@@ -537,6 +543,32 @@ def test_neighbor_graph_threshold_boundary_inclusive():
     assert list(at_cols) == [1, 0]
     above_indptr, _, _ = _neighbor_graph_numpy(m, float(np.nextafter(np.float32(0.6), np.float32(1))))
     assert list(above_indptr) == [0, 0, 0]
+
+
+def test_every_backend_keeps_a_pair_sitting_on_the_threshold():
+    """The `>=` contract has to hold in EVERY backend, not just the one the
+    contract was written against.
+
+    faiss range_search compares strictly for a similarity metric --
+    ResultHandler.h:760 selects CMin for METRIC_INNER_PRODUCT and
+    ordered_key_value.h:46 defines CMin::cmp as `a < b`, so it keeps
+    `dis > radius`. Before the radius was stepped down one float32 ULP this
+    returned no edge here while numpy and torch returned two, which means
+    the same library at the same threshold produced different cluster
+    memberships depending on which backend happened to be installed.
+    """
+    m = np.array([[1, 0, 0, 0], [0.6, 0.8, 0, 0]], dtype=np.float32)
+    thr = float(np.float32(0.6))
+
+    expected = _edge_set(_neighbor_graph_numpy(m, thr))
+    assert expected, "control: the pair sits exactly on the threshold and must be an edge"
+    assert _edge_set(_neighbor_graph_faiss(m, thr)) == expected
+
+    # And one ULP above the threshold it must be dropped by both, or the fix
+    # would be "always include", which is a different bug.
+    above = float(np.nextafter(np.float32(0.6), np.float32(1)))
+    assert _edge_set(_neighbor_graph_numpy(m, above)) == set()
+    assert _edge_set(_neighbor_graph_faiss(m, above)) == set()
 
 
 def test_neighbor_graph_unknown_backend_request_raises(monkeypatch):

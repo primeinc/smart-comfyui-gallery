@@ -129,10 +129,12 @@ _PROVISION_MAP = (
 
 def provision_groups_for(config: AIConfig) -> list:
     """Provision groups the configured backends would use but which cannot
-    load right now — weights missing from `config.models_dir`, runtime
-    packages not importable, or a CPU-build torch that CUDA hardware wants
-    swapped (auto-provisioning fixes all three). The qwen-vl critic
-    additionally needs the semantic (grounding-gate) stack."""
+    load right now — weights missing from `config.models_dir`, or runtime
+    packages not importable. Provisioning fixes only the first: it
+    downloads weights and never installs packages, so a group listed here
+    for a missing runtime will report done with the backend still
+    unavailable. The qwen-vl critic additionally needs the semantic
+    (grounding-gate) stack."""
     wanted: list = []
     for attr, accepted, group in _PROVISION_MAP:
         if getattr(config, attr) in accepted:

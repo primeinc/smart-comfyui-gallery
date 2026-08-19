@@ -55,13 +55,23 @@ ai = [
     "faiss-cpu>=1.15",
     "huggingface_hub",
     "insightface>=1.0.1",  # FaceAnalysis pipeline (SCRFD + glintr100)
-    "onnxruntime",
+    # CUDA, never CPU -- the same rule [tool.uv.sources] states for torch.
+    # onnxruntime-gpu needs no nvidia wheels of its own: it finds the CUDA
+    # runtime in the installed torch's lib directory when the CUDA major
+    # matches ("the search order: the lib directory of compatible PyTorch
+    # in Windows" -- onnxruntime.preload_dlls), and torch here is cu132.
+    # Verified on this hardware: glintr100 recognition runs on
+    # CUDAExecutionProvider, SCRFD detection stays on CPU by design (its
+    # '?' dynamic dims are slower on CUDA -- see faces._ort_providers).
+    # macOS has no CUDA build, so it keeps the CPU package.
+    "onnxruntime-gpu; sys_platform == 'linux' or sys_platform == 'win32'",
+    "onnxruntime; sys_platform == 'darwin'",
 ]
 # Real model backends: semantic/visual embeddings, the qwen-vl critic's
-# grounding gate, and MobileSAM segmentation. torch resolves to CPU wheels
-# here; at runtime the auto-provisioner picks CUDA wheels when an NVIDIA
-# GPU is present. Weights auto-download on first start (or via
-# `python -m smartgallery_ai provision`); see docs/AI_MODELS.md.
+# grounding gate, and MobileSAM segmentation. torch resolves through
+# [tool.uv.sources] below; nothing re-picks it at runtime, so a CUDA build
+# is an install-time choice. Weights (not packages) auto-download on first
+# start, or via `python -m smartgallery_ai provision`; see docs/AI_MODELS.md.
 ai-models = [
     { include-group = "ai" },
     "torch",
@@ -80,6 +90,25 @@ ai-models = [
 # --no-group ai-models).
 package = false
 default-groups = ["dev", "ai", "ai-models"]
+
+# insightface hard-requires the CPU `onnxruntime`. Both packages install the
+# same `onnxruntime/` directory, so with both present whichever landed last
+# wins the import -- which was the CPU one, leaving CUDAExecutionProvider
+# unavailable on a GPU box while `uv pip list` cheerfully showed
+# onnxruntime-gpu installed.
+#
+# An override "ignores all declared requirements on the package, replacing
+# them with the override" (uv docs/concepts/resolution.md), so this one
+# rewrites every request for `onnxruntime` -- insightface's included -- to a
+# darwin-only requirement. On Linux and Windows the marker is false and the
+# CPU package is simply never pulled in; macOS still gets it, since there is
+# no CUDA build there. `onnxruntime-gpu` is a different name and is
+# untouched, leaving the `ai` group as the single source of the choice.
+#
+# uv 0.11.5 takes only the string form here; the scoped
+# `exclude-dependencies` table that would target insightface alone is a
+# newer feature. Prefer it when the floor moves.
+override-dependencies = ["onnxruntime; sys_platform == 'darwin'"]
 
 [tool.uv.sources]
 # CUDA, never CPU. This project exists to run models on the GPU; a CPU

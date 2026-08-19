@@ -16,14 +16,24 @@ Everything runs locally. No cloud inference, no telemetry.
 - Windows, Linux, macOS. (macOS: CPU/MPS only; the CUDA paths below are
   skipped.)
 
-## Zero-step install (default)
+## Install
 
-There is nothing to do. The AI layer is ON by default and provisions
-itself: on first startup the background worker pip-installs the missing
-runtime packages into the running environment and downloads the model
-weights to `.AImodels/` (override: `AI_DAM_MODELS_DIR`). Progress streams
-to the console and to the AI panel in the UI. Cycles are never blocked;
-each capability lights up as its pieces land.
+`uv sync` installs every runtime: `dev`, `ai` and `ai-models` are the
+default groups (`pyproject.toml`), so torch, torchvision, open_clip,
+transformers, timm and mobile-sam all land without a flag. `--no-group
+ai-models` gives a lighter install with faces and hashing but no
+embeddings, critic or segmentation. Pip users install
+`requirements-ai.txt` and uncomment the model-backend block at the bottom
+of it; that block is opt-in because torch and torchvision must come from
+the same index.
+
+Nothing installs packages at runtime. The AI layer is ON by default and
+provisions WEIGHTS only: on first startup the background worker downloads
+the missing model files to `.AImodels/` (override: `AI_DAM_MODELS_DIR`).
+Progress streams to the console and to the AI panel in the UI. Cycles are
+never blocked; each capability lights up as its weights land. A backend
+whose runtime package is missing stays unavailable until you install it —
+`/status` and the per-file walkthrough both name which one.
 
 `ENABLE_AI_DAM=false` turns the whole layer off.
 `AI_DAM_AUTO_PROVISION=false` keeps the layer on but forbids all egress
@@ -86,8 +96,9 @@ mid-download.
   `vendor/faiss-gpu-win64/` and used automatically; see
   [FAISS_GPU_WINDOWS.md](FAISS_GPU_WINDOWS.md). `AI_DAM_FAISS_GPU=0`
   forces CPU faiss, `AI_DAM_VECTOR_GPU=0` keeps vector top-k on CPU.
-- **onnxruntime (faces)**: on NVIDIA boxes the provisioner swaps in
-  `onnxruntime-gpu`. Per-stage placement is measured-informed: detection
+- **onnxruntime (faces)**: `onnxruntime-gpu` is installed by default on
+  Linux and Windows and needs no CUDA wheels of its own — it finds the
+  runtime in torch's lib directory. Per-stage placement is measured-informed: detection
   runs on CPU (dynamic shapes), recognition on CUDA (4.4x faster).
   `AI_DAM_ORT_PROVIDERS=cpu` forces everything to CPU.
 

@@ -7,18 +7,18 @@ of two ways — both driven by
 the backends load and verifies SHA-256 digests for single-file artifacts:
 
 - **Auto (default):** the AI layer is ON by default (`ENABLE_AI_DAM=false`
-  opts out) and the background worker makes itself runnable once,
-  **asynchronously**, on startup (`AI_DAM_AUTO_PROVISION`, default
-  `true`): it pip-installs any missing runtime packages into the current
-  environment — torch **and torchvision** wheels chosen by hardware and
-  always from the same index (mixed indexes break torchvision's compiled
-  ops): CUDA-capable when an NVIDIA driver is present (`AI_DAM_DEVICE=cpu`
-  forces CPU), CPU-index otherwise — then downloads any missing weights.
-  A **CPU-build torch already installed on CUDA hardware is swapped for
-  the CUDA wheels automatically** at the same point (static installers pin
-  the CPU index because package resolution cannot see GPUs; the running
-  app can). If torch was already imported when the swap ran, one restart
-  finishes it — the console says so. Loaded backends log their device
+  opts out) and the background worker downloads any missing **weights**
+  once, **asynchronously**, on startup (`AI_DAM_AUTO_PROVISION`, default
+  `true`).
+
+  It does NOT install packages. Runtimes come from your package manager:
+  `uv sync` pulls torch, torchvision, open_clip, transformers, timm and
+  mobile-sam by default (`dependency-groups` in `pyproject.toml`). Torch
+  and torchvision must come from the same index — mixed indexes break
+  torchvision's compiled ops — which is why the choice is made at install
+  time by the lockfile rather than guessed at runtime. A CPU-build torch on
+  CUDA hardware stays a CPU build until you reinstall it; nothing swaps it
+  for you. Loaded backends log their device
   (`[AI] <model> on device cuda`), `/status` reports `devices`, and the
   panel shows "Compute: … on cuda" while indexing. Every generative
   model loads through `smartgallery_ai/models.py`, which places it on the
