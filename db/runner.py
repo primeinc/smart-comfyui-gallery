@@ -78,6 +78,24 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
 
 
+def submit_ingest(conn, now: float) -> int:
+    """Read every present file's own story, as one job.
+
+    The walk (POST /roots/{id}/scan) finds files cheaply; this is the
+    expensive half of scanning that turns each file's metadata into
+    entities -- models, LoRAs, prompts, generation settings, capture
+    facts, learned param keys. The schema's job kind for it is 'scan'.
+    """
+    items = [row[0] for row in conn.execute("SELECT id FROM file WHERE missing_since IS NULL ORDER BY id")]
+    return jobs.submit(conn, "scan", now, items=items)
+
+
+def _ingest_item(conn, file_id: int, payload: dict, now: float) -> None:
+    from . import detect, ingest
+
+    ingest.one(conn, file_id, detect.path_of(conn, file_id), now)
+
+
 def submit_cluster(conn, now: float) -> int:
     """Group every embedding space's faces into people, as one job.
 
@@ -174,6 +192,7 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
 #: `job.kind` is CHECK-constrained (db/schema.sql:493-495) so a typo is an
 #: IntegrityError at submit, never a job that queues and waits forever.
 HANDLERS = {
+    "scan": _ingest_item,
     "hash": _verify_item,
     "detect_faces": _face_item,
     "cluster_faces": _cluster_item,

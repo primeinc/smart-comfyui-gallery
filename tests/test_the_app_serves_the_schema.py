@@ -446,6 +446,106 @@ def test_choose_primary_is_an_action_the_application_offers(served):
     assert client.get("/clusterings").json()[0]["id"] == chosen["primary_run"]
 
 
+def test_the_front_page_is_the_newest_files(served):
+    """`/` answers with the library, newest first, addressed by slug."""
+    client, _, _ = served
+    front = client.get("/").json()
+    assert {row["name"] for row in front} == {"ana_1.png", "ana_2.png", "ben_1.png"}
+    assert all(row["slug"] for row in front)
+
+
+def test_the_recipe_axis_is_produced_and_served(tmp_path):
+    """Ingestion is a job the application offers, and what it reads
+    becomes addressable: the model has a page counting pictures, the LoRA
+    knows what it is used with, the picture page carries its whole
+    recipe, and a model reached on the wrong shelf 301s to its own."""
+    from PIL import Image
+    from PIL.PngImagePlugin import PngInfo
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for name, seed in (("helm_1.png", 4242), ("helm_2.png", 77)):
+        info = PngInfo()
+        info.add_text(
+            "parameters",
+            f"a brass diving helmet at dusk <lora:filmGrain:0.35>\nNegative prompt: blurry\n"
+            f"Steps: 28, Sampler: Euler a, CFG scale: 7, Seed: {seed}, Size: 16x16, "
+            f"Model: dreamshaper_8, Version: v1.10.1",
+        )
+        Image.new("RGB", (16, 16), (30, 40, 60)).save(root / name, pnginfo=info)
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            job = client.post("/jobs/ingest").json()
+            assert (job["kind"], job["total"]) == ("scan", 2)
+            state = job["state"]
+            while state not in ("done", "failed", "cancelled"):
+                state = feed.receive_json(timeout=10)["state"]
+            assert state == "done"
+        told = client.get(f"/jobs/{job['id']}").json()
+        assert (told["state"], told["failed_count"]) == ("done", 0)
+
+        # Artifact slugs carry their kind: every shelf shares one entity
+        # kind, and a checkpoint and a LoRA may share a name.
+        models = client.get("/models").json()
+        assert models == [{"name": "dreamshaper_8", "slug": "checkpoint-dreamshaper-8", "pictures": 2}]
+        shelf = client.get("/m/checkpoint-dreamshaper-8").json()
+        assert (shelf["name"], shelf["kind"]) == ("dreamshaper_8", "checkpoint")
+        assert sorted(p["name"] for p in shelf["pictures"]) == ["helm_1.png", "helm_2.png"]
+
+        loras = client.get("/loras").json()
+        assert loras == [{"name": "filmGrain", "slug": "lora-filmgrain", "pictures": 2}]
+        lora_page = client.get("/l/lora-filmgrain").json()
+        assert lora_page["used_with"] == [{"name": "dreamshaper_8", "slug": "checkpoint-dreamshaper-8", "together": 2}]
+
+        moved = client.get("/m/lora-filmgrain", follow_redirects=False)
+        assert moved.status_code == 301
+        assert moved.headers["location"] == "/l/lora-filmgrain"
+        assert client.get("/workflows").json() == []
+        assert client.get("/m/nobody").status_code == 404
+
+        pic = client.get("/i/helm-1").json()
+        assert (pic["name"], pic["checkpoint"], pic["seed"]) == ("helm_1.png", "dreamshaper_8", 4242)
+        assert pic["prompt"].startswith("a brass diving helmet")
+        assert pic["loras"] == ["filmGrain"]
+        assert pic["params"], "the parsed fields are rows, not a blob"
+        assert {pic["previous"], pic["next"]} == {None, "helm-2"}, "neighbours walk the folder"
+        assert pic["parents"] == [], "no lineage yet, said honestly"
+        assert pic["children"] == []
+
+        folder = client.get("/f/lib").json()
+        assert sorted(f["name"] for f in folder["files"]) == ["helm_1.png", "helm_2.png"]
+        assert folder["breadcrumb"][-1]["name"] == "lib"
+        assert client.get("/f/nowhere").status_code == 404
+
+
+def test_albums_are_made_and_served_through_the_application(served):
+    """An album is authored state with a full application surface: made,
+    filled, emptied and read over routes, addressed by slug."""
+    client, _, _ = served
+    made = client.post("/albums", json={"name": "Keepers"}).json()
+    assert made == {"name": "Keepers", "slug": "keepers", "kind": "album"}
+    assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1
+    assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1, "adding twice is once"
+    assert client.post("/t/keepers/add", json={"file": "ben-1"}).json()["pictures"] == 2
+
+    listed = client.get("/albums").json()
+    assert listed == [{"name": "Keepers", "slug": "keepers", "kind": "album", "pictures": 2}]
+    page = client.get("/t/keepers").json()
+    assert sorted(f["name"] for f in page["files"]) == ["ana_1.png", "ben_1.png"]
+
+    assert client.post("/t/keepers/remove", json={"file": "ben-1"}).json()["pictures"] == 1
+    assert [f["name"] for f in client.get("/t/keepers").json()["files"]] == ["ana_1.png"]
+
+    assert client.post("/albums", json={"name": "   "}).status_code == 400
+    assert client.post("/albums", json={"name": "Q", "kind": "smart"}).status_code == 400
+    assert client.post("/t/keepers/add", json={"file": "nope"}).status_code == 404
+    assert client.get("/t/lost").status_code == 404
+
+
 def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
     """One --home argument moves everything a run owns -- database, models,
     caches. Nothing lands in OS application-data folders, and a first run

@@ -51,6 +51,14 @@ SECTIONS = (
         ("library-grid", "render-preview"),
     ),
     (
+        "The recipe, from the files",
+        (
+            "Models, LoRAs, workflows and an album -- read out of the files by the ingest job,"
+            " produced and listed through the application's own routes"
+        ),
+        ("recipe-shelves",),
+    ),
+    (
         "People, from faces",
         (
             "Detection, clustering, naming and avatar crops, all through the application's own routes;"
@@ -261,6 +269,20 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     f"ws://127.0.0.1:{port}/ws/jobs",
                 )
                 page.wait_for_function("() => window.__ws.readyState === 1")
+
+                # The recipe first: the ingest job reads every file's own
+                # metadata into entities, watched on the same feed.
+                reading = web.post("/jobs/ingest").json()
+                print(f"ingest job {reading['id']}: {reading['total']} files")
+                page.wait_for_function(
+                    "(id) => window.__got.some(m => m.job === id && ['done','failed','cancelled'].includes(m.state))",
+                    arg=reading["id"],
+                    timeout=600_000,
+                )
+                digested = web.get(f"/jobs/{reading['id']}").json()
+                if digested["state"] != "done":
+                    raise RuntimeError(f"the ingest job settled {digested['state']}: {digested['error']}")
+
                 job = web.post("/jobs/faces", json={"models_dir": models_dir}).json()
                 print(f"faces job {job['id']}: {job['total']} files")
                 if job["total"] <= 5:
@@ -270,7 +292,8 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     )
 
                 page.wait_for_function(
-                    "() => window.__got.filter(m => m.state === 'running' && m.done > 4).length > 0",
+                    "(id) => window.__got.filter(m => m.job === id && m.state === 'running' && m.done > 4).length > 0",
+                    arg=job["id"],
                     timeout=120_000,
                 )
                 page.evaluate(
@@ -293,7 +316,8 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 )
 
                 page.wait_for_function(
-                    "() => window.__got.some(m => ['done','failed','cancelled'].includes(m.state))",
+                    "(id) => window.__got.some(m => m.job === id && ['done','failed','cancelled'].includes(m.state))",
+                    arg=job["id"],
                     timeout=1_800_000,
                 )
                 got = page.evaluate("() => window.__got")
@@ -354,6 +378,14 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     ]
                 stride = max(1, len(slug_rows) // 18)
                 page.set_content(_grid(base, slug_rows[::stride][:18]), wait_until="domcontentloaded")
+                # An album, made and filled through the application, so the
+                # shelves capture shows authored state the routes produced.
+                keepsake = web.post("/albums", json={"name": "Sample picks"}).json()
+                for pick in slug_rows[:3]:
+                    kept = web.post(f"/t/{keepsake['slug']}/add", json={"file": pick})
+                    if kept.status_code >= 300:
+                        raise RuntimeError(f"album add answered {kept.status_code}: {kept.text}")
+
                 broken = _all_loaded(page, "#grid")
                 keep(
                     "library-grid",
@@ -366,6 +398,43 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 )
                 page.close()
 
+                # --- the recipe shelves, from the app's own routes ------------
+                page = watched_page()
+                shelves = {
+                    "Models": web.get("/models").json(),
+                    "LoRAs": web.get("/loras").json(),
+                    "Workflows": web.get("/workflows").json(),
+                    "Albums": web.get("/albums").json(),
+                }
+                columns = []
+                for title, listed in shelves.items():
+                    lines = "".join(
+                        f"<li>{html.escape(str(row['name']))} <b>{row['pictures']}</b></li>" for row in listed[:8]
+                    )
+                    columns.append(
+                        f'<div style="min-width:190px"><h3 style="margin:0 0 6px;font:600 14px system-ui;'
+                        f'color:#dfe5e1">{title} ({len(listed)})</h3>'
+                        f'<ul style="margin:0;padding-left:18px;font:12.5px/1.8 system-ui;color:#9fb0a6">'
+                        f"{lines}</ul></div>"
+                    )
+                page.set_content(
+                    '<body style="margin:0;background:#14171a">'
+                    f'<div id="shelves" style="display:flex;gap:26px;padding:18px;width:fit-content">'
+                    f"{''.join(columns)}</div>"
+                )
+                keep(
+                    "recipe-shelves",
+                    page.locator("#shelves").screenshot(),
+                    "The recipe axis, counted by real joins: every list fetched from the app's own"
+                    " shelf routes at capture time, the album made and filled through the"
+                    " application a moment earlier.",
+                    models=len(shelves["Models"]),
+                    loras=len(shelves["LoRAs"]),
+                    workflows=len(shelves["Workflows"]),
+                    albums=len(shelves["Albums"]),
+                )
+                page.close()
+
                 # --- one render, full preview ---------------------------------
                 page = watched_page()
                 render_slug = slug_rows[0]
@@ -374,12 +443,16 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     f'<img id="big" src="{base}/preview/{render_slug}" style="max-width:900px;display:block">'
                 )
                 broken = _all_loaded(page, "body")
+                recipe = web.get(f"/i/{render_slug}").json()
                 keep(
                     "render-preview",
                     page.locator("#big").screenshot(),
                     "One of the app's own renders at lightbox size (1440 edge), decoded by the browser"
-                    " from the same cache.",
+                    " from the same cache -- with the recipe its own page serves for it.",
                     slug=render_slug,
+                    checkpoint=recipe["checkpoint"],
+                    seed=recipe["seed"],
+                    parsed_fields=recipe["fields"],
                     broken_tiles=len(broken),
                 )
                 page.close()

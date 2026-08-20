@@ -324,6 +324,21 @@ def person_across_folders(conn, person_id: int, run_id: int | None = None):
 
 # --- albums ----------------------------------------------------------------
 
+#: Every collection with how many present pictures it holds. LEFT JOINs so
+#: an album somebody just made lists at zero instead of vanishing.
+ALBUMS = (
+    "SELECT c.name, e.slug, c.kind, count(f.id) AS pictures"
+    "  FROM collection c JOIN entity e ON e.id = c.id"
+    "  LEFT JOIN collection_file cf ON cf.collection_id = c.id"
+    "  LEFT JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    " GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
+)
+
+
+def albums(conn):
+    return conn.execute(ALBUMS).fetchall()
+
+
 ALBUM_FILES = (
     "SELECT fe.slug, f.name FROM collection_file cf"
     "  JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"

@@ -1,6 +1,6 @@
 {
- "taken_at": "2026-08-20 17:59:34",
- "commit": "7c74cd0-dirty",
+ "taken_at": "2026-08-20 19:52:05",
+ "commit": "9a1447a-dirty",
  "evidence": [
   {
    "name": "job-live",
@@ -16,7 +16,7 @@
    "file": "job-feed.png",
    "caption": "The end of the same feed: the terminal delta arrives only after its row committed.",
    "facts": {
-    "messages": 163,
+    "messages": 325,
     "final_state": "done"
    }
   },
@@ -31,11 +31,25 @@
    }
   },
   {
+   "name": "recipe-shelves",
+   "file": "recipe-shelves.png",
+   "caption": "The recipe axis, counted by real joins: every list fetched from the app's own shelf routes at capture time, the album made and filled through the application a moment earlier.",
+   "facts": {
+    "models": 1,
+    "loras": 1,
+    "workflows": 0,
+    "albums": 1
+   }
+  },
+  {
    "name": "render-preview",
    "file": "render-preview.png",
-   "caption": "One of the app's own renders at lightbox size (1440 edge), decoded by the browser from the same cache.",
+   "caption": "One of the app's own renders at lightbox size (1440 edge), decoded by the browser from the same cache -- with the recipe its own page serves for it.",
    "facts": {
     "slug": "0947001-c5afa607-qwnimageedit-v16fp8scaled",
+    "checkpoint": "qwnImageEdit_v16Fp8Scaled.safetensors",
+    "seed": 1043182392,
+    "parsed_fields": 34,
     "broken_tiles": 0
    }
   },

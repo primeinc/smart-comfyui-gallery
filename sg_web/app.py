@@ -56,6 +56,251 @@ def health() -> str:
     return "ok"
 
 
+def _resolved(conn, kind: str, slug: str, where: str) -> tuple[int, str | None]:
+    """`(entity_id, live_slug_when_retired)` for an address, 404ing what
+    does not resolve. The caller shapes its own 301 from the live slug so
+    each route redirects within its own prefix."""
+    found = naming.resolve(conn, kind, slug)
+    if found is None:
+        raise NotFoundException(f"no {kind} at {where}/{slug}")
+    entity_id, is_current = found
+    if not is_current:
+        live = naming.entity_slug(conn, entity_id)
+        if live is not None:
+            return entity_id, live[1]
+    return entity_id, None
+
+
+@get("/", sync_to_thread=True)
+def front(state: State) -> list[dict]:
+    """The front page: the library, newest first, addressed by slug."""
+    conn = _connect(state.db_path)
+    try:
+        return _rows(pages.newest(conn), ("slug", "name", "mtime"))
+    finally:
+        connect.close(conn)
+
+
+@get("/i/{slug:str}", sync_to_thread=True)
+def picture_page(state: State, slug: str) -> dict | Redirect:
+    """One picture: its recipe, its parsed fields row by row, its folder
+    neighbours, and its place in the derivation graph -- each from the
+    query the page owns in db/pages.py, never a grab-bag."""
+    conn = _connect(state.db_path)
+    try:
+        file_id, live = _resolved(conn, "file", slug, "/i")
+        if live is not None:
+            return Redirect(path=f"/i/{live}", status_code=301)
+        told = pages.picture(conn, file_id)
+        if told is None:
+            raise NotFoundException(f"/i/{slug} has no file row")
+        name, folder, width, height, duration, asked_w, checkpoint, loras_csv, prompt, seed, fields = told
+        return {
+            "slug": slug,
+            "name": name,
+            "folder": folder,
+            "width": width,
+            "height": height,
+            "duration": duration,
+            "asked_for_width": asked_w,
+            "checkpoint": checkpoint,
+            "loras": loras_csv.split(",") if loras_csv else [],
+            "prompt": prompt,
+            "seed": seed,
+            "fields": fields,
+            "params": _rows(pages.fields_of(conn, file_id), ("source", "key", "value")),
+            "previous": pages.neighbour(conn, file_id, previous=True),
+            "next": pages.neighbour(conn, file_id, previous=False),
+            "parents": _rows(pages.parents(conn, file_id), ("slug", "name", "kind")),
+            "children": _rows(pages.children(conn, file_id), ("slug", "name", "kind")),
+        }
+    finally:
+        connect.close(conn)
+
+
+@get("/f/{slug:str}", sync_to_thread=True)
+def folder_page(state: State, slug: str) -> dict | Redirect:
+    """One folder: its files and its breadcrumb, walked by parent --
+    never by splitting a path, because a path is presentation."""
+    conn = _connect(state.db_path)
+    try:
+        folder_id, live = _resolved(conn, "folder", slug, "/f")
+        if live is not None:
+            return Redirect(path=f"/f/{live}", status_code=301)
+        crumbs = []
+        for crumb_id, crumb_name in pages.breadcrumb(conn, folder_id):
+            addressed = naming.entity_slug(conn, crumb_id)
+            crumbs.append({"name": crumb_name, "slug": addressed[1] if addressed else None})
+        return {
+            "slug": slug,
+            "breadcrumb": crumbs,
+            "files": _rows(pages.folder_files(conn, folder_id), ("slug", "name")),
+        }
+    finally:
+        connect.close(conn)
+
+
+#: Which shelf each addressable artifact kind lives on. Kinds outside this
+#: map have rows and identity but no page yet.
+_SHELVES = {"checkpoint": "/m", "lora": "/l", "workflow": "/w"}
+
+
+def _shelf_index(state: State, kind: str) -> list[dict]:
+    conn = _connect(state.db_path)
+    try:
+        return _rows(pages.artifacts_by_use(conn, kind), ("name", "slug", "pictures"))
+    finally:
+        connect.close(conn)
+
+
+def _artifact_page(state: State, slug: str, shelf: str) -> dict | Redirect:
+    """One artifact, on the shelf its kind belongs to. The wrong shelf
+    301s to the right one -- an address written down keeps working, and
+    one artifact never answers at two."""
+    conn = _connect(state.db_path)
+    try:
+        artifact_id, live = _resolved(conn, "artifact", slug, shelf)
+        if live is not None:
+            return Redirect(path=f"{shelf}/{live}", status_code=301)
+        kind, name = conn.execute("SELECT kind, name FROM artifact WHERE id = ?", (artifact_id,)).fetchone()
+        home_shelf = _SHELVES.get(kind)
+        if home_shelf is None:
+            raise NotFoundException(f"a {kind} has no page yet")
+        if home_shelf != shelf:
+            return Redirect(path=f"{home_shelf}/{slug}", status_code=301)
+        page = {
+            "slug": slug,
+            "name": name,
+            "kind": kind,
+            "pictures": _rows(pages.artifact_files(conn, artifact_id), ("slug", "name")),
+        }
+        if kind == "lora":
+            page["used_with"] = _rows(pages.lora_synergy(conn, artifact_id), ("name", "slug", "together"))
+        return page
+    finally:
+        connect.close(conn)
+
+
+@get("/models", sync_to_thread=True)
+def models(state: State) -> list[dict]:
+    """Checkpoints, by how many pictures used them -- a real join, never
+    a substring over a blob."""
+    return _shelf_index(state, "checkpoint")
+
+
+@get("/loras", sync_to_thread=True)
+def loras(state: State) -> list[dict]:
+    return _shelf_index(state, "lora")
+
+
+@get("/workflows", sync_to_thread=True)
+def workflows(state: State) -> list[dict]:
+    return _shelf_index(state, "workflow")
+
+
+@get("/m/{slug:str}", sync_to_thread=True)
+def model_page(state: State, slug: str) -> dict | Redirect:
+    return _artifact_page(state, slug, "/m")
+
+
+@get("/l/{slug:str}", sync_to_thread=True)
+def lora_page(state: State, slug: str) -> dict | Redirect:
+    return _artifact_page(state, slug, "/l")
+
+
+@get("/w/{slug:str}", sync_to_thread=True)
+def workflow_page(state: State, slug: str) -> dict | Redirect:
+    return _artifact_page(state, slug, "/w")
+
+
+@get("/albums", sync_to_thread=True)
+def albums(state: State) -> list[dict]:
+    conn = _connect(state.db_path)
+    try:
+        return _rows(pages.albums(conn), ("name", "slug", "kind", "pictures"))
+    finally:
+        connect.close(conn)
+
+
+@dataclasses.dataclass
+class NewAlbum:
+    """The body of POST /albums. A smart collection needs a rule and will
+    need its own route; this one makes the listed kinds."""
+
+    name: str
+    kind: str = "album"
+
+
+@post("/albums", sync_to_thread=True)
+def make_album(state: State, data: NewAlbum) -> dict:
+    conn = _connect(state.db_path)
+    try:
+        cleaned = data.name.strip()
+        if not cleaned:
+            raise ClientException("an album needs a name")
+        if data.kind not in ("album", "flag"):
+            raise ClientException("kind must be album or flag; a smart collection needs a rule")
+        collection_id = authored.collection(conn, cleaned, time.time(), kind=data.kind)
+        conn.commit()
+        addressed = naming.entity_slug(conn, collection_id)
+        return {"name": cleaned, "slug": addressed[1] if addressed else None, "kind": data.kind}
+    finally:
+        connect.close(conn)
+
+
+@get("/t/{slug:str}", sync_to_thread=True)
+def album_page(state: State, slug: str) -> dict | Redirect:
+    conn = _connect(state.db_path)
+    try:
+        collection_id, live = _resolved(conn, "collection", slug, "/t")
+        if live is not None:
+            return Redirect(path=f"/t/{live}", status_code=301)
+        name, kind = conn.execute("SELECT name, kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
+        return {
+            "slug": slug,
+            "name": name,
+            "kind": kind,
+            "files": _rows(pages.album_files(conn, collection_id), ("slug", "name")),
+        }
+    finally:
+        connect.close(conn)
+
+
+@dataclasses.dataclass
+class AlbumEntry:
+    """The body of the album membership routes: a file, by its address."""
+
+    file: str
+
+
+def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool) -> dict:
+    conn = _connect(state.db_path)
+    try:
+        collection_id, _ = _resolved(conn, "collection", slug, "/t")
+        file_id, _ = _resolved(conn, "file", data.file, "/i")
+        if adding:
+            authored.add_to_collection(conn, collection_id, file_id, time.time())
+        else:
+            authored.remove_from_collection(conn, collection_id, file_id)
+        conn.commit()
+        pictures = conn.execute(
+            "SELECT count(*) FROM collection_file WHERE collection_id = ?", (collection_id,)
+        ).fetchone()[0]
+        return {"slug": slug, "file": data.file, "pictures": pictures}
+    finally:
+        connect.close(conn)
+
+
+@post("/t/{slug:str}/add", sync_to_thread=True)
+def album_add(state: State, slug: str, data: AlbumEntry) -> dict:
+    return _album_membership(state, slug, data, adding=True)
+
+
+@post("/t/{slug:str}/remove", sync_to_thread=True)
+def album_remove(state: State, slug: str, data: AlbumEntry) -> dict:
+    return _album_membership(state, slug, data, adding=False)
+
+
 @get("/people", sync_to_thread=True)
 def people(state: State) -> list[dict]:
     """Everyone, most pictures first -- the People index."""
@@ -214,6 +459,20 @@ def submit_faces(state: State, data: dict) -> dict:
         )
         cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
         job_id = runner.submit_faces(conn, time.time(), models_dir=weights, thumbs_dir=cache)
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
+    finally:
+        connect.close(conn)
+
+
+@post("/jobs/ingest", sync_to_thread=True)
+def submit_ingest(state: State) -> dict:
+    """Ask for every present file's metadata to be read into entities --
+    the expensive half of scanning, as a job (db/runner.py submit_ingest)."""
+    conn = _connect(state.db_path)
+    try:
+        job_id = runner.submit_ingest(conn, time.time())
         conn.commit()
         _nudge(state)
         return jobs.snapshot(conn, job_id)
@@ -634,6 +893,21 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     app = Litestar(
         route_handlers=[
             health,
+            front,
+            picture_page,
+            folder_page,
+            models,
+            loras,
+            workflows,
+            model_page,
+            lora_page,
+            workflow_page,
+            albums,
+            make_album,
+            album_page,
+            album_add,
+            album_remove,
+            submit_ingest,
             people,
             person,
             clusterings,
