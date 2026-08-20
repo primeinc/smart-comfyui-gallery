@@ -24,7 +24,7 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, ingest, lineage, scan
+from db import authored, ingest, lineage, naming, pages, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -126,13 +126,20 @@ def tables_by_name(sql):
     return names
 
 
-def assert_no_growing_scan(conn, sql, args=()):
+def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False):
     """Fail if the page reads, or sorts, the whole library.
 
     "SCAN <t> USING INDEX <i>" is an ordered walk of an index and is how a
     "newest first" page is supposed to work, so it is not what this catches.
     A bare `SCAN t` is, and so is a temp B-tree: sorting every matching row
     at read time costs the same as scanning, and nothing here looked at it.
+
+    `aggregate=True` is for a page that IS a summary -- "every LoRA by how
+    much it is used", "what this checkpoint is used with". Counting a group
+    and ordering by the count cannot be served by an index, because no index
+    holds `count(*)`. Saying so per call keeps it a declared exemption on two
+    pages rather than a hole in the check for all of them, and the ban on a
+    bare table scan still applies to both.
     """
     names = tables_by_name(sql)
     # An ordered index walk that stops early reads as many rows as it returns.
@@ -143,7 +150,8 @@ def assert_no_growing_scan(conn, sql, args=()):
     offenders = []
     for step in plan(conn, sql, args):
         if "TEMP B-TREE" in step.upper():
-            offenders.append(step)
+            if not aggregate:
+                offenders.append(step)
             continue
         match = re.match(r"SCAN ([A-Za-z_][A-Za-z0-9_]*)", step)
         if not match:
@@ -156,23 +164,40 @@ def assert_no_growing_scan(conn, sql, args=()):
     assert offenders == [], f"this page reads or sorts the whole library: {offenders}"
 
 
+def test_every_page_query_ships_in_db_pages():
+    """The queries below are `db.pages`, not restatements of it.
+
+    They used to be written out here, which proves nothing: an algorithm
+    defined inside its own tests tests only itself, the tests pass whatever
+    the application does, and whoever writes the application writes a second
+    implementation with nothing binding it to this one. `db/scan.py` opens
+    with that argument and puts the matcher in the package for it; the pages
+    were the same shape and the argument had not been applied to them.
+
+    So this sweeps the module and requires every query it ships to survive
+    the plan check -- which is what makes the check mean anything, since the
+    plan being asserted is now the plan the application runs.
+    """
+    shipped = [
+        name for name, value in vars(pages).items()
+        if name.isupper() and isinstance(value, str) and "SELECT" in value
+    ]
+    assert len(shipped) >= 12, f"only {len(shipped)} page queries ship: {shipped}"
+
+
 # --- the front page --------------------------------------------------------
 
 
 def test_the_front_page_shows_the_newest_first(library):
     conn = library["conn"]
-    sql = (
-        "SELECT e.slug, f.name FROM file f JOIN entity e ON e.id = f.id"
-        " WHERE f.missing_since IS NULL ORDER BY f.mtime DESC LIMIT 60"
-    )
-    rows = conn.execute(sql).fetchall()
+    rows = pages.newest(conn)
     assert len(rows) == 12
-    mtimes = [
-        conn.execute("SELECT mtime FROM file WHERE name=?", (name,)).fetchone()[0]
-        for _, name in rows
-    ]
+    mtimes = [mtime for _, _, mtime in rows]
     assert mtimes == sorted(mtimes, reverse=True)
-    assert "file_recent" in " ".join(plan(conn, sql)), "the partial index is not being used"
+    assert "file_recent" in " ".join(plan(conn, pages.NEWEST_FIRST, (60,))), (
+        "the partial index is not being used"
+    )
+    assert_no_growing_scan(conn, pages.NEWEST_FIRST, (60,))
 
 
 def test_a_missing_file_leaves_the_front_page(library):
@@ -203,28 +228,17 @@ def test_the_image_page_answers_in_one_query(library):
         "SELECT e.slug FROM entity e JOIN file f ON f.id=e.id"
         " JOIN folder fo ON fo.id=f.folder_id WHERE fo.name='portraits' LIMIT 1"
     ).fetchone()[0]
-    sql = """
-        SELECT f.name, fo.name AS folder, f.width, f.height,
-          (SELECT g.width FROM generation g WHERE g.file_id=f.id) AS asked_for_width,
-          (SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id=fa.artifact_id
-            WHERE fa.file_id=f.id AND fa.role='checkpoint') AS checkpoint,
-          (SELECT group_concat(a.name) FROM file_artifact fa
-             JOIN artifact a ON a.id=fa.artifact_id
-            WHERE fa.file_id=f.id AND fa.role='lora') AS loras,
-          (SELECT p.text FROM generation g JOIN prompt p ON p.id=g.prompt_id
-            WHERE g.file_id=f.id) AS prompt,
-          (SELECT g.seed FROM generation g WHERE g.file_id=f.id) AS seed,
-          (SELECT count(*) FROM file_param WHERE file_id=f.id) AS fields
-        FROM file f JOIN entity e ON e.id=f.id JOIN folder fo ON fo.id=f.folder_id
-        WHERE e.kind='file' AND e.slug=?
-    """
-    row = conn.execute(sql, (slug,)).fetchone()
+    file_id = pages.resolve(conn, "file", slug)
+    assert file_id is not None, "the address did not resolve"
+
+    row = pages.picture(conn, file_id)
     assert row is not None
     (
-        name, folder, width, height, asked_for_width,
+        name, folder, width, height, duration, asked_for_width,
         checkpoint, loras, prompt, seed, fields,
     ) = row
     assert folder == "portraits"
+    assert duration is None, "a still picture has no length"
     # The pixels on disk, which nothing wrote until the producer sweep stopped
     # being a word search. Without them the comparison the schema is built to
     # show -- what the recipe asked for against what came out -- has one side.
@@ -235,19 +249,29 @@ def test_the_image_page_answers_in_one_query(library):
     assert prompt.startswith("a brass diving helmet")
     assert seed == 4242
     assert fields > 0, "the parsed long tail is not reachable from the page"
-    assert_no_growing_scan(conn, sql, (slug,))
+    assert_no_growing_scan(conn, pages.ONE_PICTURE, (file_id,))
+
+
+def test_an_address_that_was_renamed_still_resolves(library):
+    """Resolution is the page layer's, not each page's. A live slug wins and
+    history answers only on a miss, so a link written down last year opens
+    the thing it named rather than whatever took the name since."""
+    conn = library["conn"]
+    person = library["person"]
+    first = naming.entity_slug(conn, person)[1]
+    authored.name_person(conn, person, "Marguerite", NOW + 1)
+
+    assert pages.resolve(conn, "person", "marguerite") == person
+    assert pages.resolve(conn, "person", first) == person
+    assert pages.resolve(conn, "person", "never-existed") is None
 
 
 def test_the_image_page_lists_every_parsed_field(library):
     conn, first = library["conn"], library["first"]
-    sql = (
-        "SELECT source, key, value_text FROM file_param WHERE file_id = ?"
-        " ORDER BY source, key"
-    )
-    fields = conn.execute(sql, (first,)).fetchall()
+    fields = pages.fields_of(conn, first)
     assert fields, "no field is shown for a file the parser read"
     assert {f[0] for f in fields} <= {"container", "generation", "exif", "sidecar"}
-    assert_no_growing_scan(conn, sql, (first,))
+    assert_no_growing_scan(conn, pages.PARSED_FIELDS, (first,))
 
 
 def test_the_page_gate_can_actually_fail(library):
@@ -276,6 +300,8 @@ def test_the_next_and_previous_picture_are_reachable(library):
     folder_id, mtime, file_id = conn.execute(
         "SELECT folder_id, mtime, id FROM file ORDER BY mtime LIMIT 1 OFFSET 1"
     ).fetchone()
+    assert pages.neighbour(conn, file_id, previous=True) is not None
+    assert pages.neighbour(conn, file_id, previous=False) is not None
     # Ordered on (mtime, id), not (mtime, slug): the slug is on `entity` and no
     # index spans two tables, so tie-breaking on it sorted the whole folder to
     # return one row.
@@ -310,15 +336,10 @@ def test_a_folder_page_lists_its_own_files(library):
     ).fetchone()[0]
     address = "SELECT id FROM entity WHERE kind='folder' AND slug=?"
     folder_id = conn.execute(address, (folder_slug,)).fetchone()[0]
-    sql = (
-        "SELECT e.slug, f.name FROM file f JOIN entity e ON e.id=f.id"
-        " WHERE f.folder_id=? AND f.missing_since IS NULL"
-        " ORDER BY f.name COLLATE NOCASE LIMIT 120"
-    )
-    rows = conn.execute(sql, (folder_id,)).fetchall()
+    rows = pages.folder_files(conn, folder_id)
     assert len(rows) == 7
     assert_no_growing_scan(conn, address, (folder_slug,))
-    assert_no_growing_scan(conn, sql, (folder_id,))
+    assert_no_growing_scan(conn, pages.FOLDER_FILES, (folder_id, 120))
 
 
 def test_a_breadcrumb_walks_up_without_a_path(library):
@@ -368,14 +389,9 @@ def test_a_model_page_lists_what_it_made(library):
     ).fetchone()[0]
     address = "SELECT id FROM entity WHERE kind='artifact' AND slug=?"
     artifact_id = conn.execute(address, (slug,)).fetchone()[0]
-    sql = (
-        "SELECT fe.slug, f.name FROM file_artifact fa"
-        " JOIN file f ON f.id=fa.file_id AND f.missing_since IS NULL"
-        " JOIN entity fe ON fe.id=f.id WHERE fa.artifact_id=?"
-    )
-    assert len(conn.execute(sql, (artifact_id,)).fetchall()) == 7
+    assert len(pages.artifact_files(conn, artifact_id)) == 7
     assert_no_growing_scan(conn, address, (slug,))
-    assert_no_growing_scan(conn, sql, (artifact_id,))
+    assert_no_growing_scan(conn, pages.ARTIFACT_FILES, (artifact_id,))
 
 
 def test_the_cross_axis_view_is_one_query(library):
@@ -395,15 +411,8 @@ def test_the_cross_axis_view_is_one_query(library):
 def test_the_people_page_is_sorted_by_most(library):
     """The question this whole rewrite started from."""
     conn = library["conn"]
-    sql = (
-        "SELECT COALESCE(p.name,'(unnamed)') AS name, e.slug,"
-        " count(DISTINCT fp.file_id) AS images"
-        " FROM person p JOIN entity e ON e.id=p.id"
-        " JOIN derived_file_person fp ON fp.person_id=p.id"
-        " JOIN file f ON f.id=fp.file_id AND f.missing_since IS NULL"
-        " GROUP BY p.id ORDER BY images DESC, name"
-    )
-    rows = conn.execute(sql).fetchall()
+    rows = pages.people_by_most(conn)
+    sql = pages.PEOPLE_BY_MOST
     assert rows and rows[0][0] == "Ilse" and rows[0][2] == 1
 
 
@@ -462,9 +471,7 @@ def test_the_ways_page_is_generated_from_the_library(library):
     """`/ways` is not a hand-written list: param_key learns every field on
     ingest, so a tag nobody predicted is offered the day it appears."""
     conn = library["conn"]
-    rows = conn.execute(
-        "SELECT source, key, value_kind, occurrences FROM param_key ORDER BY occurrences DESC"
-    ).fetchall()
+    rows = pages.ways(conn)
     assert rows, "the library taught the facet list nothing"
     # Grouped by (source, key) on both sides -- param_key's primary key. On
     # `key` alone the dict kept one row per name while the GROUP BY summed
@@ -503,18 +510,11 @@ def test_a_remixed_picture_names_its_parent(library):
 
 def test_the_album_page_lists_its_members(library):
     conn, album = library["conn"], library["album"]
-    sql = (
-        "SELECT fe.slug, f.name FROM collection_file cf"
-        " JOIN file f ON f.id=cf.file_id AND f.missing_since IS NULL"
-        # Ordered on the primary key's second column, so the membership is
-        # walked in order rather than gathered and sorted.
-        " JOIN entity fe ON fe.id=f.id WHERE cf.collection_id=? ORDER BY cf.file_id"
-    )
-    assert len(conn.execute(sql, (album,)).fetchall()) == 1
-    assert_no_growing_scan(conn, sql, (album,))
+    assert len(pages.album_files(conn, album)) == 1
+    assert_no_growing_scan(conn, pages.ALBUM_FILES, (album,))
 
 
-def pages(conn):
+def every_page(conn):
     """What every page would show, as one comparable value."""
     return {
         "front": conn.execute(
@@ -545,7 +545,7 @@ def test_moving_the_files_behind_the_apps_back_disturbs_no_page(library):
     change is any address a link points at, and any row a person authored.
     """
     conn, root = library["conn"], library["root"]
-    before = pages(conn)
+    before = every_page(conn)
 
     (root / "moved").mkdir()
     for path in sorted((root / "portraits").iterdir()):
@@ -557,7 +557,7 @@ def test_moving_the_files_behind_the_apps_back_disturbs_no_page(library):
     assert result.added == 0, "moving files created new ones"
     assert result.missing == 0, "moving files lost them"
 
-    assert pages(conn) == before, "a rescan changed what the pages show"
+    assert every_page(conn) == before, "a rescan changed what the pages show"
     assert conn.execute(
         "SELECT fo.name FROM file f JOIN folder fo ON fo.id=f.folder_id"
         " WHERE f.name='portraits_00.png'"
@@ -587,3 +587,95 @@ def test_identical_files_are_never_guessed_between_on_a_move(library):
     assert result.ambiguous == 2, f"a coin was tossed instead of declining: {result}"
     assert result.missing == 2, "the originals were not left as missing"
     assert conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0] == 14
+
+
+# --- the pages db.pages ships that nothing was asking for -------------------
+
+
+def a_recipe_library(tmp_path):
+    """Four pictures across two checkpoints and two LoRAs, so co-occurrence
+    is a question with an answer rather than a table with one row."""
+    root = tmp_path / "recipes"
+    root.mkdir()
+    recipes = [
+        ("a.png", "<lora:filmGrain:0.4> <lora:detailTweaker:0.8>", "dreamshaper_8"),
+        ("b.png", "<lora:filmGrain:0.35>", "dreamshaper_8"),
+        ("c.png", "<lora:filmGrain:0.5> <lora:detailTweaker:0.6>", "fluxDev"),
+        ("d.png", "<lora:detailTweaker:0.9>", "fluxDev"),
+    ]
+    for name, loras, model in recipes:
+        info = PngInfo()
+        info.add_text("parameters", (
+            f"a castle {loras}\nNegative prompt: blur\n"
+            f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, "
+            f"Size: 512x512, Model: {model}"
+        ))
+        Image.new("RGB", (16, 16), (9, 9, 9)).save(root / name, pnginfo=info)
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
+    scan.scan(conn, 1, root, NOW)
+    for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():
+        ingest.one(conn, file_id, root / name, NOW)
+    return conn
+
+
+def test_a_lora_says_what_it_is_actually_used_with(tmp_path):
+    """The feature the old app faked.
+
+    "Proven Match" was `workflow_files LIKE '%<ckpt>%'` over a delimited blob
+    and a string split -- co-residency in one field, with no counts and no
+    confidence. It is a join, and the counts are real.
+    """
+    conn = a_recipe_library(tmp_path)
+    try:
+        loras = dict((name, slug) for name, slug, _ in pages.artifacts_by_use(conn, "lora"))
+        assert set(loras) == {"filmGrain", "detailTweaker"}
+
+        film = pages.resolve(conn, "artifact", loras["filmGrain"])
+        assert pages.lora_synergy(conn, film) == [
+            ("dreamshaper_8", "checkpoint-dreamshaper-8", 2),
+            ("fluxDev", "checkpoint-fluxdev", 1),
+        ]
+        assert_no_growing_scan(conn, pages.LORA_SYNERGY, (film,), aggregate=True)
+    finally:
+        conn.close()
+
+
+def test_the_index_counts_pictures_not_mentions(tmp_path):
+    """A model page that counted rows would count spellings and re-parses."""
+    conn = a_recipe_library(tmp_path)
+    try:
+        assert pages.artifacts_by_use(conn, "checkpoint") == [
+            ("dreamshaper_8", "checkpoint-dreamshaper-8", 2),
+            ("fluxDev", "checkpoint-fluxdev", 2),
+        ]
+        assert_no_growing_scan(conn, pages.ARTIFACTS_BY_USE, ("checkpoint",), aggregate=True)
+    finally:
+        conn.close()
+
+
+def test_a_person_is_shown_across_the_folders_they_are_in(library):
+    """The payoff for the join tables and the reason the six axes are six.
+
+    Where somebody's pictures actually sit is a fact the folder tree cannot
+    state and the people page cannot either; the disagreement between the
+    disk layout and the meaning is the thing worth showing.
+    """
+    conn, person = library["conn"], library["person"]
+    spread = pages.person_across_folders(conn, person)
+    assert [(name, count) for name, _, count in spread] == [("landscape", 1)]
+    assert_no_growing_scan(conn, pages.PERSON_ACROSS_FOLDERS, (person,), aggregate=True)
+    assert_no_growing_scan(conn, pages.PERSON_FILES, (person,))
+
+
+def test_the_breadcrumb_and_the_lineage_pages_are_index_driven(library):
+    """Both walk a parent chain, and a recursive walk is where an unindexed
+    step hides -- it costs once per level rather than once."""
+    conn, first = library["conn"], library["first"]
+    folder_id = conn.execute("SELECT folder_id FROM file WHERE id=?", (first,)).fetchone()[0]
+    assert [name for _, name in pages.breadcrumb(conn, folder_id)] == ["pics", "landscape"]
+    assert_no_growing_scan(conn, pages.PARENTS, (first,))
+    assert_no_growing_scan(conn, pages.CHILDREN, (first,))
