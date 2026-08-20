@@ -46,11 +46,22 @@ CREATE TABLE folder (
     root_id   INTEGER NOT NULL    REFERENCES root(id)   ON DELETE CASCADE,
     parent_id INTEGER             REFERENCES folder(id) ON DELETE CASCADE,
     name      TEXT    NOT NULL,
-    depth     INTEGER NOT NULL
+    depth     INTEGER NOT NULL,
+    -- The filesystem's own id for the directory (NTFS FileID via st_ino),
+    -- which survives a rename and a move within the volume while a copy gets
+    -- a fresh one. A file proves continuity by its bytes; a directory has no
+    -- bytes, so without this a folder rename mints a new folder, the old
+    -- entity is orphaned and its URL rots.
+    --
+    -- A HINT, never identity: it is volume-scoped, lost on copy or restore,
+    -- and absent on filesystems that do not report one. Matched only when
+    -- present and unique, and name matching still has to work on its own.
+    inode     INTEGER
 ) STRICT;
 CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)   WHERE parent_id IS NULL;
 CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name) WHERE parent_id IS NOT NULL;
 CREATE INDEX folder_parent ON folder(parent_id);
+CREATE UNIQUE INDEX folder_inode ON folder(root_id, inode) WHERE inode IS NOT NULL;
 
 -- Both guards cover INSERT and UPDATE. INSERT-only was bypassable: a row
 -- naming itself as its own parent satisfies the foreign key, because the row
@@ -98,6 +109,17 @@ CREATE TABLE file (
     -- which a copy or a sync client rewrites, and from capture.captured_at,
     -- which is when the shutter actually opened.
     btime          REAL,
+    -- The filesystem's own id for the file, kept only so a scan can tell
+    -- "this path still holds the same file" from "this path now holds a
+    -- different one". Size and mtime alone cannot: renaming two same-sized
+    -- files onto each other's names changes neither, and the scan then
+    -- skipped hashing and left every rating on the path instead of on the
+    -- bytes -- the defect this schema exists to remove.
+    --
+    -- A HINT for change detection, never identity and never a matcher:
+    -- content is what proves continuity. Absent where the filesystem
+    -- reports none, and different after a copy or a restore.
+    inode          INTEGER,
     content_sha256 TEXT,
     width          INTEGER,
     height         INTEGER,
@@ -112,7 +134,14 @@ CREATE TABLE file (
 -- NOCASE: the stated platform is Windows, where 'A.png' and 'a.png' are one
 -- file. Case-sensitive uniqueness let a case-only rename create a second row,
 -- one of which is permanently missing.
-CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE);
+--
+-- Partial on missing_since, because a path is exclusive only while the bytes
+-- are there. A missing row keeps its last known path so the app can say where
+-- the file used to be; without the WHERE clause that stale path blocked a new
+-- file from taking the name, and a scan of a directory whose contents had been
+-- replaced failed outright.
+CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)
+    WHERE missing_since IS NULL;
 -- "newest first" is the default view; without this every page load sorts the
 -- whole table in a temp B-tree. Partial, because the default view is live files.
 CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL;

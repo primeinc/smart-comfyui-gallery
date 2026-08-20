@@ -1258,6 +1258,37 @@ def test_a_case_only_rename_is_not_a_second_file(db):
         )
 
 
+def test_a_missing_file_does_not_hold_its_path_against_a_live_one(db):
+    """A path is exclusive only while the bytes are there.
+
+    The missing row keeps its last known path so the app can say where the
+    file used to be. Enforcing uniqueness over that stale path meant a
+    directory whose contents had been swapped out failed to scan at all: the
+    departed row still owned the name the arriving file needed.
+    """
+    tree(db)
+    a_file(db, 9, 1, "dusk.png", sha="aa")
+    db.execute("UPDATE file SET missing_since = 100 WHERE id = 9")
+    entity(db, 10, "file", "file-10")
+    db.execute(
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,"
+        "first_seen_at,last_seen_at) VALUES(10,1,'dusk.png','image',10,0,'bb',0,0)"
+    )
+    live = db.execute(
+        "SELECT id FROM file WHERE name='dusk.png' AND missing_since IS NULL"
+    ).fetchall()
+    assert live == [(10,)], "exactly one file may be live at a path"
+
+    # and the exclusion still bites for two live rows -- otherwise this test
+    # would pass just as well against an index that was dropped entirely
+    entity(db, 11, "file", "file-11")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,"
+            "first_seen_at,last_seen_at) VALUES(11,1,'dusk.png','image',10,0,'cc',0,0)"
+        )
+
+
 def test_booleans_are_zero_or_one(db):
     """STRICT constrains storage class, not domain: localizable = 2 silently
     took the not-localizable branch of its own CHECK."""
