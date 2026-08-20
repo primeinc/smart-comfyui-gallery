@@ -208,12 +208,25 @@ def optimize(conn: sqlite3.Connection) -> None:
 
 
 def analyze(conn: sqlite3.Connection) -> None:
-    """Force the full pass, for right after a build or a first scan.
+    """Force the full pass over every table, not only the queried ones.
 
     `PRAGMA optimize` alone will not look at a table the connection never
     queried; the 0x10000 bit is what makes it consider every table
     ("Look at tables to see if they need to be reanalyzed due to growth or
     shrinkage even if they have not been queried during the current
     connection. Off by default." -- pragma.c:2475-2478).
+
+    Worth running after a first scan, when a library has just gone from empty
+    to a hundred thousand files and the planner's statistics describe a
+    database that no longer exists.
+
+    Measured on 100k files, the people page: 17.7 ms with no statistics,
+    5.4 ms with them. The plan changes from scanning `file` to driving from
+    300 people through an index -- which is right, and which needs a page
+    cache big enough to hold the random lookups it implies. At SQLite's 2 MiB
+    default the same analyzed plan measures 60 ms, and the first reading of
+    that number here was that ANALYZE had made things worse. It had not; see
+    `connect.CACHE_KIB`. A plan is only as good as the cache under it, and a
+    benchmark that leaves the cache at its default is measuring the default.
     """
     conn.execute("PRAGMA optimize=0x10012")

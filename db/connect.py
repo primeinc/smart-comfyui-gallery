@@ -22,6 +22,8 @@ SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 USER_VERSION = 3
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
+#: Page cache per connection, in KiB. See `connect` for what it is worth.
+CACHE_KIB = 65_536
 
 
 class WrongVersion(RuntimeError):
@@ -53,6 +55,22 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
         conn = sqlite3.connect(str(path))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
+    # Negative N means approximately abs(N*1024) BYTES rather than a page
+    # count (refs/sqlite/sqlite/src/pcache.c:284-288), so this is 64 MiB.
+    #
+    # The default is 2 MiB, which is not a tuning detail on a library-sized
+    # database -- it decides which query plans are viable. Measured on 100k
+    # files (89 MB), the people page: 60.5 ms at the 2 MiB default, 33.0 ms
+    # at 8 MiB, 5.4 ms at 32 MiB and above. The plan was identical every
+    # time; only the cache changed.
+    #
+    # That mattered more than it looks. With the default cache the analyzed
+    # plan measured three times slower than the unanalyzed one, and the
+    # conclusion drawn from it -- that ANALYZE hurt this schema -- was wrong.
+    # The plan drives from 300 people into 14k random row lookups, which is
+    # correct and which a 2 MiB cache cannot hold. Given room, statistics
+    # make that page three times FASTER than no statistics.
+    conn.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
     if not read_only:
         # journal_mode is a write: setting it on a read-only connection raises,
         # and the mode is a property of the file anyway, not of the connection.
