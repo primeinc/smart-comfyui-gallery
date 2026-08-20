@@ -34,6 +34,7 @@ dependencies = [
     # XMP is parsed out of image files the gallery did not write; expat
     # expands entities, so a crafted file can exhaust memory during a scan.
     "defusedxml",
+    "pypdf>=6.16.1",
 ]
 
 [dependency-groups]

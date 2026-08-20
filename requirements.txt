@@ -14,3 +14,4 @@ cryptography
 waitress
 argon2-cffi
 defusedxml  # XMP is parsed out of files the gallery did not write
+pypdf  # a document states its page count, or it is not a citizen of the library

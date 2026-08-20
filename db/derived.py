@@ -21,6 +21,35 @@ from __future__ import annotations
 import hashlib
 
 
+def plain(value):
+    """A model's number as one SQLite can store.
+
+    Detectors return numpy, and sqlite3 binds an object it does not recognise
+    through the buffer protocol -- which a numpy scalar supports -- so
+    `np.float32(0.98)` arrives as a BLOB. Against a STRICT table that is an
+    IntegrityError on the very first face; against a lax one it would be
+    stored as raw bytes and read back as garbage.
+
+    The trap is that it works until it doesn't: `np.float64` subclasses
+    Python's float and `np.int64` does not, so a detector reporting doubles
+    stores fine and the same code reporting float32 -- which is what every
+    ONNX face model returns -- fails. Nothing caught it because every face in
+    every test was placed here by hand, as Python literals.
+
+    Duck-typed rather than importing numpy: torch scalars answer `.item()`
+    too, and the schema layer should not take a dependency on either.
+    """
+    if value is None or isinstance(value, (int, float, str, bytes)):
+        return value
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except (ValueError, TypeError):
+            return value
+    return value
+
+
 def drop_all(conn) -> list[str]:
     """Delete the whole derived namespace.
 
@@ -67,7 +96,7 @@ def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None =
         )
     cursor = conn.execute(
         "INSERT INTO region(x, y, w, h, mask_hash) VALUES(?, ?, ?, ?, ?)",
-        (x, y, w, h, mask_hash),
+        tuple(plain(value) for value in (x, y, w, h, mask_hash)),
     )
     return int(cursor.lastrowid or 0)
 
@@ -99,7 +128,7 @@ def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash
         " ON CONFLICT(file_id) DO UPDATE SET phash64 = excluded.phash64,"
         " dhash64 = excluded.dhash64, source_sha256 = excluded.source_sha256,"
         " computed_at = excluded.computed_at",
-        (file_id, phash64, dhash64, sha, now),
+        tuple(plain(value) for value in (file_id, phash64, dhash64, sha, now)),
     )
 
 
@@ -156,13 +185,13 @@ def add_sample(
         " VALUES(?, ?, ?, ?, ?)"
         " ON CONFLICT(file_id, kind, IFNULL(offset_ms,-1), IFNULL(page_index,-1), policy)"
         " DO NOTHING",
-        (file_id, kind, offset_ms, page_index, policy),
+        tuple(plain(value) for value in (file_id, kind, offset_ms, page_index, policy)),
     )
     row = conn.execute(
         "SELECT id FROM derived_media_sample WHERE file_id = ? AND kind = ?"
         " AND IFNULL(offset_ms,-1) = IFNULL(?,-1)"
         " AND IFNULL(page_index,-1) = IFNULL(?,-1) AND policy = ?",
-        (file_id, kind, offset_ms, page_index, policy),
+        tuple(plain(value) for value in (file_id, kind, offset_ms, page_index, policy)),
     ).fetchone()
     return int(row[0]) if row else 0
 
@@ -188,10 +217,10 @@ def _insert_face(
         " landmarks, det_score, dim, age, sex, pose_yaw, pose_pitch, pose_roll,"
         " model_id, model_version, source_sha256, computed_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
+        tuple(plain(value) for value in (
             file_id, sample_id, cluster_id, region_id, landmarks, det_score, dim,
             age, sex, yaw, pitch, roll, model_id, model_version, sha, now,
-        ),
+        )),
     )
     return int(cursor.lastrowid or 0)
 
@@ -204,7 +233,8 @@ def _insert_cluster(
     cursor = conn.execute(
         "INSERT INTO derived_face_cluster(person_id, centroid, dim, model_id,"
         " model_version, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
-        (person_id, centroid, dim, model_id, model_version, now),
+        tuple(plain(value) for value in
+              (person_id, centroid, dim, model_id, model_version, now)),
     )
     return int(cursor.lastrowid or 0)
 
@@ -316,7 +346,8 @@ def attribute(conn, file_id: int, person_id: int, model_id: str, model_version: 
         " face_count) VALUES(?, ?, ?, ?, ?)"
         " ON CONFLICT(file_id, person_id, model_id, model_version)"
         " DO UPDATE SET face_count = excluded.face_count",
-        (file_id, person_id, model_id, model_version, face_count),
+        tuple(plain(value) for value in
+              (file_id, person_id, model_id, model_version, face_count)),
     )
 
 
@@ -434,7 +465,8 @@ def add_embedding(
         " ON CONFLICT(file_id, space, model_id, model_version) DO UPDATE SET"
         " vector = excluded.vector, dim = excluded.dim,"
         " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
-        (file_id, space, vector, dim, model_id, model_version, sha, now),
+        tuple(plain(value) for value in
+              (file_id, space, vector, dim, model_id, model_version, sha, now)),
     )
 
 
@@ -459,10 +491,10 @@ def annotate(
         "             IFNULL(region_id, 0), IFNULL(sample_id, 0))"
         " DO UPDATE SET text = excluded.text, confidence = excluded.confidence,"
         " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
-        (
+        tuple(plain(value) for value in (
             file_id, sample_id, region_id, kind, text, confidence,
             model_id, model_version, sha, now,
-        ),
+        )),
     )
     row = conn.execute(
         "SELECT id FROM derived_annotation WHERE file_id = ? AND kind = ?"

@@ -398,8 +398,7 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
 
 
 #: Kinds Pillow cannot open, so their size and length come from the container
-#: rather than from a decode. `document` is not here: a PDF has pages, not a
-#: duration, and nothing probes it yet.
+#: rather than from a decode.
 _PROBED = ("video", "animated_image", "audio")
 
 
@@ -422,6 +421,16 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
         out.params += len(container.params)
         out.probed = container.duration is not None or container.width is not None
         out.unreadable = container.unreadable
+    elif kind == "document":
+        # A document says how long it is in pages, and gets one sample per
+        # page so a caption or a piece of OCR has somewhere to point. It was
+        # the last kind that could not state its own length.
+        opened = probe_module.document(path)
+        probe_module.store(conn, file_id, opened, now)
+        out.params += len(opened.params)
+        out.probed = not opened.is_empty
+        out.unreadable = opened.unreadable
+        probe_module.pages_of(conn, file_id, opened)
 
     # Retracted here rather than inside `store`, which returns early on a file
     # with no camera tags: a picture whose bytes were replaced by ones
@@ -429,11 +438,11 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     retract(conn, file_id, "camera")
     conn.execute("DELETE FROM capture WHERE file_id = ?", (file_id,))
 
-    # Only where a camera could have written any. Running it on a video meant
-    # `unreadable` reported "Pillow cannot open this" for every video in the
-    # library -- true, uninteresting, and it buried the message from the
+    # Only where a camera could have written any. Running it on a video or a
+    # PDF meant `unreadable` reported "Pillow cannot open this" for every one
+    # of them -- true, uninteresting, and it buried the message from the
     # reader that could.
-    if kind not in _PROBED:
+    if kind == "image":
         found = capture_module.read(path)
         out.unreadable = found.unreadable
         if found.orientation in capture_module.TRANSPOSED:

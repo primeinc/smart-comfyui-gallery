@@ -1151,3 +1151,180 @@ def test_a_still_picture_has_no_moments():
     grow a frame row per photograph."""
     assert sample.moments(None)[0] == []
     assert sample.moments(0)[0] == []
+
+
+# --- what a real detector actually hands back -------------------------------
+
+
+def test_a_detectors_own_numbers_can_be_stored(db, a_library):
+    """Every face in every other test was placed here by hand, as a Python
+    literal. A detector does not return Python literals.
+
+    sqlite3 binds an object it does not recognise through the buffer
+    protocol, which a numpy scalar supports, so `np.float32(0.98)` arrives as
+    a BLOB -- an IntegrityError against a STRICT table on the very first
+    face, and against a lax one it would be stored as bytes and read back as
+    garbage. It works until it doesn't: `np.float64` subclasses Python's
+    float and `np.int32` does not, so a detector reporting doubles stored
+    fine and the same code reporting float32 -- which is what every ONNX face
+    model returns -- could not write a single row.
+    """
+    numpy = pytest.importorskip("numpy")
+    file_id = a_library["file"]
+
+    box = numpy.array([256, 128, 512, 384], dtype=numpy.int32)
+    region_id = derived.region_from_pixels(db, box, numpy.int32(1024), numpy.int32(768))
+    derived.record_faces(
+        db, file_id, "yunet", "2023mar", "aa", NOW,
+        [{
+            "region": region_id,
+            "det_score": numpy.float32(0.987),
+            "dim": numpy.int64(128),
+            "age": numpy.int32(34),
+            "landmarks": numpy.array([[1.5, 2.5]], dtype=numpy.float32).tobytes(),
+            "pose": (numpy.float32(1.5), numpy.float32(-2.0), numpy.float32(0.25)),
+        }],
+    )
+    derived.add_embedding(
+        db, file_id, "visual", "clip", "v1",
+        numpy.random.rand(8).astype(numpy.float32).tobytes(), numpy.int32(8), "aa", NOW,
+    )
+    derived.record_hash(db, file_id, "aa", NOW, phash64=numpy.int64(-42))
+    derived.annotate(
+        db, file_id, "caption", "a brass helmet", "qwen-vl", "2.5", "aa", NOW,
+        confidence=numpy.float32(0.75),
+    )
+    derived.add_sample(db, file_id, "frame", "every-2s", offset_ms=numpy.int64(4000))
+
+    score, dim, age, yaw = db.execute(
+        "SELECT det_score, dim, age, pose_yaw FROM derived_face_instance"
+    ).fetchone()
+    assert score == pytest.approx(0.987, abs=1e-6)
+    assert (dim, age, yaw) == (128, 34, 1.5)
+    assert db.execute("SELECT dim FROM derived_embedding").fetchone()[0] == 8
+    assert db.execute("SELECT phash64 FROM derived_file_hash").fetchone()[0] == -42
+    assert db.execute("SELECT confidence FROM derived_annotation").fetchone()[0] == 0.75
+    assert db.execute("SELECT offset_ms FROM derived_media_sample").fetchone()[0] == 4000
+
+    # every one of those is a real number in the column, not bytes
+    kinds = db.execute(
+        "SELECT typeof(det_score), typeof(dim), typeof(age), typeof(pose_yaw)"
+        "  FROM derived_face_instance"
+    ).fetchone()
+    assert kinds == ("real", "integer", "integer", "real"), kinds
+
+
+def test_the_coercion_leaves_ordinary_values_alone(db, a_library):
+    """The control: a coercion that mangled Python's own types would be worse
+    than the problem, and one that quietly swallowed a real error would hide
+    the next defect at this seam."""
+    assert derived.plain(None) is None
+    assert derived.plain(5) == 5 and isinstance(derived.plain(5), int)
+    assert derived.plain(1.5) == 1.5
+    assert derived.plain("euler") == "euler"
+    assert derived.plain(b"\x00\x01") == b"\x00\x01"
+    # something with no .item() passes through untouched, so a genuinely
+    # unstorable value still fails loudly at the bind rather than here
+    marker = object()
+    assert derived.plain(marker) is marker
+
+
+# --- documents --------------------------------------------------------------
+
+
+def a_document(path, pages=3, **meta):
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(612, 792)
+    if meta:
+        writer.add_metadata(meta)
+    with open(path, "wb") as handle:
+        writer.write(handle)
+    return path
+
+
+def _ingest_as(db, a_library, path, kind):
+    file_id = scan.mint(db, "file", path.stem)
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, ?, ?, 10, 0, ?, ?)",
+        (file_id, a_library["folder"], path.name, kind, NOW, NOW),
+    )
+    return file_id, ingest.one(db, file_id, path, NOW)
+
+
+def test_a_document_knows_how_long_it_is(db, a_library, tmp_path):
+    """The last kind that could not state its own length.
+
+    `.pdf` is a kind the scanner recognises, so a document that cannot say
+    how many pages it has is exactly the hole a video had before ffprobe was
+    wired in -- and 'page' was a value in derived_media_sample's CHECK that
+    nothing could ever write.
+    """
+    path = a_document(tmp_path / "manual.pdf", pages=3,
+                      **{"/Title": "The Diving Manual", "/Author": "Ilse"})
+    file_id, result = _ingest_as(db, a_library, path, "document")
+
+    assert result.probed, result.unreadable
+    assert result.unreadable is None
+    assert db.execute(
+        "SELECT width, height FROM file WHERE id = ?", (file_id,)
+    ).fetchone() == (612, 792)
+    fields = dict(db.execute(
+        "SELECT key, value_text FROM file_param WHERE file_id = ? AND source = 'container'",
+        (file_id,),
+    ))
+    assert fields["Pages"] == "3"
+    assert fields["Title"] == "The Diving Manual"
+    assert fields["Author"] == "Ilse"
+
+
+def test_every_page_of_a_document_is_somewhere_to_point(db, a_library, tmp_path):
+    """OCR from page nine is not OCR of the file. A page sample is where a
+    caption or a piece of read text attaches, exactly as a frame is for a
+    video -- and re-ingesting must resume rather than raise on page one."""
+    path = a_document(tmp_path / "manual.pdf", pages=4)
+    file_id, _ = _ingest_as(db, a_library, path, "document")
+
+    assert [
+        r[0] for r in db.execute(
+            "SELECT page_index FROM derived_media_sample"
+            " WHERE file_id = ? AND kind = 'page' ORDER BY page_index", (file_id,)
+        )
+    ] == [0, 1, 2, 3]
+
+    ingest.one(db, file_id, path, NOW)
+    assert db.execute(
+        "SELECT count(*) FROM derived_media_sample WHERE kind = 'page'"
+    ).fetchone()[0] == 4
+
+
+def test_a_document_nothing_can_open_costs_only_that_document(db, a_library, tmp_path):
+    """A library is full of files nobody validated. One truncated PDF must
+    report why rather than ending the scan around it."""
+    path = tmp_path / "broken.pdf"
+    path.write_bytes(b"%PDF-1.4 and then nothing at all")
+    file_id, result = _ingest_as(db, a_library, path, "document")
+
+    assert not result.probed
+    assert result.unreadable, "a document nothing could read said nothing about why"
+    assert db.execute(
+        "SELECT width, height FROM file WHERE id = ?", (file_id,)
+    ).fetchone() == (None, None)
+    assert db.execute("SELECT count(*) FROM derived_media_sample").fetchone()[0] == 0
+
+
+def test_a_pdf_is_not_read_for_camera_tags(db, a_library, tmp_path):
+    """Running the camera reader over everything that is not a video meant
+    `unreadable` said "Pillow cannot open this" for every PDF in the library
+    -- true, uninteresting, and it buried the message from the reader that
+    could open it."""
+    path = a_document(tmp_path / "quiet.pdf", pages=1)
+    file_id, result = _ingest_as(db, a_library, path, "document")
+
+    assert result.unreadable is None
+    assert db.execute(
+        "SELECT count(*) FROM capture WHERE file_id = ?", (file_id,)
+    ).fetchone()[0] == 0

@@ -413,13 +413,11 @@ CREATE INDEX region_mask ON region(mask_hash) WHERE mask_hash IS NOT NULL;
 CREATE TABLE derived_media_sample (
     id         INTEGER PRIMARY KEY,
     file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    -- 'frame' is written by db/sample.py from the probed duration. 'page' is
-    -- not: counting the pages of a document needs a PDF library and this
-    -- project depends on none, so a PDF is scanned, addressed and searchable
-    -- by its name and nothing more. The value stays in the CHECK because the
-    -- shape is right and the reader is the only thing missing -- but nothing
-    -- writes one, and that is a gap with a name rather than an empty table
-    -- somebody later mistakes for "no documents have pages".
+    -- 'frame' comes from db/sample.py, at a cadence, off the probed duration.
+    -- 'page' comes from db/probe.py, one per page of a document. Both exist
+    -- so a claim can say which moment or which page it was looking at: a
+    -- caption of a video is a caption of a frame, and OCR from page nine is
+    -- not OCR of the file.
     kind       TEXT NOT NULL CHECK (kind IN ('still','frame','page')),
     offset_ms  INTEGER,
     page_index INTEGER,

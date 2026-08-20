@@ -38,6 +38,9 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 
+import pypdf
+import pypdf.errors
+
 #: Both tools hang readily on a truncated file, on a path that has gone away
 #: mid-read, and on network storage that stops answering. A timeout costs the
 #: one file; no timeout costs the scan.
@@ -193,6 +196,78 @@ def read(path) -> Probed:
             out.params.append(("FrameRate", f"{rate:.6g}", rate))
 
     return out
+
+
+def document(path) -> Probed:
+    """How many pages a PDF has, and what it says about itself.
+
+    A document was the last second-class citizen: `.pdf` is a kind the
+    scanner recognises, and a document that cannot say how long it is has
+    exactly the hole a video had before ffprobe was wired in -- `page` was a
+    value in the sample table's CHECK that nothing could ever write.
+
+    `strict=False` is pypdf's default and the right one here: "a lot of PDF
+    files are not strictly following the specification", and the forgiving
+    reader "will try to be forgiving and do something reasonable"
+    (refs/py-pdf/pypdf/docs/user/robustness.md:36-50). A library is full of
+    files nobody validated, and refusing to count the pages of a slightly
+    malformed one helps no one.
+
+    An encrypted PDF raises `FileNotDecryptedError`, a subclass of
+    `PdfReadError` and so of `PyPdfError` (pypdf/errors.py:19-49). That is a
+    fact about the file, reported, not an error to end a scan with.
+    """
+    out = Probed()
+    try:
+        reader = pypdf.PdfReader(os.fspath(path))
+        count = len(reader.pages)
+    except (pypdf.errors.PyPdfError, OSError, ValueError, RecursionError) as problem:
+        out.unreadable = f"{type(problem).__name__}: {problem}"
+        return out
+
+    out.params.append(("Pages", str(count), float(count)))
+    # The first page's size, in PDF points, because "how big is this
+    # document" is the same question a picture answers with its pixels.
+    if count:
+        try:
+            box = reader.pages[0].mediabox
+            out.width, out.height = int(float(box.width)), int(float(box.height))
+        except (pypdf.errors.PyPdfError, AttributeError, TypeError, ValueError):
+            pass
+    try:
+        meta = reader.metadata
+    except (pypdf.errors.PyPdfError, ValueError):
+        meta = None
+    for key, value in (
+        ("Title", getattr(meta, "title", None)),
+        ("Author", getattr(meta, "author", None)),
+        ("Producer", getattr(meta, "producer", None)),
+        ("Creator", getattr(meta, "creator", None)),
+    ):
+        text = str(value).strip() if value is not None else ""
+        if text:
+            out.params.append((key, text, None))
+    return out
+
+
+def pages_of(conn, file_id: int, found: Probed):
+    """Record one page sample per page, so a document has moments the way a
+    video has moments -- somewhere for a caption or a piece of OCR to point.
+
+    Takes the reading rather than the path: opening a PDF twice to answer one
+    question is the sort of thing that is free on a fixture and costs a
+    second per document on a real library.
+
+    Returns the sample ids in page order. Idempotent, as frame sampling is:
+    an interrupted job resumes rather than raising on page one.
+    """
+    from . import derived
+
+    pages = next((int(n) for key, _, n in found.params if key == "Pages" and n), 0)
+    return [
+        derived.add_sample(conn, file_id, "page", "every-page", page_index=index)
+        for index in range(pages)
+    ]
 
 
 def store(conn, file_id: int, found: Probed, now: float) -> None:
