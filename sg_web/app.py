@@ -575,7 +575,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         fresh = connect.connect(where)
         fresh.executescript(connect.schema_sql())
         fresh.commit()
-        fresh.close()
+        connect.close(fresh)
 
     channels = ChannelsPlugin(MemoryChannelsBackend(), channels=["jobs"])
 

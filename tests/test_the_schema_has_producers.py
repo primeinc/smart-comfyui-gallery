@@ -234,6 +234,52 @@ def test_a_video_naming_survives_the_rebuild(db, a_library):
     assert owners[groups2[1]] == bob
 
 
+def test_a_video_naming_survives_a_changed_sampling_policy(db, a_library):
+    """The policy token is expected to evolve without a schema change --
+    the schema says so on `derived_media_sample.policy`. The assertion
+    names a MOMENT; a rebuild that samples the same moment under a new
+    token must still re-attach the name, because the human's claim is
+    about the frame, never about the token that chose it."""
+    folder = a_library["folder"]
+    clip = scan.mint(db, "file", "clip2")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+        " first_seen_at, last_seen_at) VALUES(?, ?, 'clip2.mp4', 'video', 10, 0, 'dd', ?, ?)",
+        (clip, folder, NOW, NOW),
+    )
+    alice = authored.person(db, "Alice", NOW)
+    bob = authored.person(db, "Bob", NOW)
+
+    def indexed(version, when, policy):
+        run = derived.run_for(db, "test/emb", version, "given", None, when)
+        faces = {}
+        for name, offset in (("alice", 1000), ("bob", 9000)):
+            moment = derived.add_sample(db, clip, "frame", policy, offset_ms=offset)
+            box = derived.region(db, 0.4, 0.4, 0.2, 0.2)
+            (face,) = derived.record_faces(
+                db, clip, "test/emb", version, "dd", when, [{"region": box}], sample_id=moment
+            )
+            faces[name] = (face, moment, box)
+        groups = derived.recluster(db, "test/emb", version, when, [{}, {}])
+        derived.assign_cluster(db, faces["alice"][0], groups[0])
+        derived.assign_cluster(db, faces["bob"][0], groups[1])
+        return run, faces, groups
+
+    _, faces, _groups = indexed("v1", NOW, "every-2s")
+    for person, name in ((alice, "alice"), (bob, "bob")):
+        _face, moment, box = faces[name]
+        authored.assert_person(db, person, clip, None, NOW, sample_id=moment, region_id=box)
+
+    derived.drop_all(db)
+    run2, _, groups2 = indexed("v2", NOW + 10, "every-2000ms")
+    named = derived.seed_clusters_from_assertions(db, run2)
+
+    assert named == 2, "the same moments under a new policy token must still carry the names"
+    owners = dict(db.execute("SELECT id, person_id FROM derived_face_cluster WHERE run_id = ?", (run2,)))
+    assert owners[groups2[0]] == alice
+    assert owners[groups2[1]] == bob
+
+
 def _two_people_in_one_photo(db, a_library, tmp_path):
     """A group shot and a solo shot, with a human's claim on each face."""
     group = a_library["file"]

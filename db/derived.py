@@ -51,11 +51,14 @@ def plain(value):
 
 
 def drop_all(conn) -> list[str]:
-    """Delete the whole derived namespace.
+    """Delete the derived namespace, minus what human assertions pin.
 
     Segregating these tables by name is what makes the rebuild contract a
     mechanical operation instead of a careful one -- there is no list to keep
-    in step, because the prefix *is* the list.
+    in step, because the prefix *is* the list. Two pinned exceptions, both
+    for the same reason: a `person_assertion` locates its claim by a region
+    and, on video, a sampled moment, and deleting either would corrupt the
+    claim's discriminant while the FK quietly nulls the pointer.
     """
     names = [
         row[0]
@@ -1046,6 +1049,10 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
     Returns the number of clusters named.
     """
     boxes = {row[0]: row[1:] for row in conn.execute("SELECT id, x, y, w, h FROM region")}
+    moments = {
+        row[0]: (row[1], row[2], row[3])
+        for row in conn.execute("SELECT id, kind, offset_ms, page_index FROM derived_media_sample")
+    }
     assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
     for person_id, file_id, sample_id, region_id in conn.execute(
         "SELECT person_id, file_id, sample_id, region_id FROM person_assertion"
@@ -1067,7 +1074,10 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
             # of a video can hold a face in the same part of the picture, so
             # without this the box match reaches across moments and a video of
             # two people mislabels the same way a photograph of two people did.
-            if on_sample is not None and on_sample != sample_id:
+            # Compared as MOMENTS, not row ids: a rebuild under a new policy
+            # token mints fresh sample rows for the same frame, and the claim
+            # is about the frame, never about the token that chose it.
+            if on_sample is not None and moments.get(on_sample) != moments.get(sample_id, ()):
                 continue
             if box is not None:
                 if _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:

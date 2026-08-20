@@ -289,8 +289,6 @@ def test_a_name_in_a_second_embedding_space_is_kept_not_lost(served):
     pages do not show must still write the record that keeps the name --
     the application never accepts a name it cannot keep -- and a name it
     genuinely cannot keep is refused, not swallowed."""
-    import numpy as np
-
     client, _, _ = served
     db_path = client.app.state.db_path
     conn = connect.connect(db_path)
@@ -349,6 +347,72 @@ def test_a_name_in_a_second_embedding_space_is_kept_not_lost(served):
     # And the refusal: the fixture's hand-attributed person owns no
     # cluster and no assertion, so their name has nothing to be kept by.
     assert client.post("/p/ana/name", json={"name": "Ana R"}).status_code == 400
+
+
+def test_renaming_asserts_only_what_the_human_addressed(served):
+    """Durability may READ every run; authorship is WRITTEN only for the
+    cluster the human actually addressed, and a system write never
+    overwrites a row a human signed. Otherwise a rename launders model
+    inference into the authored ground truth the run rankings judge
+    against -- a feedback loop wearing a person's name."""
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    rng = np.random.default_rng(11)
+    one = rng.standard_normal(16).astype(np.float32)
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    # In THIS space ben clusters with the anas, same box coordinates --
+    # the run disagreement the multi-run design exists to hold.
+    for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
+        derived.record_faces(
+            conn,
+            files[name],
+            "other/embedder",
+            "1",
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
+                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
+                }
+            ],
+        )
+    conn.commit()
+    conn.close()
+
+    _drained_cluster_job(client)
+    named = client.get("/people").json()[0]
+    assert client.post(f"/p/{named['slug']}/name", json={"name": "Ana Torres"}).status_code < 300
+    _drained_cluster_job(client)  # the seed spreads her onto the other run's 3-file cluster
+
+    conn = connect.connect(db_path)
+    user_id = authored.add_user(conn, "will", "hash", "ADMIN", 2.0)
+    their_box = derived.region(conn, 0.05, 0.05, 0.3, 0.3)
+    resolved = naming.resolve(conn, "person", "ana-torres")
+    assert resolved is not None
+    person_id = resolved[0]
+    authored.assert_person(conn, person_id, files["ana_1.png"], user_id, 2.0, region_id=their_box)
+    conn.commit()
+    conn.close()
+
+    assert client.post("/p/ana-torres/name", json={"name": "Ana T"}).status_code < 300
+
+    conn = connect.connect(db_path)
+    asserted = {
+        row[0]
+        for row in conn.execute(
+            "SELECT f.name FROM person_assertion pa JOIN file f ON f.id = pa.file_id WHERE pa.person_id = ?",
+            (person_id,),
+        )
+    }
+    kept = conn.execute(
+        "SELECT user_id, region_id FROM person_assertion WHERE person_id = ? AND file_id = ?",
+        (person_id, files["ana_1.png"]),
+    ).fetchone()
+    conn.close()
+    assert asserted == {"ana_1.png", "ana_2.png"}, f"a rename asserted files only a model inferred: {asserted}"
+    assert kept == (user_id, their_box), "a system write overwrote a human-authored assertion"
 
 
 def test_feedback_on_a_placeholder_outlives_the_recluster(served):

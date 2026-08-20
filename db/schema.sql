@@ -408,8 +408,12 @@ CREATE INDEX region_mask ON region(mask_hash) WHERE mask_hash IS NOT NULL;
 
 -- ============ evidence locator (video/document faces) ============
 -- Named derived_: a sampling policy produced these rows, so "drop the derived
--- namespace and re-index" must take them. Leaving them behind left face
--- instances citing frames whose policy no longer existed.
+-- namespace and re-index" takes them -- EXCEPT the rows a person_assertion
+-- pins, which drop_all keeps the way it keeps asserted regions: the human's
+-- claim names a moment, and deleting the row erases which one. Instances
+-- citing dead policies still go, because the instances themselves go; the
+-- seeder compares moments by (kind, offset, page), never by row id, so a
+-- rebuild under a new policy token re-attaches the same frames.
 CREATE TABLE derived_media_sample (
     id         INTEGER PRIMARY KEY,
     file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,

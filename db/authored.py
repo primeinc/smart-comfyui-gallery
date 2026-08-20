@@ -146,21 +146,33 @@ def assert_named_cluster(conn, person_id: int, user_id: int | None, now: float) 
     dissolve on the next re-cluster; what re-attaches the name afterwards
     is `person_assertion`, so the confirmation is written down here, one
     row per file with the face's box -- the highest-confidence face where
-    a file holds several. Reads every run whose clusters carry this
-    person, primary first: the cluster job mints an addressable person
-    per run, only one run is ever primary, and a person named from a
-    non-primary run's page deserves the same durability. Returns how
-    many files were asserted.
+    a file holds several.
+
+    Written from ONE run: the primary if its clusters carry this person
+    (that is the page the human is looking at), otherwise the run that
+    minted them -- a person named from a non-primary run's group deserves
+    the same durability. Never the union across runs: runs disagree on
+    purpose, and asserting every run's files would write model inference
+    into the authored ground truth the run rankings are judged against.
+    Returns how many files were asserted.
     """
+    addressed = conn.execute(
+        "SELECT c.run_id FROM derived_face_cluster c"
+        "  JOIN derived_face_run r ON r.id = c.run_id"
+        " WHERE c.person_id = ?"
+        " ORDER BY r.is_primary DESC, r.computed_at DESC LIMIT 1",
+        (person_id,),
+    ).fetchone()
+    if addressed is None:
+        return 0
     seen: set[int] = set()
     rows = conn.execute(
         "SELECT fi.file_id, fi.sample_id, fi.region_id FROM derived_face_membership m"
         "  JOIN derived_face_instance fi ON fi.id = m.face_id"
         "  JOIN derived_face_cluster c ON c.id = m.cluster_id"
-        "  JOIN derived_face_run r ON r.id = c.run_id"
-        " WHERE c.person_id = ?"
-        " ORDER BY r.is_primary DESC, fi.det_score DESC",
-        (person_id,),
+        " WHERE c.person_id = ? AND c.run_id = ?"
+        " ORDER BY fi.det_score DESC",
+        (person_id, addressed[0]),
     ).fetchall()
     for file_id, sample_id, region_id in rows:
         if file_id in seen:
@@ -186,13 +198,18 @@ def assert_person(
     After a re-index the inference is gone and this is what re-attributes the
     clusters, so the naming survives by a record rather than by a similarity
     heuristic that usually works.
+
+    The upsert is guarded: a record with no author (`user_id` NULL -- the
+    system writing a naming down) never replaces one a person signed. A
+    signed write replaces anything, including another signature.
     """
     conn.execute(
         "INSERT INTO person_assertion(person_id, file_id, sample_id, region_id,"
         " user_id, created_at) VALUES(?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(person_id, file_id) DO UPDATE SET"
         " sample_id = excluded.sample_id, region_id = excluded.region_id,"
-        " user_id = excluded.user_id",
+        " user_id = excluded.user_id"
+        " WHERE person_assertion.user_id IS NULL OR excluded.user_id IS NOT NULL",
         (person_id, file_id, sample_id, region_id, user_id, now),
     )
 
