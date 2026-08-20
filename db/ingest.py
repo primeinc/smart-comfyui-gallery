@@ -390,6 +390,16 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     if kind not in _PROBED:
         found = capture_module.read(path)
         out.unreadable = found.unreadable
+        if found.orientation in capture_module.TRANSPOSED:
+            # The decode reports the stored frame; the tag says to turn it a
+            # quarter. Storing the stored size files every portrait photograph
+            # in the library as landscape -- the same defect the video probe
+            # handles for a display matrix, and it needs the same answer here.
+            # SQLite reads both sides from the row as it was, so this really
+            # is a swap.
+            conn.execute(
+                "UPDATE file SET width = height, height = width WHERE id = ?", (file_id,)
+            )
         if not found.is_empty:
             capture_module.store(conn, file_id, found, now, mint)
             out.captured = True

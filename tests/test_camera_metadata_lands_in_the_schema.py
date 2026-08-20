@@ -560,3 +560,83 @@ def test_a_file_with_no_exif_writes_nothing(db, a_file, tmp_path):
     capture.store(db, a_file, found, NOW, scan.mint)
     assert stored(db, a_file) is None
     assert db.execute("SELECT count(*) FROM artifact").fetchone()[0] == 0
+
+
+# --- facts that live in columns rather than in the long tail ----------------
+
+
+def _bare(tmp_path, name, tags, size=(320, 180)):
+    """A picture carrying exactly the tags named and nothing else."""
+    image = Image.new("RGB", size, (30, 60, 90))
+    exif = image.getexif()
+    for tag, value in tags.items():
+        exif[tag] = value
+    path = tmp_path / name
+    image.save(path, exif=exif)
+    return path
+
+
+@pytest.mark.parametrize(
+    "label, tags, reads",
+    [
+        ("a body with no clock", {271: "NIKON CORPORATION", 272: "NIKON D2X"},
+         lambda c: c.camera == "NIKON D2X"),
+        ("an ISO and nothing else", {34855: 400}, lambda c: c.iso == 400),
+        ("an orientation alone", {274: 6}, lambda c: c.orientation == 6),
+        ("a lens alone", {42035: "Nikon", 42036: "AF-S 50mm"},
+         lambda c: c.lens == "Nikon AF-S 50mm"),
+    ],
+)
+def test_a_reading_that_lands_in_a_column_is_still_a_reading(tmp_path, label, tags, reads):
+    """`is_empty` asked only about the long tail and the timestamp.
+
+    So a photograph whose camera facts all landed in columns was discarded
+    whole: Make and Model with no date recorded no camera at all, an ISO
+    recorded no ISO, an orientation recorded nothing. It read as correct
+    because most photographs carry DateTimeOriginal and everything else rode
+    in on that -- a scan, a screenshot or an exported crop did not, and their
+    camera never reached the /cameras page.
+    """
+    found = capture.read(_bare(tmp_path, f"{label.replace(' ', '_')}.jpg", tags))
+    assert not found.is_empty, f"{label}: every one of these facts was thrown away"
+    assert reads(found), f"{label}: read the wrong value"
+
+
+def test_a_picture_with_nothing_in_it_is_still_empty(tmp_path):
+    """The control. Without it the test above passes on an `is_empty` that
+    always says False, and every file grows an empty capture row."""
+    image = Image.new("RGB", (8, 8), (1, 2, 3))
+    path = tmp_path / "nothing.png"
+    image.save(path)
+    assert capture.read(path).is_empty
+
+
+@pytest.mark.parametrize(
+    "orientation, expected",
+    [(1, (320, 180)), (2, (320, 180)), (3, (320, 180)), (4, (320, 180)),
+     (5, (180, 320)), (6, (180, 320)), (7, (180, 320)), (8, (180, 320))],
+)
+def test_a_turned_photograph_reports_the_size_it_is_seen_at(
+    db, tmp_path, orientation, expected
+):
+    """The decode reports the stored frame and the tag says to turn it.
+
+    Storing the stored size files every portrait photograph in the library as
+    landscape, so a layout draws a landscape box around an upright picture.
+    5 through 8 all turn it a quarter
+    (refs/exiftool/exiftool/lib/Image/ExifTool/Exif.pm:291-300); 2 and 4
+    mirror without turning and 3 is a half turn, so those keep their shape.
+    """
+    from db import ingest, library, scan
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    _bare(root, "phone.jpg", {274: orientation})
+    root_id = library.add_root(db, root, "library", 0.0)
+    scan.scan(db, root_id, root, 0.0)
+    file_id = db.execute("SELECT id FROM file").fetchone()[0]
+    ingest.one(db, file_id, root / "phone.jpg", 0.0)
+
+    assert db.execute(
+        "SELECT width, height FROM file WHERE id = ?", (file_id,)
+    ).fetchone() == expected

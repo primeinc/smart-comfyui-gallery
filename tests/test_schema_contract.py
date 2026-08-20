@@ -1487,6 +1487,16 @@ def test_every_version_left_behind_has_a_step_off_it():
         f"A database at that version cannot be opened or upgraded."
     )
 
+    # The control. At v1 the loop above is `range(1, 1)` -- it asserts over an
+    # empty list and cannot fail, which is exactly the state that would let a
+    # bump ship with no step and nothing say a word. This asks the same
+    # question of the version after this one and requires the answer to be no.
+    ahead = [v for v in range(1, USER_VERSION + 1) if v not in STEPS]
+    assert ahead, (
+        f"a step off v{USER_VERSION} is already registered, so this check has "
+        f"nothing left to catch -- did USER_VERSION forget to move with it?"
+    )
+
 
 def test_the_front_page_query_uses_an_index(db):
     """'Newest first' is the default view of a gallery. Without an index every

@@ -29,6 +29,7 @@ re-parses slightly differently.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import hashlib
 import math
@@ -84,6 +85,17 @@ _PREFIXED_TEXT = {
 }
 
 
+#: Fields of `Capture` that are bookkeeping rather than something found in the
+#: file. Everything else is a reading, and one reading is enough to keep.
+_NOT_A_FINDING = frozenset({"params", "binaries", "unrecorded", "homeless", "unreadable"})
+
+#: Orientations that turn the frame a quarter, so the stored width and height
+#: are not the displayed ones. 5 through 8 all do
+#: (refs/exiftool/exiftool/lib/Image/ExifTool/Exif.pm:291-300); 2 and 4 mirror
+#: without turning, and 3 is a half turn.
+TRANSPOSED = frozenset({5, 6, 7, 8})
+
+
 @dataclass
 class Capture:
     """What one photograph says about how it was taken."""
@@ -122,7 +134,23 @@ class Capture:
 
     @property
     def is_empty(self) -> bool:
-        return not (self.params or self.binaries or self.homeless or self.captured_at)
+        """Nothing was found worth keeping.
+
+        Every column counts, not just the long tail. This asked only about
+        `params`, `binaries`, `homeless` and `captured_at` -- so a photograph
+        whose camera facts all landed in columns was thrown away whole: Make
+        and Model with no date recorded no camera, an ISO recorded no ISO, an
+        orientation recorded nothing at all. It read as correct on a real
+        library because most photographs carry DateTimeOriginal and the rest
+        rode in on that; a scan, a screenshot or an exported crop did not.
+        """
+        if self.params or self.binaries or self.homeless:
+            return False
+        return not any(
+            getattr(self, column.name) is not None
+            for column in dataclasses.fields(self)
+            if column.name not in _NOT_A_FINDING
+        )
 
 
 def _number(value) -> float | None:
