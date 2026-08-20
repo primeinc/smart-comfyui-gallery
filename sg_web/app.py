@@ -96,6 +96,38 @@ def person(state: State, slug: str) -> dict | Redirect:
         conn.close()
 
 
+@dataclasses.dataclass
+class NewName:
+    """The body of POST /p/{slug}/name. Typed for the same reason NewRoot
+    is: a nameless request is a 400 from the signature model."""
+
+    name: str
+
+
+@post("/p/{slug:str}/name", sync_to_thread=True)
+def name_person(state: State, slug: str, data: NewName) -> dict:
+    """Name a person -- the People page's primary action.
+
+    The name becomes the address: a new slug is minted and the old one
+    retires into history, so the URL somebody saved before the naming
+    still answers with a 301 (db/naming.py)."""
+    conn = _connect(state.db_path)
+    try:
+        found = naming.resolve(conn, "person", slug)
+        if found is None:
+            raise NotFoundException(f"no person at /p/{slug}")
+        person_id, _ = found
+        cleaned = data.name.strip()
+        if not cleaned:
+            raise ClientException("a name needs letters in it")
+        fresh = naming.rename(conn, person_id, cleaned, time.time())
+        conn.execute("UPDATE person SET name = ? WHERE id = ?", (cleaned, person_id))
+        conn.commit()
+        return {"slug": fresh, "name": cleaned}
+    finally:
+        conn.close()
+
+
 @get("/clusterings", sync_to_thread=True)
 def clusterings(state: State) -> list[dict]:
     """Every clustering run held side by side, primary first."""
@@ -170,6 +202,24 @@ def submit_faces(state: State, data: dict) -> dict:
         )
         cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
         job_id = runner.submit_faces(conn, time.time(), models_dir=weights, thumbs_dir=cache)
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
+    finally:
+        conn.close()
+
+
+@post("/jobs/cluster", sync_to_thread=True)
+def submit_cluster(state: State) -> dict:
+    """Ask for the faces to be grouped into people.
+
+    The step the People page is downstream of, offered by the application
+    itself: every embedding space is re-clustered, names re-applied from
+    assertions, and each still-unnamed group minted an addressable person
+    (db/runner.py submit_cluster)."""
+    conn = _connect(state.db_path)
+    try:
+        job_id = runner.submit_cluster(conn, time.time())
         conn.commit()
         _nudge(state)
         return jobs.snapshot(conn, job_id)
@@ -583,6 +633,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             job_snapshot,
             submit_verify,
             submit_faces,
+            submit_cluster,
+            name_person,
             cancel_job,
             jobs_feed,
             choose_primary,

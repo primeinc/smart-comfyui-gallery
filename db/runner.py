@@ -78,6 +78,72 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
 
 
+def submit_cluster(conn, now: float) -> int:
+    """Group every embedding space's faces into people, as one job.
+
+    One item per (model_id, model_version) that holds embedded faces. The
+    spaces ride in the payload -- `job_item` holds integers, so each item
+    is an index into that list, fixed at submit time. No spaces means a
+    job with nothing to do, which settles `done` honestly rather than
+    being refused: "cluster an unindexed library" is an answer, not an
+    error.
+    """
+    spaces = conn.execute(
+        "SELECT DISTINCT model_id, model_version FROM derived_face_instance"
+        " WHERE embedding IS NOT NULL ORDER BY model_id, model_version"
+    ).fetchall()
+    return jobs.submit(
+        conn,
+        "cluster_faces",
+        now,
+        payload={"spaces": [list(space) for space in spaces]},
+        items=list(range(len(spaces))),
+    )
+
+
+def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
+    """Cluster one embedding space and give every group a person.
+
+    The run's whole answer is replaced -- clusters, inferred appearances,
+    and the placeholder people minted for groups nobody has named. Names
+    are never carried across by similarity: `seed_clusters_from_assertions`
+    re-applies them from what a human wrote down, and only the groups
+    still unnamed after that get a fresh unnamed person, addressable at
+    `/p/person-<short-id>` until somebody names them.
+    """
+    from . import derived, naming
+
+    model_id, model_version = payload["spaces"][index]
+    derived.cluster(conn, model_id, model_version, now)
+    run_id = derived.run_for(conn, model_id, model_version, "chinese-whispers", derived.threshold_for(model_id), now)
+    conn.execute("DELETE FROM derived_file_person WHERE run_id = ?", (run_id,))
+    derived.seed_clusters_from_assertions(conn, run_id)
+    for (cluster_id,) in conn.execute(
+        "SELECT id FROM derived_face_cluster WHERE run_id = ? AND person_id IS NULL ORDER BY id",
+        (run_id,),
+    ).fetchall():
+        person_id = naming.claim(conn, "person", "")
+        conn.execute("INSERT INTO person(id, name, created_at) VALUES(?, NULL, ?)", (person_id, now))
+        conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, cluster_id))
+        for file_id, faces in conn.execute(
+            "SELECT fi.file_id, count(*) FROM derived_face_membership m"
+            " JOIN derived_face_instance fi ON fi.id = m.face_id"
+            " WHERE m.cluster_id = ? GROUP BY fi.file_id",
+            (cluster_id,),
+        ).fetchall():
+            derived.attribute(conn, file_id, person_id, run_id, model_id, model_version, face_count=faces)
+    # A re-run dissolves groups, and a placeholder person whose group
+    # dissolved is an address about nothing. Only the unnamed go: a name
+    # is a human's word and keeps its entity regardless.
+    conn.execute(
+        "DELETE FROM entity WHERE kind = 'person' AND id IN ("
+        " SELECT p.id FROM person p WHERE p.name IS NULL"
+        " AND NOT EXISTS (SELECT 1 FROM person_assertion pa WHERE pa.person_id = p.id)"
+        " AND NOT EXISTS (SELECT 1 FROM derived_face_cluster c WHERE c.person_id = p.id)"
+        " AND NOT EXISTS (SELECT 1 FROM derived_file_person fp WHERE fp.person_id = p.id))"
+    )
+
+
 _BACKENDS: dict = {}
 
 
@@ -105,6 +171,7 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
 HANDLERS = {
     "hash": _verify_item,
     "detect_faces": _face_item,
+    "cluster_faces": _cluster_item,
 }
 
 

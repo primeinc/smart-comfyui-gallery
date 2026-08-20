@@ -1,0 +1,76 @@
+{
+ "taken_at": "2026-08-20 16:54:17",
+ "commit": "8133eb3-dirty",
+ "evidence": [
+  {
+   "name": "job-live",
+   "file": "job-live.png",
+   "caption": "Mid-drain, exactly as the browser's WebSocket received it: one delta per committed item, nobody polling.",
+   "facts": {
+    "job_total": 160,
+    "done_at_capture": 5
+   }
+  },
+  {
+   "name": "job-feed",
+   "file": "job-feed.png",
+   "caption": "The end of the same feed: the terminal delta arrives only after its row committed.",
+   "facts": {
+    "messages": 163,
+    "final_state": "done"
+   }
+  },
+  {
+   "name": "library-grid",
+   "file": "library-grid.png",
+   "caption": "Eighteen of the library's files, spread across both datasets, served as 512-edge thumbnails from the content-keyed cache the detection job pre-filled.",
+   "facts": {
+    "library_files": 160,
+    "roots": 2,
+    "broken_tiles": 0
+   }
+  },
+  {
+   "name": "render-preview",
+   "file": "render-preview.png",
+   "caption": "One of the app's own renders at lightbox size (1440 edge), decoded by the browser from the same cache.",
+   "facts": {
+    "slug": "0947001-c5afa607-qwnimageedit-v16fp8scaled",
+    "broken_tiles": 0
+   }
+  },
+  {
+   "name": "people-index",
+   "file": "people-index.png",
+   "caption": "The people index: every avatar is the highest-confidence detected face of its cluster, cropped with context by the app. Names are nicknames for clusters, never identity claims.",
+   "facts": {
+    "people": 9,
+    "pictures_each": [
+     54,
+     54,
+     15,
+     15,
+     15,
+     14,
+     13,
+     13,
+     11
+    ],
+    "broken_tiles": 0
+   }
+  },
+  {
+   "name": "person-page",
+   "file": "person-page.png",
+   "caption": "Everything the primary clustering attributes to Person 1, as their page serves it -- the cross-axis view: one person, wherever their pictures live.",
+   "facts": {
+    "person": "Person 1",
+    "pictures": 54,
+    "across_folders": [
+     "i2i-test-output"
+    ],
+    "broken_tiles": 0
+   }
+  }
+ ]
+}

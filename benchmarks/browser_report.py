@@ -4,14 +4,16 @@ This is the presentation layer for the serving claims: it boots
 `python -m sg_web` over the sample datasets (the i2i renders -- the
 app's own output -- and the KYC photo set the face benchmarks use),
 runs face detection as a real job over HTTP while a browser WebSocket
-watches it drain, clusters through the production modules, and then
+watches it drain, asks the application to cluster the faces into people
+-- another job on the same feed -- names them over HTTP, and then
 photographs what the app actually serves: the thumbnail grid, the
 people index with face avatars, one person across the library, a
 full-size preview. The screenshots become one self-contained page,
 benchmarks/results/browser/report.html, images inlined as data URIs.
 
-Nothing here is synthetic and nothing is staged: every image is a
-Chromium screenshot of a page whose <img> tags point at the running
+Nothing here is synthetic, staged, or written behind the app's back:
+every mutation is a request the application offers, and every image is
+a Chromium screenshot of a page whose <img> tags point at the running
 server. People are named "Person N" -- cluster nicknames, never
 real-world identity claims, per the project's face doctrine.
 
@@ -49,7 +51,10 @@ SECTIONS = (
     ),
     (
         "People, from faces",
-        "Detection, clustering and avatar crops over the same library; names are cluster nicknames",
+        (
+            "Detection, clustering, naming and avatar crops, all through the application's own routes;"
+            " names are cluster nicknames"
+        ),
         ("people-index", "person-page"),
     ),
     (
@@ -86,47 +91,27 @@ def _wait_healthy(web) -> None:
         time.sleep(0.2)
 
 
-def _people_from_clusters(db_path: pathlib.Path) -> int:
-    """Cluster the harvested faces and give every cluster a nickname, the
-    production way: db.derived end to end, `make_primary` choosing what
-    the People page shows."""
-    from db import derived, scan
+def _commit_stamp(where: pathlib.Path = REPO) -> str:
+    """The tree the evidence came from -- honest about a dirty one.
 
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys=ON")
-    try:
-        model_id, model_version = conn.execute(
-            "SELECT DISTINCT model_id, model_version FROM derived_face_instance"
-        ).fetchone()
-        made = derived.cluster(conn, model_id, model_version, time.time())
-        run_id = derived.run_for(
-            conn, model_id, model_version, "chinese-whispers", derived.threshold_for(model_id), time.time()
-        )
-        derived.make_primary(conn, run_id)
-
-        ranked = conn.execute(
-            "SELECT c.id, count(*) AS members FROM derived_face_cluster c"
-            " JOIN derived_face_membership m ON m.cluster_id = c.id"
-            " WHERE c.run_id = ? GROUP BY c.id ORDER BY members DESC",
-            (run_id,),
-        ).fetchall()
-        for n, (cluster_id, _) in enumerate(ranked, start=1):
-            person_id = scan.mint(conn, "person", f"person-{n}")
-            conn.execute(
-                "INSERT INTO person(id, name, created_at) VALUES(?, ?, ?)",
-                (person_id, f"Person {n}", time.time()),
-            )
-            conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, cluster_id))
-            for (file_id,) in conn.execute(
-                "SELECT DISTINCT fi.file_id FROM derived_face_membership m"
-                " JOIN derived_face_instance fi ON fi.id = m.face_id WHERE m.cluster_id = ?",
-                (cluster_id,),
-            ):
-                derived.attribute(conn, file_id, person_id, run_id, model_id, model_version)
-        conn.commit()
-        return len(made)
-    finally:
-        conn.close()
+    Evidence stamped with a clean parent commit that cannot produce it is
+    provenance pointing at the wrong code; `-dirty` says exactly that, and
+    `-unverified` says the cleanliness could not be checked at all.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return "unknown"
+    head = subprocess.run(
+        [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False, timeout=10, cwd=where
+    )
+    if head.returncode != 0:
+        return "unknown"
+    changed = subprocess.run(
+        [git, "status", "--porcelain"], capture_output=True, text=True, check=False, timeout=10, cwd=where
+    )
+    if changed.returncode != 0:
+        return head.stdout.strip() + "-unverified"
+    return head.stdout.strip() + ("-dirty" if changed.stdout.strip() else "")
 
 
 def _grid(base: str, slugs: list[str], kind: str = "thumb") -> str:
@@ -167,20 +152,57 @@ def _all_loaded(page, scope: str) -> list[str]:
     return broken
 
 
+def _moved_once_released(src: pathlib.Path, dst: pathlib.Path, patience: float = 10.0) -> None:
+    """Move a staged file, waiting out the server's grip on its own log.
+
+    `.venv/Scripts/python.exe` is a launcher shim: terminate()+wait() reap
+    the shim while the interpreter it spawned -- the one holding the
+    inherited server.log handle -- lets go a beat later. Windows refuses
+    the move until it does, so this retries briefly and then raises the
+    real error."""
+    deadline = time.time() + patience
+    while not _gave_way(src, dst):
+        if time.time() > deadline:
+            shutil.move(str(src), str(dst))  # out of patience: the real error surfaces
+        time.sleep(0.2)
+
+
+def _gave_way(src: pathlib.Path, dst: pathlib.Path) -> bool:
+    try:
+        shutil.move(str(src), str(dst))
+    except PermissionError:
+        return False
+    return True
+
+
+def _publish(staging: pathlib.Path) -> None:
+    """Swap the staged run into EVIDENCE, replacing the previous one.
+
+    Only called on success: a failed run must not have destroyed the last
+    good evidence on its way to producing nothing."""
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    for stale in EVIDENCE.iterdir():
+        if stale.is_file():
+            stale.unlink()
+    for made in sorted(staging.iterdir()):
+        _moved_once_released(made, EVIDENCE / made.name)
+
+
 def capture(datasets: str, models_dir: str) -> list[dict]:
-    """Drive the whole thing and return the manifest entries."""
+    """Drive the whole thing and return the manifest entries.
+
+    Everything lands in a fresh staging directory and is swapped into
+    EVIDENCE only when every capture succeeded."""
     import tempfile
 
     import httpx
     from playwright.sync_api import sync_playwright
 
-    EVIDENCE.mkdir(parents=True, exist_ok=True)
-    for stale in EVIDENCE.iterdir():
-        stale.unlink()
+    staging = pathlib.Path(tempfile.mkdtemp())
     taken: list[dict] = []
 
     def keep(name: str, shot: bytes, caption: str, **facts) -> None:
-        (EVIDENCE / f"{name}.png").write_bytes(shot)
+        (staging / f"{name}.png").write_bytes(shot)
         taken.append({"name": name, "file": f"{name}.png", "caption": caption, "facts": facts})
 
     home = pathlib.Path(tempfile.mkdtemp()) / "run"
@@ -188,193 +210,216 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
     # The child's stdout is its access log, one line per request; a pipe
     # nobody drains blocks the server at the OS buffer mid-capture. The
     # log lands next to the screenshots as part of the run's evidence.
-    server_log = (EVIDENCE / "server.log").open("wb")
-    server = subprocess.Popen(
-        [sys.executable, "-m", "sg_web", "--home", str(home), "--port", str(port)],
-        stdout=server_log,
-        stderr=subprocess.STDOUT,
-        cwd=REPO,
-    )
-    base = f"http://127.0.0.1:{port}"
-    try:
-        with httpx.Client(base_url=base, timeout=10.0) as web, sync_playwright() as p:
-            _wait_healthy(web)
-            scanned = 0
-            for sample in ("i2i-test-output", "caucasian-people-kyc-photo-dataset/files"):
-                made = web.post("/roots", json={"path": str(pathlib.Path(datasets) / sample)}).json()
-                scanned += web.post(f"/roots/{made['id']}/scan").json()["added"]
-            print(f"scanned {scanned} sample files")
-
-            browser = p.chromium.launch()
-
-            def note_failure(response) -> None:
-                if response.status >= 400:
-                    print(f"  ! {response.status} {response.url}", flush=True)
-
-            def watched_page():
-                """Every capture page reports the requests that went wrong --
-                a failed <img> is a named URL and status, never a timeout."""
-                fresh = browser.new_page()
-                fresh.on("response", note_failure)
-                return fresh
-
-            page = watched_page()
-
-            # The feed first, so the job is watched from its first delta.
-            page.evaluate(
-                "(feed) => { window.__got = [];"
-                " window.__ws = new WebSocket(feed);"
-                " window.__ws.onmessage = (event) => window.__got.push(JSON.parse(event.data)); }",
-                f"ws://127.0.0.1:{port}/ws/jobs",
-            )
-            page.wait_for_function("() => window.__ws.readyState === 1")
-            job = web.post("/jobs/faces", json={"models_dir": models_dir}).json()
-            print(f"faces job {job['id']}: {job['total']} files")
-
-            page.wait_for_function(
-                "() => window.__got.filter(m => m.state === 'running' && m.done > 4).length > 0",
-                timeout=120_000,
-            )
-            page.evaluate(
-                "() => { const list = document.createElement('pre');"
-                " list.id = 'feed';"
-                " list.style.cssText = 'font: 12px/1.7 monospace; padding: 14px; margin: 0;"
-                " background: #101418; color: #9fe8b1; width: fit-content;';"
-                " const tail = window.__got.slice(-9);"
-                " list.textContent = tail.map(m => JSON.stringify(m)).join(String.fromCharCode(10));"
-                " document.body.appendChild(list); }"
-            )
-            mid = page.evaluate("() => window.__got[window.__got.length - 1]")
-            keep(
-                "job-live",
-                page.locator("#feed").screenshot(),
-                "Mid-drain, exactly as the browser's WebSocket received it: one delta per committed"
-                " item, nobody polling.",
-                job_total=job["total"],
-                done_at_capture=mid.get("done"),
-            )
-
-            page.wait_for_function(
-                "() => window.__got.some(m => ['done','failed','cancelled'].includes(m.state))",
-                timeout=1_800_000,
-            )
-            got = page.evaluate("() => window.__got")
-            page.evaluate(
-                "() => { const tail = window.__got.slice(-6);"
-                " document.getElementById('feed').textContent ="
-                " tail.map(m => JSON.stringify(m)).join(String.fromCharCode(10)); }"
-            )
-            keep(
-                "job-feed",
-                page.locator("#feed").screenshot(),
-                "The end of the same feed: the terminal delta arrives only after its row committed.",
-                messages=len(got),
-                final_state=got[-1].get("state"),
-            )
-            page.close()
-
-            clusters = _people_from_clusters(home / "gallery.db")
-            print(f"clustered into {clusters} groups")
-
-            # --- the grid, over real files --------------------------------
-            page = watched_page()
-            names = web.get("/people").json()
-            rows = httpx.get(f"{base}/roots").json()
-            slug_rows = []
-            with sqlite3.connect(home / "gallery.db") as conn:
-                slug_rows = [
-                    slug
-                    for (slug,) in conn.execute(
-                        "SELECT e.slug FROM entity e JOIN file f ON f.id = e.id"
-                        " WHERE f.missing_since IS NULL ORDER BY f.id"
-                    )
-                ]
-            stride = max(1, len(slug_rows) // 18)
-            page.set_content(_grid(base, slug_rows[::stride][:18]), wait_until="domcontentloaded")
-            broken = _all_loaded(page, "#grid")
-            keep(
-                "library-grid",
-                page.locator("#grid").screenshot(),
-                "Eighteen of the library's files, spread across both datasets, served as 512-edge"
-                " thumbnails from the content-keyed cache the detection job pre-filled.",
-                library_files=len(slug_rows),
-                roots=len(rows),
-                broken_tiles=len(broken),
-            )
-            page.close()
-
-            # --- one render, full preview ---------------------------------
-            page = watched_page()
-            render_slug = slug_rows[0]
-            page.set_content(
-                f'<body style="margin:0;background:#14171a;padding:10px">'
-                f'<img id="big" src="{base}/preview/{render_slug}" style="max-width:900px;display:block">'
-            )
-            broken = _all_loaded(page, "body")
-            keep(
-                "render-preview",
-                page.locator("#big").screenshot(),
-                "One of the app's own renders at lightbox size (1440 edge), decoded by the browser"
-                " from the same cache.",
-                slug=render_slug,
-                broken_tiles=len(broken),
-            )
-            page.close()
-
-            # --- people, with real avatars --------------------------------
-            page = watched_page()
-            cards = "".join(
-                f'<div style="width:132px;text-align:center;font:13px system-ui;color:#dfe5e1">'
-                f'<img src="{base}/avatar/{person["slug"]}" style="width:120px;height:120px;'
-                f'border-radius:50%;object-fit:cover;background:#222">'
-                f'<div style="padding-top:6px">{html.escape(person["name"])}</div>'
-                f'<div style="color:#8b968f">{person["pictures"]} pictures</div></div>'
-                for person in names
-            )
-            page.set_content(
-                '<body style="margin:0;background:#14171a">'
-                f'<div id="folk" style="display:flex;gap:14px;padding:16px;width:fit-content">{cards}</div>'
-            )
-            broken = _all_loaded(page, "#folk")
-            keep(
-                "people-index",
-                page.locator("#folk").screenshot(),
-                "The people index: every avatar is the highest-confidence detected face of its"
-                " cluster, cropped with context by the app. Names are nicknames for clusters,"
-                " never identity claims.",
-                people=len(names),
-                pictures_each=[person["pictures"] for person in names],
-                broken_tiles=len(broken),
-            )
-            page.close()
-
-            # --- one person, across the library ---------------------------
-            page = watched_page()
-            biggest = names[0]
-            person_page = web.get(f"/p/{biggest['slug']}").json()
-            their = [picture["slug"] for picture in person_page["pictures"]][:12]
-            page.set_content(_grid(base, their), wait_until="domcontentloaded")
-            broken = _all_loaded(page, "#grid")
-            keep(
-                "person-page",
-                page.locator("#grid").screenshot(),
-                f"Everything the primary clustering attributes to {biggest['name']}, as their page"
-                " serves it -- the cross-axis view: one person, wherever their pictures live.",
-                person=biggest["name"],
-                pictures=len(person_page["pictures"]),
-                across_folders=[row["folder"] for row in person_page["across_folders"]],
-                broken_tiles=len(broken),
-            )
-            page.close()
-            browser.close()
-    finally:
-        server.terminate()
+    with (staging / "server.log").open("wb") as server_log:
+        server = subprocess.Popen(
+            [sys.executable, "-m", "sg_web", "--home", str(home), "--port", str(port)],
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
+            cwd=REPO,
+        )
+        base = f"http://127.0.0.1:{port}"
         try:
-            server.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait(timeout=15)
-        server_log.close()
+            with httpx.Client(base_url=base, timeout=10.0) as web, sync_playwright() as p:
+                _wait_healthy(web)
+                scanned = 0
+                for sample in ("i2i-test-output", "caucasian-people-kyc-photo-dataset/files"):
+                    made = web.post("/roots", json={"path": str(pathlib.Path(datasets) / sample)}).json()
+                    scanned += web.post(f"/roots/{made['id']}/scan").json()["added"]
+                print(f"scanned {scanned} sample files")
+
+                browser = p.chromium.launch()
+
+                def note_failure(response) -> None:
+                    if response.status >= 400:
+                        print(f"  ! {response.status} {response.url}", flush=True)
+
+                def watched_page():
+                    """Every capture page reports the requests that went wrong --
+                    a failed <img> is a named URL and status, never a timeout."""
+                    fresh = browser.new_page()
+                    fresh.on("response", note_failure)
+                    return fresh
+
+                page = watched_page()
+
+                # The feed first, so the job is watched from its first delta.
+                page.evaluate(
+                    "(feed) => { window.__got = [];"
+                    " window.__ws = new WebSocket(feed);"
+                    " window.__ws.onmessage = (event) => window.__got.push(JSON.parse(event.data)); }",
+                    f"ws://127.0.0.1:{port}/ws/jobs",
+                )
+                page.wait_for_function("() => window.__ws.readyState === 1")
+                job = web.post("/jobs/faces", json={"models_dir": models_dir}).json()
+                print(f"faces job {job['id']}: {job['total']} files")
+                if job["total"] <= 5:
+                    raise RuntimeError(
+                        f"a mid-drain photograph needs more than 5 files to be mid of (got {job['total']});"
+                        f" is --datasets pointing at the sample sets?"
+                    )
+
+                page.wait_for_function(
+                    "() => window.__got.filter(m => m.state === 'running' && m.done > 4).length > 0",
+                    timeout=120_000,
+                )
+                page.evaluate(
+                    "() => { const list = document.createElement('pre');"
+                    " list.id = 'feed';"
+                    " list.style.cssText = 'font: 12px/1.7 monospace; padding: 14px; margin: 0;"
+                    " background: #101418; color: #9fe8b1; width: fit-content;';"
+                    " const tail = window.__got.slice(-9);"
+                    " list.textContent = tail.map(m => JSON.stringify(m)).join(String.fromCharCode(10));"
+                    " document.body.appendChild(list); }"
+                )
+                mid = page.evaluate("() => window.__got[window.__got.length - 1]")
+                keep(
+                    "job-live",
+                    page.locator("#feed").screenshot(),
+                    "Mid-drain, exactly as the browser's WebSocket received it: one delta per committed"
+                    " item, nobody polling.",
+                    job_total=job["total"],
+                    done_at_capture=mid.get("done"),
+                )
+
+                page.wait_for_function(
+                    "() => window.__got.some(m => ['done','failed','cancelled'].includes(m.state))",
+                    timeout=1_800_000,
+                )
+                got = page.evaluate("() => window.__got")
+                page.evaluate(
+                    "() => { const tail = window.__got.slice(-6);"
+                    " document.getElementById('feed').textContent ="
+                    " tail.map(m => JSON.stringify(m)).join(String.fromCharCode(10)); }"
+                )
+                keep(
+                    "job-feed",
+                    page.locator("#feed").screenshot(),
+                    "The end of the same feed: the terminal delta arrives only after its row committed.",
+                    messages=len(got),
+                    final_state=got[-1].get("state"),
+                )
+
+                # People are produced by the application too: clustering is
+                # a job the app offers, watched on the same feed, and the
+                # nicknames go on over the naming route.
+                grouping = web.post("/jobs/cluster").json()
+                page.wait_for_function(
+                    "(id) => window.__got.some(m => m.job === id && ['done','failed','cancelled'].includes(m.state))",
+                    arg=grouping["id"],
+                    timeout=120_000,
+                )
+                settled = web.get(f"/jobs/{grouping['id']}").json()
+                if settled["state"] != "done":
+                    raise RuntimeError(f"the cluster job settled {settled['state']}: {settled['error']}")
+                page.close()
+
+                names = web.get("/people").json()
+                if not names:
+                    raise RuntimeError("no people emerged from clustering -- did detection find any faces?")
+                for n, person in enumerate(names, start=1):
+                    web.post(f"/p/{person['slug']}/name", json={"name": f"Person {n}"})
+                names = web.get("/people").json()
+                print(f"clustered into {len(names)} people")
+
+                # --- the grid, over real files --------------------------------
+                page = watched_page()
+                rows = web.get("/roots").json()
+                # Read-only: picks WHICH files to photograph (there is no
+                # listing route yet); every pixel still arrives over HTTP.
+                with sqlite3.connect(home / "gallery.db") as conn:
+                    slug_rows = [
+                        slug
+                        for (slug,) in conn.execute(
+                            "SELECT e.slug FROM entity e JOIN file f ON f.id = e.id"
+                            " WHERE f.missing_since IS NULL ORDER BY f.id"
+                        )
+                    ]
+                stride = max(1, len(slug_rows) // 18)
+                page.set_content(_grid(base, slug_rows[::stride][:18]), wait_until="domcontentloaded")
+                broken = _all_loaded(page, "#grid")
+                keep(
+                    "library-grid",
+                    page.locator("#grid").screenshot(),
+                    "Eighteen of the library's files, spread across both datasets, served as 512-edge"
+                    " thumbnails from the content-keyed cache the detection job pre-filled.",
+                    library_files=len(slug_rows),
+                    roots=len(rows),
+                    broken_tiles=len(broken),
+                )
+                page.close()
+
+                # --- one render, full preview ---------------------------------
+                page = watched_page()
+                render_slug = slug_rows[0]
+                page.set_content(
+                    f'<body style="margin:0;background:#14171a;padding:10px">'
+                    f'<img id="big" src="{base}/preview/{render_slug}" style="max-width:900px;display:block">'
+                )
+                broken = _all_loaded(page, "body")
+                keep(
+                    "render-preview",
+                    page.locator("#big").screenshot(),
+                    "One of the app's own renders at lightbox size (1440 edge), decoded by the browser"
+                    " from the same cache.",
+                    slug=render_slug,
+                    broken_tiles=len(broken),
+                )
+                page.close()
+
+                # --- people, with real avatars --------------------------------
+                page = watched_page()
+                cards = "".join(
+                    f'<div style="width:132px;text-align:center;font:13px system-ui;color:#dfe5e1">'
+                    f'<img src="{base}/avatar/{person["slug"]}" style="width:120px;height:120px;'
+                    f'border-radius:50%;object-fit:cover;background:#222">'
+                    f'<div style="padding-top:6px">{html.escape(person["name"])}</div>'
+                    f'<div style="color:#8b968f">{person["pictures"]} pictures</div></div>'
+                    for person in names
+                )
+                page.set_content(
+                    '<body style="margin:0;background:#14171a">'
+                    f'<div id="folk" style="display:flex;gap:14px;padding:16px;width:fit-content">{cards}</div>'
+                )
+                broken = _all_loaded(page, "#folk")
+                keep(
+                    "people-index",
+                    page.locator("#folk").screenshot(),
+                    "The people index: every avatar is the highest-confidence detected face of its"
+                    " cluster, cropped with context by the app. Names are nicknames for clusters,"
+                    " never identity claims.",
+                    people=len(names),
+                    pictures_each=[person["pictures"] for person in names],
+                    broken_tiles=len(broken),
+                )
+                page.close()
+
+                # --- one person, across the library ---------------------------
+                page = watched_page()
+                biggest = names[0]
+                person_page = web.get(f"/p/{biggest['slug']}").json()
+                their = [picture["slug"] for picture in person_page["pictures"]][:12]
+                page.set_content(_grid(base, their), wait_until="domcontentloaded")
+                broken = _all_loaded(page, "#grid")
+                keep(
+                    "person-page",
+                    page.locator("#grid").screenshot(),
+                    f"Everything the primary clustering attributes to {biggest['name']}, as their page"
+                    " serves it -- the cross-axis view: one person, wherever their pictures live.",
+                    person=biggest["name"],
+                    pictures=len(person_page["pictures"]),
+                    across_folders=[row["folder"] for row in person_page["across_folders"]],
+                    broken_tiles=len(broken),
+                )
+                page.close()
+                browser.close()
+        finally:
+            server.terminate()
+            try:
+                server.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=15)
+    _publish(staging)
     return taken
 
 
@@ -479,7 +524,8 @@ def build() -> pathlib.Path:
         "</div></header>"
         + "".join(sections)
         + "<footer>Every image is a Chromium screenshot of the running application serving real sample"
-        " files -- no mockups, no synthetic pixels. Regenerate with <code>just bench browser-report</code>."
+        " files -- no mockups, no synthetic pixels, and every mutation a route the application offers."
+        " Regenerate with <code>just bench browser-report</code>."
         "</footer></main>\n"
     )
     target = EVIDENCE / "report.html"
@@ -494,17 +540,9 @@ def main() -> None:
     asked = parser.parse_args()
 
     taken = capture(asked.datasets, asked.models_dir)
-    commit = "unknown"
-    git = shutil.which("git")
-    if git:
-        described = subprocess.run(
-            [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False, timeout=10
-        )
-        if described.returncode == 0:
-            commit = described.stdout.strip()
     manifest = {
         "taken_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "commit": commit,
+        "commit": _commit_stamp(),
         "evidence": taken,
     }
     (EVIDENCE / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8", newline="\n")

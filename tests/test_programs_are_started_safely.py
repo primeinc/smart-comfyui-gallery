@@ -107,6 +107,34 @@ def test_every_spawn_says_how_long_it_will_wait():
     assert not offenders, f"{offenders} start a program with no timeout"
 
 
+def _pipes_output(call):
+    """Popen handed a PIPE this repo has nobody reading."""
+    if call.func.attr != "Popen":
+        return False
+    for stream in ("stdout", "stderr"):
+        given = _keyword(call, stream)
+        if (
+            isinstance(given, ast.Attribute)
+            and given.attr == "PIPE"
+            and isinstance(given.value, ast.Name)
+            and given.value.id == "subprocess"
+        ):
+            return True
+    return False
+
+
+def test_no_long_lived_program_writes_into_an_undrained_pipe():
+    """stdout=PIPE on Popen is a promise that somebody will read the pipe.
+    Nothing in this repo does: the OS buffer holds ~4KB, a chatty child
+    (uvicorn logs one access line per request) blocks mid-write there --
+    measured at request 64 -- and every request in flight then hangs
+    forever with no error anywhere. Sink to a file instead; it has no
+    ceiling and holds the log for a post-mortem."""
+    offenders = _sites(_pipes_output)
+
+    assert not offenders, f"{offenders} hand a child a pipe nobody drains; the child freezes at the OS buffer"
+
+
 def test_every_run_says_whether_a_failure_matters():
     """`check=` left out means a failing program raises nothing and its
     empty output reads as an empty answer."""
@@ -116,13 +144,18 @@ def test_every_run_says_whether_a_failure_matters():
 
 
 def test_the_checks_would_catch_what_they_are_for():
-    """Control for all four: each has to fail for the shape it exists to
+    """Control for all five: each has to fail for the shape it exists to
     catch, or it passes because it understands nothing."""
-    bad = ast.parse("import subprocess\nsubprocess.run('ffprobe ' + path, shell=True)\nsubprocess.run([tool, path])\n")
+    bad = ast.parse(
+        "import subprocess\nsubprocess.run('ffprobe ' + path, shell=True)\nsubprocess.run([tool, path])\n"
+        "subprocess.Popen([tool], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n"
+    )
     calls = _spawn_calls(bad)
 
-    assert len(calls) == 2, calls
+    assert len(calls) == 3, calls
     assert getattr(_keyword(calls[0], "shell"), "value", False) is True
     assert isinstance(calls[0].args[0], ast.BinOp)  # a built command string
     assert _keyword(calls[1], "timeout") is None
     assert _keyword(calls[1], "check") is None
+    assert _pipes_output(calls[2]), "the undrained-pipe check does not see the shape it exists for"
+    assert not _pipes_output(calls[1])

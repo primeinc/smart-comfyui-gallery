@@ -86,6 +86,12 @@ benchmarks/results/*
 # Vendored Windows GPU faiss build ships its extension module
 !vendor/faiss-gpu-win64/faiss/*.pyd
 !benchmarks/results/face_embedder_ab.json
+# The browser report's screenshots and page are machine-local and
+# regenerable (`just bench browser-report`); its manifest -- the run's
+# facts and provenance stamp -- is the reviewable part.
+!benchmarks/results/browser/
+benchmarks/results/browser/*
+!benchmarks/results/browser/manifest.json
 
 # Personal launch scripts. The README has every user make these by copying
 # the sample_run_* files and filling in their own paths, passwords and

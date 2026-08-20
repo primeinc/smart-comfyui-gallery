@@ -196,6 +196,56 @@ def test_the_worker_obeys_its_setting_changed_over_http(served):
     assert client.get(f"/jobs/{job_id}").json()["state"] == "cancelled"
 
 
+def test_clustering_people_is_a_job_the_application_offers(served):
+    """The People page's data is produced BY the application: the cluster
+    job groups the embedded faces, mints an addressable person for every
+    unnamed group, and naming one is a POST that retires the old address
+    with a 301. Nothing here reaches into the database."""
+    client, _, _ = served
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job = client.post("/jobs/cluster").json()
+        assert (job["kind"], job["total"]) == ("cluster_faces", 1)
+        state = job["state"]
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+        assert state == "done"
+
+    people = client.get("/people").json()
+    assert len(people) == 1, "one group of two faces; the singleton stays a face"
+    minted = people[0]
+    assert minted["name"] == "(unnamed)"
+    assert minted["slug"].startswith("person-"), "an unnamed person is still addressable"
+    assert minted["pictures"] == 2
+
+    named = client.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"}).json()
+    assert named == {"slug": "ana-torres", "name": "Ana Torres"}
+    assert client.get("/people").json()[0]["name"] == "Ana Torres"
+    moved = client.get(f"/p/{minted['slug']}", follow_redirects=False)
+    assert moved.status_code == 301
+    assert moved.headers["location"] == "/p/ana-torres"
+    assert client.post("/p/ana-torres/name", json={"name": "   "}).status_code == 400
+    assert client.post("/p/nobody/name", json={"name": "X"}).status_code == 404
+    assert client.post("/p/ana-torres/name").status_code == 400
+
+
+def test_a_recluster_replaces_its_own_placeholders(served):
+    """Running the job twice leaves one person per group, not one per run:
+    a placeholder whose group dissolved is deleted with its address, while
+    a NAMED person keeps their entity -- a name is a human's word."""
+    client, _, _ = served
+    for _ in range(2):
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            job_id = client.post("/jobs/cluster").json()["id"]
+            state = None
+            while state not in ("done", "failed", "cancelled"):
+                state = feed.receive_json(timeout=10)["state"]
+        assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
+    people = client.get("/people").json()
+    assert len(people) == 1, f"a second run must replace its placeholders, not add more: {people}"
+
+
 def test_choose_primary_is_an_action_the_application_offers(served):
     client, _, _ = served
     chosen = client.post("/clusterings/choose").json()
@@ -289,16 +339,22 @@ def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, 
     assert "Plugin not yet initialized" not in said, "a publish landed on a torn-down channel"
     assert "worker turn died" not in said
 
-    # The next run picks the interrupted job up: its own feed says so --
-    # the snapshot names the job still running, the deltas finish it.
-    with TestClient(app=build_app(str(burrow))) as client, client.websocket_connect("/ws/jobs") as feed:
-        first = feed.receive_json(timeout=10)
-        assert first["type"] == "snapshot"
-        assert any(row["id"] == job_id for row in first["jobs"]), "the interrupted job left the rows"
-        delta = feed.receive_json(timeout=30)
-        while delta["state"] not in ("done", "failed", "cancelled"):
-            delta = feed.receive_json(timeout=30)
-        assert (delta["job"], delta["state"]) == (job_id, "done")
+    # The next run picks the interrupted job up: its own feed says so.
+    # The worker starts with the app and may drain fast rows before this
+    # socket finishes its handshake, so a job already settled is also
+    # "picked back up" -- only one still in the snapshot owes the feed
+    # its remaining deltas.
+    with TestClient(app=build_app(str(burrow))) as client:
+        with client.websocket_connect("/ws/jobs") as feed:
+            first = feed.receive_json(timeout=10)
+            assert first["type"] == "snapshot"
+            if any(row["id"] == job_id for row in first["jobs"]):
+                delta = feed.receive_json(timeout=30)
+                while delta["state"] not in ("done", "failed", "cancelled"):
+                    delta = feed.receive_json(timeout=30)
+                assert (delta["job"], delta["state"]) == (job_id, "done")
+        told = client.get(f"/jobs/{job_id}").json()
+        assert told["state"] == "done", "the interrupted job was not picked back up"
 
 
 def test_media_roots_are_rows_managed_through_the_application(tmp_path):
