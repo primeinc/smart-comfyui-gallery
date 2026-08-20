@@ -121,6 +121,33 @@ def test_a_first_scan_finds_the_tree(library):
     assert depths["portraits"] == 1 and depths["2026"] == 2, depths
 
 
+def test_the_apps_own_caches_are_not_the_library(library):
+    """The app keeps its state inside the library root, dot-prefixed.
+
+    Measured against a real library: of 11775 media files under the root,
+    5998 sit in dot-directories, and 5992 of those are the thumbnail cache.
+    Walking them indexes the gallery's own derived thumbnails as
+    photographs -- more of them than there are real pictures, each one
+    content-distinct from its original because it has been resized, so they
+    arrive as new files rather than as duplicates anything would catch.
+    """
+    conn, root = library
+    write(root / "sample-datasets" / "real.jpg", "a photograph")
+    write(root / ".thumbnails_cache" / "002d6ba7778f861ffc44154a5c737ea9.jpeg", "a thumbnail")
+    write(root / ".AImodels" / "clip" / "preview.png", "a model preview")
+    write(root / ".smartgallery_library", "root marker")
+
+    result = rescan(conn, root)
+
+    assert result.added == 1, "only the photograph is the library"
+    names = [n for (n,) in conn.execute("SELECT name FROM file")]
+    assert names == ["real.jpg"], names
+    folders = {n for (n,) in conn.execute("SELECT name FROM folder")}
+    assert not any(f.startswith(".") for f in folders), (
+        f"a private directory became an addressable folder entity: {folders}"
+    )
+
+
 def test_rescanning_an_unchanged_library_reads_no_bytes(library):
     conn, root = library
     for i in range(5):

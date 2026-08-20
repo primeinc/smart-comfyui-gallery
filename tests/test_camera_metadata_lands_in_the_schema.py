@@ -237,15 +237,80 @@ def test_the_body_and_the_lens_become_artifacts(db, a_file, tmp_path):
     ], rows
 
 
-def test_a_make_the_model_already_carries_is_not_repeated(tmp_path):
-    """Canon writes Model='Canon EOS R5'. 'Canon Canon EOS R5' is not a camera."""
-    path = photograph(
-        tmp_path / "a.jpg",
-        {ExifTags.Base.Make: "Canon", ExifTags.Base.Model: "Canon EOS R5"},
-        FUJI_PHOTO,
+@pytest.mark.parametrize(
+    "make, model, expected",
+    [
+        # the make is a legal entity and the model carries the brand
+        ("NIKON CORPORATION", "NIKON D2X", "NIKON D2X"),
+        ("EASTMAN KODAK COMPANY", "KODAK C310 DIGITAL CAMERA", "KODAK C310 DIGITAL CAMERA"),
+        ("PENTAX Corporation", "PENTAX *ist DL", "PENTAX *ist DL"),
+        ("Canon", "Canon EOS R5", "Canon EOS R5"),
+        # the model does not name the brand, so the make is needed to tell
+        # two manufacturers' identically named bodies apart
+        ("FUJIFILM", "X-T5", "FUJIFILM X-T5"),
+        ("Xiaomi", "Mi 9 Lite", "Xiaomi Mi 9 Lite"),
+        ("SONY", "CYBERSHOT", "SONY CYBERSHOT"),
+        # only one of the two present
+        ("Apple", None, "Apple"),
+        (None, "DMC-FZ50", "DMC-FZ50"),
+    ],
+)
+def test_a_body_is_named_once(tmp_path, make, model, expected):
+    """All nine cases are shapes observed in a real library.
+
+    A prefix test is not enough: bodies put the legal entity in Make and the
+    brand in Model, which leaves 'NIKON CORPORATION NIKON D2X'. Testing the
+    model's first word against the make's words handles that without
+    collapsing 'Xiaomi' + 'Mi 9 Lite', where 'Mi' is not a word of 'Xiaomi'.
+    """
+    base = {}
+    if make:
+        base[ExifTags.Base.Make] = make
+    if model:
+        base[ExifTags.Base.Model] = model
+    path = photograph(tmp_path / "a.jpg", base, FUJI_PHOTO)
+    assert capture.read(path).camera == expected
+
+
+def test_an_enumerated_value_is_stored_as_the_phrase_it_stands_for(db, a_file, tmp_path):
+    """`Flash = 89` is unsearchable and unreadable: nobody types 89 and
+    nobody recognises it. The phrase goes in value_text so a person can find
+    it, and the code stays in value_num so it is still comparable
+    (refs/exiftool/exiftool/lib/Image/ExifTool/Exif.pm:175-209)."""
+    photo = dict(FUJI_PHOTO)
+    photo[ExifTags.Base.Flash] = 0x59
+    photo[ExifTags.Base.MeteringMode] = 5
+    photo[ExifTags.Base.ExposureProgram] = 3
+    path = photograph(tmp_path / "a.jpg", FUJI_BASE, photo)
+    capture.store(db, a_file, capture.read(path), NOW, scan.mint)
+
+    stored_params = dict(
+        db.execute(
+            "SELECT key, value_text FROM file_param WHERE file_id = ? AND source='exif'",
+            (a_file,),
+        )
     )
-    found = capture.read(path)
-    assert found.camera == "Canon EOS R5"
+    assert stored_params["Flash"] == "Auto, Fired, Red-eye reduction"
+    assert stored_params["MeteringMode"] == "Multi-segment"
+    assert stored_params["ExposureProgram"] == "Aperture-priority AE"
+    code = db.execute(
+        "SELECT value_num FROM file_param WHERE file_id = ? AND key='Flash'", (a_file,)
+    ).fetchone()[0]
+    assert code == 0x59, "the code must survive alongside the phrase"
+
+
+def test_an_unlisted_code_is_not_given_an_invented_label(db, a_file, tmp_path):
+    """A value missing from the tables means the table needs extending.
+    Labelling it anyway would hide that, so it stays the raw code."""
+    photo = dict(FUJI_PHOTO)
+    photo[ExifTags.Base.MeteringMode] = 200  # not a defined MeteringMode
+    path = photograph(tmp_path / "a.jpg", FUJI_BASE, photo)
+    capture.store(db, a_file, capture.read(path), NOW, scan.mint)
+    row = db.execute(
+        "SELECT value_text, value_num FROM file_param WHERE file_id = ? AND key='MeteringMode'",
+        (a_file,),
+    ).fetchone()
+    assert row == ("200", 200.0), row
 
 
 def test_two_frames_from_one_body_share_its_row(db, tmp_path):

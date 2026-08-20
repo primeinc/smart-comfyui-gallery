@@ -287,8 +287,14 @@ def observe_tree(conn, root_id: int, root_path) -> tuple[dict, int]:
     folder_ids = {os.path.normcase(root_path): root_folder}
 
     for current, subdirs, names in os.walk(root_path):
-        subdirs.sort()
-        names.sort()
+        # A leading dot means "not the user's content", and the app puts its
+        # own state directly inside the library root: caches, downloaded
+        # weights, the root marker. Measured against a real library, 5998 of
+        # the 11775 media files under it live in dot-directories -- and 5992
+        # of those are the thumbnail cache, which would have entered the
+        # gallery as photographs and outnumbered the real ones.
+        subdirs[:] = sorted(d for d in subdirs if not d.startswith("."))
+        names = sorted(n for n in names if not n.startswith("."))
         folder_id = folder_ids.get(os.path.normcase(current))
         if folder_id is None:
             continue

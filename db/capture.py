@@ -39,6 +39,8 @@ from PIL import ExifTags, Image
 
 from metaparse.containers import decode_user_comment
 
+from .exif_labels import label_for
+
 #: Tags that become columns on `capture`, so they are not also long tail.
 _CLAIMED = {
     ExifTags.Base.DateTimeOriginal,
@@ -103,10 +105,13 @@ class Capture:
     params: list[tuple[str, str, float | None]] = field(default_factory=list)
     #: (slot, payload) for tags that are binary and stay binary.
     binaries: list[tuple[str, bytes]] = field(default_factory=list)
-    #: Tags the camera wrote as an explicit "not recorded" (a rational over
-    #: zero). Absent from the database on purpose, and kept separate from
-    #: `homeless` because "there is no value" and "we cannot store this
-    #: value" are different problems and only the second is a defect.
+    #: Tags the camera wrote with no value in them: a rational over zero, or
+    #: a string that is only spaces and NULs. Absent from the database on
+    #: purpose, and kept apart from `homeless` because "there is no value"
+    #: and "we cannot store this value" are different problems and only the
+    #: second is a defect. Measured on a real library, folding them together
+    #: put 28 tag names in `homeless` -- all of them blank padding -- which
+    #: is enough noise to hide the one entry that would have meant something.
     unrecorded: list[str] = field(default_factory=list)
     #: Tags with no home at all. Empty is the contract.
     homeless: list[tuple[str, str]] = field(default_factory=list)
@@ -205,16 +210,27 @@ def _degrees(value, ref) -> float | None:
 def _camera_name(make, model) -> str | None:
     """`Make Model`, without repeating a make the model already carries.
 
-    A camera body has no bytes to hash, so its name is its whole identity --
+    A camera body has no bytes to hash, so its name is its whole identity,
     and two manufacturers using the same model name would otherwise become
-    one row.
+    one row. That is why the make is joined on at all.
+
+    The test is whether the model's first word is one of the make's words,
+    not whether the model starts with the whole make string. Bodies write
+    the legal entity in Make and the brand in Model, so a prefix test leaves
+    `NIKON CORPORATION NIKON D2X` and `EASTMAN KODAK COMPANY KODAK C310
+    DIGITAL CAMERA` -- both observed in a real library, along with Pentax
+    doing the same. `Xiaomi` + `Mi 9 Lite` correctly stays joined, because
+    `Mi` is not a word of `Xiaomi`.
     """
     make, model = _text(make), _text(model)
     if not model:
         return make
-    if make and not model.lower().startswith(make.lower()):
-        return f"{make} {model}"
-    return model
+    if not make:
+        return model
+    first = model.split()[0].lower()
+    if first in {word.lower() for word in make.split()}:
+        return model
+    return f"{make} {model}"
 
 
 def _scalar(value):
@@ -231,6 +247,21 @@ def _scalar(value):
         if scalars and all(part is not None for part in scalars):
             return ", ".join(part[0] for part in scalars), None
     return None
+
+
+def _is_blank(value) -> bool:
+    """The tag is present but holds nothing.
+
+    Cameras pad fixed-width fields rather than omitting them, so a library
+    is full of `ImageDescription` that is thirty spaces and `UserComment`
+    that is a run of NULs. Measured on a real library: 52 blank descriptions,
+    69 blank comments, 11 blank copyrights.
+    """
+    if isinstance(value, str):
+        return not value.strip("\x00 \t\r\n")
+    if isinstance(value, bytes):
+        return not value.strip(b"\x00 \t\r\n")
+    return False
 
 
 class Held(NamedTuple):
@@ -253,7 +284,21 @@ def _tag_value(tag, value) -> Held | None:
     """
     if tag in _PREFIXED_TEXT:
         decoded = decode_user_comment(value)
-        return Held("text", text=decoded) if decoded else None
+        if decoded:
+            return Held("text", text=decoded)
+        return Held("unrecorded")
+    if _is_blank(value):
+        # Checked before the binary fallback, so a field of NULs is recorded
+        # as an empty tag rather than filed in the blob store as a payload
+        # nobody has decoded yet.
+        return Held("unrecorded")
+    label = label_for(tag, value)
+    if label is not None:
+        # Both columns, because they answer different questions: the phrase is
+        # what a person searches for and reads, the code is what stays
+        # comparable. Storing only the number makes "Flash = 89" a fact nobody
+        # can use; storing only the phrase throws away the ordering.
+        return Held("text", text=label, number=float(value))
     scalar = _scalar(value)
     if scalar is not None:
         return Held("text", text=scalar[0], number=scalar[1])
