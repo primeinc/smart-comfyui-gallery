@@ -134,7 +134,7 @@ _STAGE_DOES = {
     ),
     "near_dup": (
         "FAISS IndexBinaryFlat over the 64-bit phash values: exact Hamming search using popcount "
-        "instructions, with a chunked numpy XOR+popcount sweep as the fallback when FAISS is absent. Both "
+        "instructions, with a row-by-row numpy XOR+popcount sweep as the fallback when FAISS is absent. Both "
         "paths return the same pairs. Two files count as near-duplicates when their distance is at or under "
         "AI_DAM_NEAR_DUP_DISTANCE."
     ),

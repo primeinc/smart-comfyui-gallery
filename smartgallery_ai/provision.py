@@ -427,9 +427,9 @@ def _download_url(url: str, dest_path: str, progress: Callable[[int, int | None]
     Saying how much is missing is the difference between retrying and
     going to look for a bad URL.
 
-    Nothing is left behind either way. The .part file is the download in
-    progress, and on any failure it was simply abandoned in the models
-    directory, where nothing looks for it again.
+    Nothing is left behind either way: the .part file is the download in
+    progress, and every failure path unlinks it before re-raising, so a
+    failed fetch leaves the models directory as it found it.
     """
     tmp = dest_path + ".part"
     try:

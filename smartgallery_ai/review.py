@@ -970,7 +970,8 @@ def generate_finding_mask(
 
     Loads the finding row fresh from the DB (never trusts caller-supplied
     geometry) and raises `MaskNotAllowedError` if it is not localizable or
-    has no grounding geometry. Saves an 'L' mode 0/255 PNG under
+    has no grounding geometry. Saves an RGBA PNG -- white, with the mask in
+    the alpha channel, so the panel can tint it via CSS mask-image -- under
     `cache_dir/masks/<file_id>/<finding_id>.png`, asserting the resolved
     path stays inside `cache_dir` even for a maliciously crafted id. Never
     opens or writes to the source media path -- `img` is caller-provided

@@ -79,7 +79,10 @@ _logger = logging.getLogger(__name__)
 #: dependency. Override with AI_DAM_CRITIC_MODEL.
 DEFAULT_REVIEW_MODEL = "Qwen/Qwen3-VL-2B-Instruct"
 
-#: Bumping this invalidates every stored review (see invalidation.py).
+#: Bumping this invalidates every stored review: it digests into the
+#: 'review' scan-log input_key (worker.stage_input_key), which is what
+#: re-queues the files. NOT invalidation.py -- that module covers hashes
+#: and embeddings and knows nothing about reviews.
 PROTOCOL_VERSION = "decomposed-v2"
 
 # Contrastive gate thresholds. Chosen from the sweep in

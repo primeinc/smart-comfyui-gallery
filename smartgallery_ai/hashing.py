@@ -240,7 +240,7 @@ def near_duplicate_pairs(conn, max_distance: int) -> list[tuple[str, str, int]]:
     popcount instructions in C++ (faiss wiki Binary indexes); its
     `range_search` returns distances strictly BELOW the radius
     (faiss tests/test_index_binary.py), hence `max_distance + 1`. Falls
-    back to the chunked numpy XOR + popcount sweep. Both paths return the
+    back to a row-by-row numpy XOR + popcount sweep. Both paths return the
     identical pair set, sorted by (distance, file_id, file_id).
     """
     rows = conn.execute(

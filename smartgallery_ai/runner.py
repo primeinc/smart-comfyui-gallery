@@ -70,6 +70,11 @@ _RUN_LOCK = threading.Lock()
 # still produces a heartbeat rather than a dead connection.
 _DRAIN_TIMEOUT = 1.0
 
+# Longest a finished-looking step may take to actually hand its thread back.
+# The worker thread has already put its sentinel by then, so this only covers
+# interpreter-level teardown -- if it expires the step is genuinely wedged.
+_JOIN_TIMEOUT = 30.0
+
 
 class RunnerBusy(RuntimeError):
     """Another interactive run holds the critic."""
@@ -371,8 +376,21 @@ def _run_threaded(ctx: RunContext, name: str, sink: queue.Queue, started: float)
             break
         yield item
 
-    thread.join()
+    # Bounded. An unbounded join parked the interactive runner forever on a
+    # wedged critic -- chat.ask has no generation timeout -- and _RUN_LOCK is
+    # held for this generator's lifetime, so every later /review/run answered
+    # 409 until the process restarted. The heartbeat above kept emitting
+    # "waiting" throughout, so the failure presented as liveness.
+    thread.join(timeout=_JOIN_TIMEOUT)
     seconds = round(time.monotonic() - started, 3)
+    if thread.is_alive():
+        yield _event(
+            name,
+            "error",
+            error=f"step did not finish within {_JOIN_TIMEOUT:.0f}s of signalling completion; abandoning it",
+            seconds=seconds,
+        )
+        return
     if "error" in box:
         yield _event(name, "error", error=box["error"], seconds=seconds)
         return
