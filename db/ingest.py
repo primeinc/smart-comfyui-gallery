@@ -32,6 +32,7 @@ from metaparse.containers import load_raw
 from metaparse.typed import GenerationParams
 
 from . import capture as capture_module
+from . import probe as probe_module
 from .scan import mint
 
 #: PNG text chunks that carry a whole workflow graph rather than a value.
@@ -105,8 +106,11 @@ class Ingested:
     carriers: int = 0
     unparsed: int = 0
     captured: bool = False
-    #: Set when the bytes could not be opened as an image at all, so a caller
-    #: can report the file rather than reading "no camera tags" off it.
+    #: Set when the container answered: this file knows its own size, and its
+    #: length if it has one.
+    probed: bool = False
+    #: Set when the bytes could not be opened at all, so a caller can report
+    #: the file rather than reading "no metadata" off it.
     unreadable: str | None = None
 
 
@@ -347,10 +351,31 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
             out.params += 1
 
 
-def one(conn, file_id: int, path, now: float) -> Ingested:
-    """Read one file completely: what made it, and how it was taken."""
+#: Kinds Pillow cannot open, so their size and length come from the container
+#: rather than from a decode. `document` is not here: a PDF has pages, not a
+#: duration, and nothing probes it yet.
+_PROBED = ("video", "animated_image", "audio")
+
+
+def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ingested:
+    """Read one file completely: what made it, and how it was taken.
+
+    `kind` says which reader applies. Without it every file went through the
+    image path alone, so a video had no length and no dimensions at all --
+    `file.duration` had no producer in the whole package and the DDL said so
+    rather than fixing it.
+    """
     out = Ingested()
+    if kind is None:
+        kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     generation(conn, file_id, path, now, out)
+
+    if kind in _PROBED:
+        container = probe_module.read(path)
+        probe_module.store(conn, file_id, container, now)
+        out.params += len(container.params)
+        out.probed = container.duration is not None or container.width is not None
+        out.unreadable = container.unreadable
 
     # Retracted here rather than inside `store`, which returns early on a file
     # with no camera tags: a picture whose bytes were replaced by ones
@@ -358,16 +383,21 @@ def one(conn, file_id: int, path, now: float) -> Ingested:
     retract(conn, file_id, "camera")
     conn.execute("DELETE FROM capture WHERE file_id = ?", (file_id,))
 
-    found = capture_module.read(path)
-    out.unreadable = found.unreadable
-    if not found.is_empty:
-        capture_module.store(conn, file_id, found, now, mint)
-        out.captured = True
-        out.params += len(found.params)
-        out.unparsed += len(found.binaries)
-        for kind, name in (("camera", found.camera), ("lens", found.lens)):
-            if name:
-                out.artifacts.append((kind, name))
+    # Only where a camera could have written any. Running it on a video meant
+    # `unreadable` reported "Pillow cannot open this" for every video in the
+    # library -- true, uninteresting, and it buried the message from the
+    # reader that could.
+    if kind not in _PROBED:
+        found = capture_module.read(path)
+        out.unreadable = found.unreadable
+        if not found.is_empty:
+            capture_module.store(conn, file_id, found, now, mint)
+            out.captured = True
+            out.params += len(found.params)
+            out.unparsed += len(found.binaries)
+            for maker, name in (("camera", found.camera), ("lens", found.lens)):
+                if name:
+                    out.artifacts.append((maker, name))
     return out
 
 

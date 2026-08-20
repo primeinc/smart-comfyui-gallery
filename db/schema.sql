@@ -206,8 +206,8 @@ CREATE TABLE file (
     -- was unobservable in one direction.
     width          INTEGER,
     height         INTEGER,
-    -- Seconds. NOTHING WRITES THIS YET: it needs a container probe, so every
-    -- video currently reads as having no length.
+    -- Seconds, from the container. NULL on a still picture, which has no
+    -- length, and on a video whose container does not state one.
     duration       REAL,
     first_seen_at  REAL    NOT NULL,
     last_seen_at   REAL    NOT NULL,

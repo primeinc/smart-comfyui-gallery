@@ -9,14 +9,17 @@ outstanding, and that a worker which lost its lease cannot still write.
 
 import io
 import json
+import os
 import pathlib
+import shutil
 import sqlite3
+import subprocess
 
 import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, derived, ingest, jobs, library, lineage, naming, scan
+from db import authored, derived, ingest, jobs, library, lineage, naming, probe, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -838,3 +841,110 @@ def test_a_setting_keeps_its_type(db):
     assert library.get(db, "watch") is True
     assert library.get(db, "roots") == ["a", "b"]
     assert library.get(db, "absent", "fallback") == "fallback"
+
+
+# --- containers: the media Pillow cannot open -------------------------------
+
+
+def _ffmpeg():
+    """The encoder used to build the fixtures, or None."""
+    return os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg")
+
+
+needs_ffmpeg = pytest.mark.skipif(
+    _ffmpeg() is None or probe.prober() is None,
+    reason="ffmpeg and ffprobe are needed to make and read a real video",
+)
+
+
+@pytest.fixture
+def a_clip(tmp_path):
+    """Three seconds of real video, and the same clip marked to be turned."""
+    ff = _ffmpeg()
+    assert ff is not None, "the skip mark should have kept this from running"
+    landscape, portrait = tmp_path / "clip.mp4", tmp_path / "portrait.mp4"
+    subprocess.run(
+        [ff, "-v", "error", "-y", "-f", "lavfi",
+         "-i", "testsrc=size=320x180:rate=15:duration=3",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(landscape)],
+        check=True,
+    )
+    subprocess.run(
+        [ff, "-v", "error", "-y", "-display_rotation", "90", "-i", str(landscape),
+         "-c", "copy", str(portrait)],
+        check=True,
+    )
+    return landscape, portrait
+
+
+@needs_ffmpeg
+def test_a_video_knows_its_own_length_and_size(db, a_library, a_clip):
+    """`file.duration` had no producer anywhere in the package, and the DDL
+    said so rather than fixing it. A gallery whose plan says image and video
+    are equal citizens cannot have one of them unable to state its length."""
+    landscape, _ = a_clip
+    file_id = scan.mint(db, "file", "clip")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'clip.mp4', 'video', 10, 0, ?, ?)",
+        (file_id, a_library["folder"], NOW, NOW),
+    )
+    result = ingest.one(db, file_id, landscape, NOW)
+
+    assert result.probed, result.unreadable
+    assert db.execute(
+        "SELECT width, height, duration FROM file WHERE id = ?", (file_id,)
+    ).fetchone() == (320, 180, pytest.approx(3.0, abs=0.2))
+    fields = dict(db.execute(
+        "SELECT key, value_text FROM file_param WHERE file_id = ? AND source='container'",
+        (file_id,),
+    ))
+    assert fields.get("VideoCodec") == "h264"
+    assert "FrameRate" in fields, "a video that cannot say its frame rate is not searchable by it"
+
+
+@needs_ffmpeg
+def test_a_portrait_video_is_not_filed_as_landscape(db, a_library, a_clip):
+    """A phone records landscape and writes a display matrix saying to turn
+    it. ffprobe reports the stored size and the rotation separately, so a
+    reader taking width and height at face value files every portrait video
+    in the library the wrong way round -- the EXIF orientation defect, one
+    medium over."""
+    _, portrait = a_clip
+    file_id = scan.mint(db, "file", "portrait")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'portrait.mp4', 'video', 10, 0, ?, ?)",
+        (file_id, a_library["folder"], NOW, NOW),
+    )
+    ingest.one(db, file_id, portrait, NOW)
+
+    assert db.execute(
+        "SELECT width, height FROM file WHERE id = ?", (file_id,)
+    ).fetchone() == (180, 320), "the stored size was taken for the displayed one"
+    assert db.execute(
+        "SELECT value_num FROM file_param WHERE file_id=? AND key='Rotation'", (file_id,)
+    ).fetchone()[0] == 90
+
+
+def test_a_file_the_prober_cannot_read_costs_only_that_file(db, a_library, tmp_path):
+    """One damaged video must not end the scan around it, and 'nothing could
+    be read' has to be distinguishable from 'it had nothing to say'."""
+    from db import probe
+
+    broken = tmp_path / "broken.mp4"
+    broken.write_bytes(b"not a video at all")
+    file_id = scan.mint(db, "file", "broken")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'broken.mp4', 'video', 10, 0, ?, ?)",
+        (file_id, a_library["folder"], NOW, NOW),
+    )
+    result = ingest.one(db, file_id, broken, NOW)
+
+    assert not result.probed
+    assert result.unreadable, "a file nothing could read said nothing about why"
+    assert db.execute(
+        "SELECT width, height, duration FROM file WHERE id = ?", (file_id,)
+    ).fetchone() == (None, None, None)
+    assert probe.read(broken).is_empty
