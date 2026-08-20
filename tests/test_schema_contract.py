@@ -1318,12 +1318,15 @@ def test_every_closed_vocabulary_rejects_a_stranger(db):
     undetected across seventy mutations."""
     tree(db)
     a_file(db, 9, 1, "a.png")
+    db.execute("INSERT INTO blob(hash,payload,byte_len) VALUES('bh','{}',2)")
     cases = [
         "INSERT INTO entity(id,uuid,kind,slug) VALUES(90,x'0000000000000000000000000000005a','nope','s')",
         "INSERT INTO root(id,path,kind,created_at) VALUES(90,'/z','nope',0)",
         "INSERT INTO job(id,kind,state,created_at) VALUES(90,'scan','nope',0)",
         "INSERT INTO file_param(file_id,source,key,value_text) VALUES(9,'nope','k','v')",
-        "INSERT INTO file_blob(file_id,carrier,slot,blob_hash,seen_at) VALUES(9,'nope','s','h',0)",
+        # the blob must exist, or this raises on the foreign key and passes for
+        # the wrong reason -- an over-determined negative proves nothing
+        "INSERT INTO file_blob(file_id,carrier,slot,blob_hash,seen_at) VALUES(9,'nope','s','bh',0)",
         "INSERT INTO media_sample(id,file_id,kind,policy) VALUES(90,9,'nope','p')",
         "INSERT INTO user(id,username,password_hash,role,created_at) VALUES(90,'u','h','nope',0)",
     ]
@@ -1372,6 +1375,55 @@ def test_the_drift_check_can_actually_fail(tmp_path):
     conn.commit()
     conn.close()
     assert drift(path) != [], "the drift check cannot see a missing index"
+
+
+def test_deleting_a_param_removes_it_from_the_index(db):
+    """Found by mutation: dropping param_fts_delete went undetected, because
+    every existing test only ever added rows."""
+    tree(db)
+    a_file(db, 9, 1, "a.jpg")
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(9,'exif','Lens','alphabet')")
+    assert db.execute("SELECT count(*) FROM param_fts WHERE param_fts MATCH 'phabe'").fetchone()[0] == 1
+    db.execute("DELETE FROM file_param WHERE file_id=9")
+    assert db.execute("SELECT count(*) FROM param_fts WHERE param_fts MATCH 'phabe'").fetchone()[0] == 0
+
+
+def test_folder_depth_is_maintained_by_the_database(db):
+    """Found by mutation: both depth triggers could be deleted with nothing
+    failing, because a fixture merely named the column in an INSERT."""
+    tree(db)
+    entity(db, 320, "folder", "deep")
+    # a deliberately wrong depth on the way in must be corrected
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(320,1,2,'deep',99)")
+    assert db.execute("SELECT depth FROM folder WHERE id=320").fetchone()[0] == 2
+    db.execute("UPDATE folder SET parent_id=NULL WHERE id=320")
+    assert db.execute("SELECT depth FROM folder WHERE id=320").fetchone()[0] == 0, (
+        "a reparented folder kept its old depth"
+    )
+
+
+def test_a_file_cannot_disagree_with_its_entity(db):
+    """Found by mutation: only the folder subtype's kind guard was covered, so
+    file_kind_agrees could be deleted unnoticed. Every subtype needs its own."""
+    tree(db)
+    entity(db, 330, "collection", "notafile")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO file(id,folder_id,name,kind,size,mtime,first_seen_at,last_seen_at) "
+            "VALUES(330,1,'x.png','image',1,0,0,0)"
+        )
+
+
+def test_two_prompts_cannot_share_a_text_hash(db):
+    """Found by mutation: the dedupe key could lose UNIQUE with nothing failing.
+    The dedupe trigger silently swallows the second insert, so the constraint
+    itself needs a direct negative -- an UPDATE, which the trigger does not see."""
+    entity(db, 340, "prompt", "p-a")
+    entity(db, 341, "prompt", "p-b")
+    db.execute("INSERT INTO prompt(id,text,text_hash,created_at) VALUES(340,'first','h1',0)")
+    db.execute("INSERT INTO prompt(id,text,text_hash,created_at) VALUES(341,'second','h2',0)")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("UPDATE prompt SET text_hash='h1' WHERE id=341")
 
 
 def test_the_build_control_counts_real_tables(db):
