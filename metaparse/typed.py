@@ -150,7 +150,8 @@ class GenerationParams:
         # prompt tag carries neither.
         stated = [
             {"name": a["name"], "weight": a.get("weight"), "clip_weight": a.get("weight")}
-            for a in parsed.artifacts if a.get("role") == "lora"
+            for a in parsed.artifacts
+            if a.get("role") == "lora"
         ]
         gp.loras = stated or extract_networks(gp.positive_prompt, gp.negative_prompt)
         return gp

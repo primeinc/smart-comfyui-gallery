@@ -121,6 +121,15 @@ def snapshot(path, version: int) -> pathlib.Path:
     return target
 
 
+def _nothing_dangling(conn, version: int) -> None:
+    """Refuse to commit a step that left references pointing at nothing."""
+    broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if broken:
+        raise sqlite3.IntegrityError(
+            f"v{version} -> v{version + 1} left {len(broken)} dangling references: {broken[:5]}"
+        )
+
+
 def migrate(path, *, target: int = USER_VERSION, take_snapshot: bool = True) -> list[int]:
     """Bring a database up to `target`, one version at a time.
 
@@ -145,8 +154,7 @@ def migrate(path, *, target: int = USER_VERSION, take_snapshot: bool = True) -> 
         missing = [v for v in range(current, target) if v not in STEPS]
         if missing:
             raise StepMissing(
-                f"no migration from v{missing[0]}: this build cannot open a "
-                f"v{current} database without one"
+                f"no migration from v{missing[0]}: this build cannot open a v{current} database without one"
             )
 
         if take_snapshot:
@@ -165,12 +173,7 @@ def migrate(path, *, target: int = USER_VERSION, take_snapshot: bool = True) -> 
                 try:
                     STEPS[version](conn)
                     conn.execute(f"PRAGMA user_version = {version + 1}")
-                    broken = conn.execute("PRAGMA foreign_key_check").fetchall()
-                    if broken:
-                        raise sqlite3.IntegrityError(
-                            f"v{version} -> v{version + 1} left "
-                            f"{len(broken)} dangling references: {broken[:5]}"
-                        )
+                    _nothing_dangling(conn, version)
                     conn.execute("COMMIT")
                 except Exception:
                     conn.execute("ROLLBACK")

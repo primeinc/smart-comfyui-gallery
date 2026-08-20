@@ -53,8 +53,17 @@ _OWNED = {
     "generation": {
         "sources": ("generation", "container"),
         "roles": (
-            "checkpoint", "refiner", "lora", "vae", "controlnet", "upscaler",
-            "embedding", "hypernetwork", "ip_adapter", "text_encoder", "unet",
+            "checkpoint",
+            "refiner",
+            "lora",
+            "vae",
+            "controlnet",
+            "upscaler",
+            "embedding",
+            "hypernetwork",
+            "ip_adapter",
+            "text_encoder",
+            "unet",
         ),
         "carriers": ("png_text", "xmp"),
     },
@@ -95,6 +104,7 @@ def retract(conn, file_id: int, scope: str) -> None:
             (file_id, *values),
         )
 
+
 @dataclass
 class Ingested:
     """What one file contributed, for a caller that wants to report it."""
@@ -132,8 +142,7 @@ def artifact(conn, kind: str, name: str, now: float, *, quoted=None, sha=None) -
     actually dedupes and the hash is usually NULL.
     """
     row = conn.execute(
-        "SELECT id FROM artifact WHERE kind = ? AND name_key = ?"
-        " AND IFNULL(content_sha256, '') = IFNULL(?, '')",
+        "SELECT id FROM artifact WHERE kind = ? AND name_key = ? AND IFNULL(content_sha256, '') = IFNULL(?, '')",
         (kind, _name_key(name), sha),
     ).fetchone()
     if row:
@@ -294,9 +303,7 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     consumed = (parsed.raw or "").strip() if parsed is not None else ""
     if raw is not None:
         for slot, value in raw.text.items():
-            understood = slot in _GRAPH_SLOTS or (
-                bool(consumed) and str(value).strip() == consumed
-            )
+            understood = slot in _GRAPH_SLOTS or (bool(consumed) and str(value).strip() == consumed)
             claimed = reader if understood else None
             _carrier(conn, file_id, "png_text", slot, value, now, parsed_by=claimed)
             out.carriers += 1
@@ -308,8 +315,10 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
             out.unparsed += 1
         # Container facts are metadata too, and the only kind every file has.
         for key, value in (
-            ("Format", raw.format), ("Mode", raw.mode),
-            ("Width", raw.width), ("Height", raw.height),
+            ("Format", raw.format),
+            ("Mode", raw.mode),
+            ("Width", raw.width),
+            ("Height", raw.height),
         ):
             if _param(conn, file_id, "container", key, value):
                 out.params += 1
@@ -347,8 +356,11 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     if raw is not None and raw.text.get("workflow"):
         graph = raw.text["workflow"]
         workflow_id = artifact(
-            conn, "workflow", f"graph-{hashlib.sha256(graph.encode()).hexdigest()[:12]}",
-            now, sha=hashlib.sha256(graph.encode()).hexdigest(),
+            conn,
+            "workflow",
+            f"graph-{hashlib.sha256(graph.encode()).hexdigest()[:12]}",
+            now,
+            sha=hashlib.sha256(graph.encode()).hexdigest(),
         )
         out.artifacts.append(("workflow", "graph"))
 
@@ -380,8 +392,7 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     if typed.model and "checkpoint" not in stated:
         checkpoint = artifact(conn, "checkpoint", typed.model, now, quoted=typed.model_hash)
         conn.execute(
-            "INSERT OR REPLACE INTO file_artifact(file_id, ordinal, artifact_id, role)"
-            " VALUES(?, 0, ?, 'checkpoint')",
+            "INSERT OR REPLACE INTO file_artifact(file_id, ordinal, artifact_id, role) VALUES(?, 0, ?, 'checkpoint')",
             (file_id, checkpoint),
         )
         out.artifacts.append(("checkpoint", typed.model))
@@ -407,10 +418,23 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
         " width, height, parser, parsed_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            file_id, typed.tool, typed.detection, workflow_id, positive, negative,
-            typed.seed, typed.steps, typed.cfg, typed.denoise, typed.clip_skip,
-            typed.sampler, typed.scheduler, typed.width, typed.height,
-            "metaparse/1", now,
+            file_id,
+            typed.tool,
+            typed.detection,
+            workflow_id,
+            positive,
+            negative,
+            typed.seed,
+            typed.steps,
+            typed.cfg,
+            typed.denoise,
+            typed.clip_skip,
+            typed.sampler,
+            typed.scheduler,
+            typed.width,
+            typed.height,
+            "metaparse/1",
+            now,
         ),
     )
 
@@ -477,9 +501,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             # handles for a display matrix, and it needs the same answer here.
             # SQLite reads both sides from the row as it was, so this really
             # is a swap.
-            conn.execute(
-                "UPDATE file SET width = height, height = width WHERE id = ?", (file_id,)
-            )
+            conn.execute("UPDATE file SET width = height, height = width WHERE id = ?", (file_id,))
         if not found.is_empty:
             capture_module.store(conn, file_id, found, now, mint)
             out.captured = True
@@ -501,7 +523,7 @@ def sidecar(conn, file_id: int, path, now: float) -> int:
     duplicated every sidecar row, and the old ones never went away.
     """
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             document = json.load(handle)
     except (OSError, ValueError):
         return 0

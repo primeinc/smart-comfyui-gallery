@@ -82,10 +82,7 @@ def frames(conn, file_id: int, path, *, every_ms: int = EVERY_MS, most: int = MO
         return []
     offsets, spacing = moments(found.duration, every_ms=every_ms, most=most)
     policy = cadence(spacing)
-    return [
-        derived.add_sample(conn, file_id, "frame", policy, offset_ms=offset)
-        for offset in offsets
-    ]
+    return [derived.add_sample(conn, file_id, "frame", policy, offset_ms=offset) for offset in offsets]
 
 
 def taken(conn, file_id: int, policy: str | None = None):

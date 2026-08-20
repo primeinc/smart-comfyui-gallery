@@ -167,8 +167,7 @@ def test_no_pixel_reader_in_db_opens_files_behind_oriented():
     offenders = [
         source.name
         for source in sorted(package.glob("*.py"))
-        if source.name not in allowed
-        and "Image.open(" in source.read_text(encoding="utf-8")
+        if source.name not in allowed and "Image.open(" in source.read_text(encoding="utf-8")
     ]
     assert offenders == []
 
@@ -224,11 +223,7 @@ def planted(groups: int = 3, members: int = 6, dim: int = 32) -> np.ndarray:
     """Tight groups around orthogonal directions, deterministic."""
     rng = np.random.default_rng(7)
     centres = np.linalg.qr(rng.standard_normal((dim, groups)))[0].T
-    rows = [
-        centre + 0.03 * rng.standard_normal(dim)
-        for centre in centres
-        for _ in range(members)
-    ]
+    rows = [centre + 0.03 * rng.standard_normal(dim) for centre in centres for _ in range(members)]
     return np.asarray(rows, dtype=np.float32)
 
 
@@ -319,13 +314,17 @@ def test_an_unknown_method_is_refused_by_name():
 # --- judging a run ---------------------------------------------------------
 
 
-def clustered(conn, vectors, labels, *, model="fake/peek", version="1",
-              threshold=0.5, method="given") -> int:
+def clustered(conn, vectors, labels, *, model="fake/peek", version="1", threshold=0.5, method="given") -> int:
     """Faces, clusters and memberships written through the public API."""
     files = library(conn, len(vectors))
     return regrouped(
-        conn, record(conn, files, vectors, model, version), labels,
-        model=model, version=version, threshold=threshold, method=method,
+        conn,
+        record(conn, files, vectors, model, version),
+        labels,
+        model=model,
+        version=version,
+        threshold=threshold,
+        method=method,
     )
 
 
@@ -333,21 +332,34 @@ def record(conn, files, vectors, model, version) -> list[int]:
     face_ids = []
     for file_id, vector in zip(files, vectors, strict=True):
         (face_id,) = derived.record_faces(
-            conn, file_id, model, version, "aa", 0.0,
-            [{"region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
-              "embedding": np.asarray(vector, dtype=np.float32).tobytes()}],
+            conn,
+            file_id,
+            model,
+            version,
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
+                    "embedding": np.asarray(vector, dtype=np.float32).tobytes(),
+                }
+            ],
         )
         face_ids.append(face_id)
     return face_ids
 
 
-def regrouped(conn, face_ids, labels, *, model="fake/peek", version="1",
-              threshold=0.5, method="given") -> int:
+def regrouped(conn, face_ids, labels, *, model="fake/peek", version="1", threshold=0.5, method="given") -> int:
     """One clustering run stated outright, through the public API."""
     distinct = sorted(set(labels))
     made = derived.recluster(
-        conn, model, version, 0.0, [{} for _ in distinct],
-        method=method, threshold=threshold,
+        conn,
+        model,
+        version,
+        0.0,
+        [{} for _ in distinct],
+        method=method,
+        threshold=threshold,
     )
     cluster_of = dict(zip(distinct, made, strict=True))
     for face_id, label in zip(face_ids, labels, strict=True):
@@ -356,11 +368,7 @@ def regrouped(conn, face_ids, labels, *, model="fake/peek", version="1",
 
 
 def faces_on_file(conn) -> list[int]:
-    return [
-        row[0] for row in conn.execute(
-            "SELECT id FROM derived_face_instance ORDER BY id"
-        )
-    ]
+    return [row[0] for row in conn.execute("SELECT id FROM derived_face_instance ORDER BY id")]
 
 
 def rousseeuw(unit, labels) -> float:
@@ -432,12 +440,14 @@ def test_agreement_counts_held_split_and_mixed(db):
     for person, half in ((alice, files[:4]), (bob, files[4:])):
         for file_id in half:
             db.execute(
-                "INSERT INTO person_assertion(person_id,file_id,created_at)"
-                " VALUES(?,?,0)", (person, file_id),
+                "INSERT INTO person_assertion(person_id,file_id,created_at) VALUES(?,?,0)",
+                (person, file_id),
             )
     assert derived.agreement(db, run_id) == {
-        "asserted_people": 2, "held_together": 2,
-        "split_apart": 0, "clusters_mixing_people": 0,
+        "asserted_people": 2,
+        "held_together": 2,
+        "split_apart": 0,
+        "clusters_mixing_people": 0,
     }
 
     welded = regrouped(db, faces_on_file(db), [0] * 8, threshold=0.3)
@@ -465,8 +475,8 @@ def test_choose_primary_prefers_the_run_people_agree_with(db):
         files = [row[0] for row in db.execute("SELECT id FROM file ORDER BY id")]
         for n, file_id in enumerate(files):
             db.execute(
-                "INSERT INTO person_assertion(person_id,file_id,created_at)"
-                " VALUES(?,?,0)", (people[n // 6], file_id),
+                "INSERT INTO person_assertion(person_id,file_id,created_at) VALUES(?,?,0)",
+                (people[n // 6], file_id),
             )
         assert derived.choose_primary(db) == a_run
         assert derived.primary_run(db) == a_run

@@ -291,14 +291,10 @@ def test_a_fresh_build_has_no_statistics_until_it_is_asked(library):
     wrong. `analyze` is the pass that has to run after the first scan."""
     conn = connect.connect(library)
     try:
-        assert conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE name='sqlite_stat1'"
-        ).fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM sqlite_master WHERE name='sqlite_stat1'").fetchone()[0] == 0
         migrate.analyze(conn)
         conn.commit()
-        assert conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE name='sqlite_stat1'"
-        ).fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM sqlite_master WHERE name='sqlite_stat1'").fetchone()[0] == 1
     finally:
         conn.close()
 
@@ -356,11 +352,9 @@ def rebuild_the_file_table(conn):
     conn.execute("DROP TABLE file")
     conn.execute("ALTER TABLE file_new RENAME TO file")
     for statement in (
-        "CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)"
-        " WHERE missing_since IS NULL",
+        ("CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE) WHERE missing_since IS NULL"),
         "CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL",
-        "CREATE INDEX file_in_folder_by_time ON file(folder_id, mtime, id)"
-        " WHERE missing_since IS NULL",
+        ("CREATE INDEX file_in_folder_by_time ON file(folder_id, mtime, id) WHERE missing_since IS NULL"),
         "CREATE INDEX file_added ON file(first_seen_at DESC) WHERE missing_since IS NULL",
         "CREATE INDEX file_sha ON file(content_sha256)",
         "CREATE INDEX file_kind ON file(kind)",
@@ -415,20 +409,14 @@ def everything_in(path):
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
         return {
-            "files": conn.execute(
-                "SELECT id, folder_id, name, content_sha256 FROM file ORDER BY id"
-            ).fetchall(),
+            "files": conn.execute("SELECT id, folder_id, name, content_sha256 FROM file ORDER BY id").fetchall(),
             "ratings": conn.execute("SELECT file_id, rating FROM rating").fetchall(),
             "comments": conn.execute("SELECT file_id, body FROM comment").fetchall(),
             "favourites": conn.execute("SELECT file_id FROM favorite").fetchall(),
             "membership": conn.execute("SELECT file_id FROM collection_file").fetchall(),
-            "assertions": conn.execute(
-                "SELECT person_id, file_id FROM person_assertion"
-            ).fetchall(),
+            "assertions": conn.execute("SELECT person_id, file_id FROM person_assertion").fetchall(),
             "params": conn.execute("SELECT count(*) FROM file_param").fetchone()[0],
-            "artifacts": conn.execute(
-                "SELECT file_id, role FROM file_artifact ORDER BY file_id, role"
-            ).fetchall(),
+            "artifacts": conn.execute("SELECT file_id, role FROM file_artifact ORDER BY file_id, role").fetchall(),
             "generation": conn.execute("SELECT file_id, seed FROM generation").fetchall(),
             "captions": conn.execute("SELECT file_id, text FROM derived_annotation").fetchall(),
             "hashes": conn.execute("SELECT file_id, phash64 FROM derived_file_hash").fetchall(),
@@ -454,9 +442,9 @@ def test_rebuilding_the_table_everything_points_at_keeps_the_library(tmp_path, s
     """
     path = a_whole_library(tmp_path / "gallery.db", tmp_path / "pics")
     before = everything_in(path)
-    assert before["ratings"] and before["params"] and before["caption_search"], (
-        "the fixture holds nothing, so surviving it proves nothing"
-    )
+    assert before["ratings"], "the fixture holds nothing, so surviving it proves nothing"
+    assert before["params"], "the fixture holds nothing, so surviving it proves nothing"
+    assert before["caption_search"], "the fixture holds nothing, so surviving it proves nothing"
 
     steps[connect.USER_VERSION] = rebuild_the_file_table
     assert migrate.migrate(path, target=connect.USER_VERSION + 1) == [connect.USER_VERSION + 1]
@@ -490,9 +478,7 @@ def test_a_migration_that_loses_a_column_is_caught(tmp_path, steps):
 
     steps[connect.USER_VERSION] = forget_the_hashes
     migrate.migrate(path, target=connect.USER_VERSION + 1)
-    assert everything_in(path) != before, (
-        "a migration that wiped every content hash compared equal"
-    )
+    assert everything_in(path) != before, "a migration that wiped every content hash compared equal"
 
 
 def test_the_snapshot_of_a_whole_library_can_be_restored(tmp_path, steps):

@@ -18,7 +18,6 @@ import json
 import os
 import uuid
 
-
 #: Written inside a root so the directory can say which root it is. Dotted, so
 #: `observe_tree` skips it along with everything else the app leaves lying in
 #: a library.
@@ -28,7 +27,7 @@ MARKER = ".smartgallery-root"
 def _marker(path) -> bytes | None:
     """The identity the directory claims, if it claims one."""
     try:
-        with open(os.path.join(str(path), MARKER), "r", encoding="ascii") as handle:
+        with open(os.path.join(str(path), MARKER), encoding="ascii") as handle:
             return uuid.UUID(handle.read().strip()).bytes
     except (OSError, ValueError):
         return None
@@ -122,9 +121,7 @@ def check_roots(conn) -> list[tuple[int, str, bool]]:
 
 def roots(conn, *, kind=None) -> list[tuple]:
     if kind:
-        return conn.execute(
-            "SELECT id, path, kind, online FROM root WHERE kind = ? ORDER BY path", (kind,)
-        ).fetchall()
+        return conn.execute("SELECT id, path, kind, online FROM root WHERE kind = ? ORDER BY path", (kind,)).fetchall()
     return conn.execute("SELECT id, path, kind, online FROM root ORDER BY path").fetchall()
 
 
@@ -134,8 +131,7 @@ def roots(conn, *, kind=None) -> list[tuple]:
 def put(conn, key: str, value) -> None:
     """One setting. Stored as JSON text so a type survives the round trip."""
     conn.execute(
-        "INSERT INTO setting(key, value) VALUES(?, ?)"
-        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        "INSERT INTO setting(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, json.dumps(value)),
     )
 

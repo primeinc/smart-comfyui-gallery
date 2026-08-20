@@ -25,8 +25,9 @@ from . import derived, oriented
 FLOOR = 0.7
 
 
-def harvest(conn, backend, file_id: int, path, now: float, *,
-            floor: float = FLOOR, sample_id=None, image=None) -> list[int]:
+def harvest(
+    conn, backend, file_id: int, path, now: float, *, floor: float = FLOOR, sample_id=None, image=None
+) -> list[int]:
     """Detect and record every face in one file, replacing earlier answers.
 
     `image` is for callers that already hold decoded pixels -- a video
@@ -40,9 +41,7 @@ def harvest(conn, backend, file_id: int, path, now: float, *,
     """
     if image is None:
         image = oriented.for_model(conn, file_id, path)
-    sha = conn.execute(
-        "SELECT content_sha256 FROM file WHERE id = ?", (file_id,)
-    ).fetchone()[0]
+    sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
 
     faces = []
     for found in backend.detect(image):
@@ -56,9 +55,7 @@ def harvest(conn, backend, file_id: int, path, now: float, *,
         if found.landmarks:
             import numpy as np
 
-            record["landmarks"] = np.asarray(
-                found.landmarks, dtype=np.float32
-            ).tobytes()
+            record["landmarks"] = np.asarray(found.landmarks, dtype=np.float32).tobytes()
         traits = found.attributes or {}
         if "age" in traits:
             record["age"] = int(traits["age"])
@@ -67,8 +64,14 @@ def harvest(conn, backend, file_id: int, path, now: float, *,
         faces.append(record)
 
     return derived.record_faces(
-        conn, file_id, backend.model_id, backend.model_version, sha, now,
-        faces, sample_id=sample_id,
+        conn,
+        file_id,
+        backend.model_id,
+        backend.model_version,
+        sha,
+        now,
+        faces,
+        sample_id=sample_id,
     )
 
 
@@ -98,12 +101,8 @@ def path_of(conn, file_id: int) -> str:
     ).fetchall()
     if not chain:
         raise ValueError(f"file {file_id} is not in any folder the library knows")
-    base = conn.execute(
-        "SELECT path FROM root WHERE id = ?", (chain[0][2],)
-    ).fetchone()[0]
-    name = conn.execute(
-        "SELECT name FROM file WHERE id = ?", (file_id,)
-    ).fetchone()[0]
+    base = conn.execute("SELECT path FROM root WHERE id = ?", (chain[0][2],)).fetchone()[0]
+    name = conn.execute("SELECT name FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     below = [row[1] for row in chain if row[0] is not None]
     return os.path.join(base, *below, name)
 
@@ -117,8 +116,7 @@ def harvest_all(conn, backend, now: float, *, floor: float = FLOOR) -> dict[str,
     """
     files = with_faces = found = 0
     for (file_id,) in conn.execute(
-        "SELECT id FROM file WHERE kind = 'image' AND missing_since IS NULL"
-        " ORDER BY id"
+        "SELECT id FROM file WHERE kind = 'image' AND missing_since IS NULL ORDER BY id"
     ).fetchall():
         files += 1
         got = harvest(conn, backend, file_id, path_of(conn, file_id), now, floor=floor)

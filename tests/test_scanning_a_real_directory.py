@@ -12,7 +12,6 @@ changes something on disk, rescans, and asks whether the human's work is
 still attached to the same picture.
 """
 
-import io
 import pathlib
 import sqlite3
 
@@ -28,7 +27,7 @@ NOW = 1_700_000_000.0
 def library(tmp_path):
     """An empty database and an empty directory, wired to each other."""
     conn = sqlite3.connect(":memory:")
-    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     root = tmp_path / "library"
     root.mkdir()
@@ -36,10 +35,7 @@ def library(tmp_path):
         "INSERT INTO root(id, path, kind, created_at) VALUES(1, ?, 'library', 0)",
         (str(root),),
     )
-    conn.execute(
-        "INSERT INTO user(id, username, password_hash, role, created_at)"
-        " VALUES(1, 'will', 'x', 'ADMIN', 0)"
-    )
+    conn.execute("INSERT INTO user(id, username, password_hash, role, created_at) VALUES(1, 'will', 'x', 'ADMIN', 0)")
     yield conn, root
     conn.close()
 
@@ -65,15 +61,9 @@ def file_row(conn, sha):
 def authored_state(conn, file_id):
     """The 4-tuple a human built by hand, and the thing that must survive."""
     rating = conn.execute("SELECT rating FROM rating WHERE file_id = ?", (file_id,)).fetchone()
-    comments = conn.execute(
-        "SELECT count(*) FROM comment WHERE file_id = ?", (file_id,)
-    ).fetchone()[0]
-    favorite = conn.execute(
-        "SELECT count(*) FROM favorite WHERE file_id = ?", (file_id,)
-    ).fetchone()[0]
-    albums = conn.execute(
-        "SELECT count(*) FROM collection_file WHERE file_id = ?", (file_id,)
-    ).fetchone()[0]
+    comments = conn.execute("SELECT count(*) FROM comment WHERE file_id = ?", (file_id,)).fetchone()[0]
+    favorite = conn.execute("SELECT count(*) FROM favorite WHERE file_id = ?", (file_id,)).fetchone()[0]
+    albums = conn.execute("SELECT count(*) FROM collection_file WHERE file_id = ?", (file_id,)).fetchone()[0]
     return (rating[0] if rating else None, comments, favorite, albums)
 
 
@@ -87,9 +77,7 @@ def author(conn, file_id):
         "INSERT INTO comment(file_id, user_id, body, created_at) VALUES(?, 1, 'keep', 0)",
         (file_id,),
     )
-    conn.execute(
-        "INSERT INTO favorite(file_id, user_id, created_at) VALUES(?, 1, 0)", (file_id,)
-    )
+    conn.execute("INSERT INTO favorite(file_id, user_id, created_at) VALUES(?, 1, 0)", (file_id,))
     album = conn.execute("SELECT id FROM collection WHERE name = 'Keepers'").fetchone()
     if album is None:
         album_id = scan.mint(conn, "collection", "Keepers")
@@ -118,7 +106,8 @@ def test_a_first_scan_finds_the_tree(library):
     names = [n for (n,) in conn.execute("SELECT name FROM file ORDER BY name")]
     assert names == ["a.png", "b.jpg"], "a .txt is not media and must not be indexed"
     depths = dict(conn.execute("SELECT name, depth FROM folder ORDER BY depth"))
-    assert depths["portraits"] == 1 and depths["2026"] == 2, depths
+    assert depths["portraits"] == 1, depths
+    assert depths["2026"] == 2, depths
 
 
 def test_the_apps_own_caches_are_not_the_library(library):
@@ -191,7 +180,7 @@ def test_moving_a_file_between_folders_keeps_everything(library):
     result = rescan(conn, root)
 
     assert (result.matched, result.added, result.missing) == (1, 0, 0)
-    stored_id, name, folder, missing = file_row(conn, scan.sha256_of(root / "keep" / "a.png"))
+    stored_id, _name, folder, missing = file_row(conn, scan.sha256_of(root / "keep" / "a.png"))
     assert (stored_id, folder, missing) == (file_id, "keep", None)
     assert authored_state(conn, file_id) == before
 
@@ -201,19 +190,16 @@ def test_renaming_a_folder_touches_one_row(library):
     for i in range(4):
         write(root / "portraits" / f"{i}.png", f"content {i}")
     rescan(conn, root)
-    files_before = conn.execute(
-        "SELECT id, folder_id, name FROM file ORDER BY id"
-    ).fetchall()
+    files_before = conn.execute("SELECT id, folder_id, name FROM file ORDER BY id").fetchall()
     folder_id = conn.execute("SELECT id FROM folder WHERE name = 'portraits'").fetchone()[0]
 
     (root / "portraits").rename(root / "people")
     rescan(conn, root)
 
     assert conn.execute("SELECT name FROM folder WHERE id = ?", (folder_id,)).fetchone() is not None
-    assert (
-        conn.execute("SELECT id, folder_id, name FROM file ORDER BY id").fetchall()
-        == files_before
-    ), "renaming a folder must not re-identify anything inside it"
+    assert conn.execute("SELECT id, folder_id, name FROM file ORDER BY id").fetchall() == files_before, (
+        "renaming a folder must not re-identify anything inside it"
+    )
 
 
 def test_two_files_swapping_names_follow_their_bytes(library):
@@ -253,9 +239,7 @@ def test_a_deleted_file_is_marked_missing_never_deleted(library):
     result = rescan(conn, root)
 
     assert result.missing == 1
-    missing_since = conn.execute(
-        "SELECT missing_since FROM file WHERE id = ?", (file_id,)
-    ).fetchone()[0]
+    missing_since = conn.execute("SELECT missing_since FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     assert missing_since == NOW, "gone from disk is a state, not a deletion"
     assert authored_state(conn, file_id) == (5, 1, 1, 1)
 
@@ -295,9 +279,7 @@ def test_replacing_a_file_in_place_keeps_the_address(library):
     result = rescan(conn, root)
 
     assert (result.replaced, result.matched, result.added, result.missing) == (1, 0, 0, 0)
-    stored = conn.execute(
-        "SELECT id, content_sha256 FROM file WHERE id = ?", (file_id,)
-    ).fetchone()
+    stored = conn.execute("SELECT id, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     assert stored[1] == scan.sha256_of(root / "a.png")
     assert authored_state(conn, file_id) == (5, 1, 1, 1)
 
@@ -372,21 +354,19 @@ def test_a_new_folder_taking_a_renamed_ones_name_does_not_take_its_identity(libr
     write(root / "Archive" / "new.png", "unrelated")
     rescan(conn, root)
 
-    assert conn.execute(
-        "SELECT name FROM folder WHERE id = ?", (archive,)
-    ).fetchone()[0] == "Zoo", "the renamed directory kept somebody else's name"
+    assert conn.execute("SELECT name FROM folder WHERE id = ?", (archive,)).fetchone()[0] == "Zoo", (
+        "the renamed directory kept somebody else's name"
+    )
     assert conn.execute("SELECT slug FROM entity WHERE id = ?", (archive,)).fetchone()[0] == slug
-    assert conn.execute(
-        "SELECT folder_id FROM watched_folder"
-    ).fetchone()[0] == archive, "the watch followed the name instead of the directory"
+    assert conn.execute("SELECT folder_id FROM watched_folder").fetchone()[0] == archive, (
+        "the watch followed the name instead of the directory"
+    )
 
-    fresh = conn.execute(
-        "SELECT id FROM folder WHERE name = 'Archive' AND missing_since IS NULL"
-    ).fetchone()[0]
+    fresh = conn.execute("SELECT id FROM folder WHERE name = 'Archive' AND missing_since IS NULL").fetchone()[0]
     assert fresh != archive, "the new directory was given the old one's row"
-    assert conn.execute(
-        "SELECT f.name FROM file f WHERE f.folder_id = ?", (archive,)
-    ).fetchone()[0] == "a.png", "the original file followed the wrong directory"
+    assert conn.execute("SELECT f.name FROM file f WHERE f.folder_id = ?", (archive,)).fetchone()[0] == "a.png", (
+        "the original file followed the wrong directory"
+    )
 
 
 def test_a_deleted_folder_is_marked_missing_never_deleted(library):
@@ -397,16 +377,13 @@ def test_a_deleted_folder_is_marked_missing_never_deleted(library):
     rescan(conn, root)
     folder_id = conn.execute("SELECT id FROM folder WHERE name = 'gone'").fetchone()[0]
     file_id = conn.execute("SELECT id FROM file").fetchone()[0]
-    conn.execute("INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?,1,5,0)",
-                 (file_id,))
+    conn.execute("INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?,1,5,0)", (file_id,))
 
     (root / "gone" / "a.png").unlink()
     (root / "gone").rmdir()
     rescan(conn, root, NOW + 60)
 
-    assert conn.execute(
-        "SELECT missing_since FROM folder WHERE id = ?", (folder_id,)
-    ).fetchone()[0] == NOW + 60
+    assert conn.execute("SELECT missing_since FROM folder WHERE id = ?", (folder_id,)).fetchone()[0] == NOW + 60
     assert conn.execute("SELECT rating FROM rating WHERE file_id = ?", (file_id,)).fetchone()[0] == 5
 
 
@@ -423,9 +400,7 @@ def test_a_folder_that_comes_back_stops_being_missing(library):
     write(root / "away" / "a.png", "alpha")
     rescan(conn, root, NOW + 120)
 
-    assert conn.execute(
-        "SELECT missing_since FROM folder WHERE id = ?", (folder_id,)
-    ).fetchone()[0] is None
+    assert conn.execute("SELECT missing_since FROM folder WHERE id = ?", (folder_id,)).fetchone()[0] is None
 
 
 def test_a_scan_of_an_unreachable_root_concludes_nothing(library):
@@ -448,12 +423,9 @@ def two_roots(tmp_path):
     from db import library as library_module
 
     conn = sqlite3.connect(":memory:")
-    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute(
-        "INSERT INTO user(id, username, password_hash, role, created_at)"
-        " VALUES(1, 'will', 'x', 'ADMIN', 0)"
-    )
+    conn.execute("INSERT INTO user(id, username, password_hash, role, created_at) VALUES(1, 'will', 'x', 'ADMIN', 0)")
     first, second = tmp_path / "library", tmp_path / "archive"
     first.mkdir()
     second.mkdir()
@@ -476,26 +448,24 @@ def test_scanning_one_root_says_nothing_about_another(tmp_path):
     """
     conn, (a, first), (b, second) = two_roots(tmp_path)
     try:
-        assert conn.execute(
-            "SELECT count(*) FROM file WHERE missing_since IS NOT NULL"
-        ).fetchone()[0] == 0, "the second scan flagged what the first one found"
+        assert conn.execute("SELECT count(*) FROM file WHERE missing_since IS NOT NULL").fetchone()[0] == 0, (
+            "the second scan flagged what the first one found"
+        )
 
         scan.scan(conn, a, first, NOW + 100)
-        assert conn.execute(
-            "SELECT missing_since FROM file WHERE name='archived.png'"
-        ).fetchone()[0] is None, "scanning the library marked the archive drive gone"
+        assert conn.execute("SELECT missing_since FROM file WHERE name='archived.png'").fetchone()[0] is None, (
+            "scanning the library marked the archive drive gone"
+        )
 
         scan.scan(conn, b, second, NOW + 200)
-        assert conn.execute(
-            "SELECT missing_since FROM file WHERE name='kept.png'"
-        ).fetchone()[0] is None, "scanning the archive marked the library gone"
+        assert conn.execute("SELECT missing_since FROM file WHERE name='kept.png'").fetchone()[0] is None, (
+            "scanning the archive marked the library gone"
+        )
 
         # the control: a deletion inside the scanned root is still caught
         (first / "kept.png").unlink()
         scan.scan(conn, a, first, NOW + 300)
-        assert conn.execute(
-            "SELECT missing_since FROM file WHERE name='kept.png'"
-        ).fetchone()[0] == NOW + 300
+        assert conn.execute("SELECT missing_since FROM file WHERE name='kept.png'").fetchone()[0] == NOW + 300
     finally:
         conn.close()
 
@@ -507,7 +477,7 @@ def test_a_file_dragged_between_drives_is_one_move(tmp_path):
     makes it a move in either order."""
     import shutil
 
-    conn, (a, first), (b, second) = two_roots(tmp_path)
+    conn, (_a, first), (_b, second) = two_roots(tmp_path)
     try:
         file_id = conn.execute("SELECT id FROM file WHERE name='kept.png'").fetchone()[0]
         conn.execute(
@@ -517,18 +487,14 @@ def test_a_file_dragged_between_drives_is_one_move(tmp_path):
         shutil.move(str(first / "kept.png"), str(second / "kept.png"))
         scan.scan_all(conn, NOW + 100)
 
-        assert conn.execute("SELECT count(*) FROM file").fetchone()[0] == 2, (
-            "the move became a delete plus an arrival"
-        )
+        assert conn.execute("SELECT count(*) FROM file").fetchone()[0] == 2, "the move became a delete plus an arrival"
         moved = conn.execute(
             "SELECT f.id, r.path FROM file f JOIN folder fo ON fo.id=f.folder_id"
             " JOIN root r ON r.id=fo.root_id WHERE f.name='kept.png'"
         ).fetchone()
         assert moved[0] == file_id, "the file was re-identified by crossing a drive"
         assert moved[1] == str(second)
-        assert conn.execute(
-            "SELECT rating FROM rating WHERE file_id=?", (file_id,)
-        ).fetchone()[0] == 5
+        assert conn.execute("SELECT rating FROM rating WHERE file_id=?", (file_id,)).fetchone()[0] == 5
     finally:
         conn.close()
 
@@ -538,13 +504,13 @@ def test_scan_all_leaves_an_unplugged_drive_alone(tmp_path):
     skipped must not be reported as a root whose contents are gone."""
     import shutil
 
-    conn, (a, first), (b, second) = two_roots(tmp_path)
+    conn, (a, _first), (b, second) = two_roots(tmp_path)
     try:
         shutil.rmtree(second)
         scan.scan_all(conn, NOW + 100)
-        assert conn.execute(
-            "SELECT missing_since FROM file WHERE name='archived.png'"
-        ).fetchone()[0] is None, "an unreadable root was read as an emptied one"
+        assert conn.execute("SELECT missing_since FROM file WHERE name='archived.png'").fetchone()[0] is None, (
+            "an unreadable root was read as an emptied one"
+        )
         assert conn.execute("SELECT online FROM root WHERE id=?", (b,)).fetchone()[0] == 0
         assert conn.execute("SELECT online FROM root WHERE id=?", (a,)).fetchone()[0] == 1
     finally:

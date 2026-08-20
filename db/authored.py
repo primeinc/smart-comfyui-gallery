@@ -18,7 +18,6 @@ from __future__ import annotations
 from .naming import rename
 from .scan import mint
 
-
 # --- who is using it -------------------------------------------------------
 
 
@@ -66,17 +65,23 @@ def comment(conn, file_id: int, user_id: int, body: str, now: float) -> int:
 
 
 def edit_comment(conn, comment_id: int, body: str, now: float) -> None:
-    conn.execute(
-        "UPDATE comment SET body = ?, edited_at = ? WHERE id = ?", (body, now, comment_id)
-    )
+    conn.execute("UPDATE comment SET body = ?, edited_at = ? WHERE id = ?", (body, now, comment_id))
 
 
 # --- collections -----------------------------------------------------------
 
 
 def collection(
-    conn, name: str, now: float, *, kind: str = "album", parent_id=None, colour=None,
-    description=None, sql_text=None, nl_text=None,
+    conn,
+    name: str,
+    now: float,
+    *,
+    kind: str = "album",
+    parent_id=None,
+    colour=None,
+    description=None,
+    sql_text=None,
+    nl_text=None,
 ) -> int:
     """An album, a flag, or a saved query.
 
@@ -102,8 +107,7 @@ def rename_collection(conn, collection_id: int, name: str, now: float) -> str:
 
 def add_to_collection(conn, collection_id: int, file_id: int, now: float) -> None:
     conn.execute(
-        "INSERT OR IGNORE INTO collection_file(collection_id, file_id, added_at)"
-        " VALUES(?, ?, ?)",
+        "INSERT OR IGNORE INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)",
         (collection_id, file_id, now),
     )
 
@@ -125,9 +129,7 @@ def person(conn, name: str | None, now: float) -> int:
     is a product action rather than a precondition for having a page.
     """
     person_id = mint(conn, "person", name or "person")
-    conn.execute(
-        "INSERT INTO person(id, name, created_at) VALUES(?, ?, ?)", (person_id, name, now)
-    )
+    conn.execute("INSERT INTO person(id, name, created_at) VALUES(?, ?, ?)", (person_id, name, now))
     return person_id
 
 
@@ -137,8 +139,14 @@ def name_person(conn, person_id: int, name: str, now: float) -> str:
 
 
 def assert_person(
-    conn, person_id: int, file_id: int, user_id: int | None, now: float,
-    *, sample_id=None, region_id=None,
+    conn,
+    person_id: int,
+    file_id: int,
+    user_id: int | None,
+    now: float,
+    *,
+    sample_id=None,
+    region_id=None,
 ) -> None:
     """A person states that this person appears in this file.
 
@@ -168,9 +176,17 @@ def retract_person(conn, person_id: int, file_id: int) -> None:
 
 
 def feedback(
-    conn, target_kind: str, verdict: str, now: float,
-    *, file_id=None, other_file_id=None, person_id=None,
-    annotation_kind=None, note=None, user_id=None,
+    conn,
+    target_kind: str,
+    verdict: str,
+    now: float,
+    *,
+    file_id=None,
+    other_file_id=None,
+    person_id=None,
+    annotation_kind=None,
+    note=None,
+    user_id=None,
 ) -> int:
     """A person's verdict on a derived claim.
 
@@ -183,8 +199,15 @@ def feedback(
         " annotation_kind, verdict, note, user_id, created_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            target_kind, file_id, other_file_id, person_id, annotation_kind,
-            verdict, note, user_id, now,
+            target_kind,
+            file_id,
+            other_file_id,
+            person_id,
+            annotation_kind,
+            verdict,
+            note,
+            user_id,
+            now,
         ),
     )
     return int(cursor.lastrowid or 0)

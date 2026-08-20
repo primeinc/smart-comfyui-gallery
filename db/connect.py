@@ -11,6 +11,7 @@ sixty-one foreign keys inert while the test suite stays green.
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import sqlite3
 import time
@@ -85,9 +86,7 @@ def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
         if _mode(conn) == "wal":
             return
         if time.monotonic() >= deadline:
-            raise sqlite3.OperationalError(
-                "could not put the database into WAL mode; something else holds it"
-            )
+            raise sqlite3.OperationalError("could not put the database into WAL mode; something else holds it")
         time.sleep(0.05)
 
 
@@ -183,10 +182,8 @@ def close(conn: sqlite3.Connection) -> None:
     (refs/sqlite/sqlite/src/pragma.c:2465-2473). Without it the planner keeps
     running on whatever statistics existed when the library was smaller.
     """
-    try:
+    # A read-only or already-failing connection must still close. Losing a
+    # statistics refresh is not worth raising over during shutdown.
+    with contextlib.suppress(sqlite3.Error):
         conn.execute("PRAGMA optimize")
-    except sqlite3.Error:
-        # A read-only or already-failing connection must still close. Losing
-        # a statistics refresh is not worth raising over during shutdown.
-        pass
     conn.close()

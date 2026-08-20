@@ -129,5 +129,3 @@ def smartgallery_app():
     os.makedirs(smartgallery.THUMBNAIL_CACHE_DIR, exist_ok=True)
     smartgallery.init_db()
     return smartgallery
-
-

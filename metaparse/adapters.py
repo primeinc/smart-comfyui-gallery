@@ -211,10 +211,14 @@ class SwarmUIAdapter:
             text = str(name).strip()
             if not text or text in named:
                 continue
-            found.append({
-                "name": text, "role": "lora", "hash": None,
-                "weight": weights[index] if index < len(weights) else None,
-            })
+            found.append(
+                {
+                    "name": text,
+                    "role": "lora",
+                    "hash": None,
+                    "weight": weights[index] if index < len(weights) else None,
+                }
+            )
         return found
 
 

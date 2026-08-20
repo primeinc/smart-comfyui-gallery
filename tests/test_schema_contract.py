@@ -19,7 +19,6 @@ foreign_key_list can prove it points at `person`.
 
 from __future__ import annotations
 
-import io
 import pathlib
 import re
 import sqlite3
@@ -32,15 +31,26 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 # Columns ending in _id that are deliberately not references to another row.
 _NOT_A_REFERENCE = {
-    ("entity", "id"), ("root", "id"), ("user", "id"), ("job", "id"),
-    ("derived_media_sample", "id"), ("comment", "id"), ("feedback", "id"),
-    ("derivation_intent", "id"), ("file_derivation", "id"),
-    ("derived_face_cluster", "id"), ("derived_face_instance", "id"),
-    ("derived_annotation", "id"), ("region", "id"),
+    ("entity", "id"),
+    ("root", "id"),
+    ("user", "id"),
+    ("job", "id"),
+    ("derived_media_sample", "id"),
+    ("comment", "id"),
+    ("feedback", "id"),
+    ("derivation_intent", "id"),
+    ("file_derivation", "id"),
+    ("derived_face_cluster", "id"),
+    ("derived_face_instance", "id"),
+    ("derived_annotation", "id"),
+    ("region", "id"),
     # backend identity strings ("insightface", "qwen-vl"), not rows
-    ("derived_embedding", "model_id"), ("derived_face_cluster", "model_id"),
-    ("derived_face_instance", "model_id"), ("derived_annotation", "model_id"),
-    ("derived_file_person", "model_id"), ("derived_face_run", "model_id"),
+    ("derived_embedding", "model_id"),
+    ("derived_face_cluster", "model_id"),
+    ("derived_face_instance", "model_id"),
+    ("derived_annotation", "model_id"),
+    ("derived_file_person", "model_id"),
+    ("derived_face_run", "model_id"),
     ("job_item", "item_id"),
 }
 
@@ -60,13 +70,18 @@ _FREE_TEXT = {
     # the location of a root, which is the one place a path IS the fact
     "path",
     # a person's own words, and the name of a thing as its metadata spelled it
-    "name", "note", "summary", "description", "body", "text",
+    "name",
+    "note",
+    "summary",
+    "description",
+    "body",
+    "text",
 }
 
 
 @pytest.fixture(scope="module")
 def ddl():
-    return io.open(SCHEMA, "r", encoding="utf-8", newline="").read()
+    return SCHEMA.read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -117,9 +132,7 @@ def unconstrained_reference_columns(conn):
     virt = virtual_table_names(conn)
     tables = [
         r[0]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
     for table in tables:
@@ -129,10 +142,11 @@ def unconstrained_reference_columns(conn):
         # its reference: file_person.person_id is both. Surrogate keys are
         # named in _NOT_A_REFERENCE instead, one line each, so the exemption
         # is a decision on the record rather than a rule that quietly widens.
-        for col in (c[1] for c in cols):
-            if col.endswith("_id") and col not in fks:
-                if (table, col) not in _NOT_A_REFERENCE:
-                    out.append(f"{table}.{col}")
+        out.extend(
+            f"{table}.{col}"
+            for col in (c[1] for c in cols)
+            if col.endswith("_id") and col not in fks and (table, col) not in _NOT_A_REFERENCE
+        )
     return out
 
 
@@ -150,13 +164,11 @@ def virtual_table_names(conn):
     neither declares foreign keys, so both sweeps must skip them."""
     virt = [
         r[0]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL TABLE%'"
-        )
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL TABLE%'")
     ]
     return {
         name
-        for name, in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         if any(name == v or name.startswith(v + "_") for v in virt)
     }
 
@@ -179,9 +191,10 @@ def has_rowid(conn, table):
     that made the substring check pass for exactly the wrong reason."""
     try:
         conn.execute(f"SELECT rowid FROM {table} LIMIT 0")
-        return True
     except sqlite3.OperationalError:
         return False
+    else:
+        return True
 
 
 def test_join_tables_carry_no_rowid(db):
@@ -196,9 +209,7 @@ def test_the_long_tail_keeps_its_rowid(db):
     """The counterpart, and the reason the check above must be behavioural:
     file_param absorbs values that run to multiple KB, which is precisely what
     the optimization is not for. It must NOT be in the list above."""
-    assert has_rowid(db, "file_param"), (
-        "file_param is WITHOUT ROWID, but it holds the long tail's multi-KB values"
-    )
+    assert has_rowid(db, "file_param"), "file_param is WITHOUT ROWID, but it holds the long tail's multi-KB values"
 
 
 def test_no_foreign_key_points_at_a_missing_table(db):
@@ -251,7 +262,9 @@ def test_the_load_bearing_references_point_where_they_claim(db):
     }
     actual = {
         (table, row[3]): row[2]
-        for table in {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")} - virtual_table_names(db)
+        for table in (
+            {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")} - virtual_table_names(db)
+        )
         for row in db.execute(f"PRAGMA foreign_key_list({table})")
     }
     wrong = {k: (v, actual.get(k)) for k, v in expected.items() if actual.get(k) != v}
@@ -273,9 +286,7 @@ def test_the_target_check_can_actually_fail(ddl):
         for row in broken.execute(f"PRAGMA foreign_key_list({t})")
     }
     # the control must exercise the gate, not merely prove the edit landed
-    assert actual.get(("derived_file_person", "person_id")) != "person", (
-        "control failed: the repoint did not take"
-    )
+    assert actual.get(("derived_file_person", "person_id")) != "person", "control failed: the repoint did not take"
 
 
 def test_the_reference_sweep_can_actually_fail(ddl):
@@ -377,15 +388,11 @@ def test_two_people_may_share_a_display_name(db):
 def test_a_retired_slug_still_resolves(db):
     entity(db, 50, "person", "person-8a41f2")
     db.execute("INSERT INTO person(id,name,created_at) VALUES(50,NULL,0)")
-    db.execute(
-        "INSERT INTO slug_history(kind,slug,entity_id,retired_at) "
-        "VALUES('person','person-8a41f2',50,1.0)"
-    )
+    db.execute("INSERT INTO slug_history(kind,slug,entity_id,retired_at) VALUES('person','person-8a41f2',50,1.0)")
     db.execute("UPDATE entity SET slug='ilse' WHERE id=50")
-    row = db.execute(
-        "SELECT entity_id FROM slug_history WHERE kind='person' AND slug='person-8a41f2'"
-    ).fetchone()
-    assert row and row[0] == 50, "the old URL stopped pointing at the thing it named"
+    row = db.execute("SELECT entity_id FROM slug_history WHERE kind='person' AND slug='person-8a41f2'").fetchone()
+    assert row, "the old URL stopped pointing at the thing it named"
+    assert row[0] == 50, "the old URL stopped pointing at the thing it named"
 
 
 def test_moving_a_file_does_not_change_its_address(db):
@@ -433,8 +440,7 @@ def name_key(name):
 def an_artifact(conn, eid, kind, name, sha=None, quoted=None):
     entity(conn, eid, "artifact", f"{kind}-{name}")
     conn.execute(
-        "INSERT INTO artifact(id,kind,name,name_key,content_sha256,quoted_hash,first_seen_at) "
-        "VALUES(?,?,?,?,?,?,0)",
+        "INSERT INTO artifact(id,kind,name,name_key,content_sha256,quoted_hash,first_seen_at) VALUES(?,?,?,?,?,?,0)",
         (eid, kind, name, name_key(name), sha, quoted),
     )
 
@@ -446,25 +452,15 @@ def test_a_lora_stack_keeps_its_order(db):
     a_file(db, 80, 1, "x.png")
     an_artifact(db, 100, "lora", "detail")
     an_artifact(db, 101, "lora", "film")
-    db.execute(
-        "INSERT INTO file_artifact(file_id,ordinal,artifact_id,role,model_weight) "
-        "VALUES(80,0,100,'lora',0.8)"
-    )
-    db.execute(
-        "INSERT INTO file_artifact(file_id,ordinal,artifact_id,role,model_weight) "
-        "VALUES(80,1,101,'lora',0.4)"
-    )
+    db.execute("INSERT INTO file_artifact(file_id,ordinal,artifact_id,role,model_weight) VALUES(80,0,100,'lora',0.8)")
+    db.execute("INSERT INTO file_artifact(file_id,ordinal,artifact_id,role,model_weight) VALUES(80,1,101,'lora',0.4)")
     order = [
         r[0]
-        for r in db.execute(
-            "SELECT artifact_id FROM file_artifact WHERE file_id=80 AND role='lora' ORDER BY ordinal"
-        )
+        for r in db.execute("SELECT artifact_id FROM file_artifact WHERE file_id=80 AND role='lora' ORDER BY ordinal")
     ]
     assert order == [100, 101], f"stack order lost: {order}"
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO file_artifact(file_id,ordinal,artifact_id,role) VALUES(80,0,101,'lora')"
-        )
+        db.execute("INSERT INTO file_artifact(file_id,ordinal,artifact_id,role) VALUES(80,0,101,'lora')")
 
 
 def test_one_join_carries_every_artifact_kind(db):
@@ -477,16 +473,12 @@ def test_one_join_carries_every_artifact_kind(db):
     an_artifact(db, 132, "camera", "X-T5")
     an_artifact(db, 133, "lens", "XF 35mm F1.4")
     an_artifact(db, 134, "vae", "ae.sft")
-    for aid, role in ((130, "checkpoint"), (131, "lora"), (132, "captured_with"),
-                      (133, "mounted_lens"), (134, "vae")):
-        db.execute(
-            "INSERT INTO file_artifact(file_id,artifact_id,role) VALUES(?,?,?)", (90, aid, role)
-        )
+    for aid, role in ((130, "checkpoint"), (131, "lora"), (132, "captured_with"), (133, "mounted_lens"), (134, "vae")):
+        db.execute("INSERT INTO file_artifact(file_id,artifact_id,role) VALUES(?,?,?)", (90, aid, role))
     kinds = {
         r[0]
         for r in db.execute(
-            "SELECT a.kind FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id "
-            "WHERE fa.file_id=90"
+            "SELECT a.kind FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id WHERE fa.file_id=90"
         )
     }
     assert kinds == {"checkpoint", "lora", "camera", "lens", "vae"}
@@ -509,7 +501,8 @@ def test_a_camera_is_a_page_not_a_string(db):
         "JOIN entity e ON e.id = fa.artifact_id "
         "JOIN capture c ON c.file_id = f.id WHERE f.id=91"
     ).fetchone()
-    assert slug == "camera-X-T5" and iso == 400
+    assert slug == "camera-X-T5"
+    assert iso == 400
     located = db.execute("SELECT count(*) FROM capture WHERE gps_lat IS NOT NULL").fetchone()[0]
     assert located == 1, "a geotagged photo is not findable by place"
 
@@ -523,8 +516,7 @@ def test_capture_time_is_not_file_mtime(db):
     db.execute("UPDATE file SET mtime=1900000000.0, btime=1800000000.0 WHERE id=92")
     db.execute("INSERT INTO capture(file_id,captured_at,parsed_at) VALUES(92,1000000000.0,0)")
     mtime, btime, shot = db.execute(
-        "SELECT f.mtime, f.btime, c.captured_at FROM file f JOIN capture c ON c.file_id=f.id "
-        "WHERE f.id=92"
+        "SELECT f.mtime, f.btime, c.captured_at FROM file f JOIN capture c ON c.file_id=f.id WHERE f.id=92"
     ).fetchone()
     assert shot < btime < mtime, "the three timestamps collapsed into one"
 
@@ -536,32 +528,22 @@ def test_any_tail_field_is_queryable_without_a_migration(db):
     a_file(db, 93, 1, "a.jpg")
     a_file(db, 94, 1, "b.jpg")
     db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text,value_num) "
-        "VALUES(93,'iptc','Credit','Reuters',NULL)"
+        "INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(93,'iptc','Credit','Reuters',NULL)"
     )
     db.execute(
         "INSERT INTO file_param(file_id,source,key,value_text,value_num) "
         "VALUES(93,'exif','LensSerialNumber','44A1',NULL)"
     )
     db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text,value_num) "
-        "VALUES(94,'container','BitDepth','16',16)"
+        "INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(94,'container','BitDepth','16',16)"
     )
-    assert db.execute(
-        "SELECT file_id FROM file_param WHERE key='Credit' AND value_text='Reuters'"
-    ).fetchone()[0] == 93
-    assert db.execute(
-        "SELECT count(*) FROM file_param WHERE key='BitDepth' AND value_num >= 16"
-    ).fetchone()[0] == 1
+    assert db.execute("SELECT file_id FROM file_param WHERE key='Credit' AND value_text='Reuters'").fetchone()[0] == 93
+    assert db.execute("SELECT count(*) FROM file_param WHERE key='BitDepth' AND value_num >= 16").fetchone()[0] == 1
     # the same key may arrive from two origins and must stay distinguishable
-    db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text) VALUES(93,'xmp','Credit','AP')"
-    )
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(93,'xmp','Credit','AP')")
     assert db.execute("SELECT count(*) FROM file_param WHERE file_id=93 AND key='Credit'").fetchone()[0] == 2
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO file_param(file_id,source,key,value_text) VALUES(93,'iptc','Credit','dup')"
-        )
+        db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(93,'iptc','Credit','dup')")
 
 
 def test_person_membership_records_which_backend_said_so(db):
@@ -621,10 +603,7 @@ def test_a_companion_file_is_not_a_derivation(db):
     tree(db)
     a_file(db, 160, 1, "clip.mp4")
     a_file(db, 161, 1, "clip.png")
-    db.execute(
-        "INSERT INTO file_relation(file_id,related_id,kind,created_at) "
-        "VALUES(160,161,'companion',0)"
-    )
+    db.execute("INSERT INTO file_relation(file_id,related_id,kind,created_at) VALUES(160,161,'companion',0)")
     assert db.execute("SELECT count(*) FROM file_derivation").fetchone()[0] == 0
     found = db.execute(
         "SELECT f.name FROM file_relation r JOIN file f ON f.id = r.related_id "
@@ -632,10 +611,7 @@ def test_a_companion_file_is_not_a_derivation(db):
     ).fetchone()[0]
     assert found == "clip.png"
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO file_relation(file_id,related_id,kind,created_at) "
-            "VALUES(162,162,'sidecar',0)"
-        )
+        db.execute("INSERT INTO file_relation(file_id,related_id,kind,created_at) VALUES(162,162,'sidecar',0)")
 
 
 def test_trash_is_a_place_not_a_state(db):
@@ -691,7 +667,8 @@ def test_one_prompt_serves_positive_and_negative(db):
         "JOIN prompt p ON p.id = g.prompt_id JOIN prompt n ON n.id = g.negative_id "
         "WHERE g.file_id=185"
     ).fetchone()
-    assert pos == "a brass helmet" and neg == "blurry, watermark"
+    assert pos == "a brass helmet"
+    assert neg == "blurry, watermark"
 
 
 def test_one_name_makes_one_artifact_however_many_files_mention_it(db):
@@ -715,22 +692,15 @@ def test_every_key_encountered_registers_itself(db):
     tree(db)
     a_file(db, 195, 1, "a.jpg")
     a_file(db, 196, 1, "b.jpg")
-    db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text) VALUES(195,'exif','LensMake','Fujifilm')"
-    )
-    db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text,value_num) "
-        "VALUES(196,'exif','LensMake','7',7)"
-    )
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(195,'exif','LensMake','Fujifilm')")
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(196,'exif','LensMake','7',7)")
     kind, seen = db.execute(
         "SELECT value_kind, occurrences FROM param_key WHERE source='exif' AND key='LensMake'"
     ).fetchone()
     assert seen == 2, f"the registry lost count: {seen}"
     assert kind == "mixed", f"a key seen as both text and number should be mixed, got {kind}"
     db.execute("DELETE FROM file_param WHERE file_id=196")
-    assert db.execute(
-        "SELECT occurrences FROM param_key WHERE key='LensMake'"
-    ).fetchone()[0] == 1
+    assert db.execute("SELECT occurrences FROM param_key WHERE key='LensMake'").fetchone()[0] == 1
 
 
 def test_text_is_searchable_by_word_and_by_substring(db):
@@ -739,15 +709,12 @@ def test_text_is_searchable_by_word_and_by_substring(db):
     what the per-row fuzzykey UDFs were emulating."""
     tree(db)
     entity(db, 200, "prompt", "p1")
-    db.execute(
-        "INSERT INTO prompt(id,text,text_hash,created_at) "
-        "VALUES(200,'a brass diving helmet at dusk','h1',0)"
-    )
+    db.execute("INSERT INTO prompt(id,text,text_hash,created_at) VALUES(200,'a brass diving helmet at dusk','h1',0)")
     hit = db.execute(
-        "SELECT p.id FROM prompt_fts f JOIN prompt p ON p.id = f.rowid "
-        "WHERE prompt_fts MATCH 'brass AND dusk'"
+        "SELECT p.id FROM prompt_fts f JOIN prompt p ON p.id = f.rowid WHERE prompt_fts MATCH 'brass AND dusk'"
     ).fetchone()
-    assert hit and hit[0] == 200, "word search over prompts found nothing"
+    assert hit, "word search over prompts found nothing"
+    assert hit[0] == 200, "word search over prompts found nothing"
 
     an_artifact(db, 201, "checkpoint", "flux-dev.safetensors")
     # the rowid IS the entity id, which is what makes a delete a lookup
@@ -755,15 +722,11 @@ def test_text_is_searchable_by_word_and_by_substring(db):
     assert [r[0] for r in sub] == [201], f"substring search over names failed: {sub}"
 
     a_file(db, 202, 1, "z.jpg")
-    db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text) "
-        "VALUES(202,'iptc','Credit','Magnum Photos')"
-    )
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(202,'iptc','Credit','Magnum Photos')")
     # param_fts is external content over file_param, so the file it belongs to
     # is read by joining on the rowid rather than from a copy in the index.
     tail = db.execute(
-        "SELECT p.file_id FROM param_fts f JOIN file_param p ON p.rowid = f.rowid "
-        "WHERE param_fts MATCH 'agnum'"
+        "SELECT p.file_id FROM param_fts f JOIN file_param p ON p.rowid = f.rowid WHERE param_fts MATCH 'agnum'"
     ).fetchall()
     assert [r[0] for r in tail] == [202], "a scraped field was not searchable the day it appeared"
 
@@ -822,7 +785,8 @@ def test_feedback_outlives_the_thing_it_judged(db):
     db.execute("DELETE FROM entity WHERE id=900")
     row = db.execute("SELECT file_id, verdict FROM feedback WHERE id=1").fetchone()
     assert row is not None, "deleting the judged file destroyed the judgement"
-    assert row[0] is None and row[1] == "wrong", row
+    assert row[0] is None, row
+    assert row[1] == "wrong", row
 
 
 def test_feedback_must_name_what_it_judges(db):
@@ -833,10 +797,7 @@ def test_feedback_must_name_what_it_judges(db):
     with pytest.raises(sqlite3.IntegrityError):
         db.execute("INSERT INTO feedback(id,target_kind,verdict,created_at) VALUES(2,'review','x',0)")
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) "
-            "VALUES(3,'duplicate',901,'x',0)"
-        )
+        db.execute("INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) VALUES(3,'duplicate',901,'x',0)")
 
 
 # ------------------------------------------------- the rescan matcher contract
@@ -920,13 +881,11 @@ def test_a_remix_records_its_parent_before_the_child_exists(db):
         )
     a_file(db, 301, 1, "child.png")
     db.execute(
-        "INSERT INTO file_derivation(id,intent_id,parent_id,child_id,kind,created_at) "
-        "VALUES(1,1,300,301,'remix',0)"
+        "INSERT INTO file_derivation(id,intent_id,parent_id,child_id,kind,created_at) VALUES(1,1,300,301,'remix',0)"
     )
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO file_derivation(id,intent_id,parent_id,child_id,kind,created_at) "
-            "VALUES(2,1,300,301,'remix',0)"
+            "INSERT INTO file_derivation(id,intent_id,parent_id,child_id,kind,created_at) VALUES(2,1,300,301,'remix',0)"
         )
 
 
@@ -1030,9 +989,7 @@ def test_a_claim_about_the_whole_frame_carries_no_coordinates(db):
         "INSERT INTO derived_annotation(id,file_id,kind,text,model_id,model_version,"
         "source_sha256,computed_at) VALUES(1,421,'caption','a helmet','m','1','abc',0)"
     )
-    assert db.execute(
-        "SELECT region_id FROM derived_annotation WHERE id=1"
-    ).fetchone()[0] is None
+    assert db.execute("SELECT region_id FROM derived_annotation WHERE id=1").fetchone()[0] is None
     loose = [
         column
         for column in (row[1] for row in db.execute("PRAGMA table_info(derived_annotation)"))
@@ -1063,21 +1020,16 @@ def test_feedback_names_a_durable_target(db):
     )
     # every target must name a durable thing, never a disposable row id
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO feedback(id,target_kind,verdict,created_at) "
-            "VALUES(2,'annotation','wrong',0)"
-        )
+        db.execute("INSERT INTO feedback(id,target_kind,verdict,created_at) VALUES(2,'annotation','wrong',0)")
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) "
-            "VALUES(3,'duplicate',440,'wrong',0)"
+            "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) VALUES(3,'duplicate',440,'wrong',0)"
         )
     # "the model was wrong about this file" is not actionable when the model
     # said four different things about it
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) "
-            "VALUES(4,'annotation',440,'wrong',0)"
+            "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) VALUES(4,'annotation',440,'wrong',0)"
         )
     # a judgement re-attaches to a re-run model by file plus what was judged
     db.execute(
@@ -1088,7 +1040,8 @@ def test_feedback_names_a_durable_target(db):
         "SELECT a.id FROM feedback f JOIN derived_annotation a "
         "ON a.file_id = f.file_id AND a.kind = f.annotation_kind WHERE f.id=1"
     ).fetchone()
-    assert again and again[0] == 9, "feedback could not re-attach to a re-run model"
+    assert again, "feedback could not re-attach to a re-run model"
+    assert again[0] == 9, "feedback could not re-attach to a re-run model"
 
 
 def test_dropping_the_derived_namespace_keeps_everything_authored(db):
@@ -1099,10 +1052,7 @@ def test_dropping_the_derived_namespace_keeps_everything_authored(db):
     db.execute("INSERT INTO user(id,username,password_hash,role,created_at) VALUES(1,'u','h','ADMIN',0)")
     db.execute("INSERT INTO rating(file_id,user_id,rating,created_at) VALUES(450,1,4,0)")
     db.execute("INSERT INTO derived_file_hash(file_id,source_sha256,computed_at) VALUES(450,'abc',0)")
-    derived = [
-        r[0]
-        for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")
-    ]
+    derived = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")]
     assert len(derived) >= 6, f"derived namespace too small to be the whole of it: {derived}"
     for table in derived:
         db.execute(f"DROP TABLE {table}")
@@ -1162,12 +1112,10 @@ def test_the_registry_survives_a_reparse(db):
         )
     occ = db.execute("SELECT occurrences FROM param_key WHERE key='Lens'").fetchone()[0]
     assert occ == 1, f"four re-parses of one row counted as {occ}"
-    assert db.execute(
-        "SELECT count(*) FROM param_fts WHERE param_fts MATCH 'delta'"
-    ).fetchone()[0] == 1
-    assert db.execute(
-        "SELECT count(*) FROM param_fts WHERE param_fts MATCH 'alpha'"
-    ).fetchone()[0] == 0, "the superseded value is still findable"
+    assert db.execute("SELECT count(*) FROM param_fts WHERE param_fts MATCH 'delta'").fetchone()[0] == 1
+    assert db.execute("SELECT count(*) FROM param_fts WHERE param_fts MATCH 'alpha'").fetchone()[0] == 0, (
+        "the superseded value is still findable"
+    )
     db.execute("INSERT INTO param_fts(param_fts, rank) VALUES('integrity-check', 1)")
 
 
@@ -1188,10 +1136,8 @@ def test_nothing_writes_file_param_with_replace():
     root = pathlib.Path(__file__).resolve().parent.parent
     offenders = []
     for path in sorted((root / "db").rglob("*.py")):
-        source = io.open(path, "r", encoding="utf-8", newline="").read()
-        for match in re.finditer(
-            r"INSERT\s+OR\s+REPLACE\s+INTO\s+file_param", source, re.IGNORECASE
-        ):
+        source = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"INSERT\s+OR\s+REPLACE\s+INTO\s+file_param", source, re.IGNORECASE):
             line = source[: match.start()].count("\n") + 1
             offenders.append(f"{path.name}:{line}")
     assert offenders == [], (
@@ -1239,14 +1185,9 @@ def test_a_key_learns_that_it_holds_both_kinds(db):
     tree(db)
     a_file(db, 9, 1, "a.jpg")
     a_file(db, 10, 1, "b.jpg")
-    db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text,value_num)"
-        " VALUES(9,'exif','ISO','400',400)"
-    )
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(9,'exif','ISO','400',400)")
     assert db.execute("SELECT value_kind FROM param_key WHERE key='ISO'").fetchone()[0] == "number"
-    db.execute(
-        "INSERT INTO file_param(file_id,source,key,value_text) VALUES(10,'exif','ISO','auto')"
-    )
+    db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(10,'exif','ISO','auto')")
     assert db.execute("SELECT value_kind FROM param_key WHERE key='ISO'").fetchone()[0] == "mixed"
 
 
@@ -1285,7 +1226,8 @@ def test_the_registry_records_when_it_learned_a_key(db):
     a_file(db, 9, 1, "a.jpg")
     db.execute("INSERT INTO file_param(file_id,source,key,value_text) VALUES(9,'exif','T','x')")
     first, last = db.execute("SELECT first_seen_at, last_seen_at FROM param_key WHERE key='T'").fetchone()
-    assert first > 0 and last > 0, f"timestamps were never written: {(first, last)}"
+    assert first > 0, f"timestamps were never written: {(first, last)}"
+    assert last > 0, f"timestamps were never written: {(first, last)}"
 
 
 def test_a_subtype_cannot_disagree_with_its_entity(db):
@@ -1348,7 +1290,7 @@ def test_recomputing_a_derived_row_is_not_an_append(db):
 def test_whitespace_is_not_a_prompt(db):
     """trim() with one argument strips the space character only, so a tab, a
     newline, U+00A0 and U+3000 each bought a manufactured identity."""
-    for i, blank in enumerate(["", "   ", "\n", "\t", " ", "　"]):
+    for i, blank in enumerate(["", "   ", "\n", "\t", "\u00a0", "\u3000"]):
         entity(db, 400 + i, "prompt", f"blank{i}")
         with pytest.raises(sqlite3.IntegrityError):
             db.execute(
@@ -1361,14 +1303,11 @@ def test_a_file_cannot_derive_from_itself(db):
     tree(db)
     a_file(db, 9, 1, "a.png")
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO file_derivation(id,parent_id,child_id,kind,created_at) VALUES(1,9,9,'remix',0)"
-        )
+        db.execute("INSERT INTO file_derivation(id,parent_id,child_id,kind,created_at) VALUES(1,9,9,'remix',0)")
     a_file(db, 10, 1, "b.png")
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO file_derivation(id,parent_id,child_id,kind,created_at) "
-            "VALUES(2,9,10,'not-a-real-kind',0)"
+            "INSERT INTO file_derivation(id,parent_id,child_id,kind,created_at) VALUES(2,9,10,'not-a-real-kind',0)"
         )
 
 
@@ -1380,8 +1319,7 @@ def test_a_slug_can_be_retired_more_than_once(db):
     db.execute("INSERT INTO slug_history(kind,slug,entity_id,retired_at) VALUES('person','ilse',500,1.0)")
     db.execute("INSERT INTO slug_history(kind,slug,entity_id,retired_at) VALUES('person','ilse',501,2.0)")
     latest = db.execute(
-        "SELECT entity_id FROM slug_history WHERE kind='person' AND slug='ilse' "
-        "ORDER BY retired_at DESC LIMIT 1"
+        "SELECT entity_id FROM slug_history WHERE kind='person' AND slug='ilse' ORDER BY retired_at DESC LIMIT 1"
     ).fetchone()[0]
     assert latest == 501
 
@@ -1415,9 +1353,7 @@ def test_a_missing_file_does_not_hold_its_path_against_a_live_one(db):
         "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,"
         "first_seen_at,last_seen_at) VALUES(10,1,'dusk.png','image',10,0,'bb',0,0)"
     )
-    live = db.execute(
-        "SELECT id FROM file WHERE name='dusk.png' AND missing_since IS NULL"
-    ).fetchall()
+    live = db.execute("SELECT id FROM file WHERE name='dusk.png' AND missing_since IS NULL").fetchall()
     assert live == [(10,)], "exactly one file may be live at a path"
 
     # and the exclusion still bites for two live rows -- otherwise this test
@@ -1444,11 +1380,11 @@ def test_a_region_cannot_describe_an_impossible_rectangle(db):
     pixels points somewhere else on a thumbnail."""
     tree(db)
     for x, y, w, h in (
-        (0.9, 0.1, 0.5, 0.1),    # runs off the right edge
-        (0.1, 0.9, 0.1, 0.5),    # runs off the bottom
-        (-0.1, 0.1, 0.2, 0.2),   # starts outside the frame
-        (0.1, 0.1, 0.0, 0.2),    # zero width locates nothing
-        (0.1, 0.1, 0.2, -0.2),   # negative height
+        (0.9, 0.1, 0.5, 0.1),  # runs off the right edge
+        (0.1, 0.9, 0.1, 0.5),  # runs off the bottom
+        (-0.1, 0.1, 0.2, 0.2),  # starts outside the frame
+        (0.1, 0.1, 0.0, 0.2),  # zero width locates nothing
+        (0.1, 0.1, 0.2, -0.2),  # negative height
     ):
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("INSERT INTO region(x,y,w,h) VALUES(?,?,?,?)", (x, y, w, h))
@@ -1462,10 +1398,7 @@ def test_an_unreferenced_blob_is_reclaimed(db):
     tree(db)
     a_file(db, 9, 1, "a.png")
     db.execute("INSERT INTO blob(hash,payload,byte_len) VALUES('h','{}',2)")
-    db.execute(
-        "INSERT INTO file_blob(file_id,carrier,slot,blob_hash,seen_at) "
-        "VALUES(9,'png_text','workflow','h',0)"
-    )
+    db.execute("INSERT INTO file_blob(file_id,carrier,slot,blob_hash,seen_at) VALUES(9,'png_text','workflow','h',0)")
     db.execute("DELETE FROM entity WHERE id=9")
     assert db.execute("SELECT count(*) FROM blob").fetchone()[0] == 0
 
@@ -1517,8 +1450,7 @@ def test_the_front_page_query_uses_an_index(db):
     plan = " ".join(
         r[3]
         for r in db.execute(
-            "EXPLAIN QUERY PLAN SELECT id FROM file WHERE missing_since IS NULL "
-            "ORDER BY mtime DESC LIMIT 60"
+            "EXPLAIN QUERY PLAN SELECT id FROM file WHERE missing_since IS NULL ORDER BY mtime DESC LIMIT 60"
         )
     )
     assert "TEMP B-TREE" not in plan.upper(), f"front page still sorts the whole table: {plan}"
@@ -1569,9 +1501,7 @@ def test_an_unhashed_file_does_not_read_as_current(db):
         "SELECT count(*) FROM derived_file_hash d JOIN file f ON f.id = d.file_id "
         "WHERE d.source_sha256 IS NOT f.content_sha256"
     )
-    assert db.execute(stale).fetchone()[0] == 1, (
-        "a derived row on a file with no content hash reported itself current"
-    )
+    assert db.execute(stale).fetchone()[0] == 1, "a derived row on a file with no content hash reported itself current"
 
 
 def test_the_built_database_matches_the_ddl(tmp_path):
@@ -1661,12 +1591,16 @@ def test_folder_depth_is_maintained_by_the_database(db):
     db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(321,1,320,'deeper',0)")
     db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(322,1,321,'deepest',0)")
     assert [r[0] for r in db.execute("SELECT depth FROM folder WHERE id IN (320,321,322)")] == [
-        0, 1, 2,
+        0,
+        1,
+        2,
     ]
 
     db.execute("UPDATE folder SET parent_id=2 WHERE id=320")
     assert [r[0] for r in db.execute("SELECT depth FROM folder WHERE id IN (320,321,322)")] == [
-        2, 3, 4,
+        2,
+        3,
+        4,
     ], "the subtree under a reparented folder kept its old depth"
 
 
@@ -1748,18 +1682,13 @@ def test_a_name_survives_dropping_everything_derived(db):
     entity(db, 700, "person", "ilse")
     db.execute("INSERT INTO person(id,name,created_at) VALUES(700,'Ilse',0)")
     # a human said so
-    db.execute(
-        "INSERT INTO person_assertion(person_id,file_id,user_id,created_at) VALUES(700,9,NULL,0)"
-    )
+    db.execute("INSERT INTO person_assertion(person_id,file_id,user_id,created_at) VALUES(700,9,NULL,0)")
     # a backend inferred it
     db.execute(
         "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
         "VALUES(9,700,1,'insightface','v1')"
     )
-    derived = [
-        r[0]
-        for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")
-    ]
+    derived = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")]
     for t in derived:
         db.execute(f"DROP TABLE {t}")
 
@@ -1789,6 +1718,7 @@ def test_no_index_is_a_prefix_of_another(db):
     by a partial one, because the partial one cannot answer for the rows it
     excludes.
     """
+
     def shape(index):
         columns = [row[2] for row in db.execute(f"PRAGMA index_xinfo({index})") if row[5]]
         sql = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (index,)).fetchone()[0]
@@ -1796,16 +1726,13 @@ def test_no_index_is_a_prefix_of_another(db):
         return columns, (where[1].strip() if len(where) > 1 else None)
 
     redundant = []
-    for (table,) in db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-    ):
+    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         if table in virtual_table_names(db):
             continue
         indexes = [
             row[0]
             for row in db.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?"
-                " AND sql IS NOT NULL",
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL",
                 (table,),
             )
         ]
@@ -1815,11 +1742,7 @@ def test_no_index_is_a_prefix_of_another(db):
                 if other == candidate:
                     continue
                 wider, other_predicate = shape(other)
-                if (
-                    len(wider) > len(columns)
-                    and wider[: len(columns)] == columns
-                    and other_predicate == predicate
-                ):
+                if len(wider) > len(columns) and wider[: len(columns)] == columns and other_predicate == predicate:
                     redundant.append(f"{candidate} is a prefix of {other}")
     assert redundant == [], f"these indexes earn nothing: {redundant}"
 
@@ -1842,7 +1765,7 @@ def test_a_guard_that_only_fires_on_insert_is_declared_as_such(db):
     for name, sql in db.execute(
         "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%RAISE(ABORT%'"
     ):
-        match = re.search(r"(?:BEFORE|AFTER)\s+(\w+)[^;]*?\sON\s+(\w+)", sql, re.S)
+        match = re.search(r"(?:BEFORE|AFTER)\s+(\w+)[^;]*?\sON\s+(\w+)", sql, re.DOTALL)
         if not match:
             continue
         event, table = match.group(1).upper(), match.group(2)
@@ -1906,15 +1829,11 @@ def test_every_foreign_key_column_can_be_looked_up_by(db):
     library -- work that is invisible until the library is large.
     """
     unindexed = []
-    for (table,) in db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-    ):
+    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         if table in virtual_table_names(db):
             continue
         leading = set()
-        for (index,) in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)
-        ):
+        for (index,) in db.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)):
             columns = list(db.execute(f"PRAGMA index_info({index})"))
             if columns:
                 leading.add(columns[0][2])
@@ -1923,9 +1842,7 @@ def test_every_foreign_key_column_can_be_looked_up_by(db):
             column = row[3]
             if column not in leading and column not in primary:
                 unindexed.append(f"{table}.{column} -> {row[2]}")
-    assert unindexed == [], (
-        f"deleting a parent row scans these child tables: {unindexed}"
-    )
+    assert unindexed == [], f"deleting a parent row scans these child tables: {unindexed}"
 
 
 def test_a_column_naming_a_fixed_set_is_constrained_to_it(db):
@@ -1938,9 +1855,7 @@ def test_a_column_naming_a_fixed_set_is_constrained_to_it(db):
     one place and not the other could drift on the first direct write.
     """
     unconstrained = []
-    for (table,) in db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-    ):
+    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         if table in virtual_table_names(db):
             continue
         sql = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
@@ -1974,14 +1889,12 @@ def columns_actually_written(db):
     ever written either one.
     """
     source = "".join(
-        io.open(path, "r", encoding="utf-8", newline="").read()
+        path.read_text(encoding="utf-8")
         for path in pathlib.Path(__file__).resolve().parent.parent.joinpath("db").rglob("*.py")
     )
     # Triggers are producers too: param_key is filled entirely by one, and a
     # sweep that only reads Python would call the whole registry dead.
-    source += "".join(
-        row[0] or "" for row in db.execute("SELECT sql FROM sqlite_master WHERE type='trigger'")
-    )
+    source += "".join(row[0] or "" for row in db.execute("SELECT sql FROM sqlite_master WHERE type='trigger'"))
     # Quotes out, whitespace flattened: SQL in this repo is written as adjacent
     # Python string literals, so a statement only reads as one after the
     # delimiters between its halves are gone.
@@ -1991,23 +1904,21 @@ def columns_actually_written(db):
     everything: set[str] = set()
     for match in re.finditer(
         r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\(([^()]*)\))?",
-        flat, re.IGNORECASE,
+        flat,
+        re.IGNORECASE,
     ):
         table = match.group(1)
         if match.group(3) is None:
             # No column list: every column is being written.
             everything.add(table)
             continue
-        written.setdefault(table, set()).update(
-            name.strip() for name in match.group(3).split(",")
-        )
+        written.setdefault(table, set()).update(name.strip() for name in match.group(3).split(","))
     for match in re.finditer(
         r"UPDATE\s+([A-Za-z_][A-Za-z0-9_]*)\s+SET\s+(.*?)(?:\s+WHERE\s|\s+RETURNING\s|;)",
-        flat, re.IGNORECASE,
+        flat,
+        re.IGNORECASE,
     ):
-        written.setdefault(match.group(1), set()).update(
-            re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", match.group(2))
-        )
+        written.setdefault(match.group(1), set()).update(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", match.group(2)))
     # `DO UPDATE SET` needs no pass of its own: an upsert can only set columns
     # its INSERT already named, and those are collected above.
     return written, everything
@@ -2022,14 +1933,10 @@ def test_a_column_nothing_writes_says_so(db):
     """
     written, everything = columns_actually_written(db)
     silent = []
-    for (table,) in db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-    ):
+    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         if table in virtual_table_names(db) or table in everything:
             continue
-        declaration = db.execute(
-            "SELECT sql FROM sqlite_master WHERE name=?", (table,)
-        ).fetchone()[0]
+        declaration = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
         for row in db.execute(f"PRAGMA table_info({table})"):
             column, is_pk = row[1], row[5]
             if is_pk or column in written.get(table, ()):
@@ -2043,9 +1950,7 @@ def test_a_column_nothing_writes_says_so(db):
             ):
                 continue
             silent.append(f"{table}.{column}")
-    assert silent == [], (
-        f"no producer writes these, and the DDL does not admit it: {silent}"
-    )
+    assert silent == [], f"no producer writes these, and the DDL does not admit it: {silent}"
 
 
 def test_the_producer_sweep_reads_statements_not_prose(db):

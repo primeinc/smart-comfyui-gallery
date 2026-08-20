@@ -17,7 +17,6 @@ PngInfo.add_text(key, value) writes a tEXt chunk
 
 import gzip
 import hashlib
-import io
 import json
 import pathlib
 import sqlite3
@@ -176,7 +175,7 @@ WRITERS = {
 @pytest.fixture
 def db():
     conn = sqlite3.connect(":memory:")
-    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/out','library',0)")
     conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,X'00000000000000000000000000000001','folder','out')")
@@ -217,8 +216,7 @@ class Ingest:
         if key not in self.artifacts:
             i = self._entity("artifact", f"{kind}-{_name_key(name)}"[:60])
             self.conn.execute(
-                "INSERT INTO artifact(id,kind,name,name_key,quoted_hash,first_seen_at)"
-                " VALUES(?,?,?,?,?,0)",
+                "INSERT INTO artifact(id,kind,name,name_key,quoted_hash,first_seen_at) VALUES(?,?,?,?,?,0)",
                 (i, kind, str(name), _name_key(name), quoted),
             )
             self.artifacts[key] = i
@@ -271,8 +269,7 @@ class Ingest:
             )
         for ordinal, lora in enumerate(gen.loras):
             self.conn.execute(
-                "INSERT INTO file_artifact(file_id,ordinal,artifact_id,role,model_weight)"
-                " VALUES(?,?,?,'lora',?)",
+                "INSERT INTO file_artifact(file_id,ordinal,artifact_id,role,model_weight) VALUES(?,?,?,'lora',?)",
                 (file_id, ordinal, self._artifact("lora", lora.get("name", "?")), lora.get("weight")),
             )
 
@@ -317,8 +314,7 @@ class Ingest:
                 except ValueError:
                     number = None
             self.conn.execute(
-                "INSERT INTO file_param(file_id,source,key,value_text,value_num)"
-                " VALUES(?,'generation',?,?,?)",
+                "INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(?,'generation',?,?,?)",
                 (file_id, key, text, number),
             )
         return {"file_id": file_id, "parsed": parsed, "gen": gen, "homeless": homeless}
@@ -342,9 +338,7 @@ def written(tmp_path):
 def test_every_writer_reaches_the_schema(db, ingest, written, writer):
     """Parse to rows, for each tool, without a constraint rejecting anything."""
     result = ingest(written[writer])
-    stored = db.execute(
-        "SELECT tool, detection FROM generation WHERE file_id=?", (result["file_id"],)
-    ).fetchone()
+    stored = db.execute("SELECT tool, detection FROM generation WHERE file_id=?", (result["file_id"],)).fetchone()
     assert stored is not None, f"{writer} parsed but stored no generation row"
     assert stored[0] == result["gen"].tool
     assert stored[1] == result["gen"].detection
@@ -388,10 +382,12 @@ def test_no_parsed_field_is_dropped(db, ingest, written, writer):
         f"{writer}: {result['homeless']} has no scalar home; file_param stores "
         f"text and numbers, so a structured value needs flattening or its own table"
     )
-    stored = dict(db.execute(
-        "SELECT key, value_text FROM file_param WHERE file_id=? AND source='generation'",
-        (result["file_id"],),
-    ))
+    stored = dict(
+        db.execute(
+            "SELECT key, value_text FROM file_param WHERE file_id=? AND source='generation'",
+            (result["file_id"],),
+        )
+    )
     expected = dict(leaves(result["gen"].extra))
     if result["gen"].version:
         expected["version"] = str(result["gen"].version).strip()
@@ -399,9 +395,8 @@ def test_no_parsed_field_is_dropped(db, ingest, written, writer):
     assert not (set(stored) - set(expected)), (
         f"{writer} stored fields the parser did not produce: {set(stored) - set(expected)}"
     )
-    assert stored == expected, f"{writer} stored a different value for {
-        {k for k in expected if stored.get(k) != expected[k]}
-    }"
+    differs = {k for k in expected if stored.get(k) != expected[k]}
+    assert stored == expected, f"{writer} stored a different value for {differs}"
 
 
 @pytest.mark.parametrize("writer", sorted(WRITERS))
@@ -409,8 +404,7 @@ def test_the_carrier_survives_being_understood(db, ingest, written, writer):
     """The bytes stay, so improving an adapter re-parses the DB not the disk."""
     result = ingest(written[writer])
     row = db.execute(
-        "SELECT b.byte_len, fb.parsed_by FROM file_blob fb JOIN blob b ON b.hash=fb.blob_hash"
-        " WHERE fb.file_id=?",
+        "SELECT b.byte_len, fb.parsed_by FROM file_blob fb JOIN blob b ON b.hash=fb.blob_hash WHERE fb.file_id=?",
         (result["file_id"],),
     ).fetchone()
     assert row is not None, f"{writer} kept no carrier"
@@ -450,16 +444,10 @@ def test_the_long_tail_registers_itself_across_tools(db, ingest, written):
     """param_key learns what the library actually contains, unprompted."""
     for writer in sorted(WRITERS):
         ingest(written[writer])
-    keys = db.execute(
-        "SELECT key, occurrences FROM param_key WHERE source='generation' ORDER BY key"
-    ).fetchall()
+    keys = db.execute("SELECT key, occurrences FROM param_key WHERE source='generation' ORDER BY key").fetchall()
     assert keys, "eight tools wrote metadata and the registry learned nothing"
     counted = dict(keys)
-    actual = dict(
-        db.execute(
-            "SELECT key, count(*) FROM file_param WHERE source='generation' GROUP BY key"
-        ).fetchall()
-    )
+    actual = dict(db.execute("SELECT key, count(*) FROM file_param WHERE source='generation' GROUP BY key").fetchall())
     assert counted == actual, "the registry disagrees with the rows it is counting"
 
 
@@ -486,11 +474,16 @@ SWARM_WITH_LORA = json.dumps(
             "generation_time": "64.33 sec",
         },
         "sui_models": [
-            {"name": "qwnImageEdit_v16Fp8Scaled.safetensors", "param": "model",
-             "hash": "0xbb1da333101b843de2e0754407e76cee2f2620204f890099daff180cdcc48e67"},
-            {"name": "QwenImage/Qwen-Image-Edit-2511-Lightning-8steps-V10-fp32.safetensors",
-             "param": "loras",
-             "hash": "0x969fbaff7caa146d11d663987da88a3ffff594e25ef10ec0af3f9799541d0f6f"},
+            {
+                "name": "qwnImageEdit_v16Fp8Scaled.safetensors",
+                "param": "model",
+                "hash": "0xbb1da333101b843de2e0754407e76cee2f2620204f890099daff180cdcc48e67",
+            },
+            {
+                "name": "QwenImage/Qwen-Image-Edit-2511-Lightning-8steps-V10-fp32.safetensors",
+                "param": "loras",
+                "hash": "0x969fbaff7caa146d11d663987da88a3ffff594e25ef10ec0af3f9799541d0f6f",
+            },
         ],
     }
 )
@@ -508,18 +501,17 @@ def test_a_tool_that_states_its_weight_files_keeps_their_roles_and_hashes():
     it away throws away the join the recipe axis is for.
     """
     parsed = metaparse.parse_file(
-        _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png",
-             {"parameters": SWARM_WITH_LORA})
+        _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png", {"parameters": SWARM_WITH_LORA})
     )
     assert [(a["role"], a["name"].split("/")[-1][:12]) for a in parsed.artifacts] == [
-        ("checkpoint", "qwnImageEdit"), ("lora", "Qwen-Image-E"),
+        ("checkpoint", "qwnImageEdit"),
+        ("lora", "Qwen-Image-E"),
     ]
     assert all(a["hash"].startswith("0x") for a in parsed.artifacts)
 
     typed = GenerationParams.from_parsed(parsed)
-    assert typed.loras and typed.loras[0]["weight"] == "0.8", (
-        "loras and loraweights are parallel arrays and nothing paired them"
-    )
+    assert typed.loras, "loras and loraweights are parallel arrays and nothing paired them"
+    assert typed.loras[0]["weight"] == "0.8", "loras and loraweights are parallel arrays and nothing paired them"
 
 
 def test_a_structured_value_becomes_searchable_leaves_not_a_repr():
@@ -529,12 +521,10 @@ def test_a_structured_value_becomes_searchable_leaves_not_a_repr():
     there, so the flattening that turns a structure into one dotted key per
     leaf never once saw a structure to flatten."""
     parsed = metaparse.parse_file(
-        _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png",
-             {"parameters": SWARM_WITH_LORA})
+        _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png", {"parameters": SWARM_WITH_LORA})
     )
     assert parsed.extra["used_wildcards"] == ["scene/register", "scene/activity"]
     assert parsed.extra["debug_backend"]["backend_type"] == "ComfyUI Self-Starting"
-    assert not any(
-        isinstance(v, str) and v.startswith("[") and v.endswith("]")
-        for v in parsed.extra.values()
-    ), "something is still arriving as a repr of a list"
+    assert not any(isinstance(v, str) and v.startswith("[") and v.endswith("]") for v in parsed.extra.values()), (
+        "something is still arriving as a repr of a list"
+    )

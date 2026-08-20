@@ -109,9 +109,7 @@ def _gpu(unit, threshold):
     # index from it for the queries whose k-th neighbour still cleared the
     # threshold, and that is what makes this exact instead of a top-k
     # approximation. Passing None caps every face at GPU_K neighbours.
-    limits, sims, ids = range_search_gpu(
-        unit, _inclusive(threshold), index, unit, gpu_k=GPU_K
-    )
+    limits, sims, ids = range_search_gpu(unit, _inclusive(threshold), index, unit, gpu_k=GPU_K)
     return _from_ranges(unit.shape[0], limits, sims, ids, np)
 
 
@@ -131,7 +129,7 @@ def _numpy(unit, threshold):
 
     rows, cols, weights = [], [], []
     for start in range(0, unit.shape[0], BLOCK):
-        block = unit[start:start + BLOCK]
+        block = unit[start : start + BLOCK]
         sims = block @ unit.T
         keep = sims >= threshold
         here = np.arange(block.shape[0])
@@ -215,8 +213,7 @@ def graph(vectors, threshold: float, *, backend: str | None = None):
             )
         return result
     raise RuntimeError(
-        "no similarity backend could run, including numpy: "
-        + "; ".join(f"{k} ({v})" for k, v in refused.items())
+        "no similarity backend could run, including numpy: " + "; ".join(f"{k} ({v})" for k, v in refused.items())
     )
 
 

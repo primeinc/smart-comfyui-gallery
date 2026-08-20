@@ -45,17 +45,11 @@ def every_source() -> tuple[pathlib.Path, ...]:
     found: list[pathlib.Path] = []
     for current, subdirs, names in os.walk(REPO_ROOT):
         subdirs[:] = sorted(d for d in subdirs if d not in _NOT_OURS)
-        found.extend(
-            pathlib.Path(current) / name for name in sorted(names)
-            if name.endswith(".py")
-        )
+        found.extend(pathlib.Path(current) / name for name in sorted(names) if name.endswith(".py"))
     return tuple(found)
 
 
 @functools.cache
 def shipped() -> tuple[pathlib.Path, ...]:
     """The application as a user receives it: every source outside tooling."""
-    return tuple(
-        path for path in every_source()
-        if path.relative_to(REPO_ROOT).parts[0] not in _TOOLING
-    )
+    return tuple(path for path in every_source() if path.relative_to(REPO_ROOT).parts[0] not in _TOOLING)

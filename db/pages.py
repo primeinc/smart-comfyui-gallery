@@ -38,14 +38,11 @@ def resolve(conn, kind: str, slug: str) -> int | None:
     keeping history: a live `entity.slug` wins, and history answers only on a
     miss, most recent retirement first.
     """
-    row = conn.execute(
-        "SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)
-    ).fetchone()
+    row = conn.execute("SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone()
     if row:
         return row[0]
     row = conn.execute(
-        "SELECT entity_id FROM slug_history WHERE kind = ? AND slug = ?"
-        " ORDER BY retired_at DESC LIMIT 1",
+        "SELECT entity_id FROM slug_history WHERE kind = ? AND slug = ? ORDER BY retired_at DESC LIMIT 1",
         (kind, slug),
     ).fetchone()
     return row[0] if row else None
@@ -82,10 +79,7 @@ ONE_PICTURE = """
    WHERE f.id = ?
 """
 
-PARSED_FIELDS = (
-    "SELECT source, key, value_text FROM file_param WHERE file_id = ?"
-    " ORDER BY source, key"
-)
+PARSED_FIELDS = "SELECT source, key, value_text FROM file_param WHERE file_id = ? ORDER BY source, key"
 
 NEIGHBOUR = (
     "SELECT e.slug FROM file f JOIN entity e ON e.id = f.id"
@@ -110,13 +104,10 @@ def neighbour(conn, file_id: int, *, previous: bool = True):
     to return one row -- 50,007 rows sorted per arrow-key press on the
     largest folder in a real library.
     """
-    row = conn.execute(
-        "SELECT folder_id, mtime FROM file WHERE id = ?", (file_id,)
-    ).fetchone()
+    row = conn.execute("SELECT folder_id, mtime FROM file WHERE id = ?", (file_id,)).fetchone()
     if row is None:
         return None
-    sql = NEIGHBOUR.format(**({"way": "<", "order": "DESC"} if previous
-                              else {"way": ">", "order": "ASC"}))
+    sql = NEIGHBOUR.format(**({"way": "<", "order": "DESC"} if previous else {"way": ">", "order": "ASC"}))
     found = conn.execute(sql, (row[0], row[1], file_id)).fetchone()
     return found[0] if found else None
 
@@ -238,9 +229,7 @@ def people_by_most(conn, run_id: int | None = None):
     does not say which one it is showing is showing whichever wrote last.
     """
     if run_id is None:
-        row = conn.execute(
-            "SELECT id FROM derived_face_run WHERE is_primary = 1"
-        ).fetchone()
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
         if row is None:
             return []
         run_id = row[0]
@@ -301,7 +290,7 @@ def clusterings(conn):
     """Every clustering the library holds, side by side."""
     cursor = conn.execute(RUNS)
     columns = [c[0] for c in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
 def disagreements(conn, left: int, right: int):
@@ -317,9 +306,7 @@ def face_across_runs(conn, left: int, right: int, limit: int = 20):
 
 def person_files(conn, person_id: int, run_id: int | None = None):
     if run_id is None:
-        row = conn.execute(
-            "SELECT id FROM derived_face_run WHERE is_primary = 1"
-        ).fetchone()
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
         if row is None:
             return []
         run_id = row[0]
@@ -328,9 +315,7 @@ def person_files(conn, person_id: int, run_id: int | None = None):
 
 def person_across_folders(conn, person_id: int, run_id: int | None = None):
     if run_id is None:
-        row = conn.execute(
-            "SELECT id FROM derived_face_run WHERE is_primary = 1"
-        ).fetchone()
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
         if row is None:
             return []
         run_id = row[0]
@@ -353,10 +338,7 @@ def album_files(conn, collection_id: int):
 
 # --- what can be searched --------------------------------------------------
 
-WAYS = (
-    "SELECT source, key, value_kind, occurrences FROM param_key"
-    " ORDER BY occurrences DESC, key"
-)
+WAYS = "SELECT source, key, value_kind, occurrences FROM param_key ORDER BY occurrences DESC, key"
 
 
 def ways(conn):

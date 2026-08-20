@@ -15,7 +15,6 @@ every row is fine on a fixture and unusable at 100k, and the difference is
 visible in the plan long before it is visible in the clock.
 """
 
-import io
 import pathlib
 import re
 import sqlite3
@@ -46,8 +45,23 @@ STAYS_SMALL = {"root", "user", "setting", "watched_folder", "param_key", "sqlite
 
 #: Words that can follow FROM or JOIN without being an alias.
 _NOT_AN_ALIAS = {
-    "on", "where", "group", "order", "limit", "join", "left", "inner", "cross",
-    "natural", "union", "as", "using", "and", "or", "having", "window",
+    "on",
+    "where",
+    "group",
+    "order",
+    "limit",
+    "join",
+    "left",
+    "inner",
+    "cross",
+    "natural",
+    "union",
+    "as",
+    "using",
+    "and",
+    "or",
+    "having",
+    "window",
 }
 
 
@@ -67,14 +81,12 @@ def library(tmp_path):
             Image.new("RGB", (16, 16), (20 + i * 7, 60, 90 + i)).save(path, pnginfo=info)
 
     conn = sqlite3.connect(":memory:")
-    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
 
     scan.scan(conn, 1, root, NOW)
-    for file_id, name, folder_id in conn.execute(
-        "SELECT f.id, f.name, f.folder_id FROM file f"
-    ).fetchall():
+    for file_id, name, folder_id in conn.execute("SELECT f.id, f.name, f.folder_id FROM file f").fetchall():
         parts = []
         walk = folder_id
         while walk:
@@ -101,8 +113,7 @@ def library(tmp_path):
     derived.make_primary(conn, run)
     derived.attribute(conn, first, ilse, run, "insightface", "v1")
     conn.commit()
-    return {"conn": conn, "root": root, "user": user, "person": ilse,
-            "album": album, "first": first}
+    return {"conn": conn, "root": root, "user": user, "person": ilse, "album": album, "first": first}
 
 
 def plan(conn, sql, args=()):
@@ -120,7 +131,8 @@ def tables_by_name(sql):
     names = {}
     for table, alias in re.findall(
         r"(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+AS)?(?:\s+([A-Za-z_][A-Za-z0-9_]*))?",
-        sql, re.IGNORECASE,
+        sql,
+        re.IGNORECASE,
     ):
         names[table] = table
         if alias and alias.lower() not in _NOT_AN_ALIAS:
@@ -181,8 +193,7 @@ def test_every_page_query_ships_in_db_pages():
     plan being asserted is now the plan the application runs.
     """
     shipped = [
-        name for name, value in vars(pages).items()
-        if name.isupper() and isinstance(value, str) and "SELECT" in value
+        name for name, value in vars(pages).items() if name.isupper() and isinstance(value, str) and "SELECT" in value
     ]
     assert len(shipped) >= 12, f"only {len(shipped)} page queries ship: {shipped}"
 
@@ -196,9 +207,7 @@ def test_the_front_page_shows_the_newest_first(library):
     assert len(rows) == 12
     mtimes = [mtime for _, _, mtime in rows]
     assert mtimes == sorted(mtimes, reverse=True)
-    assert "file_recent" in " ".join(plan(conn, pages.NEWEST_FIRST, (60,))), (
-        "the partial index is not being used"
-    )
+    assert "file_recent" in " ".join(plan(conn, pages.NEWEST_FIRST, (60,))), "the partial index is not being used"
     assert_no_growing_scan(conn, pages.NEWEST_FIRST, (60,))
 
 
@@ -208,16 +217,11 @@ def test_a_missing_file_leaves_the_front_page(library):
     conn, first = library["conn"], library["first"]
     conn.execute("UPDATE file SET missing_since=? WHERE id=?", (NOW, first))
     slugs = [
-        r[0] for r in conn.execute(
-            "SELECT e.slug FROM file f JOIN entity e ON e.id=f.id"
-            " WHERE f.missing_since IS NULL"
-        )
+        r[0] for r in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id=f.id WHERE f.missing_since IS NULL")
     ]
     assert len(slugs) == 11
     assert conn.execute("SELECT rating FROM rating WHERE file_id=?", (first,)).fetchone()[0] == 5
-    assert conn.execute(
-        "SELECT count(*) FROM collection_file WHERE file_id=?", (first,)
-    ).fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM collection_file WHERE file_id=?", (first,)).fetchone()[0] == 1
 
 
 # --- one picture -----------------------------------------------------------
@@ -236,8 +240,17 @@ def test_the_image_page_answers_in_one_query(library):
     row = pages.picture(conn, file_id)
     assert row is not None
     (
-        name, folder, width, height, duration, asked_for_width,
-        checkpoint, loras, prompt, seed, fields,
+        _name,
+        folder,
+        width,
+        height,
+        duration,
+        asked_for_width,
+        checkpoint,
+        loras,
+        prompt,
+        seed,
+        fields,
     ) = row
     assert folder == "portraits"
     assert duration is None, "a still picture has no length"
@@ -285,14 +298,13 @@ def test_the_page_gate_can_actually_fail(library):
     compared it against a hand-written list of table names.
     """
     conn = library["conn"]
-    for sql, blind_spot in (
+    for sql, _blind_spot in (
         ("SELECT f.id FROM file f", "an alias hid the table name"),
         ("SELECT count(*) FROM region", "the table was not on the hand-written list"),
         ("SELECT id FROM file ORDER BY size", "sorting the whole library was never checked"),
     ):
         with pytest.raises(AssertionError, match="reads or sorts"):
             assert_no_growing_scan(conn, sql)
-            pytest.fail(f"the gate still cannot see it: {blind_spot} -- {sql}")
 
 
 def test_the_next_and_previous_picture_are_reachable(library):
@@ -414,8 +426,9 @@ def test_the_people_page_is_sorted_by_most(library):
     """The question this whole rewrite started from."""
     conn = library["conn"]
     rows = pages.people_by_most(conn)
-    sql = pages.PEOPLE_BY_MOST
-    assert rows and rows[0][0] == "Ilse" and rows[0][2] == 1
+    assert rows
+    assert rows[0][0] == "Ilse"
+    assert rows[0][2] == 1
 
 
 def test_a_person_keeps_their_page_after_being_renamed(library):
@@ -435,8 +448,7 @@ def test_a_person_keeps_their_page_after_being_renamed(library):
 def test_search_finds_a_picture_by_its_prompt(library):
     conn = library["conn"]
     rows = conn.execute(
-        "SELECT count(*) FROM prompt_fts JOIN prompt p ON p.id = prompt_fts.rowid"
-        " WHERE prompt_fts MATCH ?",
+        "SELECT count(*) FROM prompt_fts JOIN prompt p ON p.id = prompt_fts.rowid WHERE prompt_fts MATCH ?",
         ("brass AND dusk",),
     ).fetchone()[0]
     assert rows == 1
@@ -445,8 +457,7 @@ def test_search_finds_a_picture_by_its_prompt(library):
 def test_search_finds_a_model_by_part_of_its_name(library):
     conn = library["conn"]
     hit = conn.execute(
-        "SELECT a.name FROM name_fts n JOIN artifact a ON a.id = n.rowid"
-        " WHERE name_fts MATCH ?",
+        "SELECT a.name FROM name_fts n JOIN artifact a ON a.id = n.rowid WHERE name_fts MATCH ?",
         ('"eamshap"',),
     ).fetchall()
     assert [h[0] for h in hit] == ["dreamshaper_8"]
@@ -479,12 +490,10 @@ def test_the_ways_page_is_generated_from_the_library(library):
     # `key` alone the dict kept one row per name while the GROUP BY summed
     # across sources, so the two agreed by accident and would have gone on
     # agreeing through a real drift.
-    counted = {(s, k): n for s, k, n in conn.execute(
-        "SELECT source, key, count(*) FROM file_param GROUP BY source, key"
-    )}
-    assert {(r[0], r[1]): r[3] for r in rows} == counted, (
-        "the facet counts disagree with the rows"
-    )
+    counted = {
+        (s, k): n for s, k, n in conn.execute("SELECT source, key, count(*) FROM file_param GROUP BY source, key")
+    }
+    assert {(r[0], r[1]): r[3] for r in rows} == counted, "the facet counts disagree with the rows"
 
 
 # --- lineage ---------------------------------------------------------------
@@ -503,7 +512,8 @@ def test_a_remixed_picture_names_its_parent(library):
         " WHERE d.child_id=?"
     )
     row = conn.execute(sql, (child,)).fetchone()
-    assert row is not None and row[2] == "remix"
+    assert row is not None
+    assert row[2] == "remix"
     assert_no_growing_scan(conn, sql, (child,))
 
 
@@ -519,21 +529,15 @@ def test_the_album_page_lists_its_members(library):
 def every_page(conn):
     """What every page would show, as one comparable value."""
     return {
-        "front": conn.execute(
-            "SELECT count(*) FROM file WHERE missing_since IS NULL"
-        ).fetchone()[0],
+        "front": conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0],
         "rating": conn.execute("SELECT rating FROM rating").fetchone()[0],
         "comments": conn.execute("SELECT body FROM comment").fetchall(),
         "album": conn.execute("SELECT count(*) FROM collection_file").fetchone()[0],
         "people": conn.execute("SELECT count(*) FROM derived_file_person").fetchone()[0],
         "assertions": conn.execute("SELECT count(*) FROM person_assertion").fetchone()[0],
         # every FILE address, which is the thing a link points at
-        "file slugs": conn.execute(
-            "SELECT e.slug FROM entity e JOIN file f ON f.id=e.id ORDER BY e.id"
-        ).fetchall(),
-        "checkpoint": conn.execute(
-            "SELECT count(*) FROM file_artifact WHERE role='checkpoint'"
-        ).fetchone()[0],
+        "file slugs": conn.execute("SELECT e.slug FROM entity e JOIN file f ON f.id=e.id ORDER BY e.id").fetchall(),
+        "checkpoint": conn.execute("SELECT count(*) FROM file_artifact WHERE role='checkpoint'").fetchone()[0],
     }
 
 
@@ -560,10 +564,12 @@ def test_moving_the_files_behind_the_apps_back_disturbs_no_page(library):
     assert result.missing == 0, "moving files lost them"
 
     assert every_page(conn) == before, "a rescan changed what the pages show"
-    assert conn.execute(
-        "SELECT fo.name FROM file f JOIN folder fo ON fo.id=f.folder_id"
-        " WHERE f.name='portraits_00.png'"
-    ).fetchone()[0] == "moved", "the file did not follow its bytes"
+    assert (
+        conn.execute(
+            "SELECT fo.name FROM file f JOIN folder fo ON fo.id=f.folder_id WHERE f.name='portraits_00.png'"
+        ).fetchone()[0]
+        == "moved"
+    ), "the file did not follow its bytes"
 
 
 def test_identical_files_are_never_guessed_between_on_a_move(library):
@@ -576,10 +582,12 @@ def test_identical_files_are_never_guessed_between_on_a_move(library):
     for name in ("a.png", "b.png"):
         Image.new("RGB", (16, 16), (7, 7, 7)).save(root / "twins" / name)
     scan.scan(conn, 1, root, NOW + 100)
-    assert conn.execute(
-        "SELECT count(*) FROM file WHERE folder_id="
-        "(SELECT id FROM folder WHERE name='twins')"
-    ).fetchone()[0] == 2
+    assert (
+        conn.execute("SELECT count(*) FROM file WHERE folder_id=(SELECT id FROM folder WHERE name='twins')").fetchone()[
+            0
+        ]
+        == 2
+    )
 
     (root / "twins2").mkdir()
     for name in ("a.png", "b.png"):
@@ -607,15 +615,18 @@ def a_recipe_library(tmp_path):
     ]
     for name, loras, model in recipes:
         info = PngInfo()
-        info.add_text("parameters", (
-            f"a castle {loras}\nNegative prompt: blur\n"
-            f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, "
-            f"Size: 512x512, Model: {model}"
-        ))
+        info.add_text(
+            "parameters",
+            (
+                f"a castle {loras}\nNegative prompt: blur\n"
+                f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, "
+                f"Size: 512x512, Model: {model}"
+            ),
+        )
         Image.new("RGB", (16, 16), (9, 9, 9)).save(root / name, pnginfo=info)
 
     conn = sqlite3.connect(":memory:")
-    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
     scan.scan(conn, 1, root, NOW)
@@ -633,7 +644,7 @@ def test_a_lora_says_what_it_is_actually_used_with(tmp_path):
     """
     conn = a_recipe_library(tmp_path)
     try:
-        loras = dict((name, slug) for name, slug, _ in pages.artifacts_by_use(conn, "lora"))
+        loras = {name: slug for name, slug, _ in pages.artifacts_by_use(conn, "lora")}
         assert set(loras) == {"filmGrain", "detailTweaker"}
 
         film = pages.resolve(conn, "artifact", loras["filmGrain"])
@@ -670,9 +681,7 @@ def test_a_person_is_shown_across_the_folders_they_are_in(library):
     spread = pages.person_across_folders(conn, person)
     assert [(name, count) for name, _, count in spread] == [("landscape", 1)]
     run = conn.execute("SELECT id FROM derived_face_run WHERE is_primary=1").fetchone()[0]
-    assert_no_growing_scan(
-        conn, pages.PERSON_ACROSS_FOLDERS, (person, run), aggregate=True
-    )
+    assert_no_growing_scan(conn, pages.PERSON_ACROSS_FOLDERS, (person, run), aggregate=True)
     assert_no_growing_scan(conn, pages.PERSON_FILES, (person, run))
 
 

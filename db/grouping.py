@@ -88,8 +88,9 @@ def connected_components(graph, vectors=None, **_):
     return [root(node) for node in range(n)]
 
 
-def spherical_kmeans(graph, vectors=None, *, people: int | None = None,
-                     iterations: int = 20, redo: int = 1, gpu: bool = True, **_):
+def spherical_kmeans(
+    graph, vectors=None, *, people: int | None = None, iterations: int = 20, redo: int = 1, gpu: bool = True, **_
+):
     """FAISS k-means on the unit sphere.
 
     Nothing new is installed for this: FAISS is already here, ships k-means,
@@ -139,17 +140,23 @@ def spherical_kmeans(graph, vectors=None, *, people: int | None = None,
     # "Can I ignore WARNING clustering XXX points to YYY centroids?";
     # Faiss-building-blocks page, "Additional options".)
     kmeans = faiss.Kmeans(
-        int(unit.shape[1]), people, niter=iterations, nredo=redo,
-        spherical=True, gpu=bool(gpu) and faiss.get_num_gpus() > 0,
-        min_points_per_centroid=1, max_points_per_centroid=10_000_000,
+        int(unit.shape[1]),
+        people,
+        niter=iterations,
+        nredo=redo,
+        spherical=True,
+        gpu=bool(gpu) and faiss.get_num_gpus() > 0,
+        min_points_per_centroid=1,
+        max_points_per_centroid=10_000_000,
     )
     kmeans.train(unit)
     _, assignment = kmeans.index.search(unit, 1)
     return [int(v) for v in np.asarray(assignment).reshape(-1)]
 
 
-def consensus(graph, vectors=None, *, methods=("chinese-whispers", "connected-components"),
-              agree: int | None = None, **options):
+def consensus(
+    graph, vectors=None, *, methods=("chinese-whispers", "connected-components"), agree: int | None = None, **options
+):
     """Keep only what several methods agree on.
 
     Two clusterings that disagree about a pair are telling you the pair is

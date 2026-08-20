@@ -14,22 +14,17 @@ never resolved stays visible as an open row rather than disappearing.
 from __future__ import annotations
 
 
-def intend(
-    conn, parent_id: int, kind: str, external_ref: str, now: float, *, job_id=None
-) -> int:
+def intend(conn, parent_id: int, kind: str, external_ref: str, now: float, *, job_id=None) -> int:
     """Record that a derivation was asked for, before its output exists.
 
     `external_ref` is the generator's own job id and is UNIQUE, so a retry or
     a duplicate submit reuses the intent instead of creating a second one.
     """
-    row = conn.execute(
-        "SELECT id FROM derivation_intent WHERE external_ref = ?", (external_ref,)
-    ).fetchone()
+    row = conn.execute("SELECT id FROM derivation_intent WHERE external_ref = ?", (external_ref,)).fetchone()
     if row:
         return row[0]
     cursor = conn.execute(
-        "INSERT INTO derivation_intent(parent_id, kind, external_ref, job_id, created_at)"
-        " VALUES(?, ?, ?, ?, ?)",
+        "INSERT INTO derivation_intent(parent_id, kind, external_ref, job_id, created_at) VALUES(?, ?, ?, ?, ?)",
         (parent_id, kind, external_ref, job_id, now),
     )
     return int(cursor.lastrowid or 0)
@@ -53,8 +48,7 @@ def resolve(conn, external_ref: str, child_id: int, now: float) -> int | None:
         # write a self-edge, and every lineage walk from here is a cycle.
         return None
     conn.execute(
-        "INSERT OR IGNORE INTO file_derivation(intent_id, parent_id, child_id, kind,"
-        " created_at) VALUES(?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO file_derivation(intent_id, parent_id, child_id, kind, created_at) VALUES(?, ?, ?, ?, ?)",
         (intent_id, parent_id, child_id, kind, now),
     )
     edge = conn.execute(
@@ -69,8 +63,7 @@ def link(conn, parent_id: int, child_id: int, kind: str, now: float) -> int | No
     if parent_id == child_id:
         return None
     conn.execute(
-        "INSERT OR IGNORE INTO file_derivation(parent_id, child_id, kind, created_at)"
-        " VALUES(?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO file_derivation(parent_id, child_id, kind, created_at) VALUES(?, ?, ?, ?)",
         (parent_id, child_id, kind, now),
     )
     row = conn.execute(
@@ -113,8 +106,7 @@ def relate(conn, file_id: int, related_id: int, kind: str, now: float) -> None:
         pairs.append((related_id, file_id))
     for left, right in pairs:
         conn.execute(
-            "INSERT OR IGNORE INTO file_relation(file_id, related_id, kind, created_at)"
-            " VALUES(?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO file_relation(file_id, related_id, kind, created_at) VALUES(?, ?, ?, ?)",
             (left, right, kind, now),
         )
 

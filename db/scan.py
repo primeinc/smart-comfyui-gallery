@@ -73,10 +73,7 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
     Passing None means "I walked everything", which is only true of
     `scan_all`.
     """
-    rows = {
-        (r[1], r[2]): (r[0], r[3])
-        for r in conn.execute("SELECT id, folder_id, name, content_sha256 FROM file")
-    }
+    rows = {(r[1], r[2]): (r[0], r[3]) for r in conn.execute("SELECT id, folder_id, name, content_sha256 FROM file")}
     result: dict[tuple[int, str], Resolution] = {}
     settled: set[int] = set()
 
@@ -121,7 +118,7 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
     # invalidated by the changed hash; authored state is kept, because
     # silently dropping somebody's rating is worse than keeping a stale one
     # and the alternative breaks the URL.
-    for key, sha in observed.items():
+    for key in observed:
         if key in result:
             continue
         row = rows.get(key)
@@ -137,15 +134,12 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
         examined = {
             row[0]
             for row in conn.execute(
-                f"SELECT f.id FROM file f JOIN folder d ON d.id = f.folder_id"
-                f" WHERE d.root_id IN ({marks})",
+                f"SELECT f.id FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id IN ({marks})",
                 tuple(roots),
             )
         }
     missing = [
-        file_id
-        for file_id, _ in rows.values()
-        if file_id not in settled and (examined is None or file_id in examined)
+        file_id for file_id, _ in rows.values() if file_id not in settled and (examined is None or file_id in examined)
     ]
     return result, missing
 
@@ -155,14 +149,30 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
 #: Suffix to `file.kind`. A suffix that is not here is not media and is
 #: skipped: the library indexes pictures, not the .txt sitting beside them.
 KIND_BY_SUFFIX = {
-    ".png": "image", ".jpg": "image", ".jpeg": "image", ".webp": "image",
-    ".bmp": "image", ".tif": "image", ".tiff": "image", ".avif": "image",
-    ".jxl": "image", ".heic": "image",
-    ".gif": "animated_image", ".apng": "animated_image",
-    ".mp4": "video", ".mkv": "video", ".webm": "video", ".mov": "video",
-    ".avi": "video", ".m4v": "video",
-    ".mp3": "audio", ".wav": "audio", ".flac": "audio", ".m4a": "audio",
-    ".ogg": "audio", ".opus": "audio",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".webp": "image",
+    ".bmp": "image",
+    ".tif": "image",
+    ".tiff": "image",
+    ".avif": "image",
+    ".jxl": "image",
+    ".heic": "image",
+    ".gif": "animated_image",
+    ".apng": "animated_image",
+    ".mp4": "video",
+    ".mkv": "video",
+    ".webm": "video",
+    ".mov": "video",
+    ".avi": "video",
+    ".m4v": "video",
+    ".mp3": "audio",
+    ".wav": "audio",
+    ".flac": "audio",
+    ".m4a": "audio",
+    ".ogg": "audio",
+    ".opus": "audio",
     ".pdf": "document",
 }
 
@@ -221,9 +231,7 @@ def mint(conn, kind: str, seed: str) -> int:
     identity = uuid.uuid4()
     slug = base or f"{kind}-{identity.hex[:6]}"
     suffix = 1
-    while conn.execute(
-        "SELECT 1 FROM entity WHERE kind = ? AND slug = ?", (kind, slug)
-    ).fetchone():
+    while conn.execute("SELECT 1 FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone():
         suffix += 1
         slug = f"{base or kind}-{suffix}"
     cursor = conn.execute(
@@ -234,8 +242,13 @@ def mint(conn, kind: str, seed: str) -> int:
 
 
 def ensure_folder(
-    conn, root_id: int, parent_id: int | None, name: str, inode: int | None = None,
-    *, now: float | None = None,
+    conn,
+    root_id: int,
+    parent_id: int | None,
+    name: str,
+    inode: int | None = None,
+    *,
+    now: float | None = None,
 ) -> int:
     """The folder row for one path segment, created once.
 
@@ -261,8 +274,7 @@ def ensure_folder(
                     (parent_id, name, row[0]),
                 )
             conn.execute(
-                "UPDATE folder SET missing_since = NULL"
-                " WHERE id = ? AND missing_since IS NOT NULL",
+                "UPDATE folder SET missing_since = NULL WHERE id = ? AND missing_since IS NOT NULL",
                 (row[0],),
             )
             return row[0]
@@ -275,8 +287,7 @@ def ensure_folder(
         ).fetchone()
     else:
         row = conn.execute(
-            "SELECT id, inode FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE"
-            " AND missing_since IS NULL",
+            "SELECT id, inode FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE AND missing_since IS NULL",
             (parent_id, name),
         ).fetchone()
     taken_over = False
@@ -328,8 +339,7 @@ def ensure_folder(
     # depth is set by the folder_depth_ins trigger, so it is never computed
     # by two callers that could disagree.
     conn.execute(
-        "INSERT INTO folder(id, root_id, parent_id, name, depth, inode)"
-        " VALUES(?, ?, ?, ?, 0, ?)",
+        "INSERT INTO folder(id, root_id, parent_id, name, depth, inode) VALUES(?, ?, ?, ?, 0, ?)",
         (folder_id, root_id, parent_id, name, inode),
     )
     return folder_id
@@ -381,7 +391,11 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
     hashed = 0
     root_path = os.fspath(root_path)
     root_folder = ensure_folder(
-        conn, root_id, None, os.path.basename(root_path) or root_path, _inode_of(root_path),
+        conn,
+        root_id,
+        None,
+        os.path.basename(root_path) or root_path,
+        _inode_of(root_path),
         now=now,
     )
     folder_ids = {os.path.normcase(root_path): root_folder}
@@ -394,7 +408,7 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
         # of those are the thumbnail cache, which would have entered the
         # gallery as photographs and outnumbered the real ones.
         subdirs[:] = sorted(d for d in subdirs if not d.startswith("."))
-        names = sorted(n for n in names if not n.startswith("."))
+        kept = sorted(n for n in names if not n.startswith("."))
         folder_id = folder_ids.get(os.path.normcase(current))
         if folder_id is None:
             continue
@@ -403,7 +417,7 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
             folder_ids[os.path.normcase(child)] = ensure_folder(
                 conn, root_id, folder_id, name, _inode_of(child), now=now
             )
-        for name in names:
+        for name in kept:
             kind = KIND_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
             if kind is None:
                 continue
@@ -517,9 +531,7 @@ def _one_write(conn, name: str):
 
 
 def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
-    resolutions, missing = resolve_scan(
-        conn, {k: v.sha for k, v in observed.items()}, roots=roots
-    )
+    resolutions, missing = resolve_scan(conn, {k: v.sha for k, v in observed.items()}, roots=roots)
     counts = dict.fromkeys(Outcome, 0)
 
     # 1. Missing first. A path is exclusive only while the bytes are there, so
@@ -539,8 +551,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     was = {
         row[0]: row[1:]
         for row in conn.execute(
-            "SELECT id, folder_id, name, size, mtime, btime, inode, content_sha256,"
-            " missing_since FROM file"
+            "SELECT id, folder_id, name, size, mtime, btime, inode, content_sha256, missing_since FROM file"
         )
     }
 
@@ -553,8 +564,14 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         found = observed[key]
         before = was.get(resolution.file_id)
         after = (
-            key[0], key[1], found.size, found.mtime, found.btime,
-            found.inode, found.sha, None,
+            key[0],
+            key[1],
+            found.size,
+            found.mtime,
+            found.btime,
+            found.inode,
+            found.sha,
+            None,
         )
         if before != after:
             changed.append((key, resolution.file_id))
@@ -581,8 +598,15 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
             " btime = ?, inode = ?, content_sha256 = ?, last_seen_at = ?,"
             " missing_since = NULL WHERE id = ?",
             (
-                folder_id, name, found.size, found.mtime, found.btime,
-                found.inode, found.sha, now, file_id,
+                folder_id,
+                name,
+                found.size,
+                found.mtime,
+                found.btime,
+                found.inode,
+                found.sha,
+                now,
+                file_id,
             ),
         )
 
@@ -594,10 +618,9 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     untouched = [file_id for _, file_id in moves if file_id not in rewritten]
     if untouched:
         for start in range(0, len(untouched), 900):
-            batch = untouched[start:start + 900]
+            batch = untouched[start : start + 900]
             conn.execute(
-                f"UPDATE file SET last_seen_at = ?"
-                f" WHERE id IN ({','.join('?' * len(batch))})",
+                f"UPDATE file SET last_seen_at = ? WHERE id IN ({','.join('?' * len(batch))})",
                 (now, *batch),
             )
 
@@ -615,8 +638,17 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
             " inode, content_sha256, first_seen_at, last_seen_at)"
             " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                file_id, folder_id, name, found.kind, found.size, found.mtime,
-                found.btime, found.inode, found.sha, now, now,
+                file_id,
+                folder_id,
+                name,
+                found.kind,
+                found.size,
+                found.mtime,
+                found.btime,
+                found.inode,
+                found.sha,
+                now,
+                now,
             ),
         )
 

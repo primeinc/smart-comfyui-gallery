@@ -71,9 +71,7 @@ def orientation_of(conn, file_id: int) -> int:
     re-opening and re-parsing every file's EXIF to learn something already
     stored in a column.
     """
-    row = conn.execute(
-        "SELECT orientation FROM capture WHERE file_id = ?", (file_id,)
-    ).fetchone()
+    row = conn.execute("SELECT orientation FROM capture WHERE file_id = ?", (file_id,)).fetchone()
     return int(row[0]) if row and row[0] else 1
 
 

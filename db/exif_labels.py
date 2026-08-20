@@ -56,15 +56,38 @@ _FLASH = {
 
 # Exif.pm:139-172
 _LIGHT_SOURCE = {
-    0: "Unknown", 1: "Daylight", 2: "Fluorescent", 3: "Tungsten (Incandescent)",
-    4: "Flash", 9: "Fine Weather", 10: "Cloudy", 11: "Shade",
-    12: "Daylight Fluorescent", 13: "Day White Fluorescent",
-    14: "Cool White Fluorescent", 15: "White Fluorescent",
-    16: "Warm White Fluorescent", 17: "Standard Light A", 18: "Standard Light B",
-    19: "Standard Light C", 20: "D55", 21: "D65", 22: "D75", 23: "D50",
-    24: "ISO Studio Tungsten", 25: "Daylight", 26: "Day White", 27: "Cool White",
-    28: "White", 29: "Warm White", 30: "Daylight LED", 31: "Day White LED",
-    32: "Cool White LED", 33: "White LED", 34: "Warm White LED", 255: "Other",
+    0: "Unknown",
+    1: "Daylight",
+    2: "Fluorescent",
+    3: "Tungsten (Incandescent)",
+    4: "Flash",
+    9: "Fine Weather",
+    10: "Cloudy",
+    11: "Shade",
+    12: "Daylight Fluorescent",
+    13: "Day White Fluorescent",
+    14: "Cool White Fluorescent",
+    15: "White Fluorescent",
+    16: "Warm White Fluorescent",
+    17: "Standard Light A",
+    18: "Standard Light B",
+    19: "Standard Light C",
+    20: "D55",
+    21: "D65",
+    22: "D75",
+    23: "D50",
+    24: "ISO Studio Tungsten",
+    25: "Daylight",
+    26: "Day White",
+    27: "Cool White",
+    28: "White",
+    29: "Warm White",
+    30: "Daylight LED",
+    31: "Day White LED",
+    32: "Cool White LED",
+    33: "White LED",
+    34: "Warm White LED",
+    255: "Other",
 }
 
 # Exif.pm:291-300
@@ -81,54 +104,94 @@ _ORIENTATION = {
 
 #: tag -> {code: label}. Cited individually; see the module docstring.
 LABELS: dict[int, dict[int, str]] = {
-    ExifTags.Base.Flash: _FLASH,                       # Exif.pm:2413-2420
-    ExifTags.Base.LightSource: _LIGHT_SOURCE,          # Exif.pm:2402-2407
-    ExifTags.Base.Orientation: _ORIENTATION,           # Exif.pm:683-689
-    ExifTags.Base.MeteringMode: {                      # Exif.pm:2392-2401
-        0: "Unknown", 1: "Average", 2: "Center-weighted average", 3: "Spot",
-        4: "Multi-spot", 5: "Multi-segment", 6: "Partial", 255: "Other",
+    ExifTags.Base.Flash: _FLASH,  # Exif.pm:2413-2420
+    ExifTags.Base.LightSource: _LIGHT_SOURCE,  # Exif.pm:2402-2407
+    ExifTags.Base.Orientation: _ORIENTATION,  # Exif.pm:683-689
+    ExifTags.Base.MeteringMode: {  # Exif.pm:2392-2401
+        0: "Unknown",
+        1: "Average",
+        2: "Center-weighted average",
+        3: "Spot",
+        4: "Multi-spot",
+        5: "Multi-segment",
+        6: "Partial",
+        255: "Other",
     },
-    ExifTags.Base.ExposureProgram: {                   # Exif.pm:2108-2119
-        0: "Not Defined", 1: "Manual", 2: "Program AE",
-        3: "Aperture-priority AE", 4: "Shutter speed priority AE",
-        5: "Creative (Slow speed)", 6: "Action (High speed)",
-        7: "Portrait", 8: "Landscape", 9: "Bulb",
+    ExifTags.Base.ExposureProgram: {  # Exif.pm:2108-2119
+        0: "Not Defined",
+        1: "Manual",
+        2: "Program AE",
+        3: "Aperture-priority AE",
+        4: "Shutter speed priority AE",
+        5: "Creative (Slow speed)",
+        6: "Action (High speed)",
+        7: "Portrait",
+        8: "Landscape",
+        9: "Bulb",
     },
-    ExifTags.Base.WhiteBalance: {0: "Auto", 1: "Manual"},          # Exif.pm:2874
-    ExifTags.Base.ExposureMode: {                                  # Exif.pm:2863
-        0: "Auto", 1: "Manual", 2: "Auto bracket",
+    ExifTags.Base.WhiteBalance: {0: "Auto", 1: "Manual"},  # Exif.pm:2874
+    ExifTags.Base.ExposureMode: {  # Exif.pm:2863
+        0: "Auto",
+        1: "Manual",
+        2: "Auto bracket",
     },
-    ExifTags.Base.SceneCaptureType: {                  # Exif.pm:2900-2906
-        0: "Standard", 1: "Landscape", 2: "Portrait", 3: "Night",
+    ExifTags.Base.SceneCaptureType: {  # Exif.pm:2900-2906
+        0: "Standard",
+        1: "Landscape",
+        2: "Portrait",
+        3: "Night",
         4: "Other",  # non-standard, some Samsung models
     },
-    ExifTags.Base.GainControl: {                       # Exif.pm:2913-2919
-        0: "None", 1: "Low gain up", 2: "High gain up",
-        3: "Low gain down", 4: "High gain down",
+    ExifTags.Base.GainControl: {  # Exif.pm:2913-2919
+        0: "None",
+        1: "Low gain up",
+        2: "High gain up",
+        3: "Low gain down",
+        4: "High gain down",
     },
-    ExifTags.Base.Contrast: {0: "Normal", 1: "Low", 2: "High"},    # Exif.pm:2925
+    ExifTags.Base.Contrast: {0: "Normal", 1: "Low", 2: "High"},  # Exif.pm:2925
     ExifTags.Base.Saturation: {0: "Normal", 1: "Low", 2: "High"},  # Exif.pm:2936
     ExifTags.Base.Sharpness: {0: "Normal", 1: "Soft", 2: "Hard"},  # Exif.pm:2947
-    ExifTags.Base.SubjectDistanceRange: {              # Exif.pm:2963-2968
-        0: "Unknown", 1: "Macro", 2: "Close", 3: "Distant",
+    ExifTags.Base.SubjectDistanceRange: {  # Exif.pm:2963-2968
+        0: "Unknown",
+        1: "Macro",
+        2: "Close",
+        3: "Distant",
     },
-    ExifTags.Base.SensingMethod: {                     # Exif.pm:2477-2486
-        1: "Monochrome area", 2: "One-chip color area", 3: "Two-chip color area",
-        4: "Three-chip color area", 5: "Color sequential area",
-        6: "Monochrome linear", 7: "Trilinear", 8: "Color sequential linear",
+    ExifTags.Base.SensingMethod: {  # Exif.pm:2477-2486
+        1: "Monochrome area",
+        2: "One-chip color area",
+        3: "Two-chip color area",
+        4: "Three-chip color area",
+        5: "Color sequential area",
+        6: "Monochrome linear",
+        7: "Trilinear",
+        8: "Color sequential linear",
     },
-    ExifTags.Base.CustomRendered: {                    # Exif.pm:2844-2854
-        0: "Normal", 1: "Custom",
-        2: "HDR (no original saved)", 3: "HDR (original saved)",
-        4: "Original (for HDR)", 6: "Panorama", 7: "Portrait HDR", 8: "Portrait",
+    ExifTags.Base.CustomRendered: {  # Exif.pm:2844-2854
+        0: "Normal",
+        1: "Custom",
+        2: "HDR (no original saved)",
+        3: "HDR (original saved)",
+        4: "Original (for HDR)",
+        6: "Panorama",
+        7: "Portrait HDR",
+        8: "Portrait",
     },
-    ExifTags.Base.ColorSpace: {                        # Exif.pm:2685-2693
-        1: "sRGB", 2: "Adobe RGB",
-        0xFFFD: "Wide Gamut RGB", 0xFFFE: "ICC Profile", 0xFFFF: "Uncalibrated",
+    ExifTags.Base.ColorSpace: {  # Exif.pm:2685-2693
+        1: "sRGB",
+        2: "Adobe RGB",
+        0xFFFD: "Wide Gamut RGB",
+        0xFFFE: "ICC Profile",
+        0xFFFF: "Uncalibrated",
     },
     ExifTags.Base.ResolutionUnit: {1: "None", 2: "inches", 3: "cm"},  # Exif.pm:874
-    ExifTags.Base.FocalPlaneResolutionUnit: {          # Exif.pm:2438-2447
-        1: "None", 2: "inches", 3: "cm", 4: "mm", 5: "um",
+    ExifTags.Base.FocalPlaneResolutionUnit: {  # Exif.pm:2438-2447
+        1: "None",
+        2: "inches",
+        3: "cm",
+        4: "mm",
+        5: "um",
     },
 }
 

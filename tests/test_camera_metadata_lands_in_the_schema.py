@@ -11,7 +11,6 @@ EXIF keeps f/1.4 as two integers, position as three rationals and a letter,
 and time as a wall clock that may carry no zone at all.
 """
 
-import io
 import pathlib
 import sqlite3
 
@@ -28,13 +27,10 @@ NOW = 1_700_000_000.0
 @pytest.fixture
 def db():
     conn = sqlite3.connect(":memory:")
-    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
-    conn.execute(
-        "INSERT INTO entity(id,uuid,kind,slug) VALUES(1,X'00000000000000000000000000000001',"
-        "'folder','lib')"
-    )
+    conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,X'00000000000000000000000000000001','folder','lib')")
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'lib',0)")
     yield conn
     conn.close()
@@ -129,9 +125,7 @@ def test_the_shutter_time_is_an_instant_when_the_zone_is_known(db, a_file, tmp_p
     import datetime as dt
 
     captured_at = stored(db, a_file)[0]
-    assert dt.datetime.fromtimestamp(captured_at, dt.timezone.utc).isoformat() == (
-        "2026-08-19T12:23:01+00:00"
-    )
+    assert dt.datetime.fromtimestamp(captured_at, dt.timezone.utc).isoformat() == ("2026-08-19T12:23:01+00:00")
 
 
 def test_a_frame_with_no_zone_says_so_instead_of_guessing(db, a_file, tmp_path):
@@ -146,9 +140,7 @@ def test_a_frame_with_no_zone_says_so_instead_of_guessing(db, a_file, tmp_path):
 
     captured_at, tz = stored(db, a_file)[:2]
     assert tz is None, "an absent offset must not be invented"
-    assert dt.datetime.fromtimestamp(captured_at, dt.timezone.utc).isoformat() == (
-        "2026-08-19T14:23:01+00:00"
-    )
+    assert dt.datetime.fromtimestamp(captured_at, dt.timezone.utc).isoformat() == ("2026-08-19T14:23:01+00:00")
 
 
 def test_a_high_iso_is_not_filed_at_the_ceiling(db, a_file, tmp_path):
@@ -188,11 +180,11 @@ def test_position_carries_its_hemisphere(db, a_file, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "reference, sign",
+    ("reference", "sign"),
     [
-        (0, 1),   # above the ellipsoid
+        (0, 1),  # above the ellipsoid
         (1, -1),  # below the ellipsoid
-        (2, 1),   # above the sea-level reference   (Exif 3.0)
+        (2, 1),  # above the sea-level reference   (Exif 3.0)
         (3, -1),  # below the sea-level reference   (Exif 3.0)
     ],
 )
@@ -238,7 +230,7 @@ def test_the_body_and_the_lens_become_artifacts(db, a_file, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "make, model, expected",
+    ("make", "model", "expected"),
     [
         # the make is a legal entity and the model carries the brand
         ("NIKON CORPORATION", "NIKON D2X", "NIKON D2X"),
@@ -293,9 +285,7 @@ def test_an_enumerated_value_is_stored_as_the_phrase_it_stands_for(db, a_file, t
     assert stored_params["Flash"] == "Auto, Fired, Red-eye reduction"
     assert stored_params["MeteringMode"] == "Multi-segment"
     assert stored_params["ExposureProgram"] == "Aperture-priority AE"
-    code = db.execute(
-        "SELECT value_num FROM file_param WHERE file_id = ? AND key='Flash'", (a_file,)
-    ).fetchone()[0]
+    code = db.execute("SELECT value_num FROM file_param WHERE file_id = ? AND key='Flash'", (a_file,)).fetchone()[0]
     assert code == 0x59, "the code must survive alongside the phrase"
 
 
@@ -327,9 +317,7 @@ def test_two_frames_from_one_body_share_its_row(db, tmp_path):
 
     bodies = db.execute("SELECT name, count(*) FROM artifact WHERE kind='camera'").fetchone()
     assert bodies == ("FUJIFILM X-T5", 1)
-    used = db.execute(
-        "SELECT count(*) FROM file_artifact WHERE role='captured_with'"
-    ).fetchone()[0]
+    used = db.execute("SELECT count(*) FROM file_artifact WHERE role='captured_with'").fetchone()[0]
     assert used == 2
 
 
@@ -381,14 +369,8 @@ def test_the_registry_learns_the_camera_vocabulary(db, a_file, tmp_path):
     """param_key is how the app can offer a facet for a tag nobody predicted."""
     path = photograph(tmp_path / "a.jpg", FUJI_BASE, FUJI_PHOTO, GPS_LONDON)
     capture.store(db, a_file, capture.read(path), NOW, scan.mint)
-    learned = dict(
-        db.execute("SELECT key, occurrences FROM param_key WHERE source='exif'")
-    )
-    counted = dict(
-        db.execute(
-            "SELECT key, count(*) FROM file_param WHERE source='exif' GROUP BY key"
-        )
-    )
+    learned = dict(db.execute("SELECT key, occurrences FROM param_key WHERE source='exif'"))
+    counted = dict(db.execute("SELECT key, count(*) FROM file_param WHERE source='exif' GROUP BY key"))
     assert learned == counted, "the registry disagrees with the rows it counts"
     assert learned, "a frame full of EXIF taught the registry nothing"
 
@@ -465,9 +447,7 @@ def test_the_shapes_a_camera_actually_writes(db, a_file, awkward):
     """
     assert awkward.homeless == [], f"no home at all for {awkward.homeless}"
     stored_keys = set(params(db, a_file)) | {
-        slot for (slot,) in db.execute(
-            "SELECT slot FROM file_blob WHERE file_id = ? AND carrier='exif'", (a_file,)
-        )
+        slot for (slot,) in db.execute("SELECT slot FROM file_blob WHERE file_id = ? AND carrier='exif'", (a_file,))
     }
     assert {"ExifVersion", "MakerNote", "UserComment", "SubjectLocation"} <= stored_keys, (
         f"the awkward tags never reached the reader: {sorted(stored_keys)}"
@@ -500,7 +480,8 @@ def test_a_four_byte_version_is_not_truncated_to_two(db, a_file, awkward):
         " WHERE fb.file_id = ? AND fb.slot = 'GPSVersionID'",
         (a_file,),
     ).fetchone()
-    assert payload is not None and payload[0] == b"\x02\x03\x00\x00"
+    assert payload is not None
+    assert payload[0] == b"\x02\x03\x00\x00"
 
 
 def test_a_charset_prefixed_comment_is_decoded(db, a_file, awkward):
@@ -524,8 +505,7 @@ def test_no_number_stored_is_nan(db, a_file, awkward):
     including itself, so one stored NaN makes a range facet silently drop the
     row and an equality test never match it."""
     bad = db.execute(
-        "SELECT key, value_num FROM file_param WHERE file_id = ?"
-        " AND value_num IS NOT NULL AND value_num <> value_num",
+        "SELECT key, value_num FROM file_param WHERE file_id = ? AND value_num IS NOT NULL AND value_num <> value_num",
         (a_file,),
     ).fetchall()
     assert bad == [], f"non-finite numbers stored: {bad}"
@@ -577,14 +557,12 @@ def _bare(tmp_path, name, tags, size=(320, 180)):
 
 
 @pytest.mark.parametrize(
-    "label, tags, reads",
+    ("label", "tags", "reads"),
     [
-        ("a body with no clock", {271: "NIKON CORPORATION", 272: "NIKON D2X"},
-         lambda c: c.camera == "NIKON D2X"),
+        ("a body with no clock", {271: "NIKON CORPORATION", 272: "NIKON D2X"}, lambda c: c.camera == "NIKON D2X"),
         ("an ISO and nothing else", {34855: 400}, lambda c: c.iso == 400),
         ("an orientation alone", {274: 6}, lambda c: c.orientation == 6),
-        ("a lens alone", {42035: "Nikon", 42036: "AF-S 50mm"},
-         lambda c: c.lens == "Nikon AF-S 50mm"),
+        ("a lens alone", {42035: "Nikon", 42036: "AF-S 50mm"}, lambda c: c.lens == "Nikon AF-S 50mm"),
     ],
 )
 def test_a_reading_that_lands_in_a_column_is_still_a_reading(tmp_path, label, tags, reads):
@@ -612,13 +590,19 @@ def test_a_picture_with_nothing_in_it_is_still_empty(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "orientation, expected",
-    [(1, (320, 180)), (2, (320, 180)), (3, (320, 180)), (4, (320, 180)),
-     (5, (180, 320)), (6, (180, 320)), (7, (180, 320)), (8, (180, 320))],
+    ("orientation", "expected"),
+    [
+        (1, (320, 180)),
+        (2, (320, 180)),
+        (3, (320, 180)),
+        (4, (320, 180)),
+        (5, (180, 320)),
+        (6, (180, 320)),
+        (7, (180, 320)),
+        (8, (180, 320)),
+    ],
 )
-def test_a_turned_photograph_reports_the_size_it_is_seen_at(
-    db, tmp_path, orientation, expected
-):
+def test_a_turned_photograph_reports_the_size_it_is_seen_at(db, tmp_path, orientation, expected):
     """The decode reports the stored frame and the tag says to turn it.
 
     Storing the stored size files every portrait photograph in the library as
@@ -637,6 +621,4 @@ def test_a_turned_photograph_reports_the_size_it_is_seen_at(
     file_id = db.execute("SELECT id FROM file").fetchone()[0]
     ingest.one(db, file_id, root / "phone.jpg", 0.0)
 
-    assert db.execute(
-        "SELECT width, height FROM file WHERE id = ?", (file_id,)
-    ).fetchone() == expected
+    assert db.execute("SELECT width, height FROM file WHERE id = ?", (file_id,)).fetchone() == expected

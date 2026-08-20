@@ -32,6 +32,7 @@ defect as ignoring EXIF orientation, one medium over.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -87,7 +88,7 @@ def _number(value) -> float | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    return number if number == number and abs(number) != float("inf") else None
+    return number if math.isfinite(number) else None
 
 
 def _rate(value) -> float | None:
@@ -110,10 +111,10 @@ def _rotation(stream) -> int:
             continue
         turn = _number(entry.get("rotation"))
         if turn is not None:
-            return int(round(turn)) % 360
+            return round(turn) % 360
     # Containers written before the display matrix put it in a tag instead.
     turn = _number((stream.get("tags") or {}).get("rotate"))
-    return int(round(turn)) % 360 if turn is not None else 0
+    return round(turn) % 360 if turn is not None else 0
 
 
 def read(path) -> Probed:
@@ -122,16 +123,21 @@ def read(path) -> Probed:
     tool = prober()
     if tool is None:
         out.unreadable = (
-            f"no ffprobe on PATH and {ENV_VAR} is not set, so this file cannot "
-            f"state its length or its size"
+            f"no ffprobe on PATH and {ENV_VAR} is not set, so this file cannot state its length or its size"
         )
         return out
 
     try:
         finished = subprocess.run(
             [
-                tool, "-v", "error", "-output_format", "json",
-                "-show_format", "-show_streams", os.fspath(path),
+                tool,
+                "-v",
+                "error",
+                "-output_format",
+                "json",
+                "-show_format",
+                "-show_streams",
+                os.fspath(path),
             ],
             capture_output=True,
             text=True,
@@ -264,10 +270,7 @@ def pages_of(conn, file_id: int, found: Probed):
     from . import derived
 
     pages = next((int(n) for key, _, n in found.params if key == "Pages" and n), 0)
-    return [
-        derived.add_sample(conn, file_id, "page", "every-page", page_index=index)
-        for index in range(pages)
-    ]
+    return [derived.add_sample(conn, file_id, "page", "every-page", page_index=index) for index in range(pages)]
 
 
 def store(conn, file_id: int, found: Probed, now: float) -> None:

@@ -72,8 +72,12 @@ class Recipe:
     @property
     def is_empty(self) -> bool:
         return not (
-            self.model or self.positive or self.negative or self.loras
-            or self.seed is not None or self.steps is not None
+            self.model
+            or self.positive
+            or self.negative
+            or self.loras
+            or self.seed is not None
+            or self.steps is not None
         )
 
 
@@ -98,7 +102,8 @@ class _Graph:
 
     def __init__(self, nodes: dict):
         self.nodes = {
-            key: value for key, value in nodes.items()
+            key: value
+            for key, value in nodes.items()
             if isinstance(value, dict) and isinstance(value.get("inputs"), dict)
         }
 
@@ -171,7 +176,8 @@ class _Graph:
 
 def _samplers(graph: _Graph) -> list[str]:
     return [
-        node_id for node_id in graph.nodes
+        node_id
+        for node_id in graph.nodes
         if "sampler" in graph.kind(node_id).lower()
         and any(name in graph.inputs(node_id) for name in ("positive", "steps", "noise_seed", "seed"))
     ]
@@ -240,9 +246,7 @@ def read(payload) -> Recipe | None:
     # it. Order matters: it is the order the LoRAs were stacked.
     start = graph.follow(sampler, "model") if sampler is not None else None
     if start is None:
-        start = next(
-            (n for n in graph.nodes if graph.value(n, *_MODEL_INPUT) is not None), None
-        )
+        start = next((n for n in graph.nodes if graph.value(n, *_MODEL_INPUT) is not None), None)
     seen: set[str] = set()
     node_id = start
     while node_id is not None and node_id not in seen:
@@ -254,16 +258,17 @@ def read(payload) -> Recipe | None:
             if isinstance(lora, str) and lora.strip():
                 model_weight = graph.value(node_id, "strength_model", "strength")
                 clip_weight = graph.value(node_id, "strength_clip", "strength")
-                out.loras.append((
-                    lora.strip(),
-                    float(model_weight) if isinstance(model_weight, (int, float)) else None,
-                    float(clip_weight) if isinstance(clip_weight, (int, float)) else None,
-                ))
+                out.loras.append(
+                    (
+                        lora.strip(),
+                        float(model_weight) if isinstance(model_weight, (int, float)) else None,
+                        float(clip_weight) if isinstance(clip_weight, (int, float)) else None,
+                    )
+                )
         elif isinstance(named, str) and named.strip() and out.model is None:
             out.model = named.strip()
         node_id = next(
-            (graph.follow(node_id, name) for name in _UPSTREAM_MODEL
-             if graph.follow(node_id, name) is not None),
+            (graph.follow(node_id, name) for name in _UPSTREAM_MODEL if graph.follow(node_id, name) is not None),
             None,
         )
 

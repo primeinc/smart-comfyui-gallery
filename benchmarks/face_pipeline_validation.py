@@ -72,9 +72,7 @@ def matrix_stats(conn):
     from smartgallery_ai.faiss_runtime import import_faiss
 
     faiss = import_faiss()
-    rows = conn.execute(
-        "SELECT embedding FROM derived_face_instance WHERE embedding IS NOT NULL"
-    ).fetchall()
+    rows = conn.execute("SELECT embedding FROM derived_face_instance WHERE embedding IS NOT NULL").fetchall()
     matrix = np.vstack([np.frombuffer(r[0], dtype=np.float32) for r in rows])
     print("  MatrixStats (faiss's own diagnostic):")
     for line in faiss.MatrixStats(matrix).comments.splitlines():
@@ -106,37 +104,44 @@ def pair_f1(conn, run_id, person_of):
 def sweep(conn, backend, person_of=None):
     from db import derived
 
-    header = (f"  {'method':22} {'thr':>5} {'people':>6} {'big':>4} {'med':>5} "
-              f"{'alone':>6} {'silh':>6}" + (f" {'F1':>6}" if person_of else "")
-              + f" {'agree':>6} {'via'}")
+    header = (
+        f"  {'method':22} {'thr':>5} {'people':>6} {'big':>4} {'med':>5} "
+        f"{'alone':>6} {'silh':>6}" + (f" {'F1':>6}" if person_of else "") + f" {'agree':>6} {'via'}"
+    )
     print(header)
     print("  " + "-" * (len(header) - 2))
     records = []
     for method in METHODS:
         for threshold in THRESHOLDS:
             derived.cluster(
-                conn, backend.model_id, backend.model_version, 0.0,
-                method=method, threshold=threshold,
+                conn,
+                backend.model_id,
+                backend.model_version,
+                0.0,
+                method=method,
+                threshold=threshold,
             )
-            run_id = derived.run_for(
-                conn, backend.model_id, backend.model_version, method, threshold, 0.0
-            )
+            run_id = derived.run_for(conn, backend.model_id, backend.model_version, method, threshold, 0.0)
             shape = derived.health(conn, run_id)
             said = derived.agreement(conn, run_id)
-            agree = (said["held_together"] - said["split_apart"]
-                     - said["clusters_mixing_people"])
-            via = conn.execute(
-                "SELECT backend FROM derived_face_run WHERE id = ?", (run_id,)
-            ).fetchone()[0]
+            agree = said["held_together"] - said["split_apart"] - said["clusters_mixing_people"]
+            via = conn.execute("SELECT backend FROM derived_face_run WHERE id = ?", (run_id,)).fetchone()[0]
             record = {
-                "method": method, "threshold": threshold, "backend": via,
-                "clusters": shape["clusters"], "largest": shape["largest"],
-                "median": shape["median"], "alone_share": shape["alone_share"],
-                "silhouette": shape["silhouette"], "agreement": said,
+                "method": method,
+                "threshold": threshold,
+                "backend": via,
+                "clusters": shape["clusters"],
+                "largest": shape["largest"],
+                "median": shape["median"],
+                "alone_share": shape["alone_share"],
+                "silhouette": shape["silhouette"],
+                "agreement": said,
             }
-            line = (f"  {method:22} {threshold:>5.2f} {shape['clusters']:>6} "
-                    f"{shape['largest']:>4} {shape['median']:>5.1f} "
-                    f"{shape['alone_share']:>6.2f} {shape['silhouette']:>6.3f}")
+            line = (
+                f"  {method:22} {threshold:>5.2f} {shape['clusters']:>6} "
+                f"{shape['largest']:>4} {shape['median']:>5.1f} "
+                f"{shape['alone_share']:>6.2f} {shape['silhouette']:>6.3f}"
+            )
             if person_of:
                 _, _, f1 = pair_f1(conn, run_id, person_of)
                 record["pair_f1"] = f1
@@ -163,8 +168,8 @@ def assert_some(conn, person_of, per_person=2):
         for name in sorted(names)[:per_person]:
             row = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()
             conn.execute(
-                "INSERT INTO person_assertion(person_id,file_id,created_at)"
-                " VALUES(?,?,0)", (pid, row[0]),
+                "INSERT INTO person_assertion(person_id,file_id,created_at) VALUES(?,?,0)",
+                (pid, row[0]),
             )
 
 
@@ -197,20 +202,24 @@ def kyc(datasets: str, models_dir: str) -> dict:
     assert_some(conn, person_of)
     records = sweep(conn, backend, person_of)
     chosen = derived.choose_primary(conn)
-    picked = conn.execute(
-        "SELECT method, threshold FROM derived_face_run WHERE id = ?", (chosen,)
-    ).fetchone() if chosen else None
+    picked = (
+        conn.execute("SELECT method, threshold FROM derived_face_run WHERE id = ?", (chosen,)).fetchone()
+        if chosen
+        else None
+    )
     best = None
     for run in derived.runs(conn):
         _, _, f1 = pair_f1(conn, run["id"], person_of)
         if best is None or f1 > best[1]:
             best = ((run["method"], run["threshold"]), f1)
     print(f"  choose_primary  -> {picked}")
-    print(f"  labels say best -> {best[0] if best else None}"
-          f" (F1 {best[1]:.3f})" if best else "")
-    return {"runs": records, "chosen": picked,
-            "labels_best": best[0] if best else None,
-            "labels_best_f1": best[1] if best else None}
+    print(f"  labels say best -> {best[0] if best else None} (F1 {best[1]:.3f})" if best else "")
+    return {
+        "runs": records,
+        "chosen": picked,
+        "labels_best": best[0] if best else None,
+        "labels_best_f1": best[1] if best else None,
+    }
 
 
 def i2i(datasets: str, models_dir: str) -> dict:
@@ -224,22 +233,22 @@ def i2i(datasets: str, models_dir: str) -> dict:
     matrix_stats(conn)
     records = sweep(conn, backend)
     chosen = derived.choose_primary(conn)
-    picked = conn.execute(
-        "SELECT method, threshold, clusters FROM derived_face_run WHERE id = ?",
-        (chosen,),
-    ).fetchone() if chosen else None
+    picked = (
+        conn.execute(
+            "SELECT method, threshold, clusters FROM derived_face_run WHERE id = ?",
+            (chosen,),
+        ).fetchone()
+        if chosen
+        else None
+    )
     print(f"  choose_primary (no assertions) -> {picked}")
     return {"runs": records, "chosen": picked}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Both sample datasets through the production face pipeline."
-    )
-    parser.add_argument("--datasets", default=DATASETS,
-                        help="folder holding the sample datasets")
-    parser.add_argument("--models-dir", default=MODELS,
-                        help="local ONNX face model weights")
+    parser = argparse.ArgumentParser(description="Both sample datasets through the production face pipeline.")
+    parser.add_argument("--datasets", default=DATASETS, help="folder holding the sample datasets")
+    parser.add_argument("--models-dir", default=MODELS, help="local ONNX face model weights")
     args = parser.parse_args()
 
     report = {

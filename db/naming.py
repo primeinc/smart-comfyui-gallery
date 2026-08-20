@@ -22,9 +22,7 @@ class SlugTaken(Exception):
 
 
 def entity_slug(conn, entity_id: int) -> tuple[str, str] | None:
-    row = conn.execute(
-        "SELECT kind, slug FROM entity WHERE id = ?", (entity_id,)
-    ).fetchone()
+    row = conn.execute("SELECT kind, slug FROM entity WHERE id = ?", (entity_id,)).fetchone()
     return (row[0], row[1]) if row else None
 
 
@@ -35,14 +33,11 @@ def resolve(conn, kind: str, slug: str) -> tuple[int, bool] | None:
     rather than serve the page, so an old link keeps working without two
     addresses answering for one thing.
     """
-    row = conn.execute(
-        "SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)
-    ).fetchone()
+    row = conn.execute("SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone()
     if row:
         return row[0], True
     row = conn.execute(
-        "SELECT entity_id FROM slug_history WHERE kind = ? AND slug = ?"
-        " ORDER BY retired_at DESC LIMIT 1",
+        "SELECT entity_id FROM slug_history WHERE kind = ? AND slug = ? ORDER BY retired_at DESC LIMIT 1",
         (kind, slug),
     ).fetchone()
     return (row[0], False) if row else None
@@ -67,9 +62,7 @@ def rename(conn, entity_id: int, new_name: str, now: float) -> str:
 
     slug, suffix = base, 1
     while True:
-        clash = conn.execute(
-            "SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)
-        ).fetchone()
+        clash = conn.execute("SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone()
         if clash is None or clash[0] == entity_id:
             break
         suffix += 1

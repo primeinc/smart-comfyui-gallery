@@ -26,9 +26,7 @@ def objects(conn: sqlite3.Connection) -> dict[str, str]:
     """Every schema object, keyed by name, whitespace-normalised."""
     return {
         name: " ".join((sql or "").split())
-        for name, sql in conn.execute(
-            "SELECT name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"
-        )
+        for name, sql in conn.execute("SELECT name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")
     }
 
 
@@ -125,9 +123,7 @@ def main(argv=None) -> int:
         return 1
     conn = connect(args.path, read_only=True)
     counts = {
-        kind: conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type=?", (kind,)
-        ).fetchone()[0]
+        kind: conn.execute("SELECT count(*) FROM sqlite_master WHERE type=?", (kind,)).fetchone()[0]
         for kind in ("table", "index", "trigger")
     }
     print(f"built {args.path}: {counts}, schema v{USER_VERSION}")

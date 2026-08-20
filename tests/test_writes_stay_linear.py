@@ -49,18 +49,14 @@ def a_library(ddl, n):
     conn = sqlite3.connect(":memory:")
     conn.executescript(ddl)
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'/l','library',0)")
-    conn.execute(
-        "INSERT INTO entity(id,uuid,kind,slug)"
-        " VALUES(1,x'00000000000000000000000000000001','folder','f')"
-    )
+    conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,x'00000000000000000000000000000001','folder','f')")
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'f',0)")
     conn.executemany(
         "INSERT INTO entity(id,uuid,kind,slug) VALUES(?,?,?,?)",
         [(i, i.to_bytes(16, "big"), "file", f"f{i}") for i in range(2, n + 2)],
     )
     conn.executemany(
-        "INSERT INTO file(id,folder_id,name,kind,size,mtime,first_seen_at,last_seen_at)"
-        " VALUES(?,1,?,'image',1,0,0,0)",
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,first_seen_at,last_seen_at) VALUES(?,1,?,'image',1,0,0,0)",
         [(i, f"IMG_{i:06d}.jpg") for i in range(2, n + 2)],
     )
     return conn
@@ -145,15 +141,9 @@ def test_the_registry_stays_exact_at_size(ddl):
             "INSERT INTO file_param(file_id,source,key,value_text) VALUES(?,'exif','Flash','x')",
             [(i,) for i in range(2, LARGE + 2)],
         )
-        assert conn.execute(
-            "SELECT occurrences FROM param_key WHERE key='Flash'"
-        ).fetchone()[0] == LARGE
-        conn.executemany(
-            "DELETE FROM file_param WHERE file_id=?", [(i,) for i in range(2, 502)]
-        )
-        assert conn.execute(
-            "SELECT occurrences FROM param_key WHERE key='Flash'"
-        ).fetchone()[0] == LARGE - 500
+        assert conn.execute("SELECT occurrences FROM param_key WHERE key='Flash'").fetchone()[0] == LARGE
+        conn.executemany("DELETE FROM file_param WHERE file_id=?", [(i,) for i in range(2, 502)])
+        assert conn.execute("SELECT occurrences FROM param_key WHERE key='Flash'").fetchone()[0] == LARGE - 500
     finally:
         conn.close()
 
@@ -172,14 +162,10 @@ def test_the_search_index_stays_consistent_at_size(ddl):
             "UPDATE file_param SET value_text=? WHERE file_id=? AND source='exif' AND key='Lens'",
             [(f"changed {i}", i) for i in range(2, 502)],
         )
-        conn.executemany(
-            "DELETE FROM file_param WHERE file_id=?", [(i,) for i in range(502, 1002)]
-        )
+        conn.executemany("DELETE FROM file_param WHERE file_id=?", [(i,) for i in range(502, 1002)])
         conn.execute("INSERT INTO param_fts(param_fts, rank) VALUES('integrity-check', 1)")
         conn.execute("INSERT INTO name_fts(name_fts, rank) VALUES('integrity-check', 1)")
-        assert conn.execute(
-            "SELECT count(*) FROM param_fts WHERE param_fts MATCH '\"changed\"'"
-        ).fetchone()[0] == 500
+        assert conn.execute("SELECT count(*) FROM param_fts WHERE param_fts MATCH '\"changed\"'").fetchone()[0] == 500
     finally:
         conn.close()
 
@@ -198,9 +184,7 @@ def _rescan_unchanged(conn, n, sample):
     from db import scan
 
     observed = {
-        (1, f"IMG_{i:06d}.jpg"): scan.Found(
-            sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image"
-        )
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image")
         for i in range(2, n + 2)
     }
     scan.apply_scan(conn, observed, 1.0, roots={1})
@@ -213,15 +197,11 @@ def _rescan_with_one_new_file(conn, n, sample):
     from db import scan
 
     observed = {
-        (1, f"IMG_{i:06d}.jpg"): scan.Found(
-            sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image"
-        )
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image")
         for i in range(2, n + 2)
     }
     scan.apply_scan(conn, observed, 1.0, roots={1})
-    observed[(1, "BRAND_NEW.jpg")] = scan.Found(
-        sha="sha-new", size=1, mtime=0, btime=None, inode=None, kind="image"
-    )
+    observed[(1, "BRAND_NEW.jpg")] = scan.Found(sha="sha-new", size=1, mtime=0, btime=None, inode=None, kind="image")
     result = scan.apply_scan(conn, observed, 2.0, roots={1})
     assert result.added == 1, result
     return n
@@ -276,6 +256,5 @@ def test_the_cost_of_a_scan_does_not_grow_with_the_library(ddl, label, work):
     large = per_row_scanning(work, ddl, LARGE)
     ratio = large / small
     assert ratio < TOLERANCE, (
-        f"{label} costs {ratio:.1f}x more per file at {LARGE:,} than at "
-        f"{SMALL:,} ({small:.0f} -> {large:.0f} us/file)"
+        f"{label} costs {ratio:.1f}x more per file at {LARGE:,} than at {SMALL:,} ({small:.0f} -> {large:.0f} us/file)"
     )

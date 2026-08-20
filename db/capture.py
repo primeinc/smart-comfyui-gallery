@@ -216,12 +216,12 @@ def _timestamp(value, offset_min) -> float | None:
     text = _text(value)
     if not text:
         return None
+    zone = dt.timezone(dt.timedelta(minutes=offset_min)) if offset_min is not None else dt.timezone.utc
     try:
-        naive = dt.datetime.strptime(text[:19], "%Y:%m:%d %H:%M:%S")
+        when = dt.datetime.strptime(text[:19], "%Y:%m:%d %H:%M:%S").replace(tzinfo=zone)
     except ValueError:
         return None
-    zone = dt.timezone(dt.timedelta(minutes=offset_min)) if offset_min is not None else dt.timezone.utc
-    return naive.replace(tzinfo=zone).timestamp()
+    return when.timestamp()
 
 
 def _degrees(value, ref) -> float | None:
@@ -381,9 +381,7 @@ def _read(path, out: Capture) -> Capture:
         merged.update(photo)
 
         out.tz_offset_min = _offset_minutes(merged.get(ExifTags.Base.OffsetTimeOriginal))
-        out.captured_at = _timestamp(
-            merged.get(ExifTags.Base.DateTimeOriginal), out.tz_offset_min
-        )
+        out.captured_at = _timestamp(merged.get(ExifTags.Base.DateTimeOriginal), out.tz_offset_min)
         # 0x8827 is int16u, so it cannot express an ISO above 65535 and a body
         # shooting higher writes 65535 there and the real figure in
         # RecommendedExposureIndex (int32u)
@@ -405,20 +403,12 @@ def _read(path, out: Capture) -> Capture:
         orientation = merged.get(ExifTags.Base.Orientation)
         out.orientation = int(orientation) if isinstance(orientation, int) else None
 
-        out.camera = _camera_name(
-            merged.get(ExifTags.Base.Make), merged.get(ExifTags.Base.Model)
-        )
-        out.lens = _camera_name(
-            merged.get(ExifTags.Base.LensMake), merged.get(ExifTags.Base.LensModel)
-        )
+        out.camera = _camera_name(merged.get(ExifTags.Base.Make), merged.get(ExifTags.Base.Model))
+        out.lens = _camera_name(merged.get(ExifTags.Base.LensMake), merged.get(ExifTags.Base.LensModel))
 
         if gps:
-            out.gps_lat = _degrees(
-                gps.get(ExifTags.GPS.GPSLatitude), gps.get(ExifTags.GPS.GPSLatitudeRef)
-            )
-            out.gps_lon = _degrees(
-                gps.get(ExifTags.GPS.GPSLongitude), gps.get(ExifTags.GPS.GPSLongitudeRef)
-            )
+            out.gps_lat = _degrees(gps.get(ExifTags.GPS.GPSLatitude), gps.get(ExifTags.GPS.GPSLatitudeRef))
+            out.gps_lon = _degrees(gps.get(ExifTags.GPS.GPSLongitude), gps.get(ExifTags.GPS.GPSLongitudeRef))
             altitude = _number(gps.get(ExifTags.GPS.GPSAltitude))
             if altitude is not None:
                 # GPSAltitudeRef is a byte, not a letter, and Exif 3.0 gives it
@@ -470,10 +460,19 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
         " gps_lat, gps_lon, gps_alt, parsed_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            file_id, found.captured_at, found.tz_offset_min, found.iso,
-            found.f_number, found.exposure_time, found.focal_length,
-            found.focal_35mm, found.orientation, found.gps_lat, found.gps_lon,
-            found.gps_alt, now,
+            file_id,
+            found.captured_at,
+            found.tz_offset_min,
+            found.iso,
+            found.f_number,
+            found.exposure_time,
+            found.focal_length,
+            found.focal_35mm,
+            found.orientation,
+            found.gps_lat,
+            found.gps_lon,
+            found.gps_alt,
+            now,
         ),
     )
     for kind, name, role in (
@@ -483,21 +482,17 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
         if not name:
             continue
         key = "".join(c for c in name.lower() if c.isalnum())
-        row = conn.execute(
-            "SELECT id FROM artifact WHERE kind = ? AND name_key = ?", (kind, key)
-        ).fetchone()
+        row = conn.execute("SELECT id FROM artifact WHERE kind = ? AND name_key = ?", (kind, key)).fetchone()
         if row:
             artifact_id = row[0]
         else:
             artifact_id = mint(conn, "artifact", f"{kind}-{name}")
             conn.execute(
-                "INSERT INTO artifact(id, kind, name, name_key, first_seen_at)"
-                " VALUES(?, ?, ?, ?, ?)",
+                "INSERT INTO artifact(id, kind, name, name_key, first_seen_at) VALUES(?, ?, ?, ?, ?)",
                 (artifact_id, kind, name, key, now),
             )
         conn.execute(
-            "INSERT OR REPLACE INTO file_artifact(file_id, ordinal, artifact_id, role)"
-            " VALUES(?, 0, ?, ?)",
+            "INSERT OR REPLACE INTO file_artifact(file_id, ordinal, artifact_id, role) VALUES(?, 0, ?, ?)",
             (file_id, artifact_id, role),
         )
     for name, text, number in found.params:
