@@ -1589,6 +1589,56 @@ def test_a_name_survives_dropping_everything_derived(db):
     assert rows == [("Ilse", 1)]
 
 
+def test_no_index_is_a_prefix_of_another(db):
+    """An index whose columns are a prefix of another index's, under the same
+    partial predicate, is write cost on every insert for a read the other one
+    already serves.
+
+    Stated as a prefix rule rather than measured by dropping and replanning.
+    A planner probe on the leading column alone condemns any composite index
+    whose first column is also covered by a narrower one -- it flagged
+    `file_param_key_num`, which exists for `key = ? AND value_num BETWEEN ?`
+    and is not redundant at all.
+
+    The predicates have to match too: an index over all rows is not replaced
+    by a partial one, because the partial one cannot answer for the rows it
+    excludes.
+    """
+    def shape(index):
+        columns = [row[2] for row in db.execute(f"PRAGMA index_xinfo({index})") if row[5]]
+        sql = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (index,)).fetchone()[0]
+        where = sql.upper().split(" WHERE ", 1)
+        return columns, (where[1].strip() if len(where) > 1 else None)
+
+    redundant = []
+    for (table,) in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ):
+        if table in virtual_table_names(db):
+            continue
+        indexes = [
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?"
+                " AND sql IS NOT NULL",
+                (table,),
+            )
+        ]
+        for candidate in indexes:
+            columns, predicate = shape(candidate)
+            for other in indexes:
+                if other == candidate:
+                    continue
+                wider, other_predicate = shape(other)
+                if (
+                    len(wider) > len(columns)
+                    and wider[: len(columns)] == columns
+                    and other_predicate == predicate
+                ):
+                    redundant.append(f"{candidate} is a prefix of {other}")
+    assert redundant == [], f"these indexes earn nothing: {redundant}"
+
+
 def test_a_guard_that_only_fires_on_insert_is_declared_as_such(db):
     """A rule enforced on INSERT and not on UPDATE is one statement from
     useless: write the row correctly, then change it.

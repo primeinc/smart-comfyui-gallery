@@ -94,7 +94,9 @@ CREATE TABLE folder (
 ) STRICT;
 CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)   WHERE parent_id IS NULL;
 CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name) WHERE parent_id IS NOT NULL;
-CREATE INDEX folder_parent ON folder(parent_id);
+-- No index on parent_id alone. folder_child_unique leads on it, and although
+-- that index is partial the planner does use it for `parent_id = ?`, which is
+-- the shape the foreign key runs on every delete -- checked, not assumed.
 CREATE UNIQUE INDEX folder_inode ON folder(root_id, inode) WHERE inode IS NOT NULL;
 
 -- Both guards cover INSERT and UPDATE. INSERT-only was bypassable: a row
@@ -251,7 +253,8 @@ CREATE UNIQUE INDEX artifact_sha ON artifact(content_sha256) WHERE content_sha25
 -- an identity. Indexed so "which artifacts did some tool call a1b2c3d4" is
 -- answerable.
 CREATE INDEX artifact_quoted ON artifact(quoted_hash) WHERE quoted_hash IS NOT NULL;
-CREATE INDEX artifact_kind ON artifact(kind);
+-- No index on kind alone: artifact_ident already leads on it, so a second one
+-- is write cost for a read the first already serves.
 
 -- A prompt earns a table because it recurs across files *by design*: reusing
 -- one prompt across checkpoints is a documented workflow, which is why the old
@@ -912,7 +915,7 @@ CREATE TABLE derived_annotation (
     computed_at   REAL NOT NULL,
     CHECK (length(text) > 0)
 ) STRICT;
-CREATE INDEX derived_annotation_file ON derived_annotation(file_id);
+-- No index on file_id alone: derived_annotation_one leads on it.
 CREATE INDEX derived_annotation_kind   ON derived_annotation(kind, file_id);
 CREATE INDEX derived_annotation_region ON derived_annotation(region_id);
 CREATE INDEX derived_annotation_sample ON derived_annotation(sample_id);
