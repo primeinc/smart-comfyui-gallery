@@ -147,7 +147,8 @@ def submit_faces(state: State, data: dict) -> dict:
         weights = data.get("models_dir") or str(
             home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
         )
-        job_id = runner.submit_faces(conn, time.time(), models_dir=weights)
+        cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
+        job_id = runner.submit_faces(conn, time.time(), models_dir=weights, thumbs_dir=cache)
         conn.commit()
         return jobs.snapshot(conn, job_id)
     finally:

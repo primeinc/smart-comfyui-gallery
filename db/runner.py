@@ -54,12 +54,16 @@ def _verify_item(conn, file_id: int, payload: dict, now: float) -> None:
         raise ValueError(f"bytes changed behind the library's back: recorded {stored[0][:12]}, found {actual[:12]}")
 
 
-def submit_faces(conn, now: float, *, models_dir: str) -> int:
+def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None) -> int:
     """Face detection over every present picture and video, as one job.
 
     A face on a video is a face on a sampled frame; the handler routes by
     the file kind, and the schema already keys every face to the moment it
     was seen (`derived_face_instance.sample_id`).
+
+    `thumbs_dir` rides in the payload when thumbnail precaching is on:
+    detection decodes every frame anyway, and the cache takes the decoded
+    pixels on the way past instead of re-decoding later on first view.
     """
     items = [
         row[0]
@@ -68,7 +72,10 @@ def submit_faces(conn, now: float, *, models_dir: str) -> int:
             " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
         )
     ]
-    return jobs.submit(conn, "detect_faces", now, payload={"models_dir": models_dir}, items=items)
+    payload: dict = {"models_dir": models_dir}
+    if thumbs_dir is not None:
+        payload["thumbs_dir"] = thumbs_dir
+    return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
 
 
 _BACKENDS: dict = {}
@@ -80,15 +87,16 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
     from . import detect
 
     models_dir = payload["models_dir"]
+    thumbs_dir = payload.get("thumbs_dir")
     backend = _BACKENDS.get(models_dir)
     if backend is None:
         backend = _BACKENDS[models_dir] = OpenCVFaceBackend(models_dir)
     kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     path = detect.path_of(conn, file_id)
     if kind == "video":
-        detect.harvest_video(conn, backend, file_id, path, now)
+        detect.harvest_video(conn, backend, file_id, path, now, thumbs_dir=thumbs_dir)
     else:
-        detect.harvest(conn, backend, file_id, path, now)
+        detect.harvest(conn, backend, file_id, path, now, thumbs_dir=thumbs_dir)
 
 
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:

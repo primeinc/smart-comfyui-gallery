@@ -142,9 +142,15 @@ def frames_at(path: str | os.PathLike[str], offsets_ms):
     """Yield `(offset_ms, upright PIL image)` for each requested moment.
 
     One container open for the whole pass. Each seek lands on the keyframe
-    at or before the target -- av's default backward seek -- and the next
-    decoded frame is the sample: for choosing moments a person appears in,
-    the nearest keyframe is the moment.
+    at or before the target -- av's default backward seek -- and decoding
+    then runs FORWARD to the frame whose presentation time reaches the
+    target (`frame.time`, PyAV-Org/PyAV@040da79 av/frame.py:127-137).
+    Taking the first frame after the seek instead returned the keyframe
+    itself: with x264's default 250-frame GOP that was pixels from up to
+    ten seconds before the moment the sample row claims, and every sample
+    of a one-keyframe clip was silently frame zero. A moment past the last
+    frame yields the last frame -- the probed duration bounds the ask, and
+    the end of a stream is its own closest moment.
     """
     import av
 
@@ -153,12 +159,13 @@ def frames_at(path: str | os.PathLike[str], offsets_ms):
             return
         stream = container.streams.video[0]
         for offset_ms in offsets_ms:
-            if offset_ms:
-                container.seek(int(offset_ms) * 1000)
+            container.seek(int(offset_ms) * 1000)
+            target = int(offset_ms) / 1000.0
             found = None
             for frame in container.decode(stream):
                 found = frame
-                break
+                if frame.time is None or frame.time >= target:
+                    break
             if found is not None:
                 yield int(offset_ms), _upright(found)
 

@@ -26,13 +26,26 @@ FLOOR = 0.7
 
 
 def harvest(
-    conn, backend, file_id: int, path, now: float, *, floor: float = FLOOR, sample_id=None, image=None
+    conn,
+    backend,
+    file_id: int,
+    path,
+    now: float,
+    *,
+    floor: float = FLOOR,
+    sample_id=None,
+    image=None,
+    thumbs_dir=None,
 ) -> list[int]:
     """Detect and record every face in one file, replacing earlier answers.
 
     `image` is for callers that already hold decoded pixels -- a video
     sampler with a frame in hand. It must already be upright; a file path is
     the normal case and is turned here.
+
+    `thumbs_dir` asks for the decoded frame to be cached as the file's
+    thumbnail on the way past (vision/thumbs.py) -- the pixels are in hand,
+    and decoding them again later to make a thumbnail makes no sense.
 
     Faces without an embedding are dropped: a face that cannot be compared
     cannot be clustered, asserted against, or shown as a person, and rows
@@ -42,6 +55,12 @@ def harvest(
     if image is None:
         image = oriented.for_model(conn, file_id, path)
     sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+    if thumbs_dir is not None:
+        import pathlib
+
+        from vision import thumbs
+
+        thumbs.put_all(pathlib.Path(thumbs_dir), sha, image)
 
     faces = []
     for found in backend.detect(image):
@@ -75,7 +94,16 @@ def harvest(
     )
 
 
-def harvest_video(conn, backend, file_id: int, path, now: float, *, floor: float = FLOOR) -> dict[str, int]:
+#: How many extra moments a face-free video is granted beyond its cadence.
+#: Refinement bisects the widest gaps first, so the budget spreads across
+#: the whole video rather than crowding its start; when it runs out, the
+#: cadence's answer stands.
+REFINE_MOST = 32
+
+
+def harvest_video(
+    conn, backend, file_id: int, path, now: float, *, floor: float = FLOOR, thumbs_dir=None
+) -> dict[str, int]:
     """Faces across one video: choose the moments, look at each, record.
 
     The moments come from `db.sample` -- persisted `derived_media_sample`
@@ -83,28 +111,71 @@ def harvest_video(conn, backend, file_id: int, path, now: float, *, floor: float
     a re-run recognises its own work. Frames arrive upright through the
     decoder door, display matrix applied, for the same reason stills go
     through `oriented`.
+
+    **A face-free cadence is a hint, not a verdict.** A fixed interval can
+    land every moment on the establishing shot of a clip that is otherwise
+    all people, so when the cadence finds nothing, `sample.refine` bisects
+    the gaps between looked-at moments -- widest first, up to REFINE_MOST
+    extra frames -- and stops the moment faces appear. The face-free rows
+    are kept: where nothing was found is evidence, and a re-run resumes
+    from it instead of looking again.
+
+    With `thumbs_dir`, the video's thumbnail is written from the sampled
+    frame where the most faces were found -- a clip of somebody should be
+    represented by them, not by whatever the first moment happened to show.
+    Ties and face-free videos fall back to the earliest frame. The choice
+    is deterministic: persisted moments, deterministic detection.
     """
     from vision import decode
 
     from . import sample
 
+    found = 0
+    poster = None  # (faces found, image) -- strict > keeps the earliest on ties
+
+    def look(by_offset: dict[int, int]) -> None:
+        nonlocal found, poster
+        for offset_ms, image in decode.frames_at(path, sorted(by_offset)):
+            written = harvest(
+                conn,
+                backend,
+                file_id,
+                path,
+                now,
+                floor=floor,
+                sample_id=by_offset[offset_ms],
+                image=image,
+            )
+            found += len(written)
+            if poster is None or len(written) > poster[0]:
+                poster = (len(written), image)
+
     sample.frames(conn, file_id, path)
     chosen = sample.taken(conn, file_id)
-    by_offset = {offset: sample_id for sample_id, offset, _ in chosen}
-    found = 0
-    for offset_ms, image in decode.frames_at(path, sorted(by_offset)):
-        written = harvest(
-            conn,
-            backend,
-            file_id,
-            path,
-            now,
-            floor=floor,
-            sample_id=by_offset[offset_ms],
-            image=image,
-        )
-        found += len(written)
-    return {"moments": len(chosen), "faces": found}
+    look({offset: sample_id for sample_id, offset, _ in chosen})
+    looked = sorted(offset for _, offset, _ in chosen)
+
+    # The budget counts every bisect row this file has ever been granted,
+    # not this run's: otherwise each re-run of a face-free video deepens
+    # the refinement by another REFINE_MOST, and a job re-submitted enough
+    # times converges on decoding the whole file frame by frame.
+    budget = REFINE_MOST - sum(1 for _, _, policy in chosen if policy == "bisect")
+    while found == 0 and budget > 0 and looked:
+        fresh = sample.refine(conn, file_id, path, looked, budget=budget)
+        if not fresh:
+            break
+        look({offset: sample_id for sample_id, offset in fresh})
+        budget -= len(fresh)
+        looked = sorted(set(looked) | {offset for _, offset in fresh})
+
+    if thumbs_dir is not None and poster is not None:
+        import pathlib
+
+        from vision import thumbs
+
+        sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+        thumbs.put_all(pathlib.Path(thumbs_dir), sha, poster[1])
+    return {"moments": len(looked), "faces": found}
 
 
 def path_of(conn, file_id: int) -> str:

@@ -82,6 +82,46 @@ def frames(conn, file_id: int, path, *, every_ms: int = EVERY_MS, most: int = MO
     return [derived.add_sample(conn, file_id, "frame", policy, offset_ms=offset) for offset in offsets]
 
 
+#: Refinement stops bisecting a gap smaller than twice this. Below a
+#: quarter second the moments are adjacent frames of the same instant, and
+#: a face that exists for less than that was never going to be browsed to.
+REFINE_FLOOR_MS = 250
+
+
+def refine(conn, file_id: int, path, looked: list[int], *, budget: int, floor_ms: int = REFINE_FLOOR_MS):
+    """More moments between the ones already looked at, biggest gaps first.
+
+    For a caller that examined every chosen moment, found nothing, and is
+    not ready to conclude absence from a cadence: each call bisects the
+    widest gaps between `looked` offsets (and the tail out to the video's
+    end), up to `budget` new moments. Rows carry the policy token
+    'bisect', so a re-run recognises its own refinement exactly as it
+    recognises a cadence.
+
+    Returns `(sample_id, offset_ms)` for the new moments, or [] when the
+    video is refined out -- every remaining gap under `floor_ms * 2` --
+    which is the caller's signal to stop asking.
+    """
+    found = probe.read(path)
+    if found.duration is None or not looked:
+        return []
+    span = int(found.duration * 1000)
+    edges = sorted(set(looked) | {span})
+    gaps = sorted(
+        ((b - a, a, b) for a, b in zip(edges, edges[1:], strict=False)),
+        key=lambda gap: (-gap[0], gap[1]),
+    )
+    fresh = []
+    for width, start, _ in gaps:
+        if len(fresh) >= budget:
+            break
+        if width < floor_ms * 2:
+            continue
+        offset = start + width // 2
+        fresh.append((derived.add_sample(conn, file_id, "frame", "bisect", offset_ms=offset), offset))
+    return fresh
+
+
 def taken(conn, file_id: int, policy: str | None = None):
     """The moments already chosen for this file, oldest first."""
     if policy is None:
