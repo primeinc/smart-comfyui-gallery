@@ -1328,3 +1328,133 @@ def test_a_pdf_is_not_read_for_camera_tags(db, a_library, tmp_path):
     assert db.execute(
         "SELECT count(*) FROM capture WHERE file_id = ?", (file_id,)
     ).fetchone()[0] == 0
+
+
+# --- a real detector, all the way through -----------------------------------
+
+
+def a_detectable_face(path, size=200):
+    """An image OpenCV's own cascade actually fires on.
+
+    Drawn rather than committed: a binary fixture is a thing nobody can read
+    in a diff, and the point here is not this face but that a real detector's
+    output survives the trip. The proportions are what the cascade wants --
+    a light ground, a darker oval, two dark eyes above a nose shadow.
+    """
+    cv2 = pytest.importorskip("cv2")
+    numpy = pytest.importorskip("numpy")
+
+    img = numpy.full((size, size), 200, numpy.uint8)
+    middle = size // 2
+    cv2.ellipse(img, (middle, middle), (size // 3, int(size * 0.42)), 0, 0, 360, 170, -1)
+    cv2.ellipse(img, (middle - size // 8, middle - size // 10),
+                (size // 14, size // 22), 0, 0, 360, 60, -1)
+    cv2.ellipse(img, (middle + size // 8, middle - size // 10),
+                (size // 14, size // 22), 0, 0, 360, 60, -1)
+    cv2.ellipse(img, (middle, middle + size // 12), (size // 20, size // 14), 0, 0, 360, 140, -1)
+    cv2.ellipse(img, (middle, middle + size // 4), (size // 8, size // 30), 0, 0, 180, 90, -1)
+    cv2.ellipse(img, (middle, middle - int(size * 0.36)),
+                (size // 3, size // 8), 0, 180, 360, 90, -1)
+    cv2.imwrite(str(path), img)
+    return path
+
+
+def detect(path):
+    """What a real detector hands back: pixel boxes as numpy int32."""
+    cv2 = pytest.importorskip("cv2")
+
+    grey = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+    boxes, _, weights = cascade.detectMultiScale3(
+        grey, scaleFactor=1.05, minNeighbors=1, minSize=(20, 20), outputRejectLevels=True
+    )
+    return grey.shape[1], grey.shape[0], boxes, weights
+
+
+def test_a_real_detectors_output_reaches_the_people_page(db, a_library, tmp_path):
+    """The pipeline end to end, with nothing placed by hand.
+
+    Every other face in this suite is a Python literal I wrote. This one is
+    whatever OpenCV's cascade says, in the types it says it in, and it has to
+    survive being stored, clustered, named and read back off a page. The
+    detector does not matter -- a bundled Haar cascade is not the one this
+    app will ship -- what matters is that no step of the journey was ever
+    made with a real one.
+    """
+    picture = a_detectable_face(tmp_path / "portrait.png")
+    width, height, boxes, weights = detect(picture)
+    assert len(boxes), "the cascade found nothing, so this proves nothing"
+
+    file_id = scan.mint(db, "file", "portrait")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+        " first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'portrait.png', 'image', 10, 0, 'aa', ?, ?)",
+        (file_id, a_library["folder"], NOW, NOW),
+    )
+    written = derived.record_faces(
+        db, file_id, "opencv/haar", "frontalface_default", "aa", NOW,
+        [
+            {"region": derived.region_from_pixels(db, box, width, height),
+             "det_score": min(1.0, float(weight) / 10.0)}
+            for box, weight in zip(boxes, weights)
+        ],
+    )
+    assert len(written) == len(boxes)
+
+    # stored as numbers, not as the BLOBs a numpy scalar binds to by default
+    assert db.execute(
+        "SELECT DISTINCT typeof(det_score), typeof(region_id) FROM derived_face_instance"
+    ).fetchall() == [("real", "integer")]
+    # and inside the frame, which the region CHECK would have refused otherwise
+    assert db.execute("SELECT count(*) FROM region").fetchone()[0] == len(boxes)
+
+    person = authored.person(db, "Ilse", NOW)
+    cluster = derived.recluster(
+        db, "opencv/haar", "frontalface_default", NOW, [{"person_id": person}]
+    )[0]
+    for face_id in written:
+        derived.assign_cluster(db, face_id, cluster)
+    derived.attribute(
+        db, file_id, person, "opencv/haar", "frontalface_default", face_count=len(written)
+    )
+
+    from db import pages
+
+    assert pages.people_by_most(db) == [("Ilse", "ilse", 1)]
+    assert pages.person_files(db, person) == [("portrait", "portrait.png")]
+
+
+def test_the_rebuild_contract_holds_on_real_detections(db, a_library, tmp_path):
+    """Drop every derived table, run the detector again, and the human's
+    name comes back -- on boxes a model chose rather than ones I placed
+    where the assertion already was."""
+    picture = a_detectable_face(tmp_path / "portrait.png")
+    width, height, boxes, _ = detect(picture)
+    file_id = scan.mint(db, "file", "portrait")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+        " first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'portrait.png', 'image', 10, 0, 'aa', ?, ?)",
+        (file_id, a_library["folder"], NOW, NOW),
+    )
+    person = authored.person(db, "Ilse", NOW)
+    authored.assert_person(
+        db, person, file_id, a_library["user"], NOW,
+        region_id=derived.region_from_pixels(db, boxes[0], width, height),
+    )
+
+    derived.drop_all(db)
+    rebuilt = derived.recluster(db, "opencv/haar", "v2", NOW + 1, [{}])[0]
+    derived.record_faces(
+        db, file_id, "opencv/haar", "v2", "aa", NOW + 1,
+        [{"region": derived.region_from_pixels(db, box, width, height),
+          "cluster_id": rebuilt} for box in boxes],
+    )
+
+    assert derived.seed_clusters_from_assertions(db, "opencv/haar", "v2") == 1
+    assert db.execute(
+        "SELECT p.name FROM derived_face_cluster c JOIN person p ON p.id = c.person_id"
+    ).fetchone()[0] == "Ilse"
