@@ -272,6 +272,33 @@ CREATE TABLE user (
     expires_at    REAL
 ) STRICT;
 
+-- ============ where in the picture ============
+-- One place a rectangle is defined, because four tables were each carrying
+-- their own bbox_x/y/w/h and one of them also carried a `localizable` flag
+-- and a five-clause CHECK whose only job was policing those columns.
+--
+-- NORMALIZED, 0..1, never pixels. A box in pixels is a box against one
+-- particular rendering: draw it on a thumbnail, a rotated frame or a
+-- re-encoded proxy and it lands somewhere else. The old geometry columns
+-- declared no unit at all, so every producer picked its own.
+--
+-- A mask is bytes, and bytes live in `blob`. It was a filesystem path --
+-- identity derived from location, in the schema written to delete exactly
+-- that, where a moved cache directory silently voided every mask in it.
+CREATE TABLE region (
+    id        INTEGER PRIMARY KEY,
+    x         REAL NOT NULL,
+    y         REAL NOT NULL,
+    w         REAL NOT NULL,
+    h         REAL NOT NULL,
+    mask_hash TEXT REFERENCES blob(hash) ON DELETE SET NULL,
+    CHECK (w > 0 AND h > 0),
+    -- a hair over 1 absorbs float error from a pixel->fraction conversion
+    -- without admitting a box that is genuinely outside the frame
+    CHECK (x >= 0 AND y >= 0 AND x + w <= 1.001 AND y + h <= 1.001)
+) STRICT;
+CREATE INDEX region_mask ON region(mask_hash) WHERE mask_hash IS NOT NULL;
+
 -- ============ evidence locator (video/document faces) ============
 -- Named derived_: a sampling policy produced these rows, so "drop the derived
 -- namespace and re-index" must take them. Leaving them behind left face
@@ -348,7 +375,9 @@ CREATE TABLE job (
     lease_until      REAL,
     heartbeat_at     REAL,
     error            TEXT,
-    external_ref     TEXT,
+    -- No external_ref here. `derivation_intent` already carries the
+    -- generator's own id, UNIQUE, and having it on both meant two rows could
+    -- claim the same external job and disagree about which one owned it.
     created_at       REAL NOT NULL,
     started_at       REAL,
     finished_at      REAL
@@ -742,8 +771,12 @@ CREATE TABLE derived_face_instance (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     sample_id     INTEGER REFERENCES derived_media_sample(id) ON DELETE CASCADE,
     cluster_id    INTEGER REFERENCES derived_face_cluster(id) ON DELETE SET NULL,
-    bbox_x REAL NOT NULL, bbox_y REAL NOT NULL,
-    bbox_w REAL NOT NULL, bbox_h REAL NOT NULL,
+    -- NOT NULL: a face detection with no location cannot be shown, checked,
+    -- cropped, or asserted against. RESTRICT, because deleting the region
+    -- would leave exactly that.
+    region_id     INTEGER NOT NULL REFERENCES region(id) ON DELETE RESTRICT,
+    -- The aligner's input, consumed whole and never filtered on -- unlike
+    -- generation fields, which is why those are rows and this is not.
     landmarks TEXT, det_score REAL, dim INTEGER,
     age INTEGER, sex TEXT,
     pose_yaw REAL, pose_pitch REAL, pose_roll REAL,
@@ -754,43 +787,59 @@ CREATE INDEX derived_face_file       ON derived_face_instance(file_id);
 CREATE INDEX derived_face_cluster_ix ON derived_face_instance(cluster_id);
 CREATE INDEX derived_face_sample     ON derived_face_instance(sample_id);
 
-CREATE TABLE derived_review (
-    id INTEGER PRIMARY KEY,
-    file_id INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    quality_score REAL, prompt_alignment_score REAL, summary TEXT,
-    rubric_version TEXT NOT NULL, model_id TEXT NOT NULL,
-    model_version TEXT NOT NULL, source_sha256 TEXT NOT NULL,
-    computed_at REAL NOT NULL
+-- What a model says about a picture in words: a caption, a longer
+-- description, a tag, text it read out of the image. One table, because they
+-- differ only in `kind` -- same subject, same provenance, same lifetime --
+-- and because a caption is a thing you search for, not a document you open.
+--
+-- `region_id` is how an annotation points at part of the picture: OCR text
+-- sits somewhere, a tag may be about one object. NULL means it is about the
+-- whole frame.
+--
+-- `sample_id` is how it points at a moment: a caption for a video is a
+-- caption of a frame, and a description that cannot say which frame is not
+-- checkable.
+CREATE TABLE derived_annotation (
+    id            INTEGER PRIMARY KEY,
+    file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    sample_id     INTEGER REFERENCES derived_media_sample(id) ON DELETE CASCADE,
+    region_id     INTEGER REFERENCES region(id) ON DELETE SET NULL,
+    kind          TEXT NOT NULL CHECK (kind IN
+                    ('caption','description','alt_text','tag','ocr','title')),
+    text          TEXT NOT NULL,
+    confidence    REAL,
+    -- The same picture may carry a caption from two models on purpose: they
+    -- are compared, not merged. Uniqueness is per model, per kind, per region.
+    model_id      TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    computed_at   REAL NOT NULL,
+    CHECK (length(text) > 0)
 ) STRICT;
-CREATE INDEX derived_review_file ON derived_review(file_id);
+CREATE INDEX derived_annotation_file ON derived_annotation(file_id);
+CREATE INDEX derived_annotation_kind ON derived_annotation(kind, file_id);
+CREATE UNIQUE INDEX derived_annotation_one
+    ON derived_annotation(file_id, kind, model_id, model_version,
+                          IFNULL(region_id, 0), IFNULL(sample_id, 0));
 
-CREATE TABLE derived_review_finding (
-    id INTEGER PRIMARY KEY,
-    review_id INTEGER NOT NULL REFERENCES derived_review(id) ON DELETE CASCADE,
-    file_id   INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('anatomy','artifact','composition',
-      'lighting','text_render','prompt_mismatch','style','detail_loss','other')),
-    severity TEXT NOT NULL CHECK (severity IN ('low','medium','high')),
-    confidence REAL,
-    localizable INTEGER NOT NULL DEFAULT 0 CHECK (localizable IN (0,1)),
-    bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL, mask_path TEXT,
-    CHECK (localizable = 1 OR (bbox_x IS NULL AND bbox_y IS NULL
-                           AND bbox_w IS NULL AND bbox_h IS NULL
-                           AND mask_path IS NULL))
-) STRICT;
-CREATE INDEX derived_finding_review ON derived_review_finding(review_id);
-CREATE INDEX derived_finding_file   ON derived_review_finding(file_id);
-
-CREATE TABLE derived_review_alignment (
-    id INTEGER PRIMARY KEY,
-    review_id INTEGER NOT NULL REFERENCES derived_review(id) ON DELETE CASCADE,
-    file_id   INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL, text TEXT NOT NULL,
-    satisfied INTEGER NOT NULL CHECK (satisfied IN (0,1)), confidence REAL,
-    bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL
-) STRICT;
-CREATE INDEX derived_alignment_review ON derived_review_alignment(review_id);
-CREATE INDEX derived_alignment_file   ON derived_review_alignment(file_id);
+-- Captions are prose, and prose is searched by word. Without this a caption
+-- is text nobody can find, which is the same as not having captioned.
+CREATE VIRTUAL TABLE annotation_fts USING fts5(
+    text, content='derived_annotation', content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER annotation_fts_insert AFTER INSERT ON derived_annotation BEGIN
+  INSERT INTO annotation_fts(rowid, text) VALUES (NEW.id, NEW.text);
+END;
+CREATE TRIGGER annotation_fts_delete AFTER DELETE ON derived_annotation BEGIN
+  INSERT INTO annotation_fts(annotation_fts, rowid, text)
+    VALUES('delete', OLD.id, OLD.text);
+END;
+CREATE TRIGGER annotation_fts_update AFTER UPDATE OF text ON derived_annotation BEGIN
+  INSERT INTO annotation_fts(annotation_fts, rowid, text)
+    VALUES('delete', OLD.id, OLD.text);
+  INSERT INTO annotation_fts(rowid, text) VALUES (NEW.id, NEW.text);
+END;
 
 -- ============ authored ============
 CREATE TABLE rating (
@@ -827,17 +876,21 @@ CREATE INDEX favorite_user ON favorite(user_id);
 --
 -- Every target is now a durable entity, and the judgement re-attaches after
 -- the derived layer is rebuilt:
---   review/finding  -> the file it judged, plus the rubric it judged under
+--   annotation      -> the file it described, plus the kind of description
 --   similarity/dup  -> the pair of files
 --   person          -> the person, which is authored identity
 CREATE TABLE feedback (
     id             INTEGER PRIMARY KEY,
     target_kind    TEXT NOT NULL CHECK (target_kind IN
-                     ('review','finding','similarity','duplicate','person')),
+                     ('annotation','similarity','duplicate','person')),
     file_id        INTEGER REFERENCES file(id)   ON DELETE SET NULL,
     other_file_id  INTEGER REFERENCES file(id)   ON DELETE SET NULL,
     person_id      INTEGER REFERENCES person(id) ON DELETE SET NULL,
-    rubric_version TEXT,        -- re-attaches a review judgement after rebuild
+    -- Which description was judged. The annotation row itself is derived and
+    -- will be deleted by the next rebuild; this survives it, so "the caption
+    -- for this file was wrong" still means something afterwards.
+    annotation_kind TEXT CHECK (annotation_kind IS NULL OR annotation_kind IN
+                     ('caption','description','alt_text','tag','ocr','title')),
     verdict        TEXT NOT NULL CHECK (verdict IN ('right','wrong','unsure')),
     note           TEXT,
     user_id        INTEGER REFERENCES user(id) ON DELETE SET NULL,
@@ -850,7 +903,8 @@ CREATE TABLE feedback (
 CREATE TRIGGER feedback_names_a_target BEFORE INSERT ON feedback BEGIN
   SELECT RAISE(ABORT,'feedback must name what it judges')
   WHERE NOT (
-      (NEW.target_kind IN ('review','finding')       AND NEW.file_id IS NOT NULL)
+      (NEW.target_kind = 'annotation'                AND NEW.file_id IS NOT NULL
+                                                     AND NEW.annotation_kind IS NOT NULL)
    OR (NEW.target_kind IN ('similarity','duplicate') AND NEW.file_id IS NOT NULL
                                                      AND NEW.other_file_id IS NOT NULL)
    OR (NEW.target_kind = 'person'                     AND NEW.person_id IS NOT NULL));
@@ -868,7 +922,9 @@ CREATE TABLE person_assertion (
     person_id  INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
     file_id    INTEGER NOT NULL REFERENCES file(id)   ON DELETE CASCADE,
     sample_id  INTEGER REFERENCES derived_media_sample(id) ON DELETE SET NULL,
-    bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
+    -- Optional and SET NULL: the claim is "this person is in this file", and
+    -- it stands whether or not anybody drew a box around them.
+    region_id  INTEGER REFERENCES region(id) ON DELETE SET NULL,
     user_id    INTEGER REFERENCES user(id) ON DELETE SET NULL,
     created_at REAL NOT NULL,
     PRIMARY KEY (person_id, file_id)
@@ -992,14 +1048,14 @@ WHEN NEW.sample_id IS NOT NULL BEGIN
   WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id) <> NEW.file_id;
 END;
 
-CREATE TRIGGER finding_matches_its_review BEFORE INSERT ON derived_review_finding BEGIN
-  SELECT RAISE(ABORT,'finding sits on a different file than its review')
-  WHERE (SELECT file_id FROM derived_review WHERE id = NEW.review_id) <> NEW.file_id;
-END;
-
-CREATE TRIGGER alignment_matches_its_review BEFORE INSERT ON derived_review_alignment BEGIN
-  SELECT RAISE(ABORT,'alignment sits on a different file than its review')
-  WHERE (SELECT file_id FROM derived_review WHERE id = NEW.review_id) <> NEW.file_id;
+-- An annotation may cite a frame, and that frame has to be a frame of the
+-- file being annotated. Without this a caption can quote a moment from a
+-- different video, and the evidence link reads as sound.
+CREATE TRIGGER annotation_sample_belongs_to_its_file
+BEFORE INSERT ON derived_annotation WHEN NEW.sample_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'annotation cites a sample from another file')
+  WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id)
+        <> NEW.file_id;
 END;
 
 -- ============ folder.depth is derived, so the database derives it ============

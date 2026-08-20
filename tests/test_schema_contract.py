@@ -35,11 +35,10 @@ _NOT_A_REFERENCE = {
     ("derived_media_sample", "id"), ("comment", "id"), ("feedback", "id"),
     ("derivation_intent", "id"), ("file_derivation", "id"),
     ("derived_face_cluster", "id"), ("derived_face_instance", "id"),
-    ("derived_review", "id"), ("derived_review_finding", "id"),
-    ("derived_review_alignment", "id"),
-    # backend identity strings ("insightface", "opencv"), not rows
+    ("derived_annotation", "id"), ("region", "id"),
+    # backend identity strings ("insightface", "qwen-vl"), not rows
     ("derived_embedding", "model_id"), ("derived_face_cluster", "model_id"),
-    ("derived_face_instance", "model_id"), ("derived_review", "model_id"),
+    ("derived_face_instance", "model_id"), ("derived_annotation", "model_id"),
     ("derived_file_person", "model_id"),
     ("job_item", "item_id"),
 }
@@ -778,8 +777,8 @@ def test_feedback_outlives_the_thing_it_judged(db):
     tree(db)
     a_file(db, 900, 1, "j.png")
     db.execute(
-        "INSERT INTO feedback(id,target_kind,file_id,rubric_version,verdict,created_at) "
-        "VALUES(1,'review',900,'v1','wrong',0)"
+        "INSERT INTO feedback(id,target_kind,file_id,annotation_kind,verdict,created_at) "
+        "VALUES(1,'annotation',900,'caption','wrong',0)"
     )
     db.execute("DELETE FROM entity WHERE id=900")
     row = db.execute("SELECT file_id, verdict FROM feedback WHERE id=1").fetchone()
@@ -978,20 +977,29 @@ def test_a_rating_is_between_one_and_five(db):
         db.execute("INSERT INTO rating(file_id,user_id,rating,created_at) VALUES(420,1,9,0)")
 
 
-def test_a_global_finding_is_never_given_a_box(db):
-    """Carried over from the old schema on purpose: only localizable findings
-    may claim grounding, enforced in SQL rather than by remembering."""
+def test_a_claim_about_the_whole_frame_carries_no_coordinates(db):
+    """A claim either points at a region or it does not.
+
+    A `localizable` flag and a five-clause CHECK used to approximate this,
+    and left a third state where a claim half-pointed at somewhere. It is
+    structural now: `region_id` is present or NULL, and the combination the
+    CHECK existed to reject cannot be written.
+    """
     tree(db)
     a_file(db, 421, 1, "q.png")
     db.execute(
-        "INSERT INTO derived_review(id,file_id,rubric_version,model_id,model_version,"
-        "source_sha256,computed_at) VALUES(1,421,'v1','m','1','abc',0)"
+        "INSERT INTO derived_annotation(id,file_id,kind,text,model_id,model_version,"
+        "source_sha256,computed_at) VALUES(1,421,'caption','a helmet','m','1','abc',0)"
     )
-    with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO derived_review_finding(id,review_id,file_id,kind,severity,"
-            "localizable,bbox_x) VALUES(1,1,421,'anatomy','high',0,0.5)"
-        )
+    assert db.execute(
+        "SELECT region_id FROM derived_annotation WHERE id=1"
+    ).fetchone()[0] is None
+    loose = [
+        column
+        for column in (row[1] for row in db.execute("PRAGMA table_info(derived_annotation)"))
+        if column.startswith("bbox") or column in ("localizable", "mask_path")
+    ]
+    assert loose == [], f"geometry is back inline on the row: {loose}"
 
 
 def test_deleting_an_entity_takes_its_subtype_and_its_ratings(db):
@@ -1011,30 +1019,37 @@ def test_feedback_names_a_durable_target(db):
     tree(db)
     a_file(db, 440, 1, "f.png")
     db.execute(
-        "INSERT INTO feedback(id,target_kind,file_id,rubric_version,verdict,created_at) "
-        "VALUES(1,'review',440,'v1','wrong',0)"
+        "INSERT INTO feedback(id,target_kind,file_id,annotation_kind,verdict,created_at) "
+        "VALUES(1,'annotation',440,'caption','wrong',0)"
     )
     # every target must name a durable thing, never a disposable row id
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
             "INSERT INTO feedback(id,target_kind,verdict,created_at) "
-            "VALUES(2,'review','wrong',0)"
+            "VALUES(2,'annotation','wrong',0)"
         )
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
             "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) "
             "VALUES(3,'duplicate',440,'wrong',0)"
         )
-    # a judgement about a rebuilt review re-attaches by file + rubric
+    # "the model was wrong about this file" is not actionable when the model
+    # said four different things about it
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO feedback(id,target_kind,file_id,verdict,created_at) "
+            "VALUES(4,'annotation',440,'wrong',0)"
+        )
+    # a judgement re-attaches to a re-run model by file plus what was judged
     db.execute(
-        "INSERT INTO derived_review(id,file_id,rubric_version,model_id,model_version,"
-        "source_sha256,computed_at) VALUES(9,440,'v1','m','2','abc',0)"
+        "INSERT INTO derived_annotation(id,file_id,kind,text,model_id,model_version,"
+        "source_sha256,computed_at) VALUES(9,440,'caption','a helmet','m','2','abc',0)"
     )
     again = db.execute(
-        "SELECT r.id FROM feedback f JOIN derived_review r "
-        "ON r.file_id = f.file_id AND r.rubric_version = f.rubric_version WHERE f.id=1"
+        "SELECT a.id FROM feedback f JOIN derived_annotation a "
+        "ON a.file_id = f.file_id AND a.kind = f.annotation_kind WHERE f.id=1"
     ).fetchone()
-    assert again and again[0] == 9, "feedback could not re-attach to a rebuilt review"
+    assert again and again[0] == 9, "feedback could not re-attach to a re-run model"
 
 
 def test_dropping_the_derived_namespace_keeps_everything_authored(db):
@@ -1296,21 +1311,23 @@ def test_booleans_are_zero_or_one(db):
         db.execute("INSERT INTO root(id,path,kind,online,created_at) VALUES(9,'/x','library',7,0)")
 
 
-def test_a_global_finding_gets_no_coordinate_at_all(db):
-    """The CHECK named bbox_x and mask_path; the other three coordinates were
-    still only remembered."""
+def test_a_region_cannot_describe_an_impossible_rectangle(db):
+    """Four coordinates that only mean something together were four columns
+    nothing checked, in four tables. One table now, so one place says what a
+    rectangle is -- and says it in fractions of the frame, because a box in
+    pixels points somewhere else on a thumbnail."""
     tree(db)
-    a_file(db, 9, 1, "a.png")
-    db.execute(
-        "INSERT INTO derived_review(id,file_id,rubric_version,model_id,model_version,"
-        "source_sha256,computed_at) VALUES(1,9,'v1','m','1','abc',0)"
-    )
-    for col in ("bbox_x", "bbox_y", "bbox_w", "bbox_h"):
+    for x, y, w, h in (
+        (0.9, 0.1, 0.5, 0.1),    # runs off the right edge
+        (0.1, 0.9, 0.1, 0.5),    # runs off the bottom
+        (-0.1, 0.1, 0.2, 0.2),   # starts outside the frame
+        (0.1, 0.1, 0.0, 0.2),    # zero width locates nothing
+        (0.1, 0.1, 0.2, -0.2),   # negative height
+    ):
         with pytest.raises(sqlite3.IntegrityError):
-            db.execute(
-                "INSERT INTO derived_review_finding(id,review_id,file_id,kind,severity,"
-                f"localizable,{col}) VALUES(1,1,9,'anatomy','high',0,0.5)"
-            )
+            db.execute("INSERT INTO region(x,y,w,h) VALUES(?,?,?,?)", (x, y, w, h))
+    # the control: a rectangle actually inside the frame is accepted
+    db.execute("INSERT INTO region(x,y,w,h) VALUES(0.25,0.25,0.5,0.5)")
 
 
 def test_an_unreferenced_blob_is_reclaimed(db):
@@ -1495,26 +1512,25 @@ def test_a_reference_must_agree_with_what_it_points_at(db):
         )
 
     db.execute("INSERT INTO derived_media_sample(id,file_id,kind,policy) VALUES(900,10,'frame','p')")
+    db.execute("INSERT INTO region(id,x,y,w,h) VALUES(700,0,0,1,1)")
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO derived_face_instance(id,file_id,sample_id,bbox_x,bbox_y,bbox_w,bbox_h,"
-            "model_id,model_version,source_sha256,computed_at) VALUES(1,9,900,0,0,1,1,'m','1','s',0)"
+            "INSERT INTO derived_face_instance(id,file_id,sample_id,region_id,"
+            "model_id,model_version,source_sha256,computed_at) VALUES(1,9,900,700,'m','1','s',0)"
         )
 
+    # a caption may cite a frame, but only a frame of the file it describes
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO derived_annotation(id,file_id,sample_id,kind,text,model_id,"
+            "model_version,source_sha256,computed_at) "
+            "VALUES(1,9,900,'caption','wrong film','m','1','s',0)"
+        )
     db.execute(
-        "INSERT INTO derived_review(id,file_id,rubric_version,model_id,model_version,"
-        "source_sha256,computed_at) VALUES(1,9,'v','m','1','s',0)"
+        "INSERT INTO derived_annotation(id,file_id,sample_id,kind,text,model_id,"
+        "model_version,source_sha256,computed_at) "
+        "VALUES(2,10,900,'caption','right film','m','1','s',0)"
     )
-    with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO derived_review_finding(id,review_id,file_id,kind,severity) "
-            "VALUES(1,1,10,'anatomy','high')"
-        )
-    with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO derived_review_alignment(id,review_id,file_id,ordinal,text,satisfied) "
-            "VALUES(1,1,10,0,'t',1)"
-        )
 
 
 def test_a_name_survives_dropping_everything_derived(db):
@@ -1563,4 +1579,4 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 39, f"expected 39 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 38, f"expected 38 real tables, found {len(real)}: {sorted(real)}"

@@ -17,7 +17,7 @@ import sqlite3
 SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 
 #: Bumped whenever schema.sql changes in a way a built database must match.
-USER_VERSION = 2
+USER_VERSION = 3
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 
