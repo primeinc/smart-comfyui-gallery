@@ -243,26 +243,56 @@ class VectorStore:
             # Exact cosine via inner product on the already-normalized rows
             # (facebookresearch/faiss README: cosine similarity is a dot
             # product on normalized vectors; IndexFlatIP is exact search).
-            if sm.faiss_index is None:
-                index = faiss.IndexFlatIP(int(sm.matrix.shape[1]))
-                index.add(sm.matrix)
-                sm.faiss_gpu = False
-                if _vector_gpu_wanted() and faiss.get_num_gpus() > 0:
-                    # Same exact search on the GPU. Falls back to the CPU
-                    # index when the copy fails (VRAM pressure, driver).
-                    try:
-                        index = faiss.index_cpu_to_gpu(_faiss_gpu_resources(faiss), 0, index)
-                        sm.faiss_gpu = True
-                    except Exception:
-                        _logger.debug("ignored a failure in topk", exc_info=True)
-                sm.faiss_index = index
-            if excluded and sm.id_to_row is None:
-                sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
+            # Build under the module lock, publish once. `sm` is a shared
+            # cached generation and this runs on arbitrary request threads:
+            # assigning faiss_index/faiss_gpu/id_to_row in the open let a
+            # second thread read a half-built pair -- faiss_gpu already True
+            # while faiss_index was still the CPU one, which then took the
+            # CPU branch and passed `params=` to a GPU index that rejects
+            # it. Worse, index_cpu_to_gpu ran outside _FAISS_GPU_SEARCH_LOCK
+            # while sharing one process-wide StandardGpuResources, which
+            # faiss documents as single-user: "Faiss GPU indices are not
+            # thread-safe, even for read only functions ... temporary memory
+            # on the GPU which can only have a single user at a time"
+            # (faiss.wiki Threads-and-asynchronous-calls).
+            if sm.faiss_index is None or (excluded and sm.id_to_row is None):
+                with _GEN_LOCK:
+                    if sm.faiss_index is None:
+                        index = faiss.IndexFlatIP(int(sm.matrix.shape[1]))
+                        index.add(sm.matrix)
+                        on_gpu = False
+                        if _vector_gpu_wanted() and faiss.get_num_gpus() > 0:
+                            # Same exact search on the GPU. Falls back to the
+                            # CPU index when the copy fails (VRAM, driver).
+                            try:
+                                with _FAISS_GPU_SEARCH_LOCK:
+                                    index = faiss.index_cpu_to_gpu(_faiss_gpu_resources(faiss), 0, index)
+                                on_gpu = True
+                            except Exception:
+                                _logger.debug("ignored a failure in topk", exc_info=True)
+                        # Flag BEFORE the index, so no reader can observe an
+                        # index without the flag that says how to search it.
+                        sm.faiss_gpu = on_gpu
+                        sm.faiss_index = index
+                    if excluded and sm.id_to_row is None:
+                        sm.id_to_row = {fid: i for i, fid in enumerate(sm.ids)}
             rows = (
                 np.array(sorted(sm.id_to_row[f] for f in excluded if f in sm.id_to_row), dtype=np.int64)
                 if excluded
                 else np.empty(0, np.int64)
             )
+            if sm.faiss_gpu and k + len(rows) > 2048 and sm.row_count > 2048:
+                # faiss caps GPU k at 2048 ("k and nprobe must be <= 2048
+                # for all indices" -- faiss.wiki Faiss-on-the-GPU). Asking
+                # for more than the over-fetch can supply used to clamp and
+                # return fewer than k, with no signal: the same query
+                # answered differently depending on whether a GPU happened
+                # to be present. Exact CPU matmul instead -- slower, but it
+                # answers the question that was asked.
+                sims = sm.matrix @ q
+                candidates = [i for i in range(len(sm.ids)) if sm.ids[i] not in excluded]
+                candidates.sort(key=lambda i: (-float(sims[i]), sm.ids[i]))
+                return [(sm.ids[i], float(sims[i])) for i in candidates[:k]]
             if sm.faiss_gpu:
                 # GPU indexes support neither SearchParameters/IDSelector
                 # nor k > 2048 (faiss wiki), and are not thread-safe even

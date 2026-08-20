@@ -68,6 +68,7 @@ import importlib
 import json
 import logging
 import os
+import threading
 from collections.abc import Sequence
 from typing import Any
 
@@ -75,6 +76,21 @@ _logger = logging.getLogger(__name__)
 
 #: (model_ref, models_dir, device, attn) -> (processor, model)
 _cache: dict = {}
+
+#: Guards `_cache` AND every forward through a cached model.
+#:
+#: One entry is shared by the worker's review stage and runner's interactive
+#: run, which are different threads. runner._RUN_LOCK excludes two
+#: interactive runs from each other; it does not exclude the worker. So two
+#: generate() calls could interleave on one HF model, each with its own
+#: DynamicCache, on weights that keep no per-call state of their own but are
+#: driven through one set of module buffers. embedders.OpenClipSemanticEmbedder
+#: already carries `_infer_lock` for exactly this reason, and
+#: backends.serializes_internally refuses to lend out anything without it --
+#: the VLM simply had no equivalent.
+#:
+#: Reentrant because ask_json retries call ask() while already holding it.
+_MODEL_LOCK = threading.RLock()
 
 #: Vision tokens per image. The processor downsamples to fit rather than us
 #: resizing the source, so the model still sees the whole frame. 576 is a
@@ -154,8 +170,9 @@ def load(model_ref: str, models_dir: str = "", device: str = "", attn: str = "")
     """`(processor, model)` for `model_ref`, cached per device and backend."""
     device, attn_impl = resolve_device(device), resolve_attn(attn)
     key = (model_ref, models_dir, device, attn_impl)
-    if key in _cache:
-        return _cache[key]
+    with _MODEL_LOCK:
+        if key in _cache:
+            return _cache[key]
     try:
         # torchvision BEFORE transformers: transformers freezes its
         # torchvision-availability flag at first import and the image
@@ -203,8 +220,12 @@ def load(model_ref: str, models_dir: str = "", device: str = "", attn: str = "")
         "models_dir" if provisioned else "huggingface cache",
         attn_impl or "default",
     )
-    _cache[key] = (processor, model)
-    return _cache[key]
+    # Re-check under the lock: two threads that both missed above would
+    # otherwise each load the full checkpoint and the loser's copy would sit
+    # in VRAM with nothing referencing it. Loading stays OUTSIDE the lock --
+    # it takes minutes and would block every other model's forwards.
+    with _MODEL_LOCK:
+        return _cache.setdefault(key, (processor, model))
 
 
 def vision_budget(processor, max_vision_tokens: int) -> dict:
@@ -321,7 +342,7 @@ class Chat:
             prompt_length = input_ids.shape[1]
             call = {"input_ids": input_ids}
 
-        with self._torch.no_grad():
+        with _MODEL_LOCK, self._torch.no_grad():
             generated = self._model.generate(
                 **call, past_key_values=self._cache, do_sample=False, max_new_tokens=max_new_tokens
             )
@@ -439,5 +460,20 @@ def tool_arguments(text: str, expect: str = "") -> Any:
 
 
 def unload() -> None:
-    """Drop every cached model -- used by tests and on capability changes."""
-    _cache.clear()
+    """Drop every cached model and release its VRAM.
+
+    clear() alone only dropped the cache ENTRY. Live Chat objects hold
+    self._model, and torch's caching allocator holds the blocks regardless,
+    so "unload" left the weights resident and a reload doubled VRAM -- on a
+    box already sharing the card with ComfyUI. Emptying the allocator cache
+    is what actually returns it; it is a no-op without CUDA.
+    """
+    with _MODEL_LOCK:
+        _cache.clear()
+    try:
+        torch = importlib.import_module("torch")
+    except Exception:
+        _logger.debug("handled a failure in unload", exc_info=True)
+        return
+    if getattr(torch, "cuda", None) is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
