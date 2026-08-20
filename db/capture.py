@@ -491,8 +491,12 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
         # parsed_by stays NULL: the bytes are kept, and nothing here claims to
         # have understood them. That is what makes unparsed metadata a
         # queryable backlog rather than a silent loss.
+        # Not INSERT OR REPLACE: REPLACE fires no DELETE trigger, so the
+        # payload the row used to point at is never reclaimed.
         conn.execute(
-            "INSERT OR REPLACE INTO file_blob(file_id, carrier, slot, blob_hash, seen_at)"
-            " VALUES(?, 'exif', ?, ?, ?)",
+            "INSERT INTO file_blob(file_id, carrier, slot, blob_hash, seen_at)"
+            " VALUES(?, 'exif', ?, ?, ?)"
+            " ON CONFLICT(file_id, carrier, slot) DO UPDATE SET"
+            " blob_hash = excluded.blob_hash, seen_at = excluded.seen_at",
             (file_id, slot, digest, now),
         )

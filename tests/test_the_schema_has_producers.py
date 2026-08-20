@@ -631,6 +631,31 @@ def test_a_companion_is_found_from_either_side(db, a_library):
         ).fetchone()[0] == 1
 
 
+def test_a_proxy_does_not_claim_the_video_as_its_own_proxy(db, a_library):
+    """`raw_pair` is symmetric and every other kind is not.
+
+    Writing both directions for all of them asserted something false: after
+    relating a video to its proxy, asking for the proxy of that file returned
+    the video. The test above could not see it, because it used the one kind
+    where both directions are true.
+    """
+    video = a_library["file"]
+    proxy = scan.mint(db, "file", "proxy")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'dusk-proxy.mp4', 'video', 10, 0, ?, ?)",
+        (proxy, a_library["folder"], NOW, NOW),
+    )
+    lineage.relate(db, video, proxy, "proxy", NOW)
+
+    assert lineage.related(db, video, kind="proxy") == [(proxy, "proxy", "has")]
+    assert lineage.related(db, proxy, kind="proxy") == [(video, "proxy", "belongs_to")]
+    assert db.execute(
+        "SELECT count(*) FROM file_relation WHERE file_id = ? AND related_id = ?",
+        (proxy, video),
+    ).fetchone()[0] == 0, "the proxy was recorded as having the video as its proxy"
+
+
 # --- ingest ----------------------------------------------------------------
 
 
@@ -719,14 +744,55 @@ def test_the_carrier_is_kept_and_says_whether_it_was_understood(db, a_library, a
     ).fetchall()
     assert rows, "nothing kept the payload it parsed"
     assert all(length > 0 for _, _, length in rows)
+    # The half the name promises and the assertions above never checked:
+    # deleting the parsed_by logic from ingest._carrier left this test green.
+    # A carrier is kept whether or not anything understood it, and which of
+    # the two it was is the whole point -- it turns unparsed metadata into a
+    # backlog you can query instead of a silent loss.
+    claimed = {slot: parser for slot, parser, _ in rows}
+    assert claimed.get("parameters") == "metaparse/A1111 / Forge", claimed
+
+
+def test_a_carrier_nothing_understood_says_so(db, a_library, tmp_path):
+    """The other half of `parsed_by`, and the half that makes it a backlog.
+
+    It only means anything if some carriers are NULL and others are not.
+    Marking a fixed list of slot names claimed every ComfyUI graph and no
+    A1111 infotext, so "what does nothing understand yet" answered with the
+    files that parsed best while a genuinely unrecognised chunk was
+    indistinguishable from them.
+    """
+    info = PngInfo()
+    info.add_text("parameters", A1111)
+    info.add_text("SomeToolNobodyWrote", '{"knobs": [1, 2, 3]}')
+    path = tmp_path / "mixed.png"
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(path, pnginfo=info)
+    ingest.one(db, a_library["file"], path, NOW)
+
+    claimed = dict(db.execute(
+        "SELECT slot, parsed_by FROM file_blob WHERE file_id = ?", (a_library["file"],)
+    ))
+    assert claimed["parameters"] is not None, "the chunk the recipe was read from"
+    assert claimed["SomeToolNobodyWrote"] is None, "a chunk nothing read"
+    assert db.execute(
+        "SELECT count(*) FROM file_blob WHERE parsed_by IS NULL"
+    ).fetchone()[0] == 1, "the backlog is not queryable"
 
 
 def test_the_registry_learns_what_the_file_contained(db, a_library, a_generated_file):
     ingest.one(db, a_library["file"], a_generated_file, NOW)
-    learned = dict(db.execute("SELECT key, occurrences FROM param_key"))
-    counted = dict(db.execute("SELECT key, count(*) FROM file_param GROUP BY key"))
+    # Keyed on (source, key), which is param_key's actual primary key. Keyed
+    # on `key` alone the dict silently kept one row per name while the GROUP
+    # BY summed every source, and the comparison meant nothing the moment one
+    # key appeared under two sources -- `Width` already does.
+    learned = {(s, k): n for s, k, n in db.execute(
+        "SELECT source, key, occurrences FROM param_key"
+    )}
+    counted = {(s, k): n for s, k, n in db.execute(
+        "SELECT source, key, count(*) FROM file_param GROUP BY source, key"
+    )}
     assert learned == counted
-    assert "Format" in learned, "container facts are metadata too"
+    assert ("container", "Format") in learned, "container facts are metadata too"
 
 
 def test_two_files_naming_one_model_share_its_row(db, a_library, a_generated_file, tmp_path):

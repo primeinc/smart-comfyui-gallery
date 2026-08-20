@@ -90,18 +90,56 @@ def open_intents(conn) -> list[tuple]:
     ).fetchall()
 
 
+#: Relationships where the two files are interchangeable, so both directions
+#: are the same statement. Everything else in `file_relation.kind` reads one
+#: way round -- a video HAS a proxy, a photograph HAS a sidecar -- and writing
+#: the reverse as well asserted something false: after relating a video to its
+#: proxy, "give me the proxy for this file" answered with the video.
+_SYMMETRIC = frozenset({"raw_pair"})
+
+
 def relate(conn, file_id: int, related_id: int, kind: str, now: float) -> None:
     """A non-derivation relationship: a RAW pair, a sidecar, a proxy.
 
-    Symmetric by nature, so both directions are written -- a query for "what
-    belongs with this file" should not have to know which of the two was
-    discovered first.
+    `file_id` is the subject and `related_id` is what it has, except for the
+    symmetric kinds where the distinction does not exist. Reading is by
+    `related`, which looks at both sides and says which way each row points,
+    so a caller still never has to know which of the two was discovered first.
     """
     if file_id == related_id:
         return
-    for left, right in ((file_id, related_id), (related_id, file_id)):
+    pairs = [(file_id, related_id)]
+    if kind in _SYMMETRIC:
+        pairs.append((related_id, file_id))
+    for left, right in pairs:
         conn.execute(
             "INSERT OR IGNORE INTO file_relation(file_id, related_id, kind, created_at)"
             " VALUES(?, ?, ?, ?)",
             (left, right, kind, now),
         )
+
+
+def related(conn, file_id: int, *, kind: str | None = None) -> list[tuple[int, str, str]]:
+    """Everything attached to this file, from either side.
+
+    Returns `(other_id, kind, direction)` where direction is `has` when this
+    file is the subject and `belongs_to` when it is the object -- so a video
+    reports `(proxy_id, 'proxy', 'has')` and the proxy reports
+    `(video_id, 'proxy', 'belongs_to')`.
+    """
+    sql = (
+        "SELECT related_id, kind, 'has' FROM file_relation WHERE file_id = ?"
+        " UNION ALL"
+        " SELECT file_id, kind, 'belongs_to' FROM file_relation WHERE related_id = ?"
+    )
+    args: list = [file_id, file_id]
+    if kind:
+        sql = (
+            "SELECT related_id, kind, 'has' FROM file_relation"
+            "  WHERE file_id = ? AND kind = ?"
+            " UNION ALL"
+            " SELECT file_id, kind, 'belongs_to' FROM file_relation"
+            "  WHERE related_id = ? AND kind = ?"
+        )
+        args = [file_id, kind, file_id, kind]
+    return conn.execute(sql, args).fetchall()

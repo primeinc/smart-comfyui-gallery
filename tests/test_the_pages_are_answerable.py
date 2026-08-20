@@ -17,6 +17,7 @@ visible in the plan long before it is visible in the clock.
 
 import io
 import pathlib
+import re
 import sqlite3
 
 import pytest
@@ -35,10 +36,19 @@ A1111 = (
     "Model: dreamshaper_8"
 )
 
-#: Tables whose row count grows with the library. A page that scans one of
-#: these does not have a performance problem, it has a design problem.
-GROWS = {"file", "entity", "file_param", "capture", "file_artifact",
-         "derived_file_person", "file_blob", "blob", "generation"}
+#: Tables that stay small however big the library gets: one row per root, per
+#: user, per setting, per watched folder, per distinct metadata key. Scanning
+#: one of these is fine. EVERYTHING ELSE in the schema grows, and is derived
+#: from sqlite_master rather than listed here -- the list was nine names, and
+#: the other twenty-nine growing tables could be scanned by any page without
+#: the gate saying a word.
+STAYS_SMALL = {"root", "user", "setting", "watched_folder", "param_key", "sqlite_sequence"}
+
+#: Words that can follow FROM or JOIN without being an alias.
+_NOT_AN_ALIAS = {
+    "on", "where", "group", "order", "limit", "join", "left", "inner", "cross",
+    "natural", "union", "as", "using", "and", "or", "having", "window",
+}
 
 
 @pytest.fixture
@@ -97,21 +107,53 @@ def plan(conn, sql, args=()):
     return [row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + sql, args)]
 
 
+def tables_by_name(sql):
+    """Map every name the plan can print back to the table it stands for.
+
+    EXPLAIN QUERY PLAN prints the ALIAS, not the table: `FROM file f` gives
+    `SCAN f`. Every gated query in this file joins with aliases, so the check
+    below matched nothing on six of its seven call sites and a bare full scan
+    of `file` passed it.
+    """
+    names = {}
+    for table, alias in re.findall(
+        r"(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+AS)?(?:\s+([A-Za-z_][A-Za-z0-9_]*))?",
+        sql, re.IGNORECASE,
+    ):
+        names[table] = table
+        if alias and alias.lower() not in _NOT_AN_ALIAS:
+            names[alias] = table
+    return names
+
+
 def assert_no_growing_scan(conn, sql, args=()):
-    """Fail if the page reads a table that grows with the library.
+    """Fail if the page reads, or sorts, the whole library.
 
     "SCAN <t> USING INDEX <i>" is an ordered walk of an index and is how a
     "newest first" page is supposed to work, so it is not what this catches.
-    A bare `SCAN t` is.
+    A bare `SCAN t` is, and so is a temp B-tree: sorting every matching row
+    at read time costs the same as scanning, and nothing here looked at it.
     """
-    offenders = [
-        step
-        for step in plan(conn, sql, args)
-        if step.startswith("SCAN ")
-        and "USING" not in step
-        and any(step.startswith(f"SCAN {t}") or f"SCAN {t} " in step for t in GROWS)
-    ]
-    assert offenders == [], f"this page reads the whole library: {offenders}"
+    names = tables_by_name(sql)
+    # An ordered index walk that stops early reads as many rows as it returns.
+    # The same walk with no LIMIT reads the table, index or not -- which is why
+    # `USING INDEX` alone is not the excuse it was being used as: a covering
+    # index made `SELECT f.id FROM file f` read as acceptable.
+    stops_early = re.search(r"\bLIMIT\b", sql, re.IGNORECASE) is not None
+    offenders = []
+    for step in plan(conn, sql, args):
+        if "TEMP B-TREE" in step.upper():
+            offenders.append(step)
+            continue
+        match = re.match(r"SCAN ([A-Za-z_][A-Za-z0-9_]*)", step)
+        if not match:
+            continue
+        if stops_early and "USING" in step:
+            continue
+        table = names.get(match.group(1), match.group(1))
+        if table not in STAYS_SMALL:
+            offenders.append(f"{step}  ({match.group(1)} = {table})")
+    assert offenders == [], f"this page reads or sorts the whole library: {offenders}"
 
 
 # --- the front page --------------------------------------------------------
@@ -162,7 +204,8 @@ def test_the_image_page_answers_in_one_query(library):
         " JOIN folder fo ON fo.id=f.folder_id WHERE fo.name='portraits' LIMIT 1"
     ).fetchone()[0]
     sql = """
-        SELECT f.name, fo.name AS folder,
+        SELECT f.name, fo.name AS folder, f.width, f.height,
+          (SELECT g.width FROM generation g WHERE g.file_id=f.id) AS asked_for_width,
           (SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id=fa.artifact_id
             WHERE fa.file_id=f.id AND fa.role='checkpoint') AS checkpoint,
           (SELECT group_concat(a.name) FROM file_artifact fa
@@ -177,8 +220,16 @@ def test_the_image_page_answers_in_one_query(library):
     """
     row = conn.execute(sql, (slug,)).fetchone()
     assert row is not None
-    name, folder, checkpoint, loras, prompt, seed, fields = row
+    (
+        name, folder, width, height, asked_for_width,
+        checkpoint, loras, prompt, seed, fields,
+    ) = row
     assert folder == "portraits"
+    # The pixels on disk, which nothing wrote until the producer sweep stopped
+    # being a word search. Without them the comparison the schema is built to
+    # show -- what the recipe asked for against what came out -- has one side.
+    assert (width, height) == (16, 16), "the file does not know its own size"
+    assert asked_for_width == 832, "the recipe's request is not readable beside it"
     assert checkpoint == "dreamshaper_8"
     assert loras == "filmGrain"
     assert prompt.startswith("a brass diving helmet")
@@ -199,39 +250,75 @@ def test_the_image_page_lists_every_parsed_field(library):
     assert_no_growing_scan(conn, sql, (first,))
 
 
+def test_the_page_gate_can_actually_fail(library):
+    """The control, and the three ways this gate was blind.
+
+    Without it the gate reads as if it proves something on every page in this
+    file, and it proved nothing on six of the seven: EXPLAIN QUERY PLAN
+    prints the alias, so `FROM file f` came out as `SCAN f` and the check
+    compared it against a hand-written list of table names.
+    """
+    conn = library["conn"]
+    for sql, blind_spot in (
+        ("SELECT f.id FROM file f", "an alias hid the table name"),
+        ("SELECT count(*) FROM region", "the table was not on the hand-written list"),
+        ("SELECT id FROM file ORDER BY size", "sorting the whole library was never checked"),
+    ):
+        with pytest.raises(AssertionError, match="reads or sorts"):
+            assert_no_growing_scan(conn, sql)
+            pytest.fail(f"the gate still cannot see it: {blind_spot} -- {sql}")
+
+
 def test_the_next_and_previous_picture_are_reachable(library):
     """A lightbox needs neighbours, and getting them by reading the folder is
     how a page becomes O(folder)."""
     conn = library["conn"]
-    folder_id, mtime, slug = conn.execute(
-        "SELECT f.folder_id, f.mtime, e.slug FROM file f JOIN entity e ON e.id=f.id"
-        " ORDER BY f.mtime LIMIT 1 OFFSET 1"
+    folder_id, mtime, file_id = conn.execute(
+        "SELECT folder_id, mtime, id FROM file ORDER BY mtime LIMIT 1 OFFSET 1"
     ).fetchone()
+    # Ordered on (mtime, id), not (mtime, slug): the slug is on `entity` and no
+    # index spans two tables, so tie-breaking on it sorted the whole folder to
+    # return one row.
     sql = (
         "SELECT e.slug FROM file f JOIN entity e ON e.id=f.id"
-        " WHERE f.folder_id=? AND f.missing_since IS NULL AND (f.mtime, e.slug) < (?, ?)"
-        " ORDER BY f.mtime DESC, e.slug DESC LIMIT 1"
+        " WHERE f.folder_id=? AND f.missing_since IS NULL AND (f.mtime, f.id) < (?, ?)"
+        " ORDER BY f.mtime DESC, f.id DESC LIMIT 1"
     )
-    assert conn.execute(sql, (folder_id, mtime, slug)).fetchone() is not None
-    assert_no_growing_scan(conn, sql, (folder_id, mtime, slug))
+    assert conn.execute(sql, (folder_id, mtime, file_id)).fetchone() is not None
+    assert_no_growing_scan(conn, sql, (folder_id, mtime, file_id))
 
 
 # --- folders ---------------------------------------------------------------
 
 
 def test_a_folder_page_lists_its_own_files(library):
+    """Two queries on purpose: the address is resolved, then the page is read.
+
+    Joining `entity` to match the slug inside the page query gave the planner
+    a filter on a table it had to reach through `file`, so it drove from
+    `file` and sorted the result -- `SCAN f USING INDEX file_added` plus a
+    temp B-tree, on a query that wants one folder. With the id in hand it is
+    one index search.
+
+    COLLATE NOCASE to match `file_in_folder`, which is what makes the folder
+    an ordered walk rather than a sort -- and it is the order a person
+    expects, since the platform's own filesystem is case-insensitive.
+    """
     conn = library["conn"]
     folder_slug = conn.execute(
         "SELECT e.slug FROM folder fo JOIN entity e ON e.id=fo.id WHERE fo.name='portraits'"
     ).fetchone()[0]
+    address = "SELECT id FROM entity WHERE kind='folder' AND slug=?"
+    folder_id = conn.execute(address, (folder_slug,)).fetchone()[0]
     sql = (
         "SELECT e.slug, f.name FROM file f JOIN entity e ON e.id=f.id"
-        " JOIN folder fo ON fo.id=f.folder_id JOIN entity fe ON fe.id=fo.id"
-        " WHERE fe.slug=? AND f.missing_since IS NULL ORDER BY f.name LIMIT 120"
+        " WHERE f.folder_id=? AND f.missing_since IS NULL"
+        " ORDER BY f.name COLLATE NOCASE LIMIT 120"
     )
-    rows = conn.execute(sql, (folder_slug,)).fetchall()
+    rows = conn.execute(sql, (folder_id,)).fetchall()
     assert len(rows) == 7
-    assert_no_growing_scan(conn, sql, (folder_slug,))
+    assert_no_growing_scan(conn, address, (folder_slug,))
+    assert_no_growing_scan(conn, sql, (folder_id,))
 
 
 def test_a_breadcrumb_walks_up_without_a_path(library):
@@ -266,18 +353,29 @@ def test_the_models_page_counts_pictures_not_mentions(library):
 
 
 def test_a_model_page_lists_what_it_made(library):
+    """Same shape as the folder page: resolve the address, then read.
+
+    Matching the slug inside the query made the planner scan the whole of
+    `file_artifact` and filter afterwards, which on the checkpoint most of a
+    library was made with means reading most of the library. Given the id it
+    is a covering-index search, and the rows arrive in file order without a
+    sort because `file_artifact` is WITHOUT ROWID and its primary key leads
+    on file_id.
+    """
     conn = library["conn"]
     slug = conn.execute(
         "SELECT e.slug FROM artifact a JOIN entity e ON e.id=a.id WHERE a.kind='checkpoint'"
     ).fetchone()[0]
+    address = "SELECT id FROM entity WHERE kind='artifact' AND slug=?"
+    artifact_id = conn.execute(address, (slug,)).fetchone()[0]
     sql = (
-        "SELECT fe.slug, f.name FROM entity e JOIN artifact a ON a.id=e.id"
-        " JOIN file_artifact fa ON fa.artifact_id=a.id"
+        "SELECT fe.slug, f.name FROM file_artifact fa"
         " JOIN file f ON f.id=fa.file_id AND f.missing_since IS NULL"
-        " JOIN entity fe ON fe.id=f.id WHERE e.slug=? ORDER BY f.name"
+        " JOIN entity fe ON fe.id=f.id WHERE fa.artifact_id=?"
     )
-    assert len(conn.execute(sql, (slug,)).fetchall()) == 7
-    assert_no_growing_scan(conn, sql, (slug,))
+    assert len(conn.execute(sql, (artifact_id,)).fetchall()) == 7
+    assert_no_growing_scan(conn, address, (slug,))
+    assert_no_growing_scan(conn, sql, (artifact_id,))
 
 
 def test_the_cross_axis_view_is_one_query(library):
@@ -368,10 +466,16 @@ def test_the_ways_page_is_generated_from_the_library(library):
         "SELECT source, key, value_kind, occurrences FROM param_key ORDER BY occurrences DESC"
     ).fetchall()
     assert rows, "the library taught the facet list nothing"
-    counted = dict(
-        conn.execute("SELECT key, count(*) FROM file_param GROUP BY key").fetchall()
+    # Grouped by (source, key) on both sides -- param_key's primary key. On
+    # `key` alone the dict kept one row per name while the GROUP BY summed
+    # across sources, so the two agreed by accident and would have gone on
+    # agreeing through a real drift.
+    counted = {(s, k): n for s, k, n in conn.execute(
+        "SELECT source, key, count(*) FROM file_param GROUP BY source, key"
+    )}
+    assert {(r[0], r[1]): r[3] for r in rows} == counted, (
+        "the facet counts disagree with the rows"
     )
-    assert {r[1]: r[3] for r in rows} == counted, "the facet counts disagree with the rows"
 
 
 # --- lineage ---------------------------------------------------------------
@@ -402,7 +506,9 @@ def test_the_album_page_lists_its_members(library):
     sql = (
         "SELECT fe.slug, f.name FROM collection_file cf"
         " JOIN file f ON f.id=cf.file_id AND f.missing_since IS NULL"
-        " JOIN entity fe ON fe.id=f.id WHERE cf.collection_id=? ORDER BY f.name"
+        # Ordered on the primary key's second column, so the membership is
+        # walked in order rather than gathered and sorted.
+        " JOIN entity fe ON fe.id=f.id WHERE cf.collection_id=? ORDER BY cf.file_id"
     )
     assert len(conn.execute(sql, (album,)).fetchall()) == 1
     assert_no_growing_scan(conn, sql, (album,))

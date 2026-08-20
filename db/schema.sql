@@ -22,7 +22,15 @@ CREATE TABLE entity (
     -- ANGLES Degrees.
     -- BOXES  Fractions of the frame, 0..1. See `region`.
     -- ====================================================================
-    id   INTEGER PRIMARY KEY,
+    -- AUTOINCREMENT, which on a rowid table means "never hand out an id this
+    -- table has ever used". Plain `INTEGER PRIMARY KEY` reuses the largest
+    -- free rowid, and the minter compounded it by computing `max(id) + 1`
+    -- itself: delete the newest entity and the next one created took its id
+    -- with a different uuid, so anything holding an id outside this database
+    -- -- a thumbnail cache key, an export, a bookmarked address -- silently
+    -- resolved to a different picture. SQLite keeps the maximum ever used in
+    -- `sqlite_sequence` (refs/sqlite/sqlite/src/insert.c:385-391).
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),
     kind TEXT NOT NULL CHECK (kind IN
            ('file','folder','person','artifact','prompt','collection')),
@@ -170,7 +178,16 @@ CREATE TABLE file (
     inode          INTEGER,
     content_sha256 TEXT,
     -- The pixels actually on disk, not what any recipe asked for; see
-    -- `generation.width`, which is the request and may differ.
+    -- `generation.width`, which is the request and may differ. Written by
+    -- ingest from the container it already opens to read the metadata, so
+    -- they cost nothing extra -- and NULL on a video, whose dimensions need
+    -- the same probe `duration` is waiting on.
+    --
+    -- Both were NULL for everything until the sweep that was supposed to
+    -- catch that stopped being a word search: `width` and `height` appear all
+    -- over db/ingest.py as attributes of the parsed recipe, so the column
+    -- read as produced while the disagreement this schema exists to expose
+    -- was unobservable in one direction.
     width          INTEGER,
     height         INTEGER,
     -- Seconds. NOTHING WRITES THIS YET: it needs a container probe, so every
@@ -197,6 +214,13 @@ CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)
 -- "newest first" is the default view; without this every page load sorts the
 -- whole table in a temp B-tree. Partial, because the default view is live files.
 CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL;
+-- The lightbox's next and previous. Without it "the picture before this one in
+-- this folder" sorted the whole folder to return one row, which on the largest
+-- folder in a real library is 50,007 rows sorted per arrow-key press. The
+-- tiebreak is `id` rather than the slug because the slug lives on `entity` and
+-- an index cannot span two tables.
+CREATE INDEX file_in_folder_by_time ON file(folder_id, mtime, id)
+    WHERE missing_since IS NULL;
 CREATE INDEX file_added  ON file(first_seen_at DESC) WHERE missing_since IS NULL;
 CREATE INDEX file_sha  ON file(content_sha256);
 CREATE INDEX file_kind ON file(kind);
@@ -1120,9 +1144,33 @@ CREATE TABLE setting (
 -- A deduplicated payload with no remaining referrer is garbage; without this it
 -- accumulates for the life of the library. RESTRICT protects referenced blobs,
 -- and says nothing about unreferenced ones.
+--
+-- Two referrers, so both are checked: a carrier holds a payload, and a region
+-- holds a segmentation mask. Collecting on the carrier alone deleted masks
+-- that were still pointed at; collecting on neither leaked every mask in the
+-- library on every rebuild, because `derived.drop_all` removes the regions and
+-- nothing was watching that side.
 CREATE TRIGGER blob_reclaim AFTER DELETE ON file_blob BEGIN
   DELETE FROM blob WHERE hash = OLD.blob_hash
-     AND NOT EXISTS (SELECT 1 FROM file_blob WHERE blob_hash = OLD.blob_hash);
+     AND NOT EXISTS (SELECT 1 FROM file_blob WHERE blob_hash = OLD.blob_hash)
+     AND NOT EXISTS (SELECT 1 FROM region WHERE mask_hash = OLD.blob_hash);
+END;
+
+-- A re-parse whose payload changed. The upsert that replaced INSERT OR REPLACE
+-- here updates the row rather than deleting it, so without this the old
+-- payload -- a whole workflow graph -- is stranded in `blob` for good.
+CREATE TRIGGER blob_reclaim_replaced AFTER UPDATE OF blob_hash ON file_blob
+WHEN NEW.blob_hash <> OLD.blob_hash BEGIN
+  DELETE FROM blob WHERE hash = OLD.blob_hash
+     AND NOT EXISTS (SELECT 1 FROM file_blob WHERE blob_hash = OLD.blob_hash)
+     AND NOT EXISTS (SELECT 1 FROM region WHERE mask_hash = OLD.blob_hash);
+END;
+
+CREATE TRIGGER blob_reclaim_mask AFTER DELETE ON region
+WHEN OLD.mask_hash IS NOT NULL BEGIN
+  DELETE FROM blob WHERE hash = OLD.mask_hash
+     AND NOT EXISTS (SELECT 1 FROM file_blob WHERE blob_hash = OLD.mask_hash)
+     AND NOT EXISTS (SELECT 1 FROM region WHERE mask_hash = OLD.mask_hash);
 END;
 
 -- #16: nothing distinguished a database built from this DDL from one built by an

@@ -77,7 +77,13 @@ def region_from_pixels(conn, box, width: int, height: int, **kwargs) -> int:
 
     Offered so a caller with pixel coordinates converts once, here, rather
     than each detector inventing its own convention.
+
+    A zero dimension is what a truncated decode reports, and dividing by it
+    raised ZeroDivisionError out of whatever job was running. It is refused
+    by name instead: there is no rectangle inside a frame with no area.
     """
+    if width <= 0 or height <= 0:
+        raise ValueError(f"a {width}x{height} frame has nowhere to put a box")
     x, y, w, h = box
     return region(conn, x / width, y / height, w / width, h / height, **kwargs)
 
@@ -103,7 +109,21 @@ def stale(conn, table: str) -> list[int]:
     `IS NOT` rather than `<>`, because a file that has never been hashed has
     a NULL sha and `<>` is NULL-blind: with `<>` every derivation attached to
     an unhashed file reads as current forever.
+
+    The table name is checked against the database rather than interpolated
+    on trust. It is the one place in this package where a caller's string
+    reaches the parser unbound, and the rest of the repo already refuses that
+    shape -- see tests/test_sql_is_built_from_structure_only.py.
     """
+    known = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+            " AND name LIKE 'derived\\_%' ESCAPE '\\'"
+        )
+    }
+    if table not in known:
+        raise ValueError(f"{table!r} is not a derived table")
     return [
         row[0]
         for row in conn.execute(

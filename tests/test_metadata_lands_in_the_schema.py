@@ -351,28 +351,57 @@ def test_every_writer_reaches_the_schema(db, ingest, written, writer):
 
 
 @pytest.mark.parametrize("writer", sorted(WRITERS))
+def leaves(value, prefix=""):
+    """Every scalar inside a parsed value, under the dotted key it lands at.
+
+    Mirrors what `ingest._param` has to do with a structure. The test needs
+    its own walk of the parsed output, because the point is to compare two
+    independent accounts of what was in the file -- the parser's and the
+    database's.
+    """
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield from leaves(inner, f"{prefix}.{key}" if prefix else str(key))
+    elif isinstance(value, list):
+        for index, inner in enumerate(value):
+            yield from leaves(inner, f"{prefix}.{index}" if prefix else str(index))
+    elif value is not None and str(value).strip():
+        yield prefix, str(value).strip()
+
+
+@pytest.mark.parametrize("writer", sorted(WRITERS))
 def test_no_parsed_field_is_dropped(db, ingest, written, writer):
-    """Every key the parser produced is queryable afterwards.
+    """Every key the parser produced is queryable afterwards, structures included.
 
     The old app had one `extra` JSON column and nothing could search it.
     A key that survives parsing and then vanishes into a blob is the same
     loss with extra steps.
+
+    This compared `{k for k, v in extra.items() if not isinstance(v, (dict,
+    list))} <= stored` -- so a structured value was excluded from the claim
+    by construction, which is exactly the case the flattening exists for and
+    the only case that can fail, and `<=` let the database hold anything it
+    liked besides. It is the full leaf set, and it is equality.
     """
     result = ingest(written[writer])
     assert not result["homeless"], (
         f"{writer}: {result['homeless']} has no scalar home; file_param stores "
         f"text and numbers, so a structured value needs flattening or its own table"
     )
-    stored = {
-        key for (key,) in db.execute(
-            "SELECT key FROM file_param WHERE file_id=? AND source='generation'",
-            (result["file_id"],),
-        )
-    }
-    expected = {k for k, v in result["gen"].extra.items() if not isinstance(v, (dict, list))}
+    stored = dict(db.execute(
+        "SELECT key, value_text FROM file_param WHERE file_id=? AND source='generation'",
+        (result["file_id"],),
+    ))
+    expected = dict(leaves(result["gen"].extra))
     if result["gen"].version:
-        expected.add("version")
-    assert expected <= stored, f"{writer} lost {expected - stored}"
+        expected["version"] = str(result["gen"].version).strip()
+    assert not (set(expected) - set(stored)), f"{writer} lost {set(expected) - set(stored)}"
+    assert not (set(stored) - set(expected)), (
+        f"{writer} stored fields the parser did not produce: {set(stored) - set(expected)}"
+    )
+    assert stored == expected, f"{writer} stored a different value for {
+        {k for k in expected if stored.get(k) != expected[k]}
+    }"
 
 
 @pytest.mark.parametrize("writer", sorted(WRITERS))

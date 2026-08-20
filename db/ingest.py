@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import os
 from dataclasses import dataclass, field
 
 import metaparse
@@ -34,6 +36,62 @@ from .scan import mint
 
 #: PNG text chunks that carry a whole workflow graph rather than a value.
 _GRAPH_SLOTS = ("workflow", "prompt")
+
+#: What each parser owns, and therefore what it has to be able to take back.
+#:
+#: Without this a re-parse could only add. A file first read by an adapter
+#: that found three LoRAs and then re-read by a corrected one that finds one
+#: kept all three, because `INSERT OR REPLACE` touches only the keys the new
+#: parse produced; a field that stopped being emitted stayed in `file_param`
+#: with `param_key.occurrences` still counting it. The stale rows are
+#: indistinguishable from real ones -- neither table carries which parser
+#: wrote it -- so "improving a parser is a re-parse of the database rather
+#: than a re-read of every file on disk" was not true of anything.
+_OWNED = {
+    "generation": {
+        "sources": ("generation", "container"),
+        "roles": (
+            "checkpoint", "refiner", "lora", "vae", "controlnet", "upscaler",
+            "embedding", "hypernetwork", "ip_adapter", "text_encoder", "unet",
+        ),
+        "carriers": ("png_text", "xmp"),
+    },
+    "camera": {
+        "sources": ("exif",),
+        "roles": ("captured_with", "mounted_lens"),
+        "carriers": ("exif",),
+    },
+    "sidecar": {
+        "sources": ("sidecar",),
+        "roles": (),
+        "carriers": ("sidecar",),
+    },
+}
+
+
+def retract(conn, file_id: int, scope: str) -> None:
+    """Take back everything one parser wrote about this file.
+
+    Called before the parser writes again, in the same transaction, so a
+    re-parse is a replacement rather than an accumulation. Deleting the
+    carriers rather than replacing them also lets `blob_reclaim` collect the
+    payloads that are now referenced by nothing -- `INSERT OR REPLACE` fires
+    no DELETE trigger, so every re-parse whose bytes had changed used to
+    strand a whole workflow graph in `blob` permanently.
+    """
+    owned = _OWNED[scope]
+    for table, column, values in (
+        ("file_param", "source", owned["sources"]),
+        ("file_artifact", "role", owned["roles"]),
+        ("file_blob", "carrier", owned["carriers"]),
+    ):
+        if not values:
+            continue
+        marks = ",".join("?" * len(values))
+        conn.execute(
+            f"DELETE FROM {table} WHERE file_id = ? AND {column} IN ({marks})",
+            (file_id, *values),
+        )
 
 @dataclass
 class Ingested:
@@ -106,6 +164,30 @@ def prompt(conn, text: str, now: float) -> int | None:
     return prompt_id
 
 
+def _as_number(text: str) -> float | None:
+    """A scraped string as a number, or None where it is not one.
+
+    `float()` alone is too generous in two directions and both reach
+    `value_num`, which facets range over.
+
+    It accepts Python's own literal grammar, which no metadata format shares:
+    `1_000` became 1000.0, indistinguishable from a real thousand written by
+    a tool that meant it.
+
+    It accepts infinities and NaN. `capture._number` already refuses those and
+    says why -- NaN compares false against everything including itself, so a
+    range facet silently drops the row -- and the same column was filtered on
+    the EXIF path and unfiltered on this one.
+    """
+    if "_" in text or not any(character.isdigit() for character in text):
+        return None
+    try:
+        number = float(text)
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _param(conn, file_id: int, source: str, key: str, value) -> bool:
     """One field, as text and as a number where it is one."""
     if value is None:
@@ -122,10 +204,7 @@ def _param(conn, file_id: int, source: str, key: str, value) -> bool:
     text = str(value).strip()
     if not text:
         return False
-    try:
-        number = float(text)
-    except ValueError:
-        number = None
+    number = _as_number(text)
     # Never INSERT OR REPLACE: it fires no DELETE trigger, so the FTS entry
     # keyed on the old rowid is stranded and the registry count drifts.
     # The schema refuses it outright.
@@ -152,22 +231,38 @@ def _carrier(conn, file_id: int, carrier: str, slot: str, payload, now: float, p
         "INSERT OR IGNORE INTO blob(hash, payload, payload_bin, byte_len) VALUES(?, ?, ?, ?)",
         (digest, None if binary else str(payload), payload if binary else None, len(data)),
     )
+    # Not INSERT OR REPLACE. REPLACE fires no DELETE trigger, so `blob_reclaim`
+    # never sees the payload the row used to point at and it stays in `blob`
+    # forever -- measured in whole workflow graphs, per re-parse, per file.
     conn.execute(
-        "INSERT OR REPLACE INTO file_blob(file_id, carrier, slot, blob_hash, parsed_by, seen_at)"
-        " VALUES(?, ?, ?, ?, ?, ?)",
+        "INSERT INTO file_blob(file_id, carrier, slot, blob_hash, parsed_by, seen_at)"
+        " VALUES(?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, carrier, slot) DO UPDATE SET"
+        " blob_hash = excluded.blob_hash, parsed_by = excluded.parsed_by,"
+        " seen_at = excluded.seen_at",
         (file_id, carrier, slot, digest, parsed_by, now),
     )
 
 
 def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     """The recipe: tool, prompt, weights, sampler settings, and the long tail."""
+    retract(conn, file_id, "generation")
     parsed = metaparse.parse_file(path)
     raw = load_raw(path)
 
     reader = f"metaparse/{parsed.tool}" if parsed is not None else None
+    # The text the adapter actually read, so the claim is about this carrier
+    # rather than about its name. Marking only `_GRAPH_SLOTS` said every
+    # A1111 `parameters` chunk was un-understood -- while the whole recipe
+    # had just been read out of it -- so the backlog "what does nothing
+    # understand yet" listed the files that parsed best.
+    consumed = (parsed.raw or "").strip() if parsed is not None else ""
     if raw is not None:
         for slot, value in raw.text.items():
-            claimed = reader if slot in _GRAPH_SLOTS else None
+            understood = slot in _GRAPH_SLOTS or (
+                bool(consumed) and str(value).strip() == consumed
+            )
+            claimed = reader if understood else None
             _carrier(conn, file_id, "png_text", slot, value, now, parsed_by=claimed)
             out.carriers += 1
             if claimed is None:
@@ -183,6 +278,15 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
         ):
             if _param(conn, file_id, "container", key, value):
                 out.params += 1
+        # ...and the two the file row carries in its own right, because "the
+        # pixels on disk" is not a searchable string, it is what every layout
+        # decision and every "the recipe asked for 832x1216 and got this"
+        # comparison reads. The decode has already happened.
+        if raw.width and raw.height:
+            conn.execute(
+                "UPDATE file SET width = ?, height = ? WHERE id = ?",
+                (raw.width, raw.height, file_id),
+            )
 
     if parsed is None:
         return
@@ -248,6 +352,12 @@ def one(conn, file_id: int, path, now: float) -> Ingested:
     out = Ingested()
     generation(conn, file_id, path, now, out)
 
+    # Retracted here rather than inside `store`, which returns early on a file
+    # with no camera tags: a picture whose bytes were replaced by ones
+    # carrying no EXIF has to lose the old readings, not keep them.
+    retract(conn, file_id, "camera")
+    conn.execute("DELETE FROM capture WHERE file_id = ?", (file_id,))
+
     found = capture_module.read(path)
     out.unreadable = found.unreadable
     if not found.is_empty:
@@ -262,7 +372,14 @@ def one(conn, file_id: int, path, now: float) -> Ingested:
 
 
 def sidecar(conn, file_id: int, path, now: float) -> int:
-    """A `.json` written beside a file, as fields rather than as a document."""
+    """A `.json` written beside a file, as fields rather than as a document.
+
+    The slot is the sidecar's own filename, never the path it was read from.
+    `file_blob.slot` is part of that table's primary key, so an absolute path
+    there was identity derived from location -- inside the table whose whole
+    point is that the payload outlives where it was found. Moving the library
+    duplicated every sidecar row, and the old ones never went away.
+    """
     try:
         with open(path, "r", encoding="utf-8") as handle:
             document = json.load(handle)
@@ -270,5 +387,6 @@ def sidecar(conn, file_id: int, path, now: float) -> int:
         return 0
     if not isinstance(document, dict):
         return 0
-    _carrier(conn, file_id, "sidecar", str(path), json.dumps(document), now)
+    retract(conn, file_id, "sidecar")
+    _carrier(conn, file_id, "sidecar", os.path.basename(str(path)), json.dumps(document), now)
     return sum(1 for key, value in document.items() if _param(conn, file_id, "sidecar", key, value))

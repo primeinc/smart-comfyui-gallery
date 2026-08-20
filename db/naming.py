@@ -12,6 +12,8 @@ taken that name.
 
 from __future__ import annotations
 
+import math
+
 from .scan import mint, slugify
 
 
@@ -73,6 +75,16 @@ def rename(conn, entity_id: int, new_name: str, now: float) -> str:
         suffix += 1
         slug = f"{base}-{suffix}"
 
+    # `retired_at` is in the primary key, and `now` is whatever the caller
+    # passed -- a batch rename computes it once, so two entities of one kind
+    # releasing the same slug in one pass collided and the second raised. The
+    # key needs to be distinct, not the timestamp to be exact: nudge forward
+    # to the first instant this (kind, slug) is free.
+    while conn.execute(
+        "SELECT 1 FROM slug_history WHERE kind = ? AND slug = ? AND retired_at = ?",
+        (kind, old, now),
+    ).fetchone():
+        now = math.nextafter(now, math.inf)
     conn.execute(
         "INSERT INTO slug_history(kind, slug, entity_id, retired_at) VALUES(?, ?, ?, ?)",
         (kind, old, entity_id, now),

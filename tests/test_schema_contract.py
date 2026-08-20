@@ -1551,14 +1551,25 @@ def test_an_unhashed_file_does_not_read_as_current(db):
     )
 
 
-def test_the_built_database_matches_the_ddl():
+def test_the_built_database_matches_the_ddl(tmp_path):
     """The built file drifted a whole generation behind schema.sql and nothing
     reported it: the suite loads the DDL into :memory:, so it never reads the
-    file it claims to describe."""
-    from db.build import DEFAULT, drift
+    file it claims to describe.
+
+    Both files are checked. The developer's `db/gallery.db` is the one that
+    drifts, and it is gitignored -- so on CI and on a fresh clone this test
+    skipped, and the only check that reads a built file never ran anywhere it
+    mattered. Building one here means the build path itself is always
+    exercised.
+    """
+    from db.build import DEFAULT, build, drift
+
+    made = tmp_path / "gallery.db"
+    build(made)
+    assert drift(made) == [], "the build path does not produce the DDL's database"
 
     if not DEFAULT.exists():
-        pytest.skip("no built database; run python -m db.build")
+        pytest.skip("no local build to compare; the built-from-scratch check above ran")
     assert drift(DEFAULT) == []
 
 
@@ -1575,6 +1586,25 @@ def test_the_drift_check_can_actually_fail(tmp_path):
     conn.commit()
     conn.close()
     assert drift(path) != [], "the drift check cannot see a missing index"
+
+
+def test_the_drift_check_sees_a_wrong_stamp(tmp_path):
+    """Control for the half it could not see. `objects()` reads sqlite_master
+    only, so a file carrying the wrong version -- the case the stamps exist
+    for -- was reported as in sync with the DDL that does not stamp it."""
+    import sqlite3 as _s
+
+    from db.build import drift
+    from db.connect import schema_sql
+
+    path = tmp_path / "misstamped.db"
+    conn = _s.connect(str(path))
+    conn.executescript(schema_sql())
+    conn.execute("PRAGMA user_version = 99")
+    conn.execute("PRAGMA application_id = 0")
+    conn.commit()
+    conn.close()
+    assert any("stamped" in line for line in drift(path)), drift(path)
 
 
 def test_deleting_a_param_removes_it_from_the_index(db):
@@ -1908,12 +1938,17 @@ def test_a_column_naming_a_fixed_set_is_constrained_to_it(db):
     )
 
 
-def test_a_column_nothing_writes_says_so(db):
-    """A column no producer fills is unfinished, not neutral.
+def columns_actually_written(db):
+    """Map each table to the columns some INSERT or UPDATE names on it.
 
-    It reads as a feature -- a facet built on it returns an empty library,
-    and nothing distinguishes "no video has a duration" from "nothing has
-    ever measured one". Whichever it is, the DDL has to say.
+    Parsed from the statements, not matched against the text. The check here
+    used to be `re.search(rf"\\b{column}\\b", source)` over every db/*.py file
+    concatenated -- comments and docstrings included -- so a column counted as
+    produced when its name appeared anywhere at all: in prose, as a local
+    variable, as an attribute of an unrelated object, or as a column of a
+    different table. `file.width` and `file.height` passed it for years'
+    worth of `typed.width` and `raw.width` in db/ingest.py while nothing has
+    ever written either one.
     """
     source = "".join(
         io.open(path, "r", encoding="utf-8", newline="").read()
@@ -1924,18 +1959,57 @@ def test_a_column_nothing_writes_says_so(db):
     source += "".join(
         row[0] or "" for row in db.execute("SELECT sql FROM sqlite_master WHERE type='trigger'")
     )
+    # Quotes out, whitespace flattened: SQL in this repo is written as adjacent
+    # Python string literals, so a statement only reads as one after the
+    # delimiters between its halves are gone.
+    flat = " ".join(re.sub(r"""["']""", " ", source).split())
+
+    written: dict[str, set[str]] = {}
+    everything: set[str] = set()
+    for match in re.finditer(
+        r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\(([^()]*)\))?",
+        flat, re.IGNORECASE,
+    ):
+        table = match.group(1)
+        if match.group(3) is None:
+            # No column list: every column is being written.
+            everything.add(table)
+            continue
+        written.setdefault(table, set()).update(
+            name.strip() for name in match.group(3).split(",")
+        )
+    for match in re.finditer(
+        r"UPDATE\s+([A-Za-z_][A-Za-z0-9_]*)\s+SET\s+(.*?)(?:\s+WHERE\s|\s+RETURNING\s|;)",
+        flat, re.IGNORECASE,
+    ):
+        written.setdefault(match.group(1), set()).update(
+            re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", match.group(2))
+        )
+    # `DO UPDATE SET` needs no pass of its own: an upsert can only set columns
+    # its INSERT already named, and those are collected above.
+    return written, everything
+
+
+def test_a_column_nothing_writes_says_so(db):
+    """A column no producer fills is unfinished, not neutral.
+
+    It reads as a feature -- a facet built on it returns an empty library,
+    and nothing distinguishes "no video has a duration" from "nothing has
+    ever measured one". Whichever it is, the DDL has to say.
+    """
+    written, everything = columns_actually_written(db)
     silent = []
     for (table,) in db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ):
-        if table in virtual_table_names(db):
+        if table in virtual_table_names(db) or table in everything:
             continue
         declaration = db.execute(
             "SELECT sql FROM sqlite_master WHERE name=?", (table,)
         ).fetchone()[0]
         for row in db.execute(f"PRAGMA table_info({table})"):
             column, is_pk = row[1], row[5]
-            if is_pk or re.search(rf"\b{re.escape(column)}\b", source):
+            if is_pk or column in written.get(table, ()):
                 continue
             # The admission sits in the comment block above the column, so
             # look at the whole declaration rather than forward from the name.
@@ -1949,6 +2023,23 @@ def test_a_column_nothing_writes_says_so(db):
     assert silent == [], (
         f"no producer writes these, and the DDL does not admit it: {silent}"
     )
+
+
+def test_the_producer_sweep_reads_statements_not_prose(db):
+    """The control. Without it the sweep passes on a column that is only ever
+    mentioned, which is how `file.width` and `file.height` read as produced
+    while nothing had ever written either."""
+    written, everything = columns_actually_written(db)
+
+    assert "file" not in everything, "every INSERT into file names its columns"
+    assert {"folder_id", "name", "content_sha256"} <= written["file"], (
+        "the sweep cannot see the columns apply_scan plainly writes"
+    )
+    # A word this repo says constantly, and never as a column of `file`.
+    assert "parsed_by" not in written["file"]
+    # Filled entirely by a trigger, which is the half a Python-only sweep
+    # would call dead.
+    assert "occurrences" in written["param_key"]
 
 
 def test_the_build_control_counts_real_tables(db):

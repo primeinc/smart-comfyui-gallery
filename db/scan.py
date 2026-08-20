@@ -20,6 +20,7 @@ unrelated edits.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import hashlib
 import os
@@ -55,6 +56,13 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None]):
     tuples and *missing* lists file ids whose content was found nowhere. A
     missing file is never deleted here; the caller records ``missing_since``,
     because unreachable and deleted are different things.
+
+    Deliberately global, unlike `observe_tree`. A file dragged from one drive
+    to another is a move, and scoping the candidate pool to the root being
+    walked would make it a delete on one scan and an unrelated arrival on the
+    next -- which is the data-loss shape this whole module exists to remove.
+    `scan_all` is how a multi-root library gets that in one pass whatever
+    order the roots come in.
     """
     rows = {
         (r[1], r[2]): (r[0], r[3])
@@ -65,9 +73,16 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None]):
 
     # Pass 1 -- same place, same bytes. Nothing to reconcile, no hashing beyond
     # what the caller already had to do to fill `observed`.
+    #
+    # A stored hash of NULL means "never hashed", not "different bytes". It
+    # never equals anything, so the row fell past pass 2 (which skips NULL
+    # candidates) into pass 3 and was reported REPLACED -- on every scan,
+    # for the life of the row, because the hash was never acquired either.
+    # REPLACED is what says the bytes were overwritten, so the whole library
+    # re-invalidated its derived work every pass.
     for key, sha in observed.items():
         row = rows.get(key)
-        if row and sha is not None and row[1] == sha:
+        if row and (row[1] is None or row[1] == sha):
             result[key] = Resolution(Outcome.UNIQUE_MATCH, row[0])
             settled.add(row[0])
 
@@ -168,23 +183,30 @@ def mint(conn, kind: str, seed: str) -> int:
 
     The slug is seeded from a name and then belongs to the entity: renaming
     the file on disk does not change it. An entity with nothing readable to
-    seed from gets `<kind>-<short id>` rather than no address at all.
+    seed from gets `<kind>-<short id>` rather than no address at all, taken
+    from its uuid.
+
+    The id comes from SQLite, never from `max(id) + 1`. Computing it here
+    reused the id of a deleted entity -- with a different uuid, so an id held
+    anywhere outside this database resolved afterwards to a different picture
+    -- and, being a second statement with no transaction around it, handed
+    two concurrent writers the same number. `entity.id` is AUTOINCREMENT and
+    this reads what the insert allocated.
     """
     base = slugify(seed) or None
-    row = conn.execute("SELECT max(id) FROM entity").fetchone()
-    next_id = (row[0] or 0) + 1
-    slug = base or f"{kind}-{next_id:x}"
+    identity = uuid.uuid4()
+    slug = base or f"{kind}-{identity.hex[:6]}"
     suffix = 1
     while conn.execute(
         "SELECT 1 FROM entity WHERE kind = ? AND slug = ?", (kind, slug)
     ).fetchone():
         suffix += 1
         slug = f"{base or kind}-{suffix}"
-    conn.execute(
-        "INSERT INTO entity(id, uuid, kind, slug) VALUES(?, ?, ?, ?)",
-        (next_id, uuid.uuid4().bytes, kind, slug),
+    cursor = conn.execute(
+        "INSERT INTO entity(uuid, kind, slug) VALUES(?, ?, ?)",
+        (identity.bytes, kind, slug),
     )
-    return next_id
+    return int(cursor.lastrowid or 0)
 
 
 def ensure_folder(
@@ -319,10 +341,16 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
     already had, and left the ratings on the paths. Content reconciliation
     cannot catch that -- it never sees the real bytes.
     """
+    # Scoped to this root. `stored` is only consulted for paths under the tree
+    # being walked, and a folder belongs to exactly one root, so reading the
+    # whole `file` table here held every row in the library in memory to answer
+    # questions about one drive -- twice per scan, counting resolve_scan.
     stored = {
         (folder_id, name): (size, mtime, inode, sha)
         for folder_id, name, size, mtime, inode, sha in conn.execute(
-            "SELECT folder_id, name, size, mtime, inode, content_sha256 FROM file"
+            "SELECT f.folder_id, f.name, f.size, f.mtime, f.inode, f.content_sha256"
+            "  FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?",
+            (root_id,),
         )
     }
     observed: dict[tuple[int, str], Found] = {}
@@ -365,10 +393,24 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
                 continue
             inode = info.st_ino or None
             previous = stored.get((folder_id, name))
-            if previous is not None and previous[:3] == (info.st_size, info.st_mtime, inode):
+            # `previous[3] is not None` is part of the test: a row that has
+            # never been hashed has nothing to reuse, and returning its NULL
+            # here is what made the missing hash permanent -- the shortcut
+            # kept handing back NULL for as long as size, mtime and inode
+            # held still, which for an untouched file is forever.
+            if (
+                previous is not None
+                and previous[3] is not None
+                and previous[:3] == (info.st_size, info.st_mtime, inode)
+            ):
                 sha = previous[3]
             else:
-                sha = sha256_of(path)
+                try:
+                    sha = sha256_of(path)
+                except OSError:
+                    # Locked or vanished between stat and read. Not observed
+                    # on this pass rather than observed as unreadable.
+                    continue
                 hashed += 1
             observed[(folder_id, name)] = Found(
                 sha=sha,
@@ -406,7 +448,7 @@ class ScanResult(NamedTuple):
     hashed: int
 
 
-def apply_scan(conn, observed: dict, now: float) -> ScanResult:
+def apply_scan(conn, observed: dict, now: float, *, hashed: int = 0) -> ScanResult:
     """Write what the matcher decided.
 
     Nothing here deletes. A row whose bytes are gone gets `missing_since`,
@@ -414,8 +456,40 @@ def apply_scan(conn, observed: dict, now: float) -> ScanResult:
     destructive reading of that ambiguity is the one that loses data.
 
     The write order is load-bearing, and each step exists because leaving it
-    out raises a uniqueness error on a perfectly ordinary change.
+    out raises a uniqueness error on a perfectly ordinary change. It is also
+    the reason for the transaction: step 2 parks every moved row under a name
+    like `?parked-12` and step 3 gives them their real ones, so a failure in
+    between leaves a library of files literally called `?parked-12` unless
+    the whole sequence is one write. Calling this "load-bearing" and leaving
+    atomicity to whoever remembers is not a contract.
     """
+    with _one_write(conn, "apply_scan"):
+        return _apply(conn, observed, now, hashed)
+
+
+@contextlib.contextmanager
+def _one_write(conn, name: str):
+    """The enclosed writes, all or none.
+
+    A SAVEPOINT rather than BEGIN/COMMIT, because this has to hold whichever
+    way the connection is configured. Under Python's legacy default an
+    ordinary INSERT has already opened a transaction, so `BEGIN` raises and a
+    guard that skips itself when one is open would be inert on exactly the
+    path it exists for. A savepoint nests inside a caller's transaction when
+    there is one and starts its own when there is not, and `ROLLBACK TO`
+    undoes precisely these writes either way.
+    """
+    conn.execute(f"SAVEPOINT {name}")
+    try:
+        yield
+    except BaseException:
+        conn.execute(f"ROLLBACK TO {name}")
+        conn.execute(f"RELEASE {name}")
+        raise
+    conn.execute(f"RELEASE {name}")
+
+
+def _apply(conn, observed: dict, now: float, hashed: int) -> ScanResult:
     resolutions, missing = resolve_scan(conn, {k: v.sha for k, v in observed.items()})
     counts = dict.fromkeys(Outcome, 0)
 
@@ -490,7 +564,7 @@ def apply_scan(conn, observed: dict, now: float) -> ScanResult:
         added=counts[Outcome.NEW],
         ambiguous=counts[Outcome.AMBIGUOUS],
         missing=len(missing),
-        hashed=0,
+        hashed=hashed,
     )
 
 
@@ -514,5 +588,35 @@ def scan(conn, root_id: int, root_path, now: float) -> ScanResult:
             f"unreachable root and an emptied one look the same from here."
         )
     conn.execute("UPDATE root SET online = 1 WHERE id = ?", (root_id,))
-    observed, hashed = observe_tree(conn, root_id, root_path, now)
-    return apply_scan(conn, observed, now)._replace(hashed=hashed)
+    # The folder writes belong inside the same savepoint as the file writes:
+    # observe_tree creates, renames and marks folders missing, and a failure
+    # during apply_scan would otherwise leave those standing.
+    with _one_write(conn, "scan"):
+        observed, hashed = observe_tree(conn, root_id, root_path, now)
+        return apply_scan(conn, observed, now, hashed=hashed)
+
+
+def scan_all(conn, now: float) -> ScanResult:
+    """Every online root, observed first and reconciled once.
+
+    Scanning roots one at a time cannot see a file dragged from one drive to
+    another: whichever root is walked first either loses the row to
+    `missing_since` or mints a second one, and the authored state stays with
+    whichever half the ordering picked. Observing everything before resolving
+    anything makes that one move, in either order.
+
+    A root that cannot be read is skipped and marked offline. It is not
+    observed as empty, so nothing under it is concluded to be gone.
+    """
+    with _one_write(conn, "scan_all"):
+        observed: dict = {}
+        hashed = 0
+        for root_id, path in conn.execute("SELECT id, path FROM root").fetchall():
+            if not os.path.isdir(path):
+                conn.execute("UPDATE root SET online = 0 WHERE id = ?", (root_id,))
+                continue
+            conn.execute("UPDATE root SET online = 1 WHERE id = ?", (root_id,))
+            found, read = observe_tree(conn, root_id, path, now)
+            observed.update(found)
+            hashed += read
+        return apply_scan(conn, observed, now, hashed=hashed)
