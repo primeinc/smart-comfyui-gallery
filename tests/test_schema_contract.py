@@ -44,6 +44,16 @@ _NOT_A_REFERENCE = {
     ("job_item", "item_id"),
 }
 
+# Guards that fire on INSERT and deliberately not on UPDATE. Each needs a
+# reason, because the default reading of an INSERT-only rule is that somebody
+# forgot the other half.
+_INSERT_ONLY_ON_PURPOSE = {
+    # FK cascade actions DO fire UPDATE triggers (verified). Guarding this on
+    # UPDATE would abort the ON DELETE SET NULL that detaches a judged target,
+    # and losing the human judgement is worse than holding a nulled pointer.
+    "feedback: feedback must name what it judges",
+}
+
 # TEXT columns whose name looks like an enum but whose values are genuinely
 # open. Each is a decision on the record, not an oversight.
 _FREE_TEXT = {
@@ -1577,6 +1587,78 @@ def test_a_name_survives_dropping_everything_derived(db):
         "JOIN person_assertion pa ON pa.person_id = p.id GROUP BY p.id"
     ).fetchall()
     assert rows == [("Ilse", 1)]
+
+
+def test_a_guard_that_only_fires_on_insert_is_declared_as_such(db):
+    """A rule enforced on INSERT and not on UPDATE is one statement from
+    useless: write the row correctly, then change it.
+
+    Four were bypassable this way -- a camera's role updated to 'checkpoint',
+    a workflow reference repointed at a LoRA, and two derived rows updated to
+    cite a frame from a different file.
+
+    `feedback_names_a_target` is the deliberate exception and says so in the
+    schema: FK cascade actions DO fire UPDATE triggers, so guarding it on
+    UPDATE would abort the ON DELETE SET NULL that detaches a judged target,
+    and losing the human judgement is worse than holding a nulled pointer.
+    """
+    insert_only = []
+    guards = {}
+    for name, sql in db.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%RAISE(ABORT%'"
+    ):
+        match = re.search(r"(?:BEFORE|AFTER)\s+(\w+)[^;]*?\sON\s+(\w+)", sql, re.S)
+        if not match:
+            continue
+        event, table = match.group(1).upper(), match.group(2)
+        message = re.search(r"RAISE\(ABORT,\s*'([^']+)'", sql)
+        guards.setdefault((table, message.group(1) if message else name), set()).add(event)
+    for (table, message), events in sorted(guards.items()):
+        if "UPDATE" not in events and f"{table}: {message}" not in _INSERT_ONLY_ON_PURPOSE:
+            insert_only.append(f"{table}: {message}")
+
+    assert insert_only == [], (
+        f"these rules are bypassed by an UPDATE: {insert_only}. Add the UPDATE "
+        f"counterpart, or add the guard to _INSERT_ONLY_ON_PURPOSE with the reason."
+    )
+
+
+def test_a_subtype_row_cannot_be_repointed_at_another_entity(db):
+    """Written expecting the foreign key to cover this. It does not.
+
+    The FK only proves the target entity exists, and entity 1 does -- it is
+    just a folder. The rejection observed while reasoning about this came
+    from a row referencing the file, not from the supertype, so a file with
+    nothing pointing at it moved onto a folder's entity and stood.
+    """
+    tree(db)
+    a_file(db, 9, 1, "a.png")
+    with pytest.raises(sqlite3.IntegrityError, match="does not match file"):
+        db.execute("UPDATE file SET id=1 WHERE id=9")  # 1 is a folder's entity
+
+
+def test_an_entity_cannot_change_what_it_is(db):
+    """Six triggers check a subtype row sits on an entity of the matching
+    kind, all on INSERT. Guarding the supertype closes all six: without it
+    `UPDATE entity SET kind` left the file row and its entity disagreeing,
+    and nothing reported it."""
+    tree(db)
+    a_file(db, 9, 1, "a.png")
+    with pytest.raises(sqlite3.IntegrityError, match="cannot change kind"):
+        db.execute("UPDATE entity SET kind='folder' WHERE id=9")
+    # the control: renaming is what entities DO change, and must still work
+    db.execute("UPDATE entity SET slug='renamed' WHERE id=9")
+    assert db.execute("SELECT slug FROM entity WHERE id=9").fetchone()[0] == "renamed"
+
+
+def test_a_role_cannot_be_updated_into_a_lie(db):
+    """The insert-side rule with the statement that used to undo it."""
+    tree(db)
+    a_file(db, 9, 1, "a.png")
+    an_artifact(db, 600, "camera", "X-T5")
+    db.execute("INSERT INTO file_artifact(file_id,artifact_id,role) VALUES(9,600,'captured_with')")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("UPDATE file_artifact SET role='checkpoint' WHERE file_id=9")
 
 
 def test_every_foreign_key_column_can_be_looked_up_by(db):

@@ -30,6 +30,16 @@ CREATE TABLE entity (
     UNIQUE (kind, slug)
 ) STRICT;
 
+-- An entity is what it is for life. Six triggers check that a subtype row
+-- sits on an entity of the matching kind, and every one of them fires on
+-- INSERT only -- so `UPDATE entity SET kind='folder'` on a file's entity was
+-- accepted, and afterwards the file row and its entity disagreed with nothing
+-- reporting it. Guarding the supertype closes all six at the source.
+CREATE TRIGGER entity_kind_is_permanent BEFORE UPDATE OF kind ON entity
+WHEN NEW.kind <> OLD.kind BEGIN
+  SELECT RAISE(ABORT,'an entity cannot change kind');
+END;
+
 -- composite PK, tiny rows: WITHOUT ROWID per sqlite.org/withoutrowid.html
 CREATE TABLE slug_history (
     -- The same list `entity.kind` is held to. Unconstrained, a retirement
@@ -1057,11 +1067,25 @@ CREATE TRIGGER file_kind_agrees BEFORE INSERT ON file BEGIN
   SELECT RAISE(ABORT,'entity kind does not match file')
   WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'file';
 END;
+-- The same rule on UPDATE. Moving a subtype row onto a different entity
+-- was accepted whenever nothing referenced it, which left a file row
+-- sitting on an entity of another kind and nothing reporting it.
+CREATE TRIGGER file_kind_keeps_agreeing BEFORE UPDATE OF id ON file BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match file')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'file';
+END;
 CREATE TRIGGER file_takes_its_entity AFTER DELETE ON file BEGIN
   DELETE FROM entity WHERE id = OLD.id;
 END;
 
 CREATE TRIGGER folder_kind_agrees BEFORE INSERT ON folder BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match folder')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'folder';
+END;
+-- The same rule on UPDATE. Moving a subtype row onto a different entity
+-- was accepted whenever nothing referenced it, which left a folder row
+-- sitting on an entity of another kind and nothing reporting it.
+CREATE TRIGGER folder_kind_keeps_agreeing BEFORE UPDATE OF id ON folder BEGIN
   SELECT RAISE(ABORT,'entity kind does not match folder')
   WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'folder';
 END;
@@ -1073,11 +1097,25 @@ CREATE TRIGGER person_kind_agrees BEFORE INSERT ON person BEGIN
   SELECT RAISE(ABORT,'entity kind does not match person')
   WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'person';
 END;
+-- The same rule on UPDATE. Moving a subtype row onto a different entity
+-- was accepted whenever nothing referenced it, which left a person row
+-- sitting on an entity of another kind and nothing reporting it.
+CREATE TRIGGER person_kind_keeps_agreeing BEFORE UPDATE OF id ON person BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match person')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'person';
+END;
 CREATE TRIGGER person_takes_its_entity AFTER DELETE ON person BEGIN
   DELETE FROM entity WHERE id = OLD.id;
 END;
 
 CREATE TRIGGER artifact_kind_agrees BEFORE INSERT ON artifact BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match artifact')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'artifact';
+END;
+-- The same rule on UPDATE. Moving a subtype row onto a different entity
+-- was accepted whenever nothing referenced it, which left a artifact row
+-- sitting on an entity of another kind and nothing reporting it.
+CREATE TRIGGER artifact_kind_keeps_agreeing BEFORE UPDATE OF id ON artifact BEGIN
   SELECT RAISE(ABORT,'entity kind does not match artifact')
   WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'artifact';
 END;
@@ -1089,11 +1127,25 @@ CREATE TRIGGER prompt_kind_agrees BEFORE INSERT ON prompt BEGIN
   SELECT RAISE(ABORT,'entity kind does not match prompt')
   WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'prompt';
 END;
+-- The same rule on UPDATE. Moving a subtype row onto a different entity
+-- was accepted whenever nothing referenced it, which left a prompt row
+-- sitting on an entity of another kind and nothing reporting it.
+CREATE TRIGGER prompt_kind_keeps_agreeing BEFORE UPDATE OF id ON prompt BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match prompt')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'prompt';
+END;
 CREATE TRIGGER prompt_takes_its_entity AFTER DELETE ON prompt BEGIN
   DELETE FROM entity WHERE id = OLD.id;
 END;
 
 CREATE TRIGGER collection_kind_agrees BEFORE INSERT ON collection BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match collection')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'collection';
+END;
+-- The same rule on UPDATE. Moving a subtype row onto a different entity
+-- was accepted whenever nothing referenced it, which left a collection row
+-- sitting on an entity of another kind and nothing reporting it.
+CREATE TRIGGER collection_kind_keeps_agreeing BEFORE UPDATE OF id ON collection BEGIN
   SELECT RAISE(ABORT,'entity kind does not match collection')
   WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'collection';
 END;
@@ -1128,7 +1180,38 @@ CREATE TRIGGER file_artifact_role_matches_kind BEFORE INSERT ON file_artifact BE
     END;
 END;
 
+-- The same rule on UPDATE. Without it the check was one statement away from
+-- useless: insert a camera as 'captured_with', then UPDATE the role to
+-- 'checkpoint' and it stands.
+CREATE TRIGGER file_artifact_role_keeps_matching
+BEFORE UPDATE OF role, artifact_id ON file_artifact BEGIN
+  SELECT RAISE(ABORT,'artifact kind does not match the role it is used in')
+  WHERE (SELECT kind FROM artifact WHERE id = NEW.artifact_id) <> CASE NEW.role
+      WHEN 'checkpoint'    THEN 'checkpoint'
+      WHEN 'refiner'       THEN 'checkpoint'
+      WHEN 'lora'          THEN 'lora'
+      WHEN 'vae'           THEN 'vae'
+      WHEN 'controlnet'    THEN 'controlnet'
+      WHEN 'upscaler'      THEN 'upscaler'
+      WHEN 'embedding'     THEN 'embedding'
+      WHEN 'hypernetwork'  THEN 'hypernetwork'
+      WHEN 'ip_adapter'    THEN 'ip_adapter'
+      WHEN 'text_encoder'  THEN 'text_encoder'
+      WHEN 'unet'          THEN 'unet'
+      WHEN 'captured_with' THEN 'camera'
+      WHEN 'mounted_lens'  THEN 'lens'
+      WHEN 'produced_by'   THEN 'application'
+    END;
+END;
+
 CREATE TRIGGER generation_workflow_is_a_workflow BEFORE INSERT ON generation
+WHEN NEW.workflow_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'generation.workflow_id must name an artifact of kind workflow')
+  WHERE (SELECT kind FROM artifact WHERE id = NEW.workflow_id) <> 'workflow';
+END;
+
+CREATE TRIGGER generation_workflow_stays_a_workflow
+BEFORE UPDATE OF workflow_id ON generation
 WHEN NEW.workflow_id IS NOT NULL BEGIN
   SELECT RAISE(ABORT,'generation.workflow_id must name an artifact of kind workflow')
   WHERE (SELECT kind FROM artifact WHERE id = NEW.workflow_id) <> 'workflow';
@@ -1140,11 +1223,26 @@ WHEN NEW.sample_id IS NOT NULL BEGIN
   WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id) <> NEW.file_id;
 END;
 
+CREATE TRIGGER face_sample_stays_with_its_file
+BEFORE UPDATE OF sample_id, file_id ON derived_face_instance
+WHEN NEW.sample_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'face cites a sample from a different file')
+  WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id) <> NEW.file_id;
+END;
+
 -- An annotation may cite a frame, and that frame has to be a frame of the
 -- file being annotated. Without this a caption can quote a moment from a
 -- different video, and the evidence link reads as sound.
 CREATE TRIGGER annotation_sample_belongs_to_its_file
 BEFORE INSERT ON derived_annotation WHEN NEW.sample_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'annotation cites a sample from another file')
+  WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id)
+        <> NEW.file_id;
+END;
+
+CREATE TRIGGER annotation_sample_stays_with_its_file
+BEFORE UPDATE OF sample_id, file_id ON derived_annotation
+WHEN NEW.sample_id IS NOT NULL BEGIN
   SELECT RAISE(ABORT,'annotation cites a sample from another file')
   WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id)
         <> NEW.file_id;
