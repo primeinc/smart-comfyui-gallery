@@ -144,17 +144,32 @@ def test_every_table_is_strict(db):
     assert loose == [], f"tables without STRICT, so column types are advisory: {loose}"
 
 
+def has_rowid(conn, table):
+    """Behavioural, not textual. Matching the phrase in `sql` was matching it
+    inside a comment -- file_param says "deliberately NOT WITHOUT ROWID" and
+    that made the substring check pass for exactly the wrong reason."""
+    try:
+        conn.execute(f"SELECT rowid FROM {table} LIMIT 0")
+        return True
+    except sqlite3.OperationalError:
+        return False
+
+
 def test_join_tables_carry_no_rowid(db):
     """sqlite.org/withoutrowid.html names composite PKs with small rows as the
     case this optimization exists for. A rowid on these is pure overhead."""
-    want = ["file_artifact", "derived_file_person", "collection_file", "rating", "favorite", "file_param"]
-    missing = [
-        t
-        for t in want
-        if "WITHOUT ROWID"
-        not in (db.execute("SELECT sql FROM sqlite_master WHERE name=?", (t,)).fetchone()[0] or "").upper()
-    ]
-    assert missing == [], f"composite-PK tables still paying for a rowid: {missing}"
+    want = ["file_artifact", "derived_file_person", "collection_file", "rating", "favorite"]
+    still = [t for t in want if has_rowid(db, t)]
+    assert still == [], f"composite-PK tables still paying for a rowid: {still}"
+
+
+def test_the_long_tail_keeps_its_rowid(db):
+    """The counterpart, and the reason the check above must be behavioural:
+    file_param absorbs values that run to multiple KB, which is precisely what
+    the optimization is not for. It must NOT be in the list above."""
+    assert has_rowid(db, "file_param"), (
+        "file_param is WITHOUT ROWID, but it holds the long tail's multi-KB values"
+    )
 
 
 def test_no_foreign_key_points_at_a_missing_table(db):
