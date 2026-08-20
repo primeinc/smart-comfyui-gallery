@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import pathlib
+import re
 import sqlite3
 
 import pytest
@@ -41,6 +42,15 @@ _NOT_A_REFERENCE = {
     ("derived_face_instance", "model_id"), ("derived_annotation", "model_id"),
     ("derived_file_person", "model_id"),
     ("job_item", "item_id"),
+}
+
+# TEXT columns whose name looks like an enum but whose values are genuinely
+# open. Each is a decision on the record, not an oversight.
+_FREE_TEXT = {
+    # the location of a root, which is the one place a path IS the fact
+    "path",
+    # a person's own words, and the name of a thing as its metadata spelled it
+    "name", "note", "summary", "description", "body", "text",
 }
 
 
@@ -1567,6 +1577,82 @@ def test_a_name_survives_dropping_everything_derived(db):
         "JOIN person_assertion pa ON pa.person_id = p.id GROUP BY p.id"
     ).fetchall()
     assert rows == [("Ilse", 1)]
+
+
+def test_a_column_naming_a_fixed_set_is_constrained_to_it(db):
+    """An unconstrained enum accepts every typo, and every typo is a row that
+    never matches the filter that was meant to find it.
+
+    `param_key.source` and `file_param.source` name the same set, and
+    `slug_history.kind` and `entity.kind` name the same set; the registry and
+    the history were the two that carried no CHECK, so the pair enforced in
+    one place and not the other could drift on the first direct write.
+    """
+    unconstrained = []
+    for (table,) in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ):
+        if table in virtual_table_names(db):
+            continue
+        sql = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
+        for row in db.execute(f"PRAGMA table_info({table})"):
+            column, kind = row[1], row[2]
+            if kind != "TEXT" or column in _FREE_TEXT:
+                continue
+            if not re.search(
+                r"(kind|state|role|verdict|space|carrier|source|severity|sex|policy)$",
+                column,
+            ):
+                continue
+            if not re.search(rf"\b{column}\b[^,]*CHECK|CHECK\s*\(\s*{column}\b", sql):
+                unconstrained.append(f"{table}.{column}")
+    assert unconstrained == [], (
+        f"these name a fixed set but accept anything: {unconstrained}. "
+        f"Add a CHECK, or add the column to _FREE_TEXT with the reason."
+    )
+
+
+def test_a_column_nothing_writes_says_so(db):
+    """A column no producer fills is unfinished, not neutral.
+
+    It reads as a feature -- a facet built on it returns an empty library,
+    and nothing distinguishes "no video has a duration" from "nothing has
+    ever measured one". Whichever it is, the DDL has to say.
+    """
+    source = "".join(
+        io.open(path, "r", encoding="utf-8", newline="").read()
+        for path in pathlib.Path(__file__).resolve().parent.parent.joinpath("db").rglob("*.py")
+    )
+    # Triggers are producers too: param_key is filled entirely by one, and a
+    # sweep that only reads Python would call the whole registry dead.
+    source += "".join(
+        row[0] or "" for row in db.execute("SELECT sql FROM sqlite_master WHERE type='trigger'")
+    )
+    silent = []
+    for (table,) in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ):
+        if table in virtual_table_names(db):
+            continue
+        declaration = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name=?", (table,)
+        ).fetchone()[0]
+        for row in db.execute(f"PRAGMA table_info({table})"):
+            column, is_pk = row[1], row[5]
+            if is_pk or re.search(rf"\b{re.escape(column)}\b", source):
+                continue
+            # The admission sits in the comment block above the column, so
+            # look at the whole declaration rather than forward from the name.
+            if "NOTHING WRITES THIS YET" in declaration.upper() and re.search(
+                rf"NOTHING WRITES THIS YET.{{0,400}}\b{re.escape(column)}\b",
+                declaration,
+                re.IGNORECASE | re.DOTALL,
+            ):
+                continue
+            silent.append(f"{table}.{column}")
+    assert silent == [], (
+        f"no producer writes these, and the DDL does not admit it: {silent}"
+    )
 
 
 def test_the_build_control_counts_real_tables(db):

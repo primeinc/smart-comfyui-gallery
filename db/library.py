@@ -18,16 +18,15 @@ import json
 import os
 
 
-def add_root(conn, path, kind: str, now: float, *, target_source=None) -> int:
+def add_root(conn, path, kind: str, now: float) -> int:
     """Register a place bytes live. Idempotent on the path."""
     path = str(path)
     row = conn.execute("SELECT id FROM root WHERE path = ?", (path,)).fetchone()
     if row:
         return row[0]
     cursor = conn.execute(
-        "INSERT INTO root(path, kind, target_source, online, created_at)"
-        " VALUES(?, ?, ?, 1, ?)",
-        (path, kind, target_source, now),
+        "INSERT INTO root(path, kind, online, created_at) VALUES(?, ?, 1, ?)",
+        (path, kind, now),
     )
     return int(cursor.lastrowid or 0)
 

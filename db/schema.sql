@@ -16,7 +16,11 @@ CREATE TABLE entity (
 
 -- composite PK, tiny rows: WITHOUT ROWID per sqlite.org/withoutrowid.html
 CREATE TABLE slug_history (
-    kind       TEXT    NOT NULL,
+    -- The same list `entity.kind` is held to. Unconstrained, a retirement
+    -- could name a kind no entity can ever be, and that address then
+    -- resolves to nothing for the rest of the library's life.
+    kind       TEXT    NOT NULL CHECK (kind IN
+                 ('file','folder','person','artifact','prompt','collection')),
     slug       TEXT    NOT NULL,
     entity_id  INTEGER NOT NULL REFERENCES entity(id) ON DELETE CASCADE,
     retired_at REAL    NOT NULL,
@@ -36,7 +40,9 @@ CREATE TABLE root (
     -- still somewhere, restore is a move, and views exclude the subtree by
     -- ancestry rather than by matching paths against a configured string.
     kind          TEXT    NOT NULL CHECK (kind IN ('library','mount','trash')),
-    target_source TEXT,
+    -- `online` is the flag the whole deletion doctrine rests on: an unplugged
+    -- drive and an emptied folder look identical from a directory listing, so
+    -- an unreadable root is marked offline and its files are left alone.
     online        INTEGER NOT NULL DEFAULT 1 CHECK (online IN (0,1)),
     created_at    REAL    NOT NULL
 ) STRICT;
@@ -121,8 +127,12 @@ CREATE TABLE file (
     -- reports none, and different after a copy or a restore.
     inode          INTEGER,
     content_sha256 TEXT,
+    -- The pixels actually on disk, not what any recipe asked for; see
+    -- `generation.width`, which is the request and may differ.
     width          INTEGER,
     height         INTEGER,
+    -- Seconds. NOTHING WRITES THIS YET: it needs a container probe, so every
+    -- video currently reads as having no length.
     duration       REAL,
     first_seen_at  REAL    NOT NULL,
     last_seen_at   REAL    NOT NULL,
@@ -178,7 +188,11 @@ CREATE TABLE artifact (
     -- box uses, because a model found by its own name and a model deduped on
     -- ingest must agree or the library grows a row per mention.
     name_key      TEXT NOT NULL,
-    architecture  TEXT,          -- SD1.5 / SDXL / Flux, or null for non-weights
+    -- SD1.5 / SDXL / Flux, or NULL for anything that is not weights.
+    -- NOTHING WRITES THIS YET: no adapter reports an architecture, so every
+    -- row is NULL and a facet built on it would return an empty library.
+    -- Reading it from safetensors headers is the work that makes it real.
+    architecture  TEXT,
     -- Two different facts, deliberately not one column.
     -- content_sha256: computed here, from a file actually in hand. Identity.
     -- quoted_hash:    what the metadata claimed (A1111 writes "Model hash:",
@@ -268,8 +282,7 @@ CREATE TABLE user (
     username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL CHECK (role IN ('ADMIN','USER')),
-    created_at    REAL NOT NULL,
-    expires_at    REAL
+    created_at    REAL NOT NULL
 ) STRICT;
 
 -- ============ where in the picture ============
@@ -309,7 +322,12 @@ CREATE TABLE derived_media_sample (
     kind       TEXT NOT NULL CHECK (kind IN ('still','frame','page')),
     offset_ms  INTEGER,
     page_index INTEGER,
-    policy     TEXT NOT NULL
+    -- How this sample was chosen, as a canonical token ('every-2s',
+    -- 'keyframes', 'scene-cuts'). Deliberately not a CHECK, because a
+    -- sampler added later must not require a schema change -- but it has to
+    -- be a token and not a sentence, or the same policy spelled three ways
+    -- cannot be grouped and a re-run cannot tell it already did this.
+    policy     TEXT NOT NULL CHECK (policy = lower(policy) AND policy NOT LIKE '% %')
 ) STRICT;
 CREATE UNIQUE INDEX derived_media_sample_pos
     ON derived_media_sample(file_id, kind, IFNULL(offset_ms,-1), IFNULL(page_index,-1), policy);
@@ -358,7 +376,12 @@ CREATE INDEX collection_file_file ON collection_file(file_id);
 -- ============ jobs ============
 CREATE TABLE job (
     id               INTEGER PRIMARY KEY,
-    kind             TEXT NOT NULL,
+    -- Constrained like every other `kind` here. A typo is otherwise a job
+    -- that queues successfully and no worker ever claims, because claim()
+    -- filters on the kinds it knows -- so it waits forever and looks fine.
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('scan','hash','embed','detect_faces','cluster_faces',
+                        'sample_frames','annotate','remix','zip')),
     target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
     state            TEXT NOT NULL CHECK (state IN
                        ('queued','running','done','failed','cancelled')),
@@ -445,7 +468,13 @@ CREATE TABLE generation (
     prompt_id   INTEGER REFERENCES prompt(id)   ON DELETE SET NULL,
     negative_id INTEGER REFERENCES prompt(id)   ON DELETE SET NULL,
     seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER,
-    sampler TEXT, scheduler TEXT, width INTEGER, height INTEGER,
+    sampler TEXT, scheduler TEXT,
+    -- What the recipe ASKED FOR, which is not what the file is: `file.width`
+    -- is the pixels on disk. An upscale, a crop or a re-encode makes them
+    -- differ, and that disagreement is the interesting part -- but only if
+    -- something says which column means which, so neither is read as the
+    -- other's stale copy.
+    width INTEGER, height INTEGER,
     -- Which adapter and version produced this row, so improving a parser is a
     -- re-parse of the database rather than a re-read of every file on disk.
     parser        TEXT NOT NULL,
@@ -541,7 +570,13 @@ CREATE INDEX file_param_key_num ON file_param(key, value_num) WHERE value_num IS
 -- present. Without this, "what fields does my library contain?" is a full
 -- scan, and /ways has nothing to render.
 CREATE TABLE param_key (
-    source        TEXT NOT NULL,
+    -- The same list `file_param.source` is held to. The registry is fed by a
+    -- trigger today, so the two cannot diverge in practice -- but one list
+    -- enforced and one not is a difference waiting for the first direct
+    -- write, and the registry is what the facet UI is generated from.
+    source        TEXT NOT NULL CHECK (source IN
+                    ('exif','xmp','iptc','id3','container','filesystem',
+                     'generation','sidecar')),
     key           TEXT NOT NULL,
     value_kind    TEXT NOT NULL DEFAULT 'text'
                     CHECK (value_kind IN ('text','number','mixed')),
@@ -775,10 +810,16 @@ CREATE TABLE derived_face_instance (
     -- cropped, or asserted against. RESTRICT, because deleting the region
     -- would leave exactly that.
     region_id     INTEGER NOT NULL REFERENCES region(id) ON DELETE RESTRICT,
-    -- The aligner's input, consumed whole and never filtered on -- unlike
-    -- generation fields, which is why those are rows and this is not.
-    landmarks TEXT, det_score REAL, dim INTEGER,
-    age INTEGER, sex TEXT,
+    -- Point pairs, consumed whole by the aligner and never filtered on --
+    -- unlike generation fields, which is why those are rows and this is not.
+    -- BLOB, not TEXT: it is packed floats, and storing it as JSON meant
+    -- parsing a string on every crop to get numbers back.
+    landmarks BLOB, det_score REAL, dim INTEGER,
+    age INTEGER,
+    -- What the model reported, not what anyone is. A free-text column here
+    -- collected 'M', 'male', 'Male' and 'F' from one backend, and a facet
+    -- over that matches a quarter of what it should.
+    sex TEXT CHECK (sex IS NULL OR sex IN ('male','female','unknown')),
     pose_yaw REAL, pose_pitch REAL, pose_roll REAL,
     model_id TEXT NOT NULL, model_version TEXT NOT NULL,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL

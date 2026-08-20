@@ -415,7 +415,8 @@ def test_a_heartbeat_holds_the_lease(db, a_library):
 
 
 def test_work_without_units_resumes_from_a_checkpoint(db, a_library):
-    job = jobs.submit(db, "walk", NOW)
+    """A scan cannot enumerate its units up front -- it is discovering them."""
+    job = jobs.submit(db, "scan", NOW)
     job_id, fence = jobs.claim(db, "worker-a", NOW)
     jobs.checkpoint(db, job_id, fence, {"after": "portraits/2026"}, done=140)
     stored = db.execute("SELECT checkpoint, done_count FROM job WHERE id = ?", (job_id,)).fetchone()
