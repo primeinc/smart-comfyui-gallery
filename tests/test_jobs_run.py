@@ -1,0 +1,182 @@
+"""Jobs run, stop, survive death, and cannot lie -- against the real schema.
+
+The plan's gate, verbatim: cancel at item N, restart the process, resume
+without repeating completed items or losing results. Every test here drives
+`db.runner.run_next` -- the loop the application uses -- never the job
+table directly, because the semantics under test are the runner's.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sqlite3
+
+import pytest
+
+from db import jobs, runner, scan
+
+SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
+
+
+@pytest.fixture(scope="module")
+def ddl():
+    return SCHEMA.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def db(ddl):
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(ddl)
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+class Counter:
+    """A handler that remembers exactly which items it performed."""
+
+    def __init__(self, dies_on: int | None = None, fails_on: int | None = None):
+        self.performed: list[int] = []
+        self.dies_on = dies_on
+        self.fails_on = fails_on
+
+    def __call__(self, conn, item_id, payload, now):
+        if item_id == self.dies_on:
+            raise KeyboardInterrupt(f"process killed at item {item_id}")
+        self.performed.append(item_id)
+        if item_id == self.fails_on:
+            raise ValueError(f"item {item_id} is broken")
+
+
+def test_a_job_runs_to_done_and_the_row_says_so(db):
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3, 4, 5])
+    handler = Counter()
+    turn = runner.run_next(db, "w1", 1.0, handlers={"embed": handler})
+    assert turn == {"job": job_id, "state": "done", "did": 5, "failed": 0}
+    assert handler.performed == [1, 2, 3, 4, 5]
+    snap = jobs.snapshot(db, job_id)
+    assert (snap["state"], snap["done_count"], snap["total"]) == ("done", 5, 5)
+
+
+def test_an_expected_failure_lands_on_the_item_not_the_job(db):
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3])
+    turn = runner.run_next(db, "w1", 1.0, handlers={"embed": Counter(fails_on=2)})
+    assert turn == {"job": job_id, "state": "done", "did": 3, "failed": 1}
+    assert db.execute(
+        "SELECT item_id, error FROM job_item WHERE job_id = ? AND state = 'failed'",
+        (job_id,),
+    ).fetchall() == [(2, "item 2 is broken")]
+
+
+def test_a_paused_job_is_resumed_by_the_very_next_turn(db):
+    """A budget stop is deliberate, so the next turn continues immediately
+    instead of waiting out a liveness lease meant for crashes."""
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3, 4, 5])
+    handler = Counter()
+    first = runner.run_next(db, "w1", 1.0, handlers={"embed": handler}, budget=2)
+    assert first == {"job": job_id, "state": "running", "did": 2, "failed": 0}
+    second = runner.run_next(db, "w2", 1.5, handlers={"embed": handler})
+    assert second == {"job": job_id, "state": "done", "did": 3, "failed": 0}
+    assert handler.performed == [1, 2, 3, 4, 5]
+
+
+def test_cancel_stops_at_an_item_boundary_and_repeats_nothing(db):
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3, 4, 5])
+    handler = Counter()
+    runner.run_next(db, "w1", 1.0, handlers={"embed": handler}, budget=2)
+    jobs.cancel(db, job_id)
+    turn = runner.run_next(db, "w1", 2.0, handlers={"embed": handler})
+    assert turn == {"job": job_id, "state": "cancelled", "did": 0, "failed": 0}
+    assert handler.performed == [1, 2]
+    snap = jobs.snapshot(db, job_id)
+    assert (snap["state"], snap["done_count"]) == ("cancelled", 2)
+    assert jobs.pending(db, job_id) == [3, 4, 5]
+
+
+def test_a_killed_worker_strands_nothing(db):
+    """The process dies mid-job. Nothing settles, nothing cleans up -- and
+    after the lease runs out the next worker resumes from the items, having
+    repeated only the item that was in flight when the lights went out."""
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3, 4, 5])
+    dying = Counter(dies_on=3)
+    with pytest.raises(KeyboardInterrupt):
+        runner.run_next(db, "w1", 1.0, handlers={"embed": dying})
+    assert jobs.snapshot(db, job_id)["state"] == "running"
+
+    # Too early: the lease still protects the (dead) owner.
+    assert runner.run_next(db, "w2", 2.0, handlers={"embed": Counter()}) is None
+
+    survivor = Counter()
+    turn = runner.run_next(db, "w2", 2.0 + jobs.LEASE_SECONDS + 1, handlers={"embed": survivor})
+    assert turn is not None
+    assert turn["state"] == "done"
+    assert survivor.performed == [3, 4, 5]
+    assert jobs.pending(db, job_id) == []
+    settled = db.execute(
+        "SELECT count(*) FROM job_item WHERE job_id = ? AND state = 'done'",
+        (job_id,),
+    ).fetchone()[0]
+    assert settled == 5
+
+
+def test_an_evicted_worker_cannot_write_over_its_successor(db):
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3])
+    claimed = jobs.claim(db, "w1", 1.0)
+    assert claimed is not None
+    _, old_fence = claimed
+    reclaimed = jobs.claim(db, "w2", 1.0 + jobs.LEASE_SECONDS + 1)
+    assert reclaimed == (job_id, old_fence + 1)
+    with pytest.raises(jobs.LeaseLost):
+        jobs.finish_item(db, job_id, old_fence, 1)
+
+
+def test_done_is_refused_while_items_are_outstanding(db):
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2])
+    claimed = jobs.claim(db, "w1", 1.0)
+    assert claimed is not None
+    _, fence = claimed
+    with pytest.raises(ValueError, match="unfinished"):
+        jobs.settle(db, job_id, fence, "done", 2.0)
+
+
+def test_a_job_no_worker_understands_fails_instead_of_vanishing(db):
+    """`remix` is a legal kind this runner carries no handler for."""
+    job_id = jobs.submit(db, "remix", 0.0, items=[1])
+    turn = runner.run_next(db, "w1", 1.0, handlers={})
+    assert turn == {"job": job_id, "state": "failed", "did": 0}
+    assert "remix" in jobs.snapshot(db, job_id)["error"]
+
+
+def test_the_verify_job_finds_bytes_changed_behind_the_librarys_back(db, tmp_path):
+    """The application job, on real disk: three files scanned, one rewritten
+    out of band, and the sweep names exactly that one without touching it."""
+    from db import library
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for name in ("a.png", "b.png", "c.png"):
+        (root / name).write_bytes(b"\x89PNG-of-" + name.encode())
+    root_id = library.add_root(db, str(root), "library", 0.0)
+    scan.scan(db, root_id, str(root), 0.0)
+
+    (root / "b.png").write_bytes(b"\x89PNG-REPLACED")
+
+    job_id = runner.submit_verify(db, 1.0)
+    turn = runner.run_next(db, "w1", 2.0)
+    assert turn == {"job": job_id, "state": "done", "did": 3, "failed": 1}
+    verdicts = db.execute(
+        "SELECT f.name, i.state FROM job_item i JOIN file f ON f.id = i.item_id WHERE i.job_id = ? ORDER BY f.name",
+        (job_id,),
+    ).fetchall()
+    assert verdicts == [("a.png", "done"), ("b.png", "failed"), ("c.png", "done")]
+    said = db.execute("SELECT error FROM job_item WHERE job_id = ? AND state = 'failed'", (job_id,)).fetchone()[0]
+    assert "bytes changed" in said
+    # A finding, never a mutation: the recorded hash still says what was
+    # recorded, so the person decides what happens to the file.
+    assert (
+        db.execute(
+            "SELECT count(*) FROM file f JOIN job_item i ON i.item_id = f.id"
+            " WHERE i.job_id = ? AND f.content_sha256 IS NULL",
+            (job_id,),
+        ).fetchone()[0]
+        == 0
+    )

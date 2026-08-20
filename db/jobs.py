@@ -58,10 +58,10 @@ class Progress:
 def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=None) -> int:
     """Ask for work. Nothing runs until a worker claims it."""
     cursor = conn.execute(
-        "INSERT INTO job(kind, target_id, state, payload, total, created_at)"
-        " VALUES(?, ?, 'queued', ?, ?, ?)",
+        "INSERT INTO job(kind, target_id, state, payload, total, created_at) VALUES(?, ?, 'queued', ?, ?, ?)",
         (
-            kind, target_id,
+            kind,
+            target_id,
             json.dumps(payload) if payload is not None else None,
             len(items) if items is not None else None,
             now,
@@ -87,7 +87,7 @@ def claim(conn, owner: str, now: float, *, kinds=None) -> tuple[int, int] | None
     kind_filter = ""
     kind_args: list = []
     if kinds:
-        kind_filter = " AND kind IN (%s)" % ",".join("?" * len(kinds))
+        kind_filter = f" AND kind IN ({','.join('?' * len(kinds))})"
         kind_args = list(kinds)
 
     # One statement. As a SELECT then an UPDATE this was not a claim at all:
@@ -135,10 +135,35 @@ def _wrote(cursor, job_id: int, fence: int) -> None:
 def heartbeat(conn, job_id: int, fence: int, now: float) -> None:
     """Say the worker is still alive, and extend the lease."""
     _held(conn, job_id, fence)
-    _wrote(conn.execute(
-        "UPDATE job SET heartbeat_at = ?, lease_until = ? WHERE id = ? AND fence = ?",
-        (now, now + LEASE_SECONDS, job_id, fence),
-    ), job_id, fence)
+    _wrote(
+        conn.execute(
+            "UPDATE job SET heartbeat_at = ?, lease_until = ? WHERE id = ? AND fence = ?",
+            (now, now + LEASE_SECONDS, job_id, fence),
+        ),
+        job_id,
+        fence,
+    )
+
+
+def pause(conn, job_id: int, fence: int, now: float) -> None:
+    """Stop working a job on purpose, leaving it immediately claimable.
+
+    A worker that stops at a budget is not dead, so making the next turn
+    wait out a liveness lease punishes exactly the caller who did the
+    polite thing. Expiring the lease on the spot keeps `claim` the single
+    way in -- the job stays `running` with its items, and whichever worker
+    turns up next (this process or another) takes it over under a new
+    fence.
+    """
+    _held(conn, job_id, fence)
+    _wrote(
+        conn.execute(
+            "UPDATE job SET lease_until = ?, heartbeat_at = ? WHERE id = ? AND fence = ?",
+            (now, now, job_id, fence),
+        ),
+        job_id,
+        fence,
+    )
 
 
 def pending(conn, job_id: int) -> list[int]:
@@ -146,8 +171,7 @@ def pending(conn, job_id: int) -> list[int]:
     return [
         row[0]
         for row in conn.execute(
-            "SELECT item_id FROM job_item WHERE job_id = ? AND state = 'pending'"
-            " ORDER BY item_id",
+            "SELECT item_id FROM job_item WHERE job_id = ? AND state = 'pending' ORDER BY item_id",
             (job_id,),
         )
     ]
@@ -172,11 +196,15 @@ def finish_item(conn, job_id: int, fence: int, item_id: int, *, error=None) -> P
         # fence moved between the check above and the write.
         _held(conn, job_id, fence)
         raise LookupError(f"job {job_id} has no item {item_id}")
-    _wrote(conn.execute(
-        "UPDATE job SET done_count = (SELECT count(*) FROM job_item"
-        " WHERE job_id = ? AND state <> 'pending') WHERE id = ? AND fence = ?",
-        (job_id, job_id, fence),
-    ), job_id, fence)
+    _wrote(
+        conn.execute(
+            "UPDATE job SET done_count = (SELECT count(*) FROM job_item"
+            " WHERE job_id = ? AND state <> 'pending') WHERE id = ? AND fence = ?",
+            (job_id, job_id, fence),
+        ),
+        job_id,
+        fence,
+    )
     return progress(conn, job_id)
 
 
@@ -184,15 +212,23 @@ def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None) -
     """Where to resume from, for work with no enumerable units."""
     _held(conn, job_id, fence)
     if done is None:
-        _wrote(conn.execute(
-            "UPDATE job SET checkpoint = ? WHERE id = ? AND fence = ?",
-            (json.dumps(marker), job_id, fence),
-        ), job_id, fence)
+        _wrote(
+            conn.execute(
+                "UPDATE job SET checkpoint = ? WHERE id = ? AND fence = ?",
+                (json.dumps(marker), job_id, fence),
+            ),
+            job_id,
+            fence,
+        )
     else:
-        _wrote(conn.execute(
-            "UPDATE job SET checkpoint = ?, done_count = ? WHERE id = ? AND fence = ?",
-            (json.dumps(marker), done, job_id, fence),
-        ), job_id, fence)
+        _wrote(
+            conn.execute(
+                "UPDATE job SET checkpoint = ?, done_count = ? WHERE id = ? AND fence = ?",
+                (json.dumps(marker), done, job_id, fence),
+            ),
+            job_id,
+            fence,
+        )
 
 
 def cancel(conn, job_id: int) -> None:
@@ -205,9 +241,7 @@ def cancel(conn, job_id: int) -> None:
 
 def cancelled(conn, job_id: int) -> bool:
     """What a runner checks between units."""
-    row = conn.execute(
-        "SELECT cancel_requested FROM job WHERE id = ?", (job_id,)
-    ).fetchone()
+    row = conn.execute("SELECT cancel_requested FROM job WHERE id = ?", (job_id,)).fetchone()
     return bool(row and row[0])
 
 
@@ -228,18 +262,20 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
         ).fetchone()[0]
         if outstanding:
             raise ValueError(f"job {job_id} has {outstanding} unfinished items")
-    _wrote(conn.execute(
-        "UPDATE job SET state = ?, error = ?, finished_at = ?, lease_until = NULL,"
-        " owner = NULL WHERE id = ? AND fence = ?",
-        (state, error, now, job_id, fence),
-    ), job_id, fence)
+    _wrote(
+        conn.execute(
+            "UPDATE job SET state = ?, error = ?, finished_at = ?, lease_until = NULL,"
+            " owner = NULL WHERE id = ? AND fence = ?",
+            (state, error, now, job_id, fence),
+        ),
+        job_id,
+        fence,
+    )
 
 
 def progress(conn, job_id: int) -> Progress:
     """The snapshot a subscriber is sent before any delta reaches it."""
-    row = conn.execute(
-        "SELECT done_count, total, state FROM job WHERE id = ?", (job_id,)
-    ).fetchone()
+    row = conn.execute("SELECT done_count, total, state FROM job WHERE id = ?", (job_id,)).fetchone()
     if row is None:
         raise LookupError(f"no job {job_id}")
     return Progress(done=row[0], total=row[1], state=row[2])
@@ -255,7 +291,7 @@ def snapshot(conn, job_id: int) -> dict:
     row = cursor.fetchone()
     if row is None:
         raise LookupError(f"no job {job_id}")
-    return dict(zip([c[0] for c in cursor.description], row))
+    return dict(zip([c[0] for c in cursor.description], row, strict=True))
 
 
 def active(conn) -> list[dict]:
@@ -264,7 +300,7 @@ def active(conn) -> list[dict]:
         " WHERE state IN ('queued','running') ORDER BY created_at"
     )
     columns = [c[0] for c in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
 def watch_folder(conn, folder_id: int, now: float, *, recursive: bool = True) -> None:

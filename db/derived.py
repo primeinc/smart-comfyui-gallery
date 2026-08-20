@@ -60,8 +60,7 @@ def drop_all(conn) -> list[str]:
     names = [
         row[0]
         for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-            " AND name LIKE 'derived\\_%' ESCAPE '\\' ORDER BY name"
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'derived\\_%' ESCAPE '\\' ORDER BY name"
         )
     ]
     for name in reversed(names):
@@ -70,8 +69,7 @@ def drop_all(conn) -> list[str]:
     # ones an assertion still points at are kept; the rest went with the rows
     # that cited them.
     conn.execute(
-        "DELETE FROM region WHERE id NOT IN"
-        " (SELECT region_id FROM person_assertion WHERE region_id IS NOT NULL)"
+        "DELETE FROM region WHERE id NOT IN (SELECT region_id FROM person_assertion WHERE region_id IS NOT NULL)"
     )
     return names
 
@@ -177,8 +175,7 @@ def stale(conn, table: str) -> list[int]:
     known = {
         row[0]
         for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-            " AND name LIKE 'derived\\_%' ESCAPE '\\'"
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'derived\\_%' ESCAPE '\\'"
         )
     }
     if table not in known:
@@ -195,9 +192,7 @@ def stale(conn, table: str) -> list[int]:
 # --- samples ---------------------------------------------------------------
 
 
-def add_sample(
-    conn, file_id: int, kind: str, policy: str, *, offset_ms=None, page_index=None
-) -> int:
+def add_sample(conn, file_id: int, kind: str, policy: str, *, offset_ms=None, page_index=None) -> int:
     """A frame out of a video, or a page out of a document.
 
     Faces and captions on video attach to these rather than to the file, so
@@ -230,9 +225,22 @@ def add_sample(
 
 
 def _insert_face(
-    conn, file_id: int, region_id: int, model_id: str, model_version: str,
-    sha: str, now: float, *, sample_id=None, det_score=None,
-    landmarks=None, embedding=None, dim=None, age=None, sex=None, pose=None,
+    conn,
+    file_id: int,
+    region_id: int,
+    model_id: str,
+    model_version: str,
+    sha: str,
+    now: float,
+    *,
+    sample_id=None,
+    det_score=None,
+    landmarks=None,
+    embedding=None,
+    dim=None,
+    age=None,
+    sex=None,
+    pose=None,
 ) -> int:
     """One detected face. The region is required: a detection with no
     location cannot be shown, cropped, checked, or asserted against.
@@ -253,17 +261,32 @@ def _insert_face(
         " landmarks, embedding, det_score, dim, age, sex, pose_yaw, pose_pitch,"
         " pose_roll, model_id, model_version, source_sha256, computed_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        tuple(plain(value) for value in (
-            file_id, sample_id, region_id, landmarks, embedding,
-            det_score, dim, age, sex, yaw, pitch, roll,
-            model_id, model_version, sha, now,
-        )),
+        tuple(
+            plain(value)
+            for value in (
+                file_id,
+                sample_id,
+                region_id,
+                landmarks,
+                embedding,
+                det_score,
+                dim,
+                age,
+                sex,
+                yaw,
+                pitch,
+                roll,
+                model_id,
+                model_version,
+                sha,
+                now,
+            )
+        ),
     )
     return int(cursor.lastrowid or 0)
 
 
-def run_for(conn, model_id: str, model_version: str, method: str, threshold,
-            now: float) -> int:
+def run_for(conn, model_id: str, model_version: str, method: str, threshold, now: float) -> int:
     """The row identifying one clustering run, created once.
 
     A run is (embedder, version, method, threshold) -- all four, because all
@@ -313,15 +336,21 @@ def primary_run(conn) -> int | None:
 
 
 def _insert_cluster(
-    conn, run_id: int, model_id: str, model_version: str, now: float,
-    *, person_id=None, centroid=None, dim=None,
+    conn,
+    run_id: int,
+    model_id: str,
+    model_version: str,
+    now: float,
+    *,
+    person_id=None,
+    centroid=None,
+    dim=None,
 ) -> int:
     """Private for the same reason as `_insert_face`. `recluster` is the API."""
     cursor = conn.execute(
         "INSERT INTO derived_face_cluster(run_id, person_id, centroid, dim,"
         " model_id, model_version, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-        tuple(plain(value) for value in
-              (run_id, person_id, centroid, dim, model_id, model_version, now)),
+        tuple(plain(value) for value in (run_id, person_id, centroid, dim, model_id, model_version, now)),
     )
     return int(cursor.lastrowid or 0)
 
@@ -344,8 +373,15 @@ def _reclaim_regions(conn, region_ids) -> None:
 
 
 def record_faces(
-    conn, file_id: int, model_id: str, model_version: str, sha: str, now: float,
-    faces, *, sample_id=None,
+    conn,
+    file_id: int,
+    model_id: str,
+    model_version: str,
+    sha: str,
+    now: float,
+    faces,
+    *,
+    sample_id=None,
 ) -> list[int]:
     """Every face this model found in this file, replacing what it found before.
 
@@ -395,11 +431,21 @@ def record_faces(
     )
     written = [
         _insert_face(
-            conn, file_id, face["region"], model_id, model_version, sha, now,
+            conn,
+            file_id,
+            face["region"],
+            model_id,
+            model_version,
+            sha,
+            now,
             sample_id=sample_id,
-            det_score=face.get("det_score"), landmarks=face.get("landmarks"),
-            embedding=face.get("embedding"), dim=face.get("dim"),
-            age=face.get("age"), sex=face.get("sex"), pose=face.get("pose"),
+            det_score=face.get("det_score"),
+            landmarks=face.get("landmarks"),
+            embedding=face.get("embedding"),
+            dim=face.get("dim"),
+            age=face.get("age"),
+            sex=face.get("sex"),
+            pose=face.get("pose"),
         )
         for face in faces
     ]
@@ -407,8 +453,9 @@ def record_faces(
     return written
 
 
-def recluster(conn, model_id: str, model_version: str, now: float, clusters, *,
-              method: str = "given", threshold=None) -> list[int]:
+def recluster(
+    conn, model_id: str, model_version: str, now: float, clusters, *, method: str = "given", threshold=None
+) -> list[int]:
     """Every cluster one clustering RUN produced, replacing that run's last.
 
     A run is (model, version, method, threshold) -- all four, because all
@@ -429,15 +476,18 @@ def recluster(conn, model_id: str, model_version: str, now: float, clusters, *,
     conn.execute("DELETE FROM derived_face_cluster WHERE run_id = ?", (run_id,))
     made = [
         _insert_cluster(
-            conn, run_id, model_id, model_version, now,
-            person_id=cluster.get("person_id"), centroid=cluster.get("centroid"),
+            conn,
+            run_id,
+            model_id,
+            model_version,
+            now,
+            person_id=cluster.get("person_id"),
+            centroid=cluster.get("centroid"),
             dim=cluster.get("dim"),
         )
         for cluster in clusters
     ]
-    conn.execute(
-        "UPDATE derived_face_run SET clusters = ? WHERE id = ?", (len(made), run_id)
-    )
+    conn.execute("UPDATE derived_face_run SET clusters = ? WHERE id = ?", (len(made), run_id))
     return made
 
 
@@ -469,9 +519,17 @@ def threshold_for(model_id: str) -> float:
     return UNMEASURED
 
 
-def cluster(conn, model_id: str, model_version: str, now: float, *,
-            method: str = "chinese-whispers", threshold: float | None = None,
-            smallest: int = 2, **options) -> list[int]:
+def cluster(
+    conn,
+    model_id: str,
+    model_version: str,
+    now: float,
+    *,
+    method: str = "chinese-whispers",
+    threshold: float | None = None,
+    smallest: int = 2,
+    **options,
+) -> list[int]:
     """Group this model's faces by their vectors, and write the clusters.
 
     The step the People page is downstream of, and the one nothing could do:
@@ -551,14 +609,17 @@ def cluster(conn, model_id: str, model_version: str, now: float, *,
         centre = similarity.normalise(vectors)[members].mean(axis=0)
         scale = float(np.linalg.norm(centre)) or 1.0
         cluster_id = _insert_cluster(
-            conn, run_id, model_id, model_version, now,
+            conn,
+            run_id,
+            model_id,
+            model_version,
+            now,
             centroid=(centre / scale).astype(np.float32).tobytes(),
             dim=int(vectors.shape[1]),
         )
         for index in members:
             conn.execute(
-                "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id)"
-                " VALUES(?, ?)",
+                "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id) VALUES(?, ?)",
                 (cluster_id, int(rows[index][0])),
             )
         made.append(cluster_id)
@@ -592,6 +653,27 @@ SILHOUETTE_SAMPLE = 20_000
 #: close to somebody else's centre as to its own -- and a run that scores it
 #: should not become what the library shows without somebody saying so.
 GOOD_ENOUGH = 0.10
+
+#: Faces before the statistical gates apply at all. Under this, they misfire
+#: by construction: one person's two photographs are most of a three-face
+#: library ("chained"), and a single cluster has no silhouette -- the number
+#: is only defined between two clusters and n-1 (Rousseeuw). A library this
+#: small is judged by the person looking at it, so any run that grouped
+#: something is eligible and the usual ranking picks among them.
+JUDGEABLE = 20
+
+
+def _disqualified(reading: dict) -> bool:
+    """Whether a run's shape bars it from becoming the default unasked."""
+    if reading["clusters"] == 0:
+        return True
+    if reading["faces"] < JUDGEABLE:
+        return False
+    return (
+        reading["largest_share"] > CHAINED
+        or reading["alone_share"] > ALL_ALONE
+        or (reading["clusters"] > 1 and reading["silhouette"] < GOOD_ENOUGH)
+    )
 
 
 def health(conn, run_id: int) -> dict:
@@ -645,10 +727,18 @@ def health(conn, run_id: int) -> dict:
     ).fetchall()
 
     reading = {
-        "faces": faces, "clusters": 0, "grouped": 0,
-        "largest": 0, "median": 0.0, "mean": 0.0,
-        "largest_share": 0.0, "alone_share": 1.0 if faces else 0.0,
-        "cohesion": 0.0, "separation": 0.0, "silhouette": 0.0, "outliers": 0,
+        "faces": faces,
+        "clusters": 0,
+        "grouped": 0,
+        "largest": 0,
+        "median": 0.0,
+        "mean": 0.0,
+        "largest_share": 0.0,
+        "alone_share": 1.0 if faces else 0.0,
+        "cohesion": 0.0,
+        "separation": 0.0,
+        "silhouette": 0.0,
+        "outliers": 0,
     }
     if not rows:
         return reading
@@ -656,9 +746,7 @@ def health(conn, run_id: int) -> dict:
     from . import similarity
 
     labels = np.array([r[0] for r in rows], dtype=np.int64)
-    unit = similarity.normalise(
-        np.vstack([np.frombuffer(r[1], dtype=np.float32) for r in rows])
-    )
+    unit = similarity.normalise(np.vstack([np.frombuffer(r[1], dtype=np.float32) for r in rows]))
     ids, index = np.unique(labels, return_inverse=True)
     counts = np.bincount(index)
     sizes = np.sort(counts)[::-1]
@@ -679,9 +767,7 @@ def health(conn, run_id: int) -> dict:
     # previous, wrong version of this number was made.
     picked = np.arange(len(labels))
     if len(picked) > SILHOUETTE_SAMPLE:
-        picked = np.random.default_rng(0).choice(
-            len(labels), SILHOUETTE_SAMPLE, replace=False
-        )
+        picked = np.random.default_rng(0).choice(len(labels), SILHOUETTE_SAMPLE, replace=False)
     sample, sample_index = unit[picked], index[picked]
 
     own = np.einsum("ij,ij->i", sample, centres[sample_index])
@@ -722,25 +808,27 @@ def health(conn, run_id: int) -> dict:
         scores = (b - a) / np.maximum(np.maximum(a, b), 1e-12)
         silhouette = float(np.nan_to_num(scores).mean())
 
-    reading.update({
-        "clusters": len(ids),
-        "grouped": grouped,
-        "largest": int(sizes[0]),
-        "median": median,
-        "mean": grouped / len(ids),
-        "largest_share": int(sizes[0]) / faces if faces else 0.0,
-        "alone_share": (faces - grouped) / faces if faces else 0.0,
-        "sampled": len(picked),
-        # How tightly a face sits to its own group's centre.
-        "cohesion": float(own.mean()),
-        # How close it sits to the nearest OTHER group's centre.
-        "separation": float(nearest.mean()),
-        # Rousseeuw silhouette, defined above. A gate, not a judge.
-        "silhouette": silhouette,
-        # Groups far larger than the middle of the distribution -- the shape
-        # chaining makes, and invisible to a mean.
-        "outliers": int(sum(1 for n in sizes if median and n > 4 * median)),
-    })
+    reading.update(
+        {
+            "clusters": len(ids),
+            "grouped": grouped,
+            "largest": int(sizes[0]),
+            "median": median,
+            "mean": grouped / len(ids),
+            "largest_share": int(sizes[0]) / faces if faces else 0.0,
+            "alone_share": (faces - grouped) / faces if faces else 0.0,
+            "sampled": len(picked),
+            # How tightly a face sits to its own group's centre.
+            "cohesion": float(own.mean()),
+            # How close it sits to the nearest OTHER group's centre.
+            "separation": float(nearest.mean()),
+            # Rousseeuw silhouette, defined above. A gate, not a judge.
+            "silhouette": silhouette,
+            # Groups far larger than the middle of the distribution -- the shape
+            # chaining makes, and invisible to a mean.
+            "outliers": int(sum(1 for n in sizes if median and n > 4 * median)),
+        }
+    )
     if math.isnan(reading["silhouette"]):
         reading["silhouette"] = 0.0
     return reading
@@ -797,16 +885,9 @@ def _adopt_if_better(conn, run_id: int, model_id: str, threshold) -> None:
     overrides a choice somebody made: `make_primary` is how a person decides,
     and this only fills the gap before they have.
     """
-    if conn.execute(
-        "SELECT count(*) FROM derived_face_run WHERE is_primary = 1"
-    ).fetchone()[0]:
+    if conn.execute("SELECT count(*) FROM derived_face_run WHERE is_primary = 1").fetchone()[0]:
         return
-    reading = health(conn, run_id)
-    if (
-        reading["largest_share"] > CHAINED
-        or reading["alone_share"] > ALL_ALONE
-        or reading["silhouette"] < GOOD_ENOUGH
-    ):
+    if _disqualified(health(conn, run_id)):
         return
     # Among runs that are sound, prefer the one at the threshold this embedder
     # was actually measured at; a run at another threshold is one somebody
@@ -835,27 +916,17 @@ def choose_primary(conn) -> int | None:
     Calling this IS choosing, so it overwrites the current primary. The
     passive path never does.
     """
-    sound = []
-    for run in runs(conn):
-        reading = health(conn, run["id"])
-        if (
-            reading["clusters"] == 0
-            or reading["largest_share"] > CHAINED
-            or reading["alone_share"] > ALL_ALONE
-            or reading["silhouette"] < GOOD_ENOUGH
-        ):
-            continue
-        sound.append(run)
+    sound = [run for run in runs(conn) if not _disqualified(health(conn, run["id"]))]
     if not sound:
         return None
 
     asserted = conn.execute("SELECT count(*) FROM person_assertion").fetchone()[0]
     if asserted:
+
         def by_agreement(run):
             said = agreement(conn, run["id"])
             return (
-                said["held_together"] - said["split_apart"]
-                - said["clusters_mixing_people"],
+                said["held_together"] - said["split_apart"] - said["clusters_mixing_people"],
                 # Same agreement: fall through to the measured threshold.
                 -abs(float(run["threshold"] or 0) - threshold_for(run["model_id"])),
             )
@@ -864,9 +935,7 @@ def choose_primary(conn) -> int | None:
     else:
         best = min(
             sound,
-            key=lambda run: abs(
-                float(run["threshold"] or 0) - threshold_for(run["model_id"])
-            ),
+            key=lambda run: abs(float(run["threshold"] or 0) - threshold_for(run["model_id"])),
         )
     make_primary(conn, best["id"])
     return best["id"]
@@ -880,8 +949,7 @@ def assign_cluster(conn, face_id: int, cluster_id: int) -> None:
     what made a second clustering destroy the first one's answer.
     """
     conn.execute(
-        "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id)"
-        " VALUES(?, ?)",
+        "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id) VALUES(?, ?)",
         (cluster_id, face_id),
     )
 
@@ -893,8 +961,9 @@ def unassign_cluster(conn, face_id: int, cluster_id: int) -> None:
     )
 
 
-def attribute(conn, file_id: int, person_id: int, run_id: int, model_id: str,
-              model_version: str, *, face_count: int = 1) -> None:
+def attribute(
+    conn, file_id: int, person_id: int, run_id: int, model_id: str, model_version: str, *, face_count: int = 1
+) -> None:
     """One clustering run's inference that this person appears in this file.
 
     Keyed on the run. Two runs disagree about who is in a picture -- that
@@ -907,8 +976,7 @@ def attribute(conn, file_id: int, person_id: int, run_id: int, model_id: str,
         " model_version, face_count) VALUES(?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(file_id, person_id, run_id)"
         " DO UPDATE SET face_count = excluded.face_count",
-        tuple(plain(value) for value in
-              (file_id, person_id, run_id, model_id, model_version, face_count)),
+        tuple(plain(value) for value in (file_id, person_id, run_id, model_id, model_version, face_count)),
     )
 
 
@@ -955,10 +1023,7 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
     Returns the number of clusters named.
     """
-    boxes = {
-        row[0]: row[1:]
-        for row in conn.execute("SELECT id, x, y, w, h FROM region")
-    }
+    boxes = {row[0]: row[1:] for row in conn.execute("SELECT id, x, y, w, h FROM region")}
     assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
     for person_id, file_id, sample_id, region_id in conn.execute(
         "SELECT person_id, file_id, sample_id, region_id FROM person_assertion"
@@ -989,8 +1054,7 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
             # No box. It can speak only where it is the sole claim over the
             # same ground, or it would name whichever face came first.
             alone = [
-                other for other, other_sample, _ in claims
-                if on_sample is None or other_sample in (None, on_sample)
+                other for other, other_sample, _ in claims if on_sample is None or other_sample in (None, on_sample)
             ]
             if len(set(alone)) == 1 and not any(b is not None for _, _, b in claims):
                 votes.setdefault(cluster_id, set()).add(person)
@@ -1021,8 +1085,15 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
 
 def add_embedding(
-    conn, file_id: int, space: str, model_id: str, model_version: str,
-    vector: bytes, dim: int, sha: str, now: float,
+    conn,
+    file_id: int,
+    space: str,
+    model_id: str,
+    model_version: str,
+    vector: bytes,
+    dim: int,
+    sha: str,
+    now: float,
 ) -> None:
     conn.execute(
         "INSERT INTO derived_embedding(file_id, space, vector, dim, model_id,"
@@ -1030,8 +1101,7 @@ def add_embedding(
         " ON CONFLICT(file_id, space, model_id, model_version) DO UPDATE SET"
         " vector = excluded.vector, dim = excluded.dim,"
         " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
-        tuple(plain(value) for value in
-              (file_id, space, vector, dim, model_id, model_version, sha, now)),
+        tuple(plain(value) for value in (file_id, space, vector, dim, model_id, model_version, sha, now)),
     )
 
 
@@ -1039,8 +1109,18 @@ def add_embedding(
 
 
 def annotate(
-    conn, file_id: int, kind: str, text: str, model_id: str, model_version: str,
-    sha: str, now: float, *, sample_id=None, region_id=None, confidence=None,
+    conn,
+    file_id: int,
+    kind: str,
+    text: str,
+    model_id: str,
+    model_version: str,
+    sha: str,
+    now: float,
+    *,
+    sample_id=None,
+    region_id=None,
+    confidence=None,
 ) -> int:
     """A caption, a description, a tag, text read out of the image.
 
@@ -1056,10 +1136,21 @@ def annotate(
         "             IFNULL(region_id, 0), IFNULL(sample_id, 0))"
         " DO UPDATE SET text = excluded.text, confidence = excluded.confidence,"
         " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
-        tuple(plain(value) for value in (
-            file_id, sample_id, region_id, kind, text, confidence,
-            model_id, model_version, sha, now,
-        )),
+        tuple(
+            plain(value)
+            for value in (
+                file_id,
+                sample_id,
+                region_id,
+                kind,
+                text,
+                confidence,
+                model_id,
+                model_version,
+                sha,
+                now,
+            )
+        ),
     )
     row = conn.execute(
         "SELECT id FROM derived_annotation WHERE file_id = ? AND kind = ?"
