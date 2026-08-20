@@ -15,3 +15,8 @@ default:
 # both sample datasets through the production db pipeline: every clustering method judged
 faces-validate *args:
     @"$python" benchmarks/face_pipeline_validation.py "$@"
+
+# The app over the real sample datasets, photographed by Chromium:
+# benchmarks/results/browser/report.html
+browser-report *args:
+    @"$python" benchmarks/browser_report.py "$@"

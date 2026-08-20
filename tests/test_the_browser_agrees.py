@@ -71,9 +71,13 @@ def gallery(tmp_path_factory):
             container.mux(packet)
 
     port = _free_port()
+    # The child's stdout is its access log, one line per request; a pipe
+    # nobody drains blocks the server at the OS buffer. A file has no
+    # such ceiling, and holds the log for a post-mortem.
+    server_log = (tmp / "server.log").open("wb")
     server = subprocess.Popen(
         [sys.executable, "-m", "sg_web", "--home", str(tmp / "run"), "--port", str(port)],
-        stdout=subprocess.PIPE,
+        stdout=server_log,
         stderr=subprocess.STDOUT,
     )
     base = f"http://127.0.0.1:{port}"
@@ -102,6 +106,7 @@ def gallery(tmp_path_factory):
         except subprocess.TimeoutExpired:
             server.kill()
             server.wait(timeout=15)
+        server_log.close()
 
 
 def test_the_thumbnails_are_pixels_a_browser_shows(gallery):

@@ -48,9 +48,13 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
             container.mux(packet)
 
     port = _free_port()
+    # The child's stdout is its access log, one line per request; a pipe
+    # nobody drains blocks the server at the OS buffer. A file has no
+    # such ceiling, and holds the log for a post-mortem.
+    server_log = (tmp_path / "server.log").open("wb")
     server = subprocess.Popen(
         [sys.executable, "-m", "sg_web", "--home", str(tmp_path / "run"), "--port", str(port)],
-        stdout=subprocess.PIPE,
+        stdout=server_log,
         stderr=subprocess.STDOUT,
     )
     try:
@@ -80,6 +84,10 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
 
             job = web.post("/jobs/verify").json()
             assert job["total"] == 2
+            # Bounded HTTP polling, deliberately: this client is a bare
+            # subprocess + httpx with no WebSocket library, and the test's
+            # subject is the entry point. The realtime path is proven by
+            # the app suite and the browser suite over /ws/jobs.
             deadline = time.time() + 30
             state = job["state"]
             while state not in ("done", "failed", "cancelled"):
@@ -91,6 +99,15 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
             small = web.get("/thumb/shot")
             assert small.status_code == 200
             assert small.headers["content-type"].startswith("image/webp")
+
+            # A real session is hundreds of requests, and every one is an
+            # access-log line on the child's stdout. A spawner that hands
+            # the child a pipe nobody drains freezes it at the OS buffer
+            # (~4KB -- 64 access lines, probed on this host): the request
+            # in flight hangs forever with no error. Volume is therefore
+            # part of the entry-point contract.
+            for _ in range(200):
+                assert web.get("/health").text == "ok"
     finally:
         server.terminate()
         try:
@@ -98,4 +115,5 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
         except subprocess.TimeoutExpired:
             server.kill()
             server.wait(timeout=15)
+        server_log.close()
     assert (tmp_path / "run" / "gallery.db").exists(), "the run did not live in its --home"

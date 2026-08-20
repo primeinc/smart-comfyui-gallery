@@ -163,25 +163,37 @@ def test_verification_catches_tampered_bytes_while_you_watch(served):
 
 def test_the_worker_obeys_its_setting_changed_over_http(served):
     """Turning the worker off is a settings row, effective live: jobs
-    queue and wait, cancellation is honoured the moment it returns."""
-    import time as clock
+    queue and wait, cancellation is honoured the moment it returns.
 
+    No sleeps and no polling: the delta feed is the wait mechanism the
+    application itself offers. "Nothing happens" is a bounded receive
+    that must time out; "it settles" is the next delta on the wire."""
     from sg_web import worker as worker_module
 
     client, _, _ = served
     client.post("/settings/worker", json={"value": "off"})
-    job_id = client.post("/jobs/verify").json()["id"]
-    clock.sleep(worker_module.IDLE_WAIT * 2.5)
-    assert client.get(f"/jobs/{job_id}").json()["state"] == "queued", "the worker ignored its off switch"
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job_id = client.post("/jobs/verify").json()["id"]
 
-    assert client.post(f"/jobs/{job_id}/cancel").json()["cancel_requested"] == 1
-    client.post("/settings/worker", json={"value": "on"})
-    deadline = clock.time() + 10
-    state = None
-    while clock.time() < deadline and state != "cancelled":
-        state = client.get(f"/jobs/{job_id}").json()["state"]
-        clock.sleep(0.05)
-    assert state == "cancelled"
+        import queue
+
+        with pytest.raises((TimeoutError, queue.Empty)):
+            # long enough that an ignored off-switch would have spoken.
+            # Both exceptions: the installed litestar's test session times
+            # out with queue.Empty; upstream HEAD moved to anyio streams
+            # and TimeoutError (litestar-org/litestar@64cd7da
+            # litestar/testing/websocket_test_session.py:388).
+            feed.receive_json(timeout=worker_module.IDLE_WAIT * 2.5)
+        assert client.get(f"/jobs/{job_id}").json()["state"] == "queued", "the worker ignored its off switch"
+
+        assert client.post(f"/jobs/{job_id}/cancel").json()["cancel_requested"] == 1
+        client.post("/settings/worker", json={"value": "on"})
+        delta = feed.receive_json(timeout=10)
+        while delta["state"] not in ("done", "failed", "cancelled"):
+            delta = feed.receive_json(timeout=10)
+        assert (delta["job"], delta["state"]) == (job_id, "cancelled")
+    assert client.get(f"/jobs/{job_id}").json()["state"] == "cancelled"
 
 
 def test_choose_primary_is_an_action_the_application_offers(served):
@@ -277,15 +289,16 @@ def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, 
     assert "Plugin not yet initialized" not in said, "a publish landed on a torn-down channel"
     assert "worker turn died" not in said
 
-    import time as clock
-
-    with TestClient(app=build_app(str(burrow))) as client:
-        deadline = clock.time() + 30
-        state = None
-        while state != "done":
-            assert clock.time() < deadline, "the interrupted job was never picked back up"
-            state = client.get(f"/jobs/{job_id}").json()["state"]
-            clock.sleep(0.1)
+    # The next run picks the interrupted job up: its own feed says so --
+    # the snapshot names the job still running, the deltas finish it.
+    with TestClient(app=build_app(str(burrow))) as client, client.websocket_connect("/ws/jobs") as feed:
+        first = feed.receive_json(timeout=10)
+        assert first["type"] == "snapshot"
+        assert any(row["id"] == job_id for row in first["jobs"]), "the interrupted job left the rows"
+        delta = feed.receive_json(timeout=30)
+        while delta["state"] not in ("done", "failed", "cancelled"):
+            delta = feed.receive_json(timeout=30)
+        assert (delta["job"], delta["state"]) == (job_id, "done")
 
 
 def test_media_roots_are_rows_managed_through_the_application(tmp_path):
