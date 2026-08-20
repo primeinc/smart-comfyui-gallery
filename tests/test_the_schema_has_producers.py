@@ -19,7 +19,7 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, derived, ingest, jobs, library, lineage, naming, probe, scan
+from db import authored, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -1091,3 +1091,63 @@ def test_something_that_is_not_a_graph_is_not_read_as_one(payload):
     from db import graph as graph_module
 
     assert graph_module.read(payload) is None
+
+
+# --- choosing the moments of a video ----------------------------------------
+
+
+@needs_ffmpeg
+def test_a_video_has_its_moments_chosen(db, a_library, tmp_path):
+    """`derived_media_sample` had a producer and no caller.
+
+    A face on a video is a face on a frame, and without a sample row "Ilse is
+    in this video" cannot be checked, cropped or corrected, and a re-run
+    cannot tell it has already done this part.
+    """
+    ff = _ffmpeg()
+    clip = tmp_path / "eleven.mp4"
+    subprocess.run(
+        [ff, "-v", "error", "-y", "-f", "lavfi",
+         "-i", "testsrc=size=160x90:rate=10:duration=11",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip)],
+        check=True, timeout=60,
+    )
+    file_id = scan.mint(db, "file", "eleven")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'eleven.mp4', 'video', 10, 0, ?, ?)",
+        (file_id, a_library["folder"], NOW, NOW),
+    )
+
+    chosen = sample.frames(db, file_id, clip)
+    assert [offset for _, offset, _ in sample.taken(db, file_id)] == [
+        0, 2000, 4000, 6000, 8000, 10000,
+    ]
+
+    # an interrupted job resumes rather than raising on a frame it already took
+    assert sample.frames(db, file_id, clip) == chosen
+    assert db.execute("SELECT count(*) FROM derived_media_sample").fetchone()[0] == 6
+
+    # a different cadence is a different set, side by side: a job that sampled
+    # every two seconds and one that sampled every five did not look at the
+    # same video
+    sample.frames(db, file_id, clip, every_ms=5000)
+    assert {p for _, _, p in sample.taken(db, file_id)} == {"every-2s", "every-5s"}
+
+
+def test_a_long_film_is_sampled_across_its_length_not_truncated():
+    """Truncating at a cap would sample the first hour of a three-hour film
+    and call the rest unexamined. Widening samples all of it, less finely,
+    and the policy token says which it was."""
+    offsets, spacing = sample.moments(3 * 3600.0)
+    assert len(offsets) <= sample.MOST
+    assert offsets[-1] / 1000 > 3 * 3600 * 0.99, "the end of the film was never looked at"
+    assert spacing > sample.EVERY_MS
+    assert sample.cadence(spacing) == f"every-{spacing}ms"
+
+
+def test_a_still_picture_has_no_moments():
+    """The control: a sampler that returns something for everything would
+    grow a frame row per photograph."""
+    assert sample.moments(None)[0] == []
+    assert sample.moments(0)[0] == []

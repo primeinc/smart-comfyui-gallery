@@ -96,7 +96,18 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
     if read_only:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     else:
-        conn = sqlite3.connect(str(path))
+        # IMMEDIATE, not the default DEFERRED. Under legacy transaction
+        # control sqlite3 opens a transaction before every INSERT, UPDATE,
+        # DELETE and REPLACE, and `isolation_level` chooses which BEGIN it
+        # issues (refs/python/cpython/Doc/library/sqlite3.rst:2709-2720).
+        #
+        # DEFERRED takes no lock until the first write inside the
+        # transaction, so two writers can both start, both read, and one
+        # then fails when it tries to upgrade -- halfway through, holding a
+        # library whose files are parked under placeholder names. IMMEDIATE
+        # takes the write lock at the start, so the second writer waits out
+        # its busy_timeout at the door instead of failing in the middle.
+        conn = sqlite3.connect(str(path), isolation_level="IMMEDIATE")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     # Negative N means approximately abs(N*1024) BYTES rather than a page
