@@ -1,0 +1,82 @@
+{
+  "source": "images(C:/Users/will/dev/sg-lab/hf-datasets)",
+  "threshold": 0.5,
+  "vectors": [
+    8210,
+    128
+  ],
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+    "cpu_count": 16,
+    "python": "3.13.5"
+  },
+  "backends": {
+    "torch-cuda": {
+      "runtime": "torch 2.13.0+cu130 on NVIDIA GeForce RTX 3070 Ti",
+      "graph_ms": 10.0,
+      "chinese_whispers_ms": 274.6,
+      "edges": 13044,
+      "clusters": 6338,
+      "largest_cluster": 678
+    },
+    "faiss-cpu": {
+      "runtime": "faiss 1.15.0 omp=8 wait_policy=PASSIVE",
+      "graph_ms": 66.4,
+      "chinese_whispers_ms": 271.2,
+      "edges": 13044,
+      "clusters": 6338,
+      "largest_cluster": 678
+    },
+    "numpy": {
+      "runtime": "numpy 2.5.2",
+      "graph_ms": 276.1,
+      "chinese_whispers_ms": 270.6,
+      "edges": 13044,
+      "clusters": 6338,
+      "largest_cluster": 678
+    }
+  },
+  "equivalence": {
+    "torch-cuda==faiss-cpu": {
+      "shared_edges_max_weight_delta": 3.5762786865234375e-07,
+      "divergent_edges": 0,
+      "divergent_edges_all_at_threshold_boundary": true,
+      "clustering": true
+    },
+    "torch-cuda==numpy": {
+      "shared_edges_max_weight_delta": 2.980232238769531e-07,
+      "divergent_edges": 0,
+      "divergent_edges_all_at_threshold_boundary": true,
+      "clustering": true
+    }
+  },
+  "load": {
+    "supported": true,
+    "samples": 2,
+    "max_external_frac": 0.129,
+    "mean_external_frac": 0.116,
+    "warn_frac": 0.1,
+    "contaminated": true
+  },
+  "sanity": {
+    "faces_per_dataset": {
+      "Black_People_Face_Recognition": 96,
+      "IndoorSceneRecognition": 479,
+      "caucasian-people-kyc-photo-dataset": 355,
+      "people": 3790,
+      "people_detection": 524,
+      "real_people_3000": 2966
+    },
+    "clusters": 6338,
+    "top_cluster_share": 0.0826,
+    "labeled_identities": 31,
+    "identities_fully_grouped": 5,
+    "mean_identity_purity": 0.537
+  },
+  "production_cluster_faces": {
+    "seconds": 0.33,
+    "clusters": 662,
+    "graph_backend": "torch-cuda"
+  }
+}

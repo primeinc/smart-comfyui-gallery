@@ -1,5 +1,159 @@
 # Changelog
 
+### **[2.24] - 2026-08-15**
+
+### 👥 Face Clustering: Chinese Whispers + Multi-Backend Similarity Graph
+
+**What it does:**
+Face identity grouping no longer collapses into one mega-cluster. The similarity graph is grouped with deterministic Chinese Whispers label propagation (dlib's canonical update rule) instead of single-linkage connected components, whose transitive chaining had merged 97% of all faces into a single cluster on a real 22k-face library.
+
+**Backends (explicit, provenance-recorded):**
+The cosine-threshold neighbor graph runs on the best available backend and records which one ran in every cluster's `params.graph_backend`:
+* **torch-cuda** — blocked CUDA matmul (TF32 disabled for IEEE float32 parity); ~10x faster than CPU at 22k faces
+* **faiss-cpu** — FAISS `IndexFlatIP.range_search` (faiss GPU indexes do not implement range search on any platform)
+* **numpy** — chunked matmul fallback, always available
+
+`AI_DAM_FACE_GRAPH_BACKEND` (`auto`/`torch-cuda`/`faiss`/`numpy`) forces a backend; a forced backend that is unavailable fails loudly instead of silently falling back. All backends produce the identical edge set (verified by cross-backend equivalence tests and `benchmarks/faiss_graph_evidence.py`, which also proves identical clustering on real data). Graph construction and clustering are fully vectorized (CSR adjacency; no per-edge Python loops).
+
+**Also:**
+* Detection quality gate: faces smaller than `face_min_px` (default 24px min-side, env `AI_DAM_FACE_MIN_PX`) are dropped before embedding — sub-24px detections sit at YuNet's noise floor and chained unrelated clusters together (measured basis in docs/FACE_CLUSTERING.md)
+* `just bench` module: benchmarks run under real load with live external-CPU monitoring — load warnings print during timing and the measured load summary is stamped into every results record; `just bench load` is a standalone CPU/GPU load snapshot
+* `VectorStore.topk` uses FAISS exact inner-product search when installed, with exclusions applied inside the scan via `IDSelectorNot` (identical results to the numpy path, verified by cross-path tests)
+* Near-duplicate sweep (`near_duplicate_pairs`) runs on FAISS `IndexBinaryFlat` when installed — Hamming via native popcount instead of a Python-loop XOR sweep; identical pair sets verified against the numpy fallback
+* FAISS (`faiss-cpu`) added to the `ai` extras and auto-provisioning
+* `smartgallery_ai/llama_runtime.py`: llama.cpp CUDA runtime DLL bootstrap for the critic and OmniQuery fallback parser (nvidia pip wheels + PATH prepend; fixes the loader's legacy PATH-only DLL search on Windows)
+* `justfile` with `test`, `bench-faiss`, `bench-faiss-db` recipes; `just faiss-gpu-install` swaps the venv's faiss-cpu for the local Windows GPU build (build recipe in docs/FAISS_GPU_WINDOWS.md)
+
+### 📇 First-Class Generation Metadata + AI Dashboard
+
+**Every metadata-rich field from every supported generator is now
+first-class tracked data.** The indexer writes a typed
+`generation_params` row per file (`metaparse.typed.GenerationParams` —
+the single coercion point; SwarmUI's own metadata doc mandates
+consumer-side type forcing): tool, detection method, positive/negative
+prompts, model, model_hash, sampler, scheduler, and properly typed
+seed/steps/clip_skip/width/height (INTEGER), cfg/denoise (REAL), loras
+and every unmapped first-party key verbatim as JSON. Sources: ComfyUI
+graphs through the sampler-tracing parser; A1111/Forge, SwarmUI,
+Fooocus, InvokeAI, NovelAI, Easy Diffusion, Draw Things through their
+metaparse adapters. A marker-gated startup backfill imports existing
+libraries once.
+
+The data is queryable everywhere: prompt search gains typed operators
+(`neg:` `tool:` `model:` `sampler:` `scheduler:` `seed:` `steps:`
+`cfg:`, with `!` negation), and OmniQuery gains `gen_*` fields
+(gen_tool/model/sampler/scheduler/positive_prompt/negative_prompt/
+seed/steps/cfg/denoise/clip_skip/width/height).
+
+**Face data is fully first-class too:** the insightface pipeline now
+runs every antelopev2 head — genderage, dense 106-pt 2D landmarks, 3D
+68-pt landmarks with pitch/yaw/roll pose. Scalars land in typed,
+aggregatable columns on `ai_face_instances` (age, sex, pose_pitch/yaw/
+roll); normalized landmark geometry persists as JSON arrays; embeddings
+remain raw float32 vectors. OmniQuery gains `face_sex`, `face_age_min`,
+`face_age_max`, `face_yaw_abs_max`.
+
+**AI dashboard (`/galleryout/aidam`, management-gated):** the ML layer
+gets its own page — pipeline status meters, generation-parameter
+analytics (per-tool/model/sampler/steps/cfg/size distributions from the
+typed columns), the face-cluster workspace, and the full detector
+comparison tool (overlay with per-lane visibility/opacity, side-by-side
+lanes, dense-landmark rendering, installed-pipeline inventory). The
+per-file modal keeps quick context (faces list with age/sex/pose and a
+Boxes/5-pt/Dense landmark toggle) and links out to the dashboard; page
+and modal are separate surfaces. All panel emoji removed.
+
+**Runtime:** the insightface recognition session runs on CUDA via
+onnxruntime-gpu (measured 4.4x per face; detection stays CPU where its
+dynamic shapes measure faster — `AI_DAM_ORT_PROVIDERS` overrides; the
+provisioner swaps in onnxruntime-gpu on NVIDIA boxes), and `topk`
+vector search now uses the vendored GPU faiss index when present
+(equivalence-tested against the CPU path; `AI_DAM_VECTOR_GPU=0` opts
+out).
+
+### 🙂 Face Pipelines: insightface FaceAnalysis Default + In-App Detector Comparison
+
+Two full face pipelines are now deployed and config-swappable
+(`AI_DAM_FACE_BACKEND=insightface|opencv`; MINIMUM-REQ two-implementation
+bar). The new default (`auto`) is insightface's own FaceAnalysis over the
+provisioned antelopev2 pack — SCRFD-10GF joint 128+640 detection,
+upstream landmark alignment, glintr100 (ResNet100@Glint360K, 512-d)
+embedding. On the labeled identity A/B it is near-perfect: pairwise
+cluster F1 0.999 (P 1.000/R 0.995 at the shipped threshold 0.40) vs
+0.897 for the previous yunet+sface pipeline; the gap is detection and
+landmark-alignment quality, not the recognizer
+(benchmarks/results/face_embedder_ab.json, `just bench face-ab`). The
+opencv lane stays fully maintained: YuNet + `AI_DAM_FACE_EMBEDDER`
+arcface (same glintr100 via cv2.dnn + numpy Umeyama alignment, verified
+bit-equal to onnxruntime) or sface — the MIT/Apache ship-safe option.
+Cluster thresholds resolve per pipeline (insightface 0.40, opencv/arcface
+0.48, opencv/sface 0.55; `AI_DAM_FACE_CLUSTER_THRESHOLD` overrides).
+Each pipeline is a distinct `model_version` — switching re-embeds and
+re-clusters without mixing spaces.
+
+**Detector comparison, in-app:** the AI panel's Faces tab gained
+"Compare detectors" — `GET /faces/compare/<file_id>` live-runs every
+installed lane on the file (nothing persisted) and the view shows them
+as a single-image overlay with per-lane visibility and opacity controls,
+or side-by-side lanes; solid boxes are detections every lane agrees on
+(IoU ≥ 0.5), dashed boxes are seen by one lane only, landmarks drawn as
+dots, with per-lane model identity and timing plus the
+installed-pipeline inventory and its swap selectors.
+
+### 🔍 Detection Policy: Large-Face Recall 55% → 97%
+
+Face detection input is capped at `face_detect_max_side` (default 1600px, env `AI_DAM_FACE_DETECT_MAX_SIDE`): images are downscaled before YuNet and boxes scaled back. YuNet's 10–300px training band means faces larger than ~300px at native resolution are systematically missed; measured on a labeled 500-image harness, ≥300px recall went 55.3% → 97.1%, precision 66% → 94%, false positives 0.41 → 0.06/image, detect time 62ms → 33ms. `benchmarks/face_detection_recall.py` (`just bench face-recall`) reproduces the recall-by-band table; policy tables and reproduce commands in docs/FACE_CLUSTERING.md.
+
+### ⚡ Worker Ingestion Throughput
+
+Embedding spaces process in batches instead of per-file: threaded image decode (4 decoders) feeding batched GPU inference (`embed_images` on all embedder backends; OpenCLIP runs one stacked forward, DINOv2 one processor call). Chunk size `AI_DAM_EMBED_BATCH` (16), worker budgets raised (`AI_DAM_WORKER_BATCH` 150, `AI_DAM_WORKER_POLL` 25). A poisoned batch falls back to singles so one bad file cannot sink its chunk.
+
+### 🧠 Vector Store: Single-Writer Generation Swap
+
+Vector search never rebuilds an index mid-request while ingest is running. The worker owns index builds: matrices live in a process-global generation registry, the worker refreshes a space's generation after each batch (`store.refresh`), and searches serve the current generation without stamp checks (bounded staleness ≤ one batch). Without a worker, the strict stamp + inline-rebuild path is unchanged.
+
+### 🩹 Fixed: VLM Review Crash on Large Images
+
+Reviews of images over ~2116 vision tokens crashed the critic ("access violation reading 0x0" / `GGML_ASSERT ggml-backend.cpp:2000` during "encoding image slice..."). Root cause: llama.cpp reserves the vision compute buffer at a 46×46-token warmup while Qwen2.5-VL legally emits up to 4096 tokens, and the scheduler's buffer-grow path overflows without flash attention. The vision context now runs on GPU with flash attention enabled by default (`AI_DAM_VISION_GPU=0` / `AI_DAM_VISION_FA=0` opt out); verified on the production 7B weights with a deterministic repro. Backend status probes also no longer construct model backends (no more multi-GB loads just to report availability booleans).
+
+### **[2.23] - 2026-08-15**
+
+### 🧾 Universal Generation-Metadata Parsing (metaparse)
+
+**What it does:**  
+The gallery now identifies and parses embedded generation metadata from every major image-generation tool — not just ComfyUI and A1111. The Details panel shows a normalized parameter report with the source tool named, and prompt search now covers images from all of these tools.
+
+**Supported formats (marker-based detection first, popularity fallthrough second):**
+* **ComfyUI** — `prompt`/`workflow` chunks and WebP EXIF tags (workflow panel continues to own graph display; A1111-compatible `parameters` chunks are rendered)
+* **A1111 / Forge** — `parameters` infotext, JPEG/WebP/AVIF EXIF UserComment, GIF comments
+* **SwarmUI** — `sui_image_params` JSON (per `docs/Image Metadata Format.md`), including the legacy EXIF Model-tag variant
+* **Fooocus** — `fooocus_scheme` chunk (both `a1111` and `fooocus` schemes) plus legacy `Comment` JSON
+* **InvokeAI** — `invokeai_metadata` (v3+), `sd-metadata` (v2), `Dream` (v1)
+* **NovelAI** — legacy `Software=NovelAI` chunks and stealth-pnginfo LSB payloads
+* **Easy Diffusion**, **Draw Things (XMP)**
+* **Stealth-pnginfo** (NovelAI / Forge / SwarmUI LSB steganography) — decoded on demand in the Details view; skipped during bulk indexing
+
+**Key Enhancements:**
+* **Cross-tool prompt search:** images without a ComfyUI workflow now index their positive prompt into the searchable prompt field.
+* **`generation_tool` field** in the file-details API identifies the generator.
+* Disambiguates the three tools that all write a chunk literally named `parameters` (A1111/Forge, SwarmUI, Fooocus).
+
+### 🧬 Smart Clustering Covers Non-ComfyUI Images
+
+**Fixed:** In a SwarmUI-dominated gallery, clustering showed the same tiny asset count for every basis (e.g. "Global Scope 211 Assets" out of 42k files) because every clustering gate required an embedded ComfyUI graph (`has_workflow=1`). Files whose metadata metaparse can identify now receive cluster identities without a graph:
+* **Prompt basis:** hash of the parsed positive prompt — identical prompts now cluster across ComfyUI, SwarmUI, A1111, and the rest.
+* **Architecture basis:** for graph-less images, the pipeline identity is checkpoint model + LoRA set.
+* The hash backfill, the in-request trigger, all clustering filters, and the Details-panel cluster badges are de-gated from `has_workflow`; the startup backfill migrates existing rows (one-time, console progress) and fills the searchable prompt field for previously indexed foreign images in the same pass.
+* **Third clustering basis — 📦 Model Set:** every file now carries three cluster identities at once, so nothing is an either/or option:
+  - **Architecture** (`workflow_hash`): the ComfyUI node graph, or for graph-less images the parameter-set shape plus model-valued parameters — SwarmUI forwards generation to backends like ComfyUI, so its parameter set shapes the workflow it generates. Seeds/steps/CFG/prompts are ignored, matching the graph-hash policy.
+  - **Model Set** (`models_hash`, new column): the checkpoint + LoRA/VAE file set — for ComfyUI graphs and foreign images alike. Broad "everything made with this combo" clusters.
+  - **Prompt** (`prompt_hash`): unchanged.
+  The clustering modal, banner, Details panel, and Cluster Inspector all support the new basis; a stored schema marker triggers one automatic full re-hash on the next startup. Targets without a ComfyUI graph can now open the clustering modal and the Cluster Inspector (both previously refused `has_workflow=0` assets).
+* **Thumbnail generation toggle (site setting):** Tools menu switch (admin/manager gated, also `GENERATE_THUMBNAILS` env default and `/api/site_settings`) that disables server-side image downscaling. Off = the scanner skips thumbnail creation and the thumbnail route serves originals for un-thumbnailed images (videos still render a single poster frame on demand). Cache-safe by construction: cached thumbnails keep serving, nothing is deleted on toggle, and re-enabling only generates what is missing — cache keys are `md5(path+mtime)`, so only files that actually changed ever regenerate.
+* **Async hashing** (fixed post-release: large runs now hash in worker **processes** — the first version's in-process thread pool monopolized the GIL and froze the web server despite being "background"; small incremental runs stay on threads): the cluster-hash backfill now runs off the request path — startup no longer blocks on a large migration, and a clustering request with unhashed files serves honest partial clusters immediately instead of hashing inline. Progress is visible in the sidebar AI hub (`🧬 hashing cluster identities: N/M`) and, in cluster mode, in the banner with a "Hashing N assets — clusters are partial" note that turns into a Refresh button when done (`/api/cluster_hash_status`). Interrupting a run is safe: the pending-selection logic resumes exactly where it stopped.
+
+---
+
 ### **[2.22] - 2026-08-12**
 
 ### 📁 Folder File Count Badges & Dynamic Tree Collapse

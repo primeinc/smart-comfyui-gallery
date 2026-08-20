@@ -10,6 +10,8 @@ SmartGallery works fully offline and does **not** require ComfyUI to be running.
 
 - [Requirements](#requirements)
 - [Installation & Update](#installation--update)
+- [Configuration Reference (every environment variable)](CONFIGURATION.md)
+- [AI Layer (Faces / Similar / Review / OmniQuery): INSTALL_AI.md](INSTALL_AI.md)
 - [FFmpeg / FFprobe Notes](#ffmpeg--ffprobe-notes)
 - [First Launch & Performance Notes](#first-launch--performance)
 - [Docker Deployment (from 'Installation & Update' -> select 'Docker')](#installation--update)
@@ -20,9 +22,11 @@ SmartGallery works fully offline and does **not** require ComfyUI to be running.
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - ffmpeg / ffprobe recommended for video workflow extraction
 - Works on Windows, Linux, macOS
+- The AI layer (on by default) provisions itself on first start; see
+  [INSTALL_AI.md](INSTALL_AI.md) for what it downloads and the GPU story
 
 ---
 
@@ -62,7 +66,7 @@ pip install -r requirements.txt
 
 Create a new file named `run_smartgallery.bat` inside the folder and paste this content.
 
-**⚠️ IMPORTANT:** Replace the example paths with your real paths. Use forward slashes `/` even on Windows.
+**⚠️ IMPORTANT:** Replace the example paths with your real paths. Write them however you like — backslashes, forward slashes, a trailing slash, `~`, or the quotes Explorer's "Copy as path" adds are all accepted.
 ```bat
 @echo off
 cd /d %~dp0
@@ -70,7 +74,7 @@ call venv\Scripts\activate.bat
 
 :: --- CONFIGURATION ---
 :: REPLACE these paths with your actual folders.
-:: NOTE: Use forward slashes (/) for paths (e.g., C:/ComfyUI/output)
+:: NOTE: Backslashes or forward slashes, either is fine
 
 set "BASE_OUTPUT_PATH=C:/Path/To/ComfyUI/output"
 set "BASE_INPUT_PATH=C:/Path/To/ComfyUI/input"
@@ -302,16 +306,16 @@ Download: [https://ffmpeg.org/](https://ffmpeg.org/)
 
 ## Reverse Proxy Setup
 
-Point your proxy to:
+Every URL the app serves and fetches is an absolute path under
+`/galleryout/`, so the public path on your proxy **must also be
+`/galleryout/`** — a different prefix (e.g. `/gallery/`) loads the first
+page and then 404s every asset and API call.
 
-```
-http://127.0.0.1:8189/galleryout
-```
 <details>
 <summary><strong>Nginx</strong></summary>
 
 ```nginx
-location /gallery/ {
+location /galleryout/ {
     proxy_pass http://127.0.0.1:8189/galleryout/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -327,7 +331,7 @@ location /gallery/ {
 Ensure that `mod_proxy` and `mod_proxy_http` modules are enabled.
 
 ```apache
-<Location "/gallery/">
+<Location "/galleryout/">
     ProxyPreserveHost On
     ProxyPass http://127.0.0.1:8189/galleryout/
     ProxyPassReverse http://127.0.0.1:8189/galleryout/

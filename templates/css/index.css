@@ -283,15 +283,19 @@ body.modal-open {
     overflow: hidden;
 }
 
+/* Bottom-center: toasts must never sit over the top-right toolbar. The
+   container is click-through; only the toasts themselves take pointers. */
 #notification-container {
     position: fixed;
-    top: 20px;
-    right: 20px;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 100000 !important;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    align-items: flex-end;
+    align-items: center;
+    pointer-events: none;
 }
 
 .notification {
@@ -302,14 +306,15 @@ body.modal-open {
     box-shadow: var(--shadow-lg);
     border-left: 5px solid var(--primary-color);
     opacity: 0;
-    transform: translateX(100%);
+    transform: translateY(24px);
     transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
     font-weight: 600;
+    pointer-events: auto;
 }
 
 .notification.show {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
 }
 
 .notification.success {
@@ -3053,7 +3058,8 @@ body.sidebar-minimized .sidebar #mount-folder-btn { display: none !important; }
 @media (max-width: 1024px) {
     /* 1. NOTIFICATIONS: Positioned lower and centered to avoid browser URL bar overlap */
     #notification-container {
-        top: 120px !important; 
+        top: 120px !important;
+        bottom: auto !important;
         right: auto !important;
         left: 50% !important;
         transform: translateX(-50%) !important;
@@ -3198,9 +3204,59 @@ body.sidebar-minimized .sidebar #mount-folder-btn { display: none !important; }
  
 }
 
- /* Ensure desktop still sees the footer row */
+ /* The compact header chip IS the user identity on every width now (the
+    old bottom user row gave that space to the AI hub). The chip's base
+    styles live in the mobile media block above; mirror them here so
+    desktop gets the same tiny pill: avatar + manage + logout, name via
+    the avatar's click-to-reveal. */
 @media (min-width: 1025px) {
-    .mobile-user-compact { display: none !important; }
+    .mobile-user-compact {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 4px 10px 4px 4px;
+        border-radius: 50px;
+        border: 1px solid var(--glass-border);
+        margin-left: auto;
+        width: fit-content;
+        flex-shrink: 0;
+    }
+    .mobile-user-compact .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        font-weight: bold;
+        color: white;
+        flex-shrink: 0;
+        cursor: pointer;
+    }
+    .mobile-user-compact .username { display: none; }
+    .mobile-manage-btn {
+        background: none;
+        border: none;
+        color: var(--favorite-color);
+        padding: 0 4px;
+        cursor: pointer;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        border-right: 1px solid var(--glass-border);
+        margin-right: 2px;
+    }
+    .mobile-logout-x {
+        color: var(--danger-color);
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 1.1rem;
+        padding-left: 4px;
+        border-left: 1px solid var(--glass-border);
+    }
 }
 
 @media (max-width: 768px) {
@@ -7985,3 +8041,68 @@ body.sidebar-minimized .sidebar-user-row {
 .fd-tab-pane.active {
     display: flex;
 }
+
+/* === AI DAM sidebar hub (bottom-left) + header GitHub link ================= */
+
+.gh-header-link { display: inline-flex; align-items: center; opacity: 0.55; transition: opacity 0.15s; }
+.gh-header-link svg { width: 14px; height: 14px; fill: var(--text-muted); }
+.gh-header-link:hover { opacity: 1; }
+.gh-header-link:hover svg { fill: #fff; }
+
+.sidebar-ai-hub {
+    margin: 6px 5px 10px 5px;
+    padding: 10px 12px;
+    background: rgba(255, 0, 255, 0.05);
+    border: 1px solid rgba(255, 0, 255, 0.25);
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+.ai-hub-title {
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+.ai-hub-stats {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    line-height: 1.6;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+}
+/* Lightbox "More" overflow menu: items are the ORIGINAL toolbar elements
+   (ids and listeners intact); their title attribute doubles as the label. */
+#lb-more-wrap { position: relative; display: inline-flex; }
+#lb-more-menu {
+    display: none;
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 10600;
+    flex-direction: column; gap: 2px; min-width: 250px; padding: 6px;
+    background: var(--surface-color); border: 1px solid var(--border-color);
+    border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+#lb-more-wrap.open #lb-more-menu { display: flex; }
+#lb-more-menu > button, #lb-more-menu > a {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; min-width: 0 !important; height: auto !important;
+    justify-content: flex-start !important;
+    padding: 7px 10px !important; border: none !important; background: transparent;
+    border-radius: 6px; color: var(--text-color); font-size: 0.9rem !important;
+    text-decoration: none; cursor: pointer; text-align: left; white-space: nowrap;
+    backdrop-filter: none;
+}
+#lb-more-menu > button:hover, #lb-more-menu > a:hover { background: var(--surface-hover); }
+#lb-more-menu > button::after, #lb-more-menu > a::after { content: attr(title); }
+@media (max-width: 1024px) {
+    /* The mobile toolbar clips/rearranges its children; the menu escapes
+       as a fixed sheet under the header instead. */
+    #lb-more-menu { position: fixed; top: 64px; right: 8px; left: auto; max-height: 70vh; overflow-y: auto; }
+}
+
+body.sidebar-minimized .sidebar-ai-hub { display: none; }
+.sidebar.nav-collapsed .sidebar-ai-hub { display: none; }
+
+/* Thumbnail info block: permanently hidden. List view is exempt only
+   because it flattens .item-info with display:contents to use its children
+   as row columns (see list_view.html), which outranks this selector. */
+div.item-info { display: none !important; }

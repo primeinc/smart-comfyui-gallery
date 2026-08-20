@@ -1,0 +1,362 @@
+{
+  "sface": {
+    "model_version": "sface",
+    "faces": 175,
+    "identities": 31,
+    "skipped": 2,
+    "detect_embed_seconds": 36.5,
+    "verification": {
+      "n_genuine": 779,
+      "n_impostor": 14446,
+      "genuine_mean": 0.6162499785423279,
+      "genuine_p05": 0.10913917422294617,
+      "impostor_mean": 0.09225254505872726,
+      "impostor_p95": 0.25077056884765625,
+      "separation": -0.14163139462471008,
+      "best_f1_threshold": 0.38000000000000006,
+      "best_f1": 0.8776779543883897
+    },
+    "cluster_sweep": [
+      {
+        "threshold": 0.3,
+        "clusters": 19,
+        "precision": 0.3797,
+        "recall": 0.8755,
+        "f1": 0.5297
+      },
+      {
+        "threshold": 0.35,
+        "clusters": 32,
+        "precision": 0.8088,
+        "recall": 0.896,
+        "f1": 0.8502
+      },
+      {
+        "threshold": 0.4,
+        "clusters": 41,
+        "precision": 0.8777,
+        "recall": 0.8755,
+        "f1": 0.8766
+      },
+      {
+        "threshold": 0.45,
+        "clusters": 55,
+        "precision": 0.9907,
+        "recall": 0.819,
+        "f1": 0.8967
+      },
+      {
+        "threshold": 0.48,
+        "clusters": 58,
+        "precision": 0.9906,
+        "recall": 0.8113,
+        "f1": 0.892
+      },
+      {
+        "threshold": 0.5,
+        "clusters": 64,
+        "precision": 1.0,
+        "recall": 0.7741,
+        "f1": 0.8726
+      },
+      {
+        "threshold": 0.55,
+        "clusters": 71,
+        "precision": 1.0,
+        "recall": 0.7587,
+        "f1": 0.8628
+      },
+      {
+        "threshold": 0.6,
+        "clusters": 81,
+        "precision": 1.0,
+        "recall": 0.7022,
+        "f1": 0.825
+      },
+      {
+        "threshold": 0.65,
+        "clusters": 90,
+        "precision": 1.0,
+        "recall": 0.656,
+        "f1": 0.7922
+      },
+      {
+        "threshold": 0.7,
+        "clusters": 100,
+        "precision": 1.0,
+        "recall": 0.5584,
+        "f1": 0.7166
+      }
+    ]
+  },
+  "arcface-glintr100": {
+    "model_version": "arcface-glintr100",
+    "faces": 175,
+    "identities": 31,
+    "skipped": 2,
+    "detect_embed_seconds": 51.9,
+    "verification": {
+      "n_genuine": 779,
+      "n_impostor": 14446,
+      "genuine_mean": 0.6735899448394775,
+      "genuine_p05": 0.04213293269276619,
+      "impostor_mean": 0.018983719870448112,
+      "impostor_p95": 0.13555113971233368,
+      "separation": -0.09341821074485779,
+      "best_f1_threshold": 0.33,
+      "best_f1": 0.9324503311258278
+    },
+    "cluster_sweep": [
+      {
+        "threshold": 0.3,
+        "clusters": 38,
+        "precision": 0.9483,
+        "recall": 0.9191,
+        "f1": 0.9335
+      },
+      {
+        "threshold": 0.35,
+        "clusters": 38,
+        "precision": 0.9483,
+        "recall": 0.9191,
+        "f1": 0.9335
+      },
+      {
+        "threshold": 0.4,
+        "clusters": 39,
+        "precision": 0.9514,
+        "recall": 0.905,
+        "f1": 0.9276
+      },
+      {
+        "threshold": 0.45,
+        "clusters": 40,
+        "precision": 0.9513,
+        "recall": 0.9024,
+        "f1": 0.9262
+      },
+      {
+        "threshold": 0.48,
+        "clusters": 44,
+        "precision": 0.9681,
+        "recall": 0.896,
+        "f1": 0.9307
+      },
+      {
+        "threshold": 0.5,
+        "clusters": 44,
+        "precision": 0.9681,
+        "recall": 0.896,
+        "f1": 0.9307
+      },
+      {
+        "threshold": 0.55,
+        "clusters": 52,
+        "precision": 0.967,
+        "recall": 0.8639,
+        "f1": 0.9125
+      },
+      {
+        "threshold": 0.6,
+        "clusters": 62,
+        "precision": 0.9871,
+        "recall": 0.7856,
+        "f1": 0.8749
+      },
+      {
+        "threshold": 0.65,
+        "clusters": 73,
+        "precision": 1.0,
+        "recall": 0.751,
+        "f1": 0.8578
+      },
+      {
+        "threshold": 0.7,
+        "clusters": 87,
+        "precision": 1.0,
+        "recall": 0.665,
+        "f1": 0.7988
+      }
+    ]
+  },
+  "arcface-w600k-r50": {
+    "model_version": "arcface-w600k-r50",
+    "faces": 175,
+    "identities": 31,
+    "skipped": 2,
+    "detect_embed_seconds": 43.1,
+    "verification": {
+      "n_genuine": 779,
+      "n_impostor": 14446,
+      "genuine_mean": 0.658674418926239,
+      "genuine_p05": 0.053319092839956284,
+      "impostor_mean": 0.017780983820557594,
+      "impostor_p95": 0.12087211012840271,
+      "separation": -0.06755301356315613,
+      "best_f1_threshold": 0.27,
+      "best_f1": 0.9231762427372499
+    },
+    "cluster_sweep": [
+      {
+        "threshold": 0.3,
+        "clusters": 36,
+        "precision": 0.9275,
+        "recall": 0.9358,
+        "f1": 0.9316
+      },
+      {
+        "threshold": 0.35,
+        "clusters": 37,
+        "precision": 0.9312,
+        "recall": 0.9204,
+        "f1": 0.9258
+      },
+      {
+        "threshold": 0.4,
+        "clusters": 37,
+        "precision": 0.9312,
+        "recall": 0.9204,
+        "f1": 0.9258
+      },
+      {
+        "threshold": 0.45,
+        "clusters": 41,
+        "precision": 0.9346,
+        "recall": 0.8986,
+        "f1": 0.9162
+      },
+      {
+        "threshold": 0.48,
+        "clusters": 45,
+        "precision": 0.934,
+        "recall": 0.8896,
+        "f1": 0.9112
+      },
+      {
+        "threshold": 0.5,
+        "clusters": 50,
+        "precision": 0.9502,
+        "recall": 0.8819,
+        "f1": 0.9148
+      },
+      {
+        "threshold": 0.55,
+        "clusters": 59,
+        "precision": 0.9466,
+        "recall": 0.819,
+        "f1": 0.8782
+      },
+      {
+        "threshold": 0.6,
+        "clusters": 65,
+        "precision": 0.9673,
+        "recall": 0.7972,
+        "f1": 0.874
+      },
+      {
+        "threshold": 0.65,
+        "clusters": 77,
+        "precision": 0.968,
+        "recall": 0.7381,
+        "f1": 0.8376
+      },
+      {
+        "threshold": 0.7,
+        "clusters": 91,
+        "precision": 0.984,
+        "recall": 0.6316,
+        "f1": 0.7694
+      }
+    ]
+  },
+  "insightface-antelopev2": {
+    "model_version": "insightface-antelopev2",
+    "faces": 177,
+    "identities": 31,
+    "skipped": 0,
+    "detect_embed_seconds": 38.6,
+    "verification": {
+      "n_genuine": 807,
+      "n_impostor": 14769,
+      "genuine_mean": 0.7533963322639465,
+      "genuine_p05": 0.48970699310302734,
+      "impostor_mean": 0.017889317125082016,
+      "impostor_p95": 0.1463291347026825,
+      "separation": 0.34337785840034485,
+      "best_f1_threshold": 0.35000000000000003,
+      "best_f1": 0.9969001859888407
+    },
+    "cluster_sweep": [
+      {
+        "threshold": 0.3,
+        "clusters": 30,
+        "precision": 0.9675,
+        "recall": 0.9975,
+        "f1": 0.9823
+      },
+      {
+        "threshold": 0.35,
+        "clusters": 32,
+        "precision": 1.0,
+        "recall": 0.9975,
+        "f1": 0.9988
+      },
+      {
+        "threshold": 0.4,
+        "clusters": 33,
+        "precision": 1.0,
+        "recall": 0.995,
+        "f1": 0.9975
+      },
+      {
+        "threshold": 0.45,
+        "clusters": 33,
+        "precision": 1.0,
+        "recall": 0.995,
+        "f1": 0.9975
+      },
+      {
+        "threshold": 0.48,
+        "clusters": 34,
+        "precision": 1.0,
+        "recall": 0.9926,
+        "f1": 0.9963
+      },
+      {
+        "threshold": 0.5,
+        "clusters": 35,
+        "precision": 1.0,
+        "recall": 0.9901,
+        "f1": 0.995
+      },
+      {
+        "threshold": 0.55,
+        "clusters": 47,
+        "precision": 1.0,
+        "recall": 0.9504,
+        "f1": 0.9746
+      },
+      {
+        "threshold": 0.6,
+        "clusters": 52,
+        "precision": 1.0,
+        "recall": 0.8798,
+        "f1": 0.9361
+      },
+      {
+        "threshold": 0.65,
+        "clusters": 60,
+        "precision": 1.0,
+        "recall": 0.8513,
+        "f1": 0.9197
+      },
+      {
+        "threshold": 0.7,
+        "clusters": 73,
+        "precision": 1.0,
+        "recall": 0.7695,
+        "f1": 0.8697
+      }
+    ]
+  }
+}

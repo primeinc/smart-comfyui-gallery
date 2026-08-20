@@ -21,12 +21,28 @@
             var activeTag = document.activeElement ? document.activeElement.tagName : '';
             if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable)) return;
 
-            var openOverlay = document.querySelector('.modal-overlay.visible, #smart-dialog-overlay.visible, .sort-popover.visible, #options-popover.visible, #tools-popover.visible, #desktop-search-panel.visible');
+            // ESC must close the lightbox (or any open overlay) first;
+            // exiting cluster mode is only for the bare grid.
+            if (document.body.classList.contains('lightbox-open')) return;
+
+            var openOverlay = document.querySelector('.modal-overlay.visible, #smart-dialog-overlay.visible, #cluster-info-modal-overlay.visible, .sort-popover.visible, #options-popover.visible, #tools-popover.visible, #desktop-search-panel.visible');
             if (openOverlay) return;
 
             e.preventDefault();
             e.stopPropagation();
             if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+            // Prefer the exact pre-cluster view recorded at entry (Global
+            // scope wiped the filter params from the current URL).
+            var preClusterUrl = null;
+            try {
+                preClusterUrl = sessionStorage.getItem('sg_precluster_url');
+                sessionStorage.removeItem('sg_precluster_url');
+            } catch (err) {}
+            if (preClusterUrl) {
+                setTimeout(function() { window.location.replace(preClusterUrl); }, 10);
+                return;
+            }
 
             var params = new URLSearchParams(window.location.search);
             params.delete('cluster_mode');
@@ -46,6 +62,21 @@
 
 // --- GLOBAL WORKFLOW FILES AUTOCOMPLETE FUNCTIONS (HEAD LEVEL) ---
 var wfDebounceTimer = null;
+
+// Keeps the visible subfolder checkboxes and the hidden `recursive` form
+// field in sync. Unchecked checkboxes submit nothing, so the folder-only
+// opt-out can only travel via the hidden field (absent/true = subtree).
+function syncRecursiveParam(checkbox) {
+    checkbox.parentElement.classList.toggle('active', checkbox.checked);
+    var hidden = document.getElementById('recursive-param');
+    if (hidden) hidden.value = checkbox.checked ? 'true' : 'false';
+    document.querySelectorAll('.recursive-checkbox').forEach(function(cb) {
+        if (cb !== checkbox) {
+            cb.checked = checkbox.checked;
+            cb.parentElement.classList.toggle('active', checkbox.checked);
+        }
+    });
+}
 
 function safeEscapeHTML(str) {
     if (!str) return '';
@@ -167,6 +198,19 @@ document.addEventListener('focusout', function(e) {
         }, 150);
     }
 }, true);</script>
+<script>
+// Where ComfyUI actually is, as configured by COMFYUI_SERVER_URL. Set here,
+// before anything on the page can ask for it, because the tools menu below
+// is markup rather than script and runs whenever it is clicked.
+//
+// The Remix window overrides this per job and remembers the choice in
+// sg_comfy_url; that still wins. This is only the starting point, and it
+// used to be the literal 127.0.0.1:8188 written out eight times, so a
+// gallery pointed at any other ComfyUI opened dead tabs and never found
+// LoRA Manager -- while the server it talked to had the right address all
+// along.
+window.SG_COMFY_URL = {{ comfy_server_url | default('http://127.0.0.1:8188', true) | tojson }};
+</script>
 </head>
 
 <body>
@@ -299,6 +343,53 @@ document.addEventListener('focusout', function(e) {
             </div>
         </div>
 
+        <!-- Thumbnail Generation Toggle (site setting) -->
+        <div class="opt-item" onclick="event.stopPropagation();" style="cursor: default;">
+            <div style="width: 100%;">
+                <div class="opt-label" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+                    <span style="background:#6c757d; color:#fff; border-radius:6px; padding:2px 8px; font-size:0.85rem; font-weight:bold;">🖼️ Thumbnail Generation</span>
+                    <input type="checkbox" id="site-thumbgen-toggle" checked
+                           style="width:18px; height:18px; accent-color:var(--ai-color,#ff00ff); cursor:pointer;"
+                           onchange="toggleThumbGeneration(this.checked)">
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-muted); line-height: 1.3;">
+                    Server-side downscaling for gallery tiles. Off = originals are served for un-thumbnailed images (saves CPU; cached thumbnails keep working and are never deleted).
+                </div>
+            </div>
+        </div>
+        <script>
+        async function initSiteSettings() {
+            const cb = document.getElementById('site-thumbgen-toggle');
+            if (!cb) return;
+            try {
+                const d = await (await fetch('/galleryout/api/site_settings')).json();
+                if (d.status === 'success') cb.checked = !!d.thumbnail_generation;
+            } catch (e) { /* endpoint unavailable: leave the default */ }
+        }
+        async function toggleThumbGeneration(enabled) {
+            try {
+                const r = await fetch('/galleryout/api/site_settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({thumbnail_generation: enabled})
+                });
+                const d = await r.json();
+                if (d.status === 'success') {
+                    showNotification(enabled
+                        ? '🖼️ Thumbnail generation enabled.'
+                        : '🖼️ Thumbnail generation disabled — originals are served for new files; cached thumbnails stay.', 'success');
+                } else {
+                    showNotification(d.message || 'Failed to update setting', 'error');
+                    initSiteSettings();
+                }
+            } catch (e) {
+                showNotification('Failed to update setting', 'error');
+                initSiteSettings();
+            }
+        }
+        document.addEventListener('DOMContentLoaded', initSiteSettings);
+        </script>
+
         <!-- Remix Workflow Option -->
         <div class="opt-item" onclick="document.getElementById('tools-popover').classList.remove('visible'); if(typeof openRemixModal === 'function') openRemixModal(); else showNotification('Remix module not loaded.', 'warning');">
             <div>
@@ -320,7 +411,7 @@ document.addEventListener('focusout', function(e) {
         
         <div id="comfy-tools-container" class="desktop-tool-item" style="display: none; flex-direction: column; gap: 0;">
             <!-- Open ComfyUI -->
-            <div class="opt-item" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188'); window.open(url, '_blank');">
+            <div class="opt-item" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL); window.open(url, '_blank');">
                 <div>
                     <div class="opt-label" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                         <span style="background:#17a2b8; color:#fff; border-radius:6px; padding:2px 8px; font-size:0.85rem; font-weight:bold;">🖥️ Open ComfyUI</span>
@@ -332,7 +423,7 @@ document.addEventListener('focusout', function(e) {
             </div>
             
             <!-- Open LoRA Manager -->
-            <div id="tool-lora-manager" class="opt-item" style="display: none;" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188'); window.open(url.replace(/\/$/, '') + '/loras', '_blank');">
+            <div id="tool-lora-manager" class="opt-item" style="display: none;" onclick="document.getElementById('tools-popover').classList.remove('visible'); const url = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL); window.open(url.replace(/\/$/, '') + '/loras', '_blank');">
                 <div>
                     <div class="opt-label" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                         <span style="background:#8e44ad; color:#fff; border-radius:6px; padding:2px 8px; font-size:0.85rem; font-weight:bold;">🧩 Open LoRA Manager</span>
@@ -349,7 +440,7 @@ document.addEventListener('focusout', function(e) {
             setTimeout(() => {
                 if (window.innerWidth <= 768) return;
                 
-                const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188');
+                const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL);
                 const loraUrl = comfyUrl.replace(/\/$/, '') + '/loras';
                 
                 if (typeof window._hasLoraManager === 'undefined') {
@@ -394,7 +485,7 @@ document.addEventListener('focusout', function(e) {
                                     
                                     // Always perform a fresh check on menu open, ignoring any cached value,
                                     // so that turning ComfyUI on later is detected without a page reload
-                                    const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188');
+                                    const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL);
                                     const loraUrl = comfyUrl.replace(/\/$/, '') + '/loras';
                                     fetch(loraUrl, { method: 'HEAD' })
                                     .then(res => {
@@ -462,6 +553,11 @@ document.addEventListener('focusout', function(e) {
                     </h1>
                     <div class="version-row-header">
                         <span class="v-num">v{{ app_version }}</span>
+                        <a href="{{ github_url }}" target="_blank" class="gh-header-link" title="Original SmartGallery repository" onclick="event.stopPropagation();">
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                            </svg>
+                        </a>
                         {% if update_available %}
                         <a href="{{ github_url }}" target="_blank" class="header-update-badge" title="New version {{ remote_version }} is available!">Update</a>
                         {% endif %}
@@ -579,59 +675,21 @@ document.addEventListener('focusout', function(e) {
         <!-- END WRAPPER -->
 
         
-        <!-- USER SESSION FOOTER -->
-        {% set is_admin_or_local = (session.role in ['ADMIN', 'MANAGER'] or (not force_login and not is_exhibition_mode)) %}
-        
-        <div class="sidebar-user-row">
-            {% if session.user_id %}
-                <!-- Case A: Authenticated Session (Staff, Manager or Admin) -->
-                <div class="user-avatar-circle">
-                    {{ session.username[0] | upper }}
-                </div>
-                <div class="user-session-info">
-                    <span class="user-session-name">{{ session.full_name }}</span>
-                    <span class="user-session-role">{{ session.role }}</span>
-                </div>
-            {% else %}
-                <!-- Case B: Local Admin Mode (Hobbyist / No login forced) -->
-                <div class="user-avatar-circle" style="background: var(--ai-gradient);">
-                    A
-                </div>
-                <div class="user-session-info">
-                    <span class="user-session-name">System Admin</span>
-                    <span class="user-session-role">Local Access</span>
-                </div>
-            {% endif %}
-
-            <div class="user-session-actions">
-                <!-- User Management Access: Visible for Admin/Manager or Local Admin -->
-                {% if is_admin_or_local %}
-                <button class="user-session-btn" onclick="openUserManager()" title="Manage Users & Access">
-                    👥
-                </button>
-                {% endif %}
-                
-                <!-- Logout Button: Only visible if a real session exists -->
-                {% if session.user_id %}
-                <a href="#" onclick="confirmLogout(event)" class="user-session-btn logout-x" title="Logout / Sign Out">
-                    ×
-                </a>
-                {% endif %}
-            </div>
-        </div>
-        <!-- 3. SIDEBAR FOOTER -->
+        <!-- 3. SIDEBAR FOOTER: the AI DAM hub (user identity moved to the
+             compact header chip; upstream repo link moved to the header) -->
         <div class="sidebar-footer">
-            <div id="github-promo-box" class="sidebar-footer-promo">
-                <button class="promo-close-x" onclick="event.preventDefault(); event.stopPropagation(); document.getElementById('github-promo-box').style.display='none';" title="Dismiss for now">×</button>
-                <a href="{{ github_url }}" target="_blank" class="github-promo-link">
-                    <svg class="gh-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                    <div class="promo-text">
-                        Visit the repo to find news and updates. Don't forget to leave a ⭐!
-                    </div>
-                </a>
+            {% if enable_ai_dam %}
+            <!-- Compact launcher only: a live pulse of the worker plus the
+                 way in. Everything gallery-wide lives on the dashboard
+                 page; search is Ctrl+P. -->
+            <div class="sidebar-ai-hub" id="sidebar-ai-hub">
+                <div class="ai-hub-title" style="display:flex; justify-content:space-between; align-items:center;">AI DAM
+                    <a href="/galleryout/aidam" style="font-size:0.7rem; font-weight:700; color:var(--ai-color); text-decoration:none; letter-spacing:1px; text-transform:uppercase;" title="Status, faces, duplicates, reviews, meaning search, detector compare">Dashboard</a>
+                </div>
+                <div id="ai-hub-stats" class="ai-hub-stats">connecting&hellip;</div>
+                <div style="color:var(--text-muted); font-size:0.7rem; margin-top:6px;"><kbd style="background:rgba(255,255,255,0.1); border-radius:4px; padding:0 5px;">Ctrl</kbd>+<kbd style="background:rgba(255,255,255,0.1); border-radius:4px; padding:0 5px;">P</kbd> searches everything</div>
             </div>
+            {% endif %}
         </div>
     </aside>
     
@@ -706,7 +764,7 @@ document.addEventListener('focusout', function(e) {
             {% endif %}
             
             <!-- Mobile Tools Button -->
-            <button class="glass-btn mobile-only push-right" type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="AI-Powered SQL Queries" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
+            <button type="button" onclick="handleOmniQueryClick(event)" class="glass-btn mobile-only push-right {% if is_omniquery %}active-fuxia{% endif %}" title="Search (Ctrl+P)" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
                 ⚡ OmniQuery 
                 {% if is_omniquery %}
                     <span class="filter-reset-icon filter-reset-badge" style="margin-left:8px; background:rgba(255,255,255,0.2);" onclick="event.stopPropagation(); window.location.href='{{ url_for('gallery_view', folder_key=current_folder_key) }}'" title="Reset OmniQuery">✕</span>
@@ -728,7 +786,7 @@ document.addEventListener('focusout', function(e) {
             
             <!-- OmniQuery Button -->
             {% if not current_folder_info.is_collection %}
-            <button type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="AI-Powered SQL Queries" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
+            <button type="button" onclick="handleOmniQueryClick(event)" class="glass-btn {% if is_omniquery %}active-fuxia{% endif %}" title="Search (Ctrl+P)" style="border-color: #9b59b6; color: #e0b0ff; {% if is_omniquery %}padding-right:8px;{% endif %}">
                 ⚡ OmniQuery {% if is_omniquery %}<span class="filter-reset-icon filter-reset-badge" style="margin-left:8px; background:rgba(255,255,255,0.2);" onclick="event.stopPropagation(); window.location.href='{{ url_for('gallery_view', folder_key=current_folder_key) }}'" title="Reset OmniQuery">✕</span>{% endif %}
             </button>
             {% endif %}
@@ -947,8 +1005,8 @@ document.addEventListener('focusout', function(e) {
                             <input type="radio" name="scope" value="global" {% if current_scope == 'global' %}checked{% endif %}> 🌐 Global (All)
                         </label>
                     </div>
-                    <label class="recursive-wrapper {% if request.args.get('recursive') == 'true' %}active{% endif %}" id="recursive-standard-ui">
-                        <input type="checkbox" name="recursive" value="true" {% if request.args.get('recursive') == 'true' %}checked{% endif %} onchange="this.parentElement.classList.toggle('active', this.checked)">
+                    <label class="recursive-wrapper {% if request.args.get('recursive') != 'false' %}active{% endif %}" id="recursive-standard-ui">
+                        <input type="checkbox" class="recursive-checkbox" {% if request.args.get('recursive') != 'false' %}checked{% endif %} onchange="syncRecursiveParam(this)">
                         <span class="recursive-label">📂 Include Subfolders</span>
                     </label>
                 </div>
@@ -958,10 +1016,13 @@ document.addEventListener('focusout', function(e) {
                 {% if current_folder_info.collection_id != 'all' %}
                 <div class="filter-group">
                     <label>Search Scope</label>
-                    <label class="recursive-wrapper {% if request.args.get('recursive') == 'true' %}active{% endif %}" id="recursive-collection-ui">
-                        <input type="checkbox" name="recursive" value="true" {% if request.args.get('recursive') == 'true' %}checked{% endif %} onchange="this.parentElement.classList.toggle('active', this.checked)">
+                    <label class="recursive-wrapper {% if request.args.get('recursive') != 'false' %}active{% endif %}" id="recursive-collection-ui">
+                        <input type="checkbox" class="recursive-checkbox" {% if request.args.get('recursive') != 'false' %}checked{% endif %} onchange="syncRecursiveParam(this)">
                         <span class="recursive-label">📚 Include Sub-collections</span>
                     </label>
+                    <!-- Unchecked checkboxes submit nothing, so the opt-out must
+                         travel in this hidden field: absent/true = subtree, false = folder only. -->
+                    <input type="hidden" name="recursive" id="recursive-param" value="{{ 'false' if request.args.get('recursive') == 'false' else 'true' }}">
                 </div>
                 {% endif %}
                 {% endif %}
@@ -1040,6 +1101,14 @@ document.addEventListener('focusout', function(e) {
                         <div style="flex: 1; min-width: 140px;"><label style="font-size: 0.7rem;">From:</label><input type="date" name="start_date" id="start-date" value="{{ request.args.get('start_date', '') }}"></div>
                         <div style="flex: 1; min-width: 140px;"><label style="font-size: 0.7rem;">To:</label><input type="date" name="end_date" id="end-date" value="{{ request.args.get('end_date', '') }}"></div>
                     </div>
+                    <!-- The date on every card is drawn from this browser's
+                         clock, so this browser is the only thing that knows
+                         which instants a chosen day covers. Filled in on
+                         submit; deliberately not carried back from the URL,
+                         so a reloaded page recomputes rather than reusing a
+                         boundary from wherever it was last submitted. -->
+                    <input type="hidden" name="start_ts" id="start-ts" value="">
+                    <input type="hidden" name="end_ts" id="end-ts" value="">
                 </div>
 
                 <div class="filter-group">
@@ -1213,27 +1282,38 @@ document.addEventListener('focusout', function(e) {
                 <div id="lightbox-folder-name" style="margin-top:0.2rem;"></div>
             </div>
             
+            <!-- Five actions earn a visible button; everything else lives in
+                 More (same elements moved, so ids, listeners, and dynamic
+                 show/hide keep working; labels come from title via CSS). -->
             <div id="lightbox-toolbar">
                 <button id="lightbox-help-btn" title="Menu Actions & Shortcuts (/)" style="font-size: 0.9rem; font-weight: bold; padding: 0 12px !important; min-width: auto !important; letter-spacing: 0.5px;">/&nbsp;MENU</button>
-                <button id="lightbox-zoom-out" title="Zoom Out">-</button>
-                <button id="lightbox-zoom-in" title="Zoom In">+</button>
-                <button id="lightbox-rotate-btn" title="Rotate Media (T)" onclick="rotateLightbox()">🔄</button>
-                {% if enable_ai_search %}
-                <button id="lightbox-index-btn" class="lb-hide-mobile" title="Force AI Re-Indexing" onclick="indexCurrentLightboxFile()" style="border-color:var(--ai-color); color:var(--ai-color);">⚡</button>
-                <button id="lightbox-reset-ai-btn" class="lb-hide-mobile" title="Erase AI Data Only" onclick="resetAiDataCurrentLightbox()" style="border-color:var(--danger-color); color:var(--danger-color); display:none;">❌</button>
+                {% if enable_ai_dam %}
+                <button id="lightbox-aidam-btn" class="lb-hide-mobile" title="Similar / Faces / Review (AI)" onclick="openAidamPanel()" style="border-color:var(--ai-color); color:var(--ai-color);">AI</button>
                 {% endif %}
-                <a id="lightbox-download" class="lb-hide-mobile" href="#" title="Download Original File">💾</a>
-                <button id="lightbox-clean-export" class="lb-hide-mobile" title="Clean Export (Remove Metadata)" onclick="downloadCleanedFile(currentLightboxFile.id, currentLightboxFile.name)" style="color:var(--success-color); border-color:var(--success-color);">🛡️</button>
-                <button id="lightbox-rename-btn" class="lb-hide-mobile" title="Rename File">✏️</button>
-                <button id="lightbox-summary-btn" class="lb-hide-mobile" title="Node Summary">📝</button>
-                <button id="lightbox-remix-btn" class="lb-hide-mobile" title="Remix Workflow (B)" onclick="openRemixModal()" style="display:none; color:var(--favorite-color); border-color:var(--favorite-color);">🪄</button>
                 <button id="lightbox-comments-btn" class="dam-only lb-hide-mobile" title="Manage Ratings & Comments (G)" onclick="openFileInfoPanel(currentLightboxFile.id)" style="padding: 0 6px; letter-spacing: -1px;"><span style="font-size:0.9em;">⭐</span>💬</button>
-                <button id="lightbox-caption-icon" class="lb-hide-mobile" title="View AI Caption" style="display:none;">🧠</button>
-                <a id="lightbox-workflow" href="#" class="workflow-btn lb-hide-mobile" title="Download Workflow">⚙️</a>
-                <button id="lightbox-filmstrip-btn" class="lb-hide-mobile" title="Generate Storyboard" onclick="openStoryboard(null)" style="display:none;">🎞️</button>
-                <button id="lightbox-copy-json" class="lb-hide-mobile" title="Copy Workflow to Clipboard" style="display:none;">📋</button>
+                <a id="lightbox-download" class="lb-hide-mobile" href="#" title="Download Original File">💾</a>
                 <button id="lightbox-delete-btn" title="Delete File">🗑️</button>
-                <a id="lightbox-new-tab" class="lb-hide-mobile" href="#" target="_blank" title="Open in New Tab">↗️</a>
+                <span id="lb-more-wrap">
+                    <button id="lb-more-btn" title="More actions" onclick="toggleLbMore(event)">&#8943;</button>
+                    <span id="lb-more-menu">
+                        <button id="lightbox-zoom-out" title="Zoom Out">-</button>
+                        <button id="lightbox-zoom-in" title="Zoom In">+</button>
+                        <button id="lightbox-rotate-btn" title="Rotate Media (T)" onclick="rotateLightbox()">🔄</button>
+                        <a id="lightbox-new-tab" class="lb-hide-mobile" href="#" target="_blank" title="Open in New Tab">↗️</a>
+                        <button id="lightbox-rename-btn" class="lb-hide-mobile" title="Rename File">✏️</button>
+                        <button id="lightbox-clean-export" class="lb-hide-mobile" title="Clean Export (Remove Metadata)" onclick="downloadCleanedFile(currentLightboxFile.id, currentLightboxFile.name)">🛡️</button>
+                        <a id="lightbox-workflow" href="#" class="workflow-btn lb-hide-mobile" title="Download Workflow">⚙️</a>
+                        <button id="lightbox-copy-json" class="lb-hide-mobile" title="Copy Workflow to Clipboard" style="display:none;">📋</button>
+                        <button id="lightbox-summary-btn" class="lb-hide-mobile" title="Node Summary">📝</button>
+                        <button id="lightbox-remix-btn" class="lb-hide-mobile" title="Remix Workflow (B)" onclick="openRemixModal()" style="display:none;">🪄</button>
+                        <button id="lightbox-caption-icon" class="lb-hide-mobile" title="View AI Caption" style="display:none;">🧠</button>
+                        <button id="lightbox-filmstrip-btn" class="lb-hide-mobile" title="Generate Storyboard" onclick="openStoryboard(null)" style="display:none;">🎞️</button>
+                        {% if enable_ai_search %}
+                        <button id="lightbox-index-btn" class="lb-hide-mobile" title="Force AI Re-Indexing" onclick="indexCurrentLightboxFile()">⚡</button>
+                        <button id="lightbox-reset-ai-btn" class="lb-hide-mobile" title="Erase AI Data Only" onclick="resetAiDataCurrentLightbox()" style="display:none;">❌</button>
+                        {% endif %}
+                    </span>
+                </span>
                 <button class="close-btn" onclick="closeLightbox()" title="Close">×</button>
             </div>
         </div>
@@ -1577,7 +1657,7 @@ document.addEventListener('focusout', function(e) {
                 <!-- Recursive Option -->
                 <div class="ai-opt-row">
                     <label for="ai-opt-recursive" style="cursor:pointer; font-weight:bold;">Include Subfolders</label>
-                    <input type="checkbox" id="ai-opt-recursive" style="width:20px; height:20px; accent-color:var(--ai-color);">
+                    <input type="checkbox" id="ai-opt-recursive" checked style="width:20px; height:20px; accent-color:var(--ai-color);">
                 </div>
                 <span class="ai-opt-desc">If checked, processes all nested folders.</span>
 
@@ -2239,7 +2319,7 @@ document.addEventListener('focusout', function(e) {
     <div id="full-file-details-overlay" class="modal-overlay" onclick="if(event.target === this) closeFullDetailsModal();">
         <div class="full-details-panel" onclick="event.stopPropagation();">
             <div class="full-details-header">
-                <h3>📋 Full Asset Details</h3>
+                <h3>Full Asset Details</h3>
                 <button class="close-btn" onclick="event.stopPropagation(); closeFullDetailsModal();" title="Close (Esc)">&times;</button>
             </div>
             <div id="full-details-content" class="full-details-body">
@@ -2328,7 +2408,7 @@ document.addEventListener('focusout', function(e) {
                 {% else %}
                 <input type="hidden" id="fi-target-audience" value="public">
                 {% endif %}
-                <textarea id="fi-admin-reply" placeholder="Write a comment..." rows="1"
+                <textarea id="fi-admin-reply" placeholder="Write a comment..." rows="1" maxlength="4000"
                           oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';"></textarea>
                 <button onclick="fiPostAdminReply()" class="glass-btn active-blue" style="width:100%; height:44px; font-weight:bold;">
                     🚀 Send Comment
@@ -2425,7 +2505,10 @@ document.addEventListener('focusout', function(e) {
     </div>
     {% include 'modals/user_manager_module.html' %}
     {% include 'modals/remix_modal.html' %}
-    {% include 'modals/omniquery_modal.html' %}
+    {% include 'modals/omniquery_palette.html' %}
+    {% if enable_ai_dam %}
+    {% include 'modals/aidam_panel.html' %}
+    {% endif %}
     {% include 'modals/changelog.html' ignore missing %}
     {% include 'modals/whats_new_modal.html' %}
     {% include 'modals/clustering_modal.html' %}
@@ -2443,6 +2526,9 @@ document.addEventListener('focusout', function(e) {
         const initialFiles = {{ files | tojson }};
         let totalFiles = {{ total_files }};
         let totalFolderFiles = {{ total_folder_files }};
+        // Opaque server-side snapshot token for this exact render; pagination
+        // endpoints require it so concurrent tabs/users never mix views.
+        const viewToken = '{{ view_token }}';
         const currentFolderKey = '{{ current_folder_key }}';
         const ancestorKeys = {{ ancestor_keys | tojson }};
         // --- IDENTITY LOGIC FOR RATING ---
@@ -2528,6 +2614,24 @@ document.addEventListener('focusout', function(e) {
                 briefContent.dataset.parsed = "true";
             }
         });
+        // A value that ends up inside a single-quoted JavaScript string which is
+        // itself inside a double-quoted HTML attribute passes through two parsers:
+        // the browser decodes the attribute first, then reads the result as
+        // JavaScript. Escaping for one and not the other is why a folder called
+        // "Bob's renders" broke its own menu, and why a name holding a double
+        // quote could close the attribute and add another of its own.
+        // JavaScript escaping first, then HTML, so the decode leaves exactly the
+        // JavaScript the browser is meant to read.
+        function jsInAttr(value) {
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
         function escapeHTML(value) {
             if (value === null || typeof value === 'undefined') {
                 return '<em>null</em>';
@@ -2740,6 +2844,22 @@ document.addEventListener('focusout', function(e) {
         
         // --- FOLDER TREE MANAGEMENT FUNCTIONS ---
         
+        // Lightbox "More" overflow: the toolbar shows five actions; the
+        // rest live here. Clicking an item (or anywhere else) closes it.
+        function toggleLbMore(e) {
+            e.stopPropagation();
+            const wrap = document.getElementById('lb-more-wrap');
+            if (wrap) wrap.classList.toggle('open');
+        }
+        document.addEventListener('click', (e) => {
+            const wrap = document.getElementById('lb-more-wrap');
+            if (!wrap || !wrap.classList.contains('open')) return;
+            const menu = document.getElementById('lb-more-menu');
+            if (e.target === wrap || e.target.id === 'lb-more-btn') return;
+            if (menu && menu.contains(e.target)) { wrap.classList.remove('open'); return; }
+            if (!wrap.contains(e.target)) wrap.classList.remove('open');
+        });
+
         // Utility for notifications with custom duration support
         function showNotification(message, type = 'info', duration = 5000) { 
             const container = document.getElementById('notification-container'); 
@@ -2862,6 +2982,9 @@ document.addEventListener('focusout', function(e) {
 
             const isActive = !isMovePanel && folderKey === currentFolderKey;
             const folderDisplayName = folder.display_name;
+            // Folder names come from the filesystem, so apostrophes are
+            // ordinary. This one is handed to onclick handlers below.
+            const folderNameForHandler = jsInAttr(folderDisplayName);
             
             // --- NEW: Custom Tooltip for Root/Main Folder ---
             let tooltipText = folderDisplayName;
@@ -2905,7 +3028,7 @@ document.addEventListener('focusout', function(e) {
 
             // NOTE: HTML must be all in one only row to avoid indentations in the side bar 
             if (isMovePanel) {
-                const isRecursive = document.querySelector('input[name="recursive"]')?.checked || false;
+                const isRecursive = document.querySelector('.recursive-checkbox')?.checked || false;
                 // Disable move to current folder unless copying, global/AI search, or recursive
                 const shouldDisable = (currentDropAction !== 'copy' && folderKey === currentFolderKey && !isAiGlobal && !isGlobalSearch && !isRecursive);
                 const disabledAttr = shouldDisable ? 'disabled' : '';
@@ -2934,9 +3057,9 @@ document.addEventListener('focusout', function(e) {
                     // --- MOUNT POINT BUTTON LOGIC ---
                     let deleteOption = '';
                     if (folder.is_mount) {
-                        deleteOption = `<button onclick="unmountFolder(event, '${folderKey}', '${folderDisplayName}')" style="color:#ff6b6b; border-top:1px solid rgba(255,255,255,0.1);">⛓️ Unmount</button>`;
+                        deleteOption = `<button onclick="unmountFolder(event, '${folderKey}', '${folderNameForHandler}')" style="color:#ff6b6b; border-top:1px solid rgba(255,255,255,0.1);">⛓️ Unmount</button>`;
                     } else {
-                        deleteOption = `<button onclick="deleteFolder(event, '${folderKey}', '${folderDisplayName}')" style="color:#ff6b6b;">🗑️ Delete</button>`;
+                        deleteOption = `<button onclick="deleteFolder(event, '${folderKey}', '${folderNameForHandler}')" style="color:#ff6b6b;">🗑️ Delete</button>`;
                     }
 
                     actionsHTML = `
@@ -2945,7 +3068,7 @@ document.addEventListener('focusout', function(e) {
                             <div class="folder-dropdown">
                                 <button onclick="showFolderInfo(event, '${folderKey}')">ℹ️ Info</button>
                                 ${aiBtn}
-                                ${!folder.is_mount ? `<button onclick="renameFolder(event, '${folderKey}', '${folderDisplayName}')">✏️ Rename</button>` : ''}
+                                ${!folder.is_mount ? `<button onclick="renameFolder(event, '${folderKey}', '${folderNameForHandler}')">✏️ Rename</button>` : ''}
                                 ${deleteOption}
                                 <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:4px 0;">
                                 <button onclick="event.stopPropagation(); closeAllFolderMenus(event);" style="color:var(--text-muted); justify-content:center; font-weight:bold;">✕ Cancel</button>
@@ -3489,7 +3612,7 @@ document.addEventListener('focusout', function(e) {
             if (file.type === 'audio') {
                 mediaHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:4rem;color:#1ed760;">🎵</div>`;
             } else if (['image', 'animated_image'].includes(file.type)) {
-                mediaHTML = `<img class="lazy" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E" data-src="/galleryout/thumbnail/${file.id}" alt="${file.name}" loading="lazy">`;
+                mediaHTML = `<img class="lazy" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E" data-src="/galleryout/thumbnail/${file.id}" alt="${escapeHTML(file.name)}" loading="lazy">`;
             } else if (file.type === 'document') {
                 mediaEl = document.createElement('div');
                 mediaEl.className = 'theater-document-reader';
@@ -3688,14 +3811,14 @@ document.addEventListener('focusout', function(e) {
                 <!-- Make the entire bottom info area clickable to select/deselect the file -->
                 <div class="item-info" onclick="if(!event.target.closest('.item-actions') && !event.target.closest('a') && !event.target.closest('button')) { toggleSelection(event, '${file.id}', this.closest('.gallery-item')); }" style="cursor: pointer;" title="Click to select/deselect">
                     <div class="grid-view-only">
-                        <p title="${file.name}"><strong>${file.name}</strong></p>
+                        <p title="${escapeHTML(file.name)}"><strong>${escapeHTML(file.name)}</strong></p>
                         ${metadataHTML}
                         ${scannedHTML}
                     </div>
                     <!-- Data strictly used by the new List View -->
                     <div class="list-view-only-cols">
                         <div class="list-col-index"></div>
-                        <div class="list-col-name" title="${file.name}" style="display:flex; align-items:center;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0;">${file.name}</span>${file.type === 'audio' ? ` <button class="inline-audio-btn" onclick="playInlineAudio(event, '${file.id}', this)" title="Play Audio">▶</button>` : ''}</div>
+                        <div class="list-col-name" title="${escapeHTML(file.name)}" style="display:flex; align-items:center;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0;">${escapeHTML(file.name)}</span>${file.type === 'audio' ? ` <button class="inline-audio-btn" onclick="playInlineAudio(event, '${file.id}', this)" title="Play Audio">▶</button>` : ''}</div>
                         <div class="list-col-rating list-hide-mob">${(typeof ENABLE_DAM_MODE !== 'undefined' && ENABLE_DAM_MODE && file.avg_rating > 0) ? '★ ' + file.avg_rating.toFixed(1) : '-'}</div>
                         <div class="list-col-comments list-hide-mob">${file.comment_count > 0 ? '💬 ' + file.comment_count : '-'}</div>
                         <div class="list-col-size list-hide-mob">${typeof formatBytes === 'function' && file.size ? formatBytes(file.size) : '-'}</div>
@@ -4098,7 +4221,7 @@ document.addEventListener('focusout', function(e) {
             const commStr = commNum > 0 ? `💬 ${commNum}` : '';
 
             bar.innerHTML = `
-                <div class="fsb-item fsb-name" title="${file.name}">📄 <span style="color:var(--success-color)">${file.name}</span></div>
+                <div class="fsb-item fsb-name" title="${escapeHTML(file.name)}">📄 <span style="color:var(--success-color)">${escapeHTML(file.name)}</span></div>
                 ${favStr ? `<div class="fsb-item" style="padding-right:5px;">${favStr}</div>` : ''}
                 ${rateStr ? `<div class="fsb-item">${rateStr}</div>` : ''}
                 ${commStr ? `<div class="fsb-item">${commStr}</div>` : ''}
@@ -4239,13 +4362,16 @@ document.addEventListener('focusout', function(e) {
                 const btns = document.querySelectorAll('.toggle-select-all-btn');
                 btns.forEach(b => b.innerHTML = "⏳...");
 
-                const res = await fetch('/galleryout/api/current_view_ids');
+                const res = await fetch('/galleryout/api/current_view_ids?view_token=' + encodeURIComponent(viewToken));
                 const data = await res.json();
-                
+
                 if (data.status === 'success') {
                     data.ids.forEach(id => selectedFiles.add(id));
                     updateSelectionUI();
                     showNotification(`Selected all ${data.ids.length} files.`, 'info', 3000);
+                } else if (data.stale) {
+                    showNotification("This view expired on the server. Reloading...", "warning");
+                    setTimeout(() => window.location.reload(), 800);
                 }
             } catch (e) {
                 console.error("Smart Select Error:", e);
@@ -5590,7 +5716,7 @@ document.addEventListener('focusout', function(e) {
                         // C. LoRAs
                         let loraSection = '';
                         if (m.loras && m.loras.length > 0) {
-                            const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl ? window._remixServerDefaultUrl : 'http://127.0.0.1:8188');
+                            const comfyUrl = localStorage.getItem('sg_comfy_url') || (window._remixServerDefaultUrl || window.SG_COMFY_URL);
                             const loraManagerUrl = comfyUrl.replace(/\/$/, '') + '/loras';
                             
                             const loraChips = m.loras.map(l => {
@@ -5749,7 +5875,7 @@ document.addEventListener('focusout', function(e) {
         function showUploadModal() { resetUploadModal(); uploadDestinationText.textContent = currentFolderInfo.display_name; document.body.classList.add('modal-open'); uploadOverlay.classList.add('visible'); }
         function closeUploadModal() { document.body.classList.remove('modal-open'); uploadOverlay.classList.remove('visible'); }
         function handleFiles(files) { const allowed = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp', '.gif', '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv', '.mts', '.ts', '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.json', '.txt']; const validFiles = Array.from(files).filter(f => { const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase(); return allowed.includes(ext); }); const invalidCount = files.length - validFiles.length; if (invalidCount > 0) showNotification(invalidCount + ' file(s) ignored (unsupported extension).', 'warning'); filesToUpload = [...filesToUpload, ...validFiles]; renderFileList(); }
-        function renderFileList() { fileList.innerHTML = ''; filesToUpload.forEach(file => { const li = document.createElement('li'); const sizeKB = (file.size / 1024).toFixed(1); li.innerHTML = `<span>${file.name}</span> <span class="file-size">${sizeKB} KB</span>`; fileList.appendChild(li); }); }
+        function renderFileList() { fileList.innerHTML = ''; filesToUpload.forEach(file => { const li = document.createElement('li'); const sizeKB = (file.size / 1024).toFixed(1); li.innerHTML = `<span>${escapeHTML(file.name)}</span> <span class="file-size">${sizeKB} KB</span>`; fileList.appendChild(li); }); }
         function performUpload() {
             if (filesToUpload.length === 0) {
                 showNotification('Please select files to upload.', 'warning');
@@ -5935,9 +6061,9 @@ document.addEventListener('focusout', function(e) {
                         aiRecursiveCheckbox.checked = (lastAiRecursive === "true");
                         recursiveToggle.classList.toggle('active', aiRecursiveCheckbox.checked);
                     } else {
-                        // Default: unchecked
-                        aiRecursiveCheckbox.checked = false;
-                        recursiveToggle.classList.remove('active');
+                        // Default: subfolders included
+                        aiRecursiveCheckbox.checked = true;
+                        recursiveToggle.classList.add('active');
                     }
                 } else {
                     recursiveToggle.style.display = 'none';
@@ -6115,7 +6241,7 @@ document.addEventListener('focusout', function(e) {
         
         // --- SCOPE SELECTOR & RECURSIVE LOGIC (Custom Native Dropdowns) ---
         const scopeRadios = document.querySelectorAll('input[name="scope"]');
-        const recursiveCheckbox = document.querySelector('input[name="recursive"]');
+        const recursiveCheckbox = document.querySelector('.recursive-checkbox');
         const recursiveWrapper = document.getElementById('recursive-standard-ui');
 
         let selectedExts = new Set({{ selected_extensions | tojson }});
@@ -6275,7 +6401,7 @@ document.addEventListener('focusout', function(e) {
         function updateRecursiveUIState() {
             const isGlobal = document.querySelector('input[name="scope"][value="global"]')?.checked;
             const recWrap = document.querySelector('.recursive-wrapper');
-            const recCheck = document.querySelector('input[name="recursive"]');
+            const recCheck = document.querySelector('.recursive-checkbox');
             if (recWrap && recCheck) {
                 if (isGlobal) {
                     recWrap.classList.add('disabled');
@@ -6291,7 +6417,7 @@ document.addEventListener('focusout', function(e) {
         // 4. AJAX Refresh
         function triggerOptionsRefresh() {
             const scope = document.querySelector('input[name="scope"][value="global"]')?.checked ? 'global' : 'local';
-            const isRec = document.querySelector('input[name="recursive"]')?.checked || false;
+            const isRec = document.querySelector('.recursive-checkbox')?.checked || false;
             const folderKey = '{{ current_folder_key }}';
             
             const wrapExt = document.getElementById('wrapper-extensions');
@@ -6336,7 +6462,7 @@ document.addEventListener('focusout', function(e) {
             });
         });
 
-        const recCheck = document.querySelector('input[name="recursive"]');
+        const recCheck = document.querySelector('.recursive-checkbox');
         if (recCheck) {
             recCheck.addEventListener('change', function() {
                 const parentWrap = this.closest('.recursive-wrapper');
@@ -6475,7 +6601,7 @@ document.addEventListener('focusout', function(e) {
                     const iconClass = item.is_drive ? 'fs-drive-icon' : 'fs-icon';
                     const iconChar = item.is_drive ? '💽' : '📁';
                     
-                    li.innerHTML = `<span class="${iconClass}">${iconChar}</span> <span>${item.name}</span>`;
+                    li.innerHTML = `<span class="${iconClass}">${iconChar}</span> <span>${escapeHTML(item.name)}</span>`;
                     
                     // Click to navigate INTO
                     li.onclick = () => fsNavigate(item.path);
@@ -6798,6 +6924,22 @@ document.addEventListener('focusout', function(e) {
                      }
                 });
 
+                // A chosen day means midnight to midnight HERE, on the same
+                // clock that draws the date on every card. The server runs
+                // somewhere else -- in Docker, in UTC -- so it is told the
+                // instants rather than the day, and Date does the work,
+                // including the day the clocks change.
+                const localDayEdge = (value, nextDay) => {
+                    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+                    if (!parts) return '';
+                    const d = new Date(Number(parts[1]), Number(parts[2]) - 1,
+                                       Number(parts[3]) + (nextDay ? 1 : 0),
+                                       0, 0, 0, 0);
+                    const seconds = Math.floor(d.getTime() / 1000);
+                    if (!isFinite(seconds)) return '';
+                    return String(nextDay ? seconds - 1 : seconds);
+                };
+
                 // Form Submit Validation
                 filterForm.addEventListener('submit', (e) => {
                     const start = startDateInput.value;
@@ -6812,6 +6954,11 @@ document.addEventListener('focusout', function(e) {
                         }
                     }
                     // If only one is present, the backend will handle the >= or <= logic automatically
+
+                    const startTs = document.getElementById('start-ts');
+                    const endTs = document.getElementById('end-ts');
+                    if (startTs) startTs.value = localDayEdge(start, false);
+                    if (endTs) endTs.value = localDayEdge(end, true);
                 });
             }
             
@@ -8059,17 +8206,17 @@ document.addEventListener('focusout', function(e) {
                     if (textSpan) textSpan.textContent = 'Loading...';
                     
                     try {
-                        let fetchUrl = `/galleryout/load_more?offset=${currentItemCount}&folder_key=${currentFolderKey}`;
-                        
-                        const filterForm = document.querySelector('#filter-form');
-                        if (filterForm) {
-                            fetchUrl += `&${new URLSearchParams(new FormData(filterForm))}`;
-                        }
-                        
+                        let fetchUrl = `/galleryout/load_more?offset=${currentItemCount}&view_token=${encodeURIComponent(viewToken)}`;
+
                         const response = await fetch(fetchUrl);
                         const data = await response.json();
-                        
-                        if (data.files && data.files.length > 0) {
+
+                        if (data.stale) {
+                            // Snapshot evicted server-side: appending anything
+                            // else would mix views. Re-render this one.
+                            showNotification("This view expired on the server. Reloading...", "warning");
+                            setTimeout(() => window.location.reload(), 800);
+                        } else if (data.files && data.files.length > 0) {
                             appendFiles(data.files);
                         } else {
                             // No more files: hide container and disconnect observer
@@ -9904,7 +10051,7 @@ document.addEventListener('focusout', function(e) {
                 // Admin Posting Area
                 html += `
                     <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border-color);">
-                        <textarea id="admin-comment-input" class="sd-text-input" placeholder="Post a comment as Administrator..." rows="2" style="margin-bottom:10px;"></textarea>
+                        <textarea id="admin-comment-input" class="sd-text-input" placeholder="Post a comment as Administrator..." rows="2" maxlength="4000" style="margin-bottom:10px;"></textarea>
                         <button onclick="adminPostComment()" class="glass-btn active-blue" style="width:100%; height:44px;">🚀 Post as Admin</button>
                     </div>
                 `;
@@ -10524,7 +10671,7 @@ document.addEventListener('focusout', function(e) {
                         `;
 
                         // Make author name clickable for Quick Reply
-                        const safeAuthorStr = escapeHTML(c.author_name).replace(/'/g, "\\'");
+                        const safeAuthorStr = jsInAttr(c.author_name);
                         const canReplyDirectly = isPrivilegedSession || isAdminAuthor;
                         
                         let authorSpanHtml = `<span>${isAdminAuthor ? '🛡️ STAFF' : escapeHTML(c.author_name)} ${isMine ? '(You)' : ''}</span>`;
@@ -10682,12 +10829,16 @@ document.addEventListener('focusout', function(e) {
                     // --- update badge in the tab ---
                     const badge = document.getElementById('fi-rating-badge');
                     if (badge) {
-                        badge.textContent = data.vote_count > 0 ? `★ ${data.new_average.toFixed(1)} (${data.vote_count})` : '';
+                        // Blind rating withholds the crowd figures, so there may
+                        // be nothing to show -- and nothing to call toFixed on.
+                        const hasCrowd = data.new_average !== null && data.new_average !== undefined;
+                        badge.textContent = (hasCrowd && data.vote_count > 0)
+                            ? `★ ${data.new_average.toFixed(1)} (${data.vote_count})` : '';
                     }
-                    
+
                     // Also update the global file data cache so sorting works without reload
                     const fileData = allFilesData.find(f => f.id === currentFiFileId);
-                    if (fileData) {
+                    if (fileData && data.new_average !== null && data.new_average !== undefined) {
                         fileData.avg_rating = data.new_average;
                         fileData.vote_count = data.vote_count;
                     }
@@ -11727,22 +11878,22 @@ async function openShareModal(e, collId, collName) {
         
 
     <script>
-    // UX Mutua Esclusività Dialog
+    // The OmniQuery button opens the search palette (Ctrl/Cmd+P / Alt+P).
     window.handleOmniQueryClick = async function(e) {
         if (e) e.stopPropagation();
         if (e && e.target && e.target.classList.contains('filter-reset-icon')) return;
 
         if (typeof activeFiltersCount !== 'undefined' && activeFiltersCount > 0) {
             const confirmed = await smartConfirm(
-                "⚠️ Active Filters Detected", 
-                "Opening OmniQuery will automatically reset your currently active filters.\n\nContinue?", 
+                "Active Filters Detected",
+                "Opening search will automatically reset your currently active filters.\n\nContinue?",
                 false
             );
             if (!confirmed) return;
             window.location.href = "{{ url_for('gallery_view', folder_key=current_folder_key) }}?auto_open_omniquery=true";
             return;
         }
-        openOmniQueryModal();
+        openOmniPalette();
     };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -11750,7 +11901,7 @@ async function openShareModal(e, collId, collName) {
         
         if (urlParams.get('auto_open_omniquery') === 'true') {
             window.history.replaceState({}, document.title, window.location.pathname);
-            setTimeout(openOmniQueryModal, 300);
+            setTimeout(openOmniPalette, 300);
         }
         
         if (urlParams.get('auto_open_filters') === 'true') {
@@ -11855,6 +12006,23 @@ async function openShareModal(e, collId, collName) {
 // Block-level parsing (headers, lists, tables, blockquotes, code fences)
 // plus inline formatting (bold, italic, links, images, strikethrough).
 // ==========================================
+// Only these schemes may reach an href or a src. The note text is
+// HTML-escaped before the markdown rules run, so an attribute cannot be
+// closed from here -- what was left unguarded is the scheme itself, and
+// [click me](javascript:...) produced a live javascript: link that ran
+// when someone read the note.
+//
+// Browsers strip control characters and spaces before reading a scheme, so
+// "java<tab>script:" is javascript: to them. The test is done on what they
+// will see, not on what was typed.
+function markdownSafeUrl(url) {
+    const value = String(url === null || url === undefined ? '' : url).trim();
+    const probe = value.replace(/[\u0000-\u0020]/g, '');
+    const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(probe);
+    if (!scheme) return value;          // relative, #anchor, //host
+    return /^(https?|ftp|mailto)$/i.test(scheme[1]) ? value : '#';
+}
+
 function renderMarkdownText(text) {
     if (!text) return '';
 
@@ -11910,15 +12078,15 @@ function renderMarkdownText(text) {
 
         // Images: ![alt](url "title")
         s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_, alt, url, title) =>
-            `<img src="${url}" alt="${alt}" title="${title || alt}" style="max-width:100%; border-radius:6px; margin:6px 0; display:block;">`);
+            `<img src="${markdownSafeUrl(url)}" alt="${alt}" title="${title || alt}" style="max-width:100%; border-radius:6px; margin:6px 0; display:block;">`);
 
         // Links: [text](url "title")
         s = s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_, txt, url, title) =>
-            `<a href="${url}" title="${title || ''}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${txt}</a>`);
+            `<a href="${markdownSafeUrl(url)}" title="${title || ''}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${txt}</a>`);
 
         // Autolinks: <https://example.com>  (note: source is already HTML-escaped, so < > became &lt; &gt;)
         s = s.replace(/&lt;((?:https?|ftp):\/\/[^\s&]+)&gt;/g, (_, url) =>
-            `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${url}</a>`);
+            `<a href="${markdownSafeUrl(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${url}</a>`);
 
         // Bold + italic: ***text*** or ___text___
         s = s.replace(/(\*\*\*|___)([^*_]+?)\1/g, '<strong><em>$2</em></strong>');
@@ -12185,6 +12353,7 @@ function renderMarkdownText(text) {
 
                 const wfHashStr = f.workflow_hash ? f.workflow_hash.substring(0, 7).toUpperCase() : 'N/A';
                 const prHashStr = f.prompt_hash ? f.prompt_hash.substring(0, 7).toUpperCase() : 'N/A';
+                const mdHashStr = f.models_hash ? f.models_hash.substring(0, 7).toUpperCase() : 'N/A';
 
                 const totalClusterSum = (data.cluster_wf_count || 0) + (data.cluster_pr_count || 0);
                 const showClusterBtn = totalClusterSum > 2;
@@ -12196,8 +12365,8 @@ function renderMarkdownText(text) {
 
                 content.innerHTML = `
                     <div class="fd-tab-bar">
-                        <button type="button" class="fd-tab-btn active" id="fd-tab-btn-overview" tabindex="0" onclick="switchFdTab('overview')">📋 Overview & Paths</button>
-                        <button type="button" class="fd-tab-btn" id="fd-tab-btn-cluster" tabindex="0" onclick="switchFdTab('cluster')">🧬 Architecture & Cluster</button>
+                        <button type="button" class="fd-tab-btn active" id="fd-tab-btn-overview" tabindex="0" onclick="switchFdTab('overview')">Overview & Paths</button>
+                        <button type="button" class="fd-tab-btn" id="fd-tab-btn-cluster" tabindex="0" onclick="switchFdTab('cluster')">Architecture & Cluster</button>
                     </div>
 
                     <div class="fd-tab-pane active" id="fd-tab-pane-overview">
@@ -12216,30 +12385,30 @@ function renderMarkdownText(text) {
 
                         <div class="fd-grid">
                             <div class="fd-card">
-                                <span class="fd-card-label">📐 Dimensions</span>
+                                <span class="fd-card-label">Dimensions</span>
                                 <span class="fd-card-val">${resStr}</span>
                             </div>
                             <div class="fd-card">
-                                <span class="fd-card-label">💾 File Size</span>
+                                <span class="fd-card-label">File Size</span>
                                 <span class="fd-card-val">${sizeStr}</span>
                             </div>
                             <div class="fd-card">
-                                <span class="fd-card-label">📅 Modified Date</span>
+                                <span class="fd-card-label">Modified Date</span>
                                 <span class="fd-card-val">${dateStr}</span>
                             </div>
                             <div class="fd-card">
-                                <span class="fd-card-label">🔍 Last Scanned</span>
+                                <span class="fd-card-label">Last Scanned</span>
                                 <span class="fd-card-val">${scanStr}</span>
                             </div>
                             ${f.duration ? `
                             <div class="fd-card">
-                                <span class="fd-card-label">⏱️ Duration</span>
+                                <span class="fd-card-label">Duration</span>
                                 <span class="fd-card-val">${f.duration}</span>
                             </div>` : ''}
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">⭐ Rating & Activity</div>
+                            <div class="fd-section-title">Rating & Activity</div>
                             <div class="fd-stats-row">
                                 <div class="fd-stat-box">
                                     <span class="fd-stat-num">★ ${avgRating}</span>
@@ -12258,12 +12427,12 @@ function renderMarkdownText(text) {
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">📁 Folder Tree Location</div>
+                            <div class="fd-section-title">Folder Tree Location</div>
                             <div class="fd-chain-row">${folderHierarchyHtml}</div>
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">📍 Physical Disk Path</div>
+                            <div class="fd-section-title">Physical Disk Path</div>
                             <div class="fd-path-box">
                                 <code>${escapeHTML(f.path)}</code>
                                 ${isLink && realPath ? `<div class="fd-link-source">🔗 <strong>Real Target:</strong> <code>${escapeHTML(realPath)}</code></div>` : ''}
@@ -12271,20 +12440,78 @@ function renderMarkdownText(text) {
                         </div>
 
                         <div class="fd-section">
-                            <div class="fd-section-title">📚 Collections & Sub-collections</div>
+                            <div class="fd-section-title">Collections & Sub-collections</div>
                             <div class="fd-collections-box">${collectionsHtml}</div>
                         </div>
 
                         ${f.ai_caption ? `
                         <div class="fd-section">
-                            <div class="fd-section-title">🧠 AI Caption</div>
+                            <div class="fd-section-title">AI Caption</div>
                             <div class="fd-caption-box">${formatAiCaptionText(f.ai_caption)}</div>
+                        </div>` : ''}
+
+                        ${(() => {
+                            const g = f.generation_params;
+                            if (!g) return '';
+                            const cards = [
+                                ['Model', g.model], ['Model hash', g.model_hash],
+                                ['Sampler', g.sampler], ['Scheduler', g.scheduler],
+                                ['Seed', g.seed], ['Steps', g.steps], ['CFG', g.cfg],
+                                ['Size', (g.width && g.height) ? `${g.width}x${g.height}` : null],
+                                ['Denoise', g.denoise], ['Clip skip', g.clip_skip],
+                                ['Version', g.version],
+                            ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+                            const loras = Array.isArray(g.loras) ? g.loras : [];
+                            const extras = g.extra && typeof g.extra === 'object' ? Object.entries(g.extra) : [];
+                            return `
+                        <div class="fd-section">
+                            <div class="fd-section-title">Generation Parameters
+                                <span class="fd-badge type" style="margin-left:8px;">${escapeHTML(g.tool)}</span>
+                                <span style="color:var(--text-muted); font-size:0.7rem; font-weight:400; margin-left:6px;">${escapeHTML(g.detection)}</span>
+                            </div>
+                            <div class="fd-grid">
+                                ${cards.map(([k, v]) => `
+                                <div class="fd-card">
+                                    <span class="fd-card-label">${k}</span>
+                                    <span class="fd-card-val" style="word-break:break-all;">${escapeHTML(String(v))}</span>
+                                </div>`).join('')}
+                            </div>
+                            ${g.negative_prompt ? `
+                            <div class="fd-path-box" style="margin-top:10px;">
+                                <strong style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:1px;">Negative prompt</strong>
+                                <div><code>${escapeHTML(g.negative_prompt)}</code></div>
+                            </div>` : ''}
+                            ${loras.length ? `
+                            <div style="margin-top:10px;">${loras.map(l =>
+                                `<span class="fd-pill folder" style="font-size:0.8rem;">${escapeHTML(l.name || '?')}${l.weight !== undefined ? ' &middot; ' + escapeHTML(String(l.weight)) : ''}</span>`).join(' ')}
+                            </div>` : ''}
+                            ${extras.length ? `
+                            <details style="margin-top:10px;">
+                                <summary style="cursor:pointer; color:var(--text-muted); font-size:0.8rem;">${extras.length} additional tool parameter${extras.length === 1 ? '' : 's'}</summary>
+                                <div class="fd-genmeta-box" style="margin-top:6px;">${extras.map(([k, v]) =>
+                                    `${escapeHTML(k)}: ${escapeHTML(typeof v === 'object' ? JSON.stringify(v) : String(v))}`).join('\n')}</div>
+                            </details>` : ''}
+                        </div>`;
+                        })()}
+
+                        ${(f.faces && f.faces.length) ? `
+                        <div class="fd-section">
+                            <div class="fd-section-title">Faces
+                                <a href="/galleryout/aidam?view=compare&file=${f.id}" target="_blank" style="margin-left:8px; font-size:0.72rem; color:var(--ai-color); text-decoration:none; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Detector compare</a>
+                            </div>
+                            <div>${f.faces.map(fc => {
+                                const bits = [`det ${Math.round((fc.det_score || 0) * 100)}%`];
+                                if (fc.sex) bits.push(`${fc.sex} ${fc.age ?? ''}`.trim());
+                                if (fc.pose_yaw !== null && fc.pose_yaw !== undefined) bits.push(`yaw ${Math.round(fc.pose_yaw)}`);
+                                if (fc.cluster_id !== null && fc.cluster_id !== undefined) bits.push(`cluster #${fc.cluster_id}`);
+                                return `<span class="fd-pill folder" style="font-size:0.8rem;">${escapeHTML(bits.join(' &middot; ')).replace(/&amp;middot;/g, '&middot;')}</span>`;
+                            }).join(' ')}</div>
                         </div>` : ''}
 
                         ${f.generation_metadata ? `
                         <div class="fd-section">
-                            <div class="fd-section-title">🖼️ Generation Metadata</div>
-                            <button class="fd-genmeta-copy" onclick="copyGenerationMetadataToClipboard(this)">📋 Copy</button>
+                            <div class="fd-section-title">Raw Generation Metadata</div>
+                            <button class="fd-genmeta-copy" onclick="copyGenerationMetadataToClipboard(this)">Copy</button>
                             <div class="fd-genmeta-box">${escapeHTML(f.generation_metadata)}</div>
                         </div>` : ''}
                     </div>
@@ -12298,6 +12525,10 @@ function renderMarkdownText(text) {
                             <div class="fd-stat-box">
                                 <span class="fd-stat-num" style="color:#00ffff;">💬 #${prHashStr}</span>
                                 <span class="fd-stat-lbl">${data.cluster_pr_count || 0} Assets with Prompt</span>
+                            </div>
+                            <div class="fd-stat-box">
+                                <span class="fd-stat-num" style="color:#ffc107;">📦 #${mdHashStr}</span>
+                                <span class="fd-stat-lbl">${data.cluster_md_count || 0} Assets with Model Set</span>
                             </div>
                         </div>
 

@@ -1,0 +1,343 @@
+<!-- OMNIQUERY SEARCH PALETTE MODULE -->
+<!-- Version: 2.22 - August 12, 2026 -->
+<!-- OmniQuery search palette: Ctrl/Cmd+P (or Alt+P) command-prompt overlay.
+     Live results on every keystroke through the deterministic parser
+     (POST /galleryout/api/omniquery/nlq, live:true -- sub-ms parse, no DB
+     writes); a typing pause or Enter runs the deep answer (the nl2sql
+     model through the read-only sandbox) and Enter navigates the gallery
+     to the result session. Shows interpretation chips, a count, and a
+     natural-ratio masonry. Never shows SQL. -->
+<style>
+    #omni-palette-overlay {
+        position: fixed; inset: 0; z-index: 11000; display: none;
+        background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(6px);
+        justify-content: center; align-items: flex-start;
+    }
+    #omni-palette-overlay.open { display: flex; }
+    #omni-palette {
+        margin-top: 12vh; width: min(680px, 92vw);
+        background: rgba(18, 18, 22, 0.97);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 14px; overflow: hidden;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(155, 89, 182, 0.25);
+        animation: omni-pop 0.12s ease-out;
+    }
+    @keyframes omni-pop { from { transform: scale(0.985); opacity: 0.6; } to { transform: scale(1); opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { #omni-palette { animation: none; } }
+    #omni-palette-input-row { display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
+    #omni-palette-glyph { color: #e0b0ff; font-size: 18px; user-select: none; }
+    #omni-palette-input {
+        flex: 1; background: transparent; border: none; outline: none;
+        color: #f2f2f2; font-size: 17px; font-family: inherit;
+    }
+    #omni-palette-input::placeholder { color: rgba(255, 255, 255, 0.35); }
+    #omni-palette-count {
+        color: rgba(255, 255, 255, 0.55); font-size: 13px; white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    #omni-palette-count.has-hits { color: #e0b0ff; }
+    #omni-palette-chips {
+        display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px;
+        min-height: 0;
+    }
+    .omni-chip {
+        font-size: 12px; padding: 3px 9px; border-radius: 999px;
+        background: rgba(155, 89, 182, 0.18); color: #d8b6f0;
+        border: 1px solid rgba(155, 89, 182, 0.35); white-space: nowrap;
+    }
+    .omni-chip.text-chip { background: rgba(255, 255, 255, 0.07); color: #cfcfcf; border-color: rgba(255, 255, 255, 0.18); }
+    /* Masonry, like the gallery itself: thumbnails keep their natural
+       aspect ratios (portrait-heavy generated art), never uniform squares. */
+    #omni-palette-results {
+        columns: 5 96px; column-gap: 6px;
+        padding: 4px 16px 14px; max-height: 300px; overflow-y: auto;
+    }
+    .omni-thumb {
+        border-radius: 8px; overflow: hidden; margin: 0 0 6px;
+        break-inside: avoid;
+        background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .omni-thumb img { width: 100%; height: auto; display: block; }
+    #omni-palette-footer {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 16px; border-top: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.4); font-size: 12px;
+    }
+    #omni-palette-footer kbd {
+        background: rgba(255, 255, 255, 0.1); border-radius: 4px;
+        padding: 1px 6px; font-size: 11px; font-family: inherit;
+        color: rgba(255, 255, 255, 0.65);
+    }
+    #omni-palette-status { color: rgba(255, 255, 255, 0.45); font-size: 13px; padding: 0 16px 12px; }
+</style>
+
+<div id="omni-palette-overlay" role="dialog" aria-modal="true" aria-label="Search">
+    <div id="omni-palette">
+        <div id="omni-palette-input-row">
+            <span id="omni-palette-glyph">&#9889;</span>
+            <input id="omni-palette-input" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="Search your gallery...">
+            <span id="omni-palette-count"></span>
+        </div>
+        <div id="omni-palette-chips"></div>
+        <div id="omni-palette-status"></div>
+        <div id="omni-palette-results"></div>
+        <div id="omni-palette-footer">
+            <span><kbd>Enter</kbd> open results &nbsp; <kbd>Esc</kbd> close</span>
+            <span><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Alt</kbd>+<kbd>P</kbd></span>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const overlay = document.getElementById('omni-palette-overlay');
+    const input = document.getElementById('omni-palette-input');
+    const chipsEl = document.getElementById('omni-palette-chips');
+    const countEl = document.getElementById('omni-palette-count');
+    const resultsEl = document.getElementById('omni-palette-results');
+    const statusEl = document.getElementById('omni-palette-status');
+
+    let debounceTimer = null;
+    let deepTimer = null;
+    let inflight = null;       // AbortController of the live request
+    let deepInflight = null;   // AbortController of the deep (model) request
+    let committing = false;
+    // The last completed deep search: {query, session_id, count} -- Enter
+    // reuses it instead of re-running the model.
+    let deepResult = null;
+
+    function esc(s) {
+        const d = document.createElement('span');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    // Ghost hints: the "ways you can search", cycling inside the field
+    // itself -- the only place they live. No cards.
+    const HINTS = [
+        'girlnextdoor', 'favorite videos', 'seed 424242', 'photos of trees',
+        'lora girlnextdoor', 'model flux', '4+ star images from last week',
+        'not approved images', 'videos longer than 2 minutes',
+        'images with faces', 'face cluster 1', 'how many favorites',
+        'images with 30 steps cfg 7.5', 'that steampunk dragon thing',
+        'files rated at least 4 by more than one person',
+    ];
+    let hintIdx = Math.floor(Math.random() * HINTS.length);
+    let hintTimer = null;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function cycleHint() {
+        input.placeholder = HINTS[hintIdx % HINTS.length];
+        hintIdx += 1;
+    }
+
+    // Empty state: the library itself, newest first, as the live masonry.
+    async function showLibrary() {
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+        try {
+            const resp = await fetch('/galleryout/api/omniquery/nlq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: 'newest first', live: true }),
+                signal: inflight.signal,
+            });
+            const data = await resp.json();
+            if (input.value.trim()) return;  // user already typed
+            if (data.status === 'success') {
+                renderResults(data.preview_ids);
+                countEl.textContent = '';
+                chipsEl.innerHTML = '';
+            }
+        } catch (err) { /* empty state is best-effort */ }
+    }
+
+    window.openOmniPalette = function () {
+        overlay.classList.add('open');
+        input.focus();
+        input.select();
+        cycleHint();
+        if (!reducedMotion) {
+            clearInterval(hintTimer);
+            hintTimer = setInterval(cycleHint, 2600);
+        }
+        if (input.value.trim()) liveQuery();
+        else showLibrary();
+    };
+
+    window.closeOmniPalette = function () {
+        overlay.classList.remove('open');
+        clearInterval(hintTimer);
+        if (inflight) inflight.abort();
+        if (deepInflight) deepInflight.abort();
+    };
+
+    function renderChips(chips) {
+        chipsEl.innerHTML = (chips || []).map(c => {
+            const textish = c.field === 'text';
+            return `<span class="omni-chip${textish ? ' text-chip' : ''}">${esc(c.label)}</span>`;
+        }).join('');
+    }
+
+    function renderResults(ids) {
+        resultsEl.innerHTML = (ids || []).slice(0, 24).map(id =>
+            `<div class="omni-thumb"><img src="/galleryout/thumbnail/${encodeURIComponent(id)}" alt="" loading="eager"></div>`
+        ).join('');
+    }
+
+    function renderAnswer(data) {
+        renderChips(data.interpretation);
+        if (data.kind === 'count') {
+            countEl.textContent = `count: ${data.count}`;
+            countEl.classList.add('has-hits');
+            resultsEl.innerHTML = '';
+        } else {
+            countEl.textContent = `${data.count} result${data.count === 1 ? '' : 's'}`;
+            countEl.classList.toggle('has-hits', data.count > 0);
+            renderResults(data.preview_ids);
+        }
+    }
+
+    async function liveQuery() {
+        const q = input.value.trim();
+        if (!q) {
+            chipsEl.innerHTML = ''; countEl.textContent = '';
+            statusEl.textContent = '';
+            showLibrary();  // emptying the field returns to the library
+            return;
+        }
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+        try {
+            const resp = await fetch('/galleryout/api/omniquery/nlq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q, live: true }),
+                signal: inflight.signal,
+            });
+            const data = await resp.json();
+            if (data.status !== 'success') {
+                statusEl.textContent = data.message || 'Search failed.';
+                countEl.textContent = ''; resultsEl.innerHTML = '';
+                return;
+            }
+            if (statusEl.textContent === 'Search failed.') statusEl.textContent = '';
+            renderAnswer(data);
+        } catch (err) {
+            if (err.name !== 'AbortError') statusEl.textContent = 'Search failed.';
+        }
+    }
+
+    // Adaptive auto-deep: on hardware where the model answers in a few
+    // seconds (GPU), the deep search fires by itself on a typing pause;
+    // after two consecutive slow rounds (CPU-class decode) it stops
+    // auto-firing and waits for Enter instead. Measured, not configured.
+    let slowRounds = 0;
+    let autoDeep = true;
+
+    // The real answer: fires by itself once typing pauses. Instant tiles
+    // stay on screen and are seamlessly replaced when this lands.
+    async function deepQuery() {
+        const q = input.value.trim();
+        if (!q) return;
+        const t0 = performance.now();
+        if (deepInflight) deepInflight.abort();
+        deepInflight = new AbortController();
+        statusEl.textContent = 'thinking...';
+        try {
+            const resp = await fetch('/galleryout/api/omniquery/nlq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q }),
+                signal: deepInflight.signal,
+            });
+            const data = await resp.json();
+            if (performance.now() - t0 > 4000) {
+                slowRounds += 1;
+                if (slowRounds >= 2) autoDeep = false;
+            } else {
+                slowRounds = 0;
+            }
+            if (input.value.trim() !== q) return;  // stale: user kept typing
+            statusEl.textContent = '';
+            if (data.status !== 'success') return; // instant tiles stand
+            renderAnswer(data);
+            deepResult = { query: q, session_id: data.session_id || null,
+                           kind: data.kind, count: data.count };
+        } catch (err) {
+            if (err.name !== 'AbortError') statusEl.textContent = '';
+        }
+    }
+
+    async function commitQuery() {
+        const q = input.value.trim();
+        if (!q || committing) return;
+        if (deepResult && deepResult.query === q) {
+            if (deepResult.session_id) {
+                window.location.href = `{{ url_for('gallery_view', folder_key=current_folder_key) }}?omniquery_id=${encodeURIComponent(deepResult.session_id)}`;
+                return;
+            }
+            if (deepResult.kind === 'count' || deepResult.count === 0) return;
+        }
+        committing = true;
+        statusEl.textContent = 'Opening results...';
+        try {
+            const resp = await fetch('/galleryout/api/omniquery/nlq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q }),
+            });
+            const data = await resp.json();
+            if (data.status !== 'success') {
+                statusEl.textContent = data.message || 'Search failed.';
+                return;
+            }
+            renderAnswer(data);
+            statusEl.textContent = '';
+            if (data.kind === 'count' || !data.session_id) return;
+            window.location.href = `{{ url_for('gallery_view', folder_key=current_folder_key) }}?omniquery_id=${encodeURIComponent(data.session_id)}`;
+        } catch (err) {
+            statusEl.textContent = 'Search failed.';
+        } finally {
+            committing = false;
+        }
+    }
+
+    input.addEventListener('input', () => {
+        deepResult = null;
+        clearTimeout(debounceTimer);
+        clearTimeout(deepTimer);
+        if (deepInflight) deepInflight.abort();
+        debounceTimer = setTimeout(liveQuery, 120);
+        if (autoDeep) deepTimer = setTimeout(deepQuery, 700);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commitQuery(); }
+        e.stopPropagation();  // the gallery must never hear palette typing
+    });
+
+    overlay.addEventListener('mousedown', (e) => {
+        if (e.target === overlay) closeOmniPalette();
+    });
+
+    // Capture-phase global hotkeys: Ctrl/Cmd+P and Alt+P open (beating the
+    // browser print dialog), Esc closes while open.
+    window.addEventListener('keydown', (e) => {
+        const key = (e.key || '').toLowerCase();
+        if (((e.ctrlKey || e.metaKey) && !e.altKey && key === 'p') || (e.altKey && key === 'p')) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (overlay.classList.contains('open')) closeOmniPalette();
+            else openOmniPalette();
+            return;
+        }
+        if (e.key === 'Escape' && overlay.classList.contains('open')) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeOmniPalette();
+        }
+    }, true);
+})();
+</script>

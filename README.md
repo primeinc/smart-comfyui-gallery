@@ -60,7 +60,7 @@ Whether you're generating for fun, building a portfolio, or running a production
 | 📋 [**Full Asset Details**](docs/Asset_Info_Panel_manual.md) | Instant 360° inspector for disk paths, symlink targets & node pipelines (`I`) - **NEW** |
 | 📝 [**Collection Notes & Briefs**](docs/Collection_Notes_manual.md) | Attach rich Markdown specs & checklists to virtual albums - **NEW** |
 | 🔍 **Instant Search** | Find by prompt, checkpoint, LoRA (with live autocomplete), date or comment |
-| 🧠 [**OmniQuery**](docs/OmniQuery.md) | Search your gallery in plain English, any criteria. Let AI write complex SQL queries to find hyper-specific cross-referenced media |
+| 🧠 [**OmniQuery**](docs/OmniQuery.md) | Ctrl+P: search your gallery in plain English. Instant for structured criteria; a local AI answers free-language questions against your own database, read-only |
 | 🔗 **Any Folder & Drive Mounts** | Point at any ComfyUI output, NAS, symlink or network path |
 | 📤 **Magic Upload** | Drag & drop from PC/smartphone, auto-extract & index workflows |
 | 📑 **Grid & List Views** | Browse the way you prefer (with inline audio player in List View) |
@@ -109,7 +109,7 @@ SmartGallery DAM is *ComfyUI-aware* (it reads workflows, extracts prompts, under
         *   [3.1.1 Sidebar Navigation](#311-sidebar-navigation)
         *   [3.1.2 Top Toolbar & Global Actions](#312-top-toolbar--global-actions)
         *   [3.1.3 Search, Filters & Fuzzy Auto-Suggest](#313-search-filters--fuzzy-auto-suggest)
-        *   [3.1.4 OmniQuery – AI-Powered SQL Explorer](#314-omniquery--ai-powered-sql-explorer)
+        *   [3.1.4 OmniQuery – Search in Plain English](#314-omniquery--search-in-plain-english)
         *   [3.1.5 Gallery Grid & Focus Mode](#315-gallery-grid--focus-mode)
         *   [3.1.6 Batch Selection Bar](#316-batch-selection-bar)
     *   [3.2 Advanced Media Inspection](#32-advanced-media-inspection)
@@ -171,7 +171,7 @@ Evolve your workflow from a simple collection of files into a structured, search
 - 🛡️ **API Route & System Hardening:** Enhanced backend route fortification, strict session validation, and strengthened data isolation across public, guest, and administrative contexts.
 
 > **Previous Highlights:**
-> - 🧠 [**OmniQuery (AI-Powered SQL Explorer)**](docs/OmniQuery.md): Ask complex questions to your DAM in natural language via LLMs. 👉 READ the **[OmniQuery Manual](docs/OmniQuery.md)**.
+> - 🧠 [**OmniQuery**](docs/OmniQuery.md): Ctrl+P search in plain English — instant structured criteria plus a local AI for free-language questions, read-only and fully offline. 👉 READ the **[OmniQuery Manual](docs/OmniQuery.md)**.
 > - 🔌 [**LoRA Synergy™**](docs/LORA_SYNERGY.md): Offline LoRA matchmaker that reads safetensors headers to guarantee checkpoint compatibility and auto-wire nodes. 👉 READ the **[LoRA Synergy Manual](docs/LORA_SYNERGY.md)**.
 > - 📑 **List View:** High-density browsing mode with sortable sticky columns.
 
@@ -214,7 +214,7 @@ Evolve your workflow from a simple collection of files into a structured, search
 
 -   **Collection Notes & Production Briefs:** Attach rich Markdown `.md` or `.txt` briefs to Virtual Collections. Collections with notes feature a yellow accent, top toolbar access button, tabbed multi-note reader, and interactive rating/commenting.
 -   **Fuzzy Workflow Search & Auto-Suggest:** Search models and LoRAs with alphanumeric normalization (`wan 2.2` -> `wan2.2_i2v_high.safetensors`), live two-line autocomplete dropdown, and "Did You Mean?" suggestions.
--   **OmniQuery (AI SQL Explorer):** Query the database using AI to answer complex questions safely (read-only).
+-   **OmniQuery:** Ctrl+P plain-English search — a local AI queries your database read-only for free-language questions.
 -   **Virtual Nested Collections:** Group files from different physical folders into a hierarchical tree of albums without duplicating a byte on disk.
 -   **Collection Sharing:** Keep collections private, mark them as Exhibition Ready for all guests, or share them *exclusively* with specific users.
 -   **Status Tags:** Keyboard shortcuts `1` to `5` apply color-coded team statuses: Approved, Review, To Edit, Rejected, Select.
@@ -343,7 +343,7 @@ This version includes a fully self-contained environment. You do not need to ins
 **2. Configure and Run**
 * **Read First:** Before launching, open the `00_START_HERE.txt` file included in the root folder for essential setup instructions.
 * **Customize:** Rename `sample_run_smartgallery.bat` to `run_smartgallery.bat`, right-click it, and select **Edit**.
-* **Setup Paths:** Update the `CONFIGURATION` section to point to your specific ComfyUI folders (ensure you use forward slashes `/`).
+* **Setup Paths:** Update the `CONFIGURATION` section to point to your specific ComfyUI folders. Write the paths however you like — backslashes, forward slashes, a trailing slash or the quotes Explorer adds are all normalised.
 * **Launch:** Save the file and double-click `run_smartgallery.bat` to launch the server!
 
 **3. Updating to a Newer Version**
@@ -371,6 +371,17 @@ pip install -r requirements.txt
 
 Or download the Source Code ZIP from [Releases](https://github.com/biagiomaf/smart-comfyui-gallery/releases/latest), extract, and run the pip commands above.
 
+**Alternative: [uv](https://docs.astral.sh/uv/)** — the repository ships a `pyproject.toml` and `uv.lock`, so one command creates the environment and installs locked dependencies:
+
+```sh
+git clone https://github.com/biagiomaf/smart-comfyui-gallery
+cd smart-comfyui-gallery
+uv sync                        # everything (app + AI runtimes, CPU torch) into ./.venv
+uv run python smartgallery.py  # run the gallery
+```
+
+Everything is included by default (`--no-group ai-models` for a lighter install). The AI layer is on by default: on first start it downloads any missing model **weights** in the background (`AI_DAM_AUTO_PROVISION=false` to opt out; `ENABLE_AI_DAM=false` disables the layer entirely). Runtime packages are never installed at runtime — they come from `uv sync`, or from `requirements-ai.txt` for pip users — see `docs/AI_MODELS.md`.
+
 **2. Create your launch script**
 
 Create `run_smartgallery.bat` in the root folder:
@@ -381,7 +392,7 @@ cd /d %~dp0
 call venv\Scripts\activate.bat
 
 :: --- CONFIGURATION: replace with your real paths ---
-:: Use forward slashes (/) even on Windows
+:: Backslashes or forward slashes, both fine
 set "BASE_OUTPUT_PATH=C:/Path/To/ComfyUI/output"
 set "BASE_INPUT_PATH=C:/Path/To/ComfyUI/input"
 set "BASE_SMARTGALLERY_PATH=C:/Path/To/ComfyUI/output"
@@ -576,14 +587,16 @@ The `CLI_ARGS` environment variable passes optional launch parameters to SmartGa
 
 | Scenario | CLI_ARGS value | Port mapping |
 |---|---|---|
-| Main Interface with login | `--admin-pass yourpassword --force-login` | `-p 8189:8189` |
-| Exhibition | `--exhibition --admin-pass yourpassword` | `-p 8190:8189` |
-| Exhibition with guest access | `--exhibition --admin-pass yourpassword --enable-guest-login` | `-p 8190:8189` |
-| Exhibition with Blind Rating | `--exhibition --admin-pass yourpassword --blind-rating` | `-p 8190:8189` |
+| Main Interface with login | `--force-login` | `-p 8189:8189` |
+| Exhibition | `--exhibition` | `-p 8190:8189` |
+| Exhibition with guest access | `--exhibition --enable-guest-login` | `-p 8190:8189` |
+| Exhibition with Blind Rating | `--exhibition --blind-rating` | `-p 8190:8189` |
+
+Set the password with its own variable, `-e ADMIN_PASSWORD=yourpassword`, rather than putting `--admin-pass` inside `CLI_ARGS`. `CLI_ARGS` is split on spaces before it reaches the gallery, so a passphrase such as `correct horse battery` would arrive as `correct` and you would not be able to log in with what you set.
 
 For Exhibition scenarios, replace `-p 8189:8189` in the `docker run` command above with `-p 8190:8189`. This maps port 8190 on your host to the container's internal port 8189, so clients reach Exhibition at `http://youraddress:8190`.
 
-When using `--admin-pass`, log in with username `admin` (always lowercase) and the password you set.
+Log in with username `admin` (always lowercase) and the password you set.
 
 For running both instances simultaneously, see the dedicated section under [Launch Parameters](#22-launch-parameters).
 
@@ -676,7 +689,8 @@ docker run --name smartgallery-main \
   -e BASE_SMARTGALLERY_PATH=/mnt/SmartGallery \
   -e WANTED_UID=`id -u` \
   -e WANTED_GID=`id -g` \
-  -e CLI_ARGS="--admin-pass yourpassword --force-login" \
+  -e ADMIN_PASSWORD=yourpassword \
+  -e CLI_ARGS="--force-login" \
   -p 8189:8189 \
   mmartial/smart-comfyui-gallery
 
@@ -690,7 +704,8 @@ docker run --name smartgallery-exhibition \
   -e BASE_SMARTGALLERY_PATH=/mnt/SmartGallery \
   -e WANTED_UID=`id -u` \
   -e WANTED_GID=`id -g` \
-  -e CLI_ARGS="--exhibition --admin-pass yourpassword --blind-rating" \
+  -e ADMIN_PASSWORD=yourpassword \
+  -e CLI_ARGS="--exhibition --blind-rating" \
   -p 8190:8189 \
   mmartial/smart-comfyui-gallery
 ```
@@ -897,10 +912,10 @@ Sorting criteria for Ratings and Comments feature sub-menus to effortlessly togg
 
 ---
 
-### 3.1.4 OmniQuery – AI-Powered SQL Explorer
+### 3.1.4 OmniQuery – Search in Plain English
 
 **If you can describe it, you can find it.**  
-Click the **⚡ OmniQuery** icon in the gallery toolbar to open the AI-Assisted SQL Explorer. Ask questions in natural language, let an LLM generate read-only SQLite queries, and execute them safely.
+Press **Ctrl+P** (or **Alt+P**, or the **⚡** toolbar button): a search field opens over a live masonry of your images. Type anything — `girlnextdoor`, `favorite videos from last week`, `seed 424242`, `files rated at least 4 by more than one person` — tiles morph as you type, a local AI answers the free-language questions by querying your database read-only, and Enter opens the results in the gallery. Fully local, sandboxed, no SQL shown.
 
 👉 **[Read the full OmniQuery Guide](docs/OmniQuery.md)** for detailed instructions and examples.
 
@@ -960,28 +975,24 @@ Open the full-screen Lightbox with `V` or `Enter`.
 
 **Dynamic Audio Waveforms:** Real-time visual waveforms (🌊) with an amplitude slider to adjust height without re-rendering media.
 
-**Toolbar Buttons:**
+**Toolbar:** five buttons stay visible — `/ MENU`, `AI` (this file's Similar / Faces / Review), `⭐💬 Ratings & Comments` (`G`), `💾 Download` (`S`), `🗑️ Delete` (`Del`) — plus `⋯ More` holding every other action as a labeled list, and `×` to exit. Every action also lives in the `/ MENU` overlay and keeps its keyboard shortcut:
 
-| Button | Key | Description |
+| Action | Key | Description |
 |---|---|---|
-| / MENU | `/` | Touch-friendly list of all commands |
 | − / + | `-` / `+` | Zoom out / Zoom in |
 | 🔄 Rotate | `T` | Rotate 90° (non-destructive) |
-| 💾 Download | `S` | Download original file |
 | 🛡 Clean Export | `Shift+W` | Download with all metadata stripped (prompts, nodes, EXIF) |
 | ✏️ Rename | `R` | Rename file on disk |
 | 📋 Asset Details | `I` | Open Full Asset Details Panel (2 tabs: Overview & Architecture) |
 | 🧬 Clusterize | `Shift+C` | Open Smart Asset Clustering modal for this file |
 | 📝 Node Summary | `N` | Open ComfyUI generation dashboard |
 | ✦ Remix Workflow | `B` | Edit workflow parameters and queue new generations |
-| ⭐💬 Ratings & Comments | `G` | Open side panel for ratings and messages |
 | ⚙️ Workflow JSON | `W` | Download raw ComfyUI `.json` workflow |
 | 📋 Copy JSON | `C` | Copy workflow to clipboard |
 | 🎞 Storyboard | `E` | Generate 11-frame video overview |
 | 📁 Move File | `M` | Open the Move File dialog |
 | 👁 Hide Toolbar | `H` | "Clean View" — hides all chrome |
 | ↗️ Open in New Tab | `O` | Full-resolution in a new browser tab |
-| 🗑️ Delete | `Del` | Delete the file |
 | × Exit | `Esc` | Return to Grid View |
 
 ---

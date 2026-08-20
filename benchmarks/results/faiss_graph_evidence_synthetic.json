@@ -1,0 +1,62 @@
+{
+  "source": "synthetic(n=22712,d=128,centers=300,seed=0)",
+  "threshold": 0.6,
+  "vectors": [
+    22712,
+    128
+  ],
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+    "cpu_count": 16,
+    "python": "3.13.5"
+  },
+  "backends": {
+    "torch-cuda": {
+      "runtime": "torch 2.13.0+cu130 on NVIDIA GeForce RTX 3070 Ti",
+      "graph_ms": 60.0,
+      "chinese_whispers_ms": 1183.0,
+      "edges": 1720054,
+      "clusters": 300,
+      "largest_cluster": 102
+    },
+    "faiss-cpu": {
+      "runtime": "faiss 1.15.0 omp=8 wait_policy=PASSIVE",
+      "graph_ms": 618.7,
+      "chinese_whispers_ms": 1498.5,
+      "edges": 1720054,
+      "clusters": 300,
+      "largest_cluster": 102
+    },
+    "numpy": {
+      "runtime": "numpy 2.5.2",
+      "graph_ms": 2671.1,
+      "chinese_whispers_ms": 1115.4,
+      "edges": 1720054,
+      "clusters": 300,
+      "largest_cluster": 102
+    }
+  },
+  "equivalence": {
+    "torch-cuda==faiss-cpu": {
+      "shared_edges_max_weight_delta": 7.152557373046875e-07,
+      "divergent_edges": 0,
+      "divergent_edges_all_at_threshold_boundary": true,
+      "clustering": true
+    },
+    "torch-cuda==numpy": {
+      "shared_edges_max_weight_delta": 7.152557373046875e-07,
+      "divergent_edges": 0,
+      "divergent_edges_all_at_threshold_boundary": true,
+      "clustering": true
+    }
+  },
+  "load": {
+    "supported": true,
+    "samples": 20,
+    "max_external_frac": 0.58,
+    "mean_external_frac": 0.353,
+    "warn_frac": 0.1,
+    "contaminated": true
+  }
+}

@@ -364,7 +364,7 @@
                 </div>
             </div>
             <h4 style="color:white; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 30px;">Server Configuration</h4>
-            <p style="color:#888; font-size:0.85rem; margin-top:10px;">By default, Remix sends generation jobs to <code>http://127.0.0.1:8188</code>. You can temporarily override this URL using the input field at the top of the window.</p>
+            <p style="color:#888; font-size:0.85rem; margin-top:10px;">By default, Remix sends generation jobs to <code>{{ comfy_server_url | default('http://127.0.0.1:8188', true) }}</code>, which is set by <code>COMFYUI_SERVER_URL</code>. You can temporarily override this URL using the input field at the top of the window.</p>
         </div>
     </div>
 </div>
@@ -624,7 +624,7 @@
     
     window.askToOpenComfyUI = async function() {
         const urlInput = document.getElementById('remix-comfy-url');
-        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || 'http://127.0.0.1:8188');
+        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || window.SG_COMFY_URL);
         const wantOpen = await window.sgDialog({
             type: 'confirm',
             title: 'Launch ComfyUI',
@@ -747,7 +747,7 @@
     
     window.askToOpenComfyUI = async function() {
         const urlInput = document.getElementById('remix-comfy-url');
-        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || 'http://127.0.0.1:8188');
+        const targetUrl = urlInput ? urlInput.value.trim() : (window._remixServerDefaultUrl || window.SG_COMFY_URL);
         const wantOpen = await window.sgDialog({
             type: 'confirm',
             title: 'Launch ComfyUI',
@@ -1073,13 +1073,23 @@
     let remixTargetFile = null;
     let activeTextareaId = null;
 
-    function escapeHTML(str) {
-        if (!str) return '';
-        return String(str).replace(/[&<>'"]/g, 
-            tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag] || tag)
-        );
-    }
-    
+    // jsInAttr comes from index.html, the only page this file is included
+    // into. It is what the onclick handlers below use for a name, because
+    // escapeHTML is not a substitute there: it turns ' into &#39;, the
+    // browser decodes the attribute BEFORE JavaScript reads it, and the
+    // apostrophe comes straight back -- which is how a template called
+    // "Bob's workflow" ended its own string and broke Select, Rename and
+    // Delete. A second copy here would sit in the same scope as that one,
+    // with only the later declaration alive.
+
+    // escapeHTML also comes from index.html. A copy stood here, but
+    // index.html declares its own further down the rendered page, and the
+    // later declaration is the one that runs -- so this one never did.
+    // Measured before removing it: the surviving definition is at rendered
+    // line 12546, this one was at 5475. Its calls have therefore always
+    // been running index.html's version, which differs for null (it
+    // answers "<em>null</em>" rather than an empty string).
+
     function toggleRemixInfo() {
         const overlay = document.getElementById('remix-help-overlay');
         if (overlay) {
@@ -1356,7 +1366,7 @@
                 window._remixRawUi  = currentRemixData.raw_ui_json  || "";
                 window._rawNodeEditorReady = false; 
                 window._remixObjectInfo = null; // Reset Dictionary cache
-                const serverDefaultUrl = currentRemixData.default_comfy_url || "http://127.0.0.1:8188";
+                const serverDefaultUrl = currentRemixData.default_comfy_url || window.SG_COMFY_URL;
                 window._remixServerDefaultUrl = serverDefaultUrl;
                 const savedUrl = localStorage.getItem('sg_comfy_url') || serverDefaultUrl;
                 html += `
@@ -1470,7 +1480,7 @@
                 };
                 
                 const getPinBtn = (isCust, id, key, idx, label) => {
-                    return `<button class="glass-btn pin-btn ${isCust ? 'pinned' : ''}" onclick="toggleCustomPin(this, '${id}', '${key||''}', '${idx!==undefined?idx:''}', '${escapeHTML(label)}')" title="Pin to Custom View">${isCust ? '⭐' : '📌'}</button>`;
+                    return `<button class="glass-btn pin-btn ${isCust ? 'pinned' : ''}" onclick="toggleCustomPin(this, '${id}', '${key||''}', '${idx!==undefined?idx:''}', '${jsInAttr(label)}')" title="Pin to Custom View">${isCust ? '⭐' : '📌'}</button>`;
                 };
 
                 if (currentRemixData.texts.length > 0) {
@@ -3508,7 +3518,7 @@ function closeRemixModal() {
                 : `<div style="width:44px; height:44px; border-radius:6px; background:#222; flex-shrink:0; border:1px solid #444; margin-right:12px; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">📄</div>`;
 
             html += `
-                <div class="remix-library-item ${isSelected ? 'selected' : ''}" onclick="selectWorkflow('${escapeHTML(w.name)}')">
+                <div class="remix-library-item ${isSelected ? 'selected' : ''}" onclick="selectWorkflow('${jsInAttr(w.name)}')">
                     ${thumbHtml}
                     <div style="flex:1; overflow:hidden;">
                         <div style="display:flex; align-items:center; margin-bottom:4px;">
@@ -3518,8 +3528,8 @@ function closeRemixModal() {
                         <div style="font-size:0.75rem; color:#666;">Template created: ${dateStr}</div>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <button class="glass-btn" onclick="event.stopPropagation(); renameWorkflow('${escapeHTML(w.name)}')" style="padding:4px 8px; font-size:0.8rem; color:#fff;" title="Rename">✏️</button>
-                        <button class="glass-btn" onclick="event.stopPropagation(); deleteWorkflow('${escapeHTML(w.name)}')" style="padding:4px 8px; font-size:0.8rem; border-color:var(--danger-color); color:#ff6666;" title="Delete">🗑️</button>
+                        <button class="glass-btn" onclick="event.stopPropagation(); renameWorkflow('${jsInAttr(w.name)}')" style="padding:4px 8px; font-size:0.8rem; color:#fff;" title="Rename">✏️</button>
+                        <button class="glass-btn" onclick="event.stopPropagation(); deleteWorkflow('${jsInAttr(w.name)}')" style="padding:4px 8px; font-size:0.8rem; border-color:var(--danger-color); color:#ff6666;" title="Delete">🗑️</button>
                     </div>
                 </div>
             `;

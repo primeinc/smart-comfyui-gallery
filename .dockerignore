@@ -1,0 +1,25 @@
+# Everything here is sent to the Docker daemon before the first layer is
+# built, whether or not a COPY names it. On a working tree that has run the
+# AI provisioning that came to about 4.5GB -- model weights, a virtualenv
+# and the git history -- for an image that copies a few megabytes.
+#
+# Excludes only. No `!` re-includes: the build must stay readable, and the
+# test that checks no COPY source is excluded relies on it.
+
+.git
+.venv
+.AImodels
+vendor
+tests
+docs
+benchmarks
+probes
+assets
+__pycache__
+*.pyc
+.pytest_cache
+*.log
+*.bak
+
+# experiments/ is deliberately kept: `make build_exp` copies its
+# smartgallery.py and templates/ instead of the ones at the root.

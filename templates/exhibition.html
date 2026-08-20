@@ -1291,9 +1291,11 @@
     .sc-panel, .smart-dialog-panel, #user-manager-panel, .theater-panel {
         overscroll-behavior: contain !important;
     }
-    /* Style for async notifications in Exhibition Mode */
+    /* Style for async notifications in Exhibition Mode. Bottom-center:
+       toasts must never sit over the top-right controls. */
     .notification {
-        position: fixed; top: 20px; right: 20px; z-index: 10000;
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        z-index: 10000;
         background: #222; color: white; padding: 12px 20px; border-radius: 8px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-left: 5px solid var(--primary-color);
         transition: all 0.5s ease;
@@ -2076,7 +2078,7 @@
                     </div>
 
                 </div>
-                <textarea class="chat-input" id="comment-input" rows="3" placeholder="Write a comment..."></textarea>
+                <textarea class="chat-input" id="comment-input" rows="3" maxlength="4000" placeholder="Write a comment..."></textarea>
                 <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                     <button class="send-btn-premium" onclick="postComment()" style="flex: 1;">Post comment</button>
                     <!-- Close button hidden on mobile footer as it's in top toolbar now -->
@@ -2709,64 +2711,10 @@
     </div>
 
 
-<!-- INJECTED SORT LOGIC FOR EXHIBITION -->
-<script>
-    function showExhSortMenu(e, menuId) {
-        e.stopPropagation(); 
-        e.preventDefault();
-        document.querySelectorAll('.sort-popover.visible').forEach(m => m.classList.remove('visible'));
-        
-        const menu = document.getElementById(menuId);
-        if (!menu) return;
-
-        const rect = e.currentTarget.getBoundingClientRect();
-        let left = rect.left;
-        let top = rect.bottom + 5;
-        
-        // Adjust for right screen edge to prevent the menu from being cut off
-        if (left + 230 > window.innerWidth) {
-            left = window.innerWidth - 240;
-        }
-        
-        menu.style.top = top + 'px';
-        menu.style.left = left + 'px';
-        menu.classList.add('visible');
-        
-        // Update active class dynamically
-        menu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        const activeId = 'btn-sort-' + (typeof activeSortCriteria !== 'undefined' ? activeSortCriteria : '') + '-' + (typeof activeSortOrder !== 'undefined' ? activeSortOrder : '');
-        const activeBtn = document.getElementById(activeId);
-        if (activeBtn) activeBtn.classList.add('active');
-    }
-
-    document.addEventListener('click', () => {
-        document.querySelectorAll('.sort-popover.visible').forEach(m => m.classList.remove('visible'));
-    });
-
-    document.addEventListener('scroll', () => {
-        document.querySelectorAll('.sort-popover.visible').forEach(m => m.classList.remove('visible'));
-    }, { passive: true });
-
-    function applyExhSpecificSort(by, order) {
-        if (typeof activeSortCriteria !== 'undefined') {
-            activeSortCriteria = by;
-            activeSortOrder = order;
-            
-            if (typeof updateSortUI === 'function') updateSortUI();
-            
-            const mobileSelect = document.getElementById('sort-select');
-            if (mobileSelect) mobileSelect.value = by + '_' + order;
-            
-            const collId = (typeof currentCollectionId !== 'undefined' && currentCollectionId) ? currentCollectionId : 'all';
-            const titleEl = document.getElementById('page-title');
-            const pageTitle = titleEl ? titleEl.textContent : 'Gallery';
-            
-            if (typeof loadGalleryInternal === 'function') {
-                loadGalleryInternal(collId, pageTitle);
-            }
-        }
-    }
-</script>
+<!-- The INJECTED SORT LOGIC block that stood here was a byte-identical
+     copy of the one further down. Both declared showExhSortMenu and
+     applyExhSpecificSort in the same scope, where the later one wins,
+     so this copy never ran. Removed; the surviving one is unchanged. -->
 
 
     <!-- EXHIBITION FILTER PANEL -->
@@ -2844,6 +2792,22 @@
 .theater-document-reader pre { white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 1.05rem; line-height: 1.7; margin:0; }
 </style>
 <script>
+// Only these schemes may reach an href or a src. The note text is
+// HTML-escaped before the markdown rules run, so an attribute cannot be
+// closed from here -- what was left unguarded is the scheme itself, and
+// [click me](javascript:...) produced a live javascript: link.
+//
+// Browsers strip control characters and spaces before reading a scheme, so
+// "java<tab>script:" is javascript: to them. The test is done on what they
+// will see, not on what was typed.
+function markdownSafeUrl(url) {
+    const value = String(url === null || url === undefined ? '' : url).trim();
+    const probe = value.replace(/[\u0000-\u0020]/g, '');
+    const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(probe);
+    if (!scheme) return value;          // relative, #anchor, //host
+    return /^(https?|ftp|mailto)$/i.test(scheme[1]) ? value : '#';
+}
+
 function renderMarkdownText1(text) {
     if (!text) return '';
     let html = (typeof escapeHTML === 'function') ? escapeHTML(text) : (typeof escapeHtml === 'function' ? escapeHtml(text) : text);
@@ -2921,15 +2885,15 @@ function renderMarkdownText(text) {
 
         // Images: ![alt](url "title")
         s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_, alt, url, title) =>
-            `<img src="${url}" alt="${alt}" title="${title || alt}" style="max-width:100%; border-radius:6px; margin:6px 0; display:block;">`);
+            `<img src="${markdownSafeUrl(url)}" alt="${alt}" title="${title || alt}" style="max-width:100%; border-radius:6px; margin:6px 0; display:block;">`);
 
         // Links: [text](url "title")
         s = s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (_, txt, url, title) =>
-            `<a href="${url}" title="${title || ''}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${txt}</a>`);
+            `<a href="${markdownSafeUrl(url)}" title="${title || ''}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${txt}</a>`);
 
         // Autolinks: <https://example.com>  (note: source is already HTML-escaped, so < > became &lt; &gt;)
         s = s.replace(/&lt;((?:https?|ftp):\/\/[^\s&]+)&gt;/g, (_, url) =>
-            `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${url}</a>`);
+            `<a href="${markdownSafeUrl(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color); text-decoration:underline;">${url}</a>`);
 
         // Bold + italic: ***text*** or ___text___
         s = s.replace(/(\*\*\*|___)([^*_]+?)\1/g, '<strong><em>$2</em></strong>');
@@ -3795,7 +3759,7 @@ function renderMarkdownText(text) {
         if (params.get('search')) { document.getElementById('exh_search_name').value = params.get('search'); }
         if (params.get('start_date')) { document.getElementById('exh_start_date').value = params.get('start_date'); }
         if (params.get('end_date')) { document.getElementById('exh_end_date').value = params.get('end_date'); }
-        if (params.get('recursive') === 'true') {
+        if (params.get('recursive') !== 'false') {
             document.getElementById('exh_recursive').checked = true;
             document.getElementById('exh-recursive-wrapper').classList.add('active');
         }
@@ -4878,7 +4842,7 @@ function renderMarkdownText(text) {
                     });
 
                     // Make author name clickable for Quick Reply
-                    const safeAuthorStr = escapeHtml(c.author_name).replace(/'/g, "\\'");
+                    const safeAuthorStr = jsInAttr(c.author_name);
                     
                     // We only make it clickable if the viewer has the permission to reply directly, 
                     // OR if the author is an Admin (anyone can reply to admin via 'internal')
@@ -5103,7 +5067,7 @@ function renderMarkdownText(text) {
         
         editUI.innerHTML = `
             <h3 style="margin:0 0 15px 0; color:white; font-size:1.1rem;">✏️ Edit Comment</h3>
-            <textarea id="edit-comment-textarea" class="chat-input" rows="5" style="width:100%; margin-bottom:15px; min-height:120px;">${escapeHtml(currentText)}</textarea>
+            <textarea id="edit-comment-textarea" class="chat-input" rows="5" maxlength="4000" style="width:100%; margin-bottom:15px; min-height:120px;">${escapeHtml(currentText)}</textarea>
             <div style="display:flex; gap:10px;">
                 <button onclick="saveEditedComment(${commentId}, '${safeOriginalText}');" class="send-btn-premium" style="flex:1;">💾 Save Changes</button>
                 <button onclick="closeEditComment();" class="send-btn-premium" style="flex:1; background:var(--surface-hover); border:1px solid var(--border-color);">✕ Cancel</button>
@@ -5549,7 +5513,7 @@ function renderMarkdownText(text) {
                 let hasChildren = !isSearching && childCollections.length > 0;
                 let isExpanded = exhColExpandedState.has(col.id) || isSearching;
                 
-                const safeName = escapeHtml(col.name).replace(/'/g, "\\\'").replace(/"/g, "&quot;");
+                const safeName = jsInAttr(col.name);
                 
                 let iconStr = col.restricted_access ? "🔒" : (col.is_shared_access ? "👥" : "📚");
                 // Add tooltip for ADMIN users to see who the collection is shared with
@@ -5793,6 +5757,24 @@ function renderMarkdownText(text) {
         }
     }
     
+    // A value that ends up inside a single-quoted JavaScript string which is
+    // itself inside a double-quoted HTML attribute passes through two parsers:
+    // the browser decodes the attribute first, then reads the result as
+    // JavaScript. Escaping for one and not the other is why a folder called
+    // "Bob's renders" broke its own menu, and why a name holding a double
+    // quote could close the attribute and add another of its own.
+    // JavaScript escaping first, then HTML, so the decode leaves exactly the
+    // JavaScript the browser is meant to read.
+    function jsInAttr(value) {
+        return String(value === null || value === undefined ? '' : value)
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     function escapeHtml(text) { 
         const div = document.createElement('div'); 
         div.textContent = text; 
