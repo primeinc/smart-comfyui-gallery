@@ -863,16 +863,19 @@ def a_clip(tmp_path):
     ff = _ffmpeg()
     assert ff is not None, "the skip mark should have kept this from running"
     landscape, portrait = tmp_path / "clip.mp4", tmp_path / "portrait.mp4"
+    # Timeouts because ffmpeg hangs readily, and a fixture that hangs takes
+    # the suite with it -- which is what test_programs_are_started_safely
+    # exists to say, and it caught these.
     subprocess.run(
         [ff, "-v", "error", "-y", "-f", "lavfi",
          "-i", "testsrc=size=320x180:rate=15:duration=3",
          "-c:v", "libx264", "-pix_fmt", "yuv420p", str(landscape)],
-        check=True,
+        check=True, timeout=60,
     )
     subprocess.run(
         [ff, "-v", "error", "-y", "-display_rotation", "90", "-i", str(landscape),
          "-c", "copy", str(portrait)],
-        check=True,
+        check=True, timeout=60,
     )
     return landscape, portrait
 
