@@ -585,10 +585,15 @@ def cluster(
 
     import numpy as np
 
-    from . import grouping, similarity
+    from . import grouping, settings, similarity
 
     vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
-    graph, backend = similarity.graph(vectors, threshold)
+    graph, backend = similarity.graph(
+        vectors,
+        threshold,
+        backend=settings.value(conn, "similarity_backend"),
+        gpu=settings.flag(conn, "faiss_gpu"),
+    )
     labels = grouping.group(graph, vectors, method, **options)
 
     groups: dict[int, list[int]] = {}

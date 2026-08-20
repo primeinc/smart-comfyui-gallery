@@ -9,8 +9,8 @@ attaches to a bucket of similar-looking generated faces, never a claim about
 who (if anyone real) a face resembles.
 
 `StubFaceBackend` is a TEST/DEV stub: it returns pre-programmed detections
-and does not look at pixels at all. Two real pipelines are deployed and
-config-swappable (`AI_DAM_FACE_BACKEND`): `InsightFaceBackend` (upstream
+and does not look at pixels at all. Two real pipelines ship, chosen by the
+caller constructing one: `InsightFaceBackend` (upstream
 FaceAnalysis over the provisioned antelopev2 pack -- SCRFD detection,
 glintr100 embedding, genderage attributes; preferred by `auto`) and
 `OpenCVFaceBackend` (YuNet detection plus ArcFace-glintr100-via-cv2.dnn
@@ -253,9 +253,9 @@ class OpenCVFaceBackend(FaceBackend):
         self.model_id = f"opencv/yunet+{embedder}"
         # The detection cap is part of the version because it changes the
         # vectors. It was baked in as the literal "ms1600" while
-        # detect_max_side stayed a runtime setting, so
-        # AI_DAM_FACE_DETECT_MAX_SIDE=800 produced embeddings from a
-        # different preprocessing pipeline under a string claiming 1600.
+        # detect_max_side stayed a runtime knob, so a cap of 800 produced
+        # embeddings from a different preprocessing pipeline under a
+        # string claiming 1600.
         # invalidation.is_stale compares version strings exactly, so nothing
         # re-indexed, and cluster_faces then built one cosine graph over two
         # incompatible regimes -- undetectable by _single_dim, since the
@@ -379,11 +379,19 @@ class InsightFaceBackend(FaceBackend):
     # 0.40 keeps P 1.000 with F1 0.998.
     default_cluster_threshold = 0.40
 
-    def __init__(self, models_dir: str, min_det_score: float = 0.5, min_face_px: int = 24):
+    def __init__(
+        self,
+        models_dir: str,
+        min_det_score: float = 0.5,
+        min_face_px: int = 24,
+        providers: str = "auto",
+    ):
         """`min_det_score` re-filters detections (FaceAnalysis is prepared
         at the same threshold); `min_face_px` drops noise-floor boxes by
-        native-pixel side, same junk gate as the OpenCV backend."""
-        self._app = get_insightface_app(models_dir)
+        native-pixel side, same junk gate as the OpenCV backend.
+        `providers` is the `ort_providers` spec for the recognition
+        session (see `_ort_providers`)."""
+        self._app = get_insightface_app(models_dir, providers=providers)
         self._min_det_score = min_det_score
         self._min_face_px = min_face_px
 
@@ -440,15 +448,15 @@ class InsightFaceBackend(FaceBackend):
         return detections
 
 
-def _ort_providers() -> list:
+def _ort_providers(spec: str = "auto") -> list:
     """Execution providers for the insightface ORT sessions, in ORT's
     priority-list form (docs/python/api_summary.rst: kernels are chosen
     in the order given; anything a provider lacks runs on CPU).
-    AI_DAM_ORT_PROVIDERS: 'auto' (default -- CUDA first when the
-    installed onnxruntime build offers it, which means installing
-    onnxruntime-gpu yourself; nothing swaps it in), 'cpu', or an explicit
-    comma list."""
-    value = os.environ.get("AI_DAM_ORT_PROVIDERS", "auto").strip()
+    `spec`: 'auto' (CUDA first when the installed onnxruntime build
+    offers it, which means installing onnxruntime-gpu yourself; nothing
+    swaps it in), 'cpu', or an explicit comma list. The application's
+    choice is the `ort_providers` setting (db/settings.py), passed down."""
+    value = spec.strip()
     if value.lower() == "cpu":
         return ["CPUExecutionProvider"]
     if value and value.lower() != "auto":
@@ -463,7 +471,7 @@ def _ort_providers() -> list:
     return ["CPUExecutionProvider"]
 
 
-_insightface_apps: dict = {}  # models_dir -> FaceAnalysis (cached; models stay loaded)
+_insightface_apps: dict = {}  # (models_dir, providers) -> FaceAnalysis (cached; models stay loaded)
 
 
 def _prepared_recognition(models_dir: str, providers: list):
@@ -480,12 +488,14 @@ def _prepared_recognition(models_dir: str, providers: list):
     return rec
 
 
-def get_insightface_app(models_dir: str):
+def get_insightface_app(models_dir: str, providers: str = "auto"):
     """insightface's own pipeline (FaceAnalysis, detection + recognition)
-    over the provisioned antelopev2 pack, cached per models_dir. Raises
-    `BackendUnavailable` when the package or the pack is missing."""
-    if models_dir in _insightface_apps:
-        return _insightface_apps[models_dir]
+    over the provisioned antelopev2 pack, cached per (models_dir,
+    providers). Raises `BackendUnavailable` when the package or the pack
+    is missing."""
+    cache_key = (models_dir, providers)
+    if cache_key in _insightface_apps:
+        return _insightface_apps[cache_key]
     pack_dir = os.path.join(models_dir, _INSIGHTFACE_ROOT, "models", "antelopev2")
     if not os.path.isdir(pack_dir):
         raise BackendUnavailable(f"antelopev2 pack not found at {pack_dir}")
@@ -506,8 +516,9 @@ def get_insightface_app(models_dir: str):
         # CPU vs 280-440ms CUDA per image); recognition is a heavy
         # ResNet100 at a fixed 112x112, where CUDA wins 4.4x (14.6ms vs
         # 64.5ms per face). So detection + genderage stay on CPU and the
-        # recognition session gets _ort_providers() (CUDA when the
-        # installed build offers it; AI_DAM_ORT_PROVIDERS overrides).
+        # recognition session gets _ort_providers(providers) (CUDA when
+        # the installed build offers it; the ort_providers setting
+        # overrides).
         app = FaceAnalysis(
             name="antelopev2",
             root=os.path.join(models_dir, _INSIGHTFACE_ROOT),
@@ -515,10 +526,10 @@ def get_insightface_app(models_dir: str):
             providers=["CPUExecutionProvider"],
         )
         app.prepare(ctx_id=0)  # Auto det-size: joint 128x128 + 640x640
-        rec_providers = _ort_providers()
+        rec_providers = _ort_providers(providers)
         if rec_providers != ["CPUExecutionProvider"]:
             app.models["recognition"] = _prepared_recognition(models_dir, rec_providers)
     except Exception as exc:
         raise BackendUnavailable(f"FaceAnalysis failed to load: {exc}") from exc
-    _insightface_apps[models_dir] = app
+    _insightface_apps[cache_key] = app
     return app

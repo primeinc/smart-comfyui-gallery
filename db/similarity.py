@@ -31,8 +31,6 @@ including two Python environments on the same one.
 
 from __future__ import annotations
 
-import os
-
 #: Neighbours asked of the GPU before the CPU is consulted for a query that
 #: had more. Upstream's own default. A GPU index caps k at 2048 for every
 #: index type and selection cost climbs above about 512
@@ -43,11 +41,6 @@ GPU_K = 1024
 #: Rows per block for the numpy path. An n x n float32 matrix at 100,000
 #: vectors is 40 GB; a 2,048-row block is 800 MB.
 BLOCK = 2_048
-
-#: Name a backend to force it. A named backend that cannot run raises rather
-#: than falling back -- a benchmark that quietly ran on something else is a
-#: measurement of the wrong thing.
-ENV_VAR = "SG_SIMILARITY_BACKEND"
 
 
 def normalise(vectors):
@@ -60,7 +53,7 @@ def normalise(vectors):
     return np.ascontiguousarray(matrix / lengths, dtype=np.float32)
 
 
-def _faiss():
+def _faiss(gpu: bool = True):
     """The faiss this project should use.
 
     Through the repo's loader, not a bare `import faiss`: a vendored CUDA
@@ -72,7 +65,7 @@ def _faiss():
     """
     from vision.faiss_runtime import import_faiss
 
-    return import_faiss()
+    return import_faiss(gpu=gpu)
 
 
 def _inclusive(threshold: float) -> float:
@@ -92,10 +85,10 @@ def _inclusive(threshold: float) -> float:
     return float(np.nextafter(np.float32(threshold), np.float32("-inf")))
 
 
-def _gpu(unit, threshold):
+def _gpu(unit, threshold, *, gpu: bool = True):
     import numpy as np
 
-    faiss = _faiss()
+    faiss = _faiss(gpu)
     if not hasattr(faiss, "StandardGpuResources") or faiss.get_num_gpus() < 1:
         raise RuntimeError("this faiss build has no GPU support")
     from faiss.contrib.exhaustive_search import range_search_gpu
@@ -113,17 +106,17 @@ def _gpu(unit, threshold):
     return _from_ranges(unit.shape[0], limits, sims, ids, np)
 
 
-def _cpu(unit, threshold):
+def _cpu(unit, threshold, *, gpu: bool = True):
     import numpy as np
 
-    faiss = _faiss()
+    faiss = _faiss(gpu)
     index = faiss.IndexFlatIP(int(unit.shape[1]))
     index.add(unit)
     limits, sims, ids = index.range_search(unit, _inclusive(threshold))
     return _from_ranges(unit.shape[0], limits, sims, ids, np)
 
 
-def _numpy(unit, threshold):
+def _numpy(unit, threshold, *, gpu: bool = True):
     """Always available, memory bounded at one block by n."""
     import numpy as np
 
@@ -175,25 +168,32 @@ BACKENDS = (("faiss-gpu", _gpu), ("faiss-cpu", _cpu), ("numpy", _numpy))
 FALLIBLE = (ImportError, OSError, RuntimeError, AttributeError, ValueError, TypeError)
 
 
-def graph(vectors, threshold: float, *, backend: str | None = None):
-    """Every pair at or above `threshold`, and the name of what computed it."""
+def graph(vectors, threshold: float, *, backend: str | None = None, gpu: bool = True):
+    """Every pair at or above `threshold`, and the name of what computed it.
+
+    Naming a backend forces it: one that cannot run raises rather than
+    falling back, because a benchmark that quietly ran on something else
+    is a measurement of the wrong thing. The application's choices live in
+    the `similarity_backend` and `faiss_gpu` settings (db/settings.py) and
+    arrive here as these arguments -- there is no ambient override.
+    """
     import numpy as np
 
     unit = normalise(vectors)
     if unit.shape[0] == 0:
         return (np.zeros(1, "int64"), np.zeros(0, "int64"), np.zeros(0, "float32")), "numpy"
 
-    wanted = (backend or os.environ.get(ENV_VAR, "auto")).strip().lower()
+    wanted = (backend or "auto").strip().lower()
     known = dict(BACKENDS)
     if wanted != "auto":
         if wanted not in known:
             raise ValueError(f"{wanted!r} is not one of {', '.join(known)}")
-        return known[wanted](unit, threshold), wanted
+        return known[wanted](unit, threshold, gpu=gpu), wanted
 
     refused: dict[str, str] = {}
     for name, build in BACKENDS:
         try:
-            result = build(unit, threshold), name
+            result = build(unit, threshold, gpu=gpu), name
         except FALLIBLE as why:
             refused[name] = f"{type(why).__name__}: {why}"
             continue

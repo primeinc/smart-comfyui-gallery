@@ -14,7 +14,8 @@ so those wheel dirs are registered before the import.
 import_faiss() is the one sanctioned way to import faiss in this
 codebase: it prefers the vendored GPU package on Windows boxes with an
 NVIDIA driver and falls back to the installed faiss-cpu package when
-the vendored import cannot load. AI_DAM_FAISS_GPU=0 opts out.
+the vendored import cannot load. `gpu=False` opts out -- the caller's
+choice, carried from the `faiss_gpu` setting (db/settings.py).
 """
 
 import contextlib
@@ -86,17 +87,21 @@ def vendored_faiss_dir() -> str:
     return os.path.join(_VENDOR_ROOT, "faiss")
 
 
-def import_faiss():
+def import_faiss(gpu: bool = True):
     """Import and return the faiss module (vendored GPU build when
     eligible, else the installed faiss-cpu). Raises ImportError when no
-    faiss is available at all."""
+    faiss is available at all.
+
+    `gpu` is consulted only on the first import in a process -- a module
+    once loaded stays loaded, so changing the setting applies from the
+    next start, and that is a fact about Python, not a policy here."""
     if "faiss" in sys.modules:
         return sys.modules["faiss"]
     use_vendor = (
-        sys.platform == "win32"
+        gpu
+        and sys.platform == "win32"
         and os.path.isdir(vendored_faiss_dir())
         and shutil.which("nvidia-smi") is not None
-        and os.environ.get("AI_DAM_FAISS_GPU", "1") == "1"
     )
     if use_vendor:
         _register_cuda_dll_dirs()
@@ -116,8 +121,8 @@ def import_faiss():
                 "the vendored GPU faiss did not load; using faiss-cpu. Its CUDA runtime DLLs "
                 "normally come from the installed torch's lib directory (a CUDA build ships "
                 "cublas64_13, cublasLt64_13, cudart64_13 and nvJitLink_130_0), else the nvidia "
-                "wheels or a system CUDA 13 toolkit on PATH; AI_DAM_FAISS_GPU=0 silences this "
-                "by choosing faiss-cpu deliberately",
+                "wheels or a system CUDA 13 toolkit on PATH; the faiss_gpu setting silences "
+                "this by choosing faiss-cpu deliberately",
                 exc_info=True,
             )
             for name in [m for m in sys.modules if m == "faiss" or m.startswith("faiss.")]:
@@ -134,8 +139,8 @@ def import_faiss():
     # the one above binds `faiss` as a local, so reaching this line without
     # it raised UnboundLocalError rather than importing anything. That is
     # every install without the vendored GPU build -- all of Linux and
-    # macOS, any Windows box with no nvidia-smi, and anyone setting
-    # AI_DAM_FAISS_GPU=0 -- so the documented fallback never once happened.
+    # macOS, any Windows box with no nvidia-smi, and anyone who turned
+    # faiss_gpu off -- so the documented fallback never once happened.
     import faiss
 
     return faiss

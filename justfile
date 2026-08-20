@@ -37,8 +37,8 @@ mod bench
 
 # Which faiss the app selects at runtime: the vendored GPU build
 # (vendor/faiss-gpu-win64, CUDA DLLs from the nvidia wheels) on
-# Windows+NVIDIA, else the installed faiss-cpu. AI_DAM_FAISS_GPU=0
-# forces the fallback.
+# Windows+NVIDIA, else the installed faiss-cpu. The faiss_gpu setting
+# row forces the fallback.
 [doc('Print which faiss build the app loads, and how many GPUs it sees')]
 faiss-verify:
     {{ python }} -c "from vision.faiss_runtime import import_faiss; f = import_faiss(); print(f.__file__); print('faiss GPUs:', f.get_num_gpus())"

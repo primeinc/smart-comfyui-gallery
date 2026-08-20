@@ -21,10 +21,10 @@ import time
 
 from litestar import Litestar, get, post
 from litestar.datastructures import State
-from litestar.exceptions import NotFoundException
+from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Redirect
 
-from db import connect, derived, jobs, library, naming, pages, runner, scan
+from db import connect, derived, jobs, library, naming, pages, runner, scan, settings
 from sg_web import home
 
 
@@ -144,10 +144,39 @@ def submit_faces(state: State, data: dict) -> dict:
     """Ask for face detection over the library, with the models named."""
     conn = _connect(state.db_path)
     try:
-        weights = data.get("models_dir") or str(home.models_dir())
+        weights = data.get("models_dir") or str(
+            home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
+        )
         job_id = runner.submit_faces(conn, time.time(), models_dir=weights)
         conn.commit()
         return jobs.snapshot(conn, job_id)
+    finally:
+        conn.close()
+
+
+@get("/settings", sync_to_thread=True)
+def all_settings(state: State) -> list[dict]:
+    """Every setting, its value, default and choices -- the whole vocabulary."""
+    conn = _connect(state.db_path)
+    try:
+        return settings.snapshot(conn)
+    finally:
+        conn.close()
+
+
+@post("/settings/{key:str}", sync_to_thread=True)
+def change_setting(state: State, key: str, data: dict) -> dict:
+    """Change one setting while the application runs. Unknown keys and
+    out-of-vocabulary values are refused, so the table only ever holds
+    configuration something reads."""
+    conn = _connect(state.db_path)
+    try:
+        try:
+            settings.put(conn, key, str(data["value"]))
+        except (KeyError, ValueError) as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        return {"key": key, "value": settings.value(conn, key)}
     finally:
         conn.close()
 
@@ -244,14 +273,15 @@ def choose_primary(state: State) -> dict:
         conn.close()
 
 
-def build_app(db_path: str | None = None) -> Litestar:
-    """The application, bound to one database file.
+def build_app(home_dir: str | None = None) -> Litestar:
+    """The application, bound to one home directory (sg_web/home.py).
 
-    With no path, the run lives in its home directory (sg_web/home.py) and
-    a database that does not exist yet is created from the schema -- a
-    first run needs nothing but the command that starts it.
+    With no argument the run lives in `~/.smartgallery`. A database that
+    does not exist yet is created from the schema -- a first run needs
+    nothing but the command that starts it.
     """
-    where = pathlib.Path(db_path) if db_path else home.db_path()
+    base = home.home(home_dir)
+    where = home.db_path(base)
     if not where.exists():
         fresh = connect.connect(where)
         fresh.executescript(connect.schema_sql())
@@ -274,7 +304,10 @@ def build_app(db_path: str | None = None) -> Litestar:
             cancel_job,
             worker_turn,
             choose_primary,
+            all_settings,
+            change_setting,
         ],
     )
+    app.state.home = str(base)
     app.state.db_path = str(where)
     return app

@@ -14,26 +14,27 @@ import numpy as np
 import pytest
 from litestar.testing import TestClient
 
-from db import connect, derived, library, naming, scan
+from db import connect, derived, library, naming, scan, settings
 from sg_web.app import build_app
 
 
 @pytest.fixture
-def served(tmp_path, monkeypatch):
+def served(tmp_path):
     """A real library on disk, clustered, behind a running application."""
-    # The backend is not under test here; the numpy path is exact and needs
-    # no hardware. SG_SIMILARITY_BACKEND is the production knob for this.
-    monkeypatch.setenv("SG_SIMILARITY_BACKEND", "numpy")
-
     root = tmp_path / "lib"
     root.mkdir()
     for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
         (root / name).write_bytes(b"\x89PNG-of-" + name.encode())
 
-    db_path = tmp_path / "gallery.db"
+    burrow = tmp_path / "run"
+    burrow.mkdir()
+    db_path = burrow / "gallery.db"
     conn = connect.connect(db_path)
     conn.executescript(connect.schema_sql())
     conn.execute("PRAGMA foreign_keys=ON")
+    # The backend is not under test here; the numpy path is exact and needs
+    # no hardware. The similarity_backend setting is the production knob.
+    settings.put(conn, "similarity_backend", "numpy")
     root_id = library.add_root(conn, str(root), "library", 0.0)
     scan.scan(conn, root_id, str(root), 0.0)
 
@@ -68,7 +69,7 @@ def served(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    with TestClient(app=build_app(str(db_path))) as client:
+    with TestClient(app=build_app(str(burrow))) as client:
         yield client, person_id, root
 
 
@@ -151,40 +152,54 @@ def test_choose_primary_is_an_action_the_application_offers(served):
     assert client.get("/clusterings").json()[0]["id"] == chosen["primary_run"]
 
 
-def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path, monkeypatch):
-    """SMARTGALLERY_HOME moves everything a run owns -- database, models --
-    in one setting. Nothing lands in OS application-data folders, and a
-    first run needs nothing but the command that starts it."""
+def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
+    """One --home argument moves everything a run owns -- database, models,
+    caches. Nothing lands in OS application-data folders, and a first run
+    needs nothing but the command that starts it."""
     from sg_web import home
 
     burrow = tmp_path / "elsewhere"
-    monkeypatch.setenv("SMARTGALLERY_HOME", str(burrow))
-    monkeypatch.delenv("SMARTGALLERY_MODELS", raising=False)
-    assert home.home() == burrow
-    assert home.db_path() == burrow / "gallery.db"
-    assert home.models_dir() == burrow / "models"
+    assert home.home(burrow) == burrow
+    assert home.db_path(burrow) == burrow / "gallery.db"
+    assert home.models_dir(burrow) == burrow / "models"
+    assert home.thumbs_dir(burrow) == burrow / "thumbs"
 
     shared = tmp_path / "shared-weights"
-    monkeypatch.setenv("SMARTGALLERY_MODELS", str(shared))
-    assert home.models_dir() == shared, "a shared model dir is an option"
+    assert home.models_dir(burrow, str(shared)) == shared, "a shared model dir is an option"
 
-    with TestClient(app=build_app()) as client:
+    with TestClient(app=build_app(str(burrow))) as client:
         assert client.get("/health").text == "ok"
         assert client.get("/people").json() == []
     assert (burrow / "gallery.db").exists(), "the run did not live in its home"
 
 
-def test_media_roots_are_rows_managed_through_the_application(tmp_path, monkeypatch):
+def test_settings_are_rows_changed_while_the_application_runs(tmp_path):
+    """Configuration is settings rows, not environment variables: listed,
+    changed and validated over requests, effective without a restart."""
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        listed = {row["key"]: row for row in client.get("/settings").json()}
+        assert listed["similarity_backend"]["value"] == "auto"
+        assert "numpy" in listed["similarity_backend"]["choices"]
+
+        changed = client.post("/settings/similarity_backend", json={"value": "numpy"}).json()
+        assert changed == {"key": "similarity_backend", "value": "numpy"}
+        listed = {row["key"]: row for row in client.get("/settings").json()}
+        assert listed["similarity_backend"]["value"] == "numpy"
+
+        assert client.post("/settings/similarity_backend", json={"value": "cuda-magic"}).status_code == 400
+        assert client.post("/settings/not_a_setting", json={"value": "x"}).status_code == 400
+
+
+def test_media_roots_are_rows_managed_through_the_application(tmp_path):
     """Any number of media directories, anywhere, registered and scanned
     over requests -- the pictures never live inside the run's home."""
-    monkeypatch.setenv("SMARTGALLERY_HOME", str(tmp_path / "run"))
     box_one = tmp_path / "comfy-output"
     box_two = tmp_path / "phone-camera"
     for box in (box_one, box_two):
         box.mkdir()
         (box / "shot.png").write_bytes(b"\x89PNG-" + box.name.encode())
 
-    with TestClient(app=build_app()) as client:
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
         first = client.post("/roots", json={"path": str(box_one)}).json()
         second = client.post("/roots", json={"path": str(box_two)}).json()
         assert first["id"] != second["id"]
