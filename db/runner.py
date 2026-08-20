@@ -137,9 +137,11 @@ def run_next(
     `on_progress` hears every observable change -- claim, each finished
     item, the terminal state -- as `{job, kind, state, done, total}`. This
     is the delta feed the live channel publishes; the row stays the truth
-    a subscriber renders from cold, which is also why each item commits:
-    progress only a worker's own transaction can see is not progress a
-    reloaded page can render.
+    a subscriber renders from cold. Every state change COMMITS BEFORE it
+    is spoken, terminal states included: a delta describing an uncommitted
+    write invites the subscriber to read the row and find it behind what
+    the wire just said -- caught live by a client whose snapshot read
+    'running' after its socket said 'done'.
     """
     handlers = HANDLERS if handlers is None else handlers
     tick = clock if clock is not None else (lambda: now)
@@ -148,6 +150,7 @@ def run_next(
     if claimed is None:
         return None
     job_id, fence = claimed
+    conn.commit()
 
     kind, raw = conn.execute("SELECT kind, payload FROM job WHERE id = ?", (job_id,)).fetchone()
 
@@ -158,6 +161,7 @@ def run_next(
     handler = handlers.get(kind)
     if handler is None:
         jobs.settle(conn, job_id, fence, "failed", tick(), error=f"no handler for kind {kind!r}")
+        conn.commit()
         spoke("failed", jobs.progress(conn, job_id))
         return {"job": job_id, "state": "failed", "did": 0}
     payload = json.loads(raw) if raw else {}
@@ -171,9 +175,11 @@ def run_next(
             # `should_stop` is how a shutting-down worker leaves a long
             # job at an item boundary instead of holding the exit hostage.
             jobs.pause(conn, job_id, fence, tick())
+            conn.commit()
             return {"job": job_id, "state": "running", "did": did, "failed": failed}
         if jobs.cancelled(conn, job_id):
             jobs.settle(conn, job_id, fence, "cancelled", tick())
+            conn.commit()
             spoke("cancelled", jobs.progress(conn, job_id))
             return {"job": job_id, "state": "cancelled", "did": did, "failed": failed}
         try:
@@ -189,5 +195,6 @@ def run_next(
         spoke("running", moved)
 
     jobs.settle(conn, job_id, fence, "done", tick())
+    conn.commit()
     spoke("done", jobs.progress(conn, job_id))
     return {"job": job_id, "state": "done", "did": did, "failed": failed}
