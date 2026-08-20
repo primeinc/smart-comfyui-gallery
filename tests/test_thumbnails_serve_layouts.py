@@ -20,6 +20,14 @@ from vision.faces import FaceDetection, StubFaceBackend
 SHA = "ab" * 32
 
 
+def _rgb(image: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
+    """getpixel, narrowed: these fixtures are RGB by construction."""
+    pixel = image.convert("RGB").getpixel(xy)
+    assert isinstance(pixel, tuple)
+    r, g, b = pixel
+    return r, g, b
+
+
 def test_thumb_and_preview_are_contained_to_their_edges(tmp_path):
     big = Image.new("RGB", (2000, 1000), (10, 200, 30))
     thumbs.put_all(tmp_path, SHA, big)
@@ -34,15 +42,15 @@ def test_a_tiny_source_is_enlarged_to_grid_size(tmp_path):
 
 
 def test_an_unknown_variant_is_refused(tmp_path):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="not a variant"):
         thumbs.path_for(tmp_path, SHA, "poster")
 
 
 def test_a_cache_hit_never_rerenders(tmp_path):
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (255, 0, 0)))
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (0, 0, 255)))
-    kept = Image.open(thumbs.path_for(tmp_path, SHA)).convert("RGB")
-    r, g, b = kept.getpixel((128, 128))
+    kept = Image.open(thumbs.path_for(tmp_path, SHA))
+    r, _, b = _rgb(kept, (128, 128))
     assert r > b, "the second render overwrote a cache that was already warm"
 
 
@@ -50,10 +58,10 @@ def test_an_avatar_is_a_square_crop_centred_on_the_face(tmp_path):
     canvas = Image.new("RGB", (800, 600), (0, 0, 255))
     canvas.paste(Image.new("RGB", (200, 150), (255, 0, 0)), (200, 150))
     thumbs.put_avatar(tmp_path, 7, canvas, (0.25, 0.25, 0.25, 0.25))
-    avatar = Image.open(thumbs.avatar_path(tmp_path, 7)).convert("RGB")
+    avatar = Image.open(thumbs.avatar_path(tmp_path, 7))
     assert avatar.size == (thumbs.AVATAR, thumbs.AVATAR)
-    centre = avatar.getpixel((128, 128))
-    corner = avatar.getpixel((6, 6))
+    centre = _rgb(avatar, (128, 128))
+    corner = _rgb(avatar, (6, 6))
     assert centre[0] > centre[2], "the face is not in the middle of its own avatar"
     assert corner[2] > corner[0], "the crop kept no context around the face"
 
@@ -137,8 +145,8 @@ def test_a_video_is_represented_by_the_frame_with_its_people(tmp_path):
         conn, StubFaceBackend(_face_when_green), file_id, media_path, 0.0, thumbs_dir=str(cache)
     )
     assert told["faces"] > 0
-    poster = Image.open(thumbs.path_for(cache, sha)).convert("RGB")
-    centre = poster.getpixel((poster.width // 2, poster.height // 2))
+    poster = Image.open(thumbs.path_for(cache, sha))
+    centre = _rgb(poster, (poster.width // 2, poster.height // 2))
     assert centre[1] > centre[2], "the poster frame shows the set, not the person"
     conn.close()
 
@@ -163,8 +171,8 @@ def test_a_face_free_cadence_is_refined_until_the_face_is_found(tmp_path):
     assert told["faces"] > 0, "the cadence alone was allowed to conclude absence"
     policies = {policy for _, _, policy in sample.taken(conn, file_id)}
     assert "bisect" in policies, "the extra moments are not recorded as refinement"
-    poster = Image.open(thumbs.path_for(cache, sha)).convert("RGB")
-    centre = poster.getpixel((poster.width // 2, poster.height // 2))
+    poster = Image.open(thumbs.path_for(cache, sha))
+    centre = _rgb(poster, (poster.width // 2, poster.height // 2))
     assert centre[1] > centre[2]
     conn.close()
 

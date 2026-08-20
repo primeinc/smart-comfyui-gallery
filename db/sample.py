@@ -102,13 +102,15 @@ def refine(conn, file_id: int, path, looked: list[int], *, budget: int, floor_ms
     video is refined out -- every remaining gap under `floor_ms * 2` --
     which is the caller's signal to stop asking.
     """
+    import itertools
+
     found = probe.read(path)
     if found.duration is None or not looked:
         return []
     span = int(found.duration * 1000)
     edges = sorted(set(looked) | {span})
     gaps = sorted(
-        ((b - a, a, b) for a, b in zip(edges, edges[1:], strict=False)),
+        ((b - a, a, b) for a, b in itertools.pairwise(edges)),
         key=lambda gap: (-gap[0], gap[1]),
     )
     fresh = []

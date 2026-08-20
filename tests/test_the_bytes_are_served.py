@@ -35,10 +35,18 @@ def _library(tmp_path, write_media):
     return conn, burrow, root
 
 
+def _rgb(image: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
+    """getpixel, narrowed: these fixtures are RGB by construction."""
+    pixel = image.convert("RGB").getpixel(xy)
+    assert isinstance(pixel, tuple)
+    r, g, b = pixel
+    return r, g, b
+
+
 def _slug_of(conn, name: str) -> str:
-    return conn.execute(
-        "SELECT e.slug FROM entity e JOIN file f ON f.id = e.id WHERE f.name = ?", (name,)
-    ).fetchone()[0]
+    return conn.execute("SELECT e.slug FROM entity e JOIN file f ON f.id = e.id WHERE f.name = ?", (name,)).fetchone()[
+        0
+    ]
 
 
 @pytest.fixture
@@ -125,8 +133,8 @@ def test_a_thumbnail_renders_once_and_serves_from_cache(served):
     # New bytes on disk, same recorded hash: a re-request must come from
     # the cache, not a re-decode of whatever sits at the path now.
     Image.new("RGB", (900, 400), (30, 200, 30)).save(root / "wide.png")
-    again = Image.open(io.BytesIO(client.get(f"/thumb/{slug}").content)).convert("RGB")
-    r, g, b = again.getpixel((256, 114))
+    again = Image.open(io.BytesIO(client.get(f"/thumb/{slug}").content))
+    r, g, _ = _rgb(again, (256, 114))
     assert r > g, "the cache was silently re-rendered"
 
 
@@ -144,9 +152,9 @@ def test_a_video_thumbnail_is_a_frame_and_a_preview_is_bigger(served):
     import io
 
     slug = slugs["clip.mp4"]
-    thumb = Image.open(io.BytesIO(client.get(f"/thumb/{slug}").content)).convert("RGB")
+    thumb = Image.open(io.BytesIO(client.get(f"/thumb/{slug}").content))
     assert thumb.size == (512, 288)
-    centre = thumb.getpixel((256, 144))
+    centre = _rgb(thumb, (256, 144))
     assert centre[2] > centre[0], "the poster frame is not the clip's pixels"
     preview = Image.open(io.BytesIO(client.get(f"/preview/{slug}").content))
     assert preview.size == (1440, 810)
@@ -199,8 +207,8 @@ def test_an_avatar_is_the_face_the_cluster_points_at(tmp_path):
     with TestClient(app=build_app(str(burrow))) as client:
         answer = client.get("/avatar/ana")
         assert answer.status_code == 200
-        avatar = Image.open(io.BytesIO(answer.content)).convert("RGB")
+        avatar = Image.open(io.BytesIO(answer.content))
         assert avatar.size == (256, 256)
-        centre = avatar.getpixel((128, 128))
+        centre = _rgb(avatar, (128, 128))
         assert centre[0] > centre[2], "the avatar is not the asserted face"
         assert client.get("/avatar/nobody").status_code == 404
