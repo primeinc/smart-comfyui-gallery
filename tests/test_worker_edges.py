@@ -486,7 +486,7 @@ def test_review_success_stores_scores_findings_and_masks(tmp_path):
         finding = conn.execute("SELECT localizable, mask_path FROM ai_review_findings WHERE file_id = 'ok1'").fetchone()
         assert finding["localizable"] == 1
         assert finding["mask_path"] is not None
-        assert os.path.isfile(finding["mask_path"])
+        assert os.path.isfile(R.resolve_mask_path(str(tmp_path / "cache"), finding["mask_path"]))
 
         review_log = conn.execute(
             "SELECT result_count FROM ai_scan_log WHERE file_id='ok1' AND kind='review'"

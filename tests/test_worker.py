@@ -385,7 +385,7 @@ def test_worker_masks_generated_when_segmenter_arrives_late(tmp_path):
     conn.close()
     assert log is not None
     assert log["result_count"] == 1
-    assert _os.path.isfile(mask_path)
+    assert _os.path.isfile(R.resolve_mask_path(str(tmp_path / "cache"), mask_path))
 
 
 def test_scan_log_check_migration_admits_masks(tmp_path):
@@ -573,7 +573,7 @@ def test_failed_mask_generation_is_retried_not_logged_complete(tmp_path):
     log = conn.execute("SELECT result_count FROM ai_scan_log WHERE file_id='mf1' AND kind='masks'").fetchone()
     conn.close()
     assert mask_path is not None
-    assert _os.path.isfile(mask_path)
+    assert _os.path.isfile(R.resolve_mask_path(str(tmp_path / "cache"), mask_path))
     assert log is not None
     assert log[0] == 1
 

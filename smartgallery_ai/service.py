@@ -901,8 +901,14 @@ def create_ai_blueprint(
 
         # Containment is checked against the masks/ subdirectory (the only
         # place the writer puts masks), not the whole cache dir.
-        masks_root = os.path.realpath(os.path.join(config.cache_dir, "masks"))
-        resolved = os.path.realpath(row["mask_path"])
+        #
+        # Stored paths are relative to that root. Rows written before that
+        # was true hold an absolute path, and os.path.join returns the
+        # second argument unchanged when it is absolute -- so those keep
+        # resolving exactly as they did, and the containment check below
+        # still decides whether they are servable.
+        masks_root = review.masks_root(config.cache_dir)
+        resolved = review.resolve_mask_path(config.cache_dir, row["mask_path"])
         try:
             inside = os.path.commonpath([masks_root, resolved]) == masks_root
         except ValueError:

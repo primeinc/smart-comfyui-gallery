@@ -26,6 +26,7 @@ from smartgallery_ai.review import (
     _auto_critic_measurement_passed,
     generate_finding_mask,
     get_reviewer,
+    resolve_mask_path,
     store_review,
     validate_review_payload,
 )
@@ -515,9 +516,12 @@ def test_generate_finding_mask_localizable_creates_png_source_untouched(tmp_path
     with Image.open(source_path) as img:
         mask_path = generate_finding_mask(conn, str(cache_dir), img.copy(), "f1", finding_id, StubSegmenter())
 
-    assert os.path.isfile(mask_path)
-    assert mask_path.startswith(os.path.realpath(str(cache_dir)))
-    with Image.open(mask_path) as mask_img:
+    resolved = resolve_mask_path(str(cache_dir), mask_path)
+    assert os.path.isfile(resolved)
+    masks_root = os.path.realpath(os.path.join(str(cache_dir), "masks"))
+    assert os.path.commonpath([masks_root, resolved]) == masks_root
+    assert not os.path.isabs(mask_path)  # stored relative, so the cache can move
+    with Image.open(resolved) as mask_img:
         # RGBA: the mask lives in the alpha channel so the panel can tint it
         assert mask_img.mode == "RGBA"
         mask_arr = np.asarray(mask_img)[..., 3]
@@ -560,8 +564,8 @@ def test_generate_finding_mask_path_traversal_stays_inside_cache_dir(tmp_path):
     mask_path = generate_finding_mask(conn, str(cache_dir), img, evil_file_id, finding_id, StubSegmenter())
 
     real_cache = os.path.realpath(str(cache_dir))
-    assert os.path.commonpath([real_cache, os.path.realpath(mask_path)]) == real_cache
-    assert os.path.isfile(mask_path)
+    assert os.path.commonpath([real_cache, resolve_mask_path(str(cache_dir), mask_path)]) == real_cache
+    assert os.path.isfile(resolve_mask_path(str(cache_dir), mask_path))
     # nothing was written outside the cache dir
     assert not os.path.exists(os.path.realpath(os.path.join(str(cache_dir), "..", "..", "..", "..", "etc", "evil")))
 

@@ -264,11 +264,18 @@ class OpenCVFaceBackend(FaceBackend):
             raise ValueError(f"unknown face embedder: {embedder!r}")
         self._embedder = embedder
         self.model_id = f"opencv/yunet+{embedder}"
-        self.model_version = (
-            "yunet-2023mar+arcface-glintr100-ms1600"
-            if embedder == "arcface"
-            else "yunet-2023mar+sface-2021dec-v2-ms1600"
-        )
+        # The detection cap is part of the version because it changes the
+        # vectors. It was baked in as the literal "ms1600" while
+        # detect_max_side stayed a runtime setting, so
+        # AI_DAM_FACE_DETECT_MAX_SIDE=800 produced embeddings from a
+        # different preprocessing pipeline under a string claiming 1600.
+        # invalidation.is_stale compares version strings exactly, so nothing
+        # re-indexed, and cluster_faces then built one cosine graph over two
+        # incompatible regimes -- undetectable by _single_dim, since the
+        # dimension does not change. The same benchmark that justifies the
+        # 1600 cap measured a 2x recall difference between those regimes.
+        base = "yunet-2023mar+arcface-glintr100" if embedder == "arcface" else "yunet-2023mar+sface-2021dec-v2"
+        self.model_version = f"{base}-ms{int(detect_max_side)}"
         # Operating points from the labeled three-way A/B sweep
         # (benchmarks/face_embedder_ab.py, 175 faces / 31 identities):
         # glintr100 pairwise-F1 is flat 0.926-0.933 across 0.30-0.50; 0.48
@@ -552,14 +559,14 @@ def installed_pipelines(config: AIConfig) -> list:
         _entry(
             "yunet+arcface",
             "opencv/yunet+arcface",
-            "yunet-2023mar+arcface-glintr100-ms1600",
+            f"yunet-2023mar+arcface-glintr100-ms{int(config.face_detect_max_side)}",
             [_YUNET_FILENAME, _ARCFACE_FILENAME],
             "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=arcface",
         ),
         _entry(
             "yunet+sface",
             "opencv/yunet+sface",
-            "yunet-2023mar+sface-2021dec-v2-ms1600",
+            f"yunet-2023mar+sface-2021dec-v2-ms{int(config.face_detect_max_side)}",
             [_YUNET_FILENAME, _SFACE_FILENAME],
             "AI_DAM_FACE_BACKEND=opencv AI_DAM_FACE_EMBEDDER=sface",
         ),

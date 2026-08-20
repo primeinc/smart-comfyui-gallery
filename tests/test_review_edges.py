@@ -175,7 +175,7 @@ def test_generate_finding_mask_points_only_masks_points_bounding_box(tmp_path):
     finding_id = _store_one_finding(conn, "f1", localizable=True, points=[(0.25, 0.25), (0.75, 0.75)])
     img = solid_color_image(size=(40, 40))
     mask_path = generate_finding_mask(conn, str(tmp_path / "cache"), img, "f1", finding_id, StubSegmenter())
-    with Image.open(mask_path) as mask_img:
+    with Image.open(REV.resolve_mask_path(str(tmp_path / "cache"), mask_path)) as mask_img:
         assert mask_img.mode == "RGBA"
         arr = np.asarray(mask_img)[..., 3]
     assert arr[20, 20] == 255  # center of the points' bbox

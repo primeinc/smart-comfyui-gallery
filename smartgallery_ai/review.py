@@ -860,6 +860,23 @@ def _safe_path_component(value: str) -> str:
     return value or "_"
 
 
+def masks_root(cache_dir: str) -> str:
+    """The one directory stored mask paths are relative to."""
+    return os.path.realpath(os.path.join(cache_dir, "masks"))
+
+
+def resolve_mask_path(cache_dir: str, stored: str) -> str:
+    """A stored `mask_path` as an absolute filesystem path.
+
+    Stored values are relative to `masks_root`. Rows written before that
+    was true hold an absolute path, and os.path.join returns its second
+    argument unchanged when that argument is absolute -- so old rows
+    resolve exactly as they always did, and callers still have to apply
+    their own containment check to the result.
+    """
+    return os.path.realpath(os.path.join(masks_root(cache_dir), stored))
+
+
 def _write_mask(cache_dir: str, file_id: str, name: str, mask: np.ndarray) -> str:
     """Persist one boolean mask as an RGBA PNG under
     `cache_dir/masks/<file_id>/<name>.png`, asserting the resolved path
@@ -874,14 +891,22 @@ def _write_mask(cache_dir: str, file_id: str, name: str, mask: np.ndarray) -> st
     opaque = np.where(mask, np.uint8(255), np.uint8(0))
     rgba = np.dstack([np.full_like(opaque, 255), np.full_like(opaque, 255), np.full_like(opaque, 255), opaque])
     mask_img = Image.fromarray(rgba, mode="RGBA")
-    masks_root = os.path.realpath(os.path.join(cache_dir, "masks"))
-    file_dir = os.path.realpath(os.path.join(masks_root, _safe_path_component(str(file_id))))
+    root = masks_root(cache_dir)
+    file_dir = os.path.realpath(os.path.join(root, _safe_path_component(str(file_id))))
     mask_path = os.path.realpath(os.path.join(file_dir, f"{_safe_path_component(name)}.png"))
-    if os.path.commonpath([masks_root, mask_path]) != masks_root:
+    if os.path.commonpath([root, mask_path]) != root:
         raise ValueError("resolved mask path escapes cache_dir")
     os.makedirs(file_dir, exist_ok=True)
     mask_img.save(mask_path)
-    return mask_path
+    # Returned RELATIVE to the masks root, because this is what gets stored.
+    # An absolute path pinned the row to one cache_dir: move the library,
+    # set AI_DAM_CACHE_DIR, or mount the container somewhere else and every
+    # stored mask fails _serve_mask's containment check and 404s -- while
+    # the worker sees mask_path IS NOT NULL and never regenerates it. Masks
+    # died permanently and silently, in a table that is supposed to be
+    # rebuildable. The repo already has a test asserting a renamed root
+    # keeps the library; this column was the exception.
+    return os.path.relpath(mask_path, root).replace(os.sep, "/")
 
 
 def generate_alignment_mask(
