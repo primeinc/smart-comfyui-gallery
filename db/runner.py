@@ -118,6 +118,7 @@ def run_next(
     budget: int | None = None,
     clock=None,
     on_progress=None,
+    should_stop=None,
 ) -> dict | None:
     """One worker turn: claim the next runnable job and work it.
 
@@ -163,10 +164,12 @@ def run_next(
 
     did = failed = 0
     for item in jobs.pending(conn, job_id):
-        if budget is not None and did >= budget:
+        if (budget is not None and did >= budget) or (should_stop is not None and should_stop()):
             # A deliberate stop, not a death: the lease is expired on the
             # spot so the very next turn -- any process -- resumes the job
             # instead of waiting out a liveness timeout meant for crashes.
+            # `should_stop` is how a shutting-down worker leaves a long
+            # job at an item boundary instead of holding the exit hostage.
             jobs.pause(conn, job_id, fence, tick())
             return {"job": job_id, "state": "running", "did": did, "failed": failed}
         if jobs.cancelled(conn, job_id):

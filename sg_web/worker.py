@@ -52,7 +52,14 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
             turn = None
             if settings.flag(conn, "worker"):
                 try:
-                    turn = runner.run_next(conn, owner=owner, now=time.time(), clock=time.time, on_progress=publish)
+                    turn = runner.run_next(
+                        conn,
+                        owner=owner,
+                        now=time.time(),
+                        clock=time.time,
+                        on_progress=publish,
+                        should_stop=stop.is_set,
+                    )
                     conn.commit()
                 except Exception:
                     conn.rollback()

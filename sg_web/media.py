@@ -21,9 +21,21 @@ class Unsatisfiable(Exception):
     """A well-formed range that selects no bytes of this file."""
 
 
+def _digits(text: str) -> bool:
+    """RFC 9110's DIGIT: %x30-39 and nothing else. `str.isdigit()` admits
+    Unicode numerics `int()` rejects ('²' -- a single latin-1 octet
+    on the wire), and `str.isdecimal()` admits ones `int()` accepts
+    (the Arabic-Indic digits, U+0660..U+0669), so a header field defined
+    as ASCII must be checked as ASCII."""
+    return text.isascii() and text.isdigit()
+
+
 def parse_range(header: str | None, size: int) -> tuple[int, int] | None:
     """`(first, last)` inclusive for one satisfiable bytes-range, or None
-    to serve the whole file. Raises Unsatisfiable for the 416 case."""
+    to serve the whole file. Raises Unsatisfiable for the 416 case, and
+    nothing else, ever: a Range header is attacker-supplied text on an
+    unauthenticated route, and anything unparseable is "no opinion", not
+    an error."""
     if not header or size == 0:
         return None
     unit, _, spec = header.partition("=")
@@ -34,13 +46,13 @@ def parse_range(header: str | None, size: int) -> tuple[int, int] | None:
         return None
     if not start_text:
         # suffix form: the last N bytes
-        if not end_text.isdigit():
+        if not _digits(end_text):
             return None
         last_n = int(end_text)
         if last_n == 0:
             raise Unsatisfiable
         return max(0, size - last_n), size - 1
-    if not start_text.isdigit() or (end_text and not end_text.isdigit()):
+    if not _digits(start_text) or (end_text and not _digits(end_text)):
         return None
     first = int(start_text)
     if first >= size:

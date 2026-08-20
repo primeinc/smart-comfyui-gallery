@@ -119,6 +119,102 @@ def test_a_range_is_honoured_the_way_a_video_element_seeks(served):
     assert garbled.content == whole
 
 
+def test_a_hostile_range_header_is_an_opinion_never_an_error():
+    """RFC 9110 defines DIGIT as %x30-39 and nothing else. '²' is one
+    latin-1 octet a real socket delivers and int() rejects; an
+    Arabic-Indic digit (U+0661) is a numeral int() happily parses and
+    the grammar forbids. An unparseable Range on an unauthenticated
+    route must come back as "no opinion" -- never as an exception a
+    handler did not catch."""
+    from sg_web import media
+
+    for hostile in (
+        "bytes=-²",
+        "bytes=²-",
+        "bytes=\u0661-\u0662",
+        "bytes=\u0661-",
+        "bytes=0-²",
+        "bytes=--",
+        "bytes=1-2-3",
+        "bytes=+1-2",
+        "bytes=1_0-",
+        "bytes=",
+        "bytes=-",
+        "bytes= - ",
+        "octets=0-1",
+        "bytes=\x00-",
+    ):
+        assert media.parse_range(hostile, 100) is None, hostile
+
+
+def test_a_raw_latin1_range_octet_is_answered_not_crashed(served):
+    """The wire case the test client cannot send: httpx refuses non-ASCII
+    header values, but a socket delivers any octet and the server decodes
+    it latin-1. Driven at the ASGI layer, `Range: bytes=-\xb2` must get
+    the whole file with 200, not a 500."""
+    import asyncio
+
+    client, slugs, root = served
+
+    async def drive():
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": f"/media/{slugs['clip.mp4']}",
+            "raw_path": f"/media/{slugs['clip.mp4']}".encode(),
+            "query_string": b"",
+            "root_path": "",
+            "headers": [(b"host", b"testserver"), (b"range", b"bytes=-\xb2")],
+            "client": ("127.0.0.1", 4444),
+            "server": ("testserver", 80),
+        }
+        told = []
+        handed = {"count": 0}
+        finished = asyncio.Event()
+
+        async def receive():
+            # the request body once; then hang up only AFTER the last body
+            # event -- a streaming response listens for the disconnect
+            # concurrently, and an instant one cancels the stream mid-body
+            handed["count"] += 1
+            if handed["count"] == 1:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await finished.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            told.append(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                finished.set()
+
+        await client.app(scope, receive, send)
+        return told
+
+    told = asyncio.run(drive())
+    start = next(message for message in told if message["type"] == "http.response.start")
+    assert start["status"] == 200
+    body = b"".join(message.get("body", b"") for message in told if message["type"] == "http.response.body")
+    assert body == (root / "clip.mp4").read_bytes()
+
+
+def test_head_answers_what_get_would_say_without_the_body(served):
+    """RFC 9110: a resource that answers GET answers HEAD with the same
+    headers -- it is how a player learns length and seekability before
+    asking for a single byte."""
+    client, slugs, root = served
+    slug = slugs["clip.mp4"]
+    told = client.head(f"/media/{slug}")
+    assert told.status_code == 200
+    assert told.content == b""
+    assert told.headers["content-length"] == str((root / "clip.mp4").stat().st_size)
+    assert told.headers["accept-ranges"] == "bytes"
+    assert told.headers["content-type"].startswith("video/mp4")
+    assert client.head("/media/no-such-thing").status_code == 404
+
+
 def test_a_thumbnail_renders_once_and_serves_from_cache(served):
     client, slugs, root = served
     slug = slugs["wide.png"]

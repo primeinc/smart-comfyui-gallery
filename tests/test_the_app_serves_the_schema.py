@@ -229,6 +229,65 @@ def test_settings_are_rows_changed_while_the_application_runs(tmp_path):
         assert client.post("/settings/not_a_setting", json={"value": "x"}).status_code == 400
 
 
+def test_a_bodyless_or_pathless_root_request_is_a_400_not_a_500(tmp_path):
+    """The body is typed, so a missing or mistyped `path` is refused by
+    the signature model with a 400 -- never a KeyError escaping as 500
+    from a write route."""
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        assert client.post("/roots", json={}).status_code == 400
+        assert client.post("/roots", json={"kind": "library"}).status_code == 400
+        assert client.post("/roots", json={"path": 123}).status_code == 400
+        assert client.post("/roots").status_code == 400
+
+
+def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, caplog):
+    """Lifespan managers exit in reverse, so the worker must be REGISTERED
+    after the channel: stopped and joined while the channel it publishes
+    to is still alive. Ordered wrongly, a shutdown mid-drain logged
+    "Plugin not yet initialized" from the bridge -- and the docstring's
+    "no thread mid-write" was a lie. The job it was draining stays rows,
+    picked up by the next run."""
+    import logging
+
+    from litestar.channels import ChannelsPlugin
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for n in range(300):
+        (root / f"frame_{n:03}.png").write_bytes(b"\x89PNG-" + f"{n:03}".encode() * 64)
+    burrow = tmp_path / "run"
+    burrow.mkdir()
+    conn = connect.connect(burrow / "gallery.db")
+    conn.executescript(connect.schema_sql())
+    conn.execute("PRAGMA foreign_keys=ON")
+    root_id = library.add_root(conn, str(root), "library", 0.0)
+    scan.scan(conn, root_id, str(root), 0.0)
+    conn.commit()
+    conn.close()
+
+    with caplog.at_level(logging.ERROR), TestClient(app=build_app(str(burrow))) as client:
+        managers = client.app._lifespan_managers
+        channel_at = next(i for i, m in enumerate(managers) if isinstance(m, ChannelsPlugin))
+        worker_at = next(i for i, m in enumerate(managers) if getattr(m, "__name__", "") == "working")
+        assert channel_at < worker_at, "the channel would tear down under a live worker"
+        job_id = client.post("/jobs/verify").json()["id"]
+        # leave immediately: the worker is mid-drain as the app exits
+
+    said = " ".join(record.getMessage() for record in caplog.records)
+    assert "Plugin not yet initialized" not in said, "a publish landed on a torn-down channel"
+    assert "worker turn died" not in said
+
+    import time as clock
+
+    with TestClient(app=build_app(str(burrow))) as client:
+        deadline = clock.time() + 30
+        state = None
+        while state != "done":
+            assert clock.time() < deadline, "the interrupted job was never picked back up"
+            state = client.get(f"/jobs/{job_id}").json()["state"]
+            clock.sleep(0.1)
+
+
 def test_media_roots_are_rows_managed_through_the_application(tmp_path):
     """Any number of media directories, anywhere, registered and scanned
     over requests -- the pictures never live inside the run's home."""

@@ -19,18 +19,20 @@ connections refuse cross-thread use, and the pool gives no thread pinning.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import pathlib
 import sqlite3
 import time
 from contextlib import asynccontextmanager
 
-from litestar import Litestar, Request, get, post, websocket
+from litestar import Litestar, Request, get, post, route, websocket
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.connection import WebSocket
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.plugins import InitPlugin
 from litestar.response import Redirect, Response, Stream
 
 from db import connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
@@ -175,9 +177,12 @@ def submit_faces(state: State, data: dict) -> dict:
         conn.close()
 
 
-def _file_at(conn, slug: str, where: str) -> tuple[int, str] | Redirect:
-    """Resolve a file slug to `(file_id, disk path)`, 301ing retired slugs
-    and refusing what is not there to serve."""
+def _file_at(conn, slug: str, where: str) -> tuple[int, str] | str:
+    """Resolve a file slug to `(file_id, disk path)`, refusing what is not
+    there to serve. A retired slug comes back as the LIVE slug (a str) so
+    each caller can shape its own 301 -- a HEAD handler may not return a
+    Redirect, whose annotation implies a body (litestar-org/litestar@
+    64cd7da litestar/handlers/http_handlers/decorators.py:588-601)."""
     found = naming.resolve(conn, "file", slug)
     if found is None:
         raise NotFoundException(f"no file at {where}/{slug}")
@@ -185,7 +190,7 @@ def _file_at(conn, slug: str, where: str) -> tuple[int, str] | Redirect:
     if not is_current:
         live = naming.entity_slug(conn, file_id)
         if live is not None:
-            return Redirect(path=f"{where}/{live[1]}", status_code=301)
+            return live[1]
     row = conn.execute("SELECT missing_since FROM file WHERE id = ?", (file_id,)).fetchone()
     if row is None or row[0] is not None:
         raise NotFoundException(f"{where}/{slug} is not on disk right now")
@@ -195,7 +200,7 @@ def _file_at(conn, slug: str, where: str) -> tuple[int, str] | Redirect:
     return file_id, path
 
 
-@get("/media/{slug:str}", sync_to_thread=True)
+@route("/media/{slug:str}", http_method=["GET", "HEAD"], sync_to_thread=True)
 def media_bytes(state: State, slug: str, request: Request) -> Stream | Redirect | Response:
     """The original bytes, typed by what they are and seekable by range.
 
@@ -203,12 +208,23 @@ def media_bytes(state: State, slug: str, request: Request) -> Stream | Redirect 
     exists to feed decoders and `<video>` elements, and feeding them a
     lie about an MP4 wearing .jpg is how players break. Range semantics
     live in sg_web/media.py.
+
+    HEAD answers here too, with the same headers and no body (RFC 9110:
+    a resource that answers GET answers HEAD) -- one mixed-method handler
+    rather than a separate `@head` sibling, because registering a second
+    handler on a sync handler's path breaks the sync wrapper upstream
+    (GET answers 500 "coroutine has no attribute to_asgi_response";
+    reproduced on litestar-org/litestar@64cd7da with a 15-line pair, while
+    its own static_files pairs @get with @head only as async handlers,
+    litestar/static_files.py:115-133). The explicit content-length
+    survives the empty body because the response base only setdefaults it
+    (litestar/response/base.py:112-113).
     """
     conn = _connect(state.db_path)
     try:
         resolved = _file_at(conn, slug, "/media")
-        if isinstance(resolved, Redirect):
-            return resolved
+        if isinstance(resolved, str):
+            return Redirect(path=f"/media/{resolved}", status_code=301)
         _, path = resolved
     finally:
         conn.close()
@@ -217,6 +233,16 @@ def media_bytes(state: State, slug: str, request: Request) -> Stream | Redirect 
 
     size = os.path.getsize(path)
     ctype = sniff_module.content_type(sniff_module.sniff_path(path))
+    if request.method == "HEAD":
+        # b"", not None: render() refuses None under a non-text media type
+        # ("unsupported media_type image/png for content None"). The empty
+        # body computes length 0, and the true length survives because the
+        # base only setdefaults content-length (response/base.py:112-113).
+        return Response(
+            content=b"",
+            media_type=ctype,
+            headers={"content-length": str(size), "accept-ranges": "bytes"},
+        )
     try:
         wanted = media.parse_range(request.headers.get("range"), size)
     except media.Unsatisfiable:
@@ -252,8 +278,8 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
     conn = _connect(state.db_path)
     try:
         resolved = _file_at(conn, slug, where)
-        if isinstance(resolved, Redirect):
-            return resolved
+        if isinstance(resolved, str):
+            return Redirect(path=f"{where}/{resolved}", status_code=301)
         file_id, path = resolved
         kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
         if kind not in ("image", "animated_image", "video"):
@@ -411,15 +437,25 @@ def roots(state: State) -> list[dict]:
         conn.close()
 
 
+@dataclasses.dataclass
+class NewRoot:
+    """The body of POST /roots. Typed so a request without a path is a
+    400 from the signature model, never a KeyError a handler forgot --
+    the shape every write route's body should take."""
+
+    path: str
+    kind: str = "library"
+
+
 @post("/roots", sync_to_thread=True)
-def add_root(state: State, data: dict) -> dict:
+def add_root(state: State, data: NewRoot) -> dict:
     """Register a media directory. Nothing is read until a scan is asked
     for -- registering is a statement of intent, not a sweep."""
     conn = _connect(state.db_path)
     try:
-        root_id = library.add_root(conn, data["path"], data.get("kind", "library"), time.time())
+        root_id = library.add_root(conn, data.path, data.kind, time.time())
         conn.commit()
-        return {"id": root_id, "path": data["path"]}
+        return {"id": root_id, "path": data.path}
     finally:
         conn.close()
 
@@ -483,11 +519,14 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
 
     @asynccontextmanager
     async def working(app: Litestar):
-        """The worker's life is the application's life: the loop is
-        captured here because `ChannelsPlugin.publish` must be entered
-        from the loop's own thread (call_soon_threadsafe is the bridge),
-        and the join on the way out is what makes ctrl-C leave no thread
-        mid-write."""
+        """The worker's life is strictly inside the channel's life. The
+        loop is captured here because `ChannelsPlugin.publish` must be
+        entered from the loop's own thread (call_soon_threadsafe is the
+        bridge), and the join on the way out -- before the channel tears
+        down, see _WorkerPlugin -- is what makes ctrl-C leave no thread
+        mid-write. The join happens on a worker thread while the loop
+        keeps running, so publishes the worker scheduled before stopping
+        still land on a live channel."""
         import asyncio
         import threading
 
@@ -513,6 +552,23 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             if thread.is_alive():
                 await to_thread.run_sync(thread.join)
 
+    class _WorkerPlugin(InitPlugin):
+        """Registers `working` AFTER ChannelsPlugin has registered itself.
+
+        Ordering is the point, not convenience: lifespan managers exit in
+        reverse (litestar-org/litestar@64cd7da litestar/app.py:598-608,
+        AsyncExitStack), and ChannelsPlugin appends its own manager in
+        `on_app_init` (channels/plugin.py:123). Passed via `lifespan=[...]`
+        the worker preceded the channel, so on shutdown the channel nulled
+        its queue first and a draining worker's publish crashed with
+        "Plugin not yet initialized". Appended here, plugin order puts the
+        worker last -- first to exit, stopped and joined while the channel
+        it publishes to is still alive."""
+
+        def on_app_init(self, app_config):
+            app_config.lifespan.append(working)
+            return app_config
+
     app = Litestar(
         route_handlers=[
             health,
@@ -537,8 +593,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             preview_bytes,
             avatar_bytes,
         ],
-        plugins=[channels],
-        lifespan=[working],
+        plugins=[channels, _WorkerPlugin()],
     )
     app.state.home = str(base)
     app.state.db_path = str(where)
