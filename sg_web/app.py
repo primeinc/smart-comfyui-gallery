@@ -15,17 +15,18 @@ connections refuse cross-thread use, and the pool gives no thread pinning.
 
 from __future__ import annotations
 
+import os
 import pathlib
 import sqlite3
 import time
 
-from litestar import Litestar, get, post
+from litestar import Litestar, Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
-from litestar.response import Redirect
+from litestar.response import Redirect, Response, Stream
 
-from db import connect, derived, jobs, library, naming, pages, runner, scan, settings
-from sg_web import home
+from db import connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
+from sg_web import home, media
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -153,6 +154,157 @@ def submit_faces(state: State, data: dict) -> dict:
         return jobs.snapshot(conn, job_id)
     finally:
         conn.close()
+
+
+def _file_at(conn, slug: str, where: str) -> tuple[int, str] | Redirect:
+    """Resolve a file slug to `(file_id, disk path)`, 301ing retired slugs
+    and refusing what is not there to serve."""
+    found = naming.resolve(conn, "file", slug)
+    if found is None:
+        raise NotFoundException(f"no file at {where}/{slug}")
+    file_id, is_current = found
+    if not is_current:
+        live = naming.entity_slug(conn, file_id)
+        if live is not None:
+            return Redirect(path=f"{where}/{live[1]}", status_code=301)
+    row = conn.execute("SELECT missing_since FROM file WHERE id = ?", (file_id,)).fetchone()
+    if row is None or row[0] is not None:
+        raise NotFoundException(f"{where}/{slug} is not on disk right now")
+    path = detect.path_of(conn, file_id)
+    if not os.path.isfile(path):
+        raise NotFoundException(f"{where}/{slug} is not on disk right now")
+    return file_id, path
+
+
+@get("/media/{slug:str}", sync_to_thread=True)
+def media_bytes(state: State, slug: str, request: Request) -> Stream | Redirect | Response:
+    """The original bytes, typed by what they are and seekable by range.
+
+    Content-Type comes from the sniff, never the suffix -- the route
+    exists to feed decoders and `<video>` elements, and feeding them a
+    lie about an MP4 wearing .jpg is how players break. Range semantics
+    live in sg_web/media.py.
+    """
+    conn = _connect(state.db_path)
+    try:
+        resolved = _file_at(conn, slug, "/media")
+        if isinstance(resolved, Redirect):
+            return resolved
+        _, path = resolved
+    finally:
+        conn.close()
+
+    from vision import sniff as sniff_module
+
+    size = os.path.getsize(path)
+    ctype = sniff_module.content_type(sniff_module.sniff_path(path))
+    try:
+        wanted = media.parse_range(request.headers.get("range"), size)
+    except media.Unsatisfiable:
+        return Response(content=b"", status_code=416, headers={"content-range": f"bytes */{size}"})
+    if wanted is None:
+        return Stream(
+            media.chunks(path, 0, size),
+            media_type=ctype,
+            headers={"content-length": str(size), "accept-ranges": "bytes"},
+        )
+    first, last = wanted
+    return Stream(
+        media.chunks(path, first, last - first + 1),
+        status_code=206,
+        media_type=ctype,
+        headers={
+            "content-length": str(last - first + 1),
+            "content-range": f"bytes {first}-{last}/{size}",
+            "accept-ranges": "bytes",
+        },
+    )
+
+
+def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Response | Redirect:
+    """Serve one cached raster variant, rendering it on first request.
+
+    The byproduct path (detection jobs) usually got here first; this is
+    the fallback for files no job has touched. Kinds with no picture to
+    take -- audio, documents -- are told so rather than given a favicon.
+    """
+    from vision import decode, thumbs
+
+    conn = _connect(state.db_path)
+    try:
+        resolved = _file_at(conn, slug, where)
+        if isinstance(resolved, Redirect):
+            return resolved
+        file_id, path = resolved
+        kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+        if kind not in ("image", "animated_image", "video"):
+            raise NotFoundException(f"a {kind} has no {variant}")
+        if sha is None:
+            sha = scan.sha256_of(path)
+        cache = home.thumbs_dir(pathlib.Path(state.home))
+        target = thumbs.path_for(cache, sha, variant)
+        if not target.exists():
+            frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+            if frame is None:
+                raise NotFoundException(f"{where}/{slug} has no decodable frame")
+            thumbs.put(cache, sha, frame, variant)
+    finally:
+        conn.close()
+    return Response(content=target.read_bytes(), media_type="image/webp")
+
+
+@get("/thumb/{slug:str}", sync_to_thread=True)
+def thumb_bytes(state: State, slug: str) -> Response | Redirect:
+    """The grid cell: longest side 512, upright, aspect kept."""
+    return _variant_bytes(state, slug, "thumb", "/thumb")
+
+
+@get("/preview/{slug:str}", sync_to_thread=True)
+def preview_bytes(state: State, slug: str) -> Response | Redirect:
+    """The lightbox image: longest side 1440, upright, aspect kept."""
+    return _variant_bytes(state, slug, "preview", "/preview")
+
+
+@get("/avatar/{slug:str}", sync_to_thread=True)
+def avatar_bytes(state: State, slug: str) -> Response | Redirect:
+    """A person's face, squared: their highest-confidence detection in the
+    primary run, cropped with context (vision/thumbs.py). A video face is
+    cropped from the sampled frame the detection actually looked at."""
+    from vision import decode, thumbs
+
+    conn = _connect(state.db_path)
+    try:
+        found = naming.resolve(conn, "person", slug)
+        if found is None:
+            raise NotFoundException(f"no person at /avatar/{slug}")
+        person_id, is_current = found
+        if not is_current:
+            live = naming.entity_slug(conn, person_id)
+            if live is not None:
+                return Redirect(path=f"/avatar/{live[1]}", status_code=301)
+        face = media.exemplar_face(conn, person_id)
+        if face is None:
+            raise NotFoundException(f"/avatar/{slug}: no clustered face to show")
+        face_id, file_id, sample_id, x, y, w, h = face
+        cache = home.thumbs_dir(pathlib.Path(state.home))
+        target = thumbs.avatar_path(cache, face_id)
+        if not target.exists():
+            path = detect.path_of(conn, file_id)
+            if not os.path.isfile(path):
+                raise NotFoundException(f"/avatar/{slug}: the picture behind the face is offline")
+            if sample_id is not None:
+                offset = conn.execute(
+                    "SELECT offset_ms FROM derived_media_sample WHERE id = ?", (sample_id,)
+                ).fetchone()[0]
+                frame = next((image for _, image in decode.frames_at(path, [offset])), None)
+            else:
+                frame = oriented.for_model(conn, file_id, path)
+            if frame is None:
+                raise NotFoundException(f"/avatar/{slug}: the face's frame no longer decodes")
+            thumbs.put_avatar(cache, face_id, frame, (x, y, w, h))
+    finally:
+        conn.close()
+    return Response(content=target.read_bytes(), media_type="image/webp")
 
 
 @get("/settings", sync_to_thread=True)
@@ -307,6 +459,10 @@ def build_app(home_dir: str | None = None) -> Litestar:
             choose_primary,
             all_settings,
             change_setting,
+            media_bytes,
+            thumb_bytes,
+            preview_bytes,
+            avatar_bytes,
         ],
     )
     app.state.home = str(base)

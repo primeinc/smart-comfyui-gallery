@@ -164,3 +164,50 @@ def sniff_path(path: str | os.PathLike[str]) -> tuple[str, str] | None:
             return sniff(handle.read(HEAD))
     except OSError:
         return None
+
+
+#: Content-Type per sniff token, for serving the bytes the sniff looked at.
+#: Types are the essence strings mimesniff itself matches on
+#: (whatwg/mimesniff@39aa535 mimesniff.bs:860-1360); the formats beyond the
+#: browser's set carry their registered types as immich serves them
+#: (immich-app/immich@f88fb62 server/src/utils/mime-types.ts).
+MIME = {
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "webp": "image/webp",
+    "tiff": "image/tiff",
+    "jxl": "image/jxl",
+    "psd": "image/vnd.adobe.photoshop",
+    "jp2": "image/jp2",
+    "avif": "image/avif",
+    "heif": "image/heif",
+    "cr3": "image/x-canon-cr3",
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "3gp": "video/3gpp",
+    "matroska": "video/x-matroska",
+    "flv": "video/x-flv",
+    "rm": "application/vnd.rn-realmedia",
+    "mpeg-ps": "video/mpeg",
+    "mpeg-ts": "video/mp2t",
+    "mxf": "application/mxf",
+    "asf": "video/x-ms-asf",
+    "avi": "video/x-msvideo",
+    "wav": "audio/wav",
+    "ogg": "audio/ogg",
+    "flac": "audio/flac",
+    "mp3": "audio/mpeg",
+    "aiff": "audio/aiff",
+    "aac-adts": "audio/aac",
+    "pdf": "application/pdf",
+}
+
+
+def content_type(sniffed: tuple[str, str] | None) -> str:
+    """The Content-Type to serve for a sniff result. Bytes no signature
+    matched are exactly what application/octet-stream is for."""
+    if sniffed is None:
+        return "application/octet-stream"
+    return MIME.get(sniffed[1], "application/octet-stream")
