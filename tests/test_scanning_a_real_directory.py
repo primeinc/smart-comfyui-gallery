@@ -441,3 +441,111 @@ def test_a_scan_of_an_unreachable_root_concludes_nothing(library):
     assert conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0] == 1
     assert conn.execute("SELECT count(*) FROM folder WHERE missing_since IS NULL").fetchone()[0] == 2
     assert conn.execute("SELECT online FROM root WHERE id = 1").fetchone()[0] == 0
+
+
+def two_roots(tmp_path):
+    """A library and a second drive, both scanned."""
+    from db import library as library_module
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        "INSERT INTO user(id, username, password_hash, role, created_at)"
+        " VALUES(1, 'will', 'x', 'ADMIN', 0)"
+    )
+    first, second = tmp_path / "library", tmp_path / "archive"
+    first.mkdir()
+    second.mkdir()
+    write(first / "kept.png", "kept bytes")
+    write(second / "archived.png", "archived bytes")
+    a = library_module.add_root(conn, first, "library", NOW)
+    b = library_module.add_root(conn, second, "mount", NOW)
+    scan.scan(conn, a, first, NOW)
+    scan.scan(conn, b, second, NOW)
+    return conn, (a, first), (b, second)
+
+
+def test_scanning_one_root_says_nothing_about_another(tmp_path):
+    """`observed` covers one tree; `missing` was computed over the whole table.
+
+    So scanning the library reported everything on the archive drive as gone,
+    and scanning the archive reported the library gone -- alternately, on
+    every pass, in any library with more than one root. A row nobody looked
+    for is unexamined, not missing.
+    """
+    conn, (a, first), (b, second) = two_roots(tmp_path)
+    try:
+        assert conn.execute(
+            "SELECT count(*) FROM file WHERE missing_since IS NOT NULL"
+        ).fetchone()[0] == 0, "the second scan flagged what the first one found"
+
+        scan.scan(conn, a, first, NOW + 100)
+        assert conn.execute(
+            "SELECT missing_since FROM file WHERE name='archived.png'"
+        ).fetchone()[0] is None, "scanning the library marked the archive drive gone"
+
+        scan.scan(conn, b, second, NOW + 200)
+        assert conn.execute(
+            "SELECT missing_since FROM file WHERE name='kept.png'"
+        ).fetchone()[0] is None, "scanning the archive marked the library gone"
+
+        # the control: a deletion inside the scanned root is still caught
+        (first / "kept.png").unlink()
+        scan.scan(conn, a, first, NOW + 300)
+        assert conn.execute(
+            "SELECT missing_since FROM file WHERE name='kept.png'"
+        ).fetchone()[0] == NOW + 300
+    finally:
+        conn.close()
+
+
+def test_a_file_dragged_between_drives_is_one_move(tmp_path):
+    """Roots scanned one at a time cannot see it: whichever is walked first
+    either loses the row or mints a second, and the ratings stay with whichever
+    half the ordering picked. Observing everything before resolving anything
+    makes it a move in either order."""
+    import shutil
+
+    conn, (a, first), (b, second) = two_roots(tmp_path)
+    try:
+        file_id = conn.execute("SELECT id FROM file WHERE name='kept.png'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?,1,5,0)",
+            (file_id,),
+        )
+        shutil.move(str(first / "kept.png"), str(second / "kept.png"))
+        scan.scan_all(conn, NOW + 100)
+
+        assert conn.execute("SELECT count(*) FROM file").fetchone()[0] == 2, (
+            "the move became a delete plus an arrival"
+        )
+        moved = conn.execute(
+            "SELECT f.id, r.path FROM file f JOIN folder fo ON fo.id=f.folder_id"
+            " JOIN root r ON r.id=fo.root_id WHERE f.name='kept.png'"
+        ).fetchone()
+        assert moved[0] == file_id, "the file was re-identified by crossing a drive"
+        assert moved[1] == str(second)
+        assert conn.execute(
+            "SELECT rating FROM rating WHERE file_id=?", (file_id,)
+        ).fetchone()[0] == 5
+    finally:
+        conn.close()
+
+
+def test_scan_all_leaves_an_unplugged_drive_alone(tmp_path):
+    """The offline-drive veto, on the path that walks every root: a root it
+    skipped must not be reported as a root whose contents are gone."""
+    import shutil
+
+    conn, (a, first), (b, second) = two_roots(tmp_path)
+    try:
+        shutil.rmtree(second)
+        scan.scan_all(conn, NOW + 100)
+        assert conn.execute(
+            "SELECT missing_since FROM file WHERE name='archived.png'"
+        ).fetchone()[0] is None, "an unreadable root was read as an emptied one"
+        assert conn.execute("SELECT online FROM root WHERE id=?", (b,)).fetchone()[0] == 0
+        assert conn.execute("SELECT online FROM root WHERE id=?", (a,)).fetchone()[0] == 1
+    finally:
+        conn.close()

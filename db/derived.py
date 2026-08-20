@@ -367,28 +367,39 @@ def seed_clusters_from_assertions(conn, model_id: str, model_version: str) -> in
         row[0]: row[1:]
         for row in conn.execute("SELECT id, x, y, w, h FROM region")
     }
-    assertions: dict[int, list[tuple[int, int | None]]] = {}
-    for person_id, file_id, region_id in conn.execute(
-        "SELECT person_id, file_id, region_id FROM person_assertion"
+    assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
+    for person_id, file_id, sample_id, region_id in conn.execute(
+        "SELECT person_id, file_id, sample_id, region_id FROM person_assertion"
     ):
-        assertions.setdefault(file_id, []).append((person_id, region_id))
+        assertions.setdefault(file_id, []).append((person_id, sample_id, region_id))
 
     votes: dict[int, set[int]] = {}
-    for cluster_id, file_id, region_id in conn.execute(
-        "SELECT fi.cluster_id, fi.file_id, fi.region_id FROM derived_face_instance fi"
+    for cluster_id, file_id, sample_id, region_id in conn.execute(
+        "SELECT fi.cluster_id, fi.file_id, fi.sample_id, fi.region_id"
+        "  FROM derived_face_instance fi"
         "  JOIN derived_face_cluster c ON c.id = fi.cluster_id"
         " WHERE c.person_id IS NULL AND c.model_id = ? AND c.model_version = ?",
         (model_id, model_version),
     ):
         claims = assertions.get(file_id, ())
-        unboxed = {person for person, box in claims if box is None}
-        for person, box in claims:
-            if box is None:
-                # No box: it can only speak for a file where it is the only
-                # claim, or it would name whichever face came first.
-                if len(unboxed) == 1 and not any(b is not None for _, b in claims):
+        for person, on_sample, box in claims:
+            # A claim about one frame says nothing about another. Two frames
+            # of a video can hold a face in the same part of the picture, so
+            # without this the box match reaches across moments and a video of
+            # two people mislabels the same way a photograph of two people did.
+            if on_sample is not None and on_sample != sample_id:
+                continue
+            if box is not None:
+                if _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:
                     votes.setdefault(cluster_id, set()).add(person)
-            elif _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:
+                continue
+            # No box. It can speak only where it is the sole claim over the
+            # same ground, or it would name whichever face came first.
+            alone = [
+                other for other, other_sample, _ in claims
+                if on_sample is None or other_sample in (None, on_sample)
+            ]
+            if len(set(alone)) == 1 and not any(b is not None for _, _, b in claims):
                 votes.setdefault(cluster_id, set()).add(person)
 
     named = 0

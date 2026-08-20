@@ -49,7 +49,7 @@ class Resolution(NamedTuple):
     file_id: int | None
 
 
-def resolve_scan(conn, observed: dict[tuple[int, str], str | None]):
+def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=None):
     """Map each observed ``(folder_id, name) -> content_sha256`` to a decision.
 
     Returns ``(resolutions, missing)`` where *resolutions* is keyed by the same
@@ -57,12 +57,21 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None]):
     missing file is never deleted here; the caller records ``missing_since``,
     because unreachable and deleted are different things.
 
-    Deliberately global, unlike `observe_tree`. A file dragged from one drive
-    to another is a move, and scoping the candidate pool to the root being
-    walked would make it a delete on one scan and an unrelated arrival on the
-    next -- which is the data-loss shape this whole module exists to remove.
-    `scan_all` is how a multi-root library gets that in one pass whatever
-    order the roots come in.
+    The candidate pool is deliberately global, unlike `observe_tree`. A file
+    dragged from one drive to another is a move, and scoping the pool to the
+    root being walked would make it a delete on one scan and an unrelated
+    arrival on the next -- the data-loss shape this whole module exists to
+    remove. `scan_all` is how a multi-root library gets that in one pass
+    whatever order the roots come in.
+
+    `roots` is what stops that generosity from becoming its own defect. The
+    pool has to span the library; the MISSING verdict must not. `observed`
+    covers only the tree the caller walked, so with the two of them global
+    together, scanning one root reported every file in every other root as
+    missing -- and in a two-root library each scan flagged the other half,
+    alternately, for ever. A row nobody looked for is unexamined, not gone.
+    Passing None means "I walked everything", which is only true of
+    `scan_all`.
     """
     rows = {
         (r[1], r[2]): (r[0], r[3])
@@ -122,7 +131,22 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None]):
         else:
             result[key] = Resolution(Outcome.NEW, None)
 
-    missing = [file_id for file_id, _ in rows.values() if file_id not in settled]
+    examined = None
+    if roots is not None:
+        marks = ",".join("?" * len(roots))
+        examined = {
+            row[0]
+            for row in conn.execute(
+                f"SELECT f.id FROM file f JOIN folder d ON d.id = f.folder_id"
+                f" WHERE d.root_id IN ({marks})",
+                tuple(roots),
+            )
+        }
+    missing = [
+        file_id
+        for file_id, _ in rows.values()
+        if file_id not in settled and (examined is None or file_id in examined)
+    ]
     return result, missing
 
 
@@ -448,8 +472,11 @@ class ScanResult(NamedTuple):
     hashed: int
 
 
-def apply_scan(conn, observed: dict, now: float, *, hashed: int = 0) -> ScanResult:
+def apply_scan(conn, observed: dict, now: float, *, hashed: int = 0, roots=None) -> ScanResult:
     """Write what the matcher decided.
+
+    `roots` names what the caller actually walked, so a row in a root nobody
+    looked at is left alone rather than reported gone. See `resolve_scan`.
 
     Nothing here deletes. A row whose bytes are gone gets `missing_since`,
     because a scan cannot tell an unplugged drive from a deletion, and the
@@ -464,7 +491,7 @@ def apply_scan(conn, observed: dict, now: float, *, hashed: int = 0) -> ScanResu
     atomicity to whoever remembers is not a contract.
     """
     with _one_write(conn, "apply_scan"):
-        return _apply(conn, observed, now, hashed)
+        return _apply(conn, observed, now, hashed, roots)
 
 
 @contextlib.contextmanager
@@ -489,8 +516,10 @@ def _one_write(conn, name: str):
     conn.execute(f"RELEASE {name}")
 
 
-def _apply(conn, observed: dict, now: float, hashed: int) -> ScanResult:
-    resolutions, missing = resolve_scan(conn, {k: v.sha for k, v in observed.items()})
+def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
+    resolutions, missing = resolve_scan(
+        conn, {k: v.sha for k, v in observed.items()}, roots=roots
+    )
     counts = dict.fromkeys(Outcome, 0)
 
     # 1. Missing first. A path is exclusive only while the bytes are there, so
@@ -593,7 +622,7 @@ def scan(conn, root_id: int, root_path, now: float) -> ScanResult:
     # during apply_scan would otherwise leave those standing.
     with _one_write(conn, "scan"):
         observed, hashed = observe_tree(conn, root_id, root_path, now)
-        return apply_scan(conn, observed, now, hashed=hashed)
+        return apply_scan(conn, observed, now, hashed=hashed, roots={root_id})
 
 
 def scan_all(conn, now: float) -> ScanResult:
@@ -610,6 +639,7 @@ def scan_all(conn, now: float) -> ScanResult:
     """
     with _one_write(conn, "scan_all"):
         observed: dict = {}
+        walked: set[int] = set()
         hashed = 0
         for root_id, path in conn.execute("SELECT id, path FROM root").fetchall():
             if not os.path.isdir(path):
@@ -618,5 +648,9 @@ def scan_all(conn, now: float) -> ScanResult:
             conn.execute("UPDATE root SET online = 1 WHERE id = ?", (root_id,))
             found, read = observe_tree(conn, root_id, path, now)
             observed.update(found)
+            walked.add(root_id)
             hashed += read
-        return apply_scan(conn, observed, now, hashed=hashed)
+        # The roots actually walked, not all of them: an offline drive was
+        # skipped, and reporting what is on it as missing is exactly the
+        # reading `online` exists to prevent.
+        return apply_scan(conn, observed, now, hashed=hashed, roots=walked)
