@@ -25,6 +25,9 @@ dependencies = [
     # expands entities, so a crafted file can exhaust memory during a scan.
     "defusedxml",
     "pypdf>=6.16.1",
+    "pillow-heif>=1.5.0",
+    "av>=17.1.0",
+    "pillow-jxl-plugin>=1.3.8",
 ]
 
 [dependency-groups]

@@ -5,3 +5,6 @@ opencv-python<5  # keep in sync with pyproject.toml (static-shape YuNet ONNX)
 numpy # needed for opencv-python
 defusedxml  # XMP is parsed out of files the gallery did not write
 pypdf  # a document states its page count, or it is not a citizen of the library
+pillow-heif  # HEIC/HEIF/HIF decode; a claimed suffix ships its decoder
+pillow-jxl-plugin  # JPEG XL decode, same rule
+av  # PyAV: FFmpeg's libraries as a wheel -- probe, decode, posters, no system binary
