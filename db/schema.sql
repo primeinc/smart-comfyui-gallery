@@ -6,6 +6,22 @@ PRAGMA foreign_keys = ON;
 -- stored as a 16-byte BLOB rather than 36-char text. It is never a join key
 -- and never appears in a URL (that is what entity.slug is for).
 CREATE TABLE entity (
+    -- ================= CONVENTIONS FOR THE WHOLE SCHEMA =================
+    -- Deliberately inside a CREATE statement. SQLite keeps only the comments
+    -- that sit within one; everything written above a table is discarded, so
+    -- a rule stated there is invisible to anyone reading the built database
+    -- and survives only in the source file. This is the first table, so this
+    -- is the first thing `.schema` prints.
+    --
+    -- TIME   Every *_at column is UNIX EPOCH SECONDS IN UTC, as a REAL.
+    --        The one exception is capture.captured_at, which may be a wall
+    --        clock with no zone -- it says so itself, and capture.tz_offset_min
+    --        is how you tell which it is.
+    -- SIZE   Bytes.
+    -- SCORES det_score and confidence are 0..1, never percentages.
+    -- ANGLES Degrees.
+    -- BOXES  Fractions of the frame, 0..1. See `region`.
+    -- ====================================================================
     id   INTEGER PRIMARY KEY,
     uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),
     kind TEXT NOT NULL CHECK (kind IN
@@ -52,6 +68,8 @@ CREATE TABLE folder (
     root_id   INTEGER NOT NULL    REFERENCES root(id)   ON DELETE CASCADE,
     parent_id INTEGER             REFERENCES folder(id) ON DELETE CASCADE,
     name      TEXT    NOT NULL,
+    -- Distance from the root, which is itself 0. Maintained by trigger, so
+    -- no caller computes it and no two callers can disagree about the base.
     depth     INTEGER NOT NULL,
     -- The filesystem's own id for the directory (NTFS FileID via st_ino),
     -- which survives a rename and a move within the volume while a copy gets
@@ -300,10 +318,15 @@ CREATE TABLE user (
 -- that, where a moved cache directory silently voided every mask in it.
 CREATE TABLE region (
     id        INTEGER PRIMARY KEY,
+    -- FRACTIONS OF THE FRAME, 0..1. Never pixels: a box in pixels is a box
+    -- against one particular rendering, and the same numbers on a thumbnail,
+    -- a rotated frame or a re-encoded proxy point somewhere else.
     x         REAL NOT NULL,
     y         REAL NOT NULL,
     w         REAL NOT NULL,
     h         REAL NOT NULL,
+    -- A mask is bytes, in the blob store. It was a filesystem path, which is
+    -- identity derived from location in the schema written to delete that.
     mask_hash TEXT REFERENCES blob(hash) ON DELETE SET NULL,
     CHECK (w > 0 AND h > 0),
     -- a hair over 1 absorbs float error from a pixel->fraction conversion
@@ -344,6 +367,10 @@ CREATE TABLE file_artifact (
                    ('checkpoint','refiner','lora','vae','controlnet','upscaler',
                     'embedding','hypernetwork','ip_adapter','text_encoder','unet',
                     'captured_with','mounted_lens','produced_by')),
+    -- Multipliers, not percentages, and not normalised to anything: 1.0 is
+    -- full strength and values above it are legal and common. `model_weight`
+    -- is the unet multiplier, `clip_weight` the text-encoder one; a tag that
+    -- gives only one number sets both to it.
     model_weight REAL,
     clip_weight  REAL,
     PRIMARY KEY (file_id, role, ordinal)
@@ -406,6 +433,11 @@ CREATE TABLE job (
     finished_at      REAL
 ) STRICT;
 CREATE INDEX job_state ON job(state);
+-- Not for a query anyone writes: SQLite runs `SELECT 1 FROM child WHERE
+-- child_key = ?` against every child table when a parent row is deleted, and
+-- without an index that is a full scan per delete. Its own shell ships
+-- `.lint fkey-indexes` to find these (src/shell.c.in:5981-6014).
+CREATE INDEX job_target ON job(target_id);
 
 CREATE TABLE job_item (
     job_id  INTEGER NOT NULL REFERENCES job(id) ON DELETE CASCADE,
@@ -438,6 +470,9 @@ CREATE TABLE file_derivation (
     CHECK (parent_id <> child_id)
 ) STRICT;
 CREATE INDEX derivation_child ON file_derivation(child_id);
+CREATE INDEX derivation_of_intent ON file_derivation(intent_id);
+CREATE INDEX intent_parent ON derivation_intent(parent_id);
+CREATE INDEX intent_job    ON derivation_intent(job_id);
 
 -- ============ files that accompany other files ============
 -- Distinct from file_derivation: a companion PNG is not *derived from* the
@@ -486,6 +521,7 @@ CREATE TABLE generation (
 ) STRICT;
 CREATE INDEX generation_workflow ON generation(workflow_id);
 CREATE INDEX generation_prompt   ON generation(prompt_id);
+CREATE INDEX generation_negative ON generation(negative_id);
 CREATE INDEX generation_seed     ON generation(seed);
 
 -- ============ capture: EXIF, for files a camera made ============
@@ -778,6 +814,10 @@ END;
 -- than an append: an interrupted job re-run must not triple every face.
 CREATE TABLE derived_file_hash (
     file_id       INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- 64 bits of perceptual hash, and SQLite INTEGER is SIGNED 64-bit: any
+    -- hash with the top bit set is stored negative. Compare them bitwise,
+    -- never with < or > -- ordering these numerically is meaningless, and
+    -- Hamming distance is the only comparison that means anything.
     phash64 INTEGER, dhash64 INTEGER,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL
 ) STRICT;
@@ -814,12 +854,16 @@ CREATE TABLE derived_face_instance (
     -- unlike generation fields, which is why those are rows and this is not.
     -- BLOB, not TEXT: it is packed floats, and storing it as JSON meant
     -- parsing a string on every crop to get numbers back.
-    landmarks BLOB, det_score REAL, dim INTEGER,
+    landmarks BLOB,
+    det_score REAL CHECK (det_score IS NULL OR det_score BETWEEN 0 AND 1),
+    dim INTEGER,
     age INTEGER,
     -- What the model reported, not what anyone is. A free-text column here
     -- collected 'M', 'male', 'Male' and 'F' from one backend, and a facet
     -- over that matches a quarter of what it should.
     sex TEXT CHECK (sex IS NULL OR sex IN ('male','female','unknown')),
+    -- Degrees, not radians. Backends differ, and a library that mixed the
+    -- two would answer "faces looking away" with a set that is mostly not.
     pose_yaw REAL, pose_pitch REAL, pose_roll REAL,
     model_id TEXT NOT NULL, model_version TEXT NOT NULL,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL
@@ -827,6 +871,7 @@ CREATE TABLE derived_face_instance (
 CREATE INDEX derived_face_file       ON derived_face_instance(file_id);
 CREATE INDEX derived_face_cluster_ix ON derived_face_instance(cluster_id);
 CREATE INDEX derived_face_sample     ON derived_face_instance(sample_id);
+CREATE INDEX derived_face_region     ON derived_face_instance(region_id);
 
 -- What a model says about a picture in words: a caption, a longer
 -- description, a tag, text it read out of the image. One table, because they
@@ -848,7 +893,7 @@ CREATE TABLE derived_annotation (
     kind          TEXT NOT NULL CHECK (kind IN
                     ('caption','description','alt_text','tag','ocr','title')),
     text          TEXT NOT NULL,
-    confidence    REAL,
+    confidence    REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
     -- The same picture may carry a caption from two models on purpose: they
     -- are compared, not merged. Uniqueness is per model, per kind, per region.
     model_id      TEXT NOT NULL,
@@ -858,7 +903,9 @@ CREATE TABLE derived_annotation (
     CHECK (length(text) > 0)
 ) STRICT;
 CREATE INDEX derived_annotation_file ON derived_annotation(file_id);
-CREATE INDEX derived_annotation_kind ON derived_annotation(kind, file_id);
+CREATE INDEX derived_annotation_kind   ON derived_annotation(kind, file_id);
+CREATE INDEX derived_annotation_region ON derived_annotation(region_id);
+CREATE INDEX derived_annotation_sample ON derived_annotation(sample_id);
 CREATE UNIQUE INDEX derived_annotation_one
     ON derived_annotation(file_id, kind, model_id, model_version,
                           IFNULL(region_id, 0), IFNULL(sample_id, 0));
@@ -952,6 +999,7 @@ CREATE TRIGGER feedback_names_a_target BEFORE INSERT ON feedback BEGIN
 END;
 
 CREATE INDEX feedback_file   ON feedback(file_id);
+CREATE INDEX feedback_other  ON feedback(other_file_id);
 CREATE INDEX feedback_person ON feedback(person_id);
 CREATE INDEX feedback_user   ON feedback(user_id);
 
@@ -970,7 +1018,10 @@ CREATE TABLE person_assertion (
     created_at REAL NOT NULL,
     PRIMARY KEY (person_id, file_id)
 ) STRICT, WITHOUT ROWID;
-CREATE INDEX person_assertion_file ON person_assertion(file_id);
+CREATE INDEX person_assertion_file   ON person_assertion(file_id);
+CREATE INDEX person_assertion_user   ON person_assertion(user_id);
+CREATE INDEX person_assertion_region ON person_assertion(region_id);
+CREATE INDEX person_assertion_sample ON person_assertion(sample_id);
 
 CREATE TABLE watched_folder (
     folder_id INTEGER PRIMARY KEY REFERENCES folder(id) ON DELETE CASCADE,

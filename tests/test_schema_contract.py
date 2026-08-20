@@ -1579,6 +1579,38 @@ def test_a_name_survives_dropping_everything_derived(db):
     assert rows == [("Ilse", 1)]
 
 
+def test_every_foreign_key_column_can_be_looked_up_by(db):
+    """SQLite's own `.lint fkey-indexes`, as a gate.
+
+    Deleting a parent row makes SQLite run `SELECT 1 FROM child WHERE
+    child_key = ?` against every child table (src/shell.c.in:5981-6014).
+    Unindexed that is a full scan per delete, so removing one file walks
+    every derivation, every annotation and every piece of feedback in the
+    library -- work that is invisible until the library is large.
+    """
+    unindexed = []
+    for (table,) in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ):
+        if table in virtual_table_names(db):
+            continue
+        leading = set()
+        for (index,) in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)
+        ):
+            columns = list(db.execute(f"PRAGMA index_info({index})"))
+            if columns:
+                leading.add(columns[0][2])
+        primary = {r[1] for r in db.execute(f"PRAGMA table_info({table})") if r[5]}
+        for row in db.execute(f"PRAGMA foreign_key_list({table})"):
+            column = row[3]
+            if column not in leading and column not in primary:
+                unindexed.append(f"{table}.{column} -> {row[2]}")
+    assert unindexed == [], (
+        f"deleting a parent row scans these child tables: {unindexed}"
+    )
+
+
 def test_a_column_naming_a_fixed_set_is_constrained_to_it(db):
     """An unconstrained enum accepts every typo, and every typo is a row that
     never matches the filter that was meant to find it.
