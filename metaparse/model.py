@@ -26,9 +26,20 @@ class ParsedMetadata:
     positive: str = ""
     negative: str = ""
     params: dict[str, str] = field(default_factory=dict)  # canonical keys only
-    extra: dict[str, str] = field(default_factory=dict)  # tool-specific leftovers
+    extra: dict[str, object] = field(default_factory=dict)  # tool-specific leftovers
     raw: str = ""  # the embedded text as found (infotext or JSON)
     detection: str = "marker"  # "marker" | "heuristic" | "stealth"
+    #: Every weight file the render used, as records: {"name", "role",
+    #: "hash", "weight"}. A tool that states this -- SwarmUI writes a whole
+    #: `sui_models` manifest with a sha256 per file -- should not have it
+    #: flattened into one comma-joined string, which is what happened: the
+    #: role and every hash were thrown away, so a checkpoint and the LoRA
+    #: applied to it were indistinguishable and neither could be matched to
+    #: the file on disk it came from.
+    #:
+    #: A1111-family tools name theirs inside the prompt instead, and
+    #: `extract_networks` reads those; this is for tools that say it plainly.
+    artifacts: list[dict] = field(default_factory=list)
 
     @property
     def renderable(self) -> bool:
@@ -37,8 +48,24 @@ class ParsedMetadata:
 
 
 def set_param(target: "ParsedMetadata", key: str, value) -> None:
-    """Assign a canonical param if the value is meaningful."""
+    """Assign a canonical param if the value is meaningful.
+
+    A list or a dict is kept as one. `str(value)` on a list produces its
+    Python REPR -- SwarmUI's `loras` arrived downstream as the seven-character
+    string `"['QwenImage/...']"`, which is not JSON, not a list, and not
+    something anything parses. Every adapter lost structure here, so the
+    consumer's flattening (db/ingest.py `_param`, which turns a structure into
+    one dotted key per leaf) never once saw a structure to flatten.
+
+    Canonical keys stay text: they are scalars by definition, and the typed
+    layer coerces them.
+    """
     if value is None:
+        return
+    if isinstance(value, (list, dict, tuple)):
+        if not value:
+            return
+        target.extra[key] = list(value) if isinstance(value, tuple) else value
         return
     text = str(value).strip()
     if not text or text.lower() == "none":

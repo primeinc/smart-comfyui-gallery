@@ -91,6 +91,11 @@ class GenerationParams:
     clip_skip: int | None = None
     version: str | None = None
     loras: list[dict] = field(default_factory=list)  # [{"name": ..., "weight": ...}]
+    #: Every weight file the render used, with its role and content hash, for
+    #: tools that state it. Carried through from ParsedMetadata rather than
+    #: rebuilt: SwarmUI writes a full manifest with a sha256 per file, and
+    #: rediscovering that from a comma-joined string is not possible.
+    artifacts: list[dict] = field(default_factory=list)
     extra: dict[str, object] = field(default_factory=dict)  # unmapped keys, verbatim
 
     _INT_FIELDS = ("seed", "steps", "clip_skip")
@@ -139,7 +144,15 @@ class GenerationParams:
         # Every A1111-family tool names its LoRAs inside the prompt and
         # nowhere else, so without this `loras` is populated for ComfyUI
         # alone and a LoRA has no identity for any of the others.
-        gp.loras = extract_networks(gp.positive_prompt, gp.negative_prompt)
+        gp.artifacts = list(parsed.artifacts)
+        # A tool that named its LoRAs outright beats reading them back out of
+        # the prompt: SwarmUI's manifest carries a hash and a role, and the
+        # prompt tag carries neither.
+        stated = [
+            {"name": a["name"], "weight": a.get("weight"), "clip_weight": a.get("weight")}
+            for a in parsed.artifacts if a.get("role") == "lora"
+        ]
+        gp.loras = stated or extract_networks(gp.positive_prompt, gp.negative_prompt)
         return gp
 
     @classmethod

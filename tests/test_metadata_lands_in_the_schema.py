@@ -461,3 +461,80 @@ def test_the_long_tail_registers_itself_across_tools(db, ingest, written):
         ).fetchall()
     )
     assert counted == actual, "the registry disagrees with the rows it is counting"
+
+
+# --- what a tool states about its own weight files ---------------------------
+
+
+SWARM_WITH_LORA = json.dumps(
+    {
+        "sui_image_params": {
+            "prompt": "a castle on a hill",
+            "model": "qwnImageEdit_v16Fp8Scaled",
+            "seed": 1043182392,
+            "steps": 8,
+            "cfgscale": 1.0,
+            "width": 1328,
+            "height": 1328,
+            "loras": ["QwenImage/Qwen-Image-Edit-2511-Lightning-8steps-V10-fp32"],
+            "loraweights": ["0.8"],
+            "swarm_version": "0.9.8.1",
+        },
+        "sui_extra_data": {
+            "used_wildcards": ["scene/register", "scene/activity"],
+            "debug_backend": {"backend_type": "ComfyUI Self-Starting", "backend_id": 0},
+            "generation_time": "64.33 sec",
+        },
+        "sui_models": [
+            {"name": "qwnImageEdit_v16Fp8Scaled.safetensors", "param": "model",
+             "hash": "0xbb1da333101b843de2e0754407e76cee2f2620204f890099daff180cdcc48e67"},
+            {"name": "QwenImage/Qwen-Image-Edit-2511-Lightning-8steps-V10-fp32.safetensors",
+             "param": "loras",
+             "hash": "0x969fbaff7caa146d11d663987da88a3ffff594e25ef10ec0af3f9799541d0f6f"},
+        ],
+    }
+)
+
+
+def test_a_tool_that_states_its_weight_files_keeps_their_roles_and_hashes():
+    """Measured on 55 real SwarmUI renders, every one of which used a LoRA
+    and none of which produced a single LoRA row.
+
+    `sui_models` is a manifest -- a name, the slot it was loaded into, and a
+    sha256, per file. It was being joined into one comma-separated string, so
+    the role went (a checkpoint and its LoRA became the same kind of nothing)
+    and every hash went with it. A hash is the only thing that can match a
+    weight file in this library to the one on disk it came from, so throwing
+    it away throws away the join the recipe axis is for.
+    """
+    parsed = metaparse.parse_file(
+        _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png",
+             {"parameters": SWARM_WITH_LORA})
+    )
+    assert [(a["role"], a["name"].split("/")[-1][:12]) for a in parsed.artifacts] == [
+        ("checkpoint", "qwnImageEdit"), ("lora", "Qwen-Image-E"),
+    ]
+    assert all(a["hash"].startswith("0x") for a in parsed.artifacts)
+
+    typed = GenerationParams.from_parsed(parsed)
+    assert typed.loras and typed.loras[0]["weight"] == "0.8", (
+        "loras and loraweights are parallel arrays and nothing paired them"
+    )
+
+
+def test_a_structured_value_becomes_searchable_leaves_not_a_repr():
+    """`set_param` did `str(value)`, so a list reached the database as its
+    PYTHON REPR -- "['scene/register', ...]" -- which is not JSON, not a
+    list, and not something anything parses. Every adapter lost structure
+    there, so the flattening that turns a structure into one dotted key per
+    leaf never once saw a structure to flatten."""
+    parsed = metaparse.parse_file(
+        _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png",
+             {"parameters": SWARM_WITH_LORA})
+    )
+    assert parsed.extra["used_wildcards"] == ["scene/register", "scene/activity"]
+    assert parsed.extra["debug_backend"]["backend_type"] == "ComfyUI Self-Starting"
+    assert not any(
+        isinstance(v, str) and v.startswith("[") and v.endswith("]")
+        for v in parsed.extra.values()
+    ), "something is still arriving as a repr of a list"

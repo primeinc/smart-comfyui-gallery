@@ -148,11 +148,74 @@ class SwarmUIAdapter:
             set_param(result, key, value)
         for key, value in (obj.get("sui_extra_data") or {}).items():
             set_param(result, key, value)
-        models = obj.get("sui_models") or []
-        if models:
-            names = ", ".join(str(m.get("name", "?")) for m in models if isinstance(m, dict))
-            set_param(result, "used models", names)
+        result.artifacts = cls._artifacts(obj)
         return result
+
+    #: SwarmUI's `param` field names the slot a weight file was loaded into.
+    #: These are its names for the roles `file_artifact.role` already has.
+    _ROLES: ClassVar = {
+        "model": "checkpoint",
+        "refinermodel": "refiner",
+        "loras": "lora",
+        "vae": "vae",
+        "controlnetmodel": "controlnet",
+        "clipmodel": "text_encoder",
+    }
+
+    @classmethod
+    def _artifacts(cls, obj: dict) -> list:
+        """The render's weight files, with their roles and hashes.
+
+        SwarmUI writes a manifest: `sui_models` is a list of
+        `{"name", "param", "hash"}` and the hash is a full sha256. This was
+        being joined into one comma-separated string under "used models",
+        which discarded the role -- so a checkpoint and a LoRA became the
+        same kind of nothing -- and discarded every hash, so a weight file
+        could never be matched to the one on disk it came from.
+
+        Weights come from `loraweights`, positionally: SwarmUI writes it
+        parallel to `loras`, so the nth weight belongs to the nth LoRA. A
+        short list leaves the rest unweighted rather than shifting them.
+        """
+        params = obj.get("sui_image_params") or {}
+        lora_names = params.get("loras")
+        lora_names = list(lora_names) if isinstance(lora_names, (list, tuple)) else []
+        weights = params.get("loraweights")
+        weights = list(weights) if isinstance(weights, (list, tuple)) else []
+        by_lora = {}
+        for index, name in enumerate(lora_names):
+            if index < len(weights):
+                by_lora[str(name).strip()] = weights[index]
+
+        found = []
+        for entry in obj.get("sui_models") or []:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("name", "")).strip()
+            if not name:
+                continue
+            role = cls._ROLES.get(str(entry.get("param", "")).strip())
+            record = {"name": name, "role": role, "hash": entry.get("hash")}
+            # The manifest names the file with its extension; `loras` names it
+            # without. Matched on the stem so a weight is not lost to
+            # ".safetensors".
+            stem = name.rsplit(".", 1)[0]
+            if stem in by_lora:
+                record["weight"] = by_lora[stem]
+            found.append(record)
+
+        # A LoRA the manifest did not list -- an older SwarmUI, or a render
+        # whose manifest was trimmed -- is still a LoRA that was used.
+        named = {a["name"].rsplit(".", 1)[0] for a in found}
+        for index, name in enumerate(lora_names):
+            text = str(name).strip()
+            if not text or text in named:
+                continue
+            found.append({
+                "name": text, "role": "lora", "hash": None,
+                "weight": weights[index] if index < len(weights) else None,
+            })
+        return found
 
 
 class FooocusAdapter:

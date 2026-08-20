@@ -40,7 +40,7 @@ _NOT_A_REFERENCE = {
     # backend identity strings ("insightface", "qwen-vl"), not rows
     ("derived_embedding", "model_id"), ("derived_face_cluster", "model_id"),
     ("derived_face_instance", "model_id"), ("derived_annotation", "model_id"),
-    ("derived_file_person", "model_id"),
+    ("derived_file_person", "model_id"), ("derived_face_run", "model_id"),
     ("job_item", "item_id"),
 }
 
@@ -91,6 +91,16 @@ def tree(conn):
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'portraits',0)")
     entity(conn, 2, "folder", "y2026")
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(2,1,1,'2026',1)")
+    # Two clustering runs, because attribution belongs to a run and the whole
+    # point of the shape is that a second one can exist beside the first.
+    conn.execute(
+        "INSERT INTO derived_face_run(id,model_id,model_version,method,threshold,"
+        "is_primary,computed_at) VALUES(1,'insightface','v1','chinese-whispers',0.48,1,0)"
+    )
+    conn.execute(
+        "INSERT INTO derived_face_run(id,model_id,model_version,method,threshold,"
+        "computed_at) VALUES(2,'insightface','v2','chinese-whispers',0.48,0)"
+    )
 
 
 def a_file(conn, eid, folder_id, name, sha=None):
@@ -562,17 +572,20 @@ def test_person_membership_records_which_backend_said_so(db):
     entity(db, 110, "person", "ilse")
     db.execute("INSERT INTO person(id,name,created_at) VALUES(110,'Ilse',0)")
     db.execute(
-        "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version) "
-        "VALUES(85,110,'insightface','v1')"
+        "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
+        "VALUES(85,110,1,'insightface','v1')"
     )
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version) "
-            "VALUES(85,110,'insightface','v1')"
+            "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
+            "VALUES(85,110,1,'insightface','v1')"
         )
+    # A second RUN may say the same thing about the same picture. That is the
+    # point: two clusterings coexist, and their agreeing is as informative as
+    # their disagreeing.
     db.execute(
-        "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version) "
-        "VALUES(85,110,'opencv','v1')"
+        "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
+        "VALUES(85,110,2,'insightface','v2')"
     )
 
 
@@ -588,8 +601,8 @@ def test_people_can_be_ordered_by_image_count(db):
         fid = 200 + i
         a_file(db, fid, 1, f"n{fid}.png")
         db.execute(
-            "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version) "
-            "VALUES(?,?,'insightface','v1')",
+            "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
+            "VALUES(?,?,1,'insightface','v1')",
             (fid, pid),
         )
     rows = db.execute(
@@ -1740,8 +1753,8 @@ def test_a_name_survives_dropping_everything_derived(db):
     )
     # a backend inferred it
     db.execute(
-        "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version) "
-        "VALUES(9,700,'insightface','v1')"
+        "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
+        "VALUES(9,700,1,'insightface','v1')"
     )
     derived = [
         r[0]
@@ -2062,4 +2075,4 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 38, f"expected 38 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 40, f"expected 40 real tables, found {len(real)}: {sorted(real)}"

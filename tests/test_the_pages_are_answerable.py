@@ -93,11 +93,13 @@ def library(tmp_path):
     authored.favourite(conn, first, user, NOW)
     authored.add_to_collection(conn, album, first, NOW)
     authored.assert_person(conn, ilse, first, user, NOW)
-    conn.execute(
-        "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version)"
-        " VALUES(?,?,'insightface','v1')",
-        (first, ilse),
-    )
+    # Attribution belongs to a clustering RUN, and the People page shows the
+    # one marked primary -- several are live at once and they disagree.
+    from db import derived
+
+    run = derived.run_for(conn, "insightface", "v1", "chinese-whispers", 0.48, NOW)
+    derived.make_primary(conn, run)
+    derived.attribute(conn, first, ilse, run, "insightface", "v1")
     conn.commit()
     return {"conn": conn, "root": root, "user": user, "person": ilse,
             "album": album, "first": first}
@@ -667,8 +669,11 @@ def test_a_person_is_shown_across_the_folders_they_are_in(library):
     conn, person = library["conn"], library["person"]
     spread = pages.person_across_folders(conn, person)
     assert [(name, count) for name, _, count in spread] == [("landscape", 1)]
-    assert_no_growing_scan(conn, pages.PERSON_ACROSS_FOLDERS, (person,), aggregate=True)
-    assert_no_growing_scan(conn, pages.PERSON_FILES, (person,))
+    run = conn.execute("SELECT id FROM derived_face_run WHERE is_primary=1").fetchone()[0]
+    assert_no_growing_scan(
+        conn, pages.PERSON_ACROSS_FOLDERS, (person, run), aggregate=True
+    )
+    assert_no_growing_scan(conn, pages.PERSON_FILES, (person, run))
 
 
 def test_the_breadcrumb_and_the_lineage_pages_are_index_driven(library):

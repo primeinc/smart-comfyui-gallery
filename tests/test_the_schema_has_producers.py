@@ -124,12 +124,14 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     authored.rate(db, file_id, user_id, 5, NOW)
     authored.assert_person(db, person, file_id, user_id, NOW)
 
+    run = derived.run_for(db, "insightface", "v1", "given", None, NOW)
     cluster = derived.recluster(db, "insightface", "v1", NOW, [{"person_id": person}])[0]
     box = derived.region(db, 0.3, 0.2, 0.2, 0.3)
-    derived.record_faces(
-        db, file_id, "insightface", "v1", "aa", NOW, [{"region": box, "cluster_id": cluster}]
+    faces = derived.record_faces(
+        db, file_id, "insightface", "v1", "aa", NOW, [{"region": box}]
     )
-    derived.attribute(db, file_id, person, "insightface", "v1")
+    derived.assign_cluster(db, faces[0], cluster)
+    derived.attribute(db, file_id, person, run, "insightface", "v1")
     derived.annotate(db, file_id, "caption", "a brass diving helmet", "qwen-vl", "2.5", "aa", NOW)
     verdict = authored.feedback(
         db, "person", "right", NOW, file_id=file_id, person_id=person, user_id=user_id
@@ -139,8 +141,8 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     # named, not counted: a count passes just as well when a table is missed
     assert set(dropped) == {
         "derived_annotation", "derived_embedding", "derived_face_cluster",
-        "derived_face_instance", "derived_file_hash", "derived_file_person",
-        "derived_media_sample",
+        "derived_face_instance", "derived_face_membership", "derived_face_run",
+        "derived_file_hash", "derived_file_person", "derived_media_sample",
     }, dropped
     assert db.execute("SELECT count(*) FROM annotation_fts").fetchone()[0] == 0, (
         "the caption index outlived the captions"
@@ -156,12 +158,13 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
 
     # re-index with a newer model, and the naming re-attaches from the record
     rebuilt = derived.recluster(db, "insightface", "v2", NOW + 10, [{}])[0]
+    rebuilt_run = derived.run_for(db, "insightface", "v2", "given", None, NOW + 10)
     box_again = derived.region(db, 0.3, 0.2, 0.2, 0.3)
-    derived.record_faces(
-        db, file_id, "insightface", "v2", "aa", NOW + 10,
-        [{"region": box_again, "cluster_id": rebuilt}],
+    again = derived.record_faces(
+        db, file_id, "insightface", "v2", "aa", NOW + 10, [{"region": box_again}],
     )
-    named = derived.seed_clusters_from_assertions(db, "insightface", "v2")
+    derived.assign_cluster(db, again[0], rebuilt)
+    named = derived.seed_clusters_from_assertions(db, rebuilt_run)
 
     assert named == 1
     assert db.execute(
@@ -208,16 +211,19 @@ def test_a_photograph_of_two_people_re_attaches_both_names(db, a_library, tmp_pa
         derived.region(db, 0.30, 0.20, 0.40, 0.40),   # Bob again, in the solo
     )
     left, right = derived.recluster(db, "insightface", "v2", NOW, [{}, {}])
-    derived.record_faces(
+    pair = derived.record_faces(
         db, cast["group"], "insightface", "v2", "aa", NOW,
-        [{"region": hers, "cluster_id": left}, {"region": his, "cluster_id": right}],
+        [{"region": hers}, {"region": his}],
     )
-    derived.record_faces(
-        db, cast["solo"], "insightface", "v2", "bb", NOW,
-        [{"region": his_again, "cluster_id": right}],
+    derived.assign_cluster(db, pair[0], left)
+    derived.assign_cluster(db, pair[1], right)
+    solo_face = derived.record_faces(
+        db, cast["solo"], "insightface", "v2", "bb", NOW, [{"region": his_again}],
     )
+    derived.assign_cluster(db, solo_face[0], right)
 
-    assert derived.seed_clusters_from_assertions(db, "insightface", "v2") == 2
+    run = derived.run_for(db, "insightface", "v2", "given", None, NOW)
+    assert derived.seed_clusters_from_assertions(db, run) == 2
     named = dict(
         db.execute(
             "SELECT c.id, p.name FROM derived_face_cluster c JOIN person p ON p.id = c.person_id"
@@ -238,12 +244,15 @@ def test_a_claim_with_no_box_does_not_name_a_face_in_a_group(db, a_library, tmp_
     hers = derived.region(db, 0.06, 0.12, 0.33, 0.47)
     his = derived.region(db, 0.56, 0.12, 0.33, 0.47)
     left, right = derived.recluster(db, "insightface", "v2", NOW, [{}, {}])
-    derived.record_faces(
+    pair = derived.record_faces(
         db, cast["group"], "insightface", "v2", "aa", NOW,
-        [{"region": hers, "cluster_id": left}, {"region": his, "cluster_id": right}],
+        [{"region": hers}, {"region": his}],
     )
+    derived.assign_cluster(db, pair[0], left)
+    derived.assign_cluster(db, pair[1], right)
 
-    assert derived.seed_clusters_from_assertions(db, "insightface", "v2") == 0
+    run = derived.run_for(db, "insightface", "v2", "given", None, NOW)
+    assert derived.seed_clusters_from_assertions(db, run) == 0
     assert db.execute(
         "SELECT count(*) FROM derived_face_cluster WHERE person_id IS NOT NULL"
     ).fetchone()[0] == 0
@@ -291,10 +300,28 @@ def test_a_region_is_a_fraction_of_the_frame_not_a_pixel_count(db, a_library):
     stored = db.execute("SELECT x, y, w, h FROM region WHERE id = ?", (box,)).fetchone()
     assert stored == (0.25, pytest.approx(1 / 6), 0.5, 0.5)
 
-    with pytest.raises(sqlite3.IntegrityError):
-        derived.region(db, 0.9, 0.1, 0.5, 0.1)  # runs off the right edge
+    with pytest.raises(ValueError, match="mostly outside"):
+        derived.region(db, 0.9, 0.1, 0.5, 0.1)  # four fifths of it is not there
     with pytest.raises(sqlite3.IntegrityError):
         derived.region(db, 0.1, 0.1, 0.0, 0.1)  # zero width locates nothing
+
+
+def test_a_face_at_the_edge_of_the_frame_is_kept(db, a_library):
+    """A detector reports the whole head's extent, so a face at the side of
+    the picture comes back overhanging it. Measured on 423 real YuNet
+    detections, one did -- by 1% of the frame -- and the CHECK refused it,
+    losing a real face over a rounding of reality. It is trimmed to the
+    frame, because the region says where in the picture something is."""
+    box = derived.region(db, 0.843, 0.295, 0.167, 0.394)
+    assert db.execute(
+        "SELECT round(x, 3), round(x + w, 3) FROM region WHERE id = ?", (box,)
+    ).fetchone() == (0.843, 1.0)
+
+    # and a box that never needed trimming is stored exactly as given
+    exact = derived.region(db, 0.6, 0.1, 0.3, 0.1)
+    assert db.execute(
+        "SELECT x, w FROM region WHERE id = ?", (exact,)
+    ).fetchone() == (0.6, 0.3), "a coordinate made a round trip it never asked for"
 
 
 def test_a_mask_is_bytes_not_a_path(db, a_library):
@@ -1179,7 +1206,10 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
         [{
             "region": region_id,
             "det_score": numpy.float32(0.987),
-            "dim": numpy.int64(128),
+            # `dim` is not passed: it describes the vector, so it is taken
+            # from it. Passing one without an embedding used to be accepted
+            # and describes nothing.
+            "embedding": numpy.random.rand(128).astype(numpy.float32).tobytes(),
             "age": numpy.int32(34),
             "landmarks": numpy.array([[1.5, 2.5]], dtype=numpy.float32).tobytes(),
             "pose": (numpy.float32(1.5), numpy.float32(-2.0), numpy.float32(0.25)),
@@ -1412,14 +1442,17 @@ def test_a_real_detectors_output_reaches_the_people_page(db, a_library, tmp_path
     assert db.execute("SELECT count(*) FROM region").fetchone()[0] == len(boxes)
 
     person = authored.person(db, "Ilse", NOW)
+    run = derived.run_for(db, "opencv/haar", "frontalface_default", "given", None, NOW)
     cluster = derived.recluster(
         db, "opencv/haar", "frontalface_default", NOW, [{"person_id": person}]
     )[0]
     for face_id in written:
         derived.assign_cluster(db, face_id, cluster)
     derived.attribute(
-        db, file_id, person, "opencv/haar", "frontalface_default", face_count=len(written)
+        db, file_id, person, run, "opencv/haar", "frontalface_default",
+        face_count=len(written),
     )
+    derived.make_primary(db, run)
 
     from db import pages
 
@@ -1450,11 +1483,16 @@ def test_the_rebuild_contract_holds_on_real_detections(db, a_library, tmp_path):
     rebuilt = derived.recluster(db, "opencv/haar", "v2", NOW + 1, [{}])[0]
     derived.record_faces(
         db, file_id, "opencv/haar", "v2", "aa", NOW + 1,
-        [{"region": derived.region_from_pixels(db, box, width, height),
-          "cluster_id": rebuilt} for box in boxes],
+        [{"region": derived.region_from_pixels(db, box, width, height)}
+         for box in boxes],
     )
+    for face_id in db.execute(
+        "SELECT id FROM derived_face_instance WHERE model_version = 'v2'"
+    ).fetchall():
+        derived.assign_cluster(db, face_id[0], rebuilt)
 
-    assert derived.seed_clusters_from_assertions(db, "opencv/haar", "v2") == 1
+    run = derived.run_for(db, "opencv/haar", "v2", "given", None, NOW + 1)
+    assert derived.seed_clusters_from_assertions(db, run) == 1
     assert db.execute(
         "SELECT p.name FROM derived_face_cluster c JOIN person p ON p.id = c.person_id"
     ).fetchone()[0] == "Ilse"

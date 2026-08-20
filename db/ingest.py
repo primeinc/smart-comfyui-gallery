@@ -352,7 +352,32 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
         )
         out.artifacts.append(("workflow", "graph"))
 
-    if typed.model:
+    # What the tool said it loaded, with the role it loaded it into and the
+    # hash it recorded. SwarmUI writes a whole manifest -- a sha256 per weight
+    # file -- and it used to be joined into one comma-separated string under
+    # a `used models` parameter, which lost the role, lost every hash, and
+    # made a checkpoint and its LoRA the same kind of nothing. A hash is what
+    # lets a weight file in this library be the same weight file as the one on
+    # disk, so throwing it away is throwing away the join.
+    stated = {}
+    for entry in getattr(typed, "artifacts", ()) or ():
+        role = entry.get("role")
+        name = str(entry.get("name") or "").strip()
+        if not role or not name:
+            continue
+        digest = str(entry.get("hash") or "").strip() or None
+        artifact_id = artifact(conn, role, name, now, quoted=digest)
+        ordinal = stated.get(role, 0)
+        stated[role] = ordinal + 1
+        weight = _as_number(str(entry.get("weight"))) if entry.get("weight") is not None else None
+        conn.execute(
+            "INSERT OR REPLACE INTO file_artifact(file_id, ordinal, artifact_id, role,"
+            " model_weight, clip_weight) VALUES(?, ?, ?, ?, ?, ?)",
+            (file_id, ordinal, artifact_id, role, weight, weight),
+        )
+        out.artifacts.append((role, name))
+
+    if typed.model and "checkpoint" not in stated:
         checkpoint = artifact(conn, "checkpoint", typed.model, now, quoted=typed.model_hash)
         conn.execute(
             "INSERT OR REPLACE INTO file_artifact(file_id, ordinal, artifact_id, role)"
@@ -363,7 +388,7 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
 
     for ordinal, lora in enumerate(typed.loras):
         name = lora.get("name")
-        if not name:
+        if not name or "lora" in stated:
             continue
         lora_id = artifact(conn, "lora", name, now)
         conn.execute(

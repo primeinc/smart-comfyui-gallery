@@ -87,6 +87,36 @@ def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None =
     point somewhere else. A mask goes to the blob store rather than to a
     path, so moving a cache directory cannot void it.
     """
+    # A detector's box can run off the edge: a face at the side of the frame
+    # is reported with the whole head's extent, and part of that is not in
+    # the picture. Measured on 423 real YuNet detections, one overhung, by
+    # 1% of the frame -- and the CHECK refused it, losing a real face over a
+    # rounding of reality.
+    #
+    # So an overhang is trimmed to the frame, because the region says where
+    # in the picture something is and the rest is not in the picture. Only an
+    # overhang: a box more than half outside is not a face at the edge, it is
+    # pixel coordinates being passed as fractions, and silently turning that
+    # into a full-frame box would attach every face in the library to the
+    # same rectangle.
+    # Only a box that actually overhangs is rewritten. Clamping every box
+    # unconditionally put floating-point error into ones that were already
+    # inside -- 0.6 + 0.3 - 0.6 is 0.29999999999999993 -- so a coordinate
+    # made a round trip it never asked for and came back different.
+    if float(x) < 0 or float(y) < 0 or float(x) + float(w) > 1 or float(y) + float(h) > 1:
+        left, top = min(max(float(x), 0.0), 1.0), min(max(float(y), 0.0), 1.0)
+        right = min(max(float(x) + float(w), 0.0), 1.0)
+        bottom = min(max(float(y) + float(h), 0.0), 1.0)
+        kept = (right - left) * (bottom - top)
+        asked = float(w) * float(h)
+        if asked > 0 and kept < asked / 2:
+            raise ValueError(
+                f"the box ({x}, {y}, {w}, {h}) is mostly outside the frame. "
+                f"Regions are fractions of the frame, 0..1 -- pixels go through "
+                f"region_from_pixels."
+            )
+        x, y, w, h = left, top, right - left, bottom - top
+
     mask_hash = None
     if mask:
         mask_hash = hashlib.sha256(mask).hexdigest()
@@ -201,8 +231,8 @@ def add_sample(
 
 def _insert_face(
     conn, file_id: int, region_id: int, model_id: str, model_version: str,
-    sha: str, now: float, *, sample_id=None, cluster_id=None, det_score=None,
-    landmarks=None, dim=None, age=None, sex=None, pose=None,
+    sha: str, now: float, *, sample_id=None, det_score=None,
+    landmarks=None, embedding=None, dim=None, age=None, sex=None, pose=None,
 ) -> int:
     """One detected face. The region is required: a detection with no
     location cannot be shown, cropped, checked, or asserted against.
@@ -212,29 +242,86 @@ def _insert_face(
     insert is how "re-running a detector doubles every face" comes back.
     """
     yaw, pitch, roll = pose if pose else (None, None, None)
+    # `dim` describes `embedding`, so it is taken from it rather than trusted
+    # from a caller. The schema checks the two agree; deriving it here means
+    # nobody has to be told twice.
+    if embedding is not None:
+        embedding = bytes(embedding)
+        dim = len(embedding) // 4
     cursor = conn.execute(
-        "INSERT INTO derived_face_instance(file_id, sample_id, cluster_id, region_id,"
-        " landmarks, det_score, dim, age, sex, pose_yaw, pose_pitch, pose_roll,"
-        " model_id, model_version, source_sha256, computed_at)"
+        "INSERT INTO derived_face_instance(file_id, sample_id, region_id,"
+        " landmarks, embedding, det_score, dim, age, sex, pose_yaw, pose_pitch,"
+        " pose_roll, model_id, model_version, source_sha256, computed_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tuple(plain(value) for value in (
-            file_id, sample_id, cluster_id, region_id, landmarks, det_score, dim,
-            age, sex, yaw, pitch, roll, model_id, model_version, sha, now,
+            file_id, sample_id, region_id, landmarks, embedding,
+            det_score, dim, age, sex, yaw, pitch, roll,
+            model_id, model_version, sha, now,
         )),
     )
     return int(cursor.lastrowid or 0)
 
 
+def run_for(conn, model_id: str, model_version: str, method: str, threshold,
+            now: float) -> int:
+    """The row identifying one clustering run, created once.
+
+    A run is (embedder, version, method, threshold) -- all four, because all
+    four decide who ends up in a cluster. Asking twice for the same four
+    returns the same run, so re-clustering at the same settings replaces its
+    own answer and leaves everybody else's alone.
+    """
+    conn.execute(
+        "INSERT INTO derived_face_run(model_id, model_version, method, threshold,"
+        " computed_at) VALUES(?, ?, ?, ?, ?)"
+        " ON CONFLICT(model_id, model_version, method, IFNULL(threshold, -1))"
+        " DO UPDATE SET computed_at = excluded.computed_at",
+        tuple(plain(v) for v in (model_id, model_version, method, threshold, now)),
+    )
+    return conn.execute(
+        "SELECT id FROM derived_face_run WHERE model_id = ? AND model_version = ?"
+        " AND method = ? AND IFNULL(threshold, -1) = IFNULL(?, -1)",
+        tuple(plain(v) for v in (model_id, model_version, method, threshold)),
+    ).fetchone()[0]
+
+
+def runs(conn) -> list[dict]:
+    """Every clustering the library holds, so two can be compared."""
+    cursor = conn.execute(
+        "SELECT id, model_id, model_version, method, threshold, is_primary,"
+        " faces, clusters, computed_at FROM derived_face_run"
+        " ORDER BY is_primary DESC, computed_at DESC"
+    )
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor]
+
+
+def make_primary(conn, run_id: int) -> None:
+    """Choose the run the People page shows when nobody asked for one.
+
+    Cleared first, then set: the partial unique index allows one, so setting
+    a second without clearing the first is an IntegrityError rather than a
+    silent second default.
+    """
+    conn.execute("UPDATE derived_face_run SET is_primary = 0 WHERE is_primary = 1")
+    conn.execute("UPDATE derived_face_run SET is_primary = 1 WHERE id = ?", (run_id,))
+
+
+def primary_run(conn) -> int | None:
+    row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
+    return row[0] if row else None
+
+
 def _insert_cluster(
-    conn, model_id: str, model_version: str, now: float, *, person_id=None,
-    centroid=None, dim=None,
+    conn, run_id: int, model_id: str, model_version: str, now: float,
+    *, person_id=None, centroid=None, dim=None,
 ) -> int:
     """Private for the same reason as `_insert_face`. `recluster` is the API."""
     cursor = conn.execute(
-        "INSERT INTO derived_face_cluster(person_id, centroid, dim, model_id,"
-        " model_version, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
+        "INSERT INTO derived_face_cluster(run_id, person_id, centroid, dim,"
+        " model_id, model_version, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
         tuple(plain(value) for value in
-              (person_id, centroid, dim, model_id, model_version, now)),
+              (run_id, person_id, centroid, dim, model_id, model_version, now)),
     )
     return int(cursor.lastrowid or 0)
 
@@ -273,7 +360,24 @@ def record_faces(
     `faces` is a sequence of mappings, one per detection: `region` (an id
     from `region()`) is required; `det_score`, `landmarks`, `dim`, `age`,
     `sex` and `pose` are optional.
+
+    A score outside 0..1 is refused here, by name, rather than left to the
+    CHECK. Run over sixty real photographs, OpenCV's cascade reported reject
+    levels from -0.714 to 11.97 -- not a confidence at all -- and the
+    constraint did its job, with an IntegrityError from inside a loop that
+    named neither the file, nor which of its faces, nor the value. The
+    schema was right and unhelpful. Converting a model's raw output to a
+    confidence is the caller's job, and finding out which caller got it
+    wrong should not be an afternoon.
     """
+    for index, face in enumerate(faces):
+        score = plain(face.get("det_score"))
+        if isinstance(score, (int, float)) and not 0.0 <= float(score) <= 1.0:
+            raise ValueError(
+                f"face {index} of file {file_id} reports det_score {score!r}: "
+                f"scores are 0..1, never a model's raw output "
+                f"({model_id} {model_version})"
+            )
     doomed = [
         row[0]
         for row in conn.execute(
@@ -292,10 +396,10 @@ def record_faces(
     written = [
         _insert_face(
             conn, file_id, face["region"], model_id, model_version, sha, now,
-            sample_id=sample_id, cluster_id=face.get("cluster_id"),
+            sample_id=sample_id,
             det_score=face.get("det_score"), landmarks=face.get("landmarks"),
-            dim=face.get("dim"), age=face.get("age"), sex=face.get("sex"),
-            pose=face.get("pose"),
+            embedding=face.get("embedding"), dim=face.get("dim"),
+            age=face.get("age"), sex=face.get("sex"), pose=face.get("pose"),
         )
         for face in faces
     ]
@@ -303,51 +407,425 @@ def record_faces(
     return written
 
 
-def recluster(conn, model_id: str, model_version: str, now: float, clusters) -> list[int]:
-    """Every cluster this model's clustering produced, replacing the last run.
+def recluster(conn, model_id: str, model_version: str, now: float, clusters, *,
+              method: str = "given", threshold=None) -> list[int]:
+    """Every cluster one clustering RUN produced, replacing that run's last.
 
-    Clustering is a whole-library answer, so a re-run replaces the whole set
-    for this (model, version). The instances survive: `cluster_id` is
-    `ON DELETE SET NULL`, so they come out unassigned and the caller assigns
-    them to the new ids.
+    A run is (model, version, method, threshold) -- all four, because all
+    four decide who a cluster contains. Replacing on the model alone meant a
+    second method could not coexist with the first, so the only way to
+    compare two was to lose one.
+
+    Memberships go with the clusters: `derived_face_membership` cascades, so
+    the faces come out of this run unassigned and stay in every other run
+    they belong to.
 
     `clusters` is a sequence of mappings with optional `centroid`, `dim` and
     `person_id`. Names are not carried across by hand -- run
     `seed_clusters_from_assertions` afterwards, which re-applies them from
     what people wrote down.
     """
-    conn.execute(
-        "DELETE FROM derived_face_cluster WHERE model_id = ? AND model_version = ?",
-        (model_id, model_version),
-    )
-    return [
+    run_id = run_for(conn, model_id, model_version, method, threshold, now)
+    conn.execute("DELETE FROM derived_face_cluster WHERE run_id = ?", (run_id,))
+    made = [
         _insert_cluster(
-            conn, model_id, model_version, now,
+            conn, run_id, model_id, model_version, now,
             person_id=cluster.get("person_id"), centroid=cluster.get("centroid"),
             dim=cluster.get("dim"),
         )
         for cluster in clusters
     ]
-
-
-def assign_cluster(conn, face_id: int, cluster_id: int | None) -> None:
-    """Put one detected face in a cluster, or take it out of one."""
     conn.execute(
-        "UPDATE derived_face_instance SET cluster_id = ? WHERE id = ?",
+        "UPDATE derived_face_run SET clusters = ? WHERE id = ?", (len(made), run_id)
+    )
+    return made
+
+
+#: Cosine similarity at which two vectors are taken to be the same face, per
+#: embedding space. The spaces are not comparable and a single number for all
+#: of them is wrong for all but one: docs/FACE_CLUSTERING.md:63-65 gives the
+#: shipped per-pipeline defaults, measured on labelled data.
+#:
+#: Getting this wrong is not a small error. At 0.363 -- SFace's
+#: same-identity point, applied to ArcFace by mistake -- that document
+#: measures a top-cluster share of 0.963: essentially the whole library in
+#: one person. At 0.45 it is 0.462, at 0.6 it is 0.036 (:128-133).
+SAME_PERSON = {
+    "opencv/yunet+arcface": 0.48,
+    "opencv/yunet+sface": 0.55,
+    "insightface": 0.40,
+}
+#: For an embedder nobody has measured here. Deliberately tight: a threshold
+#: too high leaves people in several clusters, which somebody can merge; one
+#: too low welds strangers together, which nobody can unpick.
+UNMEASURED = 0.55
+
+
+def threshold_for(model_id: str) -> float:
+    """The measured threshold for this embedder, or a cautious default."""
+    for known, value in SAME_PERSON.items():
+        if model_id.startswith(known):
+            return value
+    return UNMEASURED
+
+
+def threshold_for(model_id: str) -> float:
+    """The measured threshold for this embedder, or a cautious default."""
+    for known, value in SAME_PERSON.items():
+        if model_id.startswith(known):
+            return value
+    return UNMEASURED
+
+
+def cluster(conn, model_id: str, model_version: str, now: float, *,
+            method: str = "chinese-whispers", threshold: float | None = None,
+            smallest: int = 2, **options) -> list[int]:
+    """Group this model's faces by their vectors, and write the clusters.
+
+    The step the People page is downstream of, and the one nothing could do:
+    a face's embedding had no column to live in, so every test in this suite
+    formed clusters by assigning `cluster_id` by hand -- which is not
+    clustering, it is stating the answer.
+
+    **Label propagation, not connected components.** Each face repeatedly
+    adopts whichever label its neighbours agree on most strongly. Single
+    linkage was the obvious thing and is the wrong thing -- "transitive
+    chaining merges dense look-alike sets into one cluster"
+    (smartgallery_ai/faces.py:927-928) -- and it did: over 834 real faces it
+    made one cluster of 123 spanning 53 different photographs, which is not
+    a person, it is a chain of people who each slightly resemble the next.
+
+    Chinese whispers, from the canonical implementation rather than from a
+    description of it: a node's neighbours vote with their edge WEIGHTS
+    summed per label, not with a count
+    (refs/davisking/dlib/dlib/clustering/chinese_whispers.h:48-53), and the
+    winner is found with a strict `>` over a label-ordered map, so a tie
+    goes to the lowest label id (:57-66).
+
+    dlib picks nodes at random for `n * num_iterations` steps (:42-45). This
+    sweeps them in index order instead and stops when a sweep changes
+    nothing -- the deviation this repo already made and documented, for the
+    same reason: the result becomes a pure function of the graph, and a
+    library that reclusters twice gets the same people both times.
+
+    Groups smaller than `smallest` are left unclustered rather than becoming
+    one-face people: a singleton is not somebody you would recognise, it is
+    a detection.
+
+    Re-running replaces this model's clusters. Names are not carried across
+    by similarity -- `seed_clusters_from_assertions` re-applies them from
+    what a human wrote down, which is the whole reason the assertion exists.
+    """
+    if threshold is None:
+        threshold = threshold_for(model_id)
+    run_id = run_for(conn, model_id, model_version, method, threshold, now)
+    rows = conn.execute(
+        "SELECT id, embedding FROM derived_face_instance"
+        " WHERE model_id = ? AND model_version = ? AND embedding IS NOT NULL"
+        " ORDER BY id",
+        (model_id, model_version),
+    ).fetchall()
+    conn.execute("DELETE FROM derived_face_cluster WHERE run_id = ?", (run_id,))
+    conn.execute(
+        "UPDATE derived_face_run SET faces = ?, clusters = 0 WHERE id = ?",
+        (len(rows), run_id),
+    )
+    if not rows:
+        return []
+
+    import numpy as np
+
+    from . import grouping, similarity
+
+    vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
+    graph, backend = similarity.graph(vectors, threshold)
+    labels = grouping.group(graph, vectors, method, **options)
+
+    groups: dict[int, list[int]] = {}
+    for index, label in enumerate(labels):
+        groups.setdefault(label, []).append(index)
+
+    made = []
+    for members in groups.values():
+        if len(members) < smallest:
+            for index in members:
+                conn.execute(
+                    "DELETE FROM derived_face_membership WHERE face_id = ?"
+                    " AND cluster_id IN (SELECT id FROM derived_face_cluster"
+                    "   WHERE run_id = ?)",
+                    (int(rows[index][0]), run_id),
+                )
+            continue
+        centre = similarity.normalise(vectors)[members].mean(axis=0)
+        scale = float(np.linalg.norm(centre)) or 1.0
+        cluster_id = _insert_cluster(
+            conn, run_id, model_id, model_version, now,
+            centroid=(centre / scale).astype(np.float32).tobytes(),
+            dim=int(vectors.shape[1]),
+        )
+        for index in members:
+            conn.execute(
+                "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id)"
+                " VALUES(?, ?)",
+                (cluster_id, int(rows[index][0])),
+            )
+        made.append(cluster_id)
+    conn.execute(
+        "UPDATE derived_face_run SET clusters = ?, backend = ? WHERE id = ?",
+        (len(made), backend, run_id),
+    )
+    if made:
+        _adopt_if_better(conn, run_id, model_id, threshold)
+    return made
+
+
+#: A cluster holding more than this share of every face in the library has
+#: chained: it is not a person, it is everybody who resembles somebody who
+#: resembles somebody. The repo's own measurements show the shape -- at a
+#: threshold a tenth too loose the top cluster held 96% of the library
+#: (docs/FACE_CLUSTERING.md:128-133).
+CHAINED = 0.5
+
+#: And the other end: a run where nearly everything is alone has not grouped
+#: anything, it has renamed faces.
+ALL_ALONE = 0.95
+
+#: Faces measured when judging a run. The silhouette is a mean over faces, so
+#: a sample estimates it; the full computation is faces-by-clusters, which at
+#: a real library size is hundreds of millions of values held to answer one
+#: question. This makes the cost of judging independent of library size.
+SILHOUETTE_SAMPLE = 20_000
+
+#: Below this, the groups are not meaningfully apart -- a face sits about as
+#: close to somebody else's centre as to its own -- and a run that scores it
+#: should not become what the library shows without somebody saying so.
+GOOD_ENOUGH = 0.10
+
+
+def health(conn, run_id: int) -> dict:
+    """What can be measured about a clustering without knowing any answers.
+
+    Nothing here needs a label, which is the point: a library nobody has
+    named anybody in still has to be able to tell a run that chained from a
+    run that worked.
+
+    The number that decides is the **silhouette**: for each face, how much
+    closer it sits to its own group's centre than to the nearest other
+    group's. Positive means the groups are real; near zero means the split
+    is arbitrary; negative means faces are in the wrong ones. A share or a
+    count cannot say that -- two runs can both put 50% of the library in
+    their biggest cluster and one of them be right.
+
+    The distribution comes back with it, because a mean over cluster sizes
+    hides the case that matters. One group of 400 and forty of 2 has a
+    respectable mean and is a chained library; the median and the largest
+    together say so where the mean does not.
+    """
+    import math
+
+    import numpy as np
+
+    faces = conn.execute(
+        "SELECT count(*) FROM derived_face_instance fi"
+        " WHERE fi.embedding IS NOT NULL AND fi.model_id ="
+        "   (SELECT model_id FROM derived_face_run WHERE id = ?)"
+        " AND fi.model_version ="
+        "   (SELECT model_version FROM derived_face_run WHERE id = ?)",
+        (run_id, run_id),
+    ).fetchone()[0]
+
+    rows = conn.execute(
+        "SELECT m.cluster_id, fi.embedding FROM derived_face_membership m"
+        "  JOIN derived_face_instance fi ON fi.id = m.face_id"
+        "  JOIN derived_face_cluster c ON c.id = m.cluster_id"
+        " WHERE c.run_id = ? AND fi.embedding IS NOT NULL",
+        (run_id,),
+    ).fetchall()
+
+    reading = {
+        "faces": faces, "clusters": 0, "grouped": 0,
+        "largest": 0, "median": 0.0, "mean": 0.0,
+        "largest_share": 0.0, "alone_share": 1.0 if faces else 0.0,
+        "cohesion": 0.0, "separation": 0.0, "silhouette": 0.0, "outliers": 0,
+    }
+    if not rows:
+        return reading
+
+    from . import similarity
+
+    labels = np.array([r[0] for r in rows], dtype=np.int64)
+    unit = similarity.normalise(
+        np.vstack([np.frombuffer(r[1], dtype=np.float32) for r in rows])
+    )
+    ids, index = np.unique(labels, return_inverse=True)
+    counts = np.bincount(index)
+    sizes = np.sort(counts)[::-1]
+    grouped = int(counts.sum())
+    median = float(np.median(sizes))
+
+    # Centroids as one scatter-add rather than a loop per cluster: at a
+    # thousand people that loop is a thousand round trips through Python for
+    # a single matrix operation.
+    centres = np.zeros((len(ids), unit.shape[1]), dtype=np.float32)
+    np.add.at(centres, index, unit)
+    centres /= np.maximum(np.linalg.norm(centres, axis=1, keepdims=True), 1e-12)
+
+    # SAMPLED above a limit. The silhouette is a mean over faces, so a random
+    # sample estimates it -- and the full computation is faces x clusters,
+    # which at 100k faces and 2k people is 200 million values held at once.
+    # Sampling makes the cost of judging a run independent of library size,
+    # which is what lets it be judged at all.
+    picked = np.arange(len(labels))
+    if len(picked) > SILHOUETTE_SAMPLE:
+        picked = np.random.default_rng(0).choice(
+            len(labels), SILHOUETTE_SAMPLE, replace=False
+        )
+    sample, sample_index = unit[picked], index[picked]
+
+    own = np.einsum("ij,ij->i", sample, centres[sample_index])
+    if len(ids) > 1:
+        # Blocked, so the faces-by-clusters matrix is never held whole.
+        nearest = np.empty(len(sample), dtype=np.float32)
+        for start in range(0, len(sample), 4096):
+            block = slice(start, start + 4096)
+            against = sample[block] @ centres.T
+            against[np.arange(against.shape[0]), sample_index[block]] = -1.0
+            nearest[block] = against.max(axis=1)
+    else:
+        nearest = np.zeros(len(sample), dtype=np.float32)
+
+    reading.update({
+        "clusters": len(ids),
+        "grouped": grouped,
+        "largest": int(sizes[0]),
+        "median": median,
+        "mean": grouped / len(ids),
+        "largest_share": int(sizes[0]) / faces if faces else 0.0,
+        "alone_share": (faces - grouped) / faces if faces else 0.0,
+        "sampled": int(len(picked)),
+        # How tightly a face sits to its own group's centre.
+        "cohesion": float(own.mean()),
+        # How close it sits to the nearest OTHER group's centre.
+        "separation": float(nearest.mean()),
+        # The gap between the two. This is the number worth deciding on.
+        "silhouette": float((own - nearest).mean()),
+        # Groups far larger than the middle of the distribution -- the shape
+        # chaining makes, and invisible to a mean.
+        "outliers": int(sum(1 for n in sizes if median and n > 4 * median)),
+    })
+    if math.isnan(reading["silhouette"]):
+        reading["silhouette"] = 0.0
+    return reading
+
+
+def agreement(conn, run_id: int) -> dict:
+    """How a run stands against what people actually said.
+
+    `person_assertion` is the library's own ground truth -- somebody looked
+    at a picture and named who is in it -- and nothing was reading it back to
+    ask whether a clustering agrees. Two faces a person put under one name
+    should be in one cluster; two faces they put under different names should
+    not.
+
+    Returns counts rather than a verdict. A library with three assertions
+    cannot judge a clustering and should not pretend to; the caller can see
+    how much evidence there was.
+    """
+    rows = conn.execute(
+        "SELECT pa.person_id, m.cluster_id FROM person_assertion pa"
+        "  JOIN derived_face_instance fi ON fi.file_id = pa.file_id"
+        "  JOIN derived_face_membership m ON m.face_id = fi.id"
+        "  JOIN derived_face_cluster c ON c.id = m.cluster_id AND c.run_id = ?",
+        (run_id,),
+    ).fetchall()
+    together = apart = mixed = 0
+    by_person: dict[int, set[int]] = {}
+    by_cluster: dict[int, set[int]] = {}
+    for person_id, cluster_id in rows:
+        by_person.setdefault(person_id, set()).add(cluster_id)
+        by_cluster.setdefault(cluster_id, set()).add(person_id)
+    for clusters in by_person.values():
+        together += 1 if len(clusters) == 1 else 0
+        apart += 1 if len(clusters) > 1 else 0
+    for people in by_cluster.values():
+        mixed += 1 if len(people) > 1 else 0
+    return {
+        "asserted_people": len(by_person),
+        "held_together": together,
+        "split_apart": apart,
+        "clusters_mixing_people": mixed,
+    }
+
+
+def _adopt_if_better(conn, run_id: int, model_id: str, threshold) -> None:
+    """Choose the run the People page shows, on evidence rather than order.
+
+    It used to be "whichever ran first", which meant a loop that happened to
+    try 0.55 before 0.48 showed three people where there are two. The order
+    runs happen in is an accident; what they produced is not.
+
+    Never adopts a run that chained or grouped nothing -- a page showing one
+    person called Everybody is worse than a page showing none -- and never
+    overrides a choice somebody made: `make_primary` is how a person decides,
+    and this only fills the gap before they have.
+    """
+    if conn.execute(
+        "SELECT count(*) FROM derived_face_run WHERE is_primary = 1"
+    ).fetchone()[0]:
+        return
+    reading = health(conn, run_id)
+    if (
+        reading["largest_share"] > CHAINED
+        or reading["alone_share"] > ALL_ALONE
+        or reading["silhouette"] < GOOD_ENOUGH
+    ):
+        return
+    # Among runs that are sound, prefer the one at the threshold this embedder
+    # was actually measured at; a run at another threshold is one somebody
+    # asked for to compare against, not a default. If a better-scoring run
+    # exists at that threshold already, leave it alone.
+    if threshold is not None and abs(float(threshold) - threshold_for(model_id)) > 1e-9:
+        return
+    make_primary(conn, run_id)
+
+
+def assign_cluster(conn, face_id: int, cluster_id: int) -> None:
+    """Put one detected face in one cluster.
+
+    A face is in one cluster per RUN and in as many runs as have grouped it,
+    so this adds a membership rather than overwriting a column -- which is
+    what made a second clustering destroy the first one's answer.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id)"
+        " VALUES(?, ?)",
         (cluster_id, face_id),
     )
 
 
-def attribute(conn, file_id: int, person_id: int, model_id: str, model_version: str,
-              *, face_count: int = 1) -> None:
-    """A model's inference that this person appears in this file."""
+def unassign_cluster(conn, face_id: int, cluster_id: int) -> None:
     conn.execute(
-        "INSERT INTO derived_file_person(file_id, person_id, model_id, model_version,"
-        " face_count) VALUES(?, ?, ?, ?, ?)"
-        " ON CONFLICT(file_id, person_id, model_id, model_version)"
+        "DELETE FROM derived_face_membership WHERE face_id = ? AND cluster_id = ?",
+        (face_id, cluster_id),
+    )
+
+
+def attribute(conn, file_id: int, person_id: int, run_id: int, model_id: str,
+              model_version: str, *, face_count: int = 1) -> None:
+    """One clustering run's inference that this person appears in this file.
+
+    Keyed on the run. Two runs disagree about who is in a picture -- that
+    disagreement is the reason for running both -- and keyed on the embedder
+    alone the second overwrote the first, so the cluster tables held two
+    answers while this one held whichever wrote last.
+    """
+    conn.execute(
+        "INSERT INTO derived_file_person(file_id, person_id, run_id, model_id,"
+        " model_version, face_count) VALUES(?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, person_id, run_id)"
         " DO UPDATE SET face_count = excluded.face_count",
         tuple(plain(value) for value in
-              (file_id, person_id, model_id, model_version, face_count)),
+              (file_id, person_id, run_id, model_id, model_version, face_count)),
     )
 
 
@@ -369,7 +847,7 @@ def _overlap(a, b) -> float:
     return inner / (aw * ah + bw * bh - inner)
 
 
-def seed_clusters_from_assertions(conn, model_id: str, model_version: str) -> int:
+def seed_clusters_from_assertions(conn, run_id: int) -> int:
     """Re-attach names after a rebuild, from what people said rather than
     from what the previous clustering happened to decide.
 
@@ -406,11 +884,12 @@ def seed_clusters_from_assertions(conn, model_id: str, model_version: str) -> in
 
     votes: dict[int, set[int]] = {}
     for cluster_id, file_id, sample_id, region_id in conn.execute(
-        "SELECT fi.cluster_id, fi.file_id, fi.sample_id, fi.region_id"
-        "  FROM derived_face_instance fi"
-        "  JOIN derived_face_cluster c ON c.id = fi.cluster_id"
-        " WHERE c.person_id IS NULL AND c.model_id = ? AND c.model_version = ?",
-        (model_id, model_version),
+        "SELECT m.cluster_id, fi.file_id, fi.sample_id, fi.region_id"
+        "  FROM derived_face_membership m"
+        "  JOIN derived_face_instance fi ON fi.id = m.face_id"
+        "  JOIN derived_face_cluster c ON c.id = m.cluster_id"
+        " WHERE c.person_id IS NULL AND c.run_id = ?",
+        (run_id,),
     ):
         claims = assertions.get(file_id, ())
         for person, on_sample, box in claims:
@@ -443,11 +922,14 @@ def seed_clusters_from_assertions(conn, model_id: str, model_version: str) -> in
         )
         named += 1
     conn.execute(
-        "INSERT OR IGNORE INTO derived_file_person(file_id, person_id, model_id, model_version)"
-        " SELECT fi.file_id, c.person_id, c.model_id, c.model_version"
-        "   FROM derived_face_instance fi JOIN derived_face_cluster c ON c.id = fi.cluster_id"
-        "  WHERE c.person_id IS NOT NULL AND c.model_id = ? AND c.model_version = ?",
-        (model_id, model_version),
+        "INSERT OR IGNORE INTO derived_file_person(file_id, person_id, run_id,"
+        " model_id, model_version)"
+        " SELECT fi.file_id, c.person_id, c.run_id, c.model_id, c.model_version"
+        "   FROM derived_face_membership m"
+        "   JOIN derived_face_instance fi ON fi.id = m.face_id"
+        "   JOIN derived_face_cluster c ON c.id = m.cluster_id"
+        "  WHERE c.person_id IS NOT NULL AND c.run_id = ?",
+        (run_id,),
     )
     return named
 

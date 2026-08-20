@@ -203,38 +203,138 @@ PEOPLE_BY_MOST = (
     "SELECT COALESCE(p.name, '(unnamed)') AS name, e.slug,"
     " count(DISTINCT fp.file_id) AS pictures"
     "  FROM person p JOIN entity e ON e.id = p.id"
-    "  JOIN derived_file_person fp ON fp.person_id = p.id"
+    "  JOIN derived_file_person fp ON fp.person_id = p.id AND fp.run_id = ?"
     "  JOIN file f ON f.id = fp.file_id AND f.missing_since IS NULL"
     " GROUP BY p.id ORDER BY pictures DESC, name"
 )
 
+#: No DISTINCT: the primary key is (file_id, person_id, run_id) and this
+#: filters on person and run, so a file can appear once. Adding one bought
+#: nothing but a temp B-tree over the result.
 PERSON_FILES = (
     "SELECT fe.slug, f.name FROM derived_file_person fp"
     "  JOIN file f ON f.id = fp.file_id AND f.missing_since IS NULL"
-    "  JOIN entity fe ON fe.id = f.id WHERE fp.person_id = ?"
+    "  JOIN entity fe ON fe.id = f.id WHERE fp.person_id = ? AND fp.run_id = ?"
 )
 
 #: Where a person's pictures actually sit. The disagreement between the disk
 #: layout and the meaning is the thing the six-axis design exists to show.
 PERSON_ACROSS_FOLDERS = (
-    "SELECT fo.name, e.slug, count(*) AS pictures FROM derived_file_person fp"
+    "SELECT fo.name, e.slug, count(DISTINCT f.id) AS pictures"
+    "  FROM derived_file_person fp"
     "  JOIN file f ON f.id = fp.file_id AND f.missing_since IS NULL"
     "  JOIN folder fo ON fo.id = f.folder_id"
     "  JOIN entity e ON e.id = fo.id"
-    " WHERE fp.person_id = ? GROUP BY fo.id ORDER BY pictures DESC, fo.name"
+    " WHERE fp.person_id = ? AND fp.run_id = ?"
+    " GROUP BY fo.id ORDER BY pictures DESC, fo.name"
 )
 
 
-def people_by_most(conn):
-    return conn.execute(PEOPLE_BY_MOST).fetchall()
+def people_by_most(conn, run_id: int | None = None):
+    """The People page, for one clustering run.
+
+    `run_id` defaults to the one marked primary. Several runs are live at
+    once and they disagree -- that is what they are for -- so a page that
+    does not say which one it is showing is showing whichever wrote last.
+    """
+    if run_id is None:
+        row = conn.execute(
+            "SELECT id FROM derived_face_run WHERE is_primary = 1"
+        ).fetchone()
+        if row is None:
+            return []
+        run_id = row[0]
+    return conn.execute(PEOPLE_BY_MOST, (run_id,)).fetchall()
 
 
-def person_files(conn, person_id: int):
-    return conn.execute(PERSON_FILES, (person_id,)).fetchall()
+# --- comparing two clusterings ---------------------------------------------
+
+RUNS = (
+    "SELECT r.id, r.model_id, r.model_version, r.method, r.threshold,"
+    " r.is_primary, r.faces, r.clusters, r.backend,"
+    " (SELECT count(*) FROM derived_face_cluster c"
+    "   WHERE c.run_id = r.id AND c.person_id IS NOT NULL) AS named"
+    "  FROM derived_face_run r ORDER BY r.is_primary DESC, r.computed_at DESC"
+)
+
+#: Where two runs disagree about one picture: the people each says are in it.
+#: The disagreement is the point -- one threshold welds strangers together and
+#: another splits one person in four, and the only way to see which is
+#: happening is to put the two answers side by side on the same photograph.
+RUNS_DISAGREE = """
+    SELECT f.name,
+           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS left_says,
+           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS right_says
+      FROM derived_file_person fp
+      JOIN person p ON p.id = fp.person_id
+      JOIN file f ON f.id = fp.file_id
+     WHERE fp.run_id IN (?, ?)
+     GROUP BY f.id
+    HAVING IFNULL(left_says, '') <> IFNULL(right_says, '')
+     ORDER BY f.name
+"""
+
+#: How the same face was grouped by each run. A face one run puts with
+#: fifty others and another puts alone is the single most useful row here.
+FACE_ACROSS_RUNS = """
+    SELECT fi.id,
+           (SELECT count(*) FROM derived_face_membership m2
+             JOIN derived_face_cluster c2 ON c2.id = m2.cluster_id
+             WHERE c2.run_id = ? AND m2.cluster_id IN (
+               SELECT cluster_id FROM derived_face_membership m3
+                JOIN derived_face_cluster c3 ON c3.id = m3.cluster_id
+               WHERE m3.face_id = fi.id AND c3.run_id = ?)) AS in_left,
+           (SELECT count(*) FROM derived_face_membership m2
+             JOIN derived_face_cluster c2 ON c2.id = m2.cluster_id
+             WHERE c2.run_id = ? AND m2.cluster_id IN (
+               SELECT cluster_id FROM derived_face_membership m3
+                JOIN derived_face_cluster c3 ON c3.id = m3.cluster_id
+               WHERE m3.face_id = fi.id AND c3.run_id = ?)) AS in_right
+      FROM derived_face_instance fi
+     WHERE fi.embedding IS NOT NULL
+     ORDER BY abs(in_left - in_right) DESC, fi.id
+     LIMIT ?
+"""
 
 
-def person_across_folders(conn, person_id: int):
-    return conn.execute(PERSON_ACROSS_FOLDERS, (person_id,)).fetchall()
+def clusterings(conn):
+    """Every clustering the library holds, side by side."""
+    cursor = conn.execute(RUNS)
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor]
+
+
+def disagreements(conn, left: int, right: int):
+    """The pictures two runs describe differently."""
+    return conn.execute(RUNS_DISAGREE, (left, right, left, right)).fetchall()
+
+
+def face_across_runs(conn, left: int, right: int, limit: int = 20):
+    """Per face, how big a group each run put it in. The faces where those
+    two numbers differ most are where the two clusterings actually differ."""
+    return conn.execute(FACE_ACROSS_RUNS, (left, left, right, right, limit)).fetchall()
+
+
+def person_files(conn, person_id: int, run_id: int | None = None):
+    if run_id is None:
+        row = conn.execute(
+            "SELECT id FROM derived_face_run WHERE is_primary = 1"
+        ).fetchone()
+        if row is None:
+            return []
+        run_id = row[0]
+    return conn.execute(PERSON_FILES, (person_id, run_id)).fetchall()
+
+
+def person_across_folders(conn, person_id: int, run_id: int | None = None):
+    if run_id is None:
+        row = conn.execute(
+            "SELECT id FROM derived_face_run WHERE is_primary = 1"
+        ).fetchone()
+        if row is None:
+            return []
+        run_id = row[0]
+    return conn.execute(PERSON_ACROSS_FOLDERS, (person_id, run_id)).fetchall()
 
 
 # --- albums ----------------------------------------------------------------

@@ -458,15 +458,23 @@ CREATE INDEX file_artifact_role     ON file_artifact(role);
 -- it is derived by construction and belongs in the namespace a rebuild drops.
 -- Keeping it on the durable side meant a rebuild left rows keyed on model
 -- versions that no longer produced anything.
+-- Keyed on the RUN, not on the embedder. Who is in a picture is the output
+-- of one clustering, and two clusterings disagree -- that disagreement is
+-- the whole reason for running both. Keyed on (model, version) alone the
+-- second run overwrote the first's attributions, so the cluster tables could
+-- hold two answers while this table could hold one, and the People page read
+-- whichever wrote last.
 CREATE TABLE derived_file_person (
     file_id       INTEGER NOT NULL REFERENCES file(id)   ON DELETE CASCADE,
     person_id     INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    run_id        INTEGER NOT NULL REFERENCES derived_face_run(id) ON DELETE CASCADE,
     model_id      TEXT NOT NULL,
     model_version TEXT NOT NULL,
     face_count    INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (file_id, person_id, model_id, model_version)
+    PRIMARY KEY (file_id, person_id, run_id)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX derived_file_person_person ON derived_file_person(person_id);
+CREATE INDEX derived_file_person_run    ON derived_file_person(run_id);
 
 CREATE TABLE collection_file (
     collection_id INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
@@ -967,20 +975,81 @@ CREATE TABLE derived_embedding (
     PRIMARY KEY (file_id, space, model_id, model_version)
 ) STRICT;
 
+-- One grouping of the library's faces, by one algorithm at one threshold
+-- over one embedder's output. All four decide who ends up in a cluster, so
+-- all four are the run's identity.
+--
+-- A first version keyed clusters on the embedder alone, and that quietly
+-- made "which clustering is right" unanswerable: a second method or a second
+-- threshold replaced the first, so the only way to try one was to destroy
+-- the other. There is no settled answer to compare against either -- this
+-- repo's own measurements put ArcFace at 0.48 and SFace at 0.55, and being
+-- wrong by a tenth puts 96% of a library into a single person
+-- (docs/FACE_CLUSTERING.md:128-133). Comparing runs is the normal activity.
+--
+-- Several runs are live at once. `primary_run` says which one the People
+-- page shows when nobody asked for a particular one; the rest are there to
+-- be looked at, argued with, and promoted.
+CREATE TABLE derived_face_run (
+    id            INTEGER PRIMARY KEY,
+    model_id      TEXT NOT NULL, model_version TEXT NOT NULL,
+    -- A token, so runs group and count: 'chinese-whispers',
+    -- 'connected-components', 'hdbscan'. Not a CHECK list -- a method added
+    -- later must not need a schema change -- but not a sentence either.
+    method        TEXT NOT NULL CHECK (method = lower(method) AND method NOT LIKE '% %'),
+    -- What it grouped at. NULL only for a method that has no threshold.
+    threshold     REAL,
+    -- Set on the one run the site shows by default. At most one, enforced
+    -- below: two defaults is a People page that depends on which row was
+    -- read first.
+    is_primary    INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
+    faces         INTEGER NOT NULL DEFAULT 0,
+    clusters      INTEGER NOT NULL DEFAULT 0,
+    -- Which similarity backend found the pairs: 'faiss-gpu', 'faiss-cpu',
+    -- 'numpy'. They compute the same edges, so this does not change who is
+    -- in a cluster -- it is here because a timing nobody can attribute to a
+    -- machine is not a measurement, and because "faiss is GPU here" and
+    -- "faiss is a CPU wheel here" are both true of different environments on
+    -- the same box.
+    backend       TEXT,
+    computed_at   REAL NOT NULL
+) STRICT;
+-- IFNULL, because a NULL threshold is distinct from every other NULL in a
+-- plain UNIQUE, and two runs of a threshold-less method would both be
+-- allowed to exist.
+CREATE UNIQUE INDEX derived_face_run_identity
+    ON derived_face_run(model_id, model_version, method, IFNULL(threshold, -1));
+CREATE UNIQUE INDEX derived_face_run_primary
+    ON derived_face_run(is_primary) WHERE is_primary = 1;
+
 CREATE TABLE derived_face_cluster (
     id            INTEGER PRIMARY KEY,
+    run_id        INTEGER NOT NULL REFERENCES derived_face_run(id) ON DELETE CASCADE,
     person_id     INTEGER REFERENCES person(id) ON DELETE SET NULL,
     centroid      BLOB, dim INTEGER,
     model_id      TEXT NOT NULL, model_version TEXT NOT NULL,
     updated_at    REAL NOT NULL
 ) STRICT;
 CREATE INDEX derived_face_cluster_person ON derived_face_cluster(person_id);
+CREATE INDEX derived_face_cluster_run    ON derived_face_cluster(run_id);
+
+-- Which faces a cluster holds. A join table rather than a column on the face,
+-- because a face belongs to one cluster PER RUN and several runs coexist:
+-- with `derived_face_instance.cluster_id` the second run overwrote the
+-- first's answer for every face, which is why nothing could be compared.
+CREATE TABLE derived_face_membership (
+    cluster_id INTEGER NOT NULL REFERENCES derived_face_cluster(id) ON DELETE CASCADE,
+    face_id    INTEGER NOT NULL REFERENCES derived_face_instance(id) ON DELETE CASCADE,
+    PRIMARY KEY (cluster_id, face_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX derived_face_membership_face ON derived_face_membership(face_id);
 
 CREATE TABLE derived_face_instance (
     id            INTEGER PRIMARY KEY,
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     sample_id     INTEGER REFERENCES derived_media_sample(id) ON DELETE CASCADE,
-    cluster_id    INTEGER REFERENCES derived_face_cluster(id) ON DELETE SET NULL,
+    -- No cluster_id. Which cluster a face is in is a fact about a RUN, and
+    -- several runs coexist, so it lives in `derived_face_membership`.
     -- NOT NULL: a face detection with no location cannot be shown, checked,
     -- cropped, or asserted against. RESTRICT, because deleting the region
     -- would leave exactly that.
@@ -990,7 +1059,23 @@ CREATE TABLE derived_face_instance (
     -- BLOB, not TEXT: it is packed floats, and storing it as JSON meant
     -- parsing a string on every crop to get numbers back.
     landmarks BLOB,
+    -- The face's own vector, and the whole reason clustering can happen.
+    -- `derived_embedding` cannot hold it: that table is keyed per FILE, and
+    -- a photograph of eight people has eight face vectors. Without this
+    -- column the People page has no input -- `dim` sat here on its own,
+    -- describing a vector nothing could store, and every test in the suite
+    -- hid it by assigning cluster_id by hand instead of computing it.
+    --
+    -- Packed float32, as the model emits it, not JSON: a 512-d ArcFace
+    -- vector is 2 KB of bytes or 9 KB of decimal text that has to be parsed
+    -- back into floats on every comparison, and a clustering pass compares
+    -- every pair.
+    embedding BLOB,
     det_score REAL CHECK (det_score IS NULL OR det_score BETWEEN 0 AND 1),
+    -- How many floats are in `embedding`, and it has to agree: a length that
+    -- disagrees with the bytes is a vector that unpacks into noise, and a
+    -- clustering pass comparing a 512-d vector against a mislabelled 128-d
+    -- one produces groups of strangers. float32, so four bytes each.
     dim INTEGER,
     age INTEGER,
     -- What the model reported, not what anyone is. A free-text column here
@@ -1001,10 +1086,19 @@ CREATE TABLE derived_face_instance (
     -- two would answer "faces looking away" with a set that is mostly not.
     pose_yaw REAL, pose_pitch REAL, pose_roll REAL,
     model_id TEXT NOT NULL, model_version TEXT NOT NULL,
-    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL
+    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
+    -- `dim` describes `embedding`, so it has to agree with it. A length that
+    -- disagrees with the bytes unpacks into noise, and a clustering pass
+    -- comparing a 512-d vector against a mislabelled 128-d one groups
+    -- strangers together. float32, so four bytes each.
+    CHECK ((embedding IS NULL AND dim IS NULL)
+           OR (embedding IS NOT NULL AND dim = length(embedding) / 4))
 ) STRICT;
 CREATE INDEX derived_face_file       ON derived_face_instance(file_id);
-CREATE INDEX derived_face_cluster_ix ON derived_face_instance(cluster_id);
+-- Clustering reads every vector this model produced, once per re-cluster.
+-- Without this it is a full table scan of every face from every model.
+CREATE INDEX derived_face_by_model   ON derived_face_instance(model_id, model_version)
+    WHERE embedding IS NOT NULL;
 CREATE INDEX derived_face_sample     ON derived_face_instance(sample_id);
 CREATE INDEX derived_face_region     ON derived_face_instance(region_id);
 
