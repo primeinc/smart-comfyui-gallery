@@ -69,6 +69,22 @@ CREATE INDEX slug_history_entity ON slug_history(entity_id);
 -- ============ physical ============
 CREATE TABLE root (
     id            INTEGER PRIMARY KEY,
+    -- What the root IS, as against where it currently sits. Written into a
+    -- marker file inside the directory, so a library that moved is recognised
+    -- as the same library rather than registered a second time.
+    --
+    -- Without it `path` was a root's only identity: re-registering a moved
+    -- library minted a second root while every folder and file stayed under
+    -- the first, which `check_roots` then marked offline -- the whole library
+    -- stranded behind a root nobody could reach, and no operation anywhere
+    -- that could move it back. The one place in this schema where a path was
+    -- still identity.
+    -- Defaulted by the database, so a root registered by any route has an
+    -- identity whether or not the caller thought to mint one.
+    uuid          BLOB    NOT NULL UNIQUE DEFAULT (randomblob(16))
+                          CHECK (length(uuid) = 16),
+    -- Where it is now. Still UNIQUE -- two roots cannot occupy one directory
+    -- -- but no longer what the root is.
     path          TEXT    NOT NULL UNIQUE,
     -- 'trash' is a real location, not a state: a deleted file's bytes are
     -- still somewhere, restore is a move, and views exclude the subtree by
