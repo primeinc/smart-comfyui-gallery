@@ -244,7 +244,10 @@ CREATE TABLE user (
 ) STRICT;
 
 -- ============ evidence locator (video/document faces) ============
-CREATE TABLE media_sample (
+-- Named derived_: a sampling policy produced these rows, so "drop the derived
+-- namespace and re-index" must take them. Leaving them behind left face
+-- instances citing frames whose policy no longer existed.
+CREATE TABLE derived_media_sample (
     id         INTEGER PRIMARY KEY,
     file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     kind       TEXT NOT NULL CHECK (kind IN ('still','frame','page')),
@@ -252,8 +255,8 @@ CREATE TABLE media_sample (
     page_index INTEGER,
     policy     TEXT NOT NULL
 ) STRICT;
-CREATE UNIQUE INDEX media_sample_pos
-    ON media_sample(file_id, kind, IFNULL(offset_ms,-1), IFNULL(page_index,-1), policy);
+CREATE UNIQUE INDEX derived_media_sample_pos
+    ON derived_media_sample(file_id, kind, IFNULL(offset_ms,-1), IFNULL(page_index,-1), policy);
 
 -- ============ relations ============
 -- One join for every artifact kind. `ordinal` preserves stack order, which
@@ -708,7 +711,7 @@ CREATE INDEX derived_face_cluster_person ON derived_face_cluster(person_id);
 CREATE TABLE derived_face_instance (
     id            INTEGER PRIMARY KEY,
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    sample_id     INTEGER REFERENCES media_sample(id) ON DELETE CASCADE,
+    sample_id     INTEGER REFERENCES derived_media_sample(id) ON DELETE CASCADE,
     cluster_id    INTEGER REFERENCES derived_face_cluster(id) ON DELETE SET NULL,
     bbox_x REAL NOT NULL, bbox_y REAL NOT NULL,
     bbox_w REAL NOT NULL, bbox_h REAL NOT NULL,
@@ -835,7 +838,7 @@ CREATE INDEX feedback_user   ON feedback(user_id);
 CREATE TABLE person_assertion (
     person_id  INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
     file_id    INTEGER NOT NULL REFERENCES file(id)   ON DELETE CASCADE,
-    sample_id  INTEGER REFERENCES media_sample(id) ON DELETE SET NULL,
+    sample_id  INTEGER REFERENCES derived_media_sample(id) ON DELETE SET NULL,
     bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
     user_id    INTEGER REFERENCES user(id) ON DELETE SET NULL,
     created_at REAL NOT NULL,
@@ -919,6 +922,55 @@ CREATE TRIGGER collection_kind_agrees BEFORE INSERT ON collection BEGIN
 END;
 CREATE TRIGGER collection_takes_its_entity AFTER DELETE ON collection BEGIN
   DELETE FROM entity WHERE id = OLD.id;
+END;
+
+-- ============ a reference must agree with what it points at ============
+-- A declared foreign key proves the row exists; it says nothing about whether
+-- the row is the right *kind* of thing. Without these, a camera could be
+-- recorded as a file's checkpoint, a lens could be its workflow, a face could
+-- cite a frame sampled from a different file, and a finding could sit on a
+-- file its own review never looked at. All four were accepted.
+
+CREATE TRIGGER file_artifact_role_matches_kind BEFORE INSERT ON file_artifact BEGIN
+  SELECT RAISE(ABORT,'artifact kind does not match the role it is used in')
+  WHERE (SELECT kind FROM artifact WHERE id = NEW.artifact_id) <> CASE NEW.role
+      WHEN 'checkpoint'    THEN 'checkpoint'
+      WHEN 'refiner'       THEN 'checkpoint'
+      WHEN 'lora'          THEN 'lora'
+      WHEN 'vae'           THEN 'vae'
+      WHEN 'controlnet'    THEN 'controlnet'
+      WHEN 'upscaler'      THEN 'upscaler'
+      WHEN 'embedding'     THEN 'embedding'
+      WHEN 'hypernetwork'  THEN 'hypernetwork'
+      WHEN 'ip_adapter'    THEN 'ip_adapter'
+      WHEN 'text_encoder'  THEN 'text_encoder'
+      WHEN 'unet'          THEN 'unet'
+      WHEN 'captured_with' THEN 'camera'
+      WHEN 'mounted_lens'  THEN 'lens'
+      WHEN 'produced_by'   THEN 'application'
+    END;
+END;
+
+CREATE TRIGGER generation_workflow_is_a_workflow BEFORE INSERT ON generation
+WHEN NEW.workflow_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'generation.workflow_id must name an artifact of kind workflow')
+  WHERE (SELECT kind FROM artifact WHERE id = NEW.workflow_id) <> 'workflow';
+END;
+
+CREATE TRIGGER face_sample_belongs_to_its_file BEFORE INSERT ON derived_face_instance
+WHEN NEW.sample_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'face cites a sample from a different file')
+  WHERE (SELECT file_id FROM derived_media_sample WHERE id = NEW.sample_id) <> NEW.file_id;
+END;
+
+CREATE TRIGGER finding_matches_its_review BEFORE INSERT ON derived_review_finding BEGIN
+  SELECT RAISE(ABORT,'finding sits on a different file than its review')
+  WHERE (SELECT file_id FROM derived_review WHERE id = NEW.review_id) <> NEW.file_id;
+END;
+
+CREATE TRIGGER alignment_matches_its_review BEFORE INSERT ON derived_review_alignment BEGIN
+  SELECT RAISE(ABORT,'alignment sits on a different file than its review')
+  WHERE (SELECT file_id FROM derived_review WHERE id = NEW.review_id) <> NEW.file_id;
 END;
 
 -- ============ folder.depth is derived, so the database derives it ============

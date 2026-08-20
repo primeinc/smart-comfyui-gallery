@@ -32,7 +32,7 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 # Columns ending in _id that are deliberately not references to another row.
 _NOT_A_REFERENCE = {
     ("entity", "id"), ("root", "id"), ("user", "id"), ("job", "id"),
-    ("media_sample", "id"), ("comment", "id"), ("feedback", "id"),
+    ("derived_media_sample", "id"), ("comment", "id"), ("feedback", "id"),
     ("derivation_intent", "id"), ("file_derivation", "id"),
     ("derived_face_cluster", "id"), ("derived_face_instance", "id"),
     ("derived_review", "id"), ("derived_review_finding", "id"),
@@ -201,7 +201,7 @@ def test_the_load_bearing_references_point_where_they_claim(db):
         ("generation", "workflow_id"): "artifact",
         ("generation", "prompt_id"): "prompt",
         ("collection", "parent_id"): "collection",
-        ("derived_face_instance", "sample_id"): "media_sample",
+        ("derived_face_instance", "sample_id"): "derived_media_sample",
         ("derived_face_cluster", "person_id"): "person",
         ("job", "target_id"): "entity",
     }
@@ -1327,7 +1327,7 @@ def test_every_closed_vocabulary_rejects_a_stranger(db):
         # the blob must exist, or this raises on the foreign key and passes for
         # the wrong reason -- an over-determined negative proves nothing
         "INSERT INTO file_blob(file_id,carrier,slot,blob_hash,seen_at) VALUES(9,'nope','s','bh',0)",
-        "INSERT INTO media_sample(id,file_id,kind,policy) VALUES(90,9,'nope','p')",
+        "INSERT INTO derived_media_sample(id,file_id,kind,policy) VALUES(90,9,'nope','p')",
         "INSERT INTO user(id,username,password_hash,role,created_at) VALUES(90,'u','h','nope',0)",
     ]
     for sql in cases:
@@ -1424,6 +1424,87 @@ def test_two_prompts_cannot_share_a_text_hash(db):
     db.execute("INSERT INTO prompt(id,text,text_hash,created_at) VALUES(341,'second','h2',0)")
     with pytest.raises(sqlite3.IntegrityError):
         db.execute("UPDATE prompt SET text_hash='h1' WHERE id=341")
+
+
+def test_a_reference_must_agree_with_what_it_points_at(db):
+    """A foreign key proves the row exists and says nothing about whether it is
+    the right kind of thing. All four of these were accepted: a camera as a
+    checkpoint, a lens as a workflow, a face citing another file's frame, and a
+    finding sitting on a file its own review never looked at."""
+    tree(db)
+    a_file(db, 9, 1, "a.png")
+    a_file(db, 10, 1, "b.png")
+    an_artifact(db, 600, "camera", "X-T5")
+    an_artifact(db, 601, "lens", "XF 35mm")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("INSERT INTO file_artifact(file_id,artifact_id,role) VALUES(9,600,'checkpoint')")
+    # the same camera in its own role is fine
+    db.execute("INSERT INTO file_artifact(file_id,artifact_id,role) VALUES(9,600,'captured_with')")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO generation(file_id,tool,detection,workflow_id,parser,parsed_at) "
+            "VALUES(9,'ComfyUI','graph',601,'p',0)"
+        )
+
+    db.execute("INSERT INTO derived_media_sample(id,file_id,kind,policy) VALUES(900,10,'frame','p')")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO derived_face_instance(id,file_id,sample_id,bbox_x,bbox_y,bbox_w,bbox_h,"
+            "model_id,model_version,source_sha256,computed_at) VALUES(1,9,900,0,0,1,1,'m','1','s',0)"
+        )
+
+    db.execute(
+        "INSERT INTO derived_review(id,file_id,rubric_version,model_id,model_version,"
+        "source_sha256,computed_at) VALUES(1,9,'v','m','1','s',0)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO derived_review_finding(id,review_id,file_id,kind,severity) "
+            "VALUES(1,1,10,'anatomy','high')"
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO derived_review_alignment(id,review_id,file_id,ordinal,text,satisfied) "
+            "VALUES(1,1,10,0,'t',1)"
+        )
+
+
+def test_a_name_survives_dropping_everything_derived(db):
+    """The rebuild contract, end to end. The naming a human did is authored and
+    must outlive the evidence that suggested it -- otherwise 'drop derived and
+    re-index' quietly discards the only irreplaceable thing in the face
+    pipeline. Sampling policies and inferred membership are derived and go."""
+    tree(db)
+    a_file(db, 9, 1, "a.png")
+    entity(db, 700, "person", "ilse")
+    db.execute("INSERT INTO person(id,name,created_at) VALUES(700,'Ilse',0)")
+    # a human said so
+    db.execute(
+        "INSERT INTO person_assertion(person_id,file_id,user_id,created_at) VALUES(700,9,NULL,0)"
+    )
+    # a backend inferred it
+    db.execute(
+        "INSERT INTO derived_file_person(file_id,person_id,model_id,model_version) "
+        "VALUES(9,700,'insightface','v1')"
+    )
+    derived = [
+        r[0]
+        for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")
+    ]
+    for t in derived:
+        db.execute(f"DROP TABLE {t}")
+
+    assert db.execute("SELECT name FROM person WHERE id=700").fetchone()[0] == "Ilse"
+    assert db.execute("SELECT count(*) FROM person_assertion WHERE person_id=700").fetchone()[0] == 1
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    # and the People page still answers, from assertions alone
+    rows = db.execute(
+        "SELECT p.name, COUNT(DISTINCT pa.file_id) FROM person p "
+        "JOIN person_assertion pa ON pa.person_id = p.id GROUP BY p.id"
+    ).fetchall()
+    assert rows == [("Ilse", 1)]
 
 
 def test_the_build_control_counts_real_tables(db):
