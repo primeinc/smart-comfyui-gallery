@@ -23,7 +23,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from .model import ParsedMetadata
+from .model import ParsedMetadata, extract_networks
 
 _SIZE_RE = re.compile(r"^\s*(\d+)\s*x\s*(\d+)\s*$", re.IGNORECASE)
 
@@ -136,6 +136,10 @@ class GenerationParams:
             gp.extra["size"] = parsed.params["size"]
         gp.extra.update(params)
         gp.extra.update(parsed.extra)
+        # Every A1111-family tool names its LoRAs inside the prompt and
+        # nowhere else, so without this `loras` is populated for ComfyUI
+        # alone and a LoRA has no identity for any of the others.
+        gp.loras = extract_networks(gp.positive_prompt, gp.negative_prompt)
         return gp
 
     @classmethod

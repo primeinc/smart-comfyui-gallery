@@ -1,10 +1,6 @@
 """Human-readable report rendering for parsed generation metadata."""
 
-import re
-
-from .model import ParsedMetadata
-
-_LORA_RE = re.compile(r"<lora:([^:>]+):([\d.]+)>")
+from .model import ParsedMetadata, extract_networks
 
 _EMOJI = {
     "sampling": "\U0001f3af",
@@ -16,7 +12,7 @@ _EMOJI = {
 }
 
 
-def render_report(parsed: ParsedMetadata, include_emojis: bool = True) -> str:
+def render_report(parsed: ParsedMetadata, include_emojis: bool = True) -> str | None:
     """Format normalized metadata into the panel text shown in file details.
 
     Returns None when the parse carries nothing worth displaying (e.g. a pure
@@ -61,16 +57,10 @@ def render_report(parsed: ParsedMetadata, include_emojis: bool = True) -> str:
             out.append(f"  Model Hash: {params['model_hash']}")
         out.append("")
 
-    loras = _LORA_RE.findall(parsed.positive) + _LORA_RE.findall(parsed.raw or "")
+    loras = extract_networks(parsed.positive, parsed.raw)
     if loras:
-        seen = set()
-        lines = []
-        for name, strength in loras:
-            if name not in seen:
-                seen.add(name)
-                lines.append(f"  {name} (Strength: {strength})")
         out.append(f"{emoji['lora']} LORA MODELS:")
-        out.extend(lines)
+        out.extend(f"  {lora['name']} (Strength: {lora['weight']})" for lora in loras)
         out.append("")
 
     advanced = [
