@@ -21,9 +21,7 @@ The one import that still cannot move is the gallery itself, in the fixtures
 below -- this module's body runs before pytest_configure does.
 """
 
-import ast
 import os
-import pathlib
 import tempfile
 
 import pytest
@@ -118,36 +116,6 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(held_back)
 
 
-@pytest.fixture(autouse=True)
-def _isolate_vector_generations():
-    """The vector-store generation registry is process-global (shared by
-    service and worker instances); tests use throwaway DBs, so leak a
-    generation across tests and a same-stamp collision serves another
-    test's vectors."""
-    from smartgallery_ai import vectors
-
-    with vectors._GEN_LOCK:
-        vectors._GENERATIONS.clear()
-    vectors.set_writer_active(False)
-    yield
-    with vectors._GEN_LOCK:
-        vectors._GENERATIONS.clear()
-    vectors.set_writer_active(False)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_backend_registry():
-    """The backend registry is process-global and keyed partly on
-    `models_dir`; tests point configs at throwaway directories that are
-    recreated per test, so an instance loaded for one test's directory must
-    not answer another's."""
-    from smartgallery_ai import backends
-
-    backends.reset()
-    yield
-    backends.reset()
-
-
 @pytest.fixture(scope="session")
 def smartgallery_app():
     """Import smartgallery, initialize its database, and return the module."""
@@ -163,25 +131,3 @@ def smartgallery_app():
     return smartgallery
 
 
-@pytest.fixture(scope="session")
-def gallery_source(smartgallery_app):
-    """smartgallery.py's text, read once for the whole session."""
-    return pathlib.Path(smartgallery_app.__file__).read_text(encoding="utf-8")
-
-
-@pytest.fixture(scope="session")
-def gallery_tree(gallery_source):
-    """smartgallery.py parsed once for the whole session.
-
-    Twenty-six test modules inspect the gallery's own source with `ast` --
-    route gating, id changes, dead work, pipe bounds, settings coverage.
-    Each parsed the file again: 0.51s per parse, 29 sites, close to fifteen
-    seconds of every run spent re-parsing one unchanged file. Session scope
-    is pytest's own answer to setup that is "time-expensive to create"
-    (doc/en/how-to/fixtures.rst:379-392, :484-500).
-
-    The tree is SHARED and must be treated as read-only. Every current
-    caller only walks it; a test that needs to rewrite one should parse its
-    own copy rather than mutate what the rest of the suite is reading.
-    """
-    return ast.parse(gallery_source)

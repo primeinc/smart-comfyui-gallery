@@ -23,7 +23,6 @@ a fast machine and a slow one, and they fail loudly rather than getting
 gradually slower the way the real thing did.
 """
 
-import io
 import pathlib
 import sqlite3
 import time
@@ -42,7 +41,7 @@ SMALL, LARGE = 2_000, 8_000
 
 @pytest.fixture(scope="module")
 def ddl():
-    return io.open(SCHEMA, "r", encoding="utf-8", newline="").read()
+    return SCHEMA.read_text(encoding="utf-8")
 
 
 def a_library(ddl, n):
@@ -120,7 +119,7 @@ def _upsert_params(conn, n, sample):
 
 
 @pytest.mark.parametrize(
-    "label, work",
+    ("label", "work"),
     [
         ("writing a parsed field", _insert_params),
         ("re-parsing a field", _upsert_params),
@@ -239,17 +238,34 @@ def a_scanned_library(ddl, n):
 
 
 def per_row_scanning(work, ddl, n):
+    """Per-file cost of `work`, with the collector quiet while the clock runs.
+
+    The timed region allocates thousands of Found objects, and every gen-2
+    pass CPython schedules during that costs time proportional to the WHOLE
+    process heap -- which late in a suite holds every cached AST and module.
+    Left enabled, the larger n triggers proportionally more of those passes
+    inside the clock, and the test reads suite heap as schema cost: measured
+    here, the same rescan was 9 us/file alone and 26 us/file after 400 other
+    tests. The claim under test is about the schema, so the collector waits.
+    """
+    import gc
+
     conn = a_scanned_library(ddl, n)
     try:
-        started = time.perf_counter()
-        rows = work(conn, n, 0)
-        return (time.perf_counter() - started) / rows * 1e6
+        gc.collect()
+        gc.disable()
+        try:
+            started = time.perf_counter()
+            rows = work(conn, n, 0)
+            return (time.perf_counter() - started) / rows * 1e6
+        finally:
+            gc.enable()
     finally:
         conn.close()
 
 
 @pytest.mark.parametrize(
-    "label, work",
+    ("label", "work"),
     [
         ("rescanning an unchanged library", _rescan_unchanged),
         ("adding one file to a library", _rescan_with_one_new_file),
