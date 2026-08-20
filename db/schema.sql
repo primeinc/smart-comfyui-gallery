@@ -341,7 +341,13 @@ CREATE TABLE collection (
     sql_text    TEXT,   -- smart only
     nl_text     TEXT,   -- smart only
     created_at  REAL NOT NULL,
-    CHECK (kind = 'smart' OR (sql_text IS NULL AND nl_text IS NULL))
+    -- Both directions. A rule on an album that lists its members is a rule
+    -- nothing runs; a smart album with no rule is worse -- it can never list
+    -- a single file, and nothing tells it apart from an album somebody has
+    -- not filled in yet. A collection has to say how its membership is
+    -- decided, whichever way that is.
+    CHECK (kind = 'smart' OR (sql_text IS NULL AND nl_text IS NULL)),
+    CHECK (kind <> 'smart' OR sql_text IS NOT NULL OR nl_text IS NOT NULL)
 ) STRICT;
 CREATE INDEX collection_parent ON collection(parent_id);
 

@@ -948,3 +948,143 @@ def test_a_file_the_prober_cannot_read_costs_only_that_file(db, a_library, tmp_p
         "SELECT width, height, duration FROM file WHERE id = ?", (file_id,)
     ).fetchone() == (None, None, None)
     assert probe.read(broken).is_empty
+
+
+# --- ComfyUI writes a graph, not a line of text -----------------------------
+
+
+def a_graph(**changes):
+    """A workflow of the shape ComfyUI actually emits as its `prompt` chunk."""
+    nodes = {
+        "4": {"class_type": "CheckpointLoaderSimple",
+              "inputs": {"ckpt_name": "dreamshaper_8.safetensors"}},
+        "10": {"class_type": "LoraLoader",
+               "inputs": {"model": ["4", 0], "clip": ["4", 1],
+                          "lora_name": "filmGrain.safetensors",
+                          "strength_model": 0.4, "strength_clip": 0.35}},
+        "6": {"class_type": "CLIPTextEncode",
+              "inputs": {"clip": ["10", 1], "text": "a brass diving helmet at dusk"}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["10", 1], "text": "blurry"}},
+        "5": {"class_type": "EmptyLatentImage",
+              "inputs": {"width": 832, "height": 1216, "batch_size": 1}},
+        "3": {"class_type": "KSampler",
+              "inputs": {"model": ["10", 0], "seed": 4242, "steps": 28, "cfg": 7.0,
+                         "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+                         "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
+        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+        "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0]}},
+    }
+    nodes.update(changes)
+    return nodes
+
+
+def a_comfy_file(path, nodes):
+    info = PngInfo()
+    info.add_text("prompt", json.dumps(nodes))
+    Image.new("RGB", (832, 1216), (30, 40, 60)).save(path, pnginfo=info)
+    return path
+
+
+def _ingest_comfy(db, a_library, path):
+    file_id = scan.mint(db, "file", path.stem)
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, ?, 'image', 10, 0, ?, ?)",
+        (file_id, a_library["folder"], path.name, NOW, NOW),
+    )
+    ingest.one(db, file_id, path, NOW)
+    return file_id
+
+
+def test_a_comfyui_picture_reports_its_whole_recipe(db, a_library, tmp_path):
+    """This is a ComfyUI gallery and its recipe axis was empty for ComfyUI.
+
+    Every other tool writes its settings as text and metaparse reads them.
+    ComfyUI writes a node graph, and metaparse's own adapter says it "only
+    identifies the tool" (metaparse/adapters.py:474-479). So a ComfyUI
+    picture arrived with tool='ComfyUI' and NULL seed, steps, cfg, sampler,
+    model and prompt -- no checkpoint row, no LoRA rows, nothing on the model
+    page and nothing for LoRA synergy to join. The graph was in the file the
+    whole time.
+    """
+    file_id = _ingest_comfy(db, a_library, a_comfy_file(tmp_path / "comfy.png", a_graph()))
+
+    assert db.execute(
+        "SELECT tool, detection, seed, steps, cfg, sampler, scheduler, width, height"
+        "  FROM generation WHERE file_id = ?", (file_id,)
+    ).fetchone() == ("ComfyUI", "graph", 4242, 28, 7.0, "euler", "normal", 832, 1216)
+    assert db.execute(
+        "SELECT a.name FROM artifact a JOIN file_artifact fa ON fa.artifact_id = a.id"
+        " WHERE fa.file_id = ? AND fa.role = 'checkpoint'", (file_id,)
+    ).fetchone()[0] == "dreamshaper_8.safetensors"
+    assert db.execute(
+        "SELECT a.name, fa.model_weight, fa.clip_weight FROM artifact a"
+        "  JOIN file_artifact fa ON fa.artifact_id = a.id"
+        " WHERE fa.file_id = ? AND fa.role = 'lora'", (file_id,)
+    ).fetchall() == [("filmGrain.safetensors", 0.4, 0.35)]
+    assert db.execute(
+        "SELECT p.text FROM prompt p JOIN generation g ON g.prompt_id = p.id"
+        " WHERE g.file_id = ?", (file_id,)
+    ).fetchone()[0] == "a brass diving helmet at dusk"
+
+
+def test_a_refiner_pass_does_not_report_the_pass_that_was_thrown_away(db, a_library, tmp_path):
+    """A workflow routinely holds several samplers. The one that made the
+    file is the one whose latent reaches the node that saved it; taking the
+    first found describes a pass whose output was discarded, which is worse
+    than reporting nothing because it looks like an answer."""
+    nodes = a_graph()
+    nodes["20"] = {"class_type": "KSampler",
+                   "inputs": {"model": ["10", 0], "seed": 1, "steps": 4, "cfg": 1.0,
+                              "sampler_name": "lcm", "scheduler": "sgm_uniform",
+                              "positive": ["6", 0], "negative": ["7", 0],
+                              "latent_image": ["5", 0]}}
+    nodes["3"]["inputs"] = dict(nodes["3"]["inputs"], latent_image=["20", 0], seed=999)
+
+    file_id = _ingest_comfy(db, a_library, a_comfy_file(tmp_path / "refined.png", nodes))
+    assert db.execute(
+        "SELECT seed, steps, sampler FROM generation WHERE file_id = ?", (file_id,)
+    ).fetchone() == (999, 28, "euler"), "it read the pass whose output was discarded"
+
+
+def test_a_prompt_routed_through_another_node_is_still_found(db, a_library, tmp_path):
+    """A workflow that runs its prompt through a primitive, a concat or a
+    wildcard node keeps the words a node or two upstream. Reading only the
+    literal reports an empty prompt for the workflows most likely to have an
+    interesting one."""
+    nodes = a_graph()
+    nodes["30"] = {"class_type": "PrimitiveString",
+                   "inputs": {"value": "a castle assembled from wildcards"}}
+    nodes["6"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["10", 1], "text": ["30", 0]}}
+
+    file_id = _ingest_comfy(db, a_library, a_comfy_file(tmp_path / "routed.png", nodes))
+    assert db.execute(
+        "SELECT p.text FROM prompt p JOIN generation g ON g.prompt_id = p.id"
+        " WHERE g.file_id = ?", (file_id,)
+    ).fetchone()[0] == "a castle assembled from wildcards"
+
+
+def test_a_graph_that_refers_to_itself_ends_the_walk(db):
+    """A graph is meant to be acyclic. A malformed one is still a file
+    somebody has in their library, and it must cost that file rather than
+    hanging the scan."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read({
+        "1": {"class_type": "KSampler",
+              "inputs": {"model": ["2", 0], "seed": 7, "positive": ["1", 0]}},
+        "2": {"class_type": "LoraLoader",
+              "inputs": {"model": ["1", 0], "lora_name": "loop.safetensors"}},
+    })
+    assert recipe is not None and recipe.seed == 7
+
+
+@pytest.mark.parametrize(
+    "payload", ["not json at all", "{}", '{"nodes": [], "links": []}', '{"a": 1}', ""],
+)
+def test_something_that_is_not_a_graph_is_not_read_as_one(payload):
+    """The control. Without it a reader that returns a Recipe for anything
+    would pass every test above."""
+    from db import graph as graph_module
+
+    assert graph_module.read(payload) is None

@@ -32,6 +32,7 @@ from metaparse.containers import load_raw
 from metaparse.typed import GenerationParams
 
 from . import capture as capture_module
+from . import graph as graph_module
 from . import probe as probe_module
 from .scan import mint
 
@@ -160,7 +161,13 @@ def prompt(conn, text: str, now: float) -> int | None:
     row = conn.execute("SELECT id FROM prompt WHERE text_hash = ?", (digest,)).fetchone()
     if row:
         return row[0]
-    prompt_id = mint(conn, "prompt", f"prompt-{digest[:10]}")
+    # Seeded from the words, because a prompt has something to read and the
+    # address is where that shows. `prompt-558a568843` is the hash wearing a
+    # slash -- the shape the plan retires the `💬 #C89B1` badge for, put back
+    # by the only entity that had no name to seed from and did have text.
+    # Six words is enough to recognise one and short enough to be a URL; the
+    # collision suffix in `mint` handles two prompts that open alike.
+    prompt_id = mint(conn, "prompt", " ".join(text.split()[:6]) or f"prompt-{digest[:10]}")
     conn.execute(
         "INSERT INTO prompt(id, text, text_hash, created_at) VALUES(?, ?, ?, ?)",
         (prompt_id, text, digest, now),
@@ -248,6 +255,30 @@ def _carrier(conn, file_id: int, carrier: str, slot: str, payload, now: float, p
     )
 
 
+def _fill_from_graph(typed, recipe) -> None:
+    """Put the graph's readings into the blanks the text parser left.
+
+    Blanks only. A workflow that also wrote an A1111-compatible `parameters`
+    chunk has already been read from it, and that text is what the tool
+    itself reported it did -- the graph is what it was asked to do. Where
+    both speak, the report wins; the graph fills the silence.
+    """
+    for name in ("seed", "steps", "cfg", "denoise", "sampler", "scheduler", "width", "height"):
+        if getattr(typed, name, None) is None:
+            setattr(typed, name, getattr(recipe, name))
+    if not typed.model and recipe.model:
+        typed.model = recipe.model
+    if not typed.positive_prompt:
+        typed.positive_prompt = recipe.positive
+    if not typed.negative_prompt:
+        typed.negative_prompt = recipe.negative
+    if not typed.loras and recipe.loras:
+        typed.loras = [
+            {"name": name, "weight": model_weight, "clip_weight": clip_weight}
+            for name, model_weight, clip_weight in recipe.loras
+        ]
+
+
 def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     """The recipe: tool, prompt, weights, sampler settings, and the long tail."""
     retract(conn, file_id, "generation")
@@ -296,6 +327,21 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
         return
     typed = GenerationParams.from_parsed(parsed)
     out.tool, out.detection = typed.tool, typed.detection
+
+    # ComfyUI writes a node graph rather than a line of text, and metaparse
+    # reads text -- its ComfyUI adapter says so outright and only names the
+    # tool. So in a ComfyUI gallery every ComfyUI picture arrived with a tool
+    # and nothing else: no seed, no steps, no cfg, no sampler, no checkpoint
+    # row, no LoRA rows, nothing for the model page or LoRA synergy to join.
+    # The graph is right there in the file; this reads it.
+    if raw is not None:
+        recipe = graph_module.read(raw.text.get("prompt") or raw.text.get("workflow") or "")
+        if recipe is not None:
+            _fill_from_graph(typed, recipe)
+            # 'graph' says where the recipe came from, which is the whole
+            # point of recording detection: a value read out of a node graph
+            # is not the same claim as one a tool wrote down about itself.
+            typed.detection = out.detection = "graph"
 
     workflow_id = None
     if raw is not None and raw.text.get("workflow"):
