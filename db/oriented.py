@@ -26,7 +26,7 @@ but re-reads EXIF, rewrites the tag and copies even when there is nothing to
 do, which on a scan is once per file for no reason.
 
 The mapping is upstream's, not invented here
-(refs/python-pillow/Pillow/src/PIL/ImageOps.py:705-713).
+(python-pillow/Pillow@bb1d8e8 src/PIL/ImageOps.py:705-713).
 """
 
 from __future__ import annotations
@@ -60,8 +60,14 @@ def upright(image: Image.Image, orientation: int | None = None) -> Image.Image:
 
 
 def open_upright(path, orientation: int | None = None) -> Image.Image:
-    """Open a file and turn it the right way up."""
-    return upright(Image.open(path), orientation)
+    """Open a file and turn it the right way up.
+
+    Through the decoder door, so HEIC, JPEG XL and the RAW family arrive
+    here exactly as a JPEG does -- the suffix decides the decoder, never
+    the caller."""
+    from vision import decode
+
+    return upright(decode.open_still(path), orientation)
 
 
 def orientation_of(conn, file_id: int) -> int:

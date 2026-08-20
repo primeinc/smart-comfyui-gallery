@@ -6,11 +6,10 @@ video" cannot be checked, cropped or corrected, and re-running the detector
 cannot tell it has already done this part. The table had a producer and no
 caller: nothing had ever chosen a moment.
 
-Choosing is separate from decoding on purpose. A sample row says which moment
-matters and how it was picked; getting the pixels of that moment is the job
-runner's business and belongs with the thumbnail cache. Keeping them apart is
-what lets the sampling be re-run, resumed and reasoned about without touching
-a decoder.
+Choosing is separate from decoding on purpose. A sample row says which
+moment matters and how it was picked; `vision.decode.frames_at` fetches the
+pixels when a job wants them. Keeping them apart is what lets the sampling
+be re-run, resumed and reasoned about without touching a decoder.
 
 `policy` is the token that makes a re-run recognisable. Two runs at the same
 cadence produce the same rows and `add_sample` returns the existing ones; a
@@ -18,11 +17,9 @@ different cadence is a different set, side by side, because a job that
 sampled every two seconds and a job that sampled every ten did not look at
 the same video.
 
-**Pages are not sampled.** `derived_media_sample.kind` admits 'page' and a
-document has pages, but reading how many needs a PDF library and this project
-depends on none. Nothing writes a page sample; a PDF is scanned, addressed
-and searchable by its filename and nothing more. That is a gap with a name
-rather than an empty table nobody noticed.
+Pages are the same shape one medium over: `probe.pages_of` writes one
+'page' sample per PDF page, so a caption or a piece of OCR on a
+document has a moment to point at exactly as a face on a video does.
 """
 
 from __future__ import annotations

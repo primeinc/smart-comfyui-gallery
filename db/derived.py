@@ -548,7 +548,7 @@ def cluster(
     Chinese whispers, from the canonical implementation rather than from a
     description of it: a node's neighbours vote with their edge WEIGHTS
     summed per label, not with a count
-    (refs/davisking/dlib/dlib/clustering/chinese_whispers.h:48-53), and the
+    (davisking/dlib@f28ef50 dlib/clustering/chinese_whispers.h:48-53), and the
     winner is found with a strict `>` over a label-ordered map, so a tie
     goes to the lowest label id (:57-66).
 
@@ -689,7 +689,7 @@ def health(conn, run_id: int) -> dict:
     n-1), `b` is the smallest mean distance to any other cluster's members,
     and the score is `(b - a) / max(a, b)`; a singleton scores 0, and the
     number is only defined with at least two clusters
-    (refs/scikit-learn/scikit-learn/sklearn/metrics/cluster/
+    (scikit-learn/scikit-learn@bb9d35b sklearn/metrics/cluster/
     _unsupervised.py:149-199, 211-230, 311-323). Distance is cosine
     distance, `1 - <x, y>` on unit vectors. 1 is dense and separated, 0 is
     an arbitrary split, negative is faces in the wrong groups.

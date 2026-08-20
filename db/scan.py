@@ -29,6 +29,8 @@ import unicodedata
 import uuid
 from typing import NamedTuple
 
+from vision.decode import RAW_SUFFIXES as _RAW_SUFFIXES
+
 
 class Outcome(enum.Enum):
     """What a scanned path turned out to be.
@@ -148,31 +150,91 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
 
 #: Suffix to `file.kind`. A suffix that is not here is not media and is
 #: skipped: the library indexes pictures, not the .txt sitting beside them.
+#: Every suffix here is DECODABLE by this install -- the rule vision/decode.py
+#: states, held by tests/test_every_claimed_suffix_is_supported.py. Stills
+#: through Pillow and its shipped plugins, RAW through LibRaw, moving
+#: pictures through PyAV. `animated_image` for .gif/.apng is provisional by
+#: suffix; ingest refines it from the decoded frame count, because an
+#: animated WebP/AVIF/PNG wears the same suffix as its still sibling.
 KIND_BY_SUFFIX = {
+    # stills Pillow decodes natively or via registered plugins
     ".png": "image",
     ".jpg": "image",
     ".jpeg": "image",
+    ".jpe": "image",
+    ".jfif": "image",
+    ".jif": "image",
     ".webp": "image",
     ".bmp": "image",
+    ".dib": "image",
     ".tif": "image",
     ".tiff": "image",
     ".avif": "image",
     ".jxl": "image",
     ".heic": "image",
+    ".heif": "image",
+    ".hif": "image",
+    ".heics": "image",
+    ".heifs": "image",
+    ".jp2": "image",
+    ".j2k": "image",
+    ".jpf": "image",
+    ".jpx": "image",
+    ".mpo": "image",
+    ".psd": "image",
     ".gif": "animated_image",
     ".apng": "animated_image",
+    # the RAW family, via LibRaw
+    **dict.fromkeys(_RAW_SUFFIXES, "image"),
+    # video containers, via PyAV -- every one mux/demux/decode proven
     ".mp4": "video",
+    ".m4v": "video",
+    ".mov": "video",
+    ".qt": "video",
     ".mkv": "video",
     ".webm": "video",
-    ".mov": "video",
     ".avi": "video",
-    ".m4v": "video",
+    ".divx": "video",
+    ".mpg": "video",
+    ".mpeg": "video",
+    ".mpe": "video",
+    ".m2v": "video",
+    ".mjpeg": "video",
+    ".mjpg": "video",
+    ".ogv": "video",
+    ".ogm": "video",
+    ".vob": "video",
+    ".ts": "video",
+    ".mts": "video",
+    ".m2ts": "video",
+    ".m2t": "video",
+    ".3gp": "video",
+    ".3gpp": "video",
+    ".wmv": "video",
+    ".asf": "video",
+    ".flv": "video",
+    ".f4v": "video",
+    ".mxf": "video",
+    ".rm": "video",
+    ".rmvb": "video",
+    # audio, via PyAV
     ".mp3": "audio",
+    ".mp2": "audio",
     ".wav": "audio",
     ".flac": "audio",
     ".m4a": "audio",
     ".ogg": "audio",
+    ".oga": "audio",
+    ".mka": "audio",
+    ".weba": "audio",
+    ".caf": "audio",
+    ".au": "audio",
     ".opus": "audio",
+    ".aac": "audio",
+    ".wma": "audio",
+    ".aiff": "audio",
+    ".aif": "audio",
+    # documents, via pypdf
     ".pdf": "document",
 }
 

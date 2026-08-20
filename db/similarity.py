@@ -9,7 +9,7 @@ take about a day. FAISS does the same work in two seconds.
 index for one raises, which reads like a missing feature and is not:
 `faiss.contrib.exhaustive_search.range_search_gpu` says outright that "GPU
 does not support range search, so we emulate it with knn search + fallback
-to CPU index" (refs/facebookresearch/faiss/contrib/exhaustive_search.py:
+to CPU index" (facebookresearch/faiss@20f14b31 contrib/exhaustive_search.py:
 60-67), and does it exactly -- k nearest on the GPU, then a CPU range search
 for any query whose k-th neighbour still cleared the threshold, the two
 merged by `CombinerRangeKNN` (:110-116). The edge set is identical, which is
@@ -36,7 +36,7 @@ import os
 #: Neighbours asked of the GPU before the CPU is consulted for a query that
 #: had more. Upstream's own default. A GPU index caps k at 2048 for every
 #: index type and selection cost climbs above about 512
-#: (refs/facebookresearch/faiss.wiki, Faiss-on-the-GPU.md, "Limitations"),
+#: (facebookresearch/faiss.wiki@1354fdb Faiss-on-the-GPU.md, "Limitations"),
 #: so this already sits near the useful ceiling.
 GPU_K = 1024
 
@@ -83,7 +83,7 @@ def _inclusive(threshold: float) -> float:
     line is dropped by one and kept by the other -- the same library, the
     same number, two different sets of people. `nextafter` returns "the next
     floating-point value after x1 towards x2"
-    (refs/numpy/numpy/numpy/_core/code_generators/ufunc_docstrings.py:
+    (numpy/numpy@f58e879 numpy/_core/code_generators/ufunc_docstrings.py:
     3914-3930), so stepping the radius down by one representable value makes
     the strict comparison mean the inclusive one.
     """

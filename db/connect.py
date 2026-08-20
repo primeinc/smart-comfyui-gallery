@@ -69,7 +69,7 @@ def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
 
     Asking at all is skipped when the file is already in WAL: setting a mode
     the file already has never reaches the locking path
-    (refs/sqlite/sqlite/src/vdbe.c:8096 guards it on `eNew != eOld`), which
+    (sqlite/sqlite@b09c88c14 src/vdbe.c:8096 guards it on `eNew != eOld`), which
     makes the normal case free as well as safe.
     """
     deadline = time.monotonic() + seconds
@@ -98,7 +98,7 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
         # IMMEDIATE, not the default DEFERRED. Under legacy transaction
         # control sqlite3 opens a transaction before every INSERT, UPDATE,
         # DELETE and REPLACE, and `isolation_level` chooses which BEGIN it
-        # issues (refs/python/cpython/Doc/library/sqlite3.rst:2709-2720).
+        # issues (python/cpython@a646c99e Doc/library/sqlite3.rst:2709-2720).
         #
         # DEFERRED takes no lock until the first write inside the
         # transaction, so two writers can both start, both read, and one
@@ -110,7 +110,7 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     # Negative N means approximately abs(N*1024) BYTES rather than a page
-    # count (refs/sqlite/sqlite/src/pcache.c:284-288), so this is 64 MiB.
+    # count (sqlite/sqlite@b09c88c14 src/pcache.c:284-288), so this is 64 MiB.
     #
     # The default is 2 MiB, which is not a tuning detail on a library-sized
     # database -- it decides which query plans are viable. Measured on 100k
@@ -135,7 +135,7 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
         # `connect` itself with "database is locked" -- before doing any work,
         # on a database that was about to be fine. Setting a mode the file is
         # already in is a no-op that never reaches the locking path
-        # (refs/sqlite/sqlite/src/vdbe.c:8096, which guards it on eNew!=eOld).
+        # (sqlite/sqlite@b09c88c14 src/vdbe.c:8096, which guards it on eNew!=eOld).
         _ensure_wal(conn)
         # Set explicitly because the default is a COMPILE-TIME choice, not
         # SQLite's: this Python ships DEFAULT_WAL_SYNCHRONOUS=2, so every
@@ -145,7 +145,7 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
         # NORMAL is safe here, not merely faster. Under WAL the fsyncs move to
         # checkpoint rather than disappearing: the WAL is synced before its
         # content is written into the database, and the database is synced
-        # before the WAL is deleted (refs/sqlite/sqlite/src/wal.c:2175-2188).
+        # before the WAL is deleted (sqlite/sqlite@b09c88c14 src/wal.c:2175-2188).
         # So a crashed process cannot corrupt the file; a power loss can cost
         # the last few transactions. For a library whose durable facts are
         # re-derivable from disk, and whose authored rows are written one at a
@@ -179,7 +179,7 @@ def close(conn: sqlite3.Connection) -> None:
 
     `PRAGMA optimize` on close is the documented shape: in the usual case no
     ANALYZE runs at all, and when one does it is bounded
-    (refs/sqlite/sqlite/src/pragma.c:2465-2473). Without it the planner keeps
+    (sqlite/sqlite@b09c88c14 src/pragma.c:2465-2473). Without it the planner keeps
     running on whatever statistics existed when the library was smaller.
     """
     # A read-only or already-failing connection must still close. Losing a

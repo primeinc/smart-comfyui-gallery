@@ -25,7 +25,7 @@ def chinese_whispers(graph, vectors=None, *, sweeps: int = 20, **_):
 
     From the canonical implementation rather than a description of it: a
     node's neighbours vote with their edge WEIGHTS summed per label, not
-    with a count (refs/davisking/dlib/dlib/clustering/chinese_whispers.h:
+    with a count (davisking/dlib@f28ef50 dlib/clustering/chinese_whispers.h:
     48-53), and the winner is picked with a strict `>` over a label-ordered
     map, so a tie goes to the lowest label id (:57-66).
 
@@ -96,7 +96,7 @@ def spherical_kmeans(
 
     Nothing new is installed for this: FAISS is already here, ships k-means,
     and runs it on every GPU in the machine with `gpu=True`
-    (refs/facebookresearch/faiss.wiki, "Faiss building blocks", Clustering).
+    (facebookresearch/faiss.wiki@1354fdb, "Faiss building blocks", Clustering).
 
     `spherical=True` L2-normalises the centroids after each iteration, which
     is the version that means anything for face embeddings -- the vectors
@@ -137,7 +137,7 @@ def spherical_kmeans(
     # `max_points_per_centroid * k` -- 256 by default -- it silently
     # subsamples the training data, which here would mean clustering on part
     # of the library. Both knobs are ClusteringParameters fields settable
-    # through this constructor. (refs/facebookresearch/faiss.wiki/FAQ.md,
+    # through this constructor. (facebookresearch/faiss.wiki@1354fdb FAQ.md,
     # "Can I ignore WARNING clustering XXX points to YYY centroids?";
     # Faiss-building-blocks page, "Additional options".)
     kmeans = faiss.Kmeans(

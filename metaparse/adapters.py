@@ -104,7 +104,11 @@ def parse_infotext(text: str, tool: str, detection: str = "marker") -> ParsedMet
 
 
 class SwarmUIAdapter:
-    """SwarmUI: JSON in the `parameters` chunk / EXIF, keyed sui_image_params."""
+    """SwarmUI: JSON in the `parameters` chunk / EXIF, keyed sui_image_params.
+
+    Writer: mcmonkeyprojects/SwarmUI@2d50413
+    src/Text2Image/T2IParamInput.cs:424 builds {"sui_image_params": ...};
+    src/Media/ImageFile.cs:236 is SwarmUI's own read of the same key."""
 
     tool = "SwarmUI"
 
@@ -225,7 +229,11 @@ class SwarmUIAdapter:
 
 class FooocusAdapter:
     """Fooocus: `parameters` + `fooocus_scheme` chunks (or EXIF MakerNote scheme);
-    legacy builds used a bare `Comment`/`comment` JSON."""
+    legacy builds used a bare `Comment`/`comment` JSON.
+
+    Writer: lllyasviel/Fooocus@ae05379 modules/meta_parser.py:535
+    (FooocusMetadataParser) and :331 (its A1111-scheme sibling); the scheme
+    token itself is written beside the payload by the same module."""
 
     tool = "Fooocus"
     _JSON_KEYS: ClassVar = {"prompt", "negative_prompt"}
@@ -287,7 +295,12 @@ class FooocusAdapter:
 
 
 class InvokeAIAdapter:
-    """InvokeAI: `invokeai_metadata` (v3+), `sd-metadata` (v2) or `Dream` (v1)."""
+    """InvokeAI: `invokeai_metadata` (v3+), `sd-metadata` (v2) or `Dream` (v1).
+
+    Writer: invoke-ai/InvokeAI@1e3e8aa
+    invokeai/app/services/image_files/image_files_disk.py:149-160 --
+    PngInfo.add_text of invokeai_metadata / invokeai_workflow /
+    invokeai_graph."""
 
     tool = "InvokeAI"
 
@@ -379,7 +392,11 @@ def _split_bracket_prompt(prompt: str):
 
 
 class NovelAIAdapter:
-    """NovelAI: tEXt Software=NovelAI, Description + Comment JSON."""
+    """NovelAI: tEXt Software=NovelAI, Description + Comment JSON.
+
+    NovelAI's writer is closed source; the reference for the field layout
+    is receyuki/stable-diffusion-prompt-reader@32b2eea (its NovelAI
+    parser), corroborated by real exports in this suite's fixtures."""
 
     tool = "NovelAI"
 
@@ -438,7 +455,11 @@ class NovelAIAdapter:
 
 
 class EasyDiffusionAdapter:
-    """Easy Diffusion: individual PNG chunks, or one JSON UserComment."""
+    """Easy Diffusion: individual PNG chunks, or one JSON UserComment.
+
+    Writer: easydiffusion/easydiffusion@19c805e
+    ui/easydiffusion/utils/save_utils.py:130 (save_images_to_disk; the
+    embed path stores the same dict save_dicts writes as json/txt)."""
 
     tool = "Easy Diffusion"
     # spaced-key variant -> snake variant (older vs newer exports)
@@ -497,7 +518,11 @@ class EasyDiffusionAdapter:
 
 
 class DrawThingsAdapter:
-    """Draw Things: JSON inside XMP exif:UserComment."""
+    """Draw Things: JSON inside XMP exif:UserComment.
+
+    Draw Things is closed source; the reference for the layout is
+    receyuki/stable-diffusion-prompt-reader@32b2eea (its DrawThings
+    parser), corroborated by real exports in this suite's fixtures."""
 
     tool = "Draw Things"
 
@@ -543,10 +568,13 @@ class DrawThingsAdapter:
 
 class ComfyUIAdapter:
     """ComfyUI: `prompt` (API graph) / `workflow` (UI graph) JSON chunks,
-    or the WebP EXIF Make/Model encoding. Workflow handling itself lives in
-    the gallery's existing pipeline; this adapter only identifies the tool
-    (and parses the infotext when a node also wrote an A1111-compatible
-    `parameters` chunk)."""
+    or the WebP EXIF Make/Model encoding. This adapter identifies the tool
+    and parses the infotext when a node also wrote an A1111-compatible
+    `parameters` chunk; the graph itself is read by db/graph.py.
+
+    Writer: Comfy-Org/ComfyUI@a9ab2b6 nodes.py:1701-1706 --
+    PngInfo.add_text("prompt", json.dumps(prompt)) plus one chunk per
+    extra_pnginfo key, of which the UI supplies "workflow"."""
 
     tool = "ComfyUI"
 
@@ -571,7 +599,12 @@ class ComfyUIAdapter:
 
 class A1111Adapter:
     """A1111 / Forge: infotext in the `parameters` chunk, EXIF UserComment,
-    or a GIF comment."""
+    or a GIF comment.
+
+    Writer: AUTOMATIC1111/stable-diffusion-webui@82a973c
+    modules/processing.py:705 (create_infotext); Forge's stealth variant is
+    lllyasviel/stable-diffusion-webui-forge@dfdcbab
+    modules/stealth_infotext.py:7 (add_stealth_pnginfo)."""
 
     tool = "A1111 / Forge"
 

@@ -8,7 +8,7 @@ resumable because the row is the truth.
 
 Handlers are synchronous on purpose: sqlite is synchronous, and Litestar
 runs sync handlers on its thread pool when told so
-(refs/litestar-org/litestar/docs/topics/sync-vs-async.rst). Each request
+(litestar-org/litestar@64cd7da docs/topics/sync-vs-async.rst). Each request
 opens its own connection, which is what makes that safe -- sqlite3
 connections refuse cross-thread use, and the pool gives no thread pinning.
 """

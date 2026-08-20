@@ -8,11 +8,8 @@ outstanding, and that a worker which lost its lease cannot still write.
 """
 
 import json
-import os
 import pathlib
-import shutil
 import sqlite3
-import subprocess
 
 import pytest
 from PIL import Image
@@ -914,54 +911,40 @@ def test_a_setting_keeps_its_type(db):
 # --- containers: the media Pillow cannot open -------------------------------
 
 
-def _ffmpeg():
-    """The encoder used to build the fixtures, or None."""
-    return os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg")
+def _write_clip(path, *, seconds: int, rate: int = 15, size=(320, 180), rotation: int = 0) -> None:
+    """A real H.264 clip, encoded in-process through the same libraries the
+    reader uses. `rotation` writes the container display matrix the way a
+    phone does (VideoStream.set_display_rotation; the write->decode round
+    trip is pinned upstream in PyAV-Org/PyAV@040da79 tests/test_display_matrix.py)."""
+    import av
+    import numpy as np
 
-
-needs_ffmpeg = pytest.mark.skipif(
-    _ffmpeg() is None or probe.prober() is None,
-    reason="ffmpeg and ffprobe are needed to make and read a real video",
-)
+    width, height = size
+    with av.open(str(path), "w") as container:
+        stream = container.add_stream("h264", rate=rate)
+        stream.width, stream.height = width, height
+        stream.pix_fmt = "yuv420p"
+        if rotation:
+            stream.set_display_rotation(rotation)
+        for n in range(seconds * rate):
+            frame = av.VideoFrame.from_ndarray(
+                np.full((height, width, 3), (n * 8) % 256, dtype=np.uint8), format="rgb24"
+            )
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
 
 
 @pytest.fixture
 def a_clip(tmp_path):
-    """Three seconds of real video, and the same clip marked to be turned."""
-    ff = _ffmpeg()
-    assert ff is not None, "the skip mark should have kept this from running"
+    """Three seconds of real video, and the same shape marked to be turned."""
     landscape, portrait = tmp_path / "clip.mp4", tmp_path / "portrait.mp4"
-    # Timeouts because ffmpeg hangs readily, and a fixture that hangs takes
-    # the suite with it -- which is what test_programs_are_started_safely
-    # exists to say, and it caught these.
-    subprocess.run(
-        [
-            ff,
-            "-v",
-            "error",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc=size=320x180:rate=15:duration=3",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            str(landscape),
-        ],
-        check=True,
-        timeout=60,
-    )
-    subprocess.run(
-        [ff, "-v", "error", "-y", "-display_rotation", "90", "-i", str(landscape), "-c", "copy", str(portrait)],
-        check=True,
-        timeout=60,
-    )
+    _write_clip(landscape, seconds=3)
+    _write_clip(portrait, seconds=3, rotation=90)
     return landscape, portrait
 
 
-@needs_ffmpeg
 def test_a_video_knows_its_own_length_and_size(db, a_library, a_clip):
     """`file.duration` had no producer anywhere in the package, and the DDL
     said so rather than fixing it. A gallery whose plan says image and video
@@ -991,7 +974,6 @@ def test_a_video_knows_its_own_length_and_size(db, a_library, a_clip):
     assert "FrameRate" in fields, "a video that cannot say its frame rate is not searchable by it"
 
 
-@needs_ffmpeg
 def test_a_portrait_video_is_not_filed_as_landscape(db, a_library, a_clip):
     """A phone records landscape and writes a display matrix saying to turn
     it. ffprobe reports the stored size and the rotation separately, so a
@@ -1019,7 +1001,6 @@ def test_a_portrait_video_is_not_filed_as_landscape(db, a_library, a_clip):
 def test_a_file_the_prober_cannot_read_costs_only_that_file(db, a_library, tmp_path):
     """One damaged video must not end the scan around it, and 'nothing could
     be read' has to be distinguishable from 'it had nothing to say'."""
-    from db import probe
 
     broken = tmp_path / "broken.mp4"
     broken.write_bytes(b"not a video at all")
@@ -1220,7 +1201,6 @@ def test_something_that_is_not_a_graph_is_not_read_as_one(payload):
 # --- choosing the moments of a video ----------------------------------------
 
 
-@needs_ffmpeg
 def test_a_video_has_its_moments_chosen(db, a_library, tmp_path):
     """`derived_media_sample` had a producer and no caller.
 
@@ -1228,28 +1208,8 @@ def test_a_video_has_its_moments_chosen(db, a_library, tmp_path):
     in this video" cannot be checked, cropped or corrected, and a re-run
     cannot tell it has already done this part.
     """
-    ff = _ffmpeg()
-    assert ff is not None, "the needs_ffmpeg mark let a machine without ffmpeg through"
     clip = tmp_path / "eleven.mp4"
-    subprocess.run(
-        [
-            ff,
-            "-v",
-            "error",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc=size=160x90:rate=10:duration=11",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            str(clip),
-        ],
-        check=True,
-        timeout=60,
-    )
+    _write_clip(clip, seconds=11, rate=10, size=(160, 90))
     file_id = scan.mint(db, "file", "eleven")
     db.execute(
         "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"

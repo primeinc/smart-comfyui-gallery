@@ -55,9 +55,18 @@ def _verify_item(conn, file_id: int, payload: dict, now: float) -> None:
 
 
 def submit_faces(conn, now: float, *, models_dir: str) -> int:
-    """Face detection over every present image, as an explicit job."""
+    """Face detection over every present picture and video, as one job.
+
+    A face on a video is a face on a sampled frame; the handler routes by
+    the file kind, and the schema already keys every face to the moment it
+    was seen (`derived_face_instance.sample_id`).
+    """
     items = [
-        row[0] for row in conn.execute("SELECT id FROM file WHERE kind = 'image' AND missing_since IS NULL ORDER BY id")
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+        )
     ]
     return jobs.submit(conn, "detect_faces", now, payload={"models_dir": models_dir}, items=items)
 
@@ -74,7 +83,12 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
     backend = _BACKENDS.get(models_dir)
     if backend is None:
         backend = _BACKENDS[models_dir] = OpenCVFaceBackend(models_dir)
-    detect.harvest(conn, backend, file_id, detect.path_of(conn, file_id), now)
+    kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+    path = detect.path_of(conn, file_id)
+    if kind == "video":
+        detect.harvest_video(conn, backend, file_id, path, now)
+    else:
+        detect.harvest(conn, backend, file_id, path, now)
 
 
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:

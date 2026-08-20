@@ -337,12 +337,12 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     typed = GenerationParams.from_parsed(parsed)
     out.tool, out.detection = typed.tool, typed.detection
 
-    # ComfyUI writes a node graph rather than a line of text, and metaparse
-    # reads text -- its ComfyUI adapter says so outright and only names the
-    # tool. So in a ComfyUI gallery every ComfyUI picture arrived with a tool
-    # and nothing else: no seed, no steps, no cfg, no sampler, no checkpoint
-    # row, no LoRA rows, nothing for the model page or LoRA synergy to join.
-    # The graph is right there in the file; this reads it.
+    # ComfyUI writes its graphs as PNG text chunks -- Comfy-Org/ComfyUI@
+    # a9ab2b6 nodes.py:1701-1706 add_text("prompt", ...) plus extra_pnginfo
+    # ("workflow") -- and metaparse reads text, so its adapter only names
+    # the tool. Every ComfyUI picture therefore arrived with a tool and
+    # nothing else: no seed, steps, cfg, sampler, checkpoint or LoRA rows.
+    # The graph is right there in the chunk; db/graph.py reads it.
     if raw is not None:
         recipe = graph_module.read(raw.text.get("prompt") or raw.text.get("workflow") or "")
         if recipe is not None:
@@ -451,6 +451,49 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
 _PROBED = ("video", "animated_image", "audio")
 
 
+#: Formats whose byte-identical suffix covers both still and moving files
+#: (immich-app/immich@f88fb62 server/src/utils/mime-types.ts:72).
+_POSSIBLY_ANIMATED = {
+    ".png",
+    ".apng",
+    ".gif",
+    ".webp",
+    ".avif",
+    ".heic",
+    ".heif",
+    ".heics",
+    ".heifs",
+    ".jxl",
+}
+
+#: What each pipeline kind is called by the sniffer's family word.
+_FAMILY = {"image": "image", "animated_image": "image", "video": "video", "audio": "audio", "document": "document"}
+
+#: Sniffs that cannot overrule the suffix's kind. An MJPEG stream opens
+#: with a complete JPEG -- its first frame -- so a JPEG signature against a
+#: claimed video proves nothing either way.
+_INCONCLUSIVE = {("jpeg", "video")}
+
+
+def _really_animated(path) -> bool | None:
+    """Whether the decoded picture moves; None when it will not decode.
+
+    Suffixes that cannot animate are not opened at all -- a JPEG never
+    moves, and opening every one to learn that would put a decode on the
+    scan hot path for nothing.
+    """
+    import pathlib
+
+    if pathlib.Path(path).suffix.lower() not in _POSSIBLY_ANIMATED:
+        return None
+    from vision import decode
+
+    try:
+        return decode.is_animated(decode.open_still(path))
+    except (OSError, ValueError):
+        return None
+
+
 def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ingested:
     """Read one file completely: what made it, and how it was taken.
 
@@ -459,10 +502,46 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     `file.duration` had no producer in the whole package and the DDL said so
     rather than fixing it.
     """
+    # The Pillow plugins register process-wide, and metaparse's container
+    # reader opens files with plain Image.open -- a HEIC that arrives before
+    # any decode call would otherwise be unreadable to it.
+    from vision import decode as _decode
+    from vision import sniff as sniff_module
+
+    _decode.ensure_decoders()
+
     out = Ingested()
     if kind is None:
         kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+    kind = str(kind)
+
+    # The suffix proposed this kind; the bytes get the casting vote. A
+    # library accumulates liars -- an MP4 exported as .jpg, a HEIC renamed
+    # on share -- and routing them by suffix feeds the wrong reader, then
+    # records "unreadable" about a perfectly good file. The sniff is a
+    # 512-byte read (vision/sniff.py, patterns from whatwg/mimesniff@39aa535);
+    # the reader that follows is the proof.
+    suffix_claimed = None
+    sniffed = sniff_module.sniff_path(path)
+    if sniffed is not None:
+        family, token = sniffed
+        if (
+            family != _FAMILY.get(kind, kind)
+            and family in ("image", "video", "audio", "document")
+            and (token, kind) not in _INCONCLUSIVE
+        ):
+            suffix_claimed = kind
+            kind = "image" if family == "image" else family
+            conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
+
     generation(conn, file_id, path, now, out)
+
+    # Written AFTER generation(), which retracts the whole 'container'
+    # source before re-parsing -- facts written before it were deleted by it.
+    if sniffed is not None:
+        _param(conn, file_id, "container", "SniffedFormat", sniffed[1])
+    if suffix_claimed is not None:
+        _param(conn, file_id, "container", "SuffixClaimed", suffix_claimed)
 
     if kind in _PROBED:
         container = probe_module.read(path)
@@ -491,7 +570,15 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # PDF meant `unreadable` reported "Pillow cannot open this" for every one
     # of them -- true, uninteresting, and it buried the message from the
     # reader that could.
-    if kind == "image":
+    if kind in ("image", "animated_image"):
+        # The suffix guessed; the decoded file answers. An animated WebP,
+        # AVIF or PNG wears a still suffix, and a single-frame GIF wears an
+        # animated one -- n_frames is the fact, so the row records it.
+        moving = _really_animated(path)
+        if moving is not None and moving != (kind == "animated_image"):
+            kind = "animated_image" if moving else "image"
+            conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
+    if kind in ("image", "animated_image"):
         found = capture_module.read(path)
         out.unreadable = found.unreadable
         if found.orientation in capture_module.TRANSPOSED:

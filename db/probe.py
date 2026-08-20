@@ -6,49 +6,43 @@ were NULL for every video in the library -- while the DDL sold both as facts
 about the pixels on disk. A gallery whose plan says image and video are equal
 citizens cannot have one of them unable to state its own length.
 
-ffprobe is the reader, run once per file at ingest. Three things about it
-decide the shape here, all from its own documentation.
+PyAV is the reader: FFmpeg's own libavformat, shipped inside the `av` wheel,
+so probing needs no external binary and "ffprobe is not installed" stopped
+being a state this application can be in. Opening carries a timeout for the
+same reason the old subprocess did -- a truncated file or network storage
+that stops answering costs the one file, never the scan around it
+(`av.open(timeout=...)`, PyAV-Org/PyAV@040da79, av.open docstring).
 
-**JSON, and fields that may simply be absent.** `-output_format json`
-(refs/FFmpeg/FFmpeg/doc/ffprobe.texi:86-95) and `-show_optional_fields`
-defaults to `auto`, under which "JSON and XML omit the printing of fields with
-invalid or non-applicable values" (:347-351). So every field is read with a
-default; none may be indexed.
+**A file that will not open is a fact, not an error.** `av.FFmpegError` --
+InvalidDataError for bytes that are not media -- is recorded as
+`unreadable` and the scan continues; one bad video costs that video.
 
-**A positive exit code means "not media".** "If the url cannot be opened or
-recognized as a multimedia file, a positive exit code is returned" (:27-29).
-That is a fact about the file, not an error to raise: one unreadable video
-must cost that video, not the scan around it.
-
-**Stored dimensions are not displayed dimensions.** A phone records landscape
-and writes a display matrix saying to turn it. ffprobe reports the stored
-size and the rotation separately -- verified against a real file, a 320x180
-stream carrying `side_data_list: [{"side_data_type": "Display Matrix",
-"rotation": 90}]` -- so a reader that takes width and height at face value
-files every portrait video in the library as landscape. This is the same
-defect as ignoring EXIF orientation, one medium over.
+**Stored dimensions are not displayed dimensions.** A phone records
+landscape and writes a display matrix saying to turn it. PyAV surfaces the
+matrix on the decoded frame as `VideoFrame.rotation`
+(PyAV-Org/PyAV@040da79 av/video/frame.py:677-684), so the first frame is
+decoded here and the stored width and height are swapped when it asks for a
+quarter turn -- the same defect as ignoring EXIF orientation, one medium
+over. The decode also proves the stream's codec actually answers, which a
+header parse never could.
 """
 
 from __future__ import annotations
 
-import json
 import math
 import os
-import shutil
-import subprocess
-import sys
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 import pypdf
 import pypdf.errors
 
-#: Both tools hang readily on a truncated file, on a path that has gone away
-#: mid-read, and on network storage that stops answering. A timeout costs the
-#: one file; no timeout costs the scan.
-TIMEOUT = 30
+#: Seconds to wait for bytes before an unreadable file is a finding.
+TIMEOUT = 30.0
 
-#: Set to point at a particular ffprobe. Without it the one on PATH is used.
-ENV_VAR = "FFPROBE_PATH"
+#: Microseconds per second: `InputContainer.duration` is in AV_TIME_BASE
+#: units (PyAV-Org/PyAV@040da79 av/container/input.py:123-127).
+_AV_TIME_BASE = 1_000_000
 
 
 @dataclass
@@ -69,19 +63,10 @@ class Probed:
         return not (self.params or self.duration or self.width)
 
 
-def prober() -> str | None:
-    """Where ffprobe is, or None. Looked up per call rather than cached, so
-    installing it does not require restarting the application."""
-    named = os.environ.get(ENV_VAR)
-    if named and os.path.isfile(named):
-        return named
-    return shutil.which("ffprobe")
-
-
 def _number(value) -> float | None:
-    """ffprobe writes numbers as JSON strings. NaN and infinities are refused
-    for the reason `capture._number` gives: a range facet silently drops a row
-    it cannot compare, so storing one is worse than storing nothing."""
+    """A finite number or nothing. NaN and infinities are refused for the
+    reason `capture._number` gives: a range facet silently drops a row it
+    cannot compare, so storing one is worse than storing nothing."""
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -91,116 +76,75 @@ def _number(value) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def _rate(value) -> float | None:
-    """`r_frame_rate` is a rational string: "30000/1001", and "0/0" when the
-    container does not know. Stored as a number because "is this 60fps" is a
-    question, and "30000/1001" is not an answer anything can filter on."""
-    if not isinstance(value, str) or "/" not in value:
-        return _number(value)
-    top, _, bottom = value.partition("/")
-    top, bottom = _number(top), _number(bottom)
-    if not top or not bottom:
+def _first_frame(container, stream):
+    """The first decodable frame, or None -- never an exception.
+
+    Damaged streams are what a real library contains; a stream whose
+    header parses but whose frames will not decode still probes, it just
+    cannot say which way up it is.
+    """
+    from av.error import FFmpegError
+
+    try:
+        for frame in container.decode(stream):
+            return frame
+    except (FFmpegError, OSError, ValueError):
         return None
-    return top / bottom
+    return None
 
 
-def _rotation(stream) -> int:
-    """Degrees the display matrix asks for, normalised to 0/90/180/270."""
-    for entry in stream.get("side_data_list") or ():
-        if not isinstance(entry, dict):
-            continue
-        turn = _number(entry.get("rotation"))
-        if turn is not None:
-            return round(turn) % 360
-    # Containers written before the display matrix put it in a tag instead.
-    turn = _number((stream.get("tags") or {}).get("rotate"))
-    return round(turn) % 360 if turn is not None else 0
-
-
-def read(path) -> Probed:
+def read(path: str | os.PathLike[str]) -> Probed:
     """Everything one container says, as columns plus a long tail."""
+    import av
+    from av.error import FFmpegError
+
     out = Probed()
-    tool = prober()
-    if tool is None:
-        out.unreadable = (
-            f"no ffprobe on PATH and {ENV_VAR} is not set, so this file cannot state its length or its size"
-        )
-        return out
-
     try:
-        finished = subprocess.run(
-            [
-                tool,
-                "-v",
-                "error",
-                "-output_format",
-                "json",
-                "-show_format",
-                "-show_streams",
-                os.fspath(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT,
-            # Without it every file in a scan flashes a console window over
-            # whatever the person is looking at.
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as problem:
+        with av.open(os.fspath(path), "r", timeout=TIMEOUT, metadata_errors="replace") as container:
+            video = container.streams.video[0] if container.streams.video else None
+            audio = container.streams.audio[0] if container.streams.audio else None
+
+            # The container's duration, not the stream's: a stream
+            # frequently omits it -- matroska routinely does -- while the
+            # container almost always carries it.
+            if container.duration is not None:
+                out.duration = _number(container.duration / _AV_TIME_BASE)
+            elif video is not None and video.duration is not None and video.time_base:
+                out.duration = _number(video.duration * video.time_base)
+
+            turn = 0
+            if video is not None:
+                frame = _first_frame(container, video)
+                if frame is not None:
+                    turn = int(frame.rotation) % 360
+                width = int(video.codec_context.width or 0) or None
+                height = int(video.codec_context.height or 0) or None
+                if turn in (90, 270):
+                    width, height = height, width
+                out.width, out.height = width, height
+                if turn:
+                    out.params.append(("Rotation", str(turn), float(turn)))
+
+            for key, value in (
+                ("Format", container.format.name if container.format else None),
+                ("BitRate", container.bit_rate or None),
+                ("VideoCodec", video.codec_context.name if video is not None else None),
+                ("PixelFormat", video.codec_context.pix_fmt if video is not None else None),
+                ("FrameCount", (video.frames or None) if video is not None else None),
+                ("AudioCodec", audio.codec_context.name if audio is not None else None),
+                ("SampleRate", audio.codec_context.sample_rate if audio is not None else None),
+                ("Channels", audio.codec_context.channels if audio is not None else None),
+            ):
+                if value is None or str(value).strip() == "":
+                    continue
+                out.params.append((key, str(value).strip(), _number(value)))
+
+            if video is not None:
+                rate = video.average_rate
+                if isinstance(rate, Fraction) and rate:
+                    out.params.append(("FrameRate", f"{float(rate):.6g}", float(rate)))
+    except (FFmpegError, OSError, ValueError) as problem:
         out.unreadable = f"{type(problem).__name__}: {problem}"
-        return out
-
-    if finished.returncode != 0:
-        out.unreadable = (finished.stderr or "ffprobe declined the file").strip()[:400]
-        return out
-    try:
-        document = json.loads(finished.stdout or "{}")
-    except ValueError as problem:
-        out.unreadable = f"ffprobe wrote something that is not JSON: {problem}"
-        return out
-
-    container = document.get("format") or {}
-    streams = [s for s in document.get("streams") or () if isinstance(s, dict)]
-    video = next((s for s in streams if s.get("codec_type") == "video"), None)
-    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
-
-    # The container's duration, not the stream's. A stream frequently omits it
-    # -- matroska routinely does -- while the container almost always carries
-    # it, so preferring the stream leaves the common case with no length.
-    out.duration = _number(container.get("duration"))
-    if out.duration is None and video is not None:
-        out.duration = _number(video.get("duration"))
-
-    if video is not None:
-        width, height = video.get("width"), video.get("height")
-        turn = _rotation(video)
-        if turn in (90, 270):
-            width, height = height, width
-        out.width = int(width) if isinstance(width, int) else None
-        out.height = int(height) if isinstance(height, int) else None
-        if turn:
-            out.params.append(("Rotation", str(turn), float(turn)))
-
-    for key, value in (
-        ("Format", container.get("format_name")),
-        ("BitRate", container.get("bit_rate")),
-        ("VideoCodec", (video or {}).get("codec_name")),
-        ("PixelFormat", (video or {}).get("pix_fmt")),
-        ("FrameCount", (video or {}).get("nb_frames")),
-        ("AudioCodec", (audio or {}).get("codec_name")),
-        ("SampleRate", (audio or {}).get("sample_rate")),
-        ("Channels", (audio or {}).get("channels")),
-    ):
-        if value is None or str(value).strip() == "":
-            continue
-        out.params.append((key, str(value).strip(), _number(value)))
-
-    if video is not None:
-        rate = _rate(video.get("r_frame_rate"))
-        if rate:
-            out.params.append(("FrameRate", f"{rate:.6g}", rate))
-
     return out
 
 
@@ -209,13 +153,14 @@ def document(path) -> Probed:
 
     A document was the last second-class citizen: `.pdf` is a kind the
     scanner recognises, and a document that cannot say how long it is has
-    exactly the hole a video had before ffprobe was wired in -- `page` was a
-    value in the sample table's CHECK that nothing could ever write.
+    exactly the hole a video had before the container reader was wired in
+    -- `page` was a value in the sample table's CHECK that nothing could
+    ever write.
 
     `strict=False` is pypdf's default and the right one here: "a lot of PDF
     files are not strictly following the specification", and the forgiving
     reader "will try to be forgiving and do something reasonable"
-    (refs/py-pdf/pypdf/docs/user/robustness.md:36-50). A library is full of
+    (py-pdf/pypdf@0feaf26 docs/user/robustness.md:36-50). A library is full of
     files nobody validated, and refusing to count the pages of a slightly
     malformed one helps no one.
 

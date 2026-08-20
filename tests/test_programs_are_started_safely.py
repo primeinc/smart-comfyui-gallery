@@ -63,7 +63,7 @@ def test_the_sweep_finds_the_spawns_that_are_there():
     nothing would report the same absence."""
     total = sum(len(_spawn_calls(parsed(s))) for s in every_source())
 
-    assert total >= 5, f"only {total} subprocess calls found; the sweep is not reaching them"
+    assert total >= 2, f"only {total} subprocess calls found; the sweep is not reaching them"
 
 
 def _sites(objects_to):

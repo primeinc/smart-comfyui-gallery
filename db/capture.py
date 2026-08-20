@@ -91,7 +91,7 @@ _NOT_A_FINDING = frozenset({"params", "binaries", "unrecorded", "homeless", "unr
 
 #: Orientations that turn the frame a quarter, so the stored width and height
 #: are not the displayed ones. 5 through 8 all do
-#: (refs/exiftool/exiftool/lib/Image/ExifTool/Exif.pm:291-300); 2 and 4 mirror
+#: (exiftool/exiftool@2200871 lib/Image/ExifTool/Exif.pm:291-300); 2 and 4 mirror
 #: without turning, and 3 is a half turn.
 TRANSPOSED = frozenset({5, 6, 7, 8})
 
@@ -227,7 +227,7 @@ def _timestamp(value, offset_min) -> float | None:
 def _degrees(value, ref) -> float | None:
     """Degrees/minutes/seconds plus a hemisphere letter to signed decimal.
 
-    The tag is `Count => 3` (refs/exiftool/exiftool/lib/Image/ExifTool/GPS.pm:79)
+    The tag is `Count => 3` (exiftool/exiftool@2200871 lib/Image/ExifTool/GPS.pm:79)
     and bodies write fewer. Indexing all three unconditionally raised
     IndexError out of `read` and took the whole ingest pass with it, on one
     photograph. Upstream reads "1-3 decimal numbers" and treats the absent
@@ -385,7 +385,7 @@ def _read(path, out: Capture) -> Capture:
         # 0x8827 is int16u, so it cannot express an ISO above 65535 and a body
         # shooting higher writes 65535 there and the real figure in
         # RecommendedExposureIndex (int32u)
-        # (refs/exiftool/exiftool/lib/Image/ExifTool/Exif.pm:2145-2154).
+        # (exiftool/exiftool@2200871 lib/Image/ExifTool/Exif.pm:2145-2154).
         # Preferring 0x8827 unconditionally therefore files every high-ISO
         # frame in the library at exactly 65535.
         iso = merged.get(ExifTags.Base.ISOSpeedRatings)
@@ -414,7 +414,7 @@ def _read(path, out: Capture) -> Capture:
                 # GPSAltitudeRef is a byte, not a letter, and Exif 3.0 gives it
                 # four values, not two: 0/1 are above/below the ellipsoid and
                 # 2/3 above/below the sea-level reference
-                # (refs/exiftool/exiftool/lib/Image/ExifTool/GPS.pm:113-116).
+                # (exiftool/exiftool@2200871 lib/Image/ExifTool/GPS.pm:113-116).
                 # Testing only for 1 stores a below-sea-level frame as above it.
                 #
                 # GPSAltitude is rational64u -- unsigned -- so the sign lives

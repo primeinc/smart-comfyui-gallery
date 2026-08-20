@@ -75,6 +75,38 @@ def harvest(
     )
 
 
+def harvest_video(conn, backend, file_id: int, path, now: float, *, floor: float = FLOOR) -> dict[str, int]:
+    """Faces across one video: choose the moments, look at each, record.
+
+    The moments come from `db.sample` -- persisted `derived_media_sample`
+    rows, so every face found here says which moment it was looking at and
+    a re-run recognises its own work. Frames arrive upright through the
+    decoder door, display matrix applied, for the same reason stills go
+    through `oriented`.
+    """
+    from vision import decode
+
+    from . import sample
+
+    sample.frames(conn, file_id, path)
+    chosen = sample.taken(conn, file_id)
+    by_offset = {offset: sample_id for sample_id, offset, _ in chosen}
+    found = 0
+    for offset_ms, image in decode.frames_at(path, sorted(by_offset)):
+        written = harvest(
+            conn,
+            backend,
+            file_id,
+            path,
+            now,
+            floor=floor,
+            sample_id=by_offset[offset_ms],
+            image=image,
+        )
+        found += len(written)
+    return {"moments": len(chosen), "faces": found}
+
+
 def path_of(conn, file_id: int) -> str:
     """Where this file's bytes are, composed from the folder tree.
 

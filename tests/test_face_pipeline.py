@@ -142,7 +142,7 @@ def test_upright_reads_the_exif_tag_out_of_the_file_itself():
 def test_every_stored_orientation_comes_back_upright():
     """All seven non-trivial EXIF orientations, each stored by the inverse
     transform and recovered by the mapping Pillow itself uses
-    (refs/python-pillow/Pillow/src/PIL/ImageOps.py:705-713)."""
+    (python-pillow/Pillow@bb1d8e8 src/PIL/ImageOps.py:705-713)."""
     undo = {
         2: Image.Transpose.FLIP_LEFT_RIGHT,
         3: Image.Transpose.ROTATE_180,
@@ -373,7 +373,7 @@ def faces_on_file(conn) -> list[int]:
 
 def rousseeuw(unit, labels) -> float:
     """The definition, written independently of the implementation
-    (refs/scikit-learn/scikit-learn/sklearn/metrics/cluster/
+    (scikit-learn/scikit-learn@bb9d35b sklearn/metrics/cluster/
     _unsupervised.py:211-230): a = mean distance to the rest of the own
     cluster, b = smallest mean distance to another whole cluster."""
     distance = 1.0 - unit @ unit.T
