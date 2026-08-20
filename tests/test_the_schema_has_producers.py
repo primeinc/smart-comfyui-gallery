@@ -53,12 +53,25 @@ def a_library(db, tmp_path):
 # --- addressing ------------------------------------------------------------
 
 
+def claimed(conn, owner, now):
+    """jobs.claim with "something was runnable" asserted once."""
+    taken = jobs.claim(conn, owner, now)
+    assert taken is not None, "nothing was runnable"
+    return taken
+
+
+def slug_of(conn, entity_id):
+    addressed = naming.entity_slug(conn, entity_id)
+    assert addressed is not None, f"entity {entity_id} has no address"
+    return addressed[1]
+
+
 def test_a_rename_keeps_the_old_address_working(db, a_library):
     person = authored.person(db, None, NOW)
-    first = naming.entity_slug(db, person)[1]
+    first = slug_of(db, person)
 
     authored.name_person(db, person, "Ilse", NOW)
-    current = naming.entity_slug(db, person)[1]
+    current = slug_of(db, person)
     assert current == "ilse"
 
     assert naming.resolve(db, "person", "ilse") == (person, True)
@@ -95,8 +108,8 @@ def test_renaming_to_a_taken_name_does_not_steal_the_address(db, a_library):
     second = authored.person(db, "Rook", NOW)
     authored.name_person(db, second, "Ilse", NOW + 1)
 
-    assert naming.entity_slug(db, first)[1] == "ilse"
-    assert naming.entity_slug(db, second)[1] == "ilse-2"
+    assert slug_of(db, first) == "ilse"
+    assert slug_of(db, second) == "ilse-2"
 
 
 def test_a_rename_that_changes_nothing_writes_no_history(db, a_library):
@@ -510,7 +523,7 @@ def test_a_job_reports_its_own_progress_from_the_row(db, a_library):
 
 def test_a_job_may_not_report_success_with_work_outstanding(db, a_library):
     jobs.submit(db, "scan", NOW, items=[1, 2])
-    job_id, fence = jobs.claim(db, "worker-a", NOW)
+    job_id, fence = claimed(db, "worker-a", NOW)
     jobs.finish_item(db, job_id, fence, 1)
 
     with pytest.raises(ValueError, match="unfinished"):
@@ -525,7 +538,7 @@ def test_cancelling_asks_and_the_runner_answers(db, a_library):
     """Flipping the state from outside would mark work finished that is
     still running."""
     jobs.submit(db, "scan", NOW, items=[1, 2])
-    job_id, fence = jobs.claim(db, "worker-a", NOW)
+    job_id, fence = claimed(db, "worker-a", NOW)
     jobs.cancel(db, job_id)
 
     assert jobs.cancelled(db, job_id)
@@ -537,7 +550,7 @@ def test_cancelling_asks_and_the_runner_answers(db, a_library):
 
 def test_a_resumed_job_repeats_nothing(db, a_library):
     jobs.submit(db, "scan", NOW, items=[1, 2, 3, 4])
-    job_id, fence = jobs.claim(db, "worker-a", NOW)
+    job_id, fence = claimed(db, "worker-a", NOW)
     jobs.finish_item(db, job_id, fence, 1)
     jobs.finish_item(db, job_id, fence, 2)
 
@@ -553,10 +566,10 @@ def test_an_evicted_worker_cannot_still_write(db, a_library):
     """A lease nobody can prove is not a lease: the reclaiming worker must
     fence the one it replaced."""
     jobs.submit(db, "scan", NOW, items=[1, 2])
-    job_id, first_fence = jobs.claim(db, "worker-a", NOW)
+    job_id, first_fence = claimed(db, "worker-a", NOW)
 
     later = NOW + jobs.LEASE_SECONDS + 1
-    job_again, second_fence = jobs.claim(db, "worker-b", later)
+    job_again, second_fence = claimed(db, "worker-b", later)
     assert job_again == job_id
     assert second_fence != first_fence
 
@@ -610,7 +623,7 @@ def test_a_live_lease_is_not_stolen(db, a_library):
 
 def test_a_heartbeat_holds_the_lease(db, a_library):
     jobs.submit(db, "scan", NOW, items=[1])
-    job_id, fence = jobs.claim(db, "worker-a", NOW)
+    job_id, fence = claimed(db, "worker-a", NOW)
     jobs.heartbeat(db, job_id, fence, NOW + jobs.LEASE_SECONDS - 1)
     assert jobs.claim(db, "worker-b", NOW + jobs.LEASE_SECONDS + 1) is None, (
         "a worker that is still reporting must keep its work"
@@ -620,7 +633,7 @@ def test_a_heartbeat_holds_the_lease(db, a_library):
 def test_work_without_units_resumes_from_a_checkpoint(db, a_library):
     """A scan cannot enumerate its units up front -- it is discovering them."""
     jobs.submit(db, "scan", NOW)
-    job_id, fence = jobs.claim(db, "worker-a", NOW)
+    job_id, fence = claimed(db, "worker-a", NOW)
     jobs.checkpoint(db, job_id, fence, {"after": "portraits/2026"}, done=140)
     stored = db.execute("SELECT checkpoint, done_count FROM job WHERE id = ?", (job_id,)).fetchone()
     assert json.loads(stored[0]) == {"after": "portraits/2026"}
@@ -1216,6 +1229,7 @@ def test_a_video_has_its_moments_chosen(db, a_library, tmp_path):
     cannot tell it has already done this part.
     """
     ff = _ffmpeg()
+    assert ff is not None, "the needs_ffmpeg mark let a machine without ffmpeg through"
     clip = tmp_path / "eleven.mp4"
     subprocess.run(
         [

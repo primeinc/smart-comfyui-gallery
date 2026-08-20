@@ -33,10 +33,10 @@ pytestmark = pytest.mark.spawns  # every check here runs another program
 
 _REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
 
-# What the README tells the reader to create for themselves.
+# Personal launch scripts people make for themselves. None ships yet for
+# the greenfield app; the rule outlives the filenames, so the names stay
+# reserved and ignored against the day one exists.
 _PERSONAL = ("run_smartgallery.bat", "run_exhibition.bat", "run_smartgallery.sh", "run_exhibition.sh")
-# What ships as the template for those.
-_TEMPLATES = ("sample_run_smartgallery.bat", "sample_run_exhibition.bat")
 
 
 def _git(*args):
@@ -58,7 +58,7 @@ def test_git_can_see_this_repository():
         pytest.skip("not a git checkout")
 
     assert len(tracked) > 100, len(tracked)
-    assert "smartgallery.py" in tracked
+    assert "db/schema.sql" in tracked
 
 
 def test_nothing_gitignore_matches_is_tracked():
@@ -101,18 +101,4 @@ def test_personal_launchers_are_ignored(name):
 
     assert done.returncode == 0, (
         f".gitignore does not match {name}; someone's paths and password can be committed by accident."
-    )
-
-
-@pytest.mark.parametrize("name", _TEMPLATES)
-def test_the_templates_are_still_shipped(name):
-    """Control for the two tests above: ignoring or deleting the samples
-    would satisfy them and leave nobody with a launcher to start from."""
-    tracked = set(_lines(_git("ls-files")))
-    if not tracked:
-        pytest.skip("not a git checkout")
-
-    assert name in tracked, f"{name} is what people copy; it has to ship"
-    assert _git("check-ignore", "--no-index", "-q", name).returncode != 0, (
-        f"{name} is ignored, so it will not reach anyone"
     )

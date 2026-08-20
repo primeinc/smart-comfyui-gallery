@@ -70,7 +70,7 @@ def _faiss():
     reports "no GPU" on a machine with two of them, which is exactly what
     this first did.
     """
-    from smartgallery_ai.faiss_runtime import import_faiss
+    from vision.faiss_runtime import import_faiss
 
     return import_faiss()
 

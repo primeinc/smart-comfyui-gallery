@@ -9,7 +9,7 @@ next caller forgets, so the rule is structural: model-facing code does not
 open image files, it calls this.
 
 The backend contract is `detect(PIL.Image) -> list[FaceDetection]` with
-normalized boxes (smartgallery_ai/faces.py:121-139): `bbox` (x, y, w, h) in
+normalized boxes (vision/faces.py:118-139): `bbox` (x, y, w, h) in
 0..1, `det_score` in 0..1, `embedding` float32 or None, `landmarks` a list
 of (x, y) pairs, `attributes` an optional dict with `age` / `sex`.
 """

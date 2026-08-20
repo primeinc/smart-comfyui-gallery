@@ -45,7 +45,7 @@ MODELS = "C:/ComfyUI/output/.AImodels"
 def build(paths, models_dir):
     """Scan + ingest + harvest a flat folder of images, the production way."""
     from db import detect, ingest, library, scan
-    from smartgallery_ai.faces import OpenCVFaceBackend
+    from vision.faces import OpenCVFaceBackend
 
     root = os.path.join(tempfile.mkdtemp(), "lib")
     os.makedirs(root)
@@ -69,7 +69,7 @@ def build(paths, models_dir):
 def matrix_stats(conn):
     """FAISS's own diagnostic over the embedding matrix (faiss.wiki/FAQ.md,
     'How can I get constructive criticism about my data?')."""
-    from smartgallery_ai.faiss_runtime import import_faiss
+    from vision.faiss_runtime import import_faiss
 
     faiss = import_faiss()
     rows = conn.execute("SELECT embedding FROM derived_face_instance WHERE embedding IS NOT NULL").fetchall()

@@ -1,18 +1,12 @@
 """metaparse.typed: strict type coercion per the first-party contracts
 (SwarmUI's metadata doc mandates consumer-side type forcing; A1111
-infotext is stringly by format; JSON tools round-trip losslessly), the
-verbatim-extra guarantee for unmappable values, DB row shape, and the
-OmniQuery generation_params fields compiling to parameterized SQL."""
+infotext is stringly by format; JSON tools round-trip losslessly) and
+the verbatim-extra guarantee for unmappable values."""
 
 import json
-import sqlite3
 
 from metaparse.model import ParsedMetadata
 from metaparse.typed import ROW_COLUMNS, GenerationParams, split_size, to_float, to_int
-from omniquery.ast import parse_query
-from omniquery.compiler import CompileParams, compile_query
-from omniquery.validation import AuthContext, validate
-from sqlbind import with_id_placeholders
 
 
 def test_to_int_strict():
@@ -101,32 +95,6 @@ def test_from_comfy_typed_graph_values():
     assert "positive_prompt_clean" not in gp.extra
 
 
-def test_to_row_round_trips_through_sqlite_with_real_types():
-    conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE generation_params (" + ", ".join(ROW_COLUMNS) + ")")
-    gp = GenerationParams.from_comfy(
-        {
-            "seed": 7,
-            "steps": 25,
-            "cfg": 6.5,
-            "width": 512,
-            "height": 768,
-            "positive_prompt": "p",
-            "negative_prompt": "n",
-            "model": "m",
-        }
-    )
-    row = gp.to_row("file-1", 1000.0)
-    assert len(row) == len(ROW_COLUMNS)
-    conn.execute(with_id_placeholders("INSERT INTO generation_params VALUES ({ids})", ROW_COLUMNS), row)
-    got = conn.execute(
-        "SELECT seed, steps, cfg, width, negative_prompt FROM generation_params WHERE seed = 7"
-    ).fetchone()
-    assert got == (7, 25, 6.5, 512, "n")
-    assert isinstance(got[0], int)
-    assert isinstance(got[2], float)
-
-
 def test_extra_json_serializes():
     parsed = ParsedMetadata(tool="Fooocus", positive="x")
     parsed.extra["styles"] = "['Fooocus V2']"
@@ -134,31 +102,3 @@ def test_extra_json_serializes():
     row = gp.to_row("f", 1.0)
     extra = json.loads(row[ROW_COLUMNS.index("extra")])
     assert extra["styles"] == "['Fooocus V2']"
-
-
-def test_omniquery_gen_fields_compile():
-    """gen_* fields ride the existing strategies into parameterized SQL."""
-
-    ctx = AuthContext(role="STAFF", user_id="1", client_uuid="c", ai_enabled=False)
-    vq = validate(
-        parse_query(
-            {
-                "where": {
-                    "op": "and",
-                    "children": [
-                        {"field": "gen_seed", "op": "eq", "value": 42},
-                        {"field": "gen_model", "op": "contains", "value": "flux"},
-                        {"field": "gen_negative_prompt", "op": "contains", "value": "blurry"},
-                    ],
-                }
-            }
-        ),
-        ctx,
-    )
-    cq = compile_query(
-        vq, CompileParams(now_epoch=1000.0, base_path="/g", client_uuid=ctx.client_uuid, ai_resolutions={})
-    )
-    assert "generation_params" in cq.sql
-    assert 42 in cq.params
-    assert "%flux%" in cq.params
-    assert "flux" not in cq.sql  # values are bound, never spliced

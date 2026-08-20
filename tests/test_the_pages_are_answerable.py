@@ -273,7 +273,9 @@ def test_an_address_that_was_renamed_still_resolves(library):
     the thing it named rather than whatever took the name since."""
     conn = library["conn"]
     person = library["person"]
-    first = naming.entity_slug(conn, person)[1]
+    addressed = naming.entity_slug(conn, person)
+    assert addressed is not None
+    first = addressed[1]
     authored.name_person(conn, person, "Marguerite", NOW + 1)
 
     assert pages.resolve(conn, "person", "marguerite") == person
@@ -436,7 +438,9 @@ def test_a_person_keeps_their_page_after_being_renamed(library):
     conn, person = library["conn"], library["person"]
     from db import naming
 
-    old = naming.entity_slug(conn, person)[1]
+    addressed = naming.entity_slug(conn, person)
+    assert addressed is not None
+    old = addressed[1]
     authored.name_person(conn, person, "Marguerite", NOW + 1)
     assert naming.resolve(conn, "person", old) == (person, False)
     assert naming.resolve(conn, "person", "marguerite") == (person, True)
@@ -648,6 +652,7 @@ def test_a_lora_says_what_it_is_actually_used_with(tmp_path):
         assert set(loras) == {"filmGrain", "detailTweaker"}
 
         film = pages.resolve(conn, "artifact", loras["filmGrain"])
+        assert film is not None
         assert pages.lora_synergy(conn, film) == [
             ("dreamshaper_8", "checkpoint-dreamshaper-8", 2),
             ("fluxDev", "checkpoint-fluxdev", 1),

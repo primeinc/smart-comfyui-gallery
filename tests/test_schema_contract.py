@@ -809,7 +809,7 @@ def test_two_files_that_swap_names_keep_their_own_history(db):
     tree(db)
     a_file(db, 800, 1, "a.png", sha="AAA")
     a_file(db, 801, 1, "b.png", sha="BBB")
-    observed = {(1, "a.png"): "BBB", (1, "b.png"): "AAA"}
+    observed: dict[tuple[int, str], str | None] = {(1, "a.png"): "BBB", (1, "b.png"): "AAA"}
     result, missing = resolve_scan(db, observed)
     assert missing == [], f"a swap invented a missing file: {missing}"
     assert result[(1, "a.png")] == (Outcome.UNIQUE_MATCH, 801), result
@@ -821,7 +821,7 @@ def test_a_three_way_rotation_keeps_every_identity(db):
     a_file(db, 810, 1, "x.png", sha="X")
     a_file(db, 811, 1, "y.png", sha="Y")
     a_file(db, 812, 1, "z.png", sha="Z")
-    observed = {(1, "x.png"): "Z", (1, "y.png"): "X", (1, "z.png"): "Y"}
+    observed: dict[tuple[int, str], str | None] = {(1, "x.png"): "Z", (1, "y.png"): "X", (1, "z.png"): "Y"}
     result, missing = resolve_scan(db, observed)
     assert missing == []
     assert result[(1, "x.png")][1] == 812

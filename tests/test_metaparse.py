@@ -14,6 +14,15 @@ import metaparse
 from metaparse.containers import decode_user_comment
 from metaparse.model import ParsedMetadata
 
+
+def parse_file(path, **kwargs):
+    """metaparse.parse_file with "it parsed at all" asserted once, so every
+    test reads fields instead of re-proving Optional-ness."""
+    parsed = metaparse.parse_file(path, **kwargs)
+    assert parsed is not None, f"{path} did not parse"
+    return parsed
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -146,6 +155,7 @@ def embed_stealth_alpha(img: Image.Image, text: str, compressed=True) -> Image.I
     bits += format(len(data_bits), "032b") + data_bits
     img = img.convert("RGBA")
     pixels = img.load()
+    assert pixels is not None
     width, height = img.size
     assert len(bits) <= width * height, "test image too small for payload"
     index = 0
@@ -153,7 +163,9 @@ def embed_stealth_alpha(img: Image.Image, text: str, compressed=True) -> Image.I
         for y in range(height):
             if index >= len(bits):
                 return img
-            r, g, b, a = pixels[x, y]
+            pixel = pixels[x, y]
+            assert isinstance(pixel, tuple)
+            r, g, b, a = pixel
             pixels[x, y] = (r, g, b, (a & ~1) | int(bits[index]))
             index += 1
     return img
@@ -166,7 +178,7 @@ def embed_stealth_alpha(img: Image.Image, text: str, compressed=True) -> Image.I
 
 def test_a1111_png_marker(tmp_path):
     path = make_png(tmp_path / "a.png", {"parameters": A1111_INFOTEXT})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "A1111 / Forge"
     assert parsed.detection == "marker"
     assert parsed.positive == "a castle on a hill <lora:castleLora:0.8>"
@@ -186,7 +198,7 @@ def test_a1111_png_marker(tmp_path):
 
 def test_swarmui_png_marker(tmp_path):
     path = make_png(tmp_path / "s.png", {"parameters": SWARM_PARAMS})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "SwarmUI"
     assert parsed.positive == "a photo of a cat"
     assert parsed.negative == "dog"
@@ -212,7 +224,7 @@ def test_swarmui_png_marker(tmp_path):
 def test_swarmui_beats_a1111_on_shared_chunk_name(tmp_path):
     # Both tools write a chunk literally named `parameters`; the sui marker wins.
     path = make_png(tmp_path / "s2.png", {"parameters": SWARM_PARAMS})
-    assert metaparse.parse_file(path).tool == "SwarmUI"
+    assert parse_file(path).tool == "SwarmUI"
 
 
 def test_fooocus_a1111_scheme(tmp_path):
@@ -220,7 +232,7 @@ def test_fooocus_a1111_scheme(tmp_path):
         tmp_path / "f.png",
         {"parameters": A1111_INFOTEXT, "fooocus_scheme": "a1111"},
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "Fooocus"
     assert parsed.params["seed"] == "12345"
 
@@ -230,7 +242,7 @@ def test_fooocus_json_scheme(tmp_path):
         tmp_path / "fj.png",
         {"parameters": FOOOCUS_JSON, "fooocus_scheme": "fooocus"},
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "Fooocus"
     assert parsed.positive == "an astronaut riding a horse"
     assert parsed.params["model"] == "juggernautXL"
@@ -240,14 +252,14 @@ def test_fooocus_json_scheme(tmp_path):
 
 def test_fooocus_legacy_comment_chunk(tmp_path):
     path = make_png(tmp_path / "fl.png", {"Comment": FOOOCUS_JSON})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "Fooocus"
     assert parsed.negative == "low quality"
 
 
 def test_invokeai_v3(tmp_path):
     path = make_png(tmp_path / "i.png", {"invokeai_metadata": INVOKEAI_METADATA})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "InvokeAI"
     assert parsed.positive == "a lighthouse at dawn"
     assert parsed.params["model"] == "stable-diffusion-xl"
@@ -259,7 +271,7 @@ def test_invokeai_v3(tmp_path):
 def test_invokeai_dream_legacy(tmp_path):
     dream = '"a boat [storm]" -s 50 -S 1234 -W 512 -H 512 -C 7.5 -A k_lms'
     path = make_png(tmp_path / "d.png", {"Dream": dream})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "InvokeAI"
     assert parsed.positive == "a boat"
     assert parsed.negative == "storm"
@@ -274,7 +286,7 @@ def test_novelai_legacy(tmp_path):
         {"Software": "NovelAI", "Description": "1girl, best quality", "Comment": NOVELAI_COMMENT},
         size=(64, 48),
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "NovelAI"
     assert parsed.positive == "1girl, best quality"
     assert parsed.negative == "lowres, bad anatomy"
@@ -297,7 +309,7 @@ def test_easydiffusion_chunks(tmp_path):
             "guidance_scale": "7.5",
         },
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "Easy Diffusion"
     assert parsed.positive == "a desert oasis"
     assert parsed.params["model"] == "sd-v1-5.ckpt"
@@ -310,7 +322,7 @@ def test_drawthings_xmp(tmp_path):
         {"XML:com.adobe.xmp": DRAWTHINGS_XMP},
         itxt=("XML:com.adobe.xmp",),
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "Draw Things"
     assert parsed.positive == "a watercolor fox"
     assert parsed.params["cfg"] == "6.5"
@@ -319,7 +331,7 @@ def test_drawthings_xmp(tmp_path):
 
 def test_comfyui_graph_detected_not_rendered(tmp_path):
     path = make_png(tmp_path / "c.png", {"prompt": COMFY_PROMPT_GRAPH, "workflow": COMFY_WORKFLOW})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "ComfyUI"
     assert metaparse.render_report(parsed) is None  # workflow panel owns this
 
@@ -329,7 +341,7 @@ def test_comfyui_a1111_compatible(tmp_path):
         tmp_path / "ca.png",
         {"prompt": COMFY_PROMPT_GRAPH, "parameters": A1111_INFOTEXT},
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "ComfyUI (A1111-compatible)"
     assert parsed.params["seed"] == "12345"
     assert metaparse.render_report(parsed)
@@ -340,13 +352,13 @@ def test_comfyui_webp_exif_tags(tmp_path):
         tmp_path / "c.webp",
         {0x0110: "prompt:" + COMFY_PROMPT_GRAPH, 0x010F: "workflow:" + COMFY_WORKFLOW},
     )
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "ComfyUI"
 
 
 def test_swarmui_legacy_webp_model_tag(tmp_path):
     path = make_webp_exif(tmp_path / "s.webp", {0x0110: SWARM_PARAMS})
-    parsed = metaparse.parse_file(path)
+    parsed = parse_file(path)
     assert parsed.tool == "SwarmUI"
     assert parsed.positive == "a photo of a cat"
 
@@ -366,8 +378,7 @@ def test_stealth_forge_infotext(tmp_path):
     path = str(tmp_path / "st.png")
     img.save(path)
     assert metaparse.parse_file(path, allow_stealth=False) is None
-    parsed = metaparse.parse_file(path, allow_stealth=True)
-    assert parsed is not None
+    parsed = parse_file(path, allow_stealth=True)
     assert parsed.tool == "A1111 / Forge (stealth)"
     assert parsed.detection == "stealth"
     assert parsed.params["seed"] == "12345"
@@ -384,7 +395,7 @@ def test_stealth_novelai_json(tmp_path):
     img = embed_stealth_alpha(Image.new("RGB", (96, 96), (5, 5, 5)), payload)
     path = str(tmp_path / "stn.png")
     img.save(path)
-    parsed = metaparse.parse_file(path, allow_stealth=True)
+    parsed = parse_file(path, allow_stealth=True)
     assert parsed is not None
     assert parsed.tool == "NovelAI (stealth)"
     assert parsed.negative == "lowres, bad anatomy"
@@ -394,7 +405,7 @@ def test_stealth_uncompressed_variant(tmp_path):
     img = embed_stealth_alpha(Image.new("RGB", (128, 128), (9, 9, 9)), A1111_INFOTEXT, compressed=False)
     path = str(tmp_path / "stu.png")
     img.save(path)
-    parsed = metaparse.parse_file(path, allow_stealth=True)
+    parsed = parse_file(path, allow_stealth=True)
     assert parsed is not None
     assert parsed.params["seed"] == "12345"
 
@@ -417,6 +428,7 @@ def test_decode_user_comment_variants():
 def test_render_report_sections():
     parsed = metaparse.parse_infotext(A1111_INFOTEXT, "A1111 / Forge")
     report = metaparse.render_report(parsed)
+    assert report is not None
     assert "=== A1111 / Forge Generation Parameters ===" in report
     assert "castleLora (Strength: 0.8)" in report
     assert "Resolution: 512x768" in report
@@ -430,14 +442,3 @@ def test_render_report_empty_parse_is_none():
 # ---------------------------------------------------------------------------
 # gallery wiring: non-ComfyUI prompts reach the indexed prompt column
 # ---------------------------------------------------------------------------
-
-
-def test_process_single_file_indexes_foreign_prompt(smartgallery_app, tmp_path):
-    sg = smartgallery_app
-    path = make_png(tmp_path / "swarm_indexed.png", {"parameters": SWARM_PARAMS})
-    row = sg.process_single_file(path)
-    assert row is not None
-    has_workflow = row[7]
-    workflow_prompt = row[11]
-    assert has_workflow == 0
-    assert workflow_prompt == "a photo of a cat"

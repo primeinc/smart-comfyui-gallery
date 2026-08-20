@@ -41,62 +41,22 @@ _SQL_SHAPED = re.compile(
 
 # Names allowed to appear in a SQL f-string, and what each carries. Adding
 # to this list is a decision: it is a promise that the value is SQL text
-# this codebase wrote, never anything a caller supplied.
+# this codebase wrote, never anything a caller supplied. The exactness
+# check below prunes it the moment a slot stops being written, so the list
+# is always the tree's current truth rather than a record of what used to
+# be true.
 _STRUCTURE = {
-    # runs of "?" -- one per bound value. The {ids} slot that sqlbind fills
-    # is not here: it lives in plain strings, never an f-string.
-    "placeholders": "placeholders",
-    "type_placeholders": "placeholders",
+    # runs of "?" -- one per bound value
     "marks": "placeholders",
     "','.join('?' * len(batch))": "placeholders",
     # job-claim clauses in db/jobs.py: `runnable` is a module literal, and
     # `kind_filter` is "" or an IN (...) of placeholders, params bound
     "runnable": "clause",
     "kind_filter": "clause",
-    # column / table names, from fixed registries
-    "column": "identifier",
-    "col_name": "identifier",
-    "key_column": "identifier",
+    # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
+    "column": "identifier",
     "name": "identifier",
-    "primary_hash_key": "identifier",
-    "spec.table": "identifier",
-    "spec.alias": "identifier",
-    # clause fragments assembled from literals, with their own bound params
-    "where_clause": "clause",
-    "where_sql": "clause",
-    "order_clause": "clause",
-    "order": "clause",
-    "cond": "clause",
-    "q_cond": "clause",
-    "w_cond": "clause",
-    "hashable": "clause",
-    "joins": "clause",
-    "only_clause": "clause",
-    "extra_cols": "clause",
-    "input_key_sql": "clause",
-    "inner_sql": "clause",
-    "name_sql": "clause",
-    "col_expr": "clause",
-    "scope_sql": "clause",
-    "sub_query": "clause",
-    "PER_CALLER_COLUMNS": "clause",
-    # operators chosen from a two-element set
-    "op_in": "operator",
-    # coerced to an integer before it reaches the text
-    "int(coll_id)": "integer",
-    # a fixed map of prompt columns, keyed by a validated field name
-    "_PROMPT_SEARCH_TEXT_COLUMNS[name]": "identifier",
-    # named clause fragments, each literal SQL carrying its own ? slots
-    "shared_with_me": "clause",
-    "shared_with_anyone": "clause",
-    # clauses joined from a list whose every element was written here
-    "' AND '.join(conditions)": "clause",
-    "' OR '.join(stale)": "clause",
-    # Not a statement: the gallery root, written into the natural-language
-    # prompt the SQL model reads. Whatever the model then writes is run
-    # through omniquery's read-only validator before it reaches sqlite.
-    "BA_OU_PA": "prompt",
 }
 
 
@@ -126,9 +86,9 @@ def test_the_sweep_finds_the_sql_that_is_there():
             slots.setdefault(slot, 0)
             slots[slot] += 1
 
-    assert len(slots) >= 30, f"only {len(slots)} distinct slots found: {sorted(slots)}"
-    assert "where_clause" in slots, sorted(slots)
-    assert "PER_CALLER_COLUMNS" in slots, sorted(slots)
+    assert len(slots) >= 5, f"only {len(slots)} distinct slots found: {sorted(slots)}"
+    assert "marks" in slots, sorted(slots)
+    assert "runnable" in slots, sorted(slots)
 
     # Every listed name has to still be reached by something, or the list
     # grows into a record of what used to be true.

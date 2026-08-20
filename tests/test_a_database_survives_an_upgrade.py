@@ -37,10 +37,13 @@ def library(tmp_path):
     path = tmp_path / "gallery.db"
     build.build(path)
     conn = connect.connect(path)
-    root = conn.execute(
-        "INSERT INTO root(path, kind, created_at) VALUES(?, 'library', ?)",
-        (str(tmp_path / "pics"), NOW),
-    ).lastrowid
+    root = int(
+        conn.execute(
+            "INSERT INTO root(path, kind, created_at) VALUES(?, 'library', ?)",
+            (str(tmp_path / "pics"), NOW),
+        ).lastrowid
+        or 0
+    )
     folder = scan.ensure_folder(conn, root, None, "pics")
     file_id = scan.mint(conn, "file", "dusk")
     conn.execute(

@@ -113,6 +113,13 @@ EASY_DIFFUSION_CHUNKS = {
 }
 
 
+def parse_file(path, **kwargs):
+    """metaparse.parse_file with "it parsed at all" asserted once."""
+    parsed = metaparse.parse_file(path, **kwargs)
+    assert parsed is not None, f"{path} did not parse"
+    return parsed
+
+
 def _png(path, chunks, mode="RGB"):
     info = PngInfo()
     for key, value in chunks.items():
@@ -237,7 +244,7 @@ class Ingest:
 
     def __call__(self, written):
         path, options = written
-        parsed = metaparse.parse_file(path, **options)
+        parsed = parse_file(path, **options)
         assert parsed is not None, f"metaparse read nothing from {path}"
         gen = GenerationParams.from_parsed(parsed)
 
@@ -500,7 +507,7 @@ def test_a_tool_that_states_its_weight_files_keeps_their_roles_and_hashes():
     weight file in this library to the one on disk it came from, so throwing
     it away throws away the join the recipe axis is for.
     """
-    parsed = metaparse.parse_file(
+    parsed = parse_file(
         _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png", {"parameters": SWARM_WITH_LORA})
     )
     assert [(a["role"], a["name"].split("/")[-1][:12]) for a in parsed.artifacts] == [
@@ -520,11 +527,13 @@ def test_a_structured_value_becomes_searchable_leaves_not_a_repr():
     list, and not something anything parses. Every adapter lost structure
     there, so the flattening that turns a structure into one dotted key per
     leaf never once saw a structure to flatten."""
-    parsed = metaparse.parse_file(
+    parsed = parse_file(
         _png(pathlib.Path(__import__("tempfile").mkdtemp()) / "swarm.png", {"parameters": SWARM_WITH_LORA})
     )
     assert parsed.extra["used_wildcards"] == ["scene/register", "scene/activity"]
-    assert parsed.extra["debug_backend"]["backend_type"] == "ComfyUI Self-Starting"
+    backend = parsed.extra["debug_backend"]
+    assert isinstance(backend, dict)
+    assert backend["backend_type"] == "ComfyUI Self-Starting"
     assert not any(isinstance(v, str) and v.startswith("[") and v.endswith("]") for v in parsed.extra.values()), (
         "something is still arriving as a repr of a list"
     )

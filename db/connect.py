@@ -2,8 +2,8 @@
 
 `PRAGMA foreign_keys` is per-connection and OFF by default, so the line at the
 top of schema.sql governs nothing at runtime -- it applies only to the
-connection that runs the script. This repo already learned that once:
-smartgallery_ai/schema.py:43 says so in a comment and sets it at :57.
+connection that runs the script. The application this one replaces learned
+that in production and left the lesson in its schema module (git history).
 
 Every consumer goes through `connect()`, so a forgotten pragma cannot make all
 sixty-one foreign keys inert while the test suite stays green.

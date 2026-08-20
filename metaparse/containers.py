@@ -125,7 +125,7 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
                 mode=img.mode,
             )
             for key, value in (img.info or {}).items():
-                if key == "exif":
+                if key == "exif" or not isinstance(key, str):
                     continue
                 text = _as_text(value)
                 if text is not None:

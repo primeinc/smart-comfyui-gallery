@@ -149,3 +149,51 @@ def test_choose_primary_is_an_action_the_application_offers(served):
     chosen = client.post("/clusterings/choose").json()
     assert chosen["primary_run"] is not None
     assert client.get("/clusterings").json()[0]["id"] == chosen["primary_run"]
+
+
+def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path, monkeypatch):
+    """SMARTGALLERY_HOME moves everything a run owns -- database, models --
+    in one setting. Nothing lands in OS application-data folders, and a
+    first run needs nothing but the command that starts it."""
+    from sg_web import home
+
+    burrow = tmp_path / "elsewhere"
+    monkeypatch.setenv("SMARTGALLERY_HOME", str(burrow))
+    monkeypatch.delenv("SMARTGALLERY_MODELS", raising=False)
+    assert home.home() == burrow
+    assert home.db_path() == burrow / "gallery.db"
+    assert home.models_dir() == burrow / "models"
+
+    shared = tmp_path / "shared-weights"
+    monkeypatch.setenv("SMARTGALLERY_MODELS", str(shared))
+    assert home.models_dir() == shared, "a shared model dir is an option"
+
+    with TestClient(app=build_app()) as client:
+        assert client.get("/health").text == "ok"
+        assert client.get("/people").json() == []
+    assert (burrow / "gallery.db").exists(), "the run did not live in its home"
+
+
+def test_media_roots_are_rows_managed_through_the_application(tmp_path, monkeypatch):
+    """Any number of media directories, anywhere, registered and scanned
+    over requests -- the pictures never live inside the run's home."""
+    monkeypatch.setenv("SMARTGALLERY_HOME", str(tmp_path / "run"))
+    box_one = tmp_path / "comfy-output"
+    box_two = tmp_path / "phone-camera"
+    for box in (box_one, box_two):
+        box.mkdir()
+        (box / "shot.png").write_bytes(b"\x89PNG-" + box.name.encode())
+
+    with TestClient(app=build_app()) as client:
+        first = client.post("/roots", json={"path": str(box_one)}).json()
+        second = client.post("/roots", json={"path": str(box_two)}).json()
+        assert first["id"] != second["id"]
+
+        listed = client.get("/roots").json()
+        assert [r["online"] for r in listed] == [True, True]
+
+        swept = client.post(f"/roots/{first['id']}/scan").json()
+        assert swept["added"] == 1
+        swept = client.post(f"/roots/{second['id']}/scan").json()
+        assert swept["added"] == 1
+        assert client.post("/roots/999/scan").status_code == 404

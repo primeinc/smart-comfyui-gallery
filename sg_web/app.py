@@ -15,6 +15,7 @@ connections refuse cross-thread use, and the pool gives no thread pinning.
 
 from __future__ import annotations
 
+import pathlib
 import sqlite3
 import time
 
@@ -23,7 +24,8 @@ from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
 from litestar.response import Redirect
 
-from db import derived, jobs, naming, pages, runner
+from db import connect, derived, jobs, library, naming, pages, runner, scan
+from sg_web import home
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -142,7 +144,8 @@ def submit_faces(state: State, data: dict) -> dict:
     """Ask for face detection over the library, with the models named."""
     conn = _connect(state.db_path)
     try:
-        job_id = runner.submit_faces(conn, time.time(), models_dir=data["models_dir"])
+        weights = data.get("models_dir") or str(home.models_dir())
+        job_id = runner.submit_faces(conn, time.time(), models_dir=weights)
         conn.commit()
         return jobs.snapshot(conn, job_id)
     finally:
@@ -181,6 +184,54 @@ def worker_turn(state: State, data: dict | None = None) -> dict:
         conn.close()
 
 
+@get("/roots", sync_to_thread=True)
+def roots(state: State) -> list[dict]:
+    """Every media directory this library reads, and whether it is
+    reachable right now. Media roots are rows, not configuration: any
+    number of directories, anywhere, and they travel with the database."""
+    conn = _connect(state.db_path)
+    try:
+        return [{"id": root_id, "path": path, "online": online} for root_id, path, online in library.check_roots(conn)]
+    finally:
+        conn.close()
+
+
+@post("/roots", sync_to_thread=True)
+def add_root(state: State, data: dict) -> dict:
+    """Register a media directory. Nothing is read until a scan is asked
+    for -- registering is a statement of intent, not a sweep."""
+    conn = _connect(state.db_path)
+    try:
+        root_id = library.add_root(conn, data["path"], data.get("kind", "library"), time.time())
+        conn.commit()
+        return {"id": root_id, "path": data["path"]}
+    finally:
+        conn.close()
+
+
+@post("/roots/{root_id:int}/scan", sync_to_thread=True)
+def scan_root(state: State, root_id: int) -> dict:
+    """Walk one root and reconcile the library with what is on disk."""
+    conn = _connect(state.db_path)
+    try:
+        row = conn.execute("SELECT path FROM root WHERE id = ?", (root_id,)).fetchone()
+        if row is None:
+            raise NotFoundException(f"no root {root_id}")
+        result = scan.scan(conn, root_id, row[0], time.time())
+        conn.commit()
+        return {
+            "root": root_id,
+            "added": result.added,
+            "matched": result.matched,
+            "replaced": result.replaced,
+            "ambiguous": result.ambiguous,
+            "missing": result.missing,
+            "hashed": result.hashed,
+        }
+    finally:
+        conn.close()
+
+
 @post("/clusterings/choose", sync_to_thread=True)
 def choose_primary(state: State) -> dict:
     """Re-rank every run and set the default the People page shows."""
@@ -193,8 +244,19 @@ def choose_primary(state: State) -> dict:
         conn.close()
 
 
-def build_app(db_path: str) -> Litestar:
-    """The application, bound to one database file."""
+def build_app(db_path: str | None = None) -> Litestar:
+    """The application, bound to one database file.
+
+    With no path, the run lives in its home directory (sg_web/home.py) and
+    a database that does not exist yet is created from the schema -- a
+    first run needs nothing but the command that starts it.
+    """
+    where = pathlib.Path(db_path) if db_path else home.db_path()
+    if not where.exists():
+        fresh = connect.connect(where)
+        fresh.executescript(connect.schema_sql())
+        fresh.commit()
+        fresh.close()
     app = Litestar(
         route_handlers=[
             health,
@@ -202,6 +264,9 @@ def build_app(db_path: str) -> Litestar:
             person,
             clusterings,
             ways,
+            roots,
+            add_root,
+            scan_root,
             active_jobs,
             job_snapshot,
             submit_verify,
@@ -211,5 +276,5 @@ def build_app(db_path: str) -> Litestar:
             choose_primary,
         ],
     )
-    app.state.db_path = db_path
+    app.state.db_path = str(where)
     return app

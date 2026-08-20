@@ -91,7 +91,7 @@ def parse_infotext(text: str, tool: str, detection: str = "marker") -> ParsedMet
     result.negative = "\n".join(negative).strip()
 
     for raw_key, raw_value in _RE_PARAM.findall(lastline):
-        key, value = raw_key.strip(), _unquote(raw_value.strip())
+        key, value = str(raw_key).strip(), _unquote(str(raw_value).strip())
         if not key or value == "":
             continue
         set_param(result, _INFOTEXT_CANONICAL.get(key, key), value)
@@ -121,7 +121,8 @@ class SwarmUIAdapter:
 
     @classmethod
     def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
-        return cls.parse_text(cls._payload(raw))
+        payload = cls._payload(raw)
+        return None if payload is None else cls.parse_text(payload)
 
     @classmethod
     def parse_text(cls, payload: str, detection: str = "marker") -> ParsedMetadata | None:
@@ -469,7 +470,7 @@ class EasyDiffusionAdapter:
     @classmethod
     def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         data = _json_or_none(raw.user_comment)
-        if isinstance(data, dict):
+        if isinstance(data, dict) and raw.user_comment is not None:
             return cls._parse_dict(data, raw.user_comment, "heuristic")
         return cls._parse_dict(dict(raw.text), json.dumps(raw.text), "marker")
 
@@ -506,6 +507,8 @@ class DrawThingsAdapter:
 
     @classmethod
     def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
+        if not raw.xmp:
+            return None
         try:
             dom = minidom.parseString(raw.xmp)
             nodes = dom.getElementsByTagName("exif:UserComment")

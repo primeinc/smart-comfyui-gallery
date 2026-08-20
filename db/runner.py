@@ -66,7 +66,7 @@ _BACKENDS: dict = {}
 
 
 def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
-    from smartgallery_ai.faces import OpenCVFaceBackend
+    from vision.faces import OpenCVFaceBackend
 
     from . import detect
 

@@ -59,7 +59,7 @@ def library(conn, files: int, root_path: str = "C:/lib") -> list[int]:
 
 @dataclass
 class Sighting:
-    """The shape smartgallery_ai.faces.FaceDetection presents (faces.py:121-139)."""
+    """The shape vision.faces.FaceDetection presents (vision/faces.py:118-139)."""
 
     bbox: tuple
     det_score: float

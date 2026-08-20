@@ -539,9 +539,9 @@ def cluster(
 
     **Label propagation, not connected components.** Each face repeatedly
     adopts whichever label its neighbours agree on most strongly. Single
-    linkage was the obvious thing and is the wrong thing -- "transitive
-    chaining merges dense look-alike sets into one cluster"
-    (smartgallery_ai/faces.py:927-928) -- and it did: over 834 real faces it
+    linkage was the obvious thing and is the wrong thing -- the previous
+    pipeline documented that "transitive chaining merges dense look-alike
+    sets into one cluster" (git history) -- and it did: over 834 real faces it
     made one cluster of 123 spanning 53 different photographs, which is not
     a person, it is a chain of people who each slightly resemble the next.
 

@@ -17,20 +17,10 @@ version = "0.0.0"
 description = "Local-first browser-based DAM for ComfyUI with an optional derived AI layer"
 requires-python = ">=3.10"
 dependencies = [
-    "Flask",
+    "litestar",
     "Pillow",
     "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; deployed YuNet 2023mar is static-shape (docs/AUDIT_FACE_INGESTION_2026-08-15.md finding 3)
     "numpy",
-    "tqdm",
-    "werkzeug",
-    "markupsafe",
-    "pyOpenSSL",
-    "click",
-    "itsdangerous",
-    "blinker",
-    "cryptography",
-    "waitress",
-    "argon2-cffi",
     # XMP is parsed out of image files the gallery did not write; expat
     # expands entities, so a crafted file can exhaust memory during a scan.
     "defusedxml",

@@ -9,7 +9,7 @@ means a test only runs if something else supplied that path.
 working directory. Nothing else does. So `uv run pytest tests/` -- the
 command pyproject.toml's own header gives as the way to run the suite --
 and a bare `pytest` in an activated venv both failed on every single test
-with `ModuleNotFoundError: No module named 'smartgallery'`. Someone
+with `ModuleNotFoundError`. Someone
 following the documentation got a wall of errors and no way to tell
 whether they had broken something or merely typed the documented command.
 
@@ -42,8 +42,8 @@ def test_the_setting_that_makes_the_documented_command_work(pytestconfig):
     assert configured, (
         "pytest.ini no longer sets `pythonpath`. Without it only "
         "`python -m pytest` works, because that form prepends the working "
-        "directory by accident; `uv run pytest` and a bare `pytest` fail in "
-        "conftest at `import smartgallery`."
+        "directory by accident; `uv run pytest` and a bare `pytest` fail on "
+        "the first `import db`."
     )
     # pytest resolves the setting against the rootdir, so what comes back is
     # already absolute -- which is the thing worth asserting: not that the
@@ -69,15 +69,15 @@ def test_the_repo_root_really_is_on_the_path():
     on_path = {pathlib.Path(entry).resolve() for entry in sys.path if entry}
 
     assert _REPO_ROOT in on_path, (
-        f"{_REPO_ROOT} is not on sys.path, so `import smartgallery` works here only by whatever accident supplied it"
+        f"{_REPO_ROOT} is not on sys.path, so `import db` works here only by whatever accident supplied it"
     )
 
 
-def test_the_monolith_imports_from_there(smartgallery_app):
-    """Requesting the fixture is the point: that is where conftest imports
-    the monolith, and that is the line every test in the suite used to die
-    on."""
-    assert smartgallery_app.__name__ == "smartgallery"
-    assert pathlib.Path(smartgallery_app.__file__).resolve().parent == _REPO_ROOT, (
-        "the monolith was imported from somewhere other than this repo"
+def test_the_application_imports_from_there():
+    """The setting exists so the application's packages import from this
+    repo. Asserting the consequence, on the package every test needs."""
+    import db
+
+    assert pathlib.Path(db.__file__).resolve().parent.parent == _REPO_ROOT, (
+        "the db package was imported from somewhere other than this repo"
     )

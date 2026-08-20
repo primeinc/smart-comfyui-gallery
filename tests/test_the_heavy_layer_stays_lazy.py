@@ -77,9 +77,9 @@ def test_the_sweep_reads_the_imports_that_are_there():
     for source in shipped():
         seen.update(_import_time_modules(parsed(source)))
 
-    assert "flask" in seen, sorted(seen)
+    assert "litestar" in seen, sorted(seen)
     assert "sqlite3" in seen, sorted(seen)
-    assert len(seen) > 25, sorted(seen)
+    assert len(seen) > 20, sorted(seen)
 
 
 def test_nothing_heavy_is_imported_when_a_module_is_read():

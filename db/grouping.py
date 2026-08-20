@@ -60,9 +60,10 @@ def connected_components(graph, vectors=None, **_):
     """Single linkage: everything reachable is one group.
 
     Kept as a real option and labelled honestly rather than left out. It is
-    the obvious method and it chains -- "transitive chaining merges dense
-    look-alike sets into one cluster" (smartgallery_ai/faces.py:927-928) --
-    which over 834 real faces made one group of 123 spanning 53 different
+    the obvious method and it chains -- the previous pipeline documented
+    that "transitive chaining merges dense look-alike sets into one
+    cluster" (git history) -- which over 834 real faces made one group of
+    123 spanning 53 different
     photographs. That is not a person, it is a chain of people who each
     slightly resemble the next.
 
@@ -202,7 +203,7 @@ def _csr(n, rows, cols, weights, np):
 
 
 def _faiss():
-    from smartgallery_ai.faiss_runtime import import_faiss
+    from vision.faiss_runtime import import_faiss
 
     return import_faiss()
 

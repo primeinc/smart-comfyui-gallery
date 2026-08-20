@@ -1,17 +1,7 @@
 # Kept in sync with pyproject.toml [project.dependencies] (uv users: `uv sync`).
-Flask
+litestar
 Pillow
 opencv-python<5  # keep in sync with pyproject.toml (static-shape YuNet ONNX)
 numpy # needed for opencv-python
-tqdm
-werkzeug # needed for Flask
-markupsafe
-pyOpenSSL
-click
-itsdangerous
-blinker
-cryptography
-waitress
-argon2-cffi
 defusedxml  # XMP is parsed out of files the gallery did not write
 pypdf  # a document states its page count, or it is not a citizen of the library
