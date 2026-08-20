@@ -131,6 +131,23 @@ def test_the_off_switch_is_honoured_by_the_claim_itself(db):
     assert jobs.claim(db, "w2", 5.0, gate=("worker", "on")) is not None
 
 
+def test_a_reclaim_waits_for_the_switch_like_everything_else(db):
+    """An expired lease is still a job, and off means off: the reclaim
+    queues behind the switch with everything else -- jobs are rows and
+    lose nothing by waiting. Pinned so 'reclaims are safety, exempt them'
+    cannot ship as a silent edit."""
+    jobs.submit(db, "embed", 0.0, items=[1, 2])
+    first = jobs.claim(db, "w1", 1.0)
+    assert first is not None
+    db.execute("INSERT INTO setting(key, value) VALUES('worker', 'off')")
+    assert jobs.claim(db, "w2", 100.0, gate=("worker", "on")) is None, "an expired lease outranked the off switch"
+    db.execute("UPDATE setting SET value = 'on' WHERE key = 'worker'")
+    reclaimed = jobs.claim(db, "w2", 100.0, gate=("worker", "on"))
+    assert reclaimed is not None
+    assert reclaimed[0] == first[0]
+    assert reclaimed[1] == first[1] + 1, "a reclaim must move the fence"
+
+
 def test_a_killed_worker_strands_nothing(db):
     """The process dies mid-job. Nothing settles, nothing cleans up -- and
     after the lease runs out the next worker resumes from the items, having

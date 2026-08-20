@@ -280,13 +280,14 @@ def test_a_video_naming_survives_a_changed_sampling_policy(db, a_library):
     assert owners[groups2[1]] == bob
 
 
-def test_the_fallback_naming_run_is_the_minting_run_not_the_newest(db, a_library):
+def test_the_fallback_naming_run_is_the_earliest_carrying_run(db, a_library):
     """When the primary run does not carry the person, the assertion base
-    is the EARLIEST run that does -- the closest thing to the run that
-    minted them the rows record -- with the run id as the final tiebreak,
-    so the choice is a function of the data and never of a query plan.
+    is the EARLIEST-STAMPED run that does, run id as the final tiebreak:
+    a deterministic function of the recorded rows, never of a query plan.
     Preferring the newest run wrote whichever model ran last into the
-    authored record."""
+    authored record. Minting itself is not something the rows record --
+    re-stamping a run legitimately moves the pick, and the second half of
+    this test pins that as the chosen rule rather than an accident."""
     folder, file_a = a_library["folder"], a_library["file"]
     file_b = scan.mint(db, "file", "later")
     db.execute(
@@ -311,7 +312,17 @@ def test_the_fallback_naming_run_is_the_minting_run_not_the_newest(db, a_library
     asserted = authored.assert_named_cluster(db, person, None, NOW + 20)
     held = [row[0] for row in db.execute("SELECT file_id FROM person_assertion WHERE person_id = ?", (person,))]
     assert asserted == 1
-    assert held == [file_a], f"the assertion base must be the minting run {minting}'s files, not the newest run's"
+    assert held == [file_a], f"the assertion base must be the earliest run {minting}'s files, not the newest run's"
+
+    # Re-stamping the earliest run moves the pick to the other one: the
+    # rule reads the stamps as they stand. Recording minting would need a
+    # column the schema does not carry; until somebody needs it, the
+    # deterministic-in-the-rows rule is the contract.
+    db.execute("DELETE FROM person_assertion WHERE person_id = ?", (person,))
+    derived.run_for(db, "test/emb", "v1", "given", None, NOW + 30)
+    authored.assert_named_cluster(db, person, None, NOW + 40)
+    moved = [row[0] for row in db.execute("SELECT file_id FROM person_assertion WHERE person_id = ?", (person,))]
+    assert moved == [file_b], "after a re-stamp the earliest-stamped run is the other one"
 
 
 def _two_people_in_one_photo(db, a_library, tmp_path):

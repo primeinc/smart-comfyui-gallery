@@ -412,7 +412,7 @@ CREATE INDEX region_mask ON region(mask_hash) WHERE mask_hash IS NOT NULL;
 -- pins, which drop_all keeps the way it keeps asserted regions: the human's
 -- claim names a moment, and deleting the row erases which one. Instances
 -- citing dead policies still go, because the instances themselves go; the
--- seeder compares moments by (kind, offset, page), never by row id, so a
+-- seeder compares moments by (file, kind, offset, page), never by row id, so a
 -- rebuild under a new policy token re-attaches the same frames.
 CREATE TABLE derived_media_sample (
     id         INTEGER PRIMARY KEY,
