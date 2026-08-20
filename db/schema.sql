@@ -641,46 +641,71 @@ CREATE INDEX param_key_key ON param_key(key);
 -- DELETE trigger (recursive_triggers is off by default), so a counter that is
 -- only ever incremented drifts on every re-parse. Re-parsing is the normal
 -- case here: improving a parser is a re-parse of the database.
+-- NOTHING MAY WRITE THIS TABLE WITH INSERT OR REPLACE. Use
+-- `ON CONFLICT(file_id, source, key) DO UPDATE`.
+--
+-- REPLACE fires no DELETE trigger and gives the replacement a new rowid, so
+-- the counter below would drift up forever and the FTS entry keyed on the old
+-- rowid would be stranded. Recomputing both from scratch absorbed that, and
+-- cost a full aggregate scan of every row sharing the key ON EVERY INSERT --
+-- 1.5 ms per row at 8k rows and still doubling, against a flat 34 us/row once
+-- the writes are honest and the counters are arithmetic.
+--
+-- This cannot be a trigger. SQLite runs BEFORE INSERT triggers before conflict
+-- resolution, so a guard there cannot tell REPLACE from the upsert it is
+-- steering callers towards -- it rejects both. The rule is enforced by a test
+-- over the source instead: tests/test_schema_contract.py.
 CREATE TRIGGER param_key_learn AFTER INSERT ON file_param BEGIN
   INSERT INTO param_key(source,key,value_kind,occurrences,first_seen_at,last_seen_at)
-  VALUES (NEW.source, NEW.key, 'text', 0, unixepoch(), unixepoch())
-  ON CONFLICT(source,key) DO NOTHING;
-  UPDATE param_key SET
-    occurrences  = (SELECT count(*) FROM file_param
-                     WHERE source = NEW.source AND key = NEW.key),
-    value_kind   = (SELECT CASE
-                      WHEN count(*) FILTER (WHERE value_num IS NULL) = 0 THEN 'number'
-                      WHEN count(*) FILTER (WHERE value_num IS NOT NULL) = 0 THEN 'text'
-                      ELSE 'mixed' END
-                    FROM file_param WHERE source = NEW.source AND key = NEW.key),
-    last_seen_at = unixepoch()
-  WHERE source = NEW.source AND key = NEW.key;
+  VALUES (NEW.source, NEW.key,
+          CASE WHEN NEW.value_num IS NULL THEN 'text' ELSE 'number' END,
+          1, unixepoch(), unixepoch())
+  ON CONFLICT(source,key) DO UPDATE SET
+    occurrences  = occurrences + 1,
+    -- A three-state lattice that only ever widens: once a key has been seen
+    -- both ways it is mixed and stays mixed. Deciding it by aggregate meant
+    -- reading the whole key's history to answer a question with three
+    -- possible values.
+    value_kind   = CASE
+                     WHEN value_kind = 'mixed' THEN 'mixed'
+                     WHEN value_kind =
+                       CASE WHEN NEW.value_num IS NULL THEN 'text' ELSE 'number' END
+                       THEN value_kind
+                     ELSE 'mixed' END,
+    last_seen_at = unixepoch();
 END;
 
+-- An update can move a row between keys, so the old key loses one and the new
+-- key gains one. Both are arithmetic, and the WHEN keeps the common case --
+-- rewriting a value in place -- from touching the registry at all.
 CREATE TRIGGER param_key_relearn AFTER UPDATE ON file_param BEGIN
+  UPDATE param_key SET occurrences = occurrences - 1
+   WHERE (source, key) = (OLD.source, OLD.key)
+     AND (OLD.source, OLD.key) <> (NEW.source, NEW.key);
   INSERT INTO param_key(source,key,value_kind,occurrences,first_seen_at,last_seen_at)
-  VALUES (NEW.source, NEW.key, 'text', 0, unixepoch(), unixepoch())
-  ON CONFLICT(source,key) DO NOTHING;
-  UPDATE param_key SET
-    occurrences = (SELECT count(*) FROM file_param
-                    WHERE source = param_key.source AND key = param_key.key),
-    value_kind  = (SELECT CASE
-                     WHEN count(*) FILTER (WHERE value_num IS NULL) = 0 THEN 'number'
-                     WHEN count(*) FILTER (WHERE value_num IS NOT NULL) = 0 THEN 'text'
-                     ELSE 'mixed' END
-                   FROM file_param WHERE source = param_key.source AND key = param_key.key),
-    last_seen_at = unixepoch()
-  WHERE (source, key) IN ((OLD.source, OLD.key), (NEW.source, NEW.key));
-  DELETE FROM param_key WHERE occurrences = 0;
+  VALUES (NEW.source, NEW.key,
+          CASE WHEN NEW.value_num IS NULL THEN 'text' ELSE 'number' END,
+          CASE WHEN (OLD.source, OLD.key) = (NEW.source, NEW.key) THEN 1 ELSE 1 END,
+          unixepoch(), unixepoch())
+  ON CONFLICT(source,key) DO UPDATE SET
+    occurrences = occurrences
+      + CASE WHEN (OLD.source, OLD.key) = (NEW.source, NEW.key) THEN 0 ELSE 1 END,
+    value_kind  = CASE
+                    WHEN value_kind = 'mixed' THEN 'mixed'
+                    WHEN value_kind =
+                      CASE WHEN NEW.value_num IS NULL THEN 'text' ELSE 'number' END
+                      THEN value_kind
+                    ELSE 'mixed' END,
+    last_seen_at = unixepoch();
+  DELETE FROM param_key WHERE occurrences <= 0;
 END;
 
 CREATE TRIGGER param_key_forget AFTER DELETE ON file_param BEGIN
-  UPDATE param_key SET
-    occurrences = (SELECT count(*) FROM file_param
-                    WHERE source = OLD.source AND key = OLD.key)
-  WHERE source = OLD.source AND key = OLD.key;
+  UPDATE param_key SET occurrences = occurrences - 1
+   WHERE source = OLD.source AND key = OLD.key;
   -- a key nobody uses is not a field the library contains
-  DELETE FROM param_key WHERE source = OLD.source AND key = OLD.key AND occurrences = 0;
+  DELETE FROM param_key WHERE source = OLD.source AND key = OLD.key
+     AND occurrences <= 0;
 END;
 
 -- ============ search: every text surface is indexed ============
@@ -724,71 +749,80 @@ END;
 -- Note: the trigram tokenizer emits nothing below three characters
 -- (fts5_tokenize.c), so short names such as "XL" are not substring-searchable
 -- and callers must fall back to an equality match on name_key.
-CREATE VIRTUAL TABLE name_fts USING fts5(name, entity_id UNINDEXED, tokenize='trigram');
+-- THE ROWID IS THE ENTITY ID. Five tables feed one index, so this cannot
+-- be an external-content table -- but it can key on the entity, and that
+-- is what makes removing an entry a B-tree lookup instead of a scan.
+--
+-- It carried `entity_id UNINDEXED` and every update and delete trigger
+-- matched on it, so renaming or deleting one row scanned the whole index.
+-- Invisible on a small library and quadratic on a real one: the scanner
+-- renames and moves constantly, and a folder rename touches every name
+-- under it.
+CREATE VIRTUAL TABLE name_fts USING fts5(name, tokenize='trigram');
 
 CREATE TRIGGER name_fts_artifact_ins AFTER INSERT ON artifact
 WHEN NEW.name IS NOT NULL BEGIN
-  INSERT INTO name_fts(name, entity_id) VALUES (NEW.name, NEW.id);
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
 END;
 CREATE TRIGGER name_fts_artifact_upd AFTER UPDATE OF name ON artifact BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
-  INSERT INTO name_fts(name, entity_id)
-    SELECT NEW.name, NEW.id WHERE NEW.name IS NOT NULL;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
 END;
 CREATE TRIGGER name_fts_artifact_del AFTER DELETE ON artifact BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
 END;
 
 CREATE TRIGGER name_fts_file_ins AFTER INSERT ON file
 WHEN NEW.name IS NOT NULL BEGIN
-  INSERT INTO name_fts(name, entity_id) VALUES (NEW.name, NEW.id);
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
 END;
 CREATE TRIGGER name_fts_file_upd AFTER UPDATE OF name ON file BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
-  INSERT INTO name_fts(name, entity_id)
-    SELECT NEW.name, NEW.id WHERE NEW.name IS NOT NULL;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
 END;
 CREATE TRIGGER name_fts_file_del AFTER DELETE ON file BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
 END;
 
 CREATE TRIGGER name_fts_folder_ins AFTER INSERT ON folder
 WHEN NEW.name IS NOT NULL BEGIN
-  INSERT INTO name_fts(name, entity_id) VALUES (NEW.name, NEW.id);
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
 END;
 CREATE TRIGGER name_fts_folder_upd AFTER UPDATE OF name ON folder BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
-  INSERT INTO name_fts(name, entity_id)
-    SELECT NEW.name, NEW.id WHERE NEW.name IS NOT NULL;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
 END;
 CREATE TRIGGER name_fts_folder_del AFTER DELETE ON folder BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
 END;
 
 CREATE TRIGGER name_fts_person_ins AFTER INSERT ON person
 WHEN NEW.name IS NOT NULL BEGIN
-  INSERT INTO name_fts(name, entity_id) VALUES (NEW.name, NEW.id);
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
 END;
 CREATE TRIGGER name_fts_person_upd AFTER UPDATE OF name ON person BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
-  INSERT INTO name_fts(name, entity_id)
-    SELECT NEW.name, NEW.id WHERE NEW.name IS NOT NULL;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
 END;
 CREATE TRIGGER name_fts_person_del AFTER DELETE ON person BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
 END;
 
 CREATE TRIGGER name_fts_collection_ins AFTER INSERT ON collection
 WHEN NEW.name IS NOT NULL BEGIN
-  INSERT INTO name_fts(name, entity_id) VALUES (NEW.name, NEW.id);
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
 END;
 CREATE TRIGGER name_fts_collection_upd AFTER UPDATE OF name ON collection BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
-  INSERT INTO name_fts(name, entity_id)
-    SELECT NEW.name, NEW.id WHERE NEW.name IS NOT NULL;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
 END;
 CREATE TRIGGER name_fts_collection_del AFTER DELETE ON collection BEGIN
-  DELETE FROM name_fts WHERE entity_id = OLD.id;
+  DELETE FROM name_fts WHERE rowid = OLD.id;
 END;
 
 -- The long tail's own values, so a scraped field is searchable the day it
@@ -796,30 +830,43 @@ END;
 -- `source` is carried here because the file_param key is (file_id, source,
 -- key): without it the delete predicate wipes the XMP row's entry when the
 -- IPTC row of the same name is removed.
+-- EXTERNAL CONTENT, keyed on file_param's rowid. This was a standalone table
+-- carrying its own copies of file_id/key/source as UNINDEXED columns, and the
+-- delete half of each trigger matched on them -- so every insert SCANNED THE
+-- WHOLE INDEX to find the row it was replacing. Measured at 8k rows: 1.5 ms
+-- per row and still doubling with size, against a flat 2 us/row for FTS5
+-- itself at any size. The quadratic term was the scan, never the tokenizer.
+--
+-- Keyed on the rowid the delete is a B-tree lookup, and the columns those
+-- scans existed to filter on are read by joining back to file_param, which a
+-- search has to do anyway to render a result.
 CREATE VIRTUAL TABLE param_fts USING fts5(
-    value, file_id UNINDEXED, key UNINDEXED, source UNINDEXED, tokenize='trigram');
+    -- The column MUST be named as file_param names it: for external content
+    -- FTS5 builds 'SELECT T."<col>" FROM <content>' from the FTS column names
+    -- verbatim (refs/sqlite/sqlite/ext/fts5/fts5_config.c:530), so a mismatch
+    -- is not a rename, it is a query against a column that does not exist.
+    value_text, content='file_param', content_rowid='rowid', tokenize='trigram');
 
--- Each of these deletes first, so INSERT OR REPLACE -- which fires no DELETE
--- trigger -- cannot accumulate stale index rows.
-CREATE TRIGGER param_fts_insert AFTER INSERT ON file_param BEGIN
-  DELETE FROM param_fts
-   WHERE file_id = NEW.file_id AND key = NEW.key AND source = NEW.source;
-  INSERT INTO param_fts(value, file_id, key, source)
-    SELECT NEW.value_text, NEW.file_id, NEW.key, NEW.source
-     WHERE NEW.value_text IS NOT NULL;
+-- Correct only because nothing writes file_param with INSERT OR REPLACE:
+-- REPLACE deletes the conflicting row WITHOUT firing a DELETE trigger and the
+-- replacement gets a NEW rowid, stranding the old index entry forever.
+-- `file_param_no_replace` below is what keeps that true.
+CREATE TRIGGER param_fts_insert AFTER INSERT ON file_param
+WHEN NEW.value_text IS NOT NULL BEGIN
+  INSERT INTO param_fts(rowid, value_text) VALUES (NEW.rowid, NEW.value_text);
 END;
 
 CREATE TRIGGER param_fts_update AFTER UPDATE ON file_param BEGIN
-  DELETE FROM param_fts
-   WHERE file_id = OLD.file_id AND key = OLD.key AND source = OLD.source;
-  INSERT INTO param_fts(value, file_id, key, source)
-    SELECT NEW.value_text, NEW.file_id, NEW.key, NEW.source
-     WHERE NEW.value_text IS NOT NULL;
+  INSERT INTO param_fts(param_fts, rowid, value_text)
+    SELECT 'delete', OLD.rowid, OLD.value_text WHERE OLD.value_text IS NOT NULL;
+  INSERT INTO param_fts(rowid, value_text)
+    SELECT NEW.rowid, NEW.value_text WHERE NEW.value_text IS NOT NULL;
 END;
 
-CREATE TRIGGER param_fts_delete AFTER DELETE ON file_param BEGIN
-  DELETE FROM param_fts
-   WHERE file_id = OLD.file_id AND key = OLD.key AND source = OLD.source;
+CREATE TRIGGER param_fts_delete AFTER DELETE ON file_param
+WHEN OLD.value_text IS NOT NULL BEGIN
+  INSERT INTO param_fts(param_fts, rowid, value_text)
+    VALUES('delete', OLD.rowid, OLD.value_text);
 END;
 
 -- ============ derived_*: drop this namespace, re-index, reproduced ============

@@ -123,9 +123,14 @@ def _param(conn, file_id: int, source: str, key: str, value) -> bool:
         number = float(text)
     except ValueError:
         number = None
+    # Never INSERT OR REPLACE: it fires no DELETE trigger, so the FTS entry
+    # keyed on the old rowid is stranded and the registry count drifts.
+    # The schema refuses it outright.
     conn.execute(
-        "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text, value_num)"
-        " VALUES(?, ?, ?, ?, ?)",
+        "INSERT INTO file_param(file_id, source, key, value_text, value_num)"
+        " VALUES(?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, source, key) DO UPDATE SET"
+        " value_text = excluded.value_text, value_num = excluded.value_num",
         (file_id, source, key, text, number),
     )
     return True

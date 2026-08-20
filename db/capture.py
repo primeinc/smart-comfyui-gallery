@@ -445,9 +445,13 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
             (file_id, artifact_id, role),
         )
     for name, text, number in found.params:
+        # Never INSERT OR REPLACE; see db/ingest.py and the schema trigger
+        # that refuses it.
         conn.execute(
-            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text, value_num)"
-            " VALUES(?, 'exif', ?, ?, ?)",
+            "INSERT INTO file_param(file_id, source, key, value_text, value_num)"
+            " VALUES(?, 'exif', ?, ?, ?)"
+            " ON CONFLICT(file_id, source, key) DO UPDATE SET"
+            " value_text = excluded.value_text, value_num = excluded.value_num",
             (file_id, name, text, number),
         )
     for slot, payload in found.binaries:

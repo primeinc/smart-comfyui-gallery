@@ -737,7 +737,8 @@ def test_text_is_searchable_by_word_and_by_substring(db):
     assert hit and hit[0] == 200, "word search over prompts found nothing"
 
     an_artifact(db, 201, "checkpoint", "flux-dev.safetensors")
-    sub = db.execute("SELECT entity_id FROM name_fts WHERE name_fts MATCH 'afeten'").fetchall()
+    # the rowid IS the entity id, which is what makes a delete a lookup
+    sub = db.execute("SELECT rowid FROM name_fts WHERE name_fts MATCH 'afeten'").fetchall()
     assert [r[0] for r in sub] == [201], f"substring search over names failed: {sub}"
 
     a_file(db, 202, 1, "z.jpg")
@@ -745,7 +746,12 @@ def test_text_is_searchable_by_word_and_by_substring(db):
         "INSERT INTO file_param(file_id,source,key,value_text) "
         "VALUES(202,'iptc','Credit','Magnum Photos')"
     )
-    tail = db.execute("SELECT file_id FROM param_fts WHERE param_fts MATCH 'agnum'").fetchall()
+    # param_fts is external content over file_param, so the file it belongs to
+    # is read by joining on the rowid rather than from a copy in the index.
+    tail = db.execute(
+        "SELECT p.file_id FROM param_fts f JOIN file_param p ON p.rowid = f.rowid "
+        "WHERE param_fts MATCH 'agnum'"
+    ).fetchall()
     assert [r[0] for r in tail] == [202], "a scraped field was not searchable the day it appeared"
 
 
@@ -1129,19 +1135,106 @@ def test_replace_on_prompt_cannot_orphan_the_index(db):
 
 
 def test_the_registry_survives_a_reparse(db):
-    """Re-parsing is the normal case -- improving a parser is a re-parse of the
-    database -- and a re-parse is a REPLACE or an UPDATE. A counter that only
-    ever increments drifts on every one of them."""
+    """Re-parsing is the normal case -- improving a parser is a re-parse of
+    the database -- so writing the same field four times must leave the
+    registry saying one, and the search index holding one entry."""
     tree(db)
     a_file(db, 9, 1, "a.jpg")
-    for _ in range(4):
+    for attempt in ("alpha", "beta", "gamma", "delta"):
         db.execute(
-            "INSERT OR REPLACE INTO file_param(file_id,source,key,value_text) "
-            "VALUES(9,'exif','Lens','alpha')"
+            "INSERT INTO file_param(file_id,source,key,value_text) "
+            "VALUES(9,'exif','Lens',?) "
+            "ON CONFLICT(file_id,source,key) DO UPDATE SET value_text = excluded.value_text",
+            (attempt,),
         )
     occ = db.execute("SELECT occurrences FROM param_key WHERE key='Lens'").fetchone()[0]
-    assert occ == 1, f"four REPLACEs of one row counted as {occ}"
-    assert db.execute("SELECT count(*) FROM param_fts").fetchone()[0] == 1
+    assert occ == 1, f"four re-parses of one row counted as {occ}"
+    assert db.execute(
+        "SELECT count(*) FROM param_fts WHERE param_fts MATCH 'delta'"
+    ).fetchone()[0] == 1
+    assert db.execute(
+        "SELECT count(*) FROM param_fts WHERE param_fts MATCH 'alpha'"
+    ).fetchone()[0] == 0, "the superseded value is still findable"
+    db.execute("INSERT INTO param_fts(param_fts, rank) VALUES('integrity-check', 1)")
+
+
+def test_nothing_writes_file_param_with_replace():
+    """The rule the counter and the search index both rest on.
+
+    REPLACE fires no DELETE trigger and gives the replacement a new rowid, so
+    `occurrences` drifts up forever and the FTS entry keyed on the old rowid
+    is stranded. Absorbing that by recomputing from scratch is what cost a
+    full scan per insert -- 1.5 ms per row at 8k rows and still doubling,
+    against a flat 34 us/row once the writes are honest.
+
+    It cannot be a trigger: SQLite runs BEFORE INSERT triggers before conflict
+    resolution, so a guard there rejects `ON CONFLICT DO UPDATE` too -- the
+    exact statement it exists to steer callers towards. Written as a trigger
+    first, and that is how this test came to exist.
+    """
+    root = pathlib.Path(__file__).resolve().parent.parent
+    offenders = []
+    for path in sorted((root / "db").rglob("*.py")):
+        source = io.open(path, "r", encoding="utf-8", newline="").read()
+        for match in re.finditer(
+            r"INSERT\s+OR\s+REPLACE\s+INTO\s+file_param", source, re.IGNORECASE
+        ):
+            line = source[: match.start()].count("\n") + 1
+            offenders.append(f"{path.name}:{line}")
+    assert offenders == [], (
+        f"these strand an FTS entry and inflate param_key: {offenders}. "
+        f"Use ON CONFLICT(file_id, source, key) DO UPDATE."
+    )
+
+
+def test_an_upsert_is_not_mistaken_for_a_replace(db):
+    """The control for the rule above: the supported statement must work, and
+    must leave both the counter and the index saying one."""
+    tree(db)
+    a_file(db, 9, 1, "a.jpg")
+    for value in ("a", "b", "c"):
+        db.execute(
+            "INSERT INTO file_param(file_id,source,key,value_text) VALUES(9,'exif','Lens',?)"
+            " ON CONFLICT(file_id,source,key) DO UPDATE SET value_text = excluded.value_text",
+            (value,),
+        )
+    assert db.execute("SELECT occurrences FROM param_key WHERE key='Lens'").fetchone()[0] == 1
+    assert db.execute("SELECT count(*) FROM file_param").fetchone()[0] == 1
+    db.execute("INSERT INTO param_fts(param_fts, rank) VALUES('integrity-check', 1)")
+
+
+def test_the_registry_counts_down_as_well_as_up(db):
+    """An arithmetic counter is only right if both directions are wired: a
+    key nobody uses any more is not a field the library contains."""
+    tree(db)
+    for file_id in (9, 10, 11):
+        a_file(db, file_id, 1, f"{file_id}.jpg")
+        db.execute(
+            "INSERT INTO file_param(file_id,source,key,value_text) VALUES(?,'exif','Lens','x')",
+            (file_id,),
+        )
+    assert db.execute("SELECT occurrences FROM param_key WHERE key='Lens'").fetchone()[0] == 3
+    db.execute("DELETE FROM file_param WHERE file_id=9")
+    assert db.execute("SELECT occurrences FROM param_key WHERE key='Lens'").fetchone()[0] == 2
+    db.execute("DELETE FROM file_param")
+    assert db.execute("SELECT count(*) FROM param_key WHERE key='Lens'").fetchone()[0] == 0
+
+
+def test_a_key_learns_that_it_holds_both_kinds(db):
+    """value_kind is a lattice that only widens, so it never needs the whole
+    history re-read to answer a question with three possible values."""
+    tree(db)
+    a_file(db, 9, 1, "a.jpg")
+    a_file(db, 10, 1, "b.jpg")
+    db.execute(
+        "INSERT INTO file_param(file_id,source,key,value_text,value_num)"
+        " VALUES(9,'exif','ISO','400',400)"
+    )
+    assert db.execute("SELECT value_kind FROM param_key WHERE key='ISO'").fetchone()[0] == "number"
+    db.execute(
+        "INSERT INTO file_param(file_id,source,key,value_text) VALUES(10,'exif','ISO','auto')"
+    )
+    assert db.execute("SELECT value_kind FROM param_key WHERE key='ISO'").fetchone()[0] == "mixed"
 
 
 def test_the_registry_follows_an_update(db):
