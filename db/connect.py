@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pathlib
 import sqlite3
+import time
 
 SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 
@@ -52,6 +53,44 @@ class NotOurDatabase(RuntimeError):
     """The file is a database, but not this application's."""
 
 
+def _mode(conn: sqlite3.Connection) -> str:
+    return (conn.execute("PRAGMA journal_mode").fetchone()[0] or "").lower()
+
+
+def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
+    """Put the file in WAL, tolerating everyone else doing the same.
+
+    Converting takes an exclusive lock, and `busy_timeout` does not cover it,
+    so several processes opening one library at once all raced and all but one
+    died inside `connect` with "database is locked" -- before touching
+    anything, on a database that was about to be perfectly fine. Its own wait,
+    because SQLite will not do this one for us.
+
+    Asking at all is skipped when the file is already in WAL: setting a mode
+    the file already has never reaches the locking path
+    (refs/sqlite/sqlite/src/vdbe.c:8096 guards it on `eNew != eOld`), which
+    makes the normal case free as well as safe.
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        if _mode(conn) == "wal":
+            return
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+            continue
+        if _mode(conn) == "wal":
+            return
+        if time.monotonic() >= deadline:
+            raise sqlite3.OperationalError(
+                "could not put the database into WAL mode; something else holds it"
+            )
+        time.sleep(0.05)
+
+
 def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
     """Open the database with the settings the schema assumes."""
     if read_only:
@@ -79,7 +118,15 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
     if not read_only:
         # journal_mode is a write: setting it on a read-only connection raises,
         # and the mode is a property of the file anyway, not of the connection.
-        conn.execute("PRAGMA journal_mode=WAL")
+        #
+        # Asked only when it would change something. The conversion takes an
+        # exclusive lock and `busy_timeout` does not cover it, so several
+        # processes opening one library at once raced and all but one died in
+        # `connect` itself with "database is locked" -- before doing any work,
+        # on a database that was about to be fine. Setting a mode the file is
+        # already in is a no-op that never reaches the locking path
+        # (refs/sqlite/sqlite/src/vdbe.c:8096, which guards it on eNew!=eOld).
+        _ensure_wal(conn)
         # Set explicitly because the default is a COMPILE-TIME choice, not
         # SQLite's: this Python ships DEFAULT_WAL_SYNCHRONOUS=2, so every
         # commit fsyncs, and a different interpreter would behave differently

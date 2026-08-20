@@ -183,3 +183,83 @@ def test_the_search_index_stays_consistent_at_size(ddl):
         ).fetchone()[0] == 500
     finally:
         conn.close()
+
+
+# --- the scanner, which was never in this file at all -----------------------
+
+
+def _rescan_unchanged(conn, n, sample):
+    """A rescan of a library where nothing on disk has changed.
+
+    The common case by far, and the one that was costing the most: every
+    matched row was rewritten on every pass, setting each column to the value
+    it already held. At 80,000 files that was 3.3 seconds of UPDATEs against
+    154 ms of deciding anything.
+    """
+    from db import scan
+
+    observed = {
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(
+            sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image"
+        )
+        for i in range(2, n + 2)
+    }
+    scan.apply_scan(conn, observed, 1.0, roots={1})
+    scan.apply_scan(conn, observed, 2.0, roots={1})
+    return n
+
+
+def _rescan_with_one_new_file(conn, n, sample):
+    """Adding one picture must not cost the whole library."""
+    from db import scan
+
+    observed = {
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(
+            sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image"
+        )
+        for i in range(2, n + 2)
+    }
+    scan.apply_scan(conn, observed, 1.0, roots={1})
+    observed[(1, "BRAND_NEW.jpg")] = scan.Found(
+        sha="sha-new", size=1, mtime=0, btime=None, inode=None, kind="image"
+    )
+    result = scan.apply_scan(conn, observed, 2.0, roots={1})
+    assert result.added == 1, result
+    return n
+
+
+def a_scanned_library(ddl, n):
+    """`n` files whose stored hashes match what a rescan will observe."""
+    conn = a_library(ddl, n)
+    conn.executemany(
+        "UPDATE file SET content_sha256 = ? WHERE id = ?",
+        [(f"sha-{i}", i) for i in range(2, n + 2)],
+    )
+    return conn
+
+
+def per_row_scanning(work, ddl, n):
+    conn = a_scanned_library(ddl, n)
+    try:
+        started = time.perf_counter()
+        rows = work(conn, n, 0)
+        return (time.perf_counter() - started) / rows * 1e6
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "label, work",
+    [
+        ("rescanning an unchanged library", _rescan_unchanged),
+        ("adding one file to a library", _rescan_with_one_new_file),
+    ],
+)
+def test_the_cost_of_a_scan_does_not_grow_with_the_library(ddl, label, work):
+    small = per_row_scanning(work, ddl, SMALL)
+    large = per_row_scanning(work, ddl, LARGE)
+    ratio = large / small
+    assert ratio < TOLERANCE, (
+        f"{label} costs {ratio:.1f}x more per file at {LARGE:,} than at "
+        f"{SMALL:,} ({small:.0f} -> {large:.0f} us/file)"
+    )
