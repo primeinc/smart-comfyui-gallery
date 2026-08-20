@@ -114,6 +114,23 @@ def test_cancel_stops_at_an_item_boundary_and_repeats_nothing(db):
     assert jobs.pending(db, job_id) == [3, 4, 5]
 
 
+def test_the_off_switch_is_honoured_by_the_claim_itself(db):
+    """The gate rides inside the claim's single UPDATE: a switch read a
+    moment before the off-commit lands can otherwise win a job submitted
+    a moment after -- observed live once per-request connection setup
+    widened that gap. An absent row falls back to the given default."""
+    jobs.submit(db, "embed", 0.0, items=[1])
+    db.execute("INSERT INTO setting(key, value) VALUES('worker', 'off')")
+    assert jobs.claim(db, "w1", 1.0, gate=("worker", "on")) is None, "an off switch lost to the claim"
+    db.execute("UPDATE setting SET value = 'on' WHERE key = 'worker'")
+    assert jobs.claim(db, "w1", 2.0, gate=("worker", "on")) is not None
+
+    jobs.submit(db, "embed", 3.0, items=[2])
+    db.execute("DELETE FROM setting WHERE key = 'worker'")
+    assert jobs.claim(db, "w2", 4.0, gate=("worker", "off")) is None
+    assert jobs.claim(db, "w2", 5.0, gate=("worker", "on")) is not None
+
+
 def test_a_killed_worker_strands_nothing(db):
     """The process dies mid-job. Nothing settles, nothing cleans up -- and
     after the lease runs out the next worker resumes from the items, having

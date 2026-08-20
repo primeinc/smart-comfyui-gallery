@@ -280,6 +280,40 @@ def test_a_video_naming_survives_a_changed_sampling_policy(db, a_library):
     assert owners[groups2[1]] == bob
 
 
+def test_the_fallback_naming_run_is_the_minting_run_not_the_newest(db, a_library):
+    """When the primary run does not carry the person, the assertion base
+    is the EARLIEST run that does -- the closest thing to the run that
+    minted them the rows record -- with the run id as the final tiebreak,
+    so the choice is a function of the data and never of a query plan.
+    Preferring the newest run wrote whichever model ran last into the
+    authored record."""
+    folder, file_a = a_library["folder"], a_library["file"]
+    file_b = scan.mint(db, "file", "later")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+        " first_seen_at, last_seen_at) VALUES(?, ?, 'later.png', 'image', 10, 0, 'ee', ?, ?)",
+        (file_b, folder, NOW, NOW),
+    )
+    person = authored.person(db, None, NOW)
+
+    def carried(version, when, file_id):
+        run = derived.run_for(db, "test/emb", version, "given", None, when)
+        (group,) = derived.recluster(db, "test/emb", version, when, [{"person_id": person}])
+        (face,) = derived.record_faces(
+            db, file_id, "test/emb", version, "aa", when, [{"region": derived.region(db, 0.2, 0.2, 0.2, 0.2)}]
+        )
+        derived.assign_cluster(db, face, group)
+        return run
+
+    minting = carried("v1", NOW, file_a)
+    carried("v2", NOW + 10, file_b)  # a newer run carries them somewhere else
+
+    asserted = authored.assert_named_cluster(db, person, None, NOW + 20)
+    held = [row[0] for row in db.execute("SELECT file_id FROM person_assertion WHERE person_id = ?", (person,))]
+    assert asserted == 1
+    assert held == [file_a], f"the assertion base must be the minting run {minting}'s files, not the newest run's"
+
+
 def _two_people_in_one_photo(db, a_library, tmp_path):
     """A group shot and a solo shot, with a human's claim on each face."""
     group = a_library["file"]

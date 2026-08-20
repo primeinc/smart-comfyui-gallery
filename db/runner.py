@@ -187,6 +187,7 @@ def run_next(
     *,
     handlers=None,
     kinds=None,
+    gate=None,
     budget: int | None = None,
     clock=None,
     on_progress=None,
@@ -218,7 +219,7 @@ def run_next(
     handlers = HANDLERS if handlers is None else handlers
     tick = clock if clock is not None else (lambda: now)
     tell = on_progress if on_progress is not None else (lambda delta: None)
-    claimed = jobs.claim(conn, owner, now, kinds=kinds)
+    claimed = jobs.claim(conn, owner, now, kinds=kinds, gate=gate)
     if claimed is None:
         return None
     job_id, fence = claimed

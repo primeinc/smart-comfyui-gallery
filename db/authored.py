@@ -149,18 +149,20 @@ def assert_named_cluster(conn, person_id: int, user_id: int | None, now: float) 
     a file holds several.
 
     Written from ONE run: the primary if its clusters carry this person
-    (that is the page the human is looking at), otherwise the run that
-    minted them -- a person named from a non-primary run's group deserves
-    the same durability. Never the union across runs: runs disagree on
-    purpose, and asserting every run's files would write model inference
-    into the authored ground truth the run rankings are judged against.
-    Returns how many files were asserted.
+    (that is the page the human is looking at); otherwise the EARLIEST
+    run that does -- the closest thing to the run that minted them the
+    rows record -- with the run id as the final tiebreak, so the pick is
+    a function of the data and never of a query plan. Never the newest,
+    which would write whichever model ran last into the record; never the
+    union across runs, which would write every model's inference into the
+    authored ground truth the run rankings are judged against. Returns
+    how many files were asserted.
     """
     addressed = conn.execute(
         "SELECT c.run_id FROM derived_face_cluster c"
         "  JOIN derived_face_run r ON r.id = c.run_id"
         " WHERE c.person_id = ?"
-        " ORDER BY r.is_primary DESC, r.computed_at DESC LIMIT 1",
+        " ORDER BY r.is_primary DESC, r.computed_at ASC, r.id ASC LIMIT 1",
         (person_id,),
     ).fetchone()
     if addressed is None:
@@ -201,7 +203,9 @@ def assert_person(
 
     The upsert is guarded: a record with no author (`user_id` NULL -- the
     system writing a naming down) never replaces one a person signed. A
-    signed write replaces anything, including another signature.
+    signed write replaces anything, including another signature. Signed
+    rows are today an out-of-band affordance -- no route writes one --
+    and the guard protects them for the tooling and surfaces that do.
     """
     conn.execute(
         "INSERT INTO person_assertion(person_id, file_id, sample_id, region_id,"

@@ -73,8 +73,11 @@ def drop_all(conn) -> list[str]:
             # sample_id and the seeder's cross-moment guard goes blind: a
             # video of two people holds the same box at two moments, every
             # rebuilt cluster collects both votes, and both names are
-            # lost. Same rule as regions below; re-detection reclaims the
-            # kept rows through add_sample's upsert.
+            # lost. Same rule as regions below. Re-detection reclaims the
+            # kept rows through add_sample's upsert while the policy token
+            # is unchanged; under a new token the kept row persists as a
+            # moment-alias the seeder matches by moment, bounded by the
+            # number of assertions.
             conn.execute(
                 "DELETE FROM derived_media_sample WHERE id NOT IN"
                 " (SELECT sample_id FROM person_assertion WHERE sample_id IS NOT NULL)"
@@ -1049,9 +1052,13 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
     Returns the number of clusters named.
     """
     boxes = {row[0]: row[1:] for row in conn.execute("SELECT id, x, y, w, h FROM region")}
+    # The file is part of the moment's identity: an assertion whose sample
+    # row belongs to ANOTHER file must never vote, however its offset reads
+    # -- nothing shipped writes that shape, and this keeps a future buggy
+    # writer at a silent skip instead of a cross-file mislabel.
     moments = {
-        row[0]: (row[1], row[2], row[3])
-        for row in conn.execute("SELECT id, kind, offset_ms, page_index FROM derived_media_sample")
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in conn.execute("SELECT id, file_id, kind, offset_ms, page_index FROM derived_media_sample")
     }
     assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
     for person_id, file_id, sample_id, region_id in conn.execute(
@@ -1084,9 +1091,12 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
                     votes.setdefault(cluster_id, set()).add(person)
                 continue
             # No box. It can speak only where it is the sole claim over the
-            # same ground, or it would name whichever face came first.
+            # same ground, or it would name whichever face came first. The
+            # same ground is the same MOMENT, by the same identity as above.
             alone = [
-                other for other, other_sample, _ in claims if on_sample is None or other_sample in (None, on_sample)
+                other
+                for other, other_sample, _ in claims
+                if on_sample is None or other_sample is None or moments.get(other_sample) == moments.get(on_sample)
             ]
             if len(set(alone)) == 1 and not any(b is not None for _, _, b in claims):
                 votes.setdefault(cluster_id, set()).add(person)

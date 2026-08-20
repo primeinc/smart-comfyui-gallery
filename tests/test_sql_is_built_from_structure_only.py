@@ -53,6 +53,8 @@ _STRUCTURE = {
     # `kind_filter` is "" or an IN (...) of placeholders, params bound
     "runnable": "clause",
     "kind_filter": "clause",
+    # "" or a COALESCE-over-setting guard; the key and default are bound
+    "gate_filter": "clause",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
     "column": "identifier",

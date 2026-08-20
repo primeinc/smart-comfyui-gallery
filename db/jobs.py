@@ -76,12 +76,19 @@ def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=N
     return job_id
 
 
-def claim(conn, owner: str, now: float, *, kinds=None) -> tuple[int, int] | None:
+def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, int] | None:
     """Take the next runnable job, returning `(job_id, fence)`.
 
     Runnable means queued, or running under a lease that has expired. The
     fence is incremented on every claim, so a previous owner that wakes up
     still holding the old value can no longer write.
+
+    `gate` is `(setting key, default)`: the claim then succeeds only while
+    that setting reads 'on', evaluated INSIDE the claim's single UPDATE.
+    A caller that checks the switch and then claims holds a stale answer
+    for the gap between the two -- observed live once per-request
+    connection setup widened it -- and an off-switch committed before the
+    claim must never lose to that gap.
     """
     runnable = "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
     kind_filter = ""
@@ -89,6 +96,11 @@ def claim(conn, owner: str, now: float, *, kinds=None) -> tuple[int, int] | None
     if kinds:
         kind_filter = f" AND kind IN ({','.join('?' * len(kinds))})"
         kind_args = list(kinds)
+    gate_filter = ""
+    gate_args: list = []
+    if gate is not None:
+        gate_filter = " AND COALESCE((SELECT value FROM setting WHERE key = ?), ?) = 'on'"
+        gate_args = list(gate)
 
     # One statement. As a SELECT then an UPDATE this was not a claim at all:
     # two workers both read the same queued row, both incremented the fence,
@@ -105,9 +117,9 @@ def claim(conn, owner: str, now: float, *, kinds=None) -> tuple[int, int] | None
         " started_at = COALESCE(started_at, ?)"
         f" WHERE id = (SELECT id FROM job WHERE {runnable}{kind_filter}"
         "             ORDER BY created_at LIMIT 1)"
-        f"   AND {runnable}"
+        f"   AND {runnable}{gate_filter}"
         " RETURNING id, fence",
-        [owner, now + LEASE_SECONDS, now, now, now, *kind_args, now],
+        [owner, now + LEASE_SECONDS, now, now, now, *kind_args, now, *gate_args],
     ).fetchone()
     if row is None:
         return None

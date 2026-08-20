@@ -48,12 +48,17 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
     try:
         while not stop.is_set():
             turn = None
+            # The flag read is economy -- skip the claim entirely while
+            # off. The GUARANTEE is the gate inside the claim itself: a
+            # flag read here goes stale in the gap before the claim, and
+            # an off-switch committed in that gap must still win.
             if settings.flag(conn, "worker"):
                 try:
                     turn = runner.run_next(
                         conn,
                         owner=owner,
                         now=time.time(),
+                        gate=("worker", settings.REGISTRY["worker"][0]),
                         clock=time.time,
                         on_progress=publish,
                         should_stop=stop.is_set,
