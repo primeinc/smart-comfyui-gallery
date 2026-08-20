@@ -312,3 +312,203 @@ def test_optimize_is_cheap_on_a_database_nothing_has_queried(library):
         conn.commit()
     finally:
         conn.close()
+
+
+# --- against the real schema, not a table invented for the test -------------
+
+
+def rebuild_the_file_table(conn):
+    """The hardest migration this schema can be asked for.
+
+    Twenty-three columns across twenty tables reference `file`, and it is the
+    table every page reads. Rebuilding it is the twelve-step dance with the
+    most at stake: foreign keys are off while it runs, so every one of those
+    references is unprotected for the duration, and a copy that loses a
+    column or drops a row detaches somebody's ratings from their pictures.
+
+    `rebuild_comment_table` above proves the runner works, on a table two
+    things point at. This proves it where it would actually hurt.
+    """
+    conn.execute(
+        "CREATE TABLE file_new ("
+        " id INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,"
+        " folder_id INTEGER NOT NULL REFERENCES folder(id) ON DELETE CASCADE,"
+        " name TEXT NOT NULL,"
+        " kind TEXT NOT NULL CHECK (kind IN"
+        "   ('image','animated_image','video','audio','document')),"
+        " size INTEGER NOT NULL, mtime REAL NOT NULL, btime REAL,"
+        " inode INTEGER, content_sha256 TEXT,"
+        " width INTEGER, height INTEGER, duration REAL,"
+        # the change: a column that did not exist before
+        " starred INTEGER NOT NULL DEFAULT 0 CHECK (starred IN (0,1)),"
+        " first_seen_at REAL NOT NULL, last_seen_at REAL NOT NULL,"
+        " missing_since REAL"
+        ") STRICT"
+    )
+    conn.execute(
+        "INSERT INTO file_new(id, folder_id, name, kind, size, mtime, btime, inode,"
+        " content_sha256, width, height, duration, first_seen_at, last_seen_at,"
+        " missing_since)"
+        " SELECT id, folder_id, name, kind, size, mtime, btime, inode,"
+        " content_sha256, width, height, duration, first_seen_at, last_seen_at,"
+        " missing_since FROM file"
+    )
+    conn.execute("DROP TABLE file")
+    conn.execute("ALTER TABLE file_new RENAME TO file")
+    for statement in (
+        "CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)"
+        " WHERE missing_since IS NULL",
+        "CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL",
+        "CREATE INDEX file_in_folder_by_time ON file(folder_id, mtime, id)"
+        " WHERE missing_since IS NULL",
+        "CREATE INDEX file_added ON file(first_seen_at DESC) WHERE missing_since IS NULL",
+        "CREATE INDEX file_sha ON file(content_sha256)",
+        "CREATE INDEX file_kind ON file(kind)",
+    ):
+        conn.execute(statement)
+
+
+def a_whole_library(path, root):
+    """A library built by the real producers, with work of every kind in it."""
+    from PIL import Image
+    from PIL.PngImagePlugin import PngInfo
+
+    from db import derived, ingest
+    from db import library as library_module
+
+    root.mkdir(parents=True, exist_ok=True)
+    recipe = (
+        "a castle <lora:filmGrain:0.4>\nNegative prompt: blur\n"
+        "Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, "
+        "Size: 512x512, Model: dreamshaper_8"
+    )
+    for i in range(4):
+        info = PngInfo()
+        info.add_text("parameters", recipe)
+        Image.new("RGB", (16, 16), (20 + i, 40, 60)).save(root / f"p{i}.png", pnginfo=info)
+
+    build.build(path)
+    conn = connect.connect(path)
+    root_id = library_module.add_root(conn, root, "library", NOW)
+    scan.scan(conn, root_id, root, NOW)
+    for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():
+        ingest.one(conn, file_id, root / name, NOW)
+
+    user = authored.add_user(conn, "will", "hash", "ADMIN", NOW)
+    person = authored.person(conn, "Ilse", NOW)
+    album = authored.collection(conn, "Keepers", NOW)
+    files = [r[0] for r in conn.execute("SELECT id FROM file ORDER BY id")]
+    authored.rate(conn, files[0], user, 5, NOW)
+    authored.comment(conn, files[0], user, "the good one", NOW)
+    authored.favourite(conn, files[1], user, NOW)
+    authored.add_to_collection(conn, album, files[2], NOW)
+    authored.assert_person(conn, person, files[3], user, NOW)
+    derived.annotate(conn, files[0], "caption", "a brass helmet", "qwen-vl", "2.5", "aa", NOW)
+    derived.record_hash(conn, files[1], "aa", NOW, phash64=123)
+    conn.commit()
+    conn.close()
+    return path
+
+
+def everything_in(path):
+    """The whole library, as one comparable value."""
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return {
+            "files": conn.execute(
+                "SELECT id, folder_id, name, content_sha256 FROM file ORDER BY id"
+            ).fetchall(),
+            "ratings": conn.execute("SELECT file_id, rating FROM rating").fetchall(),
+            "comments": conn.execute("SELECT file_id, body FROM comment").fetchall(),
+            "favourites": conn.execute("SELECT file_id FROM favorite").fetchall(),
+            "membership": conn.execute("SELECT file_id FROM collection_file").fetchall(),
+            "assertions": conn.execute(
+                "SELECT person_id, file_id FROM person_assertion"
+            ).fetchall(),
+            "params": conn.execute("SELECT count(*) FROM file_param").fetchone()[0],
+            "artifacts": conn.execute(
+                "SELECT file_id, role FROM file_artifact ORDER BY file_id, role"
+            ).fetchall(),
+            "generation": conn.execute("SELECT file_id, seed FROM generation").fetchall(),
+            "captions": conn.execute("SELECT file_id, text FROM derived_annotation").fetchall(),
+            "hashes": conn.execute("SELECT file_id, phash64 FROM derived_file_hash").fetchall(),
+            "slugs": conn.execute("SELECT kind, slug FROM entity ORDER BY id").fetchall(),
+            "caption_search": conn.execute(
+                "SELECT count(*) FROM annotation_fts WHERE annotation_fts MATCH 'helmet'"
+            ).fetchone()[0],
+            "param_search": conn.execute(
+                "SELECT count(*) FROM param_fts WHERE param_fts MATCH 'dreamshaper'"
+            ).fetchone()[0],
+        }
+    finally:
+        conn.close()
+
+
+def test_rebuilding_the_table_everything_points_at_keeps_the_library(tmp_path, steps):
+    """Claim 5 against the real schema.
+
+    Twenty-three columns across twenty tables reference `file`. Foreign keys
+    are off while a rebuild runs, so all of them are unprotected for its
+    duration -- this is the migration where a lost column or a dropped row
+    silently detaches every rating in the library from its picture.
+    """
+    path = a_whole_library(tmp_path / "gallery.db", tmp_path / "pics")
+    before = everything_in(path)
+    assert before["ratings"] and before["params"] and before["caption_search"], (
+        "the fixture holds nothing, so surviving it proves nothing"
+    )
+
+    steps[connect.USER_VERSION] = rebuild_the_file_table
+    assert migrate.migrate(path, target=connect.USER_VERSION + 1) == [connect.USER_VERSION + 1]
+
+    assert everything_in(path) == before, "the migration cost the library something"
+
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        # the rebuild really happened, so this is not passing by doing nothing
+        assert "starred" in [r[1] for r in conn.execute("PRAGMA table_info(file)")]
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    finally:
+        conn.close()
+
+
+def test_a_migration_that_loses_a_column_is_caught(tmp_path, steps):
+    """The control.
+
+    Without it, `everything_in(...) == before` might be comparing two copies
+    of nothing. A rebuild that forgets one column is the ordinary way this
+    goes wrong -- the twelve-step dance restates the whole table by hand --
+    and it has to be visible, not silently absorbed.
+    """
+    path = a_whole_library(tmp_path / "gallery.db", tmp_path / "pics")
+    before = everything_in(path)
+
+    def forget_the_hashes(conn):
+        rebuild_the_file_table(conn)
+        conn.execute("UPDATE file SET content_sha256 = NULL")
+
+    steps[connect.USER_VERSION] = forget_the_hashes
+    migrate.migrate(path, target=connect.USER_VERSION + 1)
+    assert everything_in(path) != before, (
+        "a migration that wiped every content hash compared equal"
+    )
+
+
+def test_the_snapshot_of_a_whole_library_can_be_restored(tmp_path, steps):
+    """The way back, on a real library rather than a table of four rows."""
+    path = a_whole_library(tmp_path / "gallery.db", tmp_path / "pics")
+    before = everything_in(path)
+
+    steps[connect.USER_VERSION] = rebuild_the_file_table
+    migrate.migrate(path, target=connect.USER_VERSION + 1)
+    backup = pathlib.Path(str(path).replace(".db", f".v{connect.USER_VERSION}.backup"))
+
+    migrate.restore(backup, path)
+    assert everything_in(path) == before
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
+        assert "starred" not in [r[1] for r in conn.execute("PRAGMA table_info(file)")]
+    finally:
+        conn.close()
