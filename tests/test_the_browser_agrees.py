@@ -75,13 +75,14 @@ def gallery(tmp_path_factory):
     # nobody drains blocks the server at the OS buffer. A file has no
     # such ceiling, and holds the log for a post-mortem.
     server_log = (tmp / "server.log").open("wb")
-    server = subprocess.Popen(
-        [sys.executable, "-m", "sg_web", "--home", str(tmp / "run"), "--port", str(port)],
-        stdout=server_log,
-        stderr=subprocess.STDOUT,
-    )
     base = f"http://127.0.0.1:{port}"
+    server = None
     try:
+        server = subprocess.Popen(
+            [sys.executable, "-m", "sg_web", "--home", str(tmp / "run"), "--port", str(port)],
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
+        )
         with httpx.Client(base_url=base, timeout=5.0) as web:
             deadline = time.time() + 30
             while True:
@@ -100,12 +101,13 @@ def gallery(tmp_path_factory):
             yield browser, base
             browser.close()
     finally:
-        server.terminate()
-        try:
-            server.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait(timeout=15)
+        if server is not None:
+            server.terminate()
+            try:
+                server.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=15)
         server_log.close()
 
 

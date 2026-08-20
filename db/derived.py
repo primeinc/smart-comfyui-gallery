@@ -491,6 +491,10 @@ def recluster(
     return made
 
 
+#: The clustering the application runs when nobody asked for a different
+#: one. Named once so submitters and the runner cannot drift apart on it.
+DEFAULT_METHOD = "chinese-whispers"
+
 #: Cosine similarity at which two vectors are taken to be the same face, per
 #: embedding space. The spaces are not comparable and a single number for all
 #: of them is wrong for all but one: docs/FACE_CLUSTERING.md:63-65 gives the
@@ -525,7 +529,7 @@ def cluster(
     model_version: str,
     now: float,
     *,
-    method: str = "chinese-whispers",
+    method: str = DEFAULT_METHOD,
     threshold: float | None = None,
     smallest: int = 2,
     **options,

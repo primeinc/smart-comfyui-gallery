@@ -138,6 +138,36 @@ def name_person(conn, person_id: int, name: str, now: float) -> str:
     return rename(conn, person_id, name, now)
 
 
+def assert_named_cluster(conn, person_id: int, user_id: int | None, now: float) -> int:
+    """The durable form of naming a group: one assertion per file.
+
+    Naming a person on the People page is a human confirming "this group
+    is them". The cluster carrying that confirmation is derived and will
+    dissolve on the next re-cluster; what re-attaches the name afterwards
+    is `person_assertion`, so the confirmation is written down here, one
+    row per file with the face's box -- the highest-confidence face where
+    a file holds several. Reads the primary run, because that is the run
+    the person naming was looking at. Returns how many files were
+    asserted.
+    """
+    seen: set[int] = set()
+    rows = conn.execute(
+        "SELECT fi.file_id, fi.sample_id, fi.region_id FROM derived_face_membership m"
+        "  JOIN derived_face_instance fi ON fi.id = m.face_id"
+        "  JOIN derived_face_cluster c ON c.id = m.cluster_id"
+        "  JOIN derived_face_run r ON r.id = c.run_id AND r.is_primary = 1"
+        " WHERE c.person_id = ?"
+        " ORDER BY fi.det_score DESC",
+        (person_id,),
+    ).fetchall()
+    for file_id, sample_id, region_id in rows:
+        if file_id in seen:
+            continue
+        seen.add(file_id)
+        assert_person(conn, person_id, file_id, user_id, now, sample_id=sample_id, region_id=region_id)
+    return len(seen)
+
+
 def assert_person(
     conn,
     person_id: int,

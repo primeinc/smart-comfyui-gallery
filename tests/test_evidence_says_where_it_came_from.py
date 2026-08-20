@@ -70,3 +70,16 @@ def test_an_untracked_file_also_dirties_the_stamp(scratch_repo):
 
 def test_a_directory_that_is_no_repository_is_not_guessed_at(tmp_path):
     assert _driver()._commit_stamp(tmp_path) == "unknown"
+
+
+def test_an_unanswerable_cleanliness_check_is_labelled_not_assumed(tmp_path, monkeypatch):
+    """rev-parse succeeds, status fails: the stamp must say -unverified
+    rather than silently presenting the commit as a clean build. Simulated
+    with a stub git, because a real repo cannot half-fail on demand."""
+    stub = tmp_path / "half-git.bat"
+    stub.write_text(
+        '@echo off\r\nif "%1"=="rev-parse" (echo abc1234) else (exit /b 9)\r\n',
+        encoding="ascii",
+    )
+    monkeypatch.setattr(shutil, "which", lambda _tool: str(stub))
+    assert _driver()._commit_stamp(tmp_path) == "abc1234-unverified"

@@ -52,12 +52,13 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
     # nobody drains blocks the server at the OS buffer. A file has no
     # such ceiling, and holds the log for a post-mortem.
     server_log = (tmp_path / "server.log").open("wb")
-    server = subprocess.Popen(
-        [sys.executable, "-m", "sg_web", "--home", str(tmp_path / "run"), "--port", str(port)],
-        stdout=server_log,
-        stderr=subprocess.STDOUT,
-    )
+    server = None
     try:
+        server = subprocess.Popen(
+            [sys.executable, "-m", "sg_web", "--home", str(tmp_path / "run"), "--port", str(port)],
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
+        )
         with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=5.0) as web:
             deadline = time.time() + 30
             while True:
@@ -109,11 +110,12 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
             for _ in range(200):
                 assert web.get("/health").text == "ok"
     finally:
-        server.terminate()
-        try:
-            server.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait(timeout=15)
+        if server is not None:
+            server.terminate()
+            try:
+                server.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=15)
         server_log.close()
     assert (tmp_path / "run" / "gallery.db").exists(), "the run did not live in its --home"

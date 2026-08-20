@@ -219,7 +219,7 @@ def test_clustering_people_is_a_job_the_application_offers(served):
     assert minted["pictures"] == 2
 
     named = client.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"}).json()
-    assert named == {"slug": "ana-torres", "name": "Ana Torres"}
+    assert named == {"slug": "ana-torres", "name": "Ana Torres", "asserted": 2}
     assert client.get("/people").json()[0]["name"] == "Ana Torres"
     moved = client.get(f"/p/{minted['slug']}", follow_redirects=False)
     assert moved.status_code == 301
@@ -227,6 +227,33 @@ def test_clustering_people_is_a_job_the_application_offers(served):
     assert client.post("/p/ana-torres/name", json={"name": "   "}).status_code == 400
     assert client.post("/p/nobody/name", json={"name": "X"}).status_code == 404
     assert client.post("/p/ana-torres/name").status_code == 400
+
+
+def test_a_name_survives_the_apps_own_recluster(served):
+    """Naming through the application is durable AGAINST the application:
+    the naming writes the assertion record, and a re-cluster re-applies
+    the name from that record -- never loses it with a dissolved cluster."""
+    client, _, _ = served
+
+    def drained_cluster_job():
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            job_id = client.post("/jobs/cluster").json()["id"]
+            state = None
+            while state not in ("done", "failed", "cancelled"):
+                state = feed.receive_json(timeout=10)["state"]
+        assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
+
+    drained_cluster_job()
+    minted = client.get("/people").json()[0]
+    assert client.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"}).json()["slug"] == "ana-torres"
+
+    drained_cluster_job()
+    people = client.get("/people").json()
+    assert people == [{"name": "Ana Torres", "slug": "ana-torres", "pictures": 2}], (
+        f"the application's own re-cluster lost the name the application accepted: {people}"
+    )
+    assert len(client.get("/p/ana-torres").json()["pictures"]) == 2
 
 
 def test_a_recluster_replaces_its_own_placeholders(served):

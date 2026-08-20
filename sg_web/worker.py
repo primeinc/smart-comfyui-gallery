@@ -28,11 +28,10 @@ from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 import threading
 import time
 
-from db import runner, settings
+from db import connect, runner, settings
 
 _logger = logging.getLogger(__name__)
 
@@ -44,8 +43,7 @@ IDLE_WAIT = 1.0
 
 def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> None:
     """The thread body: turns until told to stop."""
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = connect.connect(db_path)
     owner = f"worker-{os.getpid()}"
     try:
         while not stop.is_set():

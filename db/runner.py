@@ -114,8 +114,12 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     from . import derived, naming
 
     model_id, model_version = payload["spaces"][index]
-    derived.cluster(conn, model_id, model_version, now)
-    run_id = derived.run_for(conn, model_id, model_version, "chinese-whispers", derived.threshold_for(model_id), now)
+    # Method and threshold pinned once and passed to BOTH calls: recomputing
+    # the run identity from separately-spelled defaults is how a drift makes
+    # the DELETE below clear a different run's attributions.
+    pinned = derived.threshold_for(model_id)
+    derived.cluster(conn, model_id, model_version, now, method=derived.DEFAULT_METHOD, threshold=pinned)
+    run_id = derived.run_for(conn, model_id, model_version, derived.DEFAULT_METHOD, pinned, now)
     conn.execute("DELETE FROM derived_file_person WHERE run_id = ?", (run_id,))
     derived.seed_clusters_from_assertions(conn, run_id)
     for (cluster_id,) in conn.execute(
@@ -140,7 +144,8 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
         " SELECT p.id FROM person p WHERE p.name IS NULL"
         " AND NOT EXISTS (SELECT 1 FROM person_assertion pa WHERE pa.person_id = p.id)"
         " AND NOT EXISTS (SELECT 1 FROM derived_face_cluster c WHERE c.person_id = p.id)"
-        " AND NOT EXISTS (SELECT 1 FROM derived_file_person fp WHERE fp.person_id = p.id))"
+        " AND NOT EXISTS (SELECT 1 FROM derived_file_person fp WHERE fp.person_id = p.id)"
+        " AND NOT EXISTS (SELECT 1 FROM feedback fb WHERE fb.person_id = p.id))"
     )
 
 
@@ -252,6 +257,11 @@ def run_next(
         try:
             handler(conn, item, payload, now)
         except ITEM_FAILURES as why:
+            # The dead handler's half-finished writes ride the same open
+            # transaction as the failure record about to be committed --
+            # dropped first, so the record carries the verdict and nothing
+            # the handler did not live to finish.
+            conn.rollback()
             moved = jobs.finish_item(conn, job_id, fence, item, error=str(why))
             failed += 1
         else:

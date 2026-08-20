@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import html
 import json
 import pathlib
@@ -80,12 +81,15 @@ def _answers(web) -> bool:
         return False
 
 
-def _wait_healthy(web) -> None:
+def _wait_healthy(web, server) -> None:
     """Bounded readiness gate: a child process offers no push signal
     before its socket answers, so this is a retry with a deadline, not
-    pacing."""
+    pacing. A child that already exited is reported as the crash it is,
+    not as thirty quiet seconds of 'never answered'."""
     deadline = time.time() + 30
     while not _answers(web):
+        if server.poll() is not None:
+            raise RuntimeError(f"the server exited {server.returncode} before answering /health; see server.log")
         if time.time() > deadline:
             raise TimeoutError("the server never answered /health")
         time.sleep(0.2)
@@ -164,6 +168,7 @@ def _moved_once_released(src: pathlib.Path, dst: pathlib.Path, patience: float =
     while not _gave_way(src, dst):
         if time.time() > deadline:
             shutil.move(str(src), str(dst))  # out of patience: the real error surfaces
+            return
         time.sleep(0.2)
 
 
@@ -178,14 +183,20 @@ def _gave_way(src: pathlib.Path, dst: pathlib.Path) -> bool:
 def _publish(staging: pathlib.Path) -> None:
     """Swap the staged run into EVIDENCE, replacing the previous one.
 
-    Only called on success: a failed run must not have destroyed the last
-    good evidence on its way to producing nothing."""
+    Only called on success, and the previous evidence is retired aside
+    rather than deleted before its replacement lands: a failure inside
+    this swap leaves the old run recoverable in the named directory
+    instead of half-gone."""
+    import tempfile
+
     EVIDENCE.mkdir(parents=True, exist_ok=True)
+    retired = pathlib.Path(tempfile.mkdtemp(prefix="browser-report-retired-"))
     for stale in EVIDENCE.iterdir():
         if stale.is_file():
-            stale.unlink()
+            shutil.move(str(stale), str(retired / stale.name))
     for made in sorted(staging.iterdir()):
         _moved_once_released(made, EVIDENCE / made.name)
+    shutil.rmtree(retired)
 
 
 def capture(datasets: str, models_dir: str) -> list[dict]:
@@ -220,7 +231,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
         base = f"http://127.0.0.1:{port}"
         try:
             with httpx.Client(base_url=base, timeout=10.0) as web, sync_playwright() as p:
-                _wait_healthy(web)
+                _wait_healthy(web, server)
                 scanned = 0
                 for sample in ("i2i-test-output", "caucasian-people-kyc-photo-dataset/files"):
                     made = web.post("/roots", json={"path": str(pathlib.Path(datasets) / sample)}).json()
@@ -317,16 +328,23 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 if not names:
                     raise RuntimeError("no people emerged from clustering -- did detection find any faces?")
                 for n, person in enumerate(names, start=1):
-                    web.post(f"/p/{person['slug']}/name", json={"name": f"Person {n}"})
+                    christened = web.post(f"/p/{person['slug']}/name", json={"name": f"Person {n}"})
+                    if christened.status_code >= 300:
+                        raise RuntimeError(
+                            f"naming {person['slug']} answered {christened.status_code}: {christened.text}"
+                        )
                 names = web.get("/people").json()
                 print(f"clustered into {len(names)} people")
 
                 # --- the grid, over real files --------------------------------
                 page = watched_page()
                 rows = web.get("/roots").json()
-                # Read-only: picks WHICH files to photograph (there is no
-                # listing route yet); every pixel still arrives over HTTP.
-                with sqlite3.connect(home / "gallery.db") as conn:
+                # Read-only by construction (mode=ro): picks WHICH files to
+                # photograph (there is no listing route yet); every pixel
+                # still arrives over HTTP. `closing`, because sqlite3's
+                # context manager manages transactions, not the connection.
+                library = f"file:{(home / 'gallery.db').as_posix()}?mode=ro"
+                with contextlib.closing(sqlite3.connect(library, uri=True)) as conn:
                     slug_rows = [
                         slug
                         for (slug,) in conn.execute(

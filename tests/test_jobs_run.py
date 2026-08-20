@@ -67,6 +67,28 @@ def test_an_expected_failure_lands_on_the_item_not_the_job(db):
     ).fetchall() == [(2, "item 2 is broken")]
 
 
+def test_a_failed_items_partial_writes_are_rolled_back(db):
+    """An item that dies halfway must not leave its half in the rows.
+
+    The failure record commits -- and before this was pinned, that commit
+    carried everything the dead handler wrote before raising, because all
+    DML on the connection rides one implicit transaction until commit
+    (python/cpython Doc/library/sqlite3.rst:2709-2717). A torn item is a
+    fact about the item; its half-written rows are not."""
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2])
+
+    def half_writes(conn, item_id, payload, now):
+        conn.execute("INSERT INTO region(x, y, w, h) VALUES(0.1, 0.1, 0.2, 0.2)")
+        if item_id == 1:
+            raise ValueError("died after writing")
+
+    turn = runner.run_next(db, "w1", 1.0, handlers={"embed": half_writes})
+    assert turn == {"job": job_id, "state": "done", "did": 2, "failed": 1}
+    assert db.execute("SELECT count(*) FROM region").fetchone()[0] == 1, (
+        "the failed item's partial write survived into the committed rows"
+    )
+
+
 def test_a_paused_job_is_resumed_by_the_very_next_turn(db):
     """A budget stop is deliberate, so the next turn continues immediately
     instead of waiting out a liveness lease meant for crashes."""

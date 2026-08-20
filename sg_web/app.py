@@ -35,15 +35,16 @@ from litestar.exceptions import ClientException, NotFoundException
 from litestar.plugins import InitPlugin
 from litestar.response import Redirect, Response, Stream
 
-from db import connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
+from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
 from sg_web import home, media
 from sg_web import worker as worker_module
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    """Through db/connect.py, like every consumer: foreign keys, IMMEDIATE
+    writers, busy_timeout and the cache are per-connection settings a raw
+    sqlite3.connect silently runs without."""
+    return connect.connect(db_path)
 
 
 def _rows(cursor_rows, columns) -> list[dict]:
@@ -110,7 +111,10 @@ def name_person(state: State, slug: str, data: NewName) -> dict:
 
     The name becomes the address: a new slug is minted and the old one
     retires into history, so the URL somebody saved before the naming
-    still answers with a 301 (db/naming.py)."""
+    still answers with a 301 (db/naming.py). And the naming is written
+    down as assertions against the person's files -- the durable record a
+    re-cluster or a full derived rebuild re-applies the name from, so the
+    application cannot destroy what it accepted (db/authored.py)."""
     conn = _connect(state.db_path)
     try:
         found = naming.resolve(conn, "person", slug)
@@ -120,10 +124,11 @@ def name_person(state: State, slug: str, data: NewName) -> dict:
         cleaned = data.name.strip()
         if not cleaned:
             raise ClientException("a name needs letters in it")
-        fresh = naming.rename(conn, person_id, cleaned, time.time())
-        conn.execute("UPDATE person SET name = ? WHERE id = ?", (cleaned, person_id))
+        now = time.time()
+        fresh = authored.name_person(conn, person_id, cleaned, now)
+        asserted = authored.assert_named_cluster(conn, person_id, None, now)
         conn.commit()
-        return {"slug": fresh, "name": cleaned}
+        return {"slug": fresh, "name": cleaned, "asserted": asserted}
     finally:
         conn.close()
 

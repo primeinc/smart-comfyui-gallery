@@ -107,20 +107,24 @@ def test_every_spawn_says_how_long_it_will_wait():
     assert not offenders, f"{offenders} start a program with no timeout"
 
 
+def _is_pipe(given) -> bool:
+    """subprocess.PIPE by attribute, or PIPE imported by name -- the sweep
+    already sees the spawn either way, so the predicate must too."""
+    if isinstance(given, ast.Name) and given.id == "PIPE":
+        return True
+    return (
+        isinstance(given, ast.Attribute)
+        and given.attr == "PIPE"
+        and isinstance(given.value, ast.Name)
+        and given.value.id == "subprocess"
+    )
+
+
 def _pipes_output(call):
     """Popen handed a PIPE this repo has nobody reading."""
     if call.func.attr != "Popen":
         return False
-    for stream in ("stdout", "stderr"):
-        given = _keyword(call, stream)
-        if (
-            isinstance(given, ast.Attribute)
-            and given.attr == "PIPE"
-            and isinstance(given.value, ast.Name)
-            and given.value.id == "subprocess"
-        ):
-            return True
-    return False
+    return any(_is_pipe(_keyword(call, stream)) for stream in ("stdout", "stderr"))
 
 
 def test_no_long_lived_program_writes_into_an_undrained_pipe():
@@ -149,13 +153,15 @@ def test_the_checks_would_catch_what_they_are_for():
     bad = ast.parse(
         "import subprocess\nsubprocess.run('ffprobe ' + path, shell=True)\nsubprocess.run([tool, path])\n"
         "subprocess.Popen([tool], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n"
+        "subprocess.Popen([tool], stdout=PIPE)\n"
     )
     calls = _spawn_calls(bad)
 
-    assert len(calls) == 3, calls
+    assert len(calls) == 4, calls
     assert getattr(_keyword(calls[0], "shell"), "value", False) is True
     assert isinstance(calls[0].args[0], ast.BinOp)  # a built command string
     assert _keyword(calls[1], "timeout") is None
     assert _keyword(calls[1], "check") is None
     assert _pipes_output(calls[2]), "the undrained-pipe check does not see the shape it exists for"
     assert not _pipes_output(calls[1])
+    assert _pipes_output(calls[3]), "a directly-imported PIPE slips the predicate its own sweep sees"
