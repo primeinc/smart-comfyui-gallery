@@ -70,15 +70,24 @@ def open_upright(path, orientation: int | None = None) -> Image.Image:
     return upright(decode.open_still(path), orientation)
 
 
-def orientation_of(conn, file_id: int) -> int:
-    """What ingest recorded for this file, or 1.
+def orientation_of(conn, file_id: int) -> int | None:
+    """What ingest recorded for this file, or None when nothing has looked.
 
     So a job over ten thousand pictures asks the database rather than
     re-opening and re-parsing every file's EXIF to learn something already
     stored in a column.
+
+    A capture row with no tag means ingest looked and the file carries
+    none: 1, no parse. NO row means ingest has not run, and unknown is not
+    upright -- None makes `upright` read the file's own EXIF, so a freshly
+    scanned phone photo is served the right way up before its first
+    ingest. Collapsing both to 1 served sideways thumbnails for exactly
+    the window between scan and ingest, found by a real browser.
     """
     row = conn.execute("SELECT orientation FROM capture WHERE file_id = ?", (file_id,)).fetchone()
-    return int(row[0]) if row and row[0] else 1
+    if row is None:
+        return None
+    return int(row[0]) if row[0] else 1
 
 
 def for_model(conn, file_id: int, path) -> Image.Image:

@@ -116,6 +116,25 @@ def _clip(path, colors, *, rate=5):
             container.mux(packet)
 
 
+def test_a_scanned_but_not_yet_ingested_photo_is_still_upright(tmp_path):
+    """Between scan and first ingest there is no capture row, and unknown
+    is not upright: the oriented door must read the file's own EXIF then,
+    not assume 1. Found by a real browser showing a sideways thumbnail."""
+    from db import oriented
+
+    def write(root):
+        target = root / "phone.jpg"
+        tag = Image.Exif()
+        tag[274] = 6  # stored on its side; upright is 400x600
+        Image.new("RGB", (600, 400), (30, 30, 200)).save(target, exif=tag)
+        return target
+
+    conn, file_id, _, media_path = _library_with(tmp_path, write)
+    picture = oriented.for_model(conn, file_id, media_path)
+    assert picture.size == (400, 600), "the scan-to-ingest window served the sensor's frame"
+    conn.close()
+
+
 def test_detection_caches_every_variant_as_a_byproduct(tmp_path):
     def write(root):
         target = root / "portrait.png"
