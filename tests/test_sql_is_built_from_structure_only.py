@@ -29,11 +29,10 @@ from __future__ import annotations
 import ast
 import re
 
-from source_tree import parsed, sources
+from source_tree import parsed, shipped
 
 # The application, as shipped. Tests, probes and benchmarks build throwaway
 # databases and are not part of what a visitor can reach.
-_SHIPPED = ("smartgallery.py", "sg_auth.py", "sqlbind.py", "smartgallery_ai", "omniquery", "metaparse")
 
 _SQL_SHAPED = re.compile(
     r"\b(select\s+.+\s+from\b|insert\s+into\b|update\s+\w+\s+set\b|delete\s+from\b|where\b|order\s+by\b)",
@@ -48,6 +47,12 @@ _STRUCTURE = {
     # is not here: it lives in plain strings, never an f-string.
     "placeholders": "placeholders",
     "type_placeholders": "placeholders",
+    "marks": "placeholders",
+    "','.join('?' * len(batch))": "placeholders",
+    # job-claim clauses in db/jobs.py: `runnable` is a module literal, and
+    # `kind_filter` is "" or an IN (...) of placeholders, params bound
+    "runnable": "clause",
+    "kind_filter": "clause",
     # column / table names, from fixed registries
     "column": "identifier",
     "col_name": "identifier",
@@ -116,7 +121,7 @@ def test_the_sweep_finds_the_sql_that_is_there():
     """Control. Every check below is an absence, and a sweep that matched
     nothing would report the same absence."""
     slots = {}
-    for source in sources(*_SHIPPED):
+    for source in shipped():
         for slot, _line in _sql_interpolations(parsed(source)):
             slots.setdefault(slot, 0)
             slots[slot] += 1
@@ -137,7 +142,7 @@ def test_no_sql_string_interpolates_anything_but_structure():
     """The rule S608 is really after: a value must be bound, not written
     into the statement."""
     unexpected = {}
-    for source in sources(*_SHIPPED):
+    for source in shipped():
         for slot, line in _sql_interpolations(parsed(source)):
             if slot not in _STRUCTURE:
                 unexpected[f"{source.name}:{line}"] = slot

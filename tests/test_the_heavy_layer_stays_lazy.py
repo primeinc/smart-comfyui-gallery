@@ -26,10 +26,9 @@ from __future__ import annotations
 
 import ast
 
-from source_tree import parsed, sources
+from source_tree import parsed, shipped
 
 # What the gallery is, without the AI layer switched on.
-_SHIPPED = ("smartgallery.py", "sg_auth.py", "sqlbind.py", "urlfetch.py", "smartgallery_ai", "omniquery", "metaparse")
 
 # Slow to import, or belonging to a dependency group the core install does
 # not carry. Either way, reaching one at import time is the defect.
@@ -75,7 +74,7 @@ def test_the_sweep_reads_the_imports_that_are_there():
     """Control. The check below is an absence, and a walk that understood
     nothing would report the same absence."""
     seen = {}
-    for source in sources(*_SHIPPED):
+    for source in shipped():
         seen.update(_import_time_modules(parsed(source)))
 
     assert "flask" in seen, sorted(seen)
@@ -86,7 +85,7 @@ def test_the_sweep_reads_the_imports_that_are_there():
 def test_nothing_heavy_is_imported_when_a_module_is_read():
     """Each of these has cost this program a start-up already."""
     eager = {}
-    for source in sources(*_SHIPPED):
+    for source in shipped():
         for module, line in _import_time_modules(parsed(source)).items():
             if module in _HEAVY:
                 eager[f"{source.name}:{line}"] = (module, _HEAVY[module])

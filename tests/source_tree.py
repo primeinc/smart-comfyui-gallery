@@ -26,14 +26,36 @@ def parsed(source: pathlib.Path) -> ast.Module:
     return ast.parse(source.read_text(encoding="utf-8"))
 
 
+#: Directories that are not this project's code. Everything else is,
+#: automatically: the sweeps discover their scope instead of listing it,
+#: because a hand-typed list is how `db/` shipped a subprocess call outside
+#: every gate -- the package was born after the list was written.
+_NOT_OURS = {".git", ".venv", "__pycache__", "node_modules", "vendor"}
+
+#: Our code that does not ship to a user: tests, benchmarks, probes and
+#: experiments build throwaway state on purpose.
+_TOOLING = {"tests", "benchmarks", "experiments", "probes"}
+
+
 @functools.cache
-def sources(*entries: str) -> tuple[pathlib.Path, ...]:
-    """Every .py file under the named files and directories."""
+def every_source() -> tuple[pathlib.Path, ...]:
+    """Every .py file this repository owns, discovered rather than listed."""
+    import os
+
     found: list[pathlib.Path] = []
-    for entry in entries:
-        path = REPO_ROOT / entry
-        if path.is_dir():
-            found.extend(sorted(path.rglob("*.py")))
-        elif path.exists():
-            found.append(path)
+    for current, subdirs, names in os.walk(REPO_ROOT):
+        subdirs[:] = sorted(d for d in subdirs if d not in _NOT_OURS)
+        found.extend(
+            pathlib.Path(current) / name for name in sorted(names)
+            if name.endswith(".py")
+        )
     return tuple(found)
+
+
+@functools.cache
+def shipped() -> tuple[pathlib.Path, ...]:
+    """The application as a user receives it: every source outside tooling."""
+    return tuple(
+        path for path in every_source()
+        if path.relative_to(REPO_ROOT).parts[0] not in _TOOLING
+    )

@@ -27,22 +27,12 @@ from __future__ import annotations
 
 import ast
 
-from source_tree import parsed, sources
+from source_tree import every_source, parsed
 
 # Everything that ships or runs from this repo, tests included: a test that
 # spawns without a timeout hangs CI exactly as a route would hang a request.
-_SCANNED = (
-    "smartgallery.py",
-    "sg_auth.py",
-    "sqlbind.py",
-    "urlfetch.py",
-    "smartgallery_ai",
-    "omniquery",
-    "metaparse",
-    "probes",
-    "benchmarks",
-    "tests",
-)
+# Discovered, never listed -- the listed version missed the db/ package for
+# as long as the package had existed.
 
 _SPAWNERS = {"run", "call", "check_call", "check_output", "Popen"}
 
@@ -71,7 +61,7 @@ def _keyword(call, name):
 def test_the_sweep_finds_the_spawns_that_are_there():
     """Control. Each check below is an absence, and a sweep that matched
     nothing would report the same absence."""
-    total = sum(len(_spawn_calls(parsed(s))) for s in sources(*_SCANNED))
+    total = sum(len(_spawn_calls(parsed(s))) for s in every_source())
 
     assert total >= 15, f"only {total} subprocess calls found; the sweep is not reaching them"
 
@@ -79,7 +69,7 @@ def test_the_sweep_finds_the_spawns_that_are_there():
 def _sites(objects_to):
     """{"file:line": call} for every spawn the predicate objects to."""
     found = {}
-    for source in sources(*_SCANNED):
+    for source in every_source():
         for call in _spawn_calls(parsed(source)):
             if objects_to(call):
                 found[f"{source.name}:{call.lineno}"] = ast.unparse(call.func)
