@@ -17,9 +17,32 @@ import sqlite3
 SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 
 #: Bumped whenever schema.sql changes in a way a built database must match.
+#: A bump is not enough on its own: db/migrate.py needs a step registered for
+#: the version being left behind, or an existing database cannot be opened.
 USER_VERSION = 3
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
+
+
+class WrongVersion(RuntimeError):
+    """The file's schema is not the one this build expects.
+
+    Carries both versions so a caller can decide between migrating forward
+    and refusing, rather than only being told no.
+    """
+
+    def __init__(self, found: int, expected: int):
+        self.found = found
+        self.expected = expected
+        direction = "older" if found < expected else "newer"
+        super().__init__(
+            f"database is schema v{found}, this build expects v{expected} "
+            f"(the file is {direction}). Run db.migrate to bring it forward."
+        )
+
+
+class NotOurDatabase(RuntimeError):
+    """The file is a database, but not this application's."""
 
 
 def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -34,6 +57,21 @@ def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
         # journal_mode is a write: setting it on a read-only connection raises,
         # and the mode is a property of the file anyway, not of the connection.
         conn.execute("PRAGMA journal_mode=WAL")
+        # Set explicitly because the default is a COMPILE-TIME choice, not
+        # SQLite's: this Python ships DEFAULT_WAL_SYNCHRONOUS=2, so every
+        # commit fsyncs, and a different interpreter would behave differently
+        # for reasons nothing in this repo controls.
+        #
+        # NORMAL is safe here, not merely faster. Under WAL the fsyncs move to
+        # checkpoint rather than disappearing: the WAL is synced before its
+        # content is written into the database, and the database is synced
+        # before the WAL is deleted (refs/sqlite/sqlite/src/wal.c:2175-2188).
+        # So a crashed process cannot corrupt the file; a power loss can cost
+        # the last few transactions. For a library whose durable facts are
+        # re-derivable from disk, and whose authored rows are written one at a
+        # time by a person, that is the right side of the trade -- and it is a
+        # trade, which is why it is stated rather than assumed.
+        conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -51,6 +89,23 @@ def check_version(conn: sqlite3.Connection) -> None:
     app = conn.execute("PRAGMA application_id").fetchone()[0]
     ver = conn.execute("PRAGMA user_version").fetchone()[0]
     if app != APPLICATION_ID:
-        raise RuntimeError(f"not a gallery database (application_id={app:#x})")
+        raise NotOurDatabase(f"not a gallery database (application_id={app:#x})")
     if ver != USER_VERSION:
-        raise RuntimeError(f"database is schema v{ver}, this build expects v{USER_VERSION}")
+        raise WrongVersion(ver, USER_VERSION)
+
+
+def close(conn: sqlite3.Connection) -> None:
+    """Close a connection, letting SQLite refresh what it learned.
+
+    `PRAGMA optimize` on close is the documented shape: in the usual case no
+    ANALYZE runs at all, and when one does it is bounded
+    (refs/sqlite/sqlite/src/pragma.c:2465-2473). Without it the planner keeps
+    running on whatever statistics existed when the library was smaller.
+    """
+    try:
+        conn.execute("PRAGMA optimize")
+    except sqlite3.Error:
+        # A read-only or already-failing connection must still close. Losing
+        # a statistics refresh is not worth raising over during shutdown.
+        pass
+    conn.close()
