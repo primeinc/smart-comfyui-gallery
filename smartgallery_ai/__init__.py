@@ -74,6 +74,29 @@ def _env_num(name: str, default, cast=int):
         return default
 
 
+def resolve_models_dir(base_path: str = "", explicit: str = "") -> str:
+    """Where model weights live, resolved the ONE way.
+
+    `explicit` wins, then AI_DAM_MODELS_DIR, then `.AImodels` under
+    `base_path` -- or under the current directory when there is no base
+    path, which is the only sane answer for the CLI.
+
+    One function because three existed: AIConfig.from_env anchored it to
+    base_path, nl2sql defaulted to a cwd-relative ".AImodels" ignoring
+    base_path, and `python -m smartgallery_ai provision` defaulted to a
+    cwd-relative ".AImodels" ignoring the environment variable entirely --
+    while provision.py's own out-of-space message tells you to "point
+    AI_DAM_MODELS_DIR at a roomier drive". Provisioning could therefore
+    report success into a directory the app never reads.
+    """
+    if explicit:
+        return explicit
+    from_env = os.environ.get("AI_DAM_MODELS_DIR", "").strip()
+    if from_env:
+        return from_env
+    return os.path.join(base_path, ".AImodels") if base_path else ".AImodels"
+
+
 @dataclass
 class AIConfig:
     """Runtime configuration for the AI DAM layer.
@@ -151,7 +174,7 @@ class AIConfig:
         """Build a config from AI_DAM_* environment variables, defaulting the
         cache and models directories to hidden folders under `base_path`."""
         cache_dir = _env_str("AI_DAM_CACHE_DIR", os.path.join(base_path, ".ai_cache"))
-        models_dir = _env_str("AI_DAM_MODELS_DIR", os.path.join(base_path, ".AImodels"))
+        models_dir = resolve_models_dir(base_path)
         return cls(
             enabled=_env_bool("ENABLE_AI_DAM", "true"),
             base_path=base_path,
@@ -172,6 +195,11 @@ class AIConfig:
             # that too, not float('') -- membership in os.environ is true
             # for `set "AI_DAM_FACE_CLUSTER_THRESHOLD="`.
             face_cluster_threshold=_env_num("AI_DAM_FACE_CLUSTER_THRESHOLD", None, float),
+            # The one detection knob that decides recall against false
+            # positives -- the exact axis benchmarks/face_detection_recall
+            # measures -- and the only one of this group that could not be
+            # set without editing code.
+            face_min_det_score=_env_num("AI_DAM_FACE_MIN_DET_SCORE", 0.5, float),
             face_min_px=_env_num("AI_DAM_FACE_MIN_PX", 24),
             face_detect_max_side=_env_num("AI_DAM_FACE_DETECT_MAX_SIDE", 1600),
             face_embedder=_env_str("AI_DAM_FACE_EMBEDDER", "auto"),

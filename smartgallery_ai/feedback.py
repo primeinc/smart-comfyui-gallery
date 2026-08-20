@@ -106,17 +106,29 @@ def export_feedback(conn: sqlite3.Connection, out_path: str | None = None, mark:
     returned/written JSONL reflects that stamp; already-exported rows keep
     their original `exported_at`.
     """
+    stamp = time.time()
     if mark:
         conn.execute(
             "UPDATE ai_feedback SET exported_at = ? WHERE exported_at IS NULL",
-            (time.time(),),
+            (stamp,),
         )
-        conn.commit()
+        # NOT committed yet. ai_feedback is the one table here that cannot be
+        # recomputed, and stamping before the write meant a failed write left
+        # rows marked exported that were never delivered -- invisible
+        # afterwards, because list_feedback(unexported_only=True) would never
+        # offer them again. The stamp is only durable once the bytes are.
 
     rows = list_feedback(conn, unexported_only=False)
     text = "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
 
-    if out_path is not None:
-        with open(out_path, "w", encoding="utf-8") as fh:
-            fh.write(text)
+    try:
+        if out_path is not None:
+            with open(out_path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+    except Exception:
+        if mark:
+            conn.rollback()
+        raise
+    if mark:
+        conn.commit()
     return text

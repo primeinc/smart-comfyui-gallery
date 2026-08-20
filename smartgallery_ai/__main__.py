@@ -16,7 +16,7 @@ import sqlite3
 import sys
 
 from smartgallery_ai import provision as P
-from smartgallery_ai import schema
+from smartgallery_ai import resolve_models_dir, schema
 from smartgallery_ai.provision import GROUPS  # stdlib-only import; registry drives the help
 
 
@@ -63,8 +63,9 @@ def cmd_provision(args: argparse.Namespace) -> int:
     besides this command, only the worker's async auto-provisioning
     (AI_DAM_AUTO_PROVISION, default on) fetches weights."""
 
+    models_dir = resolve_models_dir(explicit=args.models_dir)
     try:
-        print(P.format_plan(args.models_dir, args.groups))
+        print(P.format_plan(models_dir, args.groups))
     except ValueError as exc:
         print(f"error: {exc}")
         return 2
@@ -76,7 +77,7 @@ def cmd_provision(args: argparse.Namespace) -> int:
             print("aborted")
             return 1
     try:
-        result = P.provision(args.models_dir, args.groups, force=args.force)
+        result = P.provision(models_dir, args.groups, force=args.force)
     except P.ProvisionError as exc:
         print(f"error: {exc}")
         return 1
@@ -106,7 +107,17 @@ def main(argv=None) -> int:
         "auto-provisions on start unless AI_DAM_AUTO_PROVISION=false)",
     )
     p_prov.add_argument("groups", nargs="*", default=["all"], help=", ".join(g.name for g in GROUPS) + ", or all")
-    p_prov.add_argument("--models-dir", default=".AImodels", help="target directory the backends load from")
+    # default="" so resolve_models_dir sees "not given" and can fall through
+    # to AI_DAM_MODELS_DIR. A literal ".AImodels" here overrode the variable
+    # the app itself reads, so `provision` could download into ./.AImodels
+    # while the gallery loaded from somewhere else and reported the backend
+    # missing -- with provision.py's own out-of-space message telling you to
+    # set the variable this ignored.
+    p_prov.add_argument(
+        "--models-dir",
+        default="",
+        help="target directory the backends load from (default: $AI_DAM_MODELS_DIR, else ./.AImodels)",
+    )
     p_prov.add_argument("--list", action="store_true", help="show the plan only; download nothing")
     p_prov.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
     p_prov.add_argument("--force", action="store_true", help="re-download artifacts that already exist")

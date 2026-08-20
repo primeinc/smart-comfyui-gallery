@@ -1394,6 +1394,16 @@ class AIWorker:
         consumed, successful or not."""
         if limit <= 0:
             return 0
+        # Beside the candidate query, the way _process_faces calls
+        # _ensure_faces_attr_backfill: both are one-time, marker-guarded
+        # re-queues that have to run before candidates are chosen, or the
+        # rows they free are not offered. This one was written, tested six
+        # times over, and never called from anywhere but its tests -- so the
+        # two populations it names (a null alignment on a file whose prompt
+        # resolves today, and a legacy score above 1.0 from the retired 0..10
+        # scale) stayed frozen, and a stale 7.0 kept rendering as a confident
+        # full bar.
+        self._ensure_review_alignment_requeue(conn, backend)
         key_sql, key_params, joins = self._review_key_sql(conn)
         rows = self._scan_candidates(
             conn,

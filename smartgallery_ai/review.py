@@ -387,7 +387,11 @@ def validate_review_payload(payload: dict) -> ReviewResult:
     _require(isinstance(findings_raw, list), "findings", "must be a list")
     findings = [_validate_finding(f, i) for i, f in enumerate(findings_raw)]
 
-    alignment_raw = payload.get("alignment") or []
+    # `or []` BEFORE the type check would coerce 0, {}, "" and False into an
+    # empty list and accept them, which is silent coercion in a validator
+    # whose whole contract is that wrong types are "rejected outright, never
+    # silently clamped or coerced". Absent is the only thing that defaults.
+    alignment_raw = payload["alignment"] if payload.get("alignment") is not None else []
     _require(isinstance(alignment_raw, list), "alignment", "must be a list")
     alignment = [_validate_alignment_element(e, i) for i, e in enumerate(alignment_raw)]
     ordinals = [e.ordinal for e in alignment]

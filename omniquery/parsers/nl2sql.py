@@ -34,6 +34,7 @@ import time
 
 from omniquery.sqlexec import run_readonly_select
 from smartgallery_ai import models as ai_models
+from smartgallery_ai import resolve_models_dir
 from sqlbind import with_id_placeholders
 
 _logger = logging.getLogger(__name__)
@@ -141,9 +142,18 @@ def schema_block(db_path: str) -> str:
 
 # Chat-template detritus the model can free-run into after its answer:
 # '<|im...', '<tool_call>', '<s>', '</s>', '[INST]', '[ERROR]', fences.
-# '<' followed by '|', a letter, or '/' can never occur in valid SQLite
-# (real comparisons are '< 5', '<=', '<>'), so cutting there is lossless.
-_JUNK_RE = re.compile(r"<[|A-Za-z/]|\[INST\]|\[ERROR\]|```")
+#
+# Matched as a COMPLETE tag -- '<' or '</', a name, then '>' -- not as '<'
+# followed by a letter. The looser rule cut valid SQLite in half: this
+# module's own system prompt teaches the model to write
+# `files.mtime >= strftime('%s','now')`, and the reversed form
+# `mtime <strftime('%s','now')` was truncated to `WHERE files.mtime`,
+# which is still valid SQL, still executes, and returns a truthy-column
+# filter instead of a date comparison. Wrong rows, no error, and the
+# agentic loop sees ok-with-rows and accepts. Requiring the closing '>'
+# keeps '<strftime(' whole while still catching '<s>' and '<tool_call>';
+# '<=' and '<>' never had a letter after '<' and were never at risk.
+_JUNK_RE = re.compile(r"<\||</?[A-Za-z][\w.:-]*>|\[INST\]|\[ERROR\]|```")
 
 
 def _extract_sql(content: str) -> str:
@@ -169,7 +179,7 @@ class SqlSearch:
     ):
         self.db_path = db_path
         self.model_ref = model_ref or os.environ.get(ENV_MODEL) or DEFAULT_MODEL
-        self.models_dir = models_dir or os.environ.get("AI_DAM_MODELS_DIR", ".AImodels")
+        self.models_dir = resolve_models_dir(explicit=models_dir or "")
         self.max_tokens = max_tokens
 
     def available(self) -> bool:

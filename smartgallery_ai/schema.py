@@ -14,6 +14,7 @@ Conventions:
 """
 
 import sqlite3
+import time
 
 AI_SCHEMA_VERSION = 1  # structural version of the ai_* tables
 
@@ -37,11 +38,23 @@ DB_TIMEOUT_SECONDS = 60
 
 
 def connect(db_path, row_factory=sqlite3.Row, **kwargs):
-    """Open the gallery database the way everything else opens it."""
+    """Open the gallery database the way everything else opens it.
+
+    `PRAGMA foreign_keys` is per-connection and OFF by default in SQLite,
+    so every declaration in DDL below -- `REFERENCES files(id) ON DELETE
+    CASCADE`, `ON UPDATE CASCADE`, and ai_face_instances' `ON DELETE SET
+    NULL` -- was inert on every connection this package opens. The cascade
+    held only for deletes performed through the host app's own connection,
+    which does enable it; a row removed through one of ours orphaned its
+    children silently. The invariant survived by accident, because
+    cluster_faces NULLs cluster_id by hand and store_review deletes its own
+    children first. Turn it on and the schema means what it says.
+    """
     kwargs.setdefault("timeout", DB_TIMEOUT_SECONDS)
     conn = sqlite3.connect(db_path, **kwargs)
     if row_factory is not None:
         conn.row_factory = row_factory
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -274,14 +287,48 @@ DERIVED_TABLES = [
 REBUILDABLE_TABLES = [t for t in DERIVED_TABLES if t != "ai_feedback"]
 
 
+def schema_version(conn) -> int:
+    """The AI schema version this database was last reconciled to, or 0.
+
+    Stored in ai_dam_state rather than `PRAGMA user_version`, which belongs
+    to the host app and is already used by it -- two owners writing one
+    integer would be worse than no version at all.
+    """
+    try:
+        row = conn.execute("SELECT value FROM ai_dam_state WHERE key = 'ai_schema_version'").fetchone()
+    except sqlite3.OperationalError:
+        return 0  # ai_dam_state itself predates this, or does not exist yet
+    if row is None:
+        return 0
+    try:
+        return int(row[0])
+    except (TypeError, ValueError):
+        return 0
+
+
 def init_schema(conn) -> None:
     """Create AI DAM tables if missing and reconcile any table whose stored
-    DDL diverges from the DDL here. Idempotent."""
+    DDL diverges from the DDL here. Idempotent.
+
+    AI_SCHEMA_VERSION is recorded after a successful reconcile. It is the
+    declared answer to "has this database been through the current
+    migrations", which until now nothing asked: the constant existed and was
+    referenced nowhere, leaving each migration to re-derive that for itself
+    from an ad-hoc column probe or, in one case, a substring search of the
+    stored DDL. Those probes still run -- they are what actually repairs an
+    old database, and they are idempotent -- but a change with neither a new
+    column nor a matching substring now has somewhere to hang a migration.
+    """
     for stmt in DDL:
         conn.execute(stmt)
     _migrate_scan_log_kinds(conn)
     _migrate_scan_log_input_key(conn)
     _migrate_face_attributes(conn)
+    conn.execute(
+        "INSERT INTO ai_dam_state (key, value, updated_at) VALUES ('ai_schema_version', ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        (str(AI_SCHEMA_VERSION), time.time()),
+    )
     conn.commit()
 
 
@@ -331,6 +378,22 @@ def _migrate_scan_log_kinds(conn) -> None:
     if current:
         return
     target_ddl = next(s for s in DDL if "ai_scan_log" in s)
+    # One transaction for the whole swap. Python's sqlite3 runs DDL in
+    # autocommit and only opens an implicit transaction at the INSERT, so
+    # the rename and the CREATE were already durable before the copy began:
+    # an interruption in that window left an EMPTY ai_scan_log beside an
+    # orphaned ai_scan_log_old, and the DDL sniff above would then see a
+    # current table and return early -- so the orphan stayed forever and the
+    # rows in it were never copied. BEGIN IMMEDIATE takes the write lock up
+    # front and makes the swap all-or-nothing.
+    conn.execute("DROP TABLE IF EXISTS ai_scan_log_old")
+    # init_schema's own DDL may have left an implicit transaction open, and
+    # SQLite has no nested transactions. Settle it before taking the write
+    # lock: everything before this point is idempotent CREATE IF NOT EXISTS,
+    # so committing it is a no-op on an already-current database.
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
     conn.execute("ALTER TABLE ai_scan_log RENAME TO ai_scan_log_old")
     conn.execute(target_ddl.replace("IF NOT EXISTS ", ""))
     # Columns named explicitly, never SELECT *: the old table has whatever
@@ -349,6 +412,7 @@ def _migrate_scan_log_kinds(conn) -> None:
         """
     )
     conn.execute("DROP TABLE ai_scan_log_old")
+    conn.commit()
 
 
 def drop_derived_state(conn, keep_feedback: bool = True) -> None:

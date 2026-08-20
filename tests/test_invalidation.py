@@ -207,24 +207,34 @@ def test_find_missing_deterministic_order():
 # --- active_versions / set_active_version -----------------------------------
 
 
+# `active_versions` returns EVERY row in ai_dam_state, which these tests do
+# not own: init_schema records ai_schema_version there, and the worker writes
+# cluster-pending markers. Asserting on the whole dict made this suite fail
+# for anything else legitimately stored. Assert the pair, not the table.
+
+
 def test_set_and_get_active_version():
     conn = make_conn()
     set_active_version(conn, "semantic_model_version", "clip-v1")
-    assert active_versions(conn) == {"semantic_model_version": "clip-v1"}
+    assert active_versions(conn)["semantic_model_version"] == "clip-v1"
 
 
 def test_set_active_version_upserts():
     conn = make_conn()
     set_active_version(conn, "hash_algo_version", "v1")
     set_active_version(conn, "hash_algo_version", "v2")
-    assert active_versions(conn) == {"hash_algo_version": "v2"}
+    versions = active_versions(conn)
+    assert versions["hash_algo_version"] == "v2"
+    assert sum(1 for k in versions if k == "hash_algo_version") == 1  # upserted, not appended
 
 
 def test_active_versions_multiple_keys_sorted():
     conn = make_conn()
     set_active_version(conn, "visual_model_version", "dinov2-v1")
     set_active_version(conn, "semantic_model_version", "clip-v1")
-    assert list(active_versions(conn).keys()) == ["semantic_model_version", "visual_model_version"]
+    keys = list(active_versions(conn).keys())
+    assert keys == sorted(keys)
+    assert {"semantic_model_version", "visual_model_version"} <= set(keys)
 
 
 def test_end_to_end_active_version_drives_staleness():

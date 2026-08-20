@@ -122,10 +122,35 @@ def test_schema_block_never_includes_bookkeeping_tables(db):
             "SELECT id FROM files WHERE a < 5 AND b <= 2 AND c <> 'x'",
             "SELECT id FROM files WHERE a < 5 AND b <= 2 AND c <> 'x'",
         ),
+        # '<' IMMEDIATELY followed by a letter is also legal SQL, and this
+        # module's own system prompt teaches the model to write it. Cutting
+        # on '<'+letter turned this into "WHERE files.mtime" -- still valid,
+        # still executes, and silently answers a different question.
+        (
+            "SELECT id FROM files WHERE files.mtime <strftime('%s','now')",
+            "SELECT id FROM files WHERE files.mtime <strftime('%s','now')",
+        ),
+        # A complete tag is still junk, even hard against a comparison.
+        ("SELECT id FROM files WHERE a <5</s>", "SELECT id FROM files WHERE a <5"),
     ],
 )
 def test_extract_sql(content, expected):
     assert _extract_sql(content) == expected
+
+
+def test_extract_sql_never_returns_a_different_valid_query():
+    """The failure that matters is not a crash, it is a truncation that
+    still parses: a wrong answer with no error for the agentic loop to
+    catch. Every case above must come back either whole or unparseable,
+    never as a shorter statement that happens to run."""
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE files (id TEXT, mtime REAL, rating INT)")
+    whole = "SELECT id FROM files WHERE files.mtime <strftime('%s','now')"
+    assert _extract_sql(whole) == whole
+    conn.execute("EXPLAIN " + _extract_sql(whole))  # and it is executable
+    conn.close()
 
 
 # ---------------------------------------------------------------------------

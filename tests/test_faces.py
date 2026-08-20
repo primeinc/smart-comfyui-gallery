@@ -587,6 +587,21 @@ def test_neighbor_graph_reports_backend_that_ran(monkeypatch):
     assert backend == "numpy"
 
 
+def test_aiconfig_face_min_det_score_env(monkeypatch, tmp_path):
+    """The recall-versus-precision knob has to be reachable. It is consumed
+    by every face backend and was the only member of this group `from_env`
+    never read, so the one setting a user would reach for to trade false
+    positives against missed faces could not be set at all."""
+    monkeypatch.setenv("AI_DAM_FACE_MIN_DET_SCORE", "0.8")
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_min_det_score == 0.8
+
+
+def test_aiconfig_face_min_det_score_default(tmp_path):
+    cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
+    assert cfg.face_min_det_score == 0.5
+
+
 def test_aiconfig_face_min_px_env(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_DAM_FACE_MIN_PX", "32")
     cfg = AIConfig.from_env(str(tmp_path), str(tmp_path / "db.sqlite"))
