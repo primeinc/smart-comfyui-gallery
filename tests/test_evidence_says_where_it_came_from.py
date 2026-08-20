@@ -13,6 +13,7 @@ import importlib.util
 import pathlib
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -72,6 +73,7 @@ def test_a_directory_that_is_no_repository_is_not_guessed_at(tmp_path):
     assert _driver()._commit_stamp(tmp_path) == "unknown"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="the stub git is a .bat; this repo's tooling is Windows")
 def test_an_unanswerable_cleanliness_check_is_labelled_not_assumed(tmp_path, monkeypatch):
     """rev-parse succeeds, status fails: the stamp must say -unverified
     rather than silently presenting the commit as a clean build. Simulated

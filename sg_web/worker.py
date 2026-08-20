@@ -66,4 +66,4 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
                 wake.wait(IDLE_WAIT)
                 wake.clear()
     finally:
-        conn.close()
+        connect.close(conn)

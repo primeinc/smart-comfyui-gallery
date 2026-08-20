@@ -64,6 +64,19 @@ def drop_all(conn) -> list[str]:
         )
     ]
     for name in reversed(names):
+        if name == "derived_media_sample":
+            # A sample an assertion points at is the MOMENT the human's
+            # claim is about. Deleted, the FK nulls the assertion's
+            # sample_id and the seeder's cross-moment guard goes blind: a
+            # video of two people holds the same box at two moments, every
+            # rebuilt cluster collects both votes, and both names are
+            # lost. Same rule as regions below; re-detection reclaims the
+            # kept rows through add_sample's upsert.
+            conn.execute(
+                "DELETE FROM derived_media_sample WHERE id NOT IN"
+                " (SELECT sample_id FROM person_assertion WHERE sample_id IS NOT NULL)"
+            )
+            continue
         conn.execute(f"DELETE FROM {name}")
     # Regions exist only to locate derived findings and human assertions. The
     # ones an assertion still points at are kept; the rest went with the rows

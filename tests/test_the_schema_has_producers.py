@@ -186,6 +186,54 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     assert db.execute("SELECT count(*) FROM derived_file_person WHERE person_id = ?", (person,)).fetchone()[0] == 1
 
 
+def test_a_video_naming_survives_the_rebuild(db, a_library):
+    """The video form of the rebuild contract. A face on a video belongs
+    to a MOMENT (`sample_id`), and the assertion names that moment. If the
+    rebuild erases which moment -- samples dropped, `sample_id` nulled --
+    the seeder's cross-moment guard goes blind: in a video of two people
+    the same box exists at both moments, every cluster collects both
+    votes, and both names are lost."""
+    folder = a_library["folder"]
+    clip = scan.mint(db, "file", "clip")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+        " first_seen_at, last_seen_at) VALUES(?, ?, 'clip.mp4', 'video', 10, 0, 'cc', ?, ?)",
+        (clip, folder, NOW, NOW),
+    )
+    alice = authored.person(db, "Alice", NOW)
+    bob = authored.person(db, "Bob", NOW)
+
+    def indexed(version, when):
+        """One detection pass: two moments, one face each, the same box."""
+        run = derived.run_for(db, "test/emb", version, "given", None, when)
+        faces = {}
+        for name, offset in (("alice", 1000), ("bob", 9000)):
+            moment = derived.add_sample(db, clip, "frame", "poster", offset_ms=offset)
+            box = derived.region(db, 0.4, 0.4, 0.2, 0.2)
+            (face,) = derived.record_faces(
+                db, clip, "test/emb", version, "cc", when, [{"region": box}], sample_id=moment
+            )
+            faces[name] = (face, moment, box)
+        groups = derived.recluster(db, "test/emb", version, when, [{}, {}])
+        derived.assign_cluster(db, faces["alice"][0], groups[0])
+        derived.assign_cluster(db, faces["bob"][0], groups[1])
+        return run, faces, groups
+
+    _, faces, _groups = indexed("v1", NOW)
+    for person, name in ((alice, "alice"), (bob, "bob")):
+        _face, moment, box = faces[name]
+        authored.assert_person(db, person, clip, None, NOW, sample_id=moment, region_id=box)
+
+    derived.drop_all(db)
+    run2, _, groups2 = indexed("v2", NOW + 10)
+    named = derived.seed_clusters_from_assertions(db, run2)
+
+    assert named == 2, "both moments' names must come back after the rebuild"
+    owners = dict(db.execute("SELECT id, person_id FROM derived_face_cluster WHERE run_id = ?", (run2,)))
+    assert owners[groups2[0]] == alice
+    assert owners[groups2[1]] == bob
+
+
 def _two_people_in_one_photo(db, a_library, tmp_path):
     """A group shot and a solo shot, with a human's claim on each face."""
     group = a_library["file"]

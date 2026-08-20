@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from litestar.testing import TestClient
 
-from db import connect, derived, library, naming, scan, settings
+from db import authored, connect, derived, library, naming, scan, settings
 from sg_web.app import build_app
 
 
@@ -271,6 +271,108 @@ def test_a_recluster_replaces_its_own_placeholders(served):
         assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
     people = client.get("/people").json()
     assert len(people) == 1, f"a second run must replace its placeholders, not add more: {people}"
+
+
+def _drained_cluster_job(client) -> None:
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job_id = client.post("/jobs/cluster").json()["id"]
+        state = None
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+    assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
+
+
+def test_a_name_in_a_second_embedding_space_is_kept_not_lost(served):
+    """The cluster job mints addressable people for EVERY embedding
+    space's run, but only one run is primary. Naming a person the primary
+    pages do not show must still write the record that keeps the name --
+    the application never accepts a name it cannot keep -- and a name it
+    genuinely cannot keep is refused, not swallowed."""
+    import numpy as np
+
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    rng = np.random.default_rng(9)
+    one = rng.standard_normal(16).astype(np.float32)
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    for name in ("ana_1.png", "ana_2.png"):
+        derived.record_faces(
+            conn,
+            files[name],
+            "other/embedder",
+            "1",
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, 0.6, 0.6, 0.2, 0.2),
+                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
+                }
+            ],
+        )
+    conn.commit()
+    conn.close()
+
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job = client.post("/jobs/cluster").json()
+        assert job["total"] == 2, "two embedding spaces, two items"
+        state = job["state"]
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+        assert state == "done"
+
+    conn = connect.connect(db_path)
+    minted = conn.execute(
+        "SELECT e.slug FROM derived_face_cluster c JOIN derived_face_run r ON r.id = c.run_id"
+        " JOIN person p ON p.id = c.person_id JOIN entity e ON e.id = p.id"
+        " WHERE r.is_primary = 0 AND p.name IS NULL"
+    ).fetchone()
+    conn.close()
+    assert minted is not None, "the second space's group has no addressable person"
+
+    answered = client.post(f"/p/{minted[0]}/name", json={"name": "Beata"})
+    assert answered.status_code < 300, answered.text
+    assert answered.json()["asserted"] == 2, "an accepted name must be written down"
+
+    _drained_cluster_job(client)
+    conn = connect.connect(db_path)
+    still = conn.execute(
+        "SELECT count(*) FROM derived_face_cluster c JOIN person p ON p.id = c.person_id WHERE p.name = 'Beata'"
+    ).fetchone()[0]
+    conn.close()
+    assert still == 1, "the app's own recluster lost a name it accepted"
+    assert client.get("/p/beata").status_code == 200
+
+    # And the refusal: the fixture's hand-attributed person owns no
+    # cluster and no assertion, so their name has nothing to be kept by.
+    assert client.post("/p/ana/name", json={"name": "Ana R"}).status_code == 400
+
+
+def test_feedback_on_a_placeholder_outlives_the_recluster(served):
+    """The pruning spares a person a feedback verdict points at: the
+    judgement is authored, and it must keep its subject."""
+    client, _, _ = served
+    _drained_cluster_job(client)
+    minted_slug = client.get("/people").json()[0]["slug"]
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    resolved = naming.resolve(conn, "person", minted_slug)
+    assert resolved is not None
+    person_id = resolved[0]
+    authored.feedback(conn, "person", "wrong", 1.0, person_id=person_id)
+    conn.commit()
+    conn.close()
+
+    _drained_cluster_job(client)
+    conn = connect.connect(db_path)
+    survived = conn.execute("SELECT count(*) FROM person WHERE id = ?", (person_id,)).fetchone()[0]
+    judged = conn.execute("SELECT person_id FROM feedback").fetchone()[0]
+    conn.close()
+    assert survived == 1, "the pruning deleted a person a human's verdict points at"
+    assert judged == person_id, "the verdict lost its subject"
 
 
 def test_choose_primary_is_an_action_the_application_offers(served):

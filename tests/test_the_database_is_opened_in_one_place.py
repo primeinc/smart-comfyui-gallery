@@ -5,9 +5,11 @@ and the cache are set -- all per-connection, all silently absent on a raw
 sqlite3.connect. A consumer that bypasses it runs with sixty-one foreign
 keys inert and DEFERRED writers that fail mid-transaction (db/connect.py).
 
-Scope is the new application pairing, `db/` and `sg_web/` -- the legacy
-Flask application is being cut over, not policed, and tooling builds
-throwaway state on purpose. Three files hold raw connects by decision:
+Scope is the new application pairing and its libraries -- `db/`,
+`sg_web/`, `metaparse/` and `vision/` -- everything the new stack would
+import. The legacy Flask application is being cut over, not policed, and
+tooling builds throwaway state on purpose. Three files hold raw connects
+by decision:
 
   connect.py  it IS the one place
   migrate.py  read-only probes and migration targets with deliberate
@@ -22,7 +24,7 @@ import ast
 
 from source_tree import REPO_ROOT, parsed, shipped
 
-_NEW_PAIRING = {"db", "sg_web"}
+_NEW_PAIRING = {"db", "sg_web", "metaparse", "vision"}
 _DECIDED = {"connect.py", "migrate.py", "build.py"}
 
 

@@ -191,9 +191,9 @@ def _publish(staging: pathlib.Path) -> None:
 
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     retired = pathlib.Path(tempfile.mkdtemp(prefix="browser-report-retired-"))
+    print(f"previous evidence retired to {retired} until the swap lands", flush=True)
     for stale in EVIDENCE.iterdir():
-        if stale.is_file():
-            shutil.move(str(stale), str(retired / stale.name))
+        shutil.move(str(stale), str(retired / stale.name))
     for made in sorted(staging.iterdir()):
         _moved_once_released(made, EVIDENCE / made.name)
     shutil.rmtree(retired)

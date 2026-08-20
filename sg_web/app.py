@@ -63,7 +63,7 @@ def people(state: State) -> list[dict]:
     try:
         return _rows(pages.people_by_most(conn), ("name", "slug", "pictures"))
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @get("/p/{slug:str}", sync_to_thread=True)
@@ -94,7 +94,7 @@ def person(state: State, slug: str) -> dict | Redirect:
             ),
         }
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @dataclasses.dataclass
@@ -127,10 +127,17 @@ def name_person(state: State, slug: str, data: NewName) -> dict:
         now = time.time()
         fresh = authored.name_person(conn, person_id, cleaned, now)
         asserted = authored.assert_named_cluster(conn, person_id, None, now)
+        held = conn.execute("SELECT count(*) FROM person_assertion WHERE person_id = ?", (person_id,)).fetchone()[0]
+        if held == 0:
+            # Refused BEFORE the commit, so nothing above persists: a name
+            # with no face to assert it against would be silently lost by
+            # the next re-cluster, and the application must not accept
+            # what it cannot keep.
+            raise ClientException(f"/p/{slug} has no clustered face to keep the name by; nothing was renamed")
         conn.commit()
         return {"slug": fresh, "name": cleaned, "asserted": asserted}
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @get("/clusterings", sync_to_thread=True)
@@ -140,7 +147,7 @@ def clusterings(state: State) -> list[dict]:
     try:
         return pages.clusterings(conn)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @get("/ways", sync_to_thread=True)
@@ -150,7 +157,7 @@ def ways(state: State) -> list[dict]:
     try:
         return _rows(pages.ways(conn), ("source", "key", "value_kind", "occurrences"))
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @get("/jobs", sync_to_thread=True)
@@ -159,7 +166,7 @@ def active_jobs(state: State) -> list[dict]:
     try:
         return jobs.active(conn)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @get("/jobs/{job_id:int}", sync_to_thread=True)
@@ -173,7 +180,7 @@ def job_snapshot(state: State, job_id: int) -> dict:
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 def _nudge(state: State) -> None:
@@ -194,7 +201,7 @@ def submit_verify(state: State) -> dict:
         _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @post("/jobs/faces", sync_to_thread=True)
@@ -211,7 +218,7 @@ def submit_faces(state: State, data: dict) -> dict:
         _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @post("/jobs/cluster", sync_to_thread=True)
@@ -229,7 +236,7 @@ def submit_cluster(state: State) -> dict:
         _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 def _file_at(conn, slug: str, where: str) -> tuple[int, str] | str:
@@ -282,7 +289,7 @@ def media_bytes(state: State, slug: str, request: Request) -> Stream | Redirect 
             return Redirect(path=f"/media/{resolved}", status_code=301)
         _, path = resolved
     finally:
-        conn.close()
+        connect.close(conn)
 
     from vision import sniff as sniff_module
 
@@ -349,7 +356,7 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
                 raise NotFoundException(f"{where}/{slug} has no decodable frame")
             thumbs.put(cache, sha, frame, variant)
     finally:
-        conn.close()
+        connect.close(conn)
     return Response(content=target.read_bytes(), media_type="image/webp")
 
 
@@ -403,7 +410,7 @@ def avatar_bytes(state: State, slug: str) -> Response | Redirect:
                 raise NotFoundException(f"/avatar/{slug}: the face's frame no longer decodes")
             thumbs.put_avatar(cache, face_id, frame, (x, y, w, h))
     finally:
-        conn.close()
+        connect.close(conn)
     return Response(content=target.read_bytes(), media_type="image/webp")
 
 
@@ -414,7 +421,7 @@ def all_settings(state: State) -> list[dict]:
     try:
         return settings.snapshot(conn)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @post("/settings/{key:str}", sync_to_thread=True)
@@ -431,7 +438,7 @@ def change_setting(state: State, key: str, data: dict) -> dict:
         conn.commit()
         return {"key": key, "value": settings.value(conn, key)}
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @post("/jobs/{job_id:int}/cancel", sync_to_thread=True)
@@ -445,7 +452,7 @@ def cancel_job(state: State, job_id: int) -> dict:
         _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 def _active_jobs_of(db_path: str) -> list[dict]:
@@ -453,7 +460,7 @@ def _active_jobs_of(db_path: str) -> list[dict]:
     try:
         return jobs.active(conn)
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @websocket("/ws/jobs")
@@ -489,7 +496,7 @@ def roots(state: State) -> list[dict]:
     try:
         return [{"id": root_id, "path": path, "online": online} for root_id, path, online in library.check_roots(conn)]
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @dataclasses.dataclass
@@ -512,7 +519,7 @@ def add_root(state: State, data: NewRoot) -> dict:
         conn.commit()
         return {"id": root_id, "path": data.path}
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @post("/roots/{root_id:int}/scan", sync_to_thread=True)
@@ -535,7 +542,7 @@ def scan_root(state: State, root_id: int) -> dict:
             "hashed": result.hashed,
         }
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 @post("/clusterings/choose", sync_to_thread=True)
@@ -547,7 +554,7 @@ def choose_primary(state: State) -> dict:
         conn.commit()
         return {"primary_run": chosen}
     finally:
-        conn.close()
+        connect.close(conn)
 
 
 def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
