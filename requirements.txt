@@ -1,5 +1,6 @@
 # Kept in sync with pyproject.toml [project.dependencies] (uv users: `uv sync`).
 litestar
+uvicorn  # the server behind `python -m sg_web`
 Pillow
 opencv-python<5  # keep in sync with pyproject.toml (static-shape YuNet ONNX)
 numpy # needed for opencv-python

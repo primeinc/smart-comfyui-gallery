@@ -32,6 +32,13 @@ check: lint fmt-check types test
 audit:
     {{ python }} -m pytest -q         tests/test_suite_is_runnable.py         tests/test_tracked_files.py         tests/test_line_endings_survive_the_clone.py         tests/test_requirements_sync.py         tests/test_programs_are_started_safely.py         tests/test_sql_is_built_from_structure_only.py         tests/test_the_heavy_layer_stays_lazy.py
 
+# The application, served. Flags pass through: `just serve --port 9000`,
+# `just serve --home D:/runs/two` -- everything else is a settings row
+# changed in the running app.
+[doc('Serve the gallery (python -m sg_web)')]
+serve *ARGS:
+    {{ python }} -m sg_web "$@"
+
 # Benchmarks through the production pipeline (bench.just)
 mod bench
 

@@ -18,6 +18,7 @@ description = "Local-first browser-based DAM for ComfyUI with an optional derive
 requires-python = ">=3.10"
 dependencies = [
     "litestar",
+    "uvicorn",  # the server behind `python -m sg_web`
     "Pillow",
     "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; deployed YuNet 2023mar is static-shape (docs/AUDIT_FACE_INGESTION_2026-08-15.md finding 3)
     "numpy",
