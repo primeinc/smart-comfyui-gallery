@@ -282,7 +282,12 @@ def progress(conn, job_id: int) -> Progress:
 
 
 def snapshot(conn, job_id: int) -> dict:
-    """Everything a client needs to render the job from cold."""
+    """Everything a client needs to render the job from cold.
+
+    `failed_count` is here because "done, with three files unreadable" and
+    "done" are different outcomes a page must show without a worker's turn
+    summary to read -- the turn is not addressable, the row is.
+    """
     cursor = conn.execute(
         "SELECT id, kind, state, cancel_requested, total, done_count, attempt,"
         " error, created_at, started_at, finished_at FROM job WHERE id = ?",
@@ -291,7 +296,11 @@ def snapshot(conn, job_id: int) -> dict:
     row = cursor.fetchone()
     if row is None:
         raise LookupError(f"no job {job_id}")
-    return dict(zip([c[0] for c in cursor.description], row, strict=True))
+    told = dict(zip([c[0] for c in cursor.description], row, strict=True))
+    told["failed_count"] = conn.execute(
+        "SELECT count(*) FROM job_item WHERE job_id = ? AND state = 'failed'", (job_id,)
+    ).fetchone()[0]
+    return told
 
 
 def active(conn) -> list[dict]:

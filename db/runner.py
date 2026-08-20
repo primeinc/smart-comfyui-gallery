@@ -108,7 +108,17 @@ HANDLERS = {
 }
 
 
-def run_next(conn, owner: str, now: float, *, handlers=None, kinds=None, budget: int | None = None) -> dict | None:
+def run_next(
+    conn,
+    owner: str,
+    now: float,
+    *,
+    handlers=None,
+    kinds=None,
+    budget: int | None = None,
+    clock=None,
+    on_progress=None,
+) -> dict | None:
     """One worker turn: claim the next runnable job and work it.
 
     Returns None when nothing is runnable, otherwise a summary of what this
@@ -116,17 +126,38 @@ def run_next(conn, owner: str, now: float, *, handlers=None, kinds=None, budget:
     stays `running` under its lease and the next turn (this process or any
     other) continues from the items still pending, which is the resumption
     contract stated on db/jobs.py.
+
+    `clock` supplies the time for heartbeats and settlement; without one,
+    `now` stands for the whole turn. A long-lived worker MUST pass one: a
+    heartbeat stamped with claim time extends the lease to claim + 60s
+    forever, so any single job outliving the lease was reclaimed mid-run
+    by the next worker while still being worked.
+
+    `on_progress` hears every observable change -- claim, each finished
+    item, the terminal state -- as `{job, kind, state, done, total}`. This
+    is the delta feed the live channel publishes; the row stays the truth
+    a subscriber renders from cold, which is also why each item commits:
+    progress only a worker's own transaction can see is not progress a
+    reloaded page can render.
     """
     handlers = HANDLERS if handlers is None else handlers
+    tick = clock if clock is not None else (lambda: now)
+    tell = on_progress if on_progress is not None else (lambda delta: None)
     claimed = jobs.claim(conn, owner, now, kinds=kinds)
     if claimed is None:
         return None
     job_id, fence = claimed
 
     kind, raw = conn.execute("SELECT kind, payload FROM job WHERE id = ?", (job_id,)).fetchone()
+
+    def spoke(state: str, moved) -> None:
+        tell({"job": job_id, "kind": kind, "state": state, "done": moved.done, "total": moved.total})
+
+    spoke("running", jobs.progress(conn, job_id))
     handler = handlers.get(kind)
     if handler is None:
-        jobs.settle(conn, job_id, fence, "failed", now, error=f"no handler for kind {kind!r}")
+        jobs.settle(conn, job_id, fence, "failed", tick(), error=f"no handler for kind {kind!r}")
+        spoke("failed", jobs.progress(conn, job_id))
         return {"job": job_id, "state": "failed", "did": 0}
     payload = json.loads(raw) if raw else {}
 
@@ -136,20 +167,24 @@ def run_next(conn, owner: str, now: float, *, handlers=None, kinds=None, budget:
             # A deliberate stop, not a death: the lease is expired on the
             # spot so the very next turn -- any process -- resumes the job
             # instead of waiting out a liveness timeout meant for crashes.
-            jobs.pause(conn, job_id, fence, now)
+            jobs.pause(conn, job_id, fence, tick())
             return {"job": job_id, "state": "running", "did": did, "failed": failed}
         if jobs.cancelled(conn, job_id):
-            jobs.settle(conn, job_id, fence, "cancelled", now)
+            jobs.settle(conn, job_id, fence, "cancelled", tick())
+            spoke("cancelled", jobs.progress(conn, job_id))
             return {"job": job_id, "state": "cancelled", "did": did, "failed": failed}
         try:
             handler(conn, item, payload, now)
         except ITEM_FAILURES as why:
-            jobs.finish_item(conn, job_id, fence, item, error=str(why))
+            moved = jobs.finish_item(conn, job_id, fence, item, error=str(why))
             failed += 1
         else:
-            jobs.finish_item(conn, job_id, fence, item)
+            moved = jobs.finish_item(conn, job_id, fence, item)
         did += 1
-        jobs.heartbeat(conn, job_id, fence, now)
+        jobs.heartbeat(conn, job_id, fence, tick())
+        conn.commit()
+        spoke("running", moved)
 
-    jobs.settle(conn, job_id, fence, "done", now)
+    jobs.settle(conn, job_id, fence, "done", tick())
+    spoke("done", jobs.progress(conn, job_id))
     return {"job": job_id, "state": "done", "did": did, "failed": failed}

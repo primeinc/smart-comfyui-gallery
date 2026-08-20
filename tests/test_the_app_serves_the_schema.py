@@ -114,35 +114,74 @@ def test_clusterings_are_public_and_the_primary_is_marked(served):
     assert runs[0]["method"] == "chinese-whispers"
 
 
-def test_the_whole_job_lifecycle_happens_over_requests(served):
-    """Submit, budgeted progress, snapshot from cold, cancel, resubmit,
-    completion -- every step a request, the row the only state."""
-    client, _, root = served
+def test_job_progress_is_pushed_over_the_socket_not_polled(served):
+    """Submit a sweep and watch it happen: the socket sends the persisted
+    snapshot first, then a delta per observable change, ending in the
+    terminal state -- and the row agrees with everything it said."""
+    client, _, _ = served
+    with client.websocket_connect("/ws/jobs") as feed:
+        first = feed.receive_json(timeout=10)
+        assert first["type"] == "snapshot"
+        assert first["jobs"] == []
 
-    submitted = client.post("/jobs/verify").json()
-    assert (submitted["state"], submitted["total"]) == ("queued", 3)
-    job_id = submitted["id"]
+        submitted = client.post("/jobs/verify").json()
+        assert (submitted["state"], submitted["total"]) == ("queued", 3)
+        job_id = submitted["id"]
 
-    turn = client.post("/worker/turn", json={"budget": 1}).json()
-    assert (turn["state"], turn["did"]) == ("running", 1)
+        seen, state = [], None
+        while state not in ("done", "failed", "cancelled"):
+            delta = feed.receive_json(timeout=10)
+            assert delta["job"] == job_id
+            assert delta["total"] == 3
+            seen.append(delta["done"])
+            state = delta["state"]
+        assert state == "done"
+        assert seen == sorted(seen), "progress went backwards on the wire"
+        assert seen[-1] == 3
+
     snapshot = client.get(f"/jobs/{job_id}").json()
-    assert (snapshot["state"], snapshot["done_count"]) == ("running", 1)
-
-    cancelled = client.post(f"/jobs/{job_id}/cancel").json()
-    assert cancelled["cancel_requested"] == 1
-    turn = client.post("/worker/turn").json()
-    assert turn["state"] == "cancelled"
-
-    # The library changes behind the application's back; a fresh sweep says so.
-    (root / "ana_2.png").write_bytes(b"\x89PNG-TAMPERED")
-    job_id = client.post("/jobs/verify").json()["id"]
-    turn = client.post("/worker/turn").json()
-    assert (turn["state"], turn["failed"]) == ("done", 1)
-    snapshot = client.get(f"/jobs/{job_id}").json()
-    assert (snapshot["state"], snapshot["done_count"]) == ("done", 3)
-
-    assert client.post("/worker/turn").json() == {"state": "idle"}
+    assert (snapshot["state"], snapshot["done_count"], snapshot["failed_count"]) == ("done", 3, 0)
     assert client.get("/jobs/999").status_code == 404
+
+
+def test_verification_catches_tampered_bytes_while_you_watch(served):
+    """The library changes behind the application's back; the sweep runs
+    live and the cold row still knows how many files it could not vouch
+    for."""
+    client, _, root = served
+    (root / "ana_2.png").write_bytes(b"\x89PNG-TAMPERED")
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job_id = client.post("/jobs/verify").json()["id"]
+        state = None
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+        assert state == "done"
+    snapshot = client.get(f"/jobs/{job_id}").json()
+    assert (snapshot["done_count"], snapshot["failed_count"]) == (3, 1)
+
+
+def test_the_worker_obeys_its_setting_changed_over_http(served):
+    """Turning the worker off is a settings row, effective live: jobs
+    queue and wait, cancellation is honoured the moment it returns."""
+    import time as clock
+
+    from sg_web import worker as worker_module
+
+    client, _, _ = served
+    client.post("/settings/worker", json={"value": "off"})
+    job_id = client.post("/jobs/verify").json()["id"]
+    clock.sleep(worker_module.IDLE_WAIT * 2.5)
+    assert client.get(f"/jobs/{job_id}").json()["state"] == "queued", "the worker ignored its off switch"
+
+    assert client.post(f"/jobs/{job_id}/cancel").json()["cancel_requested"] == 1
+    client.post("/settings/worker", json={"value": "on"})
+    deadline = clock.time() + 10
+    state = None
+    while clock.time() < deadline and state != "cancelled":
+        state = client.get(f"/jobs/{job_id}").json()["state"]
+        clock.sleep(0.05)
+    assert state == "cancelled"
 
 
 def test_choose_primary_is_an_action_the_application_offers(served):

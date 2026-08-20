@@ -1,10 +1,14 @@
 """The application over the schema: every page a query, every sweep a job.
 
-The skeleton of plan Phase 2, held to its two rules. Addresses are entity
-slugs resolved through `db.pages.resolve` -- never paths, never raw ids --
-and nothing expensive starts by itself: a sweep is a `job` row somebody
-POSTs into existence, worked by explicit worker turns, cancellable and
-resumable because the row is the truth.
+Addresses are entity slugs -- never paths, never raw ids -- and nothing
+expensive starts by itself: a sweep is a `job` row somebody POSTs into
+existence, drained by the in-process worker (sg_web/worker.py),
+cancellable and resumable because the row is the truth.
+
+Realtime first: progress is pushed, not polled. The worker publishes
+every observable change onto the "jobs" channel and /ws/jobs streams it;
+the snapshot routes exist for rendering from cold, and no client has a
+reason to poll them in a loop.
 
 Handlers are synchronous on purpose: sqlite is synchronous, and Litestar
 runs sync handlers on its thread pool when told so
@@ -20,13 +24,19 @@ import pathlib
 import sqlite3
 import time
 
-from litestar import Litestar, Request, get, post
+from contextlib import asynccontextmanager
+
+from litestar import Litestar, Request, get, post, websocket
+from litestar.channels import ChannelsPlugin
+from litestar.channels.backends.memory import MemoryChannelsBackend
+from litestar.connection import WebSocket
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Redirect, Response, Stream
 
 from db import connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
 from sg_web import home, media
+from sg_web import worker as worker_module
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -128,13 +138,22 @@ def job_snapshot(state: State, job_id: int) -> dict:
         conn.close()
 
 
+def _nudge(state: State) -> None:
+    """Tell the worker there is work, so pickup is immediate rather than
+    on its idle cadence."""
+    wake = getattr(state, "worker_wake", None)
+    if wake is not None:
+        wake.set()
+
+
 @post("/jobs/verify", sync_to_thread=True)
 def submit_verify(state: State) -> dict:
-    """Ask for an integrity sweep. Nothing runs until a worker turn."""
+    """Ask for an integrity sweep. The row queues it; the worker drains it."""
     conn = _connect(state.db_path)
     try:
         job_id = runner.submit_verify(conn, time.time())
         conn.commit()
+        _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
         conn.close()
@@ -151,6 +170,7 @@ def submit_faces(state: State, data: dict) -> dict:
         cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
         job_id = runner.submit_faces(conn, time.time(), models_dir=weights, thumbs_dir=cache)
         conn.commit()
+        _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
         conn.close()
@@ -336,34 +356,48 @@ def change_setting(state: State, key: str, data: dict) -> dict:
 
 @post("/jobs/{job_id:int}/cancel", sync_to_thread=True)
 def cancel_job(state: State, job_id: int) -> dict:
-    """Ask a job to stop. The runner stops it, at an item boundary."""
+    """Ask a job to stop. The runner stops it, at an item boundary; a
+    still-queued job needs a claim to settle, hence the nudge."""
     conn = _connect(state.db_path)
     try:
         jobs.cancel(conn, job_id)
         conn.commit()
+        _nudge(state)
         return jobs.snapshot(conn, job_id)
     finally:
         conn.close()
 
 
-@post("/worker/turn", sync_to_thread=True)
-def worker_turn(state: State, data: dict | None = None) -> dict:
-    """One explicit worker turn. `budget` bounds the items it performs;
-    a bounded turn leaves the job running and resumable, which is what
-    makes progress observable over plain requests."""
-    conn = _connect(state.db_path)
+def _active_jobs_of(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
     try:
-        budget = (data or {}).get("budget")
-        turn = runner.run_next(
-            conn,
-            owner="web-worker",
-            now=time.time(),
-            budget=int(budget) if budget is not None else None,
-        )
-        conn.commit()
-        return turn if turn is not None else {"state": "idle"}
+        return jobs.active(conn)
     finally:
         conn.close()
+
+
+@websocket("/ws/jobs")
+async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -> None:
+    """Live job progress: the persisted snapshot first, then every delta.
+
+    The subscription opens BEFORE the snapshot is read, so a delta landing
+    between the two is queued behind the snapshot instead of lost; a
+    client applies deltas onto the snapshot and can never render a state
+    the rows did not hold. The channel is transport, never storage --
+    reconnection starts from the rows again (db/jobs.py). The snapshot
+    read crosses to a thread (anyio.to_thread.run_sync, agronholm/anyio
+    src/anyio/to_thread.py:27-52) because sqlite blocks and this handler
+    shares the event loop with every open socket.
+    """
+    from anyio import to_thread
+
+    await socket.accept()
+    async with channels.start_subscription("jobs") as subscriber:
+        rows = await to_thread.run_sync(_active_jobs_of, state.db_path)
+        await socket.send_json({"type": "snapshot", "jobs": rows})
+        async with subscriber.run_in_background(socket.send_text):
+            while (await socket.receive())["type"] != "websocket.disconnect":
+                continue
 
 
 @get("/roots", sync_to_thread=True)
@@ -426,12 +460,17 @@ def choose_primary(state: State) -> dict:
         conn.close()
 
 
-def build_app(home_dir: str | None = None) -> Litestar:
+def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     """The application, bound to one home directory (sg_web/home.py).
 
     With no argument the run lives in `~/.smartgallery`. A database that
     does not exist yet is created from the schema -- a first run needs
     nothing but the command that starts it.
+
+    `worker=True` -- the runtime truth -- starts the draining thread with
+    the app and stops it with the app; the `worker` setting row idles it
+    live without a restart. `worker=False` is for embedding the routes
+    over a database whose jobs something else is stepping.
     """
     base = home.home(home_dir)
     where = home.db_path(base)
@@ -440,6 +479,41 @@ def build_app(home_dir: str | None = None) -> Litestar:
         fresh.executescript(connect.schema_sql())
         fresh.commit()
         fresh.close()
+
+    channels = ChannelsPlugin(MemoryChannelsBackend(), channels=["jobs"])
+
+    @asynccontextmanager
+    async def working(app: Litestar):
+        """The worker's life is the application's life: the loop is
+        captured here because `ChannelsPlugin.publish` must be entered
+        from the loop's own thread (call_soon_threadsafe is the bridge),
+        and the join on the way out is what makes ctrl-C leave no thread
+        mid-write."""
+        import asyncio
+        import threading
+
+        from anyio import to_thread
+
+        loop = asyncio.get_running_loop()
+        stop, wake = threading.Event(), threading.Event()
+        app.state.worker_wake = wake
+
+        def publish(delta: dict) -> None:
+            loop.call_soon_threadsafe(channels.publish, delta, "jobs")
+
+        thread = threading.Thread(
+            target=worker_module.run, args=(str(where), publish, stop, wake), name="sg-worker", daemon=True
+        )
+        if worker:
+            thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            wake.set()
+            if thread.is_alive():
+                await to_thread.run_sync(thread.join)
+
     app = Litestar(
         route_handlers=[
             health,
@@ -455,7 +529,7 @@ def build_app(home_dir: str | None = None) -> Litestar:
             submit_verify,
             submit_faces,
             cancel_job,
-            worker_turn,
+            jobs_feed,
             choose_primary,
             all_settings,
             change_setting,
@@ -464,6 +538,8 @@ def build_app(home_dir: str | None = None) -> Litestar:
             preview_bytes,
             avatar_bytes,
         ],
+        plugins=[channels],
+        lifespan=[working],
     )
     app.state.home = str(base)
     app.state.db_path = str(where)
