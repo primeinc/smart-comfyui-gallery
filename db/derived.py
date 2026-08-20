@@ -241,7 +241,7 @@ def _insert_face(
     run has to replace what it said last time, and a public row-at-a-time
     insert is how "re-running a detector doubles every face" comes back.
     """
-    yaw, pitch, roll = pose if pose else (None, None, None)
+    yaw, pitch, roll = pose or (None, None, None)
     # `dim` describes `embedding`, so it is taken from it rather than trusted
     # from a caller. The schema checks the two agree; deriving it here means
     # nobody has to be told twice.
@@ -293,7 +293,7 @@ def runs(conn) -> list[dict]:
         " ORDER BY is_primary DESC, computed_at DESC"
     )
     columns = [c[0] for c in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
 def make_primary(conn, run_id: int) -> None:
@@ -469,14 +469,6 @@ def threshold_for(model_id: str) -> float:
     return UNMEASURED
 
 
-def threshold_for(model_id: str) -> float:
-    """The measured threshold for this embedder, or a cautious default."""
-    for known, value in SAME_PERSON.items():
-        if model_id.startswith(known):
-            return value
-    return UNMEASURED
-
-
 def cluster(conn, model_id: str, model_version: str, now: float, *,
             method: str = "chinese-whispers", threshold: float | None = None,
             smallest: int = 2, **options) -> list[int]:
@@ -591,9 +583,9 @@ CHAINED = 0.5
 ALL_ALONE = 0.95
 
 #: Faces measured when judging a run. The silhouette is a mean over faces, so
-#: a sample estimates it; the full computation is faces-by-clusters, which at
-#: a real library size is hundreds of millions of values held to answer one
-#: question. This makes the cost of judging independent of library size.
+#: a random sample of faces estimates it; each sampled face is still measured
+#: against every grouped face, which is what the definition requires. This
+#: caps the cost of judging a run regardless of library size.
 SILHOUETTE_SAMPLE = 20_000
 
 #: Below this, the groups are not meaningfully apart -- a face sits about as
@@ -609,12 +601,22 @@ def health(conn, run_id: int) -> dict:
     named anybody in still has to be able to tell a run that chained from a
     run that worked.
 
-    The number that decides is the **silhouette**: for each face, how much
-    closer it sits to its own group's centre than to the nearest other
-    group's. Positive means the groups are real; near zero means the split
-    is arbitrary; negative means faces are in the wrong ones. A share or a
-    count cannot say that -- two runs can both put 50% of the library in
-    their biggest cluster and one of them be right.
+    `silhouette` is the Rousseeuw silhouette coefficient, by its actual
+    definition rather than a centroid shortcut wearing the name: for each
+    face, `a` is its mean distance to the rest of its own cluster (over
+    n-1), `b` is the smallest mean distance to any other cluster's members,
+    and the score is `(b - a) / max(a, b)`; a singleton scores 0, and the
+    number is only defined with at least two clusters
+    (refs/scikit-learn/scikit-learn/sklearn/metrics/cluster/
+    _unsupervised.py:149-199, 211-230, 311-323). Distance is cosine
+    distance, `1 - <x, y>` on unit vectors. 1 is dense and separated, 0 is
+    an arbitrary split, negative is faces in the wrong groups.
+
+    An earlier version measured distance-to-centroid instead and called it a
+    silhouette. Measured on 103 labelled faces it also could not rank sound
+    runs -- its best run was not the labels' best run -- so whichever number
+    sits here is a gate against degenerate runs, never the judge of good
+    ones. `agreement` against `person_assertion` is the judge.
 
     The distribution comes back with it, because a mean over cluster sizes
     hides the case that matters. One group of 400 and forty of 2 has a
@@ -670,11 +672,11 @@ def health(conn, run_id: int) -> dict:
     np.add.at(centres, index, unit)
     centres /= np.maximum(np.linalg.norm(centres, axis=1, keepdims=True), 1e-12)
 
-    # SAMPLED above a limit. The silhouette is a mean over faces, so a random
-    # sample estimates it -- and the full computation is faces x clusters,
-    # which at 100k faces and 2k people is 200 million values held at once.
-    # Sampling makes the cost of judging a run independent of library size,
-    # which is what lets it be judged at all.
+    # SAMPLED above a limit: the coefficient is a mean over faces, so a
+    # random sample of faces estimates it. Each sampled face is still
+    # measured against EVERY grouped face -- the definition needs the mean
+    # distance to whole clusters, and swapping in centroids is how the
+    # previous, wrong version of this number was made.
     picked = np.arange(len(labels))
     if len(picked) > SILHOUETTE_SAMPLE:
         picked = np.random.default_rng(0).choice(
@@ -684,7 +686,6 @@ def health(conn, run_id: int) -> dict:
 
     own = np.einsum("ij,ij->i", sample, centres[sample_index])
     if len(ids) > 1:
-        # Blocked, so the faces-by-clusters matrix is never held whole.
         nearest = np.empty(len(sample), dtype=np.float32)
         for start in range(0, len(sample), 4096):
             block = slice(start, start + 4096)
@@ -694,6 +695,33 @@ def health(conn, run_id: int) -> dict:
     else:
         nearest = np.zeros(len(sample), dtype=np.float32)
 
+    silhouette = 0.0
+    if len(ids) > 1:
+        # Sum of cosine distances from each sampled face to each cluster,
+        # accumulated in column blocks so the sample-by-faces matrix is
+        # never held whole. Grouped faces are sorted by cluster first so a
+        # block's per-cluster sums fall out of one `reduceat` instead of a
+        # Python loop over clusters.
+        by_cluster = np.argsort(index, kind="stable")
+        sorted_unit, sorted_index = unit[by_cluster], index[by_cluster]
+        sums = np.zeros((len(sample), len(ids)), dtype=np.float64)
+        for start in range(0, grouped, 4096):
+            block = slice(start, start + 4096)
+            dist = 1.0 - sample @ sorted_unit[block].T
+            here = sorted_index[block]
+            bounds = np.flatnonzero(np.diff(here, prepend=here[0] - 1))
+            sums[:, here[bounds]] += np.add.reduceat(dist, bounds, axis=1)
+        mine = (np.arange(len(sample)), sample_index)
+        # a: mean distance to the REST of the own cluster. The face's own
+        # zero self-distance is in the sum, so dividing by n-1 removes it --
+        # the same correction upstream applies (:315-317).
+        a = sums[mine] / np.maximum(counts[sample_index] - 1, 1)
+        others = sums / counts
+        others[mine] = np.inf
+        b = others.min(axis=1)
+        scores = (b - a) / np.maximum(np.maximum(a, b), 1e-12)
+        silhouette = float(np.nan_to_num(scores).mean())
+
     reading.update({
         "clusters": len(ids),
         "grouped": grouped,
@@ -702,13 +730,13 @@ def health(conn, run_id: int) -> dict:
         "mean": grouped / len(ids),
         "largest_share": int(sizes[0]) / faces if faces else 0.0,
         "alone_share": (faces - grouped) / faces if faces else 0.0,
-        "sampled": int(len(picked)),
+        "sampled": len(picked),
         # How tightly a face sits to its own group's centre.
         "cohesion": float(own.mean()),
         # How close it sits to the nearest OTHER group's centre.
         "separation": float(nearest.mean()),
-        # The gap between the two. This is the number worth deciding on.
-        "silhouette": float((own - nearest).mean()),
+        # Rousseeuw silhouette, defined above. A gate, not a judge.
+        "silhouette": silhouette,
         # Groups far larger than the middle of the distribution -- the shape
         # chaining makes, and invisible to a mean.
         "outliers": int(sum(1 for n in sizes if median and n > 4 * median)),
@@ -787,6 +815,61 @@ def _adopt_if_better(conn, run_id: int, model_id: str, threshold) -> None:
     if threshold is not None and abs(float(threshold) - threshold_for(model_id)) > 1e-9:
         return
     make_primary(conn, run_id)
+
+
+def choose_primary(conn) -> int | None:
+    """Re-rank every run and set the best one primary. Returns its id.
+
+    The deliberate version of `_adopt_if_better`, for after several runs
+    exist. The ranking is by what people said: measured on 103 labelled
+    faces, the silhouette's best run was not the labels' best run, so no
+    label-free statistic judges here -- it only disqualifies. Runs that
+    chained, grouped nothing, or sit below `GOOD_ENOUGH` are out; among the
+    sound ones:
+
+    - with assertions on file, the run that keeps the most asserted people
+      in one cluster each, without mixing two people into one, wins;
+    - with none, the run at its embedder's measured threshold wins, because
+      that number came from labelled data and the others came from a sweep.
+
+    Calling this IS choosing, so it overwrites the current primary. The
+    passive path never does.
+    """
+    sound = []
+    for run in runs(conn):
+        reading = health(conn, run["id"])
+        if (
+            reading["clusters"] == 0
+            or reading["largest_share"] > CHAINED
+            or reading["alone_share"] > ALL_ALONE
+            or reading["silhouette"] < GOOD_ENOUGH
+        ):
+            continue
+        sound.append(run)
+    if not sound:
+        return None
+
+    asserted = conn.execute("SELECT count(*) FROM person_assertion").fetchone()[0]
+    if asserted:
+        def by_agreement(run):
+            said = agreement(conn, run["id"])
+            return (
+                said["held_together"] - said["split_apart"]
+                - said["clusters_mixing_people"],
+                # Same agreement: fall through to the measured threshold.
+                -abs(float(run["threshold"] or 0) - threshold_for(run["model_id"])),
+            )
+
+        best = max(sound, key=by_agreement)
+    else:
+        best = min(
+            sound,
+            key=lambda run: abs(
+                float(run["threshold"] or 0) - threshold_for(run["model_id"])
+            ),
+        )
+    make_primary(conn, best["id"])
+    return best["id"]
 
 
 def assign_cluster(conn, face_id: int, cluster_id: int) -> None:
@@ -998,7 +1081,7 @@ def said_about(conn, file_id: int, *, kind=None) -> list[dict]:
         args.append(kind)
     cursor = conn.execute(sql + " ORDER BY kind, model_id", args)
     columns = [c[0] for c in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
 def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
@@ -1011,4 +1094,4 @@ def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
         (quoted, limit),
     )
     columns = [c[0] for c in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]

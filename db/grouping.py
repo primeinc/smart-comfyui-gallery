@@ -128,9 +128,20 @@ def spherical_kmeans(graph, vectors=None, *, people: int | None = None,
     people = max(1, min(int(people), n))
 
     faiss = _faiss()
+    # The dataset being clustered IS the training set, which upstream calls
+    # out as the case where its training-size guards do not apply: below
+    # `min_points_per_centroid * k` it warns ("This may still be ok if the
+    # dataset to index is as small as the training set"), and above
+    # `max_points_per_centroid * k` -- 256 by default -- it silently
+    # subsamples the training data, which here would mean clustering on part
+    # of the library. Both knobs are ClusteringParameters fields settable
+    # through this constructor. (refs/facebookresearch/faiss.wiki/FAQ.md,
+    # "Can I ignore WARNING clustering XXX points to YYY centroids?";
+    # Faiss-building-blocks page, "Additional options".)
     kmeans = faiss.Kmeans(
         int(unit.shape[1]), people, niter=iterations, nredo=redo,
         spherical=True, gpu=bool(gpu) and faiss.get_num_gpus() > 0,
+        min_points_per_centroid=1, max_points_per_centroid=10_000_000,
     )
     kmeans.train(unit)
     _, assignment = kmeans.index.search(unit, 1)

@@ -42,3 +42,7 @@ face-recall *args:
 # face-pipeline A/B (sface | arcface glintr100 | w600k | insightface scrfd+glintr100) on labeled corpora
 face-ab:
     @FACE_AB_MODELS="$models" FACE_AB_MODELS_W600K="$models_w600k" FACE_AB_INSIGHTFACE_ROOT="$insightface_root" FACE_AB_CORPUS_ROOT="$corpus" FACE_AB_CORPORA="$face_ab_corpora" "$python" benchmarks/face_embedder_ab.py
+
+# both sample datasets through the production db pipeline: every clustering method judged
+faces-validate *args:
+    @"$python" benchmarks/face_pipeline_validation.py "$@"

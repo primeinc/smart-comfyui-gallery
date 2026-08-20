@@ -170,6 +170,12 @@ def _csr(n, rows, cols, weights, np):
 #: never by assuming what is installed.
 BACKENDS = (("faiss-gpu", _gpu), ("faiss-cpu", _cpu), ("numpy", _numpy))
 
+#: The ways a backend fails to exist here: no module, a DLL that will not
+#: load, an API the build lacks, no GPU, a SWIG-level refusal. Named so the
+#: auto path catches what "not installed" actually raises and nothing more --
+#: a genuine bug inside a backend propagates instead of reading as absence.
+FALLIBLE = (ImportError, OSError, RuntimeError, AttributeError, ValueError, TypeError)
+
 
 def graph(vectors, threshold: float, *, backend: str | None = None):
     """Every pair at or above `threshold`, and the name of what computed it."""
@@ -186,12 +192,32 @@ def graph(vectors, threshold: float, *, backend: str | None = None):
             raise ValueError(f"{wanted!r} is not one of {', '.join(known)}")
         return known[wanted](unit, threshold), wanted
 
+    refused: dict[str, str] = {}
     for name, build in BACKENDS:
         try:
-            return build(unit, threshold), name
-        except Exception:
+            result = build(unit, threshold), name
+        except FALLIBLE as why:
+            refused[name] = f"{type(why).__name__}: {why}"
             continue
-    raise RuntimeError("no similarity backend could run, including numpy")
+        if refused and name == "numpy":
+            # FAISS is the engine this library is built around; numpy is the
+            # correctness fallback. Landing here means every faiss path
+            # failed, and doing that silently is how a machine with two GPUs
+            # ran a day-long numpy loop with nobody told. The work still
+            # happens -- degraded and SAID, never degraded and quiet.
+            import warnings
+
+            warnings.warn(
+                "similarity graph fell back to numpy; faiss unavailable: "
+                + "; ".join(f"{k} ({v})" for k, v in refused.items()),
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return result
+    raise RuntimeError(
+        "no similarity backend could run, including numpy: "
+        + "; ".join(f"{k} ({v})" for k, v in refused.items())
+    )
 
 
 def available() -> list[str]:
@@ -203,11 +229,12 @@ def available() -> list[str]:
     import numpy as np
 
     probe = normalise(np.eye(4, 8, dtype=np.float32))
-    usable = []
-    for name, build in BACKENDS:
-        try:
-            build(probe, 0.5)
-            usable.append(name)
-        except Exception:
-            continue
-    return usable
+    return [name for name, build in BACKENDS if _runs(build, probe)]
+
+
+def _runs(build, probe) -> bool:
+    try:
+        build(probe, 0.5)
+    except FALLIBLE:
+        return False
+    return True
