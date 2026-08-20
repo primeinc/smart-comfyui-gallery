@@ -47,6 +47,9 @@ class Ingested:
     carriers: int = 0
     unparsed: int = 0
     captured: bool = False
+    #: Set when the bytes could not be opened as an image at all, so a caller
+    #: can report the file rather than reading "no camera tags" off it.
+    unreadable: str | None = None
 
 
 def _name_key(text: str) -> str:
@@ -246,6 +249,7 @@ def one(conn, file_id: int, path, now: float) -> Ingested:
     generation(conn, file_id, path, now, out)
 
     found = capture_module.read(path)
+    out.unreadable = found.unreadable
     if not found.is_empty:
         capture_module.store(conn, file_id, found, now, mint)
         out.captured = True

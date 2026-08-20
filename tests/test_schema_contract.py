@@ -1458,10 +1458,34 @@ def test_an_unreferenced_blob_is_reclaimed(db):
 
 
 def test_the_database_states_its_version(db):
-    """Nothing distinguished a database built from this DDL from one built by an
-    earlier generation of it, which is how a stale build went unnoticed."""
-    assert db.execute("PRAGMA user_version").fetchone()[0] >= 1
-    assert db.execute("PRAGMA application_id").fetchone()[0] != 0
+    """The DDL's stamp is the version, and it must be the one this build opens.
+
+    `>= 1` was the assertion here, and under it schema.sql stamped v1 while
+    connect.USER_VERSION said v3 -- every database built by anything other
+    than db.build (which re-stamped afterwards) was refused by check_version
+    with no step registered to move it forward.
+    """
+    from db.connect import APPLICATION_ID, USER_VERSION
+
+    assert db.execute("PRAGMA user_version").fetchone()[0] == USER_VERSION
+    assert db.execute("PRAGMA application_id").fetchone()[0] == APPLICATION_ID
+
+
+def test_every_version_left_behind_has_a_step_off_it():
+    """A bump with no step is a database this build cannot open.
+
+    The registry is keyed on where a step starts, so every version from the
+    first to the one before current needs one. At v1 this passes with nothing
+    registered, and it fails the moment USER_VERSION moves without a step.
+    """
+    from db.connect import USER_VERSION
+    from db.migrate import STEPS
+
+    missing = [v for v in range(1, USER_VERSION) if v not in STEPS]
+    assert not missing, (
+        f"USER_VERSION is {USER_VERSION} but no migration leaves v{missing}. "
+        f"A database at that version cannot be opened or upgraded."
+    )
 
 
 def test_the_front_page_query_uses_an_index(db):
@@ -1576,6 +1600,21 @@ def test_folder_depth_is_maintained_by_the_database(db):
     assert db.execute("SELECT depth FROM folder WHERE id=320").fetchone()[0] == 0, (
         "a reparented folder kept its old depth"
     )
+
+    # Reparenting moves a subtree. This test used to reparent a leaf, so the
+    # descendants stayed one level wrong and nothing said so.
+    entity(db, 321, "folder", "deeper")
+    entity(db, 322, "folder", "deepest")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(321,1,320,'deeper',0)")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(322,1,321,'deepest',0)")
+    assert [r[0] for r in db.execute("SELECT depth FROM folder WHERE id IN (320,321,322)")] == [
+        0, 1, 2,
+    ]
+
+    db.execute("UPDATE folder SET parent_id=2 WHERE id=320")
+    assert [r[0] for r in db.execute("SELECT depth FROM folder WHERE id IN (320,321,322)")] == [
+        2, 3, 4,
+    ], "the subtree under a reparented folder kept its old depth"
 
 
 def test_a_file_cannot_disagree_with_its_entity(db):

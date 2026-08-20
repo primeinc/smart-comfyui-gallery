@@ -90,10 +90,22 @@ CREATE TABLE folder (
     -- A HINT, never identity: it is volume-scoped, lost on copy or restore,
     -- and absent on filesystems that do not report one. Matched only when
     -- present and unique, and name matching still has to work on its own.
-    inode     INTEGER
+    inode     INTEGER,
+    -- Set when the directory was not found where it was last seen. Presence
+    -- is a state here for the same reason it is one on `file`: without it,
+    -- "gone" and "the drive is unplugged" are the same row, and the only way
+    -- to make room for a new directory taking an old one's name is to delete
+    -- the old one and everything hanging off it.
+    missing_since REAL
 ) STRICT;
-CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)   WHERE parent_id IS NULL;
-CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name) WHERE parent_id IS NOT NULL;
+-- Partial, as on `file`: a name is exclusive only while the directory is
+-- there. Rename `Archive` to `Zoo` and make a new `Archive`, and both rows
+-- have to exist at once -- with a total index the scanner had to choose
+-- between failing and giving the new directory the old one's identity.
+CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)
+    WHERE parent_id IS NULL AND missing_since IS NULL;
+CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name)
+    WHERE parent_id IS NOT NULL AND missing_since IS NULL;
 -- No index on parent_id alone. folder_child_unique leads on it, and although
 -- that index is partial the planner does use it for `parent_id = ?`, which is
 -- the shape the foreign key runs on every delete -- checked, not assumed.
@@ -870,8 +882,20 @@ WHEN OLD.value_text IS NOT NULL BEGIN
 END;
 
 -- ============ derived_*: drop this namespace, re-index, reproduced ============
--- Every table here carries a natural key, so recomputation is an upsert rather
--- than an append: an interrupted job re-run must not triple every face.
+-- Recomputing must replace, never append: an interrupted job re-run must not
+-- triple every face. Two shapes do that, and which one applies is a property
+-- of the answer rather than of the table.
+--
+-- Where one row IS the answer for a subject -- a hash, an embedding, a caption
+-- from one model -- the table carries a natural key and the producer upserts.
+--
+-- Where the answer is a SET whose size can change, there is no such key: a
+-- face is located by a `region`, and a re-run mints a new region, so keying on
+-- one would append forever, and a detector that finds two faces where the last
+-- version found three must be able to say so. Those producers delete their own
+-- scope and rewrite it -- see derived.record_faces and derived.recluster. A
+-- row-at-a-time insert into these two tables is a defect, which is why the
+-- functions that do it are private.
 CREATE TABLE derived_file_hash (
     file_id       INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
     -- 64 bits of perceptual hash, and SQLite INTEGER is SIGNED 64-bit: any
@@ -1308,8 +1332,26 @@ CREATE TRIGGER folder_depth_ins AFTER INSERT ON folder BEGIN
    WHERE id = NEW.id;
 END;
 
+-- Reparenting moves a subtree, not a folder. Fixing only the folder that moved
+-- left every descendant one level wrong -- root/mid/leaf, move `mid` one level
+-- down, and `mid` became 2 while `leaf` stayed 2. The trigger cannot recurse
+-- into itself: it fires on UPDATE OF parent_id and writes depth.
+--
+-- So it walks the subtree once. `parent_id` is not what this statement writes,
+-- so the CTE reads a stable tree, and the new parent is outside the subtree --
+-- folder_no_cycle refuses the alternative before this ever runs.
 CREATE TRIGGER folder_depth_upd AFTER UPDATE OF parent_id ON folder BEGIN
   UPDATE folder
-     SET depth = COALESCE((SELECT depth + 1 FROM folder WHERE id = NEW.parent_id), 0)
-   WHERE id = NEW.id;
+     SET depth = COALESCE((SELECT p.depth + 1 FROM folder p WHERE p.id = NEW.parent_id), 0)
+               + (WITH RECURSIVE below(id, distance) AS (
+                    SELECT NEW.id, 0
+                    UNION ALL
+                    SELECT f.id, below.distance + 1
+                      FROM folder f JOIN below ON f.parent_id = below.id)
+                  SELECT distance FROM below WHERE below.id = folder.id)
+   WHERE id IN (WITH RECURSIVE below(id) AS (
+                  SELECT NEW.id
+                  UNION ALL
+                  SELECT f.id FROM folder f JOIN below ON f.parent_id = below.id)
+                SELECT id FROM below);
 END;

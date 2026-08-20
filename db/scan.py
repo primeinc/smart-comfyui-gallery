@@ -188,7 +188,8 @@ def mint(conn, kind: str, seed: str) -> int:
 
 
 def ensure_folder(
-    conn, root_id: int, parent_id: int | None, name: str, inode: int | None = None
+    conn, root_id: int, parent_id: int | None, name: str, inode: int | None = None,
+    *, now: float | None = None,
 ) -> int:
     """The folder row for one path segment, created once.
 
@@ -213,19 +214,65 @@ def ensure_folder(
                     "UPDATE folder SET parent_id = ?, name = ? WHERE id = ?",
                     (parent_id, name, row[0]),
                 )
+            conn.execute(
+                "UPDATE folder SET missing_since = NULL"
+                " WHERE id = ? AND missing_since IS NOT NULL",
+                (row[0],),
+            )
             return row[0]
 
     if parent_id is None:
         row = conn.execute(
-            "SELECT id FROM folder WHERE root_id = ? AND parent_id IS NULL"
-            " AND name = ? COLLATE NOCASE",
+            "SELECT id, inode FROM folder WHERE root_id = ? AND parent_id IS NULL"
+            " AND name = ? COLLATE NOCASE AND missing_since IS NULL",
             (root_id, name),
         ).fetchone()
     else:
         row = conn.execute(
-            "SELECT id FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE",
+            "SELECT id, inode FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE"
+            " AND missing_since IS NULL",
             (parent_id, name),
         ).fetchone()
+    taken_over = False
+    if row and inode is not None and row[1] is not None and row[1] != inode:
+        # The name matches and the filesystem says these are different
+        # directories. Rename `Archive` to `Zoo` and create a fresh
+        # `Archive`, and os.walk hands us the new one first (it sorts), so
+        # adopting the name match here handed the new directory the old
+        # one's entity, its slug and its watched-folder row -- while the real
+        # one, met later, minted a second entity and lost its address.
+        #
+        # So the old row stands aside rather than being overwritten. It is
+        # marked missing, which frees the name; if it is met further along
+        # under its new name, the inode branch above claims it back and
+        # clears the mark.
+        conn.execute(
+            "UPDATE folder SET missing_since = COALESCE(?, unixepoch()) WHERE id = ?",
+            (now, row[0]),
+        )
+        row, taken_over = None, True
+
+    if row is None and not taken_over:
+        # A directory that went away and came back. Nothing is competing for
+        # the name, so reclaiming the row is what keeps its address alive --
+        # and it is only safe here, where no live row wanted it. The
+        # take-over case above must never reach this, or it would hand the
+        # new directory the row it just stood aside.
+        if parent_id is None:
+            row = conn.execute(
+                "SELECT id, inode FROM folder WHERE root_id = ? AND parent_id IS NULL"
+                " AND name = ? COLLATE NOCASE AND missing_since IS NOT NULL",
+                (root_id, name),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, inode FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE"
+                " AND missing_since IS NOT NULL",
+                (parent_id, name),
+            ).fetchone()
+        if row:
+            conn.execute("UPDATE folder SET missing_since = NULL WHERE id = ?", (row[0],))
+
     if row:
         if inode is not None:
             conn.execute("UPDATE folder SET inode = ? WHERE id = ?", (inode, row[0]))
@@ -255,7 +302,7 @@ def _inode_of(path) -> int | None:
         return None
 
 
-def observe_tree(conn, root_id: int, root_path) -> tuple[dict, int]:
+def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tuple[dict, int]:
     """Walk `root_path`, ensure its folders exist, and report its media.
 
     Returns ``(observed, hashed)`` where *observed* maps
@@ -282,7 +329,8 @@ def observe_tree(conn, root_id: int, root_path) -> tuple[dict, int]:
     hashed = 0
     root_path = os.fspath(root_path)
     root_folder = ensure_folder(
-        conn, root_id, None, os.path.basename(root_path) or root_path, _inode_of(root_path)
+        conn, root_id, None, os.path.basename(root_path) or root_path, _inode_of(root_path),
+        now=now,
     )
     folder_ids = {os.path.normcase(root_path): root_folder}
 
@@ -301,7 +349,7 @@ def observe_tree(conn, root_id: int, root_path) -> tuple[dict, int]:
         for name in subdirs:
             child = os.path.join(current, name)
             folder_ids[os.path.normcase(child)] = ensure_folder(
-                conn, root_id, folder_id, name, _inode_of(child)
+                conn, root_id, folder_id, name, _inode_of(child), now=now
             )
         for name in names:
             kind = KIND_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
@@ -329,6 +377,22 @@ def observe_tree(conn, root_id: int, root_path) -> tuple[dict, int]:
                 btime=getattr(info, "st_birthtime", None),
                 inode=inode,
                 kind=kind,
+            )
+
+    # Directories that were there last time and are not there now. Marked,
+    # never deleted -- deleting cascades to every file beneath and takes the
+    # ratings with it, and a folder that has gone missing is exactly as
+    # ambiguous as a file that has. `scan` refuses to run at all against a
+    # root it cannot read, which is what keeps an unplugged drive from
+    # arriving here as an empty tree.
+    standing = set(folder_ids.values())
+    for (folder_id,) in conn.execute(
+        "SELECT id FROM folder WHERE root_id = ? AND missing_since IS NULL", (root_id,)
+    ).fetchall():
+        if folder_id not in standing:
+            conn.execute(
+                "UPDATE folder SET missing_since = COALESCE(?, unixepoch()) WHERE id = ?",
+                (now, folder_id),
             )
     return observed, hashed
 
@@ -430,7 +494,25 @@ def apply_scan(conn, observed: dict, now: float) -> ScanResult:
     )
 
 
+class RootOffline(Exception):
+    """The root could not be read, so nothing can be concluded about it."""
+
+
 def scan(conn, root_id: int, root_path, now: float) -> ScanResult:
-    """One pass: walk the root, decide, write."""
-    observed, hashed = observe_tree(conn, root_id, root_path)
+    """One pass: walk the root, decide, write.
+
+    The veto comes first. `os.walk` on a path that is not there yields
+    nothing and raises nothing, so a scan of an unplugged drive observes an
+    empty library and every row in it -- files and now folders -- is marked
+    missing. `library.check_roots` records the flag; this refuses to act on
+    the reading, which is the half that actually protects anything.
+    """
+    if not os.path.isdir(root_path):
+        conn.execute("UPDATE root SET online = 0 WHERE id = ?", (root_id,))
+        raise RootOffline(
+            f"{root_path} cannot be read. Nothing was marked missing: an "
+            f"unreachable root and an emptied one look the same from here."
+        )
+    conn.execute("UPDATE root SET online = 1 WHERE id = ?", (root_id,))
+    observed, hashed = observe_tree(conn, root_id, root_path, now)
     return apply_scan(conn, observed, now)._replace(hashed=hashed)

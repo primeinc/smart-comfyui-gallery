@@ -16,10 +16,15 @@ import sqlite3
 
 SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 
+#: Must equal the `PRAGMA user_version` stamped at the end of schema.sql --
+#: pinned by test_the_database_states_its_version, because build.py used to
+#: re-stamp the file after running the DDL and that hid a two-version gap.
+#:
 #: Bumped whenever schema.sql changes in a way a built database must match.
 #: A bump is not enough on its own: db/migrate.py needs a step registered for
 #: the version being left behind, or an existing database cannot be opened.
-USER_VERSION = 3
+#: test_every_version_left_behind_has_a_step_off_it enforces that.
+USER_VERSION = 1
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.

@@ -115,6 +115,10 @@ class Capture:
     unrecorded: list[str] = field(default_factory=list)
     #: Tags with no home at all. Empty is the contract.
     homeless: list[tuple[str, str]] = field(default_factory=list)
+    #: Why the file could not be opened at all, when it could not. Distinct
+    #: from every field above being empty, which means the file was read and
+    #: had nothing to say.
+    unreadable: str | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -193,10 +197,18 @@ def _timestamp(value, offset_min) -> float | None:
 
 
 def _degrees(value, ref) -> float | None:
-    """Degrees/minutes/seconds plus a hemisphere letter to signed decimal."""
+    """Degrees/minutes/seconds plus a hemisphere letter to signed decimal.
+
+    The tag is `Count => 3` (refs/exiftool/exiftool/lib/Image/ExifTool/GPS.pm:79)
+    and bodies write fewer. Indexing all three unconditionally raised
+    IndexError out of `read` and took the whole ingest pass with it, on one
+    photograph. Upstream reads "1-3 decimal numbers" and treats the absent
+    places as zero -- `$d + (($m || 0) + ($s || 0)/60) / 60` (GPS.pm:594) --
+    so degrees alone is a coordinate, not damage.
+    """
     if not isinstance(value, (tuple, list)) or not value:
         return None
-    parts = [_number(part) for part in value[:3]]
+    parts = [_number(part) for part in value[:3]] + [None, None]
     if parts[0] is None:
         return None
     degrees = parts[0]
@@ -312,8 +324,24 @@ def _tag_value(tag, value) -> Held | None:
 
 
 def read(path) -> Capture:
-    """Every camera tag in one file, as columns plus a long tail."""
+    """Every camera tag in one file, as columns plus a long tail.
+
+    A file that cannot be opened is reported, not raised. One truncated JPEG
+    in a library used to end the whole ingest pass: `Image.open` raises
+    `UnidentifiedImageError(OSError)` (refs/python-pillow/Pillow/src/PIL/
+    __init__.py:78), `ValueError`, or `DecompressionBombError`, which is a
+    bare Exception (Image.py:79) and so escapes an `except OSError`. Nothing
+    between here and the caller caught any of them.
+    """
     out = Capture()
+    try:
+        return _read(path, out)
+    except (OSError, ValueError, Image.DecompressionBombError) as problem:
+        out.unreadable = f"{type(problem).__name__}: {problem}"
+        return out
+
+
+def _read(path, out: Capture) -> Capture:
     with Image.open(path) as image:
         exif = image.getexif()
         if not exif:

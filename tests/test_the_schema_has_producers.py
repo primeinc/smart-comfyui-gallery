@@ -121,9 +121,11 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     authored.rate(db, file_id, user_id, 5, NOW)
     authored.assert_person(db, person, file_id, user_id, NOW)
 
-    cluster = derived.add_cluster(db, "insightface", "v1", NOW, person_id=person)
+    cluster = derived.recluster(db, "insightface", "v1", NOW, [{"person_id": person}])[0]
     box = derived.region(db, 0.3, 0.2, 0.2, 0.3)
-    derived.add_face(db, file_id, box, "insightface", "v1", "aa", NOW, cluster_id=cluster)
+    derived.record_faces(
+        db, file_id, "insightface", "v1", "aa", NOW, [{"region": box, "cluster_id": cluster}]
+    )
     derived.attribute(db, file_id, person, "insightface", "v1")
     derived.annotate(db, file_id, "caption", "a brass diving helmet", "qwen-vl", "2.5", "aa", NOW)
     verdict = authored.feedback(
@@ -150,10 +152,11 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     assert db.execute("SELECT verdict FROM feedback WHERE id = ?", (verdict,)).fetchone()[0] == "right"
 
     # re-index with a newer model, and the naming re-attaches from the record
-    rebuilt = derived.add_cluster(db, "insightface", "v2", NOW + 10)
+    rebuilt = derived.recluster(db, "insightface", "v2", NOW + 10, [{}])[0]
     box_again = derived.region(db, 0.3, 0.2, 0.2, 0.3)
-    derived.add_face(
-        db, file_id, box_again, "insightface", "v2", "aa", NOW + 10, cluster_id=rebuilt
+    derived.record_faces(
+        db, file_id, "insightface", "v2", "aa", NOW + 10,
+        [{"region": box_again, "cluster_id": rebuilt}],
     )
     named = derived.seed_clusters_from_assertions(db, "insightface", "v2")
 
@@ -164,6 +167,118 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     assert db.execute(
         "SELECT count(*) FROM derived_file_person WHERE person_id = ?", (person,)
     ).fetchone()[0] == 1
+
+
+def _two_people_in_one_photo(db, a_library, tmp_path):
+    """A group shot and a solo shot, with a human's claim on each face."""
+    group = a_library["file"]
+    solo = scan.mint(db, "file", "solo")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+        " first_seen_at, last_seen_at) VALUES(?, ?, 'solo.png', 'image', 10, 0, 'bb', ?, ?)",
+        (solo, a_library["folder"], NOW, NOW),
+    )
+    alice = authored.person(db, "Alice", NOW)
+    bob = authored.person(db, "Bob", NOW)
+    # left half of the frame is Alice, right half is Bob
+    alice_box = derived.region(db, 0.05, 0.1, 0.35, 0.5)
+    bob_box = derived.region(db, 0.55, 0.1, 0.35, 0.5)
+    authored.assert_person(db, alice, group, a_library["user"], NOW, region_id=alice_box)
+    authored.assert_person(db, bob, group, a_library["user"], NOW, region_id=bob_box)
+    authored.assert_person(db, bob, solo, a_library["user"], NOW)
+    return {"group": group, "solo": solo, "alice": alice, "bob": bob}
+
+
+def test_a_photograph_of_two_people_re_attaches_both_names(db, a_library, tmp_path):
+    """Matched by where in the picture, not by which file.
+
+    Joining an assertion to a cluster on file_id and breaking the tie with
+    `count(*) DESC LIMIT 1` gave both clusters the same arbitrary winner:
+    Bob was attached to the face the detector put on Alice, and Alice's name
+    left the library. Every test in the suite used one person and one file,
+    where that cannot happen.
+    """
+    cast = _two_people_in_one_photo(db, a_library, tmp_path)
+    hers, his, his_again = (
+        derived.region(db, 0.06, 0.12, 0.33, 0.47),   # detector, on Alice
+        derived.region(db, 0.56, 0.12, 0.33, 0.47),   # detector, on Bob
+        derived.region(db, 0.30, 0.20, 0.40, 0.40),   # Bob again, in the solo
+    )
+    left, right = derived.recluster(db, "insightface", "v2", NOW, [{}, {}])
+    derived.record_faces(
+        db, cast["group"], "insightface", "v2", "aa", NOW,
+        [{"region": hers, "cluster_id": left}, {"region": his, "cluster_id": right}],
+    )
+    derived.record_faces(
+        db, cast["solo"], "insightface", "v2", "bb", NOW,
+        [{"region": his_again, "cluster_id": right}],
+    )
+
+    assert derived.seed_clusters_from_assertions(db, "insightface", "v2") == 2
+    named = dict(
+        db.execute(
+            "SELECT c.id, p.name FROM derived_face_cluster c JOIN person p ON p.id = c.person_id"
+        )
+    )
+    assert named == {left: "Alice", right: "Bob"}
+
+
+def test_a_claim_with_no_box_does_not_name_a_face_in_a_group(db, a_library, tmp_path):
+    """"She is in this picture" is true and does not say which face.
+
+    Naming a cluster from it anyway is how a person's name lands on somebody
+    else. An unnamed cluster is a question for the People page; a wrongly
+    named one is a lie the user has to find.
+    """
+    cast = _two_people_in_one_photo(db, a_library, tmp_path)
+    db.execute("UPDATE person_assertion SET region_id = NULL WHERE file_id = ?", (cast["group"],))
+    hers = derived.region(db, 0.06, 0.12, 0.33, 0.47)
+    his = derived.region(db, 0.56, 0.12, 0.33, 0.47)
+    left, right = derived.recluster(db, "insightface", "v2", NOW, [{}, {}])
+    derived.record_faces(
+        db, cast["group"], "insightface", "v2", "aa", NOW,
+        [{"region": hers, "cluster_id": left}, {"region": his, "cluster_id": right}],
+    )
+
+    assert derived.seed_clusters_from_assertions(db, "insightface", "v2") == 0
+    assert db.execute(
+        "SELECT count(*) FROM derived_face_cluster WHERE person_id IS NOT NULL"
+    ).fetchone()[0] == 0
+
+
+def test_running_a_detector_twice_does_not_double_the_faces(db, a_library):
+    """The re-run is the case the derived namespace exists for, and the only
+    test that covered "recomputing is not an append" used a table whose
+    composite primary key made it true for free."""
+    file_id = a_library["file"]
+    for _ in range(3):
+        derived.record_faces(
+            db, file_id, "insightface", "v1", "aa", NOW,
+            [
+                {"region": derived.region(db, 0.1, 0.1, 0.2, 0.2), "det_score": 0.9},
+                {"region": derived.region(db, 0.6, 0.1, 0.2, 0.2), "det_score": 0.8},
+            ],
+        )
+    assert db.execute("SELECT count(*) FROM derived_face_instance").fetchone()[0] == 2
+    assert db.execute("SELECT count(*) FROM region").fetchone()[0] == 2, (
+        "the boxes of the replaced detections were left behind"
+    )
+
+    # a better version finds fewer faces, and must be able to say so
+    derived.record_faces(
+        db, file_id, "insightface", "v1", "aa", NOW,
+        [{"region": derived.region(db, 0.1, 0.1, 0.2, 0.2)}],
+    )
+    assert db.execute("SELECT count(*) FROM derived_face_instance").fetchone()[0] == 1
+
+
+def test_sampling_the_same_frame_twice_returns_the_same_row(db, a_library):
+    """A frame job that was interrupted and resumed raised on the first frame
+    it had already taken -- the one case resumption exists for."""
+    first = derived.add_sample(db, a_library["file"], "frame", "every-2s", offset_ms=4000)
+    again = derived.add_sample(db, a_library["file"], "frame", "every-2s", offset_ms=4000)
+    assert first == again
+    assert db.execute("SELECT count(*) FROM derived_media_sample").fetchone()[0] == 1
 
 
 def test_a_region_is_a_fraction_of_the_frame_not_a_pixel_count(db, a_library):
@@ -395,6 +510,37 @@ def test_an_evicted_worker_cannot_still_write(db, a_library):
 
     jobs.finish_item(db, job_id, second_fence, 1)
     assert jobs.progress(db, job_id).done == 1
+
+
+def test_two_workers_racing_for_one_job_cannot_both_get_it(tmp_path):
+    """The claim is a single write, and this is why.
+
+    Every eviction test in the suite claimed twice in sequence on one
+    connection, where a SELECT-then-UPDATE claim is correct. Run two
+    connections at it and both selected the same queued row, both incremented
+    the fence, both read it back as the same number, and `_held` passed for
+    both -- two workers running one job, each believing it held the lease.
+    """
+    path = tmp_path / "jobs.db"
+    setup = sqlite3.connect(str(path))
+    setup.executescript(io.open(SCHEMA, "r", encoding="utf-8", newline="").read())
+    setup.commit()
+    job_id = jobs.submit(setup, "scan", NOW, items=[1, 2])
+    setup.commit()
+    setup.close()
+
+    a = sqlite3.connect(str(path), isolation_level=None)
+    b = sqlite3.connect(str(path), isolation_level=None)
+    try:
+        a.execute("PRAGMA busy_timeout=5000")
+        b.execute("PRAGMA busy_timeout=5000")
+        claims = [jobs.claim(a, "worker-a", NOW), jobs.claim(b, "worker-b", NOW)]
+    finally:
+        a.close()
+        b.close()
+
+    won = [c for c in claims if c is not None]
+    assert len(won) == 1, f"both workers claimed job {job_id}: {claims}"
 
 
 def test_a_live_lease_is_not_stolen(db, a_library):

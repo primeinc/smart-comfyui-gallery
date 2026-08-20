@@ -264,11 +264,14 @@ def test_something_that_is_not_ours_is_not_migrated(tmp_path, steps):
 
 
 def test_pending_says_what_would_happen_without_doing_it(library, steps):
+    """Two versions behind, counted from the current one so this test says the
+    same thing whatever USER_VERSION happens to be."""
     before = authored_state(library)
+    behind = connect.USER_VERSION
     conn = sqlite3.connect(str(library), isolation_level=None)
-    conn.execute(f"PRAGMA user_version = {connect.USER_VERSION - 2}")
+    conn.execute(f"PRAGMA user_version = {behind}")
     conn.close()
-    assert migrate.pending(library) == [connect.USER_VERSION - 1, connect.USER_VERSION]
+    assert migrate.pending(library, target=behind + 2) == [behind + 1, behind + 2]
     assert authored_state(library) == before
 
 

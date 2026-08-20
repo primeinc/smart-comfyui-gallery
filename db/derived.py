@@ -125,25 +125,43 @@ def add_sample(
     a claim can say which moment it was looking at. `policy` records how the
     sample was chosen, because a result is only reproducible if the sampling
     is.
+
+    Asking twice for the same moment returns the same row. As a plain INSERT
+    this raised against `derived_media_sample_pos`, so a sampling job that
+    was interrupted and resumed crashed on the first frame it had already
+    taken -- the one case resumption exists for.
     """
-    cursor = conn.execute(
+    conn.execute(
         "INSERT INTO derived_media_sample(file_id, kind, offset_ms, page_index, policy)"
-        " VALUES(?, ?, ?, ?, ?)",
+        " VALUES(?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, kind, IFNULL(offset_ms,-1), IFNULL(page_index,-1), policy)"
+        " DO NOTHING",
         (file_id, kind, offset_ms, page_index, policy),
     )
-    return int(cursor.lastrowid or 0)
+    row = conn.execute(
+        "SELECT id FROM derived_media_sample WHERE file_id = ? AND kind = ?"
+        " AND IFNULL(offset_ms,-1) = IFNULL(?,-1)"
+        " AND IFNULL(page_index,-1) = IFNULL(?,-1) AND policy = ?",
+        (file_id, kind, offset_ms, page_index, policy),
+    ).fetchone()
+    return int(row[0]) if row else 0
 
 
 # --- faces -----------------------------------------------------------------
 
 
-def add_face(
+def _insert_face(
     conn, file_id: int, region_id: int, model_id: str, model_version: str,
     sha: str, now: float, *, sample_id=None, cluster_id=None, det_score=None,
     landmarks=None, dim=None, age=None, sex=None, pose=None,
 ) -> int:
     """One detected face. The region is required: a detection with no
-    location cannot be shown, cropped, checked, or asserted against."""
+    location cannot be shown, cropped, checked, or asserted against.
+
+    Private because it appends. `record_faces` is the way in -- a detector
+    run has to replace what it said last time, and a public row-at-a-time
+    insert is how "re-running a detector doubles every face" comes back.
+    """
     yaw, pitch, roll = pose if pose else (None, None, None)
     cursor = conn.execute(
         "INSERT INTO derived_face_instance(file_id, sample_id, cluster_id, region_id,"
@@ -158,16 +176,116 @@ def add_face(
     return int(cursor.lastrowid or 0)
 
 
-def add_cluster(
+def _insert_cluster(
     conn, model_id: str, model_version: str, now: float, *, person_id=None,
     centroid=None, dim=None,
 ) -> int:
+    """Private for the same reason as `_insert_face`. `recluster` is the API."""
     cursor = conn.execute(
         "INSERT INTO derived_face_cluster(person_id, centroid, dim, model_id,"
         " model_version, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
         (person_id, centroid, dim, model_id, model_version, now),
     )
     return int(cursor.lastrowid or 0)
+
+
+def _reclaim_regions(conn, region_ids) -> None:
+    """Drop the boxes the deleted rows were the only owner of.
+
+    A region exists to locate something. Once nothing points at it, it is a
+    rectangle about nothing, and leaving it behind means a re-run grows the
+    table by every face it re-detected.
+    """
+    for region_id in {r for r in region_ids if r is not None}:
+        conn.execute(
+            "DELETE FROM region WHERE id = ?"
+            " AND NOT EXISTS (SELECT 1 FROM derived_face_instance WHERE region_id = region.id)"
+            " AND NOT EXISTS (SELECT 1 FROM derived_annotation    WHERE region_id = region.id)"
+            " AND NOT EXISTS (SELECT 1 FROM person_assertion      WHERE region_id = region.id)",
+            (region_id,),
+        )
+
+
+def record_faces(
+    conn, file_id: int, model_id: str, model_version: str, sha: str, now: float,
+    faces, *, sample_id=None,
+) -> list[int]:
+    """Every face this model found in this file, replacing what it found before.
+
+    Scoped replacement rather than an upsert, because a detector's answer is
+    the whole set and not a row: a version that finds two faces where the
+    last one found three has to be able to say so. There is no natural key to
+    upsert on either -- a face is located by a `region`, and a re-run mints a
+    new region row, so keying on it would append forever. That is what this
+    used to do: running the detector twice over one photograph left two
+    copies of every face, and the only test in the suite ran it once.
+
+    `faces` is a sequence of mappings, one per detection: `region` (an id
+    from `region()`) is required; `det_score`, `landmarks`, `dim`, `age`,
+    `sex` and `pose` are optional.
+    """
+    doomed = [
+        row[0]
+        for row in conn.execute(
+            "SELECT region_id FROM derived_face_instance WHERE file_id = ?"
+            " AND IFNULL(sample_id, 0) = IFNULL(?, 0)"
+            " AND model_id = ? AND model_version = ?",
+            (file_id, sample_id, model_id, model_version),
+        )
+    ]
+    conn.execute(
+        "DELETE FROM derived_face_instance WHERE file_id = ?"
+        " AND IFNULL(sample_id, 0) = IFNULL(?, 0)"
+        " AND model_id = ? AND model_version = ?",
+        (file_id, sample_id, model_id, model_version),
+    )
+    written = [
+        _insert_face(
+            conn, file_id, face["region"], model_id, model_version, sha, now,
+            sample_id=sample_id, cluster_id=face.get("cluster_id"),
+            det_score=face.get("det_score"), landmarks=face.get("landmarks"),
+            dim=face.get("dim"), age=face.get("age"), sex=face.get("sex"),
+            pose=face.get("pose"),
+        )
+        for face in faces
+    ]
+    _reclaim_regions(conn, doomed)
+    return written
+
+
+def recluster(conn, model_id: str, model_version: str, now: float, clusters) -> list[int]:
+    """Every cluster this model's clustering produced, replacing the last run.
+
+    Clustering is a whole-library answer, so a re-run replaces the whole set
+    for this (model, version). The instances survive: `cluster_id` is
+    `ON DELETE SET NULL`, so they come out unassigned and the caller assigns
+    them to the new ids.
+
+    `clusters` is a sequence of mappings with optional `centroid`, `dim` and
+    `person_id`. Names are not carried across by hand -- run
+    `seed_clusters_from_assertions` afterwards, which re-applies them from
+    what people wrote down.
+    """
+    conn.execute(
+        "DELETE FROM derived_face_cluster WHERE model_id = ? AND model_version = ?",
+        (model_id, model_version),
+    )
+    return [
+        _insert_cluster(
+            conn, model_id, model_version, now,
+            person_id=cluster.get("person_id"), centroid=cluster.get("centroid"),
+            dim=cluster.get("dim"),
+        )
+        for cluster in clusters
+    ]
+
+
+def assign_cluster(conn, face_id: int, cluster_id: int | None) -> None:
+    """Put one detected face in a cluster, or take it out of one."""
+    conn.execute(
+        "UPDATE derived_face_instance SET cluster_id = ? WHERE id = ?",
+        (cluster_id, face_id),
+    )
 
 
 def attribute(conn, file_id: int, person_id: int, model_id: str, model_version: str,
@@ -182,32 +300,86 @@ def attribute(conn, file_id: int, person_id: int, model_id: str, model_version: 
     )
 
 
+#: How much of a box two boxes must share before they are taken to be the
+#: same face. A human drawing a box round somebody and a detector finding
+#: them do not agree to the pixel, and they do not have to.
+_SAME_FACE = 0.3
+
+
+def _overlap(a, b) -> float:
+    """Intersection over union of two (x, y, w, h) boxes."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    wide = min(ax + aw, bx + bw) - max(ax, bx)
+    tall = min(ay + ah, by + bh) - max(ay, by)
+    if wide <= 0 or tall <= 0:
+        return 0.0
+    inner = wide * tall
+    return inner / (aw * ah + bw * bh - inner)
+
+
 def seed_clusters_from_assertions(conn, model_id: str, model_version: str) -> int:
     """Re-attach names after a rebuild, from what people said rather than
     from what the previous clustering happened to decide.
 
-    A cluster containing a face in a file somebody asserted a person into
-    inherits that person. Re-deriving the naming by centroid similarity
-    instead would be a guess that usually works and silently does not when
-    it fails -- and the thing being guessed at is the one part of the face
-    pipeline a human actually authored.
+    Matched by where in the picture, not by which file. Joining an assertion
+    to a cluster on `file_id` alone and breaking the tie with
+    `count(*) DESC LIMIT 1` mislabels every photograph of two people: with
+    Alice and Bob both asserted into one frame, the arbitrary winner was
+    written onto *both* clusters, so Bob was attached to the face the
+    detector put on Alice and Alice's name left the library entirely. A
+    photograph of two people is not an edge case.
+
+    So an assertion carrying a `region` votes only for the cluster holding a
+    face that overlaps it. An assertion with no region -- "she is in this
+    picture", no box -- votes for every cluster with a face in that file,
+    but only where that file names one person; in a group photo it says
+    nothing, because it does not know which face it meant.
+
+    A cluster whose votes name two different people is left unnamed. That is
+    the point of naming from a record: where the record does not say, this
+    does not invent, and an unnamed cluster is a question the People page can
+    put to somebody who knows the answer.
 
     Returns the number of clusters named.
     """
-    conn.execute(
-        "UPDATE derived_face_cluster SET person_id = ("
-        "  SELECT pa.person_id FROM derived_face_instance fi"
-        "    JOIN person_assertion pa ON pa.file_id = fi.file_id"
-        "   WHERE fi.cluster_id = derived_face_cluster.id"
-        "   GROUP BY pa.person_id ORDER BY count(*) DESC LIMIT 1)"
-        " WHERE person_id IS NULL AND model_id = ? AND model_version = ?",
+    boxes = {
+        row[0]: row[1:]
+        for row in conn.execute("SELECT id, x, y, w, h FROM region")
+    }
+    assertions: dict[int, list[tuple[int, int | None]]] = {}
+    for person_id, file_id, region_id in conn.execute(
+        "SELECT person_id, file_id, region_id FROM person_assertion"
+    ):
+        assertions.setdefault(file_id, []).append((person_id, region_id))
+
+    votes: dict[int, set[int]] = {}
+    for cluster_id, file_id, region_id in conn.execute(
+        "SELECT fi.cluster_id, fi.file_id, fi.region_id FROM derived_face_instance fi"
+        "  JOIN derived_face_cluster c ON c.id = fi.cluster_id"
+        " WHERE c.person_id IS NULL AND c.model_id = ? AND c.model_version = ?",
         (model_id, model_version),
-    )
-    named = conn.execute(
-        "SELECT count(*) FROM derived_face_cluster WHERE person_id IS NOT NULL"
-        " AND model_id = ? AND model_version = ?",
-        (model_id, model_version),
-    ).fetchone()[0]
+    ):
+        claims = assertions.get(file_id, ())
+        unboxed = {person for person, box in claims if box is None}
+        for person, box in claims:
+            if box is None:
+                # No box: it can only speak for a file where it is the only
+                # claim, or it would name whichever face came first.
+                if len(unboxed) == 1 and not any(b is not None for _, b in claims):
+                    votes.setdefault(cluster_id, set()).add(person)
+            elif _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:
+                votes.setdefault(cluster_id, set()).add(person)
+
+    named = 0
+    for cluster_id, people in votes.items():
+        if len(people) != 1:
+            continue
+        conn.execute(
+            "UPDATE derived_face_cluster SET person_id = ? WHERE id = ?",
+            (people.pop(), cluster_id),
+        )
+        named += 1
     conn.execute(
         "INSERT OR IGNORE INTO derived_file_person(file_id, person_id, model_id, model_version)"
         " SELECT fi.file_id, c.person_id, c.model_id, c.model_version"

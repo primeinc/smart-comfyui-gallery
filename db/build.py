@@ -74,8 +74,18 @@ def build(path: pathlib.Path, *, force: bool = False) -> None:
 
     conn = connect(path)
     conn.executescript(schema_sql())
-    conn.execute(f"PRAGMA application_id = {APPLICATION_ID}")
-    conn.execute(f"PRAGMA user_version = {USER_VERSION}")
+    # The DDL stamps both itself. Re-stamping here is what let schema.sql say
+    # v1 while connect.py said v3 for two versions without anything failing:
+    # every database this function produced was correct, and every database
+    # built from the DDL any other way was two versions behind and unopenable.
+    stamped = conn.execute("PRAGMA user_version").fetchone()[0]
+    app = conn.execute("PRAGMA application_id").fetchone()[0]
+    if stamped != USER_VERSION or app != APPLICATION_ID:
+        raise SystemExit(
+            f"schema.sql stamps v{stamped}/{app:#x} but this build is "
+            f"v{USER_VERSION}/{APPLICATION_ID:#x}. Fix the PRAGMAs at the end "
+            f"of the DDL; do not stamp them from here."
+        )
     conn.commit()
     conn.close()
 

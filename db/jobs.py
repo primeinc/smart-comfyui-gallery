@@ -83,25 +83,35 @@ def claim(conn, owner: str, now: float, *, kinds=None) -> tuple[int, int] | None
     fence is incremented on every claim, so a previous owner that wakes up
     still holding the old value can no longer write.
     """
-    where = "(j.state = 'queued' OR (j.state = 'running' AND j.lease_until < ?))"
-    args: list = [now]
+    runnable = "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
+    kind_filter = ""
+    kind_args: list = []
     if kinds:
-        where += " AND j.kind IN (%s)" % ",".join("?" * len(kinds))
-        args.extend(kinds)
+        kind_filter = " AND kind IN (%s)" % ",".join("?" * len(kinds))
+        kind_args = list(kinds)
+
+    # One statement. As a SELECT then an UPDATE this was not a claim at all:
+    # two workers both read the same queued row, both incremented the fence,
+    # both read it back as the same number, and `_held` passed for both --
+    # verified with two connections on a real file. The fence only excludes
+    # anybody if the row is taken and stamped in a single write.
+    #
+    # The predicate is repeated inside the UPDATE rather than trusting the
+    # subquery: whichever writer gets the lock second re-evaluates it against
+    # what the first committed, and sees a job that is no longer runnable.
     row = conn.execute(
-        f"SELECT j.id FROM job j WHERE {where} ORDER BY j.created_at LIMIT 1", args
+        "UPDATE job SET state = 'running', owner = ?, fence = fence + 1,"
+        " attempt = attempt + 1, lease_until = ?, heartbeat_at = ?,"
+        " started_at = COALESCE(started_at, ?)"
+        f" WHERE id = (SELECT id FROM job WHERE {runnable}{kind_filter}"
+        "             ORDER BY created_at LIMIT 1)"
+        f"   AND {runnable}"
+        " RETURNING id, fence",
+        [owner, now + LEASE_SECONDS, now, now, now, *kind_args, now],
     ).fetchone()
     if row is None:
         return None
-    job_id = row[0]
-    conn.execute(
-        "UPDATE job SET state = 'running', owner = ?, fence = fence + 1,"
-        " attempt = attempt + 1, lease_until = ?, heartbeat_at = ?,"
-        " started_at = COALESCE(started_at, ?) WHERE id = ?",
-        (owner, now + LEASE_SECONDS, now, now, job_id),
-    )
-    fence = conn.execute("SELECT fence FROM job WHERE id = ?", (job_id,)).fetchone()[0]
-    return job_id, fence
+    return int(row[0]), int(row[1])
 
 
 def _held(conn, job_id: int, fence: int) -> None:
@@ -110,13 +120,25 @@ def _held(conn, job_id: int, fence: int) -> None:
         raise LeaseLost(f"job {job_id} was reclaimed")
 
 
+def _wrote(cursor, job_id: int, fence: int) -> None:
+    """A fenced write that changed nothing means the fence has moved.
+
+    Every fenced statement here needs this. `WHERE ... AND fence = ?` on its
+    own turns an evicted worker's write into a silent no-op, which reads to
+    the worker as success and leaves the job describing work that did not
+    happen.
+    """
+    if not cursor.rowcount:
+        raise LeaseLost(f"job {job_id} was reclaimed; fence {fence} no longer holds it")
+
+
 def heartbeat(conn, job_id: int, fence: int, now: float) -> None:
     """Say the worker is still alive, and extend the lease."""
     _held(conn, job_id, fence)
-    conn.execute(
+    _wrote(conn.execute(
         "UPDATE job SET heartbeat_at = ?, lease_until = ? WHERE id = ? AND fence = ?",
         (now, now + LEASE_SECONDS, job_id, fence),
-    )
+    ), job_id, fence)
 
 
 def pending(conn, job_id: int) -> list[int]:
@@ -132,17 +154,29 @@ def pending(conn, job_id: int) -> list[int]:
 
 
 def finish_item(conn, job_id: int, fence: int, item_id: int, *, error=None) -> Progress:
-    """Settle one unit and report where the job now stands."""
+    """Settle one unit and report where the job now stands.
+
+    Both writes carry the fence. Unfenced, the item write landed for a worker
+    that had already lost the job while the fenced `done_count` write did
+    not, so the row said "done" and the counter disagreed -- and the worker
+    that took the job over then skipped an item nobody had performed.
+    """
     _held(conn, job_id, fence)
-    conn.execute(
-        "UPDATE job_item SET state = ?, error = ? WHERE job_id = ? AND item_id = ?",
-        ("failed" if error else "done", error, job_id, item_id),
+    settled = conn.execute(
+        "UPDATE job_item SET state = ?, error = ? WHERE job_id = ? AND item_id = ?"
+        " AND EXISTS (SELECT 1 FROM job WHERE id = job_item.job_id AND fence = ?)",
+        ("failed" if error else "done", error, job_id, item_id, fence),
     )
-    conn.execute(
+    if not settled.rowcount:
+        # Nothing was written. Either the item is not on this job, or the
+        # fence moved between the check above and the write.
+        _held(conn, job_id, fence)
+        raise LookupError(f"job {job_id} has no item {item_id}")
+    _wrote(conn.execute(
         "UPDATE job SET done_count = (SELECT count(*) FROM job_item"
         " WHERE job_id = ? AND state <> 'pending') WHERE id = ? AND fence = ?",
         (job_id, job_id, fence),
-    )
+    ), job_id, fence)
     return progress(conn, job_id)
 
 
@@ -150,15 +184,15 @@ def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None) -
     """Where to resume from, for work with no enumerable units."""
     _held(conn, job_id, fence)
     if done is None:
-        conn.execute(
+        _wrote(conn.execute(
             "UPDATE job SET checkpoint = ? WHERE id = ? AND fence = ?",
             (json.dumps(marker), job_id, fence),
-        )
+        ), job_id, fence)
     else:
-        conn.execute(
+        _wrote(conn.execute(
             "UPDATE job SET checkpoint = ?, done_count = ? WHERE id = ? AND fence = ?",
             (json.dumps(marker), done, job_id, fence),
-        )
+        ), job_id, fence)
 
 
 def cancel(conn, job_id: int) -> None:
@@ -194,11 +228,11 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
         ).fetchone()[0]
         if outstanding:
             raise ValueError(f"job {job_id} has {outstanding} unfinished items")
-    conn.execute(
+    _wrote(conn.execute(
         "UPDATE job SET state = ?, error = ?, finished_at = ?, lease_until = NULL,"
         " owner = NULL WHERE id = ? AND fence = ?",
         (state, error, now, job_id, fence),
-    )
+    ), job_id, fence)
 
 
 def progress(conn, job_id: int) -> Progress:

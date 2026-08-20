@@ -84,16 +84,16 @@ def version_of(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
-def pending(path) -> list[int]:
+def pending(path, *, target: int = USER_VERSION) -> list[int]:
     """The versions a migration would pass through, without touching anything."""
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
         current = version_of(conn)
     finally:
         conn.close()
-    if current > USER_VERSION:
-        raise Downgrade(f"database is v{current}, this build is v{USER_VERSION}")
-    return list(range(current + 1, USER_VERSION + 1))
+    if current > target:
+        raise Downgrade(f"database is v{current}, this build is v{target}")
+    return list(range(current + 1, target + 1))
 
 
 def snapshot(path, version: int) -> pathlib.Path:

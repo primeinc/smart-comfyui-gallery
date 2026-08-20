@@ -349,3 +349,95 @@ def test_a_folder_renamed_only_by_case_is_not_a_second_folder(library):
     assert conn.execute("SELECT count(*) FROM folder").fetchone()[0] == 2, (
         "the library root and one subfolder, not a duplicate of the subfolder"
     )
+
+
+def test_a_new_folder_taking_a_renamed_ones_name_does_not_take_its_identity(library):
+    """The case where the scan's own ordering decided who was who.
+
+    Rename `Archive` to `Zoo` and create a fresh `Archive`. os.walk sorts, so
+    `Archive` is met first, its filesystem id does not match, and the name
+    lookup found the old row -- which was then overwritten with the new
+    directory's id. The new directory inherited the old one's entity, slug
+    and watched-folder row; the real one, met a moment later, minted a second
+    entity and lost its address.
+    """
+    conn, root = library
+    write(root / "Archive" / "a.png", "alpha")
+    rescan(conn, root)
+    archive = conn.execute("SELECT id FROM folder WHERE name = 'Archive'").fetchone()[0]
+    slug = conn.execute("SELECT slug FROM entity WHERE id = ?", (archive,)).fetchone()[0]
+    conn.execute("INSERT INTO watched_folder(folder_id, added_at) VALUES(?, 0)", (archive,))
+
+    (root / "Archive").rename(root / "Zoo")
+    write(root / "Archive" / "new.png", "unrelated")
+    rescan(conn, root)
+
+    assert conn.execute(
+        "SELECT name FROM folder WHERE id = ?", (archive,)
+    ).fetchone()[0] == "Zoo", "the renamed directory kept somebody else's name"
+    assert conn.execute("SELECT slug FROM entity WHERE id = ?", (archive,)).fetchone()[0] == slug
+    assert conn.execute(
+        "SELECT folder_id FROM watched_folder"
+    ).fetchone()[0] == archive, "the watch followed the name instead of the directory"
+
+    fresh = conn.execute(
+        "SELECT id FROM folder WHERE name = 'Archive' AND missing_since IS NULL"
+    ).fetchone()[0]
+    assert fresh != archive, "the new directory was given the old one's row"
+    assert conn.execute(
+        "SELECT f.name FROM file f WHERE f.folder_id = ?", (archive,)
+    ).fetchone()[0] == "a.png", "the original file followed the wrong directory"
+
+
+def test_a_deleted_folder_is_marked_missing_never_deleted(library):
+    """Same doctrine as a file: unreachable and deleted are different, and
+    deleting cascades to every file underneath and takes the ratings."""
+    conn, root = library
+    write(root / "gone" / "a.png", "alpha")
+    rescan(conn, root)
+    folder_id = conn.execute("SELECT id FROM folder WHERE name = 'gone'").fetchone()[0]
+    file_id = conn.execute("SELECT id FROM file").fetchone()[0]
+    conn.execute("INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?,1,5,0)",
+                 (file_id,))
+
+    (root / "gone" / "a.png").unlink()
+    (root / "gone").rmdir()
+    rescan(conn, root, NOW + 60)
+
+    assert conn.execute(
+        "SELECT missing_since FROM folder WHERE id = ?", (folder_id,)
+    ).fetchone()[0] == NOW + 60
+    assert conn.execute("SELECT rating FROM rating WHERE file_id = ?", (file_id,)).fetchone()[0] == 5
+
+
+def test_a_folder_that_comes_back_stops_being_missing(library):
+    conn, root = library
+    write(root / "away" / "a.png", "alpha")
+    rescan(conn, root)
+    folder_id = conn.execute("SELECT id FROM folder WHERE name = 'away'").fetchone()[0]
+
+    (root / "away" / "a.png").unlink()
+    (root / "away").rmdir()
+    rescan(conn, root, NOW + 60)
+    (root / "away").mkdir()
+    write(root / "away" / "a.png", "alpha")
+    rescan(conn, root, NOW + 120)
+
+    assert conn.execute(
+        "SELECT missing_since FROM folder WHERE id = ?", (folder_id,)
+    ).fetchone()[0] is None
+
+
+def test_a_scan_of_an_unreachable_root_concludes_nothing(library):
+    """os.walk on a path that is not there yields nothing and raises nothing,
+    so without the veto an unplugged drive reads as an emptied library."""
+    conn, root = library
+    write(root / "portraits" / "a.png", "alpha")
+    rescan(conn, root)
+
+    with pytest.raises(scan.RootOffline):
+        scan.scan(conn, 1, root / "not-a-real-path", NOW + 60)
+
+    assert conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM folder WHERE missing_since IS NULL").fetchone()[0] == 2
+    assert conn.execute("SELECT online FROM root WHERE id = 1").fetchone()[0] == 0
