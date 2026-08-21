@@ -731,10 +731,16 @@ async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -
 def roots(state: State) -> list[dict]:
     """Every media directory this library reads, and whether it is
     reachable right now. Media roots are rows, not configuration: any
-    number of directories, anywhere, and they travel with the database."""
+    number of directories, anywhere, and they travel with the database.
+
+    The OPERATIONAL surface: check_roots records `online`, and the
+    commit here is what makes the record real -- the browsing /folders
+    route observes without writing (db/library.py probe_roots)."""
     conn = _connect(state.db_path)
     try:
-        return [{"id": root_id, "path": path, "online": online} for root_id, path, online in library.check_roots(conn)]
+        seen = library.check_roots(conn)
+        conn.commit()
+        return [{"id": root_id, "path": path, "online": online} for root_id, path, online in seen]
     finally:
         connect.close(conn)
 

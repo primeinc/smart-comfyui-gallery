@@ -140,7 +140,7 @@ def tables_by_name(sql):
     return names
 
 
-def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False):
+def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=False):
     """Fail if the page reads, or sorts, the whole library.
 
     "SCAN <t> USING INDEX <i>" is an ordered walk of an index and is how a
@@ -154,6 +154,14 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False):
     holds `count(*)`. Saying so per call keeps it a declared exemption on two
     pages rather than a hole in the check for all of them, and the ban on a
     bare table scan still applies to both.
+
+    `whole_index=True` is for a page whose PROMISE is every row -- the
+    /albums shelf displays every collection, so reading O(N) rows once
+    is that page's own meaning, not a defect. What it still demands: the
+    read is ONE ordered index walk (SCAN ... USING INDEX) with no
+    read-time sort. It is not license for a bare scan, and it is never
+    the answer to a temp B-tree -- that answer is an index whose order
+    the query can ride.
     """
     names = tables_by_name(sql)
     # An ordered index walk that stops early reads as many rows as it returns.
@@ -170,7 +178,7 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False):
         match = re.match(r"SCAN ([A-Za-z_][A-Za-z0-9_]*)", step)
         if not match:
             continue
-        if stops_early and "USING" in step:
+        if (stops_early or whole_index) and "USING" in step:
             continue
         table = names.get(match.group(1), match.group(1))
         if table not in STAYS_SMALL:
@@ -779,11 +787,16 @@ def test_the_navigation_indexes_ask_answerable_questions(library):
     assert_no_growing_scan(conn, pages.ROOT_SHELF)
     assert_no_growing_scan(conn, pages.FOLDER_TOPS, (root_id,))
 
-    # The albums tree is the child walk applied per level: NULL asks for
-    # the top, and both levels ride collection_parent -- no whole-shelf
-    # scan sorted at read time, so no exemption to declare.
-    tops = pages.collection_children(conn, None)
-    assert album in [row[0] for row in tops], "the top level lists the parentless collections"
+    # The albums shelf promises EVERY collection, in one statement: the
+    # whole-index category demands the read be one ordered walk of
+    # collection_parent with no read-time sort, and one statement is
+    # what makes the rendered tree one snapshot.
     nested = authored.collection(conn, "Deeper", NOW, parent_id=album)
-    assert [row[0] for row in pages.collection_children(conn, album)] == [nested]
-    assert_no_growing_scan(conn, pages.COLLECTION_CHILDREN, (None,))
+    shelf = {row[0]: row[1] for row in pages.collection_shelf(conn)}
+    assert shelf[album] is None
+    assert shelf[nested] == album, "the shelf carries the authored parents"
+    assert_no_growing_scan(conn, pages.COLLECTION_SHELF, (), whole_index=True)
+
+    # And a trash root is a storage location, never a navigation shelf.
+    conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/bin', 'trash', ?)", (NOW,))
+    assert "trash" not in [kind for _, kind in pages.roots_shelf(conn)]

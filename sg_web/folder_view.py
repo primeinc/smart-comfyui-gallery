@@ -38,15 +38,19 @@ from sg_web.presenting import VARIES, wants_json
 
 @get("/folders", sync_to_thread=True)
 def folders_index(state: State, request: Request) -> Template | Response:
-    """Where physical navigation enters: each registered root as a shelf
-    -- its kind, whether it is reachable RIGHT NOW (db/library.py
-    check_roots, which verifies the marker rather than trusting a
-    directory to be the same one), and its depth-0 folder entities to
-    walk into. No root ids and no host paths: addresses are slugs, and
-    the operational /roots route keeps the management shape."""
-    conn = connect.connect(state.db_path)
+    """Where physical navigation enters: each NAVIGABLE root as a shelf
+    -- its kind, whether it is reachable RIGHT NOW, and its depth-0
+    folder entities to walk into. Trash is a storage location, never a
+    shelf. No root ids and no host paths: addresses are slugs, and the
+    operational /roots route keeps the management shape.
+
+    A browsing GET observes and writes nothing: the reachability comes
+    from db/library.py probe_roots (marker-verified, no SQL writes), the
+    connection is read-only, and recording `root.online` stays with the
+    operational paths that commit it."""
+    conn = connect.connect(state.db_path, read_only=True)
     try:
-        online = {root_id: reachable for root_id, _, reachable in library.check_roots(conn)}
+        online = {root_id: reachable for root_id, _, reachable in library.probe_roots(conn, kinds=("library", "mount"))}
         told = [
             {
                 "kind": kind,

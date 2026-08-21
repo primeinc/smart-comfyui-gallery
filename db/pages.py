@@ -183,10 +183,11 @@ def folder_children(conn, folder_id: int):
     return conn.execute(FOLDER_CHILDREN, (folder_id,)).fetchall()
 
 
-#: The kinds registered, by row -- reachability comes from
-#: db/library.py check_roots, which verifies the marker rather than
-#: trusting that A directory exists at the recorded path.
-ROOT_SHELF = "SELECT id, kind FROM root ORDER BY id"
+#: The NAVIGABLE roots only: trash is a real storage location whose
+#: subtree views exclude, never a shelf to browse. Reachability comes
+#: from db/library.py probe_roots, which verifies the marker rather
+#: than trusting that A directory exists at the recorded path.
+ROOT_SHELF = "SELECT id, kind FROM root WHERE kind IN ('library', 'mount') ORDER BY id"
 
 FOLDER_TOPS = (
     "SELECT e.slug, f.name,"
@@ -532,11 +533,29 @@ def collection_card(conn, collection_id: int):
 
 
 def collection_children(conn, collection_id: int | None):
-    """One level of the authored hierarchy: `None` asks for the top. The
-    index's tree is this walk applied recursively -- each level an index
-    search with its own member counts, never a whole-shelf scan sorted
-    at read time."""
+    """One level of the authored hierarchy: `None` asks for the top --
+    the entity page's own children, one index search."""
     return conn.execute(COLLECTION_CHILDREN, (collection_id,)).fetchall()
+
+
+#: The whole shelf in ONE statement -- /albums promises every collection,
+#: so reading O(N) rows is the page's own meaning; what stays forbidden
+#: is a read-time sort, and ORDER BY (parent_id, name) IS the
+#: collection_parent index's order, so the plan is one ordered walk.
+#: One statement is also what makes the rendered tree one snapshot: a
+#: reparent committed mid-render cannot show a collection twice or not
+#: at all, where a query per node could.
+COLLECTION_SHELF = (
+    "SELECT c.id, c.parent_id, e.slug, c.name, c.kind,"
+    " (SELECT count(*) FROM collection_file cf JOIN file f ON f.id = cf.file_id"
+    "   AND f.missing_since IS NULL WHERE cf.collection_id = c.id) AS pictures"
+    "  FROM collection c JOIN entity e ON e.id = c.id"
+    " ORDER BY c.parent_id, c.name COLLATE NOCASE"
+)
+
+
+def collection_shelf(conn):
+    return conn.execute(COLLECTION_SHELF).fetchall()
 
 
 # --- what can be searched --------------------------------------------------

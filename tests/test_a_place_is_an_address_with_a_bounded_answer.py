@@ -218,6 +218,14 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     # The operational route still says what an operator needs.
     assert str(root) in [row["path"] for row in placed.get("/roots").json()]
 
+    # Trash is a storage location, never a shelf: registering one must
+    # not add a browsable "trash" section to the navigation surface.
+    bin_dir = root.parent / "bin"
+    bin_dir.mkdir()
+    assert placed.post("/roots", json={"path": str(bin_dir), "kind": "trash"}).status_code < 300
+    assert placed.get("/folders", headers=AS_MACHINE).json() == body, "a trash root changed the navigation"
+    assert "trash" not in placed.get("/folders", headers=AS_BROWSER).text
+
 
 def test_the_albums_index_shows_the_hierarchy_as_authored(placed_on_disk):
     """The browser's /albums is the collection tree: a child renders
@@ -240,6 +248,86 @@ def test_the_albums_index_shows_the_hierarchy_as_authored(placed_on_disk):
     assert re.search(r'data-album="rules".*?rule-defined', page, re.DOTALL)
     flat = placed.get("/albums", headers=AS_MACHINE).json()
     assert {row["slug"] for row in flat} == {"keep", "inner", "rules"}, "the machine list stays flat and complete"
+
+
+def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch):
+    """The whole shelf is ONE SELECT, nested in Python: no query per
+    node (the N+1 the review caught), and single-statement atomicity is
+    what makes the rendered tree one generation -- a reparent committed
+    mid-render can never show a collection twice or lose it."""
+    import re
+
+    from db import pages
+
+    burrow, _ = _library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        for name in ("Keep", "Drift"):
+            client.post("/albums", json={"name": name})
+        conn = connect.connect(client.app.state.db_path)
+        keep, drift = (
+            conn.execute("SELECT id FROM collection WHERE name = ?", (name,)).fetchone()[0]
+            for name in ("Keep", "Drift")
+        )
+        connect.close(conn)
+
+        # The shape: one shelf read, zero per-node walks.
+        shelf_calls: list[int] = []
+        child_calls: list[int] = []
+        real_shelf = pages.collection_shelf
+        real_children = pages.collection_children
+        monkeypatch.setattr(pages, "collection_shelf", lambda c: (shelf_calls.append(1), real_shelf(c))[1])
+        monkeypatch.setattr(pages, "collection_children", lambda c, p: (child_calls.append(1), real_children(c, p))[1])
+        assert client.get("/albums", headers=AS_BROWSER).status_code == 200
+        assert len(shelf_calls) == 1, "the tree must be one statement"
+        assert child_calls == [], "the tree ran a query per node"
+
+        # The snapshot: the reparent commits AFTER the one read -- the
+        # response is wholly before, exactly once, and the next request
+        # is wholly after, exactly once.
+        def fetch_then_reparent(conn_):
+            rows = real_shelf(conn_)
+            writer = connect.connect(client.app.state.db_path)
+            writer.execute("UPDATE collection SET parent_id = ? WHERE id = ?", (keep, drift))
+            writer.commit()
+            connect.close(writer)
+            return rows
+
+        monkeypatch.setattr(pages, "collection_shelf", fetch_then_reparent)
+        nested = r'data-album="keep".*?<ul>.*?data-album="drift"'
+        before = client.get("/albums", headers=AS_BROWSER).text
+        assert before.count('data-album="drift"') == 1, "the reparent forked the rendered tree"
+        assert not re.search(nested, before, re.DOTALL), "one response mixed two generations"
+        monkeypatch.setattr(pages, "collection_shelf", real_shelf)
+        after = client.get("/albums", headers=AS_BROWSER).text
+        assert after.count('data-album="drift"') == 1
+        assert re.search(nested, after, re.DOTALL), "the NEXT response must see the commit"
+
+
+def test_a_browsing_get_records_nothing_and_the_operational_one_commits(tmp_path):
+    """/folders observes; /roots records. After the disk changes, the
+    browsing GET must answer with fresh reachability while writing
+    nothing -- and the operational GET must persist what it saw, not
+    hold the writer lane for a rollback."""
+    import shutil
+
+    burrow, root = _library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+
+        def recorded() -> int:
+            conn = connect.connect(client.app.state.db_path, read_only=True)
+            try:
+                return conn.execute("SELECT online FROM root WHERE id = ?", (made["id"],)).fetchone()[0]
+            finally:
+                connect.close(conn)
+
+        assert recorded() == 1
+        shutil.rmtree(root)
+        assert client.get("/folders", headers=AS_MACHINE).json()[0]["online"] is False
+        assert recorded() == 1, "a browsing GET wrote to the database"
+        assert client.get("/roots").json()[0]["online"] is False
+        assert recorded() == 0, "the operational route observed offline but did not persist it"
 
 
 def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypatch):

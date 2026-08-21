@@ -94,26 +94,34 @@ def _albums_listed(db_path: str) -> list[dict]:
         connect.close(conn)
 
 
-def _branch(conn, parent_id: int | None) -> list[dict]:
-    """One level of the authored hierarchy, recursively: each level is
-    its own index search (db/pages.py COLLECTION_CHILDREN), so the tree
-    never runs the whole-shelf scan-and-sort the plan gate forbids. The
-    schema's cycle guard is what makes the recursion finite."""
-    return [
-        {"slug": slug, "name": name, "kind": kind, "pictures": pictures, "collections": _branch(conn, child_id)}
-        for child_id, slug, name, kind, pictures in pages.collection_children(conn, parent_id)
-    ]
-
-
 def _albums_nested(db_path: str) -> list[dict]:
     """The collection hierarchy as it was authored: every node still
     opens its own /t/{slug}, and a rule-defined node shows its badge
-    rather than a member count nothing computed."""
-    conn = connect.connect(db_path)
+    rather than a member count nothing computed.
+
+    ONE statement (db/pages.py COLLECTION_SHELF), nested here: a single
+    SELECT is a single snapshot, so a reparent committed mid-render
+    cannot show a collection twice or lose it -- the failure a query per
+    node invited, on top of costing N+1 round trips for a page that
+    promises every collection anyway. Rows arrive (parent_id, name)-
+    ordered from the index: parents-first is NOT guaranteed, so nodes
+    are made whole before any child is attached."""
+    conn = connect.connect(db_path, read_only=True)
     try:
-        return _branch(conn, None)
+        rows = pages.collection_shelf(conn)
     finally:
         connect.close(conn)
+    nodes = {
+        cid: {"slug": slug, "name": name, "kind": kind, "pictures": pictures, "collections": []}
+        for cid, _, slug, name, kind, pictures in rows
+    }
+    top: list[dict] = []
+    for cid, parent_id, *_ in rows:  # row order IS name order within each parent
+        if parent_id in nodes:
+            nodes[parent_id]["collections"].append(nodes[cid])
+        else:
+            top.append(nodes[cid])
+    return top
 
 
 @get("/albums")

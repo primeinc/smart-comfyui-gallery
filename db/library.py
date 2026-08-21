@@ -96,26 +96,47 @@ def set_online(conn, root_id: int, online: bool) -> None:
     conn.execute("UPDATE root SET online = ? WHERE id = ?", (1 if online else 0, root_id))
 
 
-def check_roots(conn) -> list[tuple[int, str, bool]]:
-    """Look at each root and record whether it can currently be read.
+def _reachable(path: str, identity: bytes) -> bool:
+    """Whether this directory can be read AND is the root it claims to be.
 
-    Returns `(root_id, path, online)`. Callers use this before a scan: a
-    scan of an offline root would observe nothing and, without this flag,
-    conclude that everything in it had been deleted.
+    Reachable is not enough: a directory can exist at the recorded path
+    and be a different one, which is what happens when a library is
+    moved and something else takes its place. A marker that names
+    another root means this is not it."""
+    reachable = os.path.isdir(path)
+    if reachable:
+        claimed = _marker(path)
+        if claimed is not None and claimed != identity:
+            reachable = False
+    return reachable
+
+
+def probe_roots(conn, kinds: tuple[str, ...] | None = None) -> list[tuple[int, str, bool]]:
+    """Observe each root's reachability WITHOUT recording it: filesystem
+    and marker inspection only, no SQL writes, so a browsing GET can ask
+    on a read-only connection without taking the writer lane. `kinds`
+    bounds the probe -- navigation has no reason to stat a trash root.
+
+    Returns `(root_id, path, reachable)`."""
+    sql = "SELECT id, path, uuid FROM root"
+    args: tuple = ()
+    if kinds:
+        sql += f" WHERE kind IN ({','.join('?' * len(kinds))})"
+        args = kinds
+    return [(root_id, path, _reachable(path, identity)) for root_id, path, identity in conn.execute(sql, args)]
+
+
+def check_roots(conn) -> list[tuple[int, str, bool]]:
+    """Look at each root and RECORD whether it can currently be read --
+    the operational half; the caller owns the commit. Callers use this
+    before a scan: a scan of an offline root would observe nothing and,
+    without this flag, conclude that everything in it had been deleted.
+
+    Returns `(root_id, path, online)`.
     """
-    seen = []
-    for root_id, path, identity in conn.execute("SELECT id, path, uuid FROM root").fetchall():
-        reachable = os.path.isdir(path)
-        # Reachable is not enough: a directory can exist at the recorded path
-        # and be a different one, which is what happens when a library is
-        # moved and something else takes its place. A marker that names
-        # another root means this is not it.
-        if reachable:
-            claimed = _marker(path)
-            if claimed is not None and claimed != identity:
-                reachable = False
+    seen = probe_roots(conn)
+    for root_id, _, reachable in seen:
         set_online(conn, root_id, reachable)
-        seen.append((root_id, path, reachable))
     return seen
 
 
