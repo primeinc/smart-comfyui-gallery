@@ -234,7 +234,12 @@ CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)
     WHERE missing_since IS NULL;
 -- "newest first" is the default view; without this every page load sorts the
 -- whole table in a temp B-tree. Partial, because the default view is live files.
-CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL;
+-- Carries the id tiebreak in the SAME direction, because the ResultSet's
+-- ordering contract is (mtime DESC, id DESC) / reversed -- matching
+-- file_in_folder_by_time's -- and the index implements the contract, never
+-- the other way around: on (mtime DESC) alone, equal keys sit rowid ASC and
+-- the walk fell back to a whole-membership sort.
+CREATE INDEX file_recent ON file(mtime DESC, id DESC) WHERE missing_since IS NULL;
 -- The lightbox's next and previous. Without it "the picture before this one in
 -- this folder" sorted the whole folder to return one row, which on the largest
 -- folder in a real library is 50,007 rows sorted per arrow-key press. The
@@ -1457,7 +1462,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 5;
+PRAGMA user_version   = 6;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

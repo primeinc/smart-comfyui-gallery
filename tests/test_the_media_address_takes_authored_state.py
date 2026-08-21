@@ -268,8 +268,17 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
             return {"results": [], "participants": [], "contributors": [], "missing": {}}
 
         monkeypatch.setattr(retrieval, "query", fused)
-        resultset.describe(conn, "", resultset.parse(favorite="1", text="sunset"), 0.0, actor_id=mine)
-        assert seen["allowed"] == favorites, "the favorite facet must reach retrieval as the allowed set"
+        rated = {
+            row[0] for row in conn.execute("SELECT file_id FROM rating WHERE user_id = ? AND rating >= 4", (mine,))
+        }
+        for spelled, expected in (
+            ({"favorite": "1"}, favorites),
+            ({"rating_min": 4}, rated),
+            ({"favorite": "1", "rating_min": 4}, favorites & rated),
+        ):
+            seen.clear()
+            resultset.describe(conn, "", resultset.parse(text="sunset", **spelled), 0.0, actor_id=mine)
+            assert seen["allowed"] == expected, f"{spelled} must reach retrieval as exactly its eligible set before RRF"
         connect.close(conn)
 
 
@@ -296,8 +305,23 @@ def test_authored_eligibility_rides_the_indexes(tmp_path):
         assert len(membership) == 1, walked
         args = tuple([actor] * membership[0].count("?"))
         plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + membership[0], args))
-        connect.close(conn)
+        # The RIGHT index, by name: "an index was involved" is not the
+        # contract -- the global time walk rides file_recent whole.
         assert "TEMP B-TREE" not in plan.upper(), plan
-        assert "SCAN f USING INDEX" in plan, plan
+        assert "SCAN f USING INDEX file_recent" in plan, plan
         assert "SEARCH fav USING" in plan, plan
         assert "SEARCH r USING" in plan, plan
+
+        # And a folder-scoped authored question rides the folder's own
+        # time index -- never the global walk probing folder_id per file.
+        walked.clear()
+        conn.set_trace_callback(walked.append)
+        resultset.describe(conn, "", resultset.parse(folder="lib", favorite="1"), 0.0, actor_id=actor)
+        conn.set_trace_callback(None)
+        scoped = [one for one in walked if one.lstrip().startswith("SELECT f.id FROM file f")]
+        assert len(scoped) == 1, walked
+        args = tuple([actor] * scoped[0].count("?"))
+        plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + scoped[0], args))
+        connect.close(conn)
+        assert "TEMP B-TREE" not in plan.upper(), plan
+        assert "USING INDEX file_in_folder_by_time" in plan, plan

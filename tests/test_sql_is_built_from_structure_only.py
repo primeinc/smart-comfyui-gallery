@@ -62,7 +62,6 @@ _STRUCTURE = {
     # constructed, so the pieces are structure by definition
     "' AND '.join(where)": "clause",
     "order": "keyword",
-    "tiebreak": "keyword",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
     "column": "identifier",

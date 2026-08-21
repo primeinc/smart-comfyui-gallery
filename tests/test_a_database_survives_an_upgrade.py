@@ -291,7 +291,8 @@ def test_two_steps_cannot_claim_one_version(steps):
 
 def _binary_sibling_indexes(conn) -> None:
     """The pre-v5 index shapes: binary sibling uniqueness, bare
-    collection parent -- what step 4 exists to replace."""
+    collection parent -- what step 4 exists to replace -- and the
+    pre-v6 tiebreak-less file_recent, step 5's subject."""
     conn.execute("DROP INDEX folder_root_unique")
     conn.execute("DROP INDEX folder_child_unique")
     conn.execute("DROP INDEX collection_parent")
@@ -304,6 +305,8 @@ def _binary_sibling_indexes(conn) -> None:
         " WHERE parent_id IS NOT NULL AND missing_since IS NULL"
     )
     conn.execute("CREATE INDEX collection_parent ON collection(parent_id)")
+    conn.execute("DROP INDEX file_recent")
+    conn.execute("CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL")
 
 
 def v1_database(tmp_path):
@@ -750,7 +753,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5]
+    assert migrate.migrate(path) == [4, 5, 6]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

@@ -107,10 +107,7 @@ def test_newest_and_oldest_are_the_same_answer_reversed_and_ties_break_on_id(she
     oldest = resultset.page(conn, "", _q(sort="oldest", size=resultset.MAX_PAGE_SIZE), 1, NOW)["items"]
     assert [r["id"] for r in newest] == [r["id"] for r in reversed(oldest)]
     tied = [r["id"] for r in newest if r["name"] in ("p_00.png", "p_01.png")]
-    # The tiebreak runs WITH file_recent's own within-key order (rowid
-    # ASC under mtime DESC), so the walk stays one index scan instead of
-    # a read-time sort -- deterministic, and still an exact reversal.
-    assert tied == sorted(tied), "equal mtimes must order by id, not by chance"
+    assert tied == sorted(tied, reverse=True), "equal mtimes must order by id, not by chance"
 
 
 def test_scope_and_filter_bound_membership(shelves):

@@ -393,14 +393,13 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     stays ordered by the file table's own time index; the whole
     statement runs once per library change, never once per page."""
     query = bound.query
+    # The ORDERING CONTRACT: (mtime, id) both in the sort's direction --
+    # the same contract file_in_folder_by_time carries, so global and
+    # folder-scoped questions tie identically. The indexes implement
+    # this spelling (file_recent is (mtime DESC, id DESC), schema v6),
+    # never the reverse: bending the tiebreak to fit an index once
+    # silently changed real answer identities and ordinals.
     order = "ASC" if query.sort == "oldest" else "DESC"
-    # The tiebreak runs WITH the index, not with the sort: file_recent is
-    # (mtime DESC), and entries sharing an mtime sit in rowid ASC order
-    # within it -- so a forward walk (newest) ties id ASC and a backward
-    # walk (oldest) ties id DESC. Any other spelling turns the ordered
-    # index walk this module promises into a read-time sort of the whole
-    # membership (caught by the authored-facet plan pin).
-    tiebreak = "DESC" if query.sort == "oldest" else "ASC"
     where = ["f.missing_since IS NULL"]
     args: list[object] = []
     if bound.folder_id is not None:
@@ -431,7 +430,7 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     if query.rating_min is not None:
         where.append("EXISTS (SELECT 1 FROM rating r WHERE r.file_id = f.id AND r.user_id = ? AND r.rating >= ?)")
         args.extend((bound.actor_id, query.rating_min))
-    sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {tiebreak}"
+    sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {order}"
     return [row[0] for row in conn.execute(sql, args)]
 
 

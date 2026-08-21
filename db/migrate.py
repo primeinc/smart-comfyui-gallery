@@ -440,6 +440,24 @@ def _sibling_names_ignore_case(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE)")
 
 
+@step(5)
+def _the_time_index_carries_the_tiebreak(conn: sqlite3.Connection) -> None:
+    """v5 -> v6: file_recent gains the id tiebreak, in the sort's own
+    direction.
+
+    The ResultSet's ordering contract has always been (mtime DESC,
+    id DESC) and its reversal -- the same contract
+    file_in_folder_by_time carries -- but file_recent held only
+    (mtime DESC), so every time-sorted global membership walk fell back
+    to a whole-membership sort at read time. The index now implements
+    the contract; the contract did not bend to the index. Index DDL is
+    schema.sql's text VERBATIM -- the drift check compares
+    sqlite_master. No row is touched.
+    """
+    conn.execute("DROP INDEX file_recent")
+    conn.execute("CREATE INDEX file_recent ON file(mtime DESC, id DESC) WHERE missing_since IS NULL")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 
