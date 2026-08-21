@@ -809,7 +809,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -832,5 +832,39 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         labels, _scores = manager.search(key, [query], 1)
         to_file = dict(current)
         assert to_file[int(labels[0][0])] == files[0], "the migrated vectors no longer answer a query"
+    finally:
+        conn.close()
+
+
+def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
+    """v7's own artifact: a listed collection carrying a rule row --
+    two authored membership definitions. Stamping it forward would
+    install guards the data already violates; deleting the rule unasked
+    is not this schema's way. The step refuses, names the collection,
+    and leaves the file at v7 with the rule intact."""
+    path = tmp_path / "gallery.db"
+    build.build(path)
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    for trigger in (
+        "collection_rule_only_on_smart",
+        "collection_rule_stays_on_smart",
+        "collection_with_rule_stays_smart",
+    ):
+        conn.execute(f"DROP TRIGGER {trigger}")
+    album = authored.collection(conn, "Keepers", NOW)
+    conn.execute(
+        "INSERT INTO collection_rule(collection_id, source_text, created_at, updated_at) VALUES(?, 'x', ?, ?)",
+        (album, NOW, NOW),
+    )
+    conn.execute("PRAGMA user_version = 7")
+    conn.close()
+
+    with pytest.raises(sqlite3.IntegrityError, match="Keepers"):
+        migrate.migrate(path)
+
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7, "a refused step must leave the file at v7"
+        assert conn.execute("SELECT count(*) FROM collection_rule").fetchone()[0] == 1, "the rule is the human's"
     finally:
         conn.close()

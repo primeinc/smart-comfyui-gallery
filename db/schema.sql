@@ -1477,7 +1477,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 7;
+PRAGMA user_version   = 8;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the
@@ -1592,6 +1592,26 @@ CREATE TRIGGER collection_with_members_stays_listed BEFORE UPDATE OF kind ON col
 WHEN NEW.kind = 'smart' AND OLD.kind <> 'smart'
  AND EXISTS (SELECT 1 FROM collection_file WHERE collection_id = NEW.id) BEGIN
   SELECT RAISE(ABORT,'this collection holds filed members; empty it before making it smart');
+END;
+
+-- The mirror-image guards: exactly ONE membership definition per
+-- collection. A rule belongs only to a smart collection -- an album with
+-- filed rows AND a dormant rule is two authored answers waiting to
+-- disagree -- and a rule-carrying smart collection cannot quietly become
+-- listed with its rule still attached. Deleting the rule first is the
+-- deliberate act that makes the transition honest.
+CREATE TRIGGER collection_rule_only_on_smart BEFORE INSERT ON collection_rule
+WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) <> 'smart' BEGIN
+  SELECT RAISE(ABORT,'only a smart collection carries a rule; a listed collection''s membership is its filed rows');
+END;
+CREATE TRIGGER collection_rule_stays_on_smart BEFORE UPDATE OF collection_id ON collection_rule
+WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) <> 'smart' BEGIN
+  SELECT RAISE(ABORT,'only a smart collection carries a rule; a listed collection''s membership is its filed rows');
+END;
+CREATE TRIGGER collection_with_rule_stays_smart BEFORE UPDATE OF kind ON collection
+WHEN OLD.kind = 'smart' AND NEW.kind <> 'smart'
+ AND EXISTS (SELECT 1 FROM collection_rule WHERE collection_id = NEW.id) BEGIN
+  SELECT RAISE(ABORT,'this collection is rule-defined; delete its rule before making it listed');
 END;
 
 -- ============ a reference must agree with what it points at ============

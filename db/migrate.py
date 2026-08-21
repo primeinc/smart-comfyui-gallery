@@ -583,6 +583,50 @@ END"""
     )
 
 
+@step(7)
+def _one_membership_definition_per_collection(conn: sqlite3.Connection) -> None:
+    """v7 -> v8: the database itself refuses two membership definitions.
+
+    v7 let a listed collection carry a dormant collection_rule row and
+    let a rule-carrying smart collection become listed -- two authored
+    answers waiting to disagree, exactly what the collection_file
+    guards were built to make impossible in the other direction. A v7
+    library that already holds a rule on a non-smart collection cannot
+    be stamped forward without deciding which answer wins, so the step
+    refuses and NAMES them; deleting or re-kinding is the operator's
+    deliberate act. Trigger DDL is schema.sql's text VERBATIM.
+    """
+    strays = conn.execute(
+        "SELECT c.name FROM collection_rule r JOIN collection c ON c.id = r.collection_id"
+        " WHERE c.kind <> 'smart' ORDER BY c.name"
+    ).fetchall()
+    if strays:
+        named = "; ".join(repr(name) for (name,) in strays)
+        raise sqlite3.IntegrityError(
+            f"these listed collections carry a dormant rule, a second membership definition: {named}."
+            f" Delete the rule or make the collection smart, then migrate again."
+        )
+    conn.execute(
+        """CREATE TRIGGER collection_rule_only_on_smart BEFORE INSERT ON collection_rule
+WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) <> 'smart' BEGIN
+  SELECT RAISE(ABORT,'only a smart collection carries a rule; a listed collection''s membership is its filed rows');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_rule_stays_on_smart BEFORE UPDATE OF collection_id ON collection_rule
+WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) <> 'smart' BEGIN
+  SELECT RAISE(ABORT,'only a smart collection carries a rule; a listed collection''s membership is its filed rows');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_with_rule_stays_smart BEFORE UPDATE OF kind ON collection
+WHEN OLD.kind = 'smart' AND NEW.kind <> 'smart'
+ AND EXISTS (SELECT 1 FROM collection_rule WHERE collection_id = NEW.id) BEGIN
+  SELECT RAISE(ABORT,'this collection is rule-defined; delete its rule before making it listed');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

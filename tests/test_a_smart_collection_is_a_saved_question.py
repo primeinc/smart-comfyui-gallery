@@ -236,3 +236,83 @@ def test_nothing_executes_stored_text():
                 "every statement in collection_rules.py must be a literal -- "
                 "a formatted one is a road from stored text to execution"
             )
+
+
+def _rotten(where=None, select=None, v=1) -> str:
+    import json
+
+    base = {
+        "v": v,
+        "where": {"folder": None, "person": None, "kind": None, "favorite": None, "rating_min": None},
+        "select": {"sort": None, "text": None, "take": None},
+    }
+    base["where"].update(where or {})
+    base["select"].update(select or {})
+    return json.dumps(base)
+
+
+def test_a_corrupt_stored_rule_is_broken_never_empty(saved):
+    """json_valid is syntax; the load gate is MEANING: any semantically
+    rotten stored rule -- wrong version, disagreeing versions, vocabulary
+    from another planet, a truncated uuid, an authored facet with no
+    pinned actor -- is BROKEN by name, never an evaluated empty
+    collection."""
+    made = saved.post("/albums/smart", json={"name": "Fragile", "kind": "image"})
+    slug = made.json()["slug"]
+    conn = connect.connect(saved.app.state.db_path)
+    fragile = conn.execute("SELECT id FROM collection WHERE name = 'Fragile'").fetchone()[0]
+
+    cases = [
+        (47, _rotten(v=47), None),  # a version this build does not understand
+        (1, _rotten(v=2), None),  # the column and the stored form disagree
+        (1, _rotten(where={"kind": "platypus"}), None),
+        (1, _rotten(where={"favorite": "banana"}), None),
+        (1, _rotten(where={"rating_min": 700}), None),
+        (1, _rotten(select={"take": -5, "sort": "newest"}), None),
+        (1, _rotten(select={"sort": "Tuesday"}), None),  # a sort with nothing to cut
+        (1, _rotten(where={"folder": "zz"}), None),  # not hex at all
+        (1, _rotten(where={"folder": "aabb"}), None),  # hex, but not 16 bytes
+        (1, _rotten(where={"favorite": True}), None),  # authored facet, no pinned actor
+    ]
+    for version, payload, actor in cases:
+        conn.execute(
+            "UPDATE collection_rule SET rule_version = ?, rule_json = ?, actor_id = ? WHERE collection_id = ?",
+            (version, payload, actor, fragile),
+        )
+        conn.commit()
+        body = saved.get(f"/t/{slug}", headers=AS_MACHINE).json()
+        assert body["state"] == "broken", f"{payload} was not refused"
+        assert body["gallery"] is None
+        assert saved.get("/g", params={"album": slug}).status_code == 400
+    connect.close(conn)
+
+
+def test_exactly_one_membership_definition_per_collection(saved):
+    """The v8 guards, both lanes: a rule belongs only to a smart
+    collection -- refused politely by the module and structurally by the
+    schema -- and a rule-carrying smart collection cannot quietly become
+    listed. Deleting the rule first is the deliberate transition."""
+    import sqlite3 as sqlite_module
+
+    conn = connect.connect(saved.app.state.db_path)
+    listed = authored.collection(conn, "Listed", 1.0)
+    with pytest.raises(ValueError, match="smart"):
+        collection_rules.keep_prose(conn, listed, nl="x", now=1.0)
+    rule = collection_rules.from_gallery_query(conn, resultset.parse(kind="image"), actor_id=None, take=None)
+    with pytest.raises(ValueError, match="smart"):
+        collection_rules.save(conn, listed, rule, source_text=None, now=1.0)
+    with pytest.raises(sqlite_module.IntegrityError):
+        conn.execute("INSERT INTO collection_rule(collection_id, created_at, updated_at) VALUES(?, 1, 1)", (listed,))
+    conn.commit()
+    connect.close(conn)
+
+    made = saved.post("/albums/smart", json={"name": "Committed", "kind": "image"})
+    assert made.status_code < 300
+    conn = connect.connect(saved.app.state.db_path)
+    committed = conn.execute("SELECT id FROM collection WHERE name = 'Committed'").fetchone()[0]
+    with pytest.raises(sqlite_module.IntegrityError, match="rule-defined"):
+        conn.execute("UPDATE collection SET kind = 'album' WHERE id = ?", (committed,))
+    conn.execute("DELETE FROM collection_rule WHERE collection_id = ?", (committed,))
+    conn.execute("UPDATE collection SET kind = 'album' WHERE id = ?", (committed,))
+    conn.commit()
+    connect.close(conn)
