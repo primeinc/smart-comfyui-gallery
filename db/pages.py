@@ -640,6 +640,52 @@ def ways(conn):
     return conn.execute(WAYS).fetchall()
 
 
+# --- the timeline ----------------------------------------------------------
+
+#: The human timeline's one axis, named once: the LOCAL wall clock when
+#: one was claimed, the knowable instant otherwise -- the same coalesce
+#: the day facet (db/facets.py context.local_day) filters by, so the
+#: shelf and the door into the gallery cannot disagree.
+TIMELINE_MONTHS = (
+    "SELECT strftime('%Y-%m', COALESCE(mc.local_at, mc.instant_at), 'unixepoch') AS month,"
+    " count(*) AS pictures"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " GROUP BY month ORDER BY month DESC"
+)
+
+#: Days are PRESENTATION grouping, read straight off the contexts --
+#: deliberately never a persisted event kind.
+TIMELINE_DAYS = (
+    "SELECT strftime('%Y-%m-%d', COALESCE(mc.local_at, mc.instant_at), 'unixepoch') AS day,"
+    " count(*) AS pictures"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " GROUP BY day ORDER BY day DESC LIMIT ?"
+)
+
+#: The latest event runs' intervals, newest first. Regrouping keeps one
+#: run per grouper, so every persisted event is current.
+TIMELINE_EVENTS = (
+    "SELECT e.id, r.grouper, e.kind, e.start_at, e.end_at, e.confidence, e.member_hash,"
+    " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures"
+    "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
+    " ORDER BY e.start_at DESC LIMIT ?"
+)
+
+
+def timeline_months(conn):
+    return conn.execute(TIMELINE_MONTHS).fetchall()
+
+
+def timeline_days(conn, limit: int = 400):
+    return conn.execute(TIMELINE_DAYS, (limit,)).fetchall()
+
+
+def timeline_events(conn, limit: int = 200):
+    return conn.execute(TIMELINE_EVENTS, (limit,)).fetchall()
+
+
 # --- lineage ---------------------------------------------------------------
 
 PARENTS = (

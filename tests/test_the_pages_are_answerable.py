@@ -514,6 +514,19 @@ def test_the_ways_page_is_generated_from_the_library(library):
     assert {(r[0], r[1]): r[3] for r in rows} == counted, "the facet counts disagree with the rows"
 
 
+# --- the timeline ----------------------------------------------------------
+
+
+def test_the_timeline_summaries_declare_their_costs(library):
+    """Months and days are whole-library histograms -- the counts
+    exemption, like the front door's summary -- and the event overlay
+    stops early on its own index."""
+    conn = library["conn"]
+    assert_no_growing_scan(conn, pages.TIMELINE_MONTHS, (), aggregate=True, counts=True)
+    assert_no_growing_scan(conn, pages.TIMELINE_DAYS, (400,), aggregate=True, counts=True)
+    assert_no_growing_scan(conn, pages.TIMELINE_EVENTS, (200,))
+
+
 # --- lineage ---------------------------------------------------------------
 
 

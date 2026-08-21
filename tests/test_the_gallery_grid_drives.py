@@ -837,3 +837,34 @@ def test_the_front_door_opens_into_the_gallery(driven):
         page.wait_for_selector("[data-grid]")
     finally:
         page.close()
+
+
+def test_a_timeline_day_opens_in_the_gallery(driven):
+    """The timeline on screen: the jobs interpret the library, a day
+    row links through the registered day facet, and the gallery mounts
+    that day's answer -- the timeline never owns media of its own."""
+    import time as time_module
+
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=10.0) as web:
+        assert web.post("/jobs/context").status_code == 201
+        assert web.post("/jobs/events").status_code == 201
+        deadline = time_module.time() + 30
+        while True:
+            body = web.get("/timeline", headers={"accept": "application/json"}).json()
+            if body["months"]:
+                break
+            assert time_module.time() < deadline, "the context job never produced a timeline"
+            time_module.sleep(0.3)
+
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/timeline")
+        page.wait_for_selector("[data-timeline-day]")
+        page.click("[data-timeline-day]")
+        page.wait_for_selector("[data-grid]")
+        assert "f=context.local_day" in page.url, "the day is a door into the ResultSet's own answer"
+    finally:
+        page.close()
