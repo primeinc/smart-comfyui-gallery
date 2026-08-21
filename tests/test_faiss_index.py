@@ -82,7 +82,17 @@ def test_float_edges_match_the_exact_numpy_oracle_with_ids_translated():
 def test_cpu_and_gpu_policies_agree_on_the_edges():
     """Device policy is the manager's configuration. Whichever way it is
     configured, the answers are the same edges -- the GPU path is exact
-    by construction (knn on device + CPU range pass for overflow)."""
+    by construction (knn on device + CPU range pass for overflow).
+
+    The CUDA build is imported FIRST, deliberately: the process's faiss
+    is decided by the first import (vision/faiss_runtime.py), and a
+    gpu=False manager constructed before any gpu=True one would pin the
+    whole process to the CPU wheel -- this test would then skip on a
+    machine with two GPUs, which is exactly the silent degradation it
+    exists to catch."""
+    from vision.faiss_runtime import import_faiss
+
+    import_faiss(gpu=True)
     rng = np.random.default_rng(11)
     vectors = rng.normal(size=(30, 16)).astype(np.float32)
     ids = list(range(0, 300, 10))
