@@ -1067,7 +1067,17 @@ def test_dropping_the_derived_namespace_keeps_everything_authored(db):
         "INSERT INTO derived_file_hash(file_id,space_id,source_sha256,computed_at) VALUES(450,?,'abc',0)",
         (a_space(db),),
     )
-    derived = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")]
+    derived = [
+        r[0]
+        for r in db.execute(
+            # Reverse creation order: a derived table may reference an
+            # earlier derived table, and with foreign keys on, a child
+            # cannot even be DROPPED after its parent is gone -- the
+            # mechanical drop is children-first, which reverse-creation
+            # order guarantees because the DDL declares parents first.
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%' ORDER BY rowid DESC"
+        )
+    ]
     assert len(derived) >= 6, f"derived namespace too small to be the whole of it: {derived}"
     for table in derived:
         db.execute(f"DROP TABLE {table}")
@@ -1763,7 +1773,17 @@ def test_a_name_survives_dropping_everything_derived(db):
         "INSERT INTO derived_file_person(file_id,person_id,run_id,model_id,model_version) "
         "VALUES(9,700,1,'insightface','v1')"
     )
-    derived = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")]
+    derived = [
+        r[0]
+        for r in db.execute(
+            # Reverse creation order: a derived table may reference an
+            # earlier derived table, and with foreign keys on, a child
+            # cannot even be DROPPED after its parent is gone -- the
+            # mechanical drop is children-first, which reverse-creation
+            # order guarantees because the DDL declares parents first.
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%' ORDER BY rowid DESC"
+        )
+    ]
     for t in derived:
         db.execute(f"DROP TABLE {t}")
 
@@ -2055,4 +2075,4 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 43, f"expected 43 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 48, f"expected 48 real tables, found {len(real)}: {sorted(real)}"

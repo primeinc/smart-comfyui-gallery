@@ -33,7 +33,7 @@ CREATE TABLE entity (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),
     kind TEXT NOT NULL CHECK (kind IN
-           ('file','folder','person','artifact','prompt','collection')),
+           ('file','folder','person','artifact','prompt','collection','place')),
     slug TEXT NOT NULL,
     UNIQUE (kind, slug)
 ) STRICT;
@@ -54,7 +54,7 @@ CREATE TABLE slug_history (
     -- could name a kind no entity can ever be, and that address then
     -- resolves to nothing for the rest of the library's life.
     kind       TEXT    NOT NULL CHECK (kind IN
-                 ('file','folder','person','artifact','prompt','collection')),
+                 ('file','folder','person','artifact','prompt','collection','place')),
     slug       TEXT    NOT NULL,
     entity_id  INTEGER NOT NULL REFERENCES entity(id) ON DELETE CASCADE,
     retired_at REAL    NOT NULL,
@@ -569,7 +569,7 @@ CREATE TABLE job (
     -- filters on the kinds it knows -- so it waits forever and looks fine.
     kind             TEXT NOT NULL CHECK (kind IN
                        ('scan','hash','embed','detect_faces','cluster_faces',
-                        'sample_frames','annotate','remix','zip')),
+                        'sample_frames','annotate','remix','zip','context','events')),
     target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
     state            TEXT NOT NULL CHECK (state IN
                        ('queued','running','done','failed','cancelled')),
@@ -1493,8 +1493,155 @@ END;
 
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
+-- ============ places: where media happened, as identity ============
+-- "Hawaii", "HI" and "Hawai'i" as strings are three unrelated spellings;
+-- a place is an entity with an address and a hierarchy, so a query for
+-- the island naturally includes the beach. Rows are minted by explicit
+-- enrichment or authoring -- never by a GET, and never automatically
+-- from raw GPS: coordinates without a resolver stay coordinates.
+CREATE TABLE place (
+    id           INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    -- RESTRICT: places nest, and deleting a region must never silently
+    -- take its cities' identities with it.
+    parent_id    INTEGER REFERENCES place(id) ON DELETE RESTRICT,
+    kind         TEXT NOT NULL CHECK (kind IN
+                   ('country','region','island','county','city','locality','neighborhood','poi')),
+    name         TEXT NOT NULL,
+    centroid_lat REAL,
+    centroid_lon REAL,
+    country_code TEXT,
+    -- Which enrichment provider claimed this place, and its key there --
+    -- provenance for refresh, never identity.
+    provider     TEXT,
+    provider_key TEXT,
+    created_at   REAL NOT NULL
+) STRICT;
+CREATE INDEX place_parent ON place(parent_id);
+
+CREATE TRIGGER place_kind_agrees BEFORE INSERT ON place BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match place')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'place';
+END;
+CREATE TRIGGER place_kind_keeps_agreeing BEFORE UPDATE OF id ON place BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match place')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'place';
+END;
+CREATE TRIGGER place_takes_its_entity AFTER DELETE ON place BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER place_no_self_parent BEFORE INSERT ON place
+WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
+  SELECT RAISE(ABORT,'place parent cycle');
+END;
+CREATE TRIGGER place_no_cycle BEFORE UPDATE OF parent_id ON place
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'place parent cycle') WHERE NEW.id IN (
+    WITH RECURSIVE up(id) AS (
+      SELECT NEW.parent_id
+      UNION SELECT a.parent_id FROM place a JOIN up ON a.id = up.id
+        WHERE a.parent_id IS NOT NULL)
+    SELECT id FROM up);
+END;
+
+CREATE TRIGGER name_fts_place_ins AFTER INSERT ON place
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END;
+CREATE TRIGGER name_fts_place_upd AFTER UPDATE OF name ON place BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END;
+CREATE TRIGGER name_fts_place_del AFTER DELETE ON place BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END;
+
+-- ============ media context: the ONE interpretation ============
+-- Derived and rebuildable: raw evidence (blob/file_blob) and source
+-- facts (capture, generation, file, file_param) are never replaced by
+-- this projection -- it is the application's best current understanding
+-- of when, where and how each media item happened, with its BASIS
+-- recorded so no date is ever unexplained. Invalidation lives at the
+-- source-fact writer seams (db/context.py stale), never as triggers
+-- here or on the sources: a source-table trigger referencing a derived
+-- table would break the drop-derived-and-reindex contract.
+CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','imported','unknown')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera claimed);
+    -- `instant_at` is the actual UTC instant, present ONLY when
+    -- knowable. An unzoned camera claim keeps its wall time and has no
+    -- instant -- a known human clock is never replaced by a filesystem
+    -- time just to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT;
+CREATE INDEX media_context_when ON derived_media_context(instant_at);
+CREATE INDEX media_context_local ON derived_media_context(local_at);
+CREATE INDEX media_context_place ON derived_media_context(place_id);
+CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at);
+
+-- ============ events: grouping hypotheses over contexts ============
+-- A trip or a generation session is a HYPOTHESIS over a set of files,
+-- never a property stamped onto them. Runs are rebuildable; membership
+-- is hashed so a changed membership is visibly a different event. A
+-- calendar day is deliberately NOT an event kind -- days are
+-- presentation grouping the timeline reads straight off the contexts.
+CREATE TABLE derived_event_run (
+    id              INTEGER PRIMARY KEY,
+    grouper         TEXT NOT NULL,
+    grouper_version TEXT NOT NULL,
+    settings_hash   TEXT NOT NULL,
+    created_at      REAL NOT NULL
+) STRICT;
+CREATE INDEX event_run_grouper ON derived_event_run(grouper, created_at);
+
+CREATE TABLE derived_event (
+    id          INTEGER PRIMARY KEY,
+    run_id      INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
+    parent_id   INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session')),
+    start_at    REAL NOT NULL,
+    end_at      REAL NOT NULL,
+    place_id    INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    confidence  REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    member_hash TEXT NOT NULL,
+    CHECK (start_at <= end_at)
+) STRICT;
+CREATE INDEX event_run ON derived_event(run_id);
+CREATE INDEX event_parent ON derived_event(parent_id);
+CREATE INDEX event_when ON derived_event(start_at);
+CREATE INDEX event_place ON derived_event(place_id);
+
+CREATE TABLE derived_event_file (
+    event_id INTEGER NOT NULL REFERENCES derived_event(id) ON DELETE CASCADE,
+    file_id  INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    ordinal  INTEGER NOT NULL,
+    score    REAL,
+    PRIMARY KEY (event_id, file_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX event_file_file ON derived_event_file(file_id);
+
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 9;
+PRAGMA user_version   = 10;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

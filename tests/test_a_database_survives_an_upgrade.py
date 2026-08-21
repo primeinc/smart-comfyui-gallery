@@ -289,6 +289,70 @@ def test_two_steps_cannot_claim_one_version(steps):
 # --- the REAL registry, not synthetic steps ---------------------------------
 
 
+def _pre_v10_core(conn) -> None:
+    """The pre-v10 shapes: no places, no media context, no events, and
+    the NARROWER kind vocabularies -- what step 9 exists to replace.
+    Minimal DDL on purpose: the forward step recreates everything with
+    schema.sql's text verbatim, and drift is judged after migration."""
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    for table in ("derived_event_file", "derived_event", "derived_event_run", "derived_media_context", "place"):
+        conn.execute(f"DROP TABLE {table}")
+    conn.execute("ALTER TABLE entity RENAME TO entity_keep")
+    conn.execute(
+        "CREATE TABLE entity (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),"
+        " kind TEXT NOT NULL CHECK (kind IN"
+        " ('file','folder','person','artifact','prompt','collection')),"
+        " slug TEXT NOT NULL, UNIQUE (kind, slug)) STRICT"
+    )
+    conn.execute("INSERT INTO entity(id, uuid, kind, slug) SELECT id, uuid, kind, slug FROM entity_keep")
+    conn.execute("DROP TABLE entity_keep")
+    conn.execute(
+        "CREATE TRIGGER entity_kind_is_permanent BEFORE UPDATE OF kind ON entity"
+        " WHEN NEW.kind <> OLD.kind BEGIN"
+        " SELECT RAISE(ABORT,'an entity cannot change kind'); END"
+    )
+    conn.execute("ALTER TABLE slug_history RENAME TO slug_history_keep")
+    conn.execute(
+        "CREATE TABLE slug_history (kind TEXT NOT NULL CHECK (kind IN"
+        " ('file','folder','person','artifact','prompt','collection')),"
+        " slug TEXT NOT NULL, entity_id INTEGER NOT NULL REFERENCES entity(id) ON DELETE CASCADE,"
+        " retired_at REAL NOT NULL, PRIMARY KEY (kind, slug, retired_at)) STRICT, WITHOUT ROWID"
+    )
+    conn.execute(
+        "INSERT INTO slug_history(kind, slug, entity_id, retired_at)"
+        " SELECT kind, slug, entity_id, retired_at FROM slug_history_keep"
+    )
+    conn.execute("DROP TABLE slug_history_keep")
+    conn.execute("CREATE INDEX slug_history_entity ON slug_history(entity_id)")
+    conn.execute("ALTER TABLE job RENAME TO job_keep")
+    conn.execute(
+        "CREATE TABLE job (id INTEGER PRIMARY KEY,"
+        " kind TEXT NOT NULL CHECK (kind IN"
+        " ('scan','hash','embed','detect_faces','cluster_faces','sample_frames','annotate','remix','zip')),"
+        " target_id INTEGER REFERENCES entity(id) ON DELETE SET NULL,"
+        " state TEXT NOT NULL CHECK (state IN ('queued','running','done','failed','cancelled')),"
+        " cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),"
+        " payload TEXT, total INTEGER, done_count INTEGER NOT NULL DEFAULT 0,"
+        " checkpoint TEXT, attempt INTEGER NOT NULL DEFAULT 0, owner TEXT,"
+        " fence INTEGER NOT NULL DEFAULT 0, lease_until REAL, heartbeat_at REAL,"
+        " error TEXT, created_at REAL NOT NULL, started_at REAL, finished_at REAL) STRICT"
+    )
+    conn.execute(
+        "INSERT INTO job SELECT id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at FROM job_keep"
+    )
+    conn.execute("DROP TABLE job_keep")
+    conn.execute("CREATE INDEX job_state ON job(state)")
+    conn.execute("CREATE INDEX job_target ON job(target_id)")
+    conn.commit()
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _pre_v7_collection(conn) -> None:
     """The pre-v7 collection shape: rule text on the collection row
     itself, guarded by CHECKs -- what step 6 exists to replace. The
@@ -368,6 +432,7 @@ def v1_database(tmp_path):
     path = tmp_path / "gallery.db"
     build.build(path)
     conn = sqlite3.connect(str(path), isolation_level=None)
+    _pre_v10_core(conn)  # v10's change, inverted
     conn.execute("DROP TABLE derived_dupe_group")  # v3's addition; indexes go with it
     for trigger in (
         "collection_file_not_into_smart",
@@ -460,6 +525,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     build.build(path)
     conn = sqlite3.connect(str(path), isolation_level=None)
     conn.execute("PRAGMA foreign_keys=ON")
+    _pre_v10_core(conn)  # v10's change, inverted: a genuine v4 file
     _binary_sibling_indexes(conn)  # a genuine v4 file permits the twins
     root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', 0)").lastrowid
     top = scan.ensure_folder(conn, root_id, None, "x")
@@ -719,6 +785,7 @@ def v3_database_with_embeddings(tmp_path):
     path = tmp_path / "gallery.db"
     build.build(path)
     conn = connect.connect(path)
+    _pre_v10_core(conn)  # v10's change, inverted
     _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted: a real v3 file
     root = int(
@@ -809,7 +876,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

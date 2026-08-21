@@ -747,6 +747,318 @@ END"""
     )
 
 
+@step(9)
+def _media_gets_a_context(conn: sqlite3.Connection) -> None:
+    """v9 -> v10: places become entities, media gets its ONE derived
+    context, events get their grouping tables -- and three CHECK
+    vocabularies widen, which SQLite can only say as a rebuild: entity
+    and slug_history learn the 'place' kind, job learns 'context' and
+    'events'.
+
+    The entity rebuild carries the AUTOINCREMENT doctrine by hand:
+    sqlite_sequence holds the largest id EVER issued, which can exceed
+    max(id) after deletions, and losing it would let a new entity take a
+    dead entity's id -- the exact reuse the column exists to forbid. The
+    old sequence is read first and restored after, whichever is larger.
+    All DDL is schema.sql's text VERBATIM; the drift check compares
+    sqlite_master.
+    """
+    minted = conn.execute("SELECT count(*) FROM sqlite_master WHERE name = 'sqlite_sequence'").fetchone()[0]
+    held = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = 'entity'").fetchone() if minted else None
+    old_seq = held[0] if held else 0
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE entity RENAME TO entity_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE entity (
+    -- ================= CONVENTIONS FOR THE WHOLE SCHEMA =================
+    -- Deliberately inside a CREATE statement. SQLite keeps only the comments
+    -- that sit within one; everything written above a table is discarded, so
+    -- a rule stated there is invisible to anyone reading the built database
+    -- and survives only in the source file. This is the first table, so this
+    -- is the first thing `.schema` prints.
+    --
+    -- TIME   Every *_at column is UNIX EPOCH SECONDS IN UTC, as a REAL.
+    --        The one exception is capture.captured_at, which may be a wall
+    --        clock with no zone -- it says so itself, and capture.tz_offset_min
+    --        is how you tell which it is.
+    -- SIZE   Bytes.
+    -- SCORES det_score and confidence are 0..1, never percentages.
+    -- ANGLES Degrees.
+    -- BOXES  Fractions of the frame, 0..1. See `region`.
+    -- ====================================================================
+    -- AUTOINCREMENT, which on a rowid table means "never hand out an id this
+    -- table has ever used". Plain `INTEGER PRIMARY KEY` reuses the largest
+    -- free rowid, and the minter compounded it by computing `max(id) + 1`
+    -- itself: delete the newest entity and the next one created took its id
+    -- with a different uuid, so anything holding an id outside this database
+    -- -- a thumbnail cache key, an export, a bookmarked address -- silently
+    -- resolved to a different picture. SQLite keeps the maximum ever used in
+    -- `sqlite_sequence` (refs/sqlite/sqlite/src/insert.c:385-391).
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),
+    kind TEXT NOT NULL CHECK (kind IN
+           ('file','folder','person','artifact','prompt','collection','place')),
+    slug TEXT NOT NULL,
+    UNIQUE (kind, slug)
+) STRICT"""
+    )
+    conn.execute("INSERT INTO entity(id, uuid, kind, slug) SELECT id, uuid, kind, slug FROM entity_old")
+    conn.execute("DROP TABLE entity_old")
+    conn.execute(
+        """CREATE TRIGGER entity_kind_is_permanent BEFORE UPDATE OF kind ON entity
+WHEN NEW.kind <> OLD.kind BEGIN
+  SELECT RAISE(ABORT,'an entity cannot change kind');
+END"""
+    )
+    conn.execute(
+        "INSERT INTO sqlite_sequence(name, seq) SELECT 'entity', 0"
+        " WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'entity')"
+    )
+    conn.execute("UPDATE sqlite_sequence SET seq = max(seq, ?) WHERE name = 'entity'", (old_seq,))
+
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE slug_history RENAME TO slug_history_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE slug_history (
+    -- The same list `entity.kind` is held to. Unconstrained, a retirement
+    -- could name a kind no entity can ever be, and that address then
+    -- resolves to nothing for the rest of the library's life.
+    kind       TEXT    NOT NULL CHECK (kind IN
+                 ('file','folder','person','artifact','prompt','collection','place')),
+    slug       TEXT    NOT NULL,
+    entity_id  INTEGER NOT NULL REFERENCES entity(id) ON DELETE CASCADE,
+    retired_at REAL    NOT NULL,
+    -- retired_at is in the key: a slug released, reissued and released again
+    -- must be recordable twice. Resolution order is fixed: a live
+    -- entity.slug always wins, history answers only on a miss, most recent
+    -- retirement first.
+    PRIMARY KEY (kind, slug, retired_at)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute(
+        "INSERT INTO slug_history(kind, slug, entity_id, retired_at)"
+        " SELECT kind, slug, entity_id, retired_at FROM slug_history_old"
+    )
+    conn.execute("DROP TABLE slug_history_old")
+    conn.execute("CREATE INDEX slug_history_entity ON slug_history(entity_id)")
+
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE job RENAME TO job_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE job (
+    id               INTEGER PRIMARY KEY,
+    -- Constrained like every other `kind` here. A typo is otherwise a job
+    -- that queues successfully and no worker ever claims, because claim()
+    -- filters on the kinds it knows -- so it waits forever and looks fine.
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('scan','hash','embed','detect_faces','cluster_faces',
+                        'sample_frames','annotate','remix','zip','context','events')),
+    target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
+    state            TEXT NOT NULL CHECK (state IN
+                       ('queued','running','done','failed','cancelled')),
+    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+    payload          TEXT,
+    total            INTEGER,
+    done_count       INTEGER NOT NULL DEFAULT 0,
+    checkpoint       TEXT,
+    attempt          INTEGER NOT NULL DEFAULT 0,
+    -- a lease nobody owns cannot fence anyone: the reclaiming worker must be
+    -- able to prove it holds the job, and the evicted one must be rejected.
+    owner            TEXT,
+    fence            INTEGER NOT NULL DEFAULT 0,
+    lease_until      REAL,
+    heartbeat_at     REAL,
+    error            TEXT,
+    -- No external_ref here. `derivation_intent` already carries the
+    -- generator's own id, UNIQUE, and having it on both meant two rows could
+    -- claim the same external job and disagree about which one owned it.
+    created_at       REAL NOT NULL,
+    started_at       REAL,
+    finished_at      REAL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO job(id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at)"
+        " SELECT id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at FROM job_old"
+    )
+    conn.execute("DROP TABLE job_old")
+    conn.execute("CREATE INDEX job_state ON job(state)")
+    conn.execute("CREATE INDEX job_target ON job(target_id)")
+
+    conn.execute(
+        """CREATE TABLE place (
+    id           INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    -- RESTRICT: places nest, and deleting a region must never silently
+    -- take its cities' identities with it.
+    parent_id    INTEGER REFERENCES place(id) ON DELETE RESTRICT,
+    kind         TEXT NOT NULL CHECK (kind IN
+                   ('country','region','island','county','city','locality','neighborhood','poi')),
+    name         TEXT NOT NULL,
+    centroid_lat REAL,
+    centroid_lon REAL,
+    country_code TEXT,
+    -- Which enrichment provider claimed this place, and its key there --
+    -- provenance for refresh, never identity.
+    provider     TEXT,
+    provider_key TEXT,
+    created_at   REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE INDEX place_parent ON place(parent_id)"""
+    )
+    conn.execute(
+        """CREATE TRIGGER place_kind_agrees BEFORE INSERT ON place BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match place')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'place';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER place_kind_keeps_agreeing BEFORE UPDATE OF id ON place BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match place')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'place';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER place_takes_its_entity AFTER DELETE ON place BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER place_no_self_parent BEFORE INSERT ON place
+WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
+  SELECT RAISE(ABORT,'place parent cycle');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER place_no_cycle BEFORE UPDATE OF parent_id ON place
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'place parent cycle') WHERE NEW.id IN (
+    WITH RECURSIVE up(id) AS (
+      SELECT NEW.parent_id
+      UNION SELECT a.parent_id FROM place a JOIN up ON a.id = up.id
+        WHERE a.parent_id IS NOT NULL)
+    SELECT id FROM up);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_place_ins AFTER INSERT ON place
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_place_upd AFTER UPDATE OF name ON place BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_place_del AFTER DELETE ON place BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','imported','unknown')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera claimed);
+    -- `instant_at` is the actual UTC instant, present ONLY when
+    -- knowable. An unzoned camera claim keeps its wall time and has no
+    -- instant -- a known human clock is never replaced by a filesystem
+    -- time just to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE INDEX media_context_when ON derived_media_context(instant_at)"""
+    )
+    conn.execute(
+        """CREATE INDEX media_context_local ON derived_media_context(local_at)"""
+    )
+    conn.execute(
+        """CREATE INDEX media_context_place ON derived_media_context(place_id)"""
+    )
+    conn.execute(
+        """CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at)"""
+    )
+    conn.execute(
+        """CREATE TABLE derived_event_run (
+    id              INTEGER PRIMARY KEY,
+    grouper         TEXT NOT NULL,
+    grouper_version TEXT NOT NULL,
+    settings_hash   TEXT NOT NULL,
+    created_at      REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE INDEX event_run_grouper ON derived_event_run(grouper, created_at)"""
+    )
+    conn.execute(
+        """CREATE TABLE derived_event (
+    id          INTEGER PRIMARY KEY,
+    run_id      INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
+    parent_id   INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session')),
+    start_at    REAL NOT NULL,
+    end_at      REAL NOT NULL,
+    place_id    INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    confidence  REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    member_hash TEXT NOT NULL,
+    CHECK (start_at <= end_at)
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE INDEX event_run ON derived_event(run_id)"""
+    )
+    conn.execute(
+        """CREATE INDEX event_parent ON derived_event(parent_id)"""
+    )
+    conn.execute(
+        """CREATE INDEX event_when ON derived_event(start_at)"""
+    )
+    conn.execute(
+        """CREATE INDEX event_place ON derived_event(place_id)"""
+    )
+    conn.execute(
+        """CREATE TABLE derived_event_file (
+    event_id INTEGER NOT NULL REFERENCES derived_event(id) ON DELETE CASCADE,
+    file_id  INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    ordinal  INTEGER NOT NULL,
+    score    REAL,
+    PRIMARY KEY (event_id, file_id)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute(
+        """CREATE INDEX event_file_file ON derived_event_file(file_id)"""
+    )
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 
