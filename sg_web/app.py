@@ -67,6 +67,7 @@ from sg_web import (
     person_view,
 )
 from sg_web import worker as worker_module
+from sg_web.presenting import VARIES, wants_json
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -101,11 +102,28 @@ def _resolved(conn, kind: str, slug: str, where: str) -> tuple[int, str | None]:
 
 
 @get("/", sync_to_thread=True)
-def front(state: State) -> list[dict]:
-    """The front page: the library, newest first, addressed by slug."""
+def front(state: State, request: Request) -> Response | Redirect:
+    """The front door. A browser lands in the gallery -- /g owns the
+    canonical question state, and an entrance pointing at JSON was the
+    one page of this application still shaped for its developers. A
+    machine gets the compact library summary with a newest strip; the
+    media answers themselves are the ResultSet's."""
+    if not wants_json(request):
+        return Redirect(path="/g", status_code=302)
     conn = _connect(state.db_path)
     try:
-        return _rows(pages.newest(conn), ("slug", "name", "mtime"))
+        files, folders, people, collections_held, artifacts = pages.library_summary(conn)
+        return Response(
+            {
+                "files": files,
+                "folders": folders,
+                "people": people,
+                "collections": collections_held,
+                "artifacts": artifacts,
+                "newest": _rows(pages.newest(conn, 12), ("slug", "name", "mtime")),
+            },
+            headers=VARIES,
+        )
     finally:
         connect.close(conn)
 

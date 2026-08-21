@@ -443,12 +443,20 @@ def test_choose_primary_is_an_action_the_application_offers(served):
     assert client.get("/clusterings").json()[0]["id"] == chosen["primary_run"]
 
 
-def test_the_front_page_is_the_newest_files(served):
-    """`/` answers with the library, newest first, addressed by slug."""
+def test_the_front_door_is_the_gallery(served):
+    """A browser at `/` lands in the gallery; a machine gets the compact
+    library summary with a newest strip. The building entrance stopped
+    pointing at JSON."""
     client, _, _ = served
+    landed = client.get("/", headers={"accept": "text/html,application/xhtml+xml"}, follow_redirects=False)
+    assert (landed.status_code, landed.headers["location"]) == (302, "/g")
+
     front = client.get("/").json()
-    assert {row["name"] for row in front} == {"ana_1.png", "ana_2.png", "ben_1.png"}
-    assert all(row["slug"] for row in front)
+    assert front["files"] == 3
+    for fact in ("folders", "people", "collections", "artifacts"):
+        assert isinstance(front[fact], int), f"the summary counts {fact}"
+    assert {row["name"] for row in front["newest"]} == {"ana_1.png", "ana_2.png", "ben_1.png"}
+    assert all(row["slug"] for row in front["newest"])
 
 
 def test_the_recipe_axis_is_produced_and_served(tmp_path):

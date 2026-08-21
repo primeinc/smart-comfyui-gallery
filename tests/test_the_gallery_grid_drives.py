@@ -824,3 +824,16 @@ def test_an_archived_parent_survives_the_edit_form(driven):
         body = web.get("/t/kept-child", headers={"accept": "application/json"}).json()
         assert body["parent"] == "old-organizer", "an unrelated edit reparented the child to the top"
         assert body["description"] == "edited beneath an archived parent"
+
+
+def test_the_front_door_opens_into_the_gallery(driven):
+    """A browser at `/` lands on /g with the grid mounted -- the
+    entrance is the gallery, not a JSON list."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/")
+        page.wait_for_url(f"{base}/g")
+        page.wait_for_selector("[data-grid]")
+    finally:
+        page.close()

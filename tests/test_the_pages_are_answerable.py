@@ -140,7 +140,7 @@ def tables_by_name(sql):
     return names
 
 
-def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=False):
+def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=False, counts=False):
     """Fail if the page reads, or sorts, the whole library.
 
     "SCAN <t> USING INDEX <i>" is an ordered walk of an index and is how a
@@ -162,6 +162,12 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
     read-time sort. It is not license for a bare scan, and it is never
     the answer to a temp B-tree -- that answer is an index whose order
     the query can ride.
+
+    `counts=True` is for the one page whose meaning IS the library's
+    cardinalities -- the machine front door's summary. Every column is
+    a bare count(*), and no index can hold a count, so the b-tree walks
+    are the answer's own cost. Declared per call like the others; the
+    temp B-tree ban still applies.
     """
     names = tables_by_name(sql)
     # An ordered index walk that stops early reads as many rows as it returns.
@@ -177,6 +183,8 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
             continue
         match = re.match(r"SCAN ([A-Za-z_][A-Za-z0-9_]*)", step)
         if not match:
+            continue
+        if counts:
             continue
         if (stops_early or whole_index) and "USING" in step:
             continue
@@ -217,6 +225,19 @@ def test_the_front_page_shows_the_newest_first(library):
     assert mtimes == sorted(mtimes, reverse=True)
     assert "file_recent" in " ".join(plan(conn, pages.NEWEST_FIRST, (60,))), "the partial index is not being used"
     assert_no_growing_scan(conn, pages.NEWEST_FIRST, (60,))
+
+
+def test_the_library_summary_is_a_summary(library):
+    """The machine front door's counts -- the one page whose meaning IS
+    the library's cardinalities, which is what the declared counts=True
+    exemption exists for."""
+    conn = library["conn"]
+    files, folders, people, collections, artifacts = pages.library_summary(conn)
+    assert files == 12
+    assert folders >= 1
+    for count in (people, collections, artifacts):
+        assert isinstance(count, int)
+    assert_no_growing_scan(conn, pages.LIBRARY_SUMMARY, (), counts=True)
 
 
 def test_a_missing_file_leaves_the_front_page(library):

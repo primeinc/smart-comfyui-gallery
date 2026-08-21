@@ -44,10 +44,25 @@ NEWEST_FIRST = (
     " WHERE f.missing_since IS NULL ORDER BY f.mtime DESC LIMIT ?"
 )
 
+#: The machine front door: what the library HOLDS, in one statement --
+#: a summary, not a media answer (the gallery is the ResultSet's).
+LIBRARY_SUMMARY = (
+    "SELECT"
+    " (SELECT count(*) FROM file WHERE missing_since IS NULL) AS files,"
+    " (SELECT count(*) FROM folder WHERE missing_since IS NULL) AS folders,"
+    " (SELECT count(*) FROM person) AS people,"
+    " (SELECT count(*) FROM collection WHERE archived_at IS NULL) AS collections,"
+    " (SELECT count(*) FROM artifact) AS artifacts"
+)
+
 
 def newest(conn, limit: int = PAGE):
-    """The front page. Walks `file_recent` in order rather than sorting."""
+    """The newest strip. Walks `file_recent` in order rather than sorting."""
     return conn.execute(NEWEST_FIRST, (limit,)).fetchall()
+
+
+def library_summary(conn):
+    return conn.execute(LIBRARY_SUMMARY).fetchone()
 
 
 # --- one picture -----------------------------------------------------------
