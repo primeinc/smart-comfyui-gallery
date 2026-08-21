@@ -109,6 +109,8 @@ def validated_vectors(vectors, expected: int) -> list[list[float]]:
     if not made:
         return made
     width = len(made[0])
+    if width == 0:
+        raise ValueError("the similarity engine returned zero-dimensional vectors; that is not a space")
     for row in made:
         if len(row) != width:
             raise ValueError(f"the similarity engine returned mixed dimensions ({width} and {len(row)})")
@@ -153,6 +155,14 @@ class SemanticPromptSimilarity:
 
     def __init__(self, encoder, spec: SemanticEngine):
         self._encoder = encoder
+        # PROVE the loaded weights are the engine the request was queued
+        # under: a pointer that moved between queue and run is not it.
+        loaded = dataclasses.replace(spec, checkpoint=encoder.space().producer_version)
+        if loaded.identity() != spec.identity():
+            raise ValueError(
+                f"the loaded engine ({loaded.checkpoint}) is not the engine the request was queued under"
+                f" ({spec.checkpoint}); make the request again"
+            )
         self.name, self.version = spec.identity()
 
     def embed(self, texts):
@@ -194,8 +204,12 @@ class SemanticEngine:
     def identity(self) -> tuple[str, str]:
         from vision import semantic
 
+        # (space key, digest of the QUERY policy): everything that turns a
+        # text into a vector for this provider/model/checkpoint -- Qwen's
+        # query instruction included, which its stored-media policy omits
         space = semantic.space(self.provider, self.model, self.checkpoint, 1)
-        return (space.key, f"{space.producer_version}+{space.preprocess_version}")
+        policy = semantic.query_policy(self.provider, self.model, self.checkpoint)
+        return (space.key, "q" + digest(canonical(policy))[:24])
 
     def load(self) -> PromptSimilarity:
         from vision import semantic
@@ -224,6 +238,12 @@ def engine_for(conn, selector: str, models_dir: str):
     for provider, model, configured in retrieval.choices(conn):
         if provider == selector:
             checkpoint = semantic.pin(provider, models_dir, model, configured)
+            if not semantic.immutable(provider, checkpoint):
+                raise ValueError(
+                    f"{provider} {model} is configured at the mutable revision {configured!r} and nothing is"
+                    " provisioned locally to pin it to; run /jobs/embed first -- a plan cannot be queued"
+                    " under provenance that may move before the worker loads it"
+                )
             return SemanticEngine(provider, model, checkpoint, models_dir)
     raise ValueError(f"the {selector!r} provider is not among the configured semantic spaces")
 
@@ -272,7 +292,7 @@ class GenerationHistoryPlanner:
     """
 
     kind = "generation_history"
-    version = 2
+    version = 3
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -306,17 +326,37 @@ class GenerationHistoryPlanner:
 
         vectors = validated_vectors(self.similarity.embed(prompts), len(prompts)) if members else []
         cosine = pairwise_cosine(vectors)
-        groups = _sequential_phases(cosine, threshold) if sequenced else _family_phases(cosine, threshold)
+        known = [i for i, text in enumerate(prompts) if text.strip()]
+        groups = _sequential_phases(cosine, threshold, known) if sequenced else _family_phases(cosine, threshold, known)
+        # A member with no prompt evidence is its own GAP: it is placed
+        # (its chronology is still known) but asserts nothing about
+        # prompts and is never one side of a prompt_shift.
+        gaps = [i for i in range(len(members)) if i not in known]
 
         claims: list[dict] = []
         phases: list[dict] = []
-        for number, indexes in enumerate(groups, start=1):
+        ordered = sorted([(group[0], "known", group) for group in groups] + [(i, "gap", [i]) for i in gaps])
+        known_groups = [group for _, kind, group in ordered if kind == "known"]
+        for number, (_first, kind, indexes) in enumerate(ordered, start=1):
             member_refs = [refs[i] for i in indexes]
             claim_refs = []
+            if kind == "gap":
+                claim_refs.append(_claim(claims, "prompt_evidence_missing", 1.0, list(member_refs), {}))
+                phases.append(
+                    {
+                        "id": f"phase-{number:03d}",
+                        "member_refs": member_refs,
+                        "representative_refs": [member_refs[0]],
+                        "label_hint": "Prompt evidence gap",
+                        "claim_refs": claim_refs,
+                    }
+                )
+                continue
             inside = [cosine[a][b] for a in indexes for b in indexes if a < b]
+            position = known_groups.index(indexes)
             if sequenced:
-                if number > 1:
-                    previous_first = groups[number - 2][0]
+                if position > 0:
+                    previous_first = known_groups[position - 1][0]
                     claim_refs.append(
                         _claim(
                             claims,
@@ -371,8 +411,8 @@ class GenerationHistoryPlanner:
                     )
                 )
             label = f"Phase {number}" if sequenced else f"Prompt family {number}"
-            if number > 1:
-                previous = groups[number - 2]
+            if position > 0:
+                previous = known_groups[position - 1]
                 changed = _artifact_change(members, previous, indexes, refs)
                 if changed is not None:
                     claim_refs.append(_claim(claims, "artifact_change", 1.0, changed[0], changed[1]))
@@ -420,11 +460,13 @@ def _claim(claims: list, kind: str, confidence: float, evidence: list[str], fact
     return claim_id
 
 
-def _sequential_phases(cosine, threshold: float) -> list[list[int]]:
-    """Consecutive runs: a member joins the running phase while its
-    prompt stays within `threshold` of the phase's first prompt."""
+def _sequential_phases(cosine, threshold: float, known: list[int]) -> list[list[int]]:
+    """Consecutive runs over the members WITH prompt evidence: a member
+    joins the running phase while its prompt stays within `threshold`
+    of the phase's first prompt. A gap member is not a boundary -- the
+    run continues across it."""
     groups: list[list[int]] = []
-    for i in range(len(cosine)):
+    for i in known:
         if groups and cosine[groups[-1][0]][i] >= threshold:
             groups[-1].append(i)
         else:
@@ -432,14 +474,14 @@ def _sequential_phases(cosine, threshold: float) -> list[list[int]]:
     return groups
 
 
-def _family_phases(cosine, threshold: float) -> list[list[int]]:
+def _family_phases(cosine, threshold: float, known: list[int]) -> list[list[int]]:
     """Without chronology: connected components of the `>= threshold`
-    graph, each listed in event order, families ordered by their first
-    member -- a partition, not a sequence."""
-    n = len(cosine)
+    graph over the members WITH prompt evidence, each listed in event
+    order, families ordered by their first member -- a partition, not a
+    sequence."""
     seen: set[int] = set()
     groups: list[list[int]] = []
-    for start in range(n):
+    for start in known:
         if start in seen:
             continue
         stack, component = [start], []
@@ -447,7 +489,7 @@ def _family_phases(cosine, threshold: float) -> list[list[int]]:
         while stack:
             i = stack.pop()
             component.append(i)
-            for j in range(n):
+            for j in known:
                 if j not in seen and cosine[i][j] >= threshold:
                     seen.add(j)
                     stack.append(j)
@@ -530,20 +572,173 @@ def unresolved(plan: dict, snapshot: dict) -> list[str]:
     return bad
 
 
+#: The durable vocabulary of a StoryPlan v1 -- exact key sets and value
+#: shapes. A document with an unknown key, a wrong type or an unknown
+#: claim kind is invalid, never "probably fine": the renderer is the
+#: first long-lived consumer, and a grammar that tolerates drift is how
+#: a sentence gets written from a field nobody defined.
+_CLAIM_KINDS = {
+    "prompt_shift",
+    "prompt_similarity",
+    "prompt_family",
+    "prompt_evidence_missing",
+    "seed_variation",
+    "artifact_change",
+    "parameter_change",
+}
+_UNSUPPORTED_KINDS = {"chronology", "prompt_evidence"}
+_ID = re.compile(r"^(phase|claim)-[0-9]{3}$")
+
+
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _keys(node, exact: set[str], optional: set[str], where: str, bad: list[str]) -> bool:
+    if not isinstance(node, dict):
+        bad.append(f"{where} is not an object")
+        return False
+    held = set(node)
+    if held - exact - optional or exact - held:
+        bad.append(f"{where} keys are {sorted(held)}, not {sorted(exact)} (+ optional {sorted(optional)})")
+        return False
+    return True
+
+
+def _strings(value) -> bool:
+    return isinstance(value, list) and all(isinstance(x, str) for x in value)
+
+
+def _facts_valid(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if kind == "prompt_shift":
+        return set(facts) == {"cosine", "threshold"} and all(_number(facts[k]) for k in facts)
+    if kind == "prompt_similarity":
+        return (
+            set(facts) == {"relationship", "min_pairwise_cosine"}
+            and facts["relationship"] == "same_prompt_family"
+            and _number(facts["min_pairwise_cosine"])
+        )
+    if kind == "prompt_family":
+        return (
+            set(facts) == {"size", "threshold", "min_pairwise_cosine"}
+            and isinstance(facts["size"], int)
+            and not isinstance(facts["size"], bool)
+            and _number(facts["threshold"])
+            and (facts["min_pairwise_cosine"] is None or _number(facts["min_pairwise_cosine"]))
+        )
+    if kind == "prompt_evidence_missing":
+        return facts == {}
+    if kind == "seed_variation":
+        return set(facts) == {"distinct_seeds"} and isinstance(facts["distinct_seeds"], int)
+    if kind == "artifact_change":
+        return set(facts) == {"added", "removed"} and all(_strings(facts[k]) for k in facts)
+    if kind == "parameter_change":
+        return (
+            set(facts) == {"changed"}
+            and isinstance(facts["changed"], dict)
+            and all(
+                isinstance(v, dict) and set(v) == {"from", "to"} and all(isinstance(v[s], list) for s in v)
+                for v in facts["changed"].values()
+            )
+        )
+    return False
+
+
+def validate_story_plan_v1(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v1 document, with no reference to
+    any snapshot: shape, types, vocabularies, cardinalities. Controlled
+    reasons, never an exception, whatever the bytes say."""
+    bad: list[str] = []
+    top = {"v", "snapshot_sha256", "planner", "subject", "phases", "claims", "unsupported"}
+    if not _keys(plan, top, {"planned_at"}, "plan", bad):
+        return bad
+    if plan["v"] != FORMAT_VERSION:
+        bad.append(f"format v{plan['v']!r}, not v{FORMAT_VERSION}")
+    if not (isinstance(plan["snapshot_sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", plan["snapshot_sha256"])):
+        bad.append("snapshot_sha256 is not a sha256")
+    if "planned_at" in plan and not _number(plan["planned_at"]):
+        bad.append("planned_at is not a number")
+    planner = plan["planner"]
+    if _keys(planner, {"kind", "version", "settings", "similarity"}, set(), "planner", bad):
+        if planner["kind"] not in PLANNERS:
+            bad.append(f"unknown planner {planner['kind']!r}")
+        if not isinstance(planner["version"], int) or isinstance(planner["version"], bool):
+            bad.append("planner.version is not an integer")
+        settings_ok = _keys(planner["settings"], {"phase_threshold"}, set(), "planner.settings", bad)
+        if settings_ok and not _number(planner["settings"]["phase_threshold"]):
+            bad.append("planner.settings.phase_threshold is not a number")
+        similarity_ok = _keys(planner["similarity"], {"name", "version"}, set(), "planner.similarity", bad)
+        if similarity_ok and not all(isinstance(planner["similarity"][k], str) for k in ("name", "version")):
+            bad.append("planner.similarity names are not strings")
+    subject = plan["subject"]
+    if _keys(subject, {"kind", "sequenced", "label_hint"}, set(), "subject", bad):
+        if subject["kind"] != "generation_session":
+            bad.append(f"unknown subject kind {subject['kind']!r}")
+        if not isinstance(subject["sequenced"], bool):
+            bad.append("subject.sequenced is not a bool")
+        if not isinstance(subject["label_hint"], str):
+            bad.append("subject.label_hint is not a string")
+    if not isinstance(plan["phases"], list) or not isinstance(plan["claims"], list):
+        bad.append("phases and claims are lists")
+        return bad
+    for i, phase in enumerate(plan["phases"]):
+        where = f"phases[{i}]"
+        exact = {"id", "member_refs", "representative_refs", "label_hint", "claim_refs"}
+        if not _keys(phase, exact, set(), where, bad):
+            continue
+        if not (isinstance(phase["id"], str) and _ID.match(phase["id"]) and phase["id"].startswith("phase-")):
+            bad.append(f"{where}.id is not a phase id")
+        if not _strings(phase["member_refs"]) or not phase["member_refs"]:
+            bad.append(f"{where}.member_refs is not a non-empty list of refs")
+        if not _strings(phase["representative_refs"]) or len(phase["representative_refs"]) != 1:
+            bad.append(f"{where}.representative_refs is not exactly one ref")
+        if not isinstance(phase["label_hint"], str):
+            bad.append(f"{where}.label_hint is not a string")
+        if not _strings(phase["claim_refs"]):
+            bad.append(f"{where}.claim_refs is not a list of claim ids")
+    for i, claim in enumerate(plan["claims"]):
+        where = f"claims[{i}]"
+        if not _keys(claim, {"id", "kind", "confidence", "evidence_refs", "facts"}, set(), where, bad):
+            continue
+        if not (isinstance(claim["id"], str) and _ID.match(claim["id"]) and claim["id"].startswith("claim-")):
+            bad.append(f"{where}.id is not a claim id")
+        if claim["kind"] not in _CLAIM_KINDS:
+            bad.append(f"{where}.kind {claim['kind']!r} is not a known claim kind")
+        elif not _facts_valid(claim["kind"], claim["facts"]):
+            bad.append(f"{where}.facts do not fit {claim['kind']}")
+        if not (_number(claim["confidence"]) and 0.0 <= claim["confidence"] <= 1.0):
+            bad.append(f"{where}.confidence is not in [0, 1]")
+        if not _strings(claim["evidence_refs"]) or not claim["evidence_refs"]:
+            bad.append(f"{where}.evidence_refs is not a non-empty list of refs")
+    if not isinstance(plan["unsupported"], list):
+        bad.append("unsupported is a list")
+        return bad
+    for i, told in enumerate(plan["unsupported"]):
+        where = f"unsupported[{i}]"
+        if not _keys(told, {"kind", "reason"}, {"member_refs"}, where, bad):
+            continue
+        if told["kind"] not in _UNSUPPORTED_KINDS:
+            bad.append(f"{where}.kind {told['kind']!r} is not a known unsupported kind")
+        if not isinstance(told["reason"], str):
+            bad.append(f"{where}.reason is not a string")
+        if "member_refs" in told and not _strings(told["member_refs"]):
+            bad.append(f"{where}.member_refs is not a list of refs")
+    return bad
+
+
 def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]:
-    """Every way a plan can be wrong about its snapshot, as a list of
-    reasons -- empty is the only acceptable answer. Exact format; the
+    """Every way a plan can be wrong, as a list of reasons -- empty is
+    the only acceptable answer. The exact v1 grammar first; then the
     snapshot it names; an exact partition (every member exactly once);
     representatives inside their phase; unique phase and claim ids;
     every reference inward."""
-    bad: list[str] = []
-    if plan.get("v") != FORMAT_VERSION:
-        bad.append(f"format v{plan.get('v')!r}, not v{FORMAT_VERSION}")
-    if plan.get("snapshot_sha256") != snapshot_sha256:
-        bad.append("the plan names a different snapshot")
-    bad.extend(f"missing {key}" for key in ("planner", "subject", "phases", "claims", "unsupported") if key not in plan)
+    bad = validate_story_plan_v1(plan)
     if bad:
         return bad
+    if plan["snapshot_sha256"] != snapshot_sha256:
+        return ["the plan names a different snapshot"]
     expected = sorted(_member_ref(one["ordinal"]) for one in snapshot["members"])
     placed = [ref for phase in plan["phases"] for ref in phase["member_refs"]]
     if sorted(placed) != expected:
@@ -585,10 +780,13 @@ def identity(plan: dict) -> tuple[str, str]:
 def request_identity(
     snapshot_sha256: str, planner: str, planner_version: int, engine: str, engine_version: str, settings: dict
 ) -> str:
-    """The REQUEST identity, known before any model work."""
+    """The REQUEST identity, known before any model work -- every policy
+    input that can change the output, the document FORMAT included, so
+    a format change can never hand back yesterday's shape."""
     return digest(
         canonical(
             {
+                "format": FORMAT_VERSION,
                 "snapshot_sha256": snapshot_sha256,
                 "planner": {"kind": planner, "version": planner_version},
                 "engine": {"name": engine, "version": engine_version},
@@ -715,6 +913,10 @@ def request_plan(conn, snapshot_id: int, planner_kind: str, engine, settings: di
     snapshot_sha = _verified_snapshot(conn, snapshot_id)[1]
     engine_name, engine_version = engine.identity()
     request = request_identity(snapshot_sha, maker.kind, maker.version, engine_name, engine_version, exact)
+    # ONE writer lane for look-then-enqueue: two requests that both saw
+    # "no plan, no job" would otherwise each queue the same model work.
+    # The lane is claimed before the rechecks; the caller commits.
+    conn.execute("BEGIN IMMEDIATE")
     held = conn.execute("SELECT id FROM story_plan WHERE request_sha256 = ?", (request,)).fetchone()
     if held:
         return PlanRequest(request, int(held[0]), None)

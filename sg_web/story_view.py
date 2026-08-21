@@ -56,6 +56,8 @@ def snapshot_document(state: State, snapshot_id: int) -> dict:
             return stories.load_snapshot(conn, snapshot_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
+        except ValueError as corrupt:
+            raise ClientException(str(corrupt), status_code=409) from corrupt
     finally:
         connect.close(conn)
 

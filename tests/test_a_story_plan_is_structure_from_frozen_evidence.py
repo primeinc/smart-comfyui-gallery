@@ -290,21 +290,44 @@ def test_the_similarity_producer_contract_is_enforced():
         ([[1.0, 0.0], [0.0, 1.0], [1.0]], "mixed dimensions"),
         ([[1.0, 0.0], [0.0, math.nan], [1.0, 1.0]], "non-finite"),
         ([[1.0, 0.0], [0.0, "1"], [1.0, 1.0]], "non-numeric"),
+        ([[], [], []], "zero-dimensional"),
     ):
         with pytest.raises(ValueError, match=why):
             planning.GenerationHistoryPlanner(Broken(rows)).plan(document, sha)
 
 
-def test_missing_evidence_is_declared_never_explained():
-    members = [_member(0, LIGHTHOUSE[0]), _member(1, LIGHTHOUSE[1]), _member(2, "")]
+def test_missing_evidence_is_a_gap_never_positive_shift_evidence():
+    """A member with no frozen prompt is placed (its chronology is
+    known) as a GAP backed by a prompt_evidence_missing claim. It is
+    never one side of a prompt_shift -- "we do not know the prompt" is
+    not evidence that the prompt changed -- and the run continues across
+    it: the member after the gap rejoins the phase before it."""
+    members = [_member(0, LIGHTHOUSE[0]), _member(1, ""), _member(2, LIGHTHOUSE[1]), _member(3, HELMET[0])]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
     told = next(one for one in plan["unsupported"] if one["kind"] == "prompt_evidence")
-    assert told["member_refs"] == ["member-003"]
-    assert [phase["member_refs"] for phase in plan["phases"]] == [["member-001", "member-002"], ["member-003"]]
-    assert set(_claims_of(plan, 1)) == {"prompt_shift"}, (
-        "the boundary is claimed; the empty prompt supports nothing else"
+    assert told["member_refs"] == ["member-002"]
+    assert [phase["member_refs"] for phase in plan["phases"]] == [
+        ["member-001", "member-003"],
+        ["member-002"],
+        ["member-004"],
+    ], "the gap sits between; the run continues across it"
+    assert plan["phases"][1]["label_hint"] == "Prompt evidence gap"
+    assert set(_claims_of(plan, 1)) == {"prompt_evidence_missing"}
+    shift = _claims_of(plan, 2)["prompt_shift"]
+    assert shift["evidence_refs"] == ["member-001:generation.prompt", "member-004:generation.prompt"], (
+        "the shift is between the two KNOWN prompts; the gap is on neither side"
     )
+    shifts = [ref for claim in plan["claims"] if claim["kind"] == "prompt_shift" for ref in claim["evidence_refs"]]
+    assert not any(ref.startswith("member-002") for ref in shifts)
+    assert planning.validate_plan(plan, document, sha) == []
+
+    # without chronology the gap is its own family, grouped with nothing
+    trio = [LIGHTHOUSE[0], "", LIGHTHOUSE[1]]
+    document, sha = _snapshot([_member(i, text, precision="day") for i, text in enumerate(trio)])
+    plan = _planner().plan(document, sha)
+    assert [phase["member_refs"] for phase in plan["phases"]] == [["member-001", "member-003"], ["member-002"]]
+    assert planning.validate_plan(plan, document, sha) == []
 
 
 def test_the_same_request_is_one_identity_and_policies_coexist():
@@ -319,12 +342,21 @@ def test_the_same_request_is_one_identity_and_policies_coexist():
     assert planning.identity(strict)[1] != planning.identity(one)[1]
     assert len(strict["phases"]) > len(one["phases"]), "a stricter threshold splits the near-variants"
     loose = {"phase_threshold": 0.5}
-    request = planning.request_identity(sha, "generation_history", 2, "lexical-bow", "1", loose)
-    assert request == planning.request_identity(sha, "generation_history", 2, "lexical-bow", "1", loose)
-    assert request != planning.request_identity(
-        sha, "generation_history", 2, "lexical-bow", "1", {"phase_threshold": 0.99}
-    )
-    assert request != planning.request_identity(sha, "generation_history", 2, "lexical-bow", "2", loose)
+    request = planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", loose)
+    assert request == planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", loose)
+    strict_settings = {"phase_threshold": 0.99}
+    assert request != planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", strict_settings)
+    assert request != planning.request_identity(sha, "generation_history", 3, "lexical-bow", "2", loose)
+
+
+def test_the_document_format_is_part_of_the_request_identity(monkeypatch):
+    """A format change must never hand back yesterday's shape under an
+    unchanged planner version: FORMAT_VERSION rides the request hash."""
+    sha = "a" * 64
+    before = planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", {"phase_threshold": 0.5})
+    monkeypatch.setattr(planning, "FORMAT_VERSION", planning.FORMAT_VERSION + 1)
+    after = planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", {"phase_threshold": 0.5})
+    assert before != after
 
 
 def test_the_threshold_is_pinned_against_the_engine():
@@ -553,6 +585,144 @@ def test_the_engine_selector_means_exactly_what_it_says(frozen):
         assert engine.provider == "openclip"
         name, version = engine.identity()
         assert engine.model in name
-        assert engine.checkpoint in version
+        assert version.startswith("q"), "the version is a digest of the query policy"
     finally:
         connect.close(conn)
+
+
+def test_the_story_plan_grammar_is_exact_and_fails_closed():
+    """A self-consistent, correctly hashed document is still invalid when
+    it carries an unknown key, a claim kind nobody defined, facts of the
+    wrong shape, a second representative, or a boolean confidence -- and
+    the answer is a controlled reason, never an exception, whatever the
+    bytes say."""
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    assert planning.validate_story_plan_v1(plan) == []
+
+    def broken(mutate):
+        bent = copy.deepcopy(plan)
+        mutate(bent)
+        reasons = planning.validate_story_plan_v1(bent)
+        assert reasons, "the grammar accepted a malformed document"
+
+    broken(lambda p: p.__setitem__("narrative", "a story"))
+    broken(lambda p: p["phases"][0].__setitem__("mood", "wistful"))
+    broken(lambda p: p["claims"][0].__setitem__("kind", "vibe_shift"))
+    broken(lambda p: p["claims"][0].__setitem__("facts", {"cosine": "high"}))
+    broken(lambda p: p["claims"][0].__setitem__("confidence", True))
+    broken(lambda p: p["claims"][0].__setitem__("evidence_refs", []))
+    broken(lambda p: p["phases"][0].__setitem__("representative_refs", ["member-001", "member-002"]))
+    broken(lambda p: p["phases"][0].__setitem__("id", "phase-1"))
+    broken(lambda p: p["planner"]["settings"].__setitem__("moon", 1))
+    broken(lambda p: p["subject"].__setitem__("sequenced", "yes"))
+    broken(lambda p: p["unsupported"].append({"kind": "weather", "reason": "rain"}))
+    broken(lambda p: p.__setitem__("snapshot_sha256", "nope"))
+    for garbage in (None, [], "plan", {"v": 1}, {"v": 1, "phases": "many"}):
+        assert planning.validate_story_plan_v1(garbage), f"{garbage!r} read as a plan"
+
+
+def test_query_policy_is_the_engine_identity_not_the_stored_space(monkeypatch):
+    """Qwen's stored-media policy deliberately omits QUERY_INSTRUCTION;
+    the planner's vectors are QUERY vectors, so the instruction must be
+    part of the engine identity -- change it and the request identity
+    changes. OpenCLIP's identity names its pinned checkpoint."""
+    from vision import semantic
+    from vision.semantic import openclip, qwen_vl
+
+    qwen = planning.SemanticEngine("qwen", "Qwen/Qwen3-VL-Embedding-2B", "c" * 40, "unused")
+    before = qwen.identity()
+    monkeypatch.setattr(qwen_vl, "QUERY_INSTRUCTION", "Find the vibe.")
+    after = qwen.identity()
+    assert before[0] == after[0], "the space is the same space"
+    assert before[1] != after[1], "but the QUERY policy is a different engine"
+    clip = planning.SemanticEngine("openclip", openclip.MODEL, openclip.CHECKPOINT, "unused")
+    name, version = clip.identity()
+    assert openclip.CHECKPOINT in name
+    assert version.startswith("q")
+    assert semantic.query_policy("openclip", openclip.MODEL, openclip.CHECKPOINT)["checkpoint"] == openclip.CHECKPOINT
+
+
+def test_a_mutable_checkpoint_is_never_queued_and_a_moved_one_is_never_loaded(frozen, monkeypatch):
+    """Qwen configured at `main` with nothing provisioned cannot be pinned,
+    so no plan may be queued under provenance that could move. And a
+    worker that loads weights whose identity differs from the queued
+    engine refuses rather than planning under a lie."""
+    from vision import semantic
+
+    client, _ = frozen
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        monkeypatch.setattr("db.retrieval.choices", lambda _conn: [("qwen", "Qwen/Qwen3-VL-Embedding-2B", "main")])
+        with pytest.raises(ValueError, match="mutable revision"):
+            planning.engine_for(conn, "qwen", "unused")
+    finally:
+        connect.close(conn)
+
+    class Weights:
+        model_id = "fake"
+
+        def space(self):
+            return semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", "d" * 40, 1)
+
+        def encode_query(self, text):
+            return [1.0, 0.0]
+
+    queued = planning.SemanticEngine("qwen", "Qwen/Qwen3-VL-Embedding-2B", "c" * 40, "unused")
+    with pytest.raises(ValueError, match="not the engine the request was queued under"):
+        planning.SemanticPromptSimilarity(Weights(), queued)
+    same = planning.SemanticEngine("qwen", "Qwen/Qwen3-VL-Embedding-2B", "d" * 40, "unused")
+    assert planning.SemanticPromptSimilarity(Weights(), same).version == same.identity()[1]
+
+
+def test_concurrent_identical_requests_create_one_job(frozen):
+    """Two connections asking for the same plan at once: the second
+    waits on the writer lane the first holds, then finds the job the
+    first queued. One job row, one model run."""
+    import threading
+
+    client, snap = frozen
+    engine = planning.LexicalEngine()
+    first = connect.connect(client.app.state.db_path)
+    outcome: dict = {}
+    try:
+        held = planning.request_plan(first, snap.id, "generation_history", engine, None, NOW + 31 * HOUR)
+        assert held.job_id is not None
+
+        def race():
+            second = connect.connect(client.app.state.db_path)  # its own thread, its own connection
+            try:
+                outcome["second"] = planning.request_plan(
+                    second, snap.id, "generation_history", engine, None, NOW + 31 * HOUR
+                )
+                second.commit()
+            except (ValueError, LookupError, sqlite3.Error) as why:
+                outcome["error"] = why
+            finally:
+                connect.close(second)
+
+        waiter = threading.Thread(target=race)
+        waiter.start()
+        waiter.join(timeout=0.5)
+        assert waiter.is_alive(), f"the second request must wait on the lane, not race past it: {outcome}"
+        first.commit()
+        waiter.join(timeout=10)
+        assert not waiter.is_alive()
+        assert "error" not in outcome, outcome.get("error")
+        assert outcome["second"].job_id == held.job_id, "exactly one live job for one request"
+        assert first.execute("SELECT count(*) FROM job WHERE kind = 'story_plan'").fetchone()[0] == 1
+    finally:
+        connect.close(first)
+
+
+def test_a_corrupt_snapshot_is_a_409_on_the_wire(frozen):
+    client, snap = frozen
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        conn.execute("DROP TRIGGER story_snapshot_is_immutable")
+        conn.execute("UPDATE story_snapshot SET document_json = ? WHERE id = ?", ('{"v": 1}', snap.id))
+        conn.commit()
+    finally:
+        connect.close(conn)
+    assert client.get(f"/stories/snapshots/{snap.id}").status_code == 409

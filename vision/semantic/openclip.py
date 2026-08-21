@@ -69,6 +69,27 @@ def space(model: str, checkpoint: str, dimensions: int):
     )
 
 
+def query_policy(model: str, checkpoint: str) -> dict:
+    """Everything that turns a TEXT into THIS model's query vector: the
+    tokenizer and text tower are the model+checkpoint, the transforms
+    ship with the package. Distinct from the stored-media space identity
+    in principle, identical in facts for open_clip -- named separately so
+    a consumer of query vectors (story planning) hashes the right thing."""
+    return {
+        "provider": "openclip",
+        "model": model,
+        "checkpoint": checkpoint,
+        "text_tower": "open_clip.encode_text",
+        "normalize": True,
+        "package": openclip_version(),
+    }
+
+
+def immutable(checkpoint: str) -> bool:
+    """An open_clip pretrained tag names fixed weights."""
+    return bool(checkpoint)
+
+
 def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | None:
     """The exact weight file this checkpoint resolves to in the local
     cache, or None -- answered WITHOUT any network access.

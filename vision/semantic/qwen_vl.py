@@ -201,6 +201,32 @@ def _cached_snapshot(models_dir: str, model: str, checkpoint: str) -> str | None
     return str(pathlib.Path(held).parent)
 
 
+def query_policy(model: str, checkpoint: str) -> dict:
+    """Everything that turns a TEXT into THIS model's query vector. The
+    stored-media policy (policy_version) deliberately omits
+    QUERY_INSTRUCTION because it never touches a stored vector; a
+    consumer whose OUTPUT is built from query vectors (story planning)
+    must hash it, or changing the instruction changes every phase
+    boundary under an unchanged identity."""
+    return {
+        "provider": "qwen",
+        "model": model,
+        "checkpoint": checkpoint,
+        "query_instruction": QUERY_INSTRUCTION,
+        "max_length": MAX_LENGTH,
+        "pooling": POOLING,
+        "normalization": NORMALIZATION,
+        "media_policy": policy_version(),
+    }
+
+
+def immutable(checkpoint: str) -> bool:
+    """Only a commit hash names fixed weights; `main` is a pointer."""
+    import re
+
+    return re.fullmatch(r"[0-9a-f]{40}", checkpoint) is not None
+
+
 def pin(models_dir: str, model: str, checkpoint: str) -> str:
     """A mutable revision resolved to the immutable commit it names in
     the local cache. `main` is a pointer, and a similarity space keyed

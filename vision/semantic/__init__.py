@@ -98,6 +98,20 @@ def space(provider: str, model: str, checkpoint: str, dimensions: int):
     return provider_module(provider).space(model, checkpoint, dimensions)
 
 
+def query_policy(provider: str, model: str, checkpoint: str) -> dict:
+    """The facts that turn a text into this configuration's QUERY vector
+    -- a different question from the stored-media space identity, and
+    answered by the provider."""
+    return provider_module(provider).query_policy(model, checkpoint)
+
+
+def immutable(provider: str, checkpoint: str) -> bool:
+    """Does this checkpoint name fixed weights? A mutable pointer (a hub
+    branch) cannot be queued as provenance: it may resolve to a
+    different commit by the time a worker loads it."""
+    return provider_module(provider).immutable(checkpoint)
+
+
 def pin(provider: str, models_dir: str, model: str, checkpoint: str) -> str:
     """The configured checkpoint resolved to an immutable identity, from
     disk alone. Providers whose checkpoints can be mutable pointers (a
