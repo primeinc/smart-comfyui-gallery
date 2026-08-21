@@ -224,7 +224,13 @@ def test_the_view_is_the_plans_structure_measured_without_writing_or_loading(pla
     assert view["transitions"][0]["prompt_cosine"] == pytest.approx(
         float(_unit(PROMPTS[0]) @ _unit(PROMPTS[1])), abs=1e-3
     )
-    assert view["transitions"][0]["changes"] == {"seed": {"from": 1, "to": 2}, "loras_added": [], "loras_removed": []}
+    assert view["transitions"][0]["changes"] == {
+        "seed": {"from": 1, "to": 2},
+        "loras_added": [],
+        "loras_removed": [],
+        "lora_uuids_added": [],
+        "lora_uuids_removed": [],
+    }
     assert view["transitions"][1]["changes"]["loras_added"] == ["detail"]
     assert view["transitions"][1]["changes"]["seed"] == {"from": 2, "to": 3}
     assert "model" not in view["transitions"][1]["changes"], "an unchanged fact is not a change"
@@ -461,3 +467,95 @@ def test_a_thousand_members_are_o_n_work():
     assert len(view["phases"]) == len(planning.load_plan(conn, plan_id)["phases"])
     selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
     assert len(selects) < 40, f"{len(selects)} statements for {n} members: not bounded"
+
+
+def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
+    """An old plan under a newer prompt parser: the Explorer's prompt
+    inputs are the MAIN texts the snapshot froze, so the metrics do not
+    move when `prompt_sections.VERSION` does. The running parser is
+    never consulted for a member that carries a frozen main."""
+    import sqlite3
+
+    from db import build, prompt_sections
+
+    document, sha = _synthetic(4, "second")
+    for member in document["members"]:
+        held = member["generation"]["prompts"][0]
+        held["main"] = f"frozen main {member['ordinal']}"
+        held["main_hash"] = prompts.text_hash(held["main"])
+        held["grammar"] = "swarm"
+        held["parser"] = prompt_sections.VERSION
+    sha = stories._identity(document)[1]
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(build.schema_sql())
+    plan_id = _store(conn, document, sha)
+    before = evolution.load(conn, plan_id, models_dir="unused")
+    assert [m["prompt"]["effective"]["main"] for m in before["members"]] == [f"frozen main {i}" for i in range(4)]
+
+    def never(*_a, **_k):
+        raise AssertionError("the running parser was consulted for a frozen main")
+
+    original_version = prompt_sections.VERSION
+    original_main = prompt_sections.main
+    try:
+        prompt_sections.VERSION = original_version + 1
+        prompt_sections.main = never
+        after = evolution.load(conn, plan_id, models_dir="unused")
+    finally:
+        prompt_sections.VERSION = original_version
+        prompt_sections.main = original_main
+    assert [m["prompt"] for m in after["members"]] == [m["prompt"] for m in before["members"]]
+    assert [t["changes"] for t in after["transitions"]] == [t["changes"] for t in before["transitions"]]
+    assert [m["metrics"] for m in after["members"]] == [m["metrics"] for m in before["members"]]
+
+
+def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
+    """Two different LoRA files that share a display name CHANGED; one
+    file renamed between members did NOT."""
+    import sqlite3
+
+    from db import build
+
+    document, sha = _synthetic(3, "second")
+    loras = [
+        {"role": "lora", "uuid": "a" * 32, "name": "detail", "weight": 1.0},
+        {"role": "lora", "uuid": "b" * 32, "name": "detail", "weight": 1.0},
+        {"role": "lora", "uuid": "b" * 32, "name": "detail-renamed", "weight": 1.0},
+    ]
+    for member, lora in zip(document["members"], loras, strict=True):
+        member["generation"]["artifacts"] = [lora]
+    sha = stories._identity(document)[1]
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(build.schema_sql())
+    plan_id = _store(conn, document, sha)
+    view = evolution.load(conn, plan_id, models_dir="unused")
+    first, second = (t["changes"] for t in view["transitions"])
+    assert (first["lora_uuids_added"], first["lora_uuids_removed"]) == (["b" * 32], ["a" * 32])
+    assert (first["loras_added"], first["loras_removed"]) == (["detail"], ["detail"]), "same name, different file"
+    assert (second["lora_uuids_added"], second["lora_uuids_removed"], second["loras_added"]) == ([], [], []), (
+        "a rename is not a change"
+    )
+
+
+def test_the_module_returns_identities_and_the_route_addresses_them(planned):
+    """`db/evolution.py` owns no URL: members carry slug and the session
+    its local day; the web Adapter turns those into thumbnail, page
+    and doors."""
+    import inspect
+
+    client, _root, _names, _snap, made = planned
+    assert "/thumb/" not in inspect.getsource(evolution)
+    assert "/search" not in inspect.getsource(evolution)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        raw = evolution.load(conn, made.id, models_dir="unused")
+    finally:
+        connect.close(conn)
+    assert "thumbnail" not in raw["members"][0]["media"]
+    assert "doors" not in raw
+    assert raw["identities"]["local_day"] is not None
+    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
+    assert view["members"][0]["media"]["thumbnail"] == f"/thumb/{view['members'][0]['media']['slug']}"
+    assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
+    assert view["doors"]["gallery_day"].startswith("/g?f=context.local_day:eq:")
+    assert view["doors"]["search"].startswith("/search")

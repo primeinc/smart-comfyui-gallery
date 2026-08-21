@@ -46,7 +46,8 @@ import hashlib
 import json
 import typing
 
-from . import context
+from . import context, prompt_sections
+from . import prompts as prompts_module
 
 #: The document shape. Bump when a field's MEANING changes; a consumer
 #: that reads a document checks this before trusting any key.
@@ -142,7 +143,23 @@ class GenerationEvidence:
             members,
         ):
             one = held[row[0]]
-            one["prompts"].append({"role": row[1], "uuid": row[2].hex(), "text": row[3], "text_hash": row[4]})
+            # the MAIN section as read by the parser of the moment, frozen
+            # with the text: a later grammar re-reads the library, never
+            # what a plan or a view was made from
+            grammar = prompts_module.grammar_for(one["tool"])
+            main = prompt_sections.main(row[3], grammar)
+            one["prompts"].append(
+                {
+                    "role": row[1],
+                    "uuid": row[2].hex(),
+                    "text": row[3],
+                    "text_hash": row[4],
+                    "main": main,
+                    "main_hash": prompts_module.text_hash(main),
+                    "grammar": grammar,
+                    "parser": prompt_sections.VERSION,
+                }
+            )
             if row[1] == "effective":
                 one["prompt"] = row[3]
             elif row[1] == "negative":
@@ -423,7 +440,7 @@ def _members(conn, subject: _Subject) -> list[dict]:
     rows = conn.execute(
         "SELECT ef.ordinal, f.id, e.uuid, f.content_sha256, f.kind, f.name,"
         " o.basis, o.local_at, o.instant_at, o.tz_offset_min, o.time_precision, o.certainty,"
-        " o.supports, o.conflicts, o.finished_at, o.estimated_at"
+        " o.supports, o.conflicts, o.finished_at, o.estimated_at, o.source_order"
         " FROM derived_event_file ef"
         " JOIN file f ON f.id = ef.file_id"
         " JOIN entity e ON e.id = f.id"
@@ -452,6 +469,7 @@ def _members(conn, subject: _Subject) -> list[dict]:
                 "conflicts": json.loads(row[13]) if row[13] else [],
                 "finished_at": row[14],
                 "estimated_at": row[15],
+                "source_order": row[16],
             }
             if row[6] is not None
             else None,

@@ -232,7 +232,25 @@ def plan_evolution(state: State, plan_id: int, request: Request, space: str | No
             raise ClientException(str(refused)) from refused
     finally:
         connect.close(conn)
+    _addressed(view)
     if wants_json(request):
         return Response(view, headers=VARIES)
     page = _story_env().get_template("evolution.html").render(view=view, plan_id=plan_id)
     return Response(page, media_type="text/html", headers=VARIES)
+
+
+def _addressed(view: dict) -> None:
+    """Identities into addresses -- the web adapter's job, never the
+    database module's: a member's slug becomes its thumbnail and page,
+    the session's day the gallery's day-facet door, a prompt row its
+    neighbours route."""
+    for member in view["members"]:
+        slug = member["media"].get("slug")
+        member["media"]["thumbnail"] = f"/thumb/{slug}" if slug else None
+        member["media"]["page"] = f"/i/{slug}" if slug else None
+    day = view["identities"].get("local_day")
+    view["doors"] = {
+        "gallery_day": f"/g?f=context.local_day:eq:{day}" if day else None,
+        "search": "/search?q=",
+        "neighbours": "/prompts/{id}/neighbours",
+    }

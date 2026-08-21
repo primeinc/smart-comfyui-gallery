@@ -117,8 +117,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
 _OCCUR_GENERATION = """
 INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
   tz_offset_min, basis, certainty, supports, conflicts, finished_at, estimated_at,
-  time_precision, policy_version)
-VALUES(?, 'generation', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  source_order, time_precision, policy_version)
+VALUES(?, 'generation', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -130,14 +130,19 @@ def _json(items) -> str | None:
 
 def _seconds(text) -> float | None:
     """A duration as a generator spells it -- SwarmUI writes
-    `generation_time` as "64.33 sec" (T2IEngine.cs:221) -- as seconds,
-    or None when it is not one."""
+    `generation_time` as "64.33 sec" or "2.13 min" (T2IEngine.cs:221)
+    -- as seconds, or None when it is not one."""
     import re
 
     if text is None:
         return None
-    match = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)\s*(s|sec|secs|seconds?)?\s*$", str(text), re.IGNORECASE)
-    return float(match.group(1)) if match else None
+    match = re.match(
+        r"\s*([0-9]+(?:\.[0-9]+)?)\s*(s|sec|secs|seconds?|m|min|mins|minutes?)?\s*$", str(text), re.IGNORECASE
+    )
+    if not match:
+        return None
+    unit = (match.group(2) or "s").lower()
+    return float(match.group(1)) * (60.0 if unit.startswith("m") else 1.0)
 
 
 def _interpret(conn, now: float, file_id: int | None = None) -> int:
@@ -222,6 +227,7 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
                     _json(generation.conflicts),
                     generation.finished_at,
                     generation.estimated_at,
+                    generation.source_order,
                     generation.precision,
                     POLICY_VERSION,
                 ),
@@ -330,10 +336,15 @@ class Occurrence:
     local_at: float | None
     instant_at: float | None
     time_precision: str
+    #: the generator's own order inside its claimed bucket, or None
+    source_order: int | None = None
+    #: fit for chronology -- the judge's answer (db/when.py Verdict.usable),
+    #: not the grouper's reinterpretation of its supports
+    usable: bool = True
 
 
 _OCCURRENCES = """
-SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision
+SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision, o.source_order, o.conflicts
   FROM derived_media_occurrence o
   JOIN file f ON f.id = o.file_id AND f.missing_since IS NULL
   JOIN entity e ON e.id = o.file_id
@@ -346,7 +357,20 @@ def occurrences(conn, kind: str) -> list[Occurrence]:
     """Every present file's occurrence of one claim, in stable id order
     -- current policy only, so an upgraded ladder blinds the groupers
     exactly as it blinds every other reader."""
+    import json
+
+    from . import when
+
     return [
-        Occurrence(row[0], row[1].hex(), kind, row[3], row[4], row[5])
+        Occurrence(
+            row[0],
+            row[1].hex(),
+            kind,
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            not any(one.startswith(when.GENERATOR) for one in (json.loads(row[7]) if row[7] else [])),
+        )
         for row in conn.execute(_OCCURRENCES, (kind, POLICY_VERSION))
     ]

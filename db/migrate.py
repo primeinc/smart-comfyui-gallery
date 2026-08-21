@@ -1874,6 +1874,56 @@ def _time_is_a_corroboration_stack(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM derived_context_state")
 
 
+@step(19)
+def _the_generator_orders_its_own_minute(conn: sqlite3.Connection) -> None:
+    """v19 -> v20: the generation occurrence carries `source_order`, the
+    generator's request counter inside its claimed minute -- ordering
+    evidence the grouper sequences by before file ids. Derived: dropped
+    and recreated, rebuilt by the context job. DDL is schema.sql's text
+    VERBATIM.
+    """
+    for table in ("derived_event_file", "derived_event", "derived_event_run"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.execute("DROP TABLE derived_media_occurrence")
+    conn.execute(
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded','filename')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at)")
+    conn.execute("CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at)")
+    conn.execute("DELETE FROM derived_context_state")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

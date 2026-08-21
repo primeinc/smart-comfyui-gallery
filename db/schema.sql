@@ -1749,6 +1749,9 @@ CREATE TABLE derived_media_occurrence (
     -- page may show the estimate as inferred
     finished_at    REAL,
     estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
     time_precision TEXT NOT NULL CHECK (time_precision IN
                      ('day','hour','minute','second','subsecond')),
     policy_version INTEGER NOT NULL,
@@ -1925,7 +1928,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 19;
+PRAGMA user_version   = 20;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

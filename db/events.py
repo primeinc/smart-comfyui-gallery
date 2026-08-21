@@ -123,15 +123,24 @@ def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[Group
     clock cluster among themselves on wall clocks. Unlike domains are
     never subtracted from each other, a claim too coarse for the gap
     never enters the arithmetic, and a singleton is not a session."""
-    eligible = [one for one in held if _GRANULE[one.time_precision] <= gap]
+    # a claim the generator disputes with itself is recorded, not
+    # sequenced: the judge said it is unfit for chronology
+    eligible = [one for one in held if _GRANULE[one.time_precision] <= gap and one.usable]
     made: list[GroupProposal] = []
+
+    def order(one):
+        return one.source_order if one.source_order is not None else 0
+
     instants = sorted(
-        (one for one in eligible if one.instant_at is not None), key=lambda one: (one.instant_at, one.file_id)
+        (one for one in eligible if one.instant_at is not None),
+        key=lambda one: (one.instant_at, order(one), one.file_id),
     )
     made.extend(_proposed_instant(kind, members) for members in _split(instants, lambda one: one.instant_at, gap))
+    # inside one claimed minute the generator's own counter orders the
+    # members; file ids only break what the generator left tied
     walls = sorted(
         (one for one in eligible if one.instant_at is None and one.local_at is not None),
-        key=lambda one: (one.local_at, one.file_id),
+        key=lambda one: (one.local_at, order(one), one.file_id),
     )
     made.extend(_proposed_local(kind, members) for members in _split(walls, lambda one: one.local_at, gap))
     return made

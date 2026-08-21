@@ -466,7 +466,9 @@ def test_the_planner_reads_vectors_by_frozen_text_hash_only(library):
         members = stories.load_snapshot(conn, snap.id)["members"]
         frozen = [one["generation"]["prompts"] for one in members]
         assert all(
-            {"role", "uuid", "text", "text_hash"} == set(p) and p["text_hash"] == prompts.text_hash(p["text"])
+            {"role", "uuid", "text", "text_hash", "main", "main_hash", "grammar", "parser"} == set(p)
+            and p["text_hash"] == prompts.text_hash(p["text"])
+            and p["main_hash"] == prompts.text_hash(p["main"])
             for held in frozen
             for p in held
         ), "the snapshot freezes role, stable identity, exact text and the hash of those bytes"
@@ -783,7 +785,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19]
+    assert migrate.migrate(path) == [18, 19, 20]
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -891,10 +893,34 @@ def test_a_fresh_mutable_checkpoint_is_refused_then_pinned_and_every_row_names_t
 
 
 def test_a_queued_embed_job_is_re_proven_and_never_duplicated(library, monkeypatch):
+    """Four identical asks AT ONCE -- threads, not a loop -- yield one
+    live job: the look-then-insert runs under one writer lane, so two
+    clean steady-state requests cannot both see nothing and both
+    queue. Then the policy moves between queue and run and every item
+    is refused."""
+    import threading
+
     client, _root, _names = library
-    first = client.post("/jobs/embed_prompts").json()[0]["id"]
-    for _ in range(3):
-        assert client.post("/jobs/embed_prompts").json()[0]["id"] == first, "one live computation per (space, policy)"
+    ids: list[int] = []
+
+    def ask():
+        ids.append(client.post("/jobs/embed_prompts").json()[0]["id"])
+
+    threads = [threading.Thread(target=ask) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(set(ids)) == 1, f"one live computation per (space, policy), got {ids}"
+    first = ids[0]
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        live = conn.execute(
+            "SELECT count(*) FROM job WHERE kind = 'embed_prompts' AND state IN ('queued', 'running')"
+        ).fetchone()
+        assert live == (1,)
+    finally:
+        connect.close(conn)
     monkeypatch.setattr(_fake, "INSTRUCTION", "a new instruction")  # the policy moved between queue and run
     _drain(client)
     conn = connect.connect(client.app.state.db_path)
@@ -1034,7 +1060,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19]
+    assert migrate.migrate(path) == [18, 19, 20]
     conn = connect.connect(str(path))
     try:
         held = dict(

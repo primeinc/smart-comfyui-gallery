@@ -905,7 +905,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

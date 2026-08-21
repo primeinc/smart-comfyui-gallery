@@ -1,11 +1,9 @@
 """When did this happen -- judged from EVERY claim, not the first one.
 
-The old interpretation was a ladder: the most trusted source won and
-the rest were never consulted. A ladder cannot say "these agree", so a
-generator's day-precision date outranked a minute-precision request
-time sitting in the file name and a finish time the filesystem kept,
-and whole libraries stayed at day precision -- too coarse to ever form
-a session.
+A ladder lets the most trusted source win and never consults the rest,
+so it cannot say "these agree": a generator's day-precision date
+outranked a minute-precision request time sitting in the file name and
+whole libraries stayed at day precision -- too coarse to form a session.
 
 This is a corroboration stack. Every source makes a CLAIM with its own
 precision; the judge settles the OCCURRENCE from the generator's own
@@ -13,17 +11,25 @@ claims, then lets every other source SUPPORT it, satisfy a CONSTRAINT,
 or CONFLICT -- named, persisted, never compressed into a score. The
 sources all descend from the same request, so agreement is consistency,
 not independent probability: `quality` is an ORDINAL -- corroborated >
-claimed > contested -- and `certainty` is that ordinal's fixed
-spelling, nothing finer.
+claimed > contested -- and `certainty` is that ordinal's fixed spelling.
+
+The FILESYSTEM is read in the host's zone: mtime and btime are UTC
+instants, the generator's claims are unzoned wall clocks, and the only
+bridge is the zone this machine runs in today. A library generated in
+one zone and opened in another makes that bridge wrong by whole hours,
+so every filesystem support or conflict carries the assumption
+(`host_zone_assumed`) and a filesystem conflict never decides whether
+a claim is fit for chronology -- only the generator's own claims
+disagreeing with each other does (`usable`).
 
 Two times come out, kept apart. The CLAIMED occurrence (`local_at`,
 `precision`) is what the generator itself said -- the stamp, the
-request minute, or the day -- and is what groupers sequence by. The
-ESTIMATE (`estimated_at`, `finished_at`) is what the filesystem adds:
-mtime is the finish, and `mtime - generation_time` is the request to
-the second -- an inference consistent with the claim, shown with its
-own basis and never written over the claim. A consumer wanting seconds
-reads the estimate and says so.
+request minute, or the day -- and is what groupers sequence by, with
+`source_order` (SwarmUI's request counter) breaking ties inside the
+minute. The ESTIMATE (`estimated_at`, `finished_at`) is what the
+filesystem adds: mtime is the finish, `mtime - generation_time` is the
+request to the second -- an inference consistent with the claim, shown
+with its own basis and never written over the claim.
 
 Sources, for a generated file:
 
@@ -32,10 +38,13 @@ Sources, for a generated file:
     gen_minute   SwarmUI's file name `[hour][minute]`     minute -- documented as a
                  `[request_time_inc]` counter orders      unique linear id prefix
                  requests inside the minute               (docs/User Settings.md)
-    gen_stamp    the opt-in stamped name                  second -- the day and the
-                 `[year][month][day]T[hour][minute]       second in the name; the T
-                 [second][request_time_inc]-...`          is the marker no default
-                                                          name carries
+    gen_stamp    a stamped name, either grammar:          second (.millisecond)
+                 `[year][month][day]T[hour][minute]       -- every clock field
+                 [second][request_time_inc]-...`          is Swarm's RequestTime;
+                 `[year][month][day]_[hour]h[minute]m     the `T` or the
+                 [second]s[millisecond]ms_...`            `h..m..s..ms` is the
+                                                          marker no default name
+                                                          carries
     gen_second   a full generator stamp in `date`         second (A1111-family)
     gen_time     `generation_time`, a duration            request -> finish
     mtime        filesystem modified                      the FINISH instant (the
@@ -47,16 +56,19 @@ Sources, for a generated file:
 
 Rules, all evaluated, none short-circuits:
 
- 1. The occurrence is the generator's finest claim: the stamp (second),
-    else the request minute (minute), else the day. A stamp or a full
-    `date` outside the claimed day conflicts and the day stands.
+ 1. The occurrence is the generator's finest claim: the stamped name
+    (second, standing on its own -- a name is not optional metadata),
+    else the request minute placed in the embedded day (minute), else
+    the day. An embedded day that contradicts the stamp is a generator
+    conflict and the stamp stands; a full `date` stamp is a claim of
+    its own. The request counter is ORDER inside the minute, persisted
+    as `source_order` and never turned into seconds.
  2. mtime is the finish. With a duration, `mtime - generation_time`
     inside the claimed window is `mtime_finish_consistent` and becomes
     `estimated_at`; without one, an mtime inside the window is
     `mtime_consistent`. Outside: a conflict that says how far off, and
     an mtime BEFORE the request is the loud case. The claim is never
-    replaced: "the request was at 09:47" stays exactly that, with "and
-    it finished at 09:48:32, so it started at 09:47:28" beside it.
+    replaced.
  3. btime at or after the occurrence satisfies `btime_after_generation`;
     before it -- bytes born before they were generated -- conflicts.
     btime never supplies an instant while any claim exists.
@@ -68,8 +80,8 @@ conflicts and at least one support was found; claimed otherwise.
 
 Nothing here reads a database: claims in, a verdict out, so the table
 of cases in the tests IS the policy. One file's verdict depends on that
-file alone -- sibling profiles (a folder copied in one go, every btime
-alike) are a later, folder-level derived interpretation with its own
+file alone; sibling profiles (a folder copied in one go, every btime
+alike) are a later, folder-level interpretation with its own
 invalidation, not a per-file rule.
 """
 
@@ -78,6 +90,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import re
+import typing
 
 #: Seconds of slack around a finish: queue wait, encoding, disk.
 SLACK = 90.0
@@ -85,14 +98,22 @@ SLACK = 90.0
 #: The ordinal, and its fixed spelling in the certainty column.
 CERTAINTY = {"corroborated": 0.9, "claimed": 0.6, "contested": 0.4}
 
+#: A conflict's spelling says who disagreed: the generator with itself,
+#: or the filesystem (read in the host's zone) with the generator.
+GENERATOR = "generator: "
+FILESYSTEM = "filesystem: "
+
 #: SwarmUI's default output name: `[hour][minute][request_time_inc]-...`
 #: (refs/mcmonkeyprojects/SwarmUI src/Core/Settings.cs:399).
 _SWARM_NAME = re.compile(r"^(\d{2})(\d{2})(\d{3})-")
-#: The opt-in STAMPED name this gallery recommends for Swarm's
-#: OutpathBuilder: `[year][month][day]T[hour][minute][second]
-#: [request_time_inc]-[prompthash]-[model]`. The `T` is the marker: no
-#: default Swarm name has one, so the two grammars never collide.
-_SWARM_STAMP = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})?-")
+#: Stamped names. Every clock field is Swarm's RequestTime, so the name
+#: is the generator's own second. The `T` and the `h..m..s..ms` are the
+#: markers: no default Swarm name has either, so the grammars never
+#: collide.
+_SWARM_STAMPS = (
+    re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?P<order>\d{3})?-"),
+    re.compile(r"^(\d{4})(\d{2})(\d{2})_(\d{2})h(\d{2})m(\d{2})s(?P<ms>\d{3})ms_"),
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -109,6 +130,9 @@ class Verdict:
     #: the request to the second, inferred as finish - generation time,
     #: a wall-clock reading beside the claim -- never in its place
     estimated_at: float | None = None
+    #: the generator's own order inside the claimed bucket (SwarmUI's
+    #: request counter): ordering evidence, never seconds
+    source_order: int | None = None
 
     @property
     def quality(self) -> str:
@@ -119,6 +143,13 @@ class Verdict:
     @property
     def certainty(self) -> float:
         return CERTAINTY[self.quality]
+
+    @property
+    def usable(self) -> bool:
+        """Fit for chronology: the generator does not disagree with
+        itself. A filesystem conflict is recorded but, read through the
+        host's zone, cannot demote the generator's own claim."""
+        return not any(one.startswith(GENERATOR) for one in self.conflicts)
 
 
 def _wall(text: str) -> tuple[float, str] | None:
@@ -146,17 +177,25 @@ def swarm_minute(name: str) -> tuple[int, int, int] | None:
     return hour, minute, counter
 
 
-def swarm_stamp(name: str) -> tuple[float, int] | None:
-    """(wall-clock epoch, request counter) from a STAMPED Swarm name, or
-    None when the name is not one."""
-    match = _SWARM_STAMP.match(name)
-    if not match:
-        return None
-    try:
-        moment = datetime.datetime(*(int(match.group(i)) for i in range(1, 7)), tzinfo=datetime.UTC)
-    except ValueError:
-        return None
-    return moment.timestamp(), int(match.group(7) or 0)
+def swarm_stamp(name: str) -> tuple[float, int | None] | None:
+    """(wall-clock epoch, request counter) from a STAMPED Swarm name --
+    either grammar -- or None when the name is not one. The counter is
+    None for a grammar that does not carry one."""
+    for pattern in _SWARM_STAMPS:
+        match = pattern.match(name)
+        if not match:
+            continue
+        try:
+            moment = datetime.datetime(*(int(match.group(i)) for i in range(1, 7)), tzinfo=datetime.UTC)
+        except ValueError:
+            return None
+        at = moment.timestamp()
+        fields = match.groupdict()
+        if fields.get("ms") is not None:
+            at += int(fields["ms"]) / 1000.0
+        order = fields.get("order")
+        return at, (int(order) if order is not None else None)
+    return None
 
 
 def _wall_of(instant: float) -> float:
@@ -176,35 +215,42 @@ def judge_generation(
     generation_time: float | None,
 ) -> Verdict | None:
     """The generation act's time, from every claim the file carries."""
+    swarm = (tool or "").lower().startswith("swarm")
+    stamp = swarm_stamp(name) if swarm else None
     claimed = _wall(date_text) if date_text else None
-    if claimed is None:
+    if claimed is None and stamp is None:
         return None
-    day_start, precision = claimed
     conflicts: list[str] = []
     supports: list[str] = []
-    if precision == "second":
-        at, basis, window = day_start, "embedded", (day_start, day_start + 1.0)
-    else:
-        at, basis, window = day_start, "embedded", (day_start, day_start + 86400.0)
-        precision = "day"
-        swarm = (tool or "").lower().startswith("swarm")
-        stamp = swarm_stamp(name) if swarm else None
-        minute = swarm_minute(name) if swarm and stamp is None else None
-        if stamp is not None:
-            stamped, _counter = stamp
-            if day_start <= stamped < day_start + 86400.0:
-                at, precision, basis = stamped, "second", "filename"
-                supports.append("embedded_day")
-                window = (stamped, stamped + 1.0)
+    order: int | None = None
+    if stamp is not None:
+        # rule 1: the stamped name stands on its own; the embedded day
+        # corroborates it or disagrees with it
+        at, order = stamp
+        precision, basis, window = "second", "filename", (at, at + 1.0)
+        if claimed is not None:
+            day_start, claimed_precision = claimed
+            inside = day_start <= at < day_start + 86400.0 if claimed_precision == "day" else abs(at - day_start) < 1.0
+            if inside:
+                supports.append("embedded_day" if claimed_precision == "day" else "embedded_stamp")
             else:
                 conflicts.append(
-                    f"the stamped name {_spell(stamped)} is not inside the claimed day {_spell(day_start)}"
+                    f"{GENERATOR}the stamped name {_spell(at)} is not inside the embedded {claimed_precision}"
+                    f" {_spell(day_start)}"
                 )
-        elif minute is not None:
-            hour, mins, _counter = minute
-            at, precision, basis = day_start + hour * 3600.0 + mins * 60.0, "minute", "filename"
-            supports.append("embedded_day")
-            window = (at, at + 60.0)
+    else:
+        day_start, precision = typing.cast("tuple[float, str]", claimed)
+        if precision == "second":
+            at, basis, window = day_start, "embedded", (day_start, day_start + 1.0)
+        else:
+            at, basis, window = day_start, "embedded", (day_start, day_start + 86400.0)
+            precision = "day"
+            minute = swarm_minute(name) if swarm else None
+            if minute is not None:
+                hour, mins, order = minute
+                at, precision, basis = day_start + hour * 3600.0 + mins * 60.0, "minute", "filename"
+                supports.append("embedded_day")
+                window = (at, at + 60.0)
     finished_at = estimated_at = None
     # rule 2: mtime is the finish, evidence beside the claim
     if mtime is not None:
@@ -215,24 +261,34 @@ def judge_generation(
                 supports.append("mtime_finish_consistent")
                 finished_at, estimated_at = mtime, started
             elif finish < window[0]:
-                conflicts.append(f"mtime {_spell(finish)} is before the claimed {_spell(window[0])}")
+                conflicts.append(f"{FILESYSTEM}mtime {_spell(finish)} is before the claimed {_spell(window[0])}")
             else:
-                conflicts.append(f"mtime {_spell(finish)} is {_hours(started - window[1])} after the claimed window")
+                conflicts.append(
+                    f"{FILESYSTEM}mtime {_spell(finish)} is {_hours(started - window[1])} after the claimed window"
+                )
         elif window[0] <= finish < window[1] + SLACK:
             supports.append("mtime_consistent")
             finished_at = mtime
         elif finish < window[0]:
-            conflicts.append(f"mtime {_spell(finish)} is before the claimed {_spell(window[0])}")
+            conflicts.append(f"{FILESYSTEM}mtime {_spell(finish)} is before the claimed {_spell(window[0])}")
         else:
-            conflicts.append(f"mtime {_spell(finish)} is {_hours(finish - window[1])} after the claimed window")
+            conflicts.append(
+                f"{FILESYSTEM}mtime {_spell(finish)} is {_hours(finish - window[1])} after the claimed window"
+            )
     # rule 3: btime is a constraint
     if btime is not None:
         born = _wall_of(btime)
         if born >= at - 1.0:
             supports.append("btime_after_generation")
         else:
-            conflicts.append(f"btime {_spell(born)} is before the claimed {_spell(at)}: bytes born before generated")
-    return Verdict(at, None, None, precision, basis, tuple(supports), tuple(conflicts), finished_at, estimated_at)
+            conflicts.append(
+                f"{FILESYSTEM}btime {_spell(born)} is before the claimed {_spell(at)}: bytes born before generated"
+            )
+    if mtime is not None or btime is not None:
+        supports.append("host_zone_assumed")
+    return Verdict(
+        at, None, None, precision, basis, tuple(supports), tuple(conflicts), finished_at, estimated_at, order
+    )
 
 
 def judge_filesystem(mtime: float | None, btime: float | None) -> Verdict | None:

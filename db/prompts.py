@@ -282,6 +282,11 @@ def submit_embed(conn, now: float, *, models_dir: str) -> list[int]:
     for (prompt_id,) in conn.execute("SELECT DISTINCT prompt_id FROM generation_prompt ORDER BY prompt_id").fetchall():
         for grammar in grammars_of(conn, int(prompt_id)):
             sections(conn, int(prompt_id), grammar, now)
+    # ONE writer lane for look-then-enqueue: two requests that both saw
+    # "no live job" would otherwise each queue the same model work. The
+    # lane is claimed before the check; the caller commits.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     made = []
     for provider, model, configured in retrieval.choices(conn):
         checkpoint = semantic.pin(provider, models_dir, model, configured)

@@ -76,6 +76,22 @@ def prompt_sections_grammar(tool: str | None) -> str:
     return "swarm" if (tool or "").lower().startswith("swarm") else "plain"
 
 
+def frozen_main(member: dict, role: str) -> str:
+    """The MAIN section of a member's prompt in one role, as the
+    snapshot FROZE it (`main`, parsed when the evidence was frozen).
+    A snapshot frozen before mains were frozen is read with the running
+    parser -- the only reading it can have -- and says so by absence."""
+    generation = member.get("generation") or {}
+    by_role = {p["role"]: p for p in generation.get("prompts") or []}
+    held = by_role.get(role)
+    if held is None:
+        text = generation.get("prompt") or "" if role == "effective" else ""
+        return prompt_sections.main(text, prompt_sections_grammar(generation.get("tool"))) if text else ""
+    if "main" in held:
+        return held["main"]
+    return prompt_sections.main(held["text"], prompt_sections_grammar(generation.get("tool")))
+
+
 #: Precisions fine enough that event order is evidence of sequence.
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
 
@@ -340,9 +356,10 @@ class GenerationHistoryPlanner:
     """
 
     kind = "generation_history"
-    #: Bumped with db/prompt_sections.VERSION: the main-section texts the
-    #: planner compares are that parser's output.
-    version = 7
+    #: The main-section texts the planner compares are the SNAPSHOT's
+    #: frozen reading (stories.py freezes `main` per role); a parser
+    #: change reaches a plan only through a new snapshot.
+    version = 8
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -372,13 +389,7 @@ class GenerationHistoryPlanner:
         # The MAIN section of each prompt, read with the grammar of the
         # tool that wrote it (db/prompt_sections.py): a <segment:face>
         # tail or a <refiner> stage is not part of what the images are of.
-        prompts = [
-            prompt_sections.main(
-                (one.get("generation") or {}).get("prompt") or "",
-                prompt_sections_grammar((one.get("generation") or {}).get("tool")),
-            )
-            for one in members
-        ]
+        prompts = [frozen_main(one, "effective") for one in members]
         known = [i for i, text in enumerate(prompts) if text.strip()]
         gaps = [i for i in range(len(members)) if i not in known]
         if gaps:
@@ -409,8 +420,7 @@ class GenerationHistoryPlanner:
             written, ran = by_role.get("original"), by_role.get("effective")
             if not written or not ran or written["text_hash"] == ran["text_hash"]:
                 continue
-            grammar = prompt_sections_grammar((one.get("generation") or {}).get("tool"))
-            wrote, did = prompt_sections.main(written["text"], grammar), prompt_sections.main(ran["text"], grammar)
+            wrote, did = frozen_main(one, "original"), frozen_main(one, "effective")
             if wrote and did and wrote != did:
                 pairs.append((i, wrote, did))
         rewritten: dict[int, float] = {}

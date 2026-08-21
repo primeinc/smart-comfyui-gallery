@@ -61,8 +61,10 @@ def test_the_claim_is_the_generators_minute_and_the_finish_is_evidence_beside_it
     assert (told.precision, told.basis) == ("minute", "filename")
     assert told.local_at == JULY_18 + 9 * HOUR + 47 * MIN, "the claim is the request minute, untouched"
     assert told.instant_at is None, "a wall-clock claim with no zone has no instant"
-    assert told.supports == ("embedded_day", "mtime_finish_consistent", "btime_after_generation")
+    assert told.supports == ("embedded_day", "mtime_finish_consistent", "btime_after_generation", "host_zone_assumed")
     assert told.conflicts == ()
+    assert told.source_order == 1, "the request counter is order inside the minute"
+    assert told.usable is True
     assert (told.quality, told.certainty) == ("corroborated", 0.9)
     assert told.finished_at == _instant(JULY_18 + 9 * HOUR + 48 * MIN + 32)
     assert told.estimated_at == pytest.approx(JULY_18 + 9 * HOUR + 47 * MIN + 27.67, abs=0.01), (
@@ -75,11 +77,12 @@ def test_an_mtime_outside_the_window_is_a_named_conflict_not_a_lost_vote():
     dissenter with how far off it is, no estimate, quality contested."""
     told = _judge(mtime=_instant(JULY_18 + 33 * DAY + 5 * HOUR))
     assert (told.precision, told.basis, told.local_at) == ("minute", "filename", JULY_18 + 9 * HOUR + 47 * MIN)
-    assert told.supports == ("embedded_day", "btime_after_generation")
+    assert told.supports == ("embedded_day", "btime_after_generation", "host_zone_assumed")
     assert len(told.conflicts) == 1
-    assert told.conflicts[0].startswith("mtime 2026-08-20 05:00:00 is")
+    assert told.conflicts[0].startswith("filesystem: mtime 2026-08-20 05:00:00 is")
     assert "days after" in told.conflicts[0]
     assert (told.quality, told.certainty) == ("contested", 0.4)
+    assert told.usable is True, "a filesystem dissent, read through the host's zone, cannot demote the claim"
     assert told.estimated_at is None
     assert told.finished_at is None
 
@@ -122,7 +125,9 @@ def test_btime_is_a_constraint_and_never_an_instant():
     assert edited.quality == "contested"
     no_mtime = _judge(mtime=None)
     assert (no_mtime.precision, no_mtime.basis, no_mtime.instant_at) == ("minute", "filename", None)
-    assert no_mtime.supports == ("embedded_day", "btime_after_generation")
+    assert no_mtime.supports == ("embedded_day", "btime_after_generation", "host_zone_assumed")
+    alone = _judge(mtime=None, btime=None)
+    assert alone.supports == ("embedded_day",), "no filesystem time, no zone assumed"
     assert when.judge_filesystem(None, _instant(NOW)).basis == "btime"
     fallback = when.judge_filesystem(_instant(NOW), _instant(NOW + 3 * HOUR))
     assert (fallback.basis, fallback.precision, fallback.supports, fallback.quality) == (
@@ -146,19 +151,45 @@ def test_a_full_generator_stamp_is_its_own_finest_claim():
 
 
 def test_a_stamped_name_is_the_generators_own_second():
-    """The opt-in `[year][month][day]T[hour][minute][second]` name: the
-    T is the marker, the second is the generator's; a stamp outside the
-    claimed day is a named conflict and the day stands."""
+    """A stamped name -- `[year][month][day]T[hour][minute][second]` or
+    `[year][month][day]_[hour]h[minute]m[second]s[millisecond]ms` --
+    is the generator's own second; the T or the h..m..s..ms is the
+    marker. It stands on its own: with no embedded date the claim
+    survives; an embedded day that agrees corroborates; one that
+    contradicts is a GENERATOR conflict, the stamp still stands, and
+    the claim is unfit for chronology."""
     stamped = _judge(name="20260718T094712001-c5afa607-qwnImageEdit.png")
     assert (stamped.precision, stamped.basis) == ("second", "filename")
     assert stamped.local_at == JULY_18 + 9 * HOUR + 47 * MIN + 12
     assert stamped.quality == "corroborated"
+    assert stamped.source_order == 1
+    assert "embedded_day" in stamped.supports
+    bare = _judge(name="20260718T094712001-c5afa607-m.png", date_text=None)
+    assert (bare.precision, bare.basis, bare.local_at) == ("second", "filename", stamped.local_at), (
+        "a name is not optional metadata: the stamp stands without the embedded date"
+    )
+    assert "embedded_day" not in bare.supports
     wrong_day = _judge(name="20260719T094712001-c5afa607-m.png")
-    assert (wrong_day.precision, wrong_day.basis, wrong_day.quality) == ("day", "embedded", "contested")
-    assert "is not inside the claimed day" in wrong_day.conflicts[0]
-    assert when.swarm_stamp("20260718T094712-x.png") == (JULY_18 + 9 * HOUR + 47 * MIN + 12, 0)
+    assert (wrong_day.precision, wrong_day.basis, wrong_day.quality) == ("second", "filename", "contested")
+    assert wrong_day.local_at == JULY_18 + DAY + 9 * HOUR + 47 * MIN + 12, "the stamp stands"
+    assert wrong_day.conflicts[0].startswith("generator: ")
+    assert "is not inside the embedded day" in wrong_day.conflicts[0]
+    assert wrong_day.usable is False, "the generator disagrees with itself: recorded, never sequenced"
+    agreed = _judge(name="20260718T094712001-c5afa607-m.png", date_text="2026-07-18 09:47:12")
+    assert "embedded_stamp" in agreed.supports
+    swarm_mixed = _judge(
+        name="20260718_09h47m12s313ms_flux2Klein9Merged_v10.png",
+        mtime=_instant(JULY_18 + 9 * HOUR + 48 * MIN + 17),
+    )
+    assert (swarm_mixed.precision, swarm_mixed.basis) == ("second", "filename")
+    assert swarm_mixed.local_at == pytest.approx(JULY_18 + 9 * HOUR + 47 * MIN + 12.313)
+    assert swarm_mixed.source_order is None, "that grammar carries no counter"
+    assert swarm_mixed.quality == "corroborated"
+    assert when.swarm_stamp("20260718T094712-x.png") == (JULY_18 + 9 * HOUR + 47 * MIN + 12, None)
     assert when.swarm_stamp("0947001-x.png") is None
     assert when.swarm_minute("20260718T094712001-x.png") is None, "the grammars never collide"
+    assert when.swarm_minute("20260718_09h47m12s313ms_m.png") is None
+    assert _judge(name="0947001-x.png", date_text=None) is None, "a default name without a day is no claim"
 
 
 def test_a_verdict_depends_on_its_file_alone():
@@ -174,14 +205,24 @@ def test_a_verdict_depends_on_its_file_alone():
 # --- the live library: a real SwarmUI run forms a session --------------------------
 
 
-def _swarm(path, hhmm: str, counter: int, prompt: str, finish_wall: float, generation_time: float):
+def _swarm(
+    path,
+    hhmm: str,
+    counter: int,
+    prompt: str,
+    finish_wall: float,
+    generation_time: float,
+    *,
+    name=None,
+    day="2026-07-18",
+):
     payload = {
         "sui_image_params": {"prompt": prompt, "model": "qwen", "seed": counter, "steps": 20, "cfgscale": 7},
-        "sui_extra_data": {"date": "2026-07-18", "generation_time": f"{generation_time:.2f} sec"},
+        "sui_extra_data": {"date": day, "generation_time": f"{generation_time:.2f} sec"},
     }
     info = PngInfo()
     info.add_text("parameters", json.dumps(payload))
-    file = path / f"{hhmm}{counter:03d}-{abs(hash(prompt)) % 10**8:08x}-qwen.png"
+    file = path / (name or f"{hhmm}{counter:03d}-{abs(hash(prompt)) % 10**8:08x}-qwen.png")
     Image.new("RGB", (12, 12), (counter * 40 % 255, 90, 140)).save(file, pnginfo=info)
     os.utime(file, (_instant(finish_wall), _instant(finish_wall)))
     return file
@@ -227,7 +268,7 @@ def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_t
                 "SELECT basis, time_precision, supports, conflicts, certainty, estimated_at - local_at"
                 " FROM derived_media_occurrence WHERE kind = 'generation' ORDER BY local_at"
             ).fetchall()
-            agreed = '["embedded_day", "mtime_finish_consistent", "btime_after_generation"]'
+            agreed = '["embedded_day", "mtime_finish_consistent", "btime_after_generation", "host_zone_assumed"]'
             assert [r[:5] for r in rows] == [("filename", "minute", agreed, None, 0.9)] * 5
             assert all(abs(r[5] - 0.7) < 0.01 for r in rows), "each request estimated 0.7 s into its minute"
             sessions = conn.execute(
@@ -242,11 +283,113 @@ def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_t
             document = stories.load_snapshot(conn, snap.id)
             member = document["members"][0]["occurrence"]
             assert member["precision"] == "minute"
-            assert member["supports"] == ["embedded_day", "mtime_finish_consistent", "btime_after_generation"]
+            assert member["supports"] == [
+                "embedded_day",
+                "mtime_finish_consistent",
+                "btime_after_generation",
+                "host_zone_assumed",
+            ]
             assert member["conflicts"] == []
+            assert member["source_order"] == 1
             assert member["estimated_at"] is not None
             assert member["finished_at"] is not None
             plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, snap.sha256)
             assert plan["subject"]["sequenced"] is True, "minute precision sequences"
+        finally:
+            connect.close(conn)
+
+
+def _library(tmp_path, client, root) -> None:
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        for name, file_id in conn.execute("SELECT name, id FROM file").fetchall():
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+
+
+def test_the_generators_own_order_inside_a_minute_survives_shuffled_file_ids(tmp_path):
+    """Three requests inside 09:47, counters 001/002/003, deliberately
+    scanned so that file ids run the other way: the session's members
+    stay in the generator's order, and the counter never changes the
+    claimed minute -- it is order, not seconds."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    start = JULY_18 + 9 * HOUR + 47 * MIN
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        # the files arrive one scan at a time, last request first, so
+        # that file ids run against the generator's counter
+        for counter in (3, 2, 1):
+            _swarm(root, "0947", counter, f"variant {counter}", start + 20 * counter, 18.0)
+            client.post("/roots/1/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            rows = conn.execute("SELECT id, name FROM file ORDER BY id").fetchall()
+            assert [r[1][:7] for r in rows] == ["0947003", "0947002", "0947001"], "the control: ids run the other way"
+            for file_id, name in rows:
+                ingest.one(conn, file_id, root / name, NOW)
+            conn.commit()
+            ids = {name[:7]: file_id for file_id, name in rows}
+        finally:
+            connect.close(conn)
+        client.post("/jobs/context")
+        client.post("/jobs/events")
+        _drain(client)
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            occurrences = conn.execute(
+                "SELECT f.name, o.local_at, o.source_order FROM derived_media_occurrence o"
+                " JOIN file f ON f.id = o.file_id WHERE o.kind = 'generation' ORDER BY o.source_order"
+            ).fetchall()
+            assert [(r[0][:7], r[1], r[2]) for r in occurrences] == [
+                ("0947001", start, 1),
+                ("0947002", start, 2),
+                ("0947003", start, 3),
+            ], "one claimed minute, three orders"
+            members = conn.execute(
+                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+                " JOIN derived_event e ON e.id = ef.event_id WHERE e.kind = 'generation_session' ORDER BY ef.ordinal"
+            ).fetchall()
+            assert [m[0][:7] for m in members] == ["0947001", "0947002", "0947003"]
+            assert ids["0947001"] > ids["0947003"], "the control: file ids ran the other way"
+        finally:
+            connect.close(conn)
+
+
+def test_a_claim_the_generator_disputes_with_itself_is_recorded_and_never_sequenced(tmp_path):
+    """A stamped name whose embedded day contradicts it: the conflict
+    is frozen on the occurrence, the stamp stands as the claim, and
+    the session grouper leaves the file out rather than lending a
+    contested second full chronological authority."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    start = JULY_18 + 9 * HOUR + 47 * MIN
+    for i in range(3):
+        _swarm(root, "0947", i + 1, f"clean {i}", start + 20 * (i + 1), 18.0)
+    _swarm(root, "", 9, "disputed", start + 90, 18.0, name="20260718T094730009-aaaaaaaa-qwen.png", day="2026-07-19")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        _library(tmp_path, client, root)
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            disputed = conn.execute(
+                "SELECT o.time_precision, o.local_at, o.conflicts FROM derived_media_occurrence o"
+                " JOIN file f ON f.id = o.file_id WHERE f.name LIKE '20260718T%' AND o.kind = 'generation'"
+            ).fetchone()
+            assert disputed[0] == "second"
+            assert disputed[1] == start + 30, "the stamp stands"
+            assert json.loads(disputed[2])[0].startswith("generator: ")
+            members = conn.execute(
+                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+                " JOIN derived_event e ON e.id = ef.event_id WHERE e.kind = 'generation_session'"
+            ).fetchall()
+            assert len(members) == 3
+            assert not any(m[0].startswith("20260718T") for m in members), "recorded, not sequenced"
         finally:
             connect.close(conn)

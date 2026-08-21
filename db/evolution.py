@@ -31,7 +31,7 @@ from __future__ import annotations
 import datetime
 import itertools
 
-from . import planning, prompt_sections, prompts, stories
+from . import planning, prompts, stories
 
 FORMAT_VERSION = 1
 
@@ -145,26 +145,35 @@ def _generation_facts(generation: dict | None) -> dict:
         "model": next((a["name"] for a in artifacts if a["role"] == "checkpoint"), None),
         "loras": sorted(a["name"] for a in artifacts if a["role"] == "lora"),
         "lora_uuids": sorted(a["uuid"] for a in artifacts if a["role"] == "lora"),
+        "lora_names": {a["uuid"]: a["name"] for a in artifacts if a["role"] == "lora"},
     }
 
 
 def _changes(before: dict, after: dict) -> dict:
+    """Exact deltas. LoRAs differ by frozen IDENTITY (uuid), spelled by
+    their frozen names: two different files that share a name changed,
+    one file renamed did not."""
     changed = {key: {"from": before[key], "to": after[key]} for key in (*_PARAMS, "model") if before[key] != after[key]}
+    named = {**before["lora_names"], **after["lora_names"]}
+    added = sorted(set(after["lora_uuids"]) - set(before["lora_uuids"]))
+    removed = sorted(set(before["lora_uuids"]) - set(after["lora_uuids"]))
     return {
         **changed,
-        "loras_added": sorted(set(after["loras"]) - set(before["loras"])),
-        "loras_removed": sorted(set(before["loras"]) - set(after["loras"])),
+        "loras_added": [named[uuid] for uuid in added],
+        "loras_removed": [named[uuid] for uuid in removed],
+        "lora_uuids_added": added,
+        "lora_uuids_removed": removed,
     }
 
 
-def _day_door(snapshot: dict) -> str | None:
-    """The gallery's existing door for the session's LOCAL day -- the
-    `context.local_day` facet -- when the event has a wall clock."""
+def local_day(snapshot: dict) -> str | None:
+    """The session's LOCAL calendar day as the gallery's day facet spells
+    it, when the event has a wall clock -- an identity; the web adapter
+    turns it into an address."""
     when = snapshot["subject"]["time"].get("local")
     if not when:
         return None
-    day = datetime.datetime.fromtimestamp(when[0], datetime.UTC).strftime("%Y-%m-%d")
-    return f"/g?f=context.local_day:eq:{day}"
+    return datetime.datetime.fromtimestamp(when[0], datetime.UTC).strftime("%Y-%m-%d")
 
 
 def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "") -> dict:
@@ -183,10 +192,11 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
     sid, policy = semantic["space_id"], semantic["prompt_policy_hash"]
 
     # prompts as the planner reads them: the MAIN section under the tool's grammar
+    # prompts as the snapshot FROZE them: the main section read when the
+    # evidence was frozen, never re-read by today's parser
     texts: dict[str, dict[str, dict | None]] = {}
     for ref, one in zip(refs, members, strict=True):
         generation = one.get("generation") or {}
-        grammar = prompts.grammar_for(generation.get("tool"))
         by_role = {p["role"]: p for p in generation.get("prompts") or []}
         held: dict[str, dict | None] = {}
         for role in ("effective", "original"):
@@ -194,12 +204,12 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
             if frozen is None:
                 held[role] = None
                 continue
-            main = prompt_sections.main(frozen["text"], grammar)
+            main = planning.frozen_main(one, role)
             held[role] = {
                 "text": frozen["text"],
                 "hash": frozen["text_hash"],
                 "main": main,
-                "main_hash": prompts.text_hash(main),
+                "main_hash": frozen.get("main_hash") or prompts.text_hash(main),
             }
         texts[ref] = held
     hashes = {one["main_hash"] for held in texts.values() for one in held.values() if one}
@@ -254,8 +264,6 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
                     "kind": one["media_kind"],
                     "content_sha256": one["content_sha256"],
                     "slug": slug,
-                    "thumbnail": f"/thumb/{slug}" if slug else None,
-                    "page": f"/i/{slug}" if slug else None,
                 },
                 "occurrence": one.get("occurrence"),
                 "prompt": {
@@ -272,7 +280,7 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
                     )
                     for role in ("effective", "original")
                 },
-                "generation": {key: value for key, value in facts[ref].items() if key != "lora_uuids"},
+                "generation": {key: value for key, value in facts[ref].items() if key != "lora_names"},
                 "metrics": {
                     **metric("original_effective_cosine", original, why_o, effective, why_e),
                     **metric("text_image_cosine", effective, why_e, image, why_i),
@@ -346,5 +354,5 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
         "members": out_members,
         "transitions": transitions,
         "lineage": lineage,
-        "doors": {"gallery_day": _day_door(snapshot), "search": "/search?q=", "neighbours": "/prompts/{id}/neighbours"},
+        "identities": {"local_day": local_day(snapshot)},
     }
