@@ -5,6 +5,27 @@
 (() => {
   "use strict";
 
+  // The form must ask a question the server can answer: a phrase orders
+  // by similarity (the seam refuses the contradiction), and empty fields
+  // have no place in a canonical URL.
+  const ask = document.querySelector("[data-ask]");
+  if (ask) {
+    ask.addEventListener("submit", () => {
+      const phrase = ask.querySelector('[name="q"]');
+      const sort = ask.querySelector('[name="sort"]');
+      if (phrase.value.trim()) sort.value = "similarity";
+      else if (sort.value === "similarity") sort.value = "newest";
+      for (const field of ask.querySelectorAll("input, select")) {
+        if (!field.value.trim()) field.disabled = true; // a disabled field is not submitted
+      }
+    });
+    // The back/forward cache restores the DOM as submitted -- fields
+    // disabled for the send must come back usable.
+    window.addEventListener("pageshow", () => {
+      for (const field of ask.querySelectorAll("input, select")) field.disabled = false;
+    });
+  }
+
   const grid = () => document.querySelector("[data-grid]");
   const rail = document.querySelector("[data-rail]");
   if (!rail) return;

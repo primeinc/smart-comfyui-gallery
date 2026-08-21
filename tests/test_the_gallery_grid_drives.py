@@ -147,3 +147,30 @@ def test_the_promised_walk_holds_on_screen(driven):
         assert page.locator(".cell").count() == 30
     finally:
         page.close()
+
+
+def test_the_search_form_asks_a_valid_question(driven):
+    """Typing a phrase while the sort select still says "newest" must not
+    submit the contradiction the seam refuses -- the form re-shapes
+    itself into the question the phrase implies (regression: /g?q=banana
+    &kind=&sort=newest answered 400 straight from the form)."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g")
+        page.wait_for_selector("[data-ask]")
+        page.fill('[data-ask] [name="q"]', "banana")
+        page.click("[data-ask] button")
+        page.wait_for_selector("[data-grid]")
+        assert "q=banana" in page.url
+        assert "sort=newest" not in page.url
+        assert "kind=" not in page.url, "empty fields stay out of the URL"
+        # No embeddings exist in this library: the honest answer is a
+        # degraded/empty result page, never an error body.
+        assert page.locator("[data-degraded], .empty").count() >= 1
+        # And the form is still usable after coming back.
+        page.go_back()
+        page.wait_for_selector("[data-ask]")
+        assert page.locator('[data-ask] [name="q"]').is_enabled()
+    finally:
+        page.close()
