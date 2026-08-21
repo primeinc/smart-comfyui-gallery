@@ -8,15 +8,23 @@ and writes all or nothing -- no partial batches, no per-file HTTP loop,
 no 207-shaped ambiguity about which three of two thousand files are
 now lying.
 
-Ordering is load-bearing: the WRITE TRANSACTION opens BEFORE the proof
-(BEGIN IMMEDIATE claims sqlite's one writer lane), so no other writer
-can slip between "this selection belongs to this answer" and the
-mutation -- validation and write see one library generation. The
-routes themselves stay boring: parse the question, claim the lane,
-prove the subset (db/resultset.py), call the one authored
-implementation (db/authored.py *_many), commit once, and answer with
-the after-state so the client can settle by answer identity exactly as
-single writes do.
+The transaction is NARROW on purpose: proving a selection may
+materialize a projection -- a whole membership walk, a smart-rule
+evaluation, a semantic encode-FAISS-RRF round -- and none of that may
+hold sqlite's one writer lane. So the proof runs FIRST, outside any
+write transaction; the writer then claims the lane, revalidates with
+one cheap currency comparison, and mutates only when the world the
+proof described is still the world. A commit landing in the tiny
+proof-to-lane handoff triggers ONE re-proof outside the lane (an
+unrelated commit leaves the answer identical and the retry lands); a
+second race, or a really changed answer, is a 409 with zero writes.
+The invariant is not "nobody writes while we prove" -- it is "nobody
+writes between a VALIDATED proof and its mutation."
+
+The routes themselves stay boring: parse the question, prove, claim,
+revalidate, call the one authored implementation (db/authored.py
+*_many), commit once, and answer with the after-state so the client
+settles by answer identity exactly as single writes do.
 """
 
 from __future__ import annotations
@@ -55,16 +63,20 @@ class BulkRating:
     value: int | None = None
 
 
+def _still_racing() -> None:
+    raise resultset.AnswerChanged("the library kept moving during the write; nothing was changed")
+
+
 def _applied(state: State, query, data, write) -> Response:
-    """Claim the writer lane, prove the selection, write, commit once --
-    then describe the SAME question again so the client settles on the
-    (currency, answer) pair."""
+    """Prove outside the lane, mutate inside a narrow one, commit once
+    -- then describe the SAME question again so the client settles on
+    the (currency, answer) pair."""
     conn = connect.connect(state.db_path)
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            ids = resultset.subset(
+
+        def proven():
+            return resultset.prove_subset(
                 conn,
                 weights,
                 query,
@@ -73,15 +85,37 @@ def _applied(state: State, query, data, write) -> Response:
                 expect_answer=data.answer,
                 entity_uuids=data.items,
             )
-            write(conn, ids)
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
+
+        proof = proven()
+        applied = False
+        for last in (False, True):
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if resultset.currency(conn) == proof.currency:
+                    write(conn, proof.ids)
+                    conn.commit()
+                    applied = True
+                else:
+                    conn.rollback()
+            except BaseException:
+                conn.rollback()
+                raise
+            if applied:
+                break
+            if last:
+                _still_racing()
+            # A commit landed in the proof-to-lane handoff. Re-prove
+            # OUTSIDE the lane, once: an unrelated commit leaves this
+            # answer identical and the retry lands; a changed answer
+            # raises here, with zero writes behind it.
+            proof = proven()
         after = resultset.describe(conn, weights, query, time.time(), actor_id=state.actor_id)
         return Response(
             {
-                "changed": len(ids),
+                # `targets`, not `changed`: desired state means an
+                # idempotent retry touches nothing, and a count that
+                # claimed otherwise would be lying politely.
+                "targets": len(proof.ids),
                 "after": {"answer": after["answer"], "currency": after["currency"], "total": after["total"]},
             },
             headers=VARIES,

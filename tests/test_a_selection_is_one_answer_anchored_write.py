@@ -74,7 +74,8 @@ def test_one_desired_fact_lands_on_the_whole_selection_atomically(chosen):
     )
     assert told.status_code < 300
     body = told.json()
-    assert body["changed"] == 2
+    assert body["targets"] == 2
+    assert "changed" not in body, "targets, not a transition count nothing computed"
     assert _favorites(chosen) == {"pic-1", "pic-3"}
     # The question does not depend on favorite: the answer is unchanged
     # and the currency moved -- the client keeps its selection.
@@ -243,30 +244,161 @@ def test_membership_writes_settle_by_answer_identity(chosen):
     assert dropped.json()["after"]["answer"] != starred_answer, "4 -> 3 leaves the walked answer"
 
 
-def test_the_writer_lane_is_claimed_before_the_proof(chosen, monkeypatch):
-    """No writer can slip between validation and mutation: by the time
-    subset() proves the selection, the route already holds BEGIN
-    IMMEDIATE -- a second connection's write attempt inside that window
-    is locked out."""
-    real = resultset.subset
+def _second_writer_can_begin(db_path) -> bool:
+    other = sqlite3.connect(db_path)
+    other.execute("PRAGMA busy_timeout=100")
+    try:
+        other.execute("BEGIN IMMEDIATE")
+        other.rollback()
+    except sqlite3.OperationalError:
+        return False
+    else:
+        return True
+    finally:
+        other.close()
+
+
+def test_the_proof_never_holds_the_writer_lane(chosen, monkeypatch):
+    """The invariant is NOT "nobody writes while we prove" -- proving may
+    run a whole materialization, and holding sqlite's one writer lane
+    through that starves every other write. While the proof runs, a
+    second writer CAN take the lane; once the narrow mutation
+    transaction begins, it cannot."""
+    from db import authored as authored_module
+
     witnessed: list[str] = []
+    real_prove = resultset.prove_subset
 
-    def lane_held(conn, *args, **kwargs):
-        other = sqlite3.connect(chosen.app.state.db_path)
-        other.execute("PRAGMA busy_timeout=100")
-        try:
-            with pytest.raises(sqlite3.OperationalError):
-                other.execute("BEGIN IMMEDIATE")
-            witnessed.append("locked")
-        finally:
-            other.close()
-        return real(conn, *args, **kwargs)
+    def free_during_proof(conn, *args, **kwargs):
+        witnessed.append("proof-free" if _second_writer_can_begin(chosen.app.state.db_path) else "proof-held")
+        return real_prove(conn, *args, **kwargs)
 
-    monkeypatch.setattr(resultset, "subset", lane_held)
+    real_many = authored_module.set_favorite_many
+
+    def held_during_write(conn, *args, **kwargs):
+        witnessed.append("write-held" if not _second_writer_can_begin(chosen.app.state.db_path) else "write-free")
+        return real_many(conn, *args, **kwargs)
+
+    monkeypatch.setattr(resultset, "prove_subset", free_during_proof)
+    monkeypatch.setattr(authored_module, "set_favorite_many", held_during_write)
     answer, keys = _grid(chosen)
     told = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [keys["pic-0"]], "value": True})
     assert told.status_code < 300
-    assert witnessed == ["locked"], "the proof ran outside the write transaction"
+    assert witnessed == ["proof-free", "write-held"]
+
+
+def test_a_commit_in_the_handoff_is_reproved_not_trusted(chosen, monkeypatch):
+    """A commit landing between a completed proof and the writer lane:
+    the stale proof's currency is rejected by revalidation, ONE re-proof
+    runs outside the lane, and -- the answer being unchanged by the
+    unrelated commit -- the retry lands. Nothing is ever written from
+    the first proof's generation."""
+    real_prove = resultset.prove_subset
+    proofs: list[str] = []
+
+    def prove_then_racing_commit(conn, *args, **kwargs):
+        proof = real_prove(conn, *args, **kwargs)
+        proofs.append(proof.currency)
+        if len(proofs) == 1:
+            # An UNRELATED commit: rates a file outside the folder
+            # question -- currency moves, the answer does not.
+            writer = connect.connect(chosen.app.state.db_path)
+            file_id = writer.execute("SELECT id FROM file WHERE name = 'aside_0.png'").fetchone()[0]
+            authored.set_rating(writer, file_id, chosen.app.state.actor_id, 3, 0.0)
+            writer.commit()
+            connect.close(writer)
+        return proof
+
+    monkeypatch.setattr(resultset, "prove_subset", prove_then_racing_commit)
+    answer, keys = _grid(chosen, folder="lib")
+    told = chosen.post(
+        "/g/selection/favorite",
+        params={"folder": "lib"},
+        json={"answer": answer, "items": [keys["pic-2"]], "value": True},
+    )
+    assert told.status_code < 300, told.text
+    assert len(proofs) == 2, "the stale proof must be re-proved, not trusted"
+    assert proofs[0] != proofs[1], "the re-proof must see the racing commit's generation"
+    assert _favorites(chosen) == {"pic-2"}
+
+
+def test_a_changed_answer_in_the_handoff_writes_nothing(chosen, monkeypatch):
+    """The same race, but the commit CHANGES the walked answer: the
+    re-proof raises, the response is 409, and zero rows moved."""
+    real_prove = resultset.prove_subset
+    raced: list[str] = []
+
+    def prove_then_membership_commit(conn, *args, **kwargs):
+        proof = real_prove(conn, *args, **kwargs)
+        if not raced:
+            raced.append("raced")
+            writer = connect.connect(chosen.app.state.db_path)
+            file_id = writer.execute("SELECT id FROM file WHERE name = 'pic_1.png'").fetchone()[0]
+            keep = writer.execute("SELECT id FROM collection WHERE name = 'Keep'").fetchone()[0]
+            authored.set_collection_membership(writer, keep, file_id, False, 0.0)
+            writer.commit()
+            connect.close(writer)
+        return proof
+
+    _, keys = _grid(chosen)
+    filed = chosen.post(
+        "/g/selection/collections/keep",
+        json={"answer": _grid(chosen)[0], "items": [keys["pic-1"], keys["pic-2"]], "value": True},
+    )
+    assert filed.status_code < 300
+
+    monkeypatch.setattr(resultset, "prove_subset", prove_then_membership_commit)
+    scoped_answer, scoped = _grid(chosen, album="keep")
+    told = chosen.post(
+        "/g/selection/favorite",
+        params={"album": "keep"},
+        json={"answer": scoped_answer, "items": [scoped["pic-1"]], "value": True},
+    )
+    assert told.status_code == 409
+    assert _favorites(chosen) == set(), "a raced-away answer must write nothing"
+
+
+def test_a_semantic_proof_runs_without_the_writer_lane(chosen, monkeypatch):
+    """The expensive case named directly: a semantic projection cache
+    miss reaches retrieval while the curation connection holds NO write
+    transaction -- a second writer can take the lane mid-FAISS."""
+    from db import retrieval
+
+    conn = connect.connect(chosen.app.state.db_path, read_only=True)
+    ranked = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
+    connect.close(conn)
+    witnessed: list[str] = []
+
+    def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        witnessed.append("free" if _second_writer_can_begin(chosen.app.state.db_path) else "held")
+        held = [i for i in ranked if allowed is None or i in allowed]
+        return {
+            "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in held],
+            "participants": ["fake"],
+            "contributors": ["fake"],
+            "missing": {},
+        }
+
+    monkeypatch.setattr(retrieval, "query", fused)
+    answer, keys = _grid(chosen, q="banana")
+    told = chosen.post(
+        "/g/selection/favorite",
+        params={"q": "banana"},
+        json={"answer": answer, "items": [keys["pic-0"]], "value": True},
+    )
+    assert told.status_code < 300, told.text
+    assert witnessed, "the semantic path never ran"
+    assert set(witnessed) == {"free"}, "FAISS ran while the writer lane was held"
+
+
+def test_a_whitespace_padded_key_is_refused(chosen):
+    """bytes.fromhex ignores whitespace, so a padded spelling decodes to
+    16 bytes -- the raw 32-character length check is what refuses it."""
+    answer, keys = _grid(chosen)
+    padded = keys["pic-0"][:16] + " " + keys["pic-0"][16:] + " "
+    refused = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [padded], "value": True})
+    assert refused.status_code == 400
+    assert _favorites(chosen) == set()
 
 
 def test_the_one_item_adapters_share_the_many_implementation():

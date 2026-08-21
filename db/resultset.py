@@ -748,7 +748,19 @@ def locate(
 SUBSET_MOST = 5_000
 
 
-def subset(
+@dataclasses.dataclass(frozen=True)
+class SelectionProof:
+    """A completed membership proof: these file ids belonged to this
+    answer under this library generation. Immutable, so a writer can
+    revalidate it with ONE cheap currency comparison instead of holding
+    the writer lane through the proof's own work."""
+
+    currency: str
+    answer: str
+    ids: tuple[int, ...]
+
+
+def prove_subset(
     conn,
     models_dir: str,
     query: GalleryQuery,
@@ -757,21 +769,29 @@ def subset(
     actor_id: int | None = None,
     expect_answer: str,
     entity_uuids: list[str],
-) -> list[int]:
+) -> SelectionProof:
     """Prove a selection against THIS question's current answer.
 
-    Returns the file ids iff the question's answer identity is exactly
-    `expect_answer`, every uuid resolves to a live file entity, and
-    every file belongs to the answer. Anything else is AnswerChanged --
-    a selection made against one generation must never mutate another
-    -- or ValueError for a payload that was never a selection at all.
+    Returns a SelectionProof iff the question's answer identity is
+    exactly `expect_answer`, every uuid resolves to a live file entity,
+    and every file belongs to the answer. Anything else is
+    AnswerChanged -- a selection made against one generation must never
+    mutate another -- or ValueError for a payload that was never a
+    selection at all.
 
-    Nothing here trusts the browser: uuids are exact 32-hex strings,
-    the count is bounded, and membership is checked against the ONE
-    projection -- never a locate per item. A caller that intends to
-    WRITE against the returned ids must open its write transaction
-    BEFORE calling this (snapshot() joins an open transaction), so the
-    proof and the mutation see one library generation.
+    Nothing here trusts the browser: uuids are exactly 32 hex
+    characters (raw length checked FIRST, because bytes.fromhex ignores
+    whitespace and a padded spelling must not pass), the count is
+    bounded, and membership is checked against the ONE projection --
+    never a locate per item.
+
+    Deliberately NOT the write transaction: proving may materialize a
+    projection -- a whole membership walk, a smart-rule evaluation, a
+    semantic encode-FAISS-RRF round -- and none of that may hold
+    sqlite's one writer lane. A writer takes the proof, claims the
+    lane, compares currency (one monitor read), and mutates only when
+    the world the proof described is still the world -- re-proving
+    OUTSIDE the lane when it is not.
     """
     if type(expect_answer) is not str or not expect_answer:
         raise ValueError("a selection names the answer it was made against")
@@ -781,14 +801,12 @@ def subset(
         raise ValueError(f"a selection names at most {SUBSET_MOST} entities, not {len(entity_uuids)}")
     keys: list[bytes] = []
     for one in entity_uuids:
-        if type(one) is not str:
+        if type(one) is not str or len(one) != 32:
             raise ValueError("a selection key is a 32-character hex string")
         try:
             decoded = bytes.fromhex(one)
         except ValueError as rotten:
             raise ValueError(f"a selection key is a 32-character hex string, not {one!r}") from rotten
-        if len(decoded) != 16:
-            raise ValueError(f"a selection key is a 16-byte entity uuid, not {one!r}")
         keys.append(decoded)
     keys = list(dict.fromkeys(keys))  # idempotent: naming a file twice is naming it once
 
@@ -810,7 +828,7 @@ def subset(
         strays = [file_id for file_id in ids if file_id not in held.ordinal]
         if strays:
             raise AnswerChanged(f"{len(strays)} selected file(s) are not part of this answer; redraw and reselect")
-        return ids
+        return SelectionProof(currency=held.currency, answer=held.answer, ids=tuple(ids))
 
 
 def _named(conn, ids, start: int) -> list[dict]:
