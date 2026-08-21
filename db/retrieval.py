@@ -93,7 +93,9 @@ def rrf(rankings: list[list[int]], k: int = RRF_K) -> dict[int, float]:
     return fused
 
 
-def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bool = True) -> dict:
+def query(
+    conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bool = True, allowed: set[int] | None = None
+) -> dict:
     """One phrase against every participating space, rankings fused.
 
     Each configured space is searched independently -- its own encoder,
@@ -103,6 +105,18 @@ def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bo
     space contributes max(k*4, 100) candidates and the cut to k happens
     only after the merge -- truncating per-space at k would make rank
     k+1 in one space invisible to a file's agreement everywhere else.
+
+    `allowed` constrains the candidate set: only these file ids may
+    answer. The constraint applies to EACH SPACE'S RANKING BEFORE the
+    fusion -- out-of-scope candidates are discarded and the survivors
+    renumbered 1..N -- because RRF consumes rank positions, and
+    filtering a fused answer afterwards keeps every survivor's GLOBAL
+    rank: two spaces whose out-of-scope candidates sit at different
+    depths would compress by different amounts and the fused order can
+    flip. "Search inside this album" means each model ranks the album,
+    not the library. A constrained space is also searched at FULL depth
+    rather than the overfetch heuristic: a scope survivor may sit
+    arbitrarily deep in the unconstrained ranking.
 
     The answer says who was asked and who answered. `participants` is
     every configured space; `contributors` the ones whose ranking
@@ -151,11 +165,15 @@ def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bo
         ids = [embedding_id for embedding_id, _ in rows]
         to_file.update(dict(rows))
         key = similarity.align(conn, manager, spec, ids, lambda wanted: _vectors(conn, wanted), now)
-        candidate_k = min(max(final_k * 4, 100), len(ids))
+        candidate_k = len(ids) if allowed is not None else min(max(final_k * 4, 100), len(ids))
         labels, scores = manager.search(key, [encoder.encode_query(phrase)], candidate_k)
         ranked = [
             (int(label), float(score)) for label, score in zip(labels[0], scores[0], strict=True) if int(label) != -1
         ]
+        if allowed is not None:
+            # Discarding here, before enumeration, IS the renumbering:
+            # rrf() reads positions off the filtered list.
+            ranked = [(embedding_id, score) for embedding_id, score in ranked if to_file[embedding_id] in allowed]
         per_space.append((spec.key, ranked))
 
     if not per_space and any("not provisioned" in why for why in missing.values()):

@@ -240,23 +240,36 @@ def _timed_ids(conn, query: GalleryQuery) -> list[int]:
     return [row[0] for row in conn.execute(sql.format(kind=kind, order=order), args)]
 
 
-def _fused_ids(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[list[int], dict]:
-    """The whole fused ordering, once. `k` is the present-file count so
-    no space's candidate list is cut before the merge."""
+def _fused_ids(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[list[int], dict | None]:
+    """The whole fused ordering, once.
+
+    A scope or filter is handed to retrieval as the ALLOWED set, never
+    applied to the fused answer afterwards: RRF consumes rank positions,
+    so each space's ranking must be constrained and renumbered BEFORE
+    the fusion (db/retrieval.py owns that arithmetic) -- filtering a
+    global fusion keeps global ranks, and two spaces whose out-of-scope
+    candidates sit at different depths compress differently and can
+    flip the fused order. This module owns WHICH files are eligible;
+    retrieval owns how constrained rankings fuse.
+    """
     from . import retrieval
 
-    total = conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0]
-    found = retrieval.query(conn, models_dir, query.text, max(total, 1), now, offline=True)
-    fused = [row["file_id"] for row in found["results"]]
-    scoped = _scope_id(conn, query)
-    if scoped is not None or query.kind is not None:
-        # Membership under a scope or filter is the fused ranking
-        # intersected with the SQL answer, fused order preserved --
-        # the ranking says how alike, the scope says which shelf.
+    allowed = None
+    if query.folder is not None or query.album is not None or query.kind is not None:
         allowed = set(_timed_ids(conn, dataclasses.replace(query, text=None, sort="newest")))
-        fused = [file_id for file_id in fused if file_id in allowed]
+        if not allowed:
+            # An empty scope needs no encoder and has no honest
+            # provenance -- nothing was asked of any space.
+            return [], None
+    depth = len(allowed) if allowed is not None else _present(conn)
+    found = retrieval.query(conn, models_dir, query.text, max(depth, 1), now, offline=True, allowed=allowed)
+    fused = [row["file_id"] for row in found["results"]]
     provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
     return fused, provenance
+
+
+def _present(conn) -> int:
+    return conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0]
 
 
 def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projection:
@@ -289,11 +302,13 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projecti
 # --- the interface ----------------------------------------------------------
 
 
-def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
-    """The result set's shape: what the rail is drawn from and what the
-    grid's pager believes. `currency` rides along so a client can tell
-    a redrawn answer from the one it is holding."""
-    held = _current(conn, models_dir, query, now)
+def _shape(held: Projection, query: GalleryQuery) -> dict:
+    """The answer's shape, computed from ONE projection snapshot. Every
+    public operation takes `_current` exactly once and derives all of
+    its counts, pages, items and currency from that same Projection --
+    two takes could straddle another connection's commit and hand back
+    items from one generation under the totals of another. One
+    response describes one answer."""
     total = len(held.ids)
     return {
         "total": total,
@@ -306,13 +321,20 @@ def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
     }
 
 
+def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
+    """The result set's shape: what the rail is drawn from and what the
+    grid's pager believes. `currency` rides along so a client can tell
+    a redrawn answer from the one it is holding."""
+    return _shape(_current(conn, models_dir, query, now), query)
+
+
 def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) -> dict:
     """One page of the answer, by number. A number past the end answers
     with the last page that exists -- the library may have shrunk since
     the rail was drawn, and the honest response is the page that IS,
     named as itself."""
     held = _current(conn, models_dir, query, now)
-    shape = describe(conn, models_dir, query, now)
+    shape = _shape(held, query)
     number = min(max(1, int(number)), shape["pages"])
     start = (number - 1) * query.size
     shape["page"] = number
@@ -325,7 +347,7 @@ def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, co
     page a jump would land on -- by construction a prefix of what
     `page` answers, and the test suite holds the two to it."""
     held = _current(conn, models_dir, query, now)
-    shape = describe(conn, models_dir, query, now)
+    shape = _shape(held, query)
     number = min(max(1, int(number)), shape["pages"])
     start = (number - 1) * query.size
     take = min(max(1, int(count)), PEEK_MOST, query.size)

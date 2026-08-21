@@ -76,6 +76,13 @@ from typing import Any
 #: "Limitations"), so this already sits near the useful ceiling.
 GPU_K = 1024
 
+#: The hard device ceiling on k-selection: past it the GPU index refuses
+#: outright ("GPU index only supports min/max-K selection up to 2048",
+#: faiss/gpu/impl/IndexUtils.cu validateKSelect). A deeper search --
+#: retrieval asking for a whole scoped ranking -- serves from the CPU
+#: canonical, which computes the same exact flat answer with no ceiling.
+GPU_MAX_K = 2048
+
 #: The ways a faiss capability fails to exist on a machine: no module, a
 #: DLL that will not load, an API the build lacks, no GPU, a SWIG-level
 #: refusal. Named so the device probe catches what "not available"
@@ -416,7 +423,7 @@ class IndexManager:
                 distances, labels = space.index.search(packed, int(k))
                 return labels, distances
             unit = _unit(queries)
-            device = self._device_for(space)
+            device = self._device_for(space) if int(k) <= GPU_MAX_K else None
             if device is not None:
                 with self._gpu_lock:
                     scores, positions = device.search(unit, int(k))

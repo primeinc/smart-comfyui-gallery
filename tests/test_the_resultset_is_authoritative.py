@@ -201,7 +201,7 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
     ranked = ranked[5:] + ranked[:5]  # an order no SQL sort produces
     asked = []
 
-    def fused(conn_, models_dir, phrase, k, now, *, offline=True):
+    def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         asked.append((phrase, k, offline))
         return {
             "results": [{"file_id": file_id, "score": 1.0, "sources": {}} for file_id in ranked],
@@ -242,7 +242,11 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
     assert len(asked) == 2, "the fused ordering must be rebuilt for the changed library"
 
 
-def test_a_scoped_semantic_answer_is_the_fusion_intersected_in_fused_order(shelves, monkeypatch):
+def test_the_scope_reaches_retrieval_as_the_allowed_set(shelves, monkeypatch):
+    """The seam of the ownership split: this module decides WHICH files
+    are eligible and hands retrieval the allowed set BEFORE the fusion;
+    it never trims a fused answer afterwards -- RRF consumes rank
+    positions, and post-fusion filtering keeps global ranks."""
     conn = shelves["conn"]
     portraits = {
         row[0]
@@ -250,22 +254,122 @@ def test_a_scoped_semantic_answer_is_the_fusion_intersected_in_fused_order(shelv
             "SELECT f.id FROM file f JOIN folder fo ON fo.id = f.folder_id WHERE fo.name = 'portraits'"
         )
     }
-    everything = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id DESC")]
+    seen: dict = {}
 
-    from db import retrieval
-
-    monkeypatch.setattr(
-        retrieval,
-        "query",
-        lambda *a, **k: {
-            "results": [{"file_id": f, "score": 1.0, "sources": {}} for f in everything],
+    def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        seen.update({"allowed": allowed, "k": k})
+        members = sorted(allowed, reverse=True)
+        return {
+            "results": [{"file_id": f, "score": 1.0, "sources": {}} for f in members],
             "participants": ["s"],
             "contributors": ["s"],
             "missing": {},
-        },
-    )
+        }
+
+    from db import retrieval
+
+    monkeypatch.setattr(retrieval, "query", fused)
     told = resultset.page(conn, "", _q(text="faces", folder="portraits", size=50), 1, NOW)
-    assert [row["id"] for row in told["items"]] == [f for f in everything if f in portraits]
+    assert seen["allowed"] == portraits, "the scope must constrain retrieval, not trim its answer"
+    assert seen["k"] == len(portraits), "a scoped ranking is asked at full scope depth"
+    assert [row["id"] for row in told["items"]] == sorted(portraits, reverse=True), (
+        "the answer is retrieval's constrained ordering, untouched"
+    )
+
+
+def test_a_scope_constrains_each_space_before_the_fusion_not_after(tmp_path, monkeypatch):
+    """The hostile geometry: two spaces whose out-of-scope candidates sit
+    at different depths. Global-RRF-then-filter keeps global ranks and
+    compresses the spaces unequally; constraining each space's ranking
+    first renumbers 1..N in scope. The two answers must DISAGREE here --
+    space one buries every in-scope file under five outsiders (A,B,C at
+    global 6,7,8), space two splits them around its outsiders (C=1, B=2,
+    A=8). Fused globally then filtered: C, B, A. Fused in scope:
+    A(1/61+1/63) outranks B(1/62+1/62). B before A one way, A before B
+    the other -- a refactor that reintroduces post-fusion filtering
+    fails this by name."""
+    import numpy as np
+
+    from db import connect, derived, retrieval, scan, settings
+    from vision import semantic
+
+    root = tmp_path / "pics"
+    names = ("x1", "x2", "x3", "x4", "x5", "a", "b", "c")
+    for i, name in enumerate(names):
+        _paint(root, "all", f"{name}.png", 20 * i)
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
+    scan.scan(conn, 1, root, NOW)
+    ids = {name: file_id for file_id, name in conn.execute("SELECT id, replace(name, '.png', '') FROM file")}
+    shas = dict(conn.execute("SELECT id, content_sha256 FROM file"))
+
+    def tilted(cosine: float, axis: int) -> np.ndarray:
+        v = np.zeros(16, dtype=np.float32)
+        v[0] = cosine
+        v[axis] = np.sqrt(1.0 - cosine * cosine)
+        return v
+
+    clip = semantic.space("openclip", "ViT-B-32", "laion2b_s34b_b79k", 16)
+    qwen = semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", "main", 16)
+    by_clip = {"x1": 0.95, "x2": 0.94, "x3": 0.93, "x4": 0.92, "x5": 0.91, "a": 0.80, "b": 0.79, "c": 0.78}
+    by_qwen = {"c": 0.95, "b": 0.94, "x1": 0.70, "x2": 0.69, "x3": 0.68, "x4": 0.67, "x5": 0.66, "a": 0.10}
+    for spec, cosines in ((clip, by_clip), (qwen, by_qwen)):
+        for axis, name in enumerate(names, start=1):
+            derived.record_embedding(conn, ids[name], spec, tilted(cosines[name], axis), shas[ids[name]], NOW)
+    conn.commit()
+
+    class Asks:
+        def encode_query(self, phrase):
+            probe = np.zeros(16, dtype=np.float32)
+            probe[0] = 1.0
+            return probe
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Asks())
+    settings.put(conn, "semantic_model", "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen/Qwen3-VL-Embedding-2B")
+    conn.commit()
+
+    in_scope = {ids["a"], ids["b"], ids["c"]}
+    unscoped = retrieval.query(conn, str(tmp_path), "the probe", 8, NOW, offline=True)
+    trimmed = [row["file_id"] for row in unscoped["results"] if row["file_id"] in in_scope]
+    scoped = retrieval.query(conn, str(tmp_path), "the probe", 3, NOW, offline=True, allowed=in_scope)
+    constrained = [row["file_id"] for row in scoped["results"]]
+
+    assert set(constrained) == in_scope
+    assert trimmed.index(ids["b"]) < trimmed.index(ids["a"]), "the hostile geometry lost its teeth"
+    assert constrained.index(ids["a"]) < constrained.index(ids["b"]), (
+        "in scope, each space ranks A ahead of enough of B's advantage that A must win"
+    )
+    assert constrained != trimmed, "constraining before fusion must be able to disagree with trimming after it"
+    connect.close(conn)
+
+
+def test_one_response_reads_one_projection(shelves, monkeypatch):
+    """One HTTP answer, one projection snapshot: every public operation
+    takes `_current` exactly once, so items from one generation can
+    never ship under the totals of another when a job commits mid-
+    request."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    anchor = resultset.page(conn, "", q, 1, NOW)["items"][0]["id"]
+    takes: list[int] = []
+    real = resultset._current
+
+    def counted(*args, **kwargs):
+        takes.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(resultset, "_current", counted)
+    for ask in (
+        lambda: resultset.describe(conn, "", q, NOW),
+        lambda: resultset.page(conn, "", q, 2, NOW),
+        lambda: resultset.peek(conn, "", q, 3, NOW),
+        lambda: resultset.locate(conn, "", q, anchor, NOW),
+    ):
+        takes.clear()
+        ask()
+        assert len(takes) == 1, "an operation took the projection twice; two takes can straddle a commit"
 
 
 def test_a_file_outside_the_membership_locates_nowhere(shelves):

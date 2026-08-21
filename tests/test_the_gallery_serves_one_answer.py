@@ -122,16 +122,56 @@ def test_the_static_assets_serve(grid_client):
         assert len(answer.content) > 500, asset
 
 
-def test_nothing_above_the_seam_speaks_sql():
-    """The routes, templates and scripts are presentation adapters; the
-    one place membership and order live is db/resultset.py. A SELECT
-    appearing above the seam is the second notion of truth returning."""
+def test_there_is_only_one_path_to_an_ordered_gallery_answer():
+    """The architecture guard, structural rather than string-matched.
+
+    The goal is not that SQL keywords are naughty; it is that the
+    presentation layer CANNOT acquire a second query path. Three pins:
+    the route module executes nothing against a connection itself; its
+    `db` vocabulary is address resolution and configuration only --
+    never the query modules; and, positively, the routes consume
+    resultset.parse/page/peek/locate, so the one path is the one in
+    use. Templates and scripts cannot run Python, so they get the
+    textual guard: no SQL verbs, and no /search side-channel quietly
+    re-implementing membership."""
+    import ast
     import pathlib
 
     web = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
-    surfaces = [web / "gallery.py", *sorted((web / "templates").glob("*.html")), web / "static" / "gallery.js"]
-    assert len(surfaces) >= 4, f"the sweep lost its subjects: {surfaces}"
+    tree = ast.parse((web / "gallery.py").read_text(encoding="utf-8"))
+
+    called = {
+        node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert not called & {"execute", "executemany", "executescript", "cursor"}, (
+        "the route module ran its own statement; membership belongs to db/resultset.py"
+    )
+
+    spoken = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "db":
+            spoken |= {alias.name for alias in node.names}
+    assert spoken, "the sweep lost its subject: gallery.py no longer imports from db"
+    assert spoken <= {"connect", "naming", "resultset", "settings"}, (
+        f"gallery.py imported a query module: {sorted(spoken)} -- pages/retrieval/similarity/derived are the "
+        "second path this guard exists to forbid"
+    )
+
+    answers = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "resultset"
+    }
+    assert {"parse", "page", "peek", "locate"} <= answers, (
+        f"the routes stopped consuming the seam: resultset calls seen = {sorted(answers)}"
+    )
+
+    surfaces = [*sorted((web / "templates").glob("*.html")), web / "static" / "gallery.js"]
+    assert len(surfaces) >= 3, f"the sweep lost its subjects: {surfaces}"
     for source in surfaces:
         held = source.read_text(encoding="utf-8")
-        for word in ("SELECT ", "ORDER BY", "sqlite"):
+        for word in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search"):
             assert word not in held, f"{source.name} carries query logic: {word!r}"

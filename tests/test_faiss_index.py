@@ -594,3 +594,31 @@ def test_a_crash_between_commit_and_sync_cannot_revive_an_old_embedding(db, tmp_
     assert float(scores[0][0]) > 0.99, "the committed vector B is not what the space serves"
     labels, scores = reborn.search(key, [a_vector], 1)
     assert float(scores[0][0]) < 0.5, "the crashed-out vector A is still resident"
+
+
+def test_a_search_deeper_than_the_gpu_ceiling_still_answers_exactly():
+    """The GPU k-select kernel refuses k > 2048 outright -- a constant of
+    the selection algorithm (GPU_MAX_SELECTION_K, faiss/gpu/utils/
+    DeviceDefs.cuh; the refusal in gpu/impl/IndexUtils.cu
+    validateKSelect), the same on every card. The one caller that asks
+    deeper is retrieval materializing a whole ranking, once per
+    projection; past the ceiling the CPU canonical answers -- the same
+    exact flat computation with no ceiling. Found live: a 2,995-file
+    library 500'd /g?q=... on this exact refusal."""
+    from vision.faiss_index import GPU_MAX_K
+    from vision.faiss_runtime import import_faiss
+
+    import_faiss(gpu=True)
+    rng = np.random.default_rng(23)
+    count = GPU_MAX_K + 300
+    vectors = rng.normal(size=(count, 8)).astype(np.float32)
+    ids = list(range(1, count + 1))
+    spec = SpaceSpec("face.deep", "float32", 8, "cosine")
+    manager = IndexManager(gpu=True)
+    manager.load(spec, ids, vectors)
+
+    shallow, _ = manager.search(spec.key, vectors[:1], 5)
+    deep, _ = manager.search(spec.key, vectors[:1], count)
+    assert manager.served_by(spec.key) == "faiss-cpu", "past the ceiling the CPU canonical must answer"
+    assert list(deep[0][:5]) == list(shallow[0][:5]), "depth must not change the front of the answer"
+    assert set(deep[0].tolist()) == set(ids), "the deep ask is the whole ranking"
