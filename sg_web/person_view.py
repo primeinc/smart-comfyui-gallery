@@ -31,24 +31,31 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import authored, connect, naming, pages
+from db import authored, connect, naming, pages, resultset
 
 VARIES = {"vary": "Accept, HX-Request"}
 
 
 def view(conn, person_id: int, slug: str) -> dict:
     """The PersonView: everything every presentation shows, assembled
-    once. Keys carried by the old JSON page keep their names."""
-    pictures = [{"slug": s, "name": n} for s, n in pages.person_files(conn, person_id)]
-    return {
-        "slug": slug,
-        "name": pages.person_name(conn, person_id),
-        "count": len(pictures),
-        "pictures": pictures,
-        "across_folders": [
-            {"folder": f, "folder_slug": fs, "pictures": p} for f, fs, p in pages.person_across_folders(conn, person_id)
-        ],
-    }
+    once, inside ONE database snapshot -- a clustering or naming commit
+    landing between the reads must not hand back pictures from one
+    generation under the name and folder counts of another. Same
+    invariant MediaView carries; no currency involved, because no
+    mounted ordered ResultSet is. Keys carried by the old JSON page
+    keep their names."""
+    with resultset.snapshot(conn):
+        pictures = [{"slug": s, "name": n} for s, n in pages.person_files(conn, person_id)]
+        return {
+            "slug": slug,
+            "name": pages.person_name(conn, person_id),
+            "count": len(pictures),
+            "pictures": pictures,
+            "across_folders": [
+                {"folder": f, "folder_slug": fs, "pictures": p}
+                for f, fs, p in pages.person_across_folders(conn, person_id)
+            ],
+        }
 
 
 def _presented(request: Request, told: dict, page_template: str, fragment_template: str) -> Template | Response:

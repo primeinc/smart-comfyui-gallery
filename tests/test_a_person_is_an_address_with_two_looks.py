@@ -144,4 +144,37 @@ def test_the_person_path_owns_no_sql_and_the_drawer_is_not_a_lightbox():
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "db":
             spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"authored", "connect", "naming", "pages"}, f"unexpected db vocabulary: {sorted(spoken)}"
+    assert spoken <= {"authored", "connect", "naming", "pages", "resultset"}, (
+        f"unexpected db vocabulary: {sorted(spoken)}"
+    )
+
+
+def test_a_commit_mid_assembly_cannot_mix_person_generations(tmp_path, monkeypatch):
+    """The MediaView invariant, held here too: a naming commit landing
+    between person_files and the remaining reads must not hand back
+    pictures from one generation under the name of another. The writer
+    renames the person exactly inside that window -- the response is
+    wholly before, and the next request wholly after."""
+    from db import pages
+
+    burrow, _ = _clustered_library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        real = pages.person_files
+
+        def files_then_commit(conn, person_id, run_id=None):
+            rows = real(conn, person_id, run_id)
+            writer = connect.connect(client.app.state.db_path)
+            writer.execute("UPDATE person SET name = 'Renamed Mid-Read' WHERE id = ?", (person_id,))
+            writer.commit()
+            connect.close(writer)
+            return rows
+
+        monkeypatch.setattr(pages, "person_files", files_then_commit)
+        raced = client.get("/p/ana").json()
+        assert raced["name"] == "Ana", (
+            "the name read a newer generation than the pictures: one response mixed two library states"
+        )
+        monkeypatch.setattr(pages, "person_files", real)
+        assert client.get("/p/ana").json()["name"] == "Renamed Mid-Read", (
+            "the NEXT response must see the commit; the snapshot is per-request, not a cache"
+        )

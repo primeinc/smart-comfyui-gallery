@@ -94,12 +94,20 @@ def test_the_drawer_is_an_address_and_naming_moves_it(peopled):
         page.wait_for_selector("[data-drawer]")
         assert page.url.endswith("/p/ana")
 
-        # Naming from the drawer mints the new address and lands on it.
+        # Naming from the drawer mints the new address and lands on it
+        # by REPLACEMENT -- the retired slug is not a history stop.
         page.fill("[data-drawer] [data-rename] input", "Ana Torres")
         page.click("[data-drawer] [data-rename] button")
         page.wait_for_function("() => window.location.pathname === '/p/ana-torres'")
         page.wait_for_selector(".person-hero")
         assert page.locator("h1").inner_text() == "Ana Torres"
+
+        # ONE Back from the renamed profile is /people -- never a bounce
+        # through the retired address's 301.
+        page.go_back()
+        page.wait_for_function("() => window.location.pathname === '/people'")
+        page.go_forward()
+        page.wait_for_function("() => window.location.pathname === '/p/ana-torres'")
 
         # A direct visit is the complete profile, and Escape goes to the
         # People index, never blindly off-site.

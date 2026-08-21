@@ -24,7 +24,11 @@
       return;
     }
     const told = await answer.json();
-    window.location.assign(`/p/${told.slug}`);
+    // REPLACE, never assign: the identity's address just moved, and the
+    // retired slug must not remain as a history stop -- Back from the
+    // renamed profile goes to /people in one step, not through a 301
+    // bounce off the old address.
+    window.location.replace(`/p/${told.slug}`);
   });
 
   const drawer = document.querySelector("[data-drawer-root]");
