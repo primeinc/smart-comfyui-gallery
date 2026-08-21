@@ -147,14 +147,26 @@
       return s ? s.currency : "";
     };
     const open = async (href, mode) => {
+      const expected = viewCurrency();
       const answer = await fetch(href, {
-        headers: { "HX-Request": "true", "X-SG-Expect": viewCurrency() },
+        headers: { "HX-Request": "true", "X-SG-Expect": expected },
       });
       if (!answer.ok) {
         window.location.assign(href);
         return;
       }
-      lightbox.innerHTML = await answer.text();
+      const fragment = await answer.text();
+      // The server compares after assembly, but a commit can land in
+      // the microsecond between its currency read and its snapshot --
+      // the fragment says which generation it REALLY belongs to, and a
+      // mismatch redraws whole rather than mounting it over the old
+      // gallery.
+      const got = /data-currency="([^"]*)"/.exec(fragment);
+      if (expected && got && got[1] && got[1] !== expected) {
+        window.location.assign(href);
+        return;
+      }
+      lightbox.innerHTML = fragment;
       lightbox.hidden = false;
       if (mode === "push") history.pushState({ sgLightbox: true }, "", href);
       else if (mode === "replace") history.replaceState({ sgLightbox: true }, "", href);

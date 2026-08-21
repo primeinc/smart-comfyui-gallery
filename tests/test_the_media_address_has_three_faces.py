@@ -151,3 +151,49 @@ def test_the_media_path_never_consults_the_folder_walk():
         for kind in ("video", "animated_image", "image", "audio"):
             assert kind in held, f"{template} bakes in an image-only worldview: no {kind} branch"
         assert "/media/" in held, "video/audio must ride the range-capable media route"
+
+
+def test_a_commit_landing_mid_request_cannot_cross_generations(tmp_path, monkeypatch):
+    """The last WI-36 race: the expectation check must compare the
+    currency the view was ACTUALLY located in, after assembly -- a
+    pre-assembly check passes at v10, a worker commits, and the arrows
+    would silently belong to v11 under the mounted v10 gallery. The
+    writer here commits exactly inside that window."""
+    import os
+
+    from litestar.testing import TestClient as Client
+
+    from db import connect
+    from sg_web import media_view
+    from sg_web.app import build_app
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(3):
+        path = root / f"r_{i}.png"
+        Image.new("RGB", (12, 12), (60 * i, 90, 120)).save(path)
+        os.utime(path, (1_700_000_000 + i * 60, 1_700_000_000 + i * 60))
+
+    with Client(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 3
+        expected = client.get("/i/r-1").json()["context"]["currency"]
+
+        real = media_view.view
+
+        def commit_then_assemble(conn, models_dir, file_id, slug, query, now):
+            writer = connect.connect(client.app.state.db_path)
+            writer.execute("UPDATE file SET mtime = mtime + 1 WHERE name = 'r_0.png'")
+            writer.commit()
+            connect.close(writer)
+            return real(conn, models_dir, file_id, slug, query, now)
+
+        monkeypatch.setattr(media_view, "view", commit_then_assemble)
+        raced = client.get("/i/r-1", headers={"x-sg-expect": expected})
+        assert raced.status_code == 409, (
+            "a commit inside the request window must be refused, not answered under the old expectation"
+        )
+        monkeypatch.setattr(media_view, "view", real)
+        fresh = client.get("/i/r-1").json()["context"]["currency"]
+        assert fresh != expected
+        assert client.get("/i/r-1", headers={"x-sg-expect": fresh}).status_code == 200

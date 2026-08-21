@@ -52,13 +52,33 @@ VARIES = {"vary": "Accept, HX-Request"}
 
 def view(conn, models_dir: str, file_id: int, slug: str, query: resultset.GalleryQuery, now: float) -> dict:
     """The MediaView: everything every presentation shows, assembled
-    once. Keys carried by the old JSON page keep their names, so the
-    machine consumers keep their assertions."""
-    told = pages.picture(conn, file_id)
-    if told is None:
-        raise NotFoundException(f"/i/{slug} has no file row")
+    once, inside ONE database snapshot. Keys carried by the old JSON
+    page keep their names, so the machine consumers keep their
+    assertions.
+
+    Ordering inside the snapshot is load-bearing: the ResultSet context
+    comes FIRST, because its currency read (the monitor connection)
+    must precede the read that pins this connection's snapshot -- a
+    metadata read first would pin the snapshot before the currency was
+    taken, and a commit in the gap would label pre-commit data with a
+    post-commit currency: exactly the mislabeling the caller's 409
+    comparison exists to catch. The context's currency is therefore
+    always present -- from `locate` when the item is in the answer,
+    from `describe` (same projection, same snapshot) when it is not.
+    """
+    with resultset.snapshot(conn):
+        found = resultset.locate(conn, models_dir, query, file_id, now)
+        generation = (
+            found["currency"] if found is not None else resultset.describe(conn, models_dir, query, now)["currency"]
+        )
+        told = pages.picture(conn, file_id)
+        if told is None:
+            raise NotFoundException(f"/i/{slug} has no file row")
+        return _assembled(conn, file_id, slug, query, found, generation, told)
+
+
+def _assembled(conn, file_id: int, slug: str, query, found, generation: str, told) -> dict:
     name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields, kind = told
-    found = resultset.locate(conn, models_dir, query, file_id, now)
     asked = canonical(query)
     back = f"/g?{asked}" if asked else "/g"
     if found is not None and found["page"] > 1:
@@ -67,7 +87,8 @@ def view(conn, models_dir: str, file_id: int, slug: str, query: resultset.Galler
         "qs": asked,
         "in_answer": found is not None,
         "return_url": back,
-        **({k: found[k] for k in ("ordinal", "page", "total", "currency")} if found else {}),
+        "currency": generation,
+        **({k: found[k] for k in ("ordinal", "page", "total")} if found else {}),
     }
     return {
         "slug": slug,
@@ -129,12 +150,16 @@ def media_page(
                 # walk the viewer was on did not.
                 asked = canonical(query)
                 return Redirect(path=f"/i/{live[1]}" + (f"?{asked}" if asked else ""), status_code=301)
-        expected = request.headers.get("x-sg-expect")
-        if expected is not None and resultset.currency(conn) != expected:
-            raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         told = view(conn, weights, file_id, slug, query, time.time())
         conn.commit()  # a semantic context may have minted registry rows
+        # Compared AFTER assembly, against the currency the view was
+        # actually located in: a commit landing mid-request would
+        # otherwise pass a pre-assembly check and hand back arrows from
+        # a newer answer under the old mounted gallery.
+        expected = request.headers.get("x-sg-expect")
+        if expected is not None and told["context"]["currency"] != expected:
+            raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")
     finally:
         connect.close(conn)
     accept = request.headers.get("accept", "")

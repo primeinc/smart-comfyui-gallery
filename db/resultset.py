@@ -301,7 +301,7 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projecti
 
 
 @contextlib.contextmanager
-def _snapshot(conn):
+def snapshot(conn):
     """One public operation reads one SQLite snapshot.
 
     Counting `_current` takes proved an operation cannot MIX projections;
@@ -360,7 +360,7 @@ def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
     """The result set's shape: what the rail is drawn from and what the
     grid's pager believes. `currency` rides along so a client can tell
     a redrawn answer from the one it is holding."""
-    with _snapshot(conn):
+    with snapshot(conn):
         return _shape(_current(conn, models_dir, query, now), query)
 
 
@@ -369,7 +369,7 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) ->
     with the last page that exists -- the library may have shrunk since
     the rail was drawn, and the honest response is the page that IS,
     named as itself."""
-    with _snapshot(conn):
+    with snapshot(conn):
         held = _current(conn, models_dir, query, now)
         shape = _shape(held, query)
         number = min(max(1, int(number)), shape["pages"])
@@ -383,7 +383,7 @@ def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, co
     """The rail popover's preview: the first few members of EXACTLY the
     page a jump would land on -- by construction a prefix of what
     `page` answers, and the test suite holds the two to it."""
-    with _snapshot(conn):
+    with snapshot(conn):
         held = _current(conn, models_dir, query, now)
         shape = _shape(held, query)
         number = min(max(1, int(number)), shape["pages"])
@@ -405,7 +405,7 @@ def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float)
     its neighbours in ANSWER order, which is what previous/next mean
     while a result set is being walked. None when the file is not in
     the membership at all."""
-    with _snapshot(conn):
+    with snapshot(conn):
         held = _current(conn, models_dir, query, now)
         position = held.ordinal.get(int(file_id))
         if position is None:
