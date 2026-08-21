@@ -70,11 +70,11 @@ def view(
     from `describe` (same projection, same snapshot) when it is not.
     """
     with resultset.snapshot(conn):
-        found = resultset.locate(conn, models_dir, query, file_id, now)
+        found = resultset.locate(conn, models_dir, query, file_id, now, actor_id=actor_id)
         if found is not None:
             generation, asked, answer = found["currency"], found["qs"], found["answer"]
         else:
-            shape = resultset.describe(conn, models_dir, query, now)
+            shape = resultset.describe(conn, models_dir, query, now, actor_id=actor_id)
             generation, asked, answer = shape["currency"], shape["qs"], shape["answer"]
         told = pages.picture(conn, file_id)
         if told is None:
@@ -138,6 +138,8 @@ def media_page(
     album: str | None = None,
     person: str | None = None,
     kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
@@ -147,7 +149,7 @@ def media_page(
     The overlay's currency expectation arrives OUT-OF-BAND in the
     `X-SG-Expect` header -- never in the URL, which stays the canonical
     context the browser may push, share or reload."""
-    query = _asked(folder, album, kind, q, sort, size, person=person)
+    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "file", slug)

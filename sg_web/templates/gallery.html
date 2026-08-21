@@ -23,6 +23,17 @@
         <option value="{{ one }}"{% if one == kind %} selected{% endif %}>{{ one.replace("_", " ") }}</option>
         {% endfor %}
       </select>
+      <select name="rating_min" aria-label="minimum rating">
+        <option value="">any rating</option>
+        {% for n in range(1, 6) %}
+        <option value="{{ n }}"{% if n == rating_min %} selected{% endif %}>&starf;{{ n }}+</option>
+        {% endfor %}
+      </select>
+      <select name="favorite" aria-label="favorites">
+        <option value="">any</option>
+        <option value="1"{% if favorite == "1" %} selected{% endif %}>&hearts; only</option>
+        <option value="0"{% if favorite == "0" %} selected{% endif %}>not favorited</option>
+      </select>
       <select name="sort" aria-label="sort" data-sort>
         {% for one in sorts %}
         <option value="{{ one }}"{% if one == sort %} selected{% endif %}>{{ one }}</option>

@@ -21,8 +21,20 @@ def gallery_query(
     sort: str | None,
     size: int | None,
     person: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
 ) -> resultset.GalleryQuery:
     try:
-        return resultset.parse(folder=folder, album=album, person=person, kind=kind, text=q, sort=sort, size=size)
+        return resultset.parse(
+            folder=folder,
+            album=album,
+            person=person,
+            kind=kind,
+            favorite=favorite,
+            rating_min=rating_min,
+            text=q,
+            sort=sort,
+            size=size,
+        )
     except ValueError as refused:
         raise ClientException(str(refused)) from refused

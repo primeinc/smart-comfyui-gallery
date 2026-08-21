@@ -425,3 +425,12 @@ body {
 }
 .authored-choices[hidden] { display: none; }
 .lightbox .authored { padding: 0 4px 6px; }
+
+.ask-favorite {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.ask-favorite:has(input:checked) { color: var(--danger); }

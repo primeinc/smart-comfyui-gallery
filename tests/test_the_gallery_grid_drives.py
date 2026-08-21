@@ -557,6 +557,58 @@ def test_unfiling_the_walked_item_redraws_the_walk(driven):
         page.close()
 
 
+def test_walking_your_own_judgement_curates_itself(driven):
+    """The authored facets under the answer-identity contract, on
+    screen: raising a rating inside a rating_min walk preserves the
+    answer and the walk continues; dropping below the threshold, or
+    unfavoriting inside favorite=1, really changes the answer and
+    redraws whole."""
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        for slug in ("pic-030", "pic-031"):
+            assert web.post(f"/i/{slug}/rating", json={"value": 4}).status_code < 300
+        for slug in ("pic-040", "pic-041"):
+            assert web.post(f"/i/{slug}/favorite", json={"value": True}).status_code < 300
+
+    page = browser.new_page()
+    try:
+        # rating_min=4 walk: 4 -> 5 stars moves the generation, not the
+        # membership -- the strip adopts and the arrow keeps walking.
+        page.goto(f"{base}/g?rating_min=4")
+        page.wait_for_selector("[data-grid]")
+        assert page.locator(".cell").count() == 2
+        page.click(".cell")  # pic-031, the newer
+        page.wait_for_selector("[data-lightbox] [data-authored]")
+        page.keyboard.press("5")
+        page.wait_for_function("() => document.querySelector('[data-lightbox] [data-stars]').dataset.rating === '5'")
+        page.keyboard.press("ArrowRight")
+        page.wait_for_function("() => window.location.pathname === '/i/pic-030'")
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').hidden") is False, (
+            "a rating raise kept the same answer; the walk must continue in the overlay"
+        )
+
+        # 4 -> 3 stars drops pic-030 below the threshold: the answer
+        # really changed, and the coherence check redraws whole.
+        page.keyboard.press("3")
+        page.wait_for_selector(".detail", timeout=15_000)
+        assert "/i/pic-030" in page.url
+
+        # favorite=1 walk: unfavoriting the open item leaves the walked
+        # answer -- same contract, other facet.
+        page.goto(f"{base}/g?favorite=1")
+        page.wait_for_selector("[data-grid]")
+        page.click(".cell")  # pic-041, the newer favorite
+        page.wait_for_selector("[data-lightbox] [data-authored]")
+        page.click("[data-lightbox] [data-fav]")
+        page.wait_for_selector(".detail", timeout=15_000)
+        assert page.locator("[data-lightbox-root]").count() == 0
+        assert "/i/pic-041" in page.url
+    finally:
+        page.close()
+
+
 def test_the_navigation_indexes_walk_into_the_entities(driven):
     """The two front doors on screen: /folders enters the physical axis
     through a root shelf's folder entities, /albums enters the authored

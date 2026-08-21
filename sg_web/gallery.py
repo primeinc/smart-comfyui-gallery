@@ -32,7 +32,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            shape = resultset.page(conn, weights, query, page, time.time())
+            shape = resultset.page(conn, weights, query, page, time.time(), actor_id=state.actor_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         except ValueError as refused:
@@ -56,6 +56,8 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "album": query.album or "",
         "person": query.person or "",
         "kind": query.kind or "",
+        "favorite": "" if query.favorite is None else ("1" if query.favorite else "0"),
+        "rating_min": query.rating_min or "",
         "qs": shape["qs"],
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
@@ -69,13 +71,15 @@ def gallery(
     album: str | None = None,
     person: str | None = None,
     kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
     page: int = 1,
 ) -> Template:
     """The gallery, whole, from nothing but the URL."""
-    query = _asked(folder, album, kind, q, sort, size, person=person)
+    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
     return Template(template_name="gallery.html", context=_grid_context(state, query, page))
 
 
@@ -86,13 +90,15 @@ def grid_fragment(
     album: str | None = None,
     person: str | None = None,
     kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
     page: int = 1,
 ) -> Template:
     """One page of cells, for the running page to swap in place."""
-    query = _asked(folder, album, kind, q, sort, size, person=person)
+    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
     return Template(template_name="_grid.html", context=_grid_context(state, query, page))
 
 
@@ -104,6 +110,8 @@ def rail_peek(
     album: str | None = None,
     person: str | None = None,
     kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
@@ -118,14 +126,14 @@ def rail_peek(
     beside the OLD grid would present two generations as one answer --
     the response is 409 and the client redraws instead of pretending.
     """
-    query = _asked(folder, album, kind, q, sort, size, person=person)
+    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
     conn = connect.connect(state.db_path)
     try:
         if expect is not None and resultset.currency(conn) != expect:
             raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            told = resultset.peek(conn, weights, query, page, time.time(), count=count)
+            told = resultset.peek(conn, weights, query, page, time.time(), count=count, actor_id=state.actor_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         except ValueError as refused:
@@ -144,6 +152,8 @@ def locate_in_answer(
     album: str | None = None,
     person: str | None = None,
     kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
@@ -151,7 +161,7 @@ def locate_in_answer(
     """Where one picture sits in this answer -- ordinal, page, and its
     previous/next in ANSWER order, which is what the arrows mean while
     a result set is being walked."""
-    query = _asked(folder, album, kind, q, sort, size, person=person)
+    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "file", slug)
@@ -159,7 +169,7 @@ def locate_in_answer(
             raise NotFoundException(f"no file at /i/{slug}")
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            told = resultset.locate(conn, weights, query, found[0], time.time())
+            told = resultset.locate(conn, weights, query, found[0], time.time(), actor_id=state.actor_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         conn.commit()

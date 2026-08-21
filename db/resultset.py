@@ -94,6 +94,12 @@ class GalleryQuery:
     album: str | None = None  # scope: one album (collection), by slug
     person: str | None = None  # facet: composes with any scope, kind and phrase
     kind: str | None = None  # filter: one file kind
+    #: Authored facets: the asking ACTOR's own judgement, composable like
+    #: any predicate. The actor never rides the URL -- it binds at answer
+    #: time and lives in the projection identity, so two people asking
+    #: "favorite=1" share a spelling and never an answer.
+    favorite: bool | None = None  # True: favorited; False: NOT favorited
+    rating_min: int | None = None  # at least this many stars from the actor, 1..5
     text: str | None = None  # the semantic phrase; implies sort=similarity
     sort: str = "newest"
     size: int = DEFAULT_PAGE_SIZE
@@ -105,6 +111,8 @@ def parse(
     album: str | None = None,
     person: str | None = None,
     kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     text: str | None = None,
     sort: str | None = None,
     size: int | None = None,
@@ -138,10 +146,27 @@ def parse(
     # person's beach pictures in one album is a real question.
     if kind is not None and kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
+    liked = (favorite or "").strip() or None
+    if liked is not None and liked not in ("1", "0"):
+        # Tri-state, two spellings: 1 favorited, 0 not favorited, and
+        # dropping the parameter stops constraining. Nothing else.
+        raise ValueError(f"favorite is 1 (favorited) or 0 (not favorited), not favorite={liked!r}")
+    if rating_min is not None and not 1 <= int(rating_min) <= 5:
+        raise ValueError(f"rating_min names the minimum stars, 1..5, not {rating_min!r}")
     chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
     if not 1 <= chosen <= MAX_PAGE_SIZE:
         raise ValueError(f"page size must be 1..{MAX_PAGE_SIZE}, not {chosen}")
-    return GalleryQuery(folder=folder, album=album, person=person, kind=kind, text=text, sort=sort, size=chosen)
+    return GalleryQuery(
+        folder=folder,
+        album=album,
+        person=person,
+        kind=kind,
+        favorite=None if liked is None else liked == "1",
+        rating_min=None if rating_min is None else int(rating_min),
+        text=text,
+        sort=sort,
+        size=chosen,
+    )
 
 
 def fingerprint(query: GalleryQuery) -> str:
@@ -243,6 +268,10 @@ def canonical(query: GalleryQuery, page: int | None = None) -> str:
         pairs.append(("person", query.person))
     if query.kind:
         pairs.append(("kind", query.kind))
+    if query.favorite is not None:
+        pairs.append(("favorite", "1" if query.favorite else "0"))
+    if query.rating_min is not None:
+        pairs.append(("rating_min", str(query.rating_min)))
     if query.sort != ("similarity" if query.text else "newest"):
         pairs.append(("sort", query.sort))
     if query.size != DEFAULT_PAGE_SIZE:
@@ -271,12 +300,21 @@ class _Bound:
     collection_id: int | None
     person_id: int | None
     face_run_id: int | None
+    #: WHOSE judgement the authored facets mean. Set only when the query
+    #: carries one, so questions without an authored facet stay one
+    #: cached projection however many actors ask them.
+    actor_id: int | None
 
 
-def bind(conn, query: GalleryQuery) -> _Bound:
+def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     """Resolve every slug to its entity -- retired spellings included,
     refusing an address nothing lives at: an empty page at a misspelled
-    folder would look exactly like an empty folder."""
+    folder would look exactly like an empty folder.
+
+    `actor_id` is required exactly when the query carries an authored facet
+    (favorite, rating): those predicates are one person's judgement, and
+    answering them for nobody would be answering a different question
+    while wearing this one's URL."""
     from . import naming
 
     held: dict[str, int | None] = {"folder": None, "album": None, "person": None}
@@ -308,12 +346,16 @@ def bind(conn, query: GalleryQuery) -> _Bound:
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
         run = row[0] if row else None
+    asks_authored = query.favorite is not None or query.rating_min is not None
+    if asks_authored and actor_id is None:
+        raise ValueError("an authored facet (favorite, rating) is one actor's judgement; no actor was bound")
     return _Bound(
         query=dataclasses.replace(query, **live) if live else query,
         folder_id=held["folder"],
         collection_id=held["album"],
         person_id=held["person"],
         face_run_id=run,
+        actor_id=actor_id if asks_authored else None,
     )
 
 
@@ -328,6 +370,9 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "album": bound.collection_id,
             "person": bound.person_id,
             "run": bound.face_run_id,
+            "actor": bound.actor_id,
+            "favorite": query.favorite,
+            "rating_min": query.rating_min,
             "kind": query.kind,
             "text": query.text,
             "sort": query.sort,
@@ -349,6 +394,13 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     statement runs once per library change, never once per page."""
     query = bound.query
     order = "ASC" if query.sort == "oldest" else "DESC"
+    # The tiebreak runs WITH the index, not with the sort: file_recent is
+    # (mtime DESC), and entries sharing an mtime sit in rowid ASC order
+    # within it -- so a forward walk (newest) ties id ASC and a backward
+    # walk (oldest) ties id DESC. Any other spelling turns the ordered
+    # index walk this module promises into a read-time sort of the whole
+    # membership (caught by the authored-facet plan pin).
+    tiebreak = "DESC" if query.sort == "oldest" else "ASC"
     where = ["f.missing_since IS NULL"]
     args: list[object] = []
     if bound.folder_id is not None:
@@ -370,7 +422,16 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     if query.kind is not None:
         where.append("f.kind = ?")
         args.append(query.kind)
-    sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {order}"
+    if query.favorite is True:
+        where.append("EXISTS (SELECT 1 FROM favorite fav WHERE fav.file_id = f.id AND fav.user_id = ?)")
+        args.append(bound.actor_id)
+    elif query.favorite is False:
+        where.append("NOT EXISTS (SELECT 1 FROM favorite fav WHERE fav.file_id = f.id AND fav.user_id = ?)")
+        args.append(bound.actor_id)
+    if query.rating_min is not None:
+        where.append("EXISTS (SELECT 1 FROM rating r WHERE r.file_id = f.id AND r.user_id = ? AND r.rating >= ?)")
+        args.extend((bound.actor_id, query.rating_min))
+    sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {tiebreak}"
     return [row[0] for row in conn.execute(sql, args)]
 
 
@@ -390,7 +451,8 @@ def _fused_ids(conn, models_dir: str, bound: _Bound, now: float) -> tuple[list[i
 
     query = bound.query
     allowed = None
-    if any(x is not None for x in (bound.folder_id, bound.collection_id, bound.person_id, query.kind)):
+    faceted = (bound.folder_id, bound.collection_id, bound.person_id, query.kind, query.favorite, query.rating_min)
+    if any(x is not None for x in faceted):
         eligible = dataclasses.replace(bound, query=dataclasses.replace(query, text=None, sort="newest"))
         allowed = set(_timed_ids(conn, eligible))
         if not allowed:
@@ -408,7 +470,7 @@ def _present(conn) -> int:
     return conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0]
 
 
-def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[_Bound, Projection]:
+def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: int | None) -> tuple[_Bound, Projection]:
     """The projection for this question over the library as it stands --
     a stale one is never reused, it is replaced. Currency is read BEFORE
     binding: bind's resolves are this connection's first data reads and
@@ -417,7 +479,7 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[_B
     data cached under a fresh key."""
     database = _database_file(conn) or f"mem{id(conn)}"
     told = currency(conn)
-    bound = bind(conn, query)
+    bound = bind(conn, query, actor_id)
     key = (database, _bound_fingerprint(bound), told)
     with _PROJECTION_LOCK:
         held = _PROJECTIONS.get(key)
@@ -503,22 +565,22 @@ def _shape(bound: _Bound, held: Projection) -> dict:
     }
 
 
-def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
+def describe(conn, models_dir: str, query: GalleryQuery, now: float, *, actor_id: int | None = None) -> dict:
     """The result set's shape: what the rail is drawn from and what the
     grid's pager believes. `currency` rides along so a client can tell
     a redrawn answer from the one it is holding."""
     with snapshot(conn):
-        bound, held = _current(conn, models_dir, query, now)
+        bound, held = _current(conn, models_dir, query, now, actor_id)
         return _shape(bound, held)
 
 
-def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) -> dict:
+def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float, *, actor_id: int | None = None) -> dict:
     """One page of the answer, by number. A number past the end answers
     with the last page that exists -- the library may have shrunk since
     the rail was drawn, and the honest response is the page that IS,
     named as itself."""
     with snapshot(conn):
-        bound, held = _current(conn, models_dir, query, now)
+        bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
         number = min(max(1, int(number)), shape["pages"])
         start = (number - 1) * bound.query.size
@@ -527,12 +589,21 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) ->
         return shape
 
 
-def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, count: int = PEEK_MOST) -> dict:
+def peek(
+    conn,
+    models_dir: str,
+    query: GalleryQuery,
+    number: int,
+    now: float,
+    count: int = PEEK_MOST,
+    *,
+    actor_id: int | None = None,
+) -> dict:
     """The rail popover's preview: the first few members of EXACTLY the
     page a jump would land on -- by construction a prefix of what
     `page` answers, and the test suite holds the two to it."""
     with snapshot(conn):
-        bound, held = _current(conn, models_dir, query, now)
+        bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
         number = min(max(1, int(number)), shape["pages"])
         start = (number - 1) * bound.query.size
@@ -550,13 +621,15 @@ def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, co
         }
 
 
-def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float) -> dict | None:
+def locate(
+    conn, models_dir: str, query: GalleryQuery, file_id: int, now: float, *, actor_id: int | None = None
+) -> dict | None:
     """Where one file sits in the answer -- its ordinal, its page, and
     its neighbours in ANSWER order, which is what previous/next mean
     while a result set is being walked. None when the file is not in
     the membership at all."""
     with snapshot(conn):
-        bound, held = _current(conn, models_dir, query, now)
+        bound, held = _current(conn, models_dir, query, now, actor_id)
         position = held.ordinal.get(int(file_id))
         if position is None:
             return None

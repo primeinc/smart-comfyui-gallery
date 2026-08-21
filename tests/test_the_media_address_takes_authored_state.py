@@ -12,6 +12,7 @@ moving any answer, while unfiling the walked item moves the answer.
 from __future__ import annotations
 
 import os
+import re
 
 import pytest
 from litestar.testing import TestClient
@@ -55,8 +56,6 @@ def test_the_three_faces_report_one_authored_state(kept):
     assert kept.post("/i/pic-1/rating", json={"value": 4}).json()["authored"]["rating"] == 4
     told = kept.post("/i/pic-1/collections/keep", json={"value": True}).json()["authored"]
     assert told == {"favorite": True, "rating": 4, "collections": [{"slug": "keep", "name": "Keep"}]}
-
-    import re
 
     body = kept.get("/i/pic-1", headers=AS_MACHINE).json()
     assert body["authored"] == told
@@ -135,8 +134,6 @@ def test_a_favorite_moves_the_currency_but_not_the_answer(kept):
     question orders the same files, and the answer hash says so. A
     membership write against the walked album is the opposite case."""
     before = kept.get("/g", params={"album": "keep"})
-    import re
-
     held = dict(re.findall(r'data-(currency|answer)="([^"]*)"', before.text))
     kept.post("/i/pic-1/favorite", json={"value": False})
     located = kept.get("/g/locate/pic-1", params={"album": "keep"}).json()
@@ -180,3 +177,127 @@ def test_the_write_routes_own_no_semantics():
     assert "set_collection_membership" in legacy, "the /t routes stopped delegating to the shared implementation"
     assert "add_to_collection" not in legacy, "a second membership write path came back"
     assert "remove_from_collection" not in legacy, "a second membership write path came back"
+
+
+def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
+    """WI-43's contract: favorite and rating are composable ResultSet
+    facets -- eligibility predicates like person and kind, constraining
+    each semantic space BEFORE the fusion, spelled canonically in the
+    URL, with the ACTOR in the projection identity and never in the
+    URL."""
+    from db import resultset, retrieval
+
+    burrow, root = _library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/albums", json={"name": "Keep"})
+        for slug in ("pic-0", "pic-2"):
+            client.post(f"/i/{slug}/favorite", json={"value": True})
+        client.post("/i/pic-2/rating", json={"value": 5})
+        client.post("/i/pic-3/rating", json={"value": 2})
+        client.post("/i/pic-2/collections/keep", json={"value": True})
+        client.post("/i/pic-3/collections/keep", json={"value": True})
+
+        # The grid IS the judgement, newest first -- tri-state: liked,
+        # NOT liked, unconstrained.
+        liked = client.get("/g", params={"favorite": "1"})
+        assert re.findall(r'data-slug="([^"]+)"', liked.text) == ["pic-2", "pic-0"]
+        assert 'data-qbase="favorite=1&' in liked.text, "the canonical spelling owns the URL"
+        unliked = client.get("/g", params={"favorite": "0"}).text
+        assert re.findall(r'data-slug="([^"]+)"', unliked) == ["pic-3", "pic-1"]
+        assert 'data-qbase="favorite=0&' in unliked
+
+        # Composition: an intersection with every other predicate.
+        both = client.get("/g", params={"favorite": "1", "album": "keep"}).text
+        assert re.findall(r'data-slug="([^"]+)"', both) == ["pic-2"]
+        starred = client.get("/g", params={"rating_min": 2}).text
+        assert re.findall(r'data-slug="([^"]+)"', starred) == ["pic-3", "pic-2"], "rating_min means MINIMUM stars"
+        assert re.findall(r'data-slug="([^"]+)"', client.get("/g", params={"rating_min": 4}).text) == ["pic-2"]
+        crossed = client.get("/g", params={"favorite": "1", "rating_min": 4}).text
+        assert re.findall(r'data-slug="([^"]+)"', crossed) == ["pic-2"]
+
+        # Refusals are loud, never empty pages.
+        assert client.get("/g", params={"favorite": "yes"}).status_code == 400
+        assert client.get("/g", params={"rating_min": 9}).status_code == 400
+
+        # The walk carries the judgement: arrows walk MY favorites.
+        walked = client.get("/i/pic-0", params={"favorite": "1"}, headers=AS_MACHINE).json()
+        assert walked["context"]["total"] == 2
+        assert walked["previous"] == "pic-2"
+        assert walked["context"]["qs"] == "favorite=1"
+
+        # The actor lives in the projection identity, not the spelling:
+        # two actors, one URL, two different questions and answers.
+        conn = connect.connect(client.app.state.db_path)
+        mine = client.app.state.actor_id
+        guest = authored.add_user(conn, "guest", "!", "USER", 0.0)
+        pic1 = conn.execute("SELECT id FROM file WHERE name = 'pic_1.png'").fetchone()[0]
+        authored.set_favorite(conn, pic1, guest, True, 0.0)
+        conn.commit()
+        asked = resultset.parse(favorite="1")
+        ours = resultset.describe(conn, "", asked, 0.0, actor_id=mine)
+        theirs = resultset.describe(conn, "", asked, 0.0, actor_id=guest)
+        assert ours["qs"] == theirs["qs"] == "favorite=1", "one spelling"
+        assert ours["fingerprint"] != theirs["fingerprint"], "never one cached question"
+        assert (ours["total"], theirs["total"]) == (2, 1)
+        with pytest.raises(ValueError, match="actor"):
+            resultset.describe(conn, "", asked, 0.0)
+        # A question with no authored facet is ONE cached projection
+        # however many actors ask it.
+        plain = resultset.parse(kind="image")
+        assert (
+            resultset.describe(conn, "", plain, 0.0, actor_id=mine)["fingerprint"]
+            == resultset.describe(conn, "", plain, 0.0, actor_id=guest)["fingerprint"]
+        )
+        # Canonical spelling round-trips through parse.
+        import urllib.parse
+
+        asked_again = resultset.parse(favorite="0", rating_min=3)
+        spelled = resultset.canonical(asked_again)
+        assert spelled == "favorite=0&rating_min=3"
+        back = dict(urllib.parse.parse_qsl(spelled))
+        assert resultset.parse(favorite=back["favorite"], rating_min=int(back["rating_min"])) == asked_again
+
+        # An authored facet constrains each space BEFORE the fusion.
+        favorites = {row[0] for row in conn.execute("SELECT file_id FROM favorite WHERE user_id = ?", (mine,))}
+        seen: dict = {}
+
+        def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+            seen.update({"allowed": allowed})
+            return {"results": [], "participants": [], "contributors": [], "missing": {}}
+
+        monkeypatch.setattr(retrieval, "query", fused)
+        resultset.describe(conn, "", resultset.parse(favorite="1", text="sunset"), 0.0, actor_id=mine)
+        assert seen["allowed"] == favorites, "the favorite facet must reach retrieval as the allowed set"
+        connect.close(conn)
+
+
+def test_authored_eligibility_rides_the_indexes(tmp_path):
+    """The plan pin: a time-sorted authored question is the file table's
+    own ordered walk plus indexed existence probes against the authored
+    primary keys -- no read-time sort, no scan of favorite or rating."""
+    from db import resultset
+
+    burrow, root = _library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/i/pic-0/favorite", json={"value": True})
+        client.post("/i/pic-0/rating", json={"value": 4})
+        actor = client.app.state.actor_id
+        conn = connect.connect(client.app.state.db_path)
+        walked: list[str] = []
+        conn.set_trace_callback(walked.append)
+        told = resultset.describe(conn, "", resultset.parse(favorite="1", rating_min=3), 0.0, actor_id=actor)
+        conn.set_trace_callback(None)
+        assert told["total"] == 1
+        membership = [one for one in walked if one.lstrip().startswith("SELECT f.id FROM file f")]
+        assert len(membership) == 1, walked
+        args = tuple([actor] * membership[0].count("?"))
+        plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + membership[0], args))
+        connect.close(conn)
+        assert "TEMP B-TREE" not in plan.upper(), plan
+        assert "SCAN f USING INDEX" in plan, plan
+        assert "SEARCH fav USING" in plan, plan
+        assert "SEARCH r USING" in plan, plan

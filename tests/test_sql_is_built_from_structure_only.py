@@ -49,6 +49,7 @@ _STRUCTURE = {
     # runs of "?" -- one per bound value
     "marks": "placeholders",
     "','.join('?' * len(batch))": "placeholders",
+    "','.join('?' * len(kinds))": "placeholders",
     # job-claim clauses in db/jobs.py: `runnable` is a module literal, and
     # `kind_filter` is "" or an IN (...) of placeholders, params bound
     "runnable": "clause",
@@ -61,6 +62,7 @@ _STRUCTURE = {
     # constructed, so the pieces are structure by definition
     "' AND '.join(where)": "clause",
     "order": "keyword",
+    "tiebreak": "keyword",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
     "column": "identifier",
