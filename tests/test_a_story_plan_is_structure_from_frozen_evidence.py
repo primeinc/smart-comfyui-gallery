@@ -23,6 +23,7 @@ import datetime
 import json
 import math
 import sqlite3
+import typing
 
 import pytest
 from litestar.testing import TestClient
@@ -297,29 +298,43 @@ def test_the_similarity_producer_contract_is_enforced():
 
 
 def test_missing_evidence_is_a_gap_never_positive_shift_evidence():
-    """A member with no frozen prompt is placed (its chronology is
-    known) as a GAP backed by a prompt_evidence_missing claim. It is
-    never one side of a prompt_shift -- "we do not know the prompt" is
-    not evidence that the prompt changed -- and the run continues across
-    it: the member after the gap rejoins the phase before it."""
-    members = [_member(0, LIGHTHOUSE[0]), _member(1, ""), _member(2, LIGHTHOUSE[1]), _member(3, HELMET[0])]
+    """A member with no frozen prompt is placed by chronology and asserts
+    nothing about prompts: in a sequenced plan it joins the running
+    phase (phases stay contiguous -- the phase list IS the chronology),
+    the phase carries a prompt_evidence_missing claim naming it, and it
+    is never one side of a prompt_shift. Its OTHER facts survive: its
+    LoRA counts at the next boundary, its seed in seed_variation."""
+    lora_a, lora_b = "a" * 32, "b" * 32
+    members = [
+        _member(0, LIGHTHOUSE[0], artifacts=(lora_a,), seed=1),
+        _member(1, "", artifacts=(lora_b,), seed=2),  # no prompt; a LoRA change
+        _member(2, LIGHTHOUSE[1], artifacts=(lora_a,), seed=3),
+        _member(3, HELMET[0], artifacts=(lora_b,), seed=4),
+    ]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
     told = next(one for one in plan["unsupported"] if one["kind"] == "prompt_evidence")
     assert told["member_refs"] == ["member-002"]
     assert [phase["member_refs"] for phase in plan["phases"]] == [
-        ["member-001", "member-003"],
-        ["member-002"],
+        ["member-001", "member-002", "member-003"],
         ["member-004"],
-    ], "the gap sits between; the run continues across it"
-    assert plan["phases"][1]["label_hint"] == "Prompt evidence gap"
-    assert set(_claims_of(plan, 1)) == {"prompt_evidence_missing"}
-    shift = _claims_of(plan, 2)["prompt_shift"]
-    assert shift["evidence_refs"] == ["member-001:generation.prompt", "member-004:generation.prompt"], (
-        "the shift is between the two KNOWN prompts; the gap is on neither side"
+    ], "the gap joins the running phase; phases are contiguous"
+    first = _claims_of(plan, 0)
+    assert first["prompt_evidence_missing"]["evidence_refs"] == ["member-002"]
+    assert first["prompt_evidence_missing"]["facts"] == {"members": 1}
+    assert first["prompt_similarity"]["evidence_refs"] == [
+        "member-001:generation.prompt",
+        "member-003:generation.prompt",
+    ]
+    assert first["seed_variation"]["facts"] == {"distinct_seeds": 3}, "the gap member's seed is a fact"
+    second = _claims_of(plan, 1)
+    assert second["prompt_shift"]["evidence_refs"] == ["member-001:generation.prompt", "member-004:generation.prompt"]
+    assert second["artifact_change"]["facts"] == {"added": [], "removed": [lora_a]}, (
+        "the gap member's LoRA counted in the phase before the boundary: nothing was added"
     )
-    shifts = [ref for claim in plan["claims"] if claim["kind"] == "prompt_shift" for ref in claim["evidence_refs"]]
-    assert not any(ref.startswith("member-002") for ref in shifts)
+    assert plan["phases"][0]["representative_refs"] == ["member-001"], (
+        "a representative has a prompt when any member does"
+    )
     assert planning.validate_plan(plan, document, sha) == []
 
     # without chronology the gap is its own family, grouped with nothing
@@ -327,7 +342,40 @@ def test_missing_evidence_is_a_gap_never_positive_shift_evidence():
     document, sha = _snapshot([_member(i, text, precision="day") for i, text in enumerate(trio)])
     plan = _planner().plan(document, sha)
     assert [phase["member_refs"] for phase in plan["phases"]] == [["member-001", "member-003"], ["member-002"]]
+    assert plan["phases"][1]["label_hint"] == "Prompt evidence gap"
     assert planning.validate_plan(plan, document, sha) == []
+
+
+def test_a_blank_prompt_is_never_embedded():
+    """Only known prompts reach the engine: an empty string is not a
+    prompt, and a vector for nothing is a lie waiting for a consumer."""
+
+    class Spy(planning.LexicalPromptSimilarity):
+        seen: typing.ClassVar[list] = []
+
+        def embed(self, texts):
+            self.seen.append(list(texts))
+            return super().embed(texts)
+
+    members = [_member(0, LIGHTHOUSE[0]), _member(1, ""), _member(2, LIGHTHOUSE[1])]
+    document, sha = _snapshot(members)
+    planning.GenerationHistoryPlanner(Spy()).plan(document, sha)
+    assert Spy.seen == [[LIGHTHOUSE[0], LIGHTHOUSE[1]]]
+    assert "" not in Spy.seen[0]
+
+
+def test_a_sequenced_plan_is_a_chronology_and_the_validator_refuses_interleaving():
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE + HELMET)]
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    order = [int(ref.split("-")[1]) for phase in plan["phases"] for ref in phase["member_refs"]]
+    assert order == sorted(order)
+    bent = copy.deepcopy(plan)
+    bent["phases"][0]["member_refs"], bent["phases"][1]["member_refs"] = (
+        ["member-001", "member-002", "member-003", "member-006"],
+        ["member-004", "member-005"],
+    )
+    assert any("interleave" in why for why in planning.validate_plan(bent, document, sha))
 
 
 def test_the_same_request_is_one_identity_and_policies_coexist():
@@ -342,20 +390,20 @@ def test_the_same_request_is_one_identity_and_policies_coexist():
     assert planning.identity(strict)[1] != planning.identity(one)[1]
     assert len(strict["phases"]) > len(one["phases"]), "a stricter threshold splits the near-variants"
     loose = {"phase_threshold": 0.5}
-    request = planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", loose)
-    assert request == planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", loose)
+    request = planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", loose)
+    assert request == planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", loose)
     strict_settings = {"phase_threshold": 0.99}
-    assert request != planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", strict_settings)
-    assert request != planning.request_identity(sha, "generation_history", 3, "lexical-bow", "2", loose)
+    assert request != planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", strict_settings)
+    assert request != planning.request_identity(sha, "generation_history", 4, "lexical-bow", "2", loose)
 
 
 def test_the_document_format_is_part_of_the_request_identity(monkeypatch):
     """A format change must never hand back yesterday's shape under an
     unchanged planner version: FORMAT_VERSION rides the request hash."""
     sha = "a" * 64
-    before = planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", {"phase_threshold": 0.5})
+    before = planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", {"phase_threshold": 0.5})
     monkeypatch.setattr(planning, "FORMAT_VERSION", planning.FORMAT_VERSION + 1)
-    after = planning.request_identity(sha, "generation_history", 3, "lexical-bow", "1", {"phase_threshold": 0.5})
+    after = planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", {"phase_threshold": 0.5})
     assert before != after
 
 
@@ -726,3 +774,178 @@ def test_a_corrupt_snapshot_is_a_409_on_the_wire(frozen):
     finally:
         connect.close(conn)
     assert client.get(f"/stories/snapshots/{snap.id}").status_code == 409
+
+
+def test_the_v1_grammar_is_frozen_and_exception_proof(monkeypatch):
+    """A v1 row must still parse as v1 after a v2 exists: the grammar
+    reads frozen constants, never the running FORMAT_VERSION or
+    registry. And any bytes -- unhashable kinds included -- yield
+    controlled reasons, never an exception."""
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    assert planning.validate_story_plan_v1(plan) == []
+    monkeypatch.setattr(planning, "FORMAT_VERSION", 2)
+    monkeypatch.setattr(planning, "PLANNERS", {})
+    assert planning.validate_story_plan_v1(plan) == [], "v1 is judged by v1's frozen vocabulary"
+    assert planning.validate_story_plan(plan) == [], "the dispatcher routes a v1 document to the v1 grammar"
+    assert planning.validate_story_plan({**plan, "v": 7}), "an undefined version is invalid, not a crash"
+    assert planning.validate_story_plan({**plan, "v": True})
+
+    def bent(mutate):
+        held = copy.deepcopy(plan)
+        mutate(held)
+        reasons = planning.validate_story_plan_v1(held)
+        assert reasons, "the grammar accepted a malformed document"
+        return reasons
+
+    bent(lambda p: p["planner"].__setitem__("kind", []))
+    bent(lambda p: p["claims"][0].__setitem__("kind", {}))
+    bent(lambda p: p["unsupported"].append({"kind": [], "reason": "x"}))
+    bent(lambda p: p["subject"].__setitem__("kind", {"a": 1}))
+    bent(
+        lambda p: p["claims"].append(
+            {
+                "id": "claim-099",
+                "kind": "seed_variation",
+                "confidence": 1.0,
+                "evidence_refs": ["member-001:generation.seed"],
+                "facts": {"distinct_seeds": True},
+            }
+        )
+    )
+    bent(
+        lambda p: p["claims"].append(
+            {
+                "id": "claim-099",
+                "kind": "seed_variation",
+                "confidence": 1.0,
+                "evidence_refs": ["member-001:generation.seed"],
+                "facts": {"distinct_seeds": 1},
+            }
+        )
+    )
+    bent(
+        lambda p: p["claims"].append(
+            {
+                "id": "claim-099",
+                "kind": "seed_variation",
+                "confidence": 1.0,
+                "evidence_refs": ["member-001:generation.seed"],
+                "facts": {"distinct_seeds": 0},
+            }
+        )
+    )
+    bent(
+        lambda p: p["claims"].append(
+            {
+                "id": "claim-099",
+                "kind": "prompt_family",
+                "confidence": 1.0,
+                "evidence_refs": ["member-001:generation.prompt"],
+                "facts": {"size": 0, "threshold": 0.5, "min_pairwise_cosine": None},
+            }
+        )
+    )
+    bent(
+        lambda p: p["claims"].append(
+            {
+                "id": "claim-099",
+                "kind": "prompt_shift",
+                "confidence": 1.0,
+                "evidence_refs": ["member-001:generation.prompt"],
+                "facts": {"cosine": 7, "threshold": 0.5},
+            }
+        )
+    )
+    bent(
+        lambda p: p["claims"].append(
+            {
+                "id": "claim-099",
+                "kind": "prompt_shift",
+                "confidence": 1.5,
+                "evidence_refs": ["member-001:generation.prompt"],
+                "facts": {"cosine": 0.1, "threshold": 0.5},
+            }
+        )
+    )
+
+
+def test_a_queued_request_is_re_proven_before_any_weights_load(frozen, monkeypatch):
+    """A deploy between queue and run that changes the plan format, the
+    planner or an engine's query policy makes the queued job a stale
+    ask: the worker recomputes the request identity from what it would
+    actually do and refuses on mismatch -- before loading anything --
+    and no plan lands under a new identity."""
+    client, snap = frozen
+    asked = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
+    assert asked.status_code == 202
+    job_id = asked.json()["job"]["id"]
+
+    monkeypatch.setattr(planning, "FORMAT_VERSION", planning.FORMAT_VERSION + 1)
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        settled = client.get(f"/jobs/{job_id}").json()
+        assert settled["state"] == "done", settled
+        assert settled["failed_count"] == 1, settled
+        assert conn.execute("SELECT count(*) FROM story_plan").fetchone()[0] == 0, "no plan under a new identity"
+        why = conn.execute("SELECT error FROM job_item WHERE job_id = ?", (job_id,)).fetchone()[0]
+        assert "no longer means what it meant" in why
+    finally:
+        connect.close(conn)
+
+    # the same under a planner-version change
+    monkeypatch.undo()
+    asked = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
+    assert asked.status_code == 202, "a fresh ask under the restored policy queues a new job"
+    monkeypatch.setattr(planning.GenerationHistoryPlanner, "version", planning.GenerationHistoryPlanner.version + 1)
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        assert conn.execute("SELECT count(*) FROM story_plan").fetchone()[0] == 0
+    finally:
+        connect.close(conn)
+
+    # and a loaded engine whose identity drifted is refused the same way
+    loaded = planning.LexicalEngine()
+    monkeypatch.undo()
+    same = planning.request_identity(
+        snap.sha256,
+        "generation_history",
+        planning.GenerationHistoryPlanner.version,
+        *loaded.identity(),
+        {"phase_threshold": 0.5},
+    )
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        with pytest.raises(ValueError, match="no longer means"):
+            planning.plan_item(
+                conn,
+                0,
+                {
+                    "request_sha256": "0" * 64,
+                    "snapshot_id": snap.id,
+                    "planner": "generation_history",
+                    "settings": {"phase_threshold": 0.5},
+                    "engine": {"selector": "lexical"},
+                },
+                NOW + 40 * HOUR,
+            )
+        conn.rollback()
+        planning.plan_item(
+            conn,
+            0,
+            {
+                "request_sha256": same,
+                "snapshot_id": snap.id,
+                "planner": "generation_history",
+                "settings": {"phase_threshold": 0.5},
+                "engine": {"selector": "lexical"},
+            },
+            NOW + 41 * HOUR,
+        )
+        conn.commit()
+        assert conn.execute("SELECT count(*) FROM story_plan").fetchone()[0] == 1, "the matching request plans"
+    finally:
+        connect.close(conn)

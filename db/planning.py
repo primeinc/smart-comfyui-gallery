@@ -292,7 +292,7 @@ class GenerationHistoryPlanner:
     """
 
     kind = "generation_history"
-    version = 3
+    version = 4
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -320,78 +320,88 @@ class GenerationHistoryPlanner:
             )
 
         prompts = [((one.get("generation") or {}).get("prompt") or "") for one in members]
-        promptless = [ref for ref, text in zip(refs, prompts, strict=True) if not text.strip()]
-        if promptless:
-            unsupported.append({"kind": "prompt_evidence", "reason": "no frozen prompt", "member_refs": promptless})
-
-        vectors = validated_vectors(self.similarity.embed(prompts), len(prompts)) if members else []
-        cosine = pairwise_cosine(vectors)
         known = [i for i, text in enumerate(prompts) if text.strip()]
-        groups = _sequential_phases(cosine, threshold, known) if sequenced else _family_phases(cosine, threshold, known)
-        # A member with no prompt evidence is its own GAP: it is placed
-        # (its chronology is still known) but asserts nothing about
-        # prompts and is never one side of a prompt_shift.
         gaps = [i for i in range(len(members)) if i not in known]
+        if gaps:
+            unsupported.append(
+                {"kind": "prompt_evidence", "reason": "no frozen prompt", "member_refs": [refs[i] for i in gaps]}
+            )
+
+        # Only KNOWN prompts reach the engine: an empty string is not a
+        # prompt, and embedding it would manufacture a vector for nothing.
+        vectors = validated_vectors(self.similarity.embed([prompts[i] for i in known]), len(known)) if known else []
+        sparse = pairwise_cosine(vectors)
+        slot = {i: k for k, i in enumerate(known)}
+
+        def cosine(a: int, b: int) -> float:
+            return sparse[slot[a]][slot[b]]
+
+        # A member with no prompt evidence is placed by chronology and
+        # asserts nothing about prompts: in a sequenced plan it joins the
+        # running phase (it is not a boundary), so phases stay contiguous
+        # and the phase list IS the chronology; without chronology it is
+        # its own family, grouped with nothing. Its OTHER facts (seed,
+        # artifacts, parameters) stay in every comparison they belong to.
+        groups = (
+            _sequential_phases(cosine, threshold, known, len(members))
+            if sequenced
+            else _family_phases(cosine, threshold, known, gaps)
+        )
 
         claims: list[dict] = []
         phases: list[dict] = []
-        ordered = sorted([(group[0], "known", group) for group in groups] + [(i, "gap", [i]) for i in gaps])
-        known_groups = [group for _, kind, group in ordered if kind == "known"]
-        for number, (_first, kind, indexes) in enumerate(ordered, start=1):
+        for number, indexes in enumerate(groups, start=1):
             member_refs = [refs[i] for i in indexes]
+            spoken = [i for i in indexes if i in slot]
+            silent = [i for i in indexes if i not in slot]
             claim_refs = []
-            if kind == "gap":
-                claim_refs.append(_claim(claims, "prompt_evidence_missing", 1.0, list(member_refs), {}))
-                phases.append(
-                    {
-                        "id": f"phase-{number:03d}",
-                        "member_refs": member_refs,
-                        "representative_refs": [member_refs[0]],
-                        "label_hint": "Prompt evidence gap",
-                        "claim_refs": claim_refs,
-                    }
-                )
-                continue
-            inside = [cosine[a][b] for a in indexes for b in indexes if a < b]
-            position = known_groups.index(indexes)
+            inside = [cosine(a, b) for a in spoken for b in spoken if a < b]
             if sequenced:
-                if position > 0:
-                    previous_first = known_groups[position - 1][0]
-                    claim_refs.append(
-                        _claim(
-                            claims,
-                            "prompt_shift",
-                            confidence=1.0,
-                            evidence=[
-                                f"{refs[previous_first]}:generation.prompt",
-                                f"{refs[indexes[0]]}:generation.prompt",
-                            ],
-                            facts={"cosine": round(cosine[previous_first][indexes[0]], 4), "threshold": threshold},
+                if number > 1:
+                    previous_spoken = [i for i in groups[number - 2] if i in slot]
+                    if previous_spoken and spoken:
+                        claim_refs.append(
+                            _claim(
+                                claims,
+                                "prompt_shift",
+                                confidence=1.0,
+                                evidence=[
+                                    f"{refs[previous_spoken[0]]}:generation.prompt",
+                                    f"{refs[spoken[0]]}:generation.prompt",
+                                ],
+                                facts={
+                                    "cosine": round(cosine(previous_spoken[0], spoken[0]), 4),
+                                    "threshold": threshold,
+                                },
+                            )
                         )
-                    )
                 if inside:
                     claim_refs.append(
                         _claim(
                             claims,
                             "prompt_similarity",
                             confidence=max(0.0, min([1.0, *inside])),
-                            evidence=[f"{ref}:generation.prompt" for ref in member_refs],
+                            evidence=[f"{refs[i]}:generation.prompt" for i in spoken],
                             facts={"relationship": "same_prompt_family", "min_pairwise_cosine": round(min(inside), 4)},
                         )
                     )
-            else:
+            elif spoken:
                 claim_refs.append(
                     _claim(
                         claims,
                         "prompt_family",
                         confidence=max(0.0, min([1.0, *inside])) if inside else 1.0,
-                        evidence=[f"{ref}:generation.prompt" for ref in member_refs],
+                        evidence=[f"{refs[i]}:generation.prompt" for i in spoken],
                         facts={
-                            "size": len(indexes),
+                            "size": len(spoken),
                             "threshold": threshold,
                             "min_pairwise_cosine": round(min(inside), 4) if inside else None,
                         },
                     )
+                )
+            if silent:
+                claim_refs.append(
+                    _claim(claims, "prompt_evidence_missing", 1.0, [refs[i] for i in silent], {"members": len(silent)})
                 )
             seeds = sorted(
                 {
@@ -410,9 +420,14 @@ class GenerationHistoryPlanner:
                         facts={"distinct_seeds": len(seeds)},
                     )
                 )
-            label = f"Phase {number}" if sequenced else f"Prompt family {number}"
-            if position > 0:
-                previous = known_groups[position - 1]
+            if sequenced:
+                label = f"Phase {number}"
+            elif spoken:
+                label = f"Prompt family {number}"
+            else:
+                label = "Prompt evidence gap"
+            if number > 1:
+                previous = groups[number - 2]
                 changed = _artifact_change(members, previous, indexes, refs)
                 if changed is not None:
                     claim_refs.append(_claim(claims, "artifact_change", 1.0, changed[0], changed[1]))
@@ -420,11 +435,12 @@ class GenerationHistoryPlanner:
                 params = _parameter_change(members, previous, indexes, refs)
                 if params is not None:
                     claim_refs.append(_claim(claims, "parameter_change", 1.0, params[0], params[1]))
+            representative = refs[_medoid(spoken, cosine)] if spoken else member_refs[0]
             phases.append(
                 {
                     "id": f"phase-{number:03d}",
                     "member_refs": member_refs,
-                    "representative_refs": [refs[_medoid(indexes, cosine)]],
+                    "representative_refs": [representative],
                     "label_hint": label,
                     "claim_refs": claim_refs,
                 }
@@ -460,25 +476,35 @@ def _claim(claims: list, kind: str, confidence: float, evidence: list[str], fact
     return claim_id
 
 
-def _sequential_phases(cosine, threshold: float, known: list[int]) -> list[list[int]]:
-    """Consecutive runs over the members WITH prompt evidence: a member
-    joins the running phase while its prompt stays within `threshold`
-    of the phase's first prompt. A gap member is not a boundary -- the
-    run continues across it."""
+def _sequential_phases(cosine, threshold: float, known: list[int], total: int) -> list[list[int]]:
+    """Contiguous runs over EVERY member, in event order -- the phase
+    list is the chronology. A member with prompt evidence joins the
+    running phase while its prompt stays within `threshold` of the
+    phase's first KNOWN prompt; a member without prompt evidence is
+    neither a boundary nor evidence, so it joins the running phase."""
+    known_set = set(known)
     groups: list[list[int]] = []
-    for i in known:
-        if groups and cosine[groups[-1][0]][i] >= threshold:
+    anchor: int | None = None
+    for i in range(total):
+        if i not in known_set:
+            if not groups:
+                groups.append([])
             groups[-1].append(i)
+            continue
+        if groups and (anchor is None or cosine(anchor, i) >= threshold):
+            groups[-1].append(i)
+            anchor = i if anchor is None else anchor
         else:
             groups.append([i])
+            anchor = i
     return groups
 
 
-def _family_phases(cosine, threshold: float, known: list[int]) -> list[list[int]]:
+def _family_phases(cosine, threshold: float, known: list[int], gaps: list[int]) -> list[list[int]]:
     """Without chronology: connected components of the `>= threshold`
     graph over the members WITH prompt evidence, each listed in event
-    order, families ordered by their first member -- a partition, not a
-    sequence."""
+    order, families ordered by their first member; a member without
+    prompt evidence is its own family -- a partition, not a sequence."""
     seen: set[int] = set()
     groups: list[list[int]] = []
     for start in known:
@@ -490,18 +516,19 @@ def _family_phases(cosine, threshold: float, known: list[int]) -> list[list[int]
             i = stack.pop()
             component.append(i)
             for j in known:
-                if j not in seen and cosine[i][j] >= threshold:
+                if j not in seen and cosine(i, j) >= threshold:
                     seen.add(j)
                     stack.append(j)
         groups.append(sorted(component))
-    return groups
+    groups.extend([i] for i in gaps)
+    return sorted(groups, key=lambda group: group[0])
 
 
 def _medoid(indexes: list[int], cosine) -> int:
     """The member closest to all the others -- ties to the earliest."""
     best, best_score = indexes[0], -2.0
     for i in indexes:
-        score = sum(cosine[i][j] for j in indexes if j != i) / max(1, len(indexes) - 1)
+        score = sum(cosine(i, j) for j in indexes if j != i) / max(1, len(indexes) - 1)
         if score > best_score + 1e-12:
             best, best_score = i, score
     return best
@@ -572,26 +599,53 @@ def unresolved(plan: dict, snapshot: dict) -> list[str]:
     return bad
 
 
-#: The durable vocabulary of a StoryPlan v1 -- exact key sets and value
-#: shapes. A document with an unknown key, a wrong type or an unknown
-#: claim kind is invalid, never "probably fine": the renderer is the
-#: first long-lived consumer, and a grammar that tolerates drift is how
-#: a sentence gets written from a field nobody defined.
-_CLAIM_KINDS = {
-    "prompt_shift",
-    "prompt_similarity",
-    "prompt_family",
-    "prompt_evidence_missing",
-    "seed_variation",
-    "artifact_change",
-    "parameter_change",
+#: The durable vocabulary of a StoryPlan v1 -- FROZEN. These constants
+#: describe what a v1 document may contain and never track the running
+#: code: a v1 row written today must still parse as v1 after a v2 exists,
+#: or the "immutable historical artifact" is a row that rots. Adding a
+#: claim kind, a planner, or a key is a v2.
+STORY_PLAN_V1 = {
+    "version": 1,
+    "planners": frozenset({"generation_history"}),
+    "claims": frozenset(
+        {
+            "prompt_shift",
+            "prompt_similarity",
+            "prompt_family",
+            "prompt_evidence_missing",
+            "seed_variation",
+            "artifact_change",
+            "parameter_change",
+        }
+    ),
+    "unsupported": frozenset({"chronology", "prompt_evidence"}),
+    "settings": frozenset({"phase_threshold"}),
+    "subjects": frozenset({"generation_session"}),
 }
-_UNSUPPORTED_KINDS = {"chronology", "prompt_evidence"}
 _ID = re.compile(r"^(phase|claim)-[0-9]{3}$")
+_SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _integer(value, minimum: int = 0) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
+
+
+def _unit(value) -> bool:
+    return _number(value) and 0.0 <= value <= 1.0
+
+
+def _cosine(value) -> bool:
+    return _number(value) and -1.0 <= value <= 1.0
+
+
+def _in(value, vocabulary) -> bool:
+    """Membership that cannot raise: an unhashable value is simply not
+    in a vocabulary of strings."""
+    return isinstance(value, str) and value in vocabulary
 
 
 def _keys(node, exact: set[str], optional: set[str], where: str, bad: list[str]) -> bool:
@@ -609,72 +663,81 @@ def _strings(value) -> bool:
     return isinstance(value, list) and all(isinstance(x, str) for x in value)
 
 
-def _facts_valid(kind: str, facts) -> bool:
+def _facts_valid_v1(kind: str, facts) -> bool:
     if not isinstance(facts, dict):
         return False
+    keys = set(facts)
     if kind == "prompt_shift":
-        return set(facts) == {"cosine", "threshold"} and all(_number(facts[k]) for k in facts)
+        return keys == {"cosine", "threshold"} and _cosine(facts["cosine"]) and _unit(facts["threshold"])
     if kind == "prompt_similarity":
         return (
-            set(facts) == {"relationship", "min_pairwise_cosine"}
+            keys == {"relationship", "min_pairwise_cosine"}
             and facts["relationship"] == "same_prompt_family"
-            and _number(facts["min_pairwise_cosine"])
+            and _cosine(facts["min_pairwise_cosine"])
         )
     if kind == "prompt_family":
         return (
-            set(facts) == {"size", "threshold", "min_pairwise_cosine"}
-            and isinstance(facts["size"], int)
-            and not isinstance(facts["size"], bool)
-            and _number(facts["threshold"])
-            and (facts["min_pairwise_cosine"] is None or _number(facts["min_pairwise_cosine"]))
+            keys == {"size", "threshold", "min_pairwise_cosine"}
+            and _integer(facts["size"], 1)
+            and _unit(facts["threshold"])
+            and (facts["min_pairwise_cosine"] is None or _cosine(facts["min_pairwise_cosine"]))
         )
     if kind == "prompt_evidence_missing":
-        return facts == {}
+        return keys == {"members"} and _integer(facts["members"], 1)
     if kind == "seed_variation":
-        return set(facts) == {"distinct_seeds"} and isinstance(facts["distinct_seeds"], int)
+        return keys == {"distinct_seeds"} and _integer(facts["distinct_seeds"], 2)
     if kind == "artifact_change":
-        return set(facts) == {"added", "removed"} and all(_strings(facts[k]) for k in facts)
+        return (
+            keys == {"added", "removed"}
+            and all(_strings(facts[k]) for k in keys)
+            and bool(facts["added"] or facts["removed"])
+        )
     if kind == "parameter_change":
         return (
-            set(facts) == {"changed"}
+            keys == {"changed"}
             and isinstance(facts["changed"], dict)
+            and bool(facts["changed"])
             and all(
-                isinstance(v, dict) and set(v) == {"from", "to"} and all(isinstance(v[s], list) for s in v)
-                for v in facts["changed"].values()
+                isinstance(k, str)
+                and isinstance(v, dict)
+                and set(v) == {"from", "to"}
+                and all(_strings(v[s]) for s in v)
+                for k, v in facts["changed"].items()
             )
         )
     return False
 
 
 def validate_story_plan_v1(plan) -> list[str]:
-    """The exact grammar of a StoryPlan v1 document, with no reference to
-    any snapshot: shape, types, vocabularies, cardinalities. Controlled
+    """The exact grammar of a StoryPlan v1 document against the FROZEN
+    v1 vocabulary, with no reference to any snapshot or to the running
+    code: shape, types, vocabularies, cardinalities, domains. Controlled
     reasons, never an exception, whatever the bytes say."""
     bad: list[str] = []
     top = {"v", "snapshot_sha256", "planner", "subject", "phases", "claims", "unsupported"}
     if not _keys(plan, top, {"planned_at"}, "plan", bad):
         return bad
-    if plan["v"] != FORMAT_VERSION:
-        bad.append(f"format v{plan['v']!r}, not v{FORMAT_VERSION}")
-    if not (isinstance(plan["snapshot_sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", plan["snapshot_sha256"])):
+    if plan["v"] != STORY_PLAN_V1["version"]:
+        bad.append(f"format v{plan['v']!r}, not v1")
+    if not (isinstance(plan["snapshot_sha256"], str) and _SHA.match(plan["snapshot_sha256"])):
         bad.append("snapshot_sha256 is not a sha256")
     if "planned_at" in plan and not _number(plan["planned_at"]):
         bad.append("planned_at is not a number")
     planner = plan["planner"]
     if _keys(planner, {"kind", "version", "settings", "similarity"}, set(), "planner", bad):
-        if planner["kind"] not in PLANNERS:
+        if not _in(planner["kind"], STORY_PLAN_V1["planners"]):
             bad.append(f"unknown planner {planner['kind']!r}")
-        if not isinstance(planner["version"], int) or isinstance(planner["version"], bool):
-            bad.append("planner.version is not an integer")
-        settings_ok = _keys(planner["settings"], {"phase_threshold"}, set(), "planner.settings", bad)
-        if settings_ok and not _number(planner["settings"]["phase_threshold"]):
-            bad.append("planner.settings.phase_threshold is not a number")
+        if not _integer(planner["version"], 1):
+            bad.append("planner.version is not a positive integer")
+        settings_ok = _keys(planner["settings"], set(STORY_PLAN_V1["settings"]), set(), "planner.settings", bad)
+        if settings_ok and not _unit(planner["settings"]["phase_threshold"]):
+            bad.append("planner.settings.phase_threshold is not a number in [0, 1]")
         similarity_ok = _keys(planner["similarity"], {"name", "version"}, set(), "planner.similarity", bad)
         if similarity_ok and not all(isinstance(planner["similarity"][k], str) for k in ("name", "version")):
             bad.append("planner.similarity names are not strings")
     subject = plan["subject"]
     if _keys(subject, {"kind", "sequenced", "label_hint"}, set(), "subject", bad):
-        if subject["kind"] != "generation_session":
+        if not _in(subject["kind"], STORY_PLAN_V1["subjects"]):
             bad.append(f"unknown subject kind {subject['kind']!r}")
         if not isinstance(subject["sequenced"], bool):
             bad.append("subject.sequenced is not a bool")
@@ -704,11 +767,11 @@ def validate_story_plan_v1(plan) -> list[str]:
             continue
         if not (isinstance(claim["id"], str) and _ID.match(claim["id"]) and claim["id"].startswith("claim-")):
             bad.append(f"{where}.id is not a claim id")
-        if claim["kind"] not in _CLAIM_KINDS:
-            bad.append(f"{where}.kind {claim['kind']!r} is not a known claim kind")
-        elif not _facts_valid(claim["kind"], claim["facts"]):
+        if not _in(claim["kind"], STORY_PLAN_V1["claims"]):
+            bad.append(f"{where}.kind {claim['kind']!r} is not a v1 claim kind")
+        elif not _facts_valid_v1(claim["kind"], claim["facts"]):
             bad.append(f"{where}.facts do not fit {claim['kind']}")
-        if not (_number(claim["confidence"]) and 0.0 <= claim["confidence"] <= 1.0):
+        if not _unit(claim["confidence"]):
             bad.append(f"{where}.confidence is not in [0, 1]")
         if not _strings(claim["evidence_refs"]) or not claim["evidence_refs"]:
             bad.append(f"{where}.evidence_refs is not a non-empty list of refs")
@@ -719,8 +782,8 @@ def validate_story_plan_v1(plan) -> list[str]:
         where = f"unsupported[{i}]"
         if not _keys(told, {"kind", "reason"}, {"member_refs"}, where, bad):
             continue
-        if told["kind"] not in _UNSUPPORTED_KINDS:
-            bad.append(f"{where}.kind {told['kind']!r} is not a known unsupported kind")
+        if not _in(told["kind"], STORY_PLAN_V1["unsupported"]):
+            bad.append(f"{where}.kind {told['kind']!r} is not a v1 unsupported kind")
         if not isinstance(told["reason"], str):
             bad.append(f"{where}.reason is not a string")
         if "member_refs" in told and not _strings(told["member_refs"]):
@@ -728,13 +791,27 @@ def validate_story_plan_v1(plan) -> list[str]:
     return bad
 
 
+_GRAMMARS = {1: validate_story_plan_v1}
+
+
+def validate_story_plan(plan) -> list[str]:
+    """Dispatch on the document's OWN version: a v1 row is judged by the
+    frozen v1 grammar however many versions exist later. A document
+    with no parsable version, or a version nobody defined, is invalid."""
+    version = plan.get("v") if isinstance(plan, dict) else None
+    grammar = _GRAMMARS.get(version) if isinstance(version, int) and not isinstance(version, bool) else None
+    if grammar is None:
+        return [f"no StoryPlan grammar for version {version!r}; known: {sorted(_GRAMMARS)}"]
+    return grammar(plan)
+
+
 def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]:
     """Every way a plan can be wrong, as a list of reasons -- empty is
-    the only acceptable answer. The exact v1 grammar first; then the
-    snapshot it names; an exact partition (every member exactly once);
-    representatives inside their phase; unique phase and claim ids;
-    every reference inward."""
-    bad = validate_story_plan_v1(plan)
+    the only acceptable answer. Its own version's grammar first; then
+    the snapshot it names; an exact partition (every member exactly
+    once); representatives inside their phase; unique phase and claim
+    ids; every reference inward."""
+    bad = validate_story_plan(plan)
     if bad:
         return bad
     if plan["snapshot_sha256"] != snapshot_sha256:
@@ -753,13 +830,17 @@ def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]
     if len(set(claim_ids)) != len(claim_ids):
         bad.append("claim ids are not unique")
     for phase in plan["phases"]:
-        if not phase["representative_refs"]:
-            bad.append(f"{phase['id']} has no representative")
         bad.extend(
             f"{phase['id']} representative {ref} is not one of its members"
             for ref in phase["representative_refs"]
             if ref not in phase["member_refs"]
         )
+    if plan["subject"]["sequenced"]:
+        # the phase list IS the chronology: member ordinals must not
+        # interleave across phases
+        order = [int(ref.split("-")[1]) for phase in plan["phases"] for ref in phase["member_refs"]]
+        if order != sorted(order):
+            bad.append("a sequenced plan's phases interleave members; the phase list is not a chronology")
     dangling = unresolved(plan, snapshot)
     if dangling:
         bad.append(f"references outside the snapshot: {dangling[:5]}")
@@ -937,10 +1018,27 @@ def request_plan(conn, snapshot_id: int, planner_kind: str, engine, settings: di
 
 
 def plan_item(conn, _item: int, payload: dict, now: float) -> None:
-    """The job's one item: load the engine the request named, plan, and
-    persist. Reuse by request identity makes a retried job idempotent."""
+    """The job's one item. FIRST the request is re-proven: the engine
+    spec the request was queued under, the planner and format the
+    running code has, and the settings must still produce the SAME
+    request identity as the payload names -- a deploy that changed the
+    format, the planner, or a query policy between queue and run makes
+    this job a stale ask, refused BEFORE any weights load. Then the
+    engine loads (re-proving its own checkpoint), plans and persists;
+    reuse by request identity makes a retried job idempotent."""
     engine_payload = dict(payload["engine"])
     selector = engine_payload.pop("selector")
     engine = LexicalEngine() if selector == LexicalEngine.selector else SemanticEngine(**engine_payload)
-    planner = PLANNERS[payload["planner"]](engine.load(), payload["settings"])
+    maker = PLANNERS[payload["planner"]]
+    snapshot_sha = _verified_snapshot(conn, int(payload["snapshot_id"]))[1]
+    engine_name, engine_version = engine.identity()
+    current = request_identity(
+        snapshot_sha, maker.kind, maker.version, engine_name, engine_version, dict(payload["settings"])
+    )
+    if current != payload["request_sha256"]:
+        raise ValueError(
+            "this planning request no longer means what it meant when it was queued (the plan format,"
+            " the planner or the engine's query policy changed); make the request again"
+        )
+    planner = maker(engine.load(), payload["settings"])
     plan_snapshot(conn, int(payload["snapshot_id"]), planner, now)
