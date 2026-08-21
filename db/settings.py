@@ -38,12 +38,16 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # refused there because random pairs average 32 bits apart.
     "dupe_threshold": ("4", None),
     # The joint image/text models semantic search runs on: a comma list
-    # of "[provider:]<model>/<checkpoint>". A bare entry means openclip
-    # (checkpoints from open_clip.list_pretrained()); "qwen:<model>/
-    # <revision>" names a Qwen3-VL embedding model. Every entry is its
-    # own immutable space searched independently, rankings fused by
-    # rank. Changing an entry is a new space: existing embeddings keep
-    # their producer and the embed job fills the new space fresh.
+    # of "[provider:]<reference>", each reference in its provider's own
+    # grammar. A bare entry means openclip ("<model>/<pretrained-tag>"
+    # from open_clip.list_pretrained()); "qwen:<org>/<repo>[@revision]"
+    # names a Qwen3-VL EMBEDDING checkpoint by its Hugging Face repo id
+    # (retrieval-trained, e.g. Qwen/Qwen3-VL-Embedding-2B -- never the
+    # -Instruct chat family, which shares the backbone but not the
+    # training). Every entry is its own immutable space searched
+    # independently, rankings fused by rank. Changing an entry is a new
+    # space: existing embeddings keep their producer and the embed job
+    # fills the new space fresh.
     "semantic_model": ("ViT-B-32/laion2b_s34b_b79k", None),
     # The second opinion on every pHash dupe candidate: a pair also has
     # to agree within this many dHash bits, or "off" to trust pHash

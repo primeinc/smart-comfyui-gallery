@@ -35,6 +35,15 @@ MODEL = "ViT-B-32"
 CHECKPOINT = "laion2b_s34b_b79k"
 
 
+def parse(reference: str) -> tuple[str, str]:
+    """One `semantic_model` reference in this provider's own grammar:
+    `<model>/<pretrained-tag>`, both halves from open_clip's registry."""
+    model, slash, checkpoint = reference.partition("/")
+    if not slash or not model or not checkpoint:
+        raise ValueError(f"an openclip entry is '<model>/<pretrained-tag>', not {reference!r}")
+    return model, checkpoint
+
+
 def openclip_version() -> str:
     import importlib.metadata
 

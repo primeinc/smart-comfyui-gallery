@@ -26,7 +26,13 @@ The contract, whole:
     adapter.encode_query(text)  -> unit float32[D] in the SAME space
 
 Each provider module also exposes `space(model, checkpoint, dimensions)`
-so registry lookups can name a space without loading any weights.
+so registry lookups can name a space without loading any weights, and
+`parse(reference)` turning one `semantic_model` entry's text (everything
+after `provider:`) into its (model, checkpoint) pair -- the reference is
+provider-shaped on purpose: an open_clip entry is `model/pretrained-tag`,
+a qwen entry is a Hugging Face `org/repo[@revision]`, and forcing every
+future embedder to cosplay as OpenCLIP's grammar would misname both
+halves of a repo id.
 
 Vectors from different adapters -- or different checkpoints of one
 adapter -- are never comparable: each is its own immutable

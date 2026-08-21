@@ -30,13 +30,36 @@ from __future__ import annotations
 
 import threading
 
+# Module scope, not inside _for_embedding: transformers' __init_subclass__
+# runs get_type_hints over the class, which evaluates the (lazily stringified)
+# ClassVar annotation in THIS module's globals -- a function-local import is
+# invisible there and the class definition dies with a NameError.
+from typing import ClassVar
+
 PROVIDER = "qwen"
 
 #: The 2B embedding model: 2048 dimensions, MRL-capable, the smallest
 #: retrieval-trained Qwen3-VL. The `semantic_model` setting names others
-#: as `qwen:<model>/<revision>`.
-MODEL = "Qwen3-VL-Embedding-2B"
+#: as `qwen:<org>/<repo>[@revision]` -- the Hugging Face repo id AS the
+#: model reference, because that is what the thing is called upstream;
+#: splitting it into a fake "model/checkpoint" pair would misname both
+#: halves.
+MODEL = "Qwen/Qwen3-VL-Embedding-2B"
 CHECKPOINT = "main"
+
+
+def parse(reference: str) -> tuple[str, str]:
+    """One `semantic_model` reference in this provider's own grammar:
+    a Hugging Face `<org>/<repo>`, optionally pinned `@<revision>`
+    (default `main`)."""
+    repo, at, revision = reference.partition("@")
+    org, slash, name = repo.partition("/")
+    if not slash or not org or not name or "/" in name:
+        raise ValueError(f"a qwen entry is '<org>/<repo>[@revision]' (a Hugging Face repo id), not {reference!r}")
+    if at and not revision:
+        raise ValueError(f"a trailing '@' names no revision: {reference!r}")
+    return repo, revision or CHECKPOINT
+
 
 #: refs/QwenLM/Qwen3-VL-Embedding src/models/qwen3_vl_embedding.py:24-33,
 #: verbatim: token budget, patch-derived pixel budgets, frame sampling.
@@ -54,6 +77,38 @@ MEDIA_INSTRUCTION = "Represent the user's input."
 QUERY_INSTRUCTION = "Retrieve images or text relevant to the user's query."
 
 
+def policy_digest(*facts) -> str:
+    """A short stable digest of preprocessing facts -- the mechanism the
+    space identity uses to make 'same knobs' checkable rather than
+    asserted."""
+    import hashlib
+
+    return hashlib.sha256(";".join(str(fact) for fact in facts).encode("utf-8")).hexdigest()[:12]
+
+
+def policy_version() -> str:
+    """Everything that changes a vector WITHOUT changing weights, as one
+    token: the pixel and frame budgets, the token budget, both
+    instructions, and the versions of the two packages whose code is the
+    preprocessing (transformers renders the chat template and packs the
+    patches; qwen_vl_utils resizes and samples). Editing any of them
+    changes this string, which changes the spec hash, which mints a NEW
+    space -- 'v1' as a hand-bumped label was a promise, this is a
+    property. Deliberately over-invalidating: the query instruction
+    shapes no stored vector, but a space that cannot say which query
+    policy it answers under is provenance with a hole in it."""
+    import importlib.metadata
+
+    digest = policy_digest(MAX_LENGTH, MIN_PIXELS, MAX_PIXELS, FPS, MAX_FRAMES, MEDIA_INSTRUCTION, QUERY_INSTRUCTION)
+    told = {}
+    for package in ("transformers", "qwen-vl-utils"):
+        try:
+            told[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            told[package] = "unknown"
+    return f"tf{told['transformers']}+qvu{told['qwen-vl-utils']}+{digest}"
+
+
 def space(model: str, checkpoint: str, dimensions: int):
     """The immutable identity of this configuration's joint space."""
     from vision.faiss_index import SpaceSpec
@@ -66,26 +121,45 @@ def space(model: str, checkpoint: str, dimensions: int):
         producer=f"qwen3vl:{model}",
         producer_version=checkpoint,
         preprocess="qwen3vl.chat-template",
-        preprocess_version="v1",
+        preprocess_version=policy_version(),
     )
 
 
+#: What a loadable snapshot must hold: the model, its processor, its
+#: tokenizer, and the chat template the whole flow starts from. Weight
+#: presence alone is not provisioned -- from_pretrained on a snapshot
+#: missing its tokenizer fails halfway into serving instead of refusing
+#: up front with the fix named.
+_SNAPSHOT_FILES = (
+    "config.json",
+    "tokenizer_config.json",
+    "preprocessor_config.json",
+    "video_preprocessor_config.json",
+    "chat_template.jinja",
+)
+
+
 def _cached_snapshot(models_dir: str, model: str, checkpoint: str) -> str | None:
-    """The local snapshot directory holding this revision's weights, or
-    None -- answered from disk alone, the same doctrine as the openclip
-    adapter's `_cached_checkpoint`. The weight file itself must be
-    present, single-file or sharded: a cache holding only config.json
-    would send `from_pretrained(repo)` to the network."""
+    """The local snapshot directory holding this revision COMPLETE --
+    weights (single-file or sharded) plus every file loading touches --
+    or None. Answered from disk alone, the same doctrine as the openclip
+    adapter's `_cached_checkpoint`."""
     import pathlib
 
     from huggingface_hub import try_to_load_from_cache
 
-    repo = f"Qwen/{model}"
+    held = None
     for name in ("model.safetensors", "model.safetensors.index.json"):
-        found = try_to_load_from_cache(repo, name, cache_dir=models_dir, revision=checkpoint)
+        found = try_to_load_from_cache(model, name, cache_dir=models_dir, revision=checkpoint)
         if isinstance(found, str):
-            return str(pathlib.Path(found).parent)
-    return None
+            held = found
+            break
+    if held is None:
+        return None
+    for name in _SNAPSHOT_FILES:
+        if not isinstance(try_to_load_from_cache(model, name, cache_dir=models_dir, revision=checkpoint), str):
+            return None
+    return str(pathlib.Path(held).parent)
 
 
 def _for_embedding():
@@ -98,12 +172,10 @@ def _for_embedding():
     the wrapper's one structural job is holding Qwen3VLModel under that
     attribute and returning the last hidden state unpooled.
     """
-    import typing
-
     from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLModel, Qwen3VLPreTrainedModel
 
     class ForEmbedding(Qwen3VLPreTrainedModel):
-        _checkpoint_conversion_mapping: typing.ClassVar[dict] = {}
+        _checkpoint_conversion_mapping: ClassVar[dict] = {}
         accepts_loss_kwargs = False
 
         def __init__(self, config):
@@ -144,7 +216,7 @@ class QwenBackend:
         # A resolved snapshot loads by directory path -- no hub call has
         # anywhere to hide in a local-path load; only the provisioning
         # path (the embed job) ever passes the repository id.
-        source = found if found is not None else f"Qwen/{model}"
+        source = found if found is not None else model
         dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         loaded = _for_embedding().from_pretrained(source, revision=checkpoint, cache_dir=models_dir, dtype=dtype)
         self.processor = Qwen3VLProcessor.from_pretrained(

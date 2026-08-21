@@ -441,26 +441,60 @@ def test_a_bad_semantic_model_setting_is_refused_at_submit(db):
 
 def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
     """The second provider exists end to end below the weights: the
-    setting parses to it, duplicates collapse instead of voting twice,
-    and its space identity pins model, revision and chat-template
-    preprocessing."""
+    setting parses in the provider's OWN grammar (a Hugging Face repo
+    id, not a fake model/checkpoint split), duplicates collapse instead
+    of voting twice, and the space identity pins repo, revision and the
+    whole preprocessing policy."""
     from db import retrieval, settings
     from vision import semantic
+    from vision.semantic import qwen_vl
 
     settings.put(
         db,
         "semantic_model",
-        "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen3-VL-Embedding-2B/main, ViT-B-32/laion2b_s34b_b79k",
+        "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen/Qwen3-VL-Embedding-2B, ViT-B-32/laion2b_s34b_b79k",
     )
     assert retrieval.choices(db) == [
         ("openclip", "ViT-B-32", "laion2b_s34b_b79k"),
-        ("qwen", "Qwen3-VL-Embedding-2B", "main"),
+        ("qwen", "Qwen/Qwen3-VL-Embedding-2B", "main"),
     ], "a repeated entry must collapse, not weight its model twice"
+    assert qwen_vl.parse("Qwen/Qwen3-VL-Embedding-8B@9f2f7e7") == ("Qwen/Qwen3-VL-Embedding-8B", "9f2f7e7")
+    for malformed in ("just-a-name", "org/repo/extra", "org/repo@"):
+        with pytest.raises(ValueError, match=r"repo id|revision"):
+            qwen_vl.parse(malformed)
 
-    spec = semantic.space("qwen", "Qwen3-VL-Embedding-2B", "main", 2048)
-    assert spec.key == "semantic.qwen.Qwen3-VL-Embedding-2B.main"
-    assert (spec.producer, spec.producer_version) == ("qwen3vl:Qwen3-VL-Embedding-2B", "main")
+    spec = semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", "main", 2048)
+    assert spec.key == "semantic.qwen.Qwen/Qwen3-VL-Embedding-2B.main"
+    assert (spec.producer, spec.producer_version) == ("qwen3vl:Qwen/Qwen3-VL-Embedding-2B", "main")
     assert (spec.preprocess, spec.dimensions, spec.metric) == ("qwen3vl.chat-template", 2048, "cosine")
+
+    # The preprocess version is a PROPERTY of the policy, not a label:
+    # it names the two packages whose code is the preprocessing, and any
+    # edited knob or instruction changes the digest, hence the spec
+    # hash, hence the space.
+    assert spec.preprocess_version.startswith("tf")
+    assert "+qvu" in spec.preprocess_version
+    assert spec.preprocess_version.endswith(
+        qwen_vl.policy_digest(
+            qwen_vl.MAX_LENGTH,
+            qwen_vl.MIN_PIXELS,
+            qwen_vl.MAX_PIXELS,
+            qwen_vl.FPS,
+            qwen_vl.MAX_FRAMES,
+            qwen_vl.MEDIA_INSTRUCTION,
+            qwen_vl.QUERY_INSTRUCTION,
+        )
+    )
+    with_other_fps = qwen_vl.policy_digest(
+        qwen_vl.MAX_LENGTH,
+        qwen_vl.MIN_PIXELS,
+        qwen_vl.MAX_PIXELS,
+        2,
+        qwen_vl.MAX_FRAMES,
+        qwen_vl.MEDIA_INSTRUCTION,
+        qwen_vl.QUERY_INSTRUCTION,
+    )
+    assert not spec.preprocess_version.endswith(with_other_fps), "a changed budget must change the space"
 
     settings.put(db, "semantic_model", "nobody:some-model/some-checkpoint")
     with pytest.raises(ValueError, match="nobody"):
@@ -493,7 +527,7 @@ def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch
         return Fake()
 
     monkeypatch.setattr(semantic, "encoder", per_provider)
-    settings.put(db, "semantic_model", "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen3-VL-Embedding-2B/main")
+    settings.put(db, "semantic_model", "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen/Qwen3-VL-Embedding-2B")
     files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 0})
     clip_job, qwen_job = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
 
@@ -508,3 +542,71 @@ def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch
     assert kept == [("semantic.openclip.ViT-B-32.laion2b_s34b_b79k", len(files))], (
         "the healthy provider's vectors must survive the broken one"
     )
+
+
+def test_the_qwen_adapter_takes_the_native_door_for_video():
+    """Video reaches the model as the FILE with sampling budgets -- the
+    whole point of the media-aware seam. Calling the canonical poster
+    frame instead would judge a clip by one picture and make the seam
+    decoration."""
+    from vision import semantic
+    from vision.semantic import qwen_vl
+
+    backend = object.__new__(qwen_vl.QwenBackend)
+    seen: dict = {}
+    backend._embed = lambda instruction, content: seen.update({"instruction": instruction, "content": content})
+
+    def never_the_frame():
+        raise AssertionError("a video must go through its own path, not the poster frame")
+
+    backend.encode_media(semantic.MediaRef(path="C:/pics/clip.mp4", kind="video", frame=never_the_frame))
+    assert seen["instruction"] == qwen_vl.MEDIA_INSTRUCTION
+    assert seen["content"]["type"] == "video"
+    assert seen["content"]["video"] == "file://C:/pics/clip.mp4"
+    assert (seen["content"]["fps"], seen["content"]["max_frames"]) == (qwen_vl.FPS, qwen_vl.MAX_FRAMES)
+
+
+def test_a_failed_decode_fails_the_item_and_embeds_nothing():
+    """The upstream wrapper swaps a failed decode for the literal text
+    "NULL" to keep an evaluation batch alive; this adapter must NOT --
+    a NULL vector in the space is a picture that answers queries about
+    nothing. The failure propagates and no embedding call happens."""
+    from vision import semantic
+    from vision.semantic import qwen_vl
+
+    backend = object.__new__(qwen_vl.QwenBackend)
+    called: list = []
+    backend._embed = lambda instruction, content: called.append(content)
+
+    def undecodable():
+        raise ValueError("the bytes are not a picture")
+
+    with pytest.raises(ValueError, match="not a picture"):
+        backend.encode_media(semantic.MediaRef(path="C:/pics/x.png", kind="image", frame=undecodable))
+    assert called == [], "a failed decode still reached the model"
+
+
+def test_the_real_qwen_weights_answer_by_meaning():
+    """Opt-in smoke test over the actual 2B checkpoint: proves the port
+    is an embedding model and not a 2B-parameter random-number
+    generator. Set RUN_QWEN_SMOKE to a models_dir holding
+    Qwen/Qwen3-VL-Embedding-2B in HF cache layout."""
+    import os
+
+    models_dir = os.environ.get("RUN_QWEN_SMOKE", "")
+    if not models_dir:
+        pytest.skip("set RUN_QWEN_SMOKE=<models_dir> with the 2B weights cached to run")
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    from vision import semantic
+
+    encoder = semantic.encoder("qwen", models_dir, "Qwen/Qwen3-VL-Embedding-2B", "main", offline=True)
+    assert encoder.dimensions == 2048
+    picture = Image.new("RGB", (256, 256), (200, 60, 40))
+    ImageDraw.Draw(picture).ellipse((60, 60, 196, 196), fill=(250, 220, 40))
+    vector = encoder.encode_media(semantic.MediaRef(path="drawn.png", kind="image", frame=lambda: picture))
+    assert abs(float(np.linalg.norm(vector)) - 1.0) < 0.01
+    match = float(np.dot(vector, encoder.encode_query("a bright yellow circle on a red background")))
+    off = float(np.dot(vector, encoder.encode_query("a spreadsheet of quarterly financial figures")))
+    assert match > off + 0.2, f"the joint space lost its meaning: match={match:.3f} off={off:.3f}"

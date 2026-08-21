@@ -38,9 +38,12 @@ def choices(conn) -> list[tuple[str, str, str]]:
     """The participating spaces, as (provider, model, checkpoint).
 
     `semantic_model` is a comma-separated list; each entry is
-    `provider:model/checkpoint`, with a bare `model/checkpoint` meaning
-    openclip. A malformed entry or unknown provider is a refused
-    configuration, loudly -- never a silent substitution.
+    `provider:<reference>`, with a bare reference meaning openclip. What
+    a reference MEANS belongs to the provider -- open_clip entries are
+    `model/pretrained-tag`, qwen entries a Hugging Face repo id -- so
+    the provider module parses its own. A malformed entry or unknown
+    provider is a refused configuration, loudly -- never a silent
+    substitution.
     """
     from vision import semantic
 
@@ -51,13 +54,10 @@ def choices(conn) -> list[tuple[str, str, str]]:
         entry = raw.strip()
         if not entry:
             continue
-        provider, colon, rest = entry.partition(":")
+        provider, colon, reference = entry.partition(":")
         if not colon:
-            provider, rest = "openclip", entry
-        model, slash, checkpoint = rest.partition("/")
-        if not slash or not model or not checkpoint:
-            raise ValueError(f"semantic_model entry must be '[provider:]<model>/<checkpoint>', not {entry!r}")
-        semantic.provider_module(provider)  # unknown provider refused here
+            provider, reference = "openclip", entry
+        model, checkpoint = semantic.provider_module(provider).parse(reference)  # unknown provider refused here
         if (provider, model, checkpoint) not in told:
             # A repeated entry is one space, not a double vote: RRF sums
             # per-ranking contributions, so listing a model twice would
