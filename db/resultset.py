@@ -49,6 +49,7 @@ when its effect on page boundaries is defined, not before.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -299,6 +300,40 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projecti
     return made
 
 
+@contextlib.contextmanager
+def _snapshot(conn):
+    """One public operation reads one SQLite snapshot.
+
+    Counting `_current` takes proved an operation cannot MIX projections;
+    this proves the projection itself is not a mixture: construction and
+    item hydration span several reads (membership, per-space rows,
+    hydration), and in autocommit each is its own read transaction --
+    a worker's commit between two of them hands back items from one
+    generation of the library described by another's counts. A DEFERRED
+    read transaction pins the connection's snapshot at its FIRST data
+    read -- which lands after the currency read, because currency comes
+    from the monitor connection (file libraries) or an attribute
+    (:memory:), so a racing commit can only produce fresh data under an
+    already-obsolete key: wasted work the next request replaces, never
+    stale data cached under a fresh key.
+
+    Registry minting on a space's first scoped query still writes inside
+    the snapshot; that upgrade is the same write the operation always
+    performed and `busy_timeout` governs it as before. A caller already
+    holding a transaction keeps it -- their snapshot is theirs.
+    """
+    if conn.in_transaction:
+        yield
+        return
+    conn.execute("BEGIN")
+    try:
+        yield
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+
+
 # --- the interface ----------------------------------------------------------
 
 
@@ -325,7 +360,8 @@ def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
     """The result set's shape: what the rail is drawn from and what the
     grid's pager believes. `currency` rides along so a client can tell
     a redrawn answer from the one it is holding."""
-    return _shape(_current(conn, models_dir, query, now), query)
+    with _snapshot(conn):
+        return _shape(_current(conn, models_dir, query, now), query)
 
 
 def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) -> dict:
@@ -333,33 +369,35 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) ->
     with the last page that exists -- the library may have shrunk since
     the rail was drawn, and the honest response is the page that IS,
     named as itself."""
-    held = _current(conn, models_dir, query, now)
-    shape = _shape(held, query)
-    number = min(max(1, int(number)), shape["pages"])
-    start = (number - 1) * query.size
-    shape["page"] = number
-    shape["items"] = _named(conn, held.ids[start : start + query.size], start)
-    return shape
+    with _snapshot(conn):
+        held = _current(conn, models_dir, query, now)
+        shape = _shape(held, query)
+        number = min(max(1, int(number)), shape["pages"])
+        start = (number - 1) * query.size
+        shape["page"] = number
+        shape["items"] = _named(conn, held.ids[start : start + query.size], start)
+        return shape
 
 
 def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, count: int = PEEK_MOST) -> dict:
     """The rail popover's preview: the first few members of EXACTLY the
     page a jump would land on -- by construction a prefix of what
     `page` answers, and the test suite holds the two to it."""
-    held = _current(conn, models_dir, query, now)
-    shape = _shape(held, query)
-    number = min(max(1, int(number)), shape["pages"])
-    start = (number - 1) * query.size
-    take = min(max(1, int(count)), PEEK_MOST, query.size)
-    return {
-        "page": number,
-        "pages": shape["pages"],
-        "total": shape["total"],
-        "first_ordinal": min(start + 1, max(shape["total"], 1)),
-        "last_ordinal": min(start + query.size, shape["total"]),
-        "currency": held.currency,
-        "items": _named(conn, held.ids[start : start + take], start),
-    }
+    with _snapshot(conn):
+        held = _current(conn, models_dir, query, now)
+        shape = _shape(held, query)
+        number = min(max(1, int(number)), shape["pages"])
+        start = (number - 1) * query.size
+        take = min(max(1, int(count)), PEEK_MOST, query.size)
+        return {
+            "page": number,
+            "pages": shape["pages"],
+            "total": shape["total"],
+            "first_ordinal": min(start + 1, max(shape["total"], 1)),
+            "last_ordinal": min(start + query.size, shape["total"]),
+            "currency": held.currency,
+            "items": _named(conn, held.ids[start : start + take], start),
+        }
 
 
 def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float) -> dict | None:
@@ -367,20 +405,21 @@ def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float)
     its neighbours in ANSWER order, which is what previous/next mean
     while a result set is being walked. None when the file is not in
     the membership at all."""
-    held = _current(conn, models_dir, query, now)
-    position = held.ordinal.get(int(file_id))
-    if position is None:
-        return None
-    neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
-    named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
-    return {
-        "ordinal": position + 1,
-        "page": position // query.size + 1,
-        "total": len(held.ids),
-        "currency": held.currency,
-        "previous": named.get(neighbours[0]),
-        "next": named.get(neighbours[1]),
-    }
+    with _snapshot(conn):
+        held = _current(conn, models_dir, query, now)
+        position = held.ordinal.get(int(file_id))
+        if position is None:
+            return None
+        neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
+        named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
+        return {
+            "ordinal": position + 1,
+            "page": position // query.size + 1,
+            "total": len(held.ids),
+            "currency": held.currency,
+            "previous": named.get(neighbours[0]),
+            "next": named.get(neighbours[1]),
+        }
 
 
 def _named(conn, ids, start: int) -> list[dict]:

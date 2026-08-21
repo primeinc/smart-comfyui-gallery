@@ -63,13 +63,28 @@
     thumb.style.top = `${fraction * 100}%`;
   };
 
+  // A preview must belong to the SAME result-set generation as the grid
+  // it floats beside: the request carries the grid's currency, the
+  // server answers 409 when the library has moved on, and the response
+  // currency is checked again in case it moved mid-flight. Either
+  // mismatch redraws the whole gallery from the URL -- two generations
+  // are never presented as one answer.
   const peeked = new Map(); // `${currency}:${page}` -> peek JSON
   const peek = async (page, s) => {
     const key = `${s.currency}:${page}`;
     if (!peeked.has(key)) {
-      const answer = await fetch(`/g/peek?${s.qbase}page=${page}&count=9`);
+      const answer = await fetch(`/g/peek?${s.qbase}page=${page}&count=9&expect=${encodeURIComponent(s.currency)}`);
+      if (answer.status === 409) {
+        window.location.reload();
+        return null;
+      }
       if (!answer.ok) return null;
-      peeked.set(key, await answer.json());
+      const told = await answer.json();
+      if (told.currency !== s.currency) {
+        window.location.reload();
+        return null;
+      }
+      peeked.set(key, told);
     }
     return peeked.get(key);
   };

@@ -403,3 +403,139 @@ def test_currency_needs_time_to_pass_for_nothing(shelves):
     resultset.peek(conn, "", q, 4, NOW)
     assert len(resultset._PROJECTIONS) == key_count
     assert time.time() > 0  # the clock is not part of the key
+
+
+def test_one_response_reads_one_database_snapshot(tmp_path, monkeypatch):
+    """Counting takes proved an operation cannot mix PROJECTIONS; this
+    proves construction cannot mix GENERATIONS: membership and item
+    hydration are several reads, and a worker committing between them
+    must not leak into an answer half-built from the world before it.
+    The writer renames a file after membership is read but before
+    hydration -- the response must carry the name the snapshot saw."""
+    root = tmp_path / "pics"
+    for i in range(4):
+        _paint(root, "all", f"a_{i}.png", 40 * i)
+    db_path = tmp_path / "gallery.db"
+    conn = connect.connect(db_path)
+    conn.executescript(connect.schema_sql())
+    root_id = library.add_root(conn, str(root), "library", NOW)
+    scan.scan(conn, root_id, str(root), NOW)
+    conn.commit()
+    target = conn.execute("SELECT id FROM file ORDER BY id LIMIT 1").fetchone()[0]
+    original = conn.execute("SELECT name FROM file WHERE id = ?", (target,)).fetchone()[0]
+
+    real = resultset._timed_ids
+
+    def membership_then_commit(*args, **kwargs):
+        ids = real(*args, **kwargs)
+        writer = connect.connect(db_path)
+        writer.execute("UPDATE file SET name = 'moved-under-us.png' WHERE id = ?", (target,))
+        writer.commit()
+        connect.close(writer)
+        return ids
+
+    monkeypatch.setattr(resultset, "_timed_ids", membership_then_commit)
+    told = resultset.page(conn, "", _q(size=10), 1, NOW)
+    named = {row["id"]: row["name"] for row in told["items"]}
+    assert named[target] == original, (
+        "hydration read a newer generation than membership: one response mixed two library states"
+    )
+    monkeypatch.setattr(resultset, "_timed_ids", real)
+    fresh = resultset.page(conn, "", _q(size=10), 1, NOW + 1)
+    assert {row["id"]: row["name"] for row in fresh["items"]}[target] == "moved-under-us.png", (
+        "the NEXT response must see the commit; the snapshot is per-operation, not a cache"
+    )
+    connect.close(conn)
+
+
+def _semantic_shelf(tmp_path, clip_cosines: dict, qwen_cosines: dict):
+    """Eight files scanned for real, with embeddings written per space
+    only for the names each cosine table mentions."""
+    import numpy as np
+
+    from db import derived
+    from vision import semantic
+
+    root = tmp_path / "pics"
+    names = ("x1", "x2", "x3", "x4", "x5", "a", "b", "c")
+    for i, name in enumerate(names):
+        _paint(root, "all", f"{name}.png", 20 * i)
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
+    scan.scan(conn, 1, root, NOW)
+    ids = {name: file_id for file_id, name in conn.execute("SELECT id, replace(name, '.png', '') FROM file")}
+    shas = dict(conn.execute("SELECT id, content_sha256 FROM file"))
+
+    def tilted(cosine: float, axis: int) -> np.ndarray:
+        v = np.zeros(16, dtype=np.float32)
+        v[0] = cosine
+        v[axis] = np.sqrt(1.0 - cosine * cosine)
+        return v
+
+    clip = semantic.space("openclip", "ViT-B-32", "laion2b_s34b_b79k", 16)
+    qwen = semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", "main", 16)
+    for spec, cosines in ((clip, clip_cosines), (qwen, qwen_cosines)):
+        for axis, name in enumerate(names, start=1):
+            if name in cosines:
+                derived.record_embedding(conn, ids[name], spec, tilted(cosines[name], axis), shas[ids[name]], NOW)
+    conn.commit()
+    return conn, ids, clip.key, qwen.key
+
+
+def test_a_space_with_nothing_in_scope_is_missing_not_a_contributor(tmp_path, monkeypatch):
+    """`contributors` is the rankings that ENTERED the fusion. A space
+    whose current embeddings all sit outside the scope contributed
+    nothing -- reporting it as a contributor manufactures agreement the
+    page then presents with full confidence."""
+    import numpy as np
+
+    from db import retrieval, settings
+    from vision import semantic
+
+    everyone = {"x1": 0.9, "x2": 0.8, "x3": 0.7, "x4": 0.6, "x5": 0.5, "a": 0.4, "b": 0.3, "c": 0.2}
+    outsiders_only = {"x1": 0.9, "x2": 0.8, "x3": 0.7, "x4": 0.6, "x5": 0.5}
+    conn, ids, clip_key, qwen_key = _semantic_shelf(tmp_path, everyone, outsiders_only)
+
+    class Asks:
+        def encode_query(self, phrase):
+            probe = np.zeros(16, dtype=np.float32)
+            probe[0] = 1.0
+            return probe
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Asks())
+    settings.put(conn, "semantic_model", "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen/Qwen3-VL-Embedding-2B")
+    conn.commit()
+
+    in_scope = {ids["a"], ids["b"], ids["c"]}
+    found = retrieval.query(conn, str(tmp_path), "the probe", 3, NOW, offline=True, allowed=in_scope)
+    assert found["contributors"] == [clip_key]
+    assert found["missing"] == {qwen_key: "no current embeddings in this scope"}
+    assert [row["file_id"] for row in found["results"]] == [ids["a"], ids["b"], ids["c"]]
+    assert len(found["participants"]) == 2
+
+
+def test_a_scope_no_space_can_answer_is_empty_not_fake_agreement(tmp_path, monkeypatch):
+    import numpy as np
+
+    from db import retrieval, settings
+    from vision import semantic
+
+    outsiders_only = {"x1": 0.9, "x2": 0.8, "x3": 0.7, "x4": 0.6, "x5": 0.5}
+    conn, ids, clip_key, qwen_key = _semantic_shelf(tmp_path, outsiders_only, dict(outsiders_only))
+
+    class Asks:
+        def encode_query(self, phrase):
+            probe = np.zeros(16, dtype=np.float32)
+            probe[0] = 1.0
+            return probe
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Asks())
+    settings.put(conn, "semantic_model", "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen/Qwen3-VL-Embedding-2B")
+    conn.commit()
+
+    found = retrieval.query(conn, str(tmp_path), "the probe", 3, NOW, offline=True, allowed={ids["a"], ids["b"]})
+    assert found["results"] == []
+    assert found["contributors"] == []
+    assert set(found["missing"]) == {clip_key, qwen_key}

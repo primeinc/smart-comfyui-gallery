@@ -174,6 +174,12 @@ def query(
             # Discarding here, before enumeration, IS the renumbering:
             # rrf() reads positions off the filtered list.
             ranked = [(embedding_id, score) for embedding_id, score in ranked if to_file[embedding_id] in allowed]
+        if not ranked:
+            # An empty ranking entered no fusion: a space whose current
+            # embeddings all sit outside the scope must not be reported
+            # as having agreed with anything.
+            missing[name] = "no current embeddings in this scope"
+            continue
         per_space.append((spec.key, ranked))
 
     if not per_space and any("not provisioned" in why for why in missing.values()):

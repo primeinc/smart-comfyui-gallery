@@ -175,3 +175,22 @@ def test_there_is_only_one_path_to_an_ordered_gallery_answer():
         held = source.read_text(encoding="utf-8")
         for word in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search"):
             assert word not in held, f"{source.name} carries query logic: {word!r}"
+
+
+def test_the_peek_refuses_to_cross_currencies(grid_client):
+    """A preview must belong to the same result-set generation as the
+    grid it floats beside: a stale expectation is a 409, never a
+    preview from the new ordering shown against the old geometry."""
+    import re as regex
+
+    held = regex.search(r'data-currency="([^"]+)"', grid_client.get("/g").text)
+    assert held is not None
+    current = held.group(1)
+    fresh = grid_client.get("/g/peek", params={"page": 1, "expect": current})
+    assert fresh.status_code == 200
+    assert fresh.json()["currency"] == current
+    stale = grid_client.get("/g/peek", params={"page": 1, "expect": "v0-long-gone"})
+    assert stale.status_code == 409
+    assert grid_client.get("/g/peek", params={"page": 1}).status_code == 200, (
+        "a caller with no expectation still gets the current answer"
+    )

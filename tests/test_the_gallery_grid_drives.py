@@ -174,3 +174,43 @@ def test_the_search_form_asks_a_valid_question(driven):
         assert page.locator('[data-ask] [name="q"]').is_enabled()
     finally:
         page.close()
+
+
+def test_a_commit_between_render_and_hover_redraws_instead_of_lying(driven):
+    """The cross-request generation gap: the grid renders, a job commits,
+    the rail is hovered. The preview request carries the displayed
+    currency, the server answers 409, and the page redraws itself from
+    the URL -- two generations are never on screen as one answer."""
+    import httpx
+
+    browser, base = driven
+    page = browser.new_page()
+    statuses: list[tuple[str, int]] = []
+    page.on("response", lambda response: statuses.append((response.url, response.status)))
+    try:
+        page.goto(f"{base}/g?size=30")
+        page.wait_for_selector("[data-grid]")
+        before = page.get_attribute("[data-grid]", "data-currency")
+        assert before is not None
+
+        # Any commit moves the library's currency -- an album is cheap.
+        with httpx.Client(base_url=base, timeout=5.0) as web:
+            assert web.post("/albums", json={"name": "mid-hover"}).status_code == 201
+
+        rail = page.locator("[data-rail]")
+        box = rail.bounding_box()
+        assert box is not None
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+        page.wait_for_function(
+            "(before) => { const g = document.querySelector('[data-grid]');"
+            " return g && g.dataset.currency !== before; }",
+            arg=before,
+            timeout=15_000,
+        )
+        refused = [status for url, status in statuses if "/g/peek" in url and status == 409]
+        assert refused, "the stale preview request was never refused; the redraw happened for another reason"
+        after = page.get_attribute("[data-grid]", "data-currency")
+        assert after != before
+    finally:
+        page.close()

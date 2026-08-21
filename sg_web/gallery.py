@@ -20,7 +20,7 @@ import urllib.parse
 
 from litestar import get
 from litestar.datastructures import State
-from litestar.exceptions import ClientException, NotFoundException
+from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.response import Template
 
 from db import connect, naming, resultset, settings
@@ -139,12 +139,21 @@ def rail_peek(
     sort: str | None = None,
     size: int | None = None,
     count: int = resultset.PEEK_MOST,
+    expect: str | None = None,
 ) -> dict:
     """The rail popover: real members of exactly the page a jump would
-    land on, never a guess from scroll height."""
+    land on, never a guess from scroll height.
+
+    `expect` is the currency of the grid the rail is drawn beside. When
+    the library has moved on, a preview from the NEW ordering shown
+    beside the OLD grid would present two generations as one answer --
+    the response is 409 and the client redraws instead of pretending.
+    """
     query = _asked(folder, album, kind, q, sort, size)
     conn = connect.connect(state.db_path)
     try:
+        if expect is not None and resultset.currency(conn) != expect:
+            raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
             told = resultset.peek(conn, weights, query, page, time.time(), count=count)
