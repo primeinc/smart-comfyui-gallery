@@ -31,23 +31,6 @@ from __future__ import annotations
 PAGE = 60
 
 
-def resolve(conn, kind: str, slug: str) -> int | None:
-    """The entity an address names, following one retirement if it must.
-
-    A slug that was renamed still answers, which is the whole point of
-    keeping history: a live `entity.slug` wins, and history answers only on a
-    miss, most recent retirement first.
-    """
-    row = conn.execute("SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone()
-    if row:
-        return row[0]
-    row = conn.execute(
-        "SELECT entity_id FROM slug_history WHERE kind = ? AND slug = ? ORDER BY retired_at DESC LIMIT 1",
-        (kind, slug),
-    ).fetchone()
-    return row[0] if row else None
-
-
 # --- the grid --------------------------------------------------------------
 
 NEWEST_FIRST = (
@@ -81,6 +64,13 @@ ONE_PICTURE = """
 
 PARSED_FIELDS = "SELECT source, key, value_text FROM file_param WHERE file_id = ? ORDER BY source, key"
 
+#: One row per LoRA, never a group_concat: SQLite's one-argument
+#: group_concat separator is a bare comma, and a LoRA name may hold one.
+FILE_LORAS = (
+    "SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
+    " WHERE fa.file_id = ? AND fa.role = 'lora' ORDER BY fa.ordinal, a.name"
+)
+
 NEIGHBOUR = (
     "SELECT e.slug FROM file f JOIN entity e ON e.id = f.id"
     " WHERE f.folder_id = ? AND f.missing_since IS NULL AND (f.mtime, f.id) {way} (?, ?)"
@@ -94,6 +84,10 @@ def picture(conn, file_id: int):
 
 def fields_of(conn, file_id: int):
     return conn.execute(PARSED_FIELDS, (file_id,)).fetchall()
+
+
+def file_loras(conn, file_id: int) -> list[str]:
+    return [row[0] for row in conn.execute(FILE_LORAS, (file_id,))]
 
 
 def neighbour(conn, file_id: int, *, previous: bool = True):
@@ -149,6 +143,7 @@ ARTIFACT_FILES = (
     "SELECT fe.slug, f.name FROM file_artifact fa"
     " JOIN file f ON f.id = fa.file_id AND f.missing_since IS NULL"
     " JOIN entity fe ON fe.id = f.id WHERE fa.artifact_id = ?"
+    " ORDER BY fa.file_id LIMIT ?"
 )
 
 ARTIFACTS_BY_USE = (
@@ -172,14 +167,41 @@ LORA_SYNERGY = (
 )
 
 
+#: Workflows attach through `generation.workflow_id`, never `file_artifact`
+#: -- a workflow is how the picture was made, not a weight it loaded -- so
+#: the workflow shelf has its own joins.
+WORKFLOWS_BY_USE = (
+    "SELECT a.name, e.slug, count(*) AS pictures FROM artifact a"
+    "  JOIN entity e ON e.id = a.id"
+    "  JOIN generation g ON g.workflow_id = a.id"
+    "  JOIN file f ON f.id = g.file_id AND f.missing_since IS NULL"
+    " GROUP BY a.id ORDER BY pictures DESC, a.name"
+)
+
+WORKFLOW_FILES = (
+    "SELECT fe.slug, f.name FROM generation g"
+    "  JOIN file f ON f.id = g.file_id AND f.missing_since IS NULL"
+    "  JOIN entity fe ON fe.id = f.id WHERE g.workflow_id = ?"
+    " ORDER BY g.file_id LIMIT ?"
+)
+
+
 def artifacts_by_use(conn, kind: str):
-    """The models, LoRAs or workflows index -- counted by pictures, not by
-    mentions, which is why it joins `file` rather than counting rows."""
+    """The models or LoRAs index -- counted by pictures, not by mentions,
+    which is why it joins `file` rather than counting rows."""
     return conn.execute(ARTIFACTS_BY_USE, (kind,)).fetchall()
 
 
-def artifact_files(conn, artifact_id: int):
-    return conn.execute(ARTIFACT_FILES, (artifact_id,)).fetchall()
+def workflows_by_use(conn):
+    return conn.execute(WORKFLOWS_BY_USE).fetchall()
+
+
+def artifact_files(conn, artifact_id: int, limit: int = 120):
+    return conn.execute(ARTIFACT_FILES, (artifact_id, limit)).fetchall()
+
+
+def workflow_files(conn, artifact_id: int, limit: int = 120):
+    return conn.execute(WORKFLOW_FILES, (artifact_id, limit)).fetchall()
 
 
 def lora_synergy(conn, lora_id: int):
@@ -343,12 +365,24 @@ ALBUM_FILES = (
     "SELECT fe.slug, f.name FROM collection_file cf"
     "  JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
     "  JOIN entity fe ON fe.id = f.id WHERE cf.collection_id = ?"
-    " ORDER BY cf.file_id"
+    " ORDER BY cf.file_id LIMIT ?"
+)
+
+#: How many of an album's members are actually present -- the number every
+#: route answers with, so the shelf and the membership writes cannot drift.
+ALBUM_PRESENT = (
+    "SELECT count(*) FROM collection_file cf"
+    "  JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    " WHERE cf.collection_id = ?"
 )
 
 
-def album_files(conn, collection_id: int):
-    return conn.execute(ALBUM_FILES, (collection_id,)).fetchall()
+def album_files(conn, collection_id: int, limit: int = 120):
+    return conn.execute(ALBUM_FILES, (collection_id, limit)).fetchall()
+
+
+def album_present(conn, collection_id: int) -> int:
+    return conn.execute(ALBUM_PRESENT, (collection_id,)).fetchone()[0]
 
 
 # --- what can be searched --------------------------------------------------

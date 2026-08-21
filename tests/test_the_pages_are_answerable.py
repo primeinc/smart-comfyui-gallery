@@ -234,8 +234,9 @@ def test_the_image_page_answers_in_one_query(library):
         "SELECT e.slug FROM entity e JOIN file f ON f.id=e.id"
         " JOIN folder fo ON fo.id=f.folder_id WHERE fo.name='portraits' LIMIT 1"
     ).fetchone()[0]
-    file_id = pages.resolve(conn, "file", slug)
-    assert file_id is not None, "the address did not resolve"
+    found = naming.resolve(conn, "file", slug)
+    assert found is not None, "the address did not resolve"
+    file_id = found[0]
 
     row = pages.picture(conn, file_id)
     assert row is not None
@@ -278,9 +279,9 @@ def test_an_address_that_was_renamed_still_resolves(library):
     first = addressed[1]
     authored.name_person(conn, person, "Marguerite", NOW + 1)
 
-    assert pages.resolve(conn, "person", "marguerite") == person
-    assert pages.resolve(conn, "person", first) == person
-    assert pages.resolve(conn, "person", "never-existed") is None
+    assert naming.resolve(conn, "person", "marguerite") == (person, True)
+    assert naming.resolve(conn, "person", first) == (person, False)
+    assert naming.resolve(conn, "person", "never-existed") is None
 
 
 def test_the_image_page_lists_every_parsed_field(library):
@@ -407,7 +408,7 @@ def test_a_model_page_lists_what_it_made(library):
     artifact_id = conn.execute(address, (slug,)).fetchone()[0]
     assert len(pages.artifact_files(conn, artifact_id)) == 7
     assert_no_growing_scan(conn, address, (slug,))
-    assert_no_growing_scan(conn, pages.ARTIFACT_FILES, (artifact_id,))
+    assert_no_growing_scan(conn, pages.ARTIFACT_FILES, (artifact_id, 120))
 
 
 def test_the_cross_axis_view_is_one_query(library):
@@ -527,7 +528,7 @@ def test_a_remixed_picture_names_its_parent(library):
 def test_the_album_page_lists_its_members(library):
     conn, album = library["conn"], library["album"]
     assert len(pages.album_files(conn, album)) == 1
-    assert_no_growing_scan(conn, pages.ALBUM_FILES, (album,))
+    assert_no_growing_scan(conn, pages.ALBUM_FILES, (album, 120))
 
 
 def every_page(conn):
@@ -651,7 +652,9 @@ def test_a_lora_says_what_it_is_actually_used_with(tmp_path):
         loras = {name: slug for name, slug, _ in pages.artifacts_by_use(conn, "lora")}
         assert set(loras) == {"filmGrain", "detailTweaker"}
 
-        film = pages.resolve(conn, "artifact", loras["filmGrain"])
+        resolved = naming.resolve(conn, "artifact", loras["filmGrain"])
+        assert resolved is not None
+        film = resolved[0]
         assert film is not None
         assert pages.lora_synergy(conn, film) == [
             ("dreamshaper_8", "checkpoint-dreamshaper-8", 2),

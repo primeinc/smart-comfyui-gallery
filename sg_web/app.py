@@ -94,17 +94,19 @@ def picture_page(state: State, slug: str) -> dict | Redirect:
         told = pages.picture(conn, file_id)
         if told is None:
             raise NotFoundException(f"/i/{slug} has no file row")
-        name, folder, width, height, duration, asked_w, checkpoint, loras_csv, prompt, seed, fields = told
+        name, folder, width, height, duration, asked_w, checkpoint, _loras_csv, prompt, seed, fields = told
+        away = conn.execute("SELECT missing_since FROM file WHERE id = ?", (file_id,)).fetchone()
         return {
             "slug": slug,
             "name": name,
             "folder": folder,
+            "present": away is not None and away[0] is None,
             "width": width,
             "height": height,
             "duration": duration,
             "asked_for_width": asked_w,
             "checkpoint": checkpoint,
-            "loras": loras_csv.split(",") if loras_csv else [],
+            "loras": pages.file_loras(conn, file_id),
             "prompt": prompt,
             "seed": seed,
             "fields": fields,
@@ -168,11 +170,14 @@ def _artifact_page(state: State, slug: str, shelf: str) -> dict | Redirect:
             raise NotFoundException(f"a {kind} has no page yet")
         if home_shelf != shelf:
             return Redirect(path=f"{home_shelf}/{slug}", status_code=301)
+        held = (
+            pages.workflow_files(conn, artifact_id) if kind == "workflow" else pages.artifact_files(conn, artifact_id)
+        )
         page = {
             "slug": slug,
             "name": name,
             "kind": kind,
-            "pictures": _rows(pages.artifact_files(conn, artifact_id), ("slug", "name")),
+            "pictures": _rows(held, ("slug", "name")),
         }
         if kind == "lora":
             page["used_with"] = _rows(pages.lora_synergy(conn, artifact_id), ("name", "slug", "together"))
@@ -195,7 +200,13 @@ def loras(state: State) -> list[dict]:
 
 @get("/workflows", sync_to_thread=True)
 def workflows(state: State) -> list[dict]:
-    return _shelf_index(state, "workflow")
+    """Workflows attach through `generation`, so their shelf has its own
+    join (db/pages.py WORKFLOWS_BY_USE)."""
+    conn = _connect(state.db_path)
+    try:
+        return _rows(pages.workflows_by_use(conn), ("name", "slug", "pictures"))
+    finally:
+        connect.close(conn)
 
 
 @get("/m/{slug:str}", sync_to_thread=True)
@@ -274,19 +285,24 @@ class AlbumEntry:
 
 
 def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool) -> dict:
+    route = f"/t/{slug}/{'add' if adding else 'remove'}"
     conn = _connect(state.db_path)
     try:
-        collection_id, _ = _resolved(conn, "collection", slug, "/t")
-        file_id, _ = _resolved(conn, "file", data.file, "/i")
+        collection_id, live_album = _resolved(conn, "collection", slug, "/t")
+        file_id, live_file = _resolved(conn, "file", data.file, route)
         if adding:
             authored.add_to_collection(conn, collection_id, file_id, time.time())
         else:
             authored.remove_from_collection(conn, collection_id, file_id)
         conn.commit()
-        pictures = conn.execute(
-            "SELECT count(*) FROM collection_file WHERE collection_id = ?", (collection_id,)
-        ).fetchone()[0]
-        return {"slug": slug, "file": data.file, "pictures": pictures}
+        # Present members only -- the same number GET /albums answers with,
+        # so the two routes cannot drift apart; and the LIVE slugs, so a
+        # caller holding a retired address learns the current one.
+        return {
+            "slug": live_album or slug,
+            "file": live_file or data.file,
+            "pictures": pages.album_present(conn, collection_id),
+        }
     finally:
         connect.close(conn)
 

@@ -466,6 +466,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
     root.mkdir()
     for name, seed in (("helm_1.png", 4242), ("helm_2.png", 77)):
         info = PngInfo()
+        info.add_text("workflow", '{"9": {"class_type": "SaveImage", "inputs": {}}}')
         info.add_text(
             "parameters",
             f"a brass diving helmet at dusk <lora:filmGrain:0.35>\nNegative prompt: blurry\n"
@@ -504,8 +505,26 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         moved = client.get("/m/lora-filmgrain", follow_redirects=False)
         assert moved.status_code == 301
         assert moved.headers["location"] == "/l/lora-filmgrain"
-        assert client.get("/workflows").json() == []
         assert client.get("/m/nobody").status_code == 404
+
+        # The workflow shelf, with data: both files carry the same graph
+        # chunk, so one workflow artifact holds both pictures.
+        shelved = client.get("/workflows").json()
+        assert [row["pictures"] for row in shelved] == [2]
+        graph_page = client.get(f"/w/{shelved[0]['slug']}").json()
+        assert graph_page["kind"] == "workflow"
+        assert sorted(p["name"] for p in graph_page["pictures"]) == ["helm_1.png", "helm_2.png"]
+
+        # A kind with rows but no shelf yet says so, on every shelf.
+        conn = connect.connect(client.app.state.db_path)
+        from db import ingest as ingest_module
+
+        camera_id = ingest_module.artifact(conn, "camera", "Canon EOS R5", 9.0)
+        conn.commit()
+        camera_slug = naming.entity_slug(conn, camera_id)
+        conn.close()
+        assert camera_slug is not None
+        assert client.get(f"/m/{camera_slug[1]}").status_code == 404
 
         pic = client.get("/i/helm-1").json()
         assert (pic["name"], pic["checkpoint"], pic["seed"]) == ("helm_1.png", "dreamshaper_8", 4242)
@@ -522,10 +541,102 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert client.get("/f/nowhere").status_code == 404
 
 
+def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
+    """An unreadable file is a FAILED item, and the recipe it already
+    contributed survives: ingest retracts before it re-reads, so a rotten
+    re-read must roll back rather than commit the destruction and report
+    success. One root offline must never silently erase its recipe axis."""
+    from PIL import Image
+    from PIL.PngImagePlugin import PngInfo
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    info = PngInfo()
+    info.add_text(
+        "parameters",
+        "a helmet\nSteps: 28, Sampler: Euler a, CFG scale: 7, Seed: 1, Size: 16x16, "
+        "Model: dreamshaper_8, Version: v1.10.1",
+    )
+    Image.new("RGB", (16, 16), (1, 2, 3)).save(root / "good.png", pnginfo=info)
+    (root / "gone.png").write_bytes(b"\x89PNG-pretend")
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
+
+        def drained_ingest() -> dict:
+            with client.websocket_connect("/ws/jobs") as feed:
+                assert feed.receive_json(timeout=10)["type"] == "snapshot"
+                job_id = client.post("/jobs/ingest").json()["id"]
+                state = None
+                while state not in ("done", "failed", "cancelled"):
+                    state = feed.receive_json(timeout=10)["state"]
+            return client.get(f"/jobs/{job_id}").json()
+
+        first = drained_ingest()
+        assert first["failed_count"] == 1, "junk bytes must be a failed item, never quiet success"
+        before = client.get("/i/good").json()
+        assert before["params"], "the good file ingested"
+        assert before["checkpoint"] == "dreamshaper_8"
+
+        # The library rots behind the app's back: one corrupted, one deleted.
+        (root / "good.png").write_bytes(b"\x89PNG-now-junk")
+        (root / "gone.png").unlink()
+        second = drained_ingest()
+        assert second["failed_count"] == 2, "both rotten files must land on their items"
+        after = client.get("/i/good").json()
+        assert after["params"] == before["params"], "a failed re-read destroyed the recipe it could not replace"
+        assert after["checkpoint"] == before["checkpoint"]
+
+
+def test_every_new_address_survives_a_rename(served):
+    """The addressing contract on every kind the entity layer added: a
+    retired slug 301s within its own prefix, and a retired slug on the
+    WRONG shelf lands home in two hops, never a loop."""
+    from db import ingest as ingest_module
+
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    found = naming.resolve(conn, "file", "ana-1")
+    assert found is not None
+    naming.rename(conn, found[0], "ana prime", 5.0)
+    found = naming.resolve(conn, "folder", "lib")
+    assert found is not None
+    naming.rename(conn, found[0], "library prime", 5.0)
+    lora_id = ingest_module.artifact(conn, "lora", "detailTweaker", 5.0)
+    naming.rename(conn, lora_id, "detail tweaker xl", 5.0)
+    conn.commit()
+    conn.close()
+
+    moved = client.get("/i/ana-1", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/i/ana-prime")
+    moved = client.get("/f/lib", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/f/library-prime")
+    moved = client.get("/l/lora-detailtweaker", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/l/detail-tweaker-xl")
+
+    first = client.get("/m/lora-detailtweaker", follow_redirects=False)
+    assert (first.status_code, first.headers["location"]) == (301, "/m/detail-tweaker-xl")
+    second = client.get("/m/detail-tweaker-xl", follow_redirects=False)
+    assert (second.status_code, second.headers["location"]) == (301, "/l/detail-tweaker-xl")
+    assert client.get("/l/detail-tweaker-xl").json()["name"] == "detailTweaker"
+
+    assert client.post("/albums", json={"name": "Trip"}).json()["slug"] == "trip"
+    conn = connect.connect(db_path)
+    found = naming.resolve(conn, "collection", "trip")
+    assert found is not None
+    naming.rename(conn, found[0], "Trip 2026", 6.0)
+    conn.commit()
+    conn.close()
+    moved = client.get("/t/trip", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/t/trip-2026")
+
+
 def test_albums_are_made_and_served_through_the_application(served):
     """An album is authored state with a full application surface: made,
     filled, emptied and read over routes, addressed by slug."""
-    client, _, _ = served
+    client, _, root = served
     made = client.post("/albums", json={"name": "Keepers"}).json()
     assert made == {"name": "Keepers", "slug": "keepers", "kind": "album"}
     assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1
@@ -544,6 +655,16 @@ def test_albums_are_made_and_served_through_the_application(served):
     assert client.post("/albums", json={"name": "Q", "kind": "smart"}).status_code == 400
     assert client.post("/t/keepers/add", json={"file": "nope"}).status_code == 404
     assert client.get("/t/lost").status_code == 404
+
+    # A name collision suffixes, never steals.
+    assert client.post("/albums", json={"name": "Keepers"}).json()["slug"] == "keepers-2"
+
+    # A missing file drops out of every count the same way.
+    client.post("/t/keepers/add", json={"file": "ben-1"})
+    (root / "ben_1.png").unlink()
+    assert client.post("/roots/1/scan").json()["missing"] == 1
+    assert client.get("/albums").json()[0]["pictures"] == 1
+    assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1
 
 
 def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):

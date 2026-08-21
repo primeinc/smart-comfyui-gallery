@@ -93,7 +93,14 @@ def submit_ingest(conn, now: float) -> int:
 def _ingest_item(conn, file_id: int, payload: dict, now: float) -> None:
     from . import detect, ingest
 
-    ingest.one(conn, file_id, detect.path_of(conn, file_id), now)
+    out = ingest.one(conn, file_id, detect.path_of(conn, file_id), now)
+    if out.unreadable is not None:
+        # Ingest retracts what it wrote last time BEFORE it re-reads, in
+        # this same transaction -- so a file whose bytes cannot be opened
+        # must RAISE here: the runner's rollback then restores the recipe
+        # a dead read could not replace, and the failure lands on the
+        # item instead of committing the destruction as success.
+        raise ValueError(out.unreadable)
 
 
 def submit_cluster(conn, now: float) -> int:

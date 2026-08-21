@@ -53,8 +53,8 @@ SECTIONS = (
     (
         "The recipe, from the files",
         (
-            "Models, LoRAs, workflows and an album -- read out of the files by the ingest job,"
-            " produced and listed through the application's own routes"
+            "Whatever the files carry, as the shelf routes serve it -- read by the ingest job,"
+            " the album made through the application; an empty shelf says so"
         ),
         ("recipe-shelves",),
     ),
