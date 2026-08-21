@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 
 #: What this build AUTHORS. Reading is wider: `_KNOWN_VERSIONS` -- a
 #: stored v1 rule keeps meaning exactly what it meant, and "versioned"
@@ -121,35 +122,64 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     return rule
 
 
-def _no_artifact_in_v1(where: dict):
-    """v1's shape, held exactly: an artifact key inside a v1 row is
-    corruption, never an upgrade. Returns the v1 artifact reference,
-    which is always the absence of one."""
-    if "artifact" in where:
-        raise ValueError("a v1 rule does not carry an artifact reference")
+#: Exactly 32 hex characters by FULLMATCH -- bytes.fromhex skips ASCII
+#: whitespace, so a length check after decoding lets spaces hide inside
+#: a stored reference. The same lesson the selection-key parser already
+#: paid for; a durable format does not get to relearn it.
+_UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
+
+#: The durable vocabulary, EXACT per version: a stored rule carrying a
+#: key this build does not understand means something this build cannot
+#: evaluate -- BROKEN, never "evaluated after quietly throwing that
+#: meaning away". Fail-closed is the whole point of a typed rule.
+_TOP_KEYS = frozenset({"v", "where", "select"})
+_WHERE_KEYS = {
+    1: frozenset({"folder", "person", "kind", "favorite", "rating_min"}),
+    2: frozenset({"folder", "person", "artifact", "kind", "favorite", "rating_min"}),
+}
+_SELECT_KEYS = frozenset({"sort", "text", "take"})
+
+
+def _versioned_shape(version: int, held) -> tuple[dict, dict]:
+    """The stored form's key sets, held exactly -- unknown fields are
+    refusals, missing fields are refusals, per version."""
+    if not isinstance(held, dict) or set(held) != _TOP_KEYS:
+        raise ValueError("the stored form does not have the versioned top-level shape")
+    where, select = held["where"], held["select"]
+    expected = _WHERE_KEYS.get(version)
+    if expected is None:
+        raise ValueError(f"v{version!r} is not a shape this build reads")
+    if not isinstance(where, dict) or set(where) != expected:
+        raise ValueError(f"a v{version} rule's predicates are exactly {', '.join(sorted(expected))}")
+    if not isinstance(select, dict) or set(select) != _SELECT_KEYS:
+        raise ValueError(f"a rule's selection clause is exactly {', '.join(sorted(_SELECT_KEYS))}")
+    return where, select
 
 
 def _stored_uuid(value, field: str) -> bytes | None:
     """Only actual JSON null means unconstrained: an empty string, a
     false, or any other falsy value is CORRUPTION, not the absence of a
-    reference -- decoded strictly or refused."""
+    reference -- and the spelling is exactly 32 hex characters BEFORE
+    the decoder (which forgives whitespace) ever sees it."""
     if value is None:
         return None
-    if not isinstance(value, str):
-        # TypeError and ValueError alike are corruption on the load path
-        # (both fold into BrokenCollectionRule there).
-        raise TypeError(f"the rule's {field} reference is not a hex string")
-    decoded = bytes.fromhex(value)
-    if len(decoded) != 16:
-        raise ValueError(f"the rule's {field} reference is not a 16-byte entity uuid")
-    return decoded
+    if type(value) is not str or _UUID_HEX.fullmatch(value) is None:
+        raise ValueError(f"the rule's {field} reference is not a 32-hex entity uuid")
+    return bytes.fromhex(value)
 
 
 def _entity_uuid(conn, kind: str, slug: str) -> bytes:
-    row = conn.execute("SELECT e.uuid FROM entity e WHERE e.kind = ? AND e.slug = ?", (kind, slug)).fetchone()
-    if row is None:
+    """Any spelling ResultSet recognizes is also legal when the question
+    becomes durable meaning: retired slugs resolve to the same entity,
+    and the uuid -- the identity itself -- is what gets stored. A save
+    that refused the spelling whose answer is on screen would be
+    healing's opposite."""
+    from .naming import resolve
+
+    found = resolve(conn, kind, slug)
+    if found is None:
         raise ValueError(f"no {kind} at {slug!r} to save into a rule")
-    return row[0]
+    return conn.execute("SELECT uuid FROM entity WHERE id = ?", (found[0],)).fetchone()[0]
 
 
 def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -> CollectionRule:
@@ -237,13 +267,12 @@ def load(conn, collection_id: int) -> CollectionRule | None:
     version, told, actor_id = row
     try:
         held = json.loads(told)
-        where, select = held["where"], held["select"]
-        # The reader is per-version: v1's shape has no artifact key (one
-        # appearing there is corruption, not an upgrade), v2 REQUIRES it.
-        if int(version) == 1:
-            artifact_stored = _no_artifact_in_v1(where)
-        else:
-            artifact_stored = _stored_uuid(where["artifact"], "artifact")
+        # The reader is per-version and the shape is EXACT: v1 has no
+        # artifact key (one appearing there is corruption, not an
+        # upgrade), v2 requires it, and a key from any future this build
+        # does not understand refuses instead of evaluating without it.
+        where, select = _versioned_shape(int(version), held)
+        artifact_stored = None if int(version) == 1 else _stored_uuid(where["artifact"], "artifact")
         made = CollectionRule(
             version=int(version),
             folder_uuid=_stored_uuid(where["folder"], "folder"),

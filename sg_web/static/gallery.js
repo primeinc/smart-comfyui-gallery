@@ -34,7 +34,13 @@
   const saver = document.querySelector("[data-save-smart]");
   if (saver) {
     saver.addEventListener("click", async () => {
-      const params = Object.fromEntries(new URLSearchParams(window.location.search));
+      // The MOUNTED answer's canonical spelling, not the address bar:
+      // ResultSet heals retired entity spellings into data-qbase, and a
+      // save must persist the identity on screen, not the stale words
+      // the URL arrived with.
+      const mounted = document.querySelector("[data-grid]");
+      const spelled = mounted ? mounted.dataset.qbase.replace(/&$/, "") : window.location.search;
+      const params = Object.fromEntries(new URLSearchParams(spelled));
       delete params.page;
       delete params.size;
       const name = window.prompt("name this smart collection");
@@ -84,7 +90,9 @@ ${smarts.map((held) => held.slug).join(", ")}`,
         window.alert(`no collection at /t/${named}`);
         return;
       }
-      const params = Object.fromEntries(new URLSearchParams(window.location.search));
+      const mounted = document.querySelector("[data-grid]");
+      const spelled = mounted ? mounted.dataset.qbase.replace(/&$/, "") : window.location.search;
+      const params = Object.fromEntries(new URLSearchParams(spelled));
       delete params.page;
       delete params.size;
       let take = null;

@@ -292,6 +292,95 @@ def test_a_v1_rule_still_means_exactly_what_it_meant(recipes):
     assert told["count"] == 6
 
 
+def test_the_durable_shape_refuses_what_this_build_cannot_mean(recipes):
+    """Versioned means versioned: exact key sets per version, exact
+    32-hex spellings before the whitespace-forgiving decoder -- every
+    deviation is BROKEN, never an evaluation that quietly dropped the
+    part this build did not understand."""
+    import json as json_module
+
+    valid_where = {"folder": None, "person": None, "artifact": None, "kind": None, "favorite": None, "rating_min": None}
+    valid_select = {"sort": None, "text": None, "take": None}
+    spaced = "aabbccdd eeff0011 2233445566778899"[:32]  # 32 chars, spaces inside, decodes to <16 bytes
+    hostile = [
+        (2, {"v": 2, "where": {**valid_where, "artifact": spaced}, "select": valid_select}),
+        (1, {"v": 1, "where": valid_where, "select": valid_select}),  # v1 carrying v2's artifact key
+        (
+            1,
+            {
+                "v": 1,
+                "where": dict.fromkeys(("folder", "person", "kind", "favorite", "rating_min", "moon_phase")),
+                "select": valid_select,
+            },
+        ),
+        (2, {"v": 2, "where": {k: v for k, v in valid_where.items() if k != "artifact"}, "select": valid_select}),
+        (2, {"v": 2, "where": valid_where, "select": valid_select, "future": True}),
+        (2, {"v": 2, "where": valid_where, "select": {**valid_select, "limit": 5}}),
+    ]
+    conn = connect.connect(recipes.app.state.db_path)
+    try:
+        smart = collections.collection(conn, "Fragile", NOW, kind="smart")
+        conn.commit()
+    finally:
+        connect.close(conn)
+    for version, payload in hostile:
+        conn = connect.connect(recipes.app.state.db_path)
+        try:
+            conn.execute(
+                "INSERT INTO collection_rule(collection_id, rule_version, rule_json, created_at, updated_at)"
+                " VALUES(?, ?, ?, ?, ?)"
+                " ON CONFLICT(collection_id) DO UPDATE SET rule_version = excluded.rule_version,"
+                " rule_json = excluded.rule_json, updated_at = excluded.updated_at",
+                (smart, version, json_module.dumps(payload, sort_keys=True, separators=(",", ":")), NOW, NOW),
+            )
+            conn.commit()
+        finally:
+            connect.close(conn)
+        told = recipes.get("/t/fragile", headers={"accept": "application/json"}).json()
+        assert told["state"] == "broken", f"{payload} was evaluated instead of refused"
+        assert told["gallery"] is None
+        assert recipes.get("/g", params={"album": "fragile"}).status_code == 400
+
+
+def test_a_healed_question_saves_the_same_identity(recipes):
+    """The healing crosses the save Seam: a retired artifact spelling
+    whose ResultSet answer is on screen saves -- and replaces -- as the
+    SAME entity uuid the live spelling would, because durable meaning is
+    the identity, never the words the URL arrived with."""
+    import json as json_module
+
+    conn = connect.connect(recipes.app.state.db_path)
+    try:
+        found = naming.resolve(conn, "artifact", "lora-filmgrain")
+        assert found is not None
+        naming.rename(conn, found[0], "film grain xl", NOW)
+        conn.commit()
+        lora_uuid = conn.execute("SELECT uuid FROM entity WHERE id = ?", (found[0],)).fetchone()[0]
+    finally:
+        connect.close(conn)
+
+    made = recipes.post("/albums/smart", json={"name": "Grainy", "artifact": "lora-filmgrain"})
+    assert made.status_code == 201, made.text
+
+    def stored() -> str:
+        conn = connect.connect(recipes.app.state.db_path)
+        try:
+            told = conn.execute(
+                "SELECT r.rule_json FROM collection_rule r JOIN collection c ON c.id = r.collection_id"
+                " WHERE c.name = 'Grainy'"
+            ).fetchone()[0]
+        finally:
+            connect.close(conn)
+        return json_module.loads(told)["where"]["artifact"]
+
+    assert stored() == lora_uuid.hex(), "the retired spelling saved a different identity than the answer on screen"
+
+    replaced = recipes.put("/t/grainy/rule", json={"artifact": "lora-filmgrain", "rating_min": 4, "expected_rev": 1})
+    assert replaced.status_code == 200, replaced.text
+    assert stored() == lora_uuid.hex(), "replacing through the retired spelling forgot the healing"
+    assert [row["slug"] for row in replaced.json()["gallery"]["items"]] == ["pic-1"]
+
+
 # --- reuse, not implementation ----------------------------------------------
 
 
