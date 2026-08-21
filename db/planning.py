@@ -10,20 +10,36 @@ not "how should a human be told". `label_hint` is the only human-facing
 field, and it is a deterministic suggestion a later labeler may
 replace; nothing here writes a sentence.
 
+EVERY structure is a conclusion and every conclusion is a Claim: a
+phase boundary is a `prompt_shift` claim with evidence on both sides,
+a family is a `prompt_family` claim, so a renderer may word what is
+here and can invent nothing. A plan is an exact PARTITION of its
+snapshot -- every member exactly once, representatives inside their
+phase, every reference resolving inward -- and `validate_plan` proves
+that before persistence and again on every read.
+
 The similarity service is a Seam with the same discipline as the
 snapshot: `embed(texts) -> vectors`, the planner supplying the FROZEN
-prompt strings. The same engine that answers semantic retrieval sits
-behind the production Adapter, but nothing here may look a vector up by
-file: that would smuggle today's library back across the seam the
-snapshot exists to close. A lexical bag-of-tokens Adapter gives tests a
+prompt strings, the output VALIDATED (exactly N vectors, one dimension,
+finite) because a producer that returns N-1 vectors is broken, not
+padded. The same engine that answers semantic retrieval sits behind
+the production Adapter, but nothing here may look a vector up by file:
+that would smuggle today's library back across the seam the snapshot
+exists to close. A lexical bag-of-tokens Adapter gives tests a
 deterministic oracle and any library a model-free fallback.
 
-Identity is content-addressed exactly like the snapshot: the plan
-document carries the snapshot's sha, the planner kind and version, the
-similarity engine and version and the settings, and the plan's sha is
-over that canonical document with `planned_at` excluded. The same
-evidence under the same policy is ONE plan; a new policy coexists with
-the old one instead of overwriting it.
+Two identities, two purposes. The REQUEST identity -- snapshot sha,
+planner kind/version, engine name/version, exact settings -- is known
+before any model work, so an identical request reuses the finished
+plan or the queued job without embedding anything again. The DOCUMENT
+identity is the canonical plan's sha with `planned_at` excluded; the
+same evidence under the same policy is ONE plan, and a new policy
+coexists with the old one instead of overwriting it.
+
+Production planning is DURABLE WORK: the request is recorded, a
+`story_plan` job loads the engine and computes off the request thread,
+exactly as the snapshot's own doctrine says model work happens after
+freezing. The lexical engine is pure code and may be called directly.
 
 V1 is deterministic end to end. Prompt identity alone never splits a
 phase -- fifty wildcard expansions of one prompt are one creative
@@ -36,6 +52,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 import re
 import typing
 
@@ -47,6 +64,31 @@ FORMAT_VERSION = 1
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
 
 
+# --- settings: exact, fail-closed --------------------------------------------
+
+
+def validated_settings(settings: dict | None, defaults: dict) -> dict:
+    """V1 means exactly `phase_threshold`: a finite number in [0, 1],
+    not a bool, not a string. An unknown key would ride the identity
+    while meaning nothing; a string would compare as a string. The same
+    exact-shape doctrine CollectionRule paid for."""
+    held = dict(defaults)
+    if settings is None:
+        return held
+    if not isinstance(settings, dict):
+        raise TypeError("planner settings are an object")
+    unknown = sorted(set(settings) - set(defaults))
+    if unknown:
+        raise ValueError(f"unknown planner setting(s) {unknown}; this planner knows {sorted(defaults)}")
+    for key, value in settings.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"{key} is a finite number, not {value!r}")
+        if not 0.0 <= float(value) <= 1.0:
+            raise ValueError(f"{key} lies in [0, 1], not {value!r}")
+        held[key] = float(value)
+    return held
+
+
 # --- the similarity Seam -----------------------------------------------------
 
 
@@ -55,6 +97,25 @@ class PromptSimilarity(typing.Protocol):
     version: str
 
     def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+def validated_vectors(vectors, expected: int) -> list[list[float]]:
+    """The producer contract: exactly `expected` vectors, one shared
+    dimension, every value a finite number. Anything else is producer
+    failure and is refused -- never padded into coherence."""
+    made = [list(row) for row in vectors]
+    if len(made) != expected:
+        raise ValueError(f"the similarity engine returned {len(made)} vectors for {expected} texts")
+    if not made:
+        return made
+    width = len(made[0])
+    for row in made:
+        if len(row) != width:
+            raise ValueError(f"the similarity engine returned mixed dimensions ({width} and {len(row)})")
+        for value in row:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"the similarity engine returned a non-finite or non-numeric value {value!r}")
+    return [[float(value) for value in row] for row in made]
 
 
 _TOKEN = re.compile(r"[a-z0-9]+")
@@ -76,40 +137,106 @@ class LexicalPromptSimilarity:
         index = {token: i for i, token in enumerate(vocabulary)}
         made = []
         for bag in bags:
-            row = [0.0] * len(vocabulary)
+            row = [0.0] * max(1, len(vocabulary))
             for token in bag:
                 row[index[token]] += 1.0
             made.append(row)
         return made
 
 
-class ClipPromptSimilarity:
-    """The production Adapter: the loaded semantic text encoder
+class SemanticPromptSimilarity:
+    """The production Adapter: a loaded semantic text encoder
     (vision/semantic) embedding the frozen prompt strings. Its identity
-    is the encoder's model and checkpoint plus the package version, so
-    a plan says which engine read the prompts."""
+    is the ACTUAL encoder's space -- provider, model, pinned checkpoint
+    and package version -- read from the engine spec, never assumed
+    from the selector the request used."""
 
-    def __init__(self, encoder, provider: str, checkpoint: str, package_version: str):
+    def __init__(self, encoder, spec: SemanticEngine):
         self._encoder = encoder
-        self.name = f"{provider}:{encoder.model_id}:{checkpoint}"
-        self.version = package_version
+        self.name, self.version = spec.identity()
 
     def embed(self, texts):
         return [[float(x) for x in self._encoder.encode_query(text)] for text in texts]
 
 
+@dataclasses.dataclass(frozen=True)
+class LexicalEngine:
+    """Engine spec: pure code, no weights, loads instantly."""
+
+    selector: typing.ClassVar[str] = "lexical"
+
+    def identity(self) -> tuple[str, str]:
+        return (LexicalPromptSimilarity.name, LexicalPromptSimilarity.version)
+
+    def load(self) -> PromptSimilarity:
+        return LexicalPromptSimilarity()
+
+    def payload(self) -> dict:
+        return {}
+
+
+@dataclasses.dataclass(frozen=True)
+class SemanticEngine:
+    """Engine spec for one configured semantic provider: identity is
+    known WITHOUT loading weights (the space the provider declares for
+    this model and pinned checkpoint), so a request's identity can be
+    computed on the request thread and the weights loaded by the job."""
+
+    provider: str
+    model: str
+    checkpoint: str
+    models_dir: str
+
+    @property
+    def selector(self) -> str:
+        return self.provider
+
+    def identity(self) -> tuple[str, str]:
+        from vision import semantic
+
+        space = semantic.space(self.provider, self.model, self.checkpoint, 1)
+        return (space.key, f"{space.producer_version}+{space.preprocess_version}")
+
+    def load(self) -> PromptSimilarity:
+        from vision import semantic
+
+        encoder = semantic.encoder(self.provider, self.models_dir, self.model, self.checkpoint, offline=True)
+        return SemanticPromptSimilarity(encoder, self)
+
+    def payload(self) -> dict:
+        return dataclasses.asdict(self)
+
+
+def engine_for(conn, selector: str, models_dir: str):
+    """The engine spec a selector names -- EXACTLY. `lexical` is the pure
+    engine; a provider name (`openclip`, `qwen`) is that provider's
+    configured semantic model, refused when that provider is not among
+    the configured spaces rather than silently substituted."""
+    if selector == LexicalEngine.selector:
+        return LexicalEngine()
+    from vision import semantic
+
+    from . import retrieval
+
+    if selector not in semantic.PROVIDERS:
+        known = ", ".join(sorted(semantic.PROVIDERS))
+        raise ValueError(f"no similarity engine named {selector!r}; one of lexical, {known}")
+    for provider, model, configured in retrieval.choices(conn):
+        if provider == selector:
+            checkpoint = semantic.pin(provider, models_dir, model, configured)
+            return SemanticEngine(provider, model, checkpoint, models_dir)
+    raise ValueError(f"the {selector!r} provider is not among the configured semantic spaces")
+
+
 def pairwise_cosine(vectors: list[list[float]]) -> list[list[float]]:
     """Every pair's cosine, via the shared unit-normalisation (db/similarity
-    normalise) and one matrix product. An all-zero vector has cosine 0
-    with everything, including itself."""
+    normalise) and one matrix product, over VALIDATED vectors. An
+    all-zero vector has cosine 0 with everything, including itself."""
     from .similarity import normalise
 
     if not vectors:
         return []
-    width = max(len(row) for row in vectors)
-    if width == 0:
-        return [[0.0] * len(vectors) for _ in vectors]
-    unit = normalise([row + [0.0] * (width - len(row)) for row in vectors])
+    unit = normalise(vectors)
     return (unit @ unit.T).astype(float).tolist()
 
 
@@ -137,19 +264,20 @@ class GenerationHistoryPlanner:
     order without a claim that one came before another.
 
     Boundaries: the cosine between a member's prompt and the running
-    phase's representative prompt falls below `phase_threshold`. Prompt
-    identity is never consulted, so wildcard expansions of one prompt
-    stay one phase. Parameter and artifact changes are CLAIMS about a
-    boundary, not boundaries themselves.
+    phase's first prompt falls below `phase_threshold` -- and the
+    boundary is itself a `prompt_shift` claim with both prompts as
+    evidence. Prompt identity is never consulted, so wildcard expansions
+    of one prompt stay one phase. Parameter and artifact changes are
+    CLAIMS about a boundary, not boundaries themselves.
     """
 
     kind = "generation_history"
-    version = 1
+    version = 2
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
         self.similarity = similarity
-        self.settings = {**self.defaults, **(settings or {})}
+        self.settings = validated_settings(settings, self.defaults)
 
     def plan(self, snapshot: dict, snapshot_sha256: str) -> dict:
         if snapshot.get("v") != 1:
@@ -158,6 +286,7 @@ class GenerationHistoryPlanner:
             raise ValueError("GenerationHistoryPlanner plans generation sessions only")
         members = sorted(snapshot["members"], key=lambda one: one["ordinal"])
         refs = [_member_ref(one["ordinal"]) for one in members]
+        threshold = self.settings["phase_threshold"]
         unsupported: list[dict] = []
 
         sequenced = all((one.get("occurrence") or {}).get("precision") in _SEQUENCED for one in members)
@@ -175,29 +304,53 @@ class GenerationHistoryPlanner:
         if promptless:
             unsupported.append({"kind": "prompt_evidence", "reason": "no frozen prompt", "member_refs": promptless})
 
-        cosine = pairwise_cosine(self.similarity.embed(prompts)) if members else []
-        groups = (
-            _sequential_phases(cosine, self.settings["phase_threshold"])
-            if sequenced
-            else _family_phases(cosine, self.settings["phase_threshold"])
-        )
+        vectors = validated_vectors(self.similarity.embed(prompts), len(prompts)) if members else []
+        cosine = pairwise_cosine(vectors)
+        groups = _sequential_phases(cosine, threshold) if sequenced else _family_phases(cosine, threshold)
 
         claims: list[dict] = []
         phases: list[dict] = []
         for number, indexes in enumerate(groups, start=1):
-            phase_id = f"phase-{number:03d}"
             member_refs = [refs[i] for i in indexes]
-            representative = _medoid(indexes, cosine)
             claim_refs = []
-            if len(indexes) >= 2:
-                inside = [cosine[a][b] for a in indexes for b in indexes if a < b]
+            inside = [cosine[a][b] for a in indexes for b in indexes if a < b]
+            if sequenced:
+                if number > 1:
+                    previous_first = groups[number - 2][0]
+                    claim_refs.append(
+                        _claim(
+                            claims,
+                            "prompt_shift",
+                            confidence=1.0,
+                            evidence=[
+                                f"{refs[previous_first]}:generation.prompt",
+                                f"{refs[indexes[0]]}:generation.prompt",
+                            ],
+                            facts={"cosine": round(cosine[previous_first][indexes[0]], 4), "threshold": threshold},
+                        )
+                    )
+                if inside:
+                    claim_refs.append(
+                        _claim(
+                            claims,
+                            "prompt_similarity",
+                            confidence=max(0.0, min([1.0, *inside])),
+                            evidence=[f"{ref}:generation.prompt" for ref in member_refs],
+                            facts={"relationship": "same_prompt_family", "min_pairwise_cosine": round(min(inside), 4)},
+                        )
+                    )
+            else:
                 claim_refs.append(
                     _claim(
                         claims,
-                        "prompt_similarity",
-                        confidence=max(0.0, min([1.0, *inside])),
+                        "prompt_family",
+                        confidence=max(0.0, min([1.0, *inside])) if inside else 1.0,
                         evidence=[f"{ref}:generation.prompt" for ref in member_refs],
-                        facts={"relationship": "same_prompt_family", "min_pairwise_cosine": round(min(inside), 4)},
+                        facts={
+                            "size": len(indexes),
+                            "threshold": threshold,
+                            "min_pairwise_cosine": round(min(inside), 4) if inside else None,
+                        },
                     )
                 )
             seeds = sorted(
@@ -217,7 +370,7 @@ class GenerationHistoryPlanner:
                         facts={"distinct_seeds": len(seeds)},
                     )
                 )
-            label = f"Prompt family {number}" if not sequenced else f"Phase {number}"
+            label = f"Phase {number}" if sequenced else f"Prompt family {number}"
             if number > 1:
                 previous = groups[number - 2]
                 changed = _artifact_change(members, previous, indexes, refs)
@@ -229,9 +382,9 @@ class GenerationHistoryPlanner:
                     claim_refs.append(_claim(claims, "parameter_change", 1.0, params[0], params[1]))
             phases.append(
                 {
-                    "id": phase_id,
+                    "id": f"phase-{number:03d}",
                     "member_refs": member_refs,
-                    "representative_refs": [refs[representative]],
+                    "representative_refs": [refs[_medoid(indexes, cosine)]],
                     "label_hint": label,
                     "claim_refs": claim_refs,
                 }
@@ -340,7 +493,7 @@ def _parameter_change(members, previous, current, refs):
     return evidence, {"changed": changed}
 
 
-# --- resolution: a plan may only point inside its snapshot -------------------
+# --- validation: a plan is an exact partition of its snapshot ----------------
 
 _REF = re.compile(r"^(member-\d{3})(?::([a-z_]+(?:\.[a-z_]+)*))?$")
 
@@ -348,7 +501,7 @@ _REF = re.compile(r"^(member-\d{3})(?::([a-z_]+(?:\.[a-z_]+)*))?$")
 def unresolved(plan: dict, snapshot: dict) -> list[str]:
     """Every member_ref, representative_ref and evidence_ref that does
     NOT resolve inside the snapshot, plus every claim_ref that names no
-    claim. Empty means the plan is closed over its evidence."""
+    claim. Empty means the plan points nowhere but inward."""
     members = {_member_ref(one["ordinal"]): one for one in snapshot["members"]}
     claims = {one["id"] for one in plan["claims"]}
     bad: list[str] = []
@@ -377,15 +530,72 @@ def unresolved(plan: dict, snapshot: dict) -> list[str]:
     return bad
 
 
-# --- identity and persistence ------------------------------------------------
+def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]:
+    """Every way a plan can be wrong about its snapshot, as a list of
+    reasons -- empty is the only acceptable answer. Exact format; the
+    snapshot it names; an exact partition (every member exactly once);
+    representatives inside their phase; unique phase and claim ids;
+    every reference inward."""
+    bad: list[str] = []
+    if plan.get("v") != FORMAT_VERSION:
+        bad.append(f"format v{plan.get('v')!r}, not v{FORMAT_VERSION}")
+    if plan.get("snapshot_sha256") != snapshot_sha256:
+        bad.append("the plan names a different snapshot")
+    bad.extend(f"missing {key}" for key in ("planner", "subject", "phases", "claims", "unsupported") if key not in plan)
+    if bad:
+        return bad
+    expected = sorted(_member_ref(one["ordinal"]) for one in snapshot["members"])
+    placed = [ref for phase in plan["phases"] for ref in phase["member_refs"]]
+    if sorted(placed) != expected:
+        missing = sorted(set(expected) - set(placed))
+        extra = sorted(set(placed) - set(expected))
+        repeated = sorted({ref for ref in placed if placed.count(ref) > 1})
+        bad.append(f"not a partition of the snapshot: missing {missing}, extra {extra}, repeated {repeated}")
+    phase_ids = [phase["id"] for phase in plan["phases"]]
+    if len(set(phase_ids)) != len(phase_ids):
+        bad.append("phase ids are not unique")
+    claim_ids = [claim["id"] for claim in plan["claims"]]
+    if len(set(claim_ids)) != len(claim_ids):
+        bad.append("claim ids are not unique")
+    for phase in plan["phases"]:
+        if not phase["representative_refs"]:
+            bad.append(f"{phase['id']} has no representative")
+        bad.extend(
+            f"{phase['id']} representative {ref} is not one of its members"
+            for ref in phase["representative_refs"]
+            if ref not in phase["member_refs"]
+        )
+    dangling = unresolved(plan, snapshot)
+    if dangling:
+        bad.append(f"references outside the snapshot: {dangling[:5]}")
+    return bad
+
+
+# --- identities --------------------------------------------------------------
 
 
 def identity(plan: dict) -> tuple[str, str]:
-    """The sha is over the plan's canonical spelling -- which already
-    names the snapshot sha, the planner, the similarity engine and the
+    """The DOCUMENT identity: the plan's canonical spelling -- which
+    already names the snapshot sha, the planner, the engine and the
     settings -- with nothing about WHEN it was planned."""
     spelled = canonical({key: value for key, value in plan.items() if key != "planned_at"})
     return spelled, digest(spelled)
+
+
+def request_identity(
+    snapshot_sha256: str, planner: str, planner_version: int, engine: str, engine_version: str, settings: dict
+) -> str:
+    """The REQUEST identity, known before any model work."""
+    return digest(
+        canonical(
+            {
+                "snapshot_sha256": snapshot_sha256,
+                "planner": {"kind": planner, "version": planner_version},
+                "engine": {"name": engine, "version": engine_version},
+                "settings": dict(sorted(settings.items())),
+            }
+        )
+    )
 
 
 def settings_hash(settings: dict) -> str:
@@ -395,22 +605,47 @@ def settings_hash(settings: dict) -> str:
 PLANNERS = {GenerationHistoryPlanner.kind: GenerationHistoryPlanner}
 
 
-def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now: float) -> PlanRef:
-    """Plan one frozen snapshot under one policy and persist the result
-    -- or return the existing row when the canonical plan already
-    exists. The planner never sees the connection: it receives the
-    document the snapshot module loads. The transaction is left open
-    for the caller to commit."""
+# --- persistence and orchestration -------------------------------------------
+
+
+def _verified_snapshot(conn, snapshot_id: int) -> tuple[dict, str]:
+    """The snapshot document, PROVEN to hash to the identity it is stored
+    under: a corrupted row must not produce a plan that claims hash X
+    while having read different bytes."""
+    from . import stories
+
     row = conn.execute(
         "SELECT document_json, document_sha256 FROM story_snapshot WHERE id = ?", (snapshot_id,)
     ).fetchone()
     if row is None:
         raise LookupError(f"no story snapshot {snapshot_id}")
-    snapshot = json.loads(row[0])
-    plan = planner.plan(snapshot, row[1])
-    dangling = unresolved(plan, snapshot)
-    if dangling:
-        raise AssertionError(f"the planner pointed outside its snapshot: {dangling[:5]}")
+    document = json.loads(row[0])
+    if not stories.verify(document, row[1]):
+        raise ValueError(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to plan from it")
+    return document, row[1]
+
+
+def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now: float) -> PlanRef:
+    """Plan one verified snapshot under one policy and persist the
+    result -- or return the existing row when the request (or the
+    canonical plan) already exists. The planner never sees the
+    connection. The transaction is left open for the caller."""
+    snapshot, snapshot_sha = _verified_snapshot(conn, snapshot_id)
+    request = request_identity(
+        snapshot_sha,
+        planner.kind,
+        planner.version,
+        planner.similarity.name,
+        planner.similarity.version,
+        planner.settings,
+    )
+    held = conn.execute("SELECT id, document_sha256 FROM story_plan WHERE request_sha256 = ?", (request,)).fetchone()
+    if held:
+        return PlanRef(int(held[0]), held[1], True)
+    plan = planner.plan(snapshot, snapshot_sha)
+    wrong = validate_plan(plan, snapshot, snapshot_sha)
+    if wrong:
+        raise AssertionError(f"the planner produced an invalid plan: {wrong}")
     sha = identity(plan)[1]
     held = conn.execute("SELECT id FROM story_plan WHERE document_sha256 = ?", (sha,)).fetchone()
     if held:
@@ -419,8 +654,8 @@ def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now
     plan_id = int(
         conn.execute(
             "INSERT INTO story_plan(snapshot_id, format_version, planner, planner_version, similarity,"
-            " similarity_version, settings_hash, document_json, document_sha256, created_at)"
-            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " similarity_version, settings_hash, request_sha256, document_json, document_sha256, created_at)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 snapshot_id,
                 FORMAT_VERSION,
@@ -429,6 +664,7 @@ def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now
                 planner.similarity.name,
                 planner.similarity.version,
                 settings_hash(planner.settings),
+                request,
                 canonical(plan),
                 sha,
                 now,
@@ -440,7 +676,69 @@ def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now
 
 
 def load_plan(conn, plan_id: int) -> dict:
-    row = conn.execute("SELECT document_json FROM story_plan WHERE id = ?", (plan_id,)).fetchone()
+    """The stored plan, RE-VERIFIED on read: it must still hash to its
+    stored identity and still be a valid partition of its (equally
+    re-verified) snapshot. A renderer consumes only what passes."""
+    row = conn.execute(
+        "SELECT snapshot_id, document_json, document_sha256 FROM story_plan WHERE id = ?", (plan_id,)
+    ).fetchone()
     if row is None:
         raise LookupError(f"no story plan {plan_id}")
-    return json.loads(row[0])
+    plan = json.loads(row[1])
+    if identity(plan)[1] != row[2]:
+        raise ValueError(f"story plan {plan_id} no longer hashes to its identity; refusing to serve it")
+    snapshot, snapshot_sha = _verified_snapshot(conn, int(row[0]))
+    wrong = validate_plan(plan, snapshot, snapshot_sha)
+    if wrong:
+        raise ValueError(f"story plan {plan_id} is no longer valid against its snapshot: {wrong}")
+    return plan
+
+
+@dataclasses.dataclass(frozen=True)
+class PlanRequest:
+    request_sha256: str
+    plan_id: int | None
+    job_id: int | None
+
+
+def request_plan(conn, snapshot_id: int, planner_kind: str, engine, settings: dict | None, now: float) -> PlanRequest:
+    """The planning service: validate the request, compute its identity
+    WITHOUT loading weights, reuse a finished plan or a live job for the
+    same request, otherwise queue durable work. Nothing expensive
+    happens on the request thread."""
+    from . import jobs
+
+    maker = PLANNERS.get(planner_kind)
+    if maker is None:
+        raise ValueError(f"no planner named {planner_kind!r}; one of {', '.join(sorted(PLANNERS))}")
+    exact = validated_settings(settings, maker.defaults)
+    snapshot_sha = _verified_snapshot(conn, snapshot_id)[1]
+    engine_name, engine_version = engine.identity()
+    request = request_identity(snapshot_sha, maker.kind, maker.version, engine_name, engine_version, exact)
+    held = conn.execute("SELECT id FROM story_plan WHERE request_sha256 = ?", (request,)).fetchone()
+    if held:
+        return PlanRequest(request, int(held[0]), None)
+    for job_id, raw in conn.execute(
+        "SELECT id, payload FROM job WHERE kind = 'story_plan' AND state IN ('queued', 'running')"
+    ):
+        if raw and json.loads(raw).get("request_sha256") == request:
+            return PlanRequest(request, None, int(job_id))
+    payload = {
+        "request_sha256": request,
+        "snapshot_id": snapshot_id,
+        "planner": maker.kind,
+        "settings": exact,
+        "engine": {"selector": engine.selector, **engine.payload()},
+    }
+    job_id = jobs.submit(conn, "story_plan", now, payload=payload, items=[0])
+    return PlanRequest(request, None, job_id)
+
+
+def plan_item(conn, _item: int, payload: dict, now: float) -> None:
+    """The job's one item: load the engine the request named, plan, and
+    persist. Reuse by request identity makes a retried job idempotent."""
+    engine_payload = dict(payload["engine"])
+    selector = engine_payload.pop("selector")
+    engine = LexicalEngine() if selector == LexicalEngine.selector else SemanticEngine(**engine_payload)
+    planner = PLANNERS[payload["planner"]](engine.load(), payload["settings"])
+    plan_snapshot(conn, int(payload["snapshot_id"]), planner, now)

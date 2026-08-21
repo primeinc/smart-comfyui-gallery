@@ -1332,6 +1332,123 @@ END"""
     )
 
 
+@step(14)
+def _planning_becomes_durable_work(conn: sqlite3.Connection) -> None:
+    """v14 -> v15: the job vocabulary learns 'story_plan' -- a CHECK
+    change, which SQLite can only say as a rebuild, carried exactly as
+    the v9 step carried it -- and story_plan gains request_sha256, the
+    pre-compute identity of a planning request. Existing plans are
+    carried forward with their request identity computed from the
+    document they already hold (db/planning.py request_identity reads
+    the same fields). DDL is schema.sql's text VERBATIM.
+    """
+    import json
+
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE job RENAME TO job_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE job (
+    id               INTEGER PRIMARY KEY,
+    -- Constrained like every other `kind` here. A typo is otherwise a job
+    -- that queues successfully and no worker ever claims, because claim()
+    -- filters on the kinds it knows -- so it waits forever and looks fine.
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('scan','hash','embed','detect_faces','cluster_faces',
+                        'sample_frames','annotate','remix','zip','context','events',
+                        'story_plan')),
+    target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
+    state            TEXT NOT NULL CHECK (state IN
+                       ('queued','running','done','failed','cancelled')),
+    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+    payload          TEXT,
+    total            INTEGER,
+    done_count       INTEGER NOT NULL DEFAULT 0,
+    checkpoint       TEXT,
+    attempt          INTEGER NOT NULL DEFAULT 0,
+    -- a lease nobody owns cannot fence anyone: the reclaiming worker must be
+    -- able to prove it holds the job, and the evicted one must be rejected.
+    owner            TEXT,
+    fence            INTEGER NOT NULL DEFAULT 0,
+    lease_until      REAL,
+    heartbeat_at     REAL,
+    error            TEXT,
+    -- No external_ref here. `derivation_intent` already carries the
+    -- generator's own id, UNIQUE, and having it on both meant two rows could
+    -- claim the same external job and disagree about which one owned it.
+    created_at       REAL NOT NULL,
+    started_at       REAL,
+    finished_at      REAL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO job(id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at)"
+        " SELECT id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at FROM job_old"
+    )
+    conn.execute("DROP TABLE job_old")
+    conn.execute("CREATE INDEX job_state ON job(state)")
+    conn.execute("CREATE INDEX job_target ON job(target_id)")
+
+    from .planning import request_identity
+
+    held = conn.execute(
+        "SELECT id, snapshot_id, format_version, planner, planner_version, similarity, similarity_version,"
+        " settings_hash, document_json, document_sha256, created_at FROM story_plan ORDER BY id"
+    ).fetchall()
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE story_plan RENAME TO story_plan_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE story_plan (
+    id                 INTEGER PRIMARY KEY,
+    snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version     INTEGER NOT NULL,
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history')),
+    planner_version    INTEGER NOT NULL,
+    similarity         TEXT NOT NULL,
+    similarity_version TEXT NOT NULL,
+    settings_hash      TEXT NOT NULL,
+    -- The REQUEST's identity, known before any model work: snapshot sha,
+    -- planner kind/version, engine name/version, settings. Deterministic
+    -- planning makes request -> document one-to-one, so the same request
+    -- asked twice reuses the row -- and the queued job -- without
+    -- embedding anything again. document_sha256 stays the OUTPUT identity.
+    request_sha256     TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
+    document_json      TEXT NOT NULL,
+    document_sha256    TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at         REAL NOT NULL
+) STRICT"""
+    )
+    for row in held:
+        document = json.loads(row[8])
+        request = request_identity(
+            document["snapshot_sha256"],
+            document["planner"]["kind"],
+            document["planner"]["version"],
+            document["planner"]["similarity"]["name"],
+            document["planner"]["similarity"]["version"],
+            document["planner"]["settings"],
+        )
+        conn.execute(
+            "INSERT INTO story_plan(id, snapshot_id, format_version, planner, planner_version, similarity,"
+            " similarity_version, settings_hash, request_sha256, document_json, document_sha256, created_at)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (*row[:8], request, *row[8:]),
+        )
+    conn.execute("DROP TABLE story_plan_old")
+    conn.execute("CREATE INDEX story_plan_snapshot ON story_plan(snapshot_id, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_plan_is_immutable BEFORE UPDATE ON story_plan
+BEGIN
+  SELECT RAISE(ABORT,'a story plan is immutable; plan again under a new policy');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

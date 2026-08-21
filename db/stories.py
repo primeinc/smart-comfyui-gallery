@@ -534,12 +534,19 @@ def snapshot_event(conn, event_id: int, now: float) -> SnapshotRef:
 
 
 def load_snapshot(conn, snapshot_id: int) -> dict:
-    """The frozen document, as frozen. A GET of history: reads nothing
-    live, consults no current table."""
-    row = conn.execute("SELECT document_json FROM story_snapshot WHERE id = ?", (snapshot_id,)).fetchone()
+    """The frozen document, as frozen -- and PROVEN so on every read: a
+    row whose bytes no longer hash to its identity is refused, never
+    served. A GET of history: reads nothing live, consults no current
+    table."""
+    row = conn.execute(
+        "SELECT document_json, document_sha256 FROM story_snapshot WHERE id = ?", (snapshot_id,)
+    ).fetchone()
     if row is None:
         raise LookupError(f"no story snapshot {snapshot_id}")
-    return json.loads(row[0])
+    document = json.loads(row[0])
+    if not verify(document, row[1]):
+        raise ValueError(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to serve it")
+    return document
 
 
 def verify(document: dict, sha: str) -> bool:

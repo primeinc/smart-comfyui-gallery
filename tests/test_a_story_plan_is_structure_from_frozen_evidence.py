@@ -4,18 +4,24 @@ database connection.
 The planner receives only the snapshot document and a versioned
 similarity engine; it cannot see the live library, so nothing that
 happens to the library after the snapshot can change the plan. Every
-reference resolves inside the snapshot; every conclusion is a Claim;
-prompt identity alone never splits a phase; day-precision evidence
-never becomes sub-day chronology -- the planner says `unsupported`
-rather than inventing an order. Identity is content-addressed: the
-same snapshot under the same policy is one plan, and a new policy
-coexists with the old plan instead of overwriting it.
+structure is a Claim -- a boundary is a prompt_shift, a family is a
+prompt_family -- and every reference resolves inside the snapshot; a
+plan is an exact partition of its snapshot, proven before persistence
+and again on every read. Settings and similarity output fail closed.
+Prompt identity alone never splits a phase; day-precision evidence
+never becomes sub-day chronology. Two identities: the REQUEST's, known
+before any model work, so an identical request reuses the plan or the
+live job; and the DOCUMENT's, so the same evidence under the same
+policy is one plan and a new policy coexists with the old one.
+Production planning is durable work, off the request thread.
 """
 
 from __future__ import annotations
 
 import copy
 import datetime
+import json
+import math
 import sqlite3
 
 import pytest
@@ -130,11 +136,17 @@ def _planner(**settings):
     return planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity(), settings or None)
 
 
-def test_wildcard_expansions_are_one_phase_and_a_new_subject_is_another():
+def _claims_of(plan, phase_index):
+    by_id = {claim["id"]: claim for claim in plan["claims"]}
+    return {by_id[ref]["kind"]: by_id[ref] for ref in plan["phases"][phase_index]["claim_refs"]}
+
+
+def test_wildcard_expansions_are_one_phase_and_a_boundary_is_a_claim():
     """The 55-file lesson: prompts that differ only by a wildcard
     expansion are one creative thread. Identity is never consulted --
-    only similarity -- so the four lighthouse variants stay one phase
-    and the diving helmet opens the next."""
+    only similarity -- so the four lighthouse variants stay one phase,
+    the diving helmet opens the next, and the boundary itself is a
+    prompt_shift claim with evidence on BOTH sides."""
     members = [_member(i, text, seed=100 + i) for i, text in enumerate(LIGHTHOUSE + HELMET)]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
@@ -143,19 +155,21 @@ def test_wildcard_expansions_are_one_phase_and_a_new_subject_is_another():
         ["member-001", "member-002", "member-003", "member-004"],
         ["member-005", "member-006"],
     ]
-    first, second = plan["phases"]
-    kinds = {claim["id"]: claim["kind"] for claim in plan["claims"]}
-    assert {kinds[ref] for ref in first["claim_refs"]} == {"prompt_similarity", "seed_variation"}
-    assert first["representative_refs"] == ["member-001"], "the medoid of the family, ties to the earliest"
-    assert "parameter_change" not in {kinds[ref] for ref in second["claim_refs"]}, "nothing but the prompt changed"
+    assert set(_claims_of(plan, 0)) == {"prompt_similarity", "seed_variation"}
+    shift = _claims_of(plan, 1)["prompt_shift"]
+    assert shift["evidence_refs"] == ["member-001:generation.prompt", "member-005:generation.prompt"]
+    assert shift["facts"]["cosine"] < shift["facts"]["threshold"] == 0.5
+    assert plan["phases"][0]["representative_refs"] == ["member-001"], "the medoid of the family, ties to the earliest"
+    assert "parameter_change" not in _claims_of(plan, 1), "nothing but the prompt changed"
     assert plan["unsupported"] == []
+    assert planning.validate_plan(plan, document, sha) == []
 
 
-def test_day_precision_evidence_yields_families_and_an_unsupported_chronology():
-    """Fifty-five files that only claim a DAY have no order among them.
-    The planner still finds prompt families, lists members in event
-    order, and says plainly that chronology is unsupported -- it never
-    calls a family a 'phase' in time."""
+def test_day_precision_evidence_yields_families_backed_by_claims():
+    """Files that only claim a DAY have no order among them. The planner
+    finds prompt families, lists members in event order, backs every
+    family with a prompt_family claim, and says plainly that chronology
+    is unsupported -- it never calls a family a phase in time."""
     members = [_member(i, text, precision="day") for i, text in enumerate(LIGHTHOUSE + HELMET)]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
@@ -165,21 +179,23 @@ def test_day_precision_evidence_yields_families_and_an_unsupported_chronology():
         ["member-001", "member-002", "member-003", "member-004"],
         ["member-005", "member-006"],
     ]
-    assert all(phase["label_hint"].startswith("Prompt family") for phase in plan["phases"])
-    assert "prompt families" in plan["subject"]["label_hint"]
+    for i, phase in enumerate(plan["phases"]):
+        family = _claims_of(plan, i)["prompt_family"]
+        assert family["facts"]["size"] == len(phase["member_refs"])
+        assert family["evidence_refs"] == [f"{ref}:generation.prompt" for ref in phase["member_refs"]]
+        assert phase["label_hint"].startswith("Prompt family")
+    assert "prompt_shift" not in {claim["kind"] for claim in plan["claims"]}, "no sequence, no shift"
 
-    # the same families, interleaved in event order, are still the same
-    # families: without chronology, adjacency means nothing
+    # interleaved in event order, the same families: without chronology,
+    # adjacency means nothing
     shuffled = [LIGHTHOUSE[0], HELMET[0], LIGHTHOUSE[1], HELMET[1], LIGHTHOUSE[2], LIGHTHOUSE[3]]
     document, sha = _snapshot([_member(i, text, precision="day") for i, text in enumerate(shuffled)])
     plan = _planner().plan(document, sha)
     assert sorted(len(phase["member_refs"]) for phase in plan["phases"]) == [2, 4]
+    assert planning.validate_plan(plan, document, sha) == []
 
 
 def test_artifact_and_parameter_changes_are_claims_about_a_boundary_not_boundaries():
-    """A LoRA swap inside one prompt family does NOT split the phase; a
-    LoRA swap across a prompt boundary is a claim on the new phase, with
-    evidence pointing at both sides."""
     lora_a, lora_b = "a" * 32, "b" * 32
     members = [
         _member(0, LIGHTHOUSE[0], artifacts=(lora_a,)),
@@ -190,49 +206,108 @@ def test_artifact_and_parameter_changes_are_claims_about_a_boundary_not_boundari
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
     assert len(plan["phases"]) == 2, "the LoRA swap did not split the lighthouse family"
-    claims = {claim["id"]: claim for claim in plan["claims"]}
-    second = [claims[ref] for ref in plan["phases"][1]["claim_refs"]]
-    by_kind = {claim["kind"]: claim for claim in second}
-    assert by_kind["artifact_change"]["facts"] == {"added": [], "removed": [lora_a]}
-    assert by_kind["parameter_change"]["facts"]["changed"]["sampler"] == {"from": ["Euler a"], "to": ["DPM++ 2M"]}
-    assert by_kind["parameter_change"]["facts"]["changed"]["steps"] == {"from": ["20"], "to": ["30"]}
-    assert any(ref.startswith("member-001:") for ref in by_kind["artifact_change"]["evidence_refs"])
-    assert any(ref.startswith("member-003:") for ref in by_kind["artifact_change"]["evidence_refs"])
+    second = _claims_of(plan, 1)
+    assert second["artifact_change"]["facts"] == {"added": [], "removed": [lora_a]}
+    assert second["parameter_change"]["facts"]["changed"]["sampler"] == {"from": ["Euler a"], "to": ["DPM++ 2M"]}
+    assert any(ref.startswith("member-001:") for ref in second["artifact_change"]["evidence_refs"])
+    assert any(ref.startswith("member-003:") for ref in second["artifact_change"]["evidence_refs"])
     assert plan["phases"][1]["label_hint"].endswith("new artifacts")
 
 
-def test_every_reference_resolves_inside_the_snapshot_and_nothing_else():
-    """A plan is closed over its evidence: every member_ref,
-    representative_ref and evidence_ref names a member path that exists
-    in the snapshot, every claim_ref names a claim. The resolver proves
-    its own teeth on a tampered plan."""
+def test_a_plan_is_an_exact_partition_and_the_validator_has_teeth():
+    """validate_plan refuses a plan that omits a member, places one
+    twice, names a representative outside its phase, repeats an id, or
+    points anywhere outside the snapshot."""
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE + HELMET)]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
-    assert planning.unresolved(plan, document) == []
-    tampered = copy.deepcopy(plan)
-    tampered["phases"][0]["member_refs"].append("member-099")
-    tampered["claims"][0]["evidence_refs"].append("member-001:generation.nonsense")
-    tampered["phases"][0]["claim_refs"].append("claim-999")
-    assert planning.unresolved(tampered, document) == ["member-099", "claim-999", "member-001:generation.nonsense"]
+    assert planning.validate_plan(plan, document, sha) == []
+
+    omitted = copy.deepcopy(plan)
+    omitted["phases"][1]["member_refs"].remove("member-006")
+    assert any("missing ['member-006']" in why for why in planning.validate_plan(omitted, document, sha))
+
+    doubled = copy.deepcopy(plan)
+    doubled["phases"][1]["member_refs"].append("member-001")
+    assert any("repeated ['member-001']" in why for why in planning.validate_plan(doubled, document, sha))
+
+    stray = copy.deepcopy(plan)
+    stray["phases"][1]["representative_refs"] = ["member-001"]
+    reasons = planning.validate_plan(stray, document, sha)
+    assert any("representative member-001 is not one of its members" in why for why in reasons)
+
+    twice = copy.deepcopy(plan)
+    twice["phases"][1]["id"] = "phase-001"
+    assert "phase ids are not unique" in planning.validate_plan(twice, document, sha)
+
+    outward = copy.deepcopy(plan)
+    outward["claims"][0]["evidence_refs"].append("member-001:generation.nonsense")
+    outward["phases"][0]["claim_refs"].append("claim-999")
+    assert planning.unresolved(outward, document) == ["claim-999", "member-001:generation.nonsense"]
+
+    other = copy.deepcopy(plan)
+    other["snapshot_sha256"] = "f" * 64
+    assert "the plan names a different snapshot" in planning.validate_plan(other, document, sha)
+
+
+def test_settings_fail_closed():
+    """V1 means exactly phase_threshold: finite, numeric, not bool, in
+    [0, 1]. Anything else is refused, never merged into identity."""
+    for bad in (
+        {"moon_phase": "waning"},
+        {"phase_threshold": 0.5, "moon_phase": "waning"},
+        {"phase_threshold": True},
+        {"phase_threshold": "0.5"},
+        {"phase_threshold": math.nan},
+        {"phase_threshold": math.inf},
+        {"phase_threshold": -1},
+        {"phase_threshold": 1.2},
+    ):
+        with pytest.raises(ValueError, match=r"unknown planner setting|finite number|lies in"):
+            _planner(**bad)
+    assert _planner(phase_threshold=1).settings == {"phase_threshold": 1.0}, "an int in range is a number"
+    assert _planner().settings == {"phase_threshold": 0.5}
+
+
+def test_the_similarity_producer_contract_is_enforced():
+    """N texts -> exactly N vectors of one dimension, all finite. A
+    producer that returns fewer, ragged, or NaN vectors is broken, and
+    the planner refuses rather than padding it into coherence."""
+
+    class Broken:
+        name, version = "broken", "0"
+
+        def __init__(self, rows):
+            self.rows = rows
+
+        def embed(self, texts):
+            return self.rows
+
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:3])]
+    document, sha = _snapshot(members)
+    for rows, why in (
+        ([[1.0, 0.0], [0.0, 1.0]], "2 vectors for 3 texts"),
+        ([[1.0, 0.0], [0.0, 1.0], [1.0]], "mixed dimensions"),
+        ([[1.0, 0.0], [0.0, math.nan], [1.0, 1.0]], "non-finite"),
+        ([[1.0, 0.0], [0.0, "1"], [1.0, 1.0]], "non-numeric"),
+    ):
+        with pytest.raises(ValueError, match=why):
+            planning.GenerationHistoryPlanner(Broken(rows)).plan(document, sha)
 
 
 def test_missing_evidence_is_declared_never_explained():
-    """A member with no frozen prompt is named in `unsupported`; the
-    planner does not guess a family for it from anything else."""
     members = [_member(0, LIGHTHOUSE[0]), _member(1, LIGHTHOUSE[1]), _member(2, "")]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
     told = next(one for one in plan["unsupported"] if one["kind"] == "prompt_evidence")
     assert told["member_refs"] == ["member-003"]
     assert [phase["member_refs"] for phase in plan["phases"]] == [["member-001", "member-002"], ["member-003"]]
-    assert plan["phases"][1]["claim_refs"] == [], "a singleton with no prompt supports no claim"
+    assert set(_claims_of(plan, 1)) == {"prompt_shift"}, (
+        "the boundary is claimed; the empty prompt supports nothing else"
+    )
 
 
-def test_the_same_snapshot_under_the_same_policy_is_one_plan_and_policies_coexist():
-    """Determinism and identity: planning twice is byte-identical; a
-    different threshold is a different plan with its own identity, and
-    the engine's vectors are stable across calls."""
+def test_the_same_request_is_one_identity_and_policies_coexist():
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE + HELMET)]
     document, sha = _snapshot(members)
     engine = planning.LexicalPromptSimilarity()
@@ -243,18 +318,21 @@ def test_the_same_snapshot_under_the_same_policy_is_one_plan_and_policies_coexis
     strict = _planner(phase_threshold=0.99).plan(document, sha)
     assert planning.identity(strict)[1] != planning.identity(one)[1]
     assert len(strict["phases"]) > len(one["phases"]), "a stricter threshold splits the near-variants"
-    assert strict["planner"]["settings"] == {"phase_threshold": 0.99}
-    assert one["snapshot_sha256"] == sha
-    assert one["planner"]["similarity"] == {"name": "lexical-bow", "version": "1"}
+    loose = {"phase_threshold": 0.5}
+    request = planning.request_identity(sha, "generation_history", 2, "lexical-bow", "1", loose)
+    assert request == planning.request_identity(sha, "generation_history", 2, "lexical-bow", "1", loose)
+    assert request != planning.request_identity(
+        sha, "generation_history", 2, "lexical-bow", "1", {"phase_threshold": 0.99}
+    )
+    assert request != planning.request_identity(sha, "generation_history", 2, "lexical-bow", "2", loose)
 
 
 def test_the_threshold_is_pinned_against_the_engine():
     """The lexical oracle's numbers are known: two ten-token prompts
     differing in one word cosine to 11/12; lighthouse vs helmet share
     'a' and little else. The default threshold sits between."""
-    cosine = planning.pairwise_cosine(
-        planning.LexicalPromptSimilarity().embed([LIGHTHOUSE[0], LIGHTHOUSE[1], HELMET[0]])
-    )
+    engine = planning.LexicalPromptSimilarity()
+    cosine = planning.pairwise_cosine(engine.embed([LIGHTHOUSE[0], LIGHTHOUSE[1], HELMET[0]]))
     assert cosine[0][1] == pytest.approx(11 / 12, abs=1e-3)
     assert cosine[0][2] < 0.5 < cosine[0][1]
     assert planning.GenerationHistoryPlanner.defaults["phase_threshold"] == 0.5
@@ -265,15 +343,20 @@ def test_the_planner_owns_no_connection_no_sql_and_no_model():
     import pathlib
 
     source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "planning.py").read_text(encoding="utf-8")
-    head = source.split("def plan_snapshot(", 1)[0]
+    head = source.split("# --- persistence and orchestration", 1)[0]
+    # engine_for resolves CONFIGURATION (which provider is set up) and is
+    # the one pre-persistence function allowed a connection; the planner
+    # body, the engines and the validators may not see one.
+    before, after = head.split("def engine_for(conn", 1)
+    body = before + after.split("\n\n\ndef pairwise_cosine", 1)[1]
     for banned in ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"):
-        assert banned not in head, f"the planner reached for the database: {banned!r}"
+        assert banned not in body, f"the planner reached for the database: {banned!r}"
     for banned in ("import openai", "anthropic", "import requests", "import httpx", "torch"):
         assert banned not in source
     assert "conn" not in inspect.signature(planning.GenerationHistoryPlanner.plan).parameters
 
 
-# --- persistence, against a real frozen snapshot -----------------------------
+# --- persistence, the service and the job, against a real frozen snapshot ----
 
 
 def _library(tmp) -> tuple:
@@ -333,9 +416,6 @@ def frozen(tmp_path):
 
 
 def test_a_persisted_plan_is_immune_to_everything_that_happens_after_the_snapshot(frozen):
-    """Plan, then mutate and regroup the live library, then plan the
-    SAME snapshot again: the row is reused, byte for byte -- the planner
-    never saw the library, so the library cannot reach it."""
     client, snap = frozen
     conn = connect.connect(client.app.state.db_path)
     try:
@@ -358,7 +438,6 @@ def test_a_persisted_plan_is_immune_to_everything_that_happens_after_the_snapsho
         assert (again.id, again.sha256, again.reused) == (first.id, first.sha256, True)
         told = planning.load_plan(conn, first.id)
         assert told["snapshot_sha256"] == snap.sha256
-        assert planning.unresolved(told, stories.load_snapshot(conn, snap.id)) == []
         with pytest.raises(sqlite3.IntegrityError, match="immutable"):
             conn.execute("UPDATE story_plan SET document_json = '{}' WHERE id = ?", (first.id,))
         conn.rollback()
@@ -372,31 +451,108 @@ def test_a_persisted_plan_is_immune_to_everything_that_happens_after_the_snapsho
         connect.close(conn)
 
 
-def test_the_http_adapters_plan_and_read_only(frozen):
-    from db import resultset
-
+def test_a_tampered_snapshot_or_plan_is_refused_not_served(frozen):
+    """The stored bytes must hash to the stored identity -- on planning
+    (the input) and on reading (the output). The immutability triggers
+    are bypassed here the only way they can be: by dropping them, which
+    is what a corrupted file amounts to."""
     client, snap = frozen
-    made = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
-    assert made.status_code == 201, made.text
-    body = made.json()
-    again = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
-    assert (again.status_code, again.json()["id"], again.json()["reused"]) == (200, body["id"], True)
-    assert client.post("/stories/plans", json={"snapshot_id": 99_999, "similarity": "lexical"}).status_code == 404
-    assert client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "astrology"}).status_code == 400
-    assert client.post("/stories/plans", json={"snapshot_id": snap.id, "planner": "vibes"}).status_code == 400
-    assert client.post("/stories/plans", json={}).status_code == 400
     conn = connect.connect(client.app.state.db_path)
     try:
-        before = resultset.currency(conn)
+        made = planning.plan_snapshot(conn, snap.id, _planner(), NOW + 31 * HOUR)
+        conn.commit()
+        conn.execute("DROP TRIGGER story_plan_is_immutable")
+        conn.execute("DROP TRIGGER story_snapshot_is_immutable")
+        good_plan = conn.execute("SELECT document_json FROM story_plan WHERE id = ?", (made.id,)).fetchone()[0]
+        tampered = json.loads(good_plan)
+        tampered["phases"][0]["label_hint"] = "Something the evidence never said"
+        conn.execute("UPDATE story_plan SET document_json = ? WHERE id = ?", (json.dumps(tampered), made.id))
+        conn.commit()
+        with pytest.raises(ValueError, match="no longer hashes"):
+            planning.load_plan(conn, made.id)
+        assert client.get(f"/stories/plans/{made.id}").status_code == 409
+        conn.execute("UPDATE story_plan SET document_json = ? WHERE id = ?", (good_plan, made.id))
+        conn.commit()
+        assert client.get(f"/stories/plans/{made.id}").status_code == 200, "restored bytes serve again"
+
+        good_snap = conn.execute("SELECT document_json FROM story_snapshot WHERE id = ?", (snap.id,)).fetchone()[0]
+        bent = json.loads(good_snap)
+        bent["members"][0]["generation"]["prompt"] = "a prompt nobody wrote"
+        conn.execute("UPDATE story_snapshot SET document_json = ? WHERE id = ?", (json.dumps(bent), snap.id))
+        conn.commit()
+        with pytest.raises(ValueError, match="no longer hashes"):
+            planning.plan_snapshot(conn, snap.id, _planner(phase_threshold=0.7), NOW + 32 * HOUR)
+        conn.rollback()
+        with pytest.raises(ValueError, match="no longer hashes"):
+            stories.load_snapshot(conn, snap.id)
+        with pytest.raises(ValueError, match="no longer hashes"):
+            planning.load_plan(conn, made.id)  # a good plan over a corrupt snapshot is not servable either
     finally:
         connect.close(conn)
-    read = client.get(f"/stories/plans/{body['id']}")
-    assert read.status_code == 200
-    assert read.json()["planner"]["kind"] == "generation_history"
-    assert read.json()["phases"][0]["member_refs"] == ["member-001", "member-002", "member-003"]
-    assert client.get("/stories/plans/424242").status_code == 404
+
+
+def test_planning_is_durable_work_and_an_identical_request_reuses_it(frozen):
+    """POST records the request and queues a story_plan job (202); the
+    same request again while queued reuses the JOB; once the worker has
+    planned, the same request is 200 with the plan id and no second
+    job, no second embedding. Unknown engine or settings are 400 before
+    anything is queued."""
+    client, snap = frozen
+    asked = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
+    assert asked.status_code == 202, asked.text
+    body = asked.json()
+    assert body["plan_id"] is None
+    assert body["job"]["kind"] == "story_plan"
+    again = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
+    assert again.status_code == 202
+    assert again.json()["job"]["id"] == body["job"]["id"], "the queued job is reused, not duplicated"
+    assert again.json()["request_sha256"] == body["request_sha256"]
+
+    assert client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "astrology"}).status_code == 400
+    assert client.post("/stories/plans", json={"snapshot_id": snap.id, "planner": "vibes"}).status_code == 400
+    assert client.post("/stories/plans", json={"snapshot_id": snap.id, "settings": {"moon": 1}}).status_code == 400
+    assert client.post("/stories/plans", json={"snapshot_id": 99_999, "similarity": "lexical"}).status_code == 404
+    assert client.post("/stories/plans", json={}).status_code == 400
+
+    _drain(client)
+    settled = client.post("/stories/plans", json={"snapshot_id": snap.id, "similarity": "lexical"})
+    assert settled.status_code == 200
+    plan_id = settled.json()["plan_id"]
+    assert plan_id is not None
+    assert settled.json()["job"] is None
     conn = connect.connect(client.app.state.db_path)
     try:
-        assert resultset.currency(conn) == before
+        assert conn.execute("SELECT count(*) FROM job WHERE kind = 'story_plan'").fetchone()[0] == 1
+        assert conn.execute("SELECT state FROM job WHERE kind = 'story_plan'").fetchone()[0] == "done"
+        request = conn.execute("SELECT request_sha256 FROM story_plan WHERE id = ?", (plan_id,)).fetchone()[0]
+        assert request == body["request_sha256"]
+    finally:
+        connect.close(conn)
+    read = client.get(f"/stories/plans/{plan_id}")
+    assert read.status_code == 200
+    assert read.json()["planner"]["similarity"] == {"name": "lexical-bow", "version": "1"}
+    assert read.json()["phases"][0]["member_refs"] == ["member-001", "member-002", "member-003"]
+    assert client.get("/stories/plans/424242").status_code == 404
+
+
+def test_the_engine_selector_means_exactly_what_it_says(frozen):
+    """`openclip` is OpenCLIP, `qwen` is Qwen; a provider that is not
+    among the configured semantic spaces is refused, never substituted
+    by whichever provider happened to be first. The semantic engine's
+    identity names the pinned checkpoint with no weights loaded."""
+    client, _ = frozen
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        assert isinstance(planning.engine_for(conn, "lexical", "unused"), planning.LexicalEngine)
+        with pytest.raises(ValueError, match="no similarity engine named"):
+            planning.engine_for(conn, "astrology", "unused")
+        with pytest.raises(ValueError, match="not among the configured"):
+            planning.engine_for(conn, "qwen", "unused")
+        engine = planning.engine_for(conn, "openclip", "unused")
+        assert isinstance(engine, planning.SemanticEngine)
+        assert engine.provider == "openclip"
+        name, version = engine.identity()
+        assert engine.model in name
+        assert engine.checkpoint in version
     finally:
         connect.close(conn)

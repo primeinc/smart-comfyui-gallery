@@ -573,7 +573,8 @@ CREATE TABLE job (
     -- filters on the kinds it knows -- so it waits forever and looks fine.
     kind             TEXT NOT NULL CHECK (kind IN
                        ('scan','hash','embed','detect_faces','cluster_faces',
-                        'sample_frames','annotate','remix','zip','context','events')),
+                        'sample_frames','annotate','remix','zip','context','events',
+                        'story_plan')),
     target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
     state            TEXT NOT NULL CHECK (state IN
                        ('queued','running','done','failed','cancelled')),
@@ -1774,6 +1775,12 @@ CREATE TABLE story_plan (
     similarity         TEXT NOT NULL,
     similarity_version TEXT NOT NULL,
     settings_hash      TEXT NOT NULL,
+    -- The REQUEST's identity, known before any model work: snapshot sha,
+    -- planner kind/version, engine name/version, settings. Deterministic
+    -- planning makes request -> document one-to-one, so the same request
+    -- asked twice reuses the row -- and the queued job -- without
+    -- embedding anything again. document_sha256 stays the OUTPUT identity.
+    request_sha256     TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
     document_json      TEXT NOT NULL,
     document_sha256    TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
     created_at         REAL NOT NULL
@@ -1785,7 +1792,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 14;
+PRAGMA user_version   = 15;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

@@ -568,7 +568,16 @@ def _events_item(conn, index: int, payload: dict, now: float) -> None:
     events_module.regroup_one(conn, events_module.GROUPERS[index], now)
 
 
+def _story_plan_item(conn, item: int, payload: dict, now: float) -> None:
+    """Durable planning: the engine the request named is loaded HERE,
+    off the request thread (db/planning.py plan_item)."""
+    from . import planning
+
+    planning.plan_item(conn, item, payload, now)
+
+
 HANDLERS = {
+    "story_plan": _story_plan_item,
     "context": _context_item,
     "events": _events_item,
     "scan": _ingest_item,
