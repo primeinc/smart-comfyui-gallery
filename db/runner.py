@@ -139,7 +139,19 @@ def submit_dupes(conn, now: float) -> int:
     # MemoryError no item failure catches. The dial stops before the cliff.
     if not 0 <= threshold <= 31:
         raise ValueError(f"dupe_threshold must be 0..31 bits, not {threshold}: at 32 random pairs match")
-    return jobs.submit(conn, "hash", now, payload={"derive": "groups", "threshold": threshold}, items=[0])
+    verify_raw = settings_module.value(conn, "dupe_dhash_verify")
+    if verify_raw.strip().lower() == "off":
+        verify = None
+    else:
+        try:
+            verify = int(verify_raw)
+        except ValueError as bad:
+            raise ValueError(f"dupe_dhash_verify must be a number of bits or 'off', not {verify_raw!r}") from bad
+        if not 0 <= verify <= 63:
+            raise ValueError(f"dupe_dhash_verify must be 0..63 bits or 'off', not {verify}")
+    return jobs.submit(
+        conn, "hash", now, payload={"derive": "groups", "threshold": threshold, "dhash_verify": verify}, items=[0]
+    )
 
 
 def warm_similarity(conn, now: float) -> None:
@@ -157,20 +169,21 @@ def warm_similarity(conn, now: float) -> None:
     sid = similarity.space_id(conn, similarity.PHASH, now)
     rows = dict(
         conn.execute(
-            "SELECT h.file_id, h.phash64 FROM derived_file_hash h"
+            "SELECT h.file_id, h.value FROM derived_file_hash h"
             " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
-            " WHERE h.phash64 IS NOT NULL AND h.space_id = ?",
+            " WHERE h.value IS NOT NULL AND h.space_id = ?",
             (sid,),
         )
     )
     if rows:
         similarity.align(conn, manager, similarity.PHASH, sorted(rows), lambda wanted: [rows[v] for v in wanted], now)
-    for model_id, model_version, dimensions in conn.execute(
-        "SELECT model_id, model_version, MAX(length(embedding)) / 4 FROM derived_face_instance"
-        " WHERE embedding IS NOT NULL GROUP BY model_id, model_version"
+    for model_id, model_version in conn.execute(
+        "SELECT DISTINCT model_id, model_version FROM derived_face_instance WHERE embedding IS NOT NULL"
     ):
-        space = similarity.face_space(model_id, model_version, dimensions)
-        face_sid = similarity.space_id(conn, space, now)
+        current = similarity.face_space_of(conn, model_id, model_version)
+        if current is None:
+            continue
+        face_sid, space = current
         ids = [
             row[0]
             for row in conn.execute(
@@ -200,18 +213,27 @@ def _face_vectors(conn, wanted):
 
 def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     """One global pass: align the perceptual space with the rows SQLite
-    holds, cut its hamming pair graph, union-find over the id pairs,
-    groups of two or more written with the policy-picked best member --
-    most pixels, then most bytes, then the earliest identity."""
+    holds, cut its hamming pair graph, verify each candidate pair with
+    the independent dHash space, union-find over the survivors, groups
+    of two or more written with the policy-picked best member -- most
+    pixels, then most bytes, then the earliest identity.
+
+    The verification is a second opinion, not a second vote: pHash sees
+    global low-frequency composition and proposes; dHash sees local
+    gradient structure and vetoes a pair whose structure disagrees by
+    more than the payload's `dhash_verify` bits. A pair either file
+    cannot be verified for (no dHash row in the current space) passes
+    unverified -- the verifier narrows, it never invents absence."""
     from vision import dupes
 
     from . import similarity
 
     threshold = int(payload["threshold"])
+    verify = payload.get("dhash_verify")
     rows = conn.execute(
-        "SELECT h.file_id, h.phash64, f.width, f.height, f.size FROM derived_file_hash h"
+        "SELECT h.file_id, h.value, f.width, f.height, f.size FROM derived_file_hash h"
         " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
-        " WHERE h.phash64 IS NOT NULL AND h.space_id = ? ORDER BY h.file_id",
+        " WHERE h.value IS NOT NULL AND h.space_id = ? ORDER BY h.file_id",
         (similarity.space_id(conn, similarity.PHASH, now),),
     ).fetchall()
     conn.execute("DELETE FROM derived_dupe_group")
@@ -225,6 +247,20 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     )
     twins_a, twins_b, _distances = similarity.pair_graph(manager, key, threshold)
 
+    structure: dict[int, int] = {}
+    if verify is not None:
+        structure = dict(
+            conn.execute(
+                "SELECT file_id, value FROM derived_file_hash WHERE value IS NOT NULL AND space_id = ?",
+                (similarity.space_id(conn, similarity.DHASH, now),),
+            )
+        )
+
+    def agreed(a: int, b: int) -> bool:
+        if verify is None or a not in structure or b not in structure:
+            return True
+        return dupes.hamming(structure[a], structure[b]) <= verify
+
     parent = {file_id: file_id for file_id in by_id}
 
     def find(x: int) -> int:
@@ -234,6 +270,8 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         return x
 
     for a, b in zip(twins_a, twins_b, strict=True):
+        if not agreed(int(a), int(b)):
+            continue
         rooted_a, rooted_b = find(int(a)), find(int(b))
         if rooted_a != rooted_b:
             parent[rooted_b] = rooted_a

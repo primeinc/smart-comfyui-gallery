@@ -298,6 +298,30 @@ class IndexManager:
             space.dirty = True
             space.gpu_clone = None
 
+    def upsert(self, key: str, ids, vectors) -> None:
+        """Replace-or-add these rows, searchable the moment this returns.
+
+        The representation mutation primitive the post-commit sync uses:
+        membership is answered from the space's own bookkeeping, never by
+        reading every stored id back out -- an incremental commit must
+        not cost a scan of the index it is updating."""
+        space = self._space(key)
+        with space.lock:
+            present = [int(v) for v in ids if int(v) in space.known]
+            if present:
+                self.remove(key, present)
+            self.add(key, ids, vectors)
+
+    def remove_present(self, key: str, ids) -> None:
+        """Remove whichever of these rows the space holds; strangers are
+        no-ops. For deletions noted before the deleting commit -- the
+        row is gone from SQLite whether or not it was ever resident."""
+        space = self._space(key)
+        with space.lock:
+            present = [int(v) for v in ids if int(v) in space.known]
+            if present:
+                self.remove(key, present)
+
     def invalidate(self, key: str) -> None:
         """Drop the space everywhere -- resident AND snapshot. The rows
         it described changed meaning; a tier that outlives that is a

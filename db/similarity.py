@@ -51,6 +51,21 @@ PHASH = SpaceSpec(
     preprocess_version="v1",
 )
 
+#: The difference-hash space: a DIFFERENT algorithm over the same frame,
+#: so a different space -- two values sharing one provenance row is how
+#: dHash bits got labeled as pHash output. Recorded for future retrieval
+#: work; nothing searches it yet.
+DHASH = SpaceSpec(
+    key="perceptual.dhash64",
+    representation="binary",
+    dimensions=64,
+    metric="hamming",
+    producer="imagehash.dhash",
+    producer_version=_imagehash_version(),
+    preprocess="smartgallery.perceptual-frame",
+    preprocess_version="v1",
+)
+
 
 def face_space(model_id: str, model_version: str, dimensions: int) -> SpaceSpec:
     """One space per recognition model+version: embeddings from different
@@ -84,9 +99,14 @@ _MEANING = (
 
 
 def spec_hash(spec: SpaceSpec) -> str:
+    """Canonical JSON, then SHA-256: a delimiter join lets two different
+    specs collide the moment a field contains the delimiter, and identity
+    hashes are the wrong place for folklore."""
     import hashlib
+    import json
 
-    return hashlib.sha256("|".join(str(getattr(spec, field)) for field in _MEANING).encode()).hexdigest()
+    canon = json.dumps([getattr(spec, field) for field in _MEANING], separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canon.encode()).hexdigest()
 
 
 def space_id(conn, spec: SpaceSpec, now: float) -> int:
@@ -107,6 +127,37 @@ def space_id(conn, spec: SpaceSpec, now: float) -> int:
         (*(getattr(spec, field) for field in _MEANING), digest, now),
     )
     return int(cursor.lastrowid or 0)
+
+
+def face_space_of(conn, model_id: str, model_version: str) -> tuple[int, SpaceSpec] | None:
+    """The CURRENT face space for this model, from the registry -- id and
+    full spec, dimensions included -- or None when the model has minted
+    nothing yet. Clustering keys on the returned space id; nothing
+    reconstructs a space's meaning from the duplicated model columns.
+
+    Matched on every current-identity field except dimensions (which the
+    registry itself supplies); if a model somehow minted several
+    dimensionalities, the newest identity wins -- spaces are immutable,
+    so newest is the one the current producer writes into."""
+    current = face_space(model_id, model_version, 1)
+    row = conn.execute(
+        "SELECT id, dimensions FROM similarity_space"
+        " WHERE key = ? AND representation = ? AND metric = ?"
+        " AND producer = ? AND producer_version = ? AND preprocess = ? AND preprocess_version = ?"
+        " ORDER BY id DESC LIMIT 1",
+        (
+            current.key,
+            current.representation,
+            current.metric,
+            current.producer,
+            current.producer_version,
+            current.preprocess,
+            current.preprocess_version,
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+    return int(row[0]), face_space(model_id, model_version, int(row[1]))
 
 
 def keyed(spec: SpaceSpec, sid: int) -> SpaceSpec:
@@ -254,20 +305,39 @@ def note_gone(conn, sid: int, subject_id: int) -> None:
 def apply_pending(conn, manager: IndexManager | None = None) -> None:
     """The runner's half of the sync, called strictly AFTER conn.commit().
 
-    Mutates only spaces that are already resident -- a cold space is
-    built by align from the committed rows, which now include what was
-    just committed. A crash before this call is safe by construction:
-    the index lags committed truth until the next align repairs it, and
-    lagging is the failure mode the invariant permits."""
-    if manager is None:
-        manager = manager_for(conn)
+    Notes are batched per space with the last write per subject winning,
+    then handed to the manager's own mutation primitives -- membership is
+    the space's bookkeeping, so applying a commit never scans the index
+    it updates. Only already-resident spaces mutate; a cold space is
+    built by align from committed rows.
+
+    Failure marks the space unservable rather than pretending: a space
+    that took half a batch could answer with stale rows, so it is
+    invalidated on the spot -- resident and snapshot both -- and the
+    next align rebuilds it from committed truth. SQLite stays
+    authoritative through every branch; the index may lag it, never
+    lead it, and never quietly diverge from it."""
+    import logging
+
+    resolved = manager_for(conn) if manager is None else manager
+    final: dict[str, dict[int, object]] = {}
     for key, subject, value in _PENDING.pop(id(conn), []):
-        if not manager.has(key):
+        final.setdefault(key, {})[subject] = value
+    for key, changes in final.items():
+        if not resolved.has(key):
             continue
-        if subject in set(manager.ids(key).tolist()):
-            manager.remove(key, [subject])
-        if value is not None:
-            manager.add(key, [subject], [value])
+        try:
+            gone = [subject for subject, value in changes.items() if value is None]
+            kept = {subject: value for subject, value in changes.items() if value is not None}
+            if gone:
+                resolved.remove_present(key, gone)
+            if kept:
+                resolved.upsert(key, list(kept), list(kept.values()))
+        except Exception:
+            resolved.invalidate(key)
+            logging.getLogger(__name__).exception(
+                "post-commit sync failed for %s; the space is invalidated and the next align rebuilds it", key
+            )
 
 
 def discard_pending(conn) -> None:

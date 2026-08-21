@@ -180,10 +180,16 @@ def test_perceptual_hashes_come_from_pixels_not_literals(db, a_library, tmp_path
     assert dupes.hamming(p_source, p_other) > 10, "different pictures must stay apart"
 
     derived.record_hash(db, a_library["file"], "aa", NOW, phash64=p_source, dhash64=d_source)
-    stored = db.execute(
-        "SELECT phash64, dhash64 FROM derived_file_hash WHERE file_id = ?", (a_library["file"],)
-    ).fetchone()
-    assert stored == (p_source, d_source), "the signed storage convention did not round-trip"
+    stored = dict(
+        db.execute(
+            "SELECT s.producer, h.value FROM derived_file_hash h JOIN similarity_space s ON s.id = h.space_id"
+            " WHERE h.file_id = ?",
+            (a_library["file"],),
+        )
+    )
+    assert stored == {"imagehash.phash": p_source, "imagehash.dhash": d_source}, (
+        "the signed storage convention did not round-trip, or a fingerprint lost its producer"
+    )
 
 
 def test_detection_records_perceptual_hashes_as_a_byproduct(db, a_library, tmp_path):
@@ -205,12 +211,10 @@ def test_detection_records_perceptual_hashes_as_a_byproduct(db, a_library, tmp_p
             return []
 
     detect.harvest(db, NothingFound(), a_library["file"], path, NOW)
-    row = db.execute(
-        "SELECT phash64, dhash64 FROM derived_file_hash WHERE file_id = ?", (a_library["file"],)
-    ).fetchone()
-    assert row is not None, "detection decoded the frame and recorded no hash"
-    assert row[0] is not None
-    assert row[1] is not None
+    told = db.execute(
+        "SELECT count(*) FROM derived_file_hash WHERE file_id = ? AND value IS NOT NULL", (a_library["file"],)
+    ).fetchone()[0]
+    assert told == 2, "detection decoded the frame and did not record both fingerprints"
 
 
 def test_a_byproduct_on_an_unhashed_file_is_not_born_stale(db, a_library, tmp_path):
@@ -1746,7 +1750,7 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
     assert score == pytest.approx(0.987, abs=1e-6)
     assert (dim, age, yaw) == (128, 34, 1.5)
     assert db.execute("SELECT dim FROM derived_embedding").fetchone()[0] == 8
-    assert db.execute("SELECT phash64 FROM derived_file_hash").fetchone()[0] == -42
+    assert db.execute("SELECT value FROM derived_file_hash").fetchone()[0] == -42
     assert db.execute("SELECT confidence FROM derived_annotation").fetchone()[0] == 0.75
     assert db.execute("SELECT offset_ms FROM derived_media_sample").fetchone()[0] == 4000
 

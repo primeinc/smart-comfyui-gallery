@@ -717,16 +717,16 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
         assert (told["state"], told["failed_count"]) == ("done", 0)
 
         conn = connect.connect(client.app.state.db_path)
-        hashes = {
-            name: (p, d)
-            for name, p, d in conn.execute(
-                "SELECT f.name, h.phash64, h.dhash64 FROM derived_file_hash h JOIN file f ON f.id = h.file_id"
-            )
-        }
+        hashes: dict = {}
+        for name, producer, value in conn.execute(
+            "SELECT f.name, s.producer, h.value FROM derived_file_hash h"
+            " JOIN file f ON f.id = h.file_id JOIN similarity_space s ON s.id = h.space_id"
+        ):
+            hashes.setdefault(name, {})[producer] = value
         conn.close()
         assert set(hashes) == {"castle.png", "castle_half.jpg"}
-        assert all(p is not None and d is not None for p, d in hashes.values())
-        apart = dupes.hamming(hashes["castle.png"][0], hashes["castle_half.jpg"][0])
+        assert all(set(told) == {"imagehash.phash", "imagehash.dhash"} for told in hashes.values())
+        apart = dupes.hamming(hashes["castle.png"]["imagehash.phash"], hashes["castle_half.jpg"]["imagehash.phash"])
         assert apart <= 6, f"the same picture resized measured {apart} bits apart"
 
 

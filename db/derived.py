@@ -186,15 +186,20 @@ def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash
     """
     from . import similarity
 
-    sid = similarity.space_id(conn, similarity.PHASH, now)
-    conn.execute(
-        "INSERT INTO derived_file_hash(file_id, space_id, phash64, dhash64, source_sha256, computed_at)"
-        " VALUES(?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(file_id, space_id) DO UPDATE SET phash64 = excluded.phash64,"
-        " dhash64 = excluded.dhash64, source_sha256 = excluded.source_sha256,"
-        " computed_at = excluded.computed_at",
-        tuple(plain(value) for value in (file_id, sid, phash64, dhash64, sha, now)),
-    )
+    given = ((similarity.PHASH, phash64), (similarity.DHASH, dhash64))
+    told = [(spec, value) for spec, value in given if value is not None]
+    # A call with no fingerprint still records the source sha it was taken
+    # from -- the staleness contract rides the row, and "hashing happened
+    # against bytes X" is a fact even when no value came of it.
+    for spec, value in told or [(similarity.PHASH, None)]:
+        sid = similarity.space_id(conn, spec, now)
+        conn.execute(
+            "INSERT INTO derived_file_hash(file_id, space_id, value, source_sha256, computed_at)"
+            " VALUES(?, ?, ?, ?, ?)"
+            " ON CONFLICT(file_id, space_id) DO UPDATE SET value = excluded.value,"
+            " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
+            tuple(plain(v) for v in (file_id, sid, value, sha, now)),
+        )
     if phash64 is not None:
         similarity.note(conn, similarity.PHASH, file_id, phash64, now)
 
@@ -642,19 +647,21 @@ def cluster(
     if threshold is None:
         threshold = threshold_for(model_id)
     run_id = run_for(conn, model_id, model_version, method, threshold, now)
-    rows = conn.execute(
-        "SELECT id, embedding, space_id, dim FROM derived_face_instance"
-        " WHERE model_id = ? AND model_version = ? AND embedding IS NOT NULL"
-        " ORDER BY id",
-        (model_id, model_version),
-    ).fetchall()
-    # Only rows the CURRENT space produced cluster together. After a
-    # producer or preprocess upgrade the current spec resolves to a new
-    # immutable space id, old rows keep their old one, and they simply
-    # stop being input -- never relabeled, never mixed.
-    if rows:
-        sid = similarity.space_id(conn, similarity.face_space(model_id, model_version, int(rows[0][3])), now)
-        rows = [row for row in rows if row[2] == sid]
+    # The space id IS the clustering input's identity: rows are selected
+    # by which immutable space produced them, never by reconstructing a
+    # meaning from the duplicated model columns. After a producer or
+    # preprocess upgrade the current identity is a new space id, old rows
+    # keep their old one, and they simply stop being input -- never
+    # relabeled, never mixed.
+    current = similarity.face_space_of(conn, model_id, model_version)
+    rows = []
+    space = None
+    if current is not None:
+        sid, space = current
+        rows = conn.execute(
+            "SELECT id, embedding FROM derived_face_instance WHERE space_id = ? ORDER BY id",
+            (sid,),
+        ).fetchall()
     conn.execute("DELETE FROM derived_face_cluster WHERE run_id = ?", (run_id,))
     conn.execute(
         "UPDATE derived_face_run SET faces = ?, clusters = 0 WHERE id = ?",
@@ -663,13 +670,12 @@ def cluster(
     if not rows:
         return []
 
-    vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw, _, _ in rows])
+    vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
     face_ids = [int(row[0]) for row in rows]
     # Through the shared index layer -- the same resident manager the
     # dupes job searches -- so face similarity is not its own FAISS
     # consumer. Align mutates the live space to exactly these rows;
     # device policy is the manager's configuration, not an argument.
-    space = similarity.face_space(model_id, model_version, int(vectors.shape[1]))
     manager = similarity.manager_for(conn)
     at = {face_id: position for position, face_id in enumerate(face_ids)}
     key = similarity.align(conn, manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]], now)

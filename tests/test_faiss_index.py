@@ -324,7 +324,8 @@ def test_a_rolled_back_hash_never_reaches_the_live_index(db, tmp_path):
     db.commit()
 
     def committed(wanted):
-        held = dict(db.execute("SELECT file_id, phash64 FROM derived_file_hash"))
+        sid = similarity.space_id(db, similarity.PHASH, 0.0)
+        held = dict(db.execute("SELECT file_id, value FROM derived_file_hash WHERE space_id = ?", (sid,)))
         return [held[v] for v in wanted]
 
     manager = IndexManager(tmp_path)
@@ -367,6 +368,7 @@ def test_a_snapshot_from_another_process_restores_and_answers(tmp_path):
         capture_output=True,
         text=True,
         check=False,
+        timeout=120,
     )
     assert done.returncode == 0, done.stderr
 
@@ -448,3 +450,83 @@ def test_an_upgrade_cannot_relabel_old_hashes_as_new(db, tmp_path, monkeypatch):
         )
     }
     assert told == {("v1", 2), ("v2", 2)}, "recompute overwrote history instead of adding to it"
+
+
+def test_spec_hash_is_canonical_not_delimited(db):
+    """A delimiter join lets two different specs collide the moment a
+    field contains the delimiter; canonical serialization cannot."""
+    left = SpaceSpec("s", "binary", 64, "hamming", producer="a|b", producer_version="c")
+    right = SpaceSpec("s", "binary", 64, "hamming", producer="a", producer_version="b|c")
+    assert similarity.spec_hash(left) != similarity.spec_hash(right)
+    assert similarity.space_id(db, left, 0.0) != similarity.space_id(db, right, 0.0)
+
+
+def test_each_fingerprint_carries_its_own_producer(db):
+    """pHash and dHash are different algorithms, so they are different
+    spaces -- two values sharing one provenance row is how dHash bits
+    got labeled as pHash output."""
+    from db import derived, scan
+
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
+    folder = scan.mint(db, "folder", "lib")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,NULL,'lib',0)", (folder,))
+    file_id = scan.mint(db, "file", "p")
+    db.execute(
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,first_seen_at,last_seen_at)"
+        " VALUES(?,?,?,'image',1,0,'aa',0,0)",
+        (file_id, folder, "p.png"),
+    )
+    derived.record_hash(db, file_id, "aa", 1.0, phash64=0b1, dhash64=0b10)
+    told = dict(
+        db.execute("SELECT s.producer, h.value FROM derived_file_hash h JOIN similarity_space s ON s.id = h.space_id")
+    )
+    assert told == {"imagehash.phash": 0b1, "imagehash.dhash": 0b10}
+
+
+def test_a_failed_post_commit_sync_invalidates_the_space(db, tmp_path):
+    """A space that took half a batch could answer with stale rows, so a
+    failed application marks it unservable -- resident and snapshot both
+    -- and the next align rebuilds it from committed truth."""
+    manager = IndexManager(tmp_path)
+    key = similarity.align(db, manager, similarity.PHASH, [1], lambda w: [0b1 for _ in w], 1.0)
+    similarity.note(db, similarity.PHASH, 2, 0b11, 2.0)
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("the device fell over mid-batch")
+
+    manager.upsert = broken
+    similarity.apply_pending(db, manager)
+    assert not manager.has(key), "a half-applied space is still answering"
+    restored = IndexManager(tmp_path)
+    assert not restored.restore(similarity.keyed(similarity.PHASH, similarity.space_id(db, similarity.PHASH, 3.0))), (
+        "the stale snapshot survived the invalidation"
+    )
+    key = similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [{1: 0b1, 2: 0b11}[v] for v in w], 4.0)
+    assert manager.count(key) == 2, "align did not repair the invalidated space"
+
+
+def test_a_face_row_cannot_claim_a_space_another_model_produced(db):
+    """The duplicated model columns are conveniences; the space is the
+    identity, and the schema refuses a row where they disagree."""
+    import sqlite3 as sqlite_module
+
+    from db import scan
+
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
+    folder = scan.mint(db, "folder", "lib")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,NULL,'lib',0)", (folder,))
+    file_id = scan.mint(db, "file", "p")
+    db.execute(
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,first_seen_at,last_seen_at)"
+        " VALUES(?,?,?,'image',1,0,'aa',0,0)",
+        (file_id, folder, "p.png"),
+    )
+    db.execute("INSERT INTO region(id, x, y, w, h) VALUES(1, 0.1, 0.1, 0.2, 0.2)")
+    other = similarity.space_id(db, similarity.face_space("other-model", "9", 1), 0.0)
+    with pytest.raises(sqlite_module.IntegrityError, match="another"):
+        db.execute(
+            "INSERT INTO derived_face_instance(file_id, region_id, model_id, model_version,"
+            " det_score, embedding, dim, space_id, source_sha256, computed_at)"
+            " VALUES(?, 1, 'm', '1', 0.9, x'00000000', 1, ?, 'aa', 0)",
+            (file_id, other),
+        )

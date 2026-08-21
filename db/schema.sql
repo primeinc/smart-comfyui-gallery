@@ -978,6 +978,11 @@ END;
 -- scope and rewrite it -- see derived.record_faces and derived.recluster. A
 -- row-at-a-time insert into these two tables is a defect, which is why the
 -- functions that do it are private.
+-- One fingerprint per (file, space): pHash rows live under the
+-- perceptual.phash64 space, dHash rows under perceptual.dhash64, and the
+-- next algorithm is a new space row rather than a new column -- two
+-- values sharing one row shared one provenance, and only one of them was
+-- telling the truth about who computed it.
 CREATE TABLE derived_file_hash (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     -- Which immutable space produced these bits. Part of the key: after a
@@ -986,16 +991,15 @@ CREATE TABLE derived_file_hash (
     -- implementation actually computed it. Without this column an
     -- upgrade relabeled old hashes as new ones by doing nothing at all.
     space_id      INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
-    -- 64 bits of perceptual hash, and SQLite INTEGER is SIGNED 64-bit: any
-    -- hash with the top bit set is stored negative. Compare them bitwise,
+    -- 64 bits of fingerprint, and SQLite INTEGER is SIGNED 64-bit: any
+    -- value with the top bit set is stored negative. Compare them bitwise,
     -- never with < or > -- ordering these numerically is meaningless, and
     -- Hamming distance is the only comparison that means anything.
-    phash64 INTEGER, dhash64 INTEGER,
+    value         INTEGER,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
     PRIMARY KEY (file_id, space_id)
 ) STRICT;
 CREATE INDEX derived_file_hash_space ON derived_file_hash(space_id);
-CREATE INDEX derived_file_hash_phash ON derived_file_hash(phash64);
 
 -- The IMMUTABLE identity of one similarity representation: what its
 -- vectors are (representation, dimensions, metric), what computed them
@@ -1178,6 +1182,28 @@ CREATE INDEX derived_face_by_model   ON derived_face_instance(model_id, model_ve
 CREATE INDEX derived_face_sample     ON derived_face_instance(sample_id);
 CREATE INDEX derived_face_region     ON derived_face_instance(region_id);
 CREATE INDEX derived_face_space      ON derived_face_instance(space_id);
+
+-- The duplicated model columns are query conveniences; the space row is
+-- the identity. This guard keeps the convenience honest: a face row
+-- cannot claim one model while pointing at a space another produced.
+CREATE TRIGGER derived_face_space_agrees
+BEFORE INSERT ON derived_face_instance
+WHEN NEW.space_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND (s.producer IS NOT NEW.model_id OR s.producer_version IS NOT NEW.model_version)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'face row names one model while its space was produced by another');
+END;
+CREATE TRIGGER derived_face_space_agrees_update
+BEFORE UPDATE ON derived_face_instance
+WHEN NEW.space_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND (s.producer IS NOT NEW.model_id OR s.producer_version IS NOT NEW.model_version)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'face row names one model while its space was produced by another');
+END;
 
 -- What a model says about a picture in words: a caption, a longer
 -- description, a tag, text it read out of the image. One table, because they

@@ -291,3 +291,57 @@ def test_a_degenerate_dupe_radius_is_refused_at_submit(db):
         runner.submit_dupes(db, 0.0)
     settings.put(db, "dupe_threshold", "31")
     assert runner.submit_dupes(db, 0.0) > 0
+
+
+def _two_files(db, tmp_path) -> list[int]:
+    from db import library
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for name in ("a.png", "b.png"):
+        (root / name).write_bytes(b"\x89PNG-" + name.encode())
+    root_id = library.add_root(db, str(root), "library", 0.0)
+    scan.scan(db, root_id, str(root), 0.0)
+    return [row[0] for row in db.execute("SELECT id FROM file ORDER BY id")]
+
+
+def test_dhash_vetoes_a_phash_pair_whose_structure_disagrees(db, tmp_path):
+    """The second opinion: pHash proposes (global composition), dHash
+    verifies (local gradient structure). Identical pHash with wildly
+    different dHash is similar composition over different content -- not
+    a duplicate, and the veto is independent evidence, not a re-vote."""
+    from db import derived, settings
+
+    files = _two_files(db, tmp_path)
+    derived.record_hash(db, files[0], "aa", 0.0, phash64=0b1, dhash64=0)
+    derived.record_hash(db, files[1], "bb", 0.0, phash64=0b1, dhash64=-1)  # all 64 bits apart
+    db.commit()
+
+    runner.run_next(db, "w1", 1.0)  # drain any queued work before submitting
+    job_id = runner.submit_dupes(db, 2.0)
+    turn = runner.run_next(db, "w1", 3.0)
+    assert turn == {"job": job_id, "state": "done", "did": 1, "failed": 0}
+    assert db.execute("SELECT count(*) FROM derived_dupe_group").fetchone()[0] == 0, (
+        "structurally different pictures grouped on composition alone"
+    )
+
+    settings.put(db, "dupe_dhash_verify", "off")
+    job_id = runner.submit_dupes(db, 4.0)
+    turn = runner.run_next(db, "w1", 5.0)
+    assert turn == {"job": job_id, "state": "done", "did": 1, "failed": 0}
+    assert db.execute("SELECT count(*) FROM derived_dupe_group").fetchone()[0] == 2, (
+        "with verification off, pHash alone must decide"
+    )
+
+
+def test_a_bad_dhash_verify_setting_is_refused_at_submit(db):
+    from db import settings
+
+    settings.put(db, "dupe_dhash_verify", "64")
+    with pytest.raises(ValueError, match="63"):
+        runner.submit_dupes(db, 0.0)
+    settings.put(db, "dupe_dhash_verify", "sideways")
+    with pytest.raises(ValueError, match="sideways"):
+        runner.submit_dupes(db, 0.0)
+    settings.put(db, "dupe_dhash_verify", "off")
+    assert runner.submit_dupes(db, 0.0) > 0

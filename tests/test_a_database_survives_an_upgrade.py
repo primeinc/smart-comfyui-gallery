@@ -510,7 +510,9 @@ def everything_in(path):
             "artifacts": conn.execute("SELECT file_id, role FROM file_artifact ORDER BY file_id, role").fetchall(),
             "generation": conn.execute("SELECT file_id, seed FROM generation").fetchall(),
             "captions": conn.execute("SELECT file_id, text FROM derived_annotation").fetchall(),
-            "hashes": conn.execute("SELECT file_id, phash64 FROM derived_file_hash").fetchall(),
+            "hashes": conn.execute(
+                "SELECT file_id, value FROM derived_file_hash ORDER BY file_id, space_id"
+            ).fetchall(),
             "slugs": conn.execute("SELECT kind, slug FROM entity ORDER BY id").fetchall(),
             "caption_search": conn.execute(
                 "SELECT count(*) FROM annotation_fts WHERE annotation_fts MATCH 'helmet'"

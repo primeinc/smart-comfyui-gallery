@@ -37,6 +37,15 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # it, edits usually do not. Free text validated at submit; 32+ is
     # refused there because random pairs average 32 bits apart.
     "dupe_threshold": ("4", None),
+    # The second opinion on every pHash dupe candidate: a pair also has
+    # to agree within this many dHash bits, or "off" to trust pHash
+    # alone. Two independent 64-bit fingerprints agreeing is much
+    # stronger evidence than one -- pHash sees global low-frequency
+    # composition, dHash local gradient structure, so a pair that is
+    # pHash-close but dHash-far is similar composition over different
+    # content. Permissive by default: it exists to veto gross
+    # mismatches, not to out-vote pHash. Validated at submit, 0..63.
+    "dupe_dhash_verify": ("16", None),
 }
 
 
