@@ -1723,8 +1723,41 @@ CREATE TABLE derived_event_file (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX event_file_file ON derived_event_file(file_id);
 
+-- ============ stories: frozen evidence, never prose ============
+-- A StorySnapshot is an immutable, self-contained record of exactly
+-- what the application knew about ONE current event at ONE instant. It
+-- freezes EVIDENCE, not prose: file uuids AND the content hashes it
+-- actually observed, the occurrence that placed each member in this
+-- event, prompts, artifacts, capture facts, people, place hierarchy,
+-- lineage, annotations -- by VALUE. It is deliberately not a foreign
+-- key to derived_event/derived_event_run: those are rebuildable
+-- hypotheses replaced on every regroup, and a story written from
+-- yesterday's evidence must not vanish because today regrouped. Its
+-- identity is the canonical document's SHA-256, so identical evidence
+-- is one row and retries are idempotent. Insert-only: a change in the
+-- library, the policy or the evidence producers means a NEW snapshot.
+-- Historical, not derived: dropping the derived namespace leaves it.
+CREATE TABLE story_snapshot (
+    id                     INTEGER PRIMARY KEY,
+    format_version         INTEGER NOT NULL,
+    source_kind            TEXT NOT NULL CHECK (source_kind = 'event'),
+    event_kind             TEXT NOT NULL CHECK (event_kind IN ('generation_session','capture_session')),
+    grouper                TEXT NOT NULL,
+    context_generation     INTEGER NOT NULL,
+    context_policy_version INTEGER NOT NULL,
+    member_hash            TEXT NOT NULL,
+    document_json          TEXT NOT NULL,
+    document_sha256        TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at             REAL NOT NULL
+) STRICT;
+CREATE INDEX story_snapshot_member ON story_snapshot(member_hash, created_at);
+CREATE TRIGGER story_snapshot_is_immutable BEFORE UPDATE ON story_snapshot
+BEGIN
+  SELECT RAISE(ABORT,'a story snapshot is immutable; freeze a new one');
+END;
+
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 12;
+PRAGMA user_version   = 13;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

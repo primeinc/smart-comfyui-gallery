@@ -1270,6 +1270,37 @@ END"""
     conn.execute("CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at)")
 
 
+@step(12)
+def _stories_freeze_evidence(conn: sqlite3.Connection) -> None:
+    """v12 -> v13: `story_snapshot`, the immutable evidence record a
+    story is told from. Additive; insert-only by trigger; outside the
+    derived namespace because it is history, not a rebuildable
+    projection. DDL is schema.sql's text VERBATIM.
+    """
+    conn.execute(
+        """CREATE TABLE story_snapshot (
+    id                     INTEGER PRIMARY KEY,
+    format_version         INTEGER NOT NULL,
+    source_kind            TEXT NOT NULL CHECK (source_kind = 'event'),
+    event_kind             TEXT NOT NULL CHECK (event_kind IN ('generation_session','capture_session')),
+    grouper                TEXT NOT NULL,
+    context_generation     INTEGER NOT NULL,
+    context_policy_version INTEGER NOT NULL,
+    member_hash            TEXT NOT NULL,
+    document_json          TEXT NOT NULL,
+    document_sha256        TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at             REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX story_snapshot_member ON story_snapshot(member_hash, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_snapshot_is_immutable BEFORE UPDATE ON story_snapshot
+BEGIN
+  SELECT RAISE(ABORT,'a story snapshot is immutable; freeze a new one');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

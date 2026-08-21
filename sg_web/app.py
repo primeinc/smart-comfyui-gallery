@@ -65,6 +65,7 @@ from sg_web import (
     media_authored,
     media_view,
     person_view,
+    story_view,
     timeline_view,
 )
 from sg_web import worker as worker_module
@@ -927,6 +928,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             submit_dupes,
             dupes,
             timeline_view.timeline,
+            story_view.freeze_snapshot,
+            story_view.snapshot_document,
             person_view.people_index,
             person_view.person_page,
             clusterings,
