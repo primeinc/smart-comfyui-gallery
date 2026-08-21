@@ -78,6 +78,51 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
 
 
+def submit_phash(conn, now: float) -> int:
+    """Perceptual hashes for every present picture, as one job.
+
+    The backfill for a library that never ran detection -- detection
+    records the same hashes as a byproduct of its decoded frames. Rides
+    the schema's 'hash' kind with a payload the handler dispatches on:
+    both jobs are about what a file's content IS, one verifying bytes,
+    one fingerprinting pixels.
+    """
+    items = [
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+        )
+    ]
+    return jobs.submit(conn, "hash", now, payload={"derive": "perceptual"}, items=items)
+
+
+def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
+    from vision import decode, dupes
+
+    from . import derived, detect, oriented, scan
+
+    kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+    path = detect.path_of(conn, file_id)
+    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+    if frame is None:
+        raise ValueError(f"file {file_id} has no decodable frame to fingerprint")
+    if sha is None:
+        sha = scan.sha256_of(path)
+    phash64, dhash64 = dupes.perceptual(frame)
+    derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
+
+
+def _hash_item(conn, file_id: int, payload: dict, now: float) -> None:
+    """The 'hash' kind's two modes, told apart by payload: a bare job is
+    the integrity sweep it always was, so jobs queued before the payload
+    existed keep meaning what they meant."""
+    if payload.get("derive") == "perceptual":
+        _perceptual_item(conn, file_id, payload, now)
+    else:
+        _verify_item(conn, file_id, payload, now)
+
+
 def submit_ingest(conn, now: float) -> int:
     """Read every present file's own story, as one job.
 
@@ -200,7 +245,7 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
 #: IntegrityError at submit, never a job that queues and waits forever.
 HANDLERS = {
     "scan": _ingest_item,
-    "hash": _verify_item,
+    "hash": _hash_item,
     "detect_faces": _face_item,
     "cluster_faces": _cluster_item,
 }

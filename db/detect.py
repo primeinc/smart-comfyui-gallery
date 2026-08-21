@@ -55,12 +55,27 @@ def harvest(
     if image is None:
         image = oriented.for_model(conn, file_id, path)
     sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+    if sha is None:
+        # A file can reach detection before anything hashed it, and every
+        # derived row here keys its staleness on the content hash.
+        from . import scan
+
+        sha = scan.sha256_of(path)
     if thumbs_dir is not None:
         import pathlib
 
         from vision import thumbs
 
         thumbs.put_all(pathlib.Path(thumbs_dir), sha, image)
+    # The frame is decoded and upright; hashing it later means decoding
+    # again -- same doctrine as the thumbnail byproduct. Whole file only:
+    # a video sample's frame is one moment, not the file's identity, and
+    # `record_hash` needs the sha the row may not have yet.
+    if sample_id is None:
+        from vision import dupes
+
+        phash64, dhash64 = dupes.perceptual(image)
+        derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
     faces = []
     for found in backend.detect(image):

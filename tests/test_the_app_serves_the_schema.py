@@ -680,6 +680,49 @@ def test_a_smart_collection_refuses_filing_over_http(served):
     assert "rule" in refused.json()["detail"]
 
 
+def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
+    """The backfill for libraries that never ran detection: POST
+    /jobs/phash computes phash64/dhash64 for every present picture, and
+    a resized re-encode lands within a few bits of its original --
+    perceptual identity produced by the application, over HTTP."""
+    from PIL import Image
+
+    from vision import dupes
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    picture = Image.effect_noise((64, 64), 40).convert("RGB")
+    picture.save(root / "castle.png")
+    picture.resize((32, 32)).save(root / "castle_half.jpg", quality=80)
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            job = client.post("/jobs/phash").json()
+            assert (job["kind"], job["total"]) == ("hash", 2)
+            state = job["state"]
+            while state not in ("done", "failed", "cancelled"):
+                state = feed.receive_json(timeout=10)["state"]
+            assert state == "done"
+        told = client.get(f"/jobs/{job['id']}").json()
+        assert (told["state"], told["failed_count"]) == ("done", 0)
+
+        conn = connect.connect(client.app.state.db_path)
+        hashes = {
+            name: (p, d)
+            for name, p, d in conn.execute(
+                "SELECT f.name, h.phash64, h.dhash64 FROM derived_file_hash h JOIN file f ON f.id = h.file_id"
+            )
+        }
+        conn.close()
+        assert set(hashes) == {"castle.png", "castle_half.jpg"}
+        assert all(p is not None and d is not None for p, d in hashes.values())
+        apart = dupes.hamming(hashes["castle.png"][0], hashes["castle_half.jpg"][0])
+        assert apart <= 6, f"the same picture resized measured {apart} bits apart"
+
+
 def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
     """One --home argument moves everything a run owns -- database, models,
     caches. Nothing lands in OS application-data folders, and a first run

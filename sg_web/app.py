@@ -485,6 +485,20 @@ def submit_faces(state: State, data: dict) -> dict:
         connect.close(conn)
 
 
+@post("/jobs/phash", sync_to_thread=True)
+def submit_phash(state: State) -> dict:
+    """Ask for every present picture's perceptual fingerprint -- the
+    identity that survives copies of copies (db/runner.py submit_phash)."""
+    conn = _connect(state.db_path)
+    try:
+        job_id = runner.submit_phash(conn, time.time())
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
+    finally:
+        connect.close(conn)
+
+
 @post("/jobs/ingest", sync_to_thread=True)
 def submit_ingest(state: State) -> dict:
     """Ask for every present file's metadata to be read into entities --
@@ -927,6 +941,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             album_add,
             album_remove,
             submit_ingest,
+            submit_phash,
             people,
             person,
             clusterings,

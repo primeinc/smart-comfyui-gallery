@@ -146,6 +146,73 @@ def test_a_smart_collection_refuses_stored_members(db, a_library):
     db.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
 
 
+def test_perceptual_hashes_come_from_pixels_not_literals(db, a_library, tmp_path):
+    """The runtime producer for derived_file_hash, fed real pixels.
+
+    The columns sat for a generation with only test literals behind them
+    -- a storage function fed constants satisfies every gate while nothing
+    in the running system computes a hash. These run the real path: the
+    same picture re-encoded stays within a few bits; a different picture
+    is far away; the signed-64 storage convention round-trips."""
+    from PIL import Image
+
+    from vision import dupes
+
+    source = tmp_path / "castle.png"
+    rng_pixels = Image.effect_noise((64, 64), 40).convert("RGB")
+    rng_pixels.save(source)
+    copy = tmp_path / "castle_half.jpg"
+    rng_pixels.resize((32, 32)).save(copy, quality=80)
+    other = tmp_path / "meadow.png"
+    Image.effect_noise((64, 64), 90).convert("RGB").save(other)
+
+    with Image.open(source) as img:
+        p_source, d_source = dupes.perceptual(img)
+    with Image.open(copy) as img:
+        p_copy, _ = dupes.perceptual(img)
+    with Image.open(other) as img:
+        p_other, _ = dupes.perceptual(img)
+
+    signed64 = range(-(1 << 63), 1 << 63)
+    assert p_source in signed64
+    assert d_source in signed64
+    assert dupes.hamming(p_source, p_copy) <= 6, "a resized re-encode is the same picture"
+    assert dupes.hamming(p_source, p_other) > 10, "different pictures must stay apart"
+
+    derived.record_hash(db, a_library["file"], "aa", NOW, phash64=p_source, dhash64=d_source)
+    stored = db.execute(
+        "SELECT phash64, dhash64 FROM derived_file_hash WHERE file_id = ?", (a_library["file"],)
+    ).fetchone()
+    assert stored == (p_source, d_source), "the signed storage convention did not round-trip"
+
+
+def test_detection_records_perceptual_hashes_as_a_byproduct(db, a_library, tmp_path):
+    """The decoded frame is in hand; hashing it later means decoding twice.
+    Same doctrine as the thumbnail byproduct, same guard: only the whole
+    file's frame, never a video sample's."""
+    from PIL import Image
+
+    from db import detect
+
+    path = tmp_path / "dusk.png"
+    Image.effect_noise((64, 64), 55).convert("RGB").save(path)
+
+    class NothingFound:
+        model_id = "test/none"
+        model_version = "0"
+
+        def detect(self, image):
+            return []
+
+    detect.harvest(db, NothingFound(), a_library["file"], path, NOW)
+    row = db.execute(
+        "SELECT phash64, dhash64 FROM derived_file_hash WHERE file_id = ?", (a_library["file"],)
+    ).fetchone()
+    assert row is not None, "detection decoded the frame and recorded no hash"
+    assert row[0] is not None
+    assert row[1] is not None
+
+
 # --- the rebuild contract --------------------------------------------------
 
 
