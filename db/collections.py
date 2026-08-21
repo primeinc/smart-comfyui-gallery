@@ -126,19 +126,24 @@ def _definition(conn, collection_id: int):
     return row
 
 
-def _parent_allowed(conn, collection_id: int, parent_id: int, current_parent_id) -> None:
-    """The friendly refusals; the collection_no_cycle trigger stays the
-    backstop for raw writes. An archived collection is not a NEW
-    destination -- but keeping the parent a collection already has is
-    always sayable, or a patch that names its own current state would
-    silently be impossible to spell."""
-    if parent_id == collection_id:
+def _parent_allowed(conn, parent_id: int, *, collection_id: int | None = None, current_parent_id=None) -> None:
+    """ONE parent-admissibility doctrine for every adapter -- creation
+    (no collection exists yet, so no self/descendant to check) and moves
+    alike. An active collection is a legal destination; the archived
+    parent a collection ALREADY has may be restated, or a patch naming
+    its own current state would be impossible to spell; an archived
+    collection is never a NEW destination -- from a move or from a
+    creation, because "new children" does not care how the child came to
+    exist. The collection_no_cycle trigger stays the raw-write backstop."""
+    if collection_id is not None and parent_id == collection_id:
         raise ValueError("a collection cannot be its own parent")
     held = conn.execute("SELECT archived_at FROM collection WHERE id = ?", (parent_id,)).fetchone()
     if held is None:
         raise ValueError("the named parent is not a collection")
     if held[0] is not None and parent_id != current_parent_id:
         raise ValueError("an archived collection does not take new children; restore it first")
+    if collection_id is None:
+        return
     descended = conn.execute(
         "WITH RECURSIVE down(id) AS ("
         " SELECT id FROM collection WHERE parent_id = ?"
@@ -213,10 +218,8 @@ def create_listed(
     if kind not in LISTED:
         raise ValueError("kind must be album or flag; a smart collection needs a rule")
     cleaned = _cleaned_name(name)
-    if parent_id is not None and (
-        conn.execute("SELECT 1 FROM collection WHERE id = ?", (parent_id,)).fetchone() is None
-    ):
-        raise ValueError("the named parent is not a collection")
+    if parent_id is not None:
+        _parent_allowed(conn, parent_id)
     return collection(
         conn,
         cleaned,
@@ -247,10 +250,8 @@ def create_smart(
     uncommitted rows a caller could mistakenly commit."""
     collection_rules.validate(rule, ValueError)
     cleaned = _cleaned_name(name)
-    if parent_id is not None and (
-        conn.execute("SELECT 1 FROM collection WHERE id = ?", (parent_id,)).fetchone() is None
-    ):
-        raise ValueError("the named parent is not a collection")
+    if parent_id is not None:
+        _parent_allowed(conn, parent_id)
     collection_id = collection(
         conn,
         cleaned,
@@ -304,7 +305,7 @@ def update_definition(conn, collection_id: int, patch: CollectionPatch, actor_id
         if patch.parent_id is not None:
             if type(patch.parent_id) is not int:
                 raise ValueError("parent names a collection, or null for the top")
-            _parent_allowed(conn, collection_id, patch.parent_id, current_parent_id)
+            _parent_allowed(conn, patch.parent_id, collection_id=collection_id, current_parent_id=current_parent_id)
         sets.append("parent_id = ?")
         values.append(patch.parent_id)
     if patch.archived is not UNSET:

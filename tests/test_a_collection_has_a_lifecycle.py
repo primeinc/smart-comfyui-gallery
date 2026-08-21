@@ -21,7 +21,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import collection_rules, collections, connect
+from db import collection_rules, collections, connect, resultset
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -385,6 +385,51 @@ def test_an_archived_parent_survives_an_unrelated_edit(curated):
     assert moved.status_code == 400
     assert "restore" in moved.json()["detail"]
     assert _view(curated, "still-going")["parent"] == "old-project"
+
+
+def test_creation_obeys_the_same_parent_doctrine_as_moving(curated):
+    """One definition of "legal parent" however the child comes to
+    exist: an archived collection takes no NEW children from a move OR
+    from a creation, through HTTP and through the Module with the
+    refusal caught and the transaction committed."""
+    curated.post("/albums", json={"name": "Old Project"})
+    assert curated.post("/albums", json={"name": "Early", "parent": "old-project"}).status_code == 201
+    assert (
+        curated.post("/albums/smart", json={"name": "Early Smart", "rating_min": 4, "parent": "old-project"})
+    ).status_code == 201
+    curated.patch("/t/old-project", json={"archived": True, "expected_rev": 1})
+
+    listed = curated.post("/albums", json={"name": "Too Late", "parent": "old-project"})
+    assert listed.status_code == 400
+    assert "restore" in listed.json()["detail"]
+    smart = curated.post("/albums/smart", json={"name": "Too Late Smart", "rating_min": 4, "parent": "old-project"})
+    assert smart.status_code == 400
+    assert "restore" in smart.json()["detail"]
+
+    conn = _raw(curated)
+    try:
+        parent = conn.execute("SELECT id FROM collection WHERE name = 'Old Project'").fetchone()[0]
+        actor = curated.app.state.actor_id
+        with pytest.raises(ValueError, match="restore"):
+            collections.create_listed(conn, "Too Late", 5.0, parent_id=parent, actor_id=actor)
+        conn.commit()
+        rule = collection_rules.from_gallery_query(conn, resultset.parse(rating_min=4), actor_id=actor, take=None)
+        with pytest.raises(ValueError, match="restore"):
+            collections.create_smart(conn, "Too Late Smart", rule, None, 6.0, parent_id=parent, actor_id=actor)
+        conn.commit()
+        for name in ("Too Late", "Too Late Smart"):
+            assert conn.execute("SELECT count(*) FROM collection WHERE name = ?", (name,)).fetchone()[0] == 0
+        for slug in ("too-late", "too-late-smart"):
+            assert conn.execute("SELECT count(*) FROM entity WHERE slug = ?", (slug,)).fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM collection_rule r JOIN collection c ON c.id = r.collection_id"
+                " WHERE c.name LIKE 'Too Late%'"
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        connect.close(conn)
 
 
 def test_a_refused_transition_leaves_the_callers_transaction_untouched(curated):
