@@ -678,6 +678,12 @@ def test_a_smart_collection_refuses_filing_over_http(served):
     refused = client.post("/t/big-seeds/add", json={"file": "ana-1"})
     assert refused.status_code == 400
     assert "rule" in refused.json()["detail"]
+    assert client.post("/t/big-seeds/remove", json={"file": "ana-1"}).status_code == 400, (
+        "removing from a rule-defined collection must refuse like adding does"
+    )
+    served = client.get("/t/big-seeds").json()
+    assert served["rule"] == {"sql": "SELECT 1", "nl": None}, "the rule is served; evaluation is declared deferred"
+    assert served["files"] == []
 
 
 def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):

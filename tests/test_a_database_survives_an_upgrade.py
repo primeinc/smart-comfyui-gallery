@@ -286,6 +286,93 @@ def test_two_steps_cannot_claim_one_version(steps):
         migrate.step(7)(lambda conn: None)
 
 
+# --- the REAL registry, not synthetic steps ---------------------------------
+
+
+def v1_database(tmp_path):
+    """Today's build, taken back to v1 by inverting the shipped steps."""
+    path = tmp_path / "gallery.db"
+    build.build(path)
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    for trigger in (
+        "collection_file_not_into_smart",
+        "collection_file_not_moved_into_smart",
+        "collection_with_members_stays_listed",
+    ):
+        conn.execute(f"DROP TRIGGER {trigger}")
+    conn.execute("PRAGMA user_version = 1")
+    conn.close()
+    return path
+
+
+def a_file_row(conn):
+    root = int(
+        conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
+    )
+    folder = scan.ensure_folder(conn, root, None, "x")
+    file_id = scan.mint(conn, "file", "dusk")
+    conn.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'dusk.png', 'image', 10, 0, ?, ?)",
+        (file_id, folder, NOW, NOW),
+    )
+    return file_id
+
+
+def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
+    """The real STEPS, executed: every other test here swaps in synthetic
+    steps to prove the runner, which left the one migration that actually
+    ships executed by nothing. A v1 file must migrate to a database
+    indistinguishable from a fresh build, and every trigger the step
+    installs must fire -- including the moved-into one no other test
+    reaches."""
+    path = v1_database(tmp_path)
+    assert migrate.migrate(path) == list(range(2, connect.USER_VERSION + 1))
+    assert build.drift(path) == [], "the migrated file differs from a fresh build"
+
+    conn = connect.connect(path)
+    try:
+        file_id = a_file_row(conn)
+        smart = authored.collection(conn, "Big seeds", NOW, kind="smart", sql_text="SELECT 1")
+        album = authored.collection(conn, "Keepers", NOW)
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (smart, file_id, NOW))
+        conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (album, file_id, NOW))
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE collection_file SET collection_id = ? WHERE collection_id = ?", (smart, album))
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
+    finally:
+        conn.close()
+
+
+def test_a_legacy_smart_membership_stops_the_migration_by_name(tmp_path):
+    """The hole's own artifact: a v1 library that filed rows into a smart
+    collection, because nothing refused it then. Migrating those rows
+    forward would stamp a v2 database whose data violates the invariant
+    v2 exists to establish -- and deleting them unasked is not this
+    schema's way. The step refuses, names the collection, and leaves the
+    file at v1 with its rows intact."""
+    path = v1_database(tmp_path)
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA foreign_keys=ON")
+    file_id = a_file_row(conn)
+    smart = authored.collection(conn, "Big seeds", NOW, kind="smart", sql_text="SELECT 1")
+    conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (smart, file_id, NOW))
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(sqlite3.IntegrityError, match="Big seeds"):
+        migrate.migrate(path)
+
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1, "a refused step must leave the file at v1"
+        assert conn.execute("SELECT count(*) FROM collection_file").fetchone()[0] == 1, "the rows are the human's"
+    finally:
+        conn.close()
+
+
 # --- planner statistics ----------------------------------------------------
 
 

@@ -106,3 +106,4 @@ run_exhibition.sh
 db/*.db
 db/*.db-wal
 db/*.db-shm
+db/*.backup

@@ -199,10 +199,25 @@ def _smart_collections_refuse_stored_members(conn: sqlite3.Connection) -> None:
     """v1 -> v2: the guards keeping smart collections rule-defined.
 
     One execute per statement, never executescript -- see the module
-    docstring. Purely additive: no existing rows can violate the guards,
-    because nothing before v2 could mark a filled collection smart without
-    also violating the album/flag CHECKs on sql_text.
+    docstring. NOT purely additive: a v1 library could file rows into a
+    smart collection, because the guards did not exist -- that hole is
+    why they do now -- and stamping those rows forward would produce a
+    database whose data violates its own triggers' intent. Deleting them
+    unasked is not this schema's way either, so the step refuses by
+    name and the operator empties or re-kinds the collections first;
+    the refusal rolls this step back and the file stays at v1.
     """
+    offenders = conn.execute(
+        "SELECT c.name, count(*) FROM collection c"
+        " JOIN collection_file cf ON cf.collection_id = c.id"
+        " WHERE c.kind = 'smart' GROUP BY c.id ORDER BY c.name"
+    ).fetchall()
+    if offenders:
+        named = "; ".join(f"{name!r} holds {n} filed row(s)" for name, n in offenders)
+        raise sqlite3.IntegrityError(
+            f"a smart collection derives its members from its rule, and this library filed rows into: {named}."
+            f" Empty or re-kind those collections, then migrate again."
+        )
     conn.execute(
         "CREATE TRIGGER collection_file_not_into_smart BEFORE INSERT ON collection_file "
         "WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) = 'smart' BEGIN "

@@ -122,6 +122,12 @@ def add_to_collection(conn, collection_id: int, file_id: int, now: float) -> Non
 
 
 def remove_from_collection(conn, collection_id: int, file_id: int) -> None:
+    """Symmetric with `add_to_collection`: a smart collection has nothing
+    filed into it, so pretending to remove something would be answering
+    under a membership model the kind does not have."""
+    kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
+    if kind is not None and kind[0] == "smart":
+        raise ValueError("a smart collection derives its members from its rule; nothing is filed to remove")
     conn.execute(
         "DELETE FROM collection_file WHERE collection_id = ? AND file_id = ?",
         (collection_id, file_id),

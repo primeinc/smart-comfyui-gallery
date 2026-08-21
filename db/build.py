@@ -22,10 +22,23 @@ from db.connect import APPLICATION_ID, USER_VERSION, connect, schema_sql
 DEFAULT = pathlib.Path(__file__).resolve().parent / "gallery.db"
 
 
+def _squeezed(sql: str) -> str:
+    """Whitespace-normalised OUTSIDE string literals only.
+
+    A literal's spacing is content -- a RAISE message with a doubled
+    space is a different message -- and a comparator that folds it would
+    call a migrated trigger equal to a fresh one they no longer match.
+    Splitting on the quote keeps SQLite's '' escapes intact: they become
+    empty even-indexed segments the rejoin restores verbatim.
+    """
+    parts = sql.split("'")
+    return "'".join(" ".join(part.split()) if index % 2 == 0 else part for index, part in enumerate(parts))
+
+
 def objects(conn: sqlite3.Connection) -> dict[str, str]:
-    """Every schema object, keyed by name, whitespace-normalised."""
+    """Every schema object, keyed by name, comparably normalised."""
     return {
-        name: " ".join((sql or "").split())
+        name: _squeezed(sql or "")
         for name, sql in conn.execute("SELECT name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")
     }
 

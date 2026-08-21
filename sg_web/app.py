@@ -266,13 +266,21 @@ def album_page(state: State, slug: str) -> dict | Redirect:
         collection_id, live = _resolved(conn, "collection", slug, "/t")
         if live is not None:
             return Redirect(path=f"/t/{live}", status_code=301)
-        name, kind = conn.execute("SELECT name, kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
-        return {
+        name, kind, sql_text, nl_text = conn.execute(
+            "SELECT name, kind, sql_text, nl_text FROM collection WHERE id = ?", (collection_id,)
+        ).fetchone()
+        page = {
             "slug": slug,
             "name": name,
             "kind": kind,
             "files": _rows(pages.album_files(conn, collection_id), ("slug", "name")),
         }
+        if kind == "smart":
+            # Served as the rule it is. EVALUATING the rule is deferred
+            # work, said here rather than implied: the guards guarantee
+            # `files` cannot hold stored members to lie with meanwhile.
+            page["rule"] = {"sql": sql_text, "nl": nl_text}
+        return page
     finally:
         connect.close(conn)
 
@@ -290,13 +298,13 @@ def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool
     try:
         collection_id, live_album = _resolved(conn, "collection", slug, "/t")
         file_id, live_file = _resolved(conn, "file", data.file, route)
-        if adding:
-            try:
+        try:
+            if adding:
                 authored.add_to_collection(conn, collection_id, file_id, time.time())
-            except ValueError as refused:
-                raise ClientException(str(refused)) from refused
-        else:
-            authored.remove_from_collection(conn, collection_id, file_id)
+            else:
+                authored.remove_from_collection(conn, collection_id, file_id)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
         conn.commit()
         # Present members only -- the same number GET /albums answers with,
         # so the two routes cannot drift apart; and the LIVE slugs, so a

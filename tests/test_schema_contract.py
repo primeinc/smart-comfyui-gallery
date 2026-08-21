@@ -1541,6 +1541,34 @@ def test_the_drift_check_can_actually_fail(tmp_path):
     assert drift(path) != [], "the drift check cannot see a missing index"
 
 
+def test_the_drift_check_sees_inside_string_literals(tmp_path):
+    """Control for the comparator's literal-awareness: a trigger message
+    whose spacing changed is a different message and must read as drift,
+    while spacing between TOKENS stays fold-away noise."""
+    import sqlite3 as _s
+
+    from db.build import drift
+    from db.connect import schema_sql
+
+    reworded = tmp_path / "reworded.db"
+    conn = _s.connect(str(reworded))
+    conn.executescript(schema_sql().replace("nothing is filed into it", "nothing  is filed into it"))
+    conn.commit()
+    conn.close()
+    assert drift(reworded) != [], "a changed literal was folded into equality"
+
+    respaced = tmp_path / "respaced.db"
+    conn = _s.connect(str(respaced))
+    conn.executescript(
+        schema_sql().replace(
+            "CREATE TRIGGER collection_file_not_into_smart", "CREATE  TRIGGER  collection_file_not_into_smart"
+        )
+    )
+    conn.commit()
+    conn.close()
+    assert drift(respaced) == [], "token spacing is not drift"
+
+
 def test_the_drift_check_sees_a_wrong_stamp(tmp_path):
     """Control for the half it could not see. `objects()` reads sqlite_master
     only, so a file carrying the wrong version -- the case the stamps exist
