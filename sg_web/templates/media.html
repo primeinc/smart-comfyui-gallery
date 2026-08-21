@@ -7,6 +7,7 @@
   <link rel="canonical" href="/i/{{ item.slug }}">
   <link rel="stylesheet" href="/static/gallery.css">
   <script src="/static/media.js" defer></script>
+  <script src="/static/authored.js" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -33,6 +34,7 @@
       {% endif %}
       {% if not item.present %}<figcaption class="warn">this file is not on disk right now</figcaption>{% endif %}
     </figure>
+    {% include "_media_authored.html" %}
     <nav class="detail-walk">
       {% if item.previous %}
       <a rel="prev" href="/i/{{ item.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&larr; previous</a>

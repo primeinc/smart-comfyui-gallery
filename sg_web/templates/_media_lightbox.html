@@ -1,5 +1,6 @@
 <div class="lightbox" data-lightbox data-slug="{{ item.slug }}"
      data-currency="{{ item.context.currency or '' }}"
+     data-answer="{{ item.context.answer or '' }}"
      data-return="{{ item.context.return_url }}"
      role="dialog" aria-label="{{ item.name }}">
   <button class="lightbox-close" data-close aria-label="close">&times;</button>
@@ -30,4 +31,5 @@
        href="/i/{{ item.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rarr;</a>
     {% else %}<span class="lightbox-end">&rarr;</span>{% endif %}
   </div>
+  {% include "_media_authored.html" %}
 </div>

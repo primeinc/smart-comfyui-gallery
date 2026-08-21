@@ -144,6 +144,30 @@
       const s = shape();
       return s ? s.currency : "";
     },
+    // A 409'd arrow proves the generation moved, not that THIS answer
+    // did -- a favorite, a background job's bookkeeping, any commit at
+    // all moves data_version. Ask locate for the walked context's
+    // (currency, answer): the same answer identity means the mounted
+    // walk is still true, so adopt the fresh currency and let the shell
+    // retry once. A changed or vanished answer stays a full redraw.
+    recover: async () => {
+      const shown = document.querySelector("[data-lightbox]");
+      const g = grid();
+      const mounted = (shown && shown.dataset.answer) || (g && g.dataset.answer) || "";
+      const slug = shown ? shown.dataset.slug : null;
+      if (!mounted || !slug) return false;
+      const asked = await fetch(`/g/locate/${slug}${window.location.search}`);
+      if (!asked.ok) return false;
+      const told = await asked.json();
+      if (told.in_answer === false || told.answer !== mounted) return false;
+      for (const surface of [shown, g]) {
+        if (surface) {
+          surface.dataset.currency = told.currency;
+          surface.dataset.answer = told.answer;
+        }
+      }
+      return true;
+    },
   });
   if (lightbox) {
     document.addEventListener("click", (event) => {

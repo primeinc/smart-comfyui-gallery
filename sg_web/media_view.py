@@ -35,6 +35,7 @@ swapped under the gallery still on screen.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 import time
 
@@ -43,14 +44,16 @@ from litestar.datastructures import State
 from litestar.exceptions import HTTPException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import connect, naming, pages, resultset, settings
+from db import authored, connect, naming, pages, resultset, settings
 from db.resultset import canonical
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import presented
 
 
-def view(conn, models_dir: str, file_id: int, slug: str, query: resultset.GalleryQuery, now: float) -> dict:
+def view(
+    conn, models_dir: str, file_id: int, slug: str, query: resultset.GalleryQuery, now: float, actor_id: int
+) -> dict:
     """The MediaView: everything every presentation shows, assembled
     once, inside ONE database snapshot. Keys carried by the old JSON
     page keep their names, so the machine consumers keep their
@@ -69,14 +72,20 @@ def view(conn, models_dir: str, file_id: int, slug: str, query: resultset.Galler
     with resultset.snapshot(conn):
         found = resultset.locate(conn, models_dir, query, file_id, now)
         if found is not None:
-            generation, asked = found["currency"], found["qs"]
+            generation, asked, answer = found["currency"], found["qs"], found["answer"]
         else:
             shape = resultset.describe(conn, models_dir, query, now)
-            generation, asked = shape["currency"], shape["qs"]
+            generation, asked, answer = shape["currency"], shape["qs"], shape["answer"]
         told = pages.picture(conn, file_id)
         if told is None:
             raise NotFoundException(f"/i/{slug} has no file row")
-        return _assembled(conn, file_id, slug, found, generation, asked, told)
+        made = _assembled(conn, file_id, slug, found, generation, asked, told)
+        made["context"]["answer"] = answer
+        # The actor's authored facts ride the SAME snapshot as everything
+        # else -- a favorite committed mid-request must not appear under
+        # the metadata of the generation before it.
+        made["authored"] = dataclasses.asdict(authored.media_state(conn, file_id, actor_id))
+        return made
 
 
 def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str, told) -> dict:
@@ -153,7 +162,7 @@ def media_page(
                 asked = canonical(query)
                 return Redirect(path=f"/i/{live[1]}" + (f"?{asked}" if asked else ""), status_code=301)
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        told = view(conn, weights, file_id, slug, query, time.time())
+        told = view(conn, weights, file_id, slug, query, time.time(), state.actor_id)
         conn.commit()  # a semantic context may have minted registry rows
         # Compared AFTER assembly, against the currency the view was
         # actually located in: a commit landing mid-request would

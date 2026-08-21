@@ -53,54 +53,78 @@
 
     const open = async (href, mode) => {
       const ticket = ++flight;
-      const headers = { "HX-Request": "true" };
-      const expected = spec.generation ? spec.generation() : null;
-      if (expected) headers["X-SG-Expect"] = expected;
       // Every exit below obeys the ticket FIRST: a request that lost to
       // a newer open or a dismissal lands nowhere however it ends --
       // success, HTTP error, transport failure, or a body that dies
       // after the headers. Only a CURRENT failure earns the full-page
       // fallback; a stale one navigating the browser would hijack it.
-      let answer;
-      try {
-        answer = await fetch(href, { headers });
-      } catch {
-        if (ticket !== flight) return;
-        window.location.assign(href);
-        return;
-      }
-      if (ticket !== flight) return;
-      if (!answer.ok) {
-        window.location.assign(href);
-        return;
-      }
-      let fragment;
-      try {
-        fragment = await answer.text();
-      } catch {
-        if (ticket !== flight) return;
-        window.location.assign(href);
-        return;
-      }
-      if (ticket !== flight) return;
-      if (expected) {
-        // Fail CLOSED: an adapter that expects a generation gets a
-        // fragment that proves one, or the whole page. A fragment with
-        // no data-currency at all is a template regression, not a pass.
-        const got = /data-currency="([^"]*)"/.exec(fragment);
-        if (!got || !got[1] || got[1] !== expected) {
+      //
+      // The loop is the 409 recovery, under the SAME ticket: the
+      // library generation moves on every commit, but most commits move
+      // no answer. An adapter that can PROVE its mounted answer is
+      // unchanged (spec.recover: refresh the generation evidence, true
+      // = proven) earns exactly one retry; a real change, an unprovable
+      // one, or a second refusal falls back to the whole page.
+      let mended = false;
+      while (true) {
+        const headers = { "HX-Request": "true" };
+        const expected = spec.generation ? spec.generation() : null;
+        if (expected) headers["X-SG-Expect"] = expected;
+        let answer;
+        try {
+          answer = await fetch(href, { headers });
+        } catch {
+          if (ticket !== flight) return;
           window.location.assign(href);
           return;
         }
+        if (ticket !== flight) return;
+        if (!answer.ok) {
+          if (answer.status === 409 && spec.recover && !mended) {
+            let proven = false;
+            try {
+              proven = await spec.recover();
+            } catch {
+              proven = false;
+            }
+            if (ticket !== flight) return;
+            if (proven) {
+              mended = true;
+              continue;
+            }
+          }
+          window.location.assign(href);
+          return;
+        }
+        let fragment;
+        try {
+          fragment = await answer.text();
+        } catch {
+          if (ticket !== flight) return;
+          window.location.assign(href);
+          return;
+        }
+        if (ticket !== flight) return;
+        if (expected) {
+          // Fail CLOSED: an adapter that expects a generation gets a
+          // fragment that proves one, or the whole page. A fragment with
+          // no data-currency at all is a template regression, not a pass.
+          const got = /data-currency="([^"]*)"/.exec(fragment);
+          if (!got || !got[1] || got[1] !== expected) {
+            window.location.assign(href);
+            return;
+          }
+        }
+        root.innerHTML = fragment;
+        if (root.hidden) {
+          root.hidden = false;
+          underlay(true);
+        }
+        if (mode === "push") history.pushState({ sgOverlay: true }, "", href);
+        else if (mode === "replace") history.replaceState({ sgOverlay: true }, "", href);
+        root.focus();
+        return;
       }
-      root.innerHTML = fragment;
-      if (root.hidden) {
-        root.hidden = false;
-        underlay(true);
-      }
-      if (mode === "push") history.pushState({ sgOverlay: true }, "", href);
-      else if (mode === "replace") history.replaceState({ sgOverlay: true }, "", href);
-      root.focus();
     };
 
     const close = () => {

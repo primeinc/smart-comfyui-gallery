@@ -199,6 +199,15 @@ def currency(conn) -> str:
 class Projection:
     fingerprint: str
     currency: str
+    #: The identity of the ORDERED ANSWER itself, as against `currency`,
+    #: which is the identity of the library generation it was computed
+    #: from. `data_version` moves on EVERY commit -- a favorite, a
+    #: rating -- while most commits leave most answers untouched; a
+    #: client holding (currency, answer) can tell "the library moved but
+    #: this answer did not" (adopt the new currency in place) from "the
+    #: answer really changed" (redraw), without anyone teaching it which
+    #: tables affect which queries.
+    answer: str
     ids: tuple[int, ...]  # file ids, answer order
     ordinal: dict[int, int]  # file id -> 0-based position
     provenance: dict | None  # similarity only: participants/contributors/missing
@@ -421,6 +430,7 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[_B
     made = Projection(
         fingerprint=key[1],
         currency=key[2],
+        answer=hashlib.sha256(",".join(str(file_id) for file_id in ids).encode()).hexdigest()[:16],
         ids=tuple(ids),
         ordinal={file_id: position for position, file_id in enumerate(ids)},
         provenance=provenance,
@@ -487,6 +497,7 @@ def _shape(bound: _Bound, held: Projection) -> dict:
         "sort": query.sort,
         "fingerprint": held.fingerprint,
         "currency": held.currency,
+        "answer": held.answer,
         "provenance": held.provenance,
         "qs": canonical(query),
     }
@@ -533,6 +544,7 @@ def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, co
             "first_ordinal": min(start + 1, max(shape["total"], 1)),
             "last_ordinal": min(start + bound.query.size, shape["total"]),
             "currency": held.currency,
+            "answer": held.answer,
             "qs": shape["qs"],
             "items": _named(conn, held.ids[start : start + take], start),
         }
@@ -555,6 +567,7 @@ def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float)
             "page": position // bound.query.size + 1,
             "total": len(held.ids),
             "currency": held.currency,
+            "answer": held.answer,
             "qs": canonical(bound.query),
             "previous": named.get(neighbours[0]),
             "next": named.get(neighbours[1]),

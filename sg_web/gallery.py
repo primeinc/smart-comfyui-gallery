@@ -49,6 +49,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "size": query.size,
         "sort": query.sort,
         "currency": shape["currency"],
+        "answer": shape["answer"],
         "missing_spaces": provenance.get("missing") or {},
         "q": query.text or "",
         "folder": query.folder or "",

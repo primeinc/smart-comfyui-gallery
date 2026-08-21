@@ -382,3 +382,46 @@ body {
 .album-tree a { color: var(--accent); text-decoration: none; font-weight: 600; }
 .album-tree a:hover { text-decoration: underline; }
 .album-tree .album-kind, .album-tree .album-count { margin-left: 10px; }
+
+.authored {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  padding: 8px 0;
+}
+.authored button {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  font-size: 1.15em;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.authored-fav[aria-pressed="true"] { color: var(--danger); }
+.authored-stars [data-rate][aria-pressed="true"] { color: var(--accent); }
+.authored-clear { font-size: 0.9em; }
+.authored-albums { display: flex; gap: 8px; flex-wrap: wrap; }
+.authored-albums a { color: var(--accent); font-size: 0.9em; }
+.authored-picker {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius);
+  font-size: 0.85em !important;
+}
+.authored-choices {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  min-width: 200px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.authored-choices[hidden] { display: none; }
+.lightbox .authored { padding: 0 4px 6px; }

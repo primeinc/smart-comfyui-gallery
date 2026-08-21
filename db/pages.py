@@ -558,6 +558,24 @@ def collection_shelf(conn):
     return conn.execute(COLLECTION_SHELF).fetchall()
 
 
+#: The album picker's choices: every LISTED collection -- smart ones are
+#: rule-derived and have no membership to offer -- with whether this
+#: file is filed in each. Ordered as the shelf is, riding
+#: collection_parent; a whole-index page, because a chooser that hides
+#: albums is a chooser that loses photographs.
+COLLECTION_CHOICES = (
+    "SELECT e.slug, c.name, c.kind,"
+    " EXISTS(SELECT 1 FROM collection_file cf WHERE cf.collection_id = c.id AND cf.file_id = ?) AS filed"
+    "  FROM collection c JOIN entity e ON e.id = c.id"
+    " WHERE c.kind IN ('album', 'flag')"
+    " ORDER BY c.parent_id, c.name COLLATE NOCASE"
+)
+
+
+def collection_choices(conn, file_id: int):
+    return conn.execute(COLLECTION_CHOICES, (file_id,)).fetchall()
+
+
 # --- what can be searched --------------------------------------------------
 
 WAYS = "SELECT source, key, value_kind, occurrences FROM param_key ORDER BY occurrences DESC, key"

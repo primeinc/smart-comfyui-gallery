@@ -1,0 +1,26 @@
+{# The authored strip: the SAME controls in the full page and the
+   lightbox, because /i/{slug} has one state and these are its
+   presentations. Rendered entirely from item.authored; static/authored.js
+   rewrites it from each write's authoritative response. #}
+<section class="authored" data-authored
+         data-slug="{{ item.slug }}"
+         data-qs="{{ item.context.qs }}">
+  <button type="button" class="authored-fav" data-fav
+          aria-pressed="{{ 'true' if item.authored.favorite else 'false' }}"
+          aria-label="favorite" title="favorite (F)">&hearts;</button>
+  <span class="authored-stars" role="group" aria-label="rating" data-stars
+        data-rating="{{ item.authored.rating or 0 }}">
+    {% for n in range(1, 6) %}
+    <button type="button" data-rate="{{ n }}" title="{{ n }} star{{ '' if n == 1 else 's' }}"
+            aria-pressed="{{ 'true' if item.authored.rating and item.authored.rating >= n else 'false' }}">&starf;</button>
+    {% endfor %}
+    <button type="button" class="authored-clear" data-rate="0" title="clear rating (0)">&times;</button>
+  </span>
+  <span class="authored-albums" data-albums>
+    {% for held in item.authored.collections %}
+    <a href="/t/{{ held.slug }}">{{ held.name }}</a>
+    {% endfor %}
+  </span>
+  <button type="button" class="authored-picker" data-album-picker title="albums (A)">+ album</button>
+  <div class="authored-choices" data-album-choices hidden></div>
+</section>

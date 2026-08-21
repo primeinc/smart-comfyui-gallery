@@ -39,7 +39,7 @@ from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
 from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
-from sg_web import collection_view, folder_view, gallery, home, media, media_view, person_view
+from sg_web import collection_view, folder_view, gallery, home, media, media_authored, media_view, person_view
 from sg_web import worker as worker_module
 
 
@@ -215,10 +215,10 @@ def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool
         # "no file at /t/keepers/add/nope" names a place nothing lives at.
         file_id, live_file = _resolved(conn, "file", data.file, "/i")
         try:
-            if adding:
-                authored.add_to_collection(conn, collection_id, file_id, time.time())
-            else:
-                authored.remove_from_collection(conn, collection_id, file_id)
+            # The SAME membership Implementation the /i desired-state
+            # routes use -- these stay as compatibility adapters, never a
+            # second write path.
+            authored.set_collection_membership(conn, collection_id, file_id, adding, time.time())
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
@@ -823,6 +823,18 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         fresh.commit()
         connect.close(fresh)
 
+    # The one local authored identity, resolved ONCE into application
+    # state: every rating and favorite is per-user by schema, and this is
+    # the single place the local-first deployment answers "who is
+    # writing" (db/authored.py local_actor). A future session layer
+    # replaces this resolution, not the authored signatures.
+    opening = connect.connect(where)
+    try:
+        actor_id = authored.local_actor(opening, time.time())
+        opening.commit()
+    finally:
+        connect.close(opening)
+
     channels = ChannelsPlugin(MemoryChannelsBackend(), channels=["jobs"])
 
     @asynccontextmanager
@@ -882,6 +894,10 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             health,
             front,
             media_view.media_page,
+            media_authored.set_favorite,
+            media_authored.set_rating,
+            media_authored.set_membership,
+            media_authored.collection_choices,
             folder_view.folders_index,
             folder_view.folder_page,
             models,
@@ -944,4 +960,5 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     )
     app.state.home = str(base)
     app.state.db_path = str(where)
+    app.state.actor_id = actor_id
     return app

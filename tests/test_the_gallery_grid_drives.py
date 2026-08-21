@@ -268,20 +268,27 @@ def test_the_lightbox_is_an_address_not_a_mode(driven):
         page.wait_for_function("() => window.location.pathname === '/g'")
         assert "page=4" in page.url, "ordinal 101 at size 30 returns to its own results page"
 
-        # A commit mid-walk: the next arrow answers 409 and the client
-        # redraws whole instead of mixing two generations on screen.
+        # A commit mid-walk moves the LIBRARY generation but not this
+        # answer: the next arrow is refused with 409, the media adapter
+        # proves the mounted answer unchanged through locate, adopts the
+        # fresh currency, and the walk CONTINUES -- the whole redraw is
+        # reserved for an answer that really changed (pinned by the
+        # unfiling walk below).
         page.goto(f"{base}/g?sort=oldest&size=30")
         page.wait_for_selector("[data-grid]")
+        before = page.get_attribute("[data-grid]", "data-currency")
         page.click('.cell[data-ordinal="1"]')
         page.wait_for_selector("[data-lightbox]")
         with httpx.Client(base_url=base, timeout=5.0) as web:
             assert web.post("/albums", json={"name": "mid-walk"}).status_code == 201
         page.keyboard.press("ArrowRight")
-        page.wait_for_selector(".detail", timeout=15_000)
-        assert page.locator("[data-lightbox-root]").count() == 0, (
-            "the stale overlay walk must end in a full redraw, not continue over the old gallery"
+        page.wait_for_function("() => window.location.pathname === '/i/pic-001'")
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').hidden") is False, (
+            "an unchanged answer must keep the walk mounted; redraws are for changed answers"
         )
-        assert "/i/pic-001" in page.url
+        page.wait_for_function(
+            "(before) => document.querySelector('[data-lightbox]').dataset.currency !== before", arg=before
+        )
     finally:
         page.close()
 
@@ -478,6 +485,74 @@ def test_the_folder_page_walks_into_the_gallery(driven):
         page.keyboard.press("Escape")
         page.wait_for_function("() => window.location.pathname === '/g'")
         assert "folder=lib" in page.url, "Escape returns to the folder's own results, not the library"
+    finally:
+        page.close()
+
+
+def test_a_favorite_does_not_break_the_walk(driven):
+    """The answer-identity contract on screen: a favorite commits, the
+    library generation moves, but the walked answer did not -- so the
+    strip adopts the new currency in place and the NEXT ARROW still
+    walks the lightbox instead of 409-redrawing over an unchanged
+    answer."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+        before = page.get_attribute("[data-grid]", "data-currency")
+        page.click('.cell[data-ordinal="1"]')
+        page.wait_for_selector("[data-lightbox] [data-authored]")
+
+        page.click("[data-lightbox] [data-fav]")
+        page.wait_for_function(
+            "() => document.querySelector('[data-lightbox] [data-fav]').getAttribute('aria-pressed') === 'true'"
+        )
+        # The commit moved the generation; the strip must have adopted it.
+        page.wait_for_function(
+            "(before) => document.querySelector('[data-lightbox]').dataset.currency !== before", arg=before
+        )
+
+        page.keyboard.press("ArrowRight")
+        page.wait_for_function("() => window.location.pathname === '/i/pic-001'")
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').hidden") is False, (
+            "the favorite broke the walk: the arrow forced a full redraw over an unchanged answer"
+        )
+        assert page.locator("[data-grid]").count() == 1, "the gallery must still be mounted underneath"
+    finally:
+        page.close()
+
+
+def test_unfiling_the_walked_item_redraws_the_walk(driven):
+    """The opposite case: removing the item from the album being walked
+    really changes the answer, and the strip's coherence check redraws
+    whole instead of leaving arrows that claim a membership the
+    database no longer holds."""
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        assert web.post("/albums", json={"name": "Walkout"}).json()["slug"] == "walkout"
+        for slug in ("pic-010", "pic-011"):
+            assert web.post("/t/walkout/add", json={"file": slug}).status_code < 300
+
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?album=walkout")
+        page.wait_for_selector("[data-grid]")
+        page.click(".cell")  # newest member first
+        page.wait_for_selector("[data-lightbox] [data-authored]")
+
+        page.click("[data-lightbox] [data-album-picker]")
+        page.wait_for_selector("[data-lightbox] [data-album-choices]:not([hidden]) input")
+        boxes = page.locator("[data-lightbox] [data-album-choices] label", has_text="Walkout")
+        boxes.locator("input").uncheck()
+
+        # The answer really changed: the coherence check redraws whole,
+        # and the URL owns what renders -- the item's full page.
+        page.wait_for_selector(".detail", timeout=15_000)
+        assert page.locator("[data-lightbox-root]").count() == 0
+        assert "/i/pic-011" in page.url
     finally:
         page.close()
 

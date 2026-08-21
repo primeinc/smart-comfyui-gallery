@@ -181,12 +181,12 @@ def test_a_commit_landing_mid_request_cannot_cross_generations(tmp_path, monkeyp
 
         real = media_view.view
 
-        def commit_then_assemble(conn, models_dir, file_id, slug, query, now):
+        def commit_then_assemble(conn, models_dir, file_id, slug, query, now, actor_id):
             writer = connect.connect(client.app.state.db_path)
             writer.execute("UPDATE file SET mtime = mtime + 1 WHERE name = 'r_0.png'")
             writer.commit()
             connect.close(writer)
-            return real(conn, models_dir, file_id, slug, query, now)
+            return real(conn, models_dir, file_id, slug, query, now, actor_id)
 
         monkeypatch.setattr(media_view, "view", commit_then_assemble)
         raced = client.get("/i/r-1", headers={"x-sg-expect": expected})

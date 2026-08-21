@@ -15,6 +15,8 @@ leave both standing.
 
 from __future__ import annotations
 
+import dataclasses
+
 from .naming import rename
 from .scan import mint
 
@@ -27,6 +29,23 @@ def add_user(conn, username: str, password_hash: str, role: str, now: float) -> 
         (username, password_hash, role, now),
     )
     return conn.execute("SELECT id FROM user WHERE username = ?", (username,)).fetchone()[0]
+
+
+def local_actor(conn, now: float) -> int:
+    """The one local authored identity, resolved at application start.
+
+    Ratings and favorites are per-user by schema, and "user_id = 1"
+    hard-coded at a write site is how that stops being true. This is
+    the single place the local-first deployment answers "who is
+    writing": the first registered user, created if the library has
+    none. When real sessions arrive, the request's actor replaces this
+    resolution while every authored signature stays as it is. The
+    password hash is '!' -- not a hash of anything, so nothing can log
+    in as the implicit identity."""
+    row = conn.execute("SELECT id FROM user ORDER BY id LIMIT 1").fetchone()
+    if row:
+        return row[0]
+    return add_user(conn, "local", "!", "ADMIN", now)
 
 
 # --- judgements about one picture -----------------------------------------
@@ -54,6 +73,76 @@ def favourite(conn, file_id: int, user_id: int, now: float) -> None:
 
 def unfavourite(conn, file_id: int, user_id: int) -> None:
     conn.execute("DELETE FROM favorite WHERE file_id = ? AND user_id = ?", (file_id, user_id))
+
+
+# --- one picture's authored state, as desired facts ------------------------
+#
+# The write interface is DESIRED STATE, never a toggle: "favorite = true"
+# retried after a network hiccup lands where it already was, where a
+# toggle retried lands on the opposite of what the person asked. Every
+# operation is idempotent by the primitives beneath it.
+
+
+@dataclasses.dataclass(frozen=True)
+class MediaAuthoredState:
+    """What this actor has written down about one file."""
+
+    favorite: bool
+    rating: int | None
+    collections: tuple[dict, ...]  # {"slug", "name"}, static memberships by name
+
+
+def media_state(conn, file_id: int, user_id: int) -> MediaAuthoredState:
+    return MediaAuthoredState(
+        favorite=conn.execute("SELECT 1 FROM favorite WHERE file_id = ? AND user_id = ?", (file_id, user_id)).fetchone()
+        is not None,
+        rating=(
+            row[0]
+            if (
+                row := conn.execute(
+                    "SELECT rating FROM rating WHERE file_id = ? AND user_id = ?", (file_id, user_id)
+                ).fetchone()
+            )
+            else None
+        ),
+        collections=tuple(
+            {"slug": slug, "name": name}
+            for slug, name in conn.execute(
+                "SELECT e.slug, c.name FROM collection_file cf"
+                "  JOIN collection c ON c.id = cf.collection_id"
+                "  JOIN entity e ON e.id = c.id"
+                " WHERE cf.file_id = ? ORDER BY c.name COLLATE NOCASE",
+                (file_id,),
+            )
+        ),
+    )
+
+
+def set_favorite(conn, file_id: int, user_id: int, value: bool, now: float) -> None:
+    if value:
+        favourite(conn, file_id, user_id, now)
+    else:
+        unfavourite(conn, file_id, user_id)
+
+
+def set_rating(conn, file_id: int, user_id: int, value: int | None, now: float) -> None:
+    """`None` clears; 1..5 sets. Validated here so every caller gets the
+    same refusal instead of a CHECK-constraint traceback."""
+    if value is None:
+        unrate(conn, file_id, user_id)
+        return
+    if not 1 <= int(value) <= 5:
+        raise ValueError(f"a rating is 1..5 stars or null to clear, not {value!r}")
+    rate(conn, file_id, user_id, int(value), now)
+
+
+def set_collection_membership(conn, collection_id: int, file_id: int, value: bool, now: float) -> None:
+    """The one membership write every adapter shares. Smart collections
+    refuse through the primitives, whichever direction was asked."""
+    if value:
+        add_to_collection(conn, collection_id, file_id, now)
+    else:
+        remove_from_collection(conn, collection_id, file_id)
 
 
 def comment(conn, file_id: int, user_id: int, body: str, now: float) -> int:
