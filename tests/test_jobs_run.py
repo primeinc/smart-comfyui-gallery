@@ -437,3 +437,74 @@ def test_a_bad_semantic_model_setting_is_refused_at_submit(db):
     settings.put(db, "semantic_model", "no-checkpoint-here")
     with pytest.raises(ValueError, match="no-checkpoint-here"):
         runner.submit_embed(db, 0.0, models_dir="x")
+
+
+def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
+    """The second provider exists end to end below the weights: the
+    setting parses to it, duplicates collapse instead of voting twice,
+    and its space identity pins model, revision and chat-template
+    preprocessing."""
+    from db import retrieval, settings
+    from vision import semantic
+
+    settings.put(
+        db,
+        "semantic_model",
+        "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen3-VL-Embedding-2B/main, ViT-B-32/laion2b_s34b_b79k",
+    )
+    assert retrieval.choices(db) == [
+        ("openclip", "ViT-B-32", "laion2b_s34b_b79k"),
+        ("qwen", "Qwen3-VL-Embedding-2B", "main"),
+    ], "a repeated entry must collapse, not weight its model twice"
+
+    spec = semantic.space("qwen", "Qwen3-VL-Embedding-2B", "main", 2048)
+    assert spec.key == "semantic.qwen.Qwen3-VL-Embedding-2B.main"
+    assert (spec.producer, spec.producer_version) == ("qwen3vl:Qwen3-VL-Embedding-2B", "main")
+    assert (spec.preprocess, spec.dimensions, spec.metric) == ("qwen3vl.chat-template", 2048, "cosine")
+
+    settings.put(db, "semantic_model", "nobody:some-model/some-checkpoint")
+    with pytest.raises(ValueError, match="nobody"):
+        retrieval.choices(db)
+
+
+def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch):
+    """The reason embed is one job per space: a model that cannot load
+    fails its own items, and the other provider's vectors commit
+    untouched."""
+    import numpy as np
+
+    from db import settings, similarity
+    from vision import semantic
+
+    class Fake:
+        dimensions = 8
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 8)
+
+        def encode_media(self, media):
+            rng = np.random.default_rng(3)
+            v = rng.normal(size=8).astype(np.float32)
+            return v / np.linalg.norm(v)
+
+    def per_provider(provider, *args, **kwargs):
+        if provider == "qwen":
+            raise LookupError("Qwen3-VL-Embedding-2B/main is not provisioned")
+        return Fake()
+
+    monkeypatch.setattr(semantic, "encoder", per_provider)
+    settings.put(db, "semantic_model", "ViT-B-32/laion2b_s34b_b79k, qwen:Qwen3-VL-Embedding-2B/main")
+    files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 0})
+    clip_job, qwen_job = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+
+    first = runner.run_next(db, "w1", 1.0)
+    assert first == {"job": clip_job, "state": "done", "did": 2, "failed": 0}
+    second = runner.run_next(db, "w1", 2.0)
+    assert second == {"job": qwen_job, "state": "done", "did": 2, "failed": 2}
+
+    kept = db.execute(
+        "SELECT s.key, count(*) FROM derived_embedding e JOIN similarity_space s ON s.id = e.space_id GROUP BY s.id"
+    ).fetchall()
+    assert kept == [("semantic.openclip.ViT-B-32.laion2b_s34b_b79k", len(files))], (
+        "the healthy provider's vectors must survive the broken one"
+    )

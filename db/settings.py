@@ -37,9 +37,12 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # it, edits usually do not. Free text validated at submit; 32+ is
     # refused there because random pairs average 32 bits apart.
     "dupe_threshold": ("4", None),
-    # The joint image/text model semantic search runs on, as
-    # "<model>/<pretrained-checkpoint>" from open_clip.list_pretrained().
-    # Changing it is a new immutable space: existing embeddings keep
+    # The joint image/text models semantic search runs on: a comma list
+    # of "[provider:]<model>/<checkpoint>". A bare entry means openclip
+    # (checkpoints from open_clip.list_pretrained()); "qwen:<model>/
+    # <revision>" names a Qwen3-VL embedding model. Every entry is its
+    # own immutable space searched independently, rankings fused by
+    # rank. Changing an entry is a new space: existing embeddings keep
     # their producer and the embed job fills the new space fresh.
     "semantic_model": ("ViT-B-32/laion2b_s34b_b79k", None),
     # The second opinion on every pHash dupe candidate: a pair also has

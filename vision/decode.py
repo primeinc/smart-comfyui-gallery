@@ -120,6 +120,46 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     return Image.open(path)
 
 
+def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | None:
+    """The media's geometry from its headers alone -- no frame decoded,
+    no RAW developed. Video answers from the stream's declared size, RAW
+    from LibRaw's size block, and every still from the registered Pillow
+    opener's header -- the same doors open_still and poster use, so a
+    HEIC or JXL answers on a cold process instead of only after some
+    unrelated decode happened to register the plugins. None when the
+    file cannot say, so an unreadable member ranks last wherever
+    geometry decides."""
+    if kind == "video":
+        import av
+        from av.error import FFmpegError
+
+        try:
+            with av.open(os.fspath(path), "r", timeout=TIMEOUT) as container:
+                if not container.streams.video:
+                    return None
+                stream = container.streams.video[0]
+                if not stream.width or not stream.height:
+                    return None
+                return int(stream.width), int(stream.height)
+        except (FFmpegError, OSError, ValueError):
+            return None
+    if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
+        import rawpy
+
+        try:
+            with rawpy.imread(os.fspath(path)) as raw:
+                held = raw.sizes
+                return int(held.width), int(held.height)
+        except (rawpy.LibRawError, OSError, ValueError):
+            return None
+    ensure_decoders()
+    try:
+        with Image.open(path) as image:
+            return int(image.size[0]), int(image.size[1])
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
+
+
 def is_animated(image: Image.Image) -> bool:
     """Whether this picture moves -- a per-file fact, never a suffix fact.
 

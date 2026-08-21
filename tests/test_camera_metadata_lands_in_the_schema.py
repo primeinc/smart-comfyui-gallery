@@ -125,7 +125,7 @@ def test_the_shutter_time_is_an_instant_when_the_zone_is_known(db, a_file, tmp_p
     import datetime as dt
 
     captured_at = stored(db, a_file)[0]
-    assert dt.datetime.fromtimestamp(captured_at, dt.timezone.utc).isoformat() == ("2026-08-19T12:23:01+00:00")
+    assert dt.datetime.fromtimestamp(captured_at, dt.UTC).isoformat() == ("2026-08-19T12:23:01+00:00")
 
 
 def test_a_frame_with_no_zone_says_so_instead_of_guessing(db, a_file, tmp_path):
@@ -140,7 +140,7 @@ def test_a_frame_with_no_zone_says_so_instead_of_guessing(db, a_file, tmp_path):
 
     captured_at, tz = stored(db, a_file)[:2]
     assert tz is None, "an absent offset must not be invented"
-    assert dt.datetime.fromtimestamp(captured_at, dt.timezone.utc).isoformat() == ("2026-08-19T14:23:01+00:00")
+    assert dt.datetime.fromtimestamp(captured_at, dt.UTC).isoformat() == ("2026-08-19T14:23:01+00:00")
 
 
 def test_a_high_iso_is_not_filed_at_the_ceiling(db, a_file, tmp_path):

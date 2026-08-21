@@ -12,7 +12,10 @@
 name = "smartgallery"
 version = "0.0.0"
 description = "Local-first browser-based DAM for ComfyUI with an optional derived AI layer"
-requires-python = ">=3.10"
+# 3.11: the floor Qwen3-VL-Embedding declares upstream; the adapter is
+# core, so the application's supported contract cannot sit below its own
+# model runtime's.
+requires-python = ">=3.11"
 dependencies = [
     "litestar",
     "uvicorn",  # the server behind `python -m sg_web`
@@ -152,9 +155,10 @@ explicit = true
 # Caveat: inference is skipped when a config file is passed explicitly --
 # "If a configuration file is passed directly, Ruff does not attempt to
 # infer a missing `target-version`" (configuration.md:310) -- and the
-# compiled default applies instead. That default is py310, identical to
-# this project's floor, so the two coincide today and diverge the moment
-# requires-python moves off 3.10.
+# compiled default applies instead. That default is py310, BELOW this
+# project's 3.11 floor -- so a directly-passed config lints for a version
+# the project does not support. Nothing here passes one; invoke ruff from
+# the repository root and inference reads requires-python.
 
 # extend-exclude, not exclude: exclude REPLACES ruff's default ignore list,
 # extend-exclude "adds additional files and directories on top of those
@@ -277,7 +281,7 @@ preview = false
 #   FA    future annotations   -- every FA rule is gated below py39/py310
 #                                 (checkers/ast/analyze/expression.rs:38,
 #                                 :76, :318, :440, :1575). At this
-#                                 project's 3.10 floor the selector cannot
+#                                 project's 3.11 floor the selector cannot
 #                                 fire; one that asserts nothing is worse
 #                                 than an absent one.
 #
@@ -442,13 +446,29 @@ ignore = [
     "PLC0415",
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# The decoder door, enforced: bare Image.open skips the HEIC/JXL plugin
+# registration and cannot read RAW or video at all, so it answers only
+# for ordinary stills -- and only when some earlier call happened to
+# register the plugins, which makes the same file give different answers
+# depending on what code ran first. The per-file allowances below name
+# the door and the two sanctioned metadata readers.
+"PIL.Image.open".msg = "open pixels through vision/decode (open_still, poster, dimensions); bare Image.open skips plugin registration and the RAW/video readers"
+
 [tool.ruff.lint.per-file-ignores]
-# The one scoping rule in this file, and it is not a suppression: S101
-# exists because `assert` is stripped under `python -O`, so it must not
-# carry a security check. Inside pytest, `assert` IS the assertion API --
-# the rule's premise does not hold there. Nothing else belongs in this
-# table; fix the finding instead.
-"tests/**" = ["S101"]
+# Scoping rules, not suppressions: each entry names a file where the
+# rule's premise does not hold. Everything else fixes the finding.
+#
+# S101: `assert` is stripped under `python -O`, so it must not carry a
+# security check -- but inside pytest, `assert` IS the assertion API.
+"tests/**" = ["S101", "TID251"]
+# TID251 (the Image.open ban): the door itself, and the readers whose
+# callers guarantee registration. tests/ and benchmarks/ construct their
+# own fixtures and open them back; they are not shipped decode paths.
+"vision/decode.py" = ["TID251"]
+"db/capture.py" = ["TID251"]  # EXIF reader; ingest registers decoders first
+"metaparse/containers.py" = ["TID251"]  # container reader; same caller contract
+"benchmarks/**" = ["TID251"]
 
 [tool.ruff.format]
 # The half that was missing. `ruff format` is the other entrypoint of the
@@ -479,7 +499,7 @@ skip-magic-trailing-comma = false
 
 # `nested-string-quote-style` is deliberately NOT pinned here: it "has no
 # effect when targeting Python versions below 3.12" (options.rs:3963) and
-# this project resolves to 3.10, so pinning it would be the same dead
+# this project resolves to 3.11, so pinning it would be the same dead
 # assertion the FA selector was dropped for.
 
 # The one formatter default upstream has announced it intends to change:

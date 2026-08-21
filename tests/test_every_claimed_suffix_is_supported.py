@@ -416,3 +416,43 @@ def test_bytes_that_are_no_media_are_said_to_be_no_media(ddl, tmp_path):
     ).fetchone()[0]
     assert sniffed == 0, "no signature matched, so no format may be claimed"
     conn.close()
+
+
+def test_dimensions_answers_from_headers_for_every_kind(tmp_path):
+    """The decoder door's geometry probe: stills through the registered
+    openers, video through the container's stream entry -- never a frame
+    decoded, never bare Image.open, so the answer does not depend on
+    which code ran first in the process. Unreadable bytes answer None,
+    ranking last wherever geometry decides."""
+    import av
+    import numpy as np
+    from PIL import Image
+
+    from vision import decode
+
+    still = tmp_path / "still.png"
+    Image.new("RGB", (96, 64), (10, 120, 30)).save(still)
+    assert decode.dimensions(still, "image") == (96, 64)
+
+    webp = tmp_path / "still.webp"
+    Image.new("RGB", (48, 32), (10, 120, 30)).save(webp, quality=75)
+    assert decode.dimensions(webp, "image") == (48, 32)
+
+    clip = tmp_path / "clip.mp4"
+    with av.open(str(clip), "w") as container:
+        stream = container.add_stream("h264", rate=5)
+        stream.width, stream.height = 320, 180
+        stream.pix_fmt = "yuv420p"
+        for _ in range(4):
+            frame = av.VideoFrame.from_ndarray(np.zeros((180, 320, 3), dtype=np.uint8), format="rgb24")
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+    assert decode.dimensions(clip, "video") == (320, 180)
+
+    broken = tmp_path / "broken.png"
+    broken.write_bytes(b"not a picture at all")
+    assert decode.dimensions(broken, "image") is None
+    assert decode.dimensions(broken, "video") is None
+    assert decode.dimensions(tmp_path / "absent.png", "image") is None

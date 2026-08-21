@@ -5,7 +5,7 @@
  
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/biagiomaf/smart-comfyui-gallery?color=yellow&style=flat-square" alt="License"></a>
-    <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python">
+    <img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python">
     <a href="https://hub.docker.com/r/mmartial/smart-comfyui-gallery"><img src="https://img.shields.io/docker/pulls/mmartial/smart-comfyui-gallery?color=099cec&label=docker%20pulls&style=flat-square&logo=docker&logoColor=white" alt="Docker Pulls"></a>
     <a href="https://github.com/biagiomaf/smart-comfyui-gallery/stargazers"><img src="https://img.shields.io/github/stars/biagiomaf/smart-comfyui-gallery?style=flat-square&logo=github" alt="Stars"></a>
     <a href="https://github.com/biagiomaf/smart-comfyui-gallery/releases/latest"><img src="https://img.shields.io/github/v/release/biagiomaf/smart-comfyui-gallery?color=emerald&style=flat-square" alt="Latest Release"></a>
@@ -322,7 +322,7 @@ All feedback runs through the same database, with no file transfers, no email th
 
 **Requirements:**
 *   **Portable/Docker Installation:** No installation required. Everything is pre-configured (Python is already embedded).
-*   **Manual Installation:** Python 3.10+ installed on your system.
+*   **Manual Installation:** Python 3.11+ installed on your system.
 *   **Strongly Recommended:** FFmpeg/FFprobe (for advanced video features).
 
 <details>

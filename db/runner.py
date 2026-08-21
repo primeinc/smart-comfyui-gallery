@@ -295,21 +295,25 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
     def _pixels(conn, row, file_id: int) -> int:
         """The member's resolution, the primary fidelity axis. The file
-        row knows it once ingest has run; until then the container header
-        on disk answers -- byte size must NEVER stand in for it, because
-        bytes measure compression: a 48px JPEG outweighs a lossless
-        original of the same picture at four times the pixels."""
-        from . import capture, detect
+        row knows it once ingest has run; until then the decoder door
+        answers from the media's own headers, whatever the kind -- byte
+        size must NEVER stand in for it, because bytes measure
+        compression: a 48px JPEG outweighs a lossless original of the
+        same picture at four times the pixels."""
+        from vision import decode
+
+        from . import detect
 
         width, height = row[2], row[3]
         if width and height:
             return int(width) * int(height)
-        return capture.pixel_count(detect.path_of(conn, file_id))
+        found = decode.dimensions(detect.path_of(conn, file_id), row[5])
+        return found[0] * found[1] if found is not None else 0
 
     threshold = int(payload["threshold"])
     verify = payload.get("dhash_verify")
     rows = conn.execute(
-        "SELECT h.file_id, h.value, f.width, f.height, f.size FROM derived_file_hash h"
+        "SELECT h.file_id, h.value, f.width, f.height, f.size, f.kind FROM derived_file_hash h"
         " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
         " WHERE h.value IS NOT NULL AND h.space_id = ? ORDER BY h.file_id",
         (similarity.space_id(conn, similarity.PHASH, now),),

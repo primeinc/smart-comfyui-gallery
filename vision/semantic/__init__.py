@@ -63,6 +63,7 @@ class MediaRef:
 #: refused configuration, loudly, never a silent substitution.
 PROVIDERS = {
     "openclip": "vision.semantic.openclip",
+    "qwen": "vision.semantic.qwen_vl",
 }
 
 
