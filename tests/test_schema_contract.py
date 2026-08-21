@@ -1293,11 +1293,16 @@ def test_recomputing_a_derived_row_is_not_an_append(db):
     """An interrupted job re-run must not triple every face and every review."""
     tree(db)
     a_file(db, 9, 1, "a.png")
+    sid = db.execute(
+        "INSERT INTO similarity_space(key,representation,dimensions,metric,"
+        "producer,producer_version,preprocess,preprocess_version,spec_hash,created_at)"
+        " VALUES('semantic.test','float32',1,'cosine','p','1','pp','1',hex(randomblob(8)),0)"
+    ).lastrowid
     for _ in range(3):
         db.execute(
-            "INSERT OR REPLACE INTO derived_embedding(file_id,space,vector,dim,"
-            "model_id,model_version,source_sha256,computed_at) "
-            "VALUES(9,'visual',x'00',1,'m','1','s',0)"
+            "INSERT OR REPLACE INTO derived_embedding(file_id,space_id,vector,source_sha256,computed_at)"
+            " VALUES(9,?,x'00000000','s',0)",
+            (sid,),
         )
     assert db.execute("SELECT count(*) FROM derived_embedding").fetchone()[0] == 1
 

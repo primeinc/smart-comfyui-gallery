@@ -416,10 +416,20 @@ CREATE TABLE derived_dupe_group (
     -- the group's seed: its lowest member id. Deleting the seed file
     -- cascades the whole group away; the next job rebuilds what remains.
     group_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    -- hamming bits from this member's phash64 to the seed's
+    -- hamming bits from this member's phash64 to the BEST member's -- the
+    -- canonical image every member is a duplicate OF. Never to an arbitrary
+    -- neighbour: A~B and B~C does not make A a duplicate of C, and a chain
+    -- is exactly how a "duplicate group" collects two pictures its own
+    -- verifier says are different.
     distance    INTEGER NOT NULL CHECK (distance BETWEEN 0 AND 64),
     threshold   INTEGER NOT NULL CHECK (threshold BETWEEN 0 AND 64),
     is_best     INTEGER NOT NULL DEFAULT 0 CHECK (is_best IN (0, 1)),
+    -- 1: this member's dHash agreed with the best member's -- two
+    -- independent fingerprints both said duplicate. 0: pHash alone said so
+    -- (a dHash was missing, or verification was off). A verified duplicate
+    -- and an unverified candidate are different claims, and a page that
+    -- cannot tell them apart flattens the difference into false confidence.
+    verified    INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
     computed_at REAL NOT NULL
 ) STRICT;
 CREATE INDEX derived_dupe_group_group ON derived_dupe_group(group_id);
@@ -1031,14 +1041,45 @@ BEGIN
     SELECT RAISE(ABORT, 'similarity_space rows are immutable: a changed meaning is a new space');
 END;
 
+-- One whole-file embedding per (file, space): the joint image/text space
+-- semantic search lives in. Which model, which weights, and which
+-- preprocessing produced a vector is the space row's identity -- a CLIP
+-- image vector is only comparable to text encoded by the SAME
+-- checkpoint, and rows keyed by immutable space id cannot be answered
+-- by the wrong encoder after an upgrade.
 CREATE TABLE derived_embedding (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    space         TEXT NOT NULL CHECK (space IN ('semantic','visual')),
-    vector        BLOB NOT NULL, dim INTEGER NOT NULL,
-    model_id      TEXT NOT NULL, model_version TEXT NOT NULL,
+    space_id      INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
+    -- Packed float32, as the encoder emits it. No dim column: the space
+    -- row owns the dimensions, and the triggers below hold every vector
+    -- to them -- a second copy of the same fact is a place for the two
+    -- to disagree.
+    vector        BLOB NOT NULL,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
-    PRIMARY KEY (file_id, space, model_id, model_version)
+    PRIMARY KEY (file_id, space_id)
 ) STRICT;
+CREATE INDEX derived_embedding_space ON derived_embedding(space_id);
+
+-- A vector whose byte length disagrees with its space's dimensions
+-- unpacks into noise, and a search over mixed lengths groups strangers.
+CREATE TRIGGER derived_embedding_fits_its_space
+BEFORE INSERT ON derived_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END;
+CREATE TRIGGER derived_embedding_fits_its_space_update
+BEFORE UPDATE ON derived_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END;
 
 -- One grouping of the library's faces, by one algorithm at one threshold
 -- over one embedder's output. All four decide who ends up in a cluster, so

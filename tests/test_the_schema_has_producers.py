@@ -16,6 +16,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import authored, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
+from db import similarity as similarity_module
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -306,9 +307,6 @@ def _unwired(tables: set[str]) -> list[str]:
 #: points for work that does not exist yet. Wiring one up MUST remove it
 #: here, or the gate below fails the other way.
 _DECLARED_RESERVED = {
-    # The unified-FAISS representation pipeline's landing zone: embeddings
-    # become rows the day a typed-representation job produces them.
-    "derived_embedding": "derived_embedding: writer ['add_embedding'] called by nothing outside db/derived.py",
     # Captions, OCR, tags -- the 'annotate' job kind exists in the schema
     # CHECK; the job that writes these rows does not exist yet.
     "derived_annotation": "derived_annotation: writer ['annotate'] called by nothing outside db/derived.py",
@@ -1721,14 +1719,11 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
             }
         ],
     )
-    derived.add_embedding(
+    derived.record_embedding(
         db,
         file_id,
-        "visual",
-        "clip",
-        "v1",
-        numpy.random.rand(8).astype(numpy.float32).tobytes(),
-        numpy.int32(8),
+        similarity_module.semantic_space("clip", "v1", 8),
+        numpy.random.rand(8).astype(numpy.float32),
         "aa",
         NOW,
     )
@@ -1749,7 +1744,7 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
     score, dim, age, yaw = db.execute("SELECT det_score, dim, age, pose_yaw FROM derived_face_instance").fetchone()
     assert score == pytest.approx(0.987, abs=1e-6)
     assert (dim, age, yaw) == (128, 34, 1.5)
-    assert db.execute("SELECT dim FROM derived_embedding").fetchone()[0] == 8
+    assert db.execute("SELECT length(vector) / 4 FROM derived_embedding").fetchone()[0] == 8
     assert db.execute("SELECT value FROM derived_file_hash").fetchone()[0] == -42
     assert db.execute("SELECT confidence FROM derived_annotation").fetchone()[0] == 0.75
     assert db.execute("SELECT offset_ms FROM derived_media_sample").fetchone()[0] == 4000
@@ -2017,3 +2012,13 @@ def test_the_rebuild_contract_holds_on_real_detections(db, a_library, tmp_path):
         db.execute("SELECT p.name FROM derived_face_cluster c JOIN person p ON p.id = c.person_id").fetchone()[0]
         == "Ilse"
     )
+
+
+def test_an_embedding_that_does_not_fit_its_space_is_refused(db, a_library):
+    """The vector column carries no dim of its own -- the space row owns
+    the dimensions, and the schema holds every vector to them."""
+    import numpy as np
+
+    spec = similarity_module.semantic_space("clip", "v1", 8)
+    with pytest.raises(sqlite3.IntegrityError, match="dimensions"):
+        derived.record_embedding(db, a_library["file"], spec, np.zeros(4, dtype=np.float32), "aa", NOW)

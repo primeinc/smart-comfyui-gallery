@@ -908,3 +908,48 @@ def test_media_roots_are_rows_managed_through_the_application(tmp_path):
         swept = client.post(f"/roots/{second['id']}/scan").json()
         assert swept["added"] == 1
         assert client.post("/roots/999/scan").status_code == 404
+
+
+def test_search_answers_by_meaning_from_the_joint_space(served, monkeypatch):
+    """The CLIP trick over HTTP: stored image vectors and a typed phrase
+    meet in one space, and /search returns the nearest pictures with
+    scores -- no tags or captions anywhere in the loop. The encoder is
+    faked; what is under test is the whole path from setting to space to
+    resident index to ranked answer."""
+    from db import similarity
+    from vision import semantic
+
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    ana = np.array([1, 0, 0, 0], dtype=np.float32)
+    ben = np.array([0, 1, 0, 0], dtype=np.float32)
+    derived.record_embedding(conn, files["ana_1.png"], spec, ana, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], spec, ana * 0.9 + ben * 0.1, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], spec, ben, "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+
+    class FakeText:
+        def encode_text(self, phrase):
+            assert phrase == "a woman smiling"
+            return ana
+
+    monkeypatch.setattr(semantic, "backend", lambda *args, **kwargs: FakeText())
+    answer = client.get("/search", params={"q": "a woman smiling", "k": 3})
+    assert answer.status_code == 200
+    told = answer.json()
+    assert [row["name"] for row in told][:2] == ["ana_1.png", "ana_2.png"]
+    assert told[0]["score"] > told[1]["score"] > told[-1]["score"]
+    assert all(set(row) == {"slug", "name", "score"} for row in told)
+
+    # a bad model setting is a refused request, never a 500
+    conn = connect.connect(db_path)
+    from db import settings as settings_module
+
+    settings_module.put(conn, "semantic_model", "broken")
+    conn.commit()
+    connect.close(conn)
+    assert client.get("/search", params={"q": "x"}).status_code == 400

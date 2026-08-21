@@ -117,6 +117,52 @@ def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
     derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
 
+def semantic_choice(conn) -> tuple[str, str]:
+    """The `semantic_model` setting as (model, checkpoint), refused loudly
+    when it cannot be read as one."""
+    from . import settings as settings_module
+
+    raw = settings_module.value(conn, "semantic_model")
+    model, slash, checkpoint = raw.partition("/")
+    if not slash or not model or not checkpoint:
+        raise ValueError(f"semantic_model must be '<model>/<checkpoint>', not {raw!r}")
+    return model, checkpoint
+
+
+def submit_embed(conn, now: float, *, models_dir: str) -> int:
+    """The joint image/text embedding for every present picture, as one
+    job -- the representation `/search` answers from. The schema's
+    'embed' kind, reserved since the beginning, finally has its job.
+    """
+    model, checkpoint = semantic_choice(conn)
+    items = [
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+        )
+    ]
+    payload = {"models_dir": models_dir, "model": model, "checkpoint": checkpoint}
+    return jobs.submit(conn, "embed", now, payload=payload, items=items)
+
+
+def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
+    from vision import decode, semantic
+
+    from . import derived, detect, oriented, scan, similarity
+
+    kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+    path = detect.path_of(conn, file_id)
+    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+    if frame is None:
+        raise ValueError(f"file {file_id} has no decodable frame to embed")
+    if sha is None:
+        sha = scan.sha256_of(path)
+    encoder = semantic.backend(payload["models_dir"], payload["model"], payload["checkpoint"])
+    spec = similarity.semantic_space(payload["model"], payload["checkpoint"], encoder.dimensions)
+    derived.record_embedding(conn, file_id, spec, encoder.encode_image(frame), sha, now)
+
+
 def submit_dupes(conn, now: float) -> int:
     """Group perceptually identical pictures, as one job of one unit.
 
@@ -193,6 +239,37 @@ def warm_similarity(conn, now: float) -> None:
         ]
         if ids:
             similarity.align(conn, manager, space, ids, lambda wanted: _face_vectors(conn, wanted), now)
+    current = similarity.semantic_space_of(conn, *semantic_choice(conn))
+    if current is not None:
+        sem_sid, space = current
+        ids = [
+            row[0]
+            for row in conn.execute(
+                "SELECT e.file_id FROM derived_embedding e"
+                " JOIN file f ON f.id = e.file_id AND f.missing_since IS NULL"
+                " WHERE e.space_id = ? ORDER BY e.file_id",
+                (sem_sid,),
+            )
+        ]
+        if ids:
+            similarity.align(conn, manager, space, ids, lambda wanted: embedding_vectors(conn, sem_sid, wanted), now)
+
+
+def embedding_vectors(conn, sid: int, wanted):
+    """Embedding blobs for exactly these files in this space, in order."""
+    import numpy as np
+
+    held = {}
+    batch = [int(v) for v in wanted]
+    for start in range(0, len(batch), 500):
+        piece = batch[start : start + 500]
+        marks = ",".join("?" for _ in piece)
+        for file_id, blob in conn.execute(
+            f"SELECT file_id, vector FROM derived_embedding WHERE space_id = ? AND file_id IN ({marks})",
+            (sid, *piece),
+        ):
+            held[file_id] = np.frombuffer(blob, dtype=np.float32)
+    return np.vstack([held[v] for v in batch])
 
 
 def _face_vectors(conn, wanted):
@@ -282,18 +359,33 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     for members in grouped.values():
         if len(members) < 2:
             continue
-        seed = min(members)
+        # A group means "every member is a duplicate of the best" -- so
+        # every member is checked against the BEST, not just against
+        # whichever neighbour union-find walked in through. Chains are
+        # real: A~B and B~C within threshold with A and C far apart put
+        # two admittedly-different pictures in one "duplicate" group.
+        # A member the canonical checks reject is dropped -- related,
+        # perhaps, but not a duplicate this pass can claim.
         best = max(members, key=lambda m: ((by_id[m][2] or 0) * (by_id[m][3] or 0), by_id[m][4], -m))
-        for member in members:
+        kept = [
+            member
+            for member in members
+            if member == best or (dupes.hamming(by_id[member][1], by_id[best][1]) <= threshold and agreed(member, best))
+        ]
+        if len(kept) < 2:
+            continue
+        seed = min(kept)
+        for member in kept:
             conn.execute(
-                "INSERT INTO derived_dupe_group(file_id, group_id, distance, threshold, is_best, computed_at)"
-                " VALUES(?, ?, ?, ?, ?, ?)",
+                "INSERT INTO derived_dupe_group(file_id, group_id, distance, threshold, is_best, verified,"
+                " computed_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
                 (
                     member,
                     seed,
-                    dupes.hamming(by_id[member][1], by_id[seed][1]),
+                    dupes.hamming(by_id[member][1], by_id[best][1]),
                     threshold,
                     1 if member == best else 0,
+                    1 if (verify is not None and member in structure and best in structure) else 0,
                     now,
                 ),
             )
@@ -437,6 +529,7 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
 HANDLERS = {
     "scan": _ingest_item,
     "hash": _hash_item,
+    "embed": _embed_item,
     "detect_faces": _face_item,
     "cluster_faces": _cluster_item,
 }

@@ -508,6 +508,92 @@ def submit_phash(state: State) -> dict:
         connect.close(conn)
 
 
+@post("/jobs/embed", sync_to_thread=True)
+def submit_embed(state: State) -> dict:
+    """Ask for the joint image/text embedding of every present picture --
+    the representation /search answers from (db/runner.py submit_embed).
+    The first run downloads the model weights into the run's models
+    directory; a bad `semantic_model` setting is refused here, not
+    queued."""
+    conn = _connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            job_id = runner.submit_embed(conn, time.time(), models_dir=weights)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
+    finally:
+        connect.close(conn)
+
+
+@get("/search", sync_to_thread=True)
+def search(state: State, q: str, k: int = 60) -> list[dict]:
+    """Pictures by what they LOOK like: the phrase becomes a query vector
+    in the same joint space the stored image embeddings live in, and the
+    resident index answers with the nearest pictures -- no tags, no
+    captions, no metadata anywhere in the loop.
+
+    Scores ride along instead of a threshold: semantic similarities have
+    model- and query-dependent distributions, so the boundary between
+    banana and non-banana is the caller's to draw, with the evidence in
+    hand. Mixed queries filter these candidates through SQL afterwards --
+    overfetch-then-filter, the FAISS FAQ's own starting strategy.
+    """
+    from db import similarity
+    from vision import semantic
+
+    conn = _connect(state.db_path)
+    try:
+        try:
+            model, checkpoint = runner.semantic_choice(conn)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        current = similarity.semantic_space_of(conn, model, checkpoint)
+        if current is None:
+            return []
+        sid, spec = current
+        held = [
+            row[0]
+            for row in conn.execute(
+                "SELECT e.file_id FROM derived_embedding e"
+                " JOIN file f ON f.id = e.file_id AND f.missing_since IS NULL"
+                " WHERE e.space_id = ? ORDER BY e.file_id",
+                (sid,),
+            )
+        ]
+        if not held:
+            return []
+        manager = similarity.manager_for(conn)
+        key = similarity.align(
+            conn, manager, spec, held, lambda wanted: runner.embedding_vectors(conn, sid, wanted), time.time()
+        )
+        conn.commit()
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        query = semantic.backend(weights, model, checkpoint).encode_text(q)
+        labels, scores = manager.search(key, [query], min(max(int(k), 1), len(held)))
+        pairs = zip(labels[0], scores[0], strict=True)
+        found = [(int(label), float(score)) for label, score in pairs if int(label) != -1]
+        marks = ",".join("?" for _ in found)
+        named = dict(
+            conn.execute(
+                f"SELECT f.id, e.slug || '|' || f.name FROM file f"
+                f" JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
+                [file_id for file_id, _ in found],
+            )
+        )
+        told = []
+        for file_id, score in found:
+            if file_id in named:
+                slug, _, name = named[file_id].partition("|")
+                told.append({"slug": slug, "name": name, "score": score})
+        return told
+    finally:
+        connect.close(conn)
+
+
 @post("/jobs/dupes", sync_to_thread=True)
 def submit_dupes(state: State) -> dict:
     """Ask for the perceptual copies to be grouped, using what /jobs/phash
@@ -979,6 +1065,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             album_remove,
             submit_ingest,
             submit_phash,
+            submit_embed,
+            search,
             submit_dupes,
             dupes,
             people,

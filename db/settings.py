@@ -37,6 +37,11 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # it, edits usually do not. Free text validated at submit; 32+ is
     # refused there because random pairs average 32 bits apart.
     "dupe_threshold": ("4", None),
+    # The joint image/text model semantic search runs on, as
+    # "<model>/<pretrained-checkpoint>" from open_clip.list_pretrained().
+    # Changing it is a new immutable space: existing embeddings keep
+    # their producer and the embed job fills the new space fresh.
+    "semantic_model": ("ViT-B-32/laion2b_s34b_b79k", None),
     # The second opinion on every pHash dupe candidate: a pair also has
     # to agree within this many dHash bits, or "off" to trust pHash
     # alone. Two independent 64-bit fingerprints agreeing is much

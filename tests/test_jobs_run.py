@@ -345,3 +345,89 @@ def test_a_bad_dhash_verify_setting_is_refused_at_submit(db):
         runner.submit_dupes(db, 0.0)
     settings.put(db, "dupe_dhash_verify", "off")
     assert runner.submit_dupes(db, 0.0) > 0
+
+
+def _pictures(db, tmp_path, sizes: dict[str, int]) -> dict[str, int]:
+    """Real decodable images whose byte sizes the test controls -- the
+    dupe policy picks its best member by pixels, then bytes."""
+    from PIL import Image
+
+    from db import library
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for name, pad in sizes.items():
+        Image.effect_noise((32, 32), 40).convert("RGB").save(root / name)
+        with (root / name).open("ab") as grow:
+            grow.write(b"\x00" * pad)
+    root_id = library.add_root(db, str(root), "library", 0.0)
+    scan.scan(db, root_id, str(root), 0.0)
+    return dict(db.execute("SELECT name, id FROM file"))
+
+
+def test_a_duplicate_group_never_chains_past_its_best(db, tmp_path):
+    """A~B and B~C within threshold with A and C far apart is a chain,
+    not a duplicate group: every member is checked against the BEST, and
+    a member the canonical check rejects is dropped -- related, maybe,
+    but not a duplicate this pass can claim."""
+    from db import derived
+
+    files = _pictures(db, tmp_path, {"a.png": 900, "b.png": 500, "c.png": 100})
+    hashes = {"a.png": 0, "b.png": 0b1111, "c.png": 0b11111111}
+    for name, value in hashes.items():
+        derived.record_hash(db, files[name], "aa", 0.0, phash64=value, dhash64=0)
+    db.commit()
+
+    job_id = runner.submit_dupes(db, 1.0)  # dupe_threshold default 4: A~B=4, B~C=4, A~C=8
+    turn = runner.run_next(db, "w1", 2.0)
+    assert turn == {"job": job_id, "state": "done", "did": 1, "failed": 0}
+    told = {
+        n: db.execute(
+            "SELECT distance, is_best, verified FROM derived_dupe_group WHERE file_id = ?", (files[n],)
+        ).fetchone()
+        for n in files
+    }
+    assert told["c.png"] is None, "the chain smuggled C into A's duplicate group"
+    assert told["a.png"] == (0, 1, 1)
+    assert told["b.png"] == (4, 0, 1), "distance must be measured to the best, and dHash agreement recorded"
+
+
+def test_the_embed_job_fills_the_joint_space_with_provenance(db, tmp_path, monkeypatch):
+    """The 'embed' kind, wired: every present picture gets one vector in
+    the joint image/text space, keyed by the immutable space row naming
+    the exact model, checkpoint and preprocessing that computed it."""
+    import numpy as np
+
+    from vision import semantic
+
+    class Fake:
+        dimensions = 8
+
+        def encode_image(self, image):
+            rng = np.random.default_rng(7)
+            v = rng.normal(size=8).astype(np.float32)
+            return v / np.linalg.norm(v)
+
+    monkeypatch.setattr(semantic, "backend", lambda *args, **kwargs: Fake())
+    files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 0})
+    job_id = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    turn = runner.run_next(db, "w1", 1.0)
+    assert turn == {"job": job_id, "state": "done", "did": 2, "failed": 0}
+    told = db.execute(
+        "SELECT count(*), s.key, s.producer, s.producer_version, s.preprocess FROM derived_embedding e"
+        " JOIN similarity_space s ON s.id = e.space_id GROUP BY s.id"
+    ).fetchall()
+    assert len(told) == 1
+    count, key, producer, version, preprocess = told[0]
+    assert count == len(files)
+    assert key == "semantic.openclip.ViT-B-32.laion2b_s34b_b79k"
+    assert (producer, version) == ("open_clip:ViT-B-32", "laion2b_s34b_b79k")
+    assert preprocess == "open_clip.transforms"
+
+
+def test_a_bad_semantic_model_setting_is_refused_at_submit(db):
+    from db import settings
+
+    settings.put(db, "semantic_model", "no-checkpoint-here")
+    with pytest.raises(ValueError, match="no-checkpoint-here"):
+        runner.submit_embed(db, 0.0, models_dir="x")

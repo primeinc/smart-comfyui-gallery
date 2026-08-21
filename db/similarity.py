@@ -129,35 +129,75 @@ def space_id(conn, spec: SpaceSpec, now: float) -> int:
     return int(cursor.lastrowid or 0)
 
 
-def face_space_of(conn, model_id: str, model_version: str) -> tuple[int, SpaceSpec] | None:
-    """The CURRENT face space for this model, from the registry -- id and
-    full spec, dimensions included -- or None when the model has minted
-    nothing yet. Clustering keys on the returned space id; nothing
-    reconstructs a space's meaning from the duplicated model columns.
+def semantic_space(model: str, checkpoint: str, dimensions: int) -> SpaceSpec:
+    """The joint image/text space one OpenCLIP checkpoint defines.
 
-    Matched on every current-identity field except dimensions (which the
-    registry itself supplies); if a model somehow minted several
-    dimensionalities, the newest identity wins -- spaces are immutable,
-    so newest is the one the current producer writes into."""
-    current = face_space(model_id, model_version, 1)
+    ONE space for both modalities -- that is the entire trick: image
+    vectors are the durable rows, a typed phrase becomes an ephemeral
+    query vector in the same space, and they are comparable because one
+    model produced both. The producer is therefore the whole joint
+    model+checkpoint, and vectors from another checkpoint -- same
+    dimensions or not -- are a different space entirely.
+    """
+    from vision.semantic import openclip_version
+
+    return SpaceSpec(
+        key=f"semantic.openclip.{model}.{checkpoint}",
+        representation="float32",
+        dimensions=int(dimensions),
+        metric="cosine",
+        producer=f"open_clip:{model}",
+        producer_version=checkpoint,
+        preprocess="open_clip.transforms",
+        preprocess_version=openclip_version(),
+    )
+
+
+def _current_space_of(conn, probe: SpaceSpec) -> tuple[int, int] | None:
+    """The registry row matching every current-identity field of `probe`
+    except dimensions (which the registry itself supplies), newest first
+    -- spaces are immutable, so newest is the one the current producer
+    writes into. Returns (space id, dimensions) or None."""
     row = conn.execute(
         "SELECT id, dimensions FROM similarity_space"
         " WHERE key = ? AND representation = ? AND metric = ?"
         " AND producer = ? AND producer_version = ? AND preprocess = ? AND preprocess_version = ?"
         " ORDER BY id DESC LIMIT 1",
         (
-            current.key,
-            current.representation,
-            current.metric,
-            current.producer,
-            current.producer_version,
-            current.preprocess,
-            current.preprocess_version,
+            probe.key,
+            probe.representation,
+            probe.metric,
+            probe.producer,
+            probe.producer_version,
+            probe.preprocess,
+            probe.preprocess_version,
         ),
     ).fetchone()
     if row is None:
         return None
-    return int(row[0]), face_space(model_id, model_version, int(row[1]))
+    return int(row[0]), int(row[1])
+
+
+def face_space_of(conn, model_id: str, model_version: str) -> tuple[int, SpaceSpec] | None:
+    """The CURRENT face space for this model, from the registry -- id and
+    full spec, dimensions included -- or None when the model has minted
+    nothing yet. Clustering keys on the returned space id; nothing
+    reconstructs a space's meaning from the duplicated model columns."""
+    found = _current_space_of(conn, face_space(model_id, model_version, 1))
+    if found is None:
+        return None
+    sid, dimensions = found
+    return sid, face_space(model_id, model_version, dimensions)
+
+
+def semantic_space_of(conn, model: str, checkpoint: str) -> tuple[int, SpaceSpec] | None:
+    """The CURRENT joint space for this model+checkpoint, or None before
+    the first embedding was recorded."""
+    found = _current_space_of(conn, semantic_space(model, checkpoint, 1))
+    if found is None:
+        return None
+    sid, dimensions = found
+    return sid, semantic_space(model, checkpoint, dimensions)
 
 
 def keyed(spec: SpaceSpec, sid: int) -> SpaceSpec:

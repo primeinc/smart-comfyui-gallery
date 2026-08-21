@@ -1198,25 +1198,30 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 # --- embeddings ------------------------------------------------------------
 
 
-def add_embedding(
-    conn,
-    file_id: int,
-    space: str,
-    model_id: str,
-    model_version: str,
-    vector: bytes,
-    dim: int,
-    sha: str,
-    now: float,
-) -> None:
+def record_embedding(conn, file_id: int, spec, vector, sha: str, now: float) -> None:
+    """One whole-file embedding, keyed by the immutable space that
+    computed it, noted for the post-commit index sync the same way every
+    other representation is: the row rides this transaction, the live
+    index takes it only after the commit that made it durable.
+
+    `spec` is the space's SpaceSpec (db/similarity.py semantic_space);
+    `vector` is float32, numpy or bytes, already normalised by the
+    encoder that produced it.
+    """
+    import numpy as np
+
+    from . import similarity
+
+    unit = np.asarray(vector, dtype=np.float32) if not isinstance(vector, bytes) else np.frombuffer(vector, np.float32)
+    sid = similarity.space_id(conn, spec, now)
     conn.execute(
-        "INSERT INTO derived_embedding(file_id, space, vector, dim, model_id,"
-        " model_version, source_sha256, computed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(file_id, space, model_id, model_version) DO UPDATE SET"
-        " vector = excluded.vector, dim = excluded.dim,"
+        "INSERT INTO derived_embedding(file_id, space_id, vector, source_sha256, computed_at)"
+        " VALUES(?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, space_id) DO UPDATE SET vector = excluded.vector,"
         " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
-        tuple(plain(value) for value in (file_id, space, vector, dim, model_id, model_version, sha, now)),
+        tuple(plain(value) for value in (file_id, sid, unit.tobytes(), sha, now)),
     )
+    similarity.note(conn, spec, int(file_id), unit, now)
 
 
 # --- what a model said about the picture -----------------------------------
