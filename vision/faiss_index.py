@@ -1,35 +1,87 @@
-"""Similarity search over stable SQLite ids -- the one place indexes live.
+"""Resident FAISS spaces over stable SQLite ids -- lifecycle and execution.
 
-Before this, every FAISS consumer was bespoke: the dupes job packed
-hashes and read positional results in db/runner.py while faces went
-through db/similarity.py, and each new representation would have meant a
-third copy. Consumers now hand this manager the rows they own -- ids and
-representations -- and get neighbours back keyed by those same ids. What
-a vector MEANS is the `SpaceSpec`; how the search executes is this
-module's business and nobody else's.
+This layer owns indexes the way the reference services do
+(../refs/facebookresearch/distributed-faiss server.py holds a
+`dict[index_id -> Index]` its README compares to "fully separate tables
+in an SQL database"; ../refs/neuml/txtai keeps one ANN per config beside
+its database): named spaces, resident for the process lifetime, mutated
+in place, snapshotted to disk, restored at boot. What a vector MEANS is
+the caller's `SpaceSpec`; graph semantics, thresholds and grouping live
+in db/similarity.py -- this module executes.
 
-Binary spaces ride `IndexBinaryIDMap(IndexBinaryFlat)` so FAISS itself
-translates results to the stored ids (facebookresearch/faiss@v1.15.0
-faiss/IndexIDMap.h:68-89 -- `range_search` is overridden on the
-template, and `add` without ids is a refusal). Float spaces run on
-db/similarity.py's engine -- it carries the GPU-exact range search and
-the backend fallback story -- and this layer translates its positional
-CSR to ids: the contrib GPU helper works on raw indexes, so the
-translation is done here rather than by wrapping what it cannot wrap.
+Three tiers, and this manager owns the traffic between them:
 
-Radius and threshold are INCLUSIVE, the way the settings that feed them
-are documented; FAISS's strict comparisons are absorbed here.
+- SQLite is the durable truth. Losing every other tier loses nothing.
+- Disk snapshots (`write_index` / `write_index_binary` + a JSON sidecar)
+  are a startup accelerator. A snapshot that does not match -- wrong
+  spec, wrong count, unreadable file -- is refused, because FAISS itself
+  does not validate what it loads (faiss.wiki Index-IO).
+- RAM/VRAM holds the live index that answers. Indexes are REBUILDABLE,
+  never routinely rebuilt: `add` rows are searchable immediately,
+  `remove` takes them out, and every other id survives both.
+
+Index classes, from upstream's own guidance (faiss.wiki
+Guidelines-to-choose-an-index: exact results -> "Flat"; flat indexes
+need no training, and re-training is not a FAISS concept -- FAQ: "it is
+simpler to just construct a new one"):
+
+- float32/cosine: `IndexIDMap2(IndexFlatIP)`, rows L2-normalised here so
+  inner product IS the cosine (faiss.wiki MetricType-and-distances).
+  IDMap2 stores ids explicitly, so removal keeps every other id
+  (faiss/IndexIDMap.h; faiss.wiki Special-operations-on-indexes). txtai
+  deploys the same shape at this scale ("IDMap,Flat" for small exact
+  indexes, txtai ann/dense/faiss.py `configure`).
+- binary/hamming: `IndexBinaryIDMap2(IndexBinaryFlat)`, popcount
+  exhaustive search (faiss.wiki Binary-Indexes).
+
+Device policy is CONFIGURATION, decided when the manager is built --
+never an argument on a search. With `gpu=True` a float space keeps one
+resident device clone of its inner flat index, per upstream's residency
+doctrine: "it is best to copy an index once to a GPU and keep it there"
+(faiss.wiki Comparing-GPU-vs-CPU). The clone is invalidated by mutation
+and rebuilt on the next search. GPU range search is emulated exactly --
+k nearest on the device, a CPU range pass for any query whose k-th
+neighbour still cleared the radius (faiss/contrib/exhaustive_search.py:
+60-116). A build without GPU support serves the same answers from the
+CPU canonical. Binary flat search has no GPU implementation in any
+faiss build, so binary spaces serve from CPU always. The GPU never
+serialises; snapshots are the CPU canonical form (faiss.wiki
+Faiss-on-the-GPU: "a GPU index should be converted to CPU ... before
+storing it").
+
+Locking is this layer's job because it is nobody else's: "There is no
+locking mechanism in place ... the calling code should maintain a lock"
+(faiss.wiki FAQ), and one `StandardGpuResources` may serve several
+indexes only if they never issue concurrent queries (faiss.wiki
+Running-on-GPUs). One lock per space around anything touching its
+index; one manager-wide lock around all GPU work.
+
+Radius arguments are INCLUSIVE, the way the settings that feed them are
+documented; FAISS's strict comparisons are absorbed here, at the one
+boundary that knows about them.
 """
 
 from __future__ import annotations
 
+import json
+import pathlib
+import re
+import threading
 from dataclasses import dataclass
 from typing import Any
 
-#: How a binary space's execution is named in provenance columns: binary
-#: flat search is CPU in every faiss build -- there is no GPU path for
-#: IndexBinaryFlat -- whichever package the loader imported.
-BINARY_BACKEND = "faiss-cpu"
+#: Neighbours asked of the GPU before the CPU is consulted for a query
+#: that had more. Upstream's own default. A GPU index caps k at 2048 and
+#: selection cost climbs above about 512 (faiss.wiki Faiss-on-the-GPU,
+#: "Limitations"), so this already sits near the useful ceiling.
+GPU_K = 1024
+
+#: The ways a faiss capability fails to exist on a machine: no module, a
+#: DLL that will not load, an API the build lacks, no GPU, a SWIG-level
+#: refusal. Named so the device probe catches what "not available"
+#: actually raises and nothing more -- a genuine bug propagates instead
+#: of reading as absence.
+FALLIBLE = (ImportError, OSError, RuntimeError, AttributeError, ValueError, TypeError)
 
 
 @dataclass(frozen=True)
@@ -55,18 +107,66 @@ def _signed_to_packed(values, bits: int):
     return np.ascontiguousarray(unsigned.astype(">u8").view(np.uint8).reshape(-1, bits // 8))
 
 
-class IndexManager:
-    """Per-space indexes, replaced wholesale when a space reloads.
+def _unit(vectors):
+    """Unit-length float32 rows, so inner product IS the cosine (faiss.wiki
+    MetricType-and-distances). Zero rows stay zero instead of dividing by
+    zero, which `faiss.normalize_L2` would."""
+    import numpy as np
 
-    Indexes are disposable caches over rows the caller owns in SQLite;
-    dropping every one of them changes nothing authoritative.
+    matrix = np.ascontiguousarray(vectors, dtype=np.float32)
+    if matrix.ndim != 2:
+        return matrix
+    lengths = np.linalg.norm(matrix, axis=1, keepdims=True)
+    lengths[lengths == 0.0] = 1.0
+    return np.ascontiguousarray(matrix / lengths, dtype=np.float32)
+
+
+def _inclusive(threshold: float) -> float:
+    """One float32 step below the threshold.
+
+    FAISS keeps `similarity > radius` for an inner-product metric where
+    this application's thresholds are documented at-or-above. `nextafter`
+    steps the radius down by one representable value, making the strict
+    comparison mean the inclusive one."""
+    import numpy as np
+
+    return float(np.nextafter(np.float32(threshold), np.float32("-inf")))
+
+
+class _Space:
+    """One resident space: its meaning, its live index, its book-keeping."""
+
+    def __init__(self, spec: SpaceSpec, index, known: set[int]):
+        self.spec = spec
+        self.index = index
+        self.known = known
+        self.dirty = True
+        self.gpu_clone: Any = None
+        self.lock = threading.RLock()
+
+
+class IndexManager:
+    """Named resident spaces: load or restore, mutate, search, checkpoint.
+
+    `gpu` is the device policy for every float space this manager holds,
+    fixed at construction the way the reference services fix it in
+    configuration. Without a `snapshot_dir` the manager is RAM-only --
+    checkpoint and restore politely do nothing, which is what an
+    in-memory database wants.
     """
 
-    def __init__(self):
-        self._spaces: dict[str, tuple[SpaceSpec, Any, Any]] = {}
+    def __init__(self, snapshot_dir: str | pathlib.Path | None = None, *, gpu: bool = True):
+        self._snapshots = pathlib.Path(snapshot_dir) if snapshot_dir is not None else None
+        self._gpu_wanted = gpu
+        self._spaces: dict[str, _Space] = {}
         self._served: dict[str, str] = {}
+        self._lock = threading.RLock()  # guards the _spaces dict itself
+        self._gpu_lock = threading.RLock()  # one resources object, never queried concurrently
+        self._resources = None
 
-    def load(self, spec: SpaceSpec, ids, vectors, *, gpu: bool = True) -> None:
+    # -- building -----------------------------------------------------------
+
+    def load(self, spec: SpaceSpec, ids, vectors) -> None:
         """Replace `spec.key`'s rows with these ids and representations."""
         import numpy as np
 
@@ -75,77 +175,304 @@ class IndexManager:
         wants = {"binary": "hamming", "float32": "cosine"}[spec.representation]
         if spec.metric != wants:
             raise ValueError(f"{spec.representation} spaces take the {wants} metric, not {spec.metric!r}")
-        held = self._spaces.get(spec.key)
-        if held is not None and held[0] != spec:
-            raise ValueError(f"{spec.key!r} is already loaded under a different spec")
+        with self._lock:
+            held = self._spaces.get(spec.key)
+            if held is not None and held.spec != spec:
+                raise ValueError(f"{spec.key!r} is already loaded under a different spec")
 
         keys = np.asarray(list(ids), dtype=np.int64)
+        if len(set(keys.tolist())) != keys.shape[0]:
+            raise ValueError(f"{spec.key}: every id may appear once")
 
-        def counted(rows: int) -> None:
-            if keys.shape[0] != rows:
-                raise ValueError(f"{keys.shape[0]} ids for {rows} rows")
-
+        faiss = self._faiss()
         if spec.representation == "binary":
             if spec.dimensions % 8:
                 raise ValueError(f"binary dimensions must be whole bytes, not {spec.dimensions}")
             packed = _signed_to_packed(vectors, spec.dimensions)
-            counted(packed.shape[0])
-            from vision.faiss_runtime import import_faiss
-
-            faiss = import_faiss(gpu=gpu)
-            index = faiss.IndexBinaryIDMap(faiss.IndexBinaryFlat(spec.dimensions))
+            if keys.shape[0] != packed.shape[0]:
+                raise ValueError(f"{keys.shape[0]} ids for {packed.shape[0]} rows")
+            index = faiss.IndexBinaryIDMap2(faiss.IndexBinaryFlat(spec.dimensions))
             if keys.shape[0]:
                 index.add_with_ids(packed, keys)
-            self._spaces[spec.key] = (spec, keys, (index, packed))
         else:
-            floats = np.ascontiguousarray(vectors, dtype=np.float32)
-            if floats.ndim != 2 or floats.shape[1] != spec.dimensions:
-                raise ValueError(f"{spec.key} declares dimensions {spec.dimensions}, rows have {floats.shape}")
-            counted(floats.shape[0])
-            # The float engine builds per call inside db/similarity.py --
-            # what is cached here is the space's rows, which is what makes
-            # a reload a replacement instead of an accumulation.
-            self._spaces[spec.key] = (spec, keys, floats)
+            unit = _unit(vectors)
+            if unit.ndim != 2 or unit.shape[1] != spec.dimensions:
+                raise ValueError(f"{spec.key} declares dimensions {spec.dimensions}, rows have {unit.shape}")
+            if keys.shape[0] != unit.shape[0]:
+                raise ValueError(f"{keys.shape[0]} ids for {unit.shape[0]} rows")
+            index = faiss.IndexIDMap2(faiss.IndexFlatIP(spec.dimensions))
+            if keys.shape[0]:
+                index.add_with_ids(unit, keys)
+        with self._lock:
+            self._spaces[spec.key] = _Space(spec, index, set(keys.tolist()))
+
+    def restore(self, spec: SpaceSpec) -> bool:
+        """Snapshot to resident, or False. Every mismatch is a refusal:
+        the sidecar must claim exactly this spec and the index file must
+        open and hold the counted rows -- the same internal-consistency
+        check distributed-faiss makes (index.py from_storage_dir). A
+        False costs the caller one rebuild; a wrong True costs wrong
+        neighbours."""
+        if self._snapshots is None:
+            return False
+        index_path, sidecar_path = self._files(spec.key)
+        if not index_path.exists() or not sidecar_path.exists():
+            return False
+        try:
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        claimed = (sidecar.get("key"), sidecar.get("representation"), sidecar.get("dimensions"), sidecar.get("metric"))
+        if claimed != (spec.key, spec.representation, spec.dimensions, spec.metric):
+            return False
+        faiss = self._faiss()
+        try:
+            if spec.representation == "binary":
+                index = faiss.read_index_binary(str(index_path))
+            else:
+                index = faiss.read_index(str(index_path))
+        except (RuntimeError, OSError):
+            return False
+        if int(index.ntotal) != sidecar.get("vectors"):
+            return False
+        space = _Space(spec, index, set(faiss.vector_to_array(index.id_map).tolist()))
+        space.dirty = False
+        with self._lock:
+            self._spaces[spec.key] = space
+        return True
+
+    # -- mutating -----------------------------------------------------------
+
+    def add(self, key: str, ids, vectors) -> None:
+        """New rows, searchable the moment this returns."""
+        import numpy as np
+
+        space = self._space(key)
+        keys = np.asarray(list(ids), dtype=np.int64)
+        taken = [k for k in keys.tolist() if k in space.known]
+        if taken:
+            raise ValueError(f"{key}: ids {taken} are already in the space")
+        with space.lock:
+            if space.spec.representation == "binary":
+                space.index.add_with_ids(_signed_to_packed(vectors, space.spec.dimensions), keys)
+            else:
+                space.index.add_with_ids(_unit(vectors), keys)
+            space.known.update(keys.tolist())
+            space.dirty = True
+            space.gpu_clone = None
+
+    def remove(self, key: str, ids) -> None:
+        import numpy as np
+
+        space = self._space(key)
+        keys = np.asarray(list(ids), dtype=np.int64)
+        strangers = [k for k in keys.tolist() if k not in space.known]
+        if strangers:
+            raise ValueError(f"{key}: ids {strangers} are not in the space")
+        faiss = self._faiss()
+        with space.lock:
+            space.index.remove_ids(faiss.IDSelectorBatch(keys))
+            space.known.difference_update(keys.tolist())
+            space.dirty = True
+            space.gpu_clone = None
 
     def invalidate(self, key: str) -> None:
-        self._spaces.pop(key, None)
-        self._served.pop(key, None)
+        """Drop the space everywhere -- resident AND snapshot. The rows
+        it described changed meaning; a tier that outlives that is a
+        wrong answer waiting for a boot."""
+        with self._lock:
+            self._spaces.pop(key, None)
+            self._served.pop(key, None)
+        for path in self._files(key):
+            path.unlink(missing_ok=True)
+
+    # -- persisting ---------------------------------------------------------
+
+    def checkpoint(self, key: str) -> pathlib.Path | None:
+        """The CPU canonical form to disk, with the sidecar a restore
+        judges it by. RAM-only managers skip."""
+        if self._snapshots is None:
+            return None
+        space = self._space(key)
+        faiss = self._faiss()
+        self._snapshots.mkdir(parents=True, exist_ok=True)
+        index_path, sidecar_path = self._files(key)
+        with space.lock:
+            if space.spec.representation == "binary":
+                faiss.write_index_binary(space.index, str(index_path))
+            else:
+                faiss.write_index(space.index, str(index_path))
+            sidecar = {
+                "key": space.spec.key,
+                "representation": space.spec.representation,
+                "dimensions": space.spec.dimensions,
+                "metric": space.spec.metric,
+                "normalization": "l2" if space.spec.representation == "float32" else None,
+                "vectors": int(space.index.ntotal),
+                "faiss": getattr(faiss, "__version__", None),
+            }
+            sidecar_path.write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
+            space.dirty = False
+        return index_path
+
+    def checkpoint_all(self) -> list[pathlib.Path]:
+        """Every space that changed since its last write -- the shutdown
+        sweep, cheap when nothing moved."""
+        with self._lock:
+            keys = [key for key, space in self._spaces.items() if space.dirty]
+        return [written for key in keys if (written := self.checkpoint(key)) is not None]
+
+    # -- answering ----------------------------------------------------------
+
+    def has(self, key: str) -> bool:
+        with self._lock:
+            return key in self._spaces
+
+    def count(self, key: str) -> int:
+        space = self._space(key)
+        with space.lock:
+            return int(space.index.ntotal)
+
+    def ids(self, key: str):
+        """The stored ids in index order, as int64."""
+        faiss = self._faiss()
+        space = self._space(key)
+        with space.lock:
+            return faiss.vector_to_array(space.index.id_map)
 
     def served_by(self, key: str) -> str | None:
-        """Which execution answered this space's last graph() -- provenance
+        """Which execution answered this space's last search -- provenance
         for run rows, because a timing nobody can attribute to a machine
         is not a measurement."""
         return self._served.get(key)
 
-    def graph(self, key: str, radius, *, backend: str | None = None, gpu: bool = True):
-        """Every pair within `radius` (inclusive), as (ids, ids, distances).
+    def search(self, key: str, queries, k: int):
+        """The `k` nearest stored rows per query: (ids, scores), ids -1
+        where fewer than `k` rows exist. Queries arrive raw; this layer
+        applies the space's preprocessing."""
+        space = self._space(key)
+        with space.lock:
+            if space.spec.representation == "binary":
+                packed = _signed_to_packed(queries, space.spec.dimensions)
+                self._served[key] = "faiss-cpu"
+                distances, labels = space.index.search(packed, int(k))
+                return labels, distances
+            unit = _unit(queries)
+            device = self._device_for(space)
+            if device is not None:
+                with self._gpu_lock:
+                    scores, positions = device.search(unit, int(k))
+                held = self.ids(key)
+                labels = held[positions.clip(min=0)]
+                labels[positions < 0] = -1
+                self._served[key] = "faiss-gpu"
+                return labels, scores
+            self._served[key] = "faiss-cpu"
+            scores, labels = space.index.search(unit, int(k))
+            return labels, scores
 
-        Self-pairs are dropped; both directions of a pair are present, the
-        shape union-find and label propagation both consume. For float
-        spaces `radius` is the cosine similarity floor and the third array
-        is similarity; for binary it is hamming bits and distance.
+    def range(self, key: str, radius, queries=None):
+        """Every stored row within `radius` (INCLUSIVE) of each query, as
+        FAISS range triplets (lims, ids, distances): query i's neighbours
+        are ids[lims[i]:lims[i+1]]. `queries=None` searches the space
+        against its own rows in id order -- the self-join the pair graph
+        is built from, without copying the store out.
+
+        For binary spaces `radius` is hamming bits and distances are
+        bits; for float spaces it is the cosine similarity floor and
+        distances are similarities.
         """
         import numpy as np
 
-        spec, keys, held = self._spaces[key]
-        if spec.representation == "binary":
-            index, data = held
-            if keys.shape[0] < 2:
-                empty = np.zeros(0, dtype=np.int64)
-                return empty, empty, np.zeros(0, dtype=np.int32)
-            # range_search keeps distance < radius (faiss/IndexBinary.h:
-            # "only distances < radius (strict comparison)"), so +1 makes
-            # the argument inclusive. Labels are the stored ids already.
-            lims, distances, neighbours = index.range_search(data, int(radius) + 1)
-            self._served[key] = BINARY_BACKEND
-            a = np.repeat(keys, np.diff(lims).astype(np.int64))
-            b = neighbours.astype(np.int64)
-            keep = a != b
-            return a[keep], b[keep], distances[keep]
+        space = self._space(key)
+        with space.lock:
+            if space.spec.representation == "binary":
+                if int(space.index.ntotal) == 0:
+                    return np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int32)
+                data = self._matrix(space) if queries is None else _signed_to_packed(queries, space.spec.dimensions)
+                # IndexBinary.range_search keeps distance < radius ("only
+                # distances < radius (strict comparison)"), so +1 makes
+                # the argument inclusive. Labels are the stored ids.
+                lims, distances, labels = space.index.range_search(data, int(radius) + 1)
+                self._served[key] = "faiss-cpu"
+                return lims, labels.astype(np.int64), distances
 
-        from db import similarity
+            if int(space.index.ntotal) == 0:
+                return np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.float32)
+            unit = self._matrix(space) if queries is None else _unit(queries)
+            device = self._device_for(space)
+            if device is not None:
+                from faiss.contrib.exhaustive_search import range_search_gpu
 
-        (indptr, cols, weights), ran_on = similarity.graph(held, float(radius), backend=backend, gpu=gpu)
-        self._served[key] = ran_on
-        a = np.repeat(keys, np.diff(indptr).astype(np.int64))
-        return a, keys[cols], weights
+                faiss = self._faiss()
+                inner = faiss.downcast_index(space.index.index)
+                with self._gpu_lock:
+                    # `inner` as the CPU fallback rather than None: contrib
+                    # runs a CPU range pass for queries whose k-th neighbour
+                    # still cleared the radius, which is what makes this
+                    # exact instead of a top-k approximation.
+                    lims, distances, positions = range_search_gpu(unit, _inclusive(radius), device, inner, gpu_k=GPU_K)
+                held = self.ids(key)
+                self._served[key] = "faiss-gpu"
+                return np.asarray(lims), held[positions], np.asarray(distances, dtype=np.float32)
+            lims, distances, labels = space.index.range_search(unit, _inclusive(radius))
+            self._served[key] = "faiss-cpu"
+            return lims, labels.astype(np.int64), np.asarray(distances, dtype=np.float32)
+
+    # -- plumbing -----------------------------------------------------------
+
+    def _space(self, key: str) -> _Space:
+        with self._lock:
+            return self._spaces[key]
+
+    def _matrix(self, space: _Space):
+        """The stored rows in index order, read back from the index itself
+        -- the index IS the store, a parallel copy would drift on the
+        first remove_ids compaction."""
+        faiss = self._faiss()
+        if space.spec.representation == "binary":
+            inner = faiss.downcast_IndexBinary(space.index.index)
+            return faiss.vector_to_array(inner.xb).reshape(int(inner.ntotal), space.spec.dimensions // 8)
+        inner = faiss.downcast_index(space.index.index)
+        return inner.reconstruct_n(0, int(inner.ntotal))
+
+    def _device_for(self, space: _Space):
+        """The space's resident GPU clone, built once and kept ("copy an
+        index once to a GPU and keep it there"), or None when policy or
+        the build says CPU. Callers already hold the space lock."""
+        if not self._gpu_wanted or space.spec.representation == "binary":
+            return None
+        if space.gpu_clone is not None:
+            return space.gpu_clone
+        try:
+            faiss = self._faiss()
+            if not hasattr(faiss, "StandardGpuResources") or faiss.get_num_gpus() < 1:
+                return None
+            with self._gpu_lock:
+                if self._resources is None:
+                    resources = faiss.StandardGpuResources()
+                    # Both from the wiki's brute-force page: FAISS orders its
+                    # work on a non-default CUDA stream, so results are read
+                    # before kernels finish without this; and the default
+                    # scratch reservation is sized for indexed search.
+                    resources.setDefaultNullStreamAllDevices()
+                    resources.setTempMemory(64 * 1024 * 1024)
+                    self._resources = resources
+                inner = faiss.downcast_index(space.index.index)
+                space.gpu_clone = faiss.index_cpu_to_gpu(self._resources, 0, inner)
+        except FALLIBLE:
+            return None
+        return space.gpu_clone
+
+    def _files(self, key: str) -> tuple[pathlib.Path, pathlib.Path]:
+        base = self._snapshots if self._snapshots is not None else pathlib.Path(".")
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", key)
+        return base / f"{safe}.faiss", base / f"{safe}.json"
+
+    def _faiss(self, gpu: bool | None = None):
+        """Through the repo's loader, not a bare `import faiss`: a vendored
+        CUDA build sits under vendor/faiss-gpu-win64 and needs its DLL
+        directories registered before the import."""
+        from vision.faiss_runtime import import_faiss
+
+        return import_faiss(gpu=self._gpu_wanted if gpu is None else gpu)

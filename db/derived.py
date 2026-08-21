@@ -168,7 +168,15 @@ def region_from_pixels(conn, box, width: int, height: int, **kwargs) -> int:
 
 
 def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash64=None) -> None:
-    """Perceptual hashes, keyed on the content hash they were taken from."""
+    """Perceptual hashes, keyed on the content hash they were taken from.
+
+    The row and the live index move together -- the one write path that
+    keeps "is the index stale?" from ever being a question (the shape
+    txtai's upsert takes: database and ANN in one operation). When the
+    perceptual space is resident, the new hash is searchable the moment
+    this returns; when it is not, the space's first alignment reads the
+    rows this wrote.
+    """
     conn.execute(
         "INSERT INTO derived_file_hash(file_id, phash64, dhash64, source_sha256, computed_at)"
         " VALUES(?, ?, ?, ?, ?)"
@@ -177,6 +185,15 @@ def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash
         " computed_at = excluded.computed_at",
         tuple(plain(value) for value in (file_id, phash64, dhash64, sha, now)),
     )
+    if phash64 is None:
+        return
+    from . import similarity
+
+    manager = similarity.manager_for(conn)
+    if manager.has(similarity.PHASH.key):
+        if int(file_id) in set(manager.ids(similarity.PHASH.key).tolist()):
+            manager.remove(similarity.PHASH.key, [file_id])
+        manager.add(similarity.PHASH.key, [file_id], [phash64])
 
 
 def stale(conn, table: str) -> list[int]:
@@ -608,34 +625,22 @@ def cluster(
 
     import numpy as np
 
-    from vision.faiss_index import IndexManager, SpaceSpec
-
-    from . import grouping, settings, similarity
+    from . import grouping, similarity
 
     vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
     face_ids = [int(row[0]) for row in rows]
-    # Through the shared index layer -- the same code the dupes job
-    # searches with -- so face similarity is not its own FAISS consumer.
-    # The engine underneath is unchanged (similarity.graph, with its
-    # GPU-exact range search); what the layer adds is the id contract.
-    space = SpaceSpec(
-        key=f"face.{model_id}.{model_version}",
-        representation="float32",
-        dimensions=int(vectors.shape[1]),
-        metric="cosine",
-    )
-    manager = IndexManager()
-    manager.load(space, face_ids, vectors)
-    edges_a, edges_b, weights = manager.graph(
-        space.key,
-        threshold,
-        backend=settings.value(conn, "similarity_backend"),
-        gpu=settings.flag(conn, "faiss_gpu"),
-    )
+    # Through the shared index layer -- the same resident manager the
+    # dupes job searches -- so face similarity is not its own FAISS
+    # consumer. Align mutates the live space to exactly these rows;
+    # device policy is the manager's configuration, not an argument.
+    space = similarity.face_space(model_id, model_version, int(vectors.shape[1]))
+    manager = similarity.manager_for(conn)
+    at = {face_id: position for position, face_id in enumerate(face_ids)}
+    similarity.align(manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]])
+    edges_a, edges_b, weights = similarity.pair_graph(manager, space.key, threshold)
     backend = manager.served_by(space.key)
     # grouping.group consumes the positional CSR shape; positions here are
-    # the sorted face_ids the space was loaded with.
-    at = {face_id: position for position, face_id in enumerate(face_ids)}
+    # the sorted face_ids the rows arrived in.
     graph = similarity.as_csr(
         len(face_ids),
         np.array([at[int(v)] for v in edges_a], dtype=np.int64),

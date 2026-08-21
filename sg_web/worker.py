@@ -46,6 +46,17 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
     conn = connect.connect(db_path)
     owner = f"worker-{os.getpid()}"
     try:
+        # Hot similarity spaces become resident at boot -- restored from
+        # snapshots when they match, rebuilt once when they don't -- so
+        # producers upsert into live indexes instead of paying a build
+        # on the first job. A failed warm is a slower first job, never a
+        # worker that refuses to start.
+        try:
+            runner.warm_similarity(conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            _logger.exception("similarity warm failed; spaces will build on first use")
         while not stop.is_set():
             turn = None
             # The flag read is economy -- skip the claim entirely while
@@ -71,4 +82,12 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
                 wake.wait(IDLE_WAIT)
                 wake.clear()
     finally:
+        try:
+            # The shutdown sweep: dirty spaces to their CPU snapshots,
+            # so the next boot restores instead of rebuilding.
+            from db import similarity
+
+            similarity.manager_for(conn).checkpoint_all()
+        except Exception:
+            _logger.exception("index checkpoint on shutdown failed")
         connect.close(conn)

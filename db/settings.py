@@ -18,9 +18,6 @@ from __future__ import annotations
 REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # Where model weights are read from. Empty means `<home>/models`.
     "models_dir": ("", None),
-    # Which similarity backend computes the pair graph. "auto" measures
-    # the machine; naming one forces it and refuses to fall back.
-    "similarity_backend": ("auto", ("auto", "faiss-gpu", "faiss-cpu", "numpy")),
     # ONNX Runtime execution providers for the recognition session:
     # "auto" (CUDA when the installed build offers it), "cpu", or an
     # explicit comma list of provider names.

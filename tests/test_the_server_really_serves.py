@@ -80,8 +80,8 @@ def test_python_m_sg_web_serves_from_nothing(tmp_path):
             assert part.headers["content-range"].startswith("bytes 0-7/")
             assert part.content == (root / "clip.mp4").read_bytes()[:8]
 
-            changed = web.post("/settings/similarity_backend", json={"value": "numpy"}).json()
-            assert changed["value"] == "numpy"
+            changed = web.post("/settings/thumbnail_precache", json={"value": "off"}).json()
+            assert changed["value"] == "off"
 
             job = web.post("/jobs/verify").json()
             assert job["total"] == 2

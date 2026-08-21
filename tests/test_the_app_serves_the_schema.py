@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from litestar.testing import TestClient
 
-from db import authored, connect, derived, library, naming, scan, settings
+from db import authored, connect, derived, library, naming, scan
 from sg_web.app import build_app
 
 
@@ -32,9 +32,6 @@ def served(tmp_path):
     conn = connect.connect(db_path)
     conn.executescript(connect.schema_sql())
     conn.execute("PRAGMA foreign_keys=ON")
-    # The backend is not under test here; the numpy path is exact and needs
-    # no hardware. The similarity_backend setting is the production knob.
-    settings.put(conn, "similarity_backend", "numpy")
     root_id = library.add_root(conn, str(root), "library", 0.0)
     scan.scan(conn, root_id, str(root), 0.0)
 
@@ -811,15 +808,15 @@ def test_settings_are_rows_changed_while_the_application_runs(tmp_path):
     changed and validated over requests, effective without a restart."""
     with TestClient(app=build_app(str(tmp_path / "run"))) as client:
         listed = {row["key"]: row for row in client.get("/settings").json()}
-        assert listed["similarity_backend"]["value"] == "auto"
-        assert "numpy" in listed["similarity_backend"]["choices"]
+        assert listed["faiss_gpu"]["value"] == "on"
+        assert "off" in listed["faiss_gpu"]["choices"]
 
-        changed = client.post("/settings/similarity_backend", json={"value": "numpy"}).json()
-        assert changed == {"key": "similarity_backend", "value": "numpy"}
+        changed = client.post("/settings/faiss_gpu", json={"value": "off"}).json()
+        assert changed == {"key": "faiss_gpu", "value": "off"}
         listed = {row["key"]: row for row in client.get("/settings").json()}
-        assert listed["similarity_backend"]["value"] == "numpy"
+        assert listed["faiss_gpu"]["value"] == "off"
 
-        assert client.post("/settings/similarity_backend", json={"value": "cuda-magic"}).status_code == 400
+        assert client.post("/settings/faiss_gpu", json={"value": "cuda-magic"}).status_code == 400
         assert client.post("/settings/not_a_setting", json={"value": "x"}).status_code == 400
 
 

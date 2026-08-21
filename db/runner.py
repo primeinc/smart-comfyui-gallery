@@ -142,41 +142,62 @@ def submit_dupes(conn, now: float) -> int:
     return jobs.submit(conn, "hash", now, payload={"derive": "groups", "threshold": threshold}, items=[0])
 
 
-#: The shared similarity layer, built on first use -- one manager per
-#: worker process, and the space saying what a phash64 IS, stated once.
-#: This module packs nothing and never imports faiss.
-_SIMILARITY: dict = {}
+def warm_similarity(conn) -> None:
+    """Boot: make the hot spaces resident -- restore from snapshots when
+    they match, rebuild once when they do not. After this, producers
+    upsert into live indexes and jobs answer without a build step."""
+    from . import similarity
 
-
-def _phash_space():
-    from vision.faiss_index import SpaceSpec
-
-    if "phash" not in _SIMILARITY:
-        _SIMILARITY["phash"] = SpaceSpec(
-            key="perceptual.phash64", representation="binary", dimensions=64, metric="hamming"
+    manager = similarity.manager_for(conn)
+    rows = dict(
+        conn.execute(
+            "SELECT h.file_id, h.phash64 FROM derived_file_hash h"
+            " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
+            " WHERE h.phash64 IS NOT NULL"
         )
-    return _SIMILARITY["phash"]
+    )
+    if rows:
+        similarity.align(manager, similarity.PHASH, sorted(rows), lambda wanted: [rows[v] for v in wanted])
+    for model_id, model_version, dimensions in conn.execute(
+        "SELECT model_id, model_version, MAX(length(embedding)) / 4 FROM derived_face_instance"
+        " WHERE embedding IS NOT NULL GROUP BY model_id, model_version"
+    ):
+        space = similarity.face_space(model_id, model_version, dimensions)
+        ids = [
+            row[0]
+            for row in conn.execute(
+                "SELECT id FROM derived_face_instance WHERE model_id = ? AND model_version = ?"
+                " AND embedding IS NOT NULL ORDER BY id",
+                (model_id, model_version),
+            )
+        ]
+        similarity.align(manager, space, ids, lambda wanted: _face_vectors(conn, wanted))
 
 
-def _index_manager():
-    """Its indexes are disposable caches over rows SQLite owns; each
-    dupes pass reloads its space wholesale because the pass exists
-    precisely because the rows changed."""
-    from vision.faiss_index import IndexManager
+def _face_vectors(conn, wanted):
+    """Embedding blobs for exactly these face ids, in their order."""
+    import numpy as np
 
-    if "manager" not in _SIMILARITY:
-        _SIMILARITY["manager"] = IndexManager()
-    return _SIMILARITY["manager"]
+    held = {}
+    batch = [int(v) for v in wanted]
+    for start in range(0, len(batch), 500):
+        piece = batch[start : start + 500]
+        marks = ",".join("?" for _ in piece)
+        for face_id, blob in conn.execute(
+            f"SELECT id, embedding FROM derived_face_instance WHERE id IN ({marks})", piece
+        ):
+            held[face_id] = np.frombuffer(blob, dtype=np.float32)
+    return np.vstack([held[v] for v in batch])
 
 
 def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
-    """One global pass: the shared index's hamming graph over every
-    phash64, union-find over the id pairs, groups of two or more written
-    with the policy-picked best member -- most pixels, then most bytes,
-    then the earliest identity."""
+    """One global pass: align the perceptual space with the rows SQLite
+    holds, cut its hamming pair graph, union-find over the id pairs,
+    groups of two or more written with the policy-picked best member --
+    most pixels, then most bytes, then the earliest identity."""
     from vision import dupes
 
-    from . import settings as settings_module
+    from . import similarity
 
     threshold = int(payload["threshold"])
     rows = conn.execute(
@@ -188,17 +209,11 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     if len(rows) < 2:
         return
 
-    space = _phash_space()
-    manager = _index_manager()
-    manager.load(
-        space,
-        [row[0] for row in rows],
-        [row[1] for row in rows],
-        gpu=settings_module.flag(conn, "faiss_gpu"),
-    )
-    twins_a, twins_b, _distances = manager.graph(space.key, threshold)
-
     by_id = {row[0]: row for row in rows}
+    manager = similarity.manager_for(conn)
+    similarity.align(manager, similarity.PHASH, sorted(by_id), lambda wanted: [by_id[v][1] for v in wanted])
+    twins_a, twins_b, _distances = similarity.pair_graph(manager, similarity.PHASH.key, threshold)
+
     parent = {file_id: file_id for file_id in by_id}
 
     def find(x: int) -> int:

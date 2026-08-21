@@ -227,44 +227,10 @@ def planted(groups: int = 3, members: int = 6, dim: int = 32) -> np.ndarray:
     return np.asarray(rows, dtype=np.float32)
 
 
-def edges(graph) -> set:
-    indptr, cols, _ = graph
-    return {
-        (int(row), int(cols[edge]))
-        for row in range(len(indptr) - 1)
-        for edge in range(int(indptr[row]), int(indptr[row + 1]))
-    }
-
-
-@pytest.mark.parametrize("backend", ["faiss-cpu", "faiss-gpu"])
-def test_faiss_returns_the_same_edges_as_the_exact_numpy_path(backend):
-    vectors = planted()
-    baseline, ran = similarity.graph(vectors, 0.5, backend="numpy")
-    assert ran == "numpy"
-    try:
-        contender, ran = similarity.graph(vectors, 0.5, backend=backend)
-    except similarity.FALLIBLE as why:
-        pytest.skip(f"{backend} unavailable here: {why}")
-    assert ran == backend
-    assert edges(contender) == edges(baseline)
-
-
-@pytest.mark.parametrize("backend", ["numpy", "faiss-cpu"])
-def test_a_pair_sitting_exactly_on_the_threshold_is_kept(backend):
-    """FAISS range_search keeps strictly-above for inner product; the numpy
-    path keeps at-or-above. The nextafter step makes them agree, and a pair
-    at similarity exactly 1.0 against threshold 1.0 is the sharpest case."""
-    vectors = np.array([[1, 0], [1, 0], [0, 1]], dtype=np.float32)
-    try:
-        graph, _ = similarity.graph(vectors, 1.0, backend=backend)
-    except similarity.FALLIBLE as why:
-        pytest.skip(f"{backend} unavailable here: {why}")
-    assert edges(graph) == {(0, 1), (1, 0)}
-
-
-def test_a_named_backend_that_does_not_exist_raises_instead_of_substituting():
-    with pytest.raises(ValueError, match="cuda-magic"):
-        similarity.graph(planted(), 0.5, backend="cuda-magic")
+# The engine itself -- edges vs the exact oracle, device-policy parity,
+# inclusive thresholds -- is proven in tests/test_faiss_index.py. These
+# tests consume the oracle directly: grouping is a pure function of a
+# graph, and the oracle is the independent way to make one.
 
 
 # --- grouping --------------------------------------------------------------
@@ -282,7 +248,7 @@ PLANTED_ANSWER = {tuple(range(6)), tuple(range(6, 12)), tuple(range(12, 18))}
 
 def test_grouping_is_a_pure_function_of_the_graph():
     vectors = planted()
-    graph, _ = similarity.graph(vectors, 0.5, backend="numpy")
+    graph = similarity.numpy_graph(vectors, 0.5)
     first = grouping.group(graph, vectors, "chinese-whispers")
     second = grouping.group(graph, vectors, "chinese-whispers")
     assert first == second
@@ -291,16 +257,18 @@ def test_grouping_is_a_pure_function_of_the_graph():
 
 def test_connected_components_find_the_planted_groups_at_a_tight_threshold():
     vectors = planted()
-    graph, _ = similarity.graph(vectors, 0.5, backend="numpy")
+    graph = similarity.numpy_graph(vectors, 0.5)
     assert as_groups(grouping.connected_components(graph)) == PLANTED_ANSWER
 
 
 def test_spherical_kmeans_finds_the_planted_groups():
     vectors = planted()
-    graph, _ = similarity.graph(vectors, 0.5, backend="numpy")
+    graph = similarity.numpy_graph(vectors, 0.5)
+    from vision.faiss_index import FALLIBLE
+
     try:
         labels = grouping.group(graph, vectors, "spherical-kmeans", gpu=False)
-    except similarity.FALLIBLE as why:
+    except FALLIBLE as why:
         pytest.skip(f"faiss unavailable here: {why}")
     assert as_groups(labels) == PLANTED_ANSWER
 
