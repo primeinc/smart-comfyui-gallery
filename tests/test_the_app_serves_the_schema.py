@@ -687,18 +687,47 @@ def test_a_smart_collection_refuses_filing_over_http(served):
     assert served["files"] == []
 
 
+def scene(sky, ground, feature):
+    """Deterministic picture-like content: a gradient sky over a ground
+    band with one shape and one glow. Structured like a photograph, so
+    perceptual hashes survive lossy re-encodes -- pure noise does not:
+    webp q75 of an `effect_noise` field lands up to 10 pHash bits from
+    its own original (measured, 30 trials), which made the dupe tests
+    a coin flip. Deterministic, so the distances below never drift."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (96, 96))
+    draw = ImageDraw.Draw(img)
+    for y in range(96):
+        t = y / 95
+        draw.line([(0, y), (95, y)], fill=tuple(int(a + (b - a) * t) for a, b in zip(sky, ground, strict=True)))
+    draw.rectangle(feature["box"], fill=feature["fill"])
+    draw.ellipse(feature["sun"], fill=feature["glow"])
+    return img
+
+
+CASTLE = (
+    (40, 60, 120),
+    (180, 170, 150),
+    {"box": (30, 50, 66, 90), "fill": (90, 80, 70), "sun": (10, 8, 26, 24), "glow": (250, 240, 200)},
+)
+MEADOW = (
+    (150, 200, 240),
+    (60, 140, 60),
+    {"box": (5, 70, 90, 95), "fill": (50, 120, 50), "sun": (66, 6, 88, 28), "glow": (255, 255, 230)},
+)
+
+
 def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
     """The backfill for libraries that never ran detection: POST
     /jobs/phash computes phash64/dhash64 for every present picture, and
     a resized re-encode lands within a few bits of its original --
     perceptual identity produced by the application, over HTTP."""
-    from PIL import Image
-
     from vision import dupes
 
     root = tmp_path / "lib"
     root.mkdir()
-    picture = Image.effect_noise((64, 64), 40).convert("RGB")
+    picture = scene(*CASTLE)
     picture.save(root / "castle.png")
     picture.resize((32, 32)).save(root / "castle_half.jpg", quality=80)
 
@@ -735,15 +764,13 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
     them through the FAISS binary index, and the copies collapse -- one
     group per picture, the largest body picked as its best face, every
     copy listed from the picture page. A distinct picture stays alone."""
-    from PIL import Image
-
     root = tmp_path / "lib"
     root.mkdir()
-    picture = Image.effect_noise((96, 96), 40).convert("RGB")
+    picture = scene(*CASTLE)
     picture.save(root / "castle.png")
     picture.resize((48, 48)).save(root / "castle_small.jpg", quality=80)
     picture.save(root / "castle_web.webp", quality=75)
-    Image.effect_noise((96, 96), 90).convert("RGB").save(root / "meadow.png")
+    scene(*MEADOW).save(root / "meadow.png")
 
     with TestClient(app=build_app(str(tmp_path / "run"))) as client:
         made = client.post("/roots", json={"path": str(root)}).json()

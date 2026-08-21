@@ -351,6 +351,19 @@ def _tag_value(tag, value) -> Held | None:
     return None
 
 
+def pixel_count(path) -> int:
+    """How many pixels the container on disk holds, from its header alone
+    -- no frame is decoded. Zero when the header cannot be read, so an
+    unreadable file ranks last wherever resolution decides. Orientation
+    never matters here: a 90-degree turn swaps width and height and the
+    product is the same."""
+    try:
+        with Image.open(path) as image:
+            return int(image.size[0]) * int(image.size[1])
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return 0
+
+
 def read(path) -> Capture:
     """Every camera tag in one file, as columns plus a long tail.
 

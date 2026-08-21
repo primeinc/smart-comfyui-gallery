@@ -293,6 +293,19 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
     from . import similarity
 
+    def _pixels(conn, row, file_id: int) -> int:
+        """The member's resolution, the primary fidelity axis. The file
+        row knows it once ingest has run; until then the container header
+        on disk answers -- byte size must NEVER stand in for it, because
+        bytes measure compression: a 48px JPEG outweighs a lossless
+        original of the same picture at four times the pixels."""
+        from . import capture, detect
+
+        width, height = row[2], row[3]
+        if width and height:
+            return int(width) * int(height)
+        return capture.pixel_count(detect.path_of(conn, file_id))
+
     threshold = int(payload["threshold"])
     verify = payload.get("dhash_verify")
     rows = conn.execute(
@@ -354,7 +367,7 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         # two admittedly-different pictures in one "duplicate" group.
         # A member the canonical checks reject is dropped -- related,
         # perhaps, but not a duplicate this pass can claim.
-        best = max(members, key=lambda m: ((by_id[m][2] or 0) * (by_id[m][3] or 0), by_id[m][4], -m))
+        best = max(members, key=lambda m: (_pixels(conn, by_id[m], m), by_id[m][4], -m))
         kept = [
             member
             for member in members
