@@ -23,16 +23,63 @@ DEFAULT = pathlib.Path(__file__).resolve().parent / "gallery.db"
 
 
 def _squeezed(sql: str) -> str:
-    """Whitespace-normalised OUTSIDE string literals only.
+    """Whitespace-normalised outside string literals and quoted names.
 
     A literal's spacing is content -- a RAISE message with a doubled
     space is a different message -- and a comparator that folds it would
     call a migrated trigger equal to a fresh one they no longer match.
-    Splitting on the quote keeps SQLite's '' escapes intact: they become
-    empty even-indexed segments the rejoin restores verbatim.
+    Walked the way SQLite reads it, because a bare quote-parity split is
+    not that: an apostrophe inside a comment ("the group's seed") is
+    prose, not a string opener, and it flipped the parity for every
+    literal downstream. Comments keep their whitespace foldable but a
+    line comment keeps its terminating newline -- fold that away and
+    text moved in or out of the comment reads as equal.
     """
-    parts = sql.split("'")
-    return "'".join(" ".join(part.split()) if index % 2 == 0 else part for index, part in enumerate(parts))
+    pieces: list[str] = []
+    fold: list[str] = []
+    at, size = 0, len(sql)
+
+    def verbatim(text: str) -> None:
+        pieces.append(" ".join("".join(fold).split()))
+        fold.clear()
+        pieces.append(text)
+
+    while at < size:
+        ch = sql[at]
+        if ch == "'":
+            end = at + 1
+            while end < size:
+                closing = sql.find("'", end)
+                if closing == -1:
+                    end = size
+                    break
+                if sql.startswith("''", closing):
+                    end = closing + 2
+                    continue
+                end = closing + 1
+                break
+            verbatim(sql[at:end])
+            at = end
+        elif ch == '"':
+            closing = sql.find('"', at + 1)
+            end = size if closing == -1 else closing + 1
+            verbatim(sql[at:end])
+            at = end
+        elif sql.startswith("--", at):
+            end = sql.find("\n", at)
+            end = size if end == -1 else end
+            verbatim(" ".join(sql[at:end].split()) + "\n")
+            at = end + 1
+        elif sql.startswith("/*", at):
+            closing = sql.find("*/", at + 2)
+            end = size if closing == -1 else closing + 2
+            verbatim(" ".join(sql[at:end].split()))
+            at = end
+        else:
+            fold.append(ch)
+            at += 1
+    pieces.append(" ".join("".join(fold).split()))
+    return " ".join(piece for piece in pieces if piece)
 
 
 def objects(conn: sqlite3.Connection) -> dict[str, str]:

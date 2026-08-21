@@ -57,10 +57,15 @@ def harvest(
     sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     if sha is None:
         # A file can reach detection before anything hashed it, and every
-        # derived row here keys its staleness on the content hash.
+        # derived row here keys its staleness on the content hash. The
+        # computed sha lands on the file row in the same transaction --
+        # thrown away, every byproduct written here was born stale
+        # (`source_sha256 IS NOT content_sha256` against NULL) and every
+        # staleness sweep recomputed it until a scan wrote the sha.
         from . import scan
 
         sha = scan.sha256_of(path)
+        conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
     if thumbs_dir is not None:
         import pathlib
 

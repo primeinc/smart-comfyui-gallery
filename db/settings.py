@@ -35,9 +35,10 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # Whether the in-process worker drains jobs. Off, jobs queue until it
     # is turned back on -- they are rows, so nothing is lost by waiting.
     "worker": ("on", ("on", "off")),
-    # Hamming bits (0..64) within which two phash64 values are the same
+    # Hamming bits (0..31) within which two phash64 values are the same
     # picture. Conservative by default: re-encodes and resizes land under
-    # it, edits usually do not. Free text validated at submit.
+    # it, edits usually do not. Free text validated at submit; 32+ is
+    # refused there because random pairs average 32 bits apart.
     "dupe_threshold": ("4", None),
 }
 

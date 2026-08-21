@@ -378,7 +378,11 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
         if not role or not name:
             continue
         digest = str(entry.get("hash") or "").strip() or None
-        artifact_id = artifact(conn, role, name, now, quoted=digest)
+        # The role says how the weights were USED; the artifact row says
+        # what they ARE. A refiner is checkpoint weights in the refiner
+        # role -- the same file used as base elsewhere is one artifact,
+        # two roles -- and the role-match trigger states this mapping.
+        artifact_id = artifact(conn, "checkpoint" if role == "refiner" else role, name, now, quoted=digest)
         ordinal = stated.get(role, 0)
         stated[role] = ordinal + 1
         weight = _as_number(str(entry.get("weight"))) if entry.get("weight") is not None else None
@@ -580,7 +584,11 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
     if kind in ("image", "animated_image"):
         found = capture_module.read(path)
-        out.unreadable = found.unreadable
+        # First complaint stands: an animated image was already probed
+        # above, and the capture read's silence must not erase why the
+        # container reader could not read it -- duration would stay NULL
+        # with nothing saying why.
+        out.unreadable = out.unreadable or found.unreadable
         if found.orientation in capture_module.TRANSPOSED:
             # The decode reports the stored frame; the tag says to turn it a
             # quarter. Storing the stored size files every portrait photograph

@@ -248,7 +248,7 @@ def test_the_image_page_answers_in_one_query(library):
         duration,
         asked_for_width,
         checkpoint,
-        loras,
+        missing_since,
         prompt,
         seed,
         fields,
@@ -261,7 +261,10 @@ def test_the_image_page_answers_in_one_query(library):
     assert (width, height) == (16, 16), "the file does not know its own size"
     assert asked_for_width == 832, "the recipe's request is not readable beside it"
     assert checkpoint == "dreamshaper_8"
-    assert loras == "filmGrain"
+    assert missing_since is None, "a present file's page says so from the same row"
+    # One row per LoRA -- the group_concat column this replaced could not
+    # carry a name holding a comma, and the page never read it anyway.
+    assert pages.file_loras(conn, file_id) == ["filmGrain"]
     assert prompt.startswith("a brass diving helmet")
     assert seed == 4242
     assert fields > 0, "the parsed long tail is not reachable from the page"
@@ -689,6 +692,27 @@ def test_the_entity_layer_queries_do_not_scan_the_library(library):
     assert_no_growing_scan(conn, pages.FILE_LORAS, (library["first"],))
     assert_no_growing_scan(conn, pages.DUPE_GROUPS, (120,), aggregate=True)
     assert_no_growing_scan(conn, pages.DUPE_COPIES, (library["first"], 120))
+
+
+def test_a_missing_copy_leaves_the_shelf_and_the_page_agreeing(library):
+    """/dupes counted every member of a group -- missing ones included --
+    while the picture page lists only present twins: the shelf said three
+    bodies, the page showed one. Present members only, both routes, per
+    the repo's own "the two routes cannot drift apart" doctrine."""
+    conn = library["conn"]
+    a, b, c = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id LIMIT 3")]
+    for member, is_best in ((a, 1), (b, 0), (c, 0)):
+        conn.execute(
+            "INSERT INTO derived_dupe_group(file_id, group_id, distance, threshold, is_best, computed_at)"
+            " VALUES(?, ?, ?, 4, ?, 0)",
+            (member, a, 0 if member == a else 2, is_best),
+        )
+    conn.execute("UPDATE file SET missing_since = 1.0 WHERE id = ?", (c,))
+    shelf = pages.dupe_groups(conn)
+    told = pages.dupe_copies(conn, a)
+    assert [row[2] for row in shelf] == [len(told) + 1], (
+        f"the shelf counts {[row[2] for row in shelf]} while the page lists {len(told)} twins"
+    )
 
 
 def test_a_person_is_shown_across_the_folders_they_are_in(library):

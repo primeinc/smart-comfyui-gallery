@@ -236,3 +236,58 @@ def test_the_verify_job_finds_bytes_changed_behind_the_librarys_back(db, tmp_pat
         ).fetchone()[0]
         == 0
     )
+
+
+def _scanned_file_without_a_hash(db, tmp_path) -> int:
+    """One real scanned file whose row carries no content hash."""
+    from db import library
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    (root / "ghost.png").write_bytes(b"\x89PNG-ghost")
+    root_id = library.add_root(db, str(root), "library", 0.0)
+    scan.scan(db, root_id, str(root), 0.0)
+    db.execute("UPDATE file SET content_sha256 = NULL")
+    return db.execute("SELECT id FROM file").fetchone()[0]
+
+
+def test_an_unknown_derive_fails_the_item_by_name_never_runs_a_guess(db, tmp_path):
+    """The 'hash' dispatch fell through: any unrecognized derive value ran
+    the integrity sweep -- a DIFFERENT job -- over items that legitimately
+    include files with no recorded sha, and the sweep's mismatch message
+    sliced that NULL: TypeError, which is outside ITEM_FAILURES, so the
+    worker turn died, the job stayed running, and the lease cycled the
+    crash forever. A corrupted payload is an item finding, by name."""
+    file_id = _scanned_file_without_a_hash(db, tmp_path)
+    job_id = jobs.submit(db, "hash", 0.0, payload={"derive": "prceptual"}, items=[file_id])
+    turn = runner.run_next(db, "w1", 1.0)
+    assert turn == {"job": job_id, "state": "done", "did": 1, "failed": 1}
+    (said,) = db.execute("SELECT error FROM job_item WHERE job_id = ? AND item_id = ?", (job_id, file_id)).fetchone()
+    assert "prceptual" in said, f"the item must name the bad payload, not whatever job ran instead: {said}"
+
+
+def test_the_integrity_sweep_names_a_file_with_no_recorded_hash(db, tmp_path):
+    """A bare 'hash' job reaching a sha-less row is a finding about the
+    row -- there is nothing to verify against -- never the TypeError crash
+    loop the message slice used to raise."""
+    file_id = _scanned_file_without_a_hash(db, tmp_path)
+    job_id = jobs.submit(db, "hash", 0.0, items=[file_id])
+    turn = runner.run_next(db, "w1", 1.0)
+    assert turn == {"job": job_id, "state": "done", "did": 1, "failed": 1}
+    (said,) = db.execute("SELECT error FROM job_item WHERE job_id = ? AND item_id = ?", (job_id, file_id)).fetchone()
+    assert "no recorded hash" in said
+
+
+def test_a_degenerate_dupe_radius_is_refused_at_submit(db):
+    """Two random 64-bit hashes disagree on 32 bits on average, so radius
+    32 admits the average unrelated pair: range_search materializes the
+    O(n^2) all-pairs result, and MemoryError is not an item failure -- the
+    job wedges into the same lease-cycling crash loop. The dial stops
+    before the cliff, at submit, where a bad value is a refused request."""
+    from db import settings
+
+    settings.put(db, "dupe_threshold", "32")
+    with pytest.raises(ValueError, match="31"):
+        runner.submit_dupes(db, 0.0)
+    settings.put(db, "dupe_threshold", "31")
+    assert runner.submit_dupes(db, 0.0) > 0

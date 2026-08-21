@@ -94,13 +94,12 @@ def picture_page(state: State, slug: str) -> dict | Redirect:
         told = pages.picture(conn, file_id)
         if told is None:
             raise NotFoundException(f"/i/{slug} has no file row")
-        name, folder, width, height, duration, asked_w, checkpoint, _loras_csv, prompt, seed, fields = told
-        away = conn.execute("SELECT missing_since FROM file WHERE id = ?", (file_id,)).fetchone()
+        name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields = told
         return {
             "slug": slug,
             "name": name,
             "folder": folder,
-            "present": away is not None and away[0] is None,
+            "present": missing_since is None,
             "width": width,
             "height": height,
             "duration": duration,
@@ -294,11 +293,12 @@ class AlbumEntry:
 
 
 def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool) -> dict:
-    route = f"/t/{slug}/{'add' if adding else 'remove'}"
     conn = _connect(state.db_path)
     try:
         collection_id, live_album = _resolved(conn, "collection", slug, "/t")
-        file_id, live_file = _resolved(conn, "file", data.file, route)
+        # The file resolves at its own address: a 404 that says
+        # "no file at /t/keepers/add/nope" names a place nothing lives at.
+        file_id, live_file = _resolved(conn, "file", data.file, "/i")
         try:
             if adding:
                 authored.add_to_collection(conn, collection_id, file_id, time.time())
@@ -583,8 +583,7 @@ def _file_at(conn, slug: str, where: str) -> tuple[int, str] | str:
         live = naming.entity_slug(conn, file_id)
         if live is not None:
             return live[1]
-    row = conn.execute("SELECT missing_since FROM file WHERE id = ?", (file_id,)).fetchone()
-    if row is None or row[0] is not None:
+    if pages.file_present(conn, file_id) is not True:
         raise NotFoundException(f"{where}/{slug} is not on disk right now")
     path = detect.path_of(conn, file_id)
     if not os.path.isfile(path):

@@ -653,7 +653,11 @@ def test_albums_are_made_and_served_through_the_application(served):
 
     assert client.post("/albums", json={"name": "   "}).status_code == 400
     assert client.post("/albums", json={"name": "Q", "kind": "smart"}).status_code == 400
-    assert client.post("/t/keepers/add", json={"file": "nope"}).status_code == 404
+    turned_away = client.post("/t/keepers/add", json={"file": "nope"})
+    assert turned_away.status_code == 404
+    assert "/i/nope" in turned_away.json()["detail"], (
+        "the 404 names the file at its own address -- /t/keepers/add/nope is an address nothing lives at"
+    )
     assert client.get("/t/lost").status_code == 404
 
     # A name collision suffixes, never steals.

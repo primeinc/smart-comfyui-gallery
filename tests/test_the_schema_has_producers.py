@@ -213,6 +213,120 @@ def test_detection_records_perceptual_hashes_as_a_byproduct(db, a_library, tmp_p
     assert row[1] is not None
 
 
+def test_a_byproduct_on_an_unhashed_file_is_not_born_stale(db, a_library, tmp_path):
+    """harvest computes the sha its derived rows key their staleness on
+    when the file row has none -- and then threw the computation away:
+    every byproduct recorded before scan hashed the file read as
+    permanently stale (`source_sha256 IS NOT content_sha256` against
+    NULL), recomputed by every sweep until an unrelated scan happened to
+    write the sha. The computed sha is a fact about the file; it lands on
+    the file row in the same transaction."""
+    from PIL import Image
+
+    from db import detect
+
+    path = tmp_path / "early.png"
+    Image.effect_noise((64, 64), 35).convert("RGB").save(path)
+
+    class NothingFound:
+        model_id = "test/none"
+        model_version = "0"
+
+        def detect(self, image):
+            return []
+
+    db.execute("UPDATE file SET content_sha256 = NULL WHERE id = ?", (a_library["file"],))
+    detect.harvest(db, NothingFound(), a_library["file"], path, NOW)
+    assert derived.stale(db, "derived_file_hash") == [], "the byproduct hash was born stale"
+    (persisted,) = db.execute("SELECT content_sha256 FROM file WHERE id = ?", (a_library["file"],)).fetchone()
+    assert persisted is not None, "the computed sha was thrown away instead of recorded"
+
+
+def _unwired(tables: set[str]) -> list[str]:
+    """Derived tables whose INSERT nobody outside db/derived.py can reach.
+
+    Two ways to be wired: the INSERT lives outside db/derived.py (a job
+    handler writing directly), or it lives in a db/derived.py writer that
+    some other runtime module calls. A writer with no caller is how
+    derived_media_sample shipped -- storage wearing a producer's name.
+    """
+    import ast
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    derived_source = (root / "db" / "derived.py").read_text(encoding="utf-8")
+    module = ast.parse(derived_source)
+    functions = [node for node in ast.walk(module) if isinstance(node, ast.FunctionDef)]
+    named = {node.name for node in functions}
+    writers: dict[str, set[str]] = {}
+    callers: dict[str, set[str]] = {}
+    for node in functions:
+        body = ast.get_source_segment(derived_source, node) or ""
+        for table in tables:
+            if f"INTO {table}" in body:
+                writers.setdefault(table, set()).add(node.name)
+        for call in ast.walk(node):
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id in named:
+                callers.setdefault(call.func.id, set()).add(node.name)
+
+    def reachers(direct: set[str]) -> set[str]:
+        """Every derived.py function from which an INSERT is reachable."""
+        reached = set(direct)
+        grew = True
+        while grew:
+            grew = False
+            for callee in tuple(reached):
+                for caller in callers.get(callee, ()):
+                    if caller not in reached:
+                        reached.add(caller)
+                        grew = True
+        return reached
+
+    elsewhere = "\n".join(
+        source.read_text(encoding="utf-8")
+        for package in ("db", "vision", "sg_web")
+        for source in sorted((root / package).glob("*.py"))
+        if source.name != "derived.py"
+    )
+    unreached = []
+    for table in sorted(tables):
+        direct = writers.get(table)
+        if direct is None:
+            if f"INTO {table}" not in elsewhere:
+                unreached.append(f"{table}: no INSERT anywhere in db/, vision/, sg_web/")
+        elif not any(f".{writer}(" in elsewhere for writer in reachers(direct)):
+            unreached.append(f"{table}: writer {sorted(direct)} called by nothing outside db/derived.py")
+    return unreached
+
+
+#: Declared reserved, one decision per line -- the honest attachment
+#: points for work that does not exist yet. Wiring one up MUST remove it
+#: here, or the gate below fails the other way.
+_DECLARED_RESERVED = {
+    # The unified-FAISS representation pipeline's landing zone: embeddings
+    # become rows the day a typed-representation job produces them.
+    "derived_embedding": "derived_embedding: writer ['add_embedding'] called by nothing outside db/derived.py",
+    # Captions, OCR, tags -- the 'annotate' job kind exists in the schema
+    # CHECK; the job that writes these rows does not exist yet.
+    "derived_annotation": "derived_annotation: writer ['annotate'] called by nothing outside db/derived.py",
+}
+
+
+def test_every_derived_table_has_a_producer_something_actually_calls(db):
+    """The general gate behind the derived_media_sample incident: a
+    derived table is a claim that the running system can produce those
+    rows, and a table whose writer nobody invokes is schema-reserved
+    capability wearing a producer's name."""
+    tables = {
+        row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived%'")
+    }
+    assert tables, "the schema lost its derived namespace?"
+    assert _unwired(tables) == sorted(_DECLARED_RESERVED.values()), (
+        "either a producer came unwired, or a reserved table got wired and its _DECLARED_RESERVED line must be removed"
+    )
+    # Control: the gate must be able to fail -- a table nothing writes.
+    assert _unwired({"derived_nothing_writes_this"}) != [], "the gate cannot see an unwired table"
+
+
 # --- the rebuild contract --------------------------------------------------
 
 
@@ -1386,6 +1500,75 @@ def test_a_refiner_pass_does_not_report_the_pass_that_was_thrown_away(db, a_libr
         28,
         "euler",
     ), "it read the pass whose output was discarded"
+
+
+def test_a_swarmui_refiner_is_checkpoint_weights_in_the_refiner_role(db, a_library, tmp_path):
+    """Using a model as a refiner is a different fact from using it as the
+    base -- the ROLE says which -- but the artifact row says what the thing
+    IS: checkpoint weights. Ingest passed the role straight through as the
+    artifact kind, which the kind CHECK refuses, so every SwarmUI render
+    carrying `refinermodel` died as an IntegrityError blamed on the file.
+    The schema's own role-match trigger states the mapping (schema.sql:
+    role 'refiner' attaches kind 'checkpoint')."""
+    payload = json.dumps(
+        {
+            "sui_image_params": {
+                "prompt": "a harbour at dusk",
+                "model": "sd_xl_base_1.0",
+                "refinermodel": "sd_xl_refiner_1.0",
+                "seed": 7,
+                "steps": 20,
+                "cfgscale": 7.0,
+                "width": 1024,
+                "height": 1024,
+                "swarm_version": "0.9.8.1",
+            },
+            "sui_models": [
+                {"name": "sd_xl_base_1.0.safetensors", "param": "model", "hash": "0xaa"},
+                {"name": "sd_xl_refiner_1.0.safetensors", "param": "refinermodel", "hash": "0xbb"},
+            ],
+        }
+    )
+    info = PngInfo()
+    info.add_text("parameters", payload)
+    path = tmp_path / "refined.png"
+    Image.new("RGB", (32, 32), (30, 40, 60)).save(path, pnginfo=info)
+
+    file_id = _ingest_comfy(db, a_library, path)
+    rows = db.execute(
+        "SELECT fa.role, a.kind, a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
+        " WHERE fa.file_id = ? ORDER BY fa.role",
+        (file_id,),
+    ).fetchall()
+    assert ("refiner", "checkpoint", "sd_xl_refiner_1.0.safetensors") in rows, rows
+    assert ("checkpoint", "checkpoint", "sd_xl_base_1.0.safetensors") in rows, rows
+
+
+def test_a_probe_complaint_on_an_animated_image_survives_the_capture_read(db, a_library, tmp_path, monkeypatch):
+    """An animated image is read twice -- the container probe for duration
+    and frame facts, Pillow for capture facts -- and the second read's
+    silence overwrote the first's complaint: `unreadable` went back to
+    None while duration stayed NULL, and nothing said why. The first
+    complaint stands; absence never overwrites presence."""
+    from db import probe as probe_module
+
+    path = tmp_path / "flip.gif"
+    frames = [Image.new("RGB", (16, 16), shade) for shade in ((10, 10, 10), (200, 200, 200))]
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=100)
+
+    monkeypatch.setattr(
+        probe_module, "read", lambda _p: probe_module.Probed(unreadable="the container reader choked on this")
+    )
+    file_id = scan.mint(db, "file", path.stem)
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, ?, 'animated_image', 10, 0, ?, ?)",
+        (file_id, a_library["folder"], path.name, NOW, NOW),
+    )
+    result = ingest.one(db, file_id, path, NOW)
+    assert result.unreadable == "the container reader choked on this", (
+        f"the capture read silenced the probe's complaint: {result.unreadable!r}"
+    )
 
 
 def test_a_prompt_routed_through_another_node_is_still_found(db, a_library, tmp_path):

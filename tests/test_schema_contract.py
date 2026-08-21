@@ -1569,6 +1569,31 @@ def test_the_drift_check_sees_inside_string_literals(tmp_path):
     assert drift(respaced) == [], "token spacing is not drift"
 
 
+def test_the_squeeze_survives_an_apostrophe_in_a_comment():
+    """A DDL comment's apostrophe ("the group's seed") flipped the old
+    quote-parity split, so every literal downstream of it was misread as
+    plain SQL and its internal spacing folded -- the exact false negative
+    the literal-aware comparator exists to prevent, alive again for 14
+    shipped literals that sit after odd-apostrophe comment regions."""
+    from db.build import _squeezed
+
+    said = "CREATE TABLE t ( -- the group's seed\n  x TEXT CHECK (x = 'a  b'))"
+    assert _squeezed(said) != _squeezed(said.replace("'a  b'", "'a b'")), (
+        "a literal changed behind a commented apostrophe was folded into equality"
+    )
+    assert _squeezed(said) == _squeezed(said.replace("  x TEXT", " x  TEXT")), "token spacing is not drift"
+
+
+def test_the_squeeze_keeps_comment_ends_and_quoted_names():
+    """A line comment ends at its newline: folding that newline away would
+    read "-- note\\n+ 2" and "-- note + 2" -- different SQL -- as equal.
+    And a double-quoted name's spacing is content, same as a literal's."""
+    from db.build import _squeezed
+
+    assert _squeezed("SELECT 1 -- note\n+ 2") != _squeezed("SELECT 1 -- note + 2")
+    assert _squeezed('CREATE TABLE "a  b" (x)') != _squeezed('CREATE TABLE "a b" (x)')
+
+
 def test_the_drift_check_sees_a_wrong_stamp(tmp_path):
     """Control for the half it could not see. `objects()` reads sqlite_master
     only, so a file carrying the wrong version -- the case the stamps exist

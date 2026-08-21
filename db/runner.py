@@ -49,6 +49,8 @@ def _verify_item(conn, file_id: int, payload: dict, now: float) -> None:
     stored = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     if stored is None:
         raise LookupError(f"file {file_id} left the library mid-job")
+    if stored[0] is None:
+        raise LookupError(f"file {file_id} has no recorded hash to verify against")
     actual = scan.sha256_of(detect.path_of(conn, file_id))
     if actual != stored[0]:
         raise ValueError(f"bytes changed behind the library's back: recorded {stored[0][:12]}, found {actual[:12]}")
@@ -81,11 +83,13 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
 def submit_phash(conn, now: float) -> int:
     """Perceptual hashes for every present picture, as one job.
 
-    The backfill for a library that never ran detection -- detection
-    records the same hashes as a byproduct of its decoded frames. Rides
-    the schema's 'hash' kind with a payload the handler dispatches on:
-    both jobs are about what a file's content IS, one verifying bytes,
-    one fingerprinting pixels.
+    The backfill for a library that never ran detection -- and for every
+    video even when it did: detection records hashes as a byproduct only
+    for whole still frames (a video's frames are samples, and a sample
+    hash is not a file hash), so videos are fingerprinted here or not at
+    all. Rides the schema's 'hash' kind with a payload the handler
+    dispatches on: both jobs are about what a file's content IS, one
+    verifying bytes, one fingerprinting pixels.
     """
     items = [
         row[0]
@@ -129,8 +133,12 @@ def submit_dupes(conn, now: float) -> int:
         threshold = int(raw)
     except ValueError as bad:
         raise ValueError(f"dupe_threshold must be a number of bits, not {raw!r}") from bad
-    if not 0 <= threshold <= 64:
-        raise ValueError(f"dupe_threshold must be 0..64 bits, not {threshold}")
+    # 31, not 64: two unrelated 64-bit hashes disagree on 32 bits on
+    # average, so radius 32 admits the average random pair -- range_search
+    # would materialize the O(n^2) all-pairs result and wedge the job on a
+    # MemoryError no item failure catches. The dial stops before the cliff.
+    if not 0 <= threshold <= 31:
+        raise ValueError(f"dupe_threshold must be 0..31 bits, not {threshold}: at 32 random pairs match")
     return jobs.submit(conn, "hash", now, payload={"derive": "groups", "threshold": threshold}, items=[0])
 
 
@@ -157,12 +165,17 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
     unsigned = np.array([row[1] & 0xFFFFFFFFFFFFFFFF for row in rows], dtype=np.uint64)
     packed = np.ascontiguousarray(unsigned.astype(">u8").view(np.uint8).reshape(-1, 8))
+    # The flag picks WHICH faiss package the one process-wide import
+    # loads; IndexBinaryFlat itself has no GPU path in any build, so the
+    # binary space runs on CPU either way.
     faiss = import_faiss(gpu=settings_module.flag(conn, "faiss_gpu"))
-    # Flat, per upstream's own guidance: exact results want Flat, and the
-    # index is 8 bytes/vector -- a million pictures is 8MB of RAM
+    # Flat, per upstream's own guidance: exact results want Flat
     # (facebookresearch/faiss.wiki Guidelines-to-choose-an-index.md, "Do
-    # you need exact results? Then Flat"). IndexBinaryIVF is the growth
-    # path past the ~10M mark, not before.
+    # you need exact results? Then Flat"). The index is 8 bytes/vector,
+    # but the real growth cost is the all-pairs range_search and the
+    # Python walk over every match -- quadratic in matches, which the
+    # 0..31 radius cap keeps proportional to true duplicates.
+    # IndexBinaryIVF is the growth path past the ~10M mark, not before.
     index = faiss.IndexBinaryFlat(64)
     index.add(packed)
     # range_search's radius is exclusive: distance < radius, so +1 makes
@@ -212,12 +225,15 @@ def _hash_item(conn, file_id: int, payload: dict, now: float) -> None:
     """The 'hash' kind's two modes, told apart by payload: a bare job is
     the integrity sweep it always was, so jobs queued before the payload
     existed keep meaning what they meant."""
-    if payload.get("derive") == "perceptual":
+    derive = payload.get("derive")
+    if derive == "perceptual":
         _perceptual_item(conn, file_id, payload, now)
-    elif payload.get("derive") == "groups":
+    elif derive == "groups":
         _dupe_groups_item(conn, file_id, payload, now)
-    else:
+    elif derive is None:
         _verify_item(conn, file_id, payload, now)
+    else:
+        raise ValueError(f"unknown derive {derive!r} -- refusing to guess which job this is")
 
 
 def submit_ingest(conn, now: float) -> int:

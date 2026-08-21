@@ -11,18 +11,24 @@ So this is where a page's question lives, and the tests call these rather
 than restating them. That is also what makes the plan check mean anything:
 the plan being asserted is the plan the application will run.
 
-Two rules hold across all of them.
+Three rules hold across all of them.
 
 **An address is resolved before the page is read, never inside it.** Joining
 `entity` to match a slug inside the page query gives the planner a filter it
 must reach through the file table, so it drives from the wrong end and sorts
 the result -- measured, `SCAN f USING INDEX file_added` plus a temp B-tree on
-a query that wants one folder. `resolve` does the lookup; the rest take ids.
+a query that wants one folder. `db/naming.py` resolve does the lookup; the
+queries here take ids.
 
 **Ordering follows an index or it follows the join key.** A page that sorts
 its whole result set costs the same as one that scans, and on the checkpoint
 most of a library was made with, "its files sorted by name" is most of the
 library sorted by name.
+
+**An index page may aggregate; a listing may not.** A shelf that counts a
+whole library is a summary, and its GROUP BY may build a TEMP B-TREE -- those
+queries pass `aggregate=True` to the plan gate. A bare scan of a growing
+table is never allowed, exemption or not.
 """
 
 from __future__ import annotations
@@ -51,9 +57,7 @@ ONE_PICTURE = """
       (SELECT g.width FROM generation g WHERE g.file_id = f.id) AS asked_for_width,
       (SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id
         WHERE fa.file_id = f.id AND fa.role = 'checkpoint') AS checkpoint,
-      (SELECT group_concat(a.name) FROM file_artifact fa
-         JOIN artifact a ON a.id = fa.artifact_id
-        WHERE fa.file_id = f.id AND fa.role = 'lora') AS loras,
+      f.missing_since,
       (SELECT p.text FROM generation g JOIN prompt p ON p.id = g.prompt_id
         WHERE g.file_id = f.id) AS prompt,
       (SELECT g.seed FROM generation g WHERE g.file_id = f.id) AS seed,
@@ -81,8 +85,19 @@ NEIGHBOUR = (
 )
 
 
+#: Presence for the byte-serving guard, asked here so routes carry no
+#: SQL of their own.
+FILE_PRESENT = "SELECT missing_since IS NULL FROM file WHERE id = ?"
+
+
 def picture(conn, file_id: int):
     return conn.execute(ONE_PICTURE, (file_id,)).fetchone()
+
+
+def file_present(conn, file_id: int) -> bool | None:
+    """True = present, False = marked missing, None = no such row."""
+    row = conn.execute(FILE_PRESENT, (file_id,)).fetchone()
+    return None if row is None else bool(row[0])
 
 
 def fields_of(conn, file_id: int):
@@ -352,10 +367,13 @@ def person_across_folders(conn, person_id: int, run_id: int | None = None):
 
 #: Every group of perceptual copies, its best face forward and its count.
 #: An index page over a summary -- the aggregate exemption, like the
-#: shelves. Only groups whose best member is still present are shown.
+#: shelves. Present members only, on both sides: a group whose best went
+#: missing is not shown, and a missing member is not counted -- the same
+#: convention DUPE_COPIES holds, so the shelf and the page agree.
 DUPE_GROUPS = (
     "SELECT e.slug, f.name, count(*) AS copies FROM derived_dupe_group best"
     "  JOIN derived_dupe_group member ON member.group_id = best.group_id"
+    "  JOIN file mf ON mf.id = member.file_id AND mf.missing_since IS NULL"
     "  JOIN file f ON f.id = best.file_id AND f.missing_since IS NULL"
     "  JOIN entity e ON e.id = best.file_id"
     " WHERE best.is_best = 1"
