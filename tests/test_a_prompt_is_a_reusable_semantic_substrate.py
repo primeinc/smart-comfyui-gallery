@@ -646,7 +646,7 @@ def test_written_versus_run_is_a_claim_about_a_member_never_a_boundary():
     document, sha = _snapshot(members)
     planner = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity())
     plan = planner.plan(document, sha)
-    assert plan["v"] == 3
+    assert plan["v"] == planning.FORMAT_VERSION
     claims = {c["kind"]: c for c in plan["claims"]}
     assert claims["prompt_rewrite"]["evidence_refs"] == ["member-001:generation.prompts"]
     assert claims["prompt_rewrite"]["facts"]["members"] == 1
@@ -785,7 +785,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20]
+    assert migrate.migrate(path) == [18, 19, 20, 21]
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1060,7 +1060,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20]
+    assert migrate.migrate(path) == [18, 19, 20, 21]
     conn = connect.connect(str(path))
     try:
         held = dict(

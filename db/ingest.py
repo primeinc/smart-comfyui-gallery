@@ -599,8 +599,8 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
         if moving is not None and moving != (kind == "animated_image"):
             kind = "animated_image" if moving else "image"
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
-    if kind in ("image", "animated_image"):
-        found = capture_module.read(path)
+    if kind in ("image", "animated_image", "video"):
+        found = capture_module.read(path) if kind != "video" else capture_module.read_video(path)
         # First complaint stands: an animated image was already probed
         # above, and the capture read's silence must not erase why the
         # container reader could not read it -- duration would stay NULL

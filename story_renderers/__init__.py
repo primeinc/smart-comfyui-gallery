@@ -15,4 +15,4 @@ different bytes for one request identity would make "same request, one
 document" a lie.
 """
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3

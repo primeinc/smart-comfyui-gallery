@@ -1924,6 +1924,137 @@ def _the_generator_orders_its_own_minute(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM derived_context_state")
 
 
+@step(20)
+def _a_camera_has_a_finer_clock_and_one_act_has_renditions(conn: sqlite3.Connection) -> None:
+    """v20 -> v21: `capture` gains the camera's own finer clock
+    (`subsec_ms`), its identity (`body_serial`) and the maker note's zone
+    (`maker_tz_offset_min`); the occurrence gains `act_key`, one act across
+    its renditions. Source rows are carried over column by column (the new
+    ones are filled by the next ingest); derived rows are dropped and
+    rebuilt by the context job. DDL is schema.sql's text VERBATIM.
+    """
+    conn.execute("ALTER TABLE capture RENAME TO capture_v20")
+    conn.execute("DROP INDEX IF EXISTS capture_when")
+    conn.execute("DROP INDEX IF EXISTS capture_where")
+    conn.execute(
+        """CREATE TABLE capture (
+    file_id       INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    captured_at   REAL,          -- EXIF DateTimeOriginal; NOT file mtime
+    tz_offset_min INTEGER,       -- OffsetTimeOriginal, so "the viewer's day" is answerable
+    iso           INTEGER,
+    f_number      REAL,
+    exposure_time REAL,          -- seconds
+    focal_length  REAL,          -- mm
+    focal_35mm    REAL,
+    orientation   INTEGER,
+    gps_lat       REAL,
+    gps_lon       REAL,
+    gps_alt       REAL,
+    -- the camera's finer clock and its own identity: SubSecTimeOriginal as
+    -- milliseconds, BodySerialNumber, and the clock's zone from the maker
+    -- note when OffsetTimeOriginal is absent (Canon TimeInfo)
+    subsec_ms           INTEGER CHECK (subsec_ms IS NULL OR subsec_ms BETWEEN 0 AND 999),
+    body_serial         TEXT,
+    maker_tz_offset_min INTEGER,
+    parsed_at     REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, f_number, exposure_time, focal_length,"
+        " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, parsed_at)"
+        " SELECT file_id, captured_at, tz_offset_min, iso, f_number, exposure_time, focal_length,"
+        " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, parsed_at FROM capture_v20"
+    )
+    conn.execute("DROP TABLE capture_v20")
+    conn.execute("CREATE INDEX capture_when ON capture(captured_at)")
+    conn.execute("CREATE INDEX capture_where ON capture(gps_lat, gps_lon) WHERE gps_lat IS NOT NULL")
+    conn.execute("CREATE INDEX capture_body ON capture(body_serial) WHERE body_serial IS NOT NULL")
+    for table in ("derived_event_file", "derived_event", "derived_event_run"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.execute("DROP TABLE derived_media_occurrence")
+    conn.execute(
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded','filename')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at)")
+    conn.execute("CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at)")
+    conn.execute(
+        "CREATE INDEX media_occurrence_act ON derived_media_occurrence(kind, act_key) WHERE act_key IS NOT NULL"
+    )
+    conn.execute("DELETE FROM derived_context_state")
+    # story_plan admits the capture planner; rows are kept, bytes intact
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE story_plan RENAME TO story_plan_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute("DROP INDEX IF EXISTS story_plan_snapshot")
+    conn.execute("DROP TRIGGER IF EXISTS story_plan_is_immutable")
+    conn.execute(
+        """CREATE TABLE story_plan (
+    id                 INTEGER PRIMARY KEY,
+    snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version     INTEGER NOT NULL,
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history','capture_history')),
+    planner_version    INTEGER NOT NULL,
+    similarity         TEXT NOT NULL,
+    similarity_version TEXT NOT NULL,
+    settings_hash      TEXT NOT NULL,
+    -- The REQUEST's identity, known before any model work: snapshot sha,
+    -- planner kind/version, engine name/version, settings. Deterministic
+    -- planning makes request -> document one-to-one, so the same request
+    -- asked twice reuses the row -- and the queued job -- without
+    -- embedding anything again. document_sha256 stays the OUTPUT identity.
+    request_sha256     TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
+    document_json      TEXT NOT NULL,
+    document_sha256    TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at         REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("INSERT INTO story_plan SELECT * FROM story_plan_old")
+    conn.execute("DROP TABLE story_plan_old")
+    conn.execute("CREATE INDEX story_plan_snapshot ON story_plan(snapshot_id, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_plan_is_immutable BEFORE UPDATE ON story_plan
+BEGIN
+  SELECT RAISE(ABORT,'a story plan is immutable; plan again under a new policy');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

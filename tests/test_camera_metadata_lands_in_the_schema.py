@@ -119,13 +119,23 @@ def test_a_frame_becomes_a_capture_row(db, a_file, tmp_path):
 
 
 def test_the_shutter_time_is_an_instant_when_the_zone_is_known(db, a_file, tmp_path):
-    """14:23 at +02:00 is 12:23 UTC, and must not depend on the reader's clock."""
+    """`captured_at` is the camera's wall clock -- 14:23:01, numbered as
+    UTC so it is the same number everywhere -- and the zone sits beside
+    it; the judge (db/when.py) makes 14:23 at +02:00 the instant 12:23Z,
+    never depending on the reader's clock."""
     path = photograph(tmp_path / "a.jpg", FUJI_BASE, FUJI_PHOTO)
     capture.store(db, a_file, capture.read(path), NOW, scan.mint)
     import datetime as dt
 
-    captured_at = stored(db, a_file)[0]
-    assert dt.datetime.fromtimestamp(captured_at, dt.UTC).isoformat() == ("2026-08-19T12:23:01+00:00")
+    from db import when
+
+    captured_at, tz = stored(db, a_file)[:2]
+    assert dt.datetime.fromtimestamp(captured_at, dt.UTC).isoformat() == ("2026-08-19T14:23:01+00:00")
+    told = when.judge_capture(
+        captured_at=captured_at, subsec_ms=None, tz_offset_min=tz, maker_tz_offset_min=None, mtime=None, btime=None
+    )
+    assert dt.datetime.fromtimestamp(told.instant_at, dt.UTC).isoformat() == ("2026-08-19T12:23:01+00:00")
+    assert told.local_at == captured_at
 
 
 def test_a_frame_with_no_zone_says_so_instead_of_guessing(db, a_file, tmp_path):

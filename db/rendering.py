@@ -94,7 +94,25 @@ class RenderRef:
 COMPATIBILITY: dict[tuple[str, int], dict[str, frozenset[int]]] = {
     ("template", 1): {"snapshot": frozenset({1}), "plan": frozenset({1, 2})},
     ("template", 2): {"snapshot": frozenset({1}), "plan": frozenset({2, 3})},
+    ("template", 3): {"snapshot": frozenset({1}), "plan": frozenset({2, 3, 4})},
 }
+
+
+def _acts_of(members: list[dict]) -> int:
+    """Members as acts: files sharing an act key are one act."""
+    keys = [(one.get("occurrence") or {}).get("act_key") for one in members]
+    return len({key for key in keys if key is not None}) + sum(1 for key in keys if key is None)
+
+
+def _capture_noun(snapshot: dict) -> tuple[str, str | None]:
+    """(singular noun, camera name agreed by every member or None)."""
+    cameras = {
+        one["name"]
+        for member in snapshot["members"]
+        for one in (member.get("capture") or {}).get("equipment") or []
+        if one["role"] == "captured_with"
+    }
+    return "photograph", (cameras.pop() if len(cameras) == 1 else None)
 
 
 class TemplateStoryRenderer:
@@ -102,7 +120,7 @@ class TemplateStoryRenderer:
     function of its two documents and the profile."""
 
     kind = "template"
-    version = 2
+    version = 3
 
     @property
     def reads(self) -> dict[str, frozenset[int]]:
@@ -136,28 +154,54 @@ class TemplateStoryRenderer:
         claims_by_id = {claim["id"]: claim for claim in plan["claims"]}
 
         day, one_day = _day_label(snapshot)
-        # a session is grouped by time and may mix tools: a tool is named
-        # only when every member agrees on it
-        tools = {(m.get("generation") or {}).get("tool") for m in snapshot["members"] if m.get("generation")}
-        tool = tools.pop() if len(tools) == 1 else None
-        what = f"{total} {tool} images" if tool else f"{formatting.count(total, 'generated image')}"
-        title = f"{what} from {day}" if day else what
-        groups = "phases" if sequenced else "prompt families"
-        count_groups = formatting.count(len(plan["phases"]), groups.removesuffix("s"), groups)
-        dek = f"{count_groups} across {formatting.count(total, 'generated image')}"
-        these = f"These {formatting.count(total, 'generated image')}"
-        summary = f"{these} fall into {count_groups}."
-        if day:
-            when = f"on {day}" if one_day else f"over {day}"
-            summary = f"{these} were generated {when} and fall into {count_groups}."
+        captured = plan["subject"]["kind"] == "capture_session"
+        if captured:
+            # a capture session is counted in ACTS: a RAW and its JPEG are
+            # one photograph; the camera is named only when every member
+            # agrees on it
+            noun, camera = _capture_noun(snapshot)
+            total = _acts_of(snapshot["members"])
+            what = f"{formatting.count(total, noun)}" + (f" with the {camera}" if camera else "")
+            title = f"{what} from {day}" if day else what
+            groups = "phases" if sequenced else "groups"
+            count_groups = formatting.count(len(plan["phases"]), groups.removesuffix("s"), groups)
+            dek = f"{count_groups} across {formatting.count(total, noun)}"
+            these = f"These {formatting.count(total, noun)}"
+            summary = f"{these} fall into {count_groups}."
+            if day:
+                when = f"on {day}" if one_day else f"over {day}"
+                summary = f"{these} were taken {when} and fall into {count_groups}."
+        else:
+            # a session is grouped by time and may mix tools: a tool is named
+            # only when every member agrees on it
+            tools = {(m.get("generation") or {}).get("tool") for m in snapshot["members"] if m.get("generation")}
+            tool = tools.pop() if len(tools) == 1 else None
+            what = f"{total} {tool} images" if tool else f"{formatting.count(total, 'generated image')}"
+            title = f"{what} from {day}" if day else what
+            groups = "phases" if sequenced else "prompt families"
+            count_groups = formatting.count(len(plan["phases"]), groups.removesuffix("s"), groups)
+            dek = f"{count_groups} across {formatting.count(total, 'generated image')}"
+            these = f"These {formatting.count(total, 'generated image')}"
+            summary = f"{these} fall into {count_groups}."
+            if day:
+                when = f"on {day}" if one_day else f"over {day}"
+                summary = f"{these} were generated {when} and fall into {count_groups}."
 
         sections = []
         if self.profile != "compact":
             for number, phase in enumerate(plan["phases"], start=1):
+                if captured:
+                    held = [members[ref] for ref in phase["member_refs"]]
+                    frames, files = _acts_of(held), len(held)
+                    structure = formatting.count(frames, "photograph")
+                    if files != frames:
+                        structure += f" ({formatting.count(files, 'file')})"
+                else:
+                    structure = formatting.count(len(phase["member_refs"]), "image")
                 blocks = [
                     {
                         "kind": "structure",
-                        "text": f"{formatting.count(len(phase['member_refs']), 'image')}.",
+                        "text": f"{structure}.",
                         "member_refs": list(phase["member_refs"]),
                     }
                 ]

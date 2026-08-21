@@ -276,7 +276,7 @@ def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_t
                 " WHERE e.kind = 'generation_session'"
             ).fetchall()
             assert sessions == [(5,)], "one session of five, at minute precision"
-            assert context.state(conn)[1] == 5
+            assert context.state(conn)[1] == context.POLICY_VERSION
             event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
             snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
             conn.commit()

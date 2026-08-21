@@ -41,6 +41,12 @@ PROFILES: dict[str, frozenset[str]] = {
             "artifact_difference",
             "prompt_evidence_missing",
             "prompt_rewrite",
+            "pause",
+            "lens_change",
+            "burst",
+            "equipment",
+            "renditions",
+            "video_clip",
         }
     ),
     "technical": frozenset(
@@ -55,6 +61,13 @@ PROFILES: dict[str, frozenset[str]] = {
             "seed_variation",
             "prompt_evidence_missing",
             "prompt_rewrite",
+            "pause",
+            "lens_change",
+            "burst",
+            "exposure_range",
+            "equipment",
+            "renditions",
+            "video_clip",
         }
     ),
     "compact": frozenset(),
@@ -76,6 +89,9 @@ class Context:
             for artifact in (member.get("generation") or {}).get("artifacts") or []:
                 if artifact["uuid"] == uuid:
                     return artifact["name"]
+            for one in (member.get("capture") or {}).get("equipment") or []:
+                if one["uuid"] == uuid:
+                    return one["name"]
         return f"an artifact ({uuid[:8]})"
 
     def member_count(self, phase: dict) -> int:
@@ -190,8 +206,78 @@ def _prompt_rewrite(claim: dict, phase: dict, ctx: Context) -> str:
     return told
 
 
+def _pause(claim: dict, phase: dict, ctx: Context) -> str:
+    return f"The camera was down for {formatting.duration(claim['facts']['gap_seconds'])} before this phase."
+
+
+def _lens_change(claim: dict, phase: dict, ctx: Context) -> str:
+    added = [ctx.artifact_name(uuid) for uuid in claim["facts"]["added"]]
+    removed = [ctx.artifact_name(uuid) for uuid in claim["facts"]["removed"]]
+    told = f"The lens changes here to {formatting.join_names(added)}"
+    if removed:
+        told += f", from {formatting.join_names(removed)}"
+    return told + "."
+
+
+def _burst(claim: dict, phase: dict, ctx: Context) -> str:
+    facts = claim["facts"]
+    told = f"A burst of {formatting.count(facts['frames'], 'frame')} in {formatting.duration(facts['span_seconds'])}"
+    if ctx.profile == "technical" and facts["frames_per_second"] is not None:
+        told += f" ({facts['frames_per_second']:g} frames per second)"
+    return told + "."
+
+
+def _exposure_range(claim: dict, phase: dict, ctx: Context) -> str:
+    facts = claim["facts"]
+    parts = []
+    if "iso" in facts:
+        parts.append(f"ISO {formatting.span(facts['iso'], lambda v: f'{v:g}')}")
+    if "f_number" in facts:
+        parts.append(formatting.span(facts["f_number"], lambda v: f"f/{v:g}"))
+    if "exposure_time" in facts:
+        parts.append(formatting.span(facts["exposure_time"], formatting.shutter))
+    if "focal_length" in facts:
+        parts.append(formatting.span(facts["focal_length"], lambda v: f"{v:g} mm"))
+    return "Exposure spans " + "; ".join(parts) + "."
+
+
+def _equipment(claim: dict, phase: dict, ctx: Context) -> str:
+    cameras = [ctx.artifact_name(uuid) for uuid in claim["facts"]["cameras"]]
+    lenses = [ctx.artifact_name(uuid) for uuid in claim["facts"]["lenses"]]
+    parts = []
+    if cameras:
+        parts.append(f"Shot with {formatting.join_names(cameras)}")
+    if lenses:
+        parts.append(("through " if cameras else "Shot through ") + formatting.join_names(lenses))
+    return " ".join(parts) + "."
+
+
+def _renditions(claim: dict, phase: dict, ctx: Context) -> str:
+    facts = claim["facts"]
+    return (
+        f"{formatting.count(facts['acts'], 'photograph')} here {formatting.plural_verb(facts['acts'], 'is', 'are')}"
+        f" kept as {formatting.count(facts['files'], 'file')}."
+    )
+
+
+def _video_clip(claim: dict, phase: dict, ctx: Context) -> str:
+    facts = claim["facts"]
+    verb = formatting.plural_verb(facts["clips"], "was", "were")
+    told = f"{formatting.count(facts['clips'], 'video clip')} {verb} recorded here"
+    if facts["seconds"] is not None:
+        told += f", {formatting.duration(facts['seconds'])} in all"
+    return told + "."
+
+
 #: The whole vocabulary. Resolution is by this mapping and nothing else.
 REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
+    "pause": _pause,
+    "lens_change": _lens_change,
+    "burst": _burst,
+    "exposure_range": _exposure_range,
+    "equipment": _equipment,
+    "renditions": _renditions,
+    "video_clip": _video_clip,
     "prompt_similarity": _prompt_similarity,
     "prompt_family": _prompt_family,
     "prompt_shift": _prompt_shift,

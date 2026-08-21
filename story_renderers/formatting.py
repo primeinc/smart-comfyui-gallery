@@ -85,6 +85,31 @@ def join_names(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+def duration(seconds: float) -> str:
+    """`1.5 s`, `4 min 12 s`, `2 h 5 min` -- the camera's own units."""
+    seconds = float(seconds)
+    if seconds < 60:
+        return f"{seconds:.1f} s" if seconds != int(seconds) else f"{int(seconds)} s"
+    minutes, rest = divmod(round(seconds), 60)
+    if minutes < 60:
+        return f"{minutes} min {rest} s" if rest else f"{minutes} min"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+
+
+def shutter(seconds: float) -> str:
+    """`1/250 s` below a second, `2 s` at or above."""
+    if seconds >= 1:
+        return f"{seconds:g} s"
+    return f"1/{round(1 / seconds):d} s" if seconds > 0 else "0 s"
+
+
+def span(pair: list, spell) -> str:
+    """`f/4` when both ends agree, `f/4` + EN DASH + `f/8` otherwise."""
+    low, high = pair
+    return spell(low) if low == high else f"{spell(low)}{EN_DASH}{spell(high)}"
+
+
 def plural_verb(n: int, singular: str, plural: str) -> str:
     """`appears` for one, `appear` for many."""
     return singular if n == 1 else plural

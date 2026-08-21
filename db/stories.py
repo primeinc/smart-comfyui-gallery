@@ -204,8 +204,8 @@ class CaptureEvidence:
         held: dict[int, dict] = {}
         for row in conn.execute(
             "SELECT file_id, captured_at, tz_offset_min, iso, f_number, exposure_time, focal_length,"
-            " focal_35mm, orientation, gps_lat, gps_lon, gps_alt FROM capture"
-            f" WHERE file_id IN ({_marks(file_ids)})",
+            " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, subsec_ms, body_serial, maker_tz_offset_min"
+            f" FROM capture WHERE file_id IN ({_marks(file_ids)})",
             file_ids,
         ):
             held[row[0]] = {
@@ -218,6 +218,9 @@ class CaptureEvidence:
                 "focal_35mm": row[7],
                 "orientation": row[8],
                 "gps": {"lat": row[9], "lon": row[10], "alt": row[11]} if row[9] is not None else None,
+                "subsec_ms": row[12],
+                "body_serial": row[13],
+                "maker_tz_offset_min": row[14],
                 "equipment": [],
             }
         if not held:
@@ -440,7 +443,7 @@ def _members(conn, subject: _Subject) -> list[dict]:
     rows = conn.execute(
         "SELECT ef.ordinal, f.id, e.uuid, f.content_sha256, f.kind, f.name,"
         " o.basis, o.local_at, o.instant_at, o.tz_offset_min, o.time_precision, o.certainty,"
-        " o.supports, o.conflicts, o.finished_at, o.estimated_at, o.source_order"
+        " o.supports, o.conflicts, o.finished_at, o.estimated_at, o.source_order, o.act_key, f.duration"
         " FROM derived_event_file ef"
         " JOIN file f ON f.id = ef.file_id"
         " JOIN entity e ON e.id = f.id"
@@ -457,6 +460,7 @@ def _members(conn, subject: _Subject) -> list[dict]:
             "content_sha256": row[3],
             "media_kind": row[4],
             "name": row[5],
+            "duration": row[18],
             "occurrence": {
                 "kind": subject.claim,
                 "basis": row[6],
@@ -470,6 +474,7 @@ def _members(conn, subject: _Subject) -> list[dict]:
                 "finished_at": row[14],
                 "estimated_at": row[15],
                 "source_order": row[16],
+                "act_key": row[17],
             }
             if row[6] is not None
             else None,

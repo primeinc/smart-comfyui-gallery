@@ -45,11 +45,27 @@ def _library(tmp) -> tuple:
         path = root / f"gen_{i}.png"
         Image.new("RGB", (12, 12), (40 + i * 30, 90, 140)).save(path, pnginfo=info)
         os.utime(path, (NOW + i * 60, NOW + i * 60))
-    for name in ("photo_a.png", "photo_b.png", "photo_c.png"):
+    # a camera writes the file as the shutter closes: photo_a's claim is
+    # NOW+12h at -10:00 (the instant NOW+22h), photo_b's NOW+13h with no
+    # zone (read on the host's clock); photo_c claims nothing
+    written = {
+        "photo_a.png": NOW + 22 * HOUR + 1,
+        "photo_b.png": _instant(NOW + 13 * HOUR) + 1,
+        "photo_c.png": NOW + 9 * HOUR,
+    }
+    for name, at in written.items():
         path = root / name
         Image.new("RGB", (12, 12), (200, 90, 140)).save(path)
-        os.utime(path, (NOW + 9 * HOUR, NOW + 9 * HOUR))
+        os.utime(path, (at, at))
     return tmp / "run", root
+
+
+def _instant(wall: float) -> float:
+    """The UTC instant whose HOST wall-clock reading is `wall`."""
+    import datetime
+
+    naive = datetime.datetime.fromtimestamp(wall, datetime.UTC).replace(tzinfo=None)
+    return naive.astimezone().timestamp()
 
 
 @pytest.fixture
@@ -111,7 +127,7 @@ def _raw(client) -> sqlite3.Connection:
 
 def test_two_time_concepts_and_every_date_names_its_basis(interpreted):
     """A camera claim with an offset yields both the wall clock and the
-    instant at full certainty; without the offset the wall clock STANDS
+    instant, corroborated by the file's write; without the offset the wall clock STANDS
     and the instant stays honestly absent -- a known human clock is
     never replaced by a filesystem time. Only claimless media fall to
     the filesystem, instants with no local story."""
@@ -128,12 +144,12 @@ def test_two_time_concepts_and_every_date_names_its_basis(interpreted):
         }
         origin, local, instant, offset, basis, certainty, precision, has_c, has_g = held["photo_a.png"]
         assert (origin, has_c, has_g) == ("mixed", 1, 1), "coexisting claims erase nothing"
-        assert (basis, certainty, offset, precision) == ("capture", 1.0, -600, "second")
+        assert (basis, certainty, offset, precision) == ("capture", 0.9, -600, "second")
         assert local == NOW + 12 * HOUR, "the wall clock is the local story"
         assert instant == (NOW + 12 * HOUR) - (-600 * 60), "the offset makes the instant knowable"
 
         origin, local, instant, offset, basis, certainty, precision, _c, _g = held["photo_b.png"]
-        assert (origin, basis, certainty, precision) == ("captured", "capture", 0.8, "second")
+        assert (origin, basis, certainty, precision) == ("captured", "capture", 0.9, "second")
         assert local == NOW + 13 * HOUR, "the known wall clock STANDS"
         assert instant is None, "an unzoned claim has no instant -- uncertainty is explicit, never fabricated"
         assert offset is None
@@ -179,7 +195,7 @@ def test_each_claim_is_its_own_occurrence(interpreted):
             )
         }
         local, instant, basis, certainty, precision = held[("photo_a.png", "capture")]
-        assert (basis, certainty, precision) == ("capture", 1.0, "second")
+        assert (basis, certainty, precision) == ("capture", 0.9, "second")
         assert (local, instant) == (NOW + 12 * HOUR, (NOW + 12 * HOUR) - (-600 * 60))
         local, instant, basis, certainty, precision = held[("photo_a.png", "generation")]
         assert (basis, certainty, precision) == ("embedded", 0.4, "day"), (
@@ -187,7 +203,7 @@ def test_each_claim_is_its_own_occurrence(interpreted):
         )
         assert (local, instant) == (1_685_577_600.0, None)
         local, instant, basis, certainty, precision = held[("photo_b.png", "capture")]
-        assert (certainty, instant) == (0.8, None), "an unzoned capture occurrence invents no instant"
+        assert (certainty, instant) == (0.9, None), "an unzoned capture occurrence invents no instant"
         assert held[("gen_0.png", "generation")][4] == "day"
         assert ("gen_1.png", "generation") not in held, "a claim that does not parse is no occurrence"
         assert ("photo_c.png", "capture") not in held, "no claim, no occurrence -- the filesystem is not an act"

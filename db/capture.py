@@ -9,12 +9,15 @@ did not exist.
 
 Three conversions here are the whole reason this cannot be a dict copy.
 
-**Time.** DateTimeOriginal is a wall clock with no zone. OffsetTimeOriginal
-carries the zone when the camera bothered to write one, and most do not. An
-absent offset is stored as NULL and the wall clock is read as UTC -- not
-because it is UTC, but because that is the only reading that gives the same
-number on every machine. NULL therefore means "this is a wall clock, not an
-instant", and anything that renders it must say so rather than convert it.
+**Time.** DateTimeOriginal is a wall clock with no zone. `captured_at` is
+ALWAYS that wall clock, numbered as if UTC -- not because it is UTC, but
+because that is the only reading that gives the same number on every
+machine. OffsetTimeOriginal carries the zone when the camera bothered to
+write one, and most do not; it is stored beside the wall clock as
+`tz_offset_min`, and the instant is `captured_at - tz_offset_min * 60`
+(db/when.py judge_capture). A NULL offset means "no instant is knowable
+from this file", and anything that renders it must say so rather than
+convert it.
 
 **Position.** GPS is three rationals and a letter: degrees, minutes,
 seconds, and N/S/E/W. The letter carries the sign, and altitude has a
@@ -25,6 +28,24 @@ hemisphere.
 **Numbers.** EXIF stores f/1.4 and 1/250s as pairs of integers. They reach
 the database as REAL, once, here -- rather than as strings that every caller
 re-parses slightly differently.
+
+**The camera's own finer clock.** SubSecTimeOriginal (0x9291) is the
+fraction of the second as digits ("17" is .17 s); a burst at six frames a
+second is six different fractions of one second, and without it six frames
+are one instant. BodySerialNumber (0xA431) names the body, so two files of
+one shutter press (RAW + JPEG) can be recognised as one act wherever they
+were copied. A Canon body that writes no OffsetTimeOriginal still writes
+its clock's zone in the MakerNote TimeInfo block (tag 0x35, int32s
+[size, zone minutes, city, DST]; refs/exiftool Canon.pm:1751, 6635) --
+the only zone evidence most 2010s bodies leave. Its offsets are relative
+to the host file's TIFF header, which Pillow's bare MakerNote bytes do
+not carry, so the block is read from the TIFF bytes themselves.
+
+**Video.** A camera's MOV carries the shot's clock in the container
+(QuickTime creation_time, make, model) and, on Canon bodies, a whole
+EXIF JPEG in the `CNTH/CNDA` atom (Canon.pm:9891) with the same
+exposure, serial and zone facts a still carries. `read_video` reads
+both, the atom's EXIF outranking the container's nominal-UTC clock.
 """
 
 from __future__ import annotations
@@ -32,7 +53,9 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import hashlib
+import io
 import math
+import struct
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -46,6 +69,8 @@ from .exif_labels import label_for
 _CLAIMED = {
     ExifTags.Base.DateTimeOriginal,
     ExifTags.Base.OffsetTimeOriginal,
+    ExifTags.Base.SubsecTimeOriginal,
+    ExifTags.Base.BodySerialNumber,
     ExifTags.Base.ISOSpeedRatings,
     ExifTags.Base.RecommendedExposureIndex,
     ExifTags.Base.FNumber,
@@ -113,6 +138,13 @@ class Capture:
     gps_alt: float | None = None
     camera: str | None = None
     lens: str | None = None
+    #: SubSecTimeOriginal as milliseconds; None when the body wrote none.
+    subsec_ms: int | None = None
+    #: BodySerialNumber, the body's own identity across files.
+    body_serial: str | None = None
+    #: The zone the camera's clock was set to, from the maker note when the
+    #: standard OffsetTimeOriginal is absent (Canon TimeInfo). Minutes east.
+    maker_tz_offset_min: int | None = None
     #: (key, value_text, value_num) for every tag that is not a column.
     params: list[tuple[str, str, float | None]] = field(default_factory=list)
     #: (slot, payload) for tags that are binary and stay binary.
@@ -207,18 +239,15 @@ def _offset_minutes(value) -> int | None:
         return None
 
 
-def _timestamp(value, offset_min) -> float | None:
-    """`YYYY:MM:DD HH:MM:SS` to epoch seconds.
-
-    Read as UTC when the file carries no offset. See the module docstring:
-    the alternative reads a different instant on every machine.
-    """
+def _timestamp(value) -> float | None:
+    """`YYYY:MM:DD HH:MM:SS` to a wall-clock epoch: the digits the camera
+    wrote, numbered as UTC. See the module docstring: the zone, when
+    known, is kept beside it, never folded into the number."""
     text = _text(value)
     if not text:
         return None
-    zone = dt.timezone(dt.timedelta(minutes=offset_min)) if offset_min is not None else dt.UTC
     try:
-        when = dt.datetime.strptime(text[:19], "%Y:%m:%d %H:%M:%S").replace(tzinfo=zone)
+        when = dt.datetime.strptime(text[:19], "%Y:%m:%d %H:%M:%S").replace(tzinfo=dt.UTC)
     except ValueError:
         return None
     return when.timestamp()
@@ -369,8 +398,90 @@ def read(path) -> Capture:
         return out
 
 
+def _subsec_ms(value) -> int | None:
+    """SubSecTime digits ("17", "170", "7") to milliseconds: the digits are
+    the fraction of the second, however many the body wrote."""
+    text = _text(value)
+    if not text or not text.strip().isdigit():
+        return None
+    digits = text.strip()[:3]
+    return int(digits.ljust(3, "0"))
+
+
+def _tiff_bytes(image: Image.Image, path) -> bytes | None:
+    """The TIFF-structured bytes that hold this image's EXIF, so offsets
+    inside the MakerNote can be followed: the APP1 payload after its
+    `Exif\0\0` header for a JPEG, the file itself for a TIFF-based RAW."""
+    held = image.info.get("exif")
+    if isinstance(held, bytes) and held:
+        return held[6:] if held.startswith(b"Exif\0\0") else held
+    if image.format in ("TIFF", "MPO", "CR2") or str(path).lower().endswith((".cr2", ".tif", ".tiff", ".nef", ".dng")):
+        try:
+            with open(path, "rb") as handle:
+                return handle.read()
+        except OSError:
+            return None
+    return None
+
+
+def _ifd(tiff: bytes, offset: int, endian: str) -> dict[int, tuple[int, int, int]]:
+    """One IFD as {tag: (type, count, value-or-offset word)}; empty on any
+    structural problem -- a truncated maker note is absence, not an error."""
+    entries: dict[int, tuple[int, int, int]] = {}
+    try:
+        n = struct.unpack_from(endian + "H", tiff, offset)[0]
+        if n > 4096:
+            return {}
+        for i in range(n):
+            tag, typ, count, word = struct.unpack_from(endian + "HHII", tiff, offset + 2 + i * 12)
+            entries[tag] = (typ, count, word)
+    except struct.error:
+        return {}
+    return entries
+
+
+def canon_time_zone(tiff: bytes | None) -> int | None:
+    """The camera clock's zone in minutes east of UTC, from Canon's
+    MakerNote TimeInfo (tag 0x35: int32s [size, TimeZone, TimeZoneCity,
+    DaylightSavings]; refs/exiftool Canon.pm:1751, 6635-6643). The maker
+    note is a bare IFD whose value offsets are relative to the TIFF
+    header, so it is followed here from the TIFF bytes. None when the
+    file is not TIFF-structured, has no maker note, or the block is
+    absent or unreadable."""
+    if not tiff or len(tiff) < 8:
+        return None
+    endian = {b"II": "<", b"MM": ">"}.get(tiff[:2])
+    if endian is None:
+        return None
+    try:
+        first = struct.unpack_from(endian + "I", tiff, 4)[0]
+    except struct.error:
+        return None
+    exif_ptr = _ifd(tiff, first, endian).get(0x8769)
+    if exif_ptr is None:
+        return None
+    maker = _ifd(tiff, exif_ptr[2], endian).get(0x927C)
+    if maker is None or maker[1] < 14:
+        return None
+    info = _ifd(tiff, maker[2], endian).get(0x35)
+    if info is None or info[0] != 4 or info[1] < 2:
+        return None
+    try:
+        size, zone = struct.unpack_from(endian + "ii", tiff, info[2])
+    except struct.error:
+        return None
+    if size < 8 or not -14 * 60 <= zone <= 14 * 60:
+        return None
+    return int(zone)
+
+
 def _read(path, out: Capture) -> Capture:
     with Image.open(path) as image:
+        return _read_image(image, path, out)
+
+
+def _read_image(image: Image.Image, path, out: Capture) -> Capture:
+    if True:
         exif = image.getexif()
         if not exif:
             return out
@@ -381,7 +492,10 @@ def _read(path, out: Capture) -> Capture:
         merged.update(photo)
 
         out.tz_offset_min = _offset_minutes(merged.get(ExifTags.Base.OffsetTimeOriginal))
-        out.captured_at = _timestamp(merged.get(ExifTags.Base.DateTimeOriginal), out.tz_offset_min)
+        out.captured_at = _timestamp(merged.get(ExifTags.Base.DateTimeOriginal))
+        out.subsec_ms = _subsec_ms(merged.get(ExifTags.Base.SubsecTimeOriginal))
+        out.body_serial = _text(merged.get(ExifTags.Base.BodySerialNumber))
+        out.maker_tz_offset_min = canon_time_zone(_tiff_bytes(image, path))
         # 0x8827 is int16u, so it cannot express an ISO above 65535 and a body
         # shooting higher writes 65535 there and the real figure in
         # RecommendedExposureIndex (int32u)
@@ -446,6 +560,72 @@ def _read(path, out: Capture) -> Capture:
     return out
 
 
+def read_video(path) -> Capture:
+    """A camera's video: the shot's clock and body from the container
+    (QuickTime creation_time, make, model -- via PyAV) and, on Canon
+    bodies, the full EXIF of the `CNTH/CNDA` thumbnail JPEG
+    (refs/exiftool Canon.pm:9891), which carries exposure, serial,
+    subsecond and zone exactly as a still does. The atom's EXIF outranks
+    the container clock: QuickTime's creation_time is nominally UTC but
+    a body writes its local clock there (the Z is a lie), while the
+    EXIF is the same unzoned wall clock every still uses."""
+    out = Capture()
+    atom = _canon_thumbnail(path)
+    if atom is not None:
+        try:
+            with Image.open(io.BytesIO(atom)) as image:
+                _read_image(image, path, out)
+        except (OSError, ValueError, Image.DecompressionBombError) as problem:
+            out.unreadable = f"{type(problem).__name__}: {problem}"
+    try:
+        import av
+        from av.error import FFmpegError
+
+        with av.open(str(path), "r", metadata_errors="replace") as container:
+            meta = dict(container.metadata or {})
+    except (FFmpegError, OSError, ValueError) as problem:
+        out.unreadable = out.unreadable or f"{type(problem).__name__}: {problem}"
+        return out
+    if out.captured_at is None:
+        out.captured_at = _quicktime_clock(meta.get("creation_time"))
+    if out.camera is None:
+        out.camera = _camera_name(meta.get("com.apple.quicktime.make"), meta.get("com.apple.quicktime.model"))
+    return out
+
+
+def _quicktime_clock(text) -> float | None:
+    """`2013-02-10T08:30:50.000000Z` read as a WALL clock (UTC-numbered),
+    the same reading every still's DateTimeOriginal gets: the Z is
+    nominal -- a camera writes the clock it shows."""
+    held = _text(text)
+    if not held:
+        return None
+    try:
+        return dt.datetime.strptime(held[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.UTC).timestamp()
+    except ValueError:
+        return None
+
+
+def _canon_thumbnail(path, limit: int = 4_000_000) -> bytes | None:
+    """The JPEG inside the CNDA atom of a Canon MOV, or None. The atom
+    sits near the start of the file (inside `CNTH` under `moov/udta`);
+    the first `limit` bytes are searched and the JPEG runs from its SOI
+    to its EOI."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(limit)
+    except OSError:
+        return None
+    at = head.find(b"CNDA")
+    if at < 0:
+        return None
+    start = head.find(b"\xff\xd8\xff", at)
+    if start < 0:
+        return None
+    end = head.find(b"\xff\xd9", start)
+    return head[start : end + 2] if end > start else head[start:]
+
+
 def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
     """Write one file's camera metadata.
 
@@ -457,8 +637,8 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO capture(file_id, captured_at, tz_offset_min, iso,"
         " f_number, exposure_time, focal_length, focal_35mm, orientation,"
-        " gps_lat, gps_lon, gps_alt, parsed_at)"
-        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " gps_lat, gps_lon, gps_alt, subsec_ms, body_serial, maker_tz_offset_min, parsed_at)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             file_id,
             found.captured_at,
@@ -472,6 +652,9 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
             found.gps_lat,
             found.gps_lon,
             found.gps_alt,
+            found.subsec_ms,
+            found.body_serial,
+            found.maker_tz_offset_min,
             now,
         ),
     )

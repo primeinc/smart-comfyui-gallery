@@ -59,12 +59,12 @@ import typing
 from . import prompt_sections
 from .stories import canonical, digest
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 
 #: Claim kinds that assert DIRECTION -- before/after, added/removed,
 #: from/to. They exist only in a sequenced plan, where the phase list is
 #: a chronology. An unsequenced plan states symmetric DIFFERENCES.
-_DIRECTIONAL = frozenset({"prompt_shift", "artifact_change", "parameter_change"})
+_DIRECTIONAL = frozenset({"prompt_shift", "artifact_change", "parameter_change", "pause", "lens_change"})
 _SYMMETRIC = frozenset({"artifact_difference", "parameter_difference"})
 
 
@@ -99,11 +99,20 @@ _SEQUENCED = {"hour", "minute", "second", "subsecond"}
 # --- settings: exact, fail-closed --------------------------------------------
 
 
+#: Each setting's domain, by name: a threshold is a fraction, a pause is
+#: a positive length of time, a burst gap a non-negative one.
+_DOMAINS: dict[str, tuple[float, float, bool]] = {
+    "phase_threshold": (0.0, 1.0, True),
+    "pause_minutes": (0.0, float("inf"), False),
+    "burst_seconds": (0.0, float("inf"), True),
+}
+
+
 def validated_settings(settings: dict | None, defaults: dict) -> dict:
-    """V1 means exactly `phase_threshold`: a finite number in [0, 1],
-    not a bool, not a string. An unknown key would ride the identity
-    while meaning nothing; a string would compare as a string. The same
-    exact-shape doctrine CollectionRule paid for."""
+    """Exactly the planner's own keys, each a finite number inside its
+    domain -- not a bool, not a string. An unknown key would ride the
+    identity while meaning nothing; a string would compare as a string.
+    The same exact-shape doctrine CollectionRule paid for."""
     held = dict(defaults)
     if settings is None:
         return held
@@ -115,8 +124,11 @@ def validated_settings(settings: dict | None, defaults: dict) -> dict:
     for key, value in settings.items():
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             raise ValueError(f"{key} is a finite number, not {value!r}")
-        if not 0.0 <= float(value) <= 1.0:
-            raise ValueError(f"{key} lies in [0, 1], not {value!r}")
+        low, high, closed_low = _DOMAINS[key]
+        inside = (low <= float(value) if closed_low else low < float(value)) and float(value) <= high
+        if not inside:
+            spelled = f"[{low:g}, {high:g}]" if closed_low else f"({low:g}, {high:g}]"
+            raise ValueError(f"{key} lies in {spelled}, not {value!r}")
         held[key] = float(value)
     return held
 
@@ -356,6 +368,7 @@ class GenerationHistoryPlanner:
     """
 
     kind = "generation_history"
+    uses_similarity = True
     #: The main-section texts the planner compares are the SNAPSHOT's
     #: frozen reading (stories.py freezes `main` per role); a parser
     #: change reaches a plan only through a new snapshot.
@@ -586,6 +599,266 @@ class GenerationHistoryPlanner:
         }
 
 
+class _NoSimilarity:
+    """The capture planner compares clocks and optics, never prompts:
+    its similarity identity is fixed so the plan does not depend on
+    which engine the request happened to name."""
+
+    name = "none"
+    version = "1"
+
+    def embed(self, texts):
+        raise AssertionError("the capture planner embeds nothing")
+
+
+def _act_groups(members: list[dict]) -> list[list[int]]:
+    """Consecutive members sharing an act key are one act (the grouper
+    orders renditions together); a member without one is its own act."""
+    acts: list[list[int]] = []
+    for i, one in enumerate(members):
+        key = (one.get("occurrence") or {}).get("act_key")
+        if acts and key is not None and (members[acts[-1][0]].get("occurrence") or {}).get("act_key") == key:
+            acts[-1].append(i)
+        else:
+            acts.append([i])
+    return acts
+
+
+def _moment(member: dict) -> float | None:
+    held = member.get("occurrence") or {}
+    return held.get("instant_at") if held.get("instant_at") is not None else held.get("local_at")
+
+
+def _equipment(member: dict, role: str) -> str | None:
+    for one in (member.get("capture") or {}).get("equipment") or []:
+        if one["role"] == role:
+            return one["uuid"]
+    return None
+
+
+def _extent(values: list[float]) -> list[float] | None:
+    return [min(values), max(values)] if values else None
+
+
+class CaptureHistoryPlanner:
+    """Phases of one capture session from frozen evidence alone: the
+    camera's clock, optics and body, never a prompt.
+
+    An ACT is one shutter press; its renditions (a RAW and its JPEG)
+    are the members that share an act key, so every count here is in
+    acts, never files. Chronology is the camera's subsecond clock, so a
+    capture session is sequenced whenever every act's occurrence is
+    finer than a day.
+
+    Boundaries: the photographer put the camera down (a gap longer
+    than `pause_minutes` -- a `pause` claim with the gap), or changed
+    the lens (`lens_change`, the lens artifacts either side). Inside a
+    phase: `burst` runs (three or more acts with every gap at most
+    `burst_seconds`), the `exposure_range` the phase spans, which
+    `equipment` was in hand, `renditions` (acts with more than one
+    file) and `video_clip` members.
+    """
+
+    kind = "capture_history"
+    version = 1
+    uses_similarity = False
+    defaults: typing.ClassVar[dict] = {"pause_minutes": 10, "burst_seconds": 2.0}
+
+    def __init__(self, similarity=None, settings: dict | None = None):
+        self.similarity = _NoSimilarity()
+        self.settings = validated_settings(settings, self.defaults)
+
+    def plan(self, snapshot: dict, snapshot_sha256: str) -> dict:
+        if snapshot.get("v") != 1:
+            raise ValueError(f"this planner reads StorySnapshot v1, not v{snapshot.get('v')!r}")
+        if snapshot["subject"]["event_kind"] != "capture_session":
+            raise ValueError("CaptureHistoryPlanner plans capture sessions only")
+        members = sorted(snapshot["members"], key=lambda one: one["ordinal"])
+        refs = [_member_ref(one["ordinal"]) for one in members]
+        pause = float(self.settings["pause_minutes"]) * 60.0
+        burst_gap = float(self.settings["burst_seconds"])
+        unsupported: list[dict] = []
+        sequenced = all((one.get("occurrence") or {}).get("precision") in _SEQUENCED for one in members) and all(
+            _moment(one) is not None for one in members
+        )
+        if not sequenced:
+            unsupported.append(
+                {
+                    "kind": "chronology",
+                    "reason": "at least one member's occurrence is day-precision or absent;"
+                    " event order is not evidence of sequence",
+                }
+            )
+        acts = _act_groups(members)
+        primary = [act[0] for act in acts]
+
+        # phase boundaries: a pause, or a lens change, between consecutive acts
+        groups: list[list[int]] = [[0]] if acts else []
+        for k in range(1, len(acts)):
+            previous, here = primary[k - 1], primary[k]
+            gap = (_moment(members[here]) or 0.0) - (_moment(members[previous]) or 0.0) if sequenced else 0.0
+            lens_before, lens_after = (
+                _equipment(members[previous], "mounted_lens"),
+                _equipment(members[here], "mounted_lens"),
+            )
+            changed = lens_before is not None and lens_after is not None and lens_before != lens_after
+            if sequenced and (gap > pause or changed):
+                groups.append([k])
+            else:
+                groups[-1].append(k)
+
+        claims: list[dict] = []
+        phases: list[dict] = []
+        for number, act_indexes in enumerate(groups, start=1):
+            member_indexes = [i for k in act_indexes for i in acts[k]]
+            member_refs = [refs[i] for i in member_indexes]
+            claim_refs: list[str] = []
+            label = f"Phase {number}" if sequenced else "Capture session"
+            if sequenced and number > 1:
+                before, first = primary[groups[number - 2][-1]], primary[act_indexes[0]]
+                gap = (_moment(members[first]) or 0.0) - (_moment(members[before]) or 0.0)
+                if gap > pause:
+                    claim_refs.append(
+                        _claim(
+                            claims,
+                            "pause",
+                            1.0,
+                            [f"{refs[before]}:occurrence", f"{refs[first]}:occurrence"],
+                            {"gap_seconds": round(gap, 3)},
+                        )
+                    )
+                    label += " · after a pause"
+                lens_before, lens_after = (
+                    _equipment(members[before], "mounted_lens"),
+                    _equipment(members[first], "mounted_lens"),
+                )
+                if lens_before is not None and lens_after is not None and lens_before != lens_after:
+                    claim_refs.append(
+                        _claim(
+                            claims,
+                            "lens_change",
+                            1.0,
+                            [f"{refs[before]}:capture.equipment", f"{refs[first]}:capture.equipment"],
+                            {"added": [lens_after], "removed": [lens_before]},
+                        )
+                    )
+                    label += " · new lens"
+            if sequenced:
+                run: list[int] = [act_indexes[0]]
+                bursts: list[list[int]] = []
+                for k in act_indexes[1:]:
+                    gap = (_moment(members[primary[k]]) or 0.0) - (_moment(members[primary[run[-1]]]) or 0.0)
+                    if gap <= burst_gap:
+                        run.append(k)
+                    else:
+                        if len(run) >= 3:
+                            bursts.append(run)
+                        run = [k]
+                if len(run) >= 3:
+                    bursts.append(run)
+                for run in bursts:
+                    span = (_moment(members[primary[run[-1]]]) or 0.0) - (_moment(members[primary[run[0]]]) or 0.0)
+                    claim_refs.append(
+                        _claim(
+                            claims,
+                            "burst",
+                            1.0,
+                            [f"{refs[primary[k]]}:occurrence" for k in run],
+                            {
+                                "frames": len(run),
+                                "span_seconds": round(span, 3),
+                                "frames_per_second": round((len(run) - 1) / span, 2) if span > 0 else None,
+                            },
+                        )
+                    )
+                if bursts:
+                    label += " · burst"
+            with_capture = [primary[k] for k in act_indexes if members[primary[k]].get("capture")]
+            facts: dict = {}
+            for key in ("iso", "f_number", "exposure_time", "focal_length"):
+                held = _extent(
+                    [members[i]["capture"][key] for i in with_capture if members[i]["capture"].get(key) is not None]
+                )
+                if held is not None:
+                    facts[key] = held
+            if facts:
+                claim_refs.append(
+                    _claim(claims, "exposure_range", 1.0, [f"{refs[i]}:capture" for i in with_capture], facts)
+                )
+            cameras = sorted({uuid for i in with_capture if (uuid := _equipment(members[i], "captured_with"))})
+            lenses = sorted({uuid for i in with_capture if (uuid := _equipment(members[i], "mounted_lens"))})
+            if cameras or lenses:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "equipment",
+                        1.0,
+                        [f"{refs[i]}:capture.equipment" for i in with_capture],
+                        {"cameras": cameras, "lenses": lenses},
+                    )
+                )
+            multi = [k for k in act_indexes if len(acts[k]) > 1]
+            if multi:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "renditions",
+                        1.0,
+                        [f"{refs[i]}:occurrence.act_key" for k in multi for i in acts[k]],
+                        {"acts": len(multi), "files": sum(len(acts[k]) for k in multi)},
+                    )
+                )
+            clips = [i for i in member_indexes if members[i].get("media_kind") == "video"]
+            if clips:
+                seconds = [members[i]["duration"] for i in clips if members[i].get("duration") is not None]
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "video_clip",
+                        1.0,
+                        [f"{refs[i]}:media_kind" for i in clips],
+                        {"clips": len(clips), "seconds": round(sum(seconds), 3) if seconds else None},
+                    )
+                )
+            middle = act_indexes[len(act_indexes) // 2]
+            phases.append(
+                {
+                    "id": f"phase-{number:03d}",
+                    "member_refs": member_refs,
+                    "representative_refs": [refs[primary[middle]]],
+                    "label_hint": label,
+                    "claim_refs": claim_refs,
+                }
+            )
+
+        camera_names = {
+            one["name"]
+            for member in members
+            for one in (member.get("capture") or {}).get("equipment") or []
+            if one["role"] == "captured_with"
+        }
+        camera = camera_names.pop() if len(camera_names) == 1 else None
+        return {
+            "v": FORMAT_VERSION,
+            "snapshot_sha256": snapshot_sha256,
+            "planner": {
+                "kind": self.kind,
+                "version": self.version,
+                "settings": dict(sorted(self.settings.items())),
+                "similarity": {"name": self.similarity.name, "version": self.similarity.version},
+            },
+            "subject": {
+                "kind": snapshot["subject"]["event_kind"],
+                "sequenced": sequenced,
+                "label_hint": f"{camera or 'camera'} session · {len(acts)} frames · {len(phases)} "
+                + ("phases" if sequenced else "group"),
+            },
+            "phases": phases,
+            "claims": claims,
+            "unsupported": unsupported,
+        }
+
+
 def _claim(claims: list, kind: str, confidence: float, evidence: list[str], facts: dict) -> str:
     claim_id = f"claim-{len(claims) + 1:03d}"
     claims.append(
@@ -765,6 +1038,24 @@ STORY_PLAN_V3 = {
     "version": 3,
     "claims": STORY_PLAN_V2["claims"] | frozenset({"prompt_rewrite"}),
 }
+
+#: StoryPlan v4 -- FROZEN. v3 plus the capture vocabulary: the
+#: `capture_history` planner over a `capture_session`, whose claims are
+#: the camera's clock and optics -- a pause, a lens change, a burst, the
+#: exposure range, the equipment in hand, renditions of one act, clips.
+STORY_PLAN_V4 = {
+    **STORY_PLAN_V3,
+    "version": 4,
+    "planners": STORY_PLAN_V3["planners"] | frozenset({"capture_history"}),
+    "claims": STORY_PLAN_V3["claims"]
+    | frozenset({"pause", "lens_change", "burst", "exposure_range", "equipment", "renditions", "video_clip"}),
+    # settings are PER PLANNER from v4 on: a planner's own keys, exactly
+    "settings": {
+        "generation_history": STORY_PLAN_V3["settings"],
+        "capture_history": frozenset({"pause_minutes", "burst_seconds"}),
+    },
+    "subjects": STORY_PLAN_V3["subjects"] | frozenset({"capture_session"}),
+}
 _ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -879,6 +1170,54 @@ def _facts_valid_v3(kind: str, facts) -> bool:
     return _facts_valid_v2(kind, facts)
 
 
+def _facts_valid_v4(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    keys = set(facts)
+    if kind == "pause":
+        return keys == {"gap_seconds"} and _number(facts["gap_seconds"]) and facts["gap_seconds"] > 0
+    if kind == "lens_change":
+        return keys == {"added", "removed"} and all(_strings(facts[k]) for k in keys) and bool(facts["added"])
+    if kind == "burst":
+        return (
+            keys == {"frames", "span_seconds", "frames_per_second"}
+            and _integer(facts["frames"], 3)
+            and _number(facts["span_seconds"])
+            and facts["span_seconds"] >= 0
+            and (facts["frames_per_second"] is None or _number(facts["frames_per_second"]))
+        )
+    if kind == "exposure_range":
+        return (
+            bool(keys)
+            and keys <= {"iso", "f_number", "exposure_time", "focal_length"}
+            and all(
+                isinstance(v, list) and len(v) == 2 and all(_number(x) for x in v) and v[0] <= v[1]
+                for v in facts.values()
+            )
+        )
+    if kind == "equipment":
+        return (
+            keys == {"cameras", "lenses"}
+            and all(_strings(facts[k]) for k in keys)
+            and bool(facts["cameras"] or facts["lenses"])
+        )
+    if kind == "renditions":
+        return keys == {"acts", "files"} and _integer(facts["acts"], 1) and _integer(facts["files"], 2)
+    if kind == "video_clip":
+        return (
+            keys == {"clips", "seconds"}
+            and _integer(facts["clips"], 1)
+            and (facts["seconds"] is None or (_number(facts["seconds"]) and facts["seconds"] >= 0))
+        )
+    return _facts_valid_v3(kind, facts)
+
+
+def validate_story_plan_v4(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v4 document against the FROZEN
+    v4 vocabulary."""
+    return _validate_story_plan(plan, STORY_PLAN_V4, _facts_valid_v4)
+
+
 def validate_story_plan_v1(plan) -> list[str]:
     """The exact grammar of a StoryPlan v1 document against the FROZEN
     v1 vocabulary, with no reference to any snapshot or to the running
@@ -916,9 +1255,18 @@ def _validate_story_plan(plan, vocabulary: dict, facts_valid) -> list[str]:
             bad.append(f"unknown planner {planner['kind']!r}")
         if not _integer(planner["version"], 1):
             bad.append("planner.version is not a positive integer")
-        settings_ok = _keys(planner["settings"], set(vocabulary["settings"]), set(), "planner.settings", bad)
-        if settings_ok and not _unit(planner["settings"]["phase_threshold"]):
+        expected = vocabulary["settings"]
+        if isinstance(expected, dict):
+            expected = expected.get(planner["kind"], frozenset())
+        settings_ok = _keys(planner["settings"], set(expected), set(), "planner.settings", bad)
+        if settings_ok and "phase_threshold" in expected and not _unit(planner["settings"]["phase_threshold"]):
             bad.append("planner.settings.phase_threshold is not a number in [0, 1]")
+        if settings_ok and "pause_minutes" in expected:
+            held = planner["settings"]
+            if not (_number(held["pause_minutes"]) and held["pause_minutes"] > 0):
+                bad.append("planner.settings.pause_minutes is not a positive number")
+            if not (_number(held["burst_seconds"]) and held["burst_seconds"] >= 0):
+                bad.append("planner.settings.burst_seconds is not a non-negative number")
         similarity_ok = _keys(planner["similarity"], {"name", "version"}, set(), "planner.similarity", bad)
         if similarity_ok and not all(isinstance(planner["similarity"][k], str) for k in ("name", "version")):
             bad.append("planner.similarity names are not strings")
@@ -978,7 +1326,12 @@ def _validate_story_plan(plan, vocabulary: dict, facts_valid) -> list[str]:
     return bad
 
 
-_GRAMMARS = {1: validate_story_plan_v1, 2: validate_story_plan_v2, 3: validate_story_plan_v3}
+_GRAMMARS = {
+    1: validate_story_plan_v1,
+    2: validate_story_plan_v2,
+    3: validate_story_plan_v3,
+    4: validate_story_plan_v4,
+}
 
 
 def validate_story_plan(plan) -> list[str]:
@@ -1095,7 +1448,7 @@ def settings_hash(settings: dict) -> str:
     return hashlib.sha256(canonical(dict(sorted(settings.items()))).encode("utf-8")).hexdigest()[:16]
 
 
-PLANNERS = {GenerationHistoryPlanner.kind: GenerationHistoryPlanner}
+PLANNERS = {GenerationHistoryPlanner.kind: GenerationHistoryPlanner, CaptureHistoryPlanner.kind: CaptureHistoryPlanner}
 
 
 # --- persistence and orchestration -------------------------------------------
@@ -1264,6 +1617,10 @@ def plan_item(conn, _item: int, payload: dict, now: float) -> None:
 
     # The loaded engine behind the durable prompt-vector cache: frozen
     # texts are answered by text hash under the engine's own text space,
-    # computed once where missing (db/prompts.py cached).
-    planner = maker(prompts.cached(conn, engine, engine.load(), now), payload["settings"])
+    # computed once where missing (db/prompts.py cached). A planner that
+    # compares no prompts never loads weights.
+    if maker.uses_similarity:
+        planner = maker(prompts.cached(conn, engine, engine.load(), now), payload["settings"])
+    else:
+        planner = maker(None, payload["settings"])
     plan_snapshot(conn, int(payload["snapshot_id"]), planner, now)

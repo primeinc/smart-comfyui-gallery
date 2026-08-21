@@ -724,9 +724,16 @@ CREATE TABLE capture (
     gps_lat       REAL,
     gps_lon       REAL,
     gps_alt       REAL,
+    -- the camera's finer clock and its own identity: SubSecTimeOriginal as
+    -- milliseconds, BodySerialNumber, and the clock's zone from the maker
+    -- note when OffsetTimeOriginal is absent (Canon TimeInfo)
+    subsec_ms           INTEGER CHECK (subsec_ms IS NULL OR subsec_ms BETWEEN 0 AND 999),
+    body_serial         TEXT,
+    maker_tz_offset_min INTEGER,
     parsed_at     REAL NOT NULL
 ) STRICT;
 CREATE INDEX capture_when ON capture(captured_at);
+CREATE INDEX capture_body ON capture(body_serial) WHERE body_serial IS NOT NULL;
 CREATE INDEX capture_where ON capture(gps_lat, gps_lon) WHERE gps_lat IS NOT NULL;
 
 -- ============ provenance for re-parsing -- NOT the storage of record ========
@@ -1752,6 +1759,11 @@ CREATE TABLE derived_media_occurrence (
     -- the generator's own order inside the claimed bucket (SwarmUI's
     -- per-minute request counter): ordering evidence, never seconds
     source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
     time_precision TEXT NOT NULL CHECK (time_precision IN
                      ('day','hour','minute','second','subsecond')),
     policy_version INTEGER NOT NULL,
@@ -1762,6 +1774,7 @@ CREATE TABLE derived_media_occurrence (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at);
 CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at);
+CREATE INDEX media_occurrence_act ON derived_media_occurrence(kind, act_key) WHERE act_key IS NOT NULL;
 
 -- One row: the interpretation's identity. `generation` advances on
 -- EVERY context add, change or delete, so anything computed over the
@@ -1876,7 +1889,7 @@ CREATE TABLE story_plan (
     id                 INTEGER PRIMARY KEY,
     snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
     format_version     INTEGER NOT NULL,
-    planner            TEXT NOT NULL CHECK (planner IN ('generation_history')),
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history','capture_history')),
     planner_version    INTEGER NOT NULL,
     similarity         TEXT NOT NULL,
     similarity_version TEXT NOT NULL,
@@ -1928,7 +1941,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 20;
+PRAGMA user_version   = 21;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

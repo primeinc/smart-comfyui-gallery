@@ -61,10 +61,11 @@ LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 #: WHICH MEANING of the ladder is current. Bump when the interpretation
 #: itself changes meaning -- v2 added the embedded generator-date rung,
 #: v3 the precision dimension and the coexistence facts, v4 the
-#: per-claim occurrence rows. Every reader binds THIS constant, never
+#: per-claim occurrence rows, v5 the generation judge, v6 the capture
+#: judge and the act key. Every reader binds THIS constant, never
 #: the version a database happens to remember: after an upgrade the old
 #: rows are honestly invisible until the context job re-interprets.
-POLICY_VERSION = 5
+POLICY_VERSION = 6
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
@@ -84,14 +85,9 @@ HUMAN_MOMENT = "COALESCE(mc.local_at, mc.instant_at)"
 #: later is 2023 in the capture story and 2026 in the generation story.
 _OCCUR_CAPTURE = """
 INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
-  tz_offset_min, basis, certainty, supports, conflicts, time_precision, policy_version)
-SELECT c.file_id, 'capture', c.captured_at,
-  CASE WHEN c.tz_offset_min IS NOT NULL THEN c.captured_at - c.tz_offset_min * 60 END,
-  c.tz_offset_min, 'capture',
-  CASE WHEN c.tz_offset_min IS NOT NULL THEN 1.0 ELSE 0.8 END,
-  NULL, NULL, 'second', ?
-FROM capture c
-WHERE c.captured_at IS NOT NULL
+  tz_offset_min, basis, certainty, supports, conflicts, finished_at, act_key,
+  time_precision, policy_version)
+VALUES(?, 'capture', ?, ?, ?, 'capture', ?, ?, ?, ?, ?, ?, ?)
 """
 
 _SOURCES = """
@@ -100,7 +96,8 @@ SELECT f.id, f.name, f.mtime, f.btime, f.folder_id,
   g.tool,
   (SELECT value_text FROM file_param d WHERE d.file_id = f.id AND d.source = 'generation' AND d.key = 'date'),
   (SELECT value_text FROM file_param d WHERE d.file_id = f.id AND d.source = 'generation'
-     AND d.key = 'generation_time')
+     AND d.key = 'generation_time'),
+  c.subsec_ms, c.body_serial, c.maker_tz_offset_min, f.duration
 FROM file f
 LEFT JOIN capture c ON c.file_id = f.id
 LEFT JOIN generation g ON g.file_id = f.id
@@ -145,11 +142,25 @@ def _seconds(text) -> float | None:
     return float(match.group(1)) * (60.0 if unit.startswith("m") else 1.0)
 
 
+def act_key(body_serial: str | None, local_at: float, name: str) -> str:
+    """One shutter press across its renditions: the body, the capture
+    clock to the millisecond, and the camera's own frame name (the stem
+    -- `666A0200` for both `666A0200.CR2` and `666A0200.JPG`). Two files
+    that agree on all three are one act wherever they were copied; two
+    frames of a burst differ in the clock, two bodies in the serial."""
+    import hashlib
+
+    stem = name.rsplit(".", 1)[0].lower() if "." in name else name.lower()
+    spelled = f"{body_serial or ''}|{local_at:.3f}|{stem}"
+    return hashlib.sha256(spelled.encode()).hexdigest()[:16]
+
+
 def _interpret(conn, now: float, file_id: int | None = None) -> int:
-    """The primary interpretation and the generation occurrence for
-    every file (or one): the camera first, at its own certainty; then
-    the generation act as the judge settles it from the generator's
-    day, SwarmUI's request minute, the file's mtime and btime, and the
+    """The primary interpretation and the occurrences for every file (or
+    one): the camera's act as the judge settles it from DateTimeOriginal,
+    its subsecond, the zone the camera knew, mtime and btime; the
+    generation act as the judge settles it from the generator's day,
+    SwarmUI's request minute, the file's mtime and btime, and the
     generation time -- supports and conflicts named beside the value;
     only a claimless file falls to the filesystem, an instant with no
     local story. Returns the number of contexts written."""
@@ -158,7 +169,24 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
     where = " WHERE f.id = ?" if file_id is not None else ""
     rows = conn.execute(_SOURCES + where, (file_id,) if file_id is not None else ()).fetchall()
     made = 0
-    for fid, name, mtime, btime, _folder, captured_at, tz, lat, lon, tool, date_text, gen_time in rows:
+    for (
+        fid,
+        name,
+        mtime,
+        btime,
+        _folder,
+        captured_at,
+        tz,
+        lat,
+        lon,
+        tool,
+        date_text,
+        gen_time,
+        subsec_ms,
+        body_serial,
+        maker_tz,
+        duration,
+    ) in rows:
         has_capture, has_generation = int(captured_at is not None), int(tool is not None)
         origin = {(1, 1): "mixed", (1, 0): "captured", (0, 1): "generated"}.get(
             (has_capture, has_generation), "imported"
@@ -166,9 +194,26 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
         generation = when.judge_generation(
             date_text=date_text, name=name, tool=tool, mtime=mtime, btime=btime, generation_time=_seconds(gen_time)
         )
-        if captured_at is not None:
-            instant = captured_at - tz * 60 if tz is not None else None
-            time = (captured_at, instant, tz, "capture", 1.0 if tz is not None else 0.8, None, None, "second")
+        capture = when.judge_capture(
+            captured_at=captured_at,
+            subsec_ms=subsec_ms,
+            tz_offset_min=tz,
+            maker_tz_offset_min=maker_tz,
+            mtime=mtime,
+            btime=btime,
+            duration=duration,
+        )
+        if capture is not None:
+            time = (
+                capture.local_at,
+                capture.instant_at,
+                capture.tz_offset_min,
+                "capture",
+                capture.certainty,
+                _json(capture.supports),
+                _json(capture.conflicts),
+                capture.precision,
+            )
         elif generation is not None:
             time = (
                 generation.local_at,
@@ -213,6 +258,23 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
             ),
         )
         made += 1
+        if capture is not None:
+            conn.execute(
+                _OCCUR_CAPTURE,
+                (
+                    fid,
+                    capture.local_at,
+                    capture.instant_at,
+                    capture.tz_offset_min,
+                    capture.certainty,
+                    _json(capture.supports),
+                    _json(capture.conflicts),
+                    capture.finished_at,
+                    act_key(body_serial, capture.local_at or 0.0, name),
+                    capture.precision,
+                    POLICY_VERSION,
+                ),
+            )
         if generation is not None:
             conn.execute(
                 _OCCUR_GENERATION,
@@ -290,7 +352,6 @@ def rebuild(conn, now: float) -> int:
     is where a stale interpretation survives its sources."""
     conn.execute("DELETE FROM derived_media_context")
     conn.execute("DELETE FROM derived_media_occurrence")
-    conn.execute(_OCCUR_CAPTURE, (POLICY_VERSION,))
     made = _interpret(conn, now)
     _advance(conn)
     return made
@@ -301,7 +362,6 @@ def rebuild_one(conn, file_id: int, now: float) -> None:
     grain, so cancellation and resume land at file boundaries."""
     conn.execute("DELETE FROM derived_media_context WHERE file_id = ?", (file_id,))
     conn.execute("DELETE FROM derived_media_occurrence WHERE file_id = ?", (file_id,))
-    conn.execute(_OCCUR_CAPTURE + " AND c.file_id = ?", (POLICY_VERSION, file_id))
     _interpret(conn, now, file_id)
     _advance(conn)
 
@@ -341,10 +401,15 @@ class Occurrence:
     #: fit for chronology -- the judge's answer (db/when.py Verdict.usable),
     #: not the grouper's reinterpretation of its supports
     usable: bool = True
+    #: one act across its renditions (capture only); None elsewhere
+    act_key: str | None = None
+    #: the file's name, for a grouper to rank renditions of one act
+    name: str = ""
 
 
 _OCCURRENCES = """
-SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision, o.source_order, o.conflicts
+SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision, o.source_order, o.conflicts,
+       o.act_key, f.name
   FROM derived_media_occurrence o
   JOIN file f ON f.id = o.file_id AND f.missing_since IS NULL
   JOIN entity e ON e.id = o.file_id
@@ -371,6 +436,8 @@ def occurrences(conn, kind: str) -> list[Occurrence]:
             row[5],
             row[6],
             not any(one.startswith(when.GENERATOR) for one in (json.loads(row[7]) if row[7] else [])),
+            row[8],
+            row[9],
         )
         for row in conn.execute(_OCCURRENCES, (kind, POLICY_VERSION))
     ]

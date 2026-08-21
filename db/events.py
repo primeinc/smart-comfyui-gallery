@@ -49,6 +49,8 @@ import hashlib
 import json
 import typing
 
+from vision.decode import RAW_SUFFIXES
+
 from . import context
 
 #: How coarse each precision is, in seconds. A member may enter gap
@@ -117,12 +119,40 @@ def _proposed_local(kind: str, members: list[context.Occurrence]) -> GroupPropos
     )
 
 
+def _rendition_rank(one: context.Occurrence) -> tuple[int, str, int]:
+    """Inside one act the RAW file leads -- it is what the camera
+    recorded -- then the rest by name: a stable, explainable order."""
+    suffix = ("." + one.name.rsplit(".", 1)[-1].lower()) if "." in one.name else ""
+    return (0 if suffix in RAW_SUFFIXES else 1, one.name.lower(), one.file_id)
+
+
+def _acts(eligible: list[context.Occurrence]) -> list[list[context.Occurrence]]:
+    """The occurrences as ACTS: files sharing an act key are one act
+    (a RAW and its JPEG are one shutter press), ranked inside it; a
+    file with no act key is an act of its own. Only acts enter the gap
+    arithmetic and only acts count toward a session."""
+    by_key: dict[str, list[context.Occurrence]] = {}
+    made: list[list[context.Occurrence]] = []
+    for one in eligible:
+        if one.act_key is None:
+            made.append([one])
+        else:
+            by_key.setdefault(one.act_key, []).append(one)
+    made.extend(sorted(files, key=_rendition_rank) for files in by_key.values())
+    return made
+
+
+def _flat(acts: list[list[context.Occurrence]]) -> list[context.Occurrence]:
+    return [one for act in acts for one in act]
+
+
 def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[GroupProposal]:
     """The shared temporal-clustering implementation, per DOMAIN: media
     with knowable instants cluster on instants; media with only a wall
     clock cluster among themselves on wall clocks. Unlike domains are
     never subtracted from each other, a claim too coarse for the gap
-    never enters the arithmetic, and a singleton is not a session."""
+    never enters the arithmetic, and a singleton ACT is not a session
+    -- two renditions of one shutter press are one act, not two."""
     # a claim the generator disputes with itself is recorded, not
     # sequenced: the judge said it is unfit for chronology
     eligible = [one for one in held if _GRANULE[one.time_precision] <= gap and one.usable]
@@ -131,18 +161,21 @@ def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[Group
     def order(one):
         return one.source_order if one.source_order is not None else 0
 
+    acts = _acts(eligible)
     instants = sorted(
-        (one for one in eligible if one.instant_at is not None),
-        key=lambda one: (one.instant_at, order(one), one.file_id),
+        (act for act in acts if act[0].instant_at is not None),
+        key=lambda act: (act[0].instant_at, order(act[0]), act[0].file_id),
     )
-    made.extend(_proposed_instant(kind, members) for members in _split(instants, lambda one: one.instant_at, gap))
+    made.extend(
+        _proposed_instant(kind, _flat(members)) for members in _split(instants, lambda act: act[0].instant_at, gap)
+    )
     # inside one claimed minute the generator's own counter orders the
     # members; file ids only break what the generator left tied
     walls = sorted(
-        (one for one in eligible if one.instant_at is None and one.local_at is not None),
-        key=lambda one: (one.local_at, order(one), one.file_id),
+        (act for act in acts if act[0].instant_at is None and act[0].local_at is not None),
+        key=lambda act: (act[0].local_at, order(act[0]), act[0].file_id),
     )
-    made.extend(_proposed_local(kind, members) for members in _split(walls, lambda one: one.local_at, gap))
+    made.extend(_proposed_local(kind, _flat(members)) for members in _split(walls, lambda act: act[0].local_at, gap))
     return made
 
 
@@ -169,7 +202,7 @@ class CaptureSessionGrouper:
     the same mixed file tells this story at the camera's time."""
 
     name = "capture_session"
-    version = "3"
+    version = "4"
     claim = "capture"
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 

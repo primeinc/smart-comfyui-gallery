@@ -291,6 +291,105 @@ def judge_generation(
     )
 
 
+#: A capture conflict between the camera's own zone claims.
+CAMERA = "camera: "
+
+
+def judge_capture(
+    *,
+    captured_at: float | None,
+    subsec_ms: int | None,
+    tz_offset_min: int | None,
+    maker_tz_offset_min: int | None,
+    mtime: float | None,
+    btime: float | None,
+    duration: float | None = None,
+) -> Verdict | None:
+    """The capture act's time, from every claim the file carries.
+
+    The camera's DateTimeOriginal is the claim; SubSecTimeOriginal makes
+    it subsecond-fine (`exif_subsecond`). The zone comes from
+    OffsetTimeOriginal when written (`exif_offset`), else from the maker note's
+    clock zone (`maker_timezone`), which turns the wall clock into a
+    knowable instant; with both, they must agree or the camera disagrees
+    with itself (`camera: `). A camera closes the file as the shutter
+    closes (a clip: as recording ends), so mtime is the WRITE and is
+    compared on instants when the zone is known -- no host zone in the
+    way -- and on the host's wall clock otherwise (`host_zone_assumed`).
+    btime is the constraint it always is.
+    """
+    if captured_at is None:
+        return None
+    supports: list[str] = []
+    conflicts: list[str] = []
+    precision = "second"
+    fine = (subsec_ms or 0) / 1000.0
+    if subsec_ms is not None:
+        precision = "subsecond"
+        supports.append("exif_subsecond")
+    if tz_offset_min is not None:
+        local = captured_at + fine
+        instant = local - tz_offset_min * 60.0
+        zone = tz_offset_min
+        supports.append("exif_offset")
+        if maker_tz_offset_min is not None:
+            if maker_tz_offset_min == tz_offset_min:
+                supports.append("maker_timezone")
+            else:
+                conflicts.append(
+                    f"{CAMERA}OffsetTimeOriginal says {_zone(tz_offset_min)} but the maker note's clock zone"
+                    f" says {_zone(maker_tz_offset_min)}"
+                )
+    elif maker_tz_offset_min is not None:
+        local = captured_at + fine
+        zone = maker_tz_offset_min
+        instant = local - zone * 60.0
+        supports.append("maker_timezone")
+    else:
+        local, instant, zone = captured_at + fine, None, None
+    finished_at = None
+    window_end = local + (duration or 0.0)
+    if mtime is not None:
+        if instant is not None:
+            wrote = mtime
+            start, end = instant, instant + (duration or 0.0)
+            tag = "mtime_write_consistent"
+        else:
+            wrote = _wall_of(mtime)
+            start, end = local, window_end
+            tag = "mtime_write_consistent"
+            supports.append("host_zone_assumed")
+        if start - 2.0 <= wrote <= end + SLACK:
+            supports.append(tag)
+            finished_at = mtime
+        elif wrote < start:
+            conflicts.append(
+                f"{FILESYSTEM}mtime {_spell(wrote)} is {_hours(start - wrote)} before the capture {_spell(start)}"
+            )
+        else:
+            conflicts.append(f"{FILESYSTEM}mtime {_spell(wrote)} is {_hours(wrote - end)} after the capture")
+    if btime is not None:
+        born = btime if instant is not None else _wall_of(btime)
+        floor = instant if instant is not None else local
+        if instant is None and "host_zone_assumed" not in supports:
+            supports.append("host_zone_assumed")
+        if born >= floor - 1.0:
+            supports.append("btime_after_capture")
+        else:
+            conflicts.append(
+                f"{FILESYSTEM}btime {_spell(born)} is before the capture {_spell(floor)}: bytes born before taken"
+            )
+    return Verdict(
+        local, instant, zone, precision, "capture", tuple(supports), tuple(conflicts), finished_at, None, None
+    )
+
+
+def _zone(minutes: int) -> str:
+    sign = "+" if minutes >= 0 else "-"
+    minutes = abs(minutes)
+    return f"{sign}{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 def judge_filesystem(mtime: float | None, btime: float | None) -> Verdict | None:
     """Rule 4: a file with no claim of its own. The filesystem is not an
     act, so this is the context's fallback only -- never an occurrence:
