@@ -122,8 +122,11 @@ def parse(
         # with its own membership rule; until that rule exists, refusing
         # beats silently ignoring the phrase.
         raise ValueError("a phrase orders by similarity; other sorts do not consume it")
-    if sum(1 for scope in (folder, album, person) if scope is not None) > 1:
-        raise ValueError("one scope at a time: folder, album or person")
+    if folder is not None and album is not None:
+        raise ValueError("one scope at a time: folder or album, not both")
+    # `person` deliberately COMPOSES with either -- and with kind and a
+    # phrase: eligibility is an intersection of predicates, and a
+    # person's beach pictures in one album is a real question.
     if kind is not None and kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
     chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
@@ -133,8 +136,11 @@ def parse(
 
 
 def fingerprint(query: GalleryQuery) -> str:
-    """The question's identity: canonical JSON over every field, hashed.
-    Page size is part of it because ordinal->page arithmetic is."""
+    """The identity of the question AS SPELLED: canonical JSON over
+    every field, hashed. Page size is part of it because ordinal->page
+    arithmetic is. The projection cache does NOT key on this -- it keys
+    on `_bound_fingerprint`, over stable entity ids, so a renamed
+    person's two spellings stay one cached question."""
     told = json.dumps(dataclasses.asdict(query), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(told.encode()).hexdigest()[:16]
 
@@ -193,68 +199,153 @@ class Projection:
 _PROJECTIONS: dict[tuple[str, str, str], Projection] = {}
 _PROJECTION_LOCK = threading.Lock()
 
-#: Ordered walks of the file table's own indexes. No LIMIT on purpose:
-#: these run once per library change, not once per page -- the module
-#: docstring owns that argument.
-LIBRARY_BY_TIME = "SELECT f.id FROM file f WHERE f.missing_since IS NULL{kind} ORDER BY f.mtime {order}, f.id {order}"
-FOLDER_BY_TIME = (
-    "SELECT f.id FROM file f WHERE f.folder_id = ? AND f.missing_since IS NULL{kind}"
-    " ORDER BY f.mtime {order}, f.id {order}"
-)
-ALBUM_BY_TIME = (
-    "SELECT f.id FROM collection_file cf"
-    " JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
-    " WHERE cf.collection_id = ?{kind}"
-    " ORDER BY f.mtime {order}, f.id {order}"
-)
-#: A person's pictures are the PRIMARY clustering run's attribution --
-#: the same run every people page shows, so the gallery and the profile
-#: cannot disagree about whose pictures these are.
-PERSON_BY_TIME = (
-    "SELECT f.id FROM derived_file_person fp"
-    " JOIN file f ON f.id = fp.file_id AND f.missing_since IS NULL"
-    " WHERE fp.person_id = ?"
-    " AND fp.run_id = (SELECT id FROM derived_face_run WHERE is_primary = 1){kind}"
-    " ORDER BY f.mtime {order}, f.id {order}"
-)
-
 #: The names one page of cells needs, id-keyed; order is restored from
 #: the projection slice, so this query carries none.
 NAMED = "SELECT f.id, e.slug, f.name, f.kind FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
 
 
-def _scope_id(conn, query: GalleryQuery) -> tuple[str, int] | None:
-    """Resolve the query's scope slug to its row, refusing an address
-    nothing lives at -- an empty page at a misspelled folder would look
-    exactly like an empty folder."""
+def canonical(query: GalleryQuery, page: int | None = None) -> str:
+    """The query's one spelling in a URL -- owned HERE, beside what the
+    question means, because the spelling is entity-aware: answers carry
+    the canonical string rebuilt from the BOUND query, so a context
+    written with a since-retired slug heals to the live one as it is
+    navigated. Defaults are omitted so two ways of asking the same
+    question share an address; `page` rides at the end so the rail can
+    append its jumps."""
+    import urllib.parse
+
+    pairs: list[tuple[str, str]] = []
+    if query.text:
+        pairs.append(("q", query.text))
+    if query.folder:
+        pairs.append(("folder", query.folder))
+    if query.album:
+        pairs.append(("album", query.album))
+    if query.person:
+        pairs.append(("person", query.person))
+    if query.kind:
+        pairs.append(("kind", query.kind))
+    if query.sort != ("similarity" if query.text else "newest"):
+        pairs.append(("sort", query.sort))
+    if query.size != DEFAULT_PAGE_SIZE:
+        pairs.append(("size", str(query.size)))
+    if page is not None and page > 1:
+        pairs.append(("page", str(page)))
+    return urllib.parse.urlencode(pairs)
+
+
+@dataclasses.dataclass(frozen=True)
+class _Bound:
+    """The question bound to STABLE identities.
+
+    The public interface speaks slugs because URLs do; the
+    implementation works in entity ids, because slugs are the one part
+    of an address that moves -- naming a person is the People page's
+    primary action, and a projection keyed on the slug string would
+    fork the cache for one human and answer an old bookmark as a
+    different question. `query` carries the LIVE spelling, which is
+    what every emitted URL uses; `face_run_id` pins WHICH clustering's
+    attribution person membership means, so switching the primary run
+    is visibly a different question."""
+
+    query: GalleryQuery  # live-slug spelling
+    folder_id: int | None
+    collection_id: int | None
+    person_id: int | None
+    face_run_id: int | None
+
+
+def bind(conn, query: GalleryQuery) -> _Bound:
+    """Resolve every slug to its entity -- retired spellings included,
+    refusing an address nothing lives at: an empty page at a misspelled
+    folder would look exactly like an empty folder."""
     from . import naming
 
-    for slug, entity_kind in ((query.folder, "folder"), (query.album, "collection"), (query.person, "person")):
+    held: dict[str, int | None] = {"folder": None, "album": None, "person": None}
+    live: dict[str, str] = {}
+    for field, entity_kind in (("folder", "folder"), ("album", "collection"), ("person", "person")):
+        slug = getattr(query, field)
         if slug is None:
             continue
         found = naming.resolve(conn, entity_kind, slug)
         if found is None:
             raise LookupError(f"no {entity_kind} at {slug!r}")
-        return entity_kind, found[0]
-    return None
+        held[field] = found[0]
+        if not found[1]:
+            fresh = naming.entity_slug(conn, found[0])
+            if fresh is not None:
+                live[field] = fresh[1]
+    run = None
+    if held["person"] is not None:
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
+        run = row[0] if row else None
+    return _Bound(
+        query=dataclasses.replace(query, **live) if live else query,
+        folder_id=held["folder"],
+        collection_id=held["album"],
+        person_id=held["person"],
+        face_run_id=run,
+    )
 
 
-def _timed_ids(conn, query: GalleryQuery) -> list[int]:
+def _bound_fingerprint(bound: _Bound) -> str:
+    """The projection key's question half, over bound identities: two
+    spellings of one entity are one question, and one spelling across a
+    primary-run switch is two."""
+    query = bound.query
+    told = json.dumps(
+        {
+            "folder": bound.folder_id,
+            "album": bound.collection_id,
+            "person": bound.person_id,
+            "run": bound.face_run_id,
+            "kind": query.kind,
+            "text": query.text,
+            "sort": query.sort,
+            "size": query.size,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(told.encode()).hexdigest()[:16]
+
+
+def _timed_ids(conn, bound: _Bound) -> list[int]:
+    """Eligibility is an INTERSECTION of predicates, constructed -- not
+    a choice between fixed statements. `person` composes with a folder,
+    an album, a kind, and (via the allowed set) a phrase: a file
+    satisfies person=jane iff the bound primary run attributes it to
+    her, exactly what /people and the profile already mean. The walk
+    stays ordered by the file table's own time index; the whole
+    statement runs once per library change, never once per page."""
+    query = bound.query
     order = "ASC" if query.sort == "oldest" else "DESC"
-    kind = " AND f.kind = ?" if query.kind is not None else ""
-    scoped = _scope_id(conn, query)
+    where = ["f.missing_since IS NULL"]
     args: list[object] = []
-    if scoped is None:
-        sql = LIBRARY_BY_TIME
-    else:
-        sql = {"folder": FOLDER_BY_TIME, "collection": ALBUM_BY_TIME, "person": PERSON_BY_TIME}[scoped[0]]
-        args.append(scoped[1])
+    if bound.folder_id is not None:
+        where.append("f.folder_id = ?")
+        args.append(bound.folder_id)
+    if bound.collection_id is not None:
+        where.append("EXISTS (SELECT 1 FROM collection_file cf WHERE cf.file_id = f.id AND cf.collection_id = ?)")
+        args.append(bound.collection_id)
+    if bound.person_id is not None:
+        if bound.face_run_id is None:
+            # The person exists; no primary clustering attributes anyone
+            # anything. An honest empty, distinct from an unknown slug.
+            return []
+        where.append(
+            "EXISTS (SELECT 1 FROM derived_file_person fp"
+            " WHERE fp.file_id = f.id AND fp.person_id = ? AND fp.run_id = ?)"
+        )
+        args.extend((bound.person_id, bound.face_run_id))
     if query.kind is not None:
+        where.append("f.kind = ?")
         args.append(query.kind)
-    return [row[0] for row in conn.execute(sql.format(kind=kind, order=order), args)]
+    sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {order}"
+    return [row[0] for row in conn.execute(sql, args)]
 
 
-def _fused_ids(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[list[int], dict | None]:
+def _fused_ids(conn, models_dir: str, bound: _Bound, now: float) -> tuple[list[int], dict | None]:
     """The whole fused ordering, once.
 
     A scope or filter is handed to retrieval as the ALLOWED set, never
@@ -268,9 +359,11 @@ def _fused_ids(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[
     """
     from . import retrieval
 
+    query = bound.query
     allowed = None
-    if query.folder is not None or query.album is not None or query.person is not None or query.kind is not None:
-        allowed = set(_timed_ids(conn, dataclasses.replace(query, text=None, sort="newest")))
+    if any(x is not None for x in (bound.folder_id, bound.collection_id, bound.person_id, query.kind)):
+        eligible = dataclasses.replace(bound, query=dataclasses.replace(query, text=None, sort="newest"))
+        allowed = set(_timed_ids(conn, eligible))
         if not allowed:
             # An empty scope needs no encoder and has no honest
             # provenance -- nothing was asked of any space.
@@ -286,19 +379,25 @@ def _present(conn) -> int:
     return conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0]
 
 
-def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projection:
+def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[_Bound, Projection]:
     """The projection for this question over the library as it stands --
-    a stale one is never reused, it is replaced."""
+    a stale one is never reused, it is replaced. Currency is read BEFORE
+    binding: bind's resolves are this connection's first data reads and
+    pin the snapshot, so a commit in the gap builds fresh data under an
+    obsolete key -- wasted work the next request replaces, never stale
+    data cached under a fresh key."""
     database = _database_file(conn) or f"mem{id(conn)}"
-    key = (database, fingerprint(query), currency(conn))
+    told = currency(conn)
+    bound = bind(conn, query)
+    key = (database, _bound_fingerprint(bound), told)
     with _PROJECTION_LOCK:
         held = _PROJECTIONS.get(key)
     if held is not None:
-        return held
+        return bound, held
     if query.sort == "similarity":
-        ids, provenance = _fused_ids(conn, models_dir, query, now)
+        ids, provenance = _fused_ids(conn, models_dir, bound, now)
     else:
-        ids, provenance = _timed_ids(conn, query), None
+        ids, provenance = _timed_ids(conn, bound), None
     made = Projection(
         fingerprint=key[1],
         currency=key[2],
@@ -310,7 +409,7 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projecti
         _PROJECTIONS[key] = made
         while len(_PROJECTIONS) > KEEP:
             _PROJECTIONS.pop(next(iter(_PROJECTIONS)))
-    return made
+    return bound, made
 
 
 @contextlib.contextmanager
@@ -350,13 +449,16 @@ def snapshot(conn):
 # --- the interface ----------------------------------------------------------
 
 
-def _shape(held: Projection, query: GalleryQuery) -> dict:
+def _shape(bound: _Bound, held: Projection) -> dict:
     """The answer's shape, computed from ONE projection snapshot. Every
     public operation takes `_current` exactly once and derives all of
     its counts, pages, items and currency from that same Projection --
     two takes could straddle another connection's commit and hand back
     items from one generation under the totals of another. One
-    response describes one answer."""
+    response describes one answer. `qs` is the canonical spelling of
+    the BOUND question -- live slugs, so a stale contextual name heals
+    as it is navigated."""
+    query = bound.query
     total = len(held.ids)
     return {
         "total": total,
@@ -366,6 +468,7 @@ def _shape(held: Projection, query: GalleryQuery) -> dict:
         "fingerprint": held.fingerprint,
         "currency": held.currency,
         "provenance": held.provenance,
+        "qs": canonical(query),
     }
 
 
@@ -374,7 +477,8 @@ def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
     grid's pager believes. `currency` rides along so a client can tell
     a redrawn answer from the one it is holding."""
     with snapshot(conn):
-        return _shape(_current(conn, models_dir, query, now), query)
+        bound, held = _current(conn, models_dir, query, now)
+        return _shape(bound, held)
 
 
 def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) -> dict:
@@ -383,12 +487,12 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) ->
     the rail was drawn, and the honest response is the page that IS,
     named as itself."""
     with snapshot(conn):
-        held = _current(conn, models_dir, query, now)
-        shape = _shape(held, query)
+        bound, held = _current(conn, models_dir, query, now)
+        shape = _shape(bound, held)
         number = min(max(1, int(number)), shape["pages"])
-        start = (number - 1) * query.size
+        start = (number - 1) * bound.query.size
         shape["page"] = number
-        shape["items"] = _named(conn, held.ids[start : start + query.size], start)
+        shape["items"] = _named(conn, held.ids[start : start + bound.query.size], start)
         return shape
 
 
@@ -397,18 +501,19 @@ def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, co
     page a jump would land on -- by construction a prefix of what
     `page` answers, and the test suite holds the two to it."""
     with snapshot(conn):
-        held = _current(conn, models_dir, query, now)
-        shape = _shape(held, query)
+        bound, held = _current(conn, models_dir, query, now)
+        shape = _shape(bound, held)
         number = min(max(1, int(number)), shape["pages"])
-        start = (number - 1) * query.size
-        take = min(max(1, int(count)), PEEK_MOST, query.size)
+        start = (number - 1) * bound.query.size
+        take = min(max(1, int(count)), PEEK_MOST, bound.query.size)
         return {
             "page": number,
             "pages": shape["pages"],
             "total": shape["total"],
             "first_ordinal": min(start + 1, max(shape["total"], 1)),
-            "last_ordinal": min(start + query.size, shape["total"]),
+            "last_ordinal": min(start + bound.query.size, shape["total"]),
             "currency": held.currency,
+            "qs": shape["qs"],
             "items": _named(conn, held.ids[start : start + take], start),
         }
 
@@ -419,7 +524,7 @@ def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float)
     while a result set is being walked. None when the file is not in
     the membership at all."""
     with snapshot(conn):
-        held = _current(conn, models_dir, query, now)
+        bound, held = _current(conn, models_dir, query, now)
         position = held.ordinal.get(int(file_id))
         if position is None:
             return None
@@ -427,9 +532,10 @@ def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float)
         named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
         return {
             "ordinal": position + 1,
-            "page": position // query.size + 1,
+            "page": position // bound.query.size + 1,
             "total": len(held.ids),
             "currency": held.currency,
+            "qs": canonical(bound.query),
             "previous": named.get(neighbours[0]),
             "next": named.get(neighbours[1]),
         }

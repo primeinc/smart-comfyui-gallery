@@ -193,10 +193,24 @@ def test_a_person_is_a_resultset_scope(tmp_path):
         conn = connect.connect(db_path)
         told = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
         assert told["total"] == 2, "membership is the attribution, not the library"
-        with pytest.raises(ValueError, match="one scope at a time"):
-            resultset.parse(person="ana", folder="lib")
         with pytest.raises(LookupError):
             resultset.describe(conn, "", resultset.parse(person="nobody"), 0.0)
+
+        # Person is a COMPOSABLE membership facet, not a third exclusive
+        # scope: eligibility is an intersection of predicates.
+        both = resultset.describe(conn, "", resultset.parse(person="ana", folder="lib"), 0.0)
+        assert both["total"] == 2, "person AND folder is an intersection"
+        narrowed = resultset.describe(conn, "", resultset.parse(person="ana", kind="video"), 0.0)
+        assert narrowed["total"] == 0, "person AND kind is an intersection"
+        from db import authored
+
+        mixed = authored.collection(conn, "Mixed", 0.0)
+        for name in ("ana_1.png", "ben_1.png"):
+            file_id = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()[0]
+            authored.add_to_collection(conn, mixed, file_id, 0.0)
+        conn.commit()
+        crossed = resultset.describe(conn, "", resultset.parse(person="ana", album="mixed"), 0.0)
+        assert crossed["total"] == 1, "person AND album keeps only the attributed member of the album"
         connect.close(conn)
 
         # /g serves the person scope like any other question.
@@ -225,3 +239,106 @@ def test_a_person_is_a_resultset_scope(tmp_path):
         assert walked["context"]["return_url"] == "/g?person=ana"
         outside = client.get("/i/ben-1", params={"person": "ana"}).json()
         assert outside["context"]["in_answer"] is False
+
+
+def test_a_person_phrase_constrains_each_space_before_fusion(tmp_path, monkeypatch):
+    """person + q composes through the SAME constrained-RRF door every
+    scope uses: the person's membership reaches retrieval as the
+    allowed set, applied per space before the fusion."""
+    from db import resultset, retrieval
+
+    burrow, _ = _clustered_library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        conn = connect.connect(client.app.state.db_path)
+        anas = {
+            row[0]
+            for row in conn.execute(
+                "SELECT fp.file_id FROM derived_file_person fp JOIN person p ON p.id = fp.person_id"
+            )
+        }
+        seen: dict = {}
+
+        def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+            seen.update({"allowed": allowed, "k": k})
+            return {"results": [], "participants": [], "contributors": [], "missing": {}}
+
+        monkeypatch.setattr(retrieval, "query", fused)
+        resultset.describe(conn, "", resultset.parse(person="ana", text="beach"), 0.0)
+        assert seen["allowed"] == anas, "the person facet must constrain retrieval before RRF"
+        assert seen["k"] == len(anas)
+        connect.close(conn)
+
+
+def test_a_renamed_person_is_one_cached_question_and_context_heals(tmp_path):
+    """Slugs are presentation; the projection keys on the bound entity.
+    Both spellings of a renamed person are ONE question, and every
+    answer re-spells the context with the LIVE slug so stale bookmarks
+    heal as they are navigated."""
+    from db import naming, resultset
+
+    burrow, _ = _clustered_library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        conn = connect.connect(client.app.state.db_path)
+        found = naming.resolve(conn, "person", "ana")
+        assert found is not None
+        naming.rename(conn, found[0], "Ana Torres", 5.0)
+        conn.commit()
+
+        old_spelling = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
+        new_spelling = resultset.describe(conn, "", resultset.parse(person="ana-torres"), 0.0)
+        assert old_spelling["total"] == new_spelling["total"] == 2
+        assert old_spelling["fingerprint"] == new_spelling["fingerprint"], (
+            "two spellings of one person forked the projection cache"
+        )
+        assert old_spelling["qs"] == "person=ana-torres", "the answer re-spells the context live"
+        connect.close(conn)
+
+        walked = client.get("/i/ana-1", params={"person": "ana"}).json()
+        assert walked["context"]["qs"] == "person=ana-torres"
+        assert walked["context"]["return_url"] == "/g?person=ana-torres"
+
+
+def test_switching_the_primary_run_is_a_different_question(tmp_path):
+    """Person membership means THE PRIMARY run's attribution; promoting
+    another run changes both the answer and its identity -- never a
+    silently reused projection."""
+    from db import derived, resultset
+
+    burrow, _ = _clustered_library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        conn = connect.connect(client.app.state.db_path)
+        before = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
+        assert before["total"] == 2
+
+        other = derived.run_for(conn, "other/embedder", "2", "chinese-whispers", 0.4, 1.0)
+        derived.make_primary(conn, other)
+        conn.commit()
+
+        after = resultset.describe(conn, "", resultset.parse(person="ana"), 1.0)
+        assert after["total"] == 0, "the new primary attributes ana nothing; the membership must say so"
+        assert after["fingerprint"] != before["fingerprint"], "the bound run is part of the question"
+        connect.close(conn)
+
+
+def test_the_browser_path_never_enumerates_the_whole_collection(tmp_path, monkeypatch):
+    """The bounded profile must be bounded on the SERVER, not only in
+    the DOM: the unbounded legacy list is the JSON Adapter's cost, and
+    the HTML and drawer paths never pay it."""
+    from db import pages
+
+    burrow, _ = _clustered_library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        walked: list[int] = []
+        real = pages.person_files
+
+        def counted(conn, person_id, run_id=None):
+            walked.append(person_id)
+            return real(conn, person_id, run_id)
+
+        monkeypatch.setattr(pages, "person_files", counted)
+        assert client.get("/p/ana", headers=AS_BROWSER).status_code == 200
+        assert client.get("/p/ana", headers=AS_OVERLAY).status_code == 200
+        assert walked == [], "a rendered profile enumerated the person's whole photographic existence"
+        body = client.get("/p/ana").json()
+        assert len(walked) == 1, "the machine Adapter still carries the legacy list"
+        assert sorted(p["name"] for p in body["pictures"]) == ["ana_1.png", "ana_2.png"]

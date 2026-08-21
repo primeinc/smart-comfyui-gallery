@@ -68,18 +68,19 @@ def view(conn, models_dir: str, file_id: int, slug: str, query: resultset.Galler
     """
     with resultset.snapshot(conn):
         found = resultset.locate(conn, models_dir, query, file_id, now)
-        generation = (
-            found["currency"] if found is not None else resultset.describe(conn, models_dir, query, now)["currency"]
-        )
+        if found is not None:
+            generation, asked = found["currency"], found["qs"]
+        else:
+            shape = resultset.describe(conn, models_dir, query, now)
+            generation, asked = shape["currency"], shape["qs"]
         told = pages.picture(conn, file_id)
         if told is None:
             raise NotFoundException(f"/i/{slug} has no file row")
-        return _assembled(conn, file_id, slug, query, found, generation, told)
+        return _assembled(conn, file_id, slug, found, generation, asked, told)
 
 
-def _assembled(conn, file_id: int, slug: str, query, found, generation: str, told) -> dict:
+def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str, told) -> dict:
     name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields, kind = told
-    asked = canonical(query)
     back = f"/g?{asked}" if asked else "/g"
     if found is not None and found["page"] > 1:
         back += ("&" if asked else "?") + f"page={found['page']}"

@@ -55,6 +55,12 @@ _STRUCTURE = {
     "kind_filter": "clause",
     # "" or a COALESCE-over-setting guard; the key and default are bound
     "gate_filter": "clause",
+    # db/resultset.py membership: a conjunction of module-literal
+    # predicates (every value in them bound), and ASC/DESC chosen from
+    # the validated sort vocabulary -- eligibility is an intersection,
+    # constructed, so the pieces are structure by definition
+    "' AND '.join(where)": "clause",
+    "order": "keyword",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
     "column": "identifier",

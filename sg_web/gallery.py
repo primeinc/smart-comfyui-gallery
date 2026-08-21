@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import pathlib
 import time
-import urllib.parse
 
 from litestar import get
 from litestar.datastructures import State
@@ -42,28 +41,10 @@ def _asked(
         raise ClientException(str(refused)) from refused
 
 
-def canonical(query: resultset.GalleryQuery, page: int | None = None) -> str:
-    """The query's one spelling in a URL. Defaults are omitted so two
-    ways of asking the same question share an address, and `page` rides
-    at the end so the rail can append its jumps."""
-    pairs: list[tuple[str, str]] = []
-    if query.text:
-        pairs.append(("q", query.text))
-    if query.folder:
-        pairs.append(("folder", query.folder))
-    if query.album:
-        pairs.append(("album", query.album))
-    if query.person:
-        pairs.append(("person", query.person))
-    if query.kind:
-        pairs.append(("kind", query.kind))
-    if query.sort != ("similarity" if query.text else "newest"):
-        pairs.append(("sort", query.sort))
-    if query.size != resultset.DEFAULT_PAGE_SIZE:
-        pairs.append(("size", str(query.size)))
-    if page is not None and page > 1:
-        pairs.append(("page", str(page)))
-    return urllib.parse.urlencode(pairs)
+#: The spelling lives beside the meaning: db/resultset.py owns both the
+#: question and its canonical URL form, so entity-aware healing (a
+#: renamed slug re-spelled live) happens where the binding does.
+canonical = resultset.canonical
 
 
 def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dict:
@@ -94,7 +75,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "album": query.album or "",
         "person": query.person or "",
         "kind": query.kind or "",
-        "qs": canonical(query),
+        "qs": shape["qs"],
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
     }
