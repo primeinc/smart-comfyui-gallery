@@ -194,6 +194,36 @@ def restore(backup, path) -> None:
     shutil.copyfile(backup, path)
 
 
+@step(1)
+def _smart_collections_refuse_stored_members(conn: sqlite3.Connection) -> None:
+    """v1 -> v2: the guards keeping smart collections rule-defined.
+
+    One execute per statement, never executescript -- see the module
+    docstring. Purely additive: no existing rows can violate the guards,
+    because nothing before v2 could mark a filled collection smart without
+    also violating the album/flag CHECKs on sql_text.
+    """
+    conn.execute(
+        "CREATE TRIGGER collection_file_not_into_smart BEFORE INSERT ON collection_file "
+        "WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) = 'smart' BEGIN "
+        "SELECT RAISE(ABORT,'a smart collection derives its members from its rule; nothing is filed into it'); "
+        "END"
+    )
+    conn.execute(
+        "CREATE TRIGGER collection_file_not_moved_into_smart BEFORE UPDATE OF collection_id ON collection_file "
+        "WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) = 'smart' BEGIN "
+        "SELECT RAISE(ABORT,'a smart collection derives its members from its rule; nothing is filed into it'); "
+        "END"
+    )
+    conn.execute(
+        "CREATE TRIGGER collection_with_members_stays_listed BEFORE UPDATE OF kind ON collection "
+        "WHEN NEW.kind = 'smart' AND OLD.kind <> 'smart' "
+        "AND EXISTS (SELECT 1 FROM collection_file WHERE collection_id = NEW.id) BEGIN "
+        "SELECT RAISE(ABORT,'this collection holds filed members; empty it before making it smart'); "
+        "END"
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

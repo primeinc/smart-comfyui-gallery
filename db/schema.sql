@@ -1301,7 +1301,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 1;
+PRAGMA user_version   = 2;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the
@@ -1398,6 +1398,24 @@ CREATE TRIGGER collection_kind_keeps_agreeing BEFORE UPDATE OF id ON collection 
 END;
 CREATE TRIGGER collection_takes_its_entity AFTER DELETE ON collection BEGIN
   DELETE FROM entity WHERE id = OLD.id;
+END;
+
+-- A smart collection's members are what its rule says, freshly, every
+-- time. A stored member row would give it a second, disagreeing answer --
+-- refused on the way in, refused as a destination, and a filled
+-- collection cannot quietly BECOME smart for the same reason.
+CREATE TRIGGER collection_file_not_into_smart BEFORE INSERT ON collection_file
+WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) = 'smart' BEGIN
+  SELECT RAISE(ABORT,'a smart collection derives its members from its rule; nothing is filed into it');
+END;
+CREATE TRIGGER collection_file_not_moved_into_smart BEFORE UPDATE OF collection_id ON collection_file
+WHEN (SELECT kind FROM collection WHERE id = NEW.collection_id) = 'smart' BEGIN
+  SELECT RAISE(ABORT,'a smart collection derives its members from its rule; nothing is filed into it');
+END;
+CREATE TRIGGER collection_with_members_stays_listed BEFORE UPDATE OF kind ON collection
+WHEN NEW.kind = 'smart' AND OLD.kind <> 'smart'
+ AND EXISTS (SELECT 1 FROM collection_file WHERE collection_id = NEW.id) BEGIN
+  SELECT RAISE(ABORT,'this collection holds filed members; empty it before making it smart');
 END;
 
 -- ============ a reference must agree with what it points at ============

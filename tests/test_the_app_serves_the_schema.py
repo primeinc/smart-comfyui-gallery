@@ -667,6 +667,19 @@ def test_albums_are_made_and_served_through_the_application(served):
     assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1
 
 
+def test_a_smart_collection_refuses_filing_over_http(served):
+    """The rule-defined kind refuses stored members at the route too, as
+    a 400 with the reason -- never a 500 from the trigger beneath."""
+    client, _, _ = served
+    conn = connect.connect(client.app.state.db_path)
+    authored.collection(conn, "Big seeds", 3.0, kind="smart", sql_text="SELECT 1")
+    conn.commit()
+    conn.close()
+    refused = client.post("/t/big-seeds/add", json={"file": "ana-1"})
+    assert refused.status_code == 400
+    assert "rule" in refused.json()["detail"]
+
+
 def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
     """One --home argument moves everything a run owns -- database, models,
     caches. Nothing lands in OS application-data folders, and a first run

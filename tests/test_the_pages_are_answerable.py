@@ -678,6 +678,17 @@ def test_the_index_counts_pictures_not_mentions(tmp_path):
         conn.close()
 
 
+def test_the_entity_layer_queries_do_not_scan_the_library(library):
+    """The four queries the entity-surface delta added, held to the same
+    doctrine as every sibling: the plan is not a scan of a table that
+    grows with the library, and not a sort of one either."""
+    conn = library["conn"]
+    assert_no_growing_scan(conn, pages.WORKFLOWS_BY_USE, (), aggregate=True)
+    assert_no_growing_scan(conn, pages.WORKFLOW_FILES, (1, 120))
+    assert_no_growing_scan(conn, pages.ALBUM_PRESENT, (library["album"],))
+    assert_no_growing_scan(conn, pages.FILE_LORAS, (library["first"],))
+
+
 def test_a_person_is_shown_across_the_folders_they_are_in(library):
     """The payoff for the join tables and the reason the six axes are six.
 

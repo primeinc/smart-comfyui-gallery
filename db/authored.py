@@ -106,6 +106,15 @@ def rename_collection(conn, collection_id: int, name: str, now: float) -> str:
 
 
 def add_to_collection(conn, collection_id: int, file_id: int, now: float) -> None:
+    """File one picture into a listed collection.
+
+    A smart collection is refused by name here, and by trigger beneath:
+    its members are its rule's answer, and a stored row would be a
+    second, disagreeing one.
+    """
+    kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
+    if kind is not None and kind[0] == "smart":
+        raise ValueError("a smart collection derives its members from its rule; nothing is filed into it")
     conn.execute(
         "INSERT OR IGNORE INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)",
         (collection_id, file_id, now),

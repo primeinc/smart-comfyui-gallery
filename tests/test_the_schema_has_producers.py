@@ -117,6 +117,35 @@ def test_a_rename_that_changes_nothing_writes_no_history(db, a_library):
     assert db.execute("SELECT count(*) FROM slug_history").fetchone()[0] == 0
 
 
+def test_a_smart_collection_refuses_stored_members(db, a_library):
+    """A smart collection's children are what its rule says, freshly,
+    every time. A stored member row would give it a second, disagreeing
+    answer -- refused at the schema, and by the writer before that."""
+    import sqlite3 as sqlite_module
+
+    file_id = a_library["file"]
+    album = authored.collection(db, "Keepers", NOW)
+    flag = authored.collection(db, "Flagged", NOW, kind="flag")
+    smart = authored.collection(db, "Big seeds", NOW, kind="smart", sql_text="SELECT 1")
+
+    authored.add_to_collection(db, album, file_id, NOW)
+    authored.add_to_collection(db, flag, file_id, NOW)
+    with pytest.raises(ValueError, match="smart"):
+        authored.add_to_collection(db, smart, file_id, NOW)
+    with pytest.raises(sqlite_module.IntegrityError):
+        db.execute(
+            "INSERT INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)",
+            (smart, file_id, NOW),
+        )
+
+    # Nor may a filled collection quietly BECOME smart: its rows would
+    # instantly disagree with whatever rule it was given.
+    with pytest.raises(sqlite_module.IntegrityError):
+        db.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
+    db.execute("DELETE FROM collection_file WHERE collection_id = ?", (album,))
+    db.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
+
+
 # --- the rebuild contract --------------------------------------------------
 
 

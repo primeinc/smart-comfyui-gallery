@@ -66,9 +66,12 @@ PARSED_FIELDS = "SELECT source, key, value_text FROM file_param WHERE file_id = 
 
 #: One row per LoRA, never a group_concat: SQLite's one-argument
 #: group_concat separator is a bare comma, and a LoRA name may hold one.
+#: Ordered by ordinal alone: within (file_id, role) the ordinal is the
+#: primary key's own tail, so the order is index-served -- and unique, so
+#: a name tiebreak was unreachable anyway and only bought a sort.
 FILE_LORAS = (
     "SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
-    " WHERE fa.file_id = ? AND fa.role = 'lora' ORDER BY fa.ordinal, a.name"
+    " WHERE fa.file_id = ? AND fa.role = 'lora' ORDER BY fa.ordinal"
 )
 
 NEIGHBOUR = (
@@ -175,6 +178,7 @@ WORKFLOWS_BY_USE = (
     "  JOIN entity e ON e.id = a.id"
     "  JOIN generation g ON g.workflow_id = a.id"
     "  JOIN file f ON f.id = g.file_id AND f.missing_since IS NULL"
+    " WHERE a.kind = 'workflow'"
     " GROUP BY a.id ORDER BY pictures DESC, a.name"
 )
 

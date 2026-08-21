@@ -291,7 +291,10 @@ def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool
         collection_id, live_album = _resolved(conn, "collection", slug, "/t")
         file_id, live_file = _resolved(conn, "file", data.file, route)
         if adding:
-            authored.add_to_collection(conn, collection_id, file_id, time.time())
+            try:
+                authored.add_to_collection(conn, collection_id, file_id, time.time())
+            except ValueError as refused:
+                raise ClientException(str(refused)) from refused
         else:
             authored.remove_from_collection(conn, collection_id, file_id)
         conn.commit()
