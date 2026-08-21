@@ -70,7 +70,10 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     as an evaluated empty collection, the exact lie this design bans."""
     from .resultset import KINDS
 
-    if rule.version != RULE_VERSION:
+    # Exact-type integer checks throughout (`type(x) is int`), because
+    # Python's bool IS an int and JSON true would otherwise pass as 1 --
+    # the truthiness corner a "semantic gate" exists to close.
+    if type(rule.version) is not int or rule.version != RULE_VERSION:
         raise refuse(f"rule version {rule.version!r} is not one this build understands")
     for name, uuid in (("folder", rule.folder_uuid), ("person", rule.person_uuid)):
         if uuid is not None and (not isinstance(uuid, bytes) or len(uuid) != 16):
@@ -79,9 +82,9 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
         raise refuse(f"kind must be one of {', '.join(KINDS)}, not {rule.kind!r}")
     if rule.favorite is not None and not isinstance(rule.favorite, bool):
         raise refuse(f"favorite is true, false or absent, not {rule.favorite!r}")
-    if rule.rating_min is not None and (not isinstance(rule.rating_min, int) or not 1 <= rule.rating_min <= 5):
+    if rule.rating_min is not None and (type(rule.rating_min) is not int or not 1 <= rule.rating_min <= 5):
         raise refuse(f"rating_min names the minimum stars, 1..5, not {rule.rating_min!r}")
-    if rule.take is not None and (not isinstance(rule.take, int) or not 1 <= rule.take <= 10_000):
+    if rule.take is not None and (type(rule.take) is not int or not 1 <= rule.take <= 10_000):
         raise refuse(f"take must be 1..10000, not {rule.take!r}")
     if rule.text is not None:
         if not isinstance(rule.text, str) or not rule.text.strip():
@@ -101,6 +104,22 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     if not asks_authored and rule.actor_id is not None:
         raise refuse("an actor is pinned only when an authored facet needs one")
     return rule
+
+
+def _stored_uuid(value, field: str) -> bytes | None:
+    """Only actual JSON null means unconstrained: an empty string, a
+    false, or any other falsy value is CORRUPTION, not the absence of a
+    reference -- decoded strictly or refused."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        # TypeError and ValueError alike are corruption on the load path
+        # (both fold into BrokenCollectionRule there).
+        raise TypeError(f"the rule's {field} reference is not a hex string")
+    decoded = bytes.fromhex(value)
+    if len(decoded) != 16:
+        raise ValueError(f"the rule's {field} reference is not a 16-byte entity uuid")
+    return decoded
 
 
 def _entity_uuid(conn, kind: str, slug: str) -> bytes:
@@ -147,8 +166,13 @@ def _smart_only(conn, collection_id: int) -> None:
 
 def save(conn, collection_id: int, rule: CollectionRule, *, source_text: str | None, now: float) -> None:
     """The whole rule, as desired state: one row, one new version of the
-    collection's meaning -- never predicate-by-predicate edits."""
+    collection's meaning -- never predicate-by-predicate edits.
+
+    Validated HERE, not only in from_gallery_query: the persistence
+    interface owns its invariant, or correctness depends on every
+    future caller remembering which constructor blessed the object."""
     _smart_only(conn, collection_id)
+    rule = validate(rule, ValueError)
     told = json.dumps(
         {
             "v": rule.version,
@@ -189,8 +213,8 @@ def load(conn, collection_id: int) -> CollectionRule | None:
         where, select = held["where"], held["select"]
         made = CollectionRule(
             version=int(version),
-            folder_uuid=bytes.fromhex(where["folder"]) if where["folder"] else None,
-            person_uuid=bytes.fromhex(where["person"]) if where["person"] else None,
+            folder_uuid=_stored_uuid(where["folder"], "folder"),
+            person_uuid=_stored_uuid(where["person"], "person"),
             kind=where["kind"],
             favorite=where["favorite"],
             rating_min=where["rating_min"],
@@ -201,9 +225,12 @@ def load(conn, collection_id: int) -> CollectionRule | None:
         )
     except (KeyError, TypeError, ValueError) as rotten:
         raise BrokenCollectionRule(f"collection {collection_id}'s stored rule cannot be read: {rotten}") from rotten
-    if held.get("v") != version:
+    stored_v = held.get("v")
+    if type(stored_v) is not int or stored_v != version:
+        # Exact JSON integer: true == 1 and 1.0 == 1 in Python, and a
+        # version stamp that "equals" its column by coercion is corrupt.
         raise BrokenCollectionRule(
-            f"collection {collection_id}'s stored form says v{held.get('v')!r} under a v{version!r} column"
+            f"collection {collection_id}'s stored form says v{stored_v!r} under a v{version!r} column"
         )
     return validate(made, BrokenCollectionRule)
 

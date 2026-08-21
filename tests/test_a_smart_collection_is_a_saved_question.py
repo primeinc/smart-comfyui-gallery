@@ -273,6 +273,14 @@ def test_a_corrupt_stored_rule_is_broken_never_empty(saved):
         (1, _rotten(where={"folder": "zz"}), None),  # not hex at all
         (1, _rotten(where={"folder": "aabb"}), None),  # hex, but not 16 bytes
         (1, _rotten(where={"favorite": True}), None),  # authored facet, no pinned actor
+        # The JSON type system's truthiness corners: falsy is not null,
+        # and bool is not an integer however Python coerces them.
+        (1, _rotten(where={"folder": ""}), None),
+        (1, _rotten(where={"folder": False}), None),
+        (1, _rotten(where={"rating_min": True}), 1),
+        (1, _rotten(select={"take": True, "sort": "newest"}), None),
+        (1, _rotten(v=True), None),
+        (1, _rotten(v=1.0), None),
     ]
     for version, payload, actor in cases:
         conn.execute(
@@ -284,6 +292,30 @@ def test_a_corrupt_stored_rule_is_broken_never_empty(saved):
         assert body["state"] == "broken", f"{payload} was not refused"
         assert body["gallery"] is None
         assert saved.get("/g", params={"album": slug}).status_code == 400
+    connect.close(conn)
+
+
+def test_the_persistence_interface_validates_what_it_is_handed(saved):
+    """save() owns its invariant: a semantically rotten CollectionRule
+    built by hand -- not through from_gallery_query -- is refused at the
+    persistence seam, never written for load() to trip over later."""
+    conn = connect.connect(saved.app.state.db_path)
+    smart = authored.collection(conn, "Handmade", 1.0, kind="smart")
+    bad = collection_rules.CollectionRule(
+        version=1,
+        folder_uuid=None,
+        person_uuid=None,
+        kind="platypus",
+        favorite=None,
+        rating_min=None,
+        text=None,
+        sort=None,
+        take=None,
+        actor_id=None,
+    )
+    with pytest.raises(ValueError, match="kind"):
+        collection_rules.save(conn, smart, bad, source_text=None, now=1.0)
+    assert conn.execute("SELECT count(*) FROM collection_rule WHERE collection_id = ?", (smart,)).fetchone()[0] == 0
     connect.close(conn)
 
 
