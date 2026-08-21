@@ -142,14 +142,39 @@ def submit_dupes(conn, now: float) -> int:
     return jobs.submit(conn, "hash", now, payload={"derive": "groups", "threshold": threshold}, items=[0])
 
 
-def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
-    """One global pass: FAISS binary range search over every phash64,
-    union-find over the matches, groups of two or more written with the
-    policy-picked best member -- most pixels, then most bytes, then the
-    earliest identity."""
-    import numpy as np
+#: The shared similarity layer, built on first use -- one manager per
+#: worker process, and the space saying what a phash64 IS, stated once.
+#: This module packs nothing and never imports faiss.
+_SIMILARITY: dict = {}
 
-    from vision.faiss_runtime import import_faiss
+
+def _phash_space():
+    from vision.faiss_index import SpaceSpec
+
+    if "phash" not in _SIMILARITY:
+        _SIMILARITY["phash"] = SpaceSpec(
+            key="perceptual.phash64", representation="binary", dimensions=64, metric="hamming"
+        )
+    return _SIMILARITY["phash"]
+
+
+def _index_manager():
+    """Its indexes are disposable caches over rows SQLite owns; each
+    dupes pass reloads its space wholesale because the pass exists
+    precisely because the rows changed."""
+    from vision.faiss_index import IndexManager
+
+    if "manager" not in _SIMILARITY:
+        _SIMILARITY["manager"] = IndexManager()
+    return _SIMILARITY["manager"]
+
+
+def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
+    """One global pass: the shared index's hamming graph over every
+    phash64, union-find over the id pairs, groups of two or more written
+    with the policy-picked best member -- most pixels, then most bytes,
+    then the earliest identity."""
+    from vision import dupes
 
     from . import settings as settings_module
 
@@ -163,26 +188,18 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     if len(rows) < 2:
         return
 
-    unsigned = np.array([row[1] & 0xFFFFFFFFFFFFFFFF for row in rows], dtype=np.uint64)
-    packed = np.ascontiguousarray(unsigned.astype(">u8").view(np.uint8).reshape(-1, 8))
-    # The flag picks WHICH faiss package the one process-wide import
-    # loads; IndexBinaryFlat itself has no GPU path in any build, so the
-    # binary space runs on CPU either way.
-    faiss = import_faiss(gpu=settings_module.flag(conn, "faiss_gpu"))
-    # Flat, per upstream's own guidance: exact results want Flat
-    # (facebookresearch/faiss.wiki Guidelines-to-choose-an-index.md, "Do
-    # you need exact results? Then Flat"). The index is 8 bytes/vector,
-    # but the real growth cost is the all-pairs range_search and the
-    # Python walk over every match -- quadratic in matches, which the
-    # 0..31 radius cap keeps proportional to true duplicates.
-    # IndexBinaryIVF is the growth path past the ~10M mark, not before.
-    index = faiss.IndexBinaryFlat(64)
-    index.add(packed)
-    # range_search's radius is exclusive: distance < radius, so +1 makes
-    # the setting mean "within this many bits", inclusive.
-    lims, _distances, neighbours = index.range_search(packed, threshold + 1)
+    space = _phash_space()
+    manager = _index_manager()
+    manager.load(
+        space,
+        [row[0] for row in rows],
+        [row[1] for row in rows],
+        gpu=settings_module.flag(conn, "faiss_gpu"),
+    )
+    twins_a, twins_b, _distances = manager.graph(space.key, threshold)
 
-    parent = list(range(len(rows)))
+    by_id = {row[0]: row for row in rows}
+    parent = {file_id: file_id for file_id in by_id}
 
     def find(x: int) -> int:
         while parent[x] != x:
@@ -190,30 +207,27 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
             x = parent[x]
         return x
 
-    for query in range(len(rows)):
-        for at in range(int(lims[query]), int(lims[query + 1])):
-            a, b = find(query), find(int(neighbours[at]))
-            if a != b:
-                parent[b] = a
-
-    from vision import dupes
+    for a, b in zip(twins_a, twins_b, strict=True):
+        rooted_a, rooted_b = find(int(a)), find(int(b))
+        if rooted_a != rooted_b:
+            parent[rooted_b] = rooted_a
 
     grouped: dict[int, list[int]] = {}
-    for position in range(len(rows)):
-        grouped.setdefault(find(position), []).append(position)
+    for file_id in by_id:
+        grouped.setdefault(find(file_id), []).append(file_id)
     for members in grouped.values():
         if len(members) < 2:
             continue
-        seed = min(members, key=lambda m: rows[m][0])
-        best = max(members, key=lambda m: ((rows[m][2] or 0) * (rows[m][3] or 0), rows[m][4], -rows[m][0]))
+        seed = min(members)
+        best = max(members, key=lambda m: ((by_id[m][2] or 0) * (by_id[m][3] or 0), by_id[m][4], -m))
         for member in members:
             conn.execute(
                 "INSERT INTO derived_dupe_group(file_id, group_id, distance, threshold, is_best, computed_at)"
                 " VALUES(?, ?, ?, ?, ?, ?)",
                 (
-                    rows[member][0],
-                    rows[seed][0],
-                    dupes.hamming(rows[member][1], rows[seed][1]),
+                    member,
+                    seed,
+                    dupes.hamming(by_id[member][1], by_id[seed][1]),
                     threshold,
                     1 if member == best else 0,
                     now,
