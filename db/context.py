@@ -168,6 +168,16 @@ def _advance(conn, *, create: bool = True) -> None:
         conn.execute("UPDATE derived_context_state SET generation = generation + 1 WHERE id = 1")
 
 
+def repopulated(conn) -> None:
+    """The PRESENT-FILE POPULATION changed: a new file was minted, or a
+    row was marked missing or restored. Events prove themselves over
+    interpretation AND population, so either moving obsoletes every
+    published hypothesis -- a session that was complete yesterday is
+    not current over today's library. Advances the generation without
+    minting state on a never-interpreted library."""
+    _advance(conn, create=False)
+
+
 def state(conn) -> tuple[int, int] | None:
     """`(generation, policy_version)` of the current interpretation, or
     None when nothing has ever been interpreted."""
@@ -233,27 +243,6 @@ def stale(conn, file_id: int) -> None:
 
 
 @dataclasses.dataclass(frozen=True)
-class MediaContext:
-    """What a grouper is allowed to know about one media item: the ONE
-    interpretation, plus the generation identities that make session
-    phases decidable later. Groupers consume this interface, never the
-    source tables. There is NO fused moment here: a consumer names the
-    domain it works in, and unlike domains are never compared."""
-
-    file_id: int
-    uuid: str  # hex; membership hashes are built over these
-    origin: str
-    has_capture: bool
-    has_generation: bool
-    local_at: float | None
-    instant_at: float | None
-    tz_offset_min: int | None
-    time_precision: str | None
-    prompt_id: int | None
-    workflow_id: int | None
-
-
-@dataclasses.dataclass(frozen=True)
 class Occurrence:
     """One temporal claim of one KIND about one media item -- the
     grouping input. A grouper consumes the occurrences of its OWN claim,
@@ -284,28 +273,4 @@ def occurrences(conn, kind: str) -> list[Occurrence]:
     return [
         Occurrence(row[0], row[1].hex(), kind, row[3], row[4], row[5])
         for row in conn.execute(_OCCURRENCES, (kind, POLICY_VERSION))
-    ]
-
-
-_GROUPING = """
-SELECT mc.file_id, e.uuid, mc.origin, mc.has_capture, mc.has_generation,
-       mc.local_at, mc.instant_at, mc.tz_offset_min, mc.time_precision,
-       g.prompt_id, g.workflow_id
-  FROM derived_media_context mc
-  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL
-  JOIN entity e ON e.id = mc.file_id
-  LEFT JOIN generation g ON g.file_id = mc.file_id
- ORDER BY mc.file_id
-"""
-
-
-def contexts(conn) -> list[MediaContext]:
-    """Every present file's context, in stable id order -- the grouping
-    input, read once per regroup. Chronology is the consumer's to
-    establish, in the domain it chose."""
-    return [
-        MediaContext(
-            row[0], row[1].hex(), row[2], bool(row[3]), bool(row[4]), row[5], row[6], row[7], row[8], row[9], row[10]
-        )
-        for row in conn.execute(_GROUPING)
     ]

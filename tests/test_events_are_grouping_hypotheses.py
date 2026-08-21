@@ -16,6 +16,7 @@ upgraded policy blinds every reader until the context job runs.
 from __future__ import annotations
 
 import datetime
+import pathlib
 
 import pytest
 from litestar.testing import TestClient
@@ -289,6 +290,7 @@ def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypat
         assert conn.execute(f"SELECT count(*) FROM file f WHERE {door_sql}", (door_value,)).fetchone()[0] == 0, (
             "the facet door and the timeline must agree on what 'current' means"
         )
+        assert context.occurrences(conn, "generation") == [], "the occurrence reader goes dark with every other reader"
         with pytest.raises(ValueError, match="older policy"):
             events.regroup_one(conn, events.GenerationSessionGrouper(), NOW + 25 * HOUR)
         conn.commit()
@@ -350,6 +352,98 @@ def test_a_changed_outsider_makes_every_hypothesis_stale(grouped):
             == 1
         ), "regrouping keeps the latest hypothesis, not a museum"
         assert len(pages.timeline_events(conn)) >= 1, "the re-proved hypothesis is current again"
+    finally:
+        connect.close(conn)
+
+
+def test_a_departed_file_makes_the_hypothesis_stale_in_the_same_scan(grouped):
+    """Yesterday's complete session is not current over today's library.
+    A file leaving is a POPULATION change: the scan itself advances the
+    proof identity -- no context or events job is needed to make the old
+    hypothesis stop rendering, and an event that claimed the departed
+    picture is deleted outright rather than surviving to count it."""
+    import os
+
+    grouped.post("/jobs/context")
+    grouped.post("/jobs/events")
+    _drain(grouped)
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert len(pages.timeline_events(conn)) >= 1
+        root = conn.execute("SELECT path FROM root").fetchone()[0]
+    finally:
+        connect.close(conn)
+
+    # The OUTSIDER departs: never a member, but the absence proof is stale.
+    os.remove(str(pathlib.Path(root) / "gen_3.png"))
+    grouped.post("/roots/1/scan")
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert pages.timeline_events(conn) == [], (
+            "the scan that shrank the population must stale the hypothesis by itself"
+        )
+    finally:
+        connect.close(conn)
+
+    grouped.post("/jobs/context")
+    grouped.post("/jobs/events")
+    _drain(grouped)
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert len(pages.timeline_events(conn)) >= 1, "re-proved over the smaller library"
+        member = conn.execute("SELECT id FROM file WHERE name = 'gen_0.png'").fetchone()[0]
+        root = conn.execute("SELECT path FROM root").fetchone()[0]
+    finally:
+        connect.close(conn)
+
+    # A MEMBER departs: the event claiming it dies in the same transaction.
+    os.remove(str(pathlib.Path(root) / "gen_0.png"))
+    grouped.post("/roots/1/scan")
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert pages.timeline_events(conn) == []
+        assert (
+            conn.execute("SELECT count(*) FROM derived_event_file ef WHERE ef.file_id = ?", (member,)).fetchone()[0]
+            == 0
+        ), "no persisted event may keep claiming a missing picture"
+    finally:
+        connect.close(conn)
+
+
+def test_an_arrived_file_makes_the_hypothesis_stale_and_regroup_refuses(grouped):
+    """The inverse ordering: complete, published -- then the library
+    GROWS. The scan advances the proof identity, the old event stops
+    rendering immediately, and regroup refuses the now-incomplete
+    coverage until the context job interprets the newcomer."""
+    grouped.post("/jobs/context")
+    grouped.post("/jobs/events")
+    _drain(grouped)
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert len(pages.timeline_events(conn)) >= 1
+        root = conn.execute("SELECT path FROM root").fetchone()[0]
+    finally:
+        connect.close(conn)
+
+    Image.new("RGB", (12, 12), (10, 200, 40)).save(str(pathlib.Path(root) / "arrival.png"))
+    grouped.post("/roots/1/scan")
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert pages.timeline_events(conn) == [], "an event proven over four files is not current over five"
+        assert context.coverage(conn) == (4, 5), "the newcomer is present and uninterpreted"
+        with pytest.raises(ValueError, match="incomplete"):
+            events.regroup_one(conn, events.GenerationSessionGrouper(), NOW + 30 * HOUR)
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+    grouped.post("/jobs/context")
+    grouped.post("/jobs/events")
+    _drain(grouped)
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        assert context.coverage(conn) == (5, 5)
+        assert len(pages.timeline_events(conn)) >= 1, "interpreted, the grown library may publish again"
     finally:
         connect.close(conn)
 

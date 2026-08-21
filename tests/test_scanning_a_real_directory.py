@@ -82,7 +82,7 @@ def author(conn, file_id):
     if album is None:
         album_id = scan.mint(conn, "collection", "Keepers")
         conn.execute(
-            "INSERT INTO collection(id, name, kind, created_at) VALUES(?, 'Keepers', 'album', 0)",
+            "INSERT INTO collection(id, name, kind, created_at, updated_at) VALUES(?, 'Keepers', 'album', 0, 0)",
             (album_id,),
         )
     else:

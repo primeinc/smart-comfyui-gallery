@@ -593,17 +593,25 @@ def _one_write(conn, name: str):
 
 
 def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
+    from . import context as context_module
+
     resolutions, missing = resolve_scan(conn, {k: v.sha for k, v in observed.items()}, roots=roots)
     counts = dict.fromkeys(Outcome, 0)
 
     # 1. Missing first. A path is exclusive only while the bytes are there, so
     #    marking the departed rows is what frees their names for whatever now
-    #    stands in the same place.
+    #    stands in the same place. Departing IS a population change: the
+    #    file's interpretation goes stale with it -- deleting any event that
+    #    claimed the picture and advancing the currentness generation, so a
+    #    hypothesis over the old population stops being current in the same
+    #    transaction that shrank it.
     for file_id in missing:
-        conn.execute(
+        told = conn.execute(
             "UPDATE file SET missing_since = ? WHERE id = ? AND missing_since IS NULL",
             (now, file_id),
         )
+        if told.rowcount:
+            context_module.stale(conn, file_id)
 
     # What the rows already say, so a scan can tell a file that changed from a
     # file it merely looked at again. Without this every matched row was
@@ -657,8 +665,6 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         found = observed[(folder_id, name)]
         # The filesystem's time claims are moving under this file: its
         # derived interpretation goes stale with them (db/context.py).
-        from . import context as context_module
-
         context_module.stale(conn, file_id)
         conn.execute(
             "UPDATE file SET folder_id = ?, name = ?, size = ?, mtime = ?,"
@@ -718,6 +724,12 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
                 now,
             ),
         )
+
+    # A minted row grew the present population: no context of its own to
+    # stale, but every event hypothesis is now a statement about a library
+    # that no longer exists. Once per scan, not once per file.
+    if counts[Outcome.NEW] or counts[Outcome.AMBIGUOUS]:
+        context_module.repopulated(conn)
 
     return ScanResult(
         matched=counts[Outcome.UNIQUE_MATCH],
