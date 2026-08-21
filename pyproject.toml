@@ -1,15 +1,12 @@
-# uv-native install path. Mirrors requirements.txt (core) and
-# requirements-ai.txt (optional AI layer) -- keep the three in sync.
+# uv-native install path. Mirrors requirements.txt -- keep the two in sync.
+# The AI layer is core, not a group: faces, hashing, embeddings and search
+# are the product, so their runtimes live in [project.dependencies] like
+# everything else. Model WEIGHTS (not packages) provision separately; see
+# docs/AI_MODELS.md.
 #
-#   uv sync                        everything -> ./.venv: core app, test
-#                                    tooling, and the AI layer (dev/ai/
-#                                    ai-models are default groups; CPU
-#                                    torch -- weights are provisioned
-#                                    separately, see docs/AI_MODELS.md)
-#   uv sync --no-group ai-models   skip the heavy model runtimes
-#   uv sync --no-default-groups    core app only
-#   uv run python smartgallery.py  run the gallery
-#   uv run pytest tests/           run the model-free suite
+#   uv sync                        everything -> ./.venv
+#   uv run python -m sg_web        run the gallery
+#   uv run pytest tests/           run the suite
 
 [project]
 name = "smartgallery"
@@ -19,6 +16,9 @@ requires-python = ">=3.10"
 dependencies = [
     "litestar",
     "uvicorn",  # the server behind `python -m sg_web`
+    # uvicorn speaks WebSocket only through an installed protocol package;
+    # without one it downgrades /ws/jobs to a silent 404 at the server.
+    "websockets",
     "Pillow",
     "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; deployed YuNet 2023mar is static-shape (docs/AUDIT_FACE_INGESTION_2026-08-15.md finding 3)
     "numpy",
@@ -32,6 +32,29 @@ dependencies = [
     "rawpy>=0.27.0",
     "imagehash>=4.3.2",
     "qwen-vl-utils>=0.0.14",
+    "faiss-cpu>=1.15",
+    "huggingface_hub",  # cached/resumable model-weight downloads
+    "insightface>=1.0.1",  # FaceAnalysis pipeline (SCRFD + glintr100)
+    # CUDA, never CPU -- the same rule [tool.uv.sources] states for torch.
+    # onnxruntime-gpu needs no nvidia wheels of its own: it finds the CUDA
+    # runtime in the installed torch's lib directory when the CUDA major
+    # matches ("the search order: the lib directory of compatible PyTorch
+    # in Windows" -- onnxruntime.preload_dlls), and torch here is cu132.
+    # Verified on this hardware: glintr100 recognition runs on
+    # CUDAExecutionProvider, SCRFD detection stays on CPU by design (its
+    # '?' dynamic dims are slower on CUDA -- see faces._ort_providers).
+    # macOS has no CUDA build, so it keeps the CPU package.
+    "onnxruntime-gpu; sys_platform == 'linux' or sys_platform == 'win32'",
+    "onnxruntime; sys_platform == 'darwin'",
+    # torch resolves through [tool.uv.sources] below; nothing re-picks it
+    # at runtime, so a CUDA build is an install-time choice. torchvision
+    # is qwen_vl_utils' video reader and must stay index-paired with torch.
+    "torch",
+    "torchvision",
+    "open_clip_torch",
+    # >=4.57.3: the first release carrying the qwen3_vl model family the
+    # qwen embedding adapter subclasses (upstream Qwen3-VL-Embedding pin).
+    "transformers>=4.57.3",
 ]
 
 [dependency-groups]
@@ -51,46 +74,11 @@ dev = [
     "psd-tools>=1.18.0",
     "playwright>=1.62.0",
 ]
-# OmniQuery local natural-language parsing + weight provisioning.
-ai = [
-    "faiss-cpu>=1.15",
-    "huggingface_hub",
-    "insightface>=1.0.1",  # FaceAnalysis pipeline (SCRFD + glintr100)
-    # CUDA, never CPU -- the same rule [tool.uv.sources] states for torch.
-    # onnxruntime-gpu needs no nvidia wheels of its own: it finds the CUDA
-    # runtime in the installed torch's lib directory when the CUDA major
-    # matches ("the search order: the lib directory of compatible PyTorch
-    # in Windows" -- onnxruntime.preload_dlls), and torch here is cu132.
-    # Verified on this hardware: glintr100 recognition runs on
-    # CUDAExecutionProvider, SCRFD detection stays on CPU by design (its
-    # '?' dynamic dims are slower on CUDA -- see faces._ort_providers).
-    # macOS has no CUDA build, so it keeps the CPU package.
-    "onnxruntime-gpu; sys_platform == 'linux' or sys_platform == 'win32'",
-    "onnxruntime; sys_platform == 'darwin'",
-]
-# Real model backends: semantic/visual embeddings, the qwen-vl critic's
-# grounding gate, and MobileSAM segmentation. torch resolves through
-# [tool.uv.sources] below; nothing re-picks it at runtime, so a CUDA build
-# is an install-time choice. Weights (not packages) auto-download on first
-# start, or via `python -m smartgallery_ai provision`; see docs/AI_MODELS.md.
-ai-models = [
-    { include-group = "ai" },
-    "torch",
-    "torchvision",
-    "open_clip_torch",
-    "transformers",
-    "timm",
-    "mobile-sam",
-    "num2words",
-]
-
 [tool.uv]
 # Application, not a distributable package: uv manages the environment but
-# never builds/installs the project itself. Batteries included by default:
-# plain `uv sync` installs everything (opt out with --no-default-groups or
-# --no-group ai-models).
+# never builds/installs the project itself.
 package = false
-default-groups = ["dev", "ai", "ai-models"]
+default-groups = ["dev"]
 
 # insightface hard-requires the CPU `onnxruntime`. Both packages install the
 # same `onnxruntime/` directory, so with both present whichever landed last
@@ -104,7 +92,7 @@ default-groups = ["dev", "ai", "ai-models"]
 # darwin-only requirement. On Linux and Windows the marker is false and the
 # CPU package is simply never pulled in; macOS still gets it, since there is
 # no CUDA build there. `onnxruntime-gpu` is a different name and is
-# untouched, leaving the `ai` group as the single source of the choice.
+# untouched, leaving the dependency list as the single source of the choice.
 #
 # uv 0.11.5 takes only the string form here; the scoped
 # `exclude-dependencies` table that would target insightface alone is a
@@ -143,7 +131,6 @@ torch = [
 torchvision = [
   { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-mobile-sam = { git = "https://github.com/ChaoningZhang/MobileSAM.git" }
 
 # explicit = true keeps this index to the packages pinned to it above, so
 # generic dependencies (jinja2, numpy, ...) still come from PyPI -- uv's

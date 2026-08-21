@@ -1,12 +1,7 @@
-"""The three install surfaces (requirements.txt, requirements-ai.txt,
-pyproject.toml) all claim to be kept in sync; this binds the claim.
-
-Contract per surface:
-  - every [project.dependencies] entry appears UNCOMMENTED in requirements.txt
-  - every dependency-group 'ai' entry appears UNCOMMENTED in requirements-ai.txt
-  - every dependency-group 'ai-models' entry appears in requirements-ai.txt at
-    least as a commented opt-in line (pip users uncomment; uv installs by
-    default)
+"""The two install surfaces (requirements.txt, pyproject.toml) claim to
+be kept in sync; this binds the claim. The AI layer is core -- there is no
+optional dependency group and no second requirements file, and the tests
+below keep that fiction from creeping back.
 """
 
 from __future__ import annotations
@@ -34,46 +29,28 @@ def _pyproject():
 
 
 def _requirement_lines(filename: str):
-    """(uncommented, commented) normalized package names in a requirements
-    file; continuation comment lines (leading whitespace + #) are prose,
-    not packages, and are ignored."""
-    uncommented, commented = set(), set()
+    """Uncommented normalized package names in a requirements file."""
+    uncommented = set()
     with open(os.path.join(_ROOT, filename), encoding="utf-8") as fh:
         for line in fh:
             stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("#"):
-                if line[0] in " \t":
-                    continue
-                candidate = stripped.lstrip("#").strip()
-                if candidate and re.match(r"^[A-Za-z0-9_.-]+", candidate):
-                    commented.add(_norm(candidate))
-            else:
+            if stripped and not stripped.startswith("#"):
                 uncommented.add(_norm(stripped))
-    return uncommented, commented
+    return uncommented
 
 
-def test_core_requirements_match_project_dependencies():
+def test_requirements_match_project_dependencies():
     declared = {_norm(d) for d in _pyproject()["project"]["dependencies"]}
-    uncommented, _ = _requirement_lines("requirements.txt")
+    uncommented = _requirement_lines("requirements.txt")
     missing = declared - uncommented
-    assert not missing, f"requirements.txt lacks pyproject core deps: {sorted(missing)}"
+    assert not missing, f"requirements.txt lacks pyproject deps: {sorted(missing)}"
 
 
-def test_ai_requirements_match_ai_group():
-    groups = _pyproject()["dependency-groups"]
-    declared = {_norm(d) for d in groups["ai"] if isinstance(d, str)}
-    uncommented, _ = _requirement_lines("requirements-ai.txt")
-    missing = declared - uncommented
-    assert not missing, f"requirements-ai.txt lacks 'ai' group deps: {sorted(missing)}"
-
-
-def test_ai_models_group_documented_as_opt_in():
-    groups = _pyproject()["dependency-groups"]
-    declared = {_norm(d) for d in groups["ai-models"] if isinstance(d, str)}
-    uncommented, commented = _requirement_lines("requirements-ai.txt")
-    missing = declared - uncommented - commented
-    assert not missing, (
-        f"requirements-ai.txt does not mention 'ai-models' deps even as commented opt-ins: {sorted(missing)}"
+def test_the_ai_layer_is_core_not_a_group():
+    """AI is the product. A dependency group or a second requirements file
+    would make it look optional again."""
+    groups = _pyproject().get("dependency-groups", {})
+    assert set(groups) <= {"dev"}, f"unexpected dependency groups: {sorted(set(groups) - {'dev'})}"
+    assert not os.path.exists(os.path.join(_ROOT, "requirements-ai.txt")), (
+        "requirements-ai.txt is back; the AI layer is core and lives in requirements.txt"
     )

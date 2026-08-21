@@ -380,7 +380,7 @@ uv sync                        # everything (app + AI runtimes, CPU torch) into 
 uv run python smartgallery.py  # run the gallery
 ```
 
-Everything is included by default (`--no-group ai-models` for a lighter install). The AI layer is on by default: on first start it downloads any missing model **weights** in the background (`AI_DAM_AUTO_PROVISION=false` to opt out; `ENABLE_AI_DAM=false` disables the layer entirely). Runtime packages are never installed at runtime — they come from `uv sync`, or from `requirements-ai.txt` for pip users — see `docs/AI_MODELS.md`.
+Everything is included by default — the AI layer is core, not an optional group. Runtime packages are never installed at runtime; they come from `uv sync`, or from `requirements.txt` for pip users. Model **weights** download only when a job that needs them asks — see `docs/AI_MODELS.md`.
 
 **2. Create your launch script**
 

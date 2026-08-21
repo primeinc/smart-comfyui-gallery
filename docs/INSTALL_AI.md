@@ -18,14 +18,11 @@ Everything runs locally. No cloud inference, no telemetry.
 
 ## Install
 
-`uv sync` installs every runtime: `dev`, `ai` and `ai-models` are the
-default groups (`pyproject.toml`), so torch, torchvision, open_clip,
-transformers, timm and mobile-sam all land without a flag. `--no-group
-ai-models` gives a lighter install with faces and hashing but no
-embeddings, critic or segmentation. Pip users install
-`requirements-ai.txt` and uncomment the model-backend block at the bottom
-of it; that block is opt-in because torch and torchvision must come from
-the same index.
+`uv sync` installs every runtime — the AI layer is core, and there are
+no optional dependency groups: torch, torchvision, open_clip and
+transformers land without a flag. Pip users install `requirements.txt`;
+its header carries the one caveat (torch and torchvision must come from
+the same index).
 
 Nothing installs packages at runtime. The AI layer is ON by default and
 provisions WEIGHTS only: on first startup the background worker downloads
