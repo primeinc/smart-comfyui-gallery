@@ -215,6 +215,57 @@ def test_artifact_and_parameter_changes_are_claims_about_a_boundary_not_boundari
     assert plan["phases"][1]["label_hint"].endswith("new artifacts")
 
 
+def test_without_chronology_families_differ_and_nothing_is_added_or_previous():
+    """Day-precision evidence: two families that differ in LoRA and
+    sampler yield SYMMETRIC difference claims -- what is used only
+    here, what only there -- never added/removed, from/to, or a label
+    that says "new". A sequenced plan carrying a symmetric claim, or an
+    unsequenced plan carrying a directed one, is refused by the
+    validator: direction needs a chronology."""
+    lora_a, lora_b = "a" * 32, "b" * 32
+    members = [
+        _member(0, LIGHTHOUSE[0], artifacts=(lora_a,), precision="day"),
+        _member(1, LIGHTHOUSE[1], artifacts=(lora_a,), precision="day"),
+        _member(2, HELMET[0], artifacts=(lora_b,), precision="day", sampler="DPM++ 2M"),
+        _member(3, HELMET[1], artifacts=(lora_b,), precision="day", sampler="DPM++ 2M"),
+    ]
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    assert plan["v"] == 2
+    assert plan["subject"]["sequenced"] is False
+    second = _claims_of(plan, 1)
+    assert second["artifact_difference"]["facts"] == {"only_here": [lora_b], "only_other": [lora_a]}
+    assert second["parameter_difference"]["facts"] == {
+        "differs": {"sampler": {"here": ["DPM++ 2M"], "other": ["Euler a"]}}
+    }
+    kinds = {claim["kind"] for claim in plan["claims"]}
+    assert not kinds & {"artifact_change", "parameter_change", "prompt_shift"}
+    assert plan["phases"][1]["label_hint"] == "Prompt family 2 · different artifacts"
+    spelled = json.dumps(plan)
+    for word in ("added", "removed", '"from"', '"to"', "new", "previous"):
+        assert word not in spelled, f"an unsequenced plan said {word!r}"
+    assert planning.validate_plan(plan, document, sha) == []
+
+    # the validator refuses direction without chronology, and vice versa
+    directed = copy.deepcopy(plan)
+    directed["claims"][-1]["kind"] = "artifact_change"
+    directed["claims"][-1]["facts"] = {"added": [lora_b], "removed": [lora_a]}
+    assert any("directional claim artifact_change" in why for why in planning.validate_plan(directed, document, sha))
+    members = [
+        _member(i, text, artifacts=(lora_a,) if i < 2 else (lora_b,)) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET)
+    ]
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    assert plan["subject"]["sequenced"] is True
+    assert "artifact_change" in _claims_of(plan, 1)
+    symmetric = copy.deepcopy(plan)
+    for claim in symmetric["claims"]:
+        if claim["kind"] == "artifact_change":
+            claim["kind"] = "artifact_difference"
+            claim["facts"] = {"only_here": claim["facts"]["added"], "only_other": claim["facts"]["removed"]}
+    assert any("symmetric claim artifact_difference" in why for why in planning.validate_plan(symmetric, document, sha))
+
+
 def test_a_plan_is_an_exact_partition_and_the_validator_has_teeth():
     """validate_plan refuses a plan that omits a member, places one
     twice, names a representative outside its phase, repeats an id, or
@@ -390,20 +441,20 @@ def test_the_same_request_is_one_identity_and_policies_coexist():
     assert planning.identity(strict)[1] != planning.identity(one)[1]
     assert len(strict["phases"]) > len(one["phases"]), "a stricter threshold splits the near-variants"
     loose = {"phase_threshold": 0.5}
-    request = planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", loose)
-    assert request == planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", loose)
+    request = planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", loose)
+    assert request == planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", loose)
     strict_settings = {"phase_threshold": 0.99}
-    assert request != planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", strict_settings)
-    assert request != planning.request_identity(sha, "generation_history", 4, "lexical-bow", "2", loose)
+    assert request != planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", strict_settings)
+    assert request != planning.request_identity(sha, "generation_history", 5, "lexical-bow", "2", loose)
 
 
 def test_the_document_format_is_part_of_the_request_identity(monkeypatch):
     """A format change must never hand back yesterday's shape under an
     unchanged planner version: FORMAT_VERSION rides the request hash."""
     sha = "a" * 64
-    before = planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", {"phase_threshold": 0.5})
+    before = planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", {"phase_threshold": 0.5})
     monkeypatch.setattr(planning, "FORMAT_VERSION", planning.FORMAT_VERSION + 1)
-    after = planning.request_identity(sha, "generation_history", 4, "lexical-bow", "1", {"phase_threshold": 0.5})
+    after = planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", {"phase_threshold": 0.5})
     assert before != after
 
 
@@ -647,12 +698,12 @@ def test_the_story_plan_grammar_is_exact_and_fails_closed():
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
-    assert planning.validate_story_plan_v1(plan) == []
+    assert planning.validate_story_plan(plan) == []
 
     def broken(mutate):
         bent = copy.deepcopy(plan)
         mutate(bent)
-        reasons = planning.validate_story_plan_v1(bent)
+        reasons = planning.validate_story_plan(bent)
         assert reasons, "the grammar accepted a malformed document"
 
     broken(lambda p: p.__setitem__("narrative", "a story"))
@@ -667,8 +718,8 @@ def test_the_story_plan_grammar_is_exact_and_fails_closed():
     broken(lambda p: p["subject"].__setitem__("sequenced", "yes"))
     broken(lambda p: p["unsupported"].append({"kind": "weather", "reason": "rain"}))
     broken(lambda p: p.__setitem__("snapshot_sha256", "nope"))
-    for garbage in (None, [], "plan", {"v": 1}, {"v": 1, "phases": "many"}):
-        assert planning.validate_story_plan_v1(garbage), f"{garbage!r} read as a plan"
+    for garbage in (None, [], "plan", {"v": 1}, {"v": 1, "phases": "many"}, {"v": 2}):
+        assert planning.validate_story_plan(garbage), f"{garbage!r} read as a plan"
 
 
 def test_query_policy_is_the_engine_identity_not_the_stored_space(monkeypatch):
@@ -777,20 +828,38 @@ def test_a_corrupt_snapshot_is_a_409_on_the_wire(frozen):
 
 
 def test_the_v1_grammar_is_frozen_and_exception_proof(monkeypatch):
-    """A v1 row must still parse as v1 after a v2 exists: the grammar
-    reads frozen constants, never the running FORMAT_VERSION or
-    registry. And any bytes -- unhashable kinds included -- yield
-    controlled reasons, never an exception."""
+    """A v1 row must still parse as v1 after later versions exist: the
+    grammar reads frozen constants, never the running FORMAT_VERSION or
+    registry. A v1 document is a v2 document without the symmetric
+    claims, so one is made here by stamping v1 on a sequenced plan. And
+    any bytes -- unhashable kinds included -- yield controlled reasons,
+    never an exception."""
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
     document, sha = _snapshot(members)
-    plan = _planner().plan(document, sha)
+    plan = {**_planner().plan(document, sha), "v": 1}
     assert planning.validate_story_plan_v1(plan) == []
-    monkeypatch.setattr(planning, "FORMAT_VERSION", 2)
+    monkeypatch.setattr(planning, "FORMAT_VERSION", 3)
     monkeypatch.setattr(planning, "PLANNERS", {})
     assert planning.validate_story_plan_v1(plan) == [], "v1 is judged by v1's frozen vocabulary"
     assert planning.validate_story_plan(plan) == [], "the dispatcher routes a v1 document to the v1 grammar"
+    assert planning.validate_story_plan({**plan, "v": 2}) == [], "v1's vocabulary is inside v2's"
     assert planning.validate_story_plan({**plan, "v": 7}), "an undefined version is invalid, not a crash"
     assert planning.validate_story_plan({**plan, "v": True})
+    v1_only = {
+        **plan,
+        "claims": [
+            *plan["claims"],
+            {
+                "id": "claim-099",
+                "kind": "artifact_difference",
+                "confidence": 1.0,
+                "evidence_refs": ["member-001"],
+                "facts": {"only_here": ["x"], "only_other": []},
+            },
+        ],
+    }
+    assert any("not a v1 claim kind" in why for why in planning.validate_story_plan_v1(v1_only))
+    assert planning.validate_story_plan_v2({**v1_only, "v": 2}) == []
 
     def bent(mutate):
         held = copy.deepcopy(plan)

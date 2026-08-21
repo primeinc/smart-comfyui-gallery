@@ -58,7 +58,13 @@ import typing
 
 from .stories import canonical, digest
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+
+#: Claim kinds that assert DIRECTION -- before/after, added/removed,
+#: from/to. They exist only in a sequenced plan, where the phase list is
+#: a chronology. An unsequenced plan states symmetric DIFFERENCES.
+_DIRECTIONAL = frozenset({"prompt_shift", "artifact_change", "parameter_change"})
+_SYMMETRIC = frozenset({"artifact_difference", "parameter_difference"})
 
 #: Precisions fine enough that event order is evidence of sequence.
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
@@ -292,7 +298,7 @@ class GenerationHistoryPlanner:
     """
 
     kind = "generation_history"
-    version = 4
+    version = 5
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -427,14 +433,20 @@ class GenerationHistoryPlanner:
             else:
                 label = "Prompt evidence gap"
             if number > 1:
+                # Sequenced: the previous phase came BEFORE, so a change has
+                # a direction. Unsequenced: the family listed before is
+                # merely another family, and the only honest claim is that
+                # the two DIFFER -- symmetric facts, no before/after.
                 previous = groups[number - 2]
-                changed = _artifact_change(members, previous, indexes, refs)
+                changed = _artifact_change(members, previous, indexes, refs, sequenced)
                 if changed is not None:
-                    claim_refs.append(_claim(claims, "artifact_change", 1.0, changed[0], changed[1]))
-                    label += " · new artifacts"
-                params = _parameter_change(members, previous, indexes, refs)
+                    kind = "artifact_change" if sequenced else "artifact_difference"
+                    claim_refs.append(_claim(claims, kind, 1.0, changed[0], changed[1]))
+                    label += " · new artifacts" if sequenced else " · different artifacts"
+                params = _parameter_change(members, previous, indexes, refs, sequenced)
                 if params is not None:
-                    claim_refs.append(_claim(claims, "parameter_change", 1.0, params[0], params[1]))
+                    kind = "parameter_change" if sequenced else "parameter_difference"
+                    claim_refs.append(_claim(claims, kind, 1.0, params[0], params[1]))
             representative = refs[_medoid(spoken, cosine)] if spoken else member_refs[0]
             phases.append(
                 {
@@ -538,28 +550,34 @@ def _artifact_uuids(member: dict) -> set[str]:
     return {one["uuid"] for one in ((member.get("generation") or {}).get("artifacts") or [])}
 
 
-def _artifact_change(members, previous, current, refs):
-    before = set().union(*(_artifact_uuids(members[i]) for i in previous))
-    after = set().union(*(_artifact_uuids(members[i]) for i in current))
-    if before == after:
+def _artifact_change(members, other, here, refs, sequenced: bool):
+    """The artifact sets of two phases, as a directed change (sequenced:
+    `other` came before `here`) or as a symmetric difference."""
+    there = set().union(*(_artifact_uuids(members[i]) for i in other))
+    this = set().union(*(_artifact_uuids(members[i]) for i in here))
+    if there == this:
         return None
-    evidence = [f"{refs[i]}:generation.artifacts" for i in (*previous, *current)]
-    return evidence, {"added": sorted(after - before), "removed": sorted(before - after)}
+    evidence = [f"{refs[i]}:generation.artifacts" for i in (*other, *here)]
+    if sequenced:
+        return evidence, {"added": sorted(this - there), "removed": sorted(there - this)}
+    return evidence, {"only_here": sorted(this - there), "only_other": sorted(there - this)}
 
 
 _PARAMS = ("sampler", "scheduler", "steps", "cfg", "denoise", "clip_skip", "width", "height")
 
 
-def _parameter_change(members, previous, current, refs):
+def _parameter_change(members, other, here, refs, sequenced: bool):
     def settled(indexes):
         return {key: sorted({str((members[i].get("generation") or {}).get(key)) for i in indexes}) for key in _PARAMS}
 
-    before, after = settled(previous), settled(current)
-    changed = {key: {"from": before[key], "to": after[key]} for key in _PARAMS if before[key] != after[key]}
-    if not changed:
+    there, this = settled(other), settled(here)
+    differing = [key for key in _PARAMS if there[key] != this[key]]
+    if not differing:
         return None
-    evidence = [f"{refs[i]}:generation.{key}" for key in changed for i in (*previous, *current)]
-    return evidence, {"changed": changed}
+    evidence = [f"{refs[i]}:generation.{key}" for key in differing for i in (*other, *here)]
+    if sequenced:
+        return evidence, {"changed": {key: {"from": there[key], "to": this[key]} for key in differing}}
+    return evidence, {"differs": {key: {"here": this[key], "other": there[key]} for key in differing}}
 
 
 # --- validation: a plan is an exact partition of its snapshot ----------------
@@ -621,6 +639,15 @@ STORY_PLAN_V1 = {
     "unsupported": frozenset({"chronology", "prompt_evidence"}),
     "settings": frozenset({"phase_threshold"}),
     "subjects": frozenset({"generation_session"}),
+}
+
+#: StoryPlan v2 -- FROZEN. v1 plus the symmetric difference claims an
+#: UNSEQUENCED plan states between families (v1 had only the directed
+#: change claims, which assert a before and an after).
+STORY_PLAN_V2 = {
+    **STORY_PLAN_V1,
+    "version": 2,
+    "claims": STORY_PLAN_V1["claims"] | frozenset({"artifact_difference", "parameter_difference"}),
 }
 _ID = re.compile(r"^(phase|claim)-[0-9]{3}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
@@ -693,19 +720,34 @@ def _facts_valid_v1(kind: str, facts) -> bool:
             and bool(facts["added"] or facts["removed"])
         )
     if kind == "parameter_change":
-        return (
-            keys == {"changed"}
-            and isinstance(facts["changed"], dict)
-            and bool(facts["changed"])
-            and all(
-                isinstance(k, str)
-                and isinstance(v, dict)
-                and set(v) == {"from", "to"}
-                and all(_strings(v[s]) for s in v)
-                for k, v in facts["changed"].items()
-            )
-        )
+        return _parameter_facts(facts, "changed", ("from", "to"))
     return False
+
+
+def _parameter_facts(facts: dict, key: str, sides: tuple[str, str]) -> bool:
+    return (
+        set(facts) == {key}
+        and isinstance(facts[key], dict)
+        and bool(facts[key])
+        and all(
+            isinstance(k, str) and isinstance(v, dict) and set(v) == set(sides) and all(_strings(v[s]) for s in v)
+            for k, v in facts[key].items()
+        )
+    )
+
+
+def _facts_valid_v2(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if kind == "artifact_difference":
+        return (
+            set(facts) == {"only_here", "only_other"}
+            and all(_strings(facts[k]) for k in facts)
+            and bool(facts["only_here"] or facts["only_other"])
+        )
+    if kind == "parameter_difference":
+        return _parameter_facts(facts, "differs", ("here", "other"))
+    return _facts_valid_v1(kind, facts)
 
 
 def validate_story_plan_v1(plan) -> list[str]:
@@ -713,23 +755,33 @@ def validate_story_plan_v1(plan) -> list[str]:
     v1 vocabulary, with no reference to any snapshot or to the running
     code: shape, types, vocabularies, cardinalities, domains. Controlled
     reasons, never an exception, whatever the bytes say."""
+    return _validate_story_plan(plan, STORY_PLAN_V1, _facts_valid_v1)
+
+
+def validate_story_plan_v2(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v2 document against the FROZEN
+    v2 vocabulary."""
+    return _validate_story_plan(plan, STORY_PLAN_V2, _facts_valid_v2)
+
+
+def _validate_story_plan(plan, vocabulary: dict, facts_valid) -> list[str]:
     bad: list[str] = []
     top = {"v", "snapshot_sha256", "planner", "subject", "phases", "claims", "unsupported"}
     if not _keys(plan, top, {"planned_at"}, "plan", bad):
         return bad
-    if plan["v"] != STORY_PLAN_V1["version"]:
-        bad.append(f"format v{plan['v']!r}, not v1")
+    if plan["v"] != vocabulary["version"]:
+        bad.append(f"format v{plan['v']!r}, not v{vocabulary['version']}")
     if not (isinstance(plan["snapshot_sha256"], str) and _SHA.match(plan["snapshot_sha256"])):
         bad.append("snapshot_sha256 is not a sha256")
     if "planned_at" in plan and not _number(plan["planned_at"]):
         bad.append("planned_at is not a number")
     planner = plan["planner"]
     if _keys(planner, {"kind", "version", "settings", "similarity"}, set(), "planner", bad):
-        if not _in(planner["kind"], STORY_PLAN_V1["planners"]):
+        if not _in(planner["kind"], vocabulary["planners"]):
             bad.append(f"unknown planner {planner['kind']!r}")
         if not _integer(planner["version"], 1):
             bad.append("planner.version is not a positive integer")
-        settings_ok = _keys(planner["settings"], set(STORY_PLAN_V1["settings"]), set(), "planner.settings", bad)
+        settings_ok = _keys(planner["settings"], set(vocabulary["settings"]), set(), "planner.settings", bad)
         if settings_ok and not _unit(planner["settings"]["phase_threshold"]):
             bad.append("planner.settings.phase_threshold is not a number in [0, 1]")
         similarity_ok = _keys(planner["similarity"], {"name", "version"}, set(), "planner.similarity", bad)
@@ -737,7 +789,7 @@ def validate_story_plan_v1(plan) -> list[str]:
             bad.append("planner.similarity names are not strings")
     subject = plan["subject"]
     if _keys(subject, {"kind", "sequenced", "label_hint"}, set(), "subject", bad):
-        if not _in(subject["kind"], STORY_PLAN_V1["subjects"]):
+        if not _in(subject["kind"], vocabulary["subjects"]):
             bad.append(f"unknown subject kind {subject['kind']!r}")
         if not isinstance(subject["sequenced"], bool):
             bad.append("subject.sequenced is not a bool")
@@ -767,9 +819,9 @@ def validate_story_plan_v1(plan) -> list[str]:
             continue
         if not (isinstance(claim["id"], str) and _ID.match(claim["id"]) and claim["id"].startswith("claim-")):
             bad.append(f"{where}.id is not a claim id")
-        if not _in(claim["kind"], STORY_PLAN_V1["claims"]):
-            bad.append(f"{where}.kind {claim['kind']!r} is not a v1 claim kind")
-        elif not _facts_valid_v1(claim["kind"], claim["facts"]):
+        if not _in(claim["kind"], vocabulary["claims"]):
+            bad.append(f"{where}.kind {claim['kind']!r} is not a v{vocabulary['version']} claim kind")
+        elif not facts_valid(claim["kind"], claim["facts"]):
             bad.append(f"{where}.facts do not fit {claim['kind']}")
         if not _unit(claim["confidence"]):
             bad.append(f"{where}.confidence is not in [0, 1]")
@@ -782,8 +834,8 @@ def validate_story_plan_v1(plan) -> list[str]:
         where = f"unsupported[{i}]"
         if not _keys(told, {"kind", "reason"}, {"member_refs"}, where, bad):
             continue
-        if not _in(told["kind"], STORY_PLAN_V1["unsupported"]):
-            bad.append(f"{where}.kind {told['kind']!r} is not a v1 unsupported kind")
+        if not _in(told["kind"], vocabulary["unsupported"]):
+            bad.append(f"{where}.kind {told['kind']!r} is not a v{vocabulary['version']} unsupported kind")
         if not isinstance(told["reason"], str):
             bad.append(f"{where}.reason is not a string")
         if "member_refs" in told and not _strings(told["member_refs"]):
@@ -791,7 +843,7 @@ def validate_story_plan_v1(plan) -> list[str]:
     return bad
 
 
-_GRAMMARS = {1: validate_story_plan_v1}
+_GRAMMARS = {1: validate_story_plan_v1, 2: validate_story_plan_v2}
 
 
 def validate_story_plan(plan) -> list[str]:
@@ -835,12 +887,21 @@ def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]
             for ref in phase["representative_refs"]
             if ref not in phase["member_refs"]
         )
+    kinds = {claim["kind"] for claim in plan["claims"]}
     if plan["subject"]["sequenced"]:
         # the phase list IS the chronology: member ordinals must not
         # interleave across phases
         order = [int(ref.split("-")[1]) for phase in plan["phases"] for ref in phase["member_refs"]]
         if order != sorted(order):
             bad.append("a sequenced plan's phases interleave members; the phase list is not a chronology")
+        bad.extend(f"a sequenced plan states the symmetric claim {kind}" for kind in sorted(kinds & _SYMMETRIC))
+    else:
+        # no chronology, no direction: nothing in the plan may say that
+        # one family came before another or that something was added
+        bad.extend(
+            f"chronology is unsupported and the plan asserts the directional claim {kind}"
+            for kind in sorted(kinds & _DIRECTIONAL)
+        )
     dangling = unresolved(plan, snapshot)
     if dangling:
         bad.append(f"references outside the snapshot: {dangling[:5]}")

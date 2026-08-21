@@ -37,7 +37,14 @@ POLICY_VERSION = 1
 #: cited by the section's claim_refs, merely not worded.
 PROFILES: dict[str, frozenset[str]] = {
     "memory": frozenset(
-        {"prompt_similarity", "prompt_family", "prompt_shift", "artifact_change", "prompt_evidence_missing"}
+        {
+            "prompt_similarity",
+            "prompt_family",
+            "prompt_shift",
+            "artifact_change",
+            "artifact_difference",
+            "prompt_evidence_missing",
+        }
     ),
     "technical": frozenset(
         {
@@ -45,7 +52,9 @@ PROFILES: dict[str, frozenset[str]] = {
             "prompt_family",
             "prompt_shift",
             "artifact_change",
+            "artifact_difference",
             "parameter_change",
+            "parameter_difference",
             "seed_variation",
             "prompt_evidence_missing",
         }
@@ -126,6 +135,30 @@ def _artifact_change(claim: dict, phase: dict, ctx: Context) -> str:
     return _compared_with(phase, ctx) + "; ".join(parts) + "."
 
 
+def _artifact_difference(claim: dict, phase: dict, ctx: Context) -> str:
+    """Symmetric: which artifacts each family uses that the other does
+    not. No direction is asserted, because the plan asserted none."""
+    here = [ctx.artifact_name(uuid) for uuid in claim["facts"]["only_here"]]
+    other = [ctx.artifact_name(uuid) for uuid in claim["facts"]["only_other"]]
+    parts = []
+    if here:
+        parts.append(f"{formatting.join_names(here)} {formatting.plural_verb(len(here), 'is', 'are')} used only here")
+    if other:
+        verb = formatting.plural_verb(len(other), "is", "are")
+        parts.append(f"{formatting.join_names(other)} {verb} used only there")
+    return _compared_with(phase, ctx) + "; ".join(parts) + "."
+
+
+def _parameter_difference(claim: dict, phase: dict, ctx: Context) -> str:
+    differs = claim["facts"]["differs"]
+    parts = []
+    for key in sorted(differs):
+        here = formatting.join_names(differs[key]["here"])
+        other = formatting.join_names(differs[key]["other"])
+        parts.append(f"{key} differs: {here} here, {other} there")
+    return _compared_with(phase, ctx) + "; ".join(parts) + "."
+
+
 def _parameter_change(claim: dict, phase: dict, ctx: Context) -> str:
     changed = claim["facts"]["changed"]
     parts = []
@@ -151,7 +184,9 @@ REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
     "prompt_family": _prompt_family,
     "prompt_shift": _prompt_shift,
     "artifact_change": _artifact_change,
+    "artifact_difference": _artifact_difference,
     "parameter_change": _parameter_change,
+    "parameter_difference": _parameter_difference,
     "seed_variation": _seed_variation,
     "prompt_evidence_missing": _prompt_evidence_missing,
 }
