@@ -120,3 +120,18 @@ def test_the_static_assets_serve(grid_client):
         answer = grid_client.get(f"/static/{asset}")
         assert answer.status_code == 200, asset
         assert len(answer.content) > 500, asset
+
+
+def test_nothing_above_the_seam_speaks_sql():
+    """The routes, templates and scripts are presentation adapters; the
+    one place membership and order live is db/resultset.py. A SELECT
+    appearing above the seam is the second notion of truth returning."""
+    import pathlib
+
+    web = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
+    surfaces = [web / "gallery.py", *sorted((web / "templates").glob("*.html")), web / "static" / "gallery.js"]
+    assert len(surfaces) >= 4, f"the sweep lost its subjects: {surfaces}"
+    for source in surfaces:
+        held = source.read_text(encoding="utf-8")
+        for word in ("SELECT ", "ORDER BY", "sqlite"):
+            assert word not in held, f"{source.name} carries query logic: {word!r}"
