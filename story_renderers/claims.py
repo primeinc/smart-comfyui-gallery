@@ -15,9 +15,10 @@ with the previous phase" describe the plan's own ordering of phases,
 and are only emitted for sequenced plans -- a renderer that narrates
 an unsequenced plan has no "previous".
 
-POLICY_VERSION is the wording policy: bump it when a sentence changes
-meaning, and every render made under the old wording coexists with the
-new one instead of impersonating it.
+Every sentence here is output bytes: a change to any of them, cosmetic
+or semantic, bumps the package's POLICY_VERSION (story_renderers
+__init__), and every render made under the old wording coexists with
+the new one instead of impersonating it.
 """
 
 from __future__ import annotations
@@ -26,11 +27,6 @@ import dataclasses
 import typing
 
 from . import formatting
-
-#: Bump when wording changes MEANING. Cosmetic rewording that keeps the
-#: facts-to-sentence mapping intact does not need a bump; a sentence
-#: that newly asserts or drops a fact does.
-POLICY_VERSION = 1
 
 #: Which claim kinds each profile surfaces. Profiles change emphasis,
 #: never truth: a kind a profile omits is still in the plan, still

@@ -959,7 +959,7 @@ def _verified_snapshot(conn, snapshot_id: int) -> tuple[dict, str]:
     ).fetchone()
     if row is None:
         raise LookupError(f"no story snapshot {snapshot_id}")
-    document = json.loads(row[0])
+    document = stories.parsed(row[0], f"story snapshot {snapshot_id}")
     if not stories.verify(document, row[1]):
         raise ValueError(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to plan from it")
     return document, row[1]
@@ -1024,7 +1024,9 @@ def load_plan(conn, plan_id: int) -> dict:
     ).fetchone()
     if row is None:
         raise LookupError(f"no story plan {plan_id}")
-    plan = json.loads(row[1])
+    from . import stories
+
+    plan = stories.parsed(row[1], f"story plan {plan_id}")
     if identity(plan)[1] != row[2]:
         raise ValueError(f"story plan {plan_id} no longer hashes to its identity; refusing to serve it")
     snapshot, snapshot_sha = _verified_snapshot(conn, int(row[0]))

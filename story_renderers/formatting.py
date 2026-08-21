@@ -34,13 +34,15 @@ def count(n: int, singular: str, plural: str | None = None) -> str:
     return f"{n} {word}"
 
 
-def day_label(wall_epoch: float | None) -> str | None:
-    """`July 18, 2026` from an epoch that spells a wall clock; None when
-    nothing claimed a day."""
-    if wall_epoch is None:
+def day_label(epoch: float | None, *, utc: bool = False) -> str | None:
+    """`July 18, 2026` from an epoch that spells a wall clock -- the
+    human's own calendar day; `July 18, 2026 UTC` from a true instant
+    whose local day nobody knows. None when nothing claimed a day."""
+    if epoch is None:
         return None
-    moment = datetime.datetime.fromtimestamp(wall_epoch, datetime.UTC)
-    return f"{_MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
+    moment = datetime.datetime.fromtimestamp(epoch, datetime.UTC)
+    told = f"{_MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
+    return f"{told} UTC" if utc else told
 
 
 def percent(fraction: float) -> str:

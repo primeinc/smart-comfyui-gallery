@@ -1482,6 +1482,42 @@ END"""
     )
 
 
+@step(16)
+def _a_render_is_frozen_and_its_snapshot_is_the_plans(conn: sqlite3.Connection) -> None:
+    """v16 -> v17: story_render drops snapshot_id (the plan's snapshot is
+    the only one) and names its policy column for what it covers. The
+    StoryRender v1 grammar was frozen at this version; rows written
+    before it are pre-freeze documents that cannot pass it and are
+    dropped -- a render is a deterministic function of an immutable
+    plan and is remade by the same request. DDL is schema.sql's text
+    VERBATIM.
+    """
+    conn.execute("DROP TABLE story_render")
+    conn.execute(
+        """CREATE TABLE story_render (
+    id               INTEGER PRIMARY KEY,
+    plan_id          INTEGER NOT NULL REFERENCES story_plan(id) ON DELETE CASCADE,
+    format_version   INTEGER NOT NULL,
+    renderer         TEXT NOT NULL CHECK (renderer IN ('template')),
+    renderer_version INTEGER NOT NULL,
+    profile          TEXT NOT NULL CHECK (profile IN ('memory','technical','compact')),
+    locale           TEXT NOT NULL CHECK (locale IN ('en')),
+    render_policy    INTEGER NOT NULL,
+    request_sha256   TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
+    document_json    TEXT NOT NULL,
+    document_sha256  TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at       REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX story_render_plan ON story_render(plan_id, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_render_is_immutable BEFORE UPDATE ON story_render
+BEGIN
+  SELECT RAISE(ABORT,'a story render is immutable; render again under a new policy');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

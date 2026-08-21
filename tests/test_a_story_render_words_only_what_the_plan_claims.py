@@ -1,12 +1,17 @@
 """A StoryRender words what the plan claims and nothing else.
 
 The deterministic narrator receives two immutable, verified documents
-and decides nothing: every sentence maps to a Claim or an unsupported
-entry, every hero and member resolves in the snapshot, unsupported
-chronology stays unsupported -- and these are enforced by a validator,
-not a convention. The document is structure, never HTML; the page lays
-it out strictly and escapes frozen evidence. Identities are the
-planner's: request and document, insert-only, re-verified on read.
+and decides nothing: every block declares its support -- members for
+structure, Claims of ITS OWN phase for sentences -- every hero is a
+representative of its phase, unsupported chronology stays unsupported
+structurally (no directional Claim without a chronology) with a lexical
+scan as defense in depth that exempts frozen evidence names. The v1
+grammar is frozen and dispatched by the document's own version; the
+renderer declares which input versions it reads as literals. One
+policy token covers every output-affecting behaviour. The document is
+structure, never HTML; the page lays it out strictly and escapes frozen
+evidence. Identities are the planner's: request and document,
+insert-only, re-verified on read, corruption of any shape refused.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
+import story_renderers
 from db import connect, ingest, planning, rendering, runner, stories
 from sg_web.app import build_app
 from story_renderers import claims as wording
@@ -44,7 +50,7 @@ LIGHTHOUSE = [
 HELMET = ["a brass diving helmet in a museum case, studio light", "a copper diving helmet, studio light"]
 
 
-def _member(ordinal, prompt, *, precision="second", artifacts=(), seed=100, name=None):
+def _member(ordinal, prompt, *, precision="second", artifacts=(), seed=100, name=None, lora_names=None):
     return {
         "ordinal": ordinal,
         "file_uuid": f"{ordinal:032x}",
@@ -81,7 +87,7 @@ def _member(ordinal, prompt, *, precision="second", artifacts=(), seed=100, name
                     "role": "lora",
                     "uuid": uuid,
                     "kind": "lora",
-                    "name": f"lora-{uuid[:4]}",
+                    "name": (lora_names or {}).get(uuid, f"lora-{uuid[:4]}"),
                     "model_weight": 0.8,
                     "clip_weight": None,
                 }
@@ -97,7 +103,7 @@ def _member(ordinal, prompt, *, precision="second", artifacts=(), seed=100, name
     }
 
 
-def _snapshot(members, *, local=True) -> tuple[dict, str]:
+def _snapshot(members, *, local=True, instant=None) -> tuple[dict, str]:
     document = {
         "v": 1,
         "frozen_at": NOW,
@@ -111,7 +117,7 @@ def _snapshot(members, *, local=True) -> tuple[dict, str]:
             "member_hash": "deadbeef",
             "context_generation": 7,
             "context_policy_version": 4,
-            "time": {"local": [JULY_18, JULY_18 + HOUR] if local else None, "instant": None},
+            "time": {"local": [JULY_18, JULY_18 + HOUR] if local else None, "instant": instant},
             "place": None,
             "confidence": None,
             "observed_event_id": 1,
@@ -142,38 +148,80 @@ def _world():
     )
 
 
+def _rendered(profile="memory", world=None):
+    snapshot, snapshot_sha, plan, plan_sha = world or _world()
+    render = rendering.TemplateStoryRenderer(profile).render(snapshot, plan, snapshot_sha, plan_sha)
+    return snapshot, snapshot_sha, plan, plan_sha, render
+
+
 def test_the_golden_render_for_a_sequenced_session():
     """The exact document the deterministic narrator produces for a
-    frozen world -- pinned whole. Every sentence below traces to a
-    Claim; the renderer invented none of it."""
-    snapshot, snapshot_sha, plan, plan_sha = _world()
-    render = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
+    frozen world -- pinned whole. Every block below declares what
+    supports it; the renderer invented none of it."""
+    snapshot, snapshot_sha, plan, plan_sha, render = _rendered()
     assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
     assert render == {
         "v": 1,
         "snapshot_sha256": snapshot_sha,
         "plan_sha256": plan_sha,
-        "renderer": {"kind": "template", "version": 1, "profile": "memory", "locale": "en", "wording_policy": 1},
+        "renderer": {
+            "kind": "template",
+            "version": 1,
+            "profile": "memory",
+            "locale": "en",
+            "policy": 1,
+            "reads": {"snapshot": 1, "plan": 2},
+        },
         "title": "5 Qwen Image Edit images from July 18, 2026",
         "dek": "2 phases across 5 generated images",
         "summary": "These 5 generated images were generated on July 18, 2026 and fall into 2 phases.",
+        "support": {
+            "member_refs": ["member-001", "member-002", "member-003", "member-004", "member-005"],
+            "phase_refs": ["phase-001", "phase-002"],
+        },
         "sections": [
             {
                 "id": "section-001",
+                "phase_ref": "phase-001",
                 "title": "Phase 1",
-                "paragraphs": ["3 images.", "The 3 images in this phase share closely related prompt wording."],
+                "blocks": [
+                    {
+                        "kind": "structure",
+                        "text": "3 images.",
+                        "member_refs": ["member-001", "member-002", "member-003"],
+                    },
+                    {
+                        "kind": "claim",
+                        "text": "The 3 images in this phase share closely related prompt wording.",
+                        "claim_refs": ["claim-001"],
+                    },
+                ],
                 "hero_refs": ["member-001"],
                 "member_refs": ["member-001", "member-002", "member-003"],
                 "claim_refs": ["claim-001"],
             },
             {
                 "id": "section-002",
+                "phase_ref": "phase-002",
                 "title": "Phase 2 · new artifacts",
-                "paragraphs": [
-                    "2 images.",
-                    "The prompt wording changes here compared with the previous phase.",
-                    "The 2 images in this phase share closely related prompt wording.",
-                    "Compared with the previous phase, lora-bbbb appears in this group; lora-aaaa is not used.",
+                "blocks": [
+                    {"kind": "structure", "text": "2 images.", "member_refs": ["member-004", "member-005"]},
+                    {
+                        "kind": "claim",
+                        "text": "The prompt wording changes here compared with the previous phase.",
+                        "claim_refs": ["claim-003"],
+                    },
+                    {
+                        "kind": "claim",
+                        "text": "The 2 images in this phase share closely related prompt wording.",
+                        "claim_refs": ["claim-004"],
+                    },
+                    {
+                        "kind": "claim",
+                        "text": "Compared with the previous phase, lora-bbbb appears in this group;"
+                        " lora-aaaa is not used.",
+                        "claim_refs": ["claim-006"],
+                    },
                 ],
                 "hero_refs": ["member-004"],
                 "member_refs": ["member-004", "member-005"],
@@ -182,27 +230,34 @@ def test_the_golden_render_for_a_sequenced_session():
         ],
         "notes": [],
     }
-    technical = rendering.TemplateStoryRenderer("technical").render(snapshot, plan, snapshot_sha, plan_sha)
-    assert "2 distinct seeds were used." in technical["sections"][1]["paragraphs"]
-    assert any("Minimum pairwise prompt similarity" in p for p in technical["sections"][0]["paragraphs"])
+    technical = _rendered("technical")[-1]
+    assert any(b["text"] == "2 distinct seeds were used." for b in technical["sections"][1]["blocks"])
+    assert any("Minimum pairwise prompt similarity" in b["text"] for b in technical["sections"][0]["blocks"])
     assert set(technical["sections"][1]["claim_refs"]) > set(render["sections"][1]["claim_refs"]), (
         "a profile surfaces more or fewer claims; it never changes which claims exist"
     )
-    compact = rendering.TemplateStoryRenderer("compact").render(snapshot, plan, snapshot_sha, plan_sha)
+    compact = _rendered("compact")[-1]
     assert compact["sections"] == []
     assert compact["title"] == render["title"]
 
 
-def test_unsupported_chronology_is_said_and_never_sequenced():
+def test_unsupported_chronology_is_said_structurally_and_lexically():
     """Day-precision evidence: the plan declares chronology unsupported;
-    the render MUST carry the note and MUST NOT sequence. The rule has
-    teeth: a render that slips in 'then' is a violation, and a render
-    that drops the note is a violation."""
-    snapshot, snapshot_sha, plan, plan_sha = _planned(
-        [_member(i, text, precision="day") for i, text in enumerate(LIGHTHOUSE + HELMET)]
+    the render carries the note, cites no directional Claim, and says
+    no sequencing word. Each rule has teeth -- and the lexical rule
+    exempts a frozen artifact named "AfterDetail", which is evidence,
+    not narration."""
+    names = {LORA_A: "AfterDetail.safetensors", LORA_B: "lora-bbbb"}
+    world = _planned(
+        [
+            _member(0, LIGHTHOUSE[0], precision="day", artifacts=(LORA_A,), lora_names=names),
+            _member(1, LIGHTHOUSE[1], precision="day", artifacts=(LORA_A,), lora_names=names),
+            _member(2, HELMET[0], precision="day", artifacts=(LORA_B,), lora_names=names),
+            _member(3, HELMET[1], precision="day", artifacts=(LORA_B,), lora_names=names),
+        ]
     )
+    snapshot, snapshot_sha, plan, plan_sha, render = _rendered(world=world)
     assert [one["kind"] for one in plan["unsupported"]] == ["chronology"]
-    render = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
     assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
     assert render["notes"] == [
         {
@@ -211,12 +266,19 @@ def test_unsupported_chronology_is_said_and_never_sequenced():
         }
     ]
     assert all(section["title"].startswith("Prompt family") for section in render["sections"])
+    assert render["sections"][1]["title"] == "Prompt family 2 · different artifacts"
+    told = [b["text"] for b in render["sections"][1]["blocks"] if b["kind"] == "claim"]
+    assert (
+        "Compared with Prompt family 1, lora-bbbb is used only here; AfterDetail.safetensors is used only there."
+        in told
+    )
     assert "prompt families" in render["dek"]
 
     sequenced = copy.deepcopy(render)
-    sequenced["sections"][1]["paragraphs"].append("Then the helmet appeared.")
+    sequenced["sections"][1]["blocks"][0]["text"] = "Then the helmet appeared."
     told = rendering.violations(sequenced, plan, snapshot, snapshot_sha, plan_sha)
     assert any("sequences: 'Then'" in why for why in told)
+    assert not any("'After'" in why for why in told), "a frozen name is exempt from the lexical scan"
 
     silent = copy.deepcopy(render)
     silent["notes"] = []
@@ -224,49 +286,144 @@ def test_unsupported_chronology_is_said_and_never_sequenced():
         silent, plan, snapshot, snapshot_sha, plan_sha
     )
 
-
-def test_a_render_cites_only_plan_claims_and_names_only_snapshot_members():
-    snapshot, snapshot_sha, plan, plan_sha = _world()
-    render = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
-
-    invented = copy.deepcopy(render)
-    invented["sections"][0]["claim_refs"].append("claim-099")
-    assert "section-001 cites unknown claim claim-099" in rendering.violations(
-        invented, plan, snapshot, snapshot_sha, plan_sha
+    # the structural rule: a directional Claim smuggled into an
+    # unsequenced plan is refused by the PLAN's validator, and a render
+    # citing it is refused by the render's
+    directed = copy.deepcopy(plan)
+    directed["claims"].append(
+        {
+            "id": "claim-099",
+            "kind": "prompt_shift",
+            "confidence": 1.0,
+            "evidence_refs": ["member-001:generation.prompt", "member-003:generation.prompt"],
+            "facts": {"cosine": 0.1, "threshold": 0.5},
+        }
     )
-    stranger = copy.deepcopy(render)
-    stranger["sections"][0]["hero_refs"] = ["member-077"]
-    told = rendering.violations(stranger, plan, snapshot, snapshot_sha, plan_sha)
-    assert "section-001 names unknown member member-077" in told
-    elsewhere = copy.deepcopy(render)
-    elsewhere["sections"][0]["hero_refs"] = ["member-004"]
-    assert "section-001 hero member-004 is not one of its members" in rendering.violations(
-        elsewhere, plan, snapshot, snapshot_sha, plan_sha
+    directed["phases"][1]["claim_refs"].append("claim-099")
+    assert any(
+        "directional claim prompt_shift" in why for why in planning.validate_plan(directed, snapshot, snapshot_sha)
     )
-    other = copy.deepcopy(render)
-    other["plan_sha256"] = "f" * 64
-    assert "the render names a different plan" in rendering.violations(other, plan, snapshot, snapshot_sha, plan_sha)
+    cites = copy.deepcopy(render)
+    cites["sections"][1]["blocks"].append({"kind": "claim", "text": "Different.", "claim_refs": ["claim-099"]})
+    cites["sections"][1]["claim_refs"].append("claim-099")
+    told = rendering.violations(cites, directed, snapshot, snapshot_sha, planning.identity(directed)[1])
+    assert any("cites the directional claim claim-099" in why for why in told)
 
 
-def test_the_grammar_is_exact_and_the_wording_registry_is_closed():
-    snapshot, snapshot_sha, plan, plan_sha = _world()
-    render = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
+def test_every_block_declares_support_from_its_own_phase():
+    """The Renderer Seam an LLM must satisfy: a section names its phase
+    and carries exactly its members; heroes are that phase's
+    representatives; a claim block cites only Claims the plan attached
+    to THAT phase; a structure block names only its own members; a
+    block without support is prose and is refused; section claim_refs
+    are exactly what its blocks cite; the lede's support is the whole
+    subject."""
+    snapshot, snapshot_sha, plan, plan_sha, render = _rendered()
+
+    def told(mutate):
+        bent = copy.deepcopy(render)
+        mutate(bent)
+        reasons = rendering.violations(bent, plan, snapshot, snapshot_sha, plan_sha)
+        assert reasons, "violations() accepted a render that says more than its plan"
+        return reasons
+
+    assert "section-001 cites unknown claim claim-099" in told(
+        lambda r: (
+            r["sections"][0]["blocks"].append({"kind": "claim", "text": "x", "claim_refs": ["claim-099"]}),
+            r["sections"][0]["claim_refs"].append("claim-099"),
+        )
+    )
+    assert "section-001 cites claim-003, which the plan did not attach to phase-001" in told(
+        lambda r: (
+            r["sections"][0]["blocks"].append({"kind": "claim", "text": "x", "claim_refs": ["claim-003"]}),
+            r["sections"][0]["claim_refs"].append("claim-003"),
+        )
+    )
+    assert "section-001 does not carry exactly the members of phase-001" in told(
+        lambda r: r["sections"][0]["member_refs"].append("member-004")
+    )
+    assert "section-001 hero member-002 is not a representative of phase-001" in told(
+        lambda r: r["sections"][0].__setitem__("hero_refs", ["member-002"])
+    )
+    assert "section-001 structure block names member-004, not one of its members" in told(
+        lambda r: r["sections"][0]["blocks"][0]["member_refs"].append("member-004")
+    )
+    assert "section-001 claim_refs are not exactly the claims its blocks cite" in told(
+        lambda r: r["sections"][0]["claim_refs"].append("claim-003")
+    )
+    assert any(
+        "a block without support is prose" in why
+        for why in told(
+            lambda r: r["sections"][0]["blocks"].append(
+                {"kind": "claim", "text": "The user hated every image.", "claim_refs": []}
+            )
+        )
+    )
+    assert any(
+        "is not a block of a known kind" in why
+        for why in told(
+            lambda r: r["sections"][0]["blocks"].append({"kind": "prose", "text": "They changed direction."})
+        )
+    )
+    assert "the lede's support is not every member of the snapshot" in told(lambda r: r["support"]["member_refs"].pop())
+    assert "sections do not cover the plan's phases exactly once, in the plan's order" in told(
+        lambda r: r["sections"].reverse()
+    )
+    assert "section-001 names unknown phase phase-009" in told(
+        lambda r: r["sections"][0].__setitem__("phase_ref", "phase-009")
+    )
+    assert "the render names a different plan" in told(lambda r: r.__setitem__("plan_sha256", "f" * 64))
+    assert any("it did not" in why for why in told(lambda r: r["renderer"]["reads"].__setitem__("plan", 1)))
+
+
+def test_the_v1_grammar_is_frozen_exact_and_exception_proof(monkeypatch):
+    """A v1 render parses as v1 after a render v2 and a plan v3 exist:
+    the grammar reads frozen constants and the renderer's input
+    compatibility is a literal. Any bytes -- unhashable kinds included
+    -- yield controlled reasons, never an exception."""
+    snapshot, snapshot_sha, plan, plan_sha, render = _rendered()
     assert rendering.validate_story_render_v1(render) == []
+    profiles = rendering.PROFILES
+    monkeypatch.setattr(rendering, "FORMAT_VERSION", 2)
+    monkeypatch.setattr(rendering, "PROFILES", ())
+    monkeypatch.setattr(planning, "FORMAT_VERSION", 3)
+    assert rendering.validate_story_render_v1(render) == [], "v1 is judged by v1's frozen vocabulary"
+    assert rendering.validate_story_render(render) == []
+    assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
+    monkeypatch.setattr(rendering, "PROFILES", profiles)
+    assert rendering.TemplateStoryRenderer.reads == {"snapshot": {1}, "plan": {1, 2}}
+    again = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
+    assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 2}
+    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[1, 2\\]"):
+        rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 3}, snapshot_sha, plan_sha)
+    assert rendering.validate_story_render({**render, "v": 7})
+    assert rendering.validate_story_render({**render, "v": True})
+
     for mutate in (
         lambda r: r.__setitem__("html", "<b>no</b>"),
         lambda r: r["sections"][0].__setitem__("mood", "wistful"),
         lambda r: r["renderer"].__setitem__("kind", "llm"),
+        lambda r: r["renderer"].__setitem__("kind", []),
         lambda r: r["renderer"].__setitem__("profile", "poetic"),
-        lambda r: r["sections"][0].__setitem__("paragraphs", []),
+        lambda r: r["renderer"].__setitem__("profile", {}),
+        lambda r: r["renderer"].__setitem__("policy", 0),
+        lambda r: r["renderer"]["reads"].__setitem__("plan", "2"),
+        lambda r: r["sections"][0].__setitem__("blocks", []),
+        lambda r: r["sections"][0]["blocks"].__setitem__(0, {"kind": [], "text": "x"}),
+        lambda r: r["sections"][0]["blocks"].__setitem__(0, {"kind": "structure", "text": "x", "member_refs": []}),
         lambda r: r["sections"][0].__setitem__("member_refs", []),
+        lambda r: r["sections"][0].__setitem__("phase_ref", "section-001"),
         lambda r: r["notes"].append({"kind": "weather", "text": "rain"}),
+        lambda r: r["notes"].append({"kind": [], "text": "rain"}),
+        lambda r: r["support"].__setitem__("phase_refs", []),
         lambda r: r.__setitem__("title", ""),
     ):
         bent = copy.deepcopy(render)
         mutate(bent)
         assert rendering.validate_story_render_v1(bent), "the grammar accepted a malformed render"
-    for garbage in (None, [], "story", {"v": 1}):
+    for garbage in (None, [], "story", {"v": 1}, {"v": 1, "sections": "many"}):
         assert rendering.validate_story_render_v1(garbage)
+        assert rendering.validate_story_render(garbage)
 
     ctx = wording.Context(snapshot=snapshot, plan=plan, profile="memory", sequenced=True)
     with pytest.raises(ValueError, match="no wording is registered"):
@@ -281,8 +438,12 @@ def test_the_grammar_is_exact_and_the_wording_registry_is_closed():
         rendering.TemplateStoryRenderer("memory", "tlh")
 
 
-def test_formatting_is_decided_once():
+def test_a_day_is_spelled_in_the_domain_the_evidence_claims_it_in():
+    """A wall-clock start is the human's calendar day; an instant with no
+    wall clock is a UTC day and says so; neither is fused into the
+    other."""
     assert formatting.day_label(JULY_18) == "July 18, 2026"
+    assert formatting.day_label(JULY_18, utc=True) == "July 18, 2026 UTC"
     assert formatting.day_label(None) is None
     assert formatting.count(1, "image") == "1 image"
     assert formatting.count(55, "image") == "55 images"
@@ -291,21 +452,40 @@ def test_formatting_is_decided_once():
     assert formatting.join_names(["foo", "bar"]) == "foo and bar"
     assert formatting.join_names(["foo", "bar", "baz"]) == "foo, bar and baz"
 
+    members = [_member(i, text, precision="day") for i, text in enumerate(LIGHTHOUSE)]
+    world = _planned(members, local=False, instant=[JULY_18, JULY_18 + HOUR])
+    render = _rendered(world=world)[-1]
+    assert render["title"] == "3 Qwen Image Edit images from July 18, 2026 UTC"
+    assert render["notes"][0]["text"].endswith("within July 18, 2026 UTC.")
+    render = _rendered(world=_planned(members, local=False))[-1]
+    assert render["title"] == "3 Qwen Image Edit images"
+    assert render["notes"][0]["text"].endswith("order of these images.")
+
 
 def test_identities_same_request_one_document_policy_coexists(monkeypatch):
-    snapshot, snapshot_sha, plan, plan_sha = _world()
-    one = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
-    two = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
+    _snapshot, snapshot_sha, _plan, plan_sha, one = _rendered()
+    two = _rendered()[-1]
     assert rendering.identity(one) == rendering.identity(two)
-    other = rendering.TemplateStoryRenderer("technical").render(snapshot, plan, snapshot_sha, plan_sha)
+    other = _rendered("technical")[-1]
     assert rendering.identity(other)[1] != rendering.identity(one)[1]
     request = rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 1)
     assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 2), (
-        "a wording-policy bump is a different request"
+        "a policy bump is a different request"
     )
     assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "technical", "en", 1)
     monkeypatch.setattr(rendering, "FORMAT_VERSION", 2)
     assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 1)
+    # ONE token covers wording AND formatting: the renderer's policy is
+    # the package's, and a formatting change has nowhere else to go
+    monkeypatch.setattr(story_renderers, "POLICY_VERSION", 2)
+    assert rendering.TemplateStoryRenderer("memory").policy == 2
+    assert _rendered()[-1]["renderer"]["policy"] == 2
+    source = (__import__("pathlib").Path(formatting.__file__)).read_text(encoding="utf-8")
+    assert "POLICY_VERSION" not in source, "formatting carries no version of its own; the package token is it"
+    assert (
+        "POLICY_VERSION"
+        not in (__import__("pathlib").Path(wording.__file__)).read_text(encoding="utf-8").split('"""', 2)[2]
+    ), "claims carries no version of its own; the package token is it"
 
 
 def test_the_renderer_owns_no_connection_no_model_and_jinja_lays_out_only():
@@ -384,9 +564,8 @@ def planned(tmp_path):
         try:
             event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
             snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
-            made = planning.plan_snapshot(
-                conn, snap.id, planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()), NOW + 31 * HOUR
-            )
+            planner = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity())
+            made = planning.plan_snapshot(conn, snap.id, planner, NOW + 31 * HOUR)
             conn.commit()
         finally:
             connect.close(conn)
@@ -408,6 +587,8 @@ def test_a_persisted_render_is_immutable_reused_and_reverified(planned):
         told = rendering.load_render(conn, first.id)
         assert told["snapshot_sha256"] == snap.sha256
         assert told["plan_sha256"] == plan_ref.sha256
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(story_render)")}
+        assert "snapshot_id" not in columns, "the plan's snapshot is the only snapshot a render has"
         with pytest.raises(sqlite3.IntegrityError, match="immutable"):
             conn.execute("UPDATE story_render SET document_json = '{}' WHERE id = ?", (first.id,))
         conn.rollback()
@@ -423,15 +604,22 @@ def test_a_persisted_render_is_immutable_reused_and_reverified(planned):
         with pytest.raises(ValueError, match="no longer hashes"):
             rendering.load_render(conn, first.id)
         assert client.get(f"/stories/renders/{first.id}").status_code == 409
+        # corruption of ANY json shape is a controlled refusal, never a 500
+        for corrupt in ("[]", "null", '"story"', "7"):
+            conn.execute("UPDATE story_render SET document_json = ? WHERE id = ?", (corrupt, first.id))
+            conn.commit()
+            with pytest.raises(ValueError, match="not a document"):
+                rendering.load_render(conn, first.id)
+            assert client.get(f"/stories/renders/{first.id}").status_code == 409, corrupt
     finally:
         connect.close(conn)
 
 
 def test_the_page_lays_out_the_verified_render_and_escapes_evidence(planned):
     """The HTML Adapter: title, sections, the note, hero links -- and a
-    file name that is a script tag stays text. The page carries every
-    paragraph the JSON carries: deleting story.html would lose nothing
-    the JSON does not already say."""
+    file name that is markup stays text. The page carries every block
+    the JSON carries: deleting story.html would lose nothing the JSON
+    does not already say."""
     from db import resultset
 
     client, _snap, plan_ref = planned
@@ -457,8 +645,9 @@ def test_the_page_lays_out_the_verified_render_and_escapes_evidence(planned):
     assert f"<title>{story['title']}</title>" in html
     for section in story["sections"]:
         assert f'data-story-section="{section["id"]}"' in html
-        for paragraph in section["paragraphs"]:
-            assert paragraph in html, "the page drops nothing the JSON says"
+        assert f'data-story-phase="{section["phase_ref"]}"' in html
+        for block in section["blocks"]:
+            assert block["text"] in html, "the page drops nothing the JSON says"
     assert "gen_0 & 'friends'.png" not in html, "frozen evidence is text, never markup"
     assert "gen_0 &amp; &#39;friends&#39;.png" in html
     assert html.count('href="/m/') >= 1, "a hero links through address resolution"

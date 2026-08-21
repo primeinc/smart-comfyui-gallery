@@ -20,10 +20,10 @@
       <p class="story-dek">{{ story.dek }}</p>
       <p class="story-summary">{{ story.summary }}</p>
       {% for section in story.sections %}
-      <section class="story-section" data-story-section="{{ section.id }}" data-claims="{{ section.claim_refs|join(' ') }}">
+      <section class="story-section" data-story-section="{{ section.id }}" data-story-phase="{{ section.phase_ref }}" data-claims="{{ section.claim_refs|join(' ') }}">
         <h2>{{ section.title }}</h2>
-        {% for paragraph in section.paragraphs %}
-        <p>{{ paragraph }}</p>
+        {% for block in section.blocks %}
+        <p data-story-block="{{ block.kind }}">{{ block.text }}</p>
         {% endfor %}
         {% if section.hero_refs %}
         <ul class="story-heroes">

@@ -543,9 +543,23 @@ def load_snapshot(conn, snapshot_id: int) -> dict:
     ).fetchone()
     if row is None:
         raise LookupError(f"no story snapshot {snapshot_id}")
-    document = json.loads(row[0])
+    document = parsed(row[0], f"story snapshot {snapshot_id}")
     if not verify(document, row[1]):
         raise ValueError(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to serve it")
+    return document
+
+
+class Corrupt(ValueError):
+    """A stored row that is not the document its table promises."""
+
+
+def parsed(raw: str, what: str) -> dict:
+    """The stored JSON as a document, or a controlled refusal: a row
+    holding `[]` or `null` parses fine and is still not a document, and
+    hashing it would raise something a page turns into a 500."""
+    document = json.loads(raw)
+    if not isinstance(document, dict):
+        raise Corrupt(f"{what} is not a document; refusing to serve it")
     return document
 
 
