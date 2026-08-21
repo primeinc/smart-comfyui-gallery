@@ -930,6 +930,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             timeline_view.timeline,
             story_view.freeze_snapshot,
             story_view.snapshot_document,
+            story_view.plan_snapshot,
+            story_view.plan_document,
             person_view.people_index,
             person_view.person_page,
             clusterings,

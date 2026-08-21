@@ -2075,7 +2075,7 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 51, f"expected 51 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 52, f"expected 52 real tables, found {len(real)}: {sorted(real)}"
 
 
 def test_the_time_doctrine_never_claims_a_wall_clock_is_utc(db):

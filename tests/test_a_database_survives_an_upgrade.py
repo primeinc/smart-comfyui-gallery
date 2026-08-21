@@ -298,6 +298,7 @@ def _pre_v10_core(conn) -> None:
     conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute("PRAGMA legacy_alter_table=ON")
     for table in (
+        "story_plan",
         "story_snapshot",
         "derived_event_file",
         "derived_event",
@@ -885,7 +886,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

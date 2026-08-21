@@ -1756,8 +1756,36 @@ BEGIN
   SELECT RAISE(ABORT,'a story snapshot is immutable; freeze a new one');
 END;
 
+-- A StoryPlan is what ONE planner policy made of ONE frozen snapshot:
+-- phases, representatives, first-class Claims with evidence references
+-- that resolve inside the snapshot, and what the evidence does NOT
+-- support. Structure, never prose -- label_hint is the only human-facing
+-- field. Identity is the canonical document's SHA-256, which embeds the
+-- snapshot's identity, the planner kind/version, the similarity
+-- engine/version and the settings, so the same evidence under the same
+-- policy is one row and a new policy coexists with the old plan instead
+-- of overwriting it. Insert-only; a snapshot's plans go with it.
+CREATE TABLE story_plan (
+    id                 INTEGER PRIMARY KEY,
+    snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version     INTEGER NOT NULL,
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history')),
+    planner_version    INTEGER NOT NULL,
+    similarity         TEXT NOT NULL,
+    similarity_version TEXT NOT NULL,
+    settings_hash      TEXT NOT NULL,
+    document_json      TEXT NOT NULL,
+    document_sha256    TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at         REAL NOT NULL
+) STRICT;
+CREATE INDEX story_plan_snapshot ON story_plan(snapshot_id, created_at);
+CREATE TRIGGER story_plan_is_immutable BEFORE UPDATE ON story_plan
+BEGIN
+  SELECT RAISE(ABORT,'a story plan is immutable; plan again under a new policy');
+END;
+
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 13;
+PRAGMA user_version   = 14;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

@@ -1301,6 +1301,37 @@ END"""
     )
 
 
+@step(13)
+def _plans_interpret_frozen_evidence(conn: sqlite3.Connection) -> None:
+    """v13 -> v14: `story_plan`, one planner policy's structure over one
+    frozen snapshot. Additive; insert-only by trigger; content-addressed
+    so a new policy coexists with the old plan. DDL is schema.sql's text
+    VERBATIM.
+    """
+    conn.execute(
+        """CREATE TABLE story_plan (
+    id                 INTEGER PRIMARY KEY,
+    snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version     INTEGER NOT NULL,
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history')),
+    planner_version    INTEGER NOT NULL,
+    similarity         TEXT NOT NULL,
+    similarity_version TEXT NOT NULL,
+    settings_hash      TEXT NOT NULL,
+    document_json      TEXT NOT NULL,
+    document_sha256    TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at         REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX story_plan_snapshot ON story_plan(snapshot_id, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_plan_is_immutable BEFORE UPDATE ON story_plan
+BEGIN
+  SELECT RAISE(ABORT,'a story plan is immutable; plan again under a new policy');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 
