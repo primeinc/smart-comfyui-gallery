@@ -1450,7 +1450,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 3;
+PRAGMA user_version   = 4;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

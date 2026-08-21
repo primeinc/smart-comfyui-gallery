@@ -276,6 +276,122 @@ def _near_duplicate_groups(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE UNIQUE INDEX derived_dupe_group_best ON derived_dupe_group(group_id) WHERE is_best = 1")
 
 
+@step(3)
+def _embeddings_get_immutable_ids(conn: sqlite3.Connection) -> None:
+    """v3 -> v4: `derived_embedding` keyed by an immutable id of its own.
+
+    Under v3 the table was keyed (file_id, space_id) and the resident FAISS
+    index stored file ids -- a mutable identity: re-embedding a replaced
+    file changed the vector UNDER the id, and a crash between commit and
+    index sync left a snapshot answering queries with the old picture's
+    vector. v4 gives every vector an AUTOINCREMENT id the index stores
+    instead; a replacement is a NEW id and alignment sees exactly that.
+
+    The rebuild copies every existing row -- the vectors cost GPU-seconds
+    each and nothing about them is wrong, only their key -- and mints ids
+    in deterministic (space_id, file_id) order. Resident index checkpoints
+    keyed by the old ids simply fail their digest check and re-align.
+
+    Version 3 drifted during development. A v3 file from before the
+    similarity rework may lack `similarity_space` or `derived_embedding`
+    entirely; both are created empty here, and the derived_* rebuild
+    contract covers what jobs regenerate. A pre-space embedding shape
+    (no space_id column) cannot name what produced its vectors, so those
+    rows do not survive: an unattributable vector answering queries is
+    worse than a re-embed.
+    """
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "similarity_space" not in tables:
+        conn.execute(
+            """CREATE TABLE similarity_space (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    key                TEXT NOT NULL,
+    representation     TEXT NOT NULL CHECK (representation IN ('binary','float32')),
+    dimensions         INTEGER NOT NULL CHECK (dimensions > 0),
+    metric             TEXT NOT NULL CHECK (metric IN ('hamming','cosine')),
+    producer           TEXT NOT NULL,
+    producer_version   TEXT NOT NULL,
+    preprocess         TEXT NOT NULL,
+    preprocess_version TEXT NOT NULL,
+    spec_hash          TEXT NOT NULL UNIQUE,
+    created_at         REAL NOT NULL
+) STRICT"""
+        )
+        conn.execute(
+            """CREATE TRIGGER similarity_space_is_immutable
+BEFORE UPDATE ON similarity_space
+BEGIN
+    SELECT RAISE(ABORT, 'similarity_space rows are immutable: a changed meaning is a new space');
+END"""
+        )
+
+    survivors = False
+    if "derived_embedding" in tables:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(derived_embedding)")}
+        survivors = "space_id" in columns
+        if survivors:
+            conn.execute(
+                "CREATE TABLE migrate_v3_embedding AS SELECT"
+                " file_id, space_id, vector, source_sha256, computed_at FROM derived_embedding"
+            )
+        conn.execute("DROP TABLE derived_embedding")
+
+    # schema.sql's block VERBATIM, comments included, same rationale as the
+    # v2 -> v3 step: the drift check compares sqlite_master text.
+    conn.execute(
+        """CREATE TABLE derived_embedding (
+    -- AUTOINCREMENT for the same reason as derived_face_instance: this id
+    -- is what the resident index stores, and index alignment treats an id
+    -- as an IMMUTABLE identity. A file's embedding legitimately changes
+    -- (re-embed after an in-place byte replacement, a recompute), so the
+    -- file id cannot be the vector's identity -- a crash between commit
+    -- and index sync would leave a snapshot holding the OLD vector under
+    -- an id alignment has no reason to doubt. A replacement row is a NEW
+    -- id; the old id disappears; alignment sees exactly that.
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    space_id      INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
+    -- Packed float32, as the encoder emits it. No dim column: the space
+    -- row owns the dimensions, and the triggers below hold every vector
+    -- to them -- a second copy of the same fact is a place for the two
+    -- to disagree.
+    vector        BLOB NOT NULL,
+    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
+    UNIQUE (file_id, space_id)
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX derived_embedding_space ON derived_embedding(space_id)")
+    conn.execute(
+        """CREATE TRIGGER derived_embedding_fits_its_space
+BEFORE INSERT ON derived_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER derived_embedding_fits_its_space_update
+BEFORE UPDATE ON derived_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END"""
+    )
+    if survivors:
+        conn.execute(
+            "INSERT INTO derived_embedding(file_id, space_id, vector, source_sha256, computed_at)"
+            " SELECT file_id, space_id, vector, source_sha256, computed_at"
+            " FROM migrate_v3_embedding ORDER BY space_id, file_id"
+        )
+        conn.execute("DROP TABLE migrate_v3_embedding")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

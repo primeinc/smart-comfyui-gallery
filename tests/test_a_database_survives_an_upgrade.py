@@ -591,3 +591,133 @@ def test_the_snapshot_of_a_whole_library_can_be_restored(tmp_path, steps):
         assert "starred" not in [r[1] for r in conn.execute("PRAGMA table_info(file)")]
     finally:
         conn.close()
+
+
+# --- the shipped v3 -> v4 step ---------------------------------------------
+
+
+def v3_database_with_embeddings(tmp_path):
+    """A database in the exact v3 shape semantic search first shipped with:
+    embeddings keyed (file_id, space_id), no id of their own. Built by
+    reverting a fresh build's table to that generation's DDL verbatim."""
+    import numpy as np
+
+    from db import similarity
+    from vision.faiss_index import SpaceSpec
+
+    path = tmp_path / "gallery.db"
+    build.build(path)
+    conn = connect.connect(path)
+    root = int(
+        conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
+    )
+    folder = scan.ensure_folder(conn, root, None, "x")
+    files = []
+    for name in ("dusk", "dawn"):
+        fid = scan.mint(conn, "file", name)
+        conn.execute(
+            "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256,"
+            " first_seen_at, last_seen_at) VALUES(?, ?, ?, 'image', 10, 0, 'aa', ?, ?)",
+            (fid, folder, f"{name}.png", NOW, NOW),
+        )
+        files.append(fid)
+    spec = SpaceSpec(
+        key="semantic.test.m.c",
+        representation="float32",
+        dimensions=4,
+        metric="cosine",
+        producer="test:m",
+        producer_version="c",
+        preprocess="t",
+        preprocess_version="1",
+    )
+    sid = similarity.space_id(conn, spec, NOW)
+    conn.commit()
+
+    conn.execute("DROP TABLE derived_embedding")
+    conn.execute("""CREATE TABLE derived_embedding (
+    file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    space_id      INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
+    vector        BLOB NOT NULL,
+    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
+    PRIMARY KEY (file_id, space_id)
+) STRICT""")
+    conn.execute("CREATE INDEX derived_embedding_space ON derived_embedding(space_id)")
+    conn.execute("""CREATE TRIGGER derived_embedding_fits_its_space
+BEFORE INSERT ON derived_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END""")
+    conn.execute("""CREATE TRIGGER derived_embedding_fits_its_space_update
+BEFORE UPDATE ON derived_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END""")
+    for at, fid in enumerate(files):
+        vec = np.zeros(4, dtype=np.float32)
+        vec[at] = 1.0
+        conn.execute(
+            "INSERT INTO derived_embedding(file_id, space_id, vector, source_sha256, computed_at)"
+            " VALUES(?, ?, ?, 'aa', ?)",
+            (fid, sid, vec.tobytes(), NOW),
+        )
+    conn.commit()
+    conn.execute("PRAGMA user_version = 3")
+    conn.close()
+    return path, files, spec, sid
+
+
+def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
+    """The hostile v3 -> v4 gate: a database built with the old
+    derived_embedding shape migrates to one indistinguishable from a fresh
+    build, every vector survives byte-for-byte under a freshly minted
+    immutable id, and the migrated rows still retrieve through the real
+    alignment path."""
+    import numpy as np
+
+    from db import retrieval, similarity
+    from vision.faiss_index import IndexManager
+
+    path, files, spec, sid = v3_database_with_embeddings(tmp_path)
+    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        before = ro.execute(
+            "SELECT file_id, space_id, vector, source_sha256 FROM derived_embedding ORDER BY file_id"
+        ).fetchall()
+    finally:
+        ro.close()
+    assert len(before) == 2
+
+    assert migrate.migrate(path) == [4]
+    assert build.drift(path) == [], "the migrated file differs from a fresh build"
+
+    conn = connect.connect(path)
+    try:
+        rows = conn.execute(
+            "SELECT id, file_id, space_id, vector, source_sha256 FROM derived_embedding ORDER BY file_id"
+        ).fetchall()
+        assert [(fid, s, vec, sha) for _, fid, s, vec, sha in rows] == before, "a row or a vector byte changed"
+        minted = [row[0] for row in rows]
+        assert all(isinstance(new_id, int) for new_id in minted)
+        assert len(set(minted)) == 2
+
+        current = retrieval.current_rows(conn, sid)
+        assert sorted(fid for _, fid in current) == sorted(files)
+        ids = [embedding_id for embedding_id, _ in current]
+        manager = IndexManager(tmp_path / "spaces", gpu=False)
+        key = similarity.align(conn, manager, spec, ids, lambda wanted: retrieval._vectors(conn, wanted), NOW)
+        query = np.zeros(4, dtype=np.float32)
+        query[0] = 1.0
+        labels, _scores = manager.search(key, [query], 1)
+        to_file = dict(current)
+        assert to_file[int(labels[0][0])] == files[0], "the migrated vectors no longer answer a query"
+    finally:
+        conn.close()
