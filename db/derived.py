@@ -1198,15 +1198,25 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 # --- embeddings ------------------------------------------------------------
 
 
-def record_embedding(conn, file_id: int, spec, vector, sha: str, now: float) -> None:
-    """One whole-file embedding, keyed by the immutable space that
-    computed it, noted for the post-commit index sync the same way every
-    other representation is: the row rides this transaction, the live
-    index takes it only after the commit that made it durable.
+def record_embedding(conn, file_id: int, spec, vector, sha: str, now: float) -> int:
+    """One whole-file embedding under its own IMMUTABLE row id, replacing
+    what this space held for the file before.
 
-    `spec` is the space's SpaceSpec (db/similarity.py semantic_space);
+    The row id -- not the file id -- is what the resident index stores:
+    a file's embedding legitimately changes (re-embed after replaced
+    bytes), so a replacement DELETES the old row and mints a new
+    AUTOINCREMENT id. Index alignment then sees an id disappear and a
+    new one appear, which is a diff it handles exactly; the old shape
+    (same file id, new vector) was a divergence a crash between commit
+    and index sync could make permanent, because the float path trusts
+    matching ids to mean matching vectors.
+
+    Both moves are noted for the post-commit sync: the old id leaves the
+    live index and the new one enters it only after the commit that made
+    this row durable.
+
     `vector` is float32, numpy or bytes, already normalised by the
-    encoder that produced it.
+    encoder that produced it. Returns the new embedding id.
     """
     import numpy as np
 
@@ -1214,14 +1224,19 @@ def record_embedding(conn, file_id: int, spec, vector, sha: str, now: float) -> 
 
     unit = np.asarray(vector, dtype=np.float32) if not isinstance(vector, bytes) else np.frombuffer(vector, np.float32)
     sid = similarity.space_id(conn, spec, now)
-    conn.execute(
-        "INSERT INTO derived_embedding(file_id, space_id, vector, source_sha256, computed_at)"
-        " VALUES(?, ?, ?, ?, ?)"
-        " ON CONFLICT(file_id, space_id) DO UPDATE SET vector = excluded.vector,"
-        " source_sha256 = excluded.source_sha256, computed_at = excluded.computed_at",
+    old = conn.execute(
+        "SELECT id FROM derived_embedding WHERE file_id = ? AND space_id = ?", (plain(file_id), sid)
+    ).fetchone()
+    if old is not None:
+        similarity.note_gone(conn, sid, int(old[0]))
+        conn.execute("DELETE FROM derived_embedding WHERE id = ?", (int(old[0]),))
+    cursor = conn.execute(
+        "INSERT INTO derived_embedding(file_id, space_id, vector, source_sha256, computed_at) VALUES(?, ?, ?, ?, ?)",
         tuple(plain(value) for value in (file_id, sid, unit.tobytes(), sha, now)),
     )
-    similarity.note(conn, spec, int(file_id), unit, now)
+    embedding_id = int(cursor.lastrowid or 0)
+    similarity.note(conn, spec, embedding_id, unit, now)
+    return embedding_id
 
 
 # --- what a model said about the picture -----------------------------------

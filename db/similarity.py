@@ -135,22 +135,13 @@ def semantic_space(model: str, checkpoint: str, dimensions: int) -> SpaceSpec:
     ONE space for both modalities -- that is the entire trick: image
     vectors are the durable rows, a typed phrase becomes an ephemeral
     query vector in the same space, and they are comparable because one
-    model produced both. The producer is therefore the whole joint
-    model+checkpoint, and vectors from another checkpoint -- same
-    dimensions or not -- are a different space entirely.
+    model produced both. The identity itself belongs to the adapter
+    (vision/semantic/openclip.py space()); this is its name here for
+    the callers that speak spaces rather than providers.
     """
-    from vision.semantic import openclip_version
+    from vision.semantic import openclip
 
-    return SpaceSpec(
-        key=f"semantic.openclip.{model}.{checkpoint}",
-        representation="float32",
-        dimensions=int(dimensions),
-        metric="cosine",
-        producer=f"open_clip:{model}",
-        producer_version=checkpoint,
-        preprocess="open_clip.transforms",
-        preprocess_version=openclip_version(),
-    )
+    return openclip.space(model, checkpoint, dimensions)
 
 
 def _current_space_of(conn, probe: SpaceSpec) -> tuple[int, int] | None:
@@ -188,16 +179,6 @@ def face_space_of(conn, model_id: str, model_version: str) -> tuple[int, SpaceSp
         return None
     sid, dimensions = found
     return sid, face_space(model_id, model_version, dimensions)
-
-
-def semantic_space_of(conn, model: str, checkpoint: str) -> tuple[int, SpaceSpec] | None:
-    """The CURRENT joint space for this model+checkpoint, or None before
-    the first embedding was recorded."""
-    found = _current_space_of(conn, semantic_space(model, checkpoint, 1))
-    if found is None:
-        return None
-    sid, dimensions = found
-    return sid, semantic_space(model, checkpoint, dimensions)
 
 
 def keyed(spec: SpaceSpec, sid: int) -> SpaceSpec:

@@ -922,6 +922,7 @@ def test_search_answers_by_meaning_from_the_joint_space(served, monkeypatch):
     client, _, _ = served
     db_path = client.app.state.db_path
     conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
     files = dict(conn.execute("SELECT name, id FROM file"))
     spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
     ana = np.array([1, 0, 0, 0], dtype=np.float32)
@@ -933,17 +934,20 @@ def test_search_answers_by_meaning_from_the_joint_space(served, monkeypatch):
     connect.close(conn)
 
     class FakeText:
-        def encode_text(self, phrase):
+        def encode_query(self, phrase):
             assert phrase == "a woman smiling"
             return ana
 
-    monkeypatch.setattr(semantic, "backend", lambda *args, **kwargs: FakeText())
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
     answer = client.get("/search", params={"q": "a woman smiling", "k": 3})
     assert answer.status_code == 200
     told = answer.json()
     assert [row["name"] for row in told][:2] == ["ana_1.png", "ana_2.png"]
     assert told[0]["score"] > told[1]["score"] > told[-1]["score"]
-    assert all(set(row) == {"slug", "name", "score"} for row in told)
+    assert all(set(row) == {"slug", "name", "score", "sources"} for row in told)
+    assert all("semantic.openclip.ViT-B-32.laion2b_s34b_b79k" in row["sources"] for row in told)
+    ranks = [row["sources"]["semantic.openclip.ViT-B-32.laion2b_s34b_b79k"]["rank"] for row in told]
+    assert ranks == sorted(ranks)
 
     # a bad model setting is a refused request, never a 500
     conn = connect.connect(db_path)
@@ -953,3 +957,114 @@ def test_search_answers_by_meaning_from_the_joint_space(served, monkeypatch):
     conn.commit()
     connect.close(conn)
     assert client.get("/search", params={"q": "x"}).status_code == 400
+
+
+def test_search_fuses_two_spaces_by_rank_never_by_raw_score(served, monkeypatch):
+    """Two participating spaces with WILDLY different score scales: the
+    fused order can only come from ranks. The file both models agree on
+    outranks each model's private favourite, and per-space provenance
+    survives into the response."""
+    from db import similarity
+    from vision import semantic
+
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    from db import settings as settings_module
+
+    settings_module.put(conn, "semantic_model", "ViT-B-32/one,ViT-B-32/two")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    one = similarity.semantic_space("ViT-B-32", "one", 4)
+    two = similarity.semantic_space("ViT-B-32", "two", 4)
+    agreed = np.array([1, 0, 0, 0], dtype=np.float32)
+    private = np.array([0, 1, 0, 0], dtype=np.float32)
+    away = np.array([0, 0, 1, 0], dtype=np.float32)
+    # space one loves ana_1 then ana_2; space two loves ana_1 then ben_1.
+    derived.record_embedding(conn, files["ana_1.png"], one, agreed, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], one, agreed * 0.8 + private * 0.2, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], one, away, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_1.png"], two, agreed, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], two, away, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], two, agreed * 0.8 + private * 0.2, "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+
+    class PerSpace:
+        """Each space's query lands at a different cosine LEVEL: space one
+        answers near 1.0, space two near 0.35 -- raw magnitudes that mean
+        nothing across spaces, which is why only ranks may fuse."""
+
+        def __init__(self, checkpoint):
+            self.query = {
+                "one": agreed,
+                "two": (0.35 * agreed + 0.9 * np.array([0, 0, 0, 1], dtype=np.float32)),
+            }[checkpoint]
+
+        def encode_query(self, phrase):
+            return self.query
+
+    monkeypatch.setattr(semantic, "encoder", lambda _provider, _dir, _model, checkpoint, **kw: PerSpace(checkpoint))
+    told = client.get("/search", params={"q": "the agreed picture", "k": 3}).json()
+    assert told[0]["name"] == "ana_1.png", "the file both spaces agree on must fuse to the top"
+    assert set(told[0]["sources"]) == {
+        "semantic.openclip.ViT-B-32.one",
+        "semantic.openclip.ViT-B-32.two",
+    }
+    raw_one = told[0]["sources"]["semantic.openclip.ViT-B-32.one"]["score"]
+    raw_two = told[0]["sources"]["semantic.openclip.ViT-B-32.two"]["score"]
+    assert raw_one > 0.9, "space one answers near the top of its own scale"
+    assert raw_two < 0.5, "space two answers far down its own -- the scales are incomparable"
+    assert told[0]["sources"]["semantic.openclip.ViT-B-32.one"]["rank"] == 1
+    assert told[0]["sources"]["semantic.openclip.ViT-B-32.two"]["rank"] == 1
+
+
+def test_a_replaced_file_stops_answering_by_its_old_picture(served, monkeypatch):
+    """The scanner keeps a file's identity through an in-place byte
+    replacement; its old embedding must NOT keep retrieving it until the
+    re-embed happens -- the stale row is excluded the moment the bytes
+    changed, not whenever the embed job gets around to it."""
+    from db import similarity
+    from vision import semantic
+
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    ana = np.array([1, 0, 0, 0], dtype=np.float32)
+    derived.record_embedding(conn, files["ana_1.png"], spec, ana, "aa", 0.0)
+    # the bytes change behind the embedding's back
+    conn.execute("UPDATE file SET content_sha256 = 'REPLACED' WHERE id = ?", (files["ana_1.png"],))
+    conn.commit()
+    connect.close(conn)
+
+    class FakeText:
+        def encode_query(self, phrase):
+            return ana
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
+    told = client.get("/search", params={"q": "x", "k": 3}).json()
+    assert told == [], "a known-stale representation answered for the replaced bytes"
+
+
+def test_search_never_downloads_a_model(served):
+    """Embeddings exist but the model cache is empty: the request is
+    refused with the fix named, and no acquisition begins -- weights
+    belong to /jobs/embed, not to a GET."""
+    from db import similarity
+
+    client, _, _ = served
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    derived.record_embedding(conn, files["ana_1.png"], spec, np.array([1, 0, 0, 0], dtype=np.float32), "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+
+    answer = client.get("/search", params={"q": "banana"})
+    assert answer.status_code == 400
+    assert "provisioned" in answer.json()["detail"]

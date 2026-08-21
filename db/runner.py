@@ -117,24 +117,16 @@ def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
     derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
 
-def semantic_choice(conn) -> tuple[str, str]:
-    """The `semantic_model` setting as (model, checkpoint), refused loudly
-    when it cannot be read as one."""
-    from . import settings as settings_module
-
-    raw = settings_module.value(conn, "semantic_model")
-    model, slash, checkpoint = raw.partition("/")
-    if not slash or not model or not checkpoint:
-        raise ValueError(f"semantic_model must be '<model>/<checkpoint>', not {raw!r}")
-    return model, checkpoint
-
-
 def submit_embed(conn, now: float, *, models_dir: str) -> int:
-    """The joint image/text embedding for every present picture, as one
-    job -- the representation `/search` answers from. The schema's
-    'embed' kind, reserved since the beginning, finally has its job.
+    """The joint image/text embedding for every present picture, in every
+    participating space, as one job -- the representations `/search`
+    answers from. The schema's 'embed' kind, reserved since the
+    beginning, finally has its job. A bad `semantic_model` setting is
+    refused here, not queued.
     """
-    model, checkpoint = semantic_choice(conn)
+    from . import retrieval
+
+    told = retrieval.choices(conn)
     items = [
         row[0]
         for row in conn.execute(
@@ -142,14 +134,14 @@ def submit_embed(conn, now: float, *, models_dir: str) -> int:
             " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
         )
     ]
-    payload = {"models_dir": models_dir, "model": model, "checkpoint": checkpoint}
+    payload = {"models_dir": models_dir, "choices": [list(choice) for choice in told]}
     return jobs.submit(conn, "embed", now, payload=payload, items=items)
 
 
 def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     from vision import decode, semantic
 
-    from . import derived, detect, oriented, scan, similarity
+    from . import derived, detect, oriented, scan
 
     kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     path = detect.path_of(conn, file_id)
@@ -157,10 +149,15 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     if frame is None:
         raise ValueError(f"file {file_id} has no decodable frame to embed")
     if sha is None:
+        # The staleness contract keys on the file's recorded bytes, so the
+        # hash computed here is persisted the way detection persists its
+        # own (db/detect.py) -- an embedding of bytes the file row cannot
+        # vouch for would be excluded from retrieval as unverifiable.
         sha = scan.sha256_of(path)
-    encoder = semantic.backend(payload["models_dir"], payload["model"], payload["checkpoint"])
-    spec = similarity.semantic_space(payload["model"], payload["checkpoint"], encoder.dimensions)
-    derived.record_embedding(conn, file_id, spec, encoder.encode_image(frame), sha, now)
+        conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
+    for provider, model, checkpoint in payload["choices"]:
+        encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
+        derived.record_embedding(conn, file_id, encoder.space(), encoder.encode_media(frame), sha, now)
 
 
 def submit_dupes(conn, now: float) -> int:
@@ -239,37 +236,17 @@ def warm_similarity(conn, now: float) -> None:
         ]
         if ids:
             similarity.align(conn, manager, space, ids, lambda wanted: _face_vectors(conn, wanted), now)
-    current = similarity.semantic_space_of(conn, *semantic_choice(conn))
-    if current is not None:
-        sem_sid, space = current
-        ids = [
-            row[0]
-            for row in conn.execute(
-                "SELECT e.file_id FROM derived_embedding e"
-                " JOIN file f ON f.id = e.file_id AND f.missing_since IS NULL"
-                " WHERE e.space_id = ? ORDER BY e.file_id",
-                (sem_sid,),
-            )
-        ]
-        if ids:
-            similarity.align(conn, manager, space, ids, lambda wanted: embedding_vectors(conn, sem_sid, wanted), now)
+    from . import retrieval
 
-
-def embedding_vectors(conn, sid: int, wanted):
-    """Embedding blobs for exactly these files in this space, in order."""
-    import numpy as np
-
-    held = {}
-    batch = [int(v) for v in wanted]
-    for start in range(0, len(batch), 500):
-        piece = batch[start : start + 500]
-        marks = ",".join("?" for _ in piece)
-        for file_id, blob in conn.execute(
-            f"SELECT file_id, vector FROM derived_embedding WHERE space_id = ? AND file_id IN ({marks})",
-            (sid, *piece),
-        ):
-            held[file_id] = np.frombuffer(blob, dtype=np.float32)
-    return np.vstack([held[v] for v in batch])
+    for provider, model, checkpoint in retrieval.choices(conn):
+        found = retrieval._space_of(conn, provider, model, checkpoint)
+        if found is None:
+            continue
+        sem_sid, space = found
+        rows = retrieval.current_rows(conn, sem_sid)
+        if rows:
+            ids = [embedding_id for embedding_id, _ in rows]
+            similarity.align(conn, manager, space, ids, lambda wanted: retrieval._vectors(conn, wanted), now)
 
 
 def _face_vectors(conn, wanted):

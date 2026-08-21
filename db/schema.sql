@@ -1048,6 +1048,15 @@ END;
 -- checkpoint, and rows keyed by immutable space id cannot be answered
 -- by the wrong encoder after an upgrade.
 CREATE TABLE derived_embedding (
+    -- AUTOINCREMENT for the same reason as derived_face_instance: this id
+    -- is what the resident index stores, and index alignment treats an id
+    -- as an IMMUTABLE identity. A file's embedding legitimately changes
+    -- (re-embed after an in-place byte replacement, a recompute), so the
+    -- file id cannot be the vector's identity -- a crash between commit
+    -- and index sync would leave a snapshot holding the OLD vector under
+    -- an id alignment has no reason to doubt. A replacement row is a NEW
+    -- id; the old id disappears; alignment sees exactly that.
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     space_id      INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
     -- Packed float32, as the encoder emits it. No dim column: the space
@@ -1056,7 +1065,7 @@ CREATE TABLE derived_embedding (
     -- to disagree.
     vector        BLOB NOT NULL,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
-    PRIMARY KEY (file_id, space_id)
+    UNIQUE (file_id, space_id)
 ) STRICT;
 CREATE INDEX derived_embedding_space ON derived_embedding(space_id);
 

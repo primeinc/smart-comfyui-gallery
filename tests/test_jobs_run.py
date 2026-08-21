@@ -398,17 +398,21 @@ def test_the_embed_job_fills_the_joint_space_with_provenance(db, tmp_path, monke
     the exact model, checkpoint and preprocessing that computed it."""
     import numpy as np
 
+    from db import similarity
     from vision import semantic
 
     class Fake:
         dimensions = 8
 
-        def encode_image(self, image):
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 8)
+
+        def encode_media(self, frame):
             rng = np.random.default_rng(7)
             v = rng.normal(size=8).astype(np.float32)
             return v / np.linalg.norm(v)
 
-    monkeypatch.setattr(semantic, "backend", lambda *args, **kwargs: Fake())
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Fake())
     files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 0})
     job_id = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
     turn = runner.run_next(db, "w1", 1.0)

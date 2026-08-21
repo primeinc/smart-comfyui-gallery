@@ -530,3 +530,67 @@ def test_a_face_row_cannot_claim_a_space_another_model_produced(db):
             " VALUES(?, 1, 'm', '1', 0.9, x'00000000', 1, ?, 'aa', 0)",
             (file_id, other),
         )
+
+
+def test_rank_fusion_consumes_positions_never_magnitudes():
+    """RRF's entire contract: two rankings whose scores live on absurdly
+    different scales fuse identically to the same rankings with any
+    other scales, because scores never enter. Agreement accumulates;
+    either list can still surface what the other missed."""
+    from db import retrieval
+
+    fused = retrieval.rrf([[7, 3, 9], [3, 7, 100]])
+    assert fused[3] == fused[7], "symmetric agreement must tie"
+    assert fused[3] > fused[9], "two mid ranks outweigh one high-only rank"
+    assert fused[100] > 0, "a single space's find still surfaces"
+    assert set(fused) == {3, 7, 9, 100}
+
+
+def test_a_crash_between_commit_and_sync_cannot_revive_an_old_embedding(db, tmp_path):
+    """The verdict's hostile case: vector A resident and checkpointed;
+    vector B committed for the SAME file; the process dies before the
+    post-commit sync. On restart the snapshot still holds A -- but under
+    an embedding id that no longer exists, because a replacement mints a
+    new immutable id instead of reusing the file's. Alignment sees an id
+    disappear and another appear, and the space answers B, never A."""
+    from db import derived, scan
+
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
+    folder = scan.mint(db, "folder", "lib")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,NULL,'lib',0)", (folder,))
+    file_id = scan.mint(db, "file", "p")
+    db.execute(
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,first_seen_at,last_seen_at)"
+        " VALUES(?,?,?,'image',1,0,'aa',0,0)",
+        (file_id, folder, "p.png"),
+    )
+    spec = similarity.semantic_space("ViT-B-32", "test", 4)
+    a_vector = np.array([1, 0, 0, 0], dtype=np.float32)
+    b_vector = np.array([0, 1, 0, 0], dtype=np.float32)
+    first_id = derived.record_embedding(db, file_id, spec, a_vector, "aa", 0.0)
+    db.commit()
+    similarity.discard_pending(db)
+
+    from db import retrieval
+
+    manager = IndexManager(tmp_path)
+    sid, full = retrieval._space_of(db, "openclip", "ViT-B-32", "test")
+    rows = retrieval.current_rows(db, sid)
+    key = similarity.align(db, manager, full, [e for e, _ in rows], lambda w: retrieval._vectors(db, w), 1.0)
+    manager.checkpoint(key)
+
+    # The re-embed commits; the process dies before apply_pending.
+    second_id = derived.record_embedding(db, file_id, spec, b_vector, "aa", 2.0)
+    db.commit()
+    similarity.discard_pending(db)  # the crash: notes lost, sync never ran
+    assert second_id != first_id, "a replacement must mint a new immutable id"
+
+    # Restart: a fresh manager restores the stale snapshot, then aligns.
+    reborn = IndexManager(tmp_path)
+    rows = retrieval.current_rows(db, sid)
+    key = similarity.align(db, reborn, full, [e for e, _ in rows], lambda w: retrieval._vectors(db, w), 3.0)
+    labels, scores = reborn.search(key, [b_vector], 1)
+    assert int(labels[0][0]) == second_id, "the index answered something other than the committed vector"
+    assert float(scores[0][0]) > 0.99, "the committed vector B is not what the space serves"
+    labels, scores = reborn.search(key, [a_vector], 1)
+    assert float(scores[0][0]) < 0.5, "the crashed-out vector A is still resident"
