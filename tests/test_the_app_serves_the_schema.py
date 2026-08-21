@@ -809,6 +809,81 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
         client.post("/settings/dupe_threshold", json={"value": "4"})
 
 
+def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path):
+    """The representative policy reads pixel dimensions, but only ingest
+    persists them -- and /jobs/dupes explicitly runs from /jobs/phash
+    alone. The canonical member of a duplicate group must be the same
+    picture whether the metadata pass has happened or not."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    picture = scene(*CASTLE)
+    picture.save(root / "castle.png")
+    picture.resize((48, 48)).save(root / "castle_small.jpg", quality=80)
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+
+        def drained(route: str) -> None:
+            with client.websocket_connect("/ws/jobs") as feed:
+                assert feed.receive_json(timeout=10)["type"] == "snapshot"
+                job_id = client.post(route).json()["id"]
+                state = None
+                while state not in ("done", "failed", "cancelled"):
+                    state = feed.receive_json(timeout=10)["state"]
+            told = client.get(f"/jobs/{job_id}").json()
+            assert (told["state"], told["failed_count"]) == ("done", 0), route
+
+        drained("/jobs/phash")
+        drained("/jobs/dupes")
+        before = client.get("/dupes").json()
+        assert [group["name"] for group in before] == ["castle.png"], (
+            "before ingest the header on disk must answer for the missing dimensions"
+        )
+
+        drained("/jobs/ingest")
+        drained("/jobs/dupes")
+        after = client.get("/dupes").json()
+        assert after == before, "the representative changed because a metadata job ran"
+
+
+def test_resolution_beats_bytes_for_the_dupe_representative(tmp_path):
+    """Bytes measure compression, not fidelity: a heavily compressed
+    high-resolution body must outrank a low-resolution one padded fat --
+    byte size is a tiebreak WITHIN a resolution, never a substitute."""
+    from PIL.PngImagePlugin import PngInfo
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    picture = scene(*CASTLE)
+    picture.save(root / "castle_full.jpg", quality=30)
+    padding = PngInfo()
+    padding.add_text("padding", "x" * 40000)
+    picture.resize((48, 48)).save(root / "castle_small.png", pnginfo=padding)
+    assert (root / "castle_small.png").stat().st_size > (root / "castle_full.jpg").stat().st_size, (
+        "the fixture only proves the rule if the low-resolution file really is the byte-heavier one"
+    )
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+
+        def drained(route: str) -> None:
+            with client.websocket_connect("/ws/jobs") as feed:
+                assert feed.receive_json(timeout=10)["type"] == "snapshot"
+                client.post(route)
+                state = None
+                while state not in ("done", "failed", "cancelled"):
+                    state = feed.receive_json(timeout=10)["state"]
+
+        drained("/jobs/phash")
+        drained("/jobs/dupes")
+        groups = client.get("/dupes").json()
+        assert [group["name"] for group in groups] == ["castle_full.jpg"], (
+            f"a padded low-resolution file outranked the high-resolution picture: {groups}"
+        )
+
+
 def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
     """One --home argument moves everything a run owns -- database, models,
     caches. Nothing lands in OS application-data folders, and a first run
