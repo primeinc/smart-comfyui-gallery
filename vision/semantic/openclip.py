@@ -60,29 +60,45 @@ def space(model: str, checkpoint: str, dimensions: int):
     )
 
 
-def _provisioned(models_dir: str, model: str, checkpoint: str) -> bool:
-    """Whether this checkpoint's weights already sit in the local cache,
-    answered WITHOUT any network access: open_clip names the Hugging
-    Face repo (refs/mlfoundations/open_clip src/open_clip/pretrained.py
-    get_pretrained_cfg, the 'hf_hub' key) and `scan_cache_dir`
-    enumerates what the cache directory holds (refs/huggingface/
-    huggingface_hub src/huggingface_hub/utils/_cache_manager.py:588 --
-    HFCacheInfo.repos of CachedRepoInfo(repo_id, revisions)). Setting
-    HF_HUB_OFFLINE at runtime is theater -- huggingface_hub reads it at
-    import -- which is how the first version of this guard downloaded
-    600MB while claiming it would not."""
-    from huggingface_hub import scan_cache_dir
-    from huggingface_hub.errors import CacheNotFound
+def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | None:
+    """The exact weight file this checkpoint resolves to in the local
+    cache, or None -- answered WITHOUT any network access.
+
+    open_clip names the artifact (refs/mlfoundations/open_clip
+    src/open_clip/pretrained.py: get_pretrained_cfg's 'hf_hub' key is
+    'org/repo/' or 'org/repo/file'; download_pretrained_from_hf tries
+    the safetensors alternative first, then the named file) and
+    `try_to_load_from_cache` answers from disk alone -- "This function
+    will not raise any exception if the file in not cached"
+    (refs/huggingface/huggingface_hub src/huggingface_hub/
+    file_download.py:1475). Repo presence is not enough: a cache can
+    hold the repo's config without the weight file, and open_clip's tag
+    resolver would then reach for the network. Setting HF_HUB_OFFLINE
+    at runtime is theater -- huggingface_hub reads it at import --
+    which is how the first version of this guard downloaded 600MB
+    while claiming it would not.
+    """
+    import os
+
+    from huggingface_hub import try_to_load_from_cache
+    from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
     from open_clip.pretrained import get_pretrained_cfg
 
-    repo = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "").rstrip("/")
-    if not repo:
-        return False
-    try:
-        held = scan_cache_dir(models_dir)
-    except CacheNotFound:
-        return False  # no cache directory yet IS unprovisioned
-    return any(cached.repo_id == repo and len(cached.revisions) > 0 for cached in held.repos)
+    hf_hub = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "")
+    if not hf_hub:
+        return None
+    repo, filename = os.path.split(hf_hub)
+    if not filename:
+        names = (HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME)
+    elif filename.endswith((".bin", ".pth")):
+        names = (filename[:-4] + ".safetensors", filename)  # safetensors preferred, as upstream prefers it
+    else:
+        names = (filename,)
+    for name in names:
+        found = try_to_load_from_cache(repo, name, cache_dir=models_dir)
+        if isinstance(found, str):
+            return found
+    return None
 
 
 class ClipBackend:
@@ -97,13 +113,37 @@ class ClipBackend:
         self.model_name = model
         self.checkpoint = checkpoint
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        if offline and not _provisioned(models_dir, model, checkpoint):
-            raise LookupError(
-                f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
+        found = _cached_checkpoint(models_dir, model, checkpoint)
+        if found is None:
+            # Downloading belongs to /jobs/embed; the serving path is
+            # structurally incapable of it -- a local weight file is the
+            # only thing it will hand to open_clip.
+            if offline:
+                raise LookupError(
+                    f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
+                )
+            loaded, _train_tf, self.preprocess = open_clip.create_model_and_transforms(
+                model, pretrained=checkpoint, cache_dir=models_dir
             )
-        loaded, _train_tf, self.preprocess = open_clip.create_model_and_transforms(
-            model, pretrained=checkpoint, cache_dir=models_dir
-        )
+        else:
+            # `pretrained=<file>` takes factory.py's local-file branch --
+            # no hub call anywhere in it -- but that branch skips the
+            # tag's preprocess merge, so the tag's four preprocess keys
+            # ride along explicitly (refs/mlfoundations/open_clip
+            # src/open_clip/factory.py:412-421 vs :414; pretrained.py
+            # _pcfg: mean, std, interpolation, resize_mode).
+            from open_clip.pretrained import get_pretrained_cfg
+
+            tag = get_pretrained_cfg(model, checkpoint) or {}
+            loaded, _train_tf, self.preprocess = open_clip.create_model_and_transforms(
+                model,
+                pretrained=found,
+                cache_dir=models_dir,
+                image_mean=tag.get("mean"),
+                image_std=tag.get("std"),
+                image_interpolation=tag.get("interpolation"),
+                image_resize_mode=tag.get("resize_mode"),
+            )
         self.tokenizer = open_clip.get_tokenizer(model, cache_dir=models_dir)
         loaded.eval()  # models construct in train mode; see module docstring
         self.model = loaded.to(self.device)
@@ -116,11 +156,13 @@ class ClipBackend:
     def space(self):
         return space(self.model_name, self.checkpoint, self.dimensions)
 
-    def encode_media(self, frame):
-        """One decoded, oriented PIL frame to one unit-length vector."""
+    def encode_media(self, media):
+        """One MediaRef to one unit-length vector. CLIP consumes exactly
+        one frame, so every kind of media enters through the reference's
+        canonical representative frame."""
         import torch
 
-        tensor = self.preprocess(frame.convert("RGB")).unsqueeze(0).to(self.device)
+        tensor = self.preprocess(media.frame().convert("RGB")).unsqueeze(0).to(self.device)
         with torch.no_grad():
             features = self.model.encode_image(tensor, normalize=True)
         return features[0].cpu().float().numpy()

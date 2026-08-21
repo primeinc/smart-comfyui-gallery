@@ -58,7 +58,11 @@ def choices(conn) -> list[tuple[str, str, str]]:
         if not slash or not model or not checkpoint:
             raise ValueError(f"semantic_model entry must be '[provider:]<model>/<checkpoint>', not {entry!r}")
         semantic.provider_module(provider)  # unknown provider refused here
-        told.append((provider, model, checkpoint))
+        if (provider, model, checkpoint) not in told:
+            # A repeated entry is one space, not a double vote: RRF sums
+            # per-ranking contributions, so listing a model twice would
+            # silently weight it 2x.
+            told.append((provider, model, checkpoint))
     if not told:
         raise ValueError("semantic_model names no spaces")
     return told
@@ -89,44 +93,70 @@ def rrf(rankings: list[list[int]], k: int = RRF_K) -> dict[int, float]:
     return fused
 
 
-def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bool = True) -> list[dict]:
+def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bool = True) -> dict:
     """One phrase against every participating space, rankings fused.
 
     Each configured space is searched independently -- its own encoder,
-    its own resident index, its own top-K by its own cosine -- and the
-    per-space rankings merge by RRF. The result rows carry the fused
-    score AND each space's rank and raw score, because knowing which
-    model earned its electricity is how the next model choice gets made.
+    its own resident index, its own candidates by its own cosine -- and
+    the per-space rankings merge by RRF. Every space OVERFETCHES:
+    fusion rewards agreement below any single space's top-k, so each
+    space contributes max(k*4, 100) candidates and the cut to k happens
+    only after the merge -- truncating per-space at k would make rank
+    k+1 in one space invisible to a file's agreement everywhere else.
+
+    The answer says who was asked and who answered. `participants` is
+    every configured space; `contributors` the ones whose ranking
+    entered the fusion; `missing` maps the rest to why -- because a
+    result fused from one space when three are configured is a
+    different claim than one all three agreed on, and a page that
+    cannot tell them apart flattens the difference into false
+    confidence. One unprovisioned model degrades the answer, never
+    denies it; only NOTHING to answer from raises.
 
     `offline=True` (the serving default) refuses to download model
     weights on the query path; provisioning belongs to /jobs/embed.
-    Spaces with no current rows contribute nothing and are said to have
-    contributed nothing, never guessed for.
     """
     from vision import semantic
 
     from . import similarity
 
     manager = similarity.manager_for(conn)
+    final_k = max(int(k), 1)
     per_space: list[tuple[str, list[tuple[int, float]]]] = []
     to_file: dict[int, int] = {}
+    participants: list[str] = []
+    missing: dict[str, str] = {}
     for provider, model, checkpoint in choices(conn):
+        name = semantic.space(provider, model, checkpoint, 1).key
+        participants.append(name)
         found = _space_of(conn, provider, model, checkpoint)
         if found is None:
+            missing[name] = "no embeddings recorded; run /jobs/embed"
             continue
         sid, spec = found
         rows = current_rows(conn, sid)
         if not rows:
+            missing[name] = "no current embeddings: every recorded vector is stale or its file is gone"
+            continue
+        try:
+            encoder = semantic.encoder(provider, models_dir, model, checkpoint, offline=offline)
+        except LookupError as unprovisioned:
+            missing[name] = str(unprovisioned)
             continue
         ids = [embedding_id for embedding_id, _ in rows]
         to_file.update(dict(rows))
         key = similarity.align(conn, manager, spec, ids, lambda wanted: _vectors(conn, wanted), now)
-        encoder = semantic.encoder(provider, models_dir, model, checkpoint, offline=offline)
-        labels, scores = manager.search(key, [encoder.encode_query(phrase)], min(max(int(k), 1), len(ids)))
+        candidate_k = min(max(final_k * 4, 100), len(ids))
+        labels, scores = manager.search(key, [encoder.encode_query(phrase)], candidate_k)
         ranked = [
             (int(label), float(score)) for label, score in zip(labels[0], scores[0], strict=True) if int(label) != -1
         ]
         per_space.append((spec.key, ranked))
+
+    if not per_space and any("not provisioned" in why for why in missing.values()):
+        # Degraded is an answer; NOTHING to answer from is a refusal that
+        # must name its fix, exactly as the single-space case always did.
+        raise LookupError("; ".join(f"{name}: {why}" for name, why in sorted(missing.items())))
 
     # Fusion is over FILES: a file's agreement across spaces must
     # accumulate, and its embedding ids differ per space by design.
@@ -137,7 +167,13 @@ def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bo
             file_id = to_file[embedding_id]
             row = told.setdefault(file_id, {"file_id": file_id, "score": fused[file_id], "sources": {}})
             row["sources"][space_key] = {"rank": position + 1, "score": score}
-    return sorted(told.values(), key=lambda row: row["score"], reverse=True)[: max(int(k), 1)]
+    results = sorted(told.values(), key=lambda row: row["score"], reverse=True)[:final_k]
+    return {
+        "results": results,
+        "participants": participants,
+        "contributors": [space_key for space_key, _ in per_space],
+        "missing": missing,
+    }
 
 
 def _space_of(conn, provider: str, model: str, checkpoint: str):

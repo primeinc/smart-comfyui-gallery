@@ -941,7 +941,11 @@ def test_search_answers_by_meaning_from_the_joint_space(served, monkeypatch):
     monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
     answer = client.get("/search", params={"q": "a woman smiling", "k": 3})
     assert answer.status_code == 200
-    told = answer.json()
+    body = answer.json()
+    assert body["participants"] == ["semantic.openclip.ViT-B-32.laion2b_s34b_b79k"]
+    assert body["contributors"] == body["participants"]
+    assert body["missing"] == {}
+    told = body["results"]
     assert [row["name"] for row in told][:2] == ["ana_1.png", "ana_2.png"]
     assert told[0]["score"] > told[1]["score"] > told[-1]["score"]
     assert all(set(row) == {"slug", "name", "score", "sources"} for row in told)
@@ -1005,7 +1009,12 @@ def test_search_fuses_two_spaces_by_rank_never_by_raw_score(served, monkeypatch)
             return self.query
 
     monkeypatch.setattr(semantic, "encoder", lambda _provider, _dir, _model, checkpoint, **kw: PerSpace(checkpoint))
-    told = client.get("/search", params={"q": "the agreed picture", "k": 3}).json()
+    body = client.get("/search", params={"q": "the agreed picture", "k": 3}).json()
+    assert body["contributors"] == [
+        "semantic.openclip.ViT-B-32.one",
+        "semantic.openclip.ViT-B-32.two",
+    ], "both configured spaces must be said to have answered"
+    told = body["results"]
     assert told[0]["name"] == "ana_1.png", "the file both spaces agree on must fuse to the top"
     assert set(told[0]["sources"]) == {
         "semantic.openclip.ViT-B-32.one",
@@ -1045,8 +1054,11 @@ def test_a_replaced_file_stops_answering_by_its_old_picture(served, monkeypatch)
             return ana
 
     monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
-    told = client.get("/search", params={"q": "x", "k": 3}).json()
-    assert told == [], "a known-stale representation answered for the replaced bytes"
+    body = client.get("/search", params={"q": "x", "k": 3}).json()
+    assert body["results"] == [], "a known-stale representation answered for the replaced bytes"
+    assert "semantic.openclip.ViT-B-32.laion2b_s34b_b79k" in body["missing"], (
+        "a space that could not answer must be named, not silently absent"
+    )
 
 
 def test_search_never_downloads_a_model(served):

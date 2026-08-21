@@ -509,39 +509,44 @@ def submit_phash(state: State) -> dict:
 
 
 @post("/jobs/embed", sync_to_thread=True)
-def submit_embed(state: State) -> dict:
+def submit_embed(state: State) -> list[dict]:
     """Ask for the joint image/text embedding of every present picture --
     the representation /search answers from (db/runner.py submit_embed).
-    The first run downloads the model weights into the run's models
+    One job per participating space, so one model's failure never costs
+    another's progress; the response carries one snapshot per job. The
+    first run downloads the model weights into the run's models
     directory; a bad `semantic_model` setting is refused here, not
     queued."""
     conn = _connect(state.db_path)
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            job_id = runner.submit_embed(conn, time.time(), models_dir=weights)
+            job_ids = runner.submit_embed(conn, time.time(), models_dir=weights)
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
         _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return [jobs.snapshot(conn, job_id) for job_id in job_ids]
     finally:
         connect.close(conn)
 
 
 @get("/search", sync_to_thread=True)
-def search(state: State, q: str, k: int = 60) -> list[dict]:
+def search(state: State, q: str, k: int = 60) -> dict:
     """Pictures by what they LOOK like: the phrase becomes a query vector
     in every participating joint space, each resident index answers with
     its nearest pictures, and the rankings fuse (db/retrieval.py) -- no
     tags, no captions, no metadata anywhere in the loop.
 
-    The fused RRF score orders results; each space's own rank and raw
+    The fused RRF score orders `results`; each space's own rank and raw
     cosine ride along as `sources`, because cross-model scores are not
     comparable and knowing which model found what is the evidence the
-    next model choice is made on. No model weights are ever downloaded
-    on this path -- provisioning belongs to /jobs/embed, and an
-    unprovisioned model is a refused request.
+    next model choice is made on. `participants`, `contributors` and
+    `missing` say which configured spaces actually answered -- a page
+    that hides a silently absent model reports agreement that never
+    happened. No model weights are ever downloaded on this path --
+    provisioning belongs to /jobs/embed, and a request NOTHING can
+    answer is refused.
     """
     from db import retrieval
 
@@ -553,22 +558,27 @@ def search(state: State, q: str, k: int = 60) -> list[dict]:
         except (ValueError, LookupError) as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()  # align may have minted registry rows on the way
-        if not found:
-            return []
-        marks = ",".join("?" for _ in found)
-        named = dict(
-            conn.execute(
-                f"SELECT f.id, e.slug || '|' || f.name FROM file f"
-                f" JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
-                [row["file_id"] for row in found],
-            )
-        )
+        results = found["results"]
         told = []
-        for row in found:
-            if row["file_id"] in named:
-                slug, _, name = named[row["file_id"]].partition("|")
-                told.append({"slug": slug, "name": name, "score": row["score"], "sources": row["sources"]})
-        return told
+        if results:
+            marks = ",".join("?" for _ in results)
+            named = dict(
+                conn.execute(
+                    f"SELECT f.id, e.slug || '|' || f.name FROM file f"
+                    f" JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
+                    [row["file_id"] for row in results],
+                )
+            )
+            for row in results:
+                if row["file_id"] in named:
+                    slug, _, name = named[row["file_id"]].partition("|")
+                    told.append({"slug": slug, "name": name, "score": row["score"], "sources": row["sources"]})
+        return {
+            "results": told,
+            "participants": found["participants"],
+            "contributors": found["contributors"],
+            "missing": found["missing"],
+        }
     finally:
         connect.close(conn)
 

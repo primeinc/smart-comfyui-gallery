@@ -117,12 +117,13 @@ def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
     derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
 
-def submit_embed(conn, now: float, *, models_dir: str) -> int:
-    """The joint image/text embedding for every present picture, in every
-    participating space, as one job -- the representations `/search`
-    answers from. The schema's 'embed' kind, reserved since the
-    beginning, finally has its job. A bad `semantic_model` setting is
-    refused here, not queued.
+def submit_embed(conn, now: float, *, models_dir: str) -> list[int]:
+    """The joint image/text embedding for every present picture -- the
+    representations `/search` answers from. ONE JOB PER participating
+    space: each provider's items commit in their own transactions, so a
+    model that fails to load or encode costs its own space's progress
+    and nobody else's. A bad `semantic_model` setting is refused here,
+    not queued.
     """
     from . import retrieval
 
@@ -134,20 +135,21 @@ def submit_embed(conn, now: float, *, models_dir: str) -> int:
             " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
         )
     ]
-    payload = {"models_dir": models_dir, "choices": [list(choice) for choice in told]}
-    return jobs.submit(conn, "embed", now, payload=payload, items=items)
+    return [
+        jobs.submit(conn, "embed", now, payload={"models_dir": models_dir, "choice": list(choice)}, items=list(items))
+        for choice in told
+    ]
 
 
 def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
+    import functools
+
     from vision import decode, semantic
 
     from . import derived, detect, oriented, scan
 
     kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     path = detect.path_of(conn, file_id)
-    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
-    if frame is None:
-        raise ValueError(f"file {file_id} has no decodable frame to embed")
     if sha is None:
         # The staleness contract keys on the file's recorded bytes, so the
         # hash computed here is persisted the way detection persists its
@@ -155,9 +157,18 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
         # vouch for would be excluded from retrieval as unverifiable.
         sha = scan.sha256_of(path)
         conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
-    for provider, model, checkpoint in payload["choices"]:
-        encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
-        derived.record_embedding(conn, file_id, encoder.space(), encoder.encode_media(frame), sha, now)
+
+    @functools.cache
+    def representative_frame():
+        frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+        if frame is None:
+            raise ValueError(f"file {file_id} has no decodable frame to embed")
+        return frame
+
+    media = semantic.MediaRef(path=str(path), kind=kind, frame=representative_frame)
+    provider, model, checkpoint = payload["choice"]
+    encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
+    derived.record_embedding(conn, file_id, encoder.space(), encoder.encode_media(media), sha, now)
 
 
 def submit_dupes(conn, now: float) -> int:

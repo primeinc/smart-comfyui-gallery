@@ -17,10 +17,12 @@ The contract, whole:
                             joint space this exact configuration writes
                             into -- producer, checkpoint, preprocess
                             policy, dimensions
-    adapter.encode_media(frame) -> unit float32[D] for one decoded,
-                            oriented PIL frame (the repo owns decoding
-                            and orientation; the adapter owns everything
-                            after the pixels)
+    adapter.encode_media(media) -> unit float32[D] for one MediaRef.
+                            The reference describes the media instead of
+                            pre-decoding it, because adapters disagree
+                            about what pixels they want: a CLIP model
+                            consumes one representative frame, a
+                            video-native model samples the file itself.
     adapter.encode_query(text)  -> unit float32[D] in the SAME space
 
 Each provider module also exposes `space(model, checkpoint, dimensions)`
@@ -33,6 +35,29 @@ RANKS across spaces, never raw scores.
 """
 
 from __future__ import annotations
+
+import dataclasses
+from collections.abc import Callable
+from typing import Any
+
+
+@dataclasses.dataclass(frozen=True)
+class MediaRef:
+    """One piece of media, described rather than pre-decoded.
+
+    `path` and `kind` are the two doors an adapter can take: read the
+    file natively (a video model with its own frame sampling), or call
+    `frame()` for the repo's canonical representative frame -- decoded,
+    EXIF-oriented, a poster frame for video -- computed lazily so an
+    adapter that never wants it never pays for it. The repo owns what
+    "the representative frame" means; the adapter owns everything after
+    the pixels.
+    """
+
+    path: str
+    kind: str  # 'image' | 'animated_image' | 'video'
+    frame: Callable[[], Any]
+
 
 #: provider name -> module path. A provider not in this table is a
 #: refused configuration, loudly, never a silent substitution.
