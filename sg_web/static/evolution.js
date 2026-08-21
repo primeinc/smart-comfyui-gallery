@@ -133,7 +133,7 @@
     const eff = m.prompt.effective, org = m.prompt.original;
     const doors = [];
     if (m.media.page) doors.push(`<a href="${esc(m.media.page)}">open image</a>`);
-    if (eff) doors.push(`<a href="/search?q=${encodeURIComponent(eff.main)}">images like this prompt</a>`);
+    if (eff && view.doors.search) doors.push(`<a href="${esc(view.doors.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
     if (eff && eff.prompt_id !== null && view.semantic.provider) doors.push(`<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`);
     if (view.doors.gallery_day) doors.push(`<a href="${esc(view.doors.gallery_day)}">this day in the gallery</a>`);
     selectedPane.innerHTML = `${m.media.thumbnail ? `<img src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}">` : ""}
