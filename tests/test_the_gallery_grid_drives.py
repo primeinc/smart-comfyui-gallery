@@ -284,3 +284,29 @@ def test_the_lightbox_is_an_address_not_a_mode(driven):
         assert "/i/pic-001" in page.url
     finally:
         page.close()
+
+
+def test_clicking_the_backdrop_dismisses_like_back(driven):
+    """A click on the dimmed backdrop is the same gesture as Escape: one
+    step Back to the mounted gallery. A click on the media itself is
+    not a dismissal."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+        page.click('.cell[data-ordinal="1"]')
+        page.wait_for_selector("[data-lightbox]")
+
+        # A click ON the content must not dismiss.
+        page.click(".lightbox-media img")
+        assert page.locator("[data-lightbox]").count() == 1
+
+        # A click on the backdrop (far left edge, outside the content) is Back.
+        size = page.viewport_size
+        assert size is not None
+        page.mouse.click(4, size["height"] // 2)
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        page.wait_for_function("() => document.querySelector('[data-lightbox-root]').hidden === true")
+    finally:
+        page.close()

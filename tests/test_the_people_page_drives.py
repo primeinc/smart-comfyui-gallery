@@ -114,3 +114,25 @@ def test_the_drawer_is_an_address_and_naming_moves_it(peopled):
         page.wait_for_function("() => window.location.pathname === '/p/ana-torres'")
     finally:
         page.close()
+
+
+def test_clicking_the_backdrop_dismisses_the_drawer_like_back(peopled):
+    browser, base = peopled
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/people")
+        page.wait_for_selector("[data-person]")
+        page.click("[data-person]")
+        page.wait_for_selector("[data-drawer]")
+
+        # A click ON the drawer must not dismiss it.
+        page.click("[data-drawer] h2")
+        assert page.locator("[data-drawer]").count() == 1
+
+        size = page.viewport_size
+        assert size is not None
+        page.mouse.click(4, size["height"] // 2)
+        page.wait_for_function("() => window.location.pathname === '/people'")
+        page.wait_for_function("() => document.querySelector('[data-drawer-root]').hidden === true")
+    finally:
+        page.close()

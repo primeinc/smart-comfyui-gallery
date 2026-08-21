@@ -52,7 +52,9 @@
       open(card.getAttribute("href"), "push");
       return;
     }
-    if (event.target.closest("[data-close]")) {
+    // The backdrop is the root itself; content clicks land on children.
+    // Dismissing IS Back, exactly like Escape and the close button.
+    if (event.target === drawer || event.target.closest("[data-close]")) {
       event.preventDefault();
       history.back();
     }
