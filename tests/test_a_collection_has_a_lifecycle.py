@@ -21,7 +21,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import connect
+from db import collection_rules, collections, connect
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -79,7 +79,6 @@ def test_a_collection_is_born_whole_and_a_refused_smart_leaves_nothing(curated):
     assert body["color"] == "#7c3aed", "one stored spelling, lowercased"
     assert body["description"] == "keepers", "whitespace is not authored state"
     assert (body["definition_rev"], body["archived"]) == (1, False)
-    assert made.headers["etag"] == 'W/"portfolio-r1"'
 
     child = curated.post("/albums", json={"name": "Homepage", "parent": "portfolio"})
     assert child.status_code == 201
@@ -108,7 +107,6 @@ def test_rename_is_one_operation_with_a_permanent_forwarding_address(curated):
     assert told.status_code == 200, told.text
     body = told.json()
     assert (body["slug"], body["name"], body["definition_rev"]) == ("best-keepers", "Best Keepers", 2)
-    assert told.headers["etag"] == 'W/"best-keepers-r2"'
     moved = curated.get("/t/keepers", follow_redirects=False)
     assert (moved.status_code, moved.headers["location"]) == (301, "/t/best-keepers")
     assert _view(curated, "best-keepers")["name"] == "Best Keepers"
@@ -217,11 +215,17 @@ def test_a_stale_definition_edit_refuses_with_zero_mutation(curated):
     body = _view(curated, "draft")
     assert (body["description"], body["definition_rev"]) == ("mine", 2), "the stale editor overwrote nothing"
 
-    # If-Match carries the same claim the standard way.
-    told = curated.get("/t/draft", headers=AS_MACHINE)
-    matched = curated.patch("/t/draft", json={"description": "agreed"}, headers={"if-match": told.headers["etag"]})
-    assert matched.status_code == 200
-    assert matched.json()["definition_rev"] == 3
+    # The concurrency interface is expected_rev in the body, nowhere
+    # else: a header token arrives unbound to the collection in the URL,
+    # so NO header may authorize a write -- not even one spelling this
+    # collection's own current revision.
+    for header in ('W/"draft-r2"', 'W/"some-other-collection-r2"'):
+        veiled = curated.patch("/t/draft", json={"description": "x"}, headers={"if-match": header})
+        assert veiled.status_code == 400, "a header token must never authorize a definition write"
+    assert _view(curated, "draft")["description"] == "mine"
+    assert "etag" not in curated.get("/t/draft", headers=AS_MACHINE).headers, (
+        "no validator is emitted that could pretend to mean the definition"
+    )
 
     assert curated.patch("/t/draft", json={"description": "x"}).status_code == 400, "no named revision, no write"
     assert curated.patch("/t/draft", json={"description": "x", "expected_rev": True}).status_code == 400
@@ -356,6 +360,99 @@ def test_archive_is_a_lifecycle_not_a_deletion(curated):
     assert (restored["archived"], restored["slug"]) == (False, "old-project"), "the SAME entity and address return"
     assert "old-project" in {row["slug"] for row in curated.get("/albums", headers=AS_MACHINE).json()}
     assert _view(curated, "old-project")["count"] == 2
+
+
+def test_an_archived_parent_survives_an_unrelated_edit(curated):
+    """The select-fallback trap, closed at the seam: the offer can spell
+    the state that already holds, so editing a child beneath an archived
+    parent never silently reparents it -- and an archived collection is
+    still not a NEW destination."""
+    curated.post("/albums", json={"name": "Old Project"})
+    curated.post("/albums", json={"name": "Still Going", "parent": "old-project"})
+    curated.post("/albums", json={"name": "Retired Too"})
+    curated.patch("/t/old-project", json={"archived": True, "expected_rev": 1})
+    curated.patch("/t/retired-too", json={"archived": True, "expected_rev": 1})
+
+    told = curated.patch("/t/still-going", json={"description": "still going", "expected_rev": 1}).json()
+    assert told["parent"] == "old-project", "an unrelated edit must not move the child"
+    offered = {row["slug"]: row["archived"] for row in told["parents"]}
+    assert offered.get("old-project") is True, "the archived CURRENT parent is offered, marked"
+    assert "retired-too" not in offered, "other archived collections are not destinations"
+
+    kept = curated.patch("/t/still-going", json={"parent": "old-project", "expected_rev": 2})
+    assert kept.status_code == 200, "saying the current state out loud is always legal"
+    moved = curated.patch("/t/still-going", json={"parent": "retired-too", "expected_rev": 3})
+    assert moved.status_code == 400
+    assert "restore" in moved.json()["detail"]
+    assert _view(curated, "still-going")["parent"] == "old-project"
+
+
+def test_a_refused_transition_leaves_the_callers_transaction_untouched(curated):
+    """The Module's invariant, tested the hostile way: a direct caller
+    catches the refusal and COMMITS anyway -- and nothing partial
+    persists, because every domain check precedes the first mutation and
+    the revision claim leads every multi-step transition."""
+    curated.post("/albums/smart", json={"name": "Starred", "rating_min": 4})
+    actor = curated.app.state.actor_id
+    bad = collection_rules.CollectionRule(
+        version=1,
+        folder_uuid=None,
+        person_uuid=None,
+        kind="platypus",
+        favorite=None,
+        rating_min=None,
+        text=None,
+        sort=None,
+        take=None,
+        actor_id=None,
+    )
+    conn = _raw(curated)
+    try:
+        starred = conn.execute("SELECT id FROM collection WHERE name = 'Starred'").fetchone()[0]
+
+        def held():
+            return conn.execute(
+                "SELECT c.kind, c.definition_rev,"
+                " (SELECT count(*) FROM collection_rule r WHERE r.collection_id = c.id)"
+                " FROM collection c WHERE c.id = ?",
+                (starred,),
+            ).fetchone()
+
+        # A stale smart->listed must refuse BEFORE the rule is deleted.
+        with pytest.raises(collections.CollectionChanged):
+            collections.convert_to_listed(conn, starred, "album", actor, 99, 5.0, discard_rule=True)
+        conn.commit()
+        assert held() == ("smart", 1, 1), "a caught stale refusal, committed, deleted the authored rule"
+
+        # An invalid rule must refuse before any revision or rule write.
+        before = conn.execute("SELECT rule_json FROM collection_rule WHERE collection_id = ?", (starred,)).fetchone()
+        with pytest.raises(ValueError, match="kind"):
+            collections.replace_rule(conn, starred, bad, None, actor, 1, 6.0)
+        conn.commit()
+        assert held() == ("smart", 1, 1)
+        assert (
+            conn.execute("SELECT rule_json FROM collection_rule WHERE collection_id = ?", (starred,)).fetchone()
+            == before
+        )
+
+        # An invalid rule at creation leaves neither collection nor entity.
+        with pytest.raises(ValueError, match="kind"):
+            collections.create_smart(conn, "Ghost", bad, None, 7.0, actor_id=actor)
+        conn.commit()
+        assert conn.execute("SELECT count(*) FROM collection WHERE name = 'Ghost'").fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM entity WHERE slug = 'ghost'").fetchone()[0] == 0
+
+        # An invalid rule at conversion leaves the listed definition whole.
+        plain = collections.collection(conn, "Plain", 8.0)
+        conn.commit()
+        with pytest.raises(ValueError, match="kind"):
+            collections.convert_to_smart(conn, plain, bad, None, actor, 1, 9.0)
+        conn.commit()
+        row = conn.execute("SELECT kind, definition_rev FROM collection WHERE id = ?", (plain,)).fetchone()
+        assert row == ("album", 1)
+        assert conn.execute("SELECT count(*) FROM collection_rule WHERE collection_id = ?", (plain,)).fetchone()[0] == 0
+    finally:
+        connect.close(conn)
 
 
 # --- one implementation, pinned --------------------------------------------

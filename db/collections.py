@@ -14,9 +14,17 @@ Every write is DESIRED STATE: "name is X", "parent is Y", "archived is
 true", "the rule is exactly this" -- never a toggle or a move-ish
 command, so a retried request lands where the first one did. Definition
 writes carry optimistic concurrency: each names the `definition_rev` it
-edited, the UPDATE claims that revision or `CollectionChanged` refuses
-with zero mutation, and a stale editor can never silently overwrite
-newer authored state. Membership never bumps the revision -- filing a
+edited, the UPDATE claims that revision or `CollectionChanged` refuses,
+and a stale editor can never silently overwrite newer authored state.
+
+A refusal this module raises -- ValueError, LookupError,
+CollectionChanged -- leaves the caller's transaction EXACTLY as it
+found it: every domain check runs before the first mutation, and the
+revision claim is the first mutation of every multi-step transition, so
+a caller that catches the refusal and commits persists nothing partial.
+Only an unexpected SQLite failure still needs the caller's rollback.
+
+Membership never bumps the revision -- filing a
 picture does not invalidate an open description editor; membership
 coherence already belongs to the ResultSet's currency and answer
 identity.
@@ -118,13 +126,19 @@ def _definition(conn, collection_id: int):
     return row
 
 
-def _parent_allowed(conn, collection_id: int, parent_id: int) -> None:
+def _parent_allowed(conn, collection_id: int, parent_id: int, current_parent_id) -> None:
     """The friendly refusals; the collection_no_cycle trigger stays the
-    backstop for raw writes."""
+    backstop for raw writes. An archived collection is not a NEW
+    destination -- but keeping the parent a collection already has is
+    always sayable, or a patch that names its own current state would
+    silently be impossible to spell."""
     if parent_id == collection_id:
         raise ValueError("a collection cannot be its own parent")
-    if conn.execute("SELECT 1 FROM collection WHERE id = ?", (parent_id,)).fetchone() is None:
+    held = conn.execute("SELECT archived_at FROM collection WHERE id = ?", (parent_id,)).fetchone()
+    if held is None:
         raise ValueError("the named parent is not a collection")
+    if held[0] is not None and parent_id != current_parent_id:
+        raise ValueError("an archived collection does not take new children; restore it first")
     descended = conn.execute(
         "WITH RECURSIVE down(id) AS ("
         " SELECT id FROM collection WHERE parent_id = ?"
@@ -138,15 +152,20 @@ def _parent_allowed(conn, collection_id: int, parent_id: int) -> None:
 
 def eligible_parents(conn, collection_id: int) -> list[int]:
     """Everything the parent picker may offer: every ACTIVE collection
-    that is not this one and not inside it -- the UI must not offer a
-    choice the database will refuse."""
+    that is not this one and not inside it, PLUS the current parent even
+    when archived -- the UI must not offer a choice the module will
+    refuse, and it must always be able to spell the state that already
+    holds. A form that cannot represent "keep the archived parent"
+    falls back to its first option and silently reparents on an
+    unrelated edit; that is the bug this shape exists to prevent."""
     rows = conn.execute(
         "WITH RECURSIVE down(id) AS ("
         " SELECT id FROM collection WHERE parent_id = ?"
         " UNION SELECT c.id FROM collection c JOIN down d ON c.parent_id = d.id)"
-        " SELECT id FROM collection WHERE archived_at IS NULL AND id <> ?"
+        " SELECT id FROM collection WHERE id <> ?"
+        " AND (archived_at IS NULL OR id = (SELECT parent_id FROM collection WHERE id = ?))"
         " AND id NOT IN (SELECT id FROM down)",
-        (collection_id, collection_id),
+        (collection_id, collection_id, collection_id),
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -223,9 +242,10 @@ def create_smart(
     actor_id=None,
 ) -> int:
     """One atomic authored operation: entity, definition and typed rule
-    together. The rule validates inside collection_rules.save -- when it
-    refuses, the caller's uncommitted transaction means no collection
-    remains."""
+    together -- and the rule validates BEFORE the entity exists, so a
+    refused rule leaves nothing in the caller's transaction, not even
+    uncommitted rows a caller could mistakenly commit."""
+    collection_rules.validate(rule, ValueError)
     cleaned = _cleaned_name(name)
     if parent_id is not None and (
         conn.execute("SELECT 1 FROM collection WHERE id = ?", (parent_id,)).fetchone() is None
@@ -266,7 +286,7 @@ def update_definition(conn, collection_id: int, patch: CollectionPatch, actor_id
     """The whole edit under one revision claim. Returns the live slug --
     the authoritative address after a rename, unchanged otherwise."""
     expected_rev = _named_rev(expected_rev)
-    _definition(conn, collection_id)
+    _, current_parent_id, _ = _definition(conn, collection_id)
     sets: list[str] = []
     values: list = []
     renamed: str | None = None
@@ -284,7 +304,7 @@ def update_definition(conn, collection_id: int, patch: CollectionPatch, actor_id
         if patch.parent_id is not None:
             if type(patch.parent_id) is not int:
                 raise ValueError("parent names a collection, or null for the top")
-            _parent_allowed(conn, collection_id, patch.parent_id)
+            _parent_allowed(conn, collection_id, patch.parent_id, current_parent_id)
         sets.append("parent_id = ?")
         values.append(patch.parent_id)
     if patch.archived is not UNSET:
@@ -313,6 +333,7 @@ def replace_rule(conn, collection_id: int, rule, source_text, actor_id, expected
     kind, _, _ = _definition(conn, collection_id)
     if kind != "smart":
         raise ValueError("only a smart collection carries a rule; convert it first")
+    collection_rules.validate(rule, ValueError)  # every refusal precedes the first mutation
     _claim_revision(conn, collection_id, expected_rev, "", (), now, actor_id)
     collection_rules.save(conn, collection_id, rule, source_text=source_text, now=now)
 
@@ -329,6 +350,7 @@ def convert_to_smart(conn, collection_id: int, rule, source_text, actor_id, expe
     filed = conn.execute("SELECT count(*) FROM collection_file WHERE collection_id = ?", (collection_id,)).fetchone()[0]
     if filed:
         raise ValueError(f"this collection holds {filed} filed member(s); empty it before making it smart")
+    collection_rules.validate(rule, ValueError)  # every refusal precedes the first mutation
     _claim_revision(conn, collection_id, expected_rev, "kind = 'smart',", (), now, actor_id)
     collection_rules.save(conn, collection_id, rule, source_text=source_text, now=now)
 
@@ -338,18 +360,23 @@ def convert_to_listed(
 ) -> None:
     """smart -> album/flag only with the rule's discard said out loud --
     the rule is authored state -- and album <-> flag freely: both listed
-    kinds mean the same filed rows."""
+    kinds mean the same filed rows.
+
+    The revision claim comes FIRST: a stale editor must be refused
+    before the authored rule is touched, or catching CollectionChanged
+    and committing would persist a deleted rule. The kind change comes
+    LAST because the collection_with_rule_stays_smart trigger rightly
+    refuses it while the rule still exists."""
     expected_rev = _named_rev(expected_rev)
     if kind not in LISTED:
         raise ValueError("kind must be album or flag")
     current, _, _ = _definition(conn, collection_id)
+    if current == "smart" and discard_rule is not True:
+        raise ValueError("converting a smart collection discards its authored rule; say discard_rule true to mean it")
+    _claim_revision(conn, collection_id, expected_rev, "", (), now, actor_id)
     if current == "smart":
-        if discard_rule is not True:
-            raise ValueError(
-                "converting a smart collection discards its authored rule; say discard_rule true to mean it"
-            )
         conn.execute("DELETE FROM collection_rule WHERE collection_id = ?", (collection_id,))
-    _claim_revision(conn, collection_id, expected_rev, "kind = ?,", (kind,), now, actor_id)
+    conn.execute("UPDATE collection SET kind = ? WHERE id = ?", (kind, collection_id))
 
 
 # --- listed membership: the ONE implementation -----------------------------

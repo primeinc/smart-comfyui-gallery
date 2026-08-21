@@ -607,14 +607,17 @@ def collection_choices(conn, file_id: int):
     return conn.execute(COLLECTION_CHOICES, (file_id,)).fetchall()
 
 
-def collections_named(conn, ids) -> list[tuple[str, str]]:
-    """`(slug, name)` for an id set the caller already resolved -- the
-    parent picker's labels, name-ordered like every shelf."""
+def collections_named(conn, ids) -> list[tuple[str, str, int]]:
+    """`(slug, name, archived)` for an id set the caller already
+    resolved -- the parent picker's labels, name-ordered like every
+    shelf. Archived rides along so the one archived offer (the current
+    parent) can say what it is."""
     if not ids:
         return []
     marks = ",".join("?" for _ in ids)
     return conn.execute(
-        f"SELECT e.slug, c.name FROM collection c JOIN entity e ON e.id = c.id"
+        f"SELECT e.slug, c.name, c.archived_at IS NOT NULL"
+        f"  FROM collection c JOIN entity e ON e.id = c.id"
         f" WHERE c.id IN ({marks}) ORDER BY c.name COLLATE NOCASE",
         list(ids),
     ).fetchall()

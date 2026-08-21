@@ -9,9 +9,13 @@ db/collection_rules.py owns every conversion and the browser never
 constructs rule JSON.
 
 Definition writes name the revision they edited: `expected_rev` in the
-body, or a standard `If-Match` carrying the ETag the GET handed out. A
-stale revision is a 409 with zero mutation -- the editor re-reads and
-decides again. The PATCH body is read as a plain mapping on purpose:
+body, always -- deliberately not If-Match, because the page's ETag
+could only honestly validate the whole representation (which changes
+with membership) while the thing being claimed is the definition
+revision, and a header token would also arrive unbound to the target
+in the URL. A stale revision is a 409 with zero mutation -- the editor
+re-reads and decides again. The PATCH body is read as a plain mapping
+on purpose:
 absent means unchanged and null means clear, a distinction a typed
 default would flatten (db/collections.py UNSET).
 """
@@ -20,10 +24,9 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
-import re
 import time
 
-from litestar import Request, patch, post, put
+from litestar import patch, post, put
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.response import Response
@@ -33,9 +36,6 @@ from db.resultset import canonical
 from sg_web import collection_view, home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES
-
-#: The revision inside an ETag this application minted: W/"{slug}-r{N}".
-_ETAG_REV = re.compile(r'-r(\d+)"\s*$')
 
 
 def _collection_at(conn, slug: str) -> int:
@@ -47,18 +47,14 @@ def _collection_at(conn, slug: str) -> int:
     return found[0]
 
 
-def _revision_named(data: dict, request: Request):
-    """expected_rev from the body, or the If-Match validator. Absence is
-    a 428-shaped refusal spelled as a 400: a definition write that names
-    no revision cannot be checked against anything."""
+def _revision_named(data: dict):
+    """expected_rev from the body, and nowhere else. Absence is a
+    428-shaped refusal spelled as a 400: a definition write that names
+    no revision cannot be checked against anything, and a header token
+    would arrive unbound to the collection in the URL."""
     if "expected_rev" in data:
         return data["expected_rev"]
-    held = request.headers.get("if-match")
-    if held is not None:
-        matched = _ETAG_REV.search(held)
-        if matched is not None:
-            return int(matched.group(1))
-    raise ClientException("a definition write names the revision it edited: expected_rev, or If-Match with the ETag")
+    raise ClientException("a definition write names the revision it edited: expected_rev")
 
 
 def _written(state: State, work) -> Response:
@@ -81,7 +77,7 @@ def _written(state: State, work) -> Response:
         told = collection_view.view(
             conn, weights, collection_id, live[1] if live else "", time.time(), legacy=False, manage=True
         )
-        return Response(told, headers={**VARIES, **collection_view.etag_of(told)})
+        return Response(told, headers=VARIES)
     finally:
         connect.close(conn)
 
@@ -208,7 +204,7 @@ def _edit_definition(state: State, expected_rev, slug: str, data: dict) -> Respo
 
 
 @patch("/t/{slug:str}")
-async def edit_definition(state: State, request: Request, slug: str, data: dict) -> Response:
+async def edit_definition(state: State, slug: str, data: dict) -> Response:
     """The whole definition edit as one desired-state patch under one
     revision claim. Kind is deliberately not patchable -- changing how
     membership is decided is a transition, not a field.
@@ -218,19 +214,19 @@ async def edit_definition(state: State, request: Request, slug: str, data: dict)
     sqlite work crosses to a thread."""
     from anyio import to_thread
 
-    expected_rev = _revision_named(data, request)
+    expected_rev = _revision_named(data)
     return await to_thread.run_sync(_edit_definition, state, expected_rev, slug, data)
 
 
 @put("/t/{slug:str}/rule", sync_to_thread=True)
-def replace_rule(state: State, request: Request, slug: str, data: dict) -> Response:
+def replace_rule(state: State, slug: str, data: dict) -> Response:
     """This exact rule is now the collection's meaning: whole desired
     state, never predicate edits, under the same revision claim as any
     definition write. The body carries the same GalleryQuery-shaped
     inputs the save-view flow sends (`kind` here is the media kind)."""
 
     def work(conn):
-        expected_rev = _revision_named(data, request)
+        expected_rev = _revision_named(data)
         collection_id = _collection_at(conn, slug)
         query = _asked(
             data.get("folder"),
@@ -252,14 +248,14 @@ def replace_rule(state: State, request: Request, slug: str, data: dict) -> Respo
 
 
 @post("/t/{slug:str}/convert", sync_to_thread=True)
-def convert_collection(state: State, request: Request, slug: str, data: dict) -> Response:
+def convert_collection(state: State, slug: str, data: dict) -> Response:
     """An explicit definition-mode transition. album<->flag moves
     freely; becoming smart requires an empty membership and a valid rule
     in this same operation; leaving smart requires the rule's discard
     said out loud, because the rule is authored state."""
 
     def work(conn):
-        expected_rev = _revision_named(data, request)
+        expected_rev = _revision_named(data)
         collection_id = _collection_at(conn, slug)
         wanted = data.get("kind")
         if wanted == "smart":

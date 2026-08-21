@@ -45,13 +45,6 @@ from sg_web import home
 from sg_web.presenting import VARIES, wants_json
 
 
-def etag_of(told: dict) -> dict:
-    """The definition's validator, exposed the standard way so If-Match
-    can carry the revision back. Weak: two revisions can render one
-    byte-identical page."""
-    return {"etag": f'W/"{told["slug"]}-r{told["definition_rev"]}"'}
-
-
 def view(
     conn, models_dir: str, collection_id: int, slug: str, now: float, *, legacy: bool, manage: bool = False
 ) -> dict:
@@ -124,7 +117,9 @@ def view(
             }
         if manage:
             allowed = collections.eligible_parents(conn, collection_id)
-            told["parents"] = [{"slug": s, "name": n} for s, n in pages.collections_named(conn, allowed)]
+            told["parents"] = [
+                {"slug": s, "name": n, "archived": bool(a)} for s, n, a in pages.collections_named(conn, allowed)
+            ]
         if legacy:
             told["files"] = [{"slug": s, "name": n} for s, n in pages.album_files(conn, collection_id)]
         return told
@@ -245,15 +240,18 @@ def _album_page(state: State, slug: str, json_wanted: bool) -> Template | Respon
     finally:
         connect.close(conn)
     if json_wanted:
-        return Response(told, headers={**VARIES, **etag_of(told)})
-    return Template(template_name="album.html", context={"album": told}, headers={**VARIES, **etag_of(told)})
+        return Response(told, headers=VARIES)
+    return Template(template_name="album.html", context={"album": told}, headers=VARIES)
 
 
 @get("/t/{slug:str}")
 async def album_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
     """One collection at its address, presented for whoever is asking. A
-    retired slug redirects to the live one. The ETag carries the
-    definition revision, so If-Match on the write routes is standard.
+    retired slug redirects to the live one. The definition's concurrency
+    token is `definition_rev` in the body -- deliberately NOT an ETag:
+    this page's bytes change when membership does while the definition
+    revision stands still, so no honest representation validator can
+    double as the definition's.
 
     Async on purpose: PATCH /t/{slug} shares this path, and same-path
     handlers survive only as async ones (the albums_index note). The

@@ -790,3 +790,37 @@ def test_the_collection_page_manages_the_collection(driven):
         assert page.locator('[data-album="whole-life"]').count() == 1, "restore puts the same address back"
     finally:
         page.close()
+
+
+def test_an_archived_parent_survives_the_edit_form(driven):
+    """The hostile half of archive: the child of an archived parent is
+    edited through the REAL form -- description only -- and keeps its
+    parent, because the select can spell "keep the archived parent"
+    instead of falling back to (top) and silently reparenting."""
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        assert web.post("/albums", json={"name": "Old Organizer"}).status_code == 201
+        assert web.post("/albums", json={"name": "Kept Child", "parent": "old-organizer"}).status_code == 201
+        assert web.patch("/t/old-organizer", json={"archived": True, "expected_rev": 1}).status_code == 200
+
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/t/kept-child")
+        page.click("[data-manage] summary")
+        assert page.input_value('[data-edit-definition] select[name="parent"]') == "old-organizer", (
+            "the form must spell the archived parent the child actually has"
+        )
+        label = page.locator('select[name="parent"] option[value="old-organizer"]').inner_text()
+        assert "(archived, current)" in label
+        page.fill('[data-edit-definition] input[name="description"]', "edited beneath an archived parent")
+        page.click('[data-edit-definition] button[type="submit"]')
+        page.wait_for_selector(".detail-note")
+    finally:
+        page.close()
+
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        body = web.get("/t/kept-child", headers={"accept": "application/json"}).json()
+        assert body["parent"] == "old-organizer", "an unrelated edit reparented the child to the top"
+        assert body["description"] == "edited beneath an archived parent"
