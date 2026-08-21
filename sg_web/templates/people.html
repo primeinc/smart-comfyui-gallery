@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>People</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+  <script src="/static/people.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/g">gallery</a>
+      <span class="crumbs-here">People</span>
+      <span class="crumbs-where">{{ people|length }} found</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if people %}
+    <div class="person-grid" data-people>
+      {% for one in people %}
+      <a class="person-card" href="/p/{{ one.slug }}" data-person="{{ one.slug }}">
+        <img class="person-face" src="/avatar/{{ one.slug }}" alt="" loading="lazy">
+        <span class="person-name">{{ one.name }}</span>
+        <span class="person-count">{{ one.pictures }} pictures</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">nobody clustered yet — run face detection, then clustering.</p>
+    {% endif %}
+    <div class="drawer-root" data-drawer-root hidden></div>
+  </main>
+</body>
+</html>

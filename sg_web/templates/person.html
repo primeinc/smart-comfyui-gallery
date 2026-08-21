@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ person.name or "(unnamed)" }}</title>
+  <link rel="canonical" href="/p/{{ person.slug }}">
+  <link rel="stylesheet" href="/static/gallery.css">
+  <script src="/static/media.js" defer></script>
+  <script src="/static/people.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/people" data-return>&larr; people</a>
+      <span class="crumbs-here">{{ person.name or "(unnamed)" }}</span>
+      <span class="crumbs-where">{{ person.count }} pictures</span>
+    </nav>
+  </header>
+  <main class="detail">
+    <section class="person-hero">
+      <img class="person-face person-face-big" src="/avatar/{{ person.slug }}" alt="">
+      <div>
+        <h1>{{ person.name or "(unnamed)" }}</h1>
+        <form class="person-rename" data-rename action="/p/{{ person.slug }}/name" method="post">
+          <input name="name" placeholder="{{ 'rename' if person.name else 'give them a name' }}"
+                 aria-label="name" required>
+          <button type="submit">name</button>
+        </form>
+      </div>
+    </section>
+    {% if person.across_folders %}
+    <section class="detail-facts">
+      <h2>where their pictures live</h2>
+      <ul>
+        {% for row in person.across_folders %}
+        <li><a href="/f/{{ row.folder_slug }}">{{ row.folder }}</a> &middot; {{ row.pictures }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {% if person.pictures %}
+    <div class="grid">
+      {% for pic in person.pictures %}
+      <a class="cell" href="/i/{{ pic.slug }}">
+        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
+        <span class="cell-name">{{ pic.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </main>
+</body>
+</html>

@@ -254,3 +254,86 @@ body {
 .detail-prompt { color: var(--ink); background: var(--panel); padding: 10px 12px; border-radius: var(--radius); }
 .detail-params { border-collapse: collapse; width: 100%; font-size: 13px; }
 .detail-params td { border-top: 1px solid var(--line); padding: 4px 10px 4px 0; vertical-align: top; }
+
+/* --- people: cards, hero, drawer ------------------------------------ */
+
+.person-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--cell-gap);
+}
+
+.person-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 14px 10px;
+  background: var(--panel);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+.person-card:hover { outline: 1px solid var(--accent); }
+
+.person-face {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--ground);
+}
+.person-face-big { width: 120px; height: 120px; }
+.person-name { font-weight: 600; }
+.person-count { color: var(--ink-muted); font-size: 13px; }
+
+.person-hero { display: flex; gap: 18px; align-items: center; }
+.person-hero h1 { margin: 0 0 8px; }
+
+.person-rename { display: flex; gap: 8px; }
+.person-rename input {
+  background: var(--ground);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+}
+.person-rename button {
+  background: var(--ground);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  display: grid;
+  place-items: center;
+}
+.drawer-root[hidden] { display: none; }
+
+.drawer {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: min(92vw, 520px);
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.drawer-hero { display: flex; gap: 16px; align-items: center; }
+.drawer-hero h2 { margin: 0 0 4px; }
+.drawer-hero a { color: var(--accent); }
+.drawer-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.drawer-strip img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--ground);
+}

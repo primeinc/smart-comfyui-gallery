@@ -39,7 +39,7 @@ from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
 from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
-from sg_web import gallery, home, media, media_view
+from sg_web import gallery, home, media, media_view, person_view
 from sg_web import worker as worker_module
 
 
@@ -297,88 +297,9 @@ def album_remove(state: State, slug: str, data: AlbumEntry) -> dict:
     return _album_membership(state, slug, data, adding=False)
 
 
-@get("/people", sync_to_thread=True)
-def people(state: State) -> list[dict]:
-    """Everyone, most pictures first -- the People index."""
-    conn = _connect(state.db_path)
-    try:
-        return _rows(pages.people_by_most(conn), ("name", "slug", "pictures"))
-    finally:
-        connect.close(conn)
-
-
-@get("/p/{slug:str}", sync_to_thread=True)
-def person(state: State, slug: str) -> dict | Redirect:
-    """One person: their pictures, and where those live on disk.
-
-    A retired slug redirects to the live one rather than answering, so one
-    person never has two addresses serving content -- the rename contract
-    the naming module carries `is_current` for."""
-    conn = _connect(state.db_path)
-    try:
-        found = naming.resolve(conn, "person", slug)
-        if found is None:
-            raise NotFoundException(f"no person at /p/{slug}")
-        person_id, is_current = found
-        if not is_current:
-            live = naming.entity_slug(conn, person_id)
-            if live is not None:
-                return Redirect(path=f"/p/{live[1]}", status_code=301)
-        name = conn.execute("SELECT name FROM person WHERE id = ?", (person_id,)).fetchone()
-        return {
-            "slug": slug,
-            "name": name[0] if name else None,
-            "pictures": _rows(pages.person_files(conn, person_id), ("slug", "name")),
-            "across_folders": _rows(
-                pages.person_across_folders(conn, person_id),
-                ("folder", "folder_slug", "pictures"),
-            ),
-        }
-    finally:
-        connect.close(conn)
-
-
-@dataclasses.dataclass
-class NewName:
-    """The body of POST /p/{slug}/name. Typed for the same reason NewRoot
-    is: a nameless request is a 400 from the signature model."""
-
-    name: str
-
-
-@post("/p/{slug:str}/name", sync_to_thread=True)
-def name_person(state: State, slug: str, data: NewName) -> dict:
-    """Name a person -- the People page's primary action.
-
-    The name becomes the address: a new slug is minted and the old one
-    retires into history, so the URL somebody saved before the naming
-    still answers with a 301 (db/naming.py). And the naming is written
-    down as assertions against the person's files -- the durable record a
-    re-cluster or a full derived rebuild re-applies the name from, so the
-    application cannot destroy what it accepted (db/authored.py)."""
-    conn = _connect(state.db_path)
-    try:
-        found = naming.resolve(conn, "person", slug)
-        if found is None:
-            raise NotFoundException(f"no person at /p/{slug}")
-        person_id, _ = found
-        cleaned = data.name.strip()
-        if not cleaned:
-            raise ClientException("a name needs letters in it")
-        now = time.time()
-        fresh = authored.name_person(conn, person_id, cleaned, now)
-        asserted = authored.assert_named_cluster(conn, person_id, None, now)
-        held = conn.execute("SELECT count(*) FROM person_assertion WHERE person_id = ?", (person_id,)).fetchone()[0]
-        if held == 0:
-            # Refused BEFORE the commit, so nothing above persists: a name
-            # with no face to assert it against would be silently lost by
-            # the next re-cluster, and the application must not accept
-            # what it cannot keep.
-            raise ClientException(f"/p/{slug} has no clustered face to keep the name by; nothing was renamed")
-        conn.commit()
-        return {"slug": fresh, "name": cleaned, "asserted": asserted}
-    finally:
-        connect.close(conn)
+# The People index, person page/drawer and naming live in
+# sg_web/person_view.py: one address per person, presented as the full
+# profile, the drawer over the mounted index, or the PersonView itself.
 
 
 @get("/clusterings", sync_to_thread=True)
@@ -1026,8 +947,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             search,
             submit_dupes,
             dupes,
-            people,
-            person,
+            person_view.people_index,
+            person_view.person_page,
             clusterings,
             ways,
             roots,
@@ -1038,7 +959,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             submit_verify,
             submit_faces,
             submit_cluster,
-            name_person,
+            person_view.name_person,
             cancel_job,
             jobs_feed,
             choose_primary,

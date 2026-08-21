@@ -263,6 +263,24 @@ PERSON_ACROSS_FOLDERS = (
 )
 
 
+PERSON_NAME = "SELECT name FROM person WHERE id = ?"
+
+#: How many durable naming assertions anchor this person -- the count the
+#: naming route refuses on, because a name with no face to assert it
+#: against is lost by the next re-cluster.
+PERSON_ASSERTIONS = "SELECT count(*) FROM person_assertion WHERE person_id = ?"
+
+
+def person_name(conn, person_id: int) -> str | None:
+    """The person's given name, or None while they are still unnamed."""
+    row = conn.execute(PERSON_NAME, (person_id,)).fetchone()
+    return row[0] if row else None
+
+
+def person_assertions(conn, person_id: int) -> int:
+    return conn.execute(PERSON_ASSERTIONS, (person_id,)).fetchone()[0]
+
+
 def people_by_most(conn, run_id: int | None = None):
     """The People page, for one clustering run.
 
