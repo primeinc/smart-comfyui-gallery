@@ -12,14 +12,16 @@ input. Reading a snapshot consults history only.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import time
 
-from litestar import get, post
+from litestar import Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response
 
-from db import connect, planning, stories
+from db import connect, naming, planning, rendering, stories
+from sg_web.presenting import VARIES, wants_json
 
 
 @dataclasses.dataclass
@@ -128,3 +130,77 @@ def plan_document(state: State, plan_id: int) -> dict:
             raise ClientException(str(corrupt), status_code=409) from corrupt
     finally:
         connect.close(conn)
+
+
+@dataclasses.dataclass
+class RenderRequest:
+    """The body of POST /stories/renders: which plan, under which
+    profile and locale. Rendering is pure code and synchronous."""
+
+    plan_id: int
+    profile: str = "memory"
+    locale: str = "en"
+
+
+@post("/stories/renders", sync_to_thread=True)
+def render_plan(state: State, data: RenderRequest) -> Response:
+    conn = connect.connect(state.db_path)
+    try:
+        try:
+            narrator = rendering.TemplateStoryRenderer(data.profile, data.locale)
+            made = rendering.render_plan(conn, data.plan_id, narrator, time.time())
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return Response(
+        {"id": made.id, "sha256": made.sha256, "reused": made.reused},
+        status_code=200 if made.reused else 201,
+    )
+
+
+@functools.cache
+def _story_env():
+    """The story page's OWN template environment: StrictUndefined, so a
+    missing field explodes instead of rendering "You introduced ."; and
+    autoescape, because frozen evidence (file names, prompt text) is
+    evidence, not trusted markup. Bundled templates are trusted, so the
+    sandbox is not needed (jinja docs/api.rst: Undefined Types)."""
+    import pathlib
+
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+    return Environment(
+        loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
+        undefined=StrictUndefined,
+        autoescape=True,
+    )
+
+
+@get("/stories/renders/{render_id:int}", sync_to_thread=True)
+def render_document(state: State, render_id: int, request: Request) -> Response:
+    """The verified render, as JSON or laid out as HTML by Accept. The
+    page interprets no claim, joins no table, calls no model: every
+    hero is the FROZEN name, linked only through address resolution."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        try:
+            story, members = rendering.load_render_with_members(conn, render_id)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as corrupt:
+            raise ClientException(str(corrupt), status_code=409) from corrupt
+        if wants_json(request):
+            return Response(story, headers=VARIES)
+        heroes = {}
+        for section in story["sections"]:
+            for ref in section["hero_refs"]:
+                held = naming.by_uuid(conn, members[ref]["file_uuid"])
+                heroes[ref] = {"name": members[ref]["name"], "slug": held[1] if held and held[0] == "file" else None}
+    finally:
+        connect.close(conn)
+    page = _story_env().get_template("story.html").render(story=story, heroes=heroes, render_id=render_id)
+    return Response(page, media_type="text/html", headers=VARIES)

@@ -1449,6 +1449,39 @@ END"""
     )
 
 
+@step(15)
+def _renders_narrate_frozen_plans(conn: sqlite3.Connection) -> None:
+    """v15 -> v16: `story_render`, one renderer policy's structured
+    narration of one plan. Additive; insert-only by trigger;
+    content-addressed both ways. DDL is schema.sql's text VERBATIM.
+    """
+    conn.execute(
+        """CREATE TABLE story_render (
+    id               INTEGER PRIMARY KEY,
+    plan_id          INTEGER NOT NULL REFERENCES story_plan(id) ON DELETE CASCADE,
+    snapshot_id      INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version   INTEGER NOT NULL,
+    renderer         TEXT NOT NULL CHECK (renderer IN ('template')),
+    renderer_version INTEGER NOT NULL,
+    profile          TEXT NOT NULL CHECK (profile IN ('memory','technical','compact')),
+    locale           TEXT NOT NULL CHECK (locale IN ('en')),
+    wording_policy   INTEGER NOT NULL,
+    request_sha256   TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
+    document_json    TEXT NOT NULL,
+    document_sha256  TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at       REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX story_render_plan ON story_render(plan_id, created_at)")
+    conn.execute("CREATE INDEX story_render_snapshot ON story_render(snapshot_id)")
+    conn.execute(
+        """CREATE TRIGGER story_render_is_immutable BEFORE UPDATE ON story_render
+BEGIN
+  SELECT RAISE(ABORT,'a story render is immutable; render again under a new policy');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

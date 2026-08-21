@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="{{ story.renderer.locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ story.title }}</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/g">gallery</a>
+      <a href="/timeline">timeline</a>
+      <span class="crumbs-here">story</span>
+    </nav>
+  </header>
+  <main class="stage" data-story-render="{{ render_id }}" data-story-profile="{{ story.renderer.profile }}">
+    <article class="story">
+      <h1>{{ story.title }}</h1>
+      <p class="story-dek">{{ story.dek }}</p>
+      <p class="story-summary">{{ story.summary }}</p>
+      {% for section in story.sections %}
+      <section class="story-section" data-story-section="{{ section.id }}" data-claims="{{ section.claim_refs|join(' ') }}">
+        <h2>{{ section.title }}</h2>
+        {% for paragraph in section.paragraphs %}
+        <p>{{ paragraph }}</p>
+        {% endfor %}
+        {% if section.hero_refs %}
+        <ul class="story-heroes">
+          {% for ref in section.hero_refs %}
+          <li data-story-hero="{{ ref }}">{% if heroes[ref].slug %}<a href="/m/{{ heroes[ref].slug }}">{{ heroes[ref].name }}</a>{% else %}{{ heroes[ref].name }}{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </section>
+      {% endfor %}
+      {% if story.notes %}
+      <aside class="story-notes">
+        {% for note in story.notes %}
+        <p data-story-note="{{ note.kind }}"><em>{{ note.text }}</em></p>
+        {% endfor %}
+      </aside>
+      {% endif %}
+    </article>
+  </main>
+</body>
+</html>

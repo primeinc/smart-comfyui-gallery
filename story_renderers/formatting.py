@@ -1,0 +1,62 @@
+"""How a value is spelled for a human -- decided once, here, so five
+templates never each choose between "July 18", "18 July" and "07/18".
+
+Pure functions over frozen values. A wall-clock epoch (the snapshot's
+`local_at` spelling of what a clock on the wall read) is rendered as
+that wall clock, never shifted: the seconds are already the human's
+own day. Locale-ready by construction: every spelling passes through
+one place.
+"""
+
+from __future__ import annotations
+
+import datetime
+
+_MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
+def count(n: int, singular: str, plural: str | None = None) -> str:
+    """`1 image`, `55 images`."""
+    word = singular if n == 1 else (plural or singular + "s")
+    return f"{n} {word}"
+
+
+def day_label(wall_epoch: float | None) -> str | None:
+    """`July 18, 2026` from an epoch that spells a wall clock; None when
+    nothing claimed a day."""
+    if wall_epoch is None:
+        return None
+    moment = datetime.datetime.fromtimestamp(wall_epoch, datetime.UTC)
+    return f"{_MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
+
+
+def percent(fraction: float) -> str:
+    """`92%` from 0.92314 -- whole percents; a story is not a spreadsheet."""
+    return f"{round(max(0.0, min(1.0, fraction)) * 100)}%"
+
+
+def join_names(names: list[str]) -> str:
+    """`foo`, `foo and bar`, `foo, bar and baz`."""
+    if not names:
+        return ""
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def plural_verb(n: int, singular: str, plural: str) -> str:
+    """`appears` for one, `appear` for many."""
+    return singular if n == 1 else plural

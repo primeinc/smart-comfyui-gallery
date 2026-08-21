@@ -1791,8 +1791,38 @@ BEGIN
   SELECT RAISE(ABORT,'a story plan is immutable; plan again under a new policy');
 END;
 
+-- A StoryRender is what ONE renderer policy said about ONE plan:
+-- structured narration (title, dek, summary, sections that keep their
+-- claim and member references, notes for what the evidence does not
+-- support) -- never HTML or Markdown, which are presentation encodings
+-- a later page lays out. request_sha256 is the identity of the ask
+-- (format, plan sha, snapshot sha, renderer kind/version, profile,
+-- locale, wording policy), known before any work; document_sha256 is
+-- the canonical output. Insert-only; a plan's renders go with it.
+CREATE TABLE story_render (
+    id               INTEGER PRIMARY KEY,
+    plan_id          INTEGER NOT NULL REFERENCES story_plan(id) ON DELETE CASCADE,
+    snapshot_id      INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version   INTEGER NOT NULL,
+    renderer         TEXT NOT NULL CHECK (renderer IN ('template')),
+    renderer_version INTEGER NOT NULL,
+    profile          TEXT NOT NULL CHECK (profile IN ('memory','technical','compact')),
+    locale           TEXT NOT NULL CHECK (locale IN ('en')),
+    wording_policy   INTEGER NOT NULL,
+    request_sha256   TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
+    document_json    TEXT NOT NULL,
+    document_sha256  TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at       REAL NOT NULL
+) STRICT;
+CREATE INDEX story_render_plan ON story_render(plan_id, created_at);
+CREATE INDEX story_render_snapshot ON story_render(snapshot_id);
+CREATE TRIGGER story_render_is_immutable BEFORE UPDATE ON story_render
+BEGIN
+  SELECT RAISE(ABORT,'a story render is immutable; render again under a new policy');
+END;
+
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 15;
+PRAGMA user_version   = 16;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

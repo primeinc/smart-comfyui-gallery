@@ -26,6 +26,20 @@ def entity_slug(conn, entity_id: int) -> tuple[str, str] | None:
     return (row[0], row[1]) if row else None
 
 
+def by_uuid(conn, uuid_hex: str) -> tuple[str, str] | None:
+    """The CURRENT address of a portable identity: (kind, slug), or None
+    when nothing holds that uuid any more. Address resolution only -- a
+    frozen record keeps its own facts and asks here for a link."""
+    try:
+        raw = bytes.fromhex(uuid_hex) if len(uuid_hex) == 32 else None
+    except ValueError:
+        raw = None
+    if raw is None:
+        return None
+    row = conn.execute("SELECT kind, slug FROM entity WHERE uuid = ?", (raw,)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
 def resolve(conn, kind: str, slug: str) -> tuple[int, bool] | None:
     """`(entity_id, is_current)` for an address, or None.
 
