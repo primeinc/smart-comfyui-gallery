@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ view.plan.label }}</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+  <link rel="stylesheet" href="/static/evolution.css">
+  <script src="/static/evolution.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/g">gallery</a>
+      <a href="/timeline">timeline</a>
+      <a href="/stories/plans/{{ plan_id }}">plan</a>
+      <span class="crumbs-here">evolution</span>
+    </nav>
+  </header>
+  <main class="stage evolution" data-evolution data-plan="{{ plan_id }}" data-sequenced="{{ 'yes' if view.plan.sequenced else 'no' }}">
+    <script type="application/json" data-evolution-view>{{ view | tojson }}</script>
+    <h1>{{ view.plan.label }}</h1>
+    <p class="evolution-provenance">
+      <span>{{ view.snapshot.members }} images</span>
+      <span>&middot; {{ view.phases | length }} {{ 'phases' if view.plan.sequenced else 'prompt families' }}</span>
+      {% if view.semantic.space %}<span>&middot; space {{ view.semantic.space }}</span>{% endif %}
+      {% if view.semantic.unavailable %}<span class="degraded" title="{{ view.semantic.unavailable }}">&middot; no vectors: {{ view.semantic.unavailable }}</span>{% endif %}
+      {% if not view.plan.sequenced %}<span class="degraded">&middot; chronology not established by the evidence</span>{% endif %}
+    </p>
+    <nav class="evolution-tabs" data-tabs>
+      {% if view.plan.sequenced %}<button type="button" data-tab="sequence" class="on">Sequence</button>
+      <button type="button" data-tab="drift">Drift</button>{% endif %}
+      <button type="button" data-tab="families"{% if not view.plan.sequenced %} class="on"{% endif %}>{{ 'Phases' if view.plan.sequenced else 'Families' }}</button>
+      <button type="button" data-tab="lineage">Lineage</button>
+      <button type="button" data-tab="compare">Compare</button>
+    </nav>
+    <section class="evolution-main" data-main></section>
+    <div class="evolution-panels">
+      <section class="evolution-selected" data-selected><p class="empty">select an image</p></section>
+      <section class="evolution-inspector" data-inspector></section>
+    </div>
+  </main>
+</body>
+</html>

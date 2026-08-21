@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import pathlib
 import time
 
 from litestar import Request, get, post
@@ -20,7 +21,8 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response
 
-from db import connect, naming, planning, rendering, stories
+from db import connect, evolution, naming, planning, rendering, settings, stories
+from sg_web import home
 from sg_web.presenting import VARIES, wants_json
 
 
@@ -207,4 +209,30 @@ def render_document(state: State, render_id: int, request: Request) -> Response:
     finally:
         connect.close(conn)
     page = _story_env().get_template("story.html").render(story=story, heroes=heroes, render_id=render_id)
+    return Response(page, media_type="text/html", headers=VARIES)
+
+
+@get("/stories/plans/{plan_id:int}/evolution", sync_to_thread=True)
+def plan_evolution(state: State, plan_id: int, request: Request, space: str | None = None) -> Response:
+    """The Generation Evolution Explorer: a read-only view of one plan
+    (db/evolution.py) -- JSON, or the page by Accept. `space` names
+    the provider whose joint space and query policy every metric is
+    measured in; the first configured provider otherwise. No writes,
+    no model loads, no embedding computation."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            view = evolution.load(conn, plan_id, provider=space, models_dir=weights)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except stories.Corrupt as corrupt:
+            raise ClientException(str(corrupt), status_code=409) from corrupt
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+    finally:
+        connect.close(conn)
+    if wants_json(request):
+        return Response(view, headers=VARIES)
+    page = _story_env().get_template("evolution.html").render(view=view, plan_id=plan_id)
     return Response(page, media_type="text/html", headers=VARIES)
