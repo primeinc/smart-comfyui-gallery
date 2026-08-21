@@ -51,28 +51,32 @@ def local_actor(conn, now: float) -> int:
 # --- judgements about one picture -----------------------------------------
 
 
+#: One statement per fact, shared by the one-item and many-item shapes --
+#: two spellings of an upsert is where their semantics quietly fork.
+_RATE = (
+    "INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?, ?, ?, ?)"
+    " ON CONFLICT(file_id, user_id) DO UPDATE SET rating = excluded.rating"
+)
+_UNRATE = "DELETE FROM rating WHERE file_id = ? AND user_id = ?"
+_FAVOURITE = "INSERT OR IGNORE INTO favorite(file_id, user_id, created_at) VALUES(?, ?, ?)"
+_UNFAVOURITE = "DELETE FROM favorite WHERE file_id = ? AND user_id = ?"
+
+
 def rate(conn, file_id: int, user_id: int, stars: int, now: float) -> None:
     """One rating per person per picture; rating again replaces their own."""
-    conn.execute(
-        "INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?, ?, ?, ?)"
-        " ON CONFLICT(file_id, user_id) DO UPDATE SET rating = excluded.rating",
-        (file_id, user_id, stars, now),
-    )
+    conn.execute(_RATE, (file_id, user_id, stars, now))
 
 
 def unrate(conn, file_id: int, user_id: int) -> None:
-    conn.execute("DELETE FROM rating WHERE file_id = ? AND user_id = ?", (file_id, user_id))
+    conn.execute(_UNRATE, (file_id, user_id))
 
 
 def favourite(conn, file_id: int, user_id: int, now: float) -> None:
-    conn.execute(
-        "INSERT OR IGNORE INTO favorite(file_id, user_id, created_at) VALUES(?, ?, ?)",
-        (file_id, user_id, now),
-    )
+    conn.execute(_FAVOURITE, (file_id, user_id, now))
 
 
 def unfavourite(conn, file_id: int, user_id: int) -> None:
-    conn.execute("DELETE FROM favorite WHERE file_id = ? AND user_id = ?", (file_id, user_id))
+    conn.execute(_UNFAVOURITE, (file_id, user_id))
 
 
 # --- one picture's authored state, as desired facts ------------------------
@@ -118,31 +122,58 @@ def media_state(conn, file_id: int, user_id: int) -> MediaAuthoredState:
     )
 
 
-def set_favorite(conn, file_id: int, user_id: int, value: bool, now: float) -> None:
+def _rating(value) -> int | None:
+    """Exact-integer rating semantics, once: `None` clears, 1..5 sets,
+    and Python's bool-IS-an-int coercion never turns JSON true into one
+    star (the same trap the rule validator closes)."""
+    if value is None:
+        return None
+    if type(value) is not int or not 1 <= value <= 5:
+        raise ValueError(f"a rating is 1..5 stars or null to clear, not {value!r}")
+    return value
+
+
+def set_favorite_many(conn, file_ids, user_id: int, value: bool, now: float) -> None:
+    """The desired fact over MANY files, one statement -- the single-item
+    interface delegates here, so there is exactly one implementation for
+    two adapters to share."""
     if value:
-        favourite(conn, file_id, user_id, now)
+        conn.executemany(_FAVOURITE, [(file_id, user_id, now) for file_id in file_ids])
     else:
-        unfavourite(conn, file_id, user_id)
+        conn.executemany(_UNFAVOURITE, [(file_id, user_id) for file_id in file_ids])
+
+
+def set_rating_many(conn, file_ids, user_id: int, value: int | None, now: float) -> None:
+    held = _rating(value)
+    if held is None:
+        conn.executemany(_UNRATE, [(file_id, user_id) for file_id in file_ids])
+    else:
+        conn.executemany(_RATE, [(file_id, user_id, held, now) for file_id in file_ids])
+
+
+def set_collection_membership_many(conn, collection_id: int, file_ids, value: bool, now: float) -> None:
+    """One membership write for every adapter. The smart refusal runs
+    ONCE, before any row -- all or nothing is the transaction's job, but
+    not even the first row of a doomed batch should be attempted."""
+    _takes_filings(conn, collection_id, removing=not value)
+    if value:
+        conn.executemany(_FILE_INTO, [(collection_id, file_id, now) for file_id in file_ids])
+    else:
+        conn.executemany(_FILE_OUT_OF, [(collection_id, file_id) for file_id in file_ids])
+
+
+def set_favorite(conn, file_id: int, user_id: int, value: bool, now: float) -> None:
+    set_favorite_many(conn, (file_id,), user_id, value, now)
 
 
 def set_rating(conn, file_id: int, user_id: int, value: int | None, now: float) -> None:
-    """`None` clears; 1..5 sets. Validated here so every caller gets the
-    same refusal instead of a CHECK-constraint traceback."""
-    if value is None:
-        unrate(conn, file_id, user_id)
-        return
-    if not 1 <= int(value) <= 5:
-        raise ValueError(f"a rating is 1..5 stars or null to clear, not {value!r}")
-    rate(conn, file_id, user_id, int(value), now)
+    """`None` clears; 1..5 sets. Validated in `_rating` so every caller
+    gets the same refusal instead of a CHECK-constraint traceback."""
+    set_rating_many(conn, (file_id,), user_id, value, now)
 
 
 def set_collection_membership(conn, collection_id: int, file_id: int, value: bool, now: float) -> None:
-    """The one membership write every adapter shares. Smart collections
-    refuse through the primitives, whichever direction was asked."""
-    if value:
-        add_to_collection(conn, collection_id, file_id, now)
-    else:
-        remove_from_collection(conn, collection_id, file_id)
+    set_collection_membership_many(conn, collection_id, (file_id,), value, now)
 
 
 def comment(conn, file_id: int, user_id: int, body: str, now: float) -> int:
@@ -193,33 +224,30 @@ def rename_collection(conn, collection_id: int, name: str, now: float) -> str:
     return rename(conn, collection_id, name, now)
 
 
-def add_to_collection(conn, collection_id: int, file_id: int, now: float) -> None:
-    """File one picture into a listed collection.
+_FILE_INTO = "INSERT OR IGNORE INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)"
+_FILE_OUT_OF = "DELETE FROM collection_file WHERE collection_id = ? AND file_id = ?"
 
-    A smart collection is refused by name here, and by trigger beneath:
-    its members are its rule's answer, and a stored row would be a
-    second, disagreeing one.
-    """
+
+def _takes_filings(conn, collection_id: int, *, removing: bool) -> None:
+    """A smart collection is refused by name here, and by trigger
+    beneath: its members are its rule's answer, and a stored row would
+    be a second, disagreeing one -- and pretending to remove one would
+    be answering under a membership model the kind does not have."""
     kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
     if kind is not None and kind[0] == "smart":
-        raise ValueError("a smart collection derives its members from its rule; nothing is filed into it")
-    conn.execute(
-        "INSERT OR IGNORE INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)",
-        (collection_id, file_id, now),
-    )
+        what = "to remove" if removing else "into it"
+        raise ValueError(f"a smart collection derives its members from its rule; nothing is filed {what}")
+
+
+def add_to_collection(conn, collection_id: int, file_id: int, now: float) -> None:
+    """File one picture into a listed collection."""
+    _takes_filings(conn, collection_id, removing=False)
+    conn.execute(_FILE_INTO, (collection_id, file_id, now))
 
 
 def remove_from_collection(conn, collection_id: int, file_id: int) -> None:
-    """Symmetric with `add_to_collection`: a smart collection has nothing
-    filed into it, so pretending to remove something would be answering
-    under a membership model the kind does not have."""
-    kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
-    if kind is not None and kind[0] == "smart":
-        raise ValueError("a smart collection derives its members from its rule; nothing is filed to remove")
-    conn.execute(
-        "DELETE FROM collection_file WHERE collection_id = ? AND file_id = ?",
-        (collection_id, file_id),
-    )
+    _takes_filings(conn, collection_id, removing=True)
+    conn.execute(_FILE_OUT_OF, (collection_id, file_id))
 
 
 # --- people ----------------------------------------------------------------

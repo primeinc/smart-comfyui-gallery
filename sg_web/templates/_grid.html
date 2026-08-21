@@ -18,11 +18,16 @@
   {% if items %}
   <div class="grid" data-cells>
     {% for item in items %}
-    <a class="cell" href="/i/{{ item.slug }}{% if qs %}?{{ qs }}{% endif %}"
-       data-slug="{{ item.slug }}" data-ordinal="{{ item.ordinal }}">
-      <img src="/thumb/{{ item.slug }}" alt="{{ item.name }}" loading="lazy">
-      <span class="cell-name">{{ item.name }}</span>
-    </a>
+    <div class="cell-shell" data-selection-key="{{ item.uuid }}">
+      {# A sibling of the link, never inside it: nested interactive
+         controls are unusable to keyboards and screen readers. #}
+      <input type="checkbox" class="cell-pick" data-pick aria-label="select {{ item.name }}">
+      <a class="cell" href="/i/{{ item.slug }}{% if qs %}?{{ qs }}{% endif %}"
+         data-slug="{{ item.slug }}" data-ordinal="{{ item.ordinal }}">
+        <img src="/thumb/{{ item.slug }}" alt="{{ item.name }}" loading="lazy">
+        <span class="cell-name">{{ item.name }}</span>
+      </a>
+    </div>
     {% endfor %}
   </div>
   {% else %}

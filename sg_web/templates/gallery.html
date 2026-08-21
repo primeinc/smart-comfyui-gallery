@@ -9,6 +9,7 @@
   <script src="/static/overlay.js" defer></script>
   <script src="/static/gallery.js" defer></script>
   <script src="/static/authored.js" defer></script>
+  <script src="/static/selection.js" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -57,6 +58,25 @@
       </div>
     </div>
   </main>
+  <div class="curate" data-curate hidden>
+    <span class="curate-count" data-curate-count></span>
+    <span class="curate-group">
+      <button type="button" data-bulk-favorite="1">&hearts; favorite</button>
+      <button type="button" data-bulk-favorite="0">un-favorite</button>
+    </span>
+    <span class="curate-group">
+      {% for n in range(1, 6) %}
+      <button type="button" data-bulk-rate="{{ n }}">&starf;{{ n }}</button>
+      {% endfor %}
+      <button type="button" data-bulk-rate="0">clear &starf;</button>
+    </span>
+    <span class="curate-group">
+      <select data-bulk-album aria-label="album"></select>
+      <button type="button" data-bulk-file="1">add</button>
+      <button type="button" data-bulk-file="0">remove</button>
+    </span>
+    <button type="button" data-curate-clear>clear selection</button>
+  </div>
   <div class="lightbox-root" data-lightbox-root hidden></div>
 </body>
 </html>

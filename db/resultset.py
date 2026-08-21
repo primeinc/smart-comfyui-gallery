@@ -75,6 +75,12 @@ class UnevaluatedCollection(ValueError):
     message strings."""
 
 
+class AnswerChanged(Exception):
+    """The caller's expectation names an answer this question no longer
+    has -- a selection made against one generation must never mutate
+    another. Routes answer it as 409, and nothing was written."""
+
+
 #: How many previews a peek may carry -- the rail popover shows 6..9.
 PEEK_MOST = 9
 
@@ -244,7 +250,7 @@ _PROJECTION_LOCK = threading.Lock()
 
 #: The names one page of cells needs, id-keyed; order is restored from
 #: the projection slice, so this query carries none.
-NAMED = "SELECT f.id, e.slug, f.name, f.kind FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+NAMED = "SELECT f.id, e.slug, f.name, f.kind, e.uuid FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
 
 
 def canonical(query: GalleryQuery, page: int | None = None) -> str:
@@ -737,12 +743,82 @@ def locate(
         }
 
 
+#: The most entities one explicit selection may name -- a bound, so an
+#: absurd payload is refused instead of exercised.
+SUBSET_MOST = 5_000
+
+
+def subset(
+    conn,
+    models_dir: str,
+    query: GalleryQuery,
+    now: float,
+    *,
+    actor_id: int | None = None,
+    expect_answer: str,
+    entity_uuids: list[str],
+) -> list[int]:
+    """Prove a selection against THIS question's current answer.
+
+    Returns the file ids iff the question's answer identity is exactly
+    `expect_answer`, every uuid resolves to a live file entity, and
+    every file belongs to the answer. Anything else is AnswerChanged --
+    a selection made against one generation must never mutate another
+    -- or ValueError for a payload that was never a selection at all.
+
+    Nothing here trusts the browser: uuids are exact 32-hex strings,
+    the count is bounded, and membership is checked against the ONE
+    projection -- never a locate per item. A caller that intends to
+    WRITE against the returned ids must open its write transaction
+    BEFORE calling this (snapshot() joins an open transaction), so the
+    proof and the mutation see one library generation.
+    """
+    if type(expect_answer) is not str or not expect_answer:
+        raise ValueError("a selection names the answer it was made against")
+    if not isinstance(entity_uuids, (list, tuple)) or not entity_uuids:
+        raise ValueError("a selection names at least one entity")
+    if len(entity_uuids) > SUBSET_MOST:
+        raise ValueError(f"a selection names at most {SUBSET_MOST} entities, not {len(entity_uuids)}")
+    keys: list[bytes] = []
+    for one in entity_uuids:
+        if type(one) is not str:
+            raise ValueError("a selection key is a 32-character hex string")
+        try:
+            decoded = bytes.fromhex(one)
+        except ValueError as rotten:
+            raise ValueError(f"a selection key is a 32-character hex string, not {one!r}") from rotten
+        if len(decoded) != 16:
+            raise ValueError(f"a selection key is a 16-byte entity uuid, not {one!r}")
+        keys.append(decoded)
+    keys = list(dict.fromkeys(keys))  # idempotent: naming a file twice is naming it once
+
+    with snapshot(conn):
+        _bound, held = _current(conn, models_dir, query, now, actor_id)
+        if held.answer != expect_answer:
+            raise AnswerChanged("the result set has changed; redraw the gallery and reselect")
+        marks = ",".join("?" for _ in keys)
+        resolved = {
+            row[0]: row[1]
+            for row in conn.execute(
+                f"SELECT e.uuid, e.id FROM entity e WHERE e.kind = 'file' AND e.uuid IN ({marks})", keys
+            )
+        }
+        missing = [key.hex() for key in keys if key not in resolved]
+        if missing:
+            raise AnswerChanged(f"{len(missing)} selected file(s) no longer exist; redraw and reselect")
+        ids = [resolved[key] for key in keys]
+        strays = [file_id for file_id in ids if file_id not in held.ordinal]
+        if strays:
+            raise AnswerChanged(f"{len(strays)} selected file(s) are not part of this answer; redraw and reselect")
+        return ids
+
+
 def _named(conn, ids, start: int) -> list[dict]:
     if not ids:
         return []
     marks = ",".join("?" for _ in ids)
     held = {
-        row[0]: {"id": row[0], "slug": row[1], "name": row[2], "kind": row[3]}
+        row[0]: {"id": row[0], "slug": row[1], "name": row[2], "kind": row[3], "uuid": row[4].hex()}
         for row in conn.execute(NAMED.format(marks=marks), list(ids))
     }
     told = []

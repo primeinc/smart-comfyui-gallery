@@ -637,6 +637,58 @@ def test_saving_the_view_walks_to_its_smart_collection(driven):
         page.close()
 
 
+def test_a_selection_spans_pages_and_curates_as_one(driven):
+    """Selection belongs to an answer: it survives page swaps while the
+    grid's answer is unchanged, spans pages, and one toolbar action
+    curates the whole set in one request. An answer-preserving write
+    keeps the selection mounted; a write the question depends on clears
+    it and redraws; a different question mounting clears it outright."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+        page.check('.cell-shell:has(.cell[data-ordinal="1"]) [data-pick]')
+        page.check('.cell-shell:has(.cell[data-ordinal="2"]) [data-pick]')
+        page.wait_for_selector("[data-curate]:not([hidden])")
+        assert page.text_content("[data-curate-count]") == "2 selected"
+
+        # Page 2 of the SAME answer: the selection survives the swap.
+        page.click('[data-pager] a[rel="next"]')
+        page.wait_for_function("() => document.querySelector('[data-grid]').dataset.page === '2'")
+        assert page.text_content("[data-curate-count]") == "2 selected"
+        page.check('.cell-shell:has(.cell[data-ordinal="31"]) [data-pick]')
+        assert page.text_content("[data-curate-count]") == "3 selected"
+
+        # One answer-preserving write: three files, one request, and the
+        # selection stays mounted for the next operation.
+        before = page.get_attribute("[data-grid]", "data-currency")
+        page.click('[data-curate] [data-bulk-favorite="1"]')
+        page.wait_for_function(
+            "(before) => document.querySelector('[data-grid]').dataset.currency !== before", arg=before
+        )
+        assert page.text_content("[data-curate-count]") == "3 selected"
+
+        # A different answer mounting clears the selection.
+        page.goto(f"{base}/g?favorite=1&size=30")
+        page.wait_for_selector("[data-grid]")
+        assert page.locator(".cell").count() >= 3
+        assert page.evaluate("() => document.querySelector('[data-curate]').hidden") is True
+
+        # And a write THIS question depends on: un-favoriting inside
+        # favorite=1 changes the answer, clears, and redraws whole.
+        shown = page.locator(".cell").count()
+        page.check(".cell-shell [data-pick]")
+        page.wait_for_selector("[data-curate]:not([hidden])")
+        page.click('[data-curate] [data-bulk-favorite="0"]')
+        page.wait_for_function(
+            "(shown) => document.querySelectorAll('.cell').length === shown - 1", arg=shown, timeout=15_000
+        )
+        assert page.evaluate("() => document.querySelector('[data-curate]').hidden") is True
+    finally:
+        page.close()
+
+
 def test_the_navigation_indexes_walk_into_the_entities(driven):
     """The two front doors on screen: /folders enters the physical axis
     through a root shelf's folder entities, /albums enters the authored

@@ -39,7 +39,17 @@ from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
 from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
-from sg_web import collection_view, folder_view, gallery, home, media, media_authored, media_view, person_view
+from sg_web import (
+    collection_view,
+    curating,
+    folder_view,
+    gallery,
+    home,
+    media,
+    media_authored,
+    media_view,
+    person_view,
+)
 from sg_web import worker as worker_module
 
 
@@ -944,6 +954,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             gallery.grid_fragment,
             gallery.rail_peek,
             gallery.locate_in_answer,
+            curating.bulk_favorite,
+            curating.bulk_rating,
+            curating.bulk_membership,
             create_static_files_router(
                 # Absolute on purpose: the docs interpret relative
                 # directories against the process working directory
