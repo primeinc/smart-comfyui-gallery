@@ -48,9 +48,14 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # stronger evidence than one -- pHash sees global low-frequency
     # composition, dHash local gradient structure, so a pair that is
     # pHash-close but dHash-far is similar composition over different
-    # content. Permissive by default: it exists to veto gross
-    # mismatches, not to out-vote pHash. Validated at submit, 0..63.
-    "dupe_dhash_verify": ("16", None),
+    # content. 8 is measured, not guessed: over 2,141 labelled pairs
+    # from real libraries (benchmarks/fingerprint_calibration.py ->
+    # benchmarks/results/fingerprint_calibration.json), every true
+    # duplicate agrees within 4 dHash bits -- the verifier never vetoed
+    # a positive at ANY cutoff -- while 8 vetoes nearly every false
+    # positive pHash proposes (144 of 183 at pHash radius 16).
+    # Validated at submit, 0..63.
+    "dupe_dhash_verify": ("8", None),
 }
 
 
