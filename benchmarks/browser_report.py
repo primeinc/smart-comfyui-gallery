@@ -59,6 +59,14 @@ SECTIONS = (
         ("recipe-shelves",),
     ),
     (
+        "One picture, however many bodies",
+        (
+            "Perceptual identity over the real samples: the phash and dupes jobs on the live feed,"
+            " groups served best-face-first -- and similar-but-distinct renders staying apart"
+        ),
+        ("copy-shelf",),
+    ),
+    (
         "People, from faces",
         (
             "Detection, clustering, naming and avatar crops, all through the application's own routes;"
@@ -101,6 +109,67 @@ def _wait_healthy(web, server) -> None:
         if time.time() > deadline:
             raise TimeoutError("the server never answered /health")
         time.sleep(0.2)
+
+
+def _ensure_copies(datasets: pathlib.Path) -> None:
+    """The copies-of-copies dataset, created once and kept.
+
+    Real libraries hold the same picture as many files -- the original,
+    a resize, a JPEG saved from a JPEG, a WebP export, a crop -- and the
+    shipped samples do not, so the grouping claim had nothing true to
+    show. Six originals from the existing sets each spawn resized,
+    re-encoded and cropped bodies, the way files actually rot. The crop
+    trims 1/12 off every edge: a whole-frame DCT hash may or may not
+    survive it, and the group counts in the capture report which.
+    Deterministic and idempotent: existing files are left exactly as
+    they are, missing bodies are added.
+    """
+    target = datasets / "copies-of-copies"
+    from PIL import Image
+
+    if target.exists():
+        _ensure_crops(target)
+        return
+
+    i2i = sorted((datasets / "i2i-test-output").glob("*.png"))[:3]
+    kyc = sorted(
+        p
+        for p in (datasets / "caucasian-people-kyc-photo-dataset" / "files").rglob("*")
+        if p.suffix.lower() in (".jpg", ".jpeg", ".png")
+    )[:3]
+    target.mkdir(parents=True)
+    for number, source in enumerate(i2i + kyc):
+        with Image.open(source) as opened:
+            image = opened.convert("RGB")
+            image.save(target / f"pic{number}_original.png")
+            w, h = image.size
+            image.resize((max(8, w // 2), max(8, h // 2))).save(target / f"pic{number}_half.png")
+            image.resize((max(8, w // 4), max(8, h // 4))).save(target / f"pic{number}_quarter.jpg", quality=80)
+            image.save(target / f"pic{number}_gen1.jpg", quality=90)
+        with Image.open(target / f"pic{number}_gen1.jpg") as second:
+            second.convert("RGB").save(target / f"pic{number}_gen2.jpg", quality=60)
+        (target / f"pic{number}_gen1.jpg").unlink()
+        image.save(target / f"pic{number}_web.webp", quality=75)
+    _ensure_crops(target)
+    print(f"made {target.name}: {len(list(target.iterdir()))} files from {len(i2i + kyc)} pictures", flush=True)
+
+
+def _ensure_crops(target: pathlib.Path) -> None:
+    """A cropped body beside every original that lacks one."""
+    from PIL import Image
+
+    made = 0
+    for original in sorted(target.glob("*_original.png")):
+        cropped = target / original.name.replace("_original.png", "_crop.png")
+        if cropped.exists():
+            continue
+        with Image.open(original) as opened:
+            image = opened.convert("RGB")
+            w, h = image.size
+            image.crop((w // 12, h // 12, w - w // 12, h - h // 12)).save(cropped)
+        made += 1
+    if made:
+        print(f"added {made} cropped bodies to {target.name}", flush=True)
 
 
 def _commit_stamp(where: pathlib.Path = REPO) -> str:
@@ -240,8 +309,9 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
         try:
             with httpx.Client(base_url=base, timeout=10.0) as web, sync_playwright() as p:
                 _wait_healthy(web, server)
+                _ensure_copies(pathlib.Path(datasets))
                 scanned = 0
-                for sample in ("i2i-test-output", "caucasian-people-kyc-photo-dataset/files"):
+                for sample in ("i2i-test-output", "caucasian-people-kyc-photo-dataset/files", "copies-of-copies"):
                     made = web.post("/roots", json={"path": str(pathlib.Path(datasets) / sample)}).json()
                     scanned += web.post(f"/roots/{made['id']}/scan").json()["added"]
                 print(f"scanned {scanned} sample files")
@@ -346,6 +416,21 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 settled = web.get(f"/jobs/{grouping['id']}").json()
                 if settled["state"] != "done":
                     raise RuntimeError(f"the cluster job settled {settled['state']}: {settled['error']}")
+
+                # Perceptual identity over the same feed: fingerprints,
+                # then groups. Detection already recorded most hashes as
+                # byproduct; the phash job backfills the rest.
+                for asked in ("/jobs/phash", "/jobs/dupes"):
+                    ran = web.post(asked).json()
+                    page.wait_for_function(
+                        "(id) => window.__got.some(m => m.job === id"
+                        " && ['done','failed','cancelled'].includes(m.state))",
+                        arg=ran["id"],
+                        timeout=600_000,
+                    )
+                    outcome = web.get(f"/jobs/{ran['id']}").json()
+                    if outcome["state"] != "done":
+                        raise RuntimeError(f"{asked} settled {outcome['state']}: {outcome['error']}")
                 page.close()
 
                 names = web.get("/people").json()
@@ -432,6 +517,41 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     loras=len(shelves["LoRAs"]),
                     workflows=len(shelves["Workflows"]),
                     albums=len(shelves["Albums"]),
+                )
+                page.close()
+
+                # --- the copy shelf, from the app's own routes ----------------
+                page = watched_page()
+                bodies = web.get("/dupes").json()
+                if bodies:
+                    tiles = "".join(
+                        f'<div style="width:132px;text-align:center;font:12.5px system-ui;color:#dfe5e1">'
+                        f'<img src="{base}/thumb/{group["slug"]}" style="width:120px;height:120px;'
+                        f'object-fit:cover;border-radius:6px;background:#222">'
+                        f'<div style="padding-top:5px">&times;{group["copies"]} bodies</div></div>'
+                        for group in bodies[:8]
+                    )
+                    shelf_body = (
+                        f'<div id="copies" style="display:flex;gap:14px;padding:16px;width:fit-content">{tiles}</div>'
+                    )
+                else:
+                    shelf_body = (
+                        '<div id="copies" style="padding:22px;font:14px system-ui;color:#9fb0a6;width:fit-content">'
+                        "No perceptual duplicates in these samples at the configured threshold &mdash; "
+                        f"{len(slug_rows)} files, every one its own picture. The similar-style renders stayed apart."
+                        "</div>"
+                    )
+                page.set_content(f'<body style="margin:0;background:#14171a">{shelf_body}')
+                broken = _all_loaded(page, "#copies") if bodies else []
+                keep(
+                    "copy-shelf",
+                    page.locator("#copies").screenshot(),
+                    "GET /dupes after the phash and dupes jobs: each group is one picture shown by its"
+                    " best body, counted. An empty shelf is the honest answer when the library holds"
+                    " no perceptual copies -- and proof the similar renders did not falsely merge.",
+                    groups=len(bodies),
+                    copies_each=[group["copies"] for group in bodies[:8]],
+                    broken_tiles=len(broken),
                 )
                 page.close()
 

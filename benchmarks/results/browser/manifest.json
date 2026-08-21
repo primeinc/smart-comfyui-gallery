@@ -1,13 +1,13 @@
 {
- "taken_at": "2026-08-20 20:11:12",
- "commit": "9375d7d-dirty",
+ "taken_at": "2026-08-20 21:42:17",
+ "commit": "9d18db0-dirty",
  "evidence": [
   {
    "name": "job-live",
    "file": "job-live.png",
    "caption": "Mid-drain, exactly as the browser's WebSocket received it: one delta per committed item, nobody polling.",
    "facts": {
-    "job_total": 160,
+    "job_total": 196,
     "done_at_capture": 5
    }
   },
@@ -16,7 +16,7 @@
    "file": "job-feed.png",
    "caption": "The end of the same feed: the terminal delta arrives only after its row committed.",
    "facts": {
-    "messages": 325,
+    "messages": 397,
     "final_state": "done"
    }
   },
@@ -25,8 +25,8 @@
    "file": "library-grid.png",
    "caption": "Eighteen of the library's files, spread across both datasets, served as 512-edge thumbnails from the content-keyed cache the detection job pre-filled.",
    "facts": {
-    "library_files": 160,
-    "roots": 2,
+    "library_files": 196,
+    "roots": 3,
     "broken_tiles": 0
    }
   },
@@ -39,6 +39,23 @@
     "loras": 1,
     "workflows": 0,
     "albums": 1
+   }
+  },
+  {
+   "name": "copy-shelf",
+   "file": "copy-shelf.png",
+   "caption": "GET /dupes after the phash and dupes jobs: each group is one picture shown by its best body, counted. An empty shelf is the honest answer when the library holds no perceptual copies -- and proof the similar renders did not falsely merge.",
+   "facts": {
+    "groups": 6,
+    "copies_each": [
+     6,
+     6,
+     6,
+     6,
+     6,
+     6
+    ],
+    "broken_tiles": 0
    }
   },
   {
@@ -58,16 +75,17 @@
    "file": "people-index.png",
    "caption": "The people index: every avatar is the highest-confidence detected face of its cluster, cropped with context by the app. Names are nicknames for clusters, never identity claims.",
    "facts": {
-    "people": 9,
+    "people": 10,
     "pictures_each": [
-     54,
-     54,
+     72,
+     60,
+     32,
      15,
      15,
      15,
-     14,
      13,
      13,
+     12,
      11
     ],
     "broken_tiles": 0
@@ -79,9 +97,10 @@
    "caption": "Everything the primary clustering attributes to Person 1, as their page serves it -- the cross-axis view: one person, wherever their pictures live.",
    "facts": {
     "person": "Person 1",
-    "pictures": 54,
+    "pictures": 72,
     "across_folders": [
-     "i2i-test-output"
+     "i2i-test-output",
+     "copies-of-copies"
     ],
     "broken_tiles": 0
    }
