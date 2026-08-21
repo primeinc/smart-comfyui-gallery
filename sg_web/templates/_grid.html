@@ -17,7 +17,8 @@
   {% if items %}
   <div class="grid" data-cells>
     {% for item in items %}
-    <a class="cell" href="/i/{{ item.slug }}" data-slug="{{ item.slug }}" data-ordinal="{{ item.ordinal }}">
+    <a class="cell" href="/i/{{ item.slug }}{% if qs %}?{{ qs }}{% endif %}"
+       data-slug="{{ item.slug }}" data-ordinal="{{ item.ordinal }}">
       <img src="/thumb/{{ item.slug }}" alt="{{ item.name }}" loading="lazy">
       <span class="cell-name">{{ item.name }}</span>
     </a>

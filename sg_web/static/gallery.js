@@ -128,4 +128,73 @@
 
   placeThumb();
   document.body.addEventListener("htmx:afterSwap", placeThumb);
+
+  // --- the lightbox: an addressable overlay, never a second resource --
+  // Opening PUSHES the item URL over the mounted gallery; the arrows
+  // REPLACE it so browsing fifty items is still one Back to leave;
+  // Escape and the close button ARE Back here, because the mounted
+  // gallery is one step behind by construction. What "next" means
+  // always lives in the URL's context, never in here -- and every
+  // fetch carries the view's currency out-of-band, so an answer from a
+  // newer library generation is refused (409) and the walk restarts
+  // whole instead of mixing two generations on one screen.
+  const lightbox = document.querySelector("[data-lightbox-root]");
+  if (lightbox) {
+    const viewCurrency = () => {
+      const shown = lightbox.querySelector("[data-lightbox]");
+      if (shown && shown.dataset.currency) return shown.dataset.currency;
+      const s = shape();
+      return s ? s.currency : "";
+    };
+    const open = async (href, mode) => {
+      const answer = await fetch(href, {
+        headers: { "HX-Request": "true", "X-SG-Expect": viewCurrency() },
+      });
+      if (!answer.ok) {
+        window.location.assign(href);
+        return;
+      }
+      lightbox.innerHTML = await answer.text();
+      lightbox.hidden = false;
+      if (mode === "push") history.pushState({ sgLightbox: true }, "", href);
+      else if (mode === "replace") history.replaceState({ sgLightbox: true }, "", href);
+    };
+    const close = () => {
+      lightbox.hidden = true;
+      lightbox.replaceChildren();
+    };
+    document.addEventListener("click", (event) => {
+      const cell = event.target.closest("a.cell");
+      if (cell) {
+        event.preventDefault();
+        open(cell.getAttribute("href"), "push");
+        return;
+      }
+      if (event.target.closest("[data-close]")) {
+        event.preventDefault();
+        history.back();
+        return;
+      }
+      const nav = event.target.closest("[data-nav]");
+      if (nav) {
+        event.preventDefault();
+        open(nav.getAttribute("href"), "replace");
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (lightbox.hidden) return;
+      if (event.key === "Escape") history.back();
+      const asked = { ArrowRight: "next", ArrowLeft: "previous" }[event.key];
+      if (asked) {
+        const nav = lightbox.querySelector(`[data-nav="${asked}"]`);
+        if (nav) open(nav.getAttribute("href"), "replace");
+      }
+    });
+    // Back closes; Forward re-opens the item the URL names. The URL is
+    // the state -- the handler only makes the screen agree with it.
+    window.addEventListener("popstate", () => {
+      if (window.location.pathname.startsWith("/i/")) open(window.location.href, "none");
+      else if (!lightbox.hidden) close();
+    });
+  }
 })();

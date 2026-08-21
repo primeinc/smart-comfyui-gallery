@@ -214,3 +214,73 @@ def test_a_commit_between_render_and_hover_redraws_instead_of_lying(driven):
         assert after != before
     finally:
         page.close()
+
+
+def test_the_lightbox_is_an_address_not_a_mode(driven):
+    """WI-36's walk: open pushes the item URL once over the mounted
+    gallery, every arrow REPLACES it, Back leaves the whole viewer in
+    one step, Forward re-opens what the URL names, Escape on a pasted
+    standalone page goes to the computed results URL, and a library
+    commit mid-walk forces a whole redraw instead of mixing
+    generations."""
+    import httpx
+
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+
+        # Open: one PUSH, gallery still mounted underneath.
+        page.click('.cell[data-ordinal="1"]')
+        page.wait_for_selector("[data-lightbox]")
+        assert "/i/pic-000?sort=oldest&size=30" in page.url
+        assert page.locator("[data-grid]").count() == 1, "the gallery must stay mounted behind the overlay"
+
+        # Arrows: REPLACE, never another push.
+        page.keyboard.press("ArrowRight")
+        page.wait_for_function("() => window.location.pathname === '/i/pic-001'")
+        page.keyboard.press("ArrowRight")
+        page.wait_for_function("() => window.location.pathname === '/i/pic-002'")
+        assert "sort=oldest" in page.url, "the walk's context rides every replaced URL"
+
+        # Back: ONE step out of the whole viewer, gallery state intact.
+        page.go_back()
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        page.wait_for_function("() => document.querySelector('[data-lightbox-root]').hidden === true")
+        assert "sort=oldest" in page.url
+
+        # Forward: the URL names an item, so the screen shows it again.
+        page.go_forward()
+        page.wait_for_selector("[data-lightbox]")
+        assert "/i/pic-002" in page.url
+
+        # Escape behaves as Back from the overlay.
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => window.location.pathname === '/g'")
+
+        # A pasted item URL is a complete page; Escape there goes to the
+        # computed results address, never blindly off-site.
+        page.goto(f"{base}/i/pic-100?sort=oldest&size=30")
+        page.wait_for_selector(".detail")
+        assert page.locator('link[rel="canonical"][href="/i/pic-100"]').count() == 1
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        assert "page=4" in page.url, "ordinal 101 at size 30 returns to its own results page"
+
+        # A commit mid-walk: the next arrow answers 409 and the client
+        # redraws whole instead of mixing two generations on screen.
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+        page.click('.cell[data-ordinal="1"]')
+        page.wait_for_selector("[data-lightbox]")
+        with httpx.Client(base_url=base, timeout=5.0) as web:
+            assert web.post("/albums", json={"name": "mid-walk"}).status_code == 201
+        page.keyboard.press("ArrowRight")
+        page.wait_for_selector(".detail", timeout=15_000)
+        assert page.locator("[data-lightbox-root]").count() == 0, (
+            "the stale overlay walk must end in a full redraw, not continue over the old gallery"
+        )
+        assert "/i/pic-001" in page.url
+    finally:
+        page.close()

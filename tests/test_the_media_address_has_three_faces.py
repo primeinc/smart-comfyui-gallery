@@ -1,0 +1,153 @@
+"""One media address, three representations, zero second resources.
+
+`/i/{slug}` answers as the MediaView (JSON) for machines, as a lightbox
+fragment for the mounted gallery, and as a complete page for a browser
+-- all from one assembly, negotiated deterministically and declared
+with Vary. The query string is browsing context: previous/next mean the
+ResultSet being walked, never a folder walk, and the context survives a
+rename's 301. WI-36's acceptance, pinned.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+from litestar.testing import TestClient
+from PIL import Image
+
+from sg_web.app import build_app
+
+AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
+AS_MACHINE = {"accept": "application/json"}
+AS_OVERLAY = {"hx-request": "true"}
+
+
+@pytest.fixture(scope="module")
+def address(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("media")
+    root = tmp / "lib"
+    root.mkdir()
+    import os
+
+    for i in range(6):
+        path = root / f"m_{i}.png"
+        Image.new("RGB", (12, 12), (40 * i, 90, 120)).save(path)
+        os.utime(path, (1_700_000_000 + i * 60, 1_700_000_000 + i * 60))
+
+    with TestClient(app=build_app(str(tmp / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 6
+        yield client
+
+
+def test_the_three_faces_come_from_one_view_and_declare_vary(address):
+    told = address.get("/i/m-3", headers=AS_MACHINE)
+    page = address.get("/i/m-3", headers=AS_BROWSER)
+    part = address.get("/i/m-3", headers=AS_OVERLAY)
+    for answer in (told, page, part):
+        assert answer.status_code == 200
+        assert answer.headers["vary"] == "Accept, HX-Request"
+    body = told.json()
+    assert body["name"] == "m_3.png"
+    assert body["kind"] == "image"
+    assert '<link rel="canonical" href="/i/m-3">' in page.text, "the canonical address is the BARE entity URL"
+    assert "<html" in page.text
+    assert "<html" not in part.text, "a fragment mounts into a page, never a page into a page"
+    assert 'data-lightbox' in part.text
+    # One assembly: the fragment and the page name the same neighbours.
+    fragment_navs = re.findall(r'data-nav="\w+"[^>]*href="([^"]+)"', part.text)
+    assert all(href.startswith("/i/") for href in fragment_navs)
+
+
+def test_a_machine_with_no_browser_accept_still_gets_json(address):
+    # httpx's default Accept is */* -- the historical machine caller.
+    told = address.get("/i/m-3")
+    assert told.headers["content-type"].startswith("application/json")
+    assert told.json()["slug"] == "m-3"
+    explicit = address.get("/i/m-3", headers=AS_MACHINE).json()
+    assert told.json() == explicit, "the wildcard fallback IS the JSON representation, not a third shape"
+
+
+def test_previous_and_next_walk_the_resultset_the_url_names(address):
+    # Default context: whole library, newest first -- m_5 leads.
+    bare = address.get("/i/m-3").json()
+    assert (bare["previous"], bare["next"]) == ("m-4", "m-2")
+    assert bare["context"]["in_answer"] is True
+    assert bare["context"]["qs"] == ""
+    assert bare["context"]["return_url"] == "/g"
+    # The SAME address under the reversed walk swaps the arrows.
+    oldest = address.get("/i/m-3", params={"sort": "oldest"}).json()
+    assert (oldest["previous"], oldest["next"]) == ("m-2", "m-4")
+    assert oldest["context"]["qs"] == "sort=oldest"
+    # A paging context computes the return page.
+    paged = address.get("/i/m-0", params={"sort": "oldest", "size": 2}).json()
+    assert paged["context"]["ordinal"] == 1
+    assert paged["context"]["return_url"] == "/g?sort=oldest&size=2"
+    deep = address.get("/i/m-4", params={"sort": "oldest", "size": 2}).json()
+    assert deep["context"]["page"] == 3
+    assert deep["context"]["return_url"] == "/g?sort=oldest&size=2&page=3"
+
+
+def test_a_scope_the_item_is_outside_says_so_instead_of_inventing_arrows(address):
+    from db import authored, connect
+
+    conn = connect.connect(address.app.state.db_path)
+    album = authored.collection(conn, "Two", 1_700_100_000.0)
+    for file_id in [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id LIMIT 2")]:
+        authored.add_to_collection(conn, album, file_id, 1_700_100_000.0)
+    conn.commit()
+    conn.close()
+    outside = address.get("/i/m-5", params={"album": "two"}).json()
+    assert outside["context"]["in_answer"] is False
+    assert outside["previous"] is None
+    assert outside["next"] is None
+
+
+def test_a_retired_slug_301s_with_its_context_intact(address):
+    from db import connect, naming
+
+    conn = connect.connect(address.app.state.db_path)
+    found = naming.resolve(conn, "file", "m-1")
+    assert found is not None
+    naming.rename(conn, found[0], "renamed one", 1_700_200_000.0)
+    conn.commit()
+    conn.close()
+    moved = address.get("/i/m-1", params={"sort": "oldest", "size": 2}, follow_redirects=False)
+    assert moved.status_code == 301
+    assert moved.headers["location"] == "/i/renamed-one?sort=oldest&size=2"
+
+
+def test_a_superseded_currency_is_refused_not_mixed(address):
+    current = address.get("/i/m-3").json()["context"]["currency"]
+    fresh = address.get("/i/m-3", headers={"x-sg-expect": current})
+    assert fresh.status_code == 200
+    stale = address.get("/i/m-3", headers={"x-sg-expect": "v0-long-gone"})
+    assert stale.status_code == 409
+
+
+def test_the_media_path_never_consults_the_folder_walk():
+    """pages.neighbour is the folder walk; on this path previous/next
+    mean the ResultSet. Structural, like the gallery guard: the module
+    must consult resultset.locate and must not touch neighbour."""
+    import ast
+    import pathlib
+
+    source = (pathlib.Path(__file__).resolve().parent.parent / "sg_web" / "media_view.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    called = {
+        f"{node.func.value.id}.{node.func.attr}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+    }
+    assert "resultset.locate" in called
+    assert "pages.neighbour" not in called
+    assert "neighbour" not in source, "the folder walk has no business on the media detail path"
+    # Every media kind has a presentation path, structurally.
+    for template in ("media.html", "_media_lightbox.html"):
+        held = (pathlib.Path(__file__).resolve().parent.parent / "sg_web" / "templates" / template).read_text(
+            encoding="utf-8"
+        )
+        for kind in ("video", "animated_image", "image", "audio"):
+            assert kind in held, f"{template} bakes in an image-only worldview: no {kind} branch"
+        assert "/media/" in held, "video/audio must ride the range-capable media route"

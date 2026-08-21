@@ -61,7 +61,8 @@ ONE_PICTURE = """
       (SELECT p.text FROM generation g JOIN prompt p ON p.id = g.prompt_id
         WHERE g.file_id = f.id) AS prompt,
       (SELECT g.seed FROM generation g WHERE g.file_id = f.id) AS seed,
-      (SELECT count(*) FROM file_param WHERE file_id = f.id) AS fields
+      (SELECT count(*) FROM file_param WHERE file_id = f.id) AS fields,
+      f.kind
     FROM file f JOIN folder fo ON fo.id = f.folder_id
    WHERE f.id = ?
 """

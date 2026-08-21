@@ -179,3 +179,78 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .cell-name { transition: none; }
 }
+
+/* --- the lightbox: the gallery stays mounted behind it -------------- */
+
+.lightbox-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  display: grid;
+  place-items: center;
+}
+
+/* `display: grid` outweighs the hidden attribute's UA display:none --
+   without this, an invisible full-viewport overlay eats every click. */
+.lightbox-root[hidden] { display: none; }
+
+.lightbox {
+  display: grid;
+  gap: 10px;
+  max-width: min(92vw, 1500px);
+  max-height: 94vh;
+}
+
+.lightbox-media img, .lightbox-media video {
+  max-width: 92vw;
+  max-height: 84vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  display: block;
+}
+
+.lightbox-bar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.lightbox-bar a { color: var(--accent); }
+.lightbox-end { opacity: 0.3; }
+
+.lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 20px;
+  padding: 2px 12px;
+  cursor: pointer;
+}
+
+/* --- the detail page ------------------------------------------------ */
+
+.crumbs { display: flex; gap: 14px; align-items: baseline; }
+.crumbs a { color: var(--accent); }
+.crumbs-here { font-weight: 600; }
+.crumbs-where { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+.detail { padding: 16px; max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
+.detail-media img, .detail-media video { max-width: 100%; max-height: 76vh; border-radius: var(--radius); }
+.detail-media .warn { color: var(--danger); }
+.detail-walk { display: flex; justify-content: space-between; }
+.detail-walk a { color: var(--accent); }
+.detail-facts h1 { margin: 0 0 8px; font-size: 22px; }
+.detail-facts h2 { margin: 18px 0 6px; font-size: 15px; color: var(--ink-muted); }
+.detail-facts dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; }
+.detail-facts dt { color: var(--ink-muted); }
+.detail-facts dd { margin: 0; }
+.detail-prompt { color: var(--ink); background: var(--panel); padding: 10px 12px; border-radius: var(--radius); }
+.detail-params { border-collapse: collapse; width: 100%; font-size: 13px; }
+.detail-params td { border-top: 1px solid var(--line); padding: 4px 10px 4px 0; vertical-align: top; }

@@ -39,7 +39,7 @@ from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
 from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
-from sg_web import gallery, home, media
+from sg_web import gallery, home, media, media_view
 from sg_web import worker as worker_module
 
 
@@ -84,43 +84,8 @@ def front(state: State) -> list[dict]:
         connect.close(conn)
 
 
-@get("/i/{slug:str}", sync_to_thread=True)
-def picture_page(state: State, slug: str) -> dict | Redirect:
-    """One picture: its recipe, its parsed fields row by row, its folder
-    neighbours, and its place in the derivation graph -- each from the
-    query the page owns in db/pages.py, never a grab-bag."""
-    conn = _connect(state.db_path)
-    try:
-        file_id, live = _resolved(conn, "file", slug, "/i")
-        if live is not None:
-            return Redirect(path=f"/i/{live}", status_code=301)
-        told = pages.picture(conn, file_id)
-        if told is None:
-            raise NotFoundException(f"/i/{slug} has no file row")
-        name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields = told
-        return {
-            "slug": slug,
-            "name": name,
-            "folder": folder,
-            "present": missing_since is None,
-            "width": width,
-            "height": height,
-            "duration": duration,
-            "asked_for_width": asked_w,
-            "checkpoint": checkpoint,
-            "loras": pages.file_loras(conn, file_id),
-            "prompt": prompt,
-            "seed": seed,
-            "fields": fields,
-            "params": _rows(pages.fields_of(conn, file_id), ("source", "key", "value")),
-            "copies": _rows(pages.dupe_copies(conn, file_id), ("slug", "name", "distance", "is_best")),
-            "previous": pages.neighbour(conn, file_id, previous=True),
-            "next": pages.neighbour(conn, file_id, previous=False),
-            "parents": _rows(pages.parents(conn, file_id), ("slug", "name", "kind")),
-            "children": _rows(pages.children(conn, file_id), ("slug", "name", "kind")),
-        }
-    finally:
-        connect.close(conn)
+# The picture page lives in sg_web/picture.py: one address, presented
+# as a full page, a lightbox fragment, or the PictureView itself.
 
 
 @get("/f/{slug:str}", sync_to_thread=True)
@@ -1042,7 +1007,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         route_handlers=[
             health,
             front,
-            picture_page,
+            media_view.media_page,
             folder_page,
             models,
             loras,

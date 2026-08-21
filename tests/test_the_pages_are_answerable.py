@@ -252,8 +252,10 @@ def test_the_image_page_answers_in_one_query(library):
         prompt,
         seed,
         fields,
+        kind,
     ) = row
     assert folder == "portraits"
+    assert kind == "image", "the page must know what it is looking at to pick a media element"
     assert duration is None, "a still picture has no length"
     # The pixels on disk, which nothing wrote until the producer sweep stopped
     # being a word search. Without them the comparison the schema is built to

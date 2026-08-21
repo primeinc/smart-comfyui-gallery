@@ -528,7 +528,9 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert pic["prompt"].startswith("a brass diving helmet")
         assert pic["loras"] == ["filmGrain"]
         assert pic["params"], "the parsed fields are rows, not a blob"
-        assert {pic["previous"], pic["next"]} == {None, "helm-2"}, "neighbours walk the folder"
+        assert {pic["previous"], pic["next"]} == {None, "helm-2"}, (
+            "neighbours walk the answer: the default ResultSet, newest first"
+        )
         assert pic["parents"] == [], "no lineage yet, said honestly"
         assert pic["children"] == []
 
