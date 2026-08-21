@@ -33,8 +33,7 @@ from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, naming, pages, resultset, settings
 from sg_web import home
-
-VARIES = {"vary": "Accept, HX-Request"}
+from sg_web.presenting import VARIES, presented, wants_json
 
 
 def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy: bool) -> dict:
@@ -75,23 +74,6 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
         return told
 
 
-def _wants_json(request: Request) -> bool:
-    """The machine Adapter's negotiation half, decided BEFORE assembly
-    so only the JSON representation pays for the unbounded legacy list."""
-    accept = request.headers.get("accept", "")
-    if "application/json" in accept:
-        return True
-    return request.headers.get("hx-request") != "true" and "text/html" not in accept
-
-
-def _presented(request: Request, told: dict, page_template: str, fragment_template: str) -> Template | Response:
-    if _wants_json(request):
-        return Response(told, headers=VARIES)
-    if request.headers.get("hx-request") == "true":
-        return Template(template_name=fragment_template, context={"person": told}, headers=VARIES)
-    return Template(template_name=page_template, context={"person": told}, headers=VARIES)
-
-
 @get("/people", sync_to_thread=True)
 def people_index(state: State, request: Request) -> Template | Response:
     """Everyone, most pictures first -- rendered for a browser, the
@@ -128,10 +110,10 @@ def person_page(state: State, request: Request, slug: str) -> Template | Respons
             if live is not None:
                 return Redirect(path=f"/p/{live[1]}", status_code=301)
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        told = view(conn, weights, person_id, slug, time.time(), legacy=_wants_json(request))
+        told = view(conn, weights, person_id, slug, time.time(), legacy=wants_json(request))
     finally:
         connect.close(conn)
-    return _presented(request, told, "person.html", "_person_drawer.html")
+    return presented(request, told, page="person.html", fragment="_person_drawer.html", name="person")
 
 
 @dataclasses.dataclass

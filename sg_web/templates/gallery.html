@@ -6,6 +6,7 @@
   <title>Gallery</title>
   <link rel="stylesheet" href="/static/gallery.css">
   <script src="/static/htmx-2.0.7.min.js" defer></script>
+  <script src="/static/overlay.js" defer></script>
   <script src="/static/gallery.js" defer></script>
 </head>
 <body>
@@ -33,7 +34,6 @@
     <div id="gallery-swap">
       {% include "_grid.html" %}
     </div>
-    <div class="lightbox-root" data-lightbox-root hidden></div>
     <div class="rail" data-rail aria-label="result set rail">
       <div class="rail-track"></div>
       <div class="rail-thumb" data-rail-thumb></div>
@@ -43,5 +43,6 @@
       </div>
     </div>
   </main>
+  <div class="lightbox-root" data-lightbox-root hidden></div>
 </body>
 </html>

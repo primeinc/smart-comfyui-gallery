@@ -44,10 +44,10 @@ from litestar.exceptions import HTTPException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
 from db import connect, naming, pages, resultset, settings
+from db.resultset import canonical
 from sg_web import home
-from sg_web.gallery import _asked, canonical
-
-VARIES = {"vary": "Accept, HX-Request"}
+from sg_web.asking import gallery_query as _asked
+from sg_web.presenting import presented
 
 
 def view(conn, models_dir: str, file_id: int, slug: str, query: resultset.GalleryQuery, now: float) -> dict:
@@ -164,11 +164,4 @@ def media_page(
             raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")
     finally:
         connect.close(conn)
-    accept = request.headers.get("accept", "")
-    if "application/json" in accept:
-        return Response(told, headers=VARIES)
-    if request.headers.get("hx-request") == "true":
-        return Template(template_name="_media_lightbox.html", context={"item": told}, headers=VARIES)
-    if "text/html" in accept:
-        return Template(template_name="media.html", context={"item": told}, headers=VARIES)
-    return Response(told, headers=VARIES)
+    return presented(request, told, page="media.html", fragment="_media_lightbox.html", name="item")

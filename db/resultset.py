@@ -83,7 +83,7 @@ class GalleryQuery:
 
     folder: str | None = None  # scope: one folder, by slug
     album: str | None = None  # scope: one album (collection), by slug
-    person: str | None = None  # scope: one person's pictures, by slug
+    person: str | None = None  # facet: composes with any scope, kind and phrase
     kind: str | None = None  # filter: one file kind
     text: str | None = None  # the semantic phrase; implies sort=similarity
     sort: str = "newest"

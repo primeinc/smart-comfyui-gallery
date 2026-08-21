@@ -31,43 +31,16 @@
     window.location.replace(`/p/${told.slug}`);
   });
 
-  const drawer = document.querySelector("[data-drawer-root]");
-  if (!drawer) return;
-
-  const open = async (href, mode) => {
-    const answer = await fetch(href, { headers: { "HX-Request": "true" } });
-    if (!answer.ok) {
-      window.location.assign(href);
-      return;
-    }
-    drawer.innerHTML = await answer.text();
-    drawer.hidden = false;
-    if (mode === "push") history.pushState({ sgDrawer: true }, "", href);
-  };
-  const close = () => {
-    drawer.hidden = true;
-    drawer.replaceChildren();
-  };
-
-  document.addEventListener("click", (event) => {
-    const card = event.target.closest("[data-person]");
-    if (card) {
-      event.preventDefault();
-      open(card.getAttribute("href"), "push");
-      return;
-    }
-    // The backdrop is the root itself; content clicks land on children.
-    // Dismissing IS Back, exactly like Escape and the close button.
-    if (event.target === drawer || event.target.closest("[data-close]")) {
-      event.preventDefault();
-      history.back();
-    }
-  });
-  document.addEventListener("keydown", (event) => {
-    if (!drawer.hidden && event.key === "Escape") history.back();
-  });
-  window.addEventListener("popstate", () => {
-    if (window.location.pathname.startsWith("/p/")) open(window.location.href, "none");
-    else if (!drawer.hidden) close();
-  });
+  // The drawer is the person adapter over the AddressableOverlay: the
+  // shell (static/overlay.js) owns everything an overlay shares, a
+  // person is not media, so there is nothing left to add here -- no
+  // arrows, no generation evidence. Rename above is this page's own
+  // primary action, drawer or not.
+  if (window.sgAddressableOverlay) {
+    window.sgAddressableOverlay({
+      root: "[data-drawer-root]",
+      trigger: "[data-person]",
+      pathPrefix: "/p/",
+    });
+  }
 })();

@@ -24,27 +24,7 @@ from litestar.response import Template
 
 from db import connect, naming, resultset, settings
 from sg_web import home
-
-
-def _asked(
-    folder: str | None,
-    album: str | None,
-    kind: str | None,
-    q: str | None,
-    sort: str | None,
-    size: int | None,
-    person: str | None = None,
-) -> resultset.GalleryQuery:
-    try:
-        return resultset.parse(folder=folder, album=album, person=person, kind=kind, text=q, sort=sort, size=size)
-    except ValueError as refused:
-        raise ClientException(str(refused)) from refused
-
-
-#: The spelling lives beside the meaning: db/resultset.py owns both the
-#: question and its canonical URL form, so entity-aware healing (a
-#: renamed slug re-spelled live) happens where the binding does.
-canonical = resultset.canonical
+from sg_web.asking import gallery_query as _asked
 
 
 def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dict:

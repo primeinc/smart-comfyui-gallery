@@ -129,86 +129,37 @@
   placeThumb();
   document.body.addEventListener("htmx:afterSwap", placeThumb);
 
-  // --- the lightbox: an addressable overlay, never a second resource --
-  // Opening PUSHES the item URL over the mounted gallery; the arrows
-  // REPLACE it so browsing fifty items is still one Back to leave;
-  // Escape and the close button ARE Back here, because the mounted
-  // gallery is one step behind by construction. What "next" means
-  // always lives in the URL's context, never in here -- and every
-  // fetch carries the view's currency out-of-band, so an answer from a
-  // newer library generation is refused (409) and the walk restarts
-  // whole instead of mixing two generations on one screen.
-  const lightbox = document.querySelector("[data-lightbox-root]");
-  if (lightbox) {
-    const viewCurrency = () => {
-      const shown = lightbox.querySelector("[data-lightbox]");
+  // --- the lightbox: the media adapter over the AddressableOverlay ----
+  // The shell (static/overlay.js) owns open/mount, push-replace policy,
+  // Back-on-dismiss, popstate and the generation check. What is MEDIA'S
+  // alone lives here: which currency the view is walking, and the
+  // arrows -- each a REPLACE, so browsing fifty items is one Back out.
+  const lightbox = window.sgAddressableOverlay({
+    root: "[data-lightbox-root]",
+    trigger: "a.cell",
+    pathPrefix: "/i/",
+    generation: () => {
+      const shown = document.querySelector("[data-lightbox]");
       if (shown && shown.dataset.currency) return shown.dataset.currency;
       const s = shape();
       return s ? s.currency : "";
-    };
-    const open = async (href, mode) => {
-      const expected = viewCurrency();
-      const answer = await fetch(href, {
-        headers: { "HX-Request": "true", "X-SG-Expect": expected },
-      });
-      if (!answer.ok) {
-        window.location.assign(href);
-        return;
-      }
-      const fragment = await answer.text();
-      // The server compares after assembly, but a commit can land in
-      // the microsecond between its currency read and its snapshot --
-      // the fragment says which generation it REALLY belongs to, and a
-      // mismatch redraws whole rather than mounting it over the old
-      // gallery.
-      const got = /data-currency="([^"]*)"/.exec(fragment);
-      if (expected && got && got[1] && got[1] !== expected) {
-        window.location.assign(href);
-        return;
-      }
-      lightbox.innerHTML = fragment;
-      lightbox.hidden = false;
-      if (mode === "push") history.pushState({ sgLightbox: true }, "", href);
-      else if (mode === "replace") history.replaceState({ sgLightbox: true }, "", href);
-    };
-    const close = () => {
-      lightbox.hidden = true;
-      lightbox.replaceChildren();
-    };
+    },
+  });
+  if (lightbox) {
     document.addEventListener("click", (event) => {
-      const cell = event.target.closest("a.cell");
-      if (cell) {
-        event.preventDefault();
-        open(cell.getAttribute("href"), "push");
-        return;
-      }
-      // The backdrop is the root itself; content clicks land on children.
-      // Dismissing IS Back, exactly like Escape and the close button.
-      if (event.target === lightbox || event.target.closest("[data-close]")) {
-        event.preventDefault();
-        history.back();
-        return;
-      }
       const nav = event.target.closest("[data-nav]");
-      if (nav) {
+      if (nav && window.sgPlainClick(event, nav)) {
         event.preventDefault();
-        open(nav.getAttribute("href"), "replace");
+        lightbox.open(nav.getAttribute("href"), "replace");
       }
     });
     document.addEventListener("keydown", (event) => {
-      if (lightbox.hidden) return;
-      if (event.key === "Escape") history.back();
+      if (lightbox.root.hidden) return;
       const asked = { ArrowRight: "next", ArrowLeft: "previous" }[event.key];
       if (asked) {
-        const nav = lightbox.querySelector(`[data-nav="${asked}"]`);
-        if (nav) open(nav.getAttribute("href"), "replace");
+        const nav = lightbox.root.querySelector(`[data-nav="${asked}"]`);
+        if (nav) lightbox.open(nav.getAttribute("href"), "replace");
       }
-    });
-    // Back closes; Forward re-opens the item the URL names. The URL is
-    // the state -- the handler only makes the screen agree with it.
-    window.addEventListener("popstate", () => {
-      if (window.location.pathname.startsWith("/i/")) open(window.location.href, "none");
-      else if (!lightbox.hidden) close();
     });
   }
 })();

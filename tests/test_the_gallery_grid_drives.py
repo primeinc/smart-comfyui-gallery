@@ -310,3 +310,73 @@ def test_clicking_the_backdrop_dismisses_like_back(driven):
         page.wait_for_function("() => document.querySelector('[data-lightbox-root]').hidden === true")
     finally:
         page.close()
+
+
+def test_the_overlay_shell_survives_hostile_navigation(driven):
+    """The AddressableOverlay's deep obligations, each phase hostile:
+    a slow fragment must not overwrite a newer open (reversed network
+    completion); a dismissal mid-flight must bury the late response; a
+    modified click is the browser's link, not ours; focus moves into
+    the overlay and returns to the trigger; and a failed fragment falls
+    back to the exact entity URL as a full page."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+
+        # Phase 1: A (slow) then B (fast); A completes last and must land
+        # nowhere. One history entry, so one Back leaves the viewer.
+        def slowly(route):
+            if route.request.header_value("hx-request") == "true":
+                time.sleep(0.6)
+            route.continue_()
+
+        page.route("**/i/pic-000*", slowly)
+        page.click('.cell[data-ordinal="1"]')
+        page.click('.cell[data-ordinal="2"]')
+        page.wait_for_selector("[data-lightbox]")
+        page.wait_for_timeout(900)  # let the slow loser arrive and be discarded
+        label = page.text_content(".lightbox-label")
+        assert label is not None
+        assert "pic_001" in label, "the slow first open overwrote the newer view"
+        assert "/i/pic-001" in page.url
+        page.unroute("**/i/pic-000*")
+
+        # Focus lives in the overlay while it is open.
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').contains(document.activeElement)")
+
+        # Phase 2: dismissal buries an in-flight arrow fetch.
+        page.route("**/i/pic-002*", slowly)
+        page.keyboard.press("ArrowRight")  # pic-002, slow
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        page.wait_for_timeout(900)
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').hidden") is True, (
+            "a response that lost to a dismissal re-opened the overlay"
+        )
+        page.unroute("**/i/pic-002*")
+
+        # Focus returned to the element that opened the overlay.
+        assert page.evaluate("() => document.activeElement === document.querySelector('.cell[data-ordinal=\"2\"]')")
+
+        # Phase 3: a modified click belongs to the browser.
+        page.click('.cell[data-ordinal="3"]', modifiers=["Control"])
+        page.wait_for_timeout(300)
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').hidden") is True
+        assert page.url.endswith("/g?sort=oldest&size=30")
+
+        # Phase 4: a failed fragment falls back to the address as a page.
+        def refuse(route):
+            if route.request.header_value("hx-request") == "true":
+                route.fulfill(status=500, body="no")
+            else:
+                route.continue_()
+
+        page.route("**/i/pic-003*", refuse)
+        page.click('.cell[data-ordinal="4"]')
+        page.wait_for_selector(".detail")
+        assert "/i/pic-003" in page.url, "the fallback must land on the exact entity URL"
+        page.unroute("**/i/pic-003*")
+    finally:
+        page.close()

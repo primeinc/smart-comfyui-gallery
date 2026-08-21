@@ -165,12 +165,29 @@ def test_there_is_only_one_path_to_an_ordered_gallery_answer():
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "resultset"
     }
-    assert {"parse", "page", "peek", "locate"} <= answers, (
+    assert {"page", "peek", "locate"} <= answers, (
         f"the routes stopped consuming the seam: resultset calls seen = {sorted(answers)}"
     )
+    # Parsing moved behind the one Litestar-facing translator, so no
+    # presentation Adapter depends on another to understand a
+    # GalleryQuery -- pin BOTH halves of that path.
+    asks = ast.parse((web / "asking.py").read_text(encoding="utf-8"))
+    translator_calls = {
+        f"{node.func.value.id}.{node.func.attr}"
+        for node in ast.walk(asks)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+    }
+    assert "resultset.parse" in translator_calls, "the translator stopped consuming the seam"
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "sg_web.asking"
+        for alias in node.names
+    }
+    assert "gallery_query" in imported, "gallery.py stopped asking through the shared translator"
 
-    surfaces = [*sorted((web / "templates").glob("*.html")), web / "static" / "gallery.js"]
-    assert len(surfaces) >= 3, f"the sweep lost its subjects: {surfaces}"
+    surfaces = [*sorted((web / "templates").glob("*.html")), *sorted((web / "static").glob("*.js"))]
+    assert len(surfaces) >= 9, f"the sweep lost its subjects: {surfaces}"
     for source in surfaces:
         held = source.read_text(encoding="utf-8")
         for word in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search"):
