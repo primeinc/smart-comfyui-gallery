@@ -48,6 +48,9 @@ _SQL_SHAPED = re.compile(
 _STRUCTURE = {
     # runs of "?" -- one per bound value
     "marks": "placeholders",
+    # db/stories.py _marks: one "?" per frozen member id, nothing else
+    "_marks(file_ids)": "placeholders",
+    "_marks(members)": "placeholders",
     "','.join('?' * len(batch))": "placeholders",
     "','.join('?' * len(kinds))": "placeholders",
     # job-claim clauses in db/jobs.py: `runnable` is a module literal, and
