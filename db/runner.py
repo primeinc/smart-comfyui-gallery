@@ -250,6 +250,12 @@ def warm_similarity(conn, now: float) -> None:
     from . import retrieval
 
     for provider, model, checkpoint in retrieval.choices(conn):
+        # Probed with the checkpoint as configured. A provider whose
+        # checkpoint is a mutable ref mints its spaces under the PINNED
+        # commit (vision/semantic seam `pin`), which this boot-time warm
+        # cannot resolve without a models_dir -- those spaces warm on
+        # the first query instead, the same "slower first use, never a
+        # refusal" contract a failed warm already has.
         found = retrieval._space_of(conn, provider, model, checkpoint)
         if found is None:
             continue

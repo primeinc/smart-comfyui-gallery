@@ -96,3 +96,14 @@ def encoder(provider: str, models_dir: str, model: str, checkpoint: str, *, offl
 def space(provider: str, model: str, checkpoint: str, dimensions: int):
     """The immutable space identity for a configuration, weights unloaded."""
     return provider_module(provider).space(model, checkpoint, dimensions)
+
+
+def pin(provider: str, models_dir: str, model: str, checkpoint: str) -> str:
+    """The configured checkpoint resolved to an immutable identity, from
+    disk alone. Providers whose checkpoints can be mutable pointers (a
+    Hugging Face branch name) define `pin` and resolve them to the
+    cached commit; for the rest the checkpoint already IS the identity
+    (an open_clip pretrained tag) and passes through."""
+    module = provider_module(provider)
+    resolve = getattr(module, "pin", None)
+    return resolve(models_dir, model, checkpoint) if resolve is not None else checkpoint

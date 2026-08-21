@@ -129,6 +129,18 @@ def import_faiss(gpu: bool = True):
                 del sys.modules[name]
             importlib.invalidate_caches()
         else:
+            # Say what actually loaded, next to the noise: the vendored
+            # package's own upstream loader first probes swigfaiss_avx2 and
+            # logs the miss at INFO ("Could not load library with AVX2
+            # support") before loading its real binary. That reads like a
+            # degraded fallback; it is not -- the CUDA wheel simply ships
+            # no AVX2 sub-module, because its main binary IS the build.
+            _logger.info(
+                "vendored GPU faiss loaded from %s (%d CUDA device(s)); the loader's AVX2 lines "
+                "above are its probe order, not a fallback",
+                vendored_faiss_dir(),
+                faiss.get_num_gpus(),
+            )
             return faiss
         finally:
             with contextlib.suppress(ValueError):

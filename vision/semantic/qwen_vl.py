@@ -12,12 +12,14 @@ frames itself (refs/QwenLM/qwen_vl_utils src/qwen_vl_utils/
 vision_process.py fetch_video: fps and max_frames budgets, smart_resize
 pixel caps) instead of judging a whole clip by one poster.
 
-Space identity: the checkpoint is a Hugging Face revision of the
-Qwen/<model> repository, named-weights-by-convention exactly as an
-open_clip pretrained tag is. The preprocess version pins everything
-that changes meaning without changing weights: the two instructions,
-the pixel and frame budgets below, EOS pooling, L2 normalization.
-Changing any of them is a new preprocess version, hence a new space.
+Space identity: the checkpoint is the IMMUTABLE Hugging Face commit the
+weights resolve to -- a mutable ref like `main` in the configuration is
+pinned to the cached snapshot's commit before any space is minted or
+probed (`pin`). The preprocess version pins everything that changes a
+stored vector without changing weights: the media instruction, the
+pixel/frame/token budgets, patch size, resize policy, pooling and
+normalization, plus the preprocessing packages' versions
+(`policy_version`). Changing any of them mints a new space.
 
 The upstream wrapper degrades a failed media decode into embedding the
 literal text "NULL" to keep an evaluation batch alive. This adapter
@@ -62,13 +64,21 @@ def parse(reference: str) -> tuple[str, str]:
 
 
 #: refs/QwenLM/Qwen3-VL-Embedding src/models/qwen3_vl_embedding.py:24-33,
-#: verbatim: token budget, patch-derived pixel budgets, frame sampling.
+#: verbatim: token budget, patch-derived pixel budgets, frame sampling --
+#: and the fixed facts of the flow (:329-393): the vision patch size the
+#: fetch resizes for, resizing done by the fetch rather than the
+#: processor, last-attended-position pooling, L2 normalization. Named
+#: because every one of them is representation identity (policy_version).
 MAX_LENGTH = 8192
 IMAGE_FACTOR = 32
 MIN_PIXELS = 4 * IMAGE_FACTOR * IMAGE_FACTOR
 MAX_PIXELS = 1800 * IMAGE_FACTOR * IMAGE_FACTOR
 FPS = 1
 MAX_FRAMES = 64
+IMAGE_PATCH_SIZE = 16
+DO_RESIZE = False
+POOLING = "last-attended"
+NORMALIZATION = "l2"
 
 #: The instructions are part of the space's meaning: the model was
 #: trained instruction-aware, so stored vectors and query vectors must
@@ -80,26 +90,42 @@ QUERY_INSTRUCTION = "Retrieve images or text relevant to the user's query."
 def policy_digest(*facts) -> str:
     """A short stable digest of preprocessing facts -- the mechanism the
     space identity uses to make 'same knobs' checkable rather than
-    asserted."""
+    asserted. Canonical JSON, the same rule similarity.spec_hash
+    follows: identity hashes do not depend on delimiter folklore."""
     import hashlib
+    import json
 
-    return hashlib.sha256(";".join(str(fact) for fact in facts).encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256(json.dumps(facts, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()[:12]
 
 
 def policy_version() -> str:
-    """Everything that changes a vector WITHOUT changing weights, as one
-    token: the pixel and frame budgets, the token budget, both
-    instructions, and the versions of the two packages whose code is the
-    preprocessing (transformers renders the chat template and packs the
-    patches; qwen_vl_utils resizes and samples). Editing any of them
-    changes this string, which changes the spec hash, which mints a NEW
-    space -- 'v1' as a hand-bumped label was a promise, this is a
-    property. Deliberately over-invalidating: the query instruction
-    shapes no stored vector, but a space that cannot say which query
-    policy it answers under is provenance with a hole in it."""
+    """Everything that changes a STORED vector without changing weights,
+    as one token: the pixel and frame budgets, the token budget, the
+    media instruction, and the versions of the two packages whose code
+    is the preprocessing (transformers renders the chat template and
+    packs the patches; qwen_vl_utils resizes and samples). Editing any
+    of them changes this string, which changes the spec hash, which
+    mints a NEW space -- 'v1' as a hand-bumped label was a promise,
+    this is a property.
+
+    QUERY_INSTRUCTION is deliberately absent: it shapes only the
+    ephemeral query vector, so folding it in would force a full
+    re-embed of a library whose every stored vector is still valid.
+    It is query-side policy, versioned with this module's source."""
     import importlib.metadata
 
-    digest = policy_digest(MAX_LENGTH, MIN_PIXELS, MAX_PIXELS, FPS, MAX_FRAMES, MEDIA_INSTRUCTION, QUERY_INSTRUCTION)
+    digest = policy_digest(
+        MAX_LENGTH,
+        MIN_PIXELS,
+        MAX_PIXELS,
+        FPS,
+        MAX_FRAMES,
+        IMAGE_PATCH_SIZE,
+        DO_RESIZE,
+        POOLING,
+        NORMALIZATION,
+        MEDIA_INSTRUCTION,
+    )
     told = {}
     for package in ("transformers", "qwen-vl-utils"):
         try:
@@ -133,6 +159,7 @@ def space(model: str, checkpoint: str, dimensions: int):
 _SNAPSHOT_FILES = (
     "config.json",
     "tokenizer_config.json",
+    "tokenizer.json",  # the tokenizer's actual payload, shipped separately
     "preprocessor_config.json",
     "video_preprocessor_config.json",
     "chat_template.jinja",
@@ -141,25 +168,56 @@ _SNAPSHOT_FILES = (
 
 def _cached_snapshot(models_dir: str, model: str, checkpoint: str) -> str | None:
     """The local snapshot directory holding this revision COMPLETE --
-    weights (single-file or sharded) plus every file loading touches --
-    or None. Answered from disk alone, the same doctrine as the openclip
-    adapter's `_cached_checkpoint`."""
+    weights (single-file, or a shard index plus EVERY shard it names)
+    and every file loading touches -- or None. Answered from disk
+    alone, the same doctrine as the openclip adapter's
+    `_cached_checkpoint`. A shard index whose shards are half-downloaded
+    must answer None: 'provisioned' discovered mid-inference is a
+    failure the degraded-search contract cannot route around."""
+    import json
     import pathlib
 
     from huggingface_hub import try_to_load_from_cache
 
-    held = None
-    for name in ("model.safetensors", "model.safetensors.index.json"):
+    def cached(name: str) -> str | None:
         found = try_to_load_from_cache(model, name, cache_dir=models_dir, revision=checkpoint)
-        if isinstance(found, str):
-            held = found
-            break
+        return found if isinstance(found, str) else None
+
+    held = cached("model.safetensors")
     if held is None:
-        return None
+        index = cached("model.safetensors.index.json")
+        if index is None:
+            return None
+        try:
+            shards = set(json.loads(pathlib.Path(index).read_text(encoding="utf-8"))["weight_map"].values())
+        except (OSError, ValueError, KeyError):
+            return None
+        if not shards or any(cached(shard) is None for shard in sorted(shards)):
+            return None
+        held = index
     for name in _SNAPSHOT_FILES:
-        if not isinstance(try_to_load_from_cache(model, name, cache_dir=models_dir, revision=checkpoint), str):
+        if cached(name) is None:
             return None
     return str(pathlib.Path(held).parent)
+
+
+def pin(models_dir: str, model: str, checkpoint: str) -> str:
+    """A mutable revision resolved to the immutable commit it names in
+    the local cache. `main` is a pointer, and a similarity space keyed
+    by a pointer changes meaning the day upstream moves it -- the exact
+    laundering the immutable space registry exists to prevent. In the
+    hub cache layout the snapshot directory IS the commit hash, so
+    resolution is one disk lookup. A revision that is already a commit
+    hash passes through; a mutable revision with nothing cached has
+    nothing to pin against and returns as given -- spaces are only ever
+    MINTED by the embed path, which pins after weights land."""
+    import pathlib
+    import re
+
+    if re.fullmatch(r"[0-9a-f]{40}", checkpoint):
+        return checkpoint
+    found = _cached_snapshot(models_dir, model, checkpoint)
+    return pathlib.Path(found).name if found is not None else checkpoint
 
 
 def _for_embedding():
@@ -224,6 +282,10 @@ class QwenBackend:
         )
         loaded.eval()
         self.model = loaded.to(self.device)
+        # Pin AFTER weights land, so the space this backend mints is keyed
+        # by the immutable commit the download resolved to -- never by the
+        # mutable ref the configuration spelled.
+        self.checkpoint = pin(models_dir, model, checkpoint)
         self.dimensions = int(self.encode_query("probe").shape[0])
 
     @property
@@ -263,7 +325,7 @@ class QwenBackend:
         ]
         text = self.processor.apply_chat_template([conversation], add_generation_prompt=True, tokenize=False)
         images, video_inputs, video_kwargs = process_vision_info(
-            [conversation], image_patch_size=16, return_video_metadata=True, return_video_kwargs=True
+            [conversation], image_patch_size=IMAGE_PATCH_SIZE, return_video_metadata=True, return_video_kwargs=True
         )
         if video_inputs is not None:
             pairs = list(video_inputs)
@@ -279,7 +341,7 @@ class QwenBackend:
             truncation=True,
             max_length=MAX_LENGTH,
             padding=True,
-            do_resize=False,
+            do_resize=DO_RESIZE,
             return_tensors="pt",
             **video_kwargs,
         )
@@ -294,15 +356,25 @@ class QwenBackend:
         return functional.normalize(pooled, p=2, dim=-1)[0].cpu().float().numpy()
 
 
-#: One loaded model per (models_dir, model, checkpoint) per process --
-#: loading is seconds and gigabytes; encoding is milliseconds.
+#: One loaded model per (models_dir, model, PINNED checkpoint) per
+#: process -- loading is seconds and GIGABYTES. The cache key pins first,
+#: because the embed job asks by the configured ref ("main") and the
+#: search path asks by the resolved commit: two spellings of the same
+#: weights, and an unpinned key loaded the 4GB model twice in one
+#: process, which is an out-of-memory on an 8GB card, measured. After a
+#: fresh download the backend's own post-download resolution registers
+#: under the commit too, so the one first-provision process also serves
+#: both spellings from one load.
 _LOADED: dict[tuple, QwenBackend] = {}
 _LOCK = threading.Lock()
 
 
 def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *, offline: bool = False) -> QwenBackend:
-    key = (str(models_dir), model, checkpoint)
+    pinned = pin(str(models_dir), model, checkpoint)
+    key = (str(models_dir), model, pinned)
     with _LOCK:
         if key not in _LOADED:
-            _LOADED[key] = QwenBackend(str(models_dir), model, checkpoint, offline=offline)
+            backend = QwenBackend(str(models_dir), model, pinned, offline=offline)
+            _LOADED[key] = backend
+            _LOADED[(str(models_dir), model, backend.checkpoint)] = backend
         return _LOADED[key]

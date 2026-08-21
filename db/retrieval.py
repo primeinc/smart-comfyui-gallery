@@ -126,7 +126,12 @@ def query(conn, models_dir: str, phrase: str, k: int, now: float, *, offline: bo
     to_file: dict[int, int] = {}
     participants: list[str] = []
     missing: dict[str, str] = {}
-    for provider, model, checkpoint in choices(conn):
+    for provider, model, configured in choices(conn):
+        # A mutable checkpoint (a Hugging Face branch) resolves to the
+        # cached immutable commit BEFORE anything is keyed by it: the
+        # registry rows were minted by the embed path post-pin, so an
+        # unpinned probe would look for a space that never existed.
+        checkpoint = semantic.pin(provider, models_dir, model, configured)
         name = semantic.space(provider, model, checkpoint, 1).key
         participants.append(name)
         found = _space_of(conn, provider, model, checkpoint)

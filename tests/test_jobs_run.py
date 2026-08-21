@@ -463,15 +463,22 @@ def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
         with pytest.raises(ValueError, match=r"repo id|revision"):
             qwen_vl.parse(malformed)
 
-    spec = semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", "main", 2048)
-    assert spec.key == "semantic.qwen.Qwen/Qwen3-VL-Embedding-2B.main"
-    assert (spec.producer, spec.producer_version) == ("qwen3vl:Qwen/Qwen3-VL-Embedding-2B", "main")
+    # Space identity is exercised with a COMMIT, the only checkpoint the
+    # real paths ever mint under: the backend pins a mutable ref to the
+    # cached commit after weights land, and retrieval pins before it
+    # probes the registry -- "main" never becomes producer_version.
+    commit = "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
+    spec = semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", commit, 2048)
+    assert spec.key == f"semantic.qwen.Qwen/Qwen3-VL-Embedding-2B.{commit}"
+    assert (spec.producer, spec.producer_version) == ("qwen3vl:Qwen/Qwen3-VL-Embedding-2B", commit)
     assert (spec.preprocess, spec.dimensions, spec.metric) == ("qwen3vl.chat-template", 2048, "cosine")
 
     # The preprocess version is a PROPERTY of the policy, not a label:
     # it names the two packages whose code is the preprocessing, and any
-    # edited knob or instruction changes the digest, hence the spec
-    # hash, hence the space.
+    # edited knob or media instruction changes the digest, hence the
+    # spec hash, hence the space. The QUERY instruction is deliberately
+    # outside it -- rewording a query prompt must not force a re-embed
+    # of a library whose stored vectors are all still valid.
     assert spec.preprocess_version.startswith("tf")
     assert "+qvu" in spec.preprocess_version
     assert spec.preprocess_version.endswith(
@@ -481,8 +488,11 @@ def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
             qwen_vl.MAX_PIXELS,
             qwen_vl.FPS,
             qwen_vl.MAX_FRAMES,
+            qwen_vl.IMAGE_PATCH_SIZE,
+            qwen_vl.DO_RESIZE,
+            qwen_vl.POOLING,
+            qwen_vl.NORMALIZATION,
             qwen_vl.MEDIA_INSTRUCTION,
-            qwen_vl.QUERY_INSTRUCTION,
         )
     )
     with_other_fps = qwen_vl.policy_digest(
@@ -491,14 +501,65 @@ def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
         qwen_vl.MAX_PIXELS,
         2,
         qwen_vl.MAX_FRAMES,
+        qwen_vl.IMAGE_PATCH_SIZE,
+        qwen_vl.DO_RESIZE,
+        qwen_vl.POOLING,
+        qwen_vl.NORMALIZATION,
         qwen_vl.MEDIA_INSTRUCTION,
-        qwen_vl.QUERY_INSTRUCTION,
     )
     assert not spec.preprocess_version.endswith(with_other_fps), "a changed budget must change the space"
 
     settings.put(db, "semantic_model", "nobody:some-model/some-checkpoint")
     with pytest.raises(ValueError, match="nobody"):
         retrieval.choices(db)
+
+
+def test_a_mutable_revision_pins_to_the_cached_commit(tmp_path):
+    """`main` is a pointer, and a similarity space keyed by a pointer
+    changes meaning the day upstream moves it. Against a cache in the
+    hub layout, pin() resolves the branch to the snapshot commit; a
+    commit passes through; an uncached branch has nothing to pin
+    against and returns as given -- and only the embed path, which pins
+    after weights land, ever mints a space."""
+    from vision import semantic
+    from vision.semantic import qwen_vl
+
+    commit = "9f" * 20
+    repo_dir = tmp_path / "models--Qwen--Qwen3-VL-Embedding-2B"
+    snapshot = repo_dir / "snapshots" / commit
+    snapshot.mkdir(parents=True)
+    for name in ("model.safetensors", *qwen_vl._SNAPSHOT_FILES):
+        (snapshot / name).write_text("{}", encoding="utf-8")
+    (repo_dir / "refs").mkdir()
+    (repo_dir / "refs" / "main").write_text(commit, encoding="utf-8")
+
+    assert qwen_vl.pin(str(tmp_path), "Qwen/Qwen3-VL-Embedding-2B", "main") == commit
+    assert qwen_vl.pin(str(tmp_path), "Qwen/Qwen3-VL-Embedding-2B", commit) == commit
+    assert qwen_vl.pin(str(tmp_path), "Qwen/Absent-Model", "main") == "main"
+    assert semantic.pin("qwen", str(tmp_path), "Qwen/Qwen3-VL-Embedding-2B", "main") == commit
+    assert semantic.pin("openclip", str(tmp_path), "ViT-B-32", "laion2b_s34b_b79k") == "laion2b_s34b_b79k", (
+        "an open_clip tag already IS the identity and must pass through"
+    )
+
+    # A shard index whose named shards are not all present is NOT
+    # provisioned -- 'complete' means every byte loading will touch.
+    sharded = tmp_path / "models--Qwen--Qwen3-VL-Embedding-8B"
+    shard_snap = sharded / "snapshots" / ("8b" * 20)
+    shard_snap.mkdir(parents=True)
+    (shard_snap / "model.safetensors.index.json").write_text(
+        '{"weight_map": {"a": "model-00001-of-00002.safetensors", "b": "model-00002-of-00002.safetensors"}}',
+        encoding="utf-8",
+    )
+    (shard_snap / "model-00001-of-00002.safetensors").write_text("x", encoding="utf-8")
+    for name in qwen_vl._SNAPSHOT_FILES:
+        (shard_snap / name).write_text("{}", encoding="utf-8")
+    (sharded / "refs").mkdir()
+    (sharded / "refs" / "main").write_text("8b" * 20, encoding="utf-8")
+    assert qwen_vl._cached_snapshot(str(tmp_path), "Qwen/Qwen3-VL-Embedding-8B", "main") is None, (
+        "a missing shard must read as unprovisioned, not fail mid-inference"
+    )
+    (shard_snap / "model-00002-of-00002.safetensors").write_text("y", encoding="utf-8")
+    assert qwen_vl._cached_snapshot(str(tmp_path), "Qwen/Qwen3-VL-Embedding-8B", "main") == str(shard_snap)
 
 
 def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch):
