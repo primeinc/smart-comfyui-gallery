@@ -168,24 +168,35 @@ def region_from_pixels(conn, box, width: int, height: int, **kwargs) -> int:
 
 
 def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash64=None) -> None:
-    """Perceptual hashes, keyed on the content hash they were taken from.
+    """Perceptual hashes, keyed on the content hash they were taken from
+    and on the immutable space that computed them.
 
-    This writes the ROW only, never the live index: the runner rolls a
-    failed item's writes back (db/runner.py, `conn.rollback()` on
-    ITEM_FAILURES), and a FAISS index cannot ride that rollback -- an
-    early version mutated the resident space here and a later failure in
-    the same item left the index serving a hash the database never kept.
-    The index catches up in `db/similarity.align`, which digests only
-    rows a commit made durable.
+    The space id makes provenance belong to the ROW: after an ImageHash
+    or frame-policy upgrade this writes a new row under the new space,
+    and the old row keeps naming the implementation that actually
+    produced it -- without the column, an upgrade relabeled every old
+    hash as new by doing nothing.
+
+    This writes the row and NOTES the index mutation; it never touches
+    the live index itself. The runner rolls a failed item's writes back
+    (db/runner.py, `conn.rollback()` on ITEM_FAILURES), and a FAISS
+    index cannot ride that rollback -- so the note is applied by the
+    runner strictly after the commit that made this row durable, and
+    discarded on rollback (db/similarity.py apply_pending/discard_pending).
     """
+    from . import similarity
+
+    sid = similarity.space_id(conn, similarity.PHASH, now)
     conn.execute(
-        "INSERT INTO derived_file_hash(file_id, phash64, dhash64, source_sha256, computed_at)"
-        " VALUES(?, ?, ?, ?, ?)"
-        " ON CONFLICT(file_id) DO UPDATE SET phash64 = excluded.phash64,"
+        "INSERT INTO derived_file_hash(file_id, space_id, phash64, dhash64, source_sha256, computed_at)"
+        " VALUES(?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, space_id) DO UPDATE SET phash64 = excluded.phash64,"
         " dhash64 = excluded.dhash64, source_sha256 = excluded.source_sha256,"
         " computed_at = excluded.computed_at",
-        tuple(plain(value) for value in (file_id, phash64, dhash64, sha, now)),
+        tuple(plain(value) for value in (file_id, sid, phash64, dhash64, sha, now)),
     )
+    if phash64 is not None:
+        similarity.note(conn, similarity.PHASH, file_id, phash64, now)
 
 
 def stale(conn, table: str) -> list[int]:
@@ -280,15 +291,21 @@ def _insert_face(
     yaw, pitch, roll = pose or (None, None, None)
     # `dim` describes `embedding`, so it is taken from it rather than trusted
     # from a caller. The schema checks the two agree; deriving it here means
-    # nobody has to be told twice.
+    # nobody has to be told twice. The space id travels with the embedding
+    # for the same reason: a vector whose producing space is unknown cannot
+    # be compared with anything.
+    space_id = None
     if embedding is not None:
+        from . import similarity
+
         embedding = bytes(embedding)
         dim = len(embedding) // 4
+        space_id = similarity.space_id(conn, similarity.face_space(model_id, model_version, dim), now)
     cursor = conn.execute(
         "INSERT INTO derived_face_instance(file_id, sample_id, region_id,"
         " landmarks, embedding, det_score, dim, age, sex, pose_yaw, pose_pitch,"
-        " pose_roll, model_id, model_version, source_sha256, computed_at)"
-        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " pose_roll, model_id, model_version, space_id, source_sha256, computed_at)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tuple(
             plain(value)
             for value in (
@@ -306,12 +323,26 @@ def _insert_face(
                 roll,
                 model_id,
                 model_version,
+                space_id,
                 sha,
                 now,
             )
         ),
     )
-    return int(cursor.lastrowid or 0)
+    face_id = int(cursor.lastrowid or 0)
+    if embedding is not None:
+        import numpy as np
+
+        from . import similarity
+
+        similarity.note(
+            conn,
+            similarity.face_space(model_id, model_version, dim),
+            face_id,
+            np.frombuffer(embedding, dtype=np.float32),
+            now,
+        )
+    return face_id
 
 
 def run_for(conn, model_id: str, model_version: str, method: str, threshold, now: float) -> int:
@@ -442,15 +473,21 @@ def record_faces(
                 f"scores are 0..1, never a model's raw output "
                 f"({model_id} {model_version})"
             )
-    doomed = [
-        row[0]
-        for row in conn.execute(
-            "SELECT region_id FROM derived_face_instance WHERE file_id = ?"
-            " AND IFNULL(sample_id, 0) = IFNULL(?, 0)"
-            " AND model_id = ? AND model_version = ?",
-            (file_id, sample_id, model_id, model_version),
-        )
-    ]
+    from . import similarity
+
+    doomed = []
+    for face_id, region_id, sid in conn.execute(
+        "SELECT id, region_id, space_id FROM derived_face_instance WHERE file_id = ?"
+        " AND IFNULL(sample_id, 0) = IFNULL(?, 0)"
+        " AND model_id = ? AND model_version = ?",
+        (file_id, sample_id, model_id, model_version),
+    ):
+        doomed.append(region_id)
+        # The replaced faces leave their space's live index too -- noted
+        # here, applied by the runner only after the commit that made the
+        # deletion durable.
+        if sid is not None:
+            similarity.note_gone(conn, sid, face_id)
     conn.execute(
         "DELETE FROM derived_face_instance WHERE file_id = ?"
         " AND IFNULL(sample_id, 0) = IFNULL(?, 0)"
@@ -598,15 +635,26 @@ def cluster(
     by similarity -- `seed_clusters_from_assertions` re-applies them from
     what a human wrote down, which is the whole reason the assertion exists.
     """
+    import numpy as np
+
+    from . import grouping, similarity
+
     if threshold is None:
         threshold = threshold_for(model_id)
     run_id = run_for(conn, model_id, model_version, method, threshold, now)
     rows = conn.execute(
-        "SELECT id, embedding FROM derived_face_instance"
+        "SELECT id, embedding, space_id, dim FROM derived_face_instance"
         " WHERE model_id = ? AND model_version = ? AND embedding IS NOT NULL"
         " ORDER BY id",
         (model_id, model_version),
     ).fetchall()
+    # Only rows the CURRENT space produced cluster together. After a
+    # producer or preprocess upgrade the current spec resolves to a new
+    # immutable space id, old rows keep their old one, and they simply
+    # stop being input -- never relabeled, never mixed.
+    if rows:
+        sid = similarity.space_id(conn, similarity.face_space(model_id, model_version, int(rows[0][3])), now)
+        rows = [row for row in rows if row[2] == sid]
     conn.execute("DELETE FROM derived_face_cluster WHERE run_id = ?", (run_id,))
     conn.execute(
         "UPDATE derived_face_run SET faces = ?, clusters = 0 WHERE id = ?",
@@ -615,11 +663,7 @@ def cluster(
     if not rows:
         return []
 
-    import numpy as np
-
-    from . import grouping, similarity
-
-    vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
+    vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw, _, _ in rows])
     face_ids = [int(row[0]) for row in rows]
     # Through the shared index layer -- the same resident manager the
     # dupes job searches -- so face similarity is not its own FAISS
@@ -628,9 +672,9 @@ def cluster(
     space = similarity.face_space(model_id, model_version, int(vectors.shape[1]))
     manager = similarity.manager_for(conn)
     at = {face_id: position for position, face_id in enumerate(face_ids)}
-    similarity.align(conn, manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]], now)
-    edges_a, edges_b, weights = similarity.pair_graph(manager, space.key, threshold)
-    backend = manager.served_by(space.key)
+    key = similarity.align(conn, manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]], now)
+    edges_a, edges_b, weights = similarity.pair_graph(manager, key, threshold)
+    backend = manager.served_by(key)
     # grouping.group consumes the positional CSR shape; positions here are
     # the sorted face_ids the rows arrived in.
     graph = similarity.as_csr(

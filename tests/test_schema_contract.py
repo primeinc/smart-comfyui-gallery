@@ -118,6 +118,16 @@ def tree(conn):
     )
 
 
+def a_space(conn) -> int:
+    """A minted similarity_space row -- hash rows carry the identity of what
+    computed them, so a bare derived_file_hash insert needs one."""
+    return conn.execute(
+        "INSERT INTO similarity_space(key,representation,dimensions,metric,"
+        "producer,producer_version,preprocess,preprocess_version,spec_hash,created_at)"
+        " VALUES('perceptual.test','binary',64,'hamming','p','1','pp','1',hex(randomblob(8)),0)"
+    ).lastrowid
+
+
 def a_file(conn, eid, folder_id, name, sha=None):
     entity(conn, eid, "file", f"file-{eid}")
     conn.execute(
@@ -933,7 +943,9 @@ def test_derived_rows_go_stale_on_content_not_on_mtime(db):
     exactly that wiped user state. Staleness is a content question."""
     tree(db)
     a_file(db, 720, 1, "e.png", sha="v1")
-    db.execute("INSERT INTO derived_file_hash(file_id,source_sha256,computed_at) VALUES(720,'v1',0)")
+    db.execute(
+        "INSERT INTO derived_file_hash(file_id,space_id,source_sha256,computed_at) VALUES(720,?,'v1',0)", (a_space(db),)
+    )
     stale = (
         "SELECT count(*) FROM derived_file_hash d JOIN file f ON f.id = d.file_id "
         "WHERE d.source_sha256 IS NOT f.content_sha256"
@@ -1051,7 +1063,10 @@ def test_dropping_the_derived_namespace_keeps_everything_authored(db):
     a_file(db, 450, 1, "d.png")
     db.execute("INSERT INTO user(id,username,password_hash,role,created_at) VALUES(1,'u','h','ADMIN',0)")
     db.execute("INSERT INTO rating(file_id,user_id,rating,created_at) VALUES(450,1,4,0)")
-    db.execute("INSERT INTO derived_file_hash(file_id,source_sha256,computed_at) VALUES(450,'abc',0)")
+    db.execute(
+        "INSERT INTO derived_file_hash(file_id,space_id,source_sha256,computed_at) VALUES(450,?,'abc',0)",
+        (a_space(db),),
+    )
     derived = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%'")]
     assert len(derived) >= 6, f"derived namespace too small to be the whole of it: {derived}"
     for table in derived:
@@ -1496,7 +1511,9 @@ def test_an_unhashed_file_does_not_read_as_current(db):
     Every derived row attached to an unhashed file read as current forever."""
     tree(db)
     a_file(db, 9, 1, "e.png", sha=None)
-    db.execute("INSERT INTO derived_file_hash(file_id,source_sha256,computed_at) VALUES(9,'v1',0)")
+    db.execute(
+        "INSERT INTO derived_file_hash(file_id,space_id,source_sha256,computed_at) VALUES(9,?,'v1',0)", (a_space(db),)
+    )
     stale = (
         "SELECT count(*) FROM derived_file_hash d JOIN file f ON f.id = d.file_id "
         "WHERE d.source_sha256 IS NOT f.content_sha256"

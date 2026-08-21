@@ -77,6 +77,9 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
                     conn.commit()
                 except Exception:
                     conn.rollback()
+                    from db import similarity
+
+                    similarity.discard_pending(conn)
                     _logger.exception("a worker turn died; the job's lease will be reclaimed")
             if turn is None:
                 wake.wait(IDLE_WAIT)

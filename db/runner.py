@@ -145,15 +145,22 @@ def submit_dupes(conn, now: float) -> int:
 def warm_similarity(conn, now: float) -> None:
     """Boot: make the hot spaces resident -- restore from snapshots when
     they match, rebuild once when they do not. After this, jobs mutate
-    and query live indexes without a build step."""
+    and query live indexes without a build step.
+
+    Only rows belonging to each CURRENT space are loaded: after a
+    producer or preprocess upgrade the current spec resolves to a new
+    immutable space id and old rows stop being input -- they are never
+    reindexed under the new identity."""
     from . import similarity
 
     manager = similarity.manager_for(conn)
+    sid = similarity.space_id(conn, similarity.PHASH, now)
     rows = dict(
         conn.execute(
             "SELECT h.file_id, h.phash64 FROM derived_file_hash h"
             " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
-            " WHERE h.phash64 IS NOT NULL"
+            " WHERE h.phash64 IS NOT NULL AND h.space_id = ?",
+            (sid,),
         )
     )
     if rows:
@@ -163,15 +170,16 @@ def warm_similarity(conn, now: float) -> None:
         " WHERE embedding IS NOT NULL GROUP BY model_id, model_version"
     ):
         space = similarity.face_space(model_id, model_version, dimensions)
+        face_sid = similarity.space_id(conn, space, now)
         ids = [
             row[0]
             for row in conn.execute(
-                "SELECT id FROM derived_face_instance WHERE model_id = ? AND model_version = ?"
-                " AND embedding IS NOT NULL ORDER BY id",
-                (model_id, model_version),
+                "SELECT id FROM derived_face_instance WHERE space_id = ? ORDER BY id",
+                (face_sid,),
             )
         ]
-        similarity.align(conn, manager, space, ids, lambda wanted: _face_vectors(conn, wanted), now)
+        if ids:
+            similarity.align(conn, manager, space, ids, lambda wanted: _face_vectors(conn, wanted), now)
 
 
 def _face_vectors(conn, wanted):
@@ -203,7 +211,8 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     rows = conn.execute(
         "SELECT h.file_id, h.phash64, f.width, f.height, f.size FROM derived_file_hash h"
         " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
-        " WHERE h.phash64 IS NOT NULL ORDER BY h.file_id"
+        " WHERE h.phash64 IS NOT NULL AND h.space_id = ? ORDER BY h.file_id",
+        (similarity.space_id(conn, similarity.PHASH, now),),
     ).fetchall()
     conn.execute("DELETE FROM derived_dupe_group")
     if len(rows) < 2:
@@ -211,8 +220,10 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
     by_id = {row[0]: row for row in rows}
     manager = similarity.manager_for(conn)
-    similarity.align(conn, manager, similarity.PHASH, sorted(by_id), lambda wanted: [by_id[v][1] for v in wanted], now)
-    twins_a, twins_b, _distances = similarity.pair_graph(manager, similarity.PHASH.key, threshold)
+    key = similarity.align(
+        conn, manager, similarity.PHASH, sorted(by_id), lambda wanted: [by_id[v][1] for v in wanted], now
+    )
+    twins_a, twins_b, _distances = similarity.pair_graph(manager, key, threshold)
 
     parent = {file_id: file_id for file_id in by_id}
 
@@ -429,6 +440,8 @@ def run_next(
     the wire just said -- caught live by a client whose snapshot read
     'running' after its socket said 'done'.
     """
+    from . import similarity as similarity_module
+
     handlers = HANDLERS if handlers is None else handlers
     tick = clock if clock is not None else (lambda: now)
     tell = on_progress if on_progress is not None else (lambda delta: None)
@@ -474,8 +487,11 @@ def run_next(
             # The dead handler's half-finished writes ride the same open
             # transaction as the failure record about to be committed --
             # dropped first, so the record carries the verdict and nothing
-            # the handler did not live to finish.
+            # the handler did not live to finish. Its noted index
+            # mutations die with it: rows that never became durable must
+            # never reach a live index.
             conn.rollback()
+            similarity_module.discard_pending(conn)
             moved = jobs.finish_item(conn, job_id, fence, item, error=str(why))
             failed += 1
         else:
@@ -483,6 +499,12 @@ def run_next(
         did += 1
         jobs.heartbeat(conn, job_id, fence, tick())
         conn.commit()
+        # The commit succeeded, so the item's representation writes are
+        # durable -- NOW they may reach the resident indexes. A crash in
+        # the gap is safe: the index lags committed truth until the next
+        # align repairs it, which is the one direction the invariant
+        # permits (it may lag SQLite, never lead it).
+        similarity_module.apply_pending(conn)
         spoke("running", moved)
 
     jobs.settle(conn, job_id, fence, "done", tick())

@@ -473,13 +473,14 @@ def test_a_deleted_face_id_is_never_handed_out_again(db):
     schema-level guarantee this pins."""
     (file_id,) = library(db, 1)
     db.execute("INSERT INTO region(id, x, y, w, h) VALUES(1, 0.1, 0.1, 0.2, 0.2)")
+    sid = similarity.space_id(db, similarity.face_space("m", "1", 1), 0.0)
 
     def face() -> int:
         return db.execute(
             "INSERT INTO derived_face_instance(file_id, region_id, model_id, model_version,"
-            " det_score, embedding, source_sha256, computed_at)"
-            " VALUES(?, 1, 'm', '1', 0.9, x'00000000', 'aa', 0)",
-            (file_id,),
+            " det_score, embedding, dim, space_id, source_sha256, computed_at)"
+            " VALUES(?, 1, 'm', '1', 0.9, x'00000000', 1, ?, 'aa', 0)",
+            (file_id, sid),
         ).lastrowid
 
     first = face()

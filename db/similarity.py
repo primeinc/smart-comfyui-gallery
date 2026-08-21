@@ -34,8 +34,12 @@ def _imagehash_version() -> str:
 
 
 #: The perceptual-hash space: 64 hamming bits per picture, produced by
-#: imagehash.phash (vision/dupes.py perceptual) and consumed by dupe
-#: grouping.
+#: imagehash.phash (vision/dupes.py perceptual) over the repo's oriented
+#: frame -- for a video, the poster frame (db/runner.py _perceptual_item).
+#: The preprocess token is part of the representation's identity: the
+#: same hash algorithm over a differently chosen or differently oriented
+#: frame is a different number, and tests pin what "v1" means. Bump it
+#: when the frame policy meaningfully changes.
 PHASH = SpaceSpec(
     key="perceptual.phash64",
     representation="binary",
@@ -43,12 +47,16 @@ PHASH = SpaceSpec(
     metric="hamming",
     producer="imagehash.phash",
     producer_version=_imagehash_version(),
+    preprocess="smartgallery.perceptual-frame",
+    preprocess_version="v1",
 )
 
 
 def face_space(model_id: str, model_version: str, dimensions: int) -> SpaceSpec:
     """One space per recognition model+version: embeddings from different
-    models never share an index, because their cosines are not comparable."""
+    models never share an index, because their cosines are not comparable.
+    The preprocess token covers the repo's side of the pipeline -- the
+    oriented frame handed to the detector (db/oriented.py)."""
     return SpaceSpec(
         key=f"face.{model_id}.{model_version}",
         representation="float32",
@@ -56,7 +64,58 @@ def face_space(model_id: str, model_version: str, dimensions: int) -> SpaceSpec:
         metric="cosine",
         producer=model_id,
         producer_version=model_version,
+        preprocess="smartgallery.oriented-face",
+        preprocess_version="v1",
     )
+
+
+#: Every field that carries meaning. The spec hash -- and so a space's
+#: immutable identity -- is exactly these, in this order.
+_MEANING = (
+    "key",
+    "representation",
+    "dimensions",
+    "metric",
+    "producer",
+    "producer_version",
+    "preprocess",
+    "preprocess_version",
+)
+
+
+def spec_hash(spec: SpaceSpec) -> str:
+    import hashlib
+
+    return hashlib.sha256("|".join(str(getattr(spec, field)) for field in _MEANING).encode()).hexdigest()
+
+
+def space_id(conn, spec: SpaceSpec, now: float) -> int:
+    """The immutable `similarity_space` row for this spec, minted once.
+
+    Rows are keyed by the hash of every meaning-bearing field and never
+    updated (the schema enforces it with a trigger): an upgraded
+    producer or preprocess mints a NEW space, and rows written under the
+    old one keep saying -- forever -- what actually computed them."""
+    digest = spec_hash(spec)
+    row = conn.execute("SELECT id FROM similarity_space WHERE spec_hash = ?", (digest,)).fetchone()
+    if row is not None:
+        return int(row[0])
+    cursor = conn.execute(
+        "INSERT INTO similarity_space(key, representation, dimensions, metric,"
+        " producer, producer_version, preprocess, preprocess_version, spec_hash, created_at)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (*(getattr(spec, field) for field in _MEANING), digest, now),
+    )
+    return int(cursor.lastrowid or 0)
+
+
+def keyed(spec: SpaceSpec, sid: int) -> SpaceSpec:
+    """The spec as the index layer sees it: the resident key and every
+    snapshot filename carry the immutable space id, so an upgraded spec
+    can never restore -- or answer for -- an older space's vectors."""
+    import dataclasses
+
+    return dataclasses.replace(spec, key=f"{spec.key}@{sid}")
 
 
 #: One manager per snapshot directory per process -- residency IS the
@@ -92,22 +151,28 @@ def manager_for(conn) -> IndexManager:
         return _SHARED[where]
 
 
-def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) -> None:
-    """Make `spec.key` resident and holding exactly these rows, and record
-    the space's durable identity in `derived_similarity_space`.
+def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) -> str:
+    """Make this spec's space resident and holding exactly these rows.
+
+    Returns the resident key -- `<spec.key>@<space id>` -- which is the
+    only name the index layer knows the space by. Keying residency and
+    snapshots on the immutable space id is what makes provenance
+    laundering structurally impossible: an upgraded producer resolves to
+    a NEW space id, so the old snapshot is a different file it never
+    opens and the old rows are a different space it never loads.
 
     The cheap tiers first: an already-resident space is diffed against
-    the wanted rows and mutated -- adds are searchable immediately,
-    strangers leave -- and a cold process tries the snapshot before
-    paying for a full build. Any mutation is checkpointed, so the next
-    boot restores instead of rebuilding.
+    the wanted rows and mutated; a cold process tries the snapshot
+    before paying for a full build. Any mutation is checkpointed, so
+    the next boot restores instead of rebuilding.
 
-    Align digests COMMITTED truth only. A producer must never push its
-    own uncommitted rows into a live index: the runner rolls a failed
-    item's writes back (db/runner.py, `conn.rollback()` on
-    ITEM_FAILURES) and an index cannot ride that rollback, so producers
-    write rows and this function reconciles the index with what commits
-    actually kept.
+    Align is the REPAIR path and digests committed truth only -- it
+    reconciles the resident tier after boot, crash, or drift. The live
+    path is the runner's post-commit sync (`apply_pending`): producers
+    note their writes, the runner applies them only after the commit
+    that made them durable succeeded (db/runner.py), and a rollback
+    discards them unapplied. The invariant both paths hold together:
+    the resident index may lag committed SQLite, it may never lead it.
 
     What "same row" means differs by representation, and each gets the
     check its hazard demands:
@@ -126,44 +191,89 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) 
 
     from vision.faiss_index import _signed_to_packed
 
+    named = keyed(spec, space_id(conn, spec, now))
     wanted = [int(v) for v in ids]
-    if not manager.has(spec.key):
-        manager.restore(spec)
+    if not manager.has(named.key):
+        manager.restore(named)
     changed = False
-    if not manager.has(spec.key):
-        manager.load(spec, wanted, fetch(wanted))
+    if not manager.has(named.key):
+        manager.load(named, wanted, fetch(wanted))
         changed = True
     else:
-        held = set(manager.ids(spec.key).tolist())
+        held = set(manager.ids(named.key).tolist())
         strangers = sorted(held - set(wanted))
         missing = [v for v in wanted if v not in held]
         if strangers:
-            manager.remove(spec.key, strangers)
+            manager.remove(named.key, strangers)
         stale: list[int] = []
-        if spec.representation == "binary":
+        if named.representation == "binary":
             keeping = [v for v in wanted if v in held and v not in set(missing)]
             if keeping:
                 values = fetch(keeping)
-                stored = dict(zip(manager.ids(spec.key).tolist(), manager.vectors(spec.key), strict=True))
-                packed = _signed_to_packed(values, spec.dimensions)
+                stored = dict(zip(manager.ids(named.key).tolist(), manager.vectors(named.key), strict=True))
+                packed = _signed_to_packed(values, named.dimensions)
                 stale = [v for at, v in enumerate(keeping) if not np.array_equal(packed[at], stored[v])]
                 if stale:
-                    manager.remove(spec.key, stale)
+                    manager.remove(named.key, stale)
         renewed = missing + stale
         if renewed:
-            manager.add(spec.key, renewed, fetch(renewed))
+            manager.add(named.key, renewed, fetch(renewed))
         changed = bool(strangers or renewed)
     if changed:
-        manager.checkpoint(spec.key)
-    conn.execute(
-        "INSERT INTO derived_similarity_space(key, representation, dimensions, metric,"
-        " producer, producer_version, aligned_at) VALUES(?, ?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(key) DO UPDATE SET representation = excluded.representation,"
-        " dimensions = excluded.dimensions, metric = excluded.metric,"
-        " producer = excluded.producer, producer_version = excluded.producer_version,"
-        " aligned_at = excluded.aligned_at",
-        (spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, spec.producer_version, now),
-    )
+        manager.checkpoint(named.key)
+    return named.key
+
+
+# -- the live path: producers note, the runner applies after commit ---------
+
+#: Pending index mutations per connection, applied only after the commit
+#: that made their rows durable. Keyed by id(conn); every runner turn
+#: ends in exactly one of apply_pending/discard_pending, so entries do
+#: not outlive their turn.
+_PENDING: dict[int, list] = {}
+
+
+def note(conn, spec: SpaceSpec, subject_id: int, value, now: float) -> None:
+    """A producer wrote (or deleted, value=None) one representation row.
+
+    Nothing touches the resident index here -- the write may yet roll
+    back. The runner applies the note after its commit succeeds."""
+    named = keyed(spec, space_id(conn, spec, now))
+    _PENDING.setdefault(id(conn), []).append((named.key, int(subject_id), value))
+
+
+def note_gone(conn, sid: int, subject_id: int) -> None:
+    """A producer deleted a row that may belong to an OLDER space than the
+    current spec resolves to -- the resident key is reconstructed from
+    the immutable row the deleted data pointed at."""
+    row = conn.execute("SELECT key FROM similarity_space WHERE id = ?", (sid,)).fetchone()
+    if row is not None:
+        _PENDING.setdefault(id(conn), []).append((f"{row[0]}@{sid}", int(subject_id), None))
+
+
+def apply_pending(conn, manager: IndexManager | None = None) -> None:
+    """The runner's half of the sync, called strictly AFTER conn.commit().
+
+    Mutates only spaces that are already resident -- a cold space is
+    built by align from the committed rows, which now include what was
+    just committed. A crash before this call is safe by construction:
+    the index lags committed truth until the next align repairs it, and
+    lagging is the failure mode the invariant permits."""
+    if manager is None:
+        manager = manager_for(conn)
+    for key, subject, value in _PENDING.pop(id(conn), []):
+        if not manager.has(key):
+            continue
+        if subject in set(manager.ids(key).tolist()):
+            manager.remove(key, [subject])
+        if value is not None:
+            manager.add(key, [subject], [value])
+
+
+def discard_pending(conn) -> None:
+    """The rollback half: the rows never became durable, so their notes
+    must never reach an index."""
+    _PENDING.pop(id(conn), None)
 
 
 def pair_graph(manager: IndexManager, key: str, threshold):

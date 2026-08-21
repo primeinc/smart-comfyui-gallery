@@ -260,20 +260,21 @@ def test_align_keeps_a_binary_space_content_exact(db, tmp_path):
     align records the space's durable identity."""
     table = {1: 0, 2: 0b111}
     manager = IndexManager(tmp_path)
-    similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [table[v] for v in w], 5.0)
-    assert pairs_of(manager, similarity.PHASH.key, 3) == {(1, 2), (2, 1)}
+    key = similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [table[v] for v in w], 5.0)
+    assert pairs_of(manager, key, 3) == {(1, 2), (2, 1)}
 
     table[2] = 0xFFFFFFFFFFFFFFF0
-    similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [table[v] for v in w], 6.0)
-    assert pairs_of(manager, similarity.PHASH.key, 3) == set(), "the changed hash kept its old vector"
-    assert pairs_of(manager, similarity.PHASH.key, 63) == {(1, 2), (2, 1)}
+    assert key == similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [table[v] for v in w], 6.0)
+    assert pairs_of(manager, key, 3) == set(), "the changed hash kept its old vector"
+    assert pairs_of(manager, key, 63) == {(1, 2), (2, 1)}
 
-    key, producer, version, when = db.execute(
-        "SELECT key, producer, producer_version, aligned_at FROM derived_similarity_space"
+    sid, spec_key, producer, version, preprocess = db.execute(
+        "SELECT id, key, producer, producer_version, preprocess FROM similarity_space"
     ).fetchone()
-    assert (key, producer) == ("perceptual.phash64", "imagehash.phash")
+    assert key == f"{spec_key}@{sid}"
+    told = ("perceptual.phash64", "imagehash.phash", "smartgallery.perceptual-frame")
+    assert (spec_key, producer, preprocess) == told
     assert version
-    assert when == 6.0
 
 
 def test_align_restores_a_float_space_without_rereading_embeddings(db, tmp_path):
@@ -291,16 +292,16 @@ def test_align_restores_a_float_space_without_rereading_embeddings(db, tmp_path)
 
     spec = SpaceSpec("face.aligned", "float32", 8, "cosine", producer="fake", producer_version="1")
     first = IndexManager(tmp_path)
-    similarity.align(db, first, spec, [10, 20], rows, 0.0)
+    key = similarity.align(db, first, spec, [10, 20], rows, 0.0)
     assert fetched == [[10, 20]]
 
     second = IndexManager(tmp_path)
-    similarity.align(db, second, spec, [10, 20], rows, 1.0)
+    assert key == similarity.align(db, second, spec, [10, 20], rows, 1.0)
     assert fetched == [[10, 20]], "a valid snapshot re-read its embeddings"
 
     similarity.align(db, second, spec, [20, 30], rows, 2.0)
     assert fetched == [[10, 20], [30]], "a diff re-read embeddings the index already held"
-    assert set(second.ids(spec.key).tolist()) == {20, 30}
+    assert set(second.ids(key).tolist()) == {20, 30}
 
 
 def test_a_rolled_back_hash_never_reaches_the_live_index(db, tmp_path):
@@ -327,19 +328,20 @@ def test_a_rolled_back_hash_never_reaches_the_live_index(db, tmp_path):
         return [held[v] for v in wanted]
 
     manager = IndexManager(tmp_path)
-    similarity.align(db, manager, similarity.PHASH, [file_id], committed, 1.0)
+    key = similarity.align(db, manager, similarity.PHASH, [file_id], committed, 1.0)
     db.commit()
 
     derived.record_hash(db, file_id, "bb", 2.0, phash64=0b11110000)
     db.rollback()
-    similarity.align(db, manager, similarity.PHASH, [file_id], committed, 3.0)
-    _labels, distances = manager.search(similarity.PHASH.key, [0b1], 1)
+    similarity.discard_pending(db)
+    assert key == similarity.align(db, manager, similarity.PHASH, [file_id], committed, 3.0)
+    _labels, distances = manager.search(key, [0b1], 1)
     assert int(distances[0][0]) == 0, "the index is ahead of the database it serves"
 
     derived.record_hash(db, file_id, "bb", 4.0, phash64=0b11110000)
     db.commit()
-    similarity.align(db, manager, similarity.PHASH, [file_id], committed, 5.0)
-    _labels, distances = manager.search(similarity.PHASH.key, [0b11110000], 1)
+    similarity.apply_pending(db, manager)
+    _labels, distances = manager.search(key, [0b11110000], 1)
     assert int(distances[0][0]) == 0, "the committed replacement never reached the index"
 
 
@@ -386,3 +388,63 @@ def test_search_answers_topk_by_stable_id():
     labels, scores = manager.search(FACE.key, vectors[:2], 1)
     assert labels[:, 0].tolist() == [11, 22]
     assert scores[0][0] == pytest.approx(1.0, abs=1e-5)
+
+
+def test_an_upgrade_cannot_relabel_old_hashes_as_new(db, tmp_path, monkeypatch):
+    """The laundering case: hashes produced under producer v1, then the
+    software upgrades to v2. The old rows must be rejected as input --
+    recomputed, never reindexed under the new identity -- and the old
+    space row must keep saying v1 forever."""
+    import dataclasses
+
+    from db import derived, runner, scan
+
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
+    folder = scan.mint(db, "folder", "lib")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,NULL,'lib',0)", (folder,))
+    files = []
+    for n in range(2):
+        file_id = scan.mint(db, "file", f"p{n}")
+        db.execute(
+            "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,first_seen_at,last_seen_at)"
+            " VALUES(?,?,?,'image',1,0,'aa',0,0)",
+            (file_id, folder, f"p{n}.png"),
+        )
+        files.append(file_id)
+
+    monkeypatch.setattr(similarity, "PHASH", dataclasses.replace(similarity.PHASH, producer_version="v1"))
+    for file_id in files:
+        derived.record_hash(db, file_id, "aa", 1.0, phash64=0b1)
+    db.commit()
+    manager = IndexManager(tmp_path)
+    v1_key = similarity.align(db, manager, similarity.PHASH, files, lambda w: [0b1 for _ in w], 2.0)
+    manager.checkpoint(v1_key)
+    assert manager.count(v1_key) == 2
+
+    # The upgrade. A fresh process boots with producer v2.
+    monkeypatch.setattr(similarity, "PHASH", dataclasses.replace(similarity.PHASH, producer_version="v2"))
+    fresh = IndexManager(tmp_path)
+    runner.warm_similarity(db, 3.0)
+    v2_key = similarity.keyed(similarity.PHASH, similarity.space_id(db, similarity.PHASH, 3.0))
+    assert v2_key.key != v1_key, "the upgrade did not mint a new space"
+    assert not fresh.restore(v2_key), "a v1 snapshot answered for v2"
+    assert not fresh.has(v2_key.key) or fresh.count(v2_key.key) == 0, "v1 rows were reindexed as v2"
+
+    old = db.execute(
+        "SELECT s.producer_version, count(h.file_id) FROM similarity_space s"
+        " JOIN derived_file_hash h ON h.space_id = s.id WHERE s.producer_version = 'v1'"
+    ).fetchone()
+    assert old == ("v1", 2), "the v1 rows lost their identity"
+
+    # Recompute under v2: new rows under the new space; v1 rows intact.
+    for file_id in files:
+        derived.record_hash(db, file_id, "aa", 4.0, phash64=0b111)
+    db.commit()
+    told = {
+        (version, count)
+        for version, count in db.execute(
+            "SELECT s.producer_version, count(h.file_id) FROM similarity_space s"
+            " JOIN derived_file_hash h ON h.space_id = s.id GROUP BY s.id ORDER BY s.id"
+        )
+    }
+    assert told == {("v1", 2), ("v2", 2)}, "recompute overwrote history instead of adding to it"

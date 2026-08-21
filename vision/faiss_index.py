@@ -90,9 +90,12 @@ class SpaceSpec:
 
     `producer` and `producer_version` name what computed the vectors: an
     index of ArcFace embeddings answered with SFace queries is garbage
-    with a valid shape, so provenance is part of the spec, rides the
-    snapshot sidecar, and a snapshot from an obsolete producer is
-    refused the same as one with the wrong dimensions."""
+    with a valid shape. `preprocess` and `preprocess_version` name what
+    fed the computation -- the same hash algorithm over a differently
+    oriented frame is a different representation. All of it is part of
+    the spec, rides the snapshot sidecar, and a snapshot from an
+    obsolete producer or preprocess is refused the same as one with the
+    wrong dimensions."""
 
     key: str
     representation: str  # 'binary' | 'float32'
@@ -100,6 +103,8 @@ class SpaceSpec:
     metric: str  # 'hamming' for binary, 'cosine' for float32
     producer: str = ""
     producer_version: str = ""
+    preprocess: str = ""
+    preprocess_version: str = ""
 
 
 def _signed_to_packed(values, bits: int):
@@ -230,12 +235,17 @@ class IndexManager:
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return False
-        claimed = tuple(
-            sidecar.get(field)
-            for field in ("key", "representation", "dimensions", "metric", "producer", "producer_version")
+        fields = (
+            "key",
+            "representation",
+            "dimensions",
+            "metric",
+            "producer",
+            "producer_version",
+            "preprocess",
+            "preprocess_version",
         )
-        wanted = (spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, spec.producer_version)
-        if claimed != wanted:
+        if tuple(sidecar.get(field) for field in fields) != tuple(getattr(spec, field) for field in fields):
             return False
         faiss = self._faiss()
         try:
@@ -321,6 +331,8 @@ class IndexManager:
                 "metric": space.spec.metric,
                 "producer": space.spec.producer,
                 "producer_version": space.spec.producer_version,
+                "preprocess": space.spec.preprocess,
+                "preprocess_version": space.spec.preprocess_version,
                 "normalization": "l2" if space.spec.representation == "float32" else None,
                 "vectors": int(space.index.ntotal),
                 "faiss": getattr(faiss, "__version__", None),

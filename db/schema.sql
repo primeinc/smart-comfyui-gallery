@@ -979,33 +979,53 @@ END;
 -- row-at-a-time insert into these two tables is a defect, which is why the
 -- functions that do it are private.
 CREATE TABLE derived_file_hash (
-    file_id       INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    -- Which immutable space produced these bits. Part of the key: after a
+    -- producer or preprocess upgrade the same file gets a NEW row under
+    -- the new space, and the old row keeps saying -- forever -- which
+    -- implementation actually computed it. Without this column an
+    -- upgrade relabeled old hashes as new ones by doing nothing at all.
+    space_id      INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
     -- 64 bits of perceptual hash, and SQLite INTEGER is SIGNED 64-bit: any
     -- hash with the top bit set is stored negative. Compare them bitwise,
     -- never with < or > -- ordering these numerically is meaningless, and
     -- Hamming distance is the only comparison that means anything.
     phash64 INTEGER, dhash64 INTEGER,
-    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL
+    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
+    PRIMARY KEY (file_id, space_id)
 ) STRICT;
+CREATE INDEX derived_file_hash_space ON derived_file_hash(space_id);
 CREATE INDEX derived_file_hash_phash ON derived_file_hash(phash64);
 
--- The durable identity of each live similarity space: what its vectors
--- ARE (representation, dimensions, metric) and what PRODUCED them
--- (producer, producer_version). Written every time db/similarity.align
--- makes a space resident; read by anyone deciding whether an index, a
--- snapshot, or a comparison is semantically valid. Without this row,
--- "face.x.y holds 512-d cosine ArcFace vectors" lives only in code and
--- sidecar files -- a database restored on another machine could not say
--- what its own derived vectors mean.
-CREATE TABLE derived_similarity_space (
-    key                TEXT PRIMARY KEY,
+-- The IMMUTABLE identity of one similarity representation: what its
+-- vectors are (representation, dimensions, metric), what computed them
+-- (producer, producer_version) and what fed the computation
+-- (preprocess, preprocess_version -- the orient/poster policy is as
+-- much a part of a phash's meaning as the hash algorithm). Rows are
+-- minted once, keyed by spec_hash, and never change: a change in any
+-- meaning-bearing field IS a different space and mints a new id, so a
+-- representation row pointing here can never be relabeled as something
+-- newer than what actually produced it. AUTOINCREMENT for the same
+-- reason as `entity`: these ids are identities held outside this table.
+CREATE TABLE similarity_space (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    key                TEXT NOT NULL,
     representation     TEXT NOT NULL CHECK (representation IN ('binary','float32')),
     dimensions         INTEGER NOT NULL CHECK (dimensions > 0),
     metric             TEXT NOT NULL CHECK (metric IN ('hamming','cosine')),
     producer           TEXT NOT NULL,
     producer_version   TEXT NOT NULL,
-    aligned_at         REAL NOT NULL
-) STRICT, WITHOUT ROWID;
+    preprocess         TEXT NOT NULL,
+    preprocess_version TEXT NOT NULL,
+    spec_hash          TEXT NOT NULL UNIQUE,
+    created_at         REAL NOT NULL
+) STRICT;
+
+CREATE TRIGGER similarity_space_is_immutable
+BEFORE UPDATE ON similarity_space
+BEGIN
+    SELECT RAISE(ABORT, 'similarity_space rows are immutable: a changed meaning is a new space');
+END;
 
 CREATE TABLE derived_embedding (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
@@ -1133,13 +1153,22 @@ CREATE TABLE derived_face_instance (
     -- two would answer "faces looking away" with a set that is mostly not.
     pose_yaw REAL, pose_pitch REAL, pose_roll REAL,
     model_id TEXT NOT NULL, model_version TEXT NOT NULL,
+    -- Which immutable space the embedding belongs to -- the producer AND
+    -- the preprocessing that fed it (orientation policy, frame choice).
+    -- Paired with `embedding`: a face with no vector is in no space, and
+    -- a vector whose space is unknown cannot be compared with anything.
+    -- The model_id/model_version columns above stay as the query keys the
+    -- pipeline filters on; the space row is the identity that survives
+    -- upgrades without relabeling.
+    space_id INTEGER REFERENCES similarity_space(id) ON DELETE RESTRICT,
     source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL,
     -- `dim` describes `embedding`, so it has to agree with it. A length that
     -- disagrees with the bytes unpacks into noise, and a clustering pass
     -- comparing a 512-d vector against a mislabelled 128-d one groups
     -- strangers together. float32, so four bytes each.
     CHECK ((embedding IS NULL AND dim IS NULL)
-           OR (embedding IS NOT NULL AND dim = length(embedding) / 4))
+           OR (embedding IS NOT NULL AND dim = length(embedding) / 4)),
+    CHECK ((embedding IS NULL) = (space_id IS NULL))
 ) STRICT;
 CREATE INDEX derived_face_file       ON derived_face_instance(file_id);
 -- Clustering reads every vector this model produced, once per re-cluster.
@@ -1148,6 +1177,7 @@ CREATE INDEX derived_face_by_model   ON derived_face_instance(model_id, model_ve
     WHERE embedding IS NOT NULL;
 CREATE INDEX derived_face_sample     ON derived_face_instance(sample_id);
 CREATE INDEX derived_face_region     ON derived_face_instance(region_id);
+CREATE INDEX derived_face_space      ON derived_face_instance(space_id);
 
 -- What a model says about a picture in words: a caption, a longer
 -- description, a tag, text it read out of the image. One table, because they
