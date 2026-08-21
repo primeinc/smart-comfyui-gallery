@@ -66,6 +66,15 @@ KINDS = ("image", "animated_image", "video", "audio", "document")
 DEFAULT_PAGE_SIZE = 60
 MAX_PAGE_SIZE = 400
 
+
+class UnevaluatedCollection(ValueError):
+    """A rule-defined collection was asked for members no evaluator has
+    produced: unevaluated is not empty, so the question is refused. A
+    ValueError, so every route seam already answers it as a bad question;
+    typed, so a view can decide "show the rule instead" without matching
+    message strings."""
+
+
 #: How many previews a peek may carry -- the rail popover shows 6..9.
 PEEK_MOST = 9
 
@@ -283,7 +292,9 @@ def bind(conn, query: GalleryQuery) -> _Bound:
         kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (held["album"],)).fetchone()[0]
         if kind == "smart":
             spelled = live.get("album", query.album)
-            raise ValueError(f"collection {spelled!r} is rule-defined; smart membership is not evaluated yet")
+            raise UnevaluatedCollection(
+                f"collection {spelled!r} is rule-defined; smart membership is not evaluated yet"
+            )
     run = None
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()

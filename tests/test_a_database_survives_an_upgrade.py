@@ -289,6 +289,23 @@ def test_two_steps_cannot_claim_one_version(steps):
 # --- the REAL registry, not synthetic steps ---------------------------------
 
 
+def _binary_sibling_indexes(conn) -> None:
+    """The pre-v5 index shapes: binary sibling uniqueness, bare
+    collection parent -- what step 4 exists to replace."""
+    conn.execute("DROP INDEX folder_root_unique")
+    conn.execute("DROP INDEX folder_child_unique")
+    conn.execute("DROP INDEX collection_parent")
+    conn.execute(
+        "CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)"
+        " WHERE parent_id IS NULL AND missing_since IS NULL"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name)"
+        " WHERE parent_id IS NOT NULL AND missing_since IS NULL"
+    )
+    conn.execute("CREATE INDEX collection_parent ON collection(parent_id)")
+
+
 def v1_database(tmp_path):
     """Today's build, taken back to v1 by inverting the shipped steps."""
     path = tmp_path / "gallery.db"
@@ -301,6 +318,7 @@ def v1_database(tmp_path):
         "collection_with_members_stays_listed",
     ):
         conn.execute(f"DROP TRIGGER {trigger}")
+    _binary_sibling_indexes(conn)  # v5's change, inverted
     conn.execute("PRAGMA user_version = 1")
     conn.close()
     return path
@@ -370,6 +388,41 @@ def test_a_legacy_smart_membership_stops_the_migration_by_name(tmp_path):
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 1, "a refused step must leave the file at v1"
         assert conn.execute("SELECT count(*) FROM collection_file").fetchone()[0] == 1, "the rows are the human's"
+    finally:
+        conn.close()
+
+
+def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
+    """The binary indexes' own artifact: a v4 library holding live
+    siblings that differ only by case, which the scanner treats as one
+    directory. Stamping them forward would merge identities nobody asked
+    to merge; deleting one is worse. The step refuses, names both
+    spellings, and leaves the file at v4 with its rows intact."""
+    path = tmp_path / "gallery.db"
+    build.build(path)
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn.execute("PRAGMA foreign_keys=ON")
+    _binary_sibling_indexes(conn)  # a genuine v4 file permits the twins
+    root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', 0)").lastrowid
+    top = scan.ensure_folder(conn, root_id, None, "x")
+    for name in ("Vacation", "vacation"):
+        twin = scan.mint(conn, "folder", name)
+        # Straight INSERT: ensure_folder itself matches NOCASE and would
+        # hand back the first twin instead of creating the second.
+        conn.execute(
+            "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, ?, ?, 0)",
+            (twin, root_id, top, name),
+        )
+    conn.execute("PRAGMA user_version = 4")
+    conn.close()
+
+    with pytest.raises(sqlite3.IntegrityError, match="Vacation"):
+        migrate.migrate(path)
+
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4, "a refused step must leave the file at v4"
+        assert conn.execute("SELECT count(*) FROM folder WHERE parent_id IS NOT NULL").fetchone()[0] == 2
     finally:
         conn.close()
 
@@ -608,6 +661,7 @@ def v3_database_with_embeddings(tmp_path):
     path = tmp_path / "gallery.db"
     build.build(path)
     conn = connect.connect(path)
+    _binary_sibling_indexes(conn)  # v5's change, inverted: a real v3 file
     root = int(
         conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
     )
@@ -696,7 +750,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4]
+    assert migrate.migrate(path) == [4, 5]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

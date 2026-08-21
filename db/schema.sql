@@ -126,9 +126,14 @@ CREATE TABLE folder (
 -- there. Rename `Archive` to `Zoo` and make a new `Archive`, and both rows
 -- have to exist at once -- with a total index the scanner had to choose
 -- between failing and giving the new directory the old one's identity.
-CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)
+-- NOCASE, as on `file`: the scanner matches directory names the way the
+-- stated platform does (db/scan.py ensure_folder), and a binary index
+-- permitted live siblings 'Vacation' and 'vacation' the scanner treats as
+-- one directory. NOCASE also makes these indexes serve the child listing's
+-- name ordering instead of a temp B-tree.
+CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name COLLATE NOCASE)
     WHERE parent_id IS NULL AND missing_since IS NULL;
-CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name)
+CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name COLLATE NOCASE)
     WHERE parent_id IS NOT NULL AND missing_since IS NULL;
 -- No index on parent_id alone. folder_child_unique leads on it, and although
 -- that index is partial the planner does use it for `parent_id = ?`, which is
@@ -349,7 +354,9 @@ CREATE TABLE collection (
     CHECK (kind = 'smart' OR (sql_text IS NULL AND nl_text IS NULL)),
     CHECK (kind <> 'smart' OR sql_text IS NOT NULL OR nl_text IS NOT NULL)
 ) STRICT;
-CREATE INDEX collection_parent ON collection(parent_id);
+-- Leads on parent_id for the foreign key's delete shape; carries the name
+-- NOCASE so a collection's child listing is an index walk, not a sort.
+CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE);
 
 CREATE TRIGGER collection_no_self_parent BEFORE INSERT ON collection
 WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
@@ -1450,7 +1457,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 4;
+PRAGMA user_version   = 5;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

@@ -166,7 +166,10 @@ def test_a_smart_collection_is_refused_not_emptied(placed):
 
     conn = connect.connect(placed.app.state.db_path)
     try:
-        with pytest.raises(ValueError, match="not evaluated"):
+        # TYPED, not a message string: a view decides "show the rule
+        # instead" by catching this, and the route seams still see a
+        # ValueError to answer 400 with.
+        with pytest.raises(resultset.UnevaluatedCollection, match="not evaluated"):
             resultset.describe(conn, "", resultset.parse(album="rules"), 0.0)
     finally:
         connect.close(conn)
@@ -192,6 +195,45 @@ def test_the_albums_index_renders_for_a_browser_and_stays_json_for_machines(plac
     assert page.status_code == 200
     assert 'data-album="keep"' in page.text
     assert "rule-defined" in page.text, "a smart collection is never shown as '0 pictures'"
+
+
+def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypatch):
+    """The CollectionView invariant under fire: kind is NOT immutable --
+    an empty collection legally converts to smart -- so the static/smart
+    decision must be made under the SAME snapshot the card is read from.
+    The writer converts exactly before the ResultSet's first read: the
+    response must be wholly one generation (here, wholly smart), never a
+    static header over a refused body, and never a 500."""
+    from db import resultset
+
+    burrow, root = _library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        assert client.post("/albums", json={"name": "Turncoat"}).json()["slug"] == "turncoat"
+        conn = connect.connect(client.app.state.db_path)
+        turncoat = conn.execute("SELECT id FROM collection WHERE name = 'Turncoat'").fetchone()[0]
+        connect.close(conn)
+
+        real = resultset.page
+
+        def convert_then_ask(conn_, models_dir, query, page_number, now):
+            writer = connect.connect(client.app.state.db_path)
+            writer.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (turncoat,))
+            writer.commit()
+            connect.close(writer)
+            return real(conn_, models_dir, query, page_number, now)
+
+        monkeypatch.setattr(resultset, "page", convert_then_ask)
+        told = client.get("/t/turncoat", headers=AS_MACHINE)
+        assert told.status_code == 200, "a mid-request conversion must never be a 500"
+        body = told.json()
+        assert body["kind"] == "smart"
+        assert body["gallery"] is None
+        assert body["rule"] == {"sql": "SELECT 1", "nl": None}
+        monkeypatch.setattr(resultset, "page", real)
+        after = client.get("/t/turncoat", headers=AS_MACHINE).json()
+        assert (after["kind"], after["gallery"]) == ("smart", None)
 
 
 def test_a_missing_folder_is_a_state_not_a_404_and_not_merely_empty(tmp_path):

@@ -754,17 +754,11 @@ def test_the_place_pages_ask_answerable_questions(library):
     assert (name, parent_id, missing) == ("portraits", top, None)
     assert [(n, p) for _, n, p in pages.folder_children(conn, top)] == [("landscape", 5), ("portraits", 7)]
     assert_no_growing_scan(conn, pages.FOLDER_CARD, (portraits,))
-    # A parent's immediate children are bounded by directory fan-out, and
-    # their NOCASE ordering cannot ride the binary folder_child_unique
-    # index -- the same declared summary exemption PERSON_ACROSS_FOLDERS
-    # carries, with the bare-scan ban still in force.
-    assert_no_growing_scan(conn, pages.FOLDER_CHILDREN, (top,), aggregate=True)
+    assert_no_growing_scan(conn, pages.FOLDER_CHILDREN, (top,))
 
     nested = authored.collection(conn, "Inside", NOW, parent_id=album)
-    assert pages.collection_kind(conn, album) == "album"
     assert pages.collection_card(conn, album)[1] == "album"
     assert [(n, k) for _, n, k in pages.collection_children(conn, album)] == [("Inside", "album")]
     assert pages.collection_children(conn, nested) == []
-    assert_no_growing_scan(conn, pages.COLLECTION_KIND, (album,))
     assert_no_growing_scan(conn, pages.COLLECTION_CARD, (album,))
-    assert_no_growing_scan(conn, pages.COLLECTION_CHILDREN, (album,), aggregate=True)
+    assert_no_growing_scan(conn, pages.COLLECTION_CHILDREN, (album,))

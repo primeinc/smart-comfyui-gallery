@@ -392,6 +392,54 @@ END"""
         conn.execute("DROP TABLE migrate_v3_embedding")
 
 
+@step(4)
+def _sibling_names_ignore_case(conn: sqlite3.Connection) -> None:
+    """v4 -> v5: sibling names are unique the way the platform spells them.
+
+    The scanner has always matched directory names COLLATE NOCASE
+    (db/scan.py ensure_folder) and files carry the same rule in
+    file_in_folder -- but the folder uniqueness indexes were binary, so
+    the schema permitted live siblings 'Vacation' and 'vacation' that
+    the scanner treats as one directory. The indexes now say what the
+    scanner does; NOCASE also lets the folder and collection child
+    listings ride them for their name ordering instead of a temp B-tree
+    (collection_parent widens for the same reason).
+
+    A library that somehow holds case-equivalent live siblings cannot be
+    stamped forward without merging identities nobody asked to merge, so
+    the step refuses and NAMES them; the file stays at v4. Index DDL is
+    schema.sql's text VERBATIM -- the drift check compares sqlite_master.
+    """
+    twins = conn.execute(
+        "SELECT group_concat(name, ' / ') FROM folder"
+        " WHERE parent_id IS NOT NULL AND missing_since IS NULL"
+        " GROUP BY parent_id, name COLLATE NOCASE HAVING count(*) > 1"
+    ).fetchall()
+    twins += conn.execute(
+        "SELECT group_concat(name, ' / ') FROM folder"
+        " WHERE parent_id IS NULL AND missing_since IS NULL"
+        " GROUP BY root_id, name COLLATE NOCASE HAVING count(*) > 1"
+    ).fetchall()
+    if twins:
+        named = "; ".join(row[0] for row in twins)
+        raise sqlite3.IntegrityError(
+            f"these live sibling directories differ only by case, and the scanner treats each pair as one:"
+            f" {named}. Rename them apart on disk and rescan, then migrate again."
+        )
+    conn.execute("DROP INDEX folder_root_unique")
+    conn.execute("DROP INDEX folder_child_unique")
+    conn.execute("DROP INDEX collection_parent")
+    conn.execute(
+        """CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name COLLATE NOCASE)
+    WHERE parent_id IS NULL AND missing_since IS NULL"""
+    )
+    conn.execute(
+        """CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name COLLATE NOCASE)
+    WHERE parent_id IS NOT NULL AND missing_since IS NULL"""
+    )
+    conn.execute("CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE)")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

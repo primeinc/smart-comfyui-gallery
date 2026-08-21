@@ -33,18 +33,22 @@ from sg_web.presenting import VARIES, wants_json
 
 def view(conn, models_dir: str, collection_id: int, slug: str, now: float, *, legacy: bool) -> dict:
     """The CollectionView, assembled inside ONE database snapshot. The
-    kind alone is read before it: nothing changes a collection's kind
-    after creation, and the branch has to happen before the ResultSet
-    page whose currency read must precede the snapshot pin.
+    ResultSet page is the FIRST read inside it -- its currency read
+    precedes the snapshot pin -- and a rule-defined collection is the
+    ResultSet's own typed refusal, decided under the same snapshot the
+    card is then read from: a kind converted mid-request answers wholly
+    as one generation, never a static header over a smart body. (An
+    empty collection CAN legally convert; the schema only refuses
+    converting one that holds filed members.)
 
     The unbounded legacy `files` list is the machine Adapter's shape
     only, exactly as on the person and folder addresses."""
-    kind = pages.collection_kind(conn, collection_id)
     with resultset.snapshot(conn):
-        grid = None
-        if kind != "smart":
+        try:
             grid = resultset.page(conn, models_dir, resultset.parse(album=slug), 1, now)
-        name, _, color, description, sql_text, nl_text, parent_id = pages.collection_card(conn, collection_id)
+        except resultset.UnevaluatedCollection:
+            grid = None
+        name, kind, color, description, sql_text, nl_text, parent_id = pages.collection_card(conn, collection_id)
         parent = None
         if parent_id is not None:
             addressed = naming.entity_slug(conn, parent_id)

@@ -488,21 +488,12 @@ def album_present(conn, collection_id: int) -> int:
     return conn.execute(ALBUM_PRESENT, (collection_id,)).fetchone()[0]
 
 
-COLLECTION_KIND = "SELECT kind FROM collection WHERE id = ?"
-
 COLLECTION_CARD = "SELECT name, kind, color, description, sql_text, nl_text, parent_id FROM collection WHERE id = ?"
 
 COLLECTION_CHILDREN = (
     "SELECT e.slug, c.name, c.kind FROM collection c JOIN entity e ON e.id = c.id"
     " WHERE c.parent_id = ? ORDER BY c.name COLLATE NOCASE"
 )
-
-
-def collection_kind(conn, collection_id: int) -> str:
-    """The kind alone. A collection's kind is set at creation and nothing
-    changes it, which is what lets a caller branch on it before opening
-    the snapshot the rest of the view is read under."""
-    return conn.execute(COLLECTION_KIND, (collection_id,)).fetchone()[0]
 
 
 def collection_card(conn, collection_id: int):
