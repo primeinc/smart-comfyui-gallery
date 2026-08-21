@@ -90,11 +90,23 @@ def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
         time.sleep(0.05)
 
 
-def connect(path, *, read_only: bool = False) -> sqlite3.Connection:
-    """Open the database with the settings the schema assumes."""
+def connect(path, *, read_only: bool = False, cross_thread: bool = False) -> sqlite3.Connection:
+    """Open the database with the settings the schema assumes.
+
+    `cross_thread=True` lifts sqlite3's same-thread check for a connection
+    that outlives any one request thread -- the caller owns serialising
+    access with its own lock, because the check it turned off was the only
+    other guard (python/cpython Doc/library/sqlite3.rst check_same_thread:
+    "Writing operations may need to be serialized by the user").
+    """
     if read_only:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=not cross_thread)
     else:
+        if cross_thread:
+            # A shared writer would need every consumer to serialise every
+            # statement; nothing in this application wants that, and a
+            # silently ignored flag would look honoured.
+            raise ValueError("cross_thread connections are read-only")
         # IMMEDIATE, not the default DEFERRED. Under legacy transaction
         # control sqlite3 opens a transaction before every INSERT, UPDATE,
         # DELETE and REPLACE, and `isolation_level` chooses which BEGIN it

@@ -1,0 +1,378 @@
+"""One authoritative answer to "what is the user looking at".
+
+A GalleryQuery names the question -- scope, filter, phrase, order, page
+size -- and every presentation surface reads the SAME materialized
+answer: the grid page, the total and page count, the rail's geometry,
+the hover peek, locate, previous and next. The browser chooses how
+results look, never what they are; no route, template or script owns a
+second opinion about membership or order.
+
+Behind the interface sits a disposable ordered projection: the full
+list of file ids in answer order, built once and paged by slicing. Two
+rules govern it, and both are contracts rather than implementation
+choices:
+
+- **Validity is (query fingerprint, data currency), never fingerprint
+  alone.** The fingerprint identifies the QUESTION; the currency
+  identifies the LIBRARY STATE it was answered against. A scan lands,
+  an embed job finishes, a rating changes -- a projection keyed only by
+  the question would keep answering from the world before the change,
+  which is precisely the divergence this module exists to prevent.
+  Currency comes from `PRAGMA data_version` read on ONE long-lived
+  read-only monitor connection per database file: the counter is
+  per-connection (sqlite/sqlite@b09c88c14 src/pager.c:669), bumps when a
+  read begins after any other connection's commit (src/pager.c:3306
+  -> pager_reset -> :1784), and reading the pragma opens that read
+  (src/btree.c:10443 asserts an open transaction) -- so a per-request
+  connection could never carry the key, and the monitor always can.
+
+- **Semantic order makes the projection MANDATORY, not an
+  optimization.** db/retrieval.py returns a rank fusion, and rank
+  fusion is not incrementally pageable: page 138 of a fused ranking
+  depends on every space's full candidate list. The fused ordering is
+  materialized once per (fingerprint, currency) and every page, peek
+  and locate reads it; nothing reruns FAISS per page. Do not "optimize"
+  the projection away -- keyset paging is an alternative only for the
+  time-ordered sorts, and adopting it would silently break semantic
+  paging.
+
+Materializing walks the whole membership once -- an ordered index walk
+for the time sorts, the fused retrieval for similarity. That cost is
+amortized over every page, peek and locate until the library changes,
+which is a different contract from db/pages.py's per-request queries
+and why these statements live here rather than there.
+
+Grouping is deliberately absent: group-aware page breaks change the
+page count, every anchor, and the meaning of an ordinal. It arrives
+when its effect on page boundaries is defined, not before.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import hashlib
+import json
+import sqlite3
+import threading
+
+#: The orders a query may ask for. "similarity" requires a phrase; the
+#: time sorts follow the file table's own indexes.
+SORTS = ("newest", "oldest", "similarity")
+
+#: The file kinds a query may filter to -- the vocabulary of file.kind.
+KINDS = ("image", "animated_image", "video", "audio", "document")
+
+DEFAULT_PAGE_SIZE = 60
+MAX_PAGE_SIZE = 400
+
+#: How many previews a peek may carry -- the rail popover shows 6..9.
+PEEK_MOST = 9
+
+#: How many projections stay resident per process. Each is one int per
+#: file plus an ordinal map -- a handful of concurrent questions, not a
+#: history.
+KEEP = 8
+
+
+@dataclasses.dataclass(frozen=True)
+class GalleryQuery:
+    """The question, whole. Frozen because the fingerprint is derived
+    from it; build one through `parse`, which refuses what the module
+    cannot answer instead of guessing."""
+
+    folder: str | None = None  # scope: one folder, by slug
+    album: str | None = None  # scope: one album (collection), by slug
+    kind: str | None = None  # filter: one file kind
+    text: str | None = None  # the semantic phrase; implies sort=similarity
+    sort: str = "newest"
+    size: int = DEFAULT_PAGE_SIZE
+
+
+def parse(
+    *,
+    folder: str | None = None,
+    album: str | None = None,
+    kind: str | None = None,
+    text: str | None = None,
+    sort: str | None = None,
+    size: int | None = None,
+) -> GalleryQuery:
+    """A validated GalleryQuery from request-shaped inputs.
+
+    Refusals are loud and name the rule: an unanswerable question must
+    fail where it is asked, never become an empty page that looks like
+    an answer.
+    """
+    folder = (folder or "").strip() or None
+    album = (album or "").strip() or None
+    kind = (kind or "").strip() or None
+    text = (text or "").strip() or None
+    if sort is None or not sort.strip():
+        sort = "similarity" if text else "newest"
+    if sort not in SORTS:
+        raise ValueError(f"sort must be one of {', '.join(SORTS)}, not {sort!r}")
+    if sort == "similarity" and text is None:
+        raise ValueError("sort=similarity needs a phrase to rank by")
+    if text is not None and sort != "similarity":
+        # A phrase used as a filter under a time sort is a real feature
+        # with its own membership rule; until that rule exists, refusing
+        # beats silently ignoring the phrase.
+        raise ValueError("a phrase orders by similarity; other sorts do not consume it")
+    if folder is not None and album is not None:
+        raise ValueError("one scope at a time: folder or album, not both")
+    if kind is not None and kind not in KINDS:
+        raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
+    chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
+    if not 1 <= chosen <= MAX_PAGE_SIZE:
+        raise ValueError(f"page size must be 1..{MAX_PAGE_SIZE}, not {chosen}")
+    return GalleryQuery(folder=folder, album=album, kind=kind, text=text, sort=sort, size=chosen)
+
+
+def fingerprint(query: GalleryQuery) -> str:
+    """The question's identity: canonical JSON over every field, hashed.
+    Page size is part of it because ordinal->page arithmetic is."""
+    told = json.dumps(dataclasses.asdict(query), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(told.encode()).hexdigest()[:16]
+
+
+# --- data currency ----------------------------------------------------------
+
+#: One read-only monitor connection per database file, held for the
+#: process. `PRAGMA data_version` is only comparable to itself on the
+#: same connection, so the connection that answers it must never be a
+#: per-request one.
+_MONITORS: dict[str, sqlite3.Connection] = {}
+_MONITOR_LOCK = threading.Lock()
+
+
+def _database_file(conn) -> str:
+    row = next((r for r in conn.execute("PRAGMA database_list") if r[1] == "main"), None)
+    return row[2] if row else ""
+
+
+def currency(conn) -> str:
+    """The library-state half of the projection key.
+
+    A file database answers from the monitor connection, which sees
+    every OTHER connection's commit -- and every writer in this
+    application is another connection, per-request or worker. An
+    in-memory database is reachable only through the one connection
+    that holds it, so its own `total_changes` (monotonic per DML row,
+    python/cpython Doc/library/sqlite3.rst Connection.total_changes)
+    carries the same meaning.
+    """
+    from . import connect
+
+    where = _database_file(conn)
+    if not where:
+        return f"mem{id(conn)}.{conn.total_changes}"
+    with _MONITOR_LOCK:
+        monitor = _MONITORS.get(where)
+        if monitor is None:
+            monitor = _MONITORS[where] = connect.connect(where, read_only=True, cross_thread=True)
+        return f"v{monitor.execute('PRAGMA data_version').fetchone()[0]}"
+
+
+# --- the projection ---------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class Projection:
+    fingerprint: str
+    currency: str
+    ids: tuple[int, ...]  # file ids, answer order
+    ordinal: dict[int, int]  # file id -> 0-based position
+    provenance: dict | None  # similarity only: participants/contributors/missing
+
+
+#: (database, fingerprint, currency) -> Projection, oldest evicted first.
+_PROJECTIONS: dict[tuple[str, str, str], Projection] = {}
+_PROJECTION_LOCK = threading.Lock()
+
+#: Ordered walks of the file table's own indexes. No LIMIT on purpose:
+#: these run once per library change, not once per page -- the module
+#: docstring owns that argument.
+LIBRARY_BY_TIME = "SELECT f.id FROM file f WHERE f.missing_since IS NULL{kind} ORDER BY f.mtime {order}, f.id {order}"
+FOLDER_BY_TIME = (
+    "SELECT f.id FROM file f WHERE f.folder_id = ? AND f.missing_since IS NULL{kind}"
+    " ORDER BY f.mtime {order}, f.id {order}"
+)
+ALBUM_BY_TIME = (
+    "SELECT f.id FROM collection_file cf"
+    " JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    " WHERE cf.collection_id = ?{kind}"
+    " ORDER BY f.mtime {order}, f.id {order}"
+)
+
+#: The names one page of cells needs, id-keyed; order is restored from
+#: the projection slice, so this query carries none.
+NAMED = "SELECT f.id, e.slug, f.name, f.kind FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+
+
+def _scope_id(conn, query: GalleryQuery) -> tuple[str, int] | None:
+    """Resolve the query's scope slug to its row, refusing an address
+    nothing lives at -- an empty page at a misspelled folder would look
+    exactly like an empty folder."""
+    from . import naming
+
+    for slug, entity_kind in ((query.folder, "folder"), (query.album, "collection")):
+        if slug is None:
+            continue
+        found = naming.resolve(conn, entity_kind, slug)
+        if found is None:
+            raise LookupError(f"no {entity_kind} at {slug!r}")
+        return entity_kind, found[0]
+    return None
+
+
+def _timed_ids(conn, query: GalleryQuery) -> list[int]:
+    order = "ASC" if query.sort == "oldest" else "DESC"
+    kind = " AND f.kind = ?" if query.kind is not None else ""
+    scoped = _scope_id(conn, query)
+    args: list[object] = []
+    if scoped is None:
+        sql = LIBRARY_BY_TIME
+    else:
+        sql = FOLDER_BY_TIME if scoped[0] == "folder" else ALBUM_BY_TIME
+        args.append(scoped[1])
+    if query.kind is not None:
+        args.append(query.kind)
+    return [row[0] for row in conn.execute(sql.format(kind=kind, order=order), args)]
+
+
+def _fused_ids(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[list[int], dict]:
+    """The whole fused ordering, once. `k` is the present-file count so
+    no space's candidate list is cut before the merge."""
+    from . import retrieval
+
+    total = conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0]
+    found = retrieval.query(conn, models_dir, query.text, max(total, 1), now, offline=True)
+    fused = [row["file_id"] for row in found["results"]]
+    scoped = _scope_id(conn, query)
+    if scoped is not None or query.kind is not None:
+        # Membership under a scope or filter is the fused ranking
+        # intersected with the SQL answer, fused order preserved --
+        # the ranking says how alike, the scope says which shelf.
+        allowed = set(_timed_ids(conn, dataclasses.replace(query, text=None, sort="newest")))
+        fused = [file_id for file_id in fused if file_id in allowed]
+    provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
+    return fused, provenance
+
+
+def _current(conn, models_dir: str, query: GalleryQuery, now: float) -> Projection:
+    """The projection for this question over the library as it stands --
+    a stale one is never reused, it is replaced."""
+    database = _database_file(conn) or f"mem{id(conn)}"
+    key = (database, fingerprint(query), currency(conn))
+    with _PROJECTION_LOCK:
+        held = _PROJECTIONS.get(key)
+    if held is not None:
+        return held
+    if query.sort == "similarity":
+        ids, provenance = _fused_ids(conn, models_dir, query, now)
+    else:
+        ids, provenance = _timed_ids(conn, query), None
+    made = Projection(
+        fingerprint=key[1],
+        currency=key[2],
+        ids=tuple(ids),
+        ordinal={file_id: position for position, file_id in enumerate(ids)},
+        provenance=provenance,
+    )
+    with _PROJECTION_LOCK:
+        _PROJECTIONS[key] = made
+        while len(_PROJECTIONS) > KEEP:
+            _PROJECTIONS.pop(next(iter(_PROJECTIONS)))
+    return made
+
+
+# --- the interface ----------------------------------------------------------
+
+
+def describe(conn, models_dir: str, query: GalleryQuery, now: float) -> dict:
+    """The result set's shape: what the rail is drawn from and what the
+    grid's pager believes. `currency` rides along so a client can tell
+    a redrawn answer from the one it is holding."""
+    held = _current(conn, models_dir, query, now)
+    total = len(held.ids)
+    return {
+        "total": total,
+        "pages": max(1, -(-total // query.size)),
+        "size": query.size,
+        "sort": query.sort,
+        "fingerprint": held.fingerprint,
+        "currency": held.currency,
+        "provenance": held.provenance,
+    }
+
+
+def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float) -> dict:
+    """One page of the answer, by number. A number past the end answers
+    with the last page that exists -- the library may have shrunk since
+    the rail was drawn, and the honest response is the page that IS,
+    named as itself."""
+    held = _current(conn, models_dir, query, now)
+    shape = describe(conn, models_dir, query, now)
+    number = min(max(1, int(number)), shape["pages"])
+    start = (number - 1) * query.size
+    shape["page"] = number
+    shape["items"] = _named(conn, held.ids[start : start + query.size], start)
+    return shape
+
+
+def peek(conn, models_dir: str, query: GalleryQuery, number: int, now: float, count: int = PEEK_MOST) -> dict:
+    """The rail popover's preview: the first few members of EXACTLY the
+    page a jump would land on -- by construction a prefix of what
+    `page` answers, and the test suite holds the two to it."""
+    held = _current(conn, models_dir, query, now)
+    shape = describe(conn, models_dir, query, now)
+    number = min(max(1, int(number)), shape["pages"])
+    start = (number - 1) * query.size
+    take = min(max(1, int(count)), PEEK_MOST, query.size)
+    return {
+        "page": number,
+        "pages": shape["pages"],
+        "total": shape["total"],
+        "first_ordinal": min(start + 1, max(shape["total"], 1)),
+        "last_ordinal": min(start + query.size, shape["total"]),
+        "currency": held.currency,
+        "items": _named(conn, held.ids[start : start + take], start),
+    }
+
+
+def locate(conn, models_dir: str, query: GalleryQuery, file_id: int, now: float) -> dict | None:
+    """Where one file sits in the answer -- its ordinal, its page, and
+    its neighbours in ANSWER order, which is what previous/next mean
+    while a result set is being walked. None when the file is not in
+    the membership at all."""
+    held = _current(conn, models_dir, query, now)
+    position = held.ordinal.get(int(file_id))
+    if position is None:
+        return None
+    neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
+    named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
+    return {
+        "ordinal": position + 1,
+        "page": position // query.size + 1,
+        "total": len(held.ids),
+        "currency": held.currency,
+        "previous": named.get(neighbours[0]),
+        "next": named.get(neighbours[1]),
+    }
+
+
+def _named(conn, ids, start: int) -> list[dict]:
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    held = {
+        row[0]: {"id": row[0], "slug": row[1], "name": row[2], "kind": row[3]}
+        for row in conn.execute(NAMED.format(marks=marks), list(ids))
+    }
+    told = []
+    for offset, file_id in enumerate(ids):
+        row = held.get(file_id)
+        if row is not None:
+            row["ordinal"] = start + offset + 1
+            told.append(row)
+    return told
