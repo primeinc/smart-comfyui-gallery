@@ -16,10 +16,16 @@ Hawaii" is made of. `instant_at` is the actual UTC instant, present
 ONLY when knowable. A camera claim with an offset yields both at full
 certainty; without the offset the wall clock STANDS and the instant
 stays honestly absent -- a known human clock is never replaced by a
-filesystem time to make a column easier to sort. Only media with no
-capture claim at all fall to the filesystem: btime, then mtime, each an
-instant with no local story. Model-derived annotations are inference,
-not evidence: nothing they say may enter this ladder.
+filesystem time to make a column easier to sort. After the camera
+speaks the GENERATOR: an embedded `date` claim the tool wrote into the
+file (file_param generation/date) is a wall claim about when the media
+HAPPENED, and it outranks every filesystem time -- btime records when
+bytes landed on this disk, which for a copied-in batch is the wrong
+day entirely. Only media with no capture and no embedded claim fall to
+btime, then mtime, instants with no local story. A claim that does not
+parse as a date is no claim: the ladder falls through rather than
+inventing chronology. Model-derived annotations are inference, not
+evidence: nothing they say may enter this ladder.
 
 Invalidation lives HERE, called from the source-fact writer seams
 (db/ingest.py after a parse, db/scan.py when a file's times change) --
@@ -50,18 +56,23 @@ SELECT f.id,
   CASE WHEN g.file_id IS NOT NULL THEN 'generated'
        WHEN c.file_id IS NOT NULL THEN 'captured'
        ELSE 'imported' END,
-  CASE WHEN c.captured_at IS NOT NULL THEN c.captured_at END,
+  CASE WHEN c.captured_at IS NOT NULL THEN c.captured_at
+       WHEN strftime('%s', d.value_text) IS NOT NULL
+         THEN CAST(strftime('%s', d.value_text) AS REAL) END,
   CASE WHEN c.captured_at IS NOT NULL AND c.tz_offset_min IS NOT NULL
          THEN c.captured_at - c.tz_offset_min * 60
        WHEN c.captured_at IS NOT NULL THEN NULL
+       WHEN strftime('%s', d.value_text) IS NOT NULL THEN NULL
        WHEN f.btime IS NOT NULL THEN f.btime
        ELSE f.mtime END,
   CASE WHEN c.captured_at IS NOT NULL THEN c.tz_offset_min END,
   CASE WHEN c.captured_at IS NOT NULL THEN 'capture'
+       WHEN strftime('%s', d.value_text) IS NOT NULL THEN 'embedded'
        WHEN f.btime IS NOT NULL THEN 'btime'
        ELSE 'mtime' END,
   CASE WHEN c.captured_at IS NOT NULL AND c.tz_offset_min IS NOT NULL THEN 1.0
        WHEN c.captured_at IS NOT NULL THEN 0.8
+       WHEN strftime('%s', d.value_text) IS NOT NULL THEN 0.6
        WHEN f.btime IS NOT NULL THEN 0.5
        ELSE 0.3 END,
   c.gps_lat, c.gps_lon,
@@ -72,6 +83,7 @@ SELECT f.id,
 FROM file f
 LEFT JOIN capture c ON c.file_id = f.id
 LEFT JOIN generation g ON g.file_id = f.id
+LEFT JOIN file_param d ON d.file_id = f.id AND d.source = 'generation' AND d.key = 'date'
 """
 
 

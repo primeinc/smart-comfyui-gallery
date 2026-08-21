@@ -76,6 +76,18 @@ def interpreted(tmp_path):
                 "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, parsed_at) VALUES(?, ?, NULL, 100, ?)",
                 (names["photo_b.png"], NOW + 13 * HOUR, NOW),
             )
+            # The GENERATOR's embedded claims: a real date on gen_0 (and a
+            # decoy on photo_a, which the camera outranks), garbage on
+            # gen_1 -- a claim that does not parse is no claim.
+            conn.executemany(
+                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
+                " VALUES(?, 'generation', 'date', ?)",
+                [
+                    (names["gen_0.png"], "2023-06-01"),
+                    (names["gen_1.png"], "last tuesday"),
+                    (names["photo_a.png"], "2023-06-01"),
+                ],
+            )
             context.rebuild(conn, NOW + 24 * HOUR)
             conn.commit()
         finally:
@@ -124,7 +136,16 @@ def test_two_time_concepts_and_every_date_names_its_basis(interpreted):
         assert local is None, "a filesystem instant has no local story to tell"
         assert instant is not None
 
-        assert held["gen_0.png"][0] == "generated"
+        origin, local, instant, offset, basis, certainty = held["gen_0.png"]
+        assert (origin, basis, certainty) == ("generated", "embedded", 0.6), (
+            "the generator's own date claim outranks every filesystem time"
+        )
+        assert local == 1_685_577_600.0, "2023-06-01 as a wall claim -- the day the media HAPPENED"
+        assert (instant, offset) == (None, None), "a date without a zone has no instant"
+
+        assert held["gen_1.png"][4] in ("btime", "mtime"), (
+            "a claim that does not parse is no claim; the ladder falls through, never invents"
+        )
         assert all(row[4] is not None for row in held.values()), "no unexplained dates: every time names its basis"
     finally:
         connect.close(conn)
