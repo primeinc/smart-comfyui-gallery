@@ -170,12 +170,13 @@ def region_from_pixels(conn, box, width: int, height: int, **kwargs) -> int:
 def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash64=None) -> None:
     """Perceptual hashes, keyed on the content hash they were taken from.
 
-    The row and the live index move together -- the one write path that
-    keeps "is the index stale?" from ever being a question (the shape
-    txtai's upsert takes: database and ANN in one operation). When the
-    perceptual space is resident, the new hash is searchable the moment
-    this returns; when it is not, the space's first alignment reads the
-    rows this wrote.
+    This writes the ROW only, never the live index: the runner rolls a
+    failed item's writes back (db/runner.py, `conn.rollback()` on
+    ITEM_FAILURES), and a FAISS index cannot ride that rollback -- an
+    early version mutated the resident space here and a later failure in
+    the same item left the index serving a hash the database never kept.
+    The index catches up in `db/similarity.align`, which digests only
+    rows a commit made durable.
     """
     conn.execute(
         "INSERT INTO derived_file_hash(file_id, phash64, dhash64, source_sha256, computed_at)"
@@ -185,15 +186,6 @@ def record_hash(conn, file_id: int, sha: str, now: float, *, phash64=None, dhash
         " computed_at = excluded.computed_at",
         tuple(plain(value) for value in (file_id, phash64, dhash64, sha, now)),
     )
-    if phash64 is None:
-        return
-    from . import similarity
-
-    manager = similarity.manager_for(conn)
-    if manager.has(similarity.PHASH.key):
-        if int(file_id) in set(manager.ids(similarity.PHASH.key).tolist()):
-            manager.remove(similarity.PHASH.key, [file_id])
-        manager.add(similarity.PHASH.key, [file_id], [phash64])
 
 
 def stale(conn, table: str) -> list[int]:
@@ -636,7 +628,7 @@ def cluster(
     space = similarity.face_space(model_id, model_version, int(vectors.shape[1]))
     manager = similarity.manager_for(conn)
     at = {face_id: position for position, face_id in enumerate(face_ids)}
-    similarity.align(manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]])
+    similarity.align(conn, manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]], now)
     edges_a, edges_b, weights = similarity.pair_graph(manager, space.key, threshold)
     backend = manager.served_by(space.key)
     # grouping.group consumes the positional CSR shape; positions here are

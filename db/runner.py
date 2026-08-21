@@ -142,10 +142,10 @@ def submit_dupes(conn, now: float) -> int:
     return jobs.submit(conn, "hash", now, payload={"derive": "groups", "threshold": threshold}, items=[0])
 
 
-def warm_similarity(conn) -> None:
+def warm_similarity(conn, now: float) -> None:
     """Boot: make the hot spaces resident -- restore from snapshots when
-    they match, rebuild once when they do not. After this, producers
-    upsert into live indexes and jobs answer without a build step."""
+    they match, rebuild once when they do not. After this, jobs mutate
+    and query live indexes without a build step."""
     from . import similarity
 
     manager = similarity.manager_for(conn)
@@ -157,7 +157,7 @@ def warm_similarity(conn) -> None:
         )
     )
     if rows:
-        similarity.align(manager, similarity.PHASH, sorted(rows), lambda wanted: [rows[v] for v in wanted])
+        similarity.align(conn, manager, similarity.PHASH, sorted(rows), lambda wanted: [rows[v] for v in wanted], now)
     for model_id, model_version, dimensions in conn.execute(
         "SELECT model_id, model_version, MAX(length(embedding)) / 4 FROM derived_face_instance"
         " WHERE embedding IS NOT NULL GROUP BY model_id, model_version"
@@ -171,7 +171,7 @@ def warm_similarity(conn) -> None:
                 (model_id, model_version),
             )
         ]
-        similarity.align(manager, space, ids, lambda wanted: _face_vectors(conn, wanted))
+        similarity.align(conn, manager, space, ids, lambda wanted: _face_vectors(conn, wanted), now)
 
 
 def _face_vectors(conn, wanted):
@@ -211,7 +211,7 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
     by_id = {row[0]: row for row in rows}
     manager = similarity.manager_for(conn)
-    similarity.align(manager, similarity.PHASH, sorted(by_id), lambda wanted: [by_id[v][1] for v in wanted])
+    similarity.align(conn, manager, similarity.PHASH, sorted(by_id), lambda wanted: [by_id[v][1] for v in wanted], now)
     twins_a, twins_b, _distances = similarity.pair_graph(manager, similarity.PHASH.key, threshold)
 
     parent = {file_id: file_id for file_id in by_id}

@@ -14,6 +14,9 @@ test instrument, not a backend.
 
 from __future__ import annotations
 
+import pathlib
+import sqlite3
+
 import numpy as np
 import pytest
 
@@ -93,9 +96,16 @@ def test_cpu_and_gpu_policies_agree_on_the_edges():
     quick = IndexManager(gpu=True)
     quick.load(spec, ids, vectors)
     assert pairs_of(quick, spec.key, 0.4) == told
-    if quick.served_by(spec.key) == "faiss-gpu":
-        assert quick._spaces[spec.key].gpu_clone is not None, "the device clone was not kept resident"
-        assert pairs_of(quick, spec.key, 0.4) == told, "the resident clone answered differently"
+    from vision.faiss_runtime import import_faiss
+
+    faiss = import_faiss(gpu=True)
+    if not (hasattr(faiss, "StandardGpuResources") and faiss.get_num_gpus() > 0):
+        pytest.skip("no GPU in this environment; the CPU-policy half of the parity ran")
+    # A GPU exists, so the gpu=True manager MUST have answered on it --
+    # a silent CPU answer here is the fallback theater this test bans.
+    assert quick.served_by(spec.key) == "faiss-gpu"
+    assert quick._spaces[spec.key].gpu_clone is not None, "the device clone was not kept resident"
+    assert pairs_of(quick, spec.key, 0.4) == told, "the resident clone answered differently"
 
 
 def test_a_pair_sitting_exactly_on_the_threshold_is_kept():
@@ -222,28 +232,139 @@ def test_checkpoint_all_writes_only_what_changed(tmp_path):
 # --- align: the one path a consumer keeps a space current by ---------------
 
 
-def test_align_builds_restores_and_diffs_without_rereading(tmp_path):
+SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
+
+
+@pytest.fixture
+def db():
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def test_align_keeps_a_binary_space_content_exact(db, tmp_path):
+    """A file's id is stable while its bytes -- and so its hash -- change.
+    Align compares every held value, so the same id carrying a new hash
+    is re-indexed instead of silently serving the old picture. And every
+    align records the space's durable identity."""
+    table = {1: 0, 2: 0b111}
+    manager = IndexManager(tmp_path)
+    similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [table[v] for v in w], 5.0)
+    assert pairs_of(manager, similarity.PHASH.key, 3) == {(1, 2), (2, 1)}
+
+    table[2] = 0xFFFFFFFFFFFFFFF0
+    similarity.align(db, manager, similarity.PHASH, [1, 2], lambda w: [table[v] for v in w], 6.0)
+    assert pairs_of(manager, similarity.PHASH.key, 3) == set(), "the changed hash kept its old vector"
+    assert pairs_of(manager, similarity.PHASH.key, 63) == {(1, 2), (2, 1)}
+
+    key, producer, version, when = db.execute(
+        "SELECT key, producer, producer_version, aligned_at FROM derived_similarity_space"
+    ).fetchone()
+    assert (key, producer) == ("perceptual.phash64", "imagehash.phash")
+    assert version
+    assert when == 6.0
+
+
+def test_align_restores_a_float_space_without_rereading_embeddings(db, tmp_path):
+    """The restore path's whole point: a warm boot must not read every
+    embedding blob back just to prove the snapshot right. Ids never
+    reuse (derived_face_instance is AUTOINCREMENT), so the id diff reads
+    only genuinely new rows."""
+    rng = np.random.default_rng(7)
+    vectors = {n: rng.normal(size=8).astype(np.float32) for n in (10, 20, 30)}
     fetched: list[list[int]] = []
 
     def rows(wanted):
         fetched.append(list(wanted))
-        return [{1: 0, 2: 0b111, 3: 0b101}[v] for v in wanted]
+        return np.vstack([vectors[v] for v in wanted])
 
+    spec = SpaceSpec("face.aligned", "float32", 8, "cosine", producer="fake", producer_version="1")
     first = IndexManager(tmp_path)
-    similarity.align(first, PHASH, [1, 2], rows)
-    assert fetched == [[1, 2]]
-    assert first.count(PHASH.key) == 2
-
-    similarity.align(first, PHASH, [1, 2], rows)
-    assert fetched == [[1, 2]], "an aligned space re-read its rows"
+    similarity.align(db, first, spec, [10, 20], rows, 0.0)
+    assert fetched == [[10, 20]]
 
     second = IndexManager(tmp_path)
-    similarity.align(second, PHASH, [1, 2], rows)
-    assert fetched == [[1, 2]], "a valid snapshot re-read its rows"
+    similarity.align(db, second, spec, [10, 20], rows, 1.0)
+    assert fetched == [[10, 20]], "a valid snapshot re-read its embeddings"
 
-    similarity.align(second, PHASH, [2, 3], rows)
-    assert fetched == [[1, 2], [3]], "a diff re-read rows the index already held"
-    assert set(second.ids(PHASH.key).tolist()) == {2, 3}
+    similarity.align(db, second, spec, [20, 30], rows, 2.0)
+    assert fetched == [[10, 20], [30]], "a diff re-read embeddings the index already held"
+    assert set(second.ids(spec.key).tolist()) == {20, 30}
+
+
+def test_a_rolled_back_hash_never_reaches_the_live_index(db, tmp_path):
+    """The runner rolls a failed item's writes back; an index that took
+    the write anyway serves a hash the database never kept -- and a
+    shutdown checkpoint makes the lie durable. So producers write rows
+    only, and align digests what commits actually kept."""
+    from db import derived, scan
+
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
+    folder = scan.mint(db, "folder", "lib")
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,NULL,'lib',0)", (folder,))
+    file_id = scan.mint(db, "file", "p")
+    db.execute(
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,first_seen_at,last_seen_at)"
+        " VALUES(?,?,?,'image',1,0,'aa',0,0)",
+        (file_id, folder, "p.png"),
+    )
+    derived.record_hash(db, file_id, "aa", 0.0, phash64=0b1)
+    db.commit()
+
+    def committed(wanted):
+        held = dict(db.execute("SELECT file_id, phash64 FROM derived_file_hash"))
+        return [held[v] for v in wanted]
+
+    manager = IndexManager(tmp_path)
+    similarity.align(db, manager, similarity.PHASH, [file_id], committed, 1.0)
+    db.commit()
+
+    derived.record_hash(db, file_id, "bb", 2.0, phash64=0b11110000)
+    db.rollback()
+    similarity.align(db, manager, similarity.PHASH, [file_id], committed, 3.0)
+    _labels, distances = manager.search(similarity.PHASH.key, [0b1], 1)
+    assert int(distances[0][0]) == 0, "the index is ahead of the database it serves"
+
+    derived.record_hash(db, file_id, "bb", 4.0, phash64=0b11110000)
+    db.commit()
+    similarity.align(db, manager, similarity.PHASH, [file_id], committed, 5.0)
+    _labels, distances = manager.search(similarity.PHASH.key, [0b11110000], 1)
+    assert int(distances[0][0]) == 0, "the committed replacement never reached the index"
+
+
+def test_a_snapshot_from_another_process_restores_and_answers(tmp_path):
+    """Process A checkpoints and dies; process B restores from its files
+    and answers -- the boot the snapshot tier exists for, across a real
+    process boundary."""
+    import subprocess
+    import sys
+
+    spec = SpaceSpec("perceptual.phash64", "binary", 64, "hamming", producer="imagehash.phash", producer_version="x")
+    fields = (spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, spec.producer_version)
+    script = (
+        "from vision.faiss_index import IndexManager, SpaceSpec\n"
+        f"spec = SpaceSpec(*{fields!r})\n"
+        f"manager = IndexManager({str(tmp_path)!r})\n"
+        "manager.load(spec, [700, 3], [7, 5])\n"
+        "manager.checkpoint(spec.key)\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=pathlib.Path(__file__).resolve().parent.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+
+    manager = IndexManager(tmp_path)
+    assert manager.restore(spec), "process B refused process A's snapshot"
+    assert (700, 3) in pairs_of(manager, spec.key, 2)
+
+    obsolete = SpaceSpec(spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, "y")
+    fresh = IndexManager(tmp_path)
+    assert not fresh.restore(obsolete), "a snapshot from an obsolete producer version answered"
 
 
 def test_search_answers_topk_by_stable_id():

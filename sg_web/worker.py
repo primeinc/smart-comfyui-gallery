@@ -52,7 +52,7 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
         # on the first job. A failed warm is a slower first job, never a
         # worker that refuses to start.
         try:
-            runner.warm_similarity(conn)
+            runner.warm_similarity(conn, time.time())
             conn.commit()
         except Exception:
             conn.rollback()

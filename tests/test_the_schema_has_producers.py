@@ -365,6 +365,7 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
         "derived_file_hash",
         "derived_file_person",
         "derived_media_sample",
+        "derived_similarity_space",
     }, dropped
     assert db.execute("SELECT count(*) FROM annotation_fts").fetchone()[0] == 0, (
         "the caption index outlived the captions"

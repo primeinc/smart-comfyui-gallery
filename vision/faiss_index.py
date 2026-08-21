@@ -86,12 +86,20 @@ FALLIBLE = (ImportError, OSError, RuntimeError, AttributeError, ValueError, Type
 
 @dataclass(frozen=True)
 class SpaceSpec:
-    """What the vectors in one space mean -- never how they are searched."""
+    """What the vectors in one space mean -- never how they are searched.
+
+    `producer` and `producer_version` name what computed the vectors: an
+    index of ArcFace embeddings answered with SFace queries is garbage
+    with a valid shape, so provenance is part of the spec, rides the
+    snapshot sidecar, and a snapshot from an obsolete producer is
+    refused the same as one with the wrong dimensions."""
 
     key: str
     representation: str  # 'binary' | 'float32'
     dimensions: int  # bits for binary, floats for float32
     metric: str  # 'hamming' for binary, 'cosine' for float32
+    producer: str = ""
+    producer_version: str = ""
 
 
 def _signed_to_packed(values, bits: int):
@@ -222,8 +230,12 @@ class IndexManager:
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return False
-        claimed = (sidecar.get("key"), sidecar.get("representation"), sidecar.get("dimensions"), sidecar.get("metric"))
-        if claimed != (spec.key, spec.representation, spec.dimensions, spec.metric):
+        claimed = tuple(
+            sidecar.get(field)
+            for field in ("key", "representation", "dimensions", "metric", "producer", "producer_version")
+        )
+        wanted = (spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, spec.producer_version)
+        if claimed != wanted:
             return False
         faiss = self._faiss()
         try:
@@ -307,6 +319,8 @@ class IndexManager:
                 "representation": space.spec.representation,
                 "dimensions": space.spec.dimensions,
                 "metric": space.spec.metric,
+                "producer": space.spec.producer,
+                "producer_version": space.spec.producer_version,
                 "normalization": "l2" if space.spec.representation == "float32" else None,
                 "vectors": int(space.index.ntotal),
                 "faiss": getattr(faiss, "__version__", None),
@@ -339,6 +353,14 @@ class IndexManager:
         space = self._space(key)
         with space.lock:
             return faiss.vector_to_array(space.index.id_map)
+
+    def vectors(self, key: str):
+        """The stored rows in the same order as `ids` -- unit float32 for
+        float spaces, packed uint8 for binary. Read back from the index
+        itself: the index IS the store."""
+        space = self._space(key)
+        with space.lock:
+            return self._matrix(space)
 
     def served_by(self, key: str) -> str | None:
         """Which execution answered this space's last search -- provenance

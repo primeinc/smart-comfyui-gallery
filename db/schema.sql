@@ -989,6 +989,24 @@ CREATE TABLE derived_file_hash (
 ) STRICT;
 CREATE INDEX derived_file_hash_phash ON derived_file_hash(phash64);
 
+-- The durable identity of each live similarity space: what its vectors
+-- ARE (representation, dimensions, metric) and what PRODUCED them
+-- (producer, producer_version). Written every time db/similarity.align
+-- makes a space resident; read by anyone deciding whether an index, a
+-- snapshot, or a comparison is semantically valid. Without this row,
+-- "face.x.y holds 512-d cosine ArcFace vectors" lives only in code and
+-- sidecar files -- a database restored on another machine could not say
+-- what its own derived vectors mean.
+CREATE TABLE derived_similarity_space (
+    key                TEXT PRIMARY KEY,
+    representation     TEXT NOT NULL CHECK (representation IN ('binary','float32')),
+    dimensions         INTEGER NOT NULL CHECK (dimensions > 0),
+    metric             TEXT NOT NULL CHECK (metric IN ('hamming','cosine')),
+    producer           TEXT NOT NULL,
+    producer_version   TEXT NOT NULL,
+    aligned_at         REAL NOT NULL
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE derived_embedding (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     space         TEXT NOT NULL CHECK (space IN ('semantic','visual')),
@@ -1068,7 +1086,13 @@ CREATE TABLE derived_face_membership (
 CREATE INDEX derived_face_membership_face ON derived_face_membership(face_id);
 
 CREATE TABLE derived_face_instance (
-    id            INTEGER PRIMARY KEY,
+    -- AUTOINCREMENT for the same reason as `entity`: these ids feed the
+    -- resident face index (vision/faiss_index.py), and index alignment
+    -- treats an id as a stable identity. Plain INTEGER PRIMARY KEY
+    -- reuses the largest free rowid, so a re-detected file could delete
+    -- face 42 and mint a DIFFERENT face as 42 -- same id, new embedding,
+    -- and an aligned index would keep serving the old vector.
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     sample_id     INTEGER REFERENCES derived_media_sample(id) ON DELETE CASCADE,
     -- No cluster_id. Which cluster a face is in is a fact about a RUN, and

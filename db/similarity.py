@@ -19,9 +19,31 @@ import threading
 
 from vision.faiss_index import IndexManager, SpaceSpec
 
+
+def _imagehash_version() -> str:
+    """The producer version of every stored phash64: a hash algorithm
+    change across library versions silently un-matches every stored
+    hash, so the version is part of the space's identity and a snapshot
+    from another version is refused."""
+    import importlib.metadata
+
+    try:
+        return importlib.metadata.version("ImageHash")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
 #: The perceptual-hash space: 64 hamming bits per picture, produced by
-#: the phash job and consumed by dupe grouping.
-PHASH = SpaceSpec(key="perceptual.phash64", representation="binary", dimensions=64, metric="hamming")
+#: imagehash.phash (vision/dupes.py perceptual) and consumed by dupe
+#: grouping.
+PHASH = SpaceSpec(
+    key="perceptual.phash64",
+    representation="binary",
+    dimensions=64,
+    metric="hamming",
+    producer="imagehash.phash",
+    producer_version=_imagehash_version(),
+)
 
 
 def face_space(model_id: str, model_version: str, dimensions: int) -> SpaceSpec:
@@ -32,6 +54,8 @@ def face_space(model_id: str, model_version: str, dimensions: int) -> SpaceSpec:
         representation="float32",
         dimensions=int(dimensions),
         metric="cosine",
+        producer=model_id,
+        producer_version=model_version,
     )
 
 
@@ -68,37 +92,78 @@ def manager_for(conn) -> IndexManager:
         return _SHARED[where]
 
 
-def align(manager: IndexManager, spec: SpaceSpec, ids, fetch) -> None:
-    """Make `spec.key` resident and holding exactly `ids`.
+def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) -> None:
+    """Make `spec.key` resident and holding exactly these rows, and record
+    the space's durable identity in `derived_similarity_space`.
 
     The cheap tiers first: an already-resident space is diffed against
-    the wanted ids and mutated -- adds are searchable immediately,
-    strangers leave -- reading representations (`fetch(missing_ids)`)
-    only for rows the index does not already hold. A cold process tries
-    the snapshot before paying for a full build. Any mutation is
-    checkpointed, so the next boot restores instead of rebuilding.
+    the wanted rows and mutated -- adds are searchable immediately,
+    strangers leave -- and a cold process tries the snapshot before
+    paying for a full build. Any mutation is checkpointed, so the next
+    boot restores instead of rebuilding.
 
-    The id diff is sufficient because every producer writes derived rows
-    fresh under new ids or upserts through the index (db/derived.py
-    record_hash) -- a row's representation never changes behind an id
-    this module would keep.
+    Align digests COMMITTED truth only. A producer must never push its
+    own uncommitted rows into a live index: the runner rolls a failed
+    item's writes back (db/runner.py, `conn.rollback()` on
+    ITEM_FAILURES) and an index cannot ride that rollback, so producers
+    write rows and this function reconciles the index with what commits
+    actually kept.
+
+    What "same row" means differs by representation, and each gets the
+    check its hazard demands:
+
+    - binary: the id is a FILE, whose hash changes when its bytes do --
+      so every held row's value is compared and a changed one is
+      re-indexed. The values are 8 bytes each and the caller already
+      holds them; the comparison is free.
+    - float32: the id is never reused -- derived_face_instance is
+      AUTOINCREMENT precisely so a deleted face's id cannot come back
+      wearing a different embedding (db/schema.sql) -- and embeddings
+      are written once at detection, so the id diff IS the content
+      diff, and gigabytes of blobs stay unread on the restore path.
     """
+    import numpy as np
+
+    from vision.faiss_index import _signed_to_packed
+
     wanted = [int(v) for v in ids]
     if not manager.has(spec.key):
         manager.restore(spec)
+    changed = False
     if not manager.has(spec.key):
         manager.load(spec, wanted, fetch(wanted))
+        changed = True
+    else:
+        held = set(manager.ids(spec.key).tolist())
+        strangers = sorted(held - set(wanted))
+        missing = [v for v in wanted if v not in held]
+        if strangers:
+            manager.remove(spec.key, strangers)
+        stale: list[int] = []
+        if spec.representation == "binary":
+            keeping = [v for v in wanted if v in held and v not in set(missing)]
+            if keeping:
+                values = fetch(keeping)
+                stored = dict(zip(manager.ids(spec.key).tolist(), manager.vectors(spec.key), strict=True))
+                packed = _signed_to_packed(values, spec.dimensions)
+                stale = [v for at, v in enumerate(keeping) if not np.array_equal(packed[at], stored[v])]
+                if stale:
+                    manager.remove(spec.key, stale)
+        renewed = missing + stale
+        if renewed:
+            manager.add(spec.key, renewed, fetch(renewed))
+        changed = bool(strangers or renewed)
+    if changed:
         manager.checkpoint(spec.key)
-        return
-    held = set(manager.ids(spec.key).tolist())
-    strangers = sorted(held - set(wanted))
-    missing = [v for v in wanted if v not in held]
-    if strangers:
-        manager.remove(spec.key, strangers)
-    if missing:
-        manager.add(spec.key, missing, fetch(missing))
-    if strangers or missing:
-        manager.checkpoint(spec.key)
+    conn.execute(
+        "INSERT INTO derived_similarity_space(key, representation, dimensions, metric,"
+        " producer, producer_version, aligned_at) VALUES(?, ?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(key) DO UPDATE SET representation = excluded.representation,"
+        " dimensions = excluded.dimensions, metric = excluded.metric,"
+        " producer = excluded.producer, producer_version = excluded.producer_version,"
+        " aligned_at = excluded.aligned_at",
+        (spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, spec.producer_version, now),
+    )
 
 
 def pair_graph(manager: IndexManager, key: str, threshold):

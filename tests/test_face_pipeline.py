@@ -462,3 +462,29 @@ def test_choose_primary_without_assertions_takes_the_measured_threshold(db):
         assert derived.choose_primary(db) == b_run
     finally:
         derived.SAME_PERSON.pop("fake/peek", None)
+
+
+def test_a_deleted_face_id_is_never_handed_out_again(db):
+    """derived_face_instance ids feed the resident face index, and index
+    alignment treats an id as a stable identity. Plain rowid tables
+    reuse the largest free id, so a re-detect could mint a new face
+    wearing a deleted face's id -- same id, different embedding, and an
+    aligned index keeps serving the old vector. AUTOINCREMENT is the
+    schema-level guarantee this pins."""
+    (file_id,) = library(db, 1)
+    db.execute("INSERT INTO region(id, x, y, w, h) VALUES(1, 0.1, 0.1, 0.2, 0.2)")
+
+    def face() -> int:
+        return db.execute(
+            "INSERT INTO derived_face_instance(file_id, region_id, model_id, model_version,"
+            " det_score, embedding, source_sha256, computed_at)"
+            " VALUES(?, 1, 'm', '1', 0.9, x'00000000', 'aa', 0)",
+            (file_id,),
+        ).lastrowid
+
+    first = face()
+    second = face()
+    assert second > first
+    db.execute("DELETE FROM derived_face_instance WHERE id = ?", (second,))
+    third = face()
+    assert third > second, "a deleted face id came back wearing a different embedding"
