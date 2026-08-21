@@ -298,6 +298,9 @@ def _pre_v10_core(conn) -> None:
     conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute("PRAGMA legacy_alter_table=ON")
     for table in (
+        "derived_prompt_embedding",
+        "derived_prompt_section",
+        "generation_prompt",
         "story_render",
         "story_plan",
         "story_snapshot",
@@ -359,6 +362,21 @@ def _pre_v10_core(conn) -> None:
     conn.execute("DROP TABLE job_keep")
     conn.execute("CREATE INDEX job_state ON job(state)")
     conn.execute("CREATE INDEX job_target ON job(target_id)")
+    # generation as it stood before v18: the two prompt columns
+    conn.execute("DROP TABLE generation")
+    conn.execute(
+        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
+        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
+        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
+        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
+        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
+        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
+        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
+    )
+    conn.execute("CREATE INDEX generation_workflow ON generation(workflow_id)")
+    conn.execute("CREATE INDEX generation_prompt   ON generation(prompt_id)")
+    conn.execute("CREATE INDEX generation_negative ON generation(negative_id)")
+    conn.execute("CREATE INDEX generation_seed     ON generation(seed)")
     conn.commit()
     conn.execute("PRAGMA legacy_alter_table=OFF")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -887,7 +905,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

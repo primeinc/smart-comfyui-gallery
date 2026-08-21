@@ -105,6 +105,20 @@ def query_policy(provider: str, model: str, checkpoint: str) -> dict:
     return provider_module(provider).query_policy(model, checkpoint)
 
 
+def policy_hash(provider: str, model: str, checkpoint: str) -> str:
+    """The digest of a configuration's QUERY policy: one token for
+    everything that turns a text into its vector. Query vectors live in
+    the provider's joint space (comparability is the space's); which
+    instruction and tokenizer produced one is this -- provenance and
+    currentness for stored prompt vectors and planner identity alike."""
+    import hashlib
+    import json
+
+    policy = query_policy(provider, model, checkpoint)
+    spelled = json.dumps(policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "q" + hashlib.sha256(spelled.encode("utf-8")).hexdigest()[:24]
+
+
 def immutable(provider: str, checkpoint: str) -> bool:
     """Does this checkpoint name fixed weights? A mutable pointer (a hub
     branch) cannot be queued as provenance: it may resolve to a

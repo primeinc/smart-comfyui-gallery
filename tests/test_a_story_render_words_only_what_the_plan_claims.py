@@ -170,7 +170,7 @@ def test_the_golden_render_for_a_sequenced_session():
             "profile": "memory",
             "locale": "en",
             "policy": 1,
-            "reads": {"snapshot": 1, "plan": 2},
+            "reads": {"snapshot": 1, "plan": 3},
         },
         "title": "5 Qwen Image Edit images from July 18, 2026",
         "dek": "2 phases across 5 generated images",
@@ -386,16 +386,16 @@ def test_the_v1_grammar_is_frozen_exact_and_exception_proof(monkeypatch):
     profiles = rendering.PROFILES
     monkeypatch.setattr(rendering, "FORMAT_VERSION", 2)
     monkeypatch.setattr(rendering, "PROFILES", ())
-    monkeypatch.setattr(planning, "FORMAT_VERSION", 3)
+    monkeypatch.setattr(planning, "FORMAT_VERSION", 4)
     assert rendering.validate_story_render_v1(render) == [], "v1 is judged by v1's frozen vocabulary"
     assert rendering.validate_story_render(render) == []
     assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
     monkeypatch.setattr(rendering, "PROFILES", profiles)
-    assert rendering.TemplateStoryRenderer.reads == {"snapshot": {1}, "plan": {1, 2}}
+    assert rendering.TemplateStoryRenderer.reads == {"snapshot": {1}, "plan": {1, 2, 3}}
     again = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
-    assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 2}
-    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[1, 2\\]"):
-        rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 3}, snapshot_sha, plan_sha)
+    assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 3}
+    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[1, 2, 3\\]"):
+        rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 4}, snapshot_sha, plan_sha)
     assert rendering.validate_story_render({**render, "v": 7})
     assert rendering.validate_story_render({**render, "v": True})
 

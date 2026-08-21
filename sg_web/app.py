@@ -49,6 +49,7 @@ from db import (
     naming,
     oriented,
     pages,
+    prompts,
     runner,
     scan,
     settings,
@@ -337,6 +338,46 @@ def submit_embed(state: State) -> list[dict]:
         conn.commit()
         _nudge(state)
         return [jobs.snapshot(conn, job_id) for job_id in job_ids]
+    finally:
+        connect.close(conn)
+
+
+@post("/jobs/embed_prompts", sync_to_thread=True)
+def submit_embed_prompts(state: State) -> list[dict]:
+    """Ask for every role-playing prompt's vector under every participating
+    space (db/prompts.py submit_embed) -- the reusable substrate story
+    planning, prompt neighbours and prompt clustering read from. One job
+    per space; already-current prompts are not queued."""
+    conn = _connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            job_ids = prompts.submit_embed(conn, time.time(), models_dir=weights)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        _nudge(state)
+        return [jobs.snapshot(conn, job_id) for job_id in job_ids]
+    finally:
+        connect.close(conn)
+
+
+@get("/prompts/{prompt_id:int}/neighbours", sync_to_thread=True)
+def prompt_neighbours(state: State, prompt_id: int, space: str, k: int = 10, role: str | None = None) -> dict:
+    """Prompts nearest to one prompt in ONE chosen space (`space` names
+    the provider) under its current query policy, by that space's own
+    cosine; no model loads. `role` constrains the candidates before
+    ranking. Scores from different spaces are never merged
+    (db/prompts.py neighbours)."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            return prompts.neighbours(conn, prompt_id, space, weights, k, time.time(), role=role)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
     finally:
         connect.close(conn)
 
@@ -924,6 +965,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             submit_ingest,
             submit_phash,
             submit_embed,
+            submit_embed_prompts,
+            prompt_neighbours,
             search,
             submit_dupes,
             dupes,

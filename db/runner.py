@@ -576,8 +576,16 @@ def _story_plan_item(conn, item: int, payload: dict, now: float) -> None:
     planning.plan_item(conn, item, payload, now)
 
 
+def _embed_prompts_item(conn, prompt_id: int, payload: dict, now: float) -> None:
+    """One prompt's vector under one text space (db/prompts.py)."""
+    from . import prompts
+
+    prompts.embed_item(conn, prompt_id, payload, now)
+
+
 HANDLERS = {
     "story_plan": _story_plan_item,
+    "embed_prompts": _embed_prompts_item,
     "context": _context_item,
     "events": _events_item,
     "scan": _ingest_item,

@@ -34,6 +34,7 @@ from metaparse.typed import GenerationParams
 from . import capture as capture_module
 from . import graph as graph_module
 from . import probe as probe_module
+from . import prompts as prompts_module
 from .scan import mint
 
 #: PNG text chunks that carry a whole workflow graph rather than a value.
@@ -66,6 +67,7 @@ _OWNED = {
             "unet",
         ),
         "carriers": ("png_text", "xmp"),
+        "relations": ("generation_prompt",),
     },
     "camera": {
         "sources": ("exif",),
@@ -91,6 +93,8 @@ def retract(conn, file_id: int, scope: str) -> None:
     strand a whole workflow graph in `blob` permanently.
     """
     owned = _OWNED[scope]
+    for table in owned.get("relations", ()):
+        conn.execute(f"DELETE FROM {table} WHERE file_id = ?", (file_id,))
     for table, column, values in (
         ("file_param", "source", owned["sources"]),
         ("file_artifact", "role", owned["roles"]),
@@ -417,17 +421,15 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     negative = prompt(conn, typed.negative_prompt, now)
     out.prompt_id = positive
     conn.execute(
-        "INSERT OR REPLACE INTO generation(file_id, tool, detection, workflow_id, prompt_id,"
-        " negative_id, seed, steps, cfg, denoise, clip_skip, sampler, scheduler,"
+        "INSERT OR REPLACE INTO generation(file_id, tool, detection, workflow_id,"
+        " seed, steps, cfg, denoise, clip_skip, sampler, scheduler,"
         " width, height, parser, parsed_at)"
-        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             file_id,
             typed.tool,
             typed.detection,
             workflow_id,
-            positive,
-            negative,
             typed.seed,
             typed.steps,
             typed.cfg,
@@ -441,6 +443,21 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
             now,
         ),
     )
+    # The roles. A prompt AS WRITTEN is the generator's own
+    # `original_<param>` (db/prompts.py ORIGINAL_ROLES), interned through
+    # the same dedupe as the prompt it ran; the parameter stays in
+    # file_param below as the evidence. No parameter, no row -- silence
+    # is not a claim that written == ran.
+    prompts_module.assign(conn, file_id, "effective", positive)
+    prompts_module.assign(conn, file_id, "negative", negative)
+    prompts_module.assign(conn, file_id, "unsampler", prompt(conn, str(typed.extra.get("unsamplerprompt") or ""), now))
+    for key, role in prompts_module.ORIGINAL_ROLES.items():
+        prompts_module.assign(conn, file_id, role, prompt(conn, str(typed.extra.get(key) or ""), now))
+    # The sections, read with this tool's grammar (pure, microseconds):
+    # every main-section text is a prompt row from the moment the file
+    # is read, so a planner or a search finds a vector to hang on it.
+    for held in prompts_module.roles(conn, file_id).values():
+        prompts_module.sections(conn, held["id"], prompts_module.grammar_for(typed.tool), now)
 
     tail = dict(typed.extra)
     if typed.version:

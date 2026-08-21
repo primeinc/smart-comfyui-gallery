@@ -181,13 +181,18 @@ def face_space_of(conn, model_id: str, model_version: str) -> tuple[int, SpaceSp
     return sid, face_space(model_id, model_version, dimensions)
 
 
-def keyed(spec: SpaceSpec, sid: int) -> SpaceSpec:
+def keyed(spec: SpaceSpec, sid: int, lane: str = "") -> SpaceSpec:
     """The spec as the index layer sees it: the resident key and every
     snapshot filename carry the immutable space id, so an upgraded spec
-    can never restore -- or answer for -- an older space's vectors."""
+    can never restore -- or answer for -- an older space's vectors.
+
+    `lane` names a second CORPUS in the same space: prompt vectors live
+    in the provider's joint space beside its media vectors (same
+    coordinates, comparable cosines) but their ids are another table's,
+    so they get their own resident index -- `<key>@<sid>+<lane>`."""
     import dataclasses
 
-    return dataclasses.replace(spec, key=f"{spec.key}@{sid}")
+    return dataclasses.replace(spec, key=f"{spec.key}@{sid}" + (f"+{lane}" if lane else ""))
 
 
 #: One manager per snapshot directory per process -- residency IS the
@@ -223,7 +228,7 @@ def manager_for(conn) -> IndexManager:
         return _SHARED[where]
 
 
-def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) -> str:
+def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float, *, lane: str = "") -> str:
     """Make this spec's space resident and holding exactly these rows.
 
     Returns the resident key -- `<spec.key>@<space id>` -- which is the
@@ -263,7 +268,7 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) 
 
     from vision.faiss_index import _signed_to_packed
 
-    named = keyed(spec, space_id(conn, spec, now))
+    named = keyed(spec, space_id(conn, spec, now), lane)
     wanted = [int(v) for v in ids]
     if not manager.has(named.key):
         manager.restore(named)
@@ -305,22 +310,23 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float) 
 _PENDING: dict[int, list] = {}
 
 
-def note(conn, spec: SpaceSpec, subject_id: int, value, now: float) -> None:
+def note(conn, spec: SpaceSpec, subject_id: int, value, now: float, *, lane: str = "") -> None:
     """A producer wrote (or deleted, value=None) one representation row.
 
     Nothing touches the resident index here -- the write may yet roll
     back. The runner applies the note after its commit succeeds."""
-    named = keyed(spec, space_id(conn, spec, now))
+    named = keyed(spec, space_id(conn, spec, now), lane)
     _PENDING.setdefault(id(conn), []).append((named.key, int(subject_id), value))
 
 
-def note_gone(conn, sid: int, subject_id: int) -> None:
+def note_gone(conn, sid: int, subject_id: int, *, lane: str = "") -> None:
     """A producer deleted a row that may belong to an OLDER space than the
     current spec resolves to -- the resident key is reconstructed from
     the immutable row the deleted data pointed at."""
     row = conn.execute("SELECT key FROM similarity_space WHERE id = ?", (sid,)).fetchone()
     if row is not None:
-        _PENDING.setdefault(id(conn), []).append((f"{row[0]}@{sid}", int(subject_id), None))
+        key = f"{row[0]}@{sid}" + (f"+{lane}" if lane else "")
+        _PENDING.setdefault(id(conn), []).append((key, int(subject_id), None))
 
 
 def apply_pending(conn, manager: IndexManager | None = None) -> None:

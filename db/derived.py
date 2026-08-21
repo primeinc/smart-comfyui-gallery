@@ -1239,6 +1239,37 @@ def record_embedding(conn, file_id: int, spec, vector, sha: str, now: float) -> 
     return embedding_id
 
 
+def record_prompt_embedding(conn, prompt_id: int, spec, policy: str, vector, text_hash: str, now: float) -> int:
+    """One prompt TEXT's vector under the provider's joint space and one
+    query policy, keyed by the text hash it was computed from -- the
+    same immutable-id discipline as record_embedding: a replacement is
+    a new AUTOINCREMENT id, the old one leaves the index, both moves
+    noted for the post-commit sync of the PROMPT lane of that space
+    (db/prompts.py lane), never the media index."""
+    import numpy as np
+
+    from . import prompts, similarity
+
+    unit = np.asarray(vector, dtype=np.float32) if not isinstance(vector, bytes) else np.frombuffer(vector, np.float32)
+    sid = similarity.space_id(conn, spec, now)
+    where = prompts.lane(policy)
+    old = conn.execute(
+        "SELECT id FROM derived_prompt_embedding WHERE prompt_id = ? AND space_id = ? AND policy_hash = ?",
+        (plain(prompt_id), sid, policy),
+    ).fetchone()
+    if old is not None:
+        similarity.note_gone(conn, sid, int(old[0]), lane=where)
+        conn.execute("DELETE FROM derived_prompt_embedding WHERE id = ?", (int(old[0]),))
+    cursor = conn.execute(
+        "INSERT INTO derived_prompt_embedding(prompt_id, space_id, policy_hash, vector, source_text_hash, computed_at)"
+        " VALUES(?, ?, ?, ?, ?, ?)",
+        tuple(plain(value) for value in (prompt_id, sid, policy, unit.tobytes(), text_hash, now)),
+    )
+    embedding_id = int(cursor.lastrowid or 0)
+    similarity.note(conn, spec, embedding_id, unit, now, lane=where)
+    return embedding_id
+
+
 # --- what a model said about the picture -----------------------------------
 
 

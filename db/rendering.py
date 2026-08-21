@@ -85,7 +85,7 @@ class TemplateStoryRenderer:
     #: The input formats this renderer version reads -- LITERALS, never
     #: the producers' running FORMAT_VERSION: a newer plan format is
     #: refused here until a renderer version that understands it exists.
-    reads: typing.ClassVar[dict[str, frozenset[int]]] = {"snapshot": frozenset({1}), "plan": frozenset({1, 2})}
+    reads: typing.ClassVar[dict[str, frozenset[int]]] = {"snapshot": frozenset({1}), "plan": frozenset({1, 2, 3})}
 
     def __init__(self, profile: str = "memory", locale: str = "en"):
         if profile not in PROFILES:

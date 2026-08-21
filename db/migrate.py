@@ -1518,6 +1518,234 @@ END"""
     )
 
 
+@step(17)
+def _prompts_get_roles_and_reusable_vectors(conn: sqlite3.Connection) -> None:
+    """v17 -> v18: prompts become a reusable semantic substrate.
+
+    `generation_prompt` records which prompt played which role
+    (effective, original, negative) and replaces the two prompt columns
+    on `generation` -- carried across as the effective and negative
+    roles, prompt ids untouched; the `original` role is interned from
+    the generator's own `original_<param>` parameters where a file has
+    them (SwarmUI sui_extra_data), through the same dedupe as every
+    other prompt; a file without one gets no original row.
+    `derived_prompt_section` holds each prompt's parse per grammar and
+    `derived_prompt_embedding` one vector per (text, space, query
+    policy). The job vocabulary learns
+    'embed_prompts' -- a CHECK change, so a rebuild. DDL is schema.sql's
+    text VERBATIM.
+    """
+    import time
+
+    from .ingest import prompt as intern
+    from .prompts import ORIGINAL_ROLES
+
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE generation RENAME TO generation_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    # the old indexes followed the renamed table and keep their global
+    # names -- one of them, `generation_prompt`, is the new table's name
+    for index in ("generation_workflow", "generation_prompt", "generation_negative", "generation_seed"):
+        conn.execute(f"DROP INDEX {index}")
+    conn.execute(
+        """CREATE TABLE generation (
+    file_id     INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    tool        TEXT NOT NULL,
+    detection   TEXT NOT NULL CHECK (detection IN
+                  ('graph','marker','heuristic','stealth')),
+    -- the workflow is an artifact like any other weights file: nameable,
+    -- content-hashed, and referenced by many images
+    workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,
+    seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER,
+    sampler TEXT, scheduler TEXT,
+    -- What the recipe ASKED FOR, which is not what the file is: `file.width`
+    -- is the pixels on disk. An upscale, a crop or a re-encode makes them
+    -- differ, and that disagreement is the interesting part -- but only if
+    -- something says which column means which, so neither is read as the
+    -- other's stale copy.
+    width INTEGER, height INTEGER,
+    -- Which adapter and version produced this row, so improving a parser is a
+    -- re-parse of the database rather than a re-read of every file on disk.
+    parser        TEXT NOT NULL,
+    parsed_at     REAL NOT NULL
+    -- Deliberately NO `extra` JSON column. The old app dumped every
+    -- unrecognised key into one, where nothing could query it. Every key a
+    -- tool emits is parsed into file_param, registered in param_key, and
+    -- indexed. A field that exists only inside a blob is not captured.
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO generation(file_id, tool, detection, workflow_id, seed, steps, cfg, denoise, clip_skip,"
+        " sampler, scheduler, width, height, parser, parsed_at)"
+        " SELECT file_id, tool, detection, workflow_id, seed, steps, cfg, denoise, clip_skip,"
+        " sampler, scheduler, width, height, parser, parsed_at FROM generation_old"
+    )
+    conn.execute(
+        """CREATE TABLE generation_prompt (
+    file_id   INTEGER NOT NULL REFERENCES generation(file_id) ON DELETE CASCADE,
+    role      TEXT NOT NULL CHECK (role IN
+                ('effective','original','negative','original_negative','unsampler')),
+    prompt_id INTEGER NOT NULL REFERENCES prompt(id) ON DELETE CASCADE,
+    PRIMARY KEY (file_id, role)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX generation_prompt_prompt ON generation_prompt(prompt_id, role)")
+    conn.execute(
+        "INSERT INTO generation_prompt(file_id, role, prompt_id)"
+        " SELECT file_id, 'effective', prompt_id FROM generation_old WHERE prompt_id IS NOT NULL"
+    )
+    conn.execute(
+        "INSERT INTO generation_prompt(file_id, role, prompt_id)"
+        " SELECT file_id, 'negative', negative_id FROM generation_old WHERE negative_id IS NOT NULL"
+    )
+    conn.execute("DROP TABLE generation_old")
+    # indexes and triggers only now: under legacy_alter_table the old ones
+    # followed the renamed table and kept their (global) names
+    conn.execute("CREATE INDEX generation_workflow ON generation(workflow_id)")
+    conn.execute("CREATE INDEX generation_seed     ON generation(seed)")
+    conn.execute(
+        """CREATE TRIGGER generation_workflow_is_a_workflow BEFORE INSERT ON generation
+WHEN NEW.workflow_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'generation.workflow_id must name an artifact of kind workflow')
+  WHERE (SELECT kind FROM artifact WHERE id = NEW.workflow_id) <> 'workflow';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER generation_workflow_stays_a_workflow
+BEFORE UPDATE OF workflow_id ON generation
+WHEN NEW.workflow_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'generation.workflow_id must name an artifact of kind workflow')
+  WHERE (SELECT kind FROM artifact WHERE id = NEW.workflow_id) <> 'workflow';
+END"""
+    )
+    now = time.time()
+    written = conn.execute(
+        "SELECT fp.file_id, fp.key, fp.value_text FROM file_param fp JOIN generation g ON g.file_id = fp.file_id"
+        " WHERE fp.source = 'generation' AND fp.key IN ('original_prompt', 'original_negativeprompt')"
+        " ORDER BY fp.file_id, fp.key"
+    ).fetchall()
+    for file_id, key, text in written:
+        prompt_id = intern(conn, text or "", now)
+        if prompt_id is not None:
+            conn.execute(
+                "INSERT OR IGNORE INTO generation_prompt(file_id, role, prompt_id) VALUES(?, ?, ?)",
+                (file_id, ORIGINAL_ROLES[key], prompt_id),
+            )
+
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE job RENAME TO job_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE job (
+    id               INTEGER PRIMARY KEY,
+    -- Constrained like every other `kind` here. A typo is otherwise a job
+    -- that queues successfully and no worker ever claims, because claim()
+    -- filters on the kinds it knows -- so it waits forever and looks fine.
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('scan','hash','embed','detect_faces','cluster_faces',
+                        'sample_frames','annotate','remix','zip','context','events',
+                        'story_plan','embed_prompts')),
+    target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
+    state            TEXT NOT NULL CHECK (state IN
+                       ('queued','running','done','failed','cancelled')),
+    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+    payload          TEXT,
+    total            INTEGER,
+    done_count       INTEGER NOT NULL DEFAULT 0,
+    checkpoint       TEXT,
+    attempt          INTEGER NOT NULL DEFAULT 0,
+    -- a lease nobody owns cannot fence anyone: the reclaiming worker must be
+    -- able to prove it holds the job, and the evicted one must be rejected.
+    owner            TEXT,
+    fence            INTEGER NOT NULL DEFAULT 0,
+    lease_until      REAL,
+    heartbeat_at     REAL,
+    error            TEXT,
+    -- No external_ref here. `derivation_intent` already carries the
+    -- generator's own id, UNIQUE, and having it on both meant two rows could
+    -- claim the same external job and disagree about which one owned it.
+    created_at       REAL NOT NULL,
+    started_at       REAL,
+    finished_at      REAL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO job(id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at)"
+        " SELECT id, kind, target_id, state, cancel_requested, payload, total,"
+        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
+        " error, created_at, started_at, finished_at FROM job_old"
+    )
+    conn.execute("DROP TABLE job_old")
+    conn.execute("CREATE INDEX job_state ON job(state)")
+    conn.execute("CREATE INDEX job_target ON job(target_id)")
+
+    conn.execute(
+        """CREATE TABLE derived_prompt_section (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_id        INTEGER NOT NULL REFERENCES prompt(id) ON DELETE CASCADE,
+    grammar          TEXT NOT NULL CHECK (grammar IN ('plain','swarm')),
+    ordinal          INTEGER NOT NULL,
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('main','base','pixeldecoder','refiner','video','videoswap',
+                        'extend','object','region','segment')),
+    spec             TEXT,
+    text             TEXT NOT NULL,
+    text_prompt_id   INTEGER REFERENCES prompt(id) ON DELETE CASCADE,
+    source_text_hash TEXT NOT NULL, parser_version INTEGER NOT NULL, computed_at REAL NOT NULL,
+    UNIQUE (prompt_id, grammar, ordinal)
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX derived_prompt_section_text ON derived_prompt_section(text_prompt_id)")
+    conn.execute("CREATE INDEX derived_prompt_section_kind ON derived_prompt_section(kind, grammar)")
+    conn.execute(
+        """CREATE TABLE derived_prompt_embedding (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_id        INTEGER NOT NULL REFERENCES prompt(id) ON DELETE CASCADE,
+    space_id         INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
+    policy_hash      TEXT NOT NULL,
+    vector           BLOB NOT NULL,
+    source_text_hash TEXT NOT NULL, computed_at REAL NOT NULL,
+    UNIQUE (prompt_id, space_id, policy_hash)
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX derived_prompt_embedding_space ON derived_prompt_embedding(space_id, policy_hash)")
+    conn.execute(
+        "CREATE INDEX derived_prompt_embedding_hash  ON derived_prompt_embedding"
+        "(source_text_hash, space_id, policy_hash)"
+    )
+    conn.execute(
+        """CREATE TRIGGER derived_prompt_embedding_fits_its_space
+BEFORE INSERT ON derived_prompt_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'prompt embedding length disagrees with its space''s dimensions');
+END"""
+    )
+    from .prompts import grammar_for, sections
+
+    for prompt_id, tool in conn.execute(
+        "SELECT DISTINCT gp.prompt_id, g.tool FROM generation_prompt gp JOIN generation g ON g.file_id = gp.file_id"
+        " ORDER BY gp.prompt_id"
+    ).fetchall():
+        sections(conn, int(prompt_id), grammar_for(tool), now)
+    conn.execute(
+        """CREATE TRIGGER derived_prompt_embedding_fits_its_space_update
+BEFORE UPDATE ON derived_prompt_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'prompt embedding length disagrees with its space''s dimensions');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

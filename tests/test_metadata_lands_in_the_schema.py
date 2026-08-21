@@ -281,15 +281,13 @@ class Ingest:
             )
 
         self.conn.execute(
-            "INSERT INTO generation(file_id,tool,detection,prompt_id,negative_id,seed,steps,cfg,"
+            "INSERT INTO generation(file_id,tool,detection,seed,steps,cfg,"
             "denoise,clip_skip,sampler,scheduler,width,height,parser,parsed_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'metaparse/1',0)",
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'metaparse/1',0)",
             (
                 file_id,
                 gen.tool,
                 gen.detection,
-                self._prompt(gen.positive_prompt),
-                self._prompt(gen.negative_prompt),
                 gen.seed,
                 gen.steps,
                 gen.cfg,
@@ -301,6 +299,13 @@ class Ingest:
                 gen.height,
             ),
         )
+
+        for role, text in (("effective", gen.positive_prompt), ("negative", gen.negative_prompt)):
+            prompt_id = self._prompt(text)
+            if prompt_id is not None:
+                self.conn.execute(
+                    "INSERT INTO generation_prompt(file_id,role,prompt_id) VALUES(?,?,?)", (file_id, role, prompt_id)
+                )
 
         # `version` names the tool, not the picture, so it rides the long tail
         # with every other key rather than earning a column.

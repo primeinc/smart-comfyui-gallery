@@ -190,7 +190,11 @@ def test_the_snapshot_outlives_everything_it_was_made_from(storied, monkeypatch)
             "INSERT INTO prompt(id, text, text_hash, created_at) VALUES(?, 'a brass diving helmet', 'h-helmet', ?)",
             (prompt_id, NOW),
         )
-        conn.execute("UPDATE generation SET prompt_id = ?, seed = 999 WHERE file_id = ?", (prompt_id, ids["gen_2.png"]))
+        conn.execute("UPDATE generation SET seed = 999 WHERE file_id = ?", (ids["gen_2.png"],))
+        conn.execute(
+            "UPDATE generation_prompt SET prompt_id = ? WHERE file_id = ? AND role = 'effective'",
+            (prompt_id, ids["gen_2.png"]),
+        )
         conn.execute(
             "UPDATE file_param SET value_text = ? WHERE file_id = ? AND source = 'generation' AND key = 'date'",
             (_spelled(NOW + 3 * HOUR), ids["gen_2.png"]),

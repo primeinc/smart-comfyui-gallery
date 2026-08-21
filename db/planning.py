@@ -56,15 +56,25 @@ import math
 import re
 import typing
 
+from . import prompt_sections
 from .stories import canonical, digest
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 
 #: Claim kinds that assert DIRECTION -- before/after, added/removed,
 #: from/to. They exist only in a sequenced plan, where the phase list is
 #: a chronology. An unsequenced plan states symmetric DIFFERENCES.
 _DIRECTIONAL = frozenset({"prompt_shift", "artifact_change", "parameter_change"})
 _SYMMETRIC = frozenset({"artifact_difference", "parameter_difference"})
+
+
+def prompt_sections_grammar(tool: str | None) -> str:
+    """The section grammar for a member's prompts, from its frozen tool
+    name -- the same rule the live library applies (db/prompts.py
+    grammar_for), repeated here so the planner imports no database
+    module."""
+    return "swarm" if (tool or "").lower().startswith("swarm") else "plain"
+
 
 #: Precisions fine enough that event order is evidence of sequence.
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
@@ -170,9 +180,41 @@ class SemanticPromptSimilarity:
                 f" ({spec.checkpoint}); make the request again"
             )
         self.name, self.version = spec.identity()
+        self.dimensions = int(encoder.dimensions)
 
     def embed(self, texts):
         return [[float(x) for x in self._encoder.encode_query(text)] for text in texts]
+
+
+class CachedPromptSimilarity:
+    """A durable cache in front of a loaded engine, keyed by the sha256 of
+    the EXACT text -- the same hash `prompt.text_hash` carries -- under
+    the engine's own immutable text space. `lookup(hashes)` and
+    `store(hash, vector)` are the whole contract; nothing here knows a
+    file, a generation, or a role, so the snapshot Seam stays closed.
+    Identity is the inner engine's: a cached vector is that engine's
+    vector, byte for byte, or it is not served."""
+
+    def __init__(self, inner: PromptSimilarity, lookup, store):
+        self._inner = inner
+        self._lookup = lookup
+        self._store = store
+        self.name, self.version = inner.name, inner.version
+
+    def embed(self, texts):
+        hashes = [hashlib.sha256(text.encode("utf-8")).hexdigest() for text in texts]
+        held = dict(self._lookup(sorted(set(hashes))))
+        missing: list[str] = []
+        for text, key in zip(texts, hashes, strict=True):
+            if key not in held and text not in missing:
+                missing.append(text)
+        if missing:
+            fresh = validated_vectors(self._inner.embed(missing), len(missing))
+            for text, vector in zip(missing, fresh, strict=True):
+                digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                held[digest] = vector
+                self._store(digest, vector)
+        return [list(held[digest]) for digest in hashes]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -212,10 +254,10 @@ class SemanticEngine:
 
         # (space key, digest of the QUERY policy): everything that turns a
         # text into a vector for this provider/model/checkpoint -- Qwen's
-        # query instruction included, which its stored-media policy omits
+        # query instruction included, which its stored-media policy omits.
+        # The same token keys stored prompt vectors (db/prompts.py).
         space = semantic.space(self.provider, self.model, self.checkpoint, 1)
-        policy = semantic.query_policy(self.provider, self.model, self.checkpoint)
-        return (space.key, "q" + digest(canonical(policy))[:24])
+        return (space.key, semantic.policy_hash(self.provider, self.model, self.checkpoint))
 
     def load(self) -> PromptSimilarity:
         from vision import semantic
@@ -298,7 +340,9 @@ class GenerationHistoryPlanner:
     """
 
     kind = "generation_history"
-    version = 5
+    #: Bumped with db/prompt_sections.VERSION: the main-section texts the
+    #: planner compares are that parser's output.
+    version = 7
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -325,7 +369,16 @@ class GenerationHistoryPlanner:
                 }
             )
 
-        prompts = [((one.get("generation") or {}).get("prompt") or "") for one in members]
+        # The MAIN section of each prompt, read with the grammar of the
+        # tool that wrote it (db/prompt_sections.py): a <segment:face>
+        # tail or a <refiner> stage is not part of what the images are of.
+        prompts = [
+            prompt_sections.main(
+                (one.get("generation") or {}).get("prompt") or "",
+                prompt_sections_grammar((one.get("generation") or {}).get("tool")),
+            )
+            for one in members
+        ]
         known = [i for i, text in enumerate(prompts) if text.strip()]
         gaps = [i for i in range(len(members)) if i not in known]
         if gaps:
@@ -341,6 +394,31 @@ class GenerationHistoryPlanner:
 
         def cosine(a: int, b: int) -> float:
             return sparse[slot[a]][slot[b]]
+
+        # Written vs run: a member whose frozen evidence carries BOTH the
+        # prompt as written (role original) and the prompt the generator
+        # ran (role effective) is compared with ITSELF. Wildcard expansion
+        # keeps the two close; a substantial rewrite is a claim about that
+        # member -- never a boundary, never chronology. A missing original
+        # is absence: no pair, no vector, no claim. Its own embed call, so
+        # the batch-scoped lexical oracle's vocabulary for the effective
+        # prompts is untouched.
+        pairs: list[tuple[int, str, str]] = []
+        for i, one in enumerate(members):
+            by_role = {p["role"]: p for p in ((one.get("generation") or {}).get("prompts") or [])}
+            written, ran = by_role.get("original"), by_role.get("effective")
+            if not written or not ran or written["text_hash"] == ran["text_hash"]:
+                continue
+            grammar = prompt_sections_grammar((one.get("generation") or {}).get("tool"))
+            wrote, did = prompt_sections.main(written["text"], grammar), prompt_sections.main(ran["text"], grammar)
+            if wrote and did and wrote != did:
+                pairs.append((i, wrote, did))
+        rewritten: dict[int, float] = {}
+        if pairs:
+            both = validated_vectors(self.similarity.embed([t for _, w, r in pairs for t in (w, r)]), 2 * len(pairs))
+            grid = pairwise_cosine(both)
+            for j, (i, _, _) in enumerate(pairs):
+                rewritten[i] = grid[2 * j][2 * j + 1]
 
         # A member with no prompt evidence is placed by chronology and
         # asserts nothing about prompts: in a sequenced plan it joins the
@@ -408,6 +486,21 @@ class GenerationHistoryPlanner:
             if silent:
                 claim_refs.append(
                     _claim(claims, "prompt_evidence_missing", 1.0, [refs[i] for i in silent], {"members": len(silent)})
+                )
+            moved = [i for i in indexes if i in rewritten and rewritten[i] < threshold]
+            if moved:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "prompt_rewrite",
+                        1.0,
+                        [f"{refs[i]}:generation.prompts" for i in moved],
+                        {
+                            "members": len(moved),
+                            "min_cosine": round(min(rewritten[i] for i in moved), 4),
+                            "threshold": threshold,
+                        },
+                    )
                 )
             seeds = sorted(
                 {
@@ -649,6 +742,14 @@ STORY_PLAN_V2 = {
     "version": 2,
     "claims": STORY_PLAN_V1["claims"] | frozenset({"artifact_difference", "parameter_difference"}),
 }
+
+#: StoryPlan v3 -- FROZEN. v2 plus `prompt_rewrite`: the prompt the
+#: generator ran differs substantially from the prompt as written.
+STORY_PLAN_V3 = {
+    **STORY_PLAN_V2,
+    "version": 3,
+    "claims": STORY_PLAN_V2["claims"] | frozenset({"prompt_rewrite"}),
+}
 _ID = re.compile(r"^(phase|claim)-[0-9]{3}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -750,6 +851,19 @@ def _facts_valid_v2(kind: str, facts) -> bool:
     return _facts_valid_v1(kind, facts)
 
 
+def _facts_valid_v3(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if kind == "prompt_rewrite":
+        return (
+            set(facts) == {"members", "min_cosine", "threshold"}
+            and _integer(facts["members"], 1)
+            and _cosine(facts["min_cosine"])
+            and _unit(facts["threshold"])
+        )
+    return _facts_valid_v2(kind, facts)
+
+
 def validate_story_plan_v1(plan) -> list[str]:
     """The exact grammar of a StoryPlan v1 document against the FROZEN
     v1 vocabulary, with no reference to any snapshot or to the running
@@ -762,6 +876,12 @@ def validate_story_plan_v2(plan) -> list[str]:
     """The exact grammar of a StoryPlan v2 document against the FROZEN
     v2 vocabulary."""
     return _validate_story_plan(plan, STORY_PLAN_V2, _facts_valid_v2)
+
+
+def validate_story_plan_v3(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v3 document against the FROZEN
+    v3 vocabulary."""
+    return _validate_story_plan(plan, STORY_PLAN_V3, _facts_valid_v3)
 
 
 def _validate_story_plan(plan, vocabulary: dict, facts_valid) -> list[str]:
@@ -843,7 +963,7 @@ def _validate_story_plan(plan, vocabulary: dict, facts_valid) -> list[str]:
     return bad
 
 
-_GRAMMARS = {1: validate_story_plan_v1, 2: validate_story_plan_v2}
+_GRAMMARS = {1: validate_story_plan_v1, 2: validate_story_plan_v2, 3: validate_story_plan_v3}
 
 
 def validate_story_plan(plan) -> list[str]:
@@ -1103,5 +1223,10 @@ def plan_item(conn, _item: int, payload: dict, now: float) -> None:
             "this planning request no longer means what it meant when it was queued (the plan format,"
             " the planner or the engine's query policy changed); make the request again"
         )
-    planner = maker(engine.load(), payload["settings"])
+    from . import prompts
+
+    # The loaded engine behind the durable prompt-vector cache: frozen
+    # texts are answered by text hash under the engine's own text space,
+    # computed once where missing (db/prompts.py cached).
+    planner = maker(prompts.cached(conn, engine, engine.load(), now), payload["settings"])
     plan_snapshot(conn, int(payload["snapshot_id"]), planner, now)

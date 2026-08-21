@@ -76,8 +76,8 @@ ONE_PICTURE = """
       (SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id
         WHERE fa.file_id = f.id AND fa.role = 'checkpoint') AS checkpoint,
       f.missing_since,
-      (SELECT p.text FROM generation g JOIN prompt p ON p.id = g.prompt_id
-        WHERE g.file_id = f.id) AS prompt,
+      (SELECT p.text FROM generation_prompt gp JOIN prompt p ON p.id = gp.prompt_id
+        WHERE gp.file_id = f.id AND gp.role = 'effective') AS prompt,
       (SELECT g.seed FROM generation g WHERE g.file_id = f.id) AS seed,
       (SELECT count(*) FROM file_param WHERE file_id = f.id) AS fields,
       f.kind

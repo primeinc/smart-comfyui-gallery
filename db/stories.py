@@ -91,9 +91,13 @@ def _marks(file_ids: list[int]) -> str:
 
 
 class GenerationEvidence:
-    """Prompts, the workflow, the sampling parameters, every artifact the
-    generation named, and the generator's own parameter bag (original
-    prompt, wildcards, date, timings -- whatever it recorded)."""
+    """Prompts BY ROLE (effective, original, negative -- each with its
+    stable uuid, exact text and text hash, so a plan can prove which
+    bytes it compared), the workflow, the sampling parameters, every
+    artifact the generation named, and the generator's own parameter
+    bag (wildcards, date, timings -- whatever it recorded). `prompt`
+    and `negative_prompt` are the effective and negative texts, spelled
+    again for readers of the roles' two commonest entries."""
 
     name = "generation"
 
@@ -103,11 +107,8 @@ class GenerationEvidence:
         held: dict[int, dict] = {}
         for row in conn.execute(
             "SELECT g.file_id, g.tool, g.detection, g.seed, g.steps, g.cfg, g.denoise, g.clip_skip,"
-            " g.sampler, g.scheduler, g.width, g.height,"
-            " p.text, n.text, we.uuid"
+            " g.sampler, g.scheduler, g.width, g.height, we.uuid"
             " FROM generation g"
-            " LEFT JOIN prompt p ON p.id = g.prompt_id"
-            " LEFT JOIN prompt n ON n.id = g.negative_id"
             " LEFT JOIN entity we ON we.id = g.workflow_id"
             f" WHERE g.file_id IN ({_marks(file_ids)})",
             file_ids,
@@ -124,15 +125,28 @@ class GenerationEvidence:
                 "scheduler": row[9],
                 "width": row[10],
                 "height": row[11],
-                "prompt": row[12],
-                "negative_prompt": row[13],
-                "workflow_uuid": row[14].hex() if row[14] else None,
+                "prompt": None,
+                "negative_prompt": None,
+                "prompts": [],
+                "workflow_uuid": row[12].hex() if row[12] else None,
                 "artifacts": [],
                 "params": {},
             }
         if not held:
             return {}
         members = list(held)
+        for row in conn.execute(
+            "SELECT gp.file_id, gp.role, e.uuid, p.text, p.text_hash FROM generation_prompt gp"
+            " JOIN prompt p ON p.id = gp.prompt_id JOIN entity e ON e.id = p.id"
+            f" WHERE gp.file_id IN ({_marks(members)}) ORDER BY gp.file_id, gp.role",
+            members,
+        ):
+            one = held[row[0]]
+            one["prompts"].append({"role": row[1], "uuid": row[2].hex(), "text": row[3], "text_hash": row[4]})
+            if row[1] == "effective":
+                one["prompt"] = row[3]
+            elif row[1] == "negative":
+                one["negative_prompt"] = row[3]
         for row in conn.execute(
             "SELECT fa.file_id, fa.ordinal, fa.role, e.uuid, a.kind, a.name, fa.model_weight, fa.clip_weight"
             " FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id JOIN entity e ON e.id = a.id"

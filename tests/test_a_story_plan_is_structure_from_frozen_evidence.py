@@ -231,7 +231,7 @@ def test_without_chronology_families_differ_and_nothing_is_added_or_previous():
     ]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
-    assert plan["v"] == 2
+    assert plan["v"] == planning.FORMAT_VERSION
     assert plan["subject"]["sequenced"] is False
     second = _claims_of(plan, 1)
     assert second["artifact_difference"]["facts"] == {"only_here": [lora_b], "only_other": [lora_a]}
@@ -441,20 +441,20 @@ def test_the_same_request_is_one_identity_and_policies_coexist():
     assert planning.identity(strict)[1] != planning.identity(one)[1]
     assert len(strict["phases"]) > len(one["phases"]), "a stricter threshold splits the near-variants"
     loose = {"phase_threshold": 0.5}
-    request = planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", loose)
-    assert request == planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", loose)
+    request = planning.request_identity(sha, "generation_history", 7, "lexical-bow", "1", loose)
+    assert request == planning.request_identity(sha, "generation_history", 7, "lexical-bow", "1", loose)
     strict_settings = {"phase_threshold": 0.99}
-    assert request != planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", strict_settings)
-    assert request != planning.request_identity(sha, "generation_history", 5, "lexical-bow", "2", loose)
+    assert request != planning.request_identity(sha, "generation_history", 7, "lexical-bow", "1", strict_settings)
+    assert request != planning.request_identity(sha, "generation_history", 7, "lexical-bow", "2", loose)
 
 
 def test_the_document_format_is_part_of_the_request_identity(monkeypatch):
     """A format change must never hand back yesterday's shape under an
     unchanged planner version: FORMAT_VERSION rides the request hash."""
     sha = "a" * 64
-    before = planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", {"phase_threshold": 0.5})
+    before = planning.request_identity(sha, "generation_history", 7, "lexical-bow", "1", {"phase_threshold": 0.5})
     monkeypatch.setattr(planning, "FORMAT_VERSION", planning.FORMAT_VERSION + 1)
-    after = planning.request_identity(sha, "generation_history", 5, "lexical-bow", "1", {"phase_threshold": 0.5})
+    after = planning.request_identity(sha, "generation_history", 7, "lexical-bow", "1", {"phase_threshold": 0.5})
     assert before != after
 
 
@@ -761,6 +761,7 @@ def test_a_mutable_checkpoint_is_never_queued_and_a_moved_one_is_never_loaded(fr
 
     class Weights:
         model_id = "fake"
+        dimensions = 2
 
         def space(self):
             return semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", "d" * 40, 1)
@@ -838,11 +839,12 @@ def test_the_v1_grammar_is_frozen_and_exception_proof(monkeypatch):
     document, sha = _snapshot(members)
     plan = {**_planner().plan(document, sha), "v": 1}
     assert planning.validate_story_plan_v1(plan) == []
-    monkeypatch.setattr(planning, "FORMAT_VERSION", 3)
+    monkeypatch.setattr(planning, "FORMAT_VERSION", 4)
     monkeypatch.setattr(planning, "PLANNERS", {})
     assert planning.validate_story_plan_v1(plan) == [], "v1 is judged by v1's frozen vocabulary"
     assert planning.validate_story_plan(plan) == [], "the dispatcher routes a v1 document to the v1 grammar"
     assert planning.validate_story_plan({**plan, "v": 2}) == [], "v1's vocabulary is inside v2's"
+    assert planning.validate_story_plan({**plan, "v": 3}) == [], "and inside v3's"
     assert planning.validate_story_plan({**plan, "v": 7}), "an undefined version is invalid, not a crash"
     assert planning.validate_story_plan({**plan, "v": True})
     v1_only = {

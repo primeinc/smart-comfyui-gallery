@@ -40,6 +40,7 @@ PROFILES: dict[str, frozenset[str]] = {
             "artifact_change",
             "artifact_difference",
             "prompt_evidence_missing",
+            "prompt_rewrite",
         }
     ),
     "technical": frozenset(
@@ -53,6 +54,7 @@ PROFILES: dict[str, frozenset[str]] = {
             "parameter_difference",
             "seed_variation",
             "prompt_evidence_missing",
+            "prompt_rewrite",
         }
     ),
     "compact": frozenset(),
@@ -174,6 +176,20 @@ def _prompt_evidence_missing(claim: dict, phase: dict, ctx: Context) -> str:
     return f"Prompt text is not available for {'one image' if n == 1 else formatting.count(n, 'image')} here."
 
 
+def _prompt_rewrite(claim: dict, phase: dict, ctx: Context) -> str:
+    """Written vs run, for the members the claim names. No direction in
+    time: the original was the input to the generator's own expansion,
+    a fact about each image, not an order among images."""
+    n = claim["facts"]["members"]
+    who = "one image" if n == 1 else formatting.count(n, "image")
+    told = f"For {who} here, the prompt the generator ran differs substantially from the prompt as written."
+    if ctx.profile == "technical":
+        told += (
+            f" Minimum similarity between written and run prompt is {formatting.percent(claim['facts']['min_cosine'])}."
+        )
+    return told
+
+
 #: The whole vocabulary. Resolution is by this mapping and nothing else.
 REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
     "prompt_similarity": _prompt_similarity,
@@ -185,6 +201,7 @@ REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
     "parameter_difference": _parameter_difference,
     "seed_variation": _seed_variation,
     "prompt_evidence_missing": _prompt_evidence_missing,
+    "prompt_rewrite": _prompt_rewrite,
 }
 
 

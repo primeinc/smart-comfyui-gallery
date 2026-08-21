@@ -213,7 +213,10 @@ def test_rebuilding_touches_no_evidence_and_no_source_facts(interpreted):
                 conn.execute("SELECT file_id, carrier, slot, blob_hash FROM file_blob ORDER BY 1,2,3").fetchall(),
                 conn.execute("SELECT file_id, source, key, value_text FROM file_param ORDER BY 1,2,3").fetchall(),
                 conn.execute("SELECT * FROM capture ORDER BY file_id").fetchall(),
-                conn.execute("SELECT file_id, seed, sampler, prompt_id FROM generation ORDER BY 1").fetchall(),
+                conn.execute(
+                    "SELECT g.file_id, g.seed, g.sampler, gp.prompt_id FROM generation g"
+                    " LEFT JOIN generation_prompt gp ON gp.file_id = g.file_id AND gp.role = 'effective' ORDER BY 1"
+                ).fetchall(),
             ]
 
         before = sources()

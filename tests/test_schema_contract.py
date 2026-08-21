@@ -264,7 +264,8 @@ def test_the_load_bearing_references_point_where_they_claim(db):
         ("derivation_intent", "parent_id"): "file",
         ("file_derivation", "child_id"): "file",
         ("generation", "workflow_id"): "artifact",
-        ("generation", "prompt_id"): "prompt",
+        ("generation_prompt", "prompt_id"): "prompt",
+        ("generation_prompt", "file_id"): "generation",
         ("collection", "parent_id"): "collection",
         ("derived_face_instance", "sample_id"): "derived_media_sample",
         ("derived_face_cluster", "person_id"): "person",
@@ -669,14 +670,18 @@ def test_one_prompt_serves_positive_and_negative(db):
     db.execute("INSERT INTO prompt(id,text,text_hash,created_at) VALUES(186,'a brass helmet','hp',0)")
     db.execute("INSERT INTO prompt(id,text,text_hash,created_at) VALUES(187,'blurry, watermark','hn',0)")
     db.execute(
-        "INSERT INTO generation(file_id,tool,detection,prompt_id,negative_id,parser,parsed_at) "
-        "VALUES(185,'ComfyUI','graph',186,187,'comfy/3',0)"
+        "INSERT INTO generation(file_id,tool,detection,parser,parsed_at) VALUES(185,'ComfyUI','graph','comfy/3',0)"
     )
+    db.execute("INSERT INTO generation_prompt(file_id,role,prompt_id) VALUES(185,'effective',186),(185,'negative',187)")
     pos, neg = db.execute(
         "SELECT p.text, n.text FROM generation g "
-        "JOIN prompt p ON p.id = g.prompt_id JOIN prompt n ON n.id = g.negative_id "
+        "JOIN generation_prompt gp ON gp.file_id = g.file_id AND gp.role = 'effective' "
+        "JOIN generation_prompt gn ON gn.file_id = g.file_id AND gn.role = 'negative' "
+        "JOIN prompt p ON p.id = gp.prompt_id JOIN prompt n ON n.id = gn.prompt_id "
         "WHERE g.file_id=185"
     ).fetchone()
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("INSERT INTO generation_prompt(file_id,role,prompt_id) VALUES(185,'wildcard',186)")
     assert pos == "a brass helmet"
     assert neg == "blurry, watermark"
 
@@ -2075,7 +2080,7 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 53, f"expected 53 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 56, f"expected 56 real tables, found {len(real)}: {sorted(real)}"
 
 
 def test_the_time_doctrine_never_claims_a_wall_clock_is_utc(db):

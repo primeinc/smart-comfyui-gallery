@@ -574,7 +574,7 @@ CREATE TABLE job (
     kind             TEXT NOT NULL CHECK (kind IN
                        ('scan','hash','embed','detect_faces','cluster_faces',
                         'sample_frames','annotate','remix','zip','context','events',
-                        'story_plan')),
+                        'story_plan','embed_prompts')),
     target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
     state            TEXT NOT NULL CHECK (state IN
                        ('queued','running','done','failed','cancelled')),
@@ -666,8 +666,6 @@ CREATE TABLE generation (
     -- the workflow is an artifact like any other weights file: nameable,
     -- content-hashed, and referenced by many images
     workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,
-    prompt_id   INTEGER REFERENCES prompt(id)   ON DELETE SET NULL,
-    negative_id INTEGER REFERENCES prompt(id)   ON DELETE SET NULL,
     seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER,
     sampler TEXT, scheduler TEXT,
     -- What the recipe ASKED FOR, which is not what the file is: `file.width`
@@ -686,9 +684,27 @@ CREATE TABLE generation (
     -- indexed. A field that exists only inside a blob is not captured.
 ) STRICT;
 CREATE INDEX generation_workflow ON generation(workflow_id);
-CREATE INDEX generation_prompt   ON generation(prompt_id);
-CREATE INDEX generation_negative ON generation(negative_id);
 CREATE INDEX generation_seed     ON generation(seed);
+
+-- Which prompt played which ROLE for one generation: `effective` is the
+-- text the generator ran, `negative` the negative prompt, `original`
+-- and `original_negative` the texts as written before the tool
+-- expanded wildcards (SwarmUI records `original_<param>` only when
+-- processing changed the text -- src/Text2Image/T2IParamInput.cs:592 --
+-- and an absent one is recorded here as NOTHING, never as "same"),
+-- `unsampler` Swarm's third prompt field. One relation, one source of
+-- truth -- the prompt columns that used to sit on `generation` were a
+-- second copy of two of these roles with no room for the rest. The
+-- generator's own parameter stays in file_param as the evidence a role
+-- was read from.
+CREATE TABLE generation_prompt (
+    file_id   INTEGER NOT NULL REFERENCES generation(file_id) ON DELETE CASCADE,
+    role      TEXT NOT NULL CHECK (role IN
+                ('effective','original','negative','original_negative','unsampler')),
+    prompt_id INTEGER NOT NULL REFERENCES prompt(id) ON DELETE CASCADE,
+    PRIMARY KEY (file_id, role)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX generation_prompt_prompt ON generation_prompt(prompt_id, role);
 
 -- ============ capture: EXIF, for files a camera made ============
 -- A photograph is not "generated". It has its own origin story, and the app
@@ -1137,6 +1153,75 @@ WHEN EXISTS (
 )
 BEGIN
     SELECT RAISE(ABORT, 'embedding length disagrees with its space''s dimensions');
+END;
+
+-- A prompt text is a document of SECTIONS (db/prompt_sections.py): the
+-- main prompt, then each alternate prompt a tool routes to a stage or an
+-- area (SwarmUI's <segment:> <region:> <refiner> <video> ...). One parse
+-- per (prompt, grammar), the grammar chosen by the generation's tool.
+-- Each section's text is an ordinary interned prompt row: "a red fox"
+-- as a main prompt, inside a region, or as a negative is ONE text
+-- identity, so its vector is computed once and a parser upgrade --
+-- which re-parses boundaries -- never re-embeds identical bytes.
+CREATE TABLE derived_prompt_section (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_id        INTEGER NOT NULL REFERENCES prompt(id) ON DELETE CASCADE,
+    grammar          TEXT NOT NULL CHECK (grammar IN ('plain','swarm')),
+    ordinal          INTEGER NOT NULL,
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('main','base','pixeldecoder','refiner','video','videoswap',
+                        'extend','object','region','segment')),
+    spec             TEXT,
+    text             TEXT NOT NULL,
+    text_prompt_id   INTEGER REFERENCES prompt(id) ON DELETE CASCADE,
+    source_text_hash TEXT NOT NULL, parser_version INTEGER NOT NULL, computed_at REAL NOT NULL,
+    UNIQUE (prompt_id, grammar, ordinal)
+) STRICT;
+CREATE INDEX derived_prompt_section_text ON derived_prompt_section(text_prompt_id);
+CREATE INDEX derived_prompt_section_kind ON derived_prompt_section(kind, grammar);
+
+-- One vector per (prompt TEXT, space, query policy). `space_id` is the
+-- provider's JOINT space -- the coordinate system its media vectors
+-- live in, because encode_query produces vectors there and retrieval
+-- already searches media with them -- so a prompt vector may be
+-- compared with a media vector of the same space. `policy_hash` is the
+-- QUERY policy that produced it (instruction, tokenizer, package):
+-- provenance and currentness, so a changed instruction is a NEW row
+-- that coexists with the old one. Prompt rows never enter the media
+-- resident index: their own index per (space, policy) holds them --
+-- same coordinates, different corpus, no id collisions.
+-- `source_text_hash` is the exact text the vector was computed from; a
+-- row is current only while it equals the prompt's own text_hash, and
+-- a consumer looks vectors up by THAT hash, never by a file or a
+-- generation. AUTOINCREMENT for the same reason as derived_embedding.
+CREATE TABLE derived_prompt_embedding (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_id        INTEGER NOT NULL REFERENCES prompt(id) ON DELETE CASCADE,
+    space_id         INTEGER NOT NULL REFERENCES similarity_space(id) ON DELETE RESTRICT,
+    policy_hash      TEXT NOT NULL,
+    vector           BLOB NOT NULL,
+    source_text_hash TEXT NOT NULL, computed_at REAL NOT NULL,
+    UNIQUE (prompt_id, space_id, policy_hash)
+) STRICT;
+CREATE INDEX derived_prompt_embedding_space ON derived_prompt_embedding(space_id, policy_hash);
+CREATE INDEX derived_prompt_embedding_hash  ON derived_prompt_embedding(source_text_hash, space_id, policy_hash);
+CREATE TRIGGER derived_prompt_embedding_fits_its_space
+BEFORE INSERT ON derived_prompt_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'prompt embedding length disagrees with its space''s dimensions');
+END;
+CREATE TRIGGER derived_prompt_embedding_fits_its_space_update
+BEFORE UPDATE ON derived_prompt_embedding
+WHEN EXISTS (
+    SELECT 1 FROM similarity_space s WHERE s.id = NEW.space_id
+      AND s.dimensions <> length(NEW.vector) / 4
+)
+BEGIN
+    SELECT RAISE(ABORT, 'prompt embedding length disagrees with its space''s dimensions');
 END;
 
 -- One grouping of the library's faces, by one algorithm at one threshold
@@ -1822,7 +1907,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 17;
+PRAGMA user_version   = 18;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

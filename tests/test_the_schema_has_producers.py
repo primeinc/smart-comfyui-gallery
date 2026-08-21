@@ -370,6 +370,8 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
         "derived_event_run",
         "derived_file_hash",
         "derived_file_person",
+        "derived_prompt_embedding",
+        "derived_prompt_section",
         "derived_media_context",
         "derived_media_occurrence",
         "derived_media_sample",
@@ -1115,8 +1117,11 @@ def test_a_generated_file_becomes_rows(db, a_library, a_generated_file):
 
     row = db.execute(
         "SELECT g.seed, g.steps, g.cfg, g.sampler, g.width, g.height, p.text, n.text"
-        "  FROM generation g LEFT JOIN prompt p ON p.id = g.prompt_id"
-        "  LEFT JOIN prompt n ON n.id = g.negative_id WHERE g.file_id = ?",
+        "  FROM generation g"
+        "  LEFT JOIN generation_prompt gp ON gp.file_id = g.file_id AND gp.role = 'effective'"
+        "  LEFT JOIN prompt p ON p.id = gp.prompt_id"
+        "  LEFT JOIN generation_prompt gn ON gn.file_id = g.file_id AND gn.role = 'negative'"
+        "  LEFT JOIN prompt n ON n.id = gn.prompt_id WHERE g.file_id = ?",
         (a_library["file"],),
     ).fetchone()
     assert row[:6] == (4242, 28, 7.0, "Euler a", 832, 1216)
@@ -1474,7 +1479,9 @@ def test_a_comfyui_picture_reports_its_whole_recipe(db, a_library, tmp_path):
     ).fetchall() == [("filmGrain.safetensors", 0.4, 0.35)]
     assert (
         db.execute(
-            "SELECT p.text FROM prompt p JOIN generation g ON g.prompt_id = p.id WHERE g.file_id = ?", (file_id,)
+            "SELECT p.text FROM prompt p JOIN generation_prompt g ON g.prompt_id = p.id"
+            " WHERE g.file_id = ? AND g.role = 'effective'",
+            (file_id,),
         ).fetchone()[0]
         == "a brass diving helmet at dusk"
     )
@@ -1591,7 +1598,9 @@ def test_a_prompt_routed_through_another_node_is_still_found(db, a_library, tmp_
     file_id = _ingest_comfy(db, a_library, a_comfy_file(tmp_path / "routed.png", nodes))
     assert (
         db.execute(
-            "SELECT p.text FROM prompt p JOIN generation g ON g.prompt_id = p.id WHERE g.file_id = ?", (file_id,)
+            "SELECT p.text FROM prompt p JOIN generation_prompt g ON g.prompt_id = p.id"
+            " WHERE g.file_id = ? AND g.role = 'effective'",
+            (file_id,),
         ).fetchone()[0]
         == "a castle assembled from wildcards"
     )
