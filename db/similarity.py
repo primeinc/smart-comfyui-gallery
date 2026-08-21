@@ -217,6 +217,23 @@ def graph(vectors, threshold: float, *, backend: str | None = None, gpu: bool = 
     )
 
 
+def as_csr(n: int, rows, cols, weights):
+    """Edge arrays into the positional CSR shape `grouping.group` eats.
+
+    For callers holding id-keyed edges from the shared index layer who
+    need the propagation algorithms' positional form back.
+    """
+    import numpy as np
+
+    return _csr(
+        n,
+        np.asarray(rows, dtype=np.int64),
+        np.asarray(cols, dtype=np.int64),
+        np.asarray(weights, dtype=np.float32),
+        np,
+    )
+
+
 def available() -> list[str]:
     """Which backends this machine can actually use.
 

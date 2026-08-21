@@ -608,14 +608,39 @@ def cluster(
 
     import numpy as np
 
+    from vision.faiss_index import IndexManager, SpaceSpec
+
     from . import grouping, settings, similarity
 
     vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
-    graph, backend = similarity.graph(
-        vectors,
+    face_ids = [int(row[0]) for row in rows]
+    # Through the shared index layer -- the same code the dupes job
+    # searches with -- so face similarity is not its own FAISS consumer.
+    # The engine underneath is unchanged (similarity.graph, with its
+    # GPU-exact range search); what the layer adds is the id contract.
+    space = SpaceSpec(
+        key=f"face.{model_id}.{model_version}",
+        representation="float32",
+        dimensions=int(vectors.shape[1]),
+        metric="cosine",
+    )
+    manager = IndexManager()
+    manager.load(space, face_ids, vectors)
+    edges_a, edges_b, weights = manager.graph(
+        space.key,
         threshold,
         backend=settings.value(conn, "similarity_backend"),
         gpu=settings.flag(conn, "faiss_gpu"),
+    )
+    backend = manager.served_by(space.key)
+    # grouping.group consumes the positional CSR shape; positions here are
+    # the sorted face_ids the space was loaded with.
+    at = {face_id: position for position, face_id in enumerate(face_ids)}
+    graph = similarity.as_csr(
+        len(face_ids),
+        np.array([at[int(v)] for v in edges_a], dtype=np.int64),
+        np.array([at[int(v)] for v in edges_b], dtype=np.int64),
+        np.asarray(weights, dtype=np.float32),
     )
     labels = grouping.group(graph, vectors, method, **options)
 

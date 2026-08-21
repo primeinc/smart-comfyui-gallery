@@ -64,6 +64,7 @@ class IndexManager:
 
     def __init__(self):
         self._spaces: dict[str, tuple[SpaceSpec, Any, Any]] = {}
+        self._served: dict[str, str] = {}
 
     def load(self, spec: SpaceSpec, ids, vectors, *, gpu: bool = True) -> None:
         """Replace `spec.key`'s rows with these ids and representations."""
@@ -108,6 +109,13 @@ class IndexManager:
 
     def invalidate(self, key: str) -> None:
         self._spaces.pop(key, None)
+        self._served.pop(key, None)
+
+    def served_by(self, key: str) -> str | None:
+        """Which execution answered this space's last graph() -- provenance
+        for run rows, because a timing nobody can attribute to a machine
+        is not a measurement."""
+        return self._served.get(key)
 
     def graph(self, key: str, radius, *, backend: str | None = None, gpu: bool = True):
         """Every pair within `radius` (inclusive), as (ids, ids, distances).
@@ -129,6 +137,7 @@ class IndexManager:
             # "only distances < radius (strict comparison)"), so +1 makes
             # the argument inclusive. Labels are the stored ids already.
             lims, distances, neighbours = index.range_search(data, int(radius) + 1)
+            self._served[key] = BINARY_BACKEND
             a = np.repeat(keys, np.diff(lims).astype(np.int64))
             b = neighbours.astype(np.int64)
             keep = a != b
@@ -136,6 +145,7 @@ class IndexManager:
 
         from db import similarity
 
-        indptr, cols, weights = similarity.graph(held, float(radius), backend=backend, gpu=gpu)[0]
+        (indptr, cols, weights), ran_on = similarity.graph(held, float(radius), backend=backend, gpu=gpu)
+        self._served[key] = ran_on
         a = np.repeat(keys, np.diff(indptr).astype(np.int64))
         return a, keys[cols], weights
