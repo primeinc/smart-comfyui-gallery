@@ -169,21 +169,20 @@ def collection(
     parent_id=None,
     colour=None,
     description=None,
-    sql_text=None,
-    nl_text=None,
 ) -> int:
     """An album, a flag, or a saved query.
 
     The three are one table because they differ only in how membership is
     decided: an album is listed, a flag is a state, a smart collection is a
     query. All three are addressable, nestable and nameable, and a schema
-    that split them would need three of everything to say so.
+    that split them would need three of everything to say so. A smart
+    collection's rule lives in `collection_rule` (db/collection_rules.py);
+    until one is saved the collection is UNEVALUATED, never empty.
     """
     collection_id = mint(conn, "collection", name)
     conn.execute(
-        "INSERT INTO collection(id, parent_id, name, kind, color, description,"
-        " sql_text, nl_text, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (collection_id, parent_id, name, kind, colour, description, sql_text, nl_text, now),
+        "INSERT INTO collection(id, parent_id, name, kind, color, description, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+        (collection_id, parent_id, name, kind, colour, description, now),
     )
     return collection_id
 

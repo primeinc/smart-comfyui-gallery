@@ -514,7 +514,7 @@ def album_present(conn, collection_id: int) -> int:
     return conn.execute(ALBUM_PRESENT, (collection_id,)).fetchone()[0]
 
 
-COLLECTION_CARD = "SELECT name, kind, color, description, sql_text, nl_text, parent_id FROM collection WHERE id = ?"
+COLLECTION_CARD = "SELECT name, kind, color, description, parent_id FROM collection WHERE id = ?"
 
 #: `IS ?` rather than `= ?` so one statement serves both levels -- NULL
 #: names the top of the hierarchy -- and both ride collection_parent

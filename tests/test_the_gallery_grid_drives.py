@@ -609,6 +609,34 @@ def test_walking_your_own_judgement_curates_itself(driven):
         page.close()
 
 
+def test_saving_the_view_walks_to_its_smart_collection(driven):
+    """The product payoff on screen: any gallery question becomes a
+    smart collection with one button, and the saved address answers
+    with the same membership the view showed."""
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        assert web.post("/i/pic-050/rating", json={"value": 5}).status_code < 300
+        assert web.post("/i/pic-050/favorite", json={"value": True}).status_code < 300
+
+    page = browser.new_page()
+    page.on("dialog", lambda dialog: dialog.accept("Five star"))
+    try:
+        # favorite AND five stars names exactly one file, whatever the
+        # other walks on this shared server have judged.
+        page.goto(f"{base}/g?rating_min=5&favorite=1")
+        page.wait_for_selector("[data-grid]")
+        assert page.locator(".cell").count() == 1
+        page.click("[data-save-smart]")
+        page.wait_for_url("**/t/five-star")
+        page.wait_for_selector(".grid .cell")
+        assert page.locator(".cell").count() == 1
+        assert 'data-slug="pic-050"' in page.content()
+    finally:
+        page.close()
+
+
 def test_the_navigation_indexes_walk_into_the_entities(driven):
     """The two front doors on screen: /folders enters the physical axis
     through a root shelf's folder entities, /albums enters the authored

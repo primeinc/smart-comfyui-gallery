@@ -348,17 +348,32 @@ CREATE TABLE collection (
     kind        TEXT NOT NULL CHECK (kind IN ('album','flag','smart')),
     color       TEXT,
     description TEXT,
-    sql_text    TEXT,   -- smart only
-    nl_text     TEXT,   -- smart only
-    created_at  REAL NOT NULL,
-    -- Both directions. A rule on an album that lists its members is a rule
-    -- nothing runs; a smart album with no rule is worse -- it can never list
-    -- a single file, and nothing tells it apart from an album somebody has
-    -- not filled in yet. A collection has to say how its membership is
-    -- decided, whichever way that is.
-    CHECK (kind = 'smart' OR (sql_text IS NULL AND nl_text IS NULL)),
-    CHECK (kind <> 'smart' OR sql_text IS NOT NULL OR nl_text IS NOT NULL)
+    created_at  REAL NOT NULL
 ) STRICT;
+
+-- How a SMART collection's membership is derived. The collection row says
+-- what the entity is; this row says how its members are decided -- a typed,
+-- versioned rule the ResultSet evaluates. Nothing here is ever executable:
+-- `source_text` and `legacy_sql_text` are provenance a human reads, and a
+-- row whose rule_json is NULL is an UNEVALUATED collection, never an empty
+-- one. Entity references inside rule_json are entity.uuid -- an address
+-- spelling can be renamed and eventually reused; a saved rule must mean the
+-- entity that was selected.
+CREATE TABLE collection_rule (
+    collection_id INTEGER PRIMARY KEY REFERENCES collection(id) ON DELETE CASCADE,
+    rule_version  INTEGER,
+    rule_json     TEXT CHECK (rule_json IS NULL OR json_valid(rule_json)),
+    -- WHOSE judgement the rule's authored facets (favorite, rating_min)
+    -- mean -- pinned at creation, never the viewer. RESTRICT: nulling it
+    -- would silently change what the rule answers.
+    actor_id      INTEGER REFERENCES user(id) ON DELETE RESTRICT,
+    source_text     TEXT,
+    legacy_sql_text TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    CHECK ((rule_json IS NULL AND rule_version IS NULL) OR (rule_json IS NOT NULL AND rule_version IS NOT NULL))
+) STRICT;
+CREATE INDEX collection_rule_actor ON collection_rule(actor_id);
 -- Leads on parent_id for the foreign key's delete shape; carries the name
 -- NOCASE so a collection's child listing is an index walk, not a sort.
 CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE);
@@ -1462,7 +1477,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 6;
+PRAGMA user_version   = 7;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

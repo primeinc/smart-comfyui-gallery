@@ -26,6 +26,39 @@
     });
   }
 
+  // Save the CURRENT question as a smart collection: the server
+  // reconstructs the typed rule from the canonical spelling -- the
+  // browser sends the URL's own parameters and a name, never a rule
+  // shape. A semantic view needs a cutoff, because similarity ranks
+  // the library and only `take` makes that a membership set.
+  const saver = document.querySelector("[data-save-smart]");
+  if (saver) {
+    saver.addEventListener("click", async () => {
+      const params = Object.fromEntries(new URLSearchParams(window.location.search));
+      delete params.page;
+      delete params.size;
+      const name = window.prompt("name this smart collection");
+      if (!name) return;
+      let take = null;
+      if (params.q) {
+        const asked = window.prompt("how many top results belong to it?", "100");
+        if (!asked) return;
+        take = +asked;
+      }
+      const answer = await fetch("/albums/smart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, take, ...params }),
+      });
+      if (!answer.ok) {
+        window.alert((await answer.json()).detail || "the view could not be saved");
+        return;
+      }
+      const told = await answer.json();
+      window.location.assign(`/t/${told.slug}`);
+    });
+  }
+
   const grid = () => document.querySelector("[data-grid]");
   const rail = document.querySelector("[data-rail]");
   if (!rail) return;

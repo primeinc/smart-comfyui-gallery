@@ -908,6 +908,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             workflow_page,
             collection_view.albums_index,
             make_album,
+            collection_view.make_smart,
             collection_view.album_page,
             album_add,
             album_remove,

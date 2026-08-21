@@ -32,15 +32,23 @@
       </ul>
     </section>
     {% endif %}
-    {% if album.gallery is none %}
+    {% if album.kind == "smart" and album.rule %}
     <section class="detail-facts">
       <h2>how membership is decided</h2>
       {% if album.rule.nl %}<p>{{ album.rule.nl }}</p>{% endif %}
       {% if album.rule.sql %}<pre class="detail-rule">{{ album.rule.sql }}</pre>{% endif %}
-      <p class="detail-state" data-state="unevaluated">
-        this collection is rule-defined; its membership is not evaluated yet, so there is no media answer to show
-      </p>
     </section>
+    {% endif %}
+    {% if album.gallery is none %}
+    <p class="detail-state" data-state="{{ album.state or 'unevaluated' }}">
+      {% if album.state == "broken" %}
+      this collection's rule points at something that no longer exists: {{ album.reason }}
+      {% elif album.state == "unavailable" %}
+      this collection's rule cannot be answered right now: {{ album.reason }}
+      {% else %}
+      this collection is rule-defined; its membership is not evaluated yet, so there is no media answer to show
+      {% endif %}
+    </p>
     {% elif album.gallery["items"] %}
     <div class="grid">
       {% for pic in album.gallery["items"] %}

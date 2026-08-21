@@ -19,7 +19,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import authored, connect
+from db import authored, collection_rules, connect
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -53,7 +53,8 @@ def placed_on_disk(tmp_path_factory):
         for slug in ("shore-1", "deep-1"):
             client.post("/t/keep/add", json={"file": slug})
         conn = connect.connect(client.app.state.db_path)
-        authored.collection(conn, "Rules", 3.0, kind="smart", nl_text="only the good ones")
+        rules = authored.collection(conn, "Rules", 3.0, kind="smart")
+        collection_rules.keep_prose(conn, rules, nl="only the good ones", now=3.0)
         conn.commit()
         connect.close(conn)
         yield client, root
@@ -352,7 +353,7 @@ def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypat
 
         def convert_then_ask(conn_, models_dir, query, page_number, now):
             writer = connect.connect(client.app.state.db_path)
-            writer.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (turncoat,))
+            writer.execute("UPDATE collection SET kind = 'smart' WHERE id = ?", (turncoat,))
             writer.commit()
             connect.close(writer)
             return real(conn_, models_dir, query, page_number, now)
@@ -363,7 +364,8 @@ def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypat
         body = told.json()
         assert body["kind"] == "smart"
         assert body["gallery"] is None
-        assert body["rule"] == {"sql": "SELECT 1", "nl": None}
+        assert body["state"] == "unevaluated", "a fresh conversion has no typed rule yet"
+        assert body["rule"] is None
         monkeypatch.setattr(resultset, "page", real)
         after = client.get("/t/turncoat", headers=AS_MACHINE).json()
         assert (after["kind"], after["gallery"]) == ("smart", None)
@@ -408,7 +410,7 @@ def test_the_place_views_own_no_sql():
         # `library` is the marker-verified reachability probe the folders
         # index reports online state through -- presence, not membership.
         "folder_view.py": {"connect", "library", "naming", "pages", "resultset", "settings"},
-        "collection_view.py": {"connect", "naming", "pages", "resultset", "settings"},
+        "collection_view.py": {"authored", "collection_rules", "connect", "naming", "pages", "resultset", "settings"},
     }
     for module, vocabulary in allowed.items():
         tree = ast.parse((web / module).read_text(encoding="utf-8"))

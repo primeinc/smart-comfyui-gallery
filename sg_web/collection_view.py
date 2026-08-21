@@ -7,27 +7,35 @@ rule when the kind is rule-defined -- and never the media answer: for
 `album` and `flag` the members are ONE ResultSet page of the
 album-faceted GalleryQuery, the same membership `/g?album=` serves.
 
-A `smart` collection's membership is UNEVALUATED, not empty: the
-ResultSet refuses the scope outright (db/resultset.py bind), and this
-view shows the rule and says the media answer does not exist yet --
-`gallery` is None, never an empty grid pretending the rule ran.
+A `smart` collection with a typed rule (db/collection_rules.py) is a
+real gallery: the ResultSet evaluates the rule to a membership set and
+orders it like any other scope. The other states stay LOUD and
+distinct -- never an empty grid pretending the rule ran:
+
+    no typed rule (migrated prose, or nothing)  -> unevaluated
+    rule references a deleted entity            -> broken
+    semantic rule nothing can answer right now  -> unavailable
 
 `/albums` follows the negotiation the other indexes carry: the
-historical JSON list for machines, a rendered card grid for a browser.
+historical JSON list for machines, a rendered card grid for a browser
+-- and it NEVER evaluates smart rules just to show counts.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 import time
 
-from litestar import Request, get
+from litestar import Request, get, post
 from litestar.datastructures import State
-from litestar.exceptions import NotFoundException
+from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import connect, naming, pages, resultset, settings
+from db import authored, collection_rules, connect, naming, pages, resultset, settings
+from db.resultset import canonical
 from sg_web import home
+from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
 
 
@@ -44,11 +52,17 @@ def view(conn, models_dir: str, collection_id: int, slug: str, now: float, *, le
     The unbounded legacy `files` list is the machine Adapter's shape
     only, exactly as on the person and folder addresses."""
     with resultset.snapshot(conn):
+        grid = None
+        state, reason = "evaluated", None
         try:
             grid = resultset.page(conn, models_dir, resultset.parse(album=slug), 1, now)
+        except collection_rules.BrokenCollectionRule as why:
+            state, reason = "broken", str(why)
+        except collection_rules.UnavailableCollectionRule as why:
+            state, reason = "unavailable", str(why)
         except resultset.UnevaluatedCollection:
-            grid = None
-        name, kind, color, description, sql_text, nl_text, parent_id = pages.collection_card(conn, collection_id)
+            state = "unevaluated"
+        name, kind, color, description, parent_id = pages.collection_card(conn, collection_id)
         parent = None
         if parent_id is not None:
             addressed = naming.entity_slug(conn, parent_id)
@@ -66,8 +80,13 @@ def view(conn, models_dir: str, collection_id: int, slug: str, now: float, *, le
                 for _, s, n, k, p in pages.collection_children(conn, collection_id)
             ],
         }
-        if grid is None:  # smart: unevaluated, refused by the ResultSet -- never "empty"
-            told["rule"] = {"sql": sql_text, "nl": nl_text}
+        if kind == "smart":
+            held = collection_rules.provenance(conn, collection_id)
+            told["rule"] = None if held is None else {"sql": held["sql"], "nl": held["nl"]}
+            told["state"] = state
+            if reason is not None:
+                told["reason"] = reason
+        if grid is None:
             told["count"] = None
             told["gallery"] = None
         else:
@@ -169,3 +188,58 @@ def album_page(state: State, request: Request, slug: str) -> Template | Response
     if wants_json(request):
         return Response(told, headers=VARIES)
     return Template(template_name="album.html", context={"album": told}, headers=VARIES)
+
+
+@dataclasses.dataclass
+class NewSmart:
+    """The body of POST /albums/smart: a name, an optional cutoff, and
+    the canonical spelling of the question being saved. The server
+    reconstructs the typed rule through the same seams that own query
+    semantics -- the browser never defines a rule shape."""
+
+    name: str
+    take: int | None = None
+    folder: str | None = None
+    person: str | None = None
+    kind: str | None = None
+    favorite: str | None = None
+    rating_min: int | None = None
+    q: str | None = None
+    sort: str | None = None
+
+
+@post("/albums/smart", sync_to_thread=True)
+def make_smart(state: State, data: NewSmart) -> dict:
+    """Save the current view as a smart collection: one entity, one
+    typed rule, one commit. The rule pins the creating actor for its
+    authored facets and stores entity references by uuid
+    (db/collection_rules.py owns every conversion)."""
+    cleaned = data.name.strip()
+    if not cleaned:
+        raise ClientException("a smart collection needs a name")
+    query = _asked(
+        data.folder,
+        None,
+        data.kind,
+        data.q,
+        data.sort,
+        None,
+        person=data.person,
+        favorite=data.favorite,
+        rating_min=data.rating_min,
+    )
+    conn = connect.connect(state.db_path)
+    try:
+        try:
+            rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.take)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        now = time.time()
+        collection_id = authored.collection(conn, cleaned, now, kind="smart")
+        spelled = canonical(query)
+        collection_rules.save(conn, collection_id, rule, source_text=spelled or "the whole library", now=now)
+        conn.commit()
+        addressed = naming.entity_slug(conn, collection_id)
+        return {"name": cleaned, "slug": addressed[1] if addressed else None, "kind": "smart"}
+    finally:
+        connect.close(conn)

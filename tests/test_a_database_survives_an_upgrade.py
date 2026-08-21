@@ -289,6 +289,60 @@ def test_two_steps_cannot_claim_one_version(steps):
 # --- the REAL registry, not synthetic steps ---------------------------------
 
 
+def _pre_v7_collection(conn) -> None:
+    """The pre-v7 collection shape: rule text on the collection row
+    itself, guarded by CHECKs -- what step 6 exists to replace. The
+    rebuild drops the table's triggers and indexes with it; the forward
+    steps recreate every one, which is exactly what the drift check
+    proves. Runs against an EMPTY fresh build, so no FTS rows desync."""
+    conn.execute("DROP TABLE collection_rule")
+    # BOTH pragmas, both outside any transaction (each is silently
+    # ignored inside one): legacy_alter_table stops trigger/view
+    # rewriting, and foreign_keys=OFF stops the FK-reference rewrite the
+    # rename performs whenever keys are on -- with keys ON, other
+    # tables' stored DDL would name "collection_keep" forever, which the
+    # drift check rightly counts as a different schema. The migration
+    # runner gets this for free from its own keys-off contract.
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE collection RENAME TO collection_keep")
+    conn.commit()
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        """CREATE TABLE collection (
+    id          INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    parent_id   INTEGER REFERENCES collection(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('album','flag','smart')),
+    color       TEXT,
+    description TEXT,
+    sql_text    TEXT,
+    nl_text     TEXT,
+    created_at  REAL NOT NULL,
+    CHECK (kind = 'smart' OR (sql_text IS NULL AND nl_text IS NULL)),
+    CHECK (kind <> 'smart' OR sql_text IS NOT NULL OR nl_text IS NOT NULL)
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO collection(id, parent_id, name, kind, color, description, created_at)"
+        " SELECT id, parent_id, name, kind, color, description, created_at FROM collection_keep"
+    )
+    conn.execute("DROP TABLE collection_keep")
+    conn.execute("CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE)")
+
+
+def a_v1_smart_collection(conn, name: str, sql: str) -> int:
+    """A smart row as v1 wrote it: rule text on the collection itself."""
+    cid = scan.mint(conn, "collection", name)
+    conn.execute(
+        "INSERT INTO collection(id, name, kind, sql_text, created_at) VALUES(?, ?, 'smart', ?, ?)",
+        (cid, name, sql, NOW),
+    )
+    return cid
+
+
 def _binary_sibling_indexes(conn) -> None:
     """The pre-v5 index shapes: binary sibling uniqueness, bare
     collection parent -- what step 4 exists to replace -- and the
@@ -321,6 +375,7 @@ def v1_database(tmp_path):
         "collection_with_members_stays_listed",
     ):
         conn.execute(f"DROP TRIGGER {trigger}")
+    _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted
     conn.execute("PRAGMA user_version = 1")
     conn.close()
@@ -355,7 +410,7 @@ def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     conn = connect.connect(path)
     try:
         file_id = a_file_row(conn)
-        smart = authored.collection(conn, "Big seeds", NOW, kind="smart", sql_text="SELECT 1")
+        smart = authored.collection(conn, "Big seeds", NOW, kind="smart")
         album = authored.collection(conn, "Keepers", NOW)
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (smart, file_id, NOW))
@@ -363,7 +418,7 @@ def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE collection_file SET collection_id = ? WHERE collection_id = ?", (smart, album))
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
+            conn.execute("UPDATE collection SET kind = 'smart' WHERE id = ?", (album,))
     finally:
         conn.close()
 
@@ -379,7 +434,7 @@ def test_a_legacy_smart_membership_stops_the_migration_by_name(tmp_path):
     conn = sqlite3.connect(str(path))
     conn.execute("PRAGMA foreign_keys=ON")
     file_id = a_file_row(conn)
-    smart = authored.collection(conn, "Big seeds", NOW, kind="smart", sql_text="SELECT 1")
+    smart = a_v1_smart_collection(conn, "Big seeds", "SELECT 1")
     conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (smart, file_id, NOW))
     conn.commit()
     conn.close()
@@ -664,6 +719,7 @@ def v3_database_with_embeddings(tmp_path):
     path = tmp_path / "gallery.db"
     build.build(path)
     conn = connect.connect(path)
+    _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted: a real v3 file
     root = int(
         conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
@@ -753,7 +809,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6]
+    assert migrate.migrate(path) == [4, 5, 6, 7]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

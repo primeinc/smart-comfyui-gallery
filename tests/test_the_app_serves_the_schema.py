@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from litestar.testing import TestClient
 
-from db import authored, connect, derived, library, naming, scan
+from db import authored, collection_rules, connect, derived, library, naming, scan
 from sg_web.app import build_app
 
 
@@ -675,7 +675,8 @@ def test_a_smart_collection_refuses_filing_over_http(served):
     a 400 with the reason -- never a 500 from the trigger beneath."""
     client, _, _ = served
     conn = connect.connect(client.app.state.db_path)
-    authored.collection(conn, "Big seeds", 3.0, kind="smart", sql_text="SELECT 1")
+    seeds = authored.collection(conn, "Big seeds", 3.0, kind="smart")
+    collection_rules.keep_prose(conn, seeds, sql="SELECT 1", now=3.0)
     conn.commit()
     conn.close()
     refused = client.post("/t/big-seeds/add", json={"file": "ana-1"})

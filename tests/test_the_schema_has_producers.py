@@ -127,7 +127,7 @@ def test_a_smart_collection_refuses_stored_members(db, a_library):
     file_id = a_library["file"]
     album = authored.collection(db, "Keepers", NOW)
     flag = authored.collection(db, "Flagged", NOW, kind="flag")
-    smart = authored.collection(db, "Big seeds", NOW, kind="smart", sql_text="SELECT 1")
+    smart = authored.collection(db, "Big seeds", NOW, kind="smart")
 
     authored.add_to_collection(db, album, file_id, NOW)
     authored.add_to_collection(db, flag, file_id, NOW)
@@ -142,9 +142,9 @@ def test_a_smart_collection_refuses_stored_members(db, a_library):
     # Nor may a filled collection quietly BECOME smart: its rows would
     # instantly disagree with whatever rule it was given.
     with pytest.raises(sqlite_module.IntegrityError):
-        db.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
+        db.execute("UPDATE collection SET kind = 'smart' WHERE id = ?", (album,))
     db.execute("DELETE FROM collection_file WHERE collection_id = ?", (album,))
-    db.execute("UPDATE collection SET kind = 'smart', sql_text = 'SELECT 1' WHERE id = ?", (album,))
+    db.execute("UPDATE collection SET kind = 'smart' WHERE id = ?", (album,))
 
 
 def test_perceptual_hashes_come_from_pixels_not_literals(db, a_library, tmp_path):

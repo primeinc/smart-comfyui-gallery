@@ -45,7 +45,7 @@ def kept(tmp_path_factory):
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 4
         assert client.post("/albums", json={"name": "Keep"}).json()["slug"] == "keep"
         conn = connect.connect(client.app.state.db_path)
-        authored.collection(conn, "Rules", 3.0, kind="smart", nl_text="only the good ones")
+        authored.collection(conn, "Rules", 3.0, kind="smart")
         conn.commit()
         connect.close(conn)
         yield client

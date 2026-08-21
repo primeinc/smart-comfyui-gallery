@@ -458,6 +458,131 @@ def _the_time_index_carries_the_tiebreak(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX file_recent ON file(mtime DESC, id DESC) WHERE missing_since IS NULL")
 
 
+@step(6)
+def _smart_rules_get_their_own_table(conn: sqlite3.Connection) -> None:
+    """v6 -> v7: a smart collection's rule moves to `collection_rule`.
+
+    The collection row says what the entity IS; the rule row says how
+    dynamic membership is derived -- typed, versioned, never executable.
+    Existing smart rows move losslessly: nl_text becomes source_text,
+    sql_text becomes legacy_sql_text, rule_json stays NULL -- explicitly
+    UNEVALUATED until somebody authors a typed rule, because "execute
+    arbitrary SQL somebody saved months ago" is not a capability.
+
+    The column removal is the twelve-step rebuild ALTER TABLE cannot
+    express, so every trigger on `collection` is recreated -- DDL is
+    schema.sql's text VERBATIM; the drift check compares sqlite_master.
+    """
+    conn.execute(
+        """CREATE TABLE collection_rule (
+    collection_id INTEGER PRIMARY KEY REFERENCES collection(id) ON DELETE CASCADE,
+    rule_version  INTEGER,
+    rule_json     TEXT CHECK (rule_json IS NULL OR json_valid(rule_json)),
+    -- WHOSE judgement the rule's authored facets (favorite, rating_min)
+    -- mean -- pinned at creation, never the viewer. RESTRICT: nulling it
+    -- would silently change what the rule answers.
+    actor_id      INTEGER REFERENCES user(id) ON DELETE RESTRICT,
+    source_text     TEXT,
+    legacy_sql_text TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    CHECK ((rule_json IS NULL AND rule_version IS NULL) OR (rule_json IS NOT NULL AND rule_version IS NOT NULL))
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX collection_rule_actor ON collection_rule(actor_id)")
+    conn.execute(
+        "INSERT INTO collection_rule(collection_id, source_text, legacy_sql_text, created_at, updated_at)"
+        " SELECT id, nl_text, sql_text, created_at, created_at FROM collection"
+        " WHERE kind = 'smart' AND (nl_text IS NOT NULL OR sql_text IS NOT NULL)"
+    )
+    # The old table is renamed AWAY and the new one created under the
+    # final name directly: renaming new->old would leave a QUOTED table
+    # name in sqlite_master's stored DDL, which the drift check rightly
+    # counts as a different schema. legacy_alter_table for the rename,
+    # because the modern form validates the collection_file triggers
+    # whose subject is mid-rebuild -- sqlite's own escape for the
+    # 12-step dance, restored immediately after.
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE collection RENAME TO collection_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE collection (
+    id          INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    parent_id   INTEGER REFERENCES collection(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('album','flag','smart')),
+    color       TEXT,
+    description TEXT,
+    created_at  REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO collection(id, parent_id, name, kind, color, description, created_at)"
+        " SELECT id, parent_id, name, kind, color, description, created_at FROM collection_old"
+    )
+    conn.execute("DROP TABLE collection_old")
+    conn.execute("CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE)")
+    conn.execute(
+        """CREATE TRIGGER collection_no_self_parent BEFORE INSERT ON collection
+WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
+  SELECT RAISE(ABORT,'collection parent cycle');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_no_cycle BEFORE UPDATE OF parent_id ON collection
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'collection parent cycle') WHERE NEW.id IN (
+    WITH RECURSIVE up(id) AS (
+      SELECT NEW.parent_id
+      UNION SELECT a.parent_id FROM collection a JOIN up ON a.id = up.id
+        WHERE a.parent_id IS NOT NULL)
+    SELECT id FROM up);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_collection_ins AFTER INSERT ON collection
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_collection_upd AFTER UPDATE OF name ON collection BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_collection_del AFTER DELETE ON collection BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_kind_agrees BEFORE INSERT ON collection BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match collection')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'collection';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_kind_keeps_agreeing BEFORE UPDATE OF id ON collection BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match collection')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'collection';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_takes_its_entity AFTER DELETE ON collection BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_with_members_stays_listed BEFORE UPDATE OF kind ON collection
+WHEN NEW.kind = 'smart' AND OLD.kind <> 'smart'
+ AND EXISTS (SELECT 1 FROM collection_file WHERE collection_id = NEW.id) BEGIN
+  SELECT RAISE(ABORT,'this collection holds filed members; empty it before making it smart');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

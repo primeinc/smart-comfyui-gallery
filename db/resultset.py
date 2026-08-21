@@ -304,6 +304,12 @@ class _Bound:
     #: carries one, so questions without an authored facet stay one
     #: cached projection however many actors ask them.
     actor_id: int | None
+    #: A SMART collection scope, bound: the rule's own question as an
+    #: inner _Bound plus its take. The rule owns MEMBERSHIP (evaluated to
+    #: a set); the outer question still owns the ordered answer --
+    #: `collection_id` stays None for smart, because collection_file
+    #: holds nothing to EXISTS against.
+    rule: tuple[_Bound, int | None] | None = None
 
 
 def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
@@ -331,17 +337,24 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
             fresh = naming.entity_slug(conn, found[0])
             if fresh is not None:
                 live[field] = fresh[1]
+    rule = None
     if held["album"] is not None:
-        # A rule-defined collection has no stored members, so the EXISTS
-        # this module runs would answer ZERO ROWS -- an unevaluated rule
-        # masquerading as an empty album. Refused until a rule evaluator
-        # exists: unevaluated is not empty.
         kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (held["album"],)).fetchone()[0]
         if kind == "smart":
+            # A smart collection's membership is its RULE's answer. No
+            # typed rule yet -- migrated prose, or nothing -- stays an
+            # UNEVALUATED collection, never an empty one; a rule whose
+            # references rot is BROKEN, never empty (db/collection_rules).
+            from . import collection_rules
+
             spelled = live.get("album", query.album)
-            raise UnevaluatedCollection(
-                f"collection {spelled!r} is rule-defined; smart membership is not evaluated yet"
-            )
+            told = collection_rules.load(conn, held["album"])
+            if told is None:
+                raise UnevaluatedCollection(
+                    f"collection {spelled!r} is rule-defined; smart membership is not evaluated yet"
+                )
+            rule = (_bind_rule(conn, told, spelled), told.take)
+            held["album"] = None  # membership comes from the rule set, not collection_file
     run = None
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
@@ -356,6 +369,42 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
         person_id=held["person"],
         face_run_id=run,
         actor_id=actor_id if asks_authored else None,
+        rule=rule,
+    )
+
+
+def _bind_rule(conn, rule, spelled: str) -> _Bound:
+    """The rule's own question, bound like any other -- uuid references
+    to live entity ids, the CURRENT primary run for its person, and the
+    actor PINNED AT CREATION for its authored facets, never the viewer."""
+    from .collection_rules import BrokenCollectionRule
+
+    held: dict[str, int | None] = {"folder": None, "person": None}
+    for field, uuid in (("folder", rule.folder_uuid), ("person", rule.person_uuid)):
+        if uuid is None:
+            continue
+        row = conn.execute("SELECT id FROM entity WHERE uuid = ? AND kind = ?", (uuid, field)).fetchone()
+        if row is None:
+            raise BrokenCollectionRule(f"collection {spelled!r}'s rule references a {field} that no longer exists")
+        held[field] = row[0]
+    run = None
+    if held["person"] is not None:
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
+        run = row[0] if row else None
+    inner = GalleryQuery(
+        kind=rule.kind,
+        favorite=rule.favorite,
+        rating_min=rule.rating_min,
+        text=rule.text,
+        sort=rule.sort or ("similarity" if rule.text else "newest"),
+    )
+    return _Bound(
+        query=inner,
+        folder_id=held["folder"],
+        collection_id=None,
+        person_id=held["person"],
+        face_run_id=run,
+        actor_id=rule.actor_id,
     )
 
 
@@ -377,6 +426,11 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "text": query.text,
             "sort": query.sort,
             "size": query.size,
+            # A smart scope's identity is its BOUND rule (recursively
+            # fingerprinted -- ids, pinned actor, run) plus its take: two
+            # collections with one rule are one membership question, and
+            # an edited rule is a different one.
+            "rule": None if bound.rule is None else [_bound_fingerprint(bound.rule[0]), bound.rule[1]],
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -434,7 +488,34 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     return [row[0] for row in conn.execute(sql, args)]
 
 
-def _fused_ids(conn, models_dir: str, bound: _Bound, now: float) -> tuple[list[int], dict | None]:
+def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset[int]:
+    """A smart rule evaluated to its MEMBERSHIP SET, through the same
+    machinery every question uses -- never a second engine. `take` cuts
+    the rule's own ordering (fused for a semantic rule, timed
+    otherwise) down to a set; the outer question then orders whatever
+    of that set it keeps."""
+    from .collection_rules import UnavailableCollectionRule
+
+    inner, take = bound.rule or (None, None)
+    if inner is None:
+        return frozenset()
+    if inner.query.text:
+        try:
+            ids, _ = _fused_ids(conn, models_dir, inner, now)
+        except (ValueError, LookupError) as silent:
+            raise UnavailableCollectionRule(
+                f"the collection's semantic rule cannot be answered right now: {silent}"
+            ) from silent
+    else:
+        ids = _timed_ids(conn, inner)
+    if take is not None:
+        ids = ids[:take]
+    return frozenset(ids)
+
+
+def _fused_ids(
+    conn, models_dir: str, bound: _Bound, now: float, members: frozenset[int] | None = None
+) -> tuple[list[int], dict | None]:
     """The whole fused ordering, once.
 
     A scope or filter is handed to retrieval as the ALLOWED set, never
@@ -452,12 +533,18 @@ def _fused_ids(conn, models_dir: str, bound: _Bound, now: float) -> tuple[list[i
     allowed = None
     faceted = (bound.folder_id, bound.collection_id, bound.person_id, query.kind, query.favorite, query.rating_min)
     if any(x is not None for x in faceted):
-        eligible = dataclasses.replace(bound, query=dataclasses.replace(query, text=None, sort="newest"))
+        eligible = dataclasses.replace(bound, query=dataclasses.replace(query, text=None, sort="newest"), rule=None)
         allowed = set(_timed_ids(conn, eligible))
-        if not allowed:
-            # An empty scope needs no encoder and has no honest
-            # provenance -- nothing was asked of any space.
-            return [], None
+    if members is not None:
+        # A smart scope's membership INTERSECTS the outer eligibility --
+        # evaluated to a set precisely so a rule's person and the
+        # viewer's person stay a conjunction instead of one field
+        # overwriting the other.
+        allowed = members if allowed is None else allowed & members
+    if allowed is not None and not allowed:
+        # An empty scope needs no encoder and has no honest
+        # provenance -- nothing was asked of any space.
+        return [], None
     depth = len(allowed) if allowed is not None else _present(conn)
     found = retrieval.query(conn, models_dir, query.text, max(depth, 1), now, offline=True, allowed=allowed)
     fused = [row["file_id"] for row in found["results"]]
@@ -484,10 +571,14 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: i
         held = _PROJECTIONS.get(key)
     if held is not None:
         return bound, held
+    members = _rule_members(conn, models_dir, bound, now) if bound.rule is not None else None
     if query.sort == "similarity":
-        ids, provenance = _fused_ids(conn, models_dir, bound, now)
+        ids, provenance = _fused_ids(conn, models_dir, bound, now, members=members)
     else:
         ids, provenance = _timed_ids(conn, bound), None
+        if members is not None:
+            # The rule owns membership; the OUTER walk keeps its order.
+            ids = [file_id for file_id in ids if file_id in members]
     made = Projection(
         fingerprint=key[1],
         currency=key[2],
