@@ -53,6 +53,7 @@ import contextlib
 import dataclasses
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 
@@ -747,6 +748,11 @@ def locate(
 #: absurd payload is refused instead of exercised.
 SUBSET_MOST = 5_000
 
+#: Exactly 32 hex characters -- a fullmatch, because bytes.fromhex
+#: skips whitespace and a raw-length check alone lets two spaces hide
+#: INSIDE a 32-character spelling and decode to 15 bytes.
+_HEX_UUID = re.compile(r"[0-9a-fA-F]{32}")
+
 
 @dataclasses.dataclass(frozen=True)
 class SelectionProof:
@@ -780,10 +786,10 @@ def prove_subset(
     selection at all.
 
     Nothing here trusts the browser: uuids are exactly 32 hex
-    characters (raw length checked FIRST, because bytes.fromhex ignores
-    whitespace and a padded spelling must not pass), the count is
-    bounded, and membership is checked against the ONE projection --
-    never a locate per item.
+    characters by FULLMATCH -- bytes.fromhex skips whitespace, so
+    neither a padded spelling nor spaces hiding inside a 32-character
+    one may reach it -- the count is bounded, and membership is checked
+    against the ONE projection, never a locate per item.
 
     Deliberately NOT the write transaction: proving may materialize a
     projection -- a whole membership walk, a smart-rule evaluation, a
@@ -801,13 +807,9 @@ def prove_subset(
         raise ValueError(f"a selection names at most {SUBSET_MOST} entities, not {len(entity_uuids)}")
     keys: list[bytes] = []
     for one in entity_uuids:
-        if type(one) is not str or len(one) != 32:
-            raise ValueError("a selection key is a 32-character hex string")
-        try:
-            decoded = bytes.fromhex(one)
-        except ValueError as rotten:
-            raise ValueError(f"a selection key is a 32-character hex string, not {one!r}") from rotten
-        keys.append(decoded)
+        if type(one) is not str or _HEX_UUID.fullmatch(one) is None:
+            raise ValueError(f"a selection key is exactly 32 hex characters, not {one!r}")
+        keys.append(bytes.fromhex(one))
     keys = list(dict.fromkeys(keys))  # idempotent: naming a file twice is naming it once
 
     with snapshot(conn):

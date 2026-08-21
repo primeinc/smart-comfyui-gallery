@@ -1,11 +1,14 @@
 """Bulk curation: one desired fact, one proven selection, one write.
 
 A selection names the answer it was made against and the entity uuids
-it chose; the server proves both against the authoritative projection
-INSIDE its write transaction and mutates all or nothing. A stale
-answer, a foreign file, or a vanished entity writes zero rows; the
-response's after-state lets the client settle by answer identity
-exactly as single writes do.
+it chose. The server proves both against the authoritative projection
+OUTSIDE any write transaction -- proving may cost a materialization,
+and sqlite's one writer lane never pays for it -- then claims the lane
+for a narrow revalidate-and-mutate: one currency comparison, the
+authored write, one commit. A commit in the handoff earns one re-proof
+outside the lane; a stale answer, a foreign file, or a vanished entity
+writes zero rows. The response's after-state lets the client settle by
+answer identity exactly as single writes do.
 """
 
 from __future__ import annotations
@@ -391,14 +394,26 @@ def test_a_semantic_proof_runs_without_the_writer_lane(chosen, monkeypatch):
     assert set(witnessed) == {"free"}, "FAISS ran while the writer lane was held"
 
 
-def test_a_whitespace_padded_key_is_refused(chosen):
-    """bytes.fromhex ignores whitespace, so a padded spelling decodes to
-    16 bytes -- the raw 32-character length check is what refuses it."""
+def test_every_non_hex_spelling_is_refused_as_a_bad_question(chosen):
+    """bytes.fromhex skips whitespace, so length alone is not the gate:
+    a 34-character padded spelling, a 32-character one with spaces
+    HIDING INSIDE it (30 hex digits, 15 bytes), and a non-hex character
+    are all 400 -- malformed selections, never 409-shaped racing."""
     answer, keys = _grid(chosen)
-    padded = keys["pic-0"][:16] + " " + keys["pic-0"][16:] + " "
-    refused = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [padded], "value": True})
-    assert refused.status_code == 400
+    valid = keys["pic-0"]
+    for rotten in (
+        valid[:16] + " " + valid[16:] + " ",  # padded: raw length 34
+        valid[:14] + "  " + valid[16:],  # spaces inside: raw length 32
+        valid[:31] + "g",  # not hex at all
+        valid.upper()[:31] + " ",  # trailing space at raw length 32
+    ):
+        refused = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [rotten], "value": True})
+        assert refused.status_code == 400, rotten
     assert _favorites(chosen) == set()
+    # And the canonical spelling still lands.
+    landed = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [valid], "value": True})
+    assert landed.status_code < 300
+    assert _favorites(chosen) == {"pic-0"}
 
 
 def test_the_one_item_adapters_share_the_many_implementation():
