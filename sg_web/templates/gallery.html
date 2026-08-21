@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gallery</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+  <script src="/static/htmx-2.0.7.min.js" defer></script>
+  <script src="/static/gallery.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <form class="ask" method="get" action="/g" data-ask>
+      <input type="search" name="q" value="{{ q }}" placeholder="search by what it looks like" aria-label="search">
+      {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+      {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
+      <select name="kind" aria-label="kind">
+        <option value="">any kind</option>
+        {% for one in kinds %}
+        <option value="{{ one }}"{% if one == kind %} selected{% endif %}>{{ one.replace("_", " ") }}</option>
+        {% endfor %}
+      </select>
+      <select name="sort" aria-label="sort" data-sort>
+        {% for one in sorts %}
+        <option value="{{ one }}"{% if one == sort %} selected{% endif %}>{{ one }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">show</button>
+    </form>
+  </header>
+  <main class="stage">
+    <div id="gallery-swap">
+      {% include "_grid.html" %}
+    </div>
+    <div class="rail" data-rail aria-label="result set rail">
+      <div class="rail-track"></div>
+      <div class="rail-thumb" data-rail-thumb></div>
+      <div class="rail-pop" data-rail-pop hidden>
+        <div class="rail-pop-label" data-rail-pop-label></div>
+        <div class="rail-pop-grid" data-rail-pop-grid></div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

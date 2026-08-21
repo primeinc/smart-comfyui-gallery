@@ -1,0 +1,181 @@
+/* One theme, spoken entirely through semantic tokens. A second theme is
+   a second :root block, not a second stylesheet. */
+:root {
+  --ground: #14151a;
+  --panel: #1d1f26;
+  --ink: #e8e6df;
+  --ink-muted: #9a978d;
+  --accent: #d8a24a;
+  --line: #2c2f38;
+  --danger: #c96a5a;
+  --cell-gap: 10px;
+  --radius: 6px;
+  --rail-width: 30px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, sans-serif;
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.ask {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ask input[type="search"] {
+  flex: 1 1 240px;
+  min-width: 160px;
+}
+
+.ask input, .ask select, .ask button {
+  background: var(--ground);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font: inherit;
+}
+
+.ask button { border-color: var(--accent); color: var(--accent); cursor: pointer; }
+
+.stage { padding: 14px 16px; padding-right: calc(var(--rail-width) + 22px); }
+
+.degraded {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  color: var(--ink-muted);
+}
+.degraded-space { color: var(--danger); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--cell-gap);
+}
+
+.cell {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.cell-name {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ground) 75%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.cell:hover .cell-name, .cell:focus-visible .cell-name { opacity: 1; }
+.cell:focus-visible { outline: 2px solid var(--accent); }
+
+.empty { color: var(--ink-muted); padding: 40px 0; text-align: center; }
+
+.pager {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 0;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pager a { color: var(--accent); }
+
+/* --- the rail: the whole ordered answer, drawn at full height -------- */
+
+.rail {
+  position: fixed;
+  top: 64px;
+  right: 6px;
+  bottom: 10px;
+  width: var(--rail-width);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.rail-track {
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 4px;
+  transform: translateX(-50%);
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.rail-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.rail-pop {
+  position: absolute;
+  right: calc(100% + 10px);
+  transform: translateY(-50%);
+  width: 240px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--ground) 70%, transparent);
+  pointer-events: none;
+}
+
+.rail-pop-label {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rail-pop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.rail-pop-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--ground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell-name { transition: none; }
+}

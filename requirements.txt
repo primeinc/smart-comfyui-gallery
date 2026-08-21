@@ -6,6 +6,7 @@
 # fail with "operator torchvision::nms does not exist"; for CUDA builds:
 #   pip install --index-url https://download.pytorch.org/whl/cu132 torch torchvision
 litestar
+jinja2  # the gallery templates; litestar's Jinja engine needs it installed
 uvicorn  # the server behind `python -m sg_web`
 websockets  # uvicorn's WebSocket protocol implementation for /ws/jobs
 Pillow

@@ -18,6 +18,7 @@ description = "Local-first browser-based DAM for ComfyUI with an optional derive
 requires-python = ">=3.11"
 dependencies = [
     "litestar",
+    "jinja2",  # the gallery templates; litestar's Jinja engine needs it installed
     "uvicorn",  # the server behind `python -m sg_web`
     # uvicorn speaks WebSocket only through an installed protocol package;
     # without one it downgrades /ws/jobs to a silent 404 at the server.

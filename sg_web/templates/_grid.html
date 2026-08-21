@@ -1,0 +1,47 @@
+<section id="grid-root"
+         data-grid
+         data-page="{{ page }}"
+         data-pages="{{ pages }}"
+         data-total="{{ total }}"
+         data-size="{{ size }}"
+         data-currency="{{ currency }}"
+         data-qbase="{{ qs }}{% if qs %}&amp;{% endif %}">
+  {% if missing_spaces %}
+  <p class="degraded" data-degraded>
+    degraded answer &mdash; not every configured model contributed:
+    {% for space, why in missing_spaces.items() %}
+    <span class="degraded-space" title="{{ why }}">{{ space }}</span>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% if items %}
+  <div class="grid" data-cells>
+    {% for item in items %}
+    <a class="cell" href="/i/{{ item.slug }}" data-slug="{{ item.slug }}" data-ordinal="{{ item.ordinal }}">
+      <img src="/thumb/{{ item.slug }}" alt="{{ item.name }}" loading="lazy">
+      <span class="cell-name">{{ item.name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">nothing answers this question.</p>
+  {% endif %}
+  <nav class="pager" data-pager aria-label="pages">
+    {% set qbase = qs + "&" if qs else "" %}
+    {% if page > 1 %}
+    <a href="/g?{{ qbase }}page={{ page - 1 }}"
+       hx-get="/g/grid?{{ qbase }}page={{ page - 1 }}"
+       hx-target="#gallery-swap"
+       hx-push-url="/g?{{ qbase }}page={{ page - 1 }}"
+       rel="prev">previous</a>
+    {% endif %}
+    <span class="pager-where">page {{ page }} of {{ pages }} &middot; {{ total }} results</span>
+    {% if page < pages %}
+    <a href="/g?{{ qbase }}page={{ page + 1 }}"
+       hx-get="/g/grid?{{ qbase }}page={{ page + 1 }}"
+       hx-target="#gallery-swap"
+       hx-push-url="/g?{{ qbase }}page={{ page + 1 }}"
+       rel="next">next</a>
+    {% endif %}
+  </nav>
+</section>
