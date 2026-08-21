@@ -93,6 +93,8 @@ def test_the_reader_keeps_the_subsecond_and_the_body(tmp_path):
     assert found.maker_tz_offset_min is None, "no maker note, no zone -- absence, not a default"
     assert capture.read(_photograph(tmp_path / "b.jpg", when_text="2013:02:10 08:29:58", subsec="7")).subsec_ms == 700
     assert capture.read(_photograph(tmp_path / "c.jpg", when_text="2013:02:10 08:29:58", subsec="")).subsec_ms is None
+    zero = capture.read(_photograph(tmp_path / "d.jpg", when_text="2013:02:10 08:29:58", iso=0))
+    assert zero.iso is None, "ISO 0 is not recorded (a clip's thumbnail writes it), never a sensitivity"
 
 
 @pytest.mark.skipif(not RAW.exists(), reason="the RAW sample library is not on this machine")
@@ -112,6 +114,7 @@ def test_a_real_canon_body_is_read_whole():
     )
     mov = capture.read_video(RAW / "2013-02-10/666A0209.MOV")
     assert mov.captured_at == FEB_10 + 8 * HOUR + 30 * MIN + 50
+    assert mov.iso is None, "the clip's thumbnail says ISO 0: not recorded"
     assert (mov.body_serial, mov.maker_tz_offset_min, mov.camera) == ("182029002226", -300, "Canon EOS 5D Mark III")
     assert mov.lens == "EF24-105mm f/4L IS USM", "the CNDA thumbnail carries the still's EXIF"
 

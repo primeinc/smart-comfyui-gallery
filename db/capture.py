@@ -509,7 +509,9 @@ def _read_image(image: Image.Image, path, out: Capture) -> Capture:
             iso = iso[0] if iso else None
         if iso is None or iso == 0xFFFF:
             iso = merged.get(ExifTags.Base.RecommendedExposureIndex) or iso
-        out.iso = int(iso) if isinstance(iso, (int, float)) else None
+        # 0 is "not recorded" (a video's CNDA thumbnail writes it), never a
+        # sensitivity: stored, it would anchor every exposure range at zero
+        out.iso = int(iso) if isinstance(iso, (int, float)) and iso not in (0, 0xFFFF) else None
         out.f_number = _number(merged.get(ExifTags.Base.FNumber))
         out.exposure_time = _number(merged.get(ExifTags.Base.ExposureTime))
         out.focal_length = _number(merged.get(ExifTags.Base.FocalLength))
