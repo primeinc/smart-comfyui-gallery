@@ -90,12 +90,12 @@ def test_previous_and_next_walk_the_resultset_the_url_names(address):
 
 
 def test_a_scope_the_item_is_outside_says_so_instead_of_inventing_arrows(address):
-    from db import authored, connect
+    from db import collections, connect
 
     conn = connect.connect(address.app.state.db_path)
-    album = authored.collection(conn, "Two", 1_700_100_000.0)
+    album = collections.collection(conn, "Two", 1_700_100_000.0)
     for file_id in [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id LIMIT 2")]:
-        authored.add_to_collection(conn, album, file_id, 1_700_100_000.0)
+        collections.set_membership(conn, album, file_id, True, 1_700_100_000.0)
     conn.commit()
     conn.close()
     outside = address.get("/i/m-5", params={"album": "two"}).json()

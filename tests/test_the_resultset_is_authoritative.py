@@ -22,7 +22,7 @@ import time
 import pytest
 from PIL import Image
 
-from db import connect, library, resultset, scan
+from db import collections, connect, library, resultset, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -124,13 +124,12 @@ def test_scope_and_filter_bound_membership(shelves):
 
 
 def test_an_album_is_a_scope(shelves):
-    from db import authored
 
     conn = shelves["conn"]
-    album = authored.collection(conn, "Keepers", NOW)
+    album = collections.collection(conn, "Keepers", NOW)
     kept = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id LIMIT 3")]
     for file_id in kept:
-        authored.add_to_collection(conn, album, file_id, NOW)
+        collections.set_membership(conn, album, file_id, True, NOW)
     conn.commit()
     told = resultset.page(conn, "", _q(album="keepers", size=10), 1, NOW)
     assert told["total"] == 3

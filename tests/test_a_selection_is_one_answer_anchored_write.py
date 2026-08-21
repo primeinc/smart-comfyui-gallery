@@ -21,7 +21,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import authored, connect, resultset
+from db import authored, collections, connect, resultset
 from sg_web.app import build_app
 
 AS_MACHINE = {"accept": "application/json"}
@@ -168,7 +168,7 @@ def test_bulk_rating_is_exact_and_desired_state(chosen):
 
 def test_bulk_membership_shares_the_smart_refusal(chosen):
     conn = connect.connect(chosen.app.state.db_path)
-    authored.collection(conn, "Rules", 1.0, kind="smart")
+    collections.collection(conn, "Rules", 1.0, kind="smart")
     conn.commit()
     connect.close(conn)
 
@@ -338,7 +338,7 @@ def test_a_changed_answer_in_the_handoff_writes_nothing(chosen, monkeypatch):
             writer = connect.connect(chosen.app.state.db_path)
             file_id = writer.execute("SELECT id FROM file WHERE name = 'pic_1.png'").fetchone()[0]
             keep = writer.execute("SELECT id FROM collection WHERE name = 'Keep'").fetchone()[0]
-            authored.set_collection_membership(writer, keep, file_id, False, 0.0)
+            collections.set_membership(writer, keep, file_id, False, 0.0)
             writer.commit()
             connect.close(writer)
         return proof
@@ -422,13 +422,15 @@ def test_the_one_item_adapters_share_the_many_implementation():
     import ast
     import pathlib
 
-    source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "authored.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    bodies = {node.name: ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+    here = pathlib.Path(__file__).resolve().parent.parent / "db"
+    bodies = {}
+    for module in ("authored.py", "collections.py"):
+        tree = ast.parse((here / module).read_text(encoding="utf-8"))
+        bodies |= {node.name: ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
     for one, many in (
         ("set_favorite", "set_favorite_many"),
         ("set_rating", "set_rating_many"),
-        ("set_collection_membership", "set_collection_membership_many"),
+        ("set_membership", "set_membership_many"),
     ):
         assert many in bodies[one], f"{one} stopped delegating to {many}"
         assert "executemany" in bodies[many]

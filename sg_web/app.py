@@ -38,8 +38,23 @@ from litestar.response import Redirect, Response, Stream
 from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
-from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
+from db import (
+    authored,
+    collections,
+    connect,
+    derived,
+    detect,
+    jobs,
+    library,
+    naming,
+    oriented,
+    pages,
+    runner,
+    scan,
+    settings,
+)
 from sg_web import (
+    collection_authoring,
     collection_view,
     curating,
     folder_view,
@@ -180,34 +195,10 @@ def workflow_page(state: State, slug: str) -> dict | Redirect:
     return _artifact_page(state, slug, "/w")
 
 
-# The album index and page live in sg_web/collection_view.py: one
-# address per collection, negotiated per caller; the writes stay here.
-
-
-@dataclasses.dataclass
-class NewAlbum:
-    """The body of POST /albums. A smart collection needs a rule and will
-    need its own route; this one makes the listed kinds."""
-
-    name: str
-    kind: str = "album"
-
-
-@post("/albums", sync_to_thread=True)
-def make_album(state: State, data: NewAlbum) -> dict:
-    conn = _connect(state.db_path)
-    try:
-        cleaned = data.name.strip()
-        if not cleaned:
-            raise ClientException("an album needs a name")
-        if data.kind not in ("album", "flag"):
-            raise ClientException("kind must be album or flag; a smart collection needs a rule")
-        collection_id = authored.collection(conn, cleaned, time.time(), kind=data.kind)
-        conn.commit()
-        addressed = naming.entity_slug(conn, collection_id)
-        return {"name": cleaned, "slug": addressed[1] if addressed else None, "kind": data.kind}
-    finally:
-        connect.close(conn)
+# The album index and page live in sg_web/collection_view.py, and every
+# lifecycle write in sg_web/collection_authoring.py: one address per
+# collection, one write adapter over db/collections.py. The legacy
+# membership routes below stay as compatibility adapters.
 
 
 @dataclasses.dataclass
@@ -228,7 +219,7 @@ def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool
             # The SAME membership Implementation the /i desired-state
             # routes use -- these stay as compatibility adapters, never a
             # second write path.
-            authored.set_collection_membership(conn, collection_id, file_id, adding, time.time())
+            collections.set_membership(conn, collection_id, file_id, adding, time.time())
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
@@ -917,8 +908,11 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             lora_page,
             workflow_page,
             collection_view.albums_index,
-            make_album,
-            collection_view.make_smart,
+            collection_authoring.make_album,
+            collection_authoring.make_smart,
+            collection_authoring.edit_definition,
+            collection_authoring.replace_rule,
+            collection_authoring.convert_collection,
             collection_view.album_page,
             album_add,
             album_remove,

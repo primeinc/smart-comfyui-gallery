@@ -26,7 +26,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response
 
-from db import authored, connect, naming, pages
+from db import authored, collections, connect, naming, pages
 from sg_web.presenting import VARIES
 
 
@@ -96,7 +96,7 @@ def set_membership(state: State, slug: str, collection: str, data: DesiredFlag) 
         file_id = _resolved(conn, "file", slug, "/i")
         collection_id = _resolved(conn, "collection", collection, "/t")
         try:
-            authored.set_collection_membership(conn, collection_id, file_id, data.value, time.time())
+            collections.set_membership(conn, collection_id, file_id, data.value, time.time())
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()

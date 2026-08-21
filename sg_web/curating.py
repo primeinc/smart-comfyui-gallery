@@ -38,7 +38,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.response import Response
 
-from db import authored, connect, naming, resultset, settings
+from db import authored, collections, connect, naming, resultset, settings
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES
@@ -199,6 +199,6 @@ def bulk_membership(
         found = naming.resolve(conn, "collection", collection)
         if found is None:
             raise LookupError(f"no collection at /t/{collection}")
-        authored.set_collection_membership_many(conn, found[0], ids, data.value, time.time())
+        collections.set_membership_many(conn, found[0], ids, data.value, time.time())
 
     return _applied(state, query, data, write)

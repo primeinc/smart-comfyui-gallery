@@ -475,19 +475,43 @@ def dupe_copies(conn, file_id: int, limit: int = 120):
 
 # --- albums ----------------------------------------------------------------
 
-#: Every collection with how many present pictures it holds. LEFT JOINs so
-#: an album somebody just made lists at zero instead of vanishing.
+#: Every ACTIVE collection with how many present pictures it holds.
+#: LEFT JOINs so an album somebody just made lists at zero instead of
+#: vanishing; archived collections keep their rows and their addresses
+#: but leave the shelves.
 ALBUMS = (
     "SELECT c.name, e.slug, c.kind, count(f.id) AS pictures"
     "  FROM collection c JOIN entity e ON e.id = c.id"
     "  LEFT JOIN collection_file cf ON cf.collection_id = c.id"
     "  LEFT JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    " WHERE c.archived_at IS NULL"
     " GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
 )
+
+#: The management shelf: what was retired, flat -- hierarchy is an
+#: active-tree presentation and an archived row keeps only its own state.
+ARCHIVED_ALBUMS = (
+    "SELECT c.name, e.slug, c.kind, count(f.id) AS pictures"
+    "  FROM collection c JOIN entity e ON e.id = c.id"
+    "  LEFT JOIN collection_file cf ON cf.collection_id = c.id"
+    "  LEFT JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    " WHERE c.archived_at IS NOT NULL"
+    " GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
+)
+
+ARCHIVED_COUNT = "SELECT count(*) FROM collection WHERE archived_at IS NOT NULL"
 
 
 def albums(conn):
     return conn.execute(ALBUMS).fetchall()
+
+
+def archived_albums(conn):
+    return conn.execute(ARCHIVED_ALBUMS).fetchall()
+
+
+def archived_count(conn) -> int:
+    return conn.execute(ARCHIVED_COUNT).fetchone()[0]
 
 
 ALBUM_FILES = (
@@ -514,7 +538,13 @@ def album_present(conn, collection_id: int) -> int:
     return conn.execute(ALBUM_PRESENT, (collection_id,)).fetchone()[0]
 
 
-COLLECTION_CARD = "SELECT name, kind, color, description, parent_id FROM collection WHERE id = ?"
+#: The whole definition plus lifecycle, updated_by resolved to the
+#: username -- an id is not a presentation fact.
+COLLECTION_CARD = (
+    "SELECT c.name, c.kind, c.color, c.description, c.parent_id,"
+    " c.archived_at, c.definition_rev, c.updated_at, u.username"
+    "  FROM collection c LEFT JOIN user u ON u.id = c.updated_by WHERE c.id = ?"
+)
 
 #: `IS ?` rather than `= ?` so one statement serves both levels -- NULL
 #: names the top of the hierarchy -- and both ride collection_parent
@@ -524,7 +554,7 @@ COLLECTION_CHILDREN = (
     " (SELECT count(*) FROM collection_file cf JOIN file f ON f.id = cf.file_id"
     "   AND f.missing_since IS NULL WHERE cf.collection_id = c.id) AS pictures"
     "  FROM collection c JOIN entity e ON e.id = c.id"
-    " WHERE c.parent_id IS ? ORDER BY c.name COLLATE NOCASE"
+    " WHERE c.parent_id IS ? AND c.archived_at IS NULL ORDER BY c.name COLLATE NOCASE"
 )
 
 
@@ -550,6 +580,7 @@ COLLECTION_SHELF = (
     " (SELECT count(*) FROM collection_file cf JOIN file f ON f.id = cf.file_id"
     "   AND f.missing_since IS NULL WHERE cf.collection_id = c.id) AS pictures"
     "  FROM collection c JOIN entity e ON e.id = c.id"
+    " WHERE c.archived_at IS NULL"
     " ORDER BY c.parent_id, c.name COLLATE NOCASE"
 )
 
@@ -567,13 +598,26 @@ COLLECTION_CHOICES = (
     "SELECT e.slug, c.name, c.kind,"
     " EXISTS(SELECT 1 FROM collection_file cf WHERE cf.collection_id = c.id AND cf.file_id = ?) AS filed"
     "  FROM collection c JOIN entity e ON e.id = c.id"
-    " WHERE c.kind IN ('album', 'flag')"
+    " WHERE c.kind IN ('album', 'flag') AND c.archived_at IS NULL"
     " ORDER BY c.parent_id, c.name COLLATE NOCASE"
 )
 
 
 def collection_choices(conn, file_id: int):
     return conn.execute(COLLECTION_CHOICES, (file_id,)).fetchall()
+
+
+def collections_named(conn, ids) -> list[tuple[str, str]]:
+    """`(slug, name)` for an id set the caller already resolved -- the
+    parent picker's labels, name-ordered like every shelf."""
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    return conn.execute(
+        f"SELECT e.slug, c.name FROM collection c JOIN entity e ON e.id = c.id"
+        f" WHERE c.id IN ({marks}) ORDER BY c.name COLLATE NOCASE",
+        list(ids),
+    ).fetchall()
 
 
 # --- what can be searched --------------------------------------------------

@@ -343,12 +343,25 @@ CREATE TABLE prompt (
 -- Same shape, one kind apart -- so one table, not two.
 CREATE TABLE collection (
     id          INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
-    parent_id   INTEGER REFERENCES collection(id) ON DELETE CASCADE,
+    -- RESTRICT: authored children have independent addresses, and deleting
+    -- an organizer must never silently take a subtree with it.
+    parent_id   INTEGER REFERENCES collection(id) ON DELETE RESTRICT,
     name        TEXT NOT NULL,
     kind        TEXT NOT NULL CHECK (kind IN ('album','flag','smart')),
     color       TEXT,
     description TEXT,
-    created_at  REAL NOT NULL
+    created_at  REAL NOT NULL,
+    updated_at  REAL NOT NULL,
+    created_by  INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    updated_by  INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    -- Lifecycle, never deletion: archiving keeps the address, the members,
+    -- the children and the rule; it changes discoverability only. NULL
+    -- means active.
+    archived_at REAL,
+    -- Optimistic concurrency over the DEFINITION -- name, kind, color,
+    -- description, parent, archive state, rule. Membership never bumps it:
+    -- filing a picture does not invalidate an open description editor.
+    definition_rev INTEGER NOT NULL DEFAULT 1 CHECK (definition_rev > 0)
 ) STRICT;
 
 -- How a SMART collection's membership is derived. The collection row says
@@ -377,6 +390,10 @@ CREATE INDEX collection_rule_actor ON collection_rule(actor_id);
 -- Leads on parent_id for the foreign key's delete shape; carries the name
 -- NOCASE so a collection's child listing is an index walk, not a sort.
 CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE);
+-- Authorship leads for the user FK's delete shape: without them,
+-- removing a user scans every collection row, twice.
+CREATE INDEX collection_created_by ON collection(created_by);
+CREATE INDEX collection_updated_by ON collection(updated_by);
 
 CREATE TRIGGER collection_no_self_parent BEFORE INSERT ON collection
 WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
@@ -1477,7 +1494,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 8;
+PRAGMA user_version   = 9;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

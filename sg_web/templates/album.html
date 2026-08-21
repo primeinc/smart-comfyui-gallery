@@ -6,6 +6,7 @@
   <title>{{ album.name }}</title>
   <link rel="canonical" href="/t/{{ album.slug }}">
   <link rel="stylesheet" href="/static/gallery.css">
+  <script src="/static/collection.js" defer></script>
 </head>
 <body>
   <header class="bar">
@@ -14,14 +15,54 @@
       {% if album.parent %}<a href="/t/{{ album.parent }}">&uarr; parent</a>{% endif %}
       <span class="crumbs-here">{{ album.name }}</span>
       <span class="crumbs-where">
+        {{ album.kind }} &middot;
         {% if album.count is not none %}{{ album.count }} pictures{% else %}rule-defined{% endif %}
+        {% if album.archived %}&middot; archived{% endif %}
       </span>
     </nav>
   </header>
-  <main class="detail">
+  <main class="detail" data-collection="{{ album.slug }}" data-rev="{{ album.definition_rev }}">
+    {% if album.archived %}
+    <p class="detail-state" data-state="archived">
+      this collection is archived: still addressable, members and children intact, off the shelves and pickers.
+      <button type="button" data-restore>restore</button>
+    </p>
+    {% endif %}
     {% if album.description %}
     <p class="detail-note">{{ album.description }}</p>
     {% endif %}
+    <details class="detail-facts" data-manage>
+      <summary>manage</summary>
+      <form data-edit-definition>
+        <label>name <input name="name" value="{{ album.name }}" required></label>
+        <label>description <input name="description" value="{{ album.description or '' }}"></label>
+        <label>color <input name="color" value="{{ album.color or '' }}" placeholder="#rrggbb"
+                            pattern="#[0-9a-fA-F]{6}"></label>
+        <label>parent
+          <select name="parent">
+            <option value="" {% if not album.parent %}selected{% endif %}>(top)</option>
+            {% for offered in album.parents or [] %}
+            <option value="{{ offered.slug }}" {% if offered.slug == album.parent %}selected{% endif %}>
+              {{ offered.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">save</button>
+      </form>
+      <p class="detail-actions">
+        {% if not album.archived %}
+        <button type="button" data-archive>archive</button>
+        {% endif %}
+        {% if album.kind == "album" %}
+        <button type="button" data-convert="flag">make it a flag</button>
+        {% elif album.kind == "flag" %}
+        <button type="button" data-convert="album">make it an album</button>
+        {% elif album.kind == "smart" %}
+        <button type="button" data-discard-rule>discard the rule, make it an album</button>
+        {% endif %}
+      </p>
+    </details>
     {% if album.collections %}
     <section class="detail-facts">
       <h2>collections inside</h2>

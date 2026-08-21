@@ -5,15 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Albums</title>
   <link rel="stylesheet" href="/static/gallery.css">
+  <script src="/static/collection.js" defer></script>
 </head>
 <body>
   <header class="bar">
     <nav class="crumbs">
       <a href="/g">gallery</a>
-      <span class="crumbs-here">Albums</span>
+      <span class="crumbs-here">Albums{% if showing_archived %} &middot; archived{% endif %}</span>
     </nav>
   </header>
   <main class="stage">
+    {% if showing_archived %}
+    <p class="pager"><a href="/albums">&larr; active collections</a></p>
+    {% if archived %}
+    <ul class="album-tree">
+      {% for node in archived %}
+      <li>
+        <a href="/t/{{ node.slug }}" data-album="{{ node.slug }}">{{ node.name }}</a>
+        {% if node.kind == "smart" %}
+        <span class="album-kind">rule-defined</span>
+        {% else %}
+        <span class="album-count">{{ node.pictures }} pictures</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">nothing is archived.</p>
+    {% endif %}
+    {% else %}
+    <form class="ask" data-new-collection>
+      <input name="name" placeholder="new collection" required>
+      <select name="kind">
+        <option value="album">album</option>
+        <option value="flag">flag</option>
+      </select>
+      <button type="submit">create</button>
+    </form>
     {% if albums %}
     <ul class="album-tree">
       {% for node in albums recursive %}
@@ -32,6 +60,10 @@
     </ul>
     {% else %}
     <p class="empty">no albums yet.</p>
+    {% endif %}
+    {% if archived_count %}
+    <p class="pager"><a href="/albums?state=archived" data-archived-shelf>archived ({{ archived_count }})</a></p>
+    {% endif %}
     {% endif %}
   </main>
 </body>

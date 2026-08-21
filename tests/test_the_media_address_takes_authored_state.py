@@ -18,7 +18,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import authored, connect
+from db import authored, collections, connect
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -45,7 +45,7 @@ def kept(tmp_path_factory):
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 4
         assert client.post("/albums", json={"name": "Keep"}).json()["slug"] == "keep"
         conn = connect.connect(client.app.state.db_path)
-        authored.collection(conn, "Rules", 3.0, kind="smart")
+        collections.collection(conn, "Rules", 3.0, kind="smart")
         conn.commit()
         connect.close(conn)
         yield client
@@ -164,17 +164,19 @@ def test_the_write_routes_own_no_semantics():
         node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
     assert not called & {"execute", "executemany", "executescript", "cursor"}, (
-        "a write route ran its own statement; the rules live in db/authored.py"
+        "a write route ran its own statement; the rules live in db/authored.py and db/collections.py"
     )
-    assert {"set_favorite", "set_rating", "set_collection_membership", "media_state"} <= called
+    assert {"set_favorite", "set_rating", "set_membership", "media_state"} <= called
     spoken = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "db":
             spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"authored", "connect", "naming", "pages"}, f"unexpected db vocabulary {sorted(spoken)}"
+    assert spoken <= {"authored", "collections", "connect", "naming", "pages"}, (
+        f"unexpected db vocabulary {sorted(spoken)}"
+    )
 
     legacy = (web / "app.py").read_text(encoding="utf-8")
-    assert "set_collection_membership" in legacy, "the /t routes stopped delegating to the shared implementation"
+    assert "collections.set_membership" in legacy, "the /t routes stopped delegating to the shared implementation"
     assert "add_to_collection" not in legacy, "a second membership write path came back"
     assert "remove_from_collection" not in legacy, "a second membership write path came back"
 

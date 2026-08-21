@@ -19,7 +19,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import authored, collection_rules, connect
+from db import collection_rules, collections, connect
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -53,7 +53,7 @@ def placed_on_disk(tmp_path_factory):
         for slug in ("shore-1", "deep-1"):
             client.post("/t/keep/add", json={"file": slug})
         conn = connect.connect(client.app.state.db_path)
-        rules = authored.collection(conn, "Rules", 3.0, kind="smart")
+        rules = collections.collection(conn, "Rules", 3.0, kind="smart")
         collection_rules.keep_prose(conn, rules, nl="only the good ones", now=3.0)
         conn.commit()
         connect.close(conn)
@@ -238,7 +238,7 @@ def test_the_albums_index_shows_the_hierarchy_as_authored(placed_on_disk):
     placed, _ = placed_on_disk
     conn = connect.connect(placed.app.state.db_path)
     keep = conn.execute("SELECT id FROM collection WHERE name = 'Keep'").fetchone()[0]
-    authored.collection(conn, "Inner", 4.0, parent_id=keep)
+    collections.collection(conn, "Inner", 4.0, parent_id=keep)
     conn.commit()
     connect.close(conn)
 
@@ -410,7 +410,15 @@ def test_the_place_views_own_no_sql():
         # `library` is the marker-verified reachability probe the folders
         # index reports online state through -- presence, not membership.
         "folder_view.py": {"connect", "library", "naming", "pages", "resultset", "settings"},
-        "collection_view.py": {"authored", "collection_rules", "connect", "naming", "pages", "resultset", "settings"},
+        "collection_view.py": {
+            "collection_rules",
+            "collections",
+            "connect",
+            "naming",
+            "pages",
+            "resultset",
+            "settings",
+        },
     }
     for module, vocabulary in allowed.items():
         tree = ast.parse((web / module).read_text(encoding="utf-8"))

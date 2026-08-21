@@ -627,6 +627,126 @@ END"""
     )
 
 
+@step(8)
+def _a_collection_carries_its_lifecycle(conn: sqlite3.Connection) -> None:
+    """v8 -> v9: the collection row gains the facts its lifecycle needs.
+
+    updated_at/created_by/updated_by say who last defined it,
+    archived_at makes retirement a state instead of a deletion, and
+    definition_rev is the optimistic-concurrency guard every definition
+    write checks. parent_id turns ON DELETE RESTRICT: authored children
+    have independent addresses, and deleting an organizer must never
+    silently take a subtree with it. Existing rows stamp
+    updated_at = created_at, no authorship, active, revision 1 -- no
+    authored state changes. The FK change is the twelve-step rebuild;
+    every trigger on `collection` is recreated with schema.sql's text
+    VERBATIM -- the drift check compares sqlite_master.
+    """
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE collection RENAME TO collection_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE collection (
+    id          INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    -- RESTRICT: authored children have independent addresses, and deleting
+    -- an organizer must never silently take a subtree with it.
+    parent_id   INTEGER REFERENCES collection(id) ON DELETE RESTRICT,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('album','flag','smart')),
+    color       TEXT,
+    description TEXT,
+    created_at  REAL NOT NULL,
+    updated_at  REAL NOT NULL,
+    created_by  INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    updated_by  INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    -- Lifecycle, never deletion: archiving keeps the address, the members,
+    -- the children and the rule; it changes discoverability only. NULL
+    -- means active.
+    archived_at REAL,
+    -- Optimistic concurrency over the DEFINITION -- name, kind, color,
+    -- description, parent, archive state, rule. Membership never bumps it:
+    -- filing a picture does not invalidate an open description editor.
+    definition_rev INTEGER NOT NULL DEFAULT 1 CHECK (definition_rev > 0)
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO collection(id, parent_id, name, kind, color, description,"
+        " created_at, updated_at, created_by, updated_by, archived_at, definition_rev)"
+        " SELECT id, parent_id, name, kind, color, description,"
+        " created_at, created_at, NULL, NULL, NULL, 1 FROM collection_old"
+    )
+    conn.execute("DROP TABLE collection_old")
+    conn.execute("CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE)")
+    conn.execute("CREATE INDEX collection_created_by ON collection(created_by)")
+    conn.execute("CREATE INDEX collection_updated_by ON collection(updated_by)")
+    conn.execute(
+        """CREATE TRIGGER collection_no_self_parent BEFORE INSERT ON collection
+WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
+  SELECT RAISE(ABORT,'collection parent cycle');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_no_cycle BEFORE UPDATE OF parent_id ON collection
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'collection parent cycle') WHERE NEW.id IN (
+    WITH RECURSIVE up(id) AS (
+      SELECT NEW.parent_id
+      UNION SELECT a.parent_id FROM collection a JOIN up ON a.id = up.id
+        WHERE a.parent_id IS NOT NULL)
+    SELECT id FROM up);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_collection_ins AFTER INSERT ON collection
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_collection_upd AFTER UPDATE OF name ON collection BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_collection_del AFTER DELETE ON collection BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_kind_agrees BEFORE INSERT ON collection BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match collection')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'collection';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_kind_keeps_agreeing BEFORE UPDATE OF id ON collection BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match collection')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'collection';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_takes_its_entity AFTER DELETE ON collection BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_with_members_stays_listed BEFORE UPDATE OF kind ON collection
+WHEN NEW.kind = 'smart' AND OLD.kind <> 'smart'
+ AND EXISTS (SELECT 1 FROM collection_file WHERE collection_id = NEW.id) BEGIN
+  SELECT RAISE(ABORT,'this collection holds filed members; empty it before making it smart');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER collection_with_rule_stays_smart BEFORE UPDATE OF kind ON collection
+WHEN OLD.kind = 'smart' AND NEW.kind <> 'smart'
+ AND EXISTS (SELECT 1 FROM collection_rule WHERE collection_id = NEW.id) BEGIN
+  SELECT RAISE(ABORT,'this collection is rule-defined; delete its rule before making it listed');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

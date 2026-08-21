@@ -15,7 +15,7 @@ import sqlite3
 
 import pytest
 
-from db import authored, build, connect, migrate, scan
+from db import authored, build, collections, connect, migrate, scan
 
 NOW = 1_700_000_000.0
 
@@ -53,11 +53,11 @@ def library(tmp_path):
     )
     user = authored.add_user(conn, "will", "hash", "ADMIN", NOW)
     person = authored.person(conn, "Ilse", NOW)
-    album = authored.collection(conn, "Keepers", NOW)
+    album = collections.collection(conn, "Keepers", NOW)
     authored.rate(conn, file_id, user, 5, NOW)
     authored.comment(conn, file_id, user, "the good one", NOW)
     authored.favourite(conn, file_id, user, NOW)
-    authored.add_to_collection(conn, album, file_id, NOW)
+    collections.set_membership(conn, album, file_id, True, NOW)
     authored.assert_person(conn, person, file_id, user, NOW)
     conn.commit()
     conn.close()
@@ -410,8 +410,8 @@ def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     conn = connect.connect(path)
     try:
         file_id = a_file_row(conn)
-        smart = authored.collection(conn, "Big seeds", NOW, kind="smart")
-        album = authored.collection(conn, "Keepers", NOW)
+        smart = collections.collection(conn, "Big seeds", NOW, kind="smart")
+        album = collections.collection(conn, "Keepers", NOW)
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (smart, file_id, NOW))
         conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (album, file_id, NOW))
@@ -592,12 +592,12 @@ def a_whole_library(path, root):
 
     user = authored.add_user(conn, "will", "hash", "ADMIN", NOW)
     person = authored.person(conn, "Ilse", NOW)
-    album = authored.collection(conn, "Keepers", NOW)
+    album = collections.collection(conn, "Keepers", NOW)
     files = [r[0] for r in conn.execute("SELECT id FROM file ORDER BY id")]
     authored.rate(conn, files[0], user, 5, NOW)
     authored.comment(conn, files[0], user, "the good one", NOW)
     authored.favourite(conn, files[1], user, NOW)
-    authored.add_to_collection(conn, album, files[2], NOW)
+    collections.set_membership(conn, album, files[2], True, NOW)
     authored.assert_person(conn, person, files[3], user, NOW)
     derived.annotate(conn, files[0], "caption", "a brass helmet", "qwen-vl", "2.5", "aa", NOW)
     derived.record_hash(conn, files[1], "aa", NOW, phash64=123)
@@ -809,7 +809,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -851,7 +851,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
         "collection_with_rule_stays_smart",
     ):
         conn.execute(f"DROP TRIGGER {trigger}")
-    album = authored.collection(conn, "Keepers", NOW)
+    album = collections.collection(conn, "Keepers", NOW)
     conn.execute(
         "INSERT INTO collection_rule(collection_id, source_text, created_at, updated_at) VALUES(?, 'x', ?, ?)",
         (album, NOW, NOW),

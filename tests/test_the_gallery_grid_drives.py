@@ -746,3 +746,47 @@ def test_the_album_page_walks_into_the_gallery(driven):
         assert "album=walk" in page.url, "Escape returns to the album's own results, not the library"
     finally:
         page.close()
+
+
+def test_the_collection_page_manages_the_collection(driven):
+    """WI-46's browser walk: a collection is born, renamed to a new
+    canonical address, archived off the shelf and restored -- every step
+    through the same one write adapter machines use, with the browser
+    rendering only what the server read back."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/albums")
+        page.fill('[data-new-collection] input[name="name"]', "Lifecycle")
+        page.click("[data-new-collection] button")
+        page.wait_for_url("**/t/lifecycle")
+
+        # One definition patch: rename + color. The browser lands on the
+        # authoritative NEW address the response named.
+        page.click("[data-manage] summary")
+        page.fill('[data-edit-definition] input[name="name"]', "Whole Life")
+        page.fill('[data-edit-definition] input[name="color"]', "#7C3AED")
+        page.click('[data-edit-definition] button[type="submit"]')
+        page.wait_for_url("**/t/whole-life")
+        assert page.locator(".crumbs-here").inner_text() == "Whole Life"
+        page.click("[data-manage] summary")
+        assert page.input_value('[data-edit-definition] input[name="color"]') == "#7c3aed", (
+            "the form holds the stored spelling, not the click"
+        )
+
+        # Archive: off the active shelf, onto the archived one, still
+        # addressable, and restore reverses exactly.
+        page.click("[data-archive]")
+        page.wait_for_selector("[data-restore]")
+        page.goto(f"{base}/albums")
+        assert page.locator('[data-album="whole-life"]').count() == 0, "archived means off the shelf"
+        page.click("[data-archived-shelf]")
+        page.wait_for_selector('[data-album="whole-life"]')
+        page.click('[data-album="whole-life"]')
+        page.wait_for_selector("[data-restore]")
+        page.click("[data-restore]")
+        page.wait_for_selector('[data-state="archived"]', state="detached")
+        page.goto(f"{base}/albums")
+        assert page.locator('[data-album="whole-life"]').count() == 1, "restore puts the same address back"
+    finally:
+        page.close()

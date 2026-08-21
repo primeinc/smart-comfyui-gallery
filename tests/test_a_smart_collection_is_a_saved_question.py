@@ -15,7 +15,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import authored, collection_rules, connect, naming, resultset
+from db import authored, collection_rules, collections, connect, naming, resultset
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -156,7 +156,7 @@ def test_a_semantic_rule_needs_take_and_take_bounds_the_set(saved, monkeypatch):
 
 def test_the_failure_states_are_loud_and_distinct(saved):
     conn = connect.connect(saved.app.state.db_path)
-    prose = authored.collection(conn, "Old prose", 1.0, kind="smart")
+    prose = collections.collection(conn, "Old prose", 1.0, kind="smart")
     collection_rules.keep_prose(conn, prose, sql="SELECT 1", now=1.0)
     conn.commit()
     connect.close(conn)
@@ -300,7 +300,7 @@ def test_the_persistence_interface_validates_what_it_is_handed(saved):
     built by hand -- not through from_gallery_query -- is refused at the
     persistence seam, never written for load() to trip over later."""
     conn = connect.connect(saved.app.state.db_path)
-    smart = authored.collection(conn, "Handmade", 1.0, kind="smart")
+    smart = collections.collection(conn, "Handmade", 1.0, kind="smart")
     bad = collection_rules.CollectionRule(
         version=1,
         folder_uuid=None,
@@ -327,7 +327,7 @@ def test_exactly_one_membership_definition_per_collection(saved):
     import sqlite3 as sqlite_module
 
     conn = connect.connect(saved.app.state.db_path)
-    listed = authored.collection(conn, "Listed", 1.0)
+    listed = collections.collection(conn, "Listed", 1.0)
     with pytest.raises(ValueError, match="smart"):
         collection_rules.keep_prose(conn, listed, nl="x", now=1.0)
     rule = collection_rules.from_gallery_query(conn, resultset.parse(kind="image"), actor_id=None, take=None)

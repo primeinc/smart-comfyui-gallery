@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
+from db import authored, collections, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
 from db import similarity as similarity_module
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
@@ -125,14 +125,14 @@ def test_a_smart_collection_refuses_stored_members(db, a_library):
     import sqlite3 as sqlite_module
 
     file_id = a_library["file"]
-    album = authored.collection(db, "Keepers", NOW)
-    flag = authored.collection(db, "Flagged", NOW, kind="flag")
-    smart = authored.collection(db, "Big seeds", NOW, kind="smart")
+    album = collections.collection(db, "Keepers", NOW)
+    flag = collections.collection(db, "Flagged", NOW, kind="flag")
+    smart = collections.collection(db, "Big seeds", NOW, kind="smart")
 
-    authored.add_to_collection(db, album, file_id, NOW)
-    authored.add_to_collection(db, flag, file_id, NOW)
+    collections.set_membership(db, album, file_id, True, NOW)
+    collections.set_membership(db, flag, file_id, True, NOW)
     with pytest.raises(ValueError, match="smart"):
-        authored.add_to_collection(db, smart, file_id, NOW)
+        collections.set_membership(db, smart, file_id, True, NOW)
     with pytest.raises(sqlite_module.IntegrityError):
         db.execute(
             "INSERT INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)",

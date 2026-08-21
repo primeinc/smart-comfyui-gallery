@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from litestar.testing import TestClient
 
-from db import authored, collection_rules, connect, derived, library, naming, scan
+from db import authored, collection_rules, collections, connect, derived, library, naming, scan
 from sg_web.app import build_app
 
 
@@ -637,7 +637,9 @@ def test_albums_are_made_and_served_through_the_application(served):
     filled, emptied and read over routes, addressed by slug."""
     client, _, root = served
     made = client.post("/albums", json={"name": "Keepers"}).json()
-    assert made == {"name": "Keepers", "slug": "keepers", "kind": "album"}
+    # The answer is the authoritative CollectionView, born at revision 1.
+    assert (made["name"], made["slug"], made["kind"]) == ("Keepers", "keepers", "album")
+    assert (made["definition_rev"], made["archived"]) == (1, False)
     assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1
     assert client.post("/t/keepers/add", json={"file": "ana-1"}).json()["pictures"] == 1, "adding twice is once"
     assert client.post("/t/keepers/add", json={"file": "ben-1"}).json()["pictures"] == 2
@@ -675,7 +677,7 @@ def test_a_smart_collection_refuses_filing_over_http(served):
     a 400 with the reason -- never a 500 from the trigger beneath."""
     client, _, _ = served
     conn = connect.connect(client.app.state.db_path)
-    seeds = authored.collection(conn, "Big seeds", 3.0, kind="smart")
+    seeds = collections.collection(conn, "Big seeds", 3.0, kind="smart")
     collection_rules.keep_prose(conn, seeds, sql="SELECT 1", now=3.0)
     conn.commit()
     conn.close()

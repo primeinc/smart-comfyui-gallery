@@ -354,8 +354,8 @@ def test_a_folder_cannot_become_its_own_ancestor(db):
 def test_a_collection_cannot_become_its_own_ancestor(db):
     entity(db, 10, "collection", "a")
     entity(db, 11, "collection", "b")
-    db.execute("INSERT INTO collection(id,parent_id,name,kind,created_at) VALUES(10,NULL,'A','album',0)")
-    db.execute("INSERT INTO collection(id,parent_id,name,kind,created_at) VALUES(11,10,'B','album',0)")
+    db.execute("INSERT INTO collection(id,parent_id,name,kind,created_at,updated_at) VALUES(10,NULL,'A','album',0,0)")
+    db.execute("INSERT INTO collection(id,parent_id,name,kind,created_at,updated_at) VALUES(11,10,'B','album',0,0)")
     with pytest.raises(sqlite3.IntegrityError):
         db.execute("UPDATE collection SET parent_id=11 WHERE id=10")
 
@@ -766,7 +766,7 @@ def test_a_folder_cannot_be_inserted_as_its_own_parent(db):
 def test_a_collection_cannot_be_inserted_as_its_own_parent(db):
     entity(db, 60, "collection", "selfcoll")
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute("INSERT INTO collection(id,parent_id,name,kind,created_at) VALUES(60,60,'A','album',0)")
+        db.execute("INSERT INTO collection(id,parent_id,name,kind,created_at,updated_at) VALUES(60,60,'A','album',0,0)")
 
 
 def test_a_folder_cannot_be_moved_across_roots(db):
@@ -1282,7 +1282,7 @@ def test_every_named_kind_is_indexed(db):
     entity(db, 310, "person", "ilse")
     db.execute("INSERT INTO person(id,name,created_at) VALUES(310,'Ilse Bergman',0)")
     entity(db, 311, "collection", "cw")
-    db.execute("INSERT INTO collection(id,name,kind,created_at) VALUES(311,'Client Work','album',0)")
+    db.execute("INSERT INTO collection(id,name,kind,created_at,updated_at) VALUES(311,'Client Work','album',0,0)")
     an_artifact(db, 312, "checkpoint", "flux-dev")
     for needle in ('"ergman"', '"ient Wo"', '"lux-de"', '"ictur"', '"ortrait"'):
         n = db.execute("SELECT count(*) FROM name_fts WHERE name_fts MATCH ?", (needle,)).fetchone()[0]

@@ -59,6 +59,53 @@
     });
   }
 
+  // The other half of the save-view pair: this view becomes an EXISTING
+  // smart collection's whole new rule. The browser still sends only the
+  // URL's own parameters; the target's current definition revision comes
+  // from its authoritative view, so a concurrent edit is a 409, never a
+  // silent overwrite.
+  const replacer = document.querySelector("[data-replace-smart]");
+  if (replacer) {
+    replacer.addEventListener("click", async () => {
+      const shelf = await fetch("/albums", { headers: { accept: "application/json" } });
+      const smarts = (await shelf.json()).filter((held) => held.kind === "smart");
+      if (!smarts.length) {
+        window.alert("no smart collection exists yet -- save the view as a new one instead");
+        return;
+      }
+      const named = window.prompt(
+        `replace the rule of which smart collection?
+${smarts.map((held) => held.slug).join(", ")}`,
+        smarts[0].slug,
+      );
+      if (!named) return;
+      const current = await fetch(`/t/${named}`, { headers: { accept: "application/json" } });
+      if (!current.ok) {
+        window.alert(`no collection at /t/${named}`);
+        return;
+      }
+      const params = Object.fromEntries(new URLSearchParams(window.location.search));
+      delete params.page;
+      delete params.size;
+      let take = null;
+      if (params.q) {
+        const asked = window.prompt("how many top results belong to it?", "100");
+        if (!asked) return;
+        take = +asked;
+      }
+      const answer = await fetch(`/t/${named}/rule`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expected_rev: (await current.json()).definition_rev, take, ...params }),
+      });
+      if (!answer.ok) {
+        window.alert((await answer.json()).detail || "the rule could not be replaced");
+        return;
+      }
+      window.location.assign(`/t/${(await answer.json()).slug}`);
+    });
+  }
+
   const grid = () => document.querySelector("[data-grid]");
   const rail = document.querySelector("[data-rail]");
   if (!rail) return;

@@ -151,17 +151,6 @@ def set_rating_many(conn, file_ids, user_id: int, value: int | None, now: float)
         conn.executemany(_RATE, [(file_id, user_id, held, now) for file_id in file_ids])
 
 
-def set_collection_membership_many(conn, collection_id: int, file_ids, value: bool, now: float) -> None:
-    """One membership write for every adapter. The smart refusal runs
-    ONCE, before any row -- all or nothing is the transaction's job, but
-    not even the first row of a doomed batch should be attempted."""
-    _takes_filings(conn, collection_id, removing=not value)
-    if value:
-        conn.executemany(_FILE_INTO, [(collection_id, file_id, now) for file_id in file_ids])
-    else:
-        conn.executemany(_FILE_OUT_OF, [(collection_id, file_id) for file_id in file_ids])
-
-
 def set_favorite(conn, file_id: int, user_id: int, value: bool, now: float) -> None:
     set_favorite_many(conn, (file_id,), user_id, value, now)
 
@@ -170,10 +159,6 @@ def set_rating(conn, file_id: int, user_id: int, value: int | None, now: float) 
     """`None` clears; 1..5 sets. Validated in `_rating` so every caller
     gets the same refusal instead of a CHECK-constraint traceback."""
     set_rating_many(conn, (file_id,), user_id, value, now)
-
-
-def set_collection_membership(conn, collection_id: int, file_id: int, value: bool, now: float) -> None:
-    set_collection_membership_many(conn, collection_id, (file_id,), value, now)
 
 
 def comment(conn, file_id: int, user_id: int, body: str, now: float) -> int:
@@ -186,68 +171,6 @@ def comment(conn, file_id: int, user_id: int, body: str, now: float) -> int:
 
 def edit_comment(conn, comment_id: int, body: str, now: float) -> None:
     conn.execute("UPDATE comment SET body = ?, edited_at = ? WHERE id = ?", (body, now, comment_id))
-
-
-# --- collections -----------------------------------------------------------
-
-
-def collection(
-    conn,
-    name: str,
-    now: float,
-    *,
-    kind: str = "album",
-    parent_id=None,
-    colour=None,
-    description=None,
-) -> int:
-    """An album, a flag, or a saved query.
-
-    The three are one table because they differ only in how membership is
-    decided: an album is listed, a flag is a state, a smart collection is a
-    query. All three are addressable, nestable and nameable, and a schema
-    that split them would need three of everything to say so. A smart
-    collection's rule lives in `collection_rule` (db/collection_rules.py);
-    until one is saved the collection is UNEVALUATED, never empty.
-    """
-    collection_id = mint(conn, "collection", name)
-    conn.execute(
-        "INSERT INTO collection(id, parent_id, name, kind, color, description, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-        (collection_id, parent_id, name, kind, colour, description, now),
-    )
-    return collection_id
-
-
-def rename_collection(conn, collection_id: int, name: str, now: float) -> str:
-    """Rename it, and keep its old address working."""
-    conn.execute("UPDATE collection SET name = ? WHERE id = ?", (name, collection_id))
-    return rename(conn, collection_id, name, now)
-
-
-_FILE_INTO = "INSERT OR IGNORE INTO collection_file(collection_id, file_id, added_at) VALUES(?, ?, ?)"
-_FILE_OUT_OF = "DELETE FROM collection_file WHERE collection_id = ? AND file_id = ?"
-
-
-def _takes_filings(conn, collection_id: int, *, removing: bool) -> None:
-    """A smart collection is refused by name here, and by trigger
-    beneath: its members are its rule's answer, and a stored row would
-    be a second, disagreeing one -- and pretending to remove one would
-    be answering under a membership model the kind does not have."""
-    kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
-    if kind is not None and kind[0] == "smart":
-        what = "to remove" if removing else "into it"
-        raise ValueError(f"a smart collection derives its members from its rule; nothing is filed {what}")
-
-
-def add_to_collection(conn, collection_id: int, file_id: int, now: float) -> None:
-    """File one picture into a listed collection."""
-    _takes_filings(conn, collection_id, removing=False)
-    conn.execute(_FILE_INTO, (collection_id, file_id, now))
-
-
-def remove_from_collection(conn, collection_id: int, file_id: int) -> None:
-    _takes_filings(conn, collection_id, removing=True)
-    conn.execute(_FILE_OUT_OF, (collection_id, file_id))
 
 
 # --- people ----------------------------------------------------------------

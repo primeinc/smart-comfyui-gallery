@@ -23,7 +23,7 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, ingest, lineage, naming, pages, scan
+from db import authored, collections, ingest, lineage, naming, pages, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -98,12 +98,12 @@ def library(tmp_path):
 
     user = authored.add_user(conn, "will", "hash", "ADMIN", NOW)
     ilse = authored.person(conn, "Ilse", NOW)
-    album = authored.collection(conn, "Keepers", NOW)
+    album = collections.collection(conn, "Keepers", NOW)
     first = conn.execute("SELECT id FROM file ORDER BY id LIMIT 1").fetchone()[0]
     authored.rate(conn, first, user, 5, NOW)
     authored.comment(conn, first, user, "the good one", NOW)
     authored.favourite(conn, first, user, NOW)
-    authored.add_to_collection(conn, album, first, NOW)
+    collections.set_membership(conn, album, first, True, NOW)
     authored.assert_person(conn, ilse, first, user, NOW)
     # Attribution belongs to a clustering RUN, and the People page shows the
     # one marked primary -- several are live at once and they disagree.
@@ -764,7 +764,7 @@ def test_the_place_pages_ask_answerable_questions(library):
     assert_no_growing_scan(conn, pages.FOLDER_CARD, (portraits,))
     assert_no_growing_scan(conn, pages.FOLDER_CHILDREN, (top,))
 
-    nested = authored.collection(conn, "Inside", NOW, parent_id=album)
+    nested = collections.collection(conn, "Inside", NOW, parent_id=album)
     assert pages.collection_card(conn, album)[1] == "album"
     assert [(n, k, p) for _, _, n, k, p in pages.collection_children(conn, album)] == [("Inside", "album", 0)]
     assert pages.collection_children(conn, nested) == []
@@ -791,7 +791,7 @@ def test_the_navigation_indexes_ask_answerable_questions(library):
     # whole-index category demands the read be one ordered walk of
     # collection_parent with no read-time sort, and one statement is
     # what makes the rendered tree one snapshot.
-    nested = authored.collection(conn, "Deeper", NOW, parent_id=album)
+    nested = collections.collection(conn, "Deeper", NOW, parent_id=album)
     shelf = {row[0]: row[1] for row in pages.collection_shelf(conn)}
     assert shelf[album] is None
     assert shelf[nested] == album, "the shelf carries the authored parents"

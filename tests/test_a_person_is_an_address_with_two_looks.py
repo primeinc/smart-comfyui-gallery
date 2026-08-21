@@ -17,7 +17,7 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import connect, derived, library, naming, scan
+from db import collections, connect, derived, library, naming, scan
 from sg_web.app import build_app
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -202,12 +202,11 @@ def test_a_person_is_a_resultset_scope(tmp_path):
         assert both["total"] == 2, "person AND folder is an intersection"
         narrowed = resultset.describe(conn, "", resultset.parse(person="ana", kind="video"), 0.0)
         assert narrowed["total"] == 0, "person AND kind is an intersection"
-        from db import authored
 
-        mixed = authored.collection(conn, "Mixed", 0.0)
+        mixed = collections.collection(conn, "Mixed", 0.0)
         for name in ("ana_1.png", "ben_1.png"):
             file_id = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()[0]
-            authored.add_to_collection(conn, mixed, file_id, 0.0)
+            collections.set_membership(conn, mixed, file_id, True, 0.0)
         conn.commit()
         crossed = resultset.describe(conn, "", resultset.parse(person="ana", album="mixed"), 0.0)
         assert crossed["total"] == 1, "person AND album keeps only the attributed member of the album"

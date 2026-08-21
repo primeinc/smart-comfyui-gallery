@@ -61,6 +61,9 @@ _STRUCTURE = {
     # the validated sort vocabulary -- eligibility is an intersection,
     # constructed, so the pieces are structure by definition
     "' AND '.join(where)": "clause",
+    # db/collections.py _claim_revision: "col = ?," assignments chosen
+    # from the module's fixed patch vocabulary, every value bound
+    "sets": "clause",
     "order": "keyword",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
