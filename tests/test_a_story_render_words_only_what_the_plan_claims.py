@@ -169,7 +169,7 @@ def test_the_golden_render_for_a_sequenced_session():
             "version": 1,
             "profile": "memory",
             "locale": "en",
-            "policy": 1,
+            "policy": 2,
             "reads": {"snapshot": 1, "plan": 3},
         },
         "title": "5 Qwen Image Edit images from July 18, 2026",
@@ -391,11 +391,13 @@ def test_the_v1_grammar_is_frozen_exact_and_exception_proof(monkeypatch):
     assert rendering.validate_story_render(render) == []
     assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
     monkeypatch.setattr(rendering, "PROFILES", profiles)
-    assert rendering.TemplateStoryRenderer.reads == {"snapshot": {1}, "plan": {1, 2, 3}}
+    assert rendering.TemplateStoryRenderer.reads == {"snapshot": {1}, "plan": {2, 3}}, "plan v1 is history, not input"
     again = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
     assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 3}
-    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[1, 2, 3\\]"):
+    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[2, 3\\]"):
         rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 4}, snapshot_sha, plan_sha)
+    with pytest.raises(ValueError, match="reads StorySnapshot"):
+        rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 1}, snapshot_sha, plan_sha)
     assert rendering.validate_story_render({**render, "v": 7})
     assert rendering.validate_story_render({**render, "v": True})
 
@@ -462,6 +464,60 @@ def test_a_day_is_spelled_in_the_domain_the_evidence_claims_it_in():
     assert render["notes"][0]["text"].endswith("order of these images.")
 
 
+def test_the_narrator_names_a_tool_and_a_day_only_when_the_evidence_agrees():
+    """A session is grouped by time and may mix tools: the title names a
+    tool only when every member used it. A session that crosses
+    midnight spans two days: "generated over July 18 to 19", never "on"
+    either -- and an instant-only interval keeps saying UTC."""
+    mixed = [
+        _member(0, LIGHTHOUSE[0]),
+        _member(1, LIGHTHOUSE[1]),
+        dict(_member(2, HELMET[0]), generation={**_member(2, HELMET[0])["generation"], "tool": "Flux"}),
+    ]
+    render = _rendered(world=_planned(mixed))[-1]
+    assert render["title"] == "3 generated images from July 18, 2026"
+    assert _planned(mixed)[2]["subject"]["label_hint"].startswith("generation session")
+    assert _rendered()[-1]["title"].startswith("5 Qwen Image Edit images")
+
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE)]
+    document, sha = _snapshot(members)
+    document["subject"]["time"] = {
+        "local": [JULY_18 + 23 * HOUR + 55 * MIN, JULY_18 + 24 * HOUR + 5 * MIN],
+        "instant": None,
+    }
+    sha = stories._identity(document)[1]
+    plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, sha)
+    render = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
+    assert render["title"] == "3 Qwen Image Edit images from July 18" + formatting.EN_DASH + "19, 2026"
+    assert "were generated over July 18" + formatting.EN_DASH + "19, 2026 and" in render["summary"]
+    document["subject"]["time"] = {
+        "local": None,
+        "instant": [JULY_18 + 23 * HOUR + 55 * MIN, JULY_18 + 24 * HOUR + 5 * MIN],
+    }
+    sha = stories._identity(document)[1]
+    plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, sha)
+    render = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
+    assert render["title"] == "3 Qwen Image Edit images from July 18" + formatting.EN_DASH + "19, 2026 UTC"
+    assert (
+        formatting.day_range(JULY_18, JULY_18 + 14 * 24 * HOUR) == "July 18 " + formatting.EN_DASH + " August 1, 2026"
+    )
+    assert (
+        formatting.day_range(JULY_18 + 166 * 24 * HOUR, JULY_18 + 167 * 24 * HOUR)
+        == "December 31, 2026 " + formatting.EN_DASH + " January 1, 2027"
+    )
+    assert formatting.day_range(JULY_18, JULY_18 + HOUR, utc=True) == "July 18, 2026 UTC"
+
+
+def test_a_thousand_members_are_a_plan_and_a_render_not_a_grammar_error():
+    members = [_member(i, LIGHTHOUSE[i % 3]) for i in range(1000)]
+    document, sha = _snapshot(members)
+    plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, sha)
+    assert "member-1000" in plan["phases"][-1]["member_refs"]
+    assert planning.validate_plan(plan, document, sha) == []
+    render = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
+    assert rendering.violations(render, plan, document, sha, planning.identity(plan)[1]) == []
+
+
 def test_identities_same_request_one_document_policy_coexists(monkeypatch):
     _snapshot, snapshot_sha, _plan, plan_sha, one = _rendered()
     two = _rendered()[-1]
@@ -477,9 +533,9 @@ def test_identities_same_request_one_document_policy_coexists(monkeypatch):
     assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 1)
     # ONE token covers wording AND formatting: the renderer's policy is
     # the package's, and a formatting change has nowhere else to go
-    monkeypatch.setattr(story_renderers, "POLICY_VERSION", 2)
-    assert rendering.TemplateStoryRenderer("memory").policy == 2
-    assert _rendered()[-1]["renderer"]["policy"] == 2
+    monkeypatch.setattr(story_renderers, "POLICY_VERSION", 3)
+    assert rendering.TemplateStoryRenderer("memory").policy == 3
+    assert _rendered()[-1]["renderer"]["policy"] == 3
     source = (__import__("pathlib").Path(formatting.__file__)).read_text(encoding="utf-8")
     assert "POLICY_VERSION" not in source, "formatting carries no version of its own; the package token is it"
     assert (
@@ -604,6 +660,13 @@ def test_a_persisted_render_is_immutable_reused_and_reverified(planned):
         with pytest.raises(ValueError, match="no longer hashes"):
             rendering.load_render(conn, first.id)
         assert client.get(f"/stories/renders/{first.id}").status_code == 409
+        # reuse is VERIFIED reuse: the same request against a corrupted row
+        # is a refusal, never "200 reused"
+        told = client.post("/stories/renders", json={"plan_id": plan_ref.id, "profile": "memory"})
+        assert told.status_code == 409, told.text
+        with pytest.raises(ValueError, match="no longer hashes"):
+            rendering.render_plan(conn, plan_ref.id, rendering.TemplateStoryRenderer("memory"), NOW + 35 * HOUR)
+        conn.rollback()
         # corruption of ANY json shape is a controlled refusal, never a 500
         for corrupt in ("[]", "null", '"story"', "7"):
             conn.execute("UPDATE story_render SET document_json = ? WHERE id = ?", (corrupt, first.id))
@@ -611,6 +674,32 @@ def test_a_persisted_render_is_immutable_reused_and_reverified(planned):
             with pytest.raises(ValueError, match="not a document"):
                 rendering.load_render(conn, first.id)
             assert client.get(f"/stories/renders/{first.id}").status_code == 409, corrupt
+    finally:
+        connect.close(conn)
+
+
+def test_two_simultaneous_identical_requests_make_one_row(planned):
+    """The look-then-insert runs under one writer lane: two identical
+    POSTs at once yield one row and two successes, never a UNIQUE
+    violation surfacing as a 500."""
+    import threading
+
+    client, _snap, plan_ref = planned
+    answers: list[int] = []
+
+    def ask():
+        answers.append(client.post("/stories/renders", json={"plan_id": plan_ref.id, "profile": "memory"}).status_code)
+
+    threads = [threading.Thread(target=ask) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(answers) in ([200, 200, 200, 201], [200, 200, 201, 201]) or all(a in (200, 201) for a in answers)
+    assert all(a in (200, 201) for a in answers), answers
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        assert conn.execute("SELECT count(*) FROM story_render").fetchone() == (1,)
     finally:
         connect.close(conn)
 

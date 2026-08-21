@@ -559,7 +559,7 @@ def load_snapshot(conn, snapshot_id: int) -> dict:
         raise LookupError(f"no story snapshot {snapshot_id}")
     document = parsed(row[0], f"story snapshot {snapshot_id}")
     if not verify(document, row[1]):
-        raise ValueError(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to serve it")
+        raise Corrupt(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to serve it")
     return document
 
 

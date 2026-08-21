@@ -30,6 +30,15 @@ The v1 grammar is FROZEN in `STORY_RENDER_V1`: a v1 row written today
 parses as v1 after a v2 exists. The renderer declares which input
 versions it reads as literals, and the document records which it read.
 
+What `violations()` proves is ATTRIBUTION -- every block names the
+Claim or members it rests on, and those belong to the block's own
+phase. It does not prove ENTAILMENT: a block citing a prompt-similarity
+Claim with the text "the user hated the lighting" is a provenance
+closure over a false sentence. The deterministic narrator is truthful
+because a closed wording registry writes its sentences; a narrator that
+composes prose needs a separate faithfulness check, and this validator
+must never be mistaken for one.
+
 Two identities, the planner's: a REQUEST identity known before any work
 (render format, plan sha, snapshot sha, renderer kind/version, profile,
 locale, and the render POLICY -- one token covering every
@@ -85,7 +94,10 @@ class TemplateStoryRenderer:
     #: The input formats this renderer version reads -- LITERALS, never
     #: the producers' running FORMAT_VERSION: a newer plan format is
     #: refused here until a renderer version that understands it exists.
-    reads: typing.ClassVar[dict[str, frozenset[int]]] = {"snapshot": frozenset({1}), "plan": frozenset({1, 2, 3})}
+    #: Plan v1 is NOT read: its producer wrote directed claims for
+    #: unsequenced families, and wording them would narrate a direction
+    #: the evidence never had. A legacy v1 Adapter is a deliberate act.
+    reads: typing.ClassVar[dict[str, frozenset[int]]] = {"snapshot": frozenset({1}), "plan": frozenset({2, 3})}
 
     def __init__(self, profile: str = "memory", locale: str = "en"):
         if profile not in PROFILES:
@@ -114,8 +126,11 @@ class TemplateStoryRenderer:
         ctx = wording.Context(snapshot=snapshot, plan=plan, profile=self.profile, sequenced=sequenced)
         claims_by_id = {claim["id"]: claim for claim in plan["claims"]}
 
-        day = _day_label(snapshot)
-        tool = next(((m.get("generation") or {}).get("tool") for m in snapshot["members"] if m.get("generation")), None)
+        day, one_day = _day_label(snapshot)
+        # a session is grouped by time and may mix tools: a tool is named
+        # only when every member agrees on it
+        tools = {(m.get("generation") or {}).get("tool") for m in snapshot["members"] if m.get("generation")}
+        tool = tools.pop() if len(tools) == 1 else None
         what = f"{total} {tool} images" if tool else f"{formatting.count(total, 'generated image')}"
         title = f"{what} from {day}" if day else what
         groups = "phases" if sequenced else "prompt families"
@@ -124,7 +139,8 @@ class TemplateStoryRenderer:
         these = f"These {formatting.count(total, 'generated image')}"
         summary = f"{these} fall into {count_groups}."
         if day:
-            summary = f"{these} were generated on {day} and fall into {count_groups}."
+            when = f"on {day}" if one_day else f"over {day}"
+            summary = f"{these} were generated {when} and fall into {count_groups}."
 
         sections = []
         if self.profile != "compact":
@@ -190,17 +206,21 @@ class TemplateStoryRenderer:
         }
 
 
-def _day_label(snapshot: dict) -> str | None:
-    """The day the story is about, in the domain the evidence claims it
-    in: the event's wall-clock start spells the human's own calendar
-    day; an instant start with no wall clock is a UTC day and says so --
-    the two domains the snapshot keeps apart are never fused here."""
+def _day_label(snapshot: dict) -> tuple[str | None, bool]:
+    """The days the story spans, in the domain the evidence claims them
+    in: the event's wall-clock interval spells the human's own calendar
+    days; an instant interval with no wall clock is UTC and says so --
+    the two domains the snapshot keeps apart are never fused here. A
+    session that crosses midnight spans two days and is narrated as a
+    range, never as "on" either. Returns (label, single day?)."""
     when = snapshot["subject"]["time"]
-    if when.get("local"):
-        return formatting.day_label(when["local"][0])
-    if when.get("instant"):
-        return formatting.day_label(when["instant"][0], utc=True)
-    return None
+    for domain, utc in (("local", False), ("instant", True)):
+        held = when.get(domain)
+        if held:
+            start, end = held[0], held[1] if len(held) > 1 else None
+            label = formatting.day_range(start, end, utc=utc)
+            return label, label == formatting.day_label(start, utc=utc)
+    return None, True
 
 
 # --- the exact grammar -------------------------------------------------------
@@ -253,8 +273,8 @@ def _keys(node, exact: set[str], optional: set[str], where: str, bad: list[str])
 
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
-_SECTION_ID = re.compile(r"^section-[0-9]{3}$")
-_PHASE_ID = re.compile(r"^phase-[0-9]{3}$")
+_SECTION_ID = re.compile(r"^section-[0-9]{3,}$")
+_PHASE_ID = re.compile(r"^phase-[0-9]{3,}$")
 
 
 def validate_story_render_v1(render) -> list[str]:
@@ -510,14 +530,20 @@ def _verified_inputs(conn, plan_id: int) -> tuple[dict, str, dict, str]:
 
 def render_plan(conn, plan_id: int, renderer: TemplateStoryRenderer, now: float) -> RenderRef:
     """Render one verified plan under one profile and persist -- or
-    return the existing row for the same request. Pure code, so it is
+    return the existing row for the same request, RE-VERIFIED: reuse
+    means a row that still hashes and still passes, never "the index
+    said something exists". The look-then-insert runs under ONE writer
+    lane (BEGIN IMMEDIATE), so two identical requests cannot both see
+    nothing and race into the UNIQUE constraint. Pure code, so it is
     synchronous; the transaction is left open for the caller."""
     plan, plan_sha, snapshot, snapshot_sha = _verified_inputs(conn, plan_id)
     who = renderer
     request = request_identity(plan_sha, snapshot_sha, who.kind, who.version, who.profile, who.locale, who.policy)
-    held = conn.execute("SELECT id, document_sha256 FROM story_render WHERE request_sha256 = ?", (request,)).fetchone()
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    held = conn.execute("SELECT id FROM story_render WHERE request_sha256 = ?", (request,)).fetchone()
     if held:
-        return RenderRef(int(held[0]), held[1], True)
+        return RenderRef(int(held[0]), identity(_load(conn, int(held[0]))[0])[1], True)
     render = renderer.render(snapshot, plan, snapshot_sha, plan_sha)
     wrong = violations(render, plan, snapshot, snapshot_sha, plan_sha)
     if wrong:
@@ -525,7 +551,7 @@ def render_plan(conn, plan_id: int, renderer: TemplateStoryRenderer, now: float)
     sha = identity(render)[1]
     held = conn.execute("SELECT id FROM story_render WHERE document_sha256 = ?", (sha,)).fetchone()
     if held:
-        return RenderRef(int(held[0]), sha, True)
+        return RenderRef(int(held[0]), identity(_load(conn, int(held[0]))[0])[1], True)
     render["rendered_at"] = now
     render_id = int(
         conn.execute(
@@ -575,9 +601,9 @@ def _load(conn, render_id: int) -> tuple[dict, dict]:
         raise LookupError(f"no story render {render_id}")
     render = stories.parsed(row[1], f"story render {render_id}")
     if identity(render)[1] != row[2]:
-        raise ValueError(f"story render {render_id} no longer hashes to its identity; refusing to serve it")
+        raise stories.Corrupt(f"story render {render_id} no longer hashes to its identity; refusing to serve it")
     plan, plan_sha, snapshot, snapshot_sha = _verified_inputs(conn, int(row[0]))
     wrong = violations(render, plan, snapshot, snapshot_sha, plan_sha)
     if wrong:
-        raise ValueError(f"story render {render_id} is no longer valid against its plan: {wrong}")
+        raise stories.Corrupt(f"story render {render_id} is no longer valid against its plan: {wrong}")
     return render, snapshot

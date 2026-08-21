@@ -1487,12 +1487,21 @@ def _a_render_is_frozen_and_its_snapshot_is_the_plans(conn: sqlite3.Connection) 
     """v16 -> v17: story_render drops snapshot_id (the plan's snapshot is
     the only one) and names its policy column for what it covers. The
     StoryRender v1 grammar was frozen at this version; rows written
-    before it are pre-freeze documents that cannot pass it and are
-    dropped -- a render is a deterministic function of an immutable
-    plan and is remade by the same request. DDL is schema.sql's text
-    VERBATIM.
+    before it are pre-freeze documents that cannot pass it. They are
+    not deleted: a database that holds any keeps them, bytes intact,
+    as the legacy table `story_render_v16` (`db.build --check` will
+    name it; that is the record that history exists). An empty table
+    is simply replaced. DDL is schema.sql's text VERBATIM.
     """
-    conn.execute("DROP TABLE story_render")
+    if conn.execute("SELECT count(*) FROM story_render").fetchone()[0]:
+        conn.execute("PRAGMA legacy_alter_table=ON")
+        conn.execute("ALTER TABLE story_render RENAME TO story_render_v16")
+        conn.execute("PRAGMA legacy_alter_table=OFF")
+        conn.execute("DROP INDEX story_render_plan")
+        conn.execute("DROP INDEX story_render_snapshot")
+        conn.execute("DROP TRIGGER story_render_is_immutable")
+    else:
+        conn.execute("DROP TABLE story_render")
     conn.execute(
         """CREATE TABLE story_render (
     id               INTEGER PRIMARY KEY,

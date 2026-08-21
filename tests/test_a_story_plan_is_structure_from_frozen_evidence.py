@@ -397,6 +397,111 @@ def test_missing_evidence_is_a_gap_never_positive_shift_evidence():
     assert planning.validate_plan(plan, document, sha) == []
 
 
+def test_a_historical_v1_plan_stays_readable_as_history_and_is_planned_again_as_v3(frozen):
+    """Planner v4 wrote directed artifact_change claims for UNSEQUENCED
+    families -- a real v1 plan, not a v3 plan with "v": 1 stamped on.
+    load_plan reads it byte-identically under its frozen grammar and
+    the stored-structure rules; the CURRENT producer contract refuses
+    it; the renderer declines to read v1 at all; and the same snapshot
+    planned today yields a separate v3 plan with artifact_difference."""
+    from db import rendering
+
+    client, snap = frozen
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        snapshot = stories.load_snapshot(conn, snap.id)
+        # the snapshot's members carry LoRA A on two and LoRA B on one;
+        # write what planner v4 wrote for day-precision evidence
+        refs = [planning._member_ref(one["ordinal"]) for one in sorted(snapshot["members"], key=lambda m: m["ordinal"])]
+        historical = {
+            "v": 1,
+            "snapshot_sha256": snap.sha256,
+            "planner": {
+                "kind": "generation_history",
+                "version": 4,
+                "settings": {"phase_threshold": 0.5},
+                "similarity": {"name": "lexical-bow", "version": "1"},
+            },
+            "subject": {
+                "kind": "generation_session",
+                "sequenced": False,
+                "label_hint": "3 outputs · 2 prompt families",
+            },
+            "phases": [
+                {
+                    "id": "phase-001",
+                    "member_refs": refs[:2],
+                    "representative_refs": [refs[0]],
+                    "label_hint": "Prompt family 1",
+                    "claim_refs": ["claim-001"],
+                },
+                {
+                    "id": "phase-002",
+                    "member_refs": refs[2:],
+                    "representative_refs": [refs[2]],
+                    "label_hint": "Prompt family 2 · new artifacts",
+                    "claim_refs": ["claim-002", "claim-003"],
+                },
+            ],
+            "claims": [
+                {
+                    "id": "claim-001",
+                    "kind": "prompt_family",
+                    "confidence": 1.0,
+                    "evidence_refs": [f"{r}:generation.prompt" for r in refs[:2]],
+                    "facts": {"size": 2, "threshold": 0.5, "min_pairwise_cosine": 0.9},
+                },
+                {
+                    "id": "claim-002",
+                    "kind": "prompt_family",
+                    "confidence": 1.0,
+                    "evidence_refs": [f"{refs[2]}:generation.prompt"],
+                    "facts": {"size": 1, "threshold": 0.5, "min_pairwise_cosine": None},
+                },
+                {
+                    "id": "claim-003",
+                    "kind": "artifact_change",
+                    "confidence": 1.0,
+                    "evidence_refs": [f"{r}:generation.artifacts" for r in refs],
+                    "facts": {"added": ["f" * 32], "removed": []},
+                },
+            ],
+            "unsupported": [{"kind": "chronology", "reason": "day precision"}],
+            "planned_at": NOW,
+        }
+        _spelled, sha = planning.identity(historical)
+        conn.execute(
+            "INSERT INTO story_plan(snapshot_id, format_version, planner, planner_version, similarity,"
+            " similarity_version, settings_hash, request_sha256, document_json, document_sha256, created_at)"
+            " VALUES(?, 1, 'generation_history', 4, 'lexical-bow', '1', 'x', ?, ?, ?, ?)",
+            (snap.id, "1" * 64, planning.canonical(historical), sha, NOW),
+        )
+        conn.commit()
+        plan_id = conn.execute("SELECT id FROM story_plan WHERE document_sha256 = ?", (sha,)).fetchone()[0]
+        assert planning.load_plan(conn, plan_id) == historical, "history loads byte-identically"
+        assert planning.validate_stored_plan(historical, snapshot, snap.sha256) == []
+        assert any(
+            "directional claim artifact_change" in why
+            for why in planning.validate_current_plan(historical, snapshot, snap.sha256)
+        )
+        assert client.get(f"/stories/plans/{plan_id}").status_code == 200
+        with pytest.raises(ValueError, match="reads StorySnapshot"):
+            rendering.TemplateStoryRenderer("memory").render(snapshot, historical, snap.sha256, sha)
+        assert client.post("/stories/renders", json={"plan_id": plan_id, "profile": "memory"}).status_code == 400
+
+        today = planning.plan_snapshot(conn, snap.id, _planner(), NOW + 40 * HOUR)
+        conn.commit()
+        assert today.reused is False
+        assert today.id != plan_id
+        fresh = planning.load_plan(conn, today.id)
+        assert fresh["v"] == planning.FORMAT_VERSION
+        assert fresh["planner"]["version"] == planning.GenerationHistoryPlanner.version
+        assert planning.validate_current_plan(fresh, snapshot, snap.sha256) == []
+        assert planning.load_plan(conn, plan_id) == historical, "and history is untouched beside it"
+    finally:
+        connect.close(conn)
+
+
 def test_a_blank_prompt_is_never_embedded():
     """Only known prompts reach the engine: an empty string is not a
     prompt, and a vector for nothing is a lie waiting for a consumer."""

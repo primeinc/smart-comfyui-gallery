@@ -96,6 +96,8 @@ def plan_snapshot(state: State, data: PlanRequest) -> Response:
             asked = planning.request_plan(conn, data.snapshot_id, data.planner, engine, data.settings, time.time())
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
+        except stories.Corrupt as corrupt:
+            raise ClientException(str(corrupt), status_code=409) from corrupt
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
@@ -151,6 +153,8 @@ def render_plan(state: State, data: RenderRequest) -> Response:
             made = rendering.render_plan(conn, data.plan_id, narrator, time.time())
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
+        except stories.Corrupt as corrupt:
+            raise ClientException(str(corrupt), status_code=409) from corrupt
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()

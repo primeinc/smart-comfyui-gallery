@@ -551,7 +551,10 @@ class GenerationHistoryPlanner:
                 }
             )
 
-        tool = next(((one.get("generation") or {}).get("tool") for one in members if one.get("generation")), None)
+        # A session is grouped by TIME; its members may come from several
+        # tools. The label names a tool only when every member agrees.
+        tools = {(one.get("generation") or {}).get("tool") for one in members if one.get("generation")}
+        tool = tools.pop() if len(tools) == 1 else None
         return {
             "v": FORMAT_VERSION,
             "snapshot_sha256": snapshot_sha256,
@@ -675,7 +678,9 @@ def _parameter_change(members, other, here, refs, sequenced: bool):
 
 # --- validation: a plan is an exact partition of its snapshot ----------------
 
-_REF = re.compile(r"^(member-\d{3})(?::([a-z_]+(?:\.[a-z_]+)*))?$")
+#: Three digits or more: the thousandth member is member-1000, and a
+#: grammar that admitted only three digits would have refused it.
+_REF = re.compile(r"^(member-\d{3,})(?::([a-z_]+(?:\.[a-z_]+)*))?$")
 
 
 def unresolved(plan: dict, snapshot: dict) -> list[str]:
@@ -750,7 +755,7 @@ STORY_PLAN_V3 = {
     "version": 3,
     "claims": STORY_PLAN_V2["claims"] | frozenset({"prompt_rewrite"}),
 }
-_ID = re.compile(r"^(phase|claim)-[0-9]{3}$")
+_ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -977,12 +982,15 @@ def validate_story_plan(plan) -> list[str]:
     return grammar(plan)
 
 
-def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]:
-    """Every way a plan can be wrong, as a list of reasons -- empty is
-    the only acceptable answer. Its own version's grammar first; then
-    the snapshot it names; an exact partition (every member exactly
-    once); representatives inside their phase; unique phase and claim
-    ids; every reference inward."""
+def validate_stored_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]:
+    """What makes a STORED plan readable, whatever planner policy wrote
+    it: its own version's frozen grammar; the snapshot it names; an
+    exact partition (every member exactly once); representatives inside
+    their phase; unique ids; every reference inward; and, for a
+    sequenced plan, contiguous phases -- a structural truth every
+    producer version held. Nothing here is a policy the producer may
+    later tighten: a v1 plan planner v4 wrote stays readable after
+    planner v5 decided it would no longer write such a thing."""
     bad = validate_story_plan(plan)
     if bad:
         return bad
@@ -1007,13 +1015,27 @@ def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]
             for ref in phase["representative_refs"]
             if ref not in phase["member_refs"]
         )
-    kinds = {claim["kind"] for claim in plan["claims"]}
     if plan["subject"]["sequenced"]:
         # the phase list IS the chronology: member ordinals must not
         # interleave across phases
         order = [int(ref.split("-")[1]) for phase in plan["phases"] for ref in phase["member_refs"]]
         if order != sorted(order):
             bad.append("a sequenced plan's phases interleave members; the phase list is not a chronology")
+    dangling = unresolved(plan, snapshot)
+    if dangling:
+        bad.append(f"references outside the snapshot: {dangling[:5]}")
+    return bad
+
+
+def validate_current_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]:
+    """What the CURRENT producer must satisfy before a plan is persisted:
+    everything a stored plan must, plus today's invariants -- direction
+    only with a chronology, symmetry only without one."""
+    bad = validate_stored_plan(plan, snapshot, snapshot_sha256)
+    if bad:
+        return bad
+    kinds = {claim["kind"] for claim in plan["claims"]}
+    if plan["subject"]["sequenced"]:
         bad.extend(f"a sequenced plan states the symmetric claim {kind}" for kind in sorted(kinds & _SYMMETRIC))
     else:
         # no chronology, no direction: nothing in the plan may say that
@@ -1022,10 +1044,11 @@ def validate_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> list[str]
             f"chronology is unsupported and the plan asserts the directional claim {kind}"
             for kind in sorted(kinds & _DIRECTIONAL)
         )
-    dangling = unresolved(plan, snapshot)
-    if dangling:
-        bad.append(f"references outside the snapshot: {dangling[:5]}")
     return bad
+
+
+#: The producer's contract, by its shorter name.
+validate_plan = validate_current_plan
 
 
 # --- identities --------------------------------------------------------------
@@ -1081,7 +1104,9 @@ def _verified_snapshot(conn, snapshot_id: int) -> tuple[dict, str]:
         raise LookupError(f"no story snapshot {snapshot_id}")
     document = stories.parsed(row[0], f"story snapshot {snapshot_id}")
     if not stories.verify(document, row[1]):
-        raise ValueError(f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to plan from it")
+        raise stories.Corrupt(
+            f"story snapshot {snapshot_id} no longer hashes to its identity; refusing to plan from it"
+        )
     return document, row[1]
 
 
@@ -1103,7 +1128,7 @@ def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now
     if held:
         return PlanRef(int(held[0]), held[1], True)
     plan = planner.plan(snapshot, snapshot_sha)
-    wrong = validate_plan(plan, snapshot, snapshot_sha)
+    wrong = validate_current_plan(plan, snapshot, snapshot_sha)
     if wrong:
         raise AssertionError(f"the planner produced an invalid plan: {wrong}")
     sha = identity(plan)[1]
@@ -1148,11 +1173,13 @@ def load_plan(conn, plan_id: int) -> dict:
 
     plan = stories.parsed(row[1], f"story plan {plan_id}")
     if identity(plan)[1] != row[2]:
-        raise ValueError(f"story plan {plan_id} no longer hashes to its identity; refusing to serve it")
+        raise stories.Corrupt(f"story plan {plan_id} no longer hashes to its identity; refusing to serve it")
     snapshot, snapshot_sha = _verified_snapshot(conn, int(row[0]))
-    wrong = validate_plan(plan, snapshot, snapshot_sha)
+    # STORED validity: the plan's own frozen grammar and structure, never
+    # today's producer policy -- a historical plan is read as history
+    wrong = validate_stored_plan(plan, snapshot, snapshot_sha)
     if wrong:
-        raise ValueError(f"story plan {plan_id} is no longer valid against its snapshot: {wrong}")
+        raise stories.Corrupt(f"story plan {plan_id} is no longer valid against its snapshot: {wrong}")
     return plan
 
 

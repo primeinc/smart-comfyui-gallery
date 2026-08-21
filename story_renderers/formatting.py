@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import datetime
 
+#: The range dash, U+2013: a typographic fact decided once.
+EN_DASH = "\u2013"
+
 _MONTHS = (
     "January",
     "February",
@@ -43,6 +46,29 @@ def day_label(epoch: float | None, *, utc: bool = False) -> str | None:
     moment = datetime.datetime.fromtimestamp(epoch, datetime.UTC)
     told = f"{_MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
     return f"{told} UTC" if utc else told
+
+
+def day_range(start: float | None, end: float | None, *, utc: bool = False) -> str | None:
+    """The days an interval touches, as a human reads them: `July 18,
+    2026` when both ends fall on one day; `July 18` EN DASH `19, 2026`
+    across days of one month; `July 31` EN DASH `August 1, 2026` across
+    months; both full dates across years. A session that crosses
+    midnight is not "generated on" either day."""
+    if start is None:
+        return None
+    if end is None:
+        return day_label(start, utc=utc)
+    first = datetime.datetime.fromtimestamp(start, datetime.UTC)
+    last = datetime.datetime.fromtimestamp(end, datetime.UTC)
+    suffix = " UTC" if utc else ""
+    if (first.year, first.month, first.day) == (last.year, last.month, last.day):
+        return day_label(start, utc=utc)
+    if (first.year, first.month) == (last.year, last.month):
+        return f"{_MONTHS[first.month - 1]} {first.day}{EN_DASH}{last.day}, {first.year}{suffix}"
+    if first.year == last.year:
+        opening, closing = f"{_MONTHS[first.month - 1]} {first.day}", f"{_MONTHS[last.month - 1]} {last.day}"
+        return f"{opening} {EN_DASH} {closing}, {first.year}{suffix}"
+    return f"{day_label(start)} {EN_DASH} {day_label(end)}{suffix}"
 
 
 def percent(fraction: float) -> str:
