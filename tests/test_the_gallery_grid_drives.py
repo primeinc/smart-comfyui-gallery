@@ -380,3 +380,69 @@ def test_the_overlay_shell_survives_hostile_navigation(driven):
         page.unroute("**/i/pic-003*")
     finally:
         page.close()
+
+
+def test_a_losing_failure_lands_nowhere(driven):
+    """The Module that makes stale asynchronous SUCCESS harmless must
+    make stale asynchronous FAILURE harmless too: a fetch that rejects
+    after losing to a newer open or a dismissal must not full-navigate
+    the browser to its obsolete address. And generation evidence fails
+    CLOSED -- a 200 fragment with no data-currency at all, answering a
+    view that expects one, is refused whole rather than mounted."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/g?sort=oldest&size=30")
+        page.wait_for_selector("[data-grid]")
+
+        # A dies late at the transport layer; B wins first. B must stay
+        # mounted and the browser must stay at B's address.
+        def dies_slowly(route):
+            if route.request.header_value("hx-request") == "true":
+                time.sleep(0.6)
+                route.abort()
+            else:
+                route.continue_()
+
+        page.route("**/i/pic-000*", dies_slowly)
+        page.click('.cell[data-ordinal="1"]')
+        page.click('.cell[data-ordinal="2"]')
+        page.wait_for_selector("[data-lightbox]")
+        page.wait_for_timeout(900)  # A's rejection arrives and must land nowhere
+        assert "/i/pic-001" in page.url, "a stale transport failure navigated the whole browser"
+        label = page.text_content(".lightbox-label")
+        assert label is not None
+        assert "pic_001" in label
+        page.unroute("**/i/pic-000*")
+
+        # An arrow fetch that rejects AFTER a dismissal: the gallery
+        # stays, nothing resurrects, nothing navigates.
+        page.route("**/i/pic-002*", dies_slowly)
+        page.keyboard.press("ArrowRight")  # pic-002, doomed
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        page.wait_for_timeout(900)
+        assert page.evaluate("() => window.location.pathname") == "/g", (
+            "a dismissed request's failure dragged the browser to its address"
+        )
+        assert page.evaluate("() => document.querySelector('[data-lightbox-root]').hidden") is True
+        page.unroute("**/i/pic-002*")
+
+        # A 200 fragment stripped of its generation, against a view that
+        # expects one: full-page fallback, the fragment never mounts.
+        def strips_currency(route):
+            if route.request.header_value("hx-request") == "true":
+                route.fulfill(status=200, body='<div data-lightbox><p class="lightbox-label">forged</p></div>')
+            else:
+                route.continue_()
+
+        page.route("**/i/pic-004*", strips_currency)
+        page.click('.cell[data-ordinal="5"]')
+        page.wait_for_selector(".detail")
+        assert "/i/pic-004" in page.url
+        assert page.evaluate("() => document.body.textContent.includes('forged')") is False, (
+            "a fragment that could not prove its generation was mounted anyway"
+        )
+        page.unroute("**/i/pic-004*")
+    finally:
+        page.close()

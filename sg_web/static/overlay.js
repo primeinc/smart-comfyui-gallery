@@ -56,23 +56,39 @@
       const headers = { "HX-Request": "true" };
       const expected = spec.generation ? spec.generation() : null;
       if (expected) headers["X-SG-Expect"] = expected;
+      // Every exit below obeys the ticket FIRST: a request that lost to
+      // a newer open or a dismissal lands nowhere however it ends --
+      // success, HTTP error, transport failure, or a body that dies
+      // after the headers. Only a CURRENT failure earns the full-page
+      // fallback; a stale one navigating the browser would hijack it.
       let answer;
       try {
         answer = await fetch(href, { headers });
       } catch {
+        if (ticket !== flight) return;
         window.location.assign(href);
         return;
       }
-      if (ticket !== flight) return; // a newer open or a dismissal won
+      if (ticket !== flight) return;
       if (!answer.ok) {
         window.location.assign(href);
         return;
       }
-      const fragment = await answer.text();
+      let fragment;
+      try {
+        fragment = await answer.text();
+      } catch {
+        if (ticket !== flight) return;
+        window.location.assign(href);
+        return;
+      }
       if (ticket !== flight) return;
       if (expected) {
+        // Fail CLOSED: an adapter that expects a generation gets a
+        // fragment that proves one, or the whole page. A fragment with
+        // no data-currency at all is a template regression, not a pass.
         const got = /data-currency="([^"]*)"/.exec(fragment);
-        if (got && got[1] && got[1] !== expected) {
+        if (!got || !got[1] || got[1] !== expected) {
           window.location.assign(href);
           return;
         }
