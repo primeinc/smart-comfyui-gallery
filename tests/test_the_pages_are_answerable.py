@@ -687,6 +687,8 @@ def test_the_entity_layer_queries_do_not_scan_the_library(library):
     assert_no_growing_scan(conn, pages.WORKFLOW_FILES, (1, 120))
     assert_no_growing_scan(conn, pages.ALBUM_PRESENT, (library["album"],))
     assert_no_growing_scan(conn, pages.FILE_LORAS, (library["first"],))
+    assert_no_growing_scan(conn, pages.DUPE_GROUPS, (120,), aggregate=True)
+    assert_no_growing_scan(conn, pages.DUPE_COPIES, (library["first"], 120))
 
 
 def test_a_person_is_shown_across_the_folders_they_are_in(library):

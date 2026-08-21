@@ -406,6 +406,25 @@ CREATE TABLE region (
 ) STRICT;
 CREATE INDEX region_mask ON region(mask_hash) WHERE mask_hash IS NOT NULL;
 
+-- ============ near-duplicate groups (perceptual) ============
+-- The same PICTURE, whatever became of its bytes: files whose phash64
+-- agrees within the run's threshold, grouped, with one member marked the
+-- group's best face forward. Wholesale replaced by every dupes job --
+-- rebuilt from derived_file_hash alone -- like every derived answer.
+CREATE TABLE derived_dupe_group (
+    file_id     INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- the group's seed: its lowest member id. Deleting the seed file
+    -- cascades the whole group away; the next job rebuilds what remains.
+    group_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    -- hamming bits from this member's phash64 to the seed's
+    distance    INTEGER NOT NULL CHECK (distance BETWEEN 0 AND 64),
+    threshold   INTEGER NOT NULL CHECK (threshold BETWEEN 0 AND 64),
+    is_best     INTEGER NOT NULL DEFAULT 0 CHECK (is_best IN (0, 1)),
+    computed_at REAL NOT NULL
+) STRICT;
+CREATE INDEX derived_dupe_group_group ON derived_dupe_group(group_id);
+CREATE UNIQUE INDEX derived_dupe_group_best ON derived_dupe_group(group_id) WHERE is_best = 1;
+
 -- ============ evidence locator (video/document faces) ============
 -- Named derived_: a sampling policy produced these rows, so "drop the derived
 -- namespace and re-index" takes them -- EXCEPT the rows a person_assertion
@@ -1301,7 +1320,7 @@ END;
 -- #16: nothing distinguished a database built from this DDL from one built by an
 -- earlier generation of it, which is how a stale build went unnoticed.
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 2;
+PRAGMA user_version   = 3;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

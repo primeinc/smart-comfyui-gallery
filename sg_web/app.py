@@ -111,6 +111,7 @@ def picture_page(state: State, slug: str) -> dict | Redirect:
             "seed": seed,
             "fields": fields,
             "params": _rows(pages.fields_of(conn, file_id), ("source", "key", "value")),
+            "copies": _rows(pages.dupe_copies(conn, file_id), ("slug", "name", "distance", "is_best")),
             "previous": pages.neighbour(conn, file_id, previous=True),
             "next": pages.neighbour(conn, file_id, previous=False),
             "parents": _rows(pages.parents(conn, file_id), ("slug", "name", "kind")),
@@ -503,6 +504,35 @@ def submit_phash(state: State) -> dict:
         conn.commit()
         _nudge(state)
         return jobs.snapshot(conn, job_id)
+    finally:
+        connect.close(conn)
+
+
+@post("/jobs/dupes", sync_to_thread=True)
+def submit_dupes(state: State) -> dict:
+    """Ask for the perceptual copies to be grouped, using what /jobs/phash
+    (or detection's byproduct) recorded. The dupe_threshold setting is
+    the hamming radius; a bad value is refused here, not queued."""
+    conn = _connect(state.db_path)
+    try:
+        try:
+            job_id = runner.submit_dupes(conn, time.time())
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
+    finally:
+        connect.close(conn)
+
+
+@get("/dupes", sync_to_thread=True)
+def dupes(state: State) -> list[dict]:
+    """Every group of perceptual copies, best face forward with a count --
+    the page that collapses copies-of-copies into pictures."""
+    conn = _connect(state.db_path)
+    try:
+        return _rows(pages.dupe_groups(conn), ("slug", "name", "copies"))
     finally:
         connect.close(conn)
 
@@ -950,6 +980,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             album_remove,
             submit_ingest,
             submit_phash,
+            submit_dupes,
+            dupes,
             people,
             person,
             clusterings,

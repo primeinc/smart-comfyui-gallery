@@ -294,6 +294,7 @@ def v1_database(tmp_path):
     path = tmp_path / "gallery.db"
     build.build(path)
     conn = sqlite3.connect(str(path), isolation_level=None)
+    conn.execute("DROP TABLE derived_dupe_group")  # v3's addition; indexes go with it
     for trigger in (
         "collection_file_not_into_smart",
         "collection_file_not_moved_into_smart",

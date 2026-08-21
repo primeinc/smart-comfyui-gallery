@@ -2008,4 +2008,4 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 40, f"expected 40 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 41, f"expected 41 real tables, found {len(real)}: {sorted(real)}"

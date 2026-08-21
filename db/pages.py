@@ -348,6 +348,41 @@ def person_across_folders(conn, person_id: int, run_id: int | None = None):
     return conn.execute(PERSON_ACROSS_FOLDERS, (person_id, run_id)).fetchall()
 
 
+# --- copies of copies ------------------------------------------------------
+
+#: Every group of perceptual copies, its best face forward and its count.
+#: An index page over a summary -- the aggregate exemption, like the
+#: shelves. Only groups whose best member is still present are shown.
+DUPE_GROUPS = (
+    "SELECT e.slug, f.name, count(*) AS copies FROM derived_dupe_group best"
+    "  JOIN derived_dupe_group member ON member.group_id = best.group_id"
+    "  JOIN file f ON f.id = best.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = best.file_id"
+    " WHERE best.is_best = 1"
+    " GROUP BY best.group_id ORDER BY copies DESC, best.group_id LIMIT ?"
+)
+
+#: One picture's other bodies: everything sharing its group, itself
+#: excluded. Ordered by the group index's own tail -- sorting by
+#: `distance` bought a TEMP B-TREE for presentation the caller can do
+#: over one page of rows; the distance rides along as data.
+DUPE_COPIES = (
+    "SELECT e.slug, f.name, twin.distance, twin.is_best FROM derived_dupe_group mine"
+    "  JOIN derived_dupe_group twin ON twin.group_id = mine.group_id AND twin.file_id <> mine.file_id"
+    "  JOIN file f ON f.id = twin.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = twin.file_id"
+    " WHERE mine.file_id = ? ORDER BY twin.file_id LIMIT ?"
+)
+
+
+def dupe_groups(conn, limit: int = 120):
+    return conn.execute(DUPE_GROUPS, (limit,)).fetchall()
+
+
+def dupe_copies(conn, file_id: int, limit: int = 120):
+    return conn.execute(DUPE_COPIES, (file_id, limit)).fetchall()
+
+
 # --- albums ----------------------------------------------------------------
 
 #: Every collection with how many present pictures it holds. LEFT JOINs so

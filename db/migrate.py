@@ -239,6 +239,33 @@ def _smart_collections_refuse_stored_members(conn: sqlite3.Connection) -> None:
     )
 
 
+@step(2)
+def _near_duplicate_groups(conn: sqlite3.Connection) -> None:
+    """v2 -> v3: where the dupes job writes its groups. Purely additive
+    for real this time: a new empty table cannot disagree with anything.
+
+    The DDL is schema.sql's block VERBATIM, comments included:
+    sqlite_master stores the literal statement text, and the drift check
+    compares it -- a migrated database must be indistinguishable from a
+    fresh build down to the words a reader of `.schema` sees.
+    """
+    conn.execute(
+        """CREATE TABLE derived_dupe_group (
+    file_id     INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- the group's seed: its lowest member id. Deleting the seed file
+    -- cascades the whole group away; the next job rebuilds what remains.
+    group_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    -- hamming bits from this member's phash64 to the seed's
+    distance    INTEGER NOT NULL CHECK (distance BETWEEN 0 AND 64),
+    threshold   INTEGER NOT NULL CHECK (threshold BETWEEN 0 AND 64),
+    is_best     INTEGER NOT NULL DEFAULT 0 CHECK (is_best IN (0, 1)),
+    computed_at REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX derived_dupe_group_group ON derived_dupe_group(group_id)")
+    conn.execute("CREATE UNIQUE INDEX derived_dupe_group_best ON derived_dupe_group(group_id) WHERE is_best = 1")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

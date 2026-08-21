@@ -729,6 +729,58 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
         assert apart <= 6, f"the same picture resized measured {apart} bits apart"
 
 
+def test_copies_of_copies_collapse_into_pictures(tmp_path):
+    """The dedupe story end to end, over HTTP: hash the pixels, group
+    them through the FAISS binary index, and the copies collapse -- one
+    group per picture, the largest body picked as its best face, every
+    copy listed from the picture page. A distinct picture stays alone."""
+    from PIL import Image
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    picture = Image.effect_noise((96, 96), 40).convert("RGB")
+    picture.save(root / "castle.png")
+    picture.resize((48, 48)).save(root / "castle_small.jpg", quality=80)
+    picture.save(root / "castle_web.webp", quality=75)
+    Image.effect_noise((96, 96), 90).convert("RGB").save(root / "meadow.png")
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 4
+
+        def drained(route: str) -> None:
+            with client.websocket_connect("/ws/jobs") as feed:
+                assert feed.receive_json(timeout=10)["type"] == "snapshot"
+                job_id = client.post(route).json()["id"]
+                state = None
+                while state not in ("done", "failed", "cancelled"):
+                    state = feed.receive_json(timeout=10)["state"]
+            told = client.get(f"/jobs/{job_id}").json()
+            assert (told["state"], told["failed_count"]) == ("done", 0), route
+
+        drained("/jobs/phash")
+        drained("/jobs/dupes")
+
+        groups = client.get("/dupes").json()
+        assert groups == [{"slug": "castle", "name": "castle.png", "copies": 3}], (
+            f"three bodies of one picture must be one group with the original as its face: {groups}"
+        )
+
+        page = client.get("/i/castle-small").json()
+        assert sorted(copy["name"] for copy in page["copies"]) == ["castle.png", "castle_web.webp"]
+        best = [copy for copy in page["copies"] if copy["is_best"]]
+        assert [copy["name"] for copy in best] == ["castle.png"], "the largest body is the picture's face"
+        assert client.get("/i/meadow").json()["copies"] == [], "a distinct picture stays alone"
+
+        # the threshold is a live setting, refused when meaningless
+        assert client.post("/settings/dupe_threshold", json={"value": "6"}).status_code < 300
+        assert client.post("/settings/dupe_threshold", json={"value": "banana"}).status_code < 300, (
+            "free-text setting; the SUBMIT validates"
+        )
+        assert client.post("/jobs/dupes").status_code == 400
+        client.post("/settings/dupe_threshold", json={"value": "4"})
+
+
 def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
     """One --home argument moves everything a run owns -- database, models,
     caches. Nothing lands in OS application-data folders, and a first run

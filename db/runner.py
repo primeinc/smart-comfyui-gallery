@@ -113,12 +113,109 @@ def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
     derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
 
+def submit_dupes(conn, now: float) -> int:
+    """Group perceptually identical pictures, as one job of one unit.
+
+    Reads what the phash job (or detection's byproduct) recorded and
+    writes derived_dupe_group wholesale -- the first space of the unified
+    FAISS index: perceptual, 64 binary bits, hamming. The threshold is
+    the `dupe_threshold` setting, validated here so a bad value is a
+    refused submit, never a job that fails later.
+    """
+    from . import settings as settings_module
+
+    raw = settings_module.value(conn, "dupe_threshold")
+    try:
+        threshold = int(raw)
+    except ValueError as bad:
+        raise ValueError(f"dupe_threshold must be a number of bits, not {raw!r}") from bad
+    if not 0 <= threshold <= 64:
+        raise ValueError(f"dupe_threshold must be 0..64 bits, not {threshold}")
+    return jobs.submit(conn, "hash", now, payload={"derive": "groups", "threshold": threshold}, items=[0])
+
+
+def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
+    """One global pass: FAISS binary range search over every phash64,
+    union-find over the matches, groups of two or more written with the
+    policy-picked best member -- most pixels, then most bytes, then the
+    earliest identity."""
+    import numpy as np
+
+    from vision.faiss_runtime import import_faiss
+
+    from . import settings as settings_module
+
+    threshold = int(payload["threshold"])
+    rows = conn.execute(
+        "SELECT h.file_id, h.phash64, f.width, f.height, f.size FROM derived_file_hash h"
+        " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
+        " WHERE h.phash64 IS NOT NULL ORDER BY h.file_id"
+    ).fetchall()
+    conn.execute("DELETE FROM derived_dupe_group")
+    if len(rows) < 2:
+        return
+
+    unsigned = np.array([row[1] & 0xFFFFFFFFFFFFFFFF for row in rows], dtype=np.uint64)
+    packed = np.ascontiguousarray(unsigned.astype(">u8").view(np.uint8).reshape(-1, 8))
+    faiss = import_faiss(gpu=settings_module.flag(conn, "faiss_gpu"))
+    # Flat, per upstream's own guidance: exact results want Flat, and the
+    # index is 8 bytes/vector -- a million pictures is 8MB of RAM
+    # (facebookresearch/faiss.wiki Guidelines-to-choose-an-index.md, "Do
+    # you need exact results? Then Flat"). IndexBinaryIVF is the growth
+    # path past the ~10M mark, not before.
+    index = faiss.IndexBinaryFlat(64)
+    index.add(packed)
+    # range_search's radius is exclusive: distance < radius, so +1 makes
+    # the setting mean "within this many bits", inclusive.
+    lims, _distances, neighbours = index.range_search(packed, threshold + 1)
+
+    parent = list(range(len(rows)))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for query in range(len(rows)):
+        for at in range(int(lims[query]), int(lims[query + 1])):
+            a, b = find(query), find(int(neighbours[at]))
+            if a != b:
+                parent[b] = a
+
+    from vision import dupes
+
+    grouped: dict[int, list[int]] = {}
+    for position in range(len(rows)):
+        grouped.setdefault(find(position), []).append(position)
+    for members in grouped.values():
+        if len(members) < 2:
+            continue
+        seed = min(members, key=lambda m: rows[m][0])
+        best = max(members, key=lambda m: ((rows[m][2] or 0) * (rows[m][3] or 0), rows[m][4], -rows[m][0]))
+        for member in members:
+            conn.execute(
+                "INSERT INTO derived_dupe_group(file_id, group_id, distance, threshold, is_best, computed_at)"
+                " VALUES(?, ?, ?, ?, ?, ?)",
+                (
+                    rows[member][0],
+                    rows[seed][0],
+                    dupes.hamming(rows[member][1], rows[seed][1]),
+                    threshold,
+                    1 if member == best else 0,
+                    now,
+                ),
+            )
+
+
 def _hash_item(conn, file_id: int, payload: dict, now: float) -> None:
     """The 'hash' kind's two modes, told apart by payload: a bare job is
     the integrity sweep it always was, so jobs queued before the payload
     existed keep meaning what they meant."""
     if payload.get("derive") == "perceptual":
         _perceptual_item(conn, file_id, payload, now)
+    elif payload.get("derive") == "groups":
+        _dupe_groups_item(conn, file_id, payload, now)
     else:
         _verify_item(conn, file_id, payload, now)
 
