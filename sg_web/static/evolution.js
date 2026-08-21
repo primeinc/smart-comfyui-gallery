@@ -20,6 +20,17 @@
       ? `<img class="${cls}" data-ref="${m.ref}" src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}" title="${esc(m.ref)} · ${esc(m.media.name)}">`
       : `<span class="${cls}" data-ref="${m.ref}" title="${esc(m.media.name)} (file gone)"></span>`;
 
+  // the claimed time, and the filesystem's estimate beside it -- marked
+  const clock = (wall) => new Date(wall * 1000).toISOString().slice(11, 19);
+  const when = (m) => {
+    const o = m.occurrence;
+    if (!o || o.local_at === null || o.local_at === undefined) return "";
+    let told = ` · ${esc(o.precision)} ${clock(o.local_at)} (${esc(o.basis)})`;
+    if (o.estimated_at !== null && o.estimated_at !== undefined) told += ` <span class="chip chip-inferred" title="finish ${clock(new Date(o.finished_at * 1000).getTime() / 1000 + new Date().getTimezoneOffset() * -60)} minus generation time">≈ ${clock(o.estimated_at)} inferred</span>`;
+    if (o.conflicts && o.conflicts.length) told += ` <span class="chip chip-conflict" title="${esc(o.conflicts.join("; "))}">contested</span>`;
+    return told;
+  };
+
   // --- token diff: longest common subsequence over whitespace tokens ----
   function diffTokens(a, b) {
     const x = a ? a.split(/\s+/) : [], y = b ? b.split(/\s+/) : [];
@@ -138,7 +149,7 @@
     if (view.doors.gallery_day) doors.push(`<a href="${esc(view.doors.gallery_day)}">this day in the gallery</a>`);
     selectedPane.innerHTML = `${m.media.thumbnail ? `<img src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}">` : ""}
       <h2>${esc(m.ref)} · ${esc(m.media.name)}</h2>
-      <p class="evolution-provenance">${esc(m.phase_ref || "")}</p>
+      <p class="evolution-provenance">${esc(m.phase_ref || "")}${when(m)}</p>
       <h3>effective prompt</h3><pre>${esc(eff ? eff.text : "— not frozen —")}</pre>
       ${org ? `<h3>as written</h3><pre>${esc(org.text)}</pre><h3>written → ran</h3><p class="evolution-diff">${diffTokens(org.main, eff ? eff.main : "")}</p>` : `<p class="evolution-provenance">no original prompt was recorded by the generator</p>`}
       <p class="doors">${doors.join("")}</p>`;

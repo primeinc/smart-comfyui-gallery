@@ -1675,9 +1675,16 @@ CREATE TABLE derived_media_context (
     local_at            REAL,
     instant_at          REAL,
     tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
     time_basis          TEXT CHECK (time_basis IN
-                          ('capture','embedded','btime','mtime','first_seen')),
+                          ('capture','embedded','filename','btime','mtime','first_seen')),
     time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
     -- How FINE the claim is -- orthogonal to certainty: a day-resolution
     -- generator date can be almost certainly the right DAY while saying
     -- nothing about minutes, and a distrusted btime is subsecond-fine.
@@ -1729,8 +1736,19 @@ CREATE TABLE derived_media_occurrence (
     local_at       REAL,
     instant_at     REAL,
     tz_offset_min  INTEGER,
-    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded')),
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded','filename')),
     certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
     time_precision TEXT NOT NULL CHECK (time_precision IN
                      ('day','hour','minute','second','subsecond')),
     policy_version INTEGER NOT NULL,
@@ -1907,7 +1925,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 18;
+PRAGMA user_version   = 19;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

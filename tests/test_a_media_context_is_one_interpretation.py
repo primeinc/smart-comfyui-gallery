@@ -146,9 +146,8 @@ def test_two_time_concepts_and_every_date_names_its_basis(interpreted):
         assert instant is not None
 
         origin, local, instant, offset, basis, certainty, precision, _c, _g = held["gen_0.png"]
-        assert (origin, basis, certainty) == ("generated", "embedded", 0.6), (
-            "the generator's own date claim outranks every filesystem time"
-        )
+        assert (origin, basis) == ("generated", "embedded"), "the generator's own day is the claim"
+        assert certainty == 0.4, "a 2023 day on a file written today: the mtime DISAGREES and says so"
         assert precision == "day", "a bare date is DAY-fine, whatever its certainty -- never minute evidence"
 
         assert local == 1_685_577_600.0, "2023-06-01 as a wall claim -- the day the media HAPPENED"
@@ -183,7 +182,7 @@ def test_each_claim_is_its_own_occurrence(interpreted):
         assert (basis, certainty, precision) == ("capture", 1.0, "second")
         assert (local, instant) == (NOW + 12 * HOUR, (NOW + 12 * HOUR) - (-600 * 60))
         local, instant, basis, certainty, precision = held[("photo_a.png", "generation")]
-        assert (basis, certainty, precision) == ("embedded", 0.6, "day"), (
+        assert (basis, certainty, precision) == ("embedded", 0.4, "day"), (
             "the decoy date the camera outranks on the primary ladder STANDS as the generation act's own claim"
         )
         assert (local, instant) == (1_685_577_600.0, None)

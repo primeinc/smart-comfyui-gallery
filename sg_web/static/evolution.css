@@ -38,3 +38,6 @@
 .metrics dt { color: var(--muted, #888); font-size: .8rem; }
 .metrics dd { margin: 0 0 6px; }
 .doors a { margin-right: 10px; }
+.chip { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: .75rem; border: 1px solid #666; }
+.chip-inferred { border-color: #6cf; color: #6cf; }
+.chip-conflict { border-color: #c77; color: #c77; }

@@ -21,13 +21,14 @@ no evidence at all for WHAT MINUTE, so the highest-ranked claim FIT
 FOR THE QUESTION wins, never merely the highest-ranked claim. A
 camera claim with an offset yields both at full certainty; without the
 offset the wall clock STANDS and the instant stays honestly absent.
-After the camera speaks the GENERATOR: an embedded `date` claim
-(file_param generation/date) is a wall claim about when the media
-HAPPENED and outranks every filesystem time -- btime records when
-bytes landed on this disk. Only claimless media fall to btime then
-mtime, instants with no local story. A claim that does not parse is no
-claim. Model-derived annotations are inference, not evidence: nothing
-they say may enter this ladder. There is deliberately NO fused
+After the camera speaks the GENERATOR -- and not alone: db/when.py
+judges the generator's day, SwarmUI's request minute in the file name,
+the file's mtime and btime and the generation time TOGETHER, refining
+the day to the second when the finer sources agree, recording every
+source that does not. Only claimless media fall to mtime then btime,
+instants with no local story. A claim that does not parse is no claim.
+Model-derived annotations are inference, not evidence: nothing they say
+may enter this ladder. There is deliberately NO fused
 "moment" accessor: a consumer chooses a domain, because a convenience
 value that is secretly sometimes each is how unlike times get
 subtracted from each other.
@@ -54,7 +55,7 @@ from __future__ import annotations
 import dataclasses
 
 ORIGINS = ("captured", "generated", "mixed", "imported")
-TIME_BASES = ("capture", "embedded", "btime", "mtime", "first_seen")
+TIME_BASES = ("capture", "embedded", "filename", "btime", "mtime", "first_seen")
 LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 
 #: WHICH MEANING of the ladder is current. Bump when the interpretation
@@ -63,7 +64,7 @@ LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 #: per-claim occurrence rows. Every reader binds THIS constant, never
 #: the version a database happens to remember: after an upgrade the old
 #: rows are honestly invisible until the context job re-interprets.
-POLICY_VERSION = 4
+POLICY_VERSION = 5
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
@@ -75,80 +76,157 @@ HUMAN_MOMENT = "COALESCE(mc.local_at, mc.instant_at)"
 #: caller names. Basis and certainty recorded beside every value they
 #: explain; place_id stays NULL until an explicit resolver or an
 #: authored assertion mints real place identity -- GPS alone never does.
-_INTERPRET = """
-INSERT INTO derived_media_context(file_id, has_capture, has_generation, origin,
-  local_at, instant_at, tz_offset_min, time_basis, time_certainty, time_precision,
-  gps_lat, gps_lon, place_id, location_basis, location_certainty,
-  policy_version, rebuilt_at)
-SELECT f.id,
-  CASE WHEN c.file_id IS NOT NULL THEN 1 ELSE 0 END,
-  CASE WHEN g.file_id IS NOT NULL THEN 1 ELSE 0 END,
-  CASE WHEN g.file_id IS NOT NULL AND c.file_id IS NOT NULL THEN 'mixed'
-       WHEN g.file_id IS NOT NULL THEN 'generated'
-       WHEN c.file_id IS NOT NULL THEN 'captured'
-       ELSE 'imported' END,
-  CASE WHEN c.captured_at IS NOT NULL THEN c.captured_at
-       WHEN strftime('%s', d.value_text) IS NOT NULL
-         THEN CAST(strftime('%s', d.value_text) AS REAL) END,
-  CASE WHEN c.captured_at IS NOT NULL AND c.tz_offset_min IS NOT NULL
-         THEN c.captured_at - c.tz_offset_min * 60
-       WHEN c.captured_at IS NOT NULL THEN NULL
-       WHEN strftime('%s', d.value_text) IS NOT NULL THEN NULL
-       WHEN f.btime IS NOT NULL THEN f.btime
-       ELSE f.mtime END,
-  CASE WHEN c.captured_at IS NOT NULL THEN c.tz_offset_min END,
-  CASE WHEN c.captured_at IS NOT NULL THEN 'capture'
-       WHEN strftime('%s', d.value_text) IS NOT NULL THEN 'embedded'
-       WHEN f.btime IS NOT NULL THEN 'btime'
-       ELSE 'mtime' END,
-  CASE WHEN c.captured_at IS NOT NULL AND c.tz_offset_min IS NOT NULL THEN 1.0
-       WHEN c.captured_at IS NOT NULL THEN 0.8
-       WHEN strftime('%s', d.value_text) IS NOT NULL THEN 0.6
-       WHEN f.btime IS NOT NULL THEN 0.5
-       ELSE 0.3 END,
-  CASE WHEN c.captured_at IS NOT NULL THEN 'second'
-       WHEN strftime('%s', d.value_text) IS NOT NULL THEN
-         CASE WHEN length(trim(d.value_text)) <= 10 THEN 'day' ELSE 'second' END
-       ELSE 'subsecond' END,
-  c.gps_lat, c.gps_lon,
-  NULL,
-  CASE WHEN c.gps_lat IS NOT NULL THEN 'gps' END,
-  CASE WHEN c.gps_lat IS NOT NULL THEN 1.0 END,
-  ?, ?
-FROM file f
-LEFT JOIN capture c ON c.file_id = f.id
-LEFT JOIN generation g ON g.file_id = f.id
-LEFT JOIN file_param d ON d.file_id = f.id AND d.source = 'generation' AND d.key = 'date'
-"""
-
 #: Each temporal CLAIM as its own row: the capture act at capture time,
-#: the generation act at the generator's claimed time. The context above
-#: keeps the ONE primary human-timeline interpretation; these exist so a
-#: grouper reads the time of ITS OWN claim -- a photograph edited by a
-#: generator years later is 2023 in the capture story and 2026 in the
-#: generation story, never one timestamp pretending to be both acts.
+#: the generation act at the time the judge (db/when.py) settles from
+#: every claim the file carries. The context keeps the ONE primary
+#: human-timeline interpretation; these exist so a grouper reads the
+#: time of ITS OWN claim -- a photograph edited by a generator years
+#: later is 2023 in the capture story and 2026 in the generation story.
 _OCCUR_CAPTURE = """
 INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
-  tz_offset_min, basis, certainty, time_precision, policy_version)
+  tz_offset_min, basis, certainty, supports, conflicts, time_precision, policy_version)
 SELECT c.file_id, 'capture', c.captured_at,
   CASE WHEN c.tz_offset_min IS NOT NULL THEN c.captured_at - c.tz_offset_min * 60 END,
   c.tz_offset_min, 'capture',
   CASE WHEN c.tz_offset_min IS NOT NULL THEN 1.0 ELSE 0.8 END,
-  'second', ?
+  NULL, NULL, 'second', ?
 FROM capture c
 WHERE c.captured_at IS NOT NULL
 """
 
+_SOURCES = """
+SELECT f.id, f.name, f.mtime, f.btime, f.folder_id,
+  c.captured_at, c.tz_offset_min, c.gps_lat, c.gps_lon,
+  g.tool,
+  (SELECT value_text FROM file_param d WHERE d.file_id = f.id AND d.source = 'generation' AND d.key = 'date'),
+  (SELECT value_text FROM file_param d WHERE d.file_id = f.id AND d.source = 'generation'
+     AND d.key = 'generation_time')
+FROM file f
+LEFT JOIN capture c ON c.file_id = f.id
+LEFT JOIN generation g ON g.file_id = f.id
+"""
+
+_CONTEXT = """
+INSERT INTO derived_media_context(file_id, has_capture, has_generation, origin,
+  local_at, instant_at, tz_offset_min, time_basis, time_certainty, time_supports,
+  time_conflicts, time_precision, gps_lat, gps_lon, place_id, location_basis,
+  location_certainty, policy_version, rebuilt_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+"""
+
 _OCCUR_GENERATION = """
 INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
-  tz_offset_min, basis, certainty, time_precision, policy_version)
-SELECT d.file_id, 'generation',
-  CAST(strftime('%s', d.value_text) AS REAL), NULL, NULL, 'embedded', 0.6,
-  CASE WHEN length(trim(d.value_text)) <= 10 THEN 'day' ELSE 'second' END, ?
-FROM file_param d
-WHERE d.source = 'generation' AND d.key = 'date'
-  AND strftime('%s', d.value_text) IS NOT NULL
+  tz_offset_min, basis, certainty, supports, conflicts, finished_at, estimated_at,
+  time_precision, policy_version)
+VALUES(?, 'generation', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+
+def _json(items) -> str | None:
+    import json
+
+    return json.dumps(list(items)) if items else None
+
+
+def _seconds(text) -> float | None:
+    """A duration as a generator spells it -- SwarmUI writes
+    `generation_time` as "64.33 sec" (T2IEngine.cs:221) -- as seconds,
+    or None when it is not one."""
+    import re
+
+    if text is None:
+        return None
+    match = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)\s*(s|sec|secs|seconds?)?\s*$", str(text), re.IGNORECASE)
+    return float(match.group(1)) if match else None
+
+
+def _interpret(conn, now: float, file_id: int | None = None) -> int:
+    """The primary interpretation and the generation occurrence for
+    every file (or one): the camera first, at its own certainty; then
+    the generation act as the judge settles it from the generator's
+    day, SwarmUI's request minute, the file's mtime and btime, and the
+    generation time -- supports and conflicts named beside the value;
+    only a claimless file falls to the filesystem, an instant with no
+    local story. Returns the number of contexts written."""
+    from . import when
+
+    where = " WHERE f.id = ?" if file_id is not None else ""
+    rows = conn.execute(_SOURCES + where, (file_id,) if file_id is not None else ()).fetchall()
+    made = 0
+    for fid, name, mtime, btime, _folder, captured_at, tz, lat, lon, tool, date_text, gen_time in rows:
+        has_capture, has_generation = int(captured_at is not None), int(tool is not None)
+        origin = {(1, 1): "mixed", (1, 0): "captured", (0, 1): "generated"}.get(
+            (has_capture, has_generation), "imported"
+        )
+        generation = when.judge_generation(
+            date_text=date_text, name=name, tool=tool, mtime=mtime, btime=btime, generation_time=_seconds(gen_time)
+        )
+        if captured_at is not None:
+            instant = captured_at - tz * 60 if tz is not None else None
+            time = (captured_at, instant, tz, "capture", 1.0 if tz is not None else 0.8, None, None, "second")
+        elif generation is not None:
+            time = (
+                generation.local_at,
+                generation.instant_at,
+                generation.tz_offset_min,
+                generation.basis,
+                generation.certainty,
+                _json(generation.supports),
+                _json(generation.conflicts),
+                generation.precision,
+            )
+        else:
+            fallback = when.judge_filesystem(mtime, btime)
+            time = (
+                (
+                    None,
+                    fallback.instant_at,
+                    None,
+                    fallback.basis,
+                    fallback.certainty,
+                    _json(fallback.supports),
+                    None,
+                    fallback.precision,
+                )
+                if fallback
+                else (None, None, None, None, None, None, None, None)
+            )
+        conn.execute(
+            _CONTEXT,
+            (
+                fid,
+                has_capture,
+                has_generation,
+                origin,
+                *time,
+                lat,
+                lon,
+                "gps" if lat is not None else None,
+                1.0 if lat is not None else None,
+                POLICY_VERSION,
+                now,
+            ),
+        )
+        made += 1
+        if generation is not None:
+            conn.execute(
+                _OCCUR_GENERATION,
+                (
+                    fid,
+                    generation.local_at,
+                    generation.instant_at,
+                    generation.tz_offset_min,
+                    generation.basis,
+                    generation.certainty,
+                    _json(generation.supports),
+                    _json(generation.conflicts),
+                    generation.finished_at,
+                    generation.estimated_at,
+                    generation.precision,
+                    POLICY_VERSION,
+                ),
+            )
+    return made
 
 
 def _advance(conn, *, create: bool = True) -> None:
@@ -206,9 +284,8 @@ def rebuild(conn, now: float) -> int:
     is where a stale interpretation survives its sources."""
     conn.execute("DELETE FROM derived_media_context")
     conn.execute("DELETE FROM derived_media_occurrence")
-    made = conn.execute(_INTERPRET, (POLICY_VERSION, now)).rowcount
     conn.execute(_OCCUR_CAPTURE, (POLICY_VERSION,))
-    conn.execute(_OCCUR_GENERATION, (POLICY_VERSION,))
+    made = _interpret(conn, now)
     _advance(conn)
     return made
 
@@ -218,9 +295,8 @@ def rebuild_one(conn, file_id: int, now: float) -> None:
     grain, so cancellation and resume land at file boundaries."""
     conn.execute("DELETE FROM derived_media_context WHERE file_id = ?", (file_id,))
     conn.execute("DELETE FROM derived_media_occurrence WHERE file_id = ?", (file_id,))
-    conn.execute(_INTERPRET + " WHERE f.id = ?", (POLICY_VERSION, now, file_id))
     conn.execute(_OCCUR_CAPTURE + " AND c.file_id = ?", (POLICY_VERSION, file_id))
-    conn.execute(_OCCUR_GENERATION + " AND d.file_id = ?", (POLICY_VERSION, file_id))
+    _interpret(conn, now, file_id)
     _advance(conn)
 
 

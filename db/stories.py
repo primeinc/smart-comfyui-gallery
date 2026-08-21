@@ -422,7 +422,8 @@ def _members(conn, subject: _Subject) -> list[dict]:
     claim that placed it here."""
     rows = conn.execute(
         "SELECT ef.ordinal, f.id, e.uuid, f.content_sha256, f.kind, f.name,"
-        " o.basis, o.local_at, o.instant_at, o.tz_offset_min, o.time_precision, o.certainty"
+        " o.basis, o.local_at, o.instant_at, o.tz_offset_min, o.time_precision, o.certainty,"
+        " o.supports, o.conflicts, o.finished_at, o.estimated_at"
         " FROM derived_event_file ef"
         " JOIN file f ON f.id = ef.file_id"
         " JOIN entity e ON e.id = f.id"
@@ -447,6 +448,10 @@ def _members(conn, subject: _Subject) -> list[dict]:
                 "tz_offset_min": row[9],
                 "precision": row[10],
                 "certainty": row[11],
+                "supports": json.loads(row[12]) if row[12] else [],
+                "conflicts": json.loads(row[13]) if row[13] else [],
+                "finished_at": row[14],
+                "estimated_at": row[15],
             }
             if row[6] is not None
             else None,

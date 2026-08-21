@@ -1759,6 +1759,121 @@ END"""
     )
 
 
+@step(18)
+def _time_is_a_corroboration_stack(conn: sqlite3.Connection) -> None:
+    """v18 -> v19: the two derived time tables learn how many sources
+    corroborated a value and which disagreed, and the basis vocabulary
+    learns `filename` (SwarmUI's request minute) and, for occurrences,
+    `mtime` (the filesystem refining a generator's day to the second
+    when it lands inside it). Derived: dropped and recreated, rebuilt by
+    the context job under policy v5 (db/context.py, db/when.py). DDL is
+    schema.sql's text VERBATIM.
+    """
+    for table in ("derived_event_file", "derived_event", "derived_event_run"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.execute("DROP TABLE derived_media_occurrence")
+    conn.execute("DROP TABLE derived_media_context")
+    conn.execute(
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','filename','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- Coarse claims are never promoted into fine-grained boundaries.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('day','hour','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT"""
+    )
+    conn.execute("""CREATE INDEX media_context_when ON derived_media_context(instant_at)""")
+    conn.execute("""CREATE INDEX media_context_local ON derived_media_context(local_at)""")
+    conn.execute("""CREATE INDEX media_context_place ON derived_media_context(place_id)""")
+    conn.execute("""CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at)""")
+    conn.execute(
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded','filename')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at)")
+    conn.execute("CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at)")
+    conn.execute("DELETE FROM derived_context_state")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 
