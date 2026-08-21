@@ -758,7 +758,32 @@ def test_the_place_pages_ask_answerable_questions(library):
 
     nested = authored.collection(conn, "Inside", NOW, parent_id=album)
     assert pages.collection_card(conn, album)[1] == "album"
-    assert [(n, k) for _, n, k in pages.collection_children(conn, album)] == [("Inside", "album")]
+    assert [(n, k, p) for _, _, n, k, p in pages.collection_children(conn, album)] == [("Inside", "album", 0)]
     assert pages.collection_children(conn, nested) == []
     assert_no_growing_scan(conn, pages.COLLECTION_CARD, (album,))
     assert_no_growing_scan(conn, pages.COLLECTION_CHILDREN, (album,))
+
+
+def test_the_navigation_indexes_ask_answerable_questions(library):
+    """The /folders shelves and the /albums tree: the root list is a
+    stays-small scan, each root's depth-0 folders ride the NOCASE
+    uniqueness index, and the tree is a whole-shelf summary like ALBUMS
+    -- counting groups is what aggregate=True exists for."""
+    conn, album = library["conn"], library["album"]
+    shelves = pages.roots_shelf(conn)
+    assert [kind for _, kind in shelves] == ["library"]
+    root_id = shelves[0][0]
+    # 0 DIRECT files: the fixture's twelve live in subfolders, and the
+    # shelf count keeps folder='s direct-only meaning.
+    assert [(n, p) for _, n, p in pages.folder_tops(conn, root_id)] == [("pics", 0)]
+    assert_no_growing_scan(conn, pages.ROOT_SHELF)
+    assert_no_growing_scan(conn, pages.FOLDER_TOPS, (root_id,))
+
+    # The albums tree is the child walk applied per level: NULL asks for
+    # the top, and both levels ride collection_parent -- no whole-shelf
+    # scan sorted at read time, so no exemption to declare.
+    tops = pages.collection_children(conn, None)
+    assert album in [row[0] for row in tops], "the top level lists the parentless collections"
+    nested = authored.collection(conn, "Deeper", NOW, parent_id=album)
+    assert [row[0] for row in pages.collection_children(conn, album)] == [nested]
+    assert_no_growing_scan(conn, pages.COLLECTION_CHILDREN, (None,))

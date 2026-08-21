@@ -183,6 +183,31 @@ def folder_children(conn, folder_id: int):
     return conn.execute(FOLDER_CHILDREN, (folder_id,)).fetchall()
 
 
+#: The kinds registered, by row -- reachability comes from
+#: db/library.py check_roots, which verifies the marker rather than
+#: trusting that A directory exists at the recorded path.
+ROOT_SHELF = "SELECT id, kind FROM root ORDER BY id"
+
+FOLDER_TOPS = (
+    "SELECT e.slug, f.name,"
+    " (SELECT count(*) FROM file WHERE folder_id = f.id AND missing_since IS NULL) AS pictures"
+    "  FROM folder f JOIN entity e ON e.id = f.id"
+    " WHERE f.root_id = ? AND f.parent_id IS NULL AND f.missing_since IS NULL"
+    " ORDER BY f.name COLLATE NOCASE"
+)
+
+
+def roots_shelf(conn):
+    return conn.execute(ROOT_SHELF).fetchall()
+
+
+def folder_tops(conn, root_id: int):
+    """One root's depth-0 folder entities -- where physical navigation
+    enters. Slugs and names only: the root's path is operational state
+    and never part of the browsing surface."""
+    return conn.execute(FOLDER_TOPS, (root_id,)).fetchall()
+
+
 # --- the recipe axis -------------------------------------------------------
 
 ARTIFACT_FILES = (
@@ -490,9 +515,15 @@ def album_present(conn, collection_id: int) -> int:
 
 COLLECTION_CARD = "SELECT name, kind, color, description, sql_text, nl_text, parent_id FROM collection WHERE id = ?"
 
+#: `IS ?` rather than `= ?` so one statement serves both levels -- NULL
+#: names the top of the hierarchy -- and both ride collection_parent
+#: (probed: SEARCH under either argument, ordering included).
 COLLECTION_CHILDREN = (
-    "SELECT e.slug, c.name, c.kind FROM collection c JOIN entity e ON e.id = c.id"
-    " WHERE c.parent_id = ? ORDER BY c.name COLLATE NOCASE"
+    "SELECT c.id, e.slug, c.name, c.kind,"
+    " (SELECT count(*) FROM collection_file cf JOIN file f ON f.id = cf.file_id"
+    "   AND f.missing_since IS NULL WHERE cf.collection_id = c.id) AS pictures"
+    "  FROM collection c JOIN entity e ON e.id = c.id"
+    " WHERE c.parent_id IS ? ORDER BY c.name COLLATE NOCASE"
 )
 
 
@@ -500,7 +531,11 @@ def collection_card(conn, collection_id: int):
     return conn.execute(COLLECTION_CARD, (collection_id,)).fetchone()
 
 
-def collection_children(conn, collection_id: int):
+def collection_children(conn, collection_id: int | None):
+    """One level of the authored hierarchy: `None` asks for the top. The
+    index's tree is this walk applied recursively -- each level an index
+    search with its own member counts, never a whole-shelf scan sorted
+    at read time."""
     return conn.execute(COLLECTION_CHILDREN, (collection_id,)).fetchall()
 
 

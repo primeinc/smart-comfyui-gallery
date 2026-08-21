@@ -62,7 +62,8 @@ def view(conn, models_dir: str, collection_id: int, slug: str, now: float, *, le
             "description": description,
             "parent": parent,
             "collections": [
-                {"slug": s, "name": n, "kind": k} for s, n, k in pages.collection_children(conn, collection_id)
+                {"slug": s, "name": n, "kind": k, "pictures": p}
+                for _, s, n, k, p in pages.collection_children(conn, collection_id)
             ],
         }
         if grid is None:  # smart: unevaluated, refused by the ResultSet -- never "empty"
@@ -93,6 +94,28 @@ def _albums_listed(db_path: str) -> list[dict]:
         connect.close(conn)
 
 
+def _branch(conn, parent_id: int | None) -> list[dict]:
+    """One level of the authored hierarchy, recursively: each level is
+    its own index search (db/pages.py COLLECTION_CHILDREN), so the tree
+    never runs the whole-shelf scan-and-sort the plan gate forbids. The
+    schema's cycle guard is what makes the recursion finite."""
+    return [
+        {"slug": slug, "name": name, "kind": kind, "pictures": pictures, "collections": _branch(conn, child_id)}
+        for child_id, slug, name, kind, pictures in pages.collection_children(conn, parent_id)
+    ]
+
+
+def _albums_nested(db_path: str) -> list[dict]:
+    """The collection hierarchy as it was authored: every node still
+    opens its own /t/{slug}, and a rule-defined node shows its badge
+    rather than a member count nothing computed."""
+    conn = connect.connect(db_path)
+    try:
+        return _branch(conn, None)
+    finally:
+        connect.close(conn)
+
+
 @get("/albums")
 async def albums_index(state: State, request: Request) -> Template | Response:
     """Every collection, alphabetically -- rendered for a browser, the
@@ -107,10 +130,13 @@ async def albums_index(state: State, request: Request) -> Template | Response:
     thread because this coroutine shares the event loop."""
     from anyio import to_thread
 
-    told = await to_thread.run_sync(_albums_listed, state.db_path)
     accept = request.headers.get("accept", "")
     if "text/html" in accept and "application/json" not in accept:
-        return Template(template_name="albums.html", context={"albums": told}, headers=VARIES)
+        # The browser gets the hierarchy as authored; the flat list
+        # stays the machines' historical shape.
+        tree = await to_thread.run_sync(_albums_nested, state.db_path)
+        return Template(template_name="albums.html", context={"albums": tree}, headers=VARIES)
+    told = await to_thread.run_sync(_albums_listed, state.db_path)
     return Response(told, headers=VARIES)
 
 

@@ -370,3 +370,15 @@ body {
 .album-name { font-weight: 600; }
 .album-kind, .album-count { color: var(--ink-muted); font-size: 0.9em; }
 .album-count { margin-left: auto; }
+
+.root-shelf { display: grid; gap: 10px; margin-bottom: 24px; }
+.root-shelf h2 { margin: 0; text-transform: capitalize; }
+.root-state { color: var(--ink-muted); font-size: 0.7em; font-weight: 400; margin-left: 8px; }
+.root-shelf[data-online="no"] .root-state { color: var(--danger); }
+
+.album-tree { list-style: none; margin: 0; padding: 0; max-width: 640px; }
+.album-tree ul { list-style: none; margin: 0; padding-left: 22px; border-left: 1px solid var(--line); }
+.album-tree li { padding: 6px 0; }
+.album-tree a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.album-tree a:hover { text-decoration: underline; }
+.album-tree .album-kind, .album-tree .album-count { margin-left: 10px; }

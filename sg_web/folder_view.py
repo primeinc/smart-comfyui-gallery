@@ -31,9 +31,36 @@ from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import connect, naming, pages, resultset, settings
+from db import connect, library, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import VARIES, wants_json
+
+
+@get("/folders", sync_to_thread=True)
+def folders_index(state: State, request: Request) -> Template | Response:
+    """Where physical navigation enters: each registered root as a shelf
+    -- its kind, whether it is reachable RIGHT NOW (db/library.py
+    check_roots, which verifies the marker rather than trusting a
+    directory to be the same one), and its depth-0 folder entities to
+    walk into. No root ids and no host paths: addresses are slugs, and
+    the operational /roots route keeps the management shape."""
+    conn = connect.connect(state.db_path)
+    try:
+        online = {root_id: reachable for root_id, _, reachable in library.check_roots(conn)}
+        told = [
+            {
+                "kind": kind,
+                "online": online.get(root_id, False),
+                "folders": [{"slug": s, "name": n, "pictures": p} for s, n, p in pages.folder_tops(conn, root_id)],
+            }
+            for root_id, kind in pages.roots_shelf(conn)
+        ]
+    finally:
+        connect.close(conn)
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        return Template(template_name="folders.html", context={"shelves": told}, headers=VARIES)
+    return Response(told, headers=VARIES)
 
 
 def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy: bool) -> dict:

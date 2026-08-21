@@ -197,6 +197,51 @@ def test_the_albums_index_renders_for_a_browser_and_stays_json_for_machines(plac
     assert "rule-defined" in page.text, "a smart collection is never shown as '0 pictures'"
 
 
+def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
+    """Physical navigation's front door: each registered root as a
+    shelf -- kind, reachability, and its depth-0 folder ENTITIES. No
+    root ids and no host paths anywhere in the browsing surface; the
+    operational /roots route keeps the management shape."""
+    placed, root = placed_on_disk
+    told = placed.get("/folders", headers=AS_MACHINE)
+    assert told.status_code == 200
+    assert told.headers["vary"] == "Accept, HX-Request"
+    body = told.json()
+    assert body == [{"kind": "library", "online": True, "folders": [{"slug": "lib", "name": "lib", "pictures": 2}]}]
+    page = placed.get("/folders", headers=AS_BROWSER)
+    assert page.status_code == 200
+    assert 'data-folder="lib"' in page.text
+    assert ">online<" in page.text
+    for answer in (told.text, page.text):
+        assert str(root) not in answer
+        assert str(root).replace("\\", "/") not in answer
+    # The operational route still says what an operator needs.
+    assert str(root) in [row["path"] for row in placed.get("/roots").json()]
+
+
+def test_the_albums_index_shows_the_hierarchy_as_authored(placed_on_disk):
+    """The browser's /albums is the collection tree: a child renders
+    INSIDE its parent's branch and still opens its own /t address; a
+    rule-defined node wears its badge instead of a count nothing
+    computed. Machines keep the historical flat list."""
+    import re
+
+    placed, _ = placed_on_disk
+    conn = connect.connect(placed.app.state.db_path)
+    keep = conn.execute("SELECT id FROM collection WHERE name = 'Keep'").fetchone()[0]
+    authored.collection(conn, "Inner", 4.0, parent_id=keep)
+    conn.commit()
+    connect.close(conn)
+
+    page = placed.get("/albums", headers=AS_BROWSER).text
+    assert re.search(r'data-album="keep".*?<ul>.*?data-album="inner"', page, re.DOTALL), (
+        "the child must render inside its parent's branch"
+    )
+    assert re.search(r'data-album="rules".*?rule-defined', page, re.DOTALL)
+    flat = placed.get("/albums", headers=AS_MACHINE).json()
+    assert {row["slug"] for row in flat} == {"keep", "inner", "rules"}, "the machine list stays flat and complete"
+
+
 def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypatch):
     """The CollectionView invariant under fire: kind is NOT immutable --
     an empty collection legally converts to smart -- so the static/smart
@@ -253,6 +298,9 @@ def test_a_missing_folder_is_a_state_not_a_404_and_not_merely_empty(tmp_path):
         assert client.get("/f/deep", headers=AS_MACHINE).json()["state"] == "offline", (
             "an unreachable root is not a missing folder and not an empty one"
         )
+        assert client.get("/folders", headers=AS_MACHINE).json()[0]["online"] is False, (
+            "the folders index must say the shelf is unreachable"
+        )
 
         root.mkdir()
         client.post(f"/roots/{made['id']}/scan")
@@ -268,7 +316,13 @@ def test_the_place_views_own_no_sql():
     import pathlib
 
     web = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
-    for module in ("folder_view.py", "collection_view.py"):
+    allowed = {
+        # `library` is the marker-verified reachability probe the folders
+        # index reports online state through -- presence, not membership.
+        "folder_view.py": {"connect", "library", "naming", "pages", "resultset", "settings"},
+        "collection_view.py": {"connect", "naming", "pages", "resultset", "settings"},
+    }
+    for module, vocabulary in allowed.items():
         tree = ast.parse((web / module).read_text(encoding="utf-8"))
         called = {
             node.func.attr
@@ -282,6 +336,4 @@ def test_the_place_views_own_no_sql():
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "db":
                 spoken |= {alias.name for alias in node.names}
-        assert spoken <= {"connect", "naming", "pages", "resultset", "settings"}, (
-            f"{module}: unexpected db vocabulary {sorted(spoken)}"
-        )
+        assert spoken <= vocabulary, f"{module}: unexpected db vocabulary {sorted(spoken)}"

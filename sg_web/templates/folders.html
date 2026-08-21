@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Folders</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/g">gallery</a>
+      <span class="crumbs-here">Folders</span>
+      <span class="crumbs-where">{{ shelves|length }} librar{{ "y" if shelves|length == 1 else "ies" }}</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if shelves %}
+    {% for shelf in shelves %}
+    <section class="root-shelf" data-online="{{ "yes" if shelf.online else "no" }}">
+      <h2>
+        {{ shelf.kind }}
+        <span class="root-state">{{ "online" if shelf.online else "offline" }}</span>
+      </h2>
+      {% if shelf.folders %}
+      <div class="album-list">
+        {% for one in shelf.folders %}
+        <a class="album-card" href="/f/{{ one.slug }}" data-folder="{{ one.slug }}">
+          <span class="album-name">{{ one.name }}</span>
+          <span class="album-count">{{ one.pictures }} pictures</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty">nothing scanned from this root yet.</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+    {% else %}
+    <p class="empty">no media directories registered yet.</p>
+    {% endif %}
+  </main>
+</body>
+</html>

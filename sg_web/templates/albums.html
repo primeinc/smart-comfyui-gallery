@@ -11,22 +11,25 @@
     <nav class="crumbs">
       <a href="/g">gallery</a>
       <span class="crumbs-here">Albums</span>
-      <span class="crumbs-where">{{ albums|length }} found</span>
     </nav>
   </header>
   <main class="stage">
     {% if albums %}
-    <div class="album-list">
-      {% for one in albums %}
-      <a class="album-card" href="/t/{{ one.slug }}" data-album="{{ one.slug }}">
-        <span class="album-name">{{ one.name }}</span>
-        <span class="album-kind">{{ one.kind }}</span>
-        <span class="album-count">
-          {% if one.kind == "smart" %}rule-defined{% else %}{{ one.pictures }} pictures{% endif %}
-        </span>
-      </a>
+    <ul class="album-tree">
+      {% for node in albums recursive %}
+      <li>
+        <a href="/t/{{ node.slug }}" data-album="{{ node.slug }}">{{ node.name }}</a>
+        {% if node.kind == "smart" %}
+        <span class="album-kind">rule-defined</span>
+        {% else %}
+        <span class="album-count">{{ node.pictures }} pictures</span>
+        {% endif %}
+        {% if node.collections %}
+        <ul>{{ loop(node.collections) }}</ul>
+        {% endif %}
+      </li>
       {% endfor %}
-    </div>
+    </ul>
     {% else %}
     <p class="empty">no albums yet.</p>
     {% endif %}

@@ -482,6 +482,34 @@ def test_the_folder_page_walks_into_the_gallery(driven):
         page.close()
 
 
+def test_the_navigation_indexes_walk_into_the_entities(driven):
+    """The two front doors on screen: /folders enters the physical axis
+    through a root shelf's folder entities, /albums enters the authored
+    axis through the tree -- each click landing on the entity's own
+    address, no ids and no paths anywhere on the way."""
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        assert web.post("/albums", json={"name": "Shelf"}).json()["slug"] == "shelf"
+
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/folders")
+        page.wait_for_selector('[data-folder="lib"]')
+        page.click('[data-folder="lib"]')
+        page.wait_for_selector(".grid")
+        assert page.url.endswith("/f/lib")
+
+        page.goto(f"{base}/albums")
+        page.wait_for_selector('[data-album="shelf"]')
+        page.click('[data-album="shelf"]')
+        page.wait_for_selector(".detail")
+        assert page.url.endswith("/t/shelf")
+    finally:
+        page.close()
+
+
 def test_the_album_page_walks_into_the_gallery(driven):
     """The CollectionView on screen: the authored membership as a
     bounded grid whose media links carry the album context, and Escape

@@ -876,6 +876,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             health,
             front,
             media_view.media_page,
+            folder_view.folders_index,
             folder_view.folder_page,
             models,
             loras,
