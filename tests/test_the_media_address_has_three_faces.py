@@ -54,7 +54,7 @@ def test_the_three_faces_come_from_one_view_and_declare_vary(address):
     assert '<link rel="canonical" href="/i/m-3">' in page.text, "the canonical address is the BARE entity URL"
     assert "<html" in page.text
     assert "<html" not in part.text, "a fragment mounts into a page, never a page into a page"
-    assert 'data-lightbox' in part.text
+    assert "data-lightbox" in part.text
     # One assembly: the fragment and the page name the same neighbours.
     fragment_navs = re.findall(r'data-nav="\w+"[^>]*href="([^"]+)"', part.text)
     assert all(href.startswith("/i/") for href in fragment_navs)

@@ -34,9 +34,10 @@ def _asked(
     q: str | None,
     sort: str | None,
     size: int | None,
+    person: str | None = None,
 ) -> resultset.GalleryQuery:
     try:
-        return resultset.parse(folder=folder, album=album, kind=kind, text=q, sort=sort, size=size)
+        return resultset.parse(folder=folder, album=album, person=person, kind=kind, text=q, sort=sort, size=size)
     except ValueError as refused:
         raise ClientException(str(refused)) from refused
 
@@ -52,6 +53,8 @@ def canonical(query: resultset.GalleryQuery, page: int | None = None) -> str:
         pairs.append(("folder", query.folder))
     if query.album:
         pairs.append(("album", query.album))
+    if query.person:
+        pairs.append(("person", query.person))
     if query.kind:
         pairs.append(("kind", query.kind))
     if query.sort != ("similarity" if query.text else "newest"):
@@ -89,6 +92,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "q": query.text or "",
         "folder": query.folder or "",
         "album": query.album or "",
+        "person": query.person or "",
         "kind": query.kind or "",
         "qs": canonical(query),
         "kinds": resultset.KINDS,
@@ -101,6 +105,7 @@ def gallery(
     state: State,
     folder: str | None = None,
     album: str | None = None,
+    person: str | None = None,
     kind: str | None = None,
     q: str | None = None,
     sort: str | None = None,
@@ -108,7 +113,7 @@ def gallery(
     page: int = 1,
 ) -> Template:
     """The gallery, whole, from nothing but the URL."""
-    query = _asked(folder, album, kind, q, sort, size)
+    query = _asked(folder, album, kind, q, sort, size, person=person)
     return Template(template_name="gallery.html", context=_grid_context(state, query, page))
 
 
@@ -117,6 +122,7 @@ def grid_fragment(
     state: State,
     folder: str | None = None,
     album: str | None = None,
+    person: str | None = None,
     kind: str | None = None,
     q: str | None = None,
     sort: str | None = None,
@@ -124,7 +130,7 @@ def grid_fragment(
     page: int = 1,
 ) -> Template:
     """One page of cells, for the running page to swap in place."""
-    query = _asked(folder, album, kind, q, sort, size)
+    query = _asked(folder, album, kind, q, sort, size, person=person)
     return Template(template_name="_grid.html", context=_grid_context(state, query, page))
 
 
@@ -134,6 +140,7 @@ def rail_peek(
     page: int,
     folder: str | None = None,
     album: str | None = None,
+    person: str | None = None,
     kind: str | None = None,
     q: str | None = None,
     sort: str | None = None,
@@ -149,7 +156,7 @@ def rail_peek(
     beside the OLD grid would present two generations as one answer --
     the response is 409 and the client redraws instead of pretending.
     """
-    query = _asked(folder, album, kind, q, sort, size)
+    query = _asked(folder, album, kind, q, sort, size, person=person)
     conn = connect.connect(state.db_path)
     try:
         if expect is not None and resultset.currency(conn) != expect:
@@ -173,6 +180,7 @@ def locate_in_answer(
     slug: str,
     folder: str | None = None,
     album: str | None = None,
+    person: str | None = None,
     kind: str | None = None,
     q: str | None = None,
     sort: str | None = None,
@@ -181,7 +189,7 @@ def locate_in_answer(
     """Where one picture sits in this answer -- ordinal, page, and its
     previous/next in ANSWER order, which is what the arrows mean while
     a result set is being walked."""
-    query = _asked(folder, album, kind, q, sort, size)
+    query = _asked(folder, album, kind, q, sort, size, person=person)
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "file", slug)

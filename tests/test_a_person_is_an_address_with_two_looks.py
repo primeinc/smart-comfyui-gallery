@@ -144,7 +144,7 @@ def test_the_person_path_owns_no_sql_and_the_drawer_is_not_a_lightbox():
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "db":
             spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"authored", "connect", "naming", "pages", "resultset"}, (
+    assert spoken <= {"authored", "connect", "naming", "pages", "resultset", "settings"}, (
         f"unexpected db vocabulary: {sorted(spoken)}"
     )
 
@@ -178,3 +178,50 @@ def test_a_commit_mid_assembly_cannot_mix_person_generations(tmp_path, monkeypat
         assert client.get("/p/ana").json()["name"] == "Renamed Mid-Read", (
             "the NEXT response must see the commit; the snapshot is per-request, not a cache"
         )
+
+
+def test_a_person_is_a_resultset_scope(tmp_path):
+    """The bridge WI-38 exists for: person membership is the primary
+    run's attribution, ordered and paged like every other scope, and
+    the profile's grid is ONE ResultSet page whose links carry the
+    person context so the arrows walk the person."""
+    from db import resultset
+
+    burrow, _ = _clustered_library(tmp_path)
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        db_path = client.app.state.db_path
+        conn = connect.connect(db_path)
+        told = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
+        assert told["total"] == 2, "membership is the attribution, not the library"
+        with pytest.raises(ValueError, match="one scope at a time"):
+            resultset.parse(person="ana", folder="lib")
+        with pytest.raises(LookupError):
+            resultset.describe(conn, "", resultset.parse(person="nobody"), 0.0)
+        connect.close(conn)
+
+        # /g serves the person scope like any other question.
+        grid = client.get("/g/grid", params={"person": "ana"}).text
+        assert grid.count('data-slug="ana-') == 2
+        assert "ben-1" not in grid
+
+        # The profile's own grid is the ResultSet page, links in context.
+        page = client.get("/p/ana", headers=AS_BROWSER).text
+        assert page.count("?person=ana") >= 2, "profile media links must carry the person context"
+        body = client.get("/p/ana").json()
+        assert body["gallery"]["total"] == 2
+        assert body["gallery"]["qs"] == "person=ana"
+        assert [row["slug"] for row in body["gallery"]["items"]] == [
+            row["slug"]
+            for row in resultset.page(connect.connect(db_path), "", resultset.parse(person="ana"), 1, 0.0)["items"]
+        ]
+
+        # The item address under the person context walks the person.
+        first = body["gallery"]["items"][0]["slug"]
+        second = body["gallery"]["items"][1]["slug"]
+        walked = client.get(f"/i/{first}", params={"person": "ana"}).json()
+        assert walked["context"]["total"] == 2
+        assert walked["next"] == second
+        assert walked["previous"] is None
+        assert walked["context"]["return_url"] == "/g?person=ana"
+        outside = client.get("/i/ben-1", params={"person": "ana"}).json()
+        assert outside["context"]["in_answer"] is False

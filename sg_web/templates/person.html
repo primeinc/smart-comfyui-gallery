@@ -39,15 +39,18 @@
       </ul>
     </section>
     {% endif %}
-    {% if person.pictures %}
+    {% if person.gallery["items"] %}
     <div class="grid">
-      {% for pic in person.pictures %}
-      <a class="cell" href="/i/{{ pic.slug }}">
+      {% for pic in person.gallery["items"] %}
+      <a class="cell" href="/i/{{ pic.slug }}?{{ person.gallery.qs }}">
         <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
         <span class="cell-name">{{ pic.name }}</span>
       </a>
       {% endfor %}
     </div>
+    {% if person.gallery.pages > 1 %}
+    <p class="pager"><a href="/g?{{ person.gallery.qs }}">browse all {{ person.gallery.total }} in the gallery</a></p>
+    {% endif %}
     {% endif %}
   </main>
 </body>

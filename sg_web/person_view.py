@@ -31,20 +31,28 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import authored, connect, naming, pages, resultset
+from db import authored, connect, naming, pages, resultset, settings
+from sg_web import home
+from sg_web.gallery import canonical
 
 VARIES = {"vary": "Accept, HX-Request"}
 
 
-def view(conn, person_id: int, slug: str) -> dict:
+def view(conn, models_dir: str, person_id: int, slug: str, now: float) -> dict:
     """The PersonView: everything every presentation shows, assembled
     once, inside ONE database snapshot -- a clustering or naming commit
     landing between the reads must not hand back pictures from one
     generation under the name and folder counts of another. Same
-    invariant MediaView carries; no currency involved, because no
-    mounted ordered ResultSet is. Keys carried by the old JSON page
-    keep their names."""
+    invariant MediaView carries. Keys carried by the old JSON page keep
+    their names; `gallery` is the ADDITIVE bounded grid: one ResultSet
+    page of this person's pictures under the person-scoped
+    GalleryQuery, whose canonical spelling every rendered media link
+    carries so the lightbox arrows walk THIS person, not the library.
+    `pages.person_files` stays only for the legacy JSON shape -- the
+    rendered grid orders and pages through the ResultSet alone."""
+    query = resultset.parse(person=slug)
     with resultset.snapshot(conn):
+        grid = resultset.page(conn, models_dir, query, 1, now)
         pictures = [{"slug": s, "name": n} for s, n in pages.person_files(conn, person_id)]
         return {
             "slug": slug,
@@ -55,6 +63,12 @@ def view(conn, person_id: int, slug: str) -> dict:
                 {"folder": f, "folder_slug": fs, "pictures": p}
                 for f, fs, p in pages.person_across_folders(conn, person_id)
             ],
+            "gallery": {
+                "items": grid["items"],
+                "total": grid["total"],
+                "pages": grid["pages"],
+                "qs": canonical(query),
+            },
         }
 
 
@@ -91,6 +105,9 @@ def person_page(state: State, request: Request, slug: str) -> Template | Respons
     """One person at their address, presented for whoever is asking. A
     retired slug redirects to the live one, so one person never has two
     addresses serving content."""
+    import pathlib
+    import time
+
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "person", slug)
@@ -101,7 +118,8 @@ def person_page(state: State, request: Request, slug: str) -> Template | Respons
             live = naming.entity_slug(conn, person_id)
             if live is not None:
                 return Redirect(path=f"/p/{live[1]}", status_code=301)
-        told = view(conn, person_id, slug)
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        told = view(conn, weights, person_id, slug, time.time())
     finally:
         connect.close(conn)
     return _presented(request, told, "person.html", "_person_drawer.html")

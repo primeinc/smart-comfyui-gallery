@@ -83,6 +83,7 @@ class GalleryQuery:
 
     folder: str | None = None  # scope: one folder, by slug
     album: str | None = None  # scope: one album (collection), by slug
+    person: str | None = None  # scope: one person's pictures, by slug
     kind: str | None = None  # filter: one file kind
     text: str | None = None  # the semantic phrase; implies sort=similarity
     sort: str = "newest"
@@ -93,6 +94,7 @@ def parse(
     *,
     folder: str | None = None,
     album: str | None = None,
+    person: str | None = None,
     kind: str | None = None,
     text: str | None = None,
     sort: str | None = None,
@@ -106,6 +108,7 @@ def parse(
     """
     folder = (folder or "").strip() or None
     album = (album or "").strip() or None
+    person = (person or "").strip() or None
     kind = (kind or "").strip() or None
     text = (text or "").strip() or None
     if sort is None or not sort.strip():
@@ -119,14 +122,14 @@ def parse(
         # with its own membership rule; until that rule exists, refusing
         # beats silently ignoring the phrase.
         raise ValueError("a phrase orders by similarity; other sorts do not consume it")
-    if folder is not None and album is not None:
-        raise ValueError("one scope at a time: folder or album, not both")
+    if sum(1 for scope in (folder, album, person) if scope is not None) > 1:
+        raise ValueError("one scope at a time: folder, album or person")
     if kind is not None and kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
     chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
     if not 1 <= chosen <= MAX_PAGE_SIZE:
         raise ValueError(f"page size must be 1..{MAX_PAGE_SIZE}, not {chosen}")
-    return GalleryQuery(folder=folder, album=album, kind=kind, text=text, sort=sort, size=chosen)
+    return GalleryQuery(folder=folder, album=album, person=person, kind=kind, text=text, sort=sort, size=chosen)
 
 
 def fingerprint(query: GalleryQuery) -> str:
@@ -204,6 +207,16 @@ ALBUM_BY_TIME = (
     " WHERE cf.collection_id = ?{kind}"
     " ORDER BY f.mtime {order}, f.id {order}"
 )
+#: A person's pictures are the PRIMARY clustering run's attribution --
+#: the same run every people page shows, so the gallery and the profile
+#: cannot disagree about whose pictures these are.
+PERSON_BY_TIME = (
+    "SELECT f.id FROM derived_file_person fp"
+    " JOIN file f ON f.id = fp.file_id AND f.missing_since IS NULL"
+    " WHERE fp.person_id = ?"
+    " AND fp.run_id = (SELECT id FROM derived_face_run WHERE is_primary = 1){kind}"
+    " ORDER BY f.mtime {order}, f.id {order}"
+)
 
 #: The names one page of cells needs, id-keyed; order is restored from
 #: the projection slice, so this query carries none.
@@ -216,7 +229,7 @@ def _scope_id(conn, query: GalleryQuery) -> tuple[str, int] | None:
     exactly like an empty folder."""
     from . import naming
 
-    for slug, entity_kind in ((query.folder, "folder"), (query.album, "collection")):
+    for slug, entity_kind in ((query.folder, "folder"), (query.album, "collection"), (query.person, "person")):
         if slug is None:
             continue
         found = naming.resolve(conn, entity_kind, slug)
@@ -234,7 +247,7 @@ def _timed_ids(conn, query: GalleryQuery) -> list[int]:
     if scoped is None:
         sql = LIBRARY_BY_TIME
     else:
-        sql = FOLDER_BY_TIME if scoped[0] == "folder" else ALBUM_BY_TIME
+        sql = {"folder": FOLDER_BY_TIME, "collection": ALBUM_BY_TIME, "person": PERSON_BY_TIME}[scoped[0]]
         args.append(scoped[1])
     if query.kind is not None:
         args.append(query.kind)
@@ -256,7 +269,7 @@ def _fused_ids(conn, models_dir: str, query: GalleryQuery, now: float) -> tuple[
     from . import retrieval
 
     allowed = None
-    if query.folder is not None or query.album is not None or query.kind is not None:
+    if query.folder is not None or query.album is not None or query.person is not None or query.kind is not None:
         allowed = set(_timed_ids(conn, dataclasses.replace(query, text=None, sort="newest")))
         if not allowed:
             # An empty scope needs no encoder and has no honest

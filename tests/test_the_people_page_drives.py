@@ -144,3 +144,39 @@ def test_clicking_the_backdrop_dismisses_the_drawer_like_back(peopled):
         page.wait_for_function("() => document.querySelector('[data-drawer-root]').hidden === true")
     finally:
         page.close()
+
+
+def test_the_lightbox_arrows_stay_inside_the_person(peopled):
+    """WI-38's Chromium proof: from the person-scoped gallery, the
+    lightbox walks THIS person's two pictures and stops at their edges
+    -- the library's third picture never enters the walk."""
+    browser, base = peopled
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/people")
+        page.wait_for_selector("[data-person]")
+        slug = page.locator("[data-person]").first.get_attribute("data-person")
+        assert slug is not None
+
+        page.goto(f"{base}/g?person={slug}")
+        page.wait_for_selector("[data-grid]")
+        assert page.locator(".cell").count() == 2, "the person scope admits exactly their pictures"
+
+        page.click('.cell[data-ordinal="1"]')
+        page.wait_for_selector("[data-lightbox]")
+        assert f"person={slug}" in page.url
+        label = page.text_content(".lightbox-label")
+        assert label is not None
+        assert "1 of 2" in label
+
+        page.keyboard.press("ArrowRight")
+        page.wait_for_function("() => document.querySelector('.lightbox-label').textContent.includes('2 of 2')")
+        assert f"person={slug}" in page.url, "the person context rides every replaced URL"
+        page.keyboard.press("ArrowRight")
+        assert page.locator('[data-nav="next"]').count() == 0, "the walk ends at the person's edge"
+        label = page.text_content(".lightbox-label")
+        assert label is not None
+        assert "2 of 2" in label
+        assert "ben" not in page.url, "the third picture in the library is not this person's"
+    finally:
+        page.close()

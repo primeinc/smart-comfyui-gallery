@@ -15,8 +15,8 @@
     <button type="submit">name</button>
   </form>
   <div class="drawer-strip">
-    {% for pic in person.pictures[:9] %}
-    <a href="/i/{{ pic.slug }}"><img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy"></a>
+    {% for pic in person.gallery["items"][:9] %}
+    <a href="/i/{{ pic.slug }}?{{ person.gallery.qs }}"><img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy"></a>
     {% endfor %}
   </div>
 </div>

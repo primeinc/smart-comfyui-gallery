@@ -14,6 +14,7 @@
       <input type="search" name="q" value="{{ q }}" placeholder="search by what it looks like" aria-label="search">
       {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
       {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
+      {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
       <select name="kind" aria-label="kind">
         <option value="">any kind</option>
         {% for one in kinds %}
