@@ -502,6 +502,73 @@ def test_a_historical_v1_plan_stays_readable_as_history_and_is_planned_again_as_
         connect.close(conn)
 
 
+def test_a_planner_v3_gap_plan_from_9575cc6_is_still_history(frozen):
+    """The real shape planner v3 wrote (9575cc6): a SEQUENCED v1 plan
+    whose promptless member sat in a phase of its own -- phases
+    [member-001, member-003], [member-002], [member-004] -- blessed by
+    that commit's own tests. Contiguity is the CURRENT producer's rule;
+    history loads byte-identically and serves 200."""
+    client, snap = frozen
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        snapshot = stories.load_snapshot(conn, snap.id)
+        refs = [planning._member_ref(one["ordinal"]) for one in sorted(snapshot["members"], key=lambda m: m["ordinal"])]
+        assert len(refs) >= 3
+        historical = {
+            "v": 1,
+            "snapshot_sha256": snap.sha256,
+            "planner": {
+                "kind": "generation_history",
+                "version": 3,
+                "settings": {"phase_threshold": 0.5},
+                "similarity": {"name": "lexical-bow", "version": "1"},
+            },
+            "subject": {"kind": "generation_session", "sequenced": True, "label_hint": "3 outputs · 2 phases"},
+            "phases": [
+                {
+                    "id": "phase-001",
+                    "member_refs": [refs[0], refs[2]],
+                    "representative_refs": [refs[0]],
+                    "label_hint": "Phase 1",
+                    "claim_refs": ["claim-001"],
+                },
+                {
+                    "id": "phase-002",
+                    "member_refs": [refs[1]],
+                    "representative_refs": [refs[1]],
+                    "label_hint": "Phase 2",
+                    "claim_refs": [],
+                },
+            ],
+            "claims": [
+                {
+                    "id": "claim-001",
+                    "kind": "prompt_similarity",
+                    "confidence": 0.9,
+                    "evidence_refs": [f"{refs[0]}:generation.prompt", f"{refs[2]}:generation.prompt"],
+                    "facts": {"relationship": "same_prompt_family", "min_pairwise_cosine": 0.9},
+                }
+            ],
+            "unsupported": [{"kind": "prompt_evidence", "reason": "no frozen prompt", "member_refs": [refs[1]]}],
+            "planned_at": NOW,
+        }
+        _spelled, sha = planning.identity(historical)
+        conn.execute(
+            "INSERT INTO story_plan(snapshot_id, format_version, planner, planner_version, similarity,"
+            " similarity_version, settings_hash, request_sha256, document_json, document_sha256, created_at)"
+            " VALUES(?, 1, 'generation_history', 3, 'lexical-bow', '1', 'x', ?, ?, ?, ?)",
+            (snap.id, "3" * 64, planning.canonical(historical), sha, NOW),
+        )
+        conn.commit()
+        plan_id = conn.execute("SELECT id FROM story_plan WHERE document_sha256 = ?", (sha,)).fetchone()[0]
+        assert planning.validate_stored_plan(historical, snapshot, snap.sha256) == []
+        assert any("interleave" in why for why in planning.validate_current_plan(historical, snapshot, snap.sha256))
+        assert planning.load_plan(conn, plan_id) == historical
+        assert client.get(f"/stories/plans/{plan_id}").status_code == 200
+    finally:
+        connect.close(conn)
+
+
 def test_a_blank_prompt_is_never_embedded():
     """Only known prompts reach the engine: an empty string is not a
     prompt, and a vector for nothing is a lie waiting for a consumer."""
@@ -782,7 +849,7 @@ def test_the_engine_selector_means_exactly_what_it_says(frozen):
         assert isinstance(planning.engine_for(conn, "lexical", "unused"), planning.LexicalEngine)
         with pytest.raises(ValueError, match="no similarity engine named"):
             planning.engine_for(conn, "astrology", "unused")
-        with pytest.raises(ValueError, match="not among the configured"):
+        with pytest.raises(ValueError, match="no configured semantic space matches"):
             planning.engine_for(conn, "qwen", "unused")
         engine = planning.engine_for(conn, "openclip", "unused")
         assert isinstance(engine, planning.SemanticEngine)

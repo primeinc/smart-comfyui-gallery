@@ -54,7 +54,6 @@ from __future__ import annotations
 import dataclasses
 import math
 import re
-import typing
 
 import story_renderers
 from story_renderers import claims as wording
@@ -85,19 +84,29 @@ class RenderRef:
     reused: bool
 
 
+#: What each renderer VERSION reads -- FROZEN, per version, forever.
+#: Changing the inputs a renderer accepts is an Interface change and is
+#: a new version; a stored render names its version, and `violations()`
+#: holds the inputs it says it read to this map, so a later version can
+#: never reinterpret what an earlier one produced. Template v1 read
+#: Plan v1 and v2; v2 stopped reading Plan v1, whose producer wrote
+#: directed claims for unsequenced families, and learned Plan v3.
+COMPATIBILITY: dict[tuple[str, int], dict[str, frozenset[int]]] = {
+    ("template", 1): {"snapshot": frozenset({1}), "plan": frozenset({1, 2})},
+    ("template", 2): {"snapshot": frozenset({1}), "plan": frozenset({2, 3})},
+}
+
+
 class TemplateStoryRenderer:
     """The deterministic narrator. `render(snapshot, plan)` is a pure
     function of its two documents and the profile."""
 
     kind = "template"
-    version = 1
-    #: The input formats this renderer version reads -- LITERALS, never
-    #: the producers' running FORMAT_VERSION: a newer plan format is
-    #: refused here until a renderer version that understands it exists.
-    #: Plan v1 is NOT read: its producer wrote directed claims for
-    #: unsequenced families, and wording them would narrate a direction
-    #: the evidence never had. A legacy v1 Adapter is a deliberate act.
-    reads: typing.ClassVar[dict[str, frozenset[int]]] = {"snapshot": frozenset({1}), "plan": frozenset({2, 3})}
+    version = 2
+
+    @property
+    def reads(self) -> dict[str, frozenset[int]]:
+        return COMPATIBILITY[(self.kind, self.version)]
 
     def __init__(self, profile: str = "memory", locale: str = "en"):
         if profile not in PROFILES:
@@ -419,6 +428,15 @@ def violations(render: dict, plan: dict, snapshot: dict, snapshot_sha256: str, p
     read = render["renderer"]["reads"]
     if read != {"snapshot": snapshot.get("v"), "plan": plan.get("v")}:
         bad.append(f"the render says it read snapshot v{read['snapshot']} and plan v{read['plan']}; it did not")
+    who = (render["renderer"]["kind"], render["renderer"]["version"])
+    able = COMPATIBILITY.get(who)
+    if able is None:
+        bad.append(f"no frozen compatibility is recorded for renderer {who[0]} v{who[1]}")
+    elif read["snapshot"] not in able["snapshot"] or read["plan"] not in able["plan"]:
+        bad.append(
+            f"renderer {who[0]} v{who[1]} reads snapshot {sorted(able['snapshot'])} and plan {sorted(able['plan'])},"
+            f" not snapshot v{read['snapshot']} with plan v{read['plan']}"
+        )
     phases = {phase["id"]: phase for phase in plan["phases"]}
     claims = {claim["id"]: claim for claim in plan["claims"]}
     members = {planning._member_ref(one["ordinal"]) for one in snapshot["members"]}

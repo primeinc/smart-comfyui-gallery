@@ -166,7 +166,7 @@ def test_the_golden_render_for_a_sequenced_session():
         "plan_sha256": plan_sha,
         "renderer": {
             "kind": "template",
-            "version": 1,
+            "version": 2,
             "profile": "memory",
             "locale": "en",
             "policy": 2,
@@ -391,7 +391,20 @@ def test_the_v1_grammar_is_frozen_exact_and_exception_proof(monkeypatch):
     assert rendering.validate_story_render(render) == []
     assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
     monkeypatch.setattr(rendering, "PROFILES", profiles)
-    assert rendering.TemplateStoryRenderer.reads == {"snapshot": {1}, "plan": {2, 3}}, "plan v1 is history, not input"
+    assert rendering.TemplateStoryRenderer().reads == {"snapshot": {1}, "plan": {2, 3}}, "plan v1 is history, not input"
+    assert rendering.COMPATIBILITY[("template", 1)] == {"snapshot": {1}, "plan": {1, 2}}, "v1's inputs stay frozen"
+    # a stored render must agree with ITS version's frozen map: a v1 render
+    # of a v3 plan is impossible, and a v2 render cannot claim a v1 plan
+    bent = copy.deepcopy(render)
+    bent["renderer"]["version"] = 1
+    assert any(
+        "renderer template v1 reads" in why
+        for why in rendering.violations(bent, plan, snapshot, snapshot_sha, plan_sha)
+    )
+    bent["renderer"]["version"] = 7
+    assert any(
+        "no frozen compatibility" in why for why in rendering.violations(bent, plan, snapshot, snapshot_sha, plan_sha)
+    )
     again = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
     assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 3}
     with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[2, 3\\]"):
@@ -524,13 +537,16 @@ def test_identities_same_request_one_document_policy_coexists(monkeypatch):
     assert rendering.identity(one) == rendering.identity(two)
     other = _rendered("technical")[-1]
     assert rendering.identity(other)[1] != rendering.identity(one)[1]
-    request = rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 1)
-    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 2), (
+    request = rendering.request_identity(plan_sha, snapshot_sha, "template", 2, "memory", "en", 1)
+    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 2, "memory", "en", 2), (
         "a policy bump is a different request"
     )
-    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "technical", "en", 1)
+    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 2, "technical", "en", 1)
+    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 1), (
+        "a renderer version is a different request"
+    )
     monkeypatch.setattr(rendering, "FORMAT_VERSION", 2)
-    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 1, "memory", "en", 1)
+    assert request != rendering.request_identity(plan_sha, snapshot_sha, "template", 2, "memory", "en", 1)
     # ONE token covers wording AND formatting: the renderer's policy is
     # the package's, and a formatting change has nowhere else to go
     monkeypatch.setattr(story_renderers, "POLICY_VERSION", 3)

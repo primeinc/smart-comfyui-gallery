@@ -68,6 +68,31 @@ def choices(conn) -> list[tuple[str, str, str]]:
     return told
 
 
+def spelled(provider: str, model: str, checkpoint: str) -> str:
+    """The exact name of one configured space: `provider:model@checkpoint`."""
+    return f"{provider}:{model}@{checkpoint}"
+
+
+def choice_for(conn, selector: str) -> tuple[str, str, str]:
+    """ONE configured space by name -- exactly. A selector names a
+    provider (`openclip`), a provider and model (`openclip:ViT-B-32`),
+    or the full spelling (`openclip:ViT-B-32@laion2b_s34b_b79k`); it
+    resolves when exactly one configured space matches and is REFUSED
+    when several do, naming them -- first-match-wins would let a second
+    configured model silently change what a request meant."""
+    held = choices(conn)
+    matched = [one for one in held if selector in (one[0], f"{one[0]}:{one[1]}", spelled(*one))]
+    if len(matched) == 1:
+        return matched[0]
+    if not matched:
+        known = ", ".join(spelled(*one) for one in held)
+        raise ValueError(f"no configured semantic space matches {selector!r}; configured: {known}")
+    raise ValueError(
+        f"{selector!r} names {len(matched)} configured spaces; say which: "
+        + ", ".join(spelled(*one) for one in matched)
+    )
+
+
 def current_rows(conn, sid: int) -> list[tuple[int, int]]:
     """(embedding id, file id) for every CURRENT row of one space:
     present file, bytes unchanged since the vector was computed."""

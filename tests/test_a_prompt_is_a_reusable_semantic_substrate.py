@@ -420,7 +420,8 @@ def test_embedding_is_explicit_durable_and_idempotent_work(library):
         again = client.post("/jobs/embed_prompts")
         assert again.json()[0]["total"] == 0, "nothing current is re-queued"
         one = conn.execute("SELECT prompt_id FROM derived_prompt_embedding ORDER BY id LIMIT 1").fetchone()[0]
-        prompts.embed_item(conn, one, {"models_dir": "unused", "choice": ["fake", "toy", "v1"]}, NOW + 5)
+        queued = json.loads(conn.execute("SELECT payload FROM job WHERE kind = 'embed_prompts' LIMIT 1").fetchone()[0])
+        prompts.embed_item(conn, one, queued, NOW + 5)
         assert len(encoder.calls) == 9, "a retried item recomputes nothing"
     finally:
         connect.close(conn)
@@ -828,5 +829,221 @@ def test_nothing_in_the_snapshot_depends_on_todays_relation(library):
         assert stories.load_snapshot(conn, snap.id) == before
         with pytest.raises(LookupError, match="no event"):
             stories.snapshot_event(conn, event_id, NOW + 31 * HOUR)
+    finally:
+        connect.close(conn)
+
+
+# --- freshness, frozen jobs, corpus, exact selection (review of 4d1fa31) ---------
+
+
+def _provisionable(monkeypatch):
+    """The fake provider learns hub-style mutability: `main` is a
+    pointer, pinned to a commit only once something is cached."""
+    monkeypatch.setattr(_fake, "PINNED", {}, raising=False)
+    monkeypatch.setattr(_fake, "immutable", lambda checkpoint: checkpoint != "main")
+    monkeypatch.setattr(
+        _fake, "pin", lambda models_dir, model, checkpoint: _fake.PINNED.get(checkpoint, checkpoint), raising=False
+    )
+
+    def encoder(models_dir, model, checkpoint, *, offline=False):
+        # loading downloads: the mutable pointer resolves to a commit
+        resolved = _fake.PINNED.setdefault(checkpoint, "a" * 40) if checkpoint == "main" else checkpoint
+        return _ENCODERS.setdefault((model, resolved), _Encoder(model, resolved))
+
+    monkeypatch.setattr(_fake, "encoder", encoder)
+
+
+def test_a_fresh_mutable_checkpoint_is_refused_then_pinned_and_every_row_names_the_commit(library, monkeypatch):
+    client, _root, _names = library
+    _provisionable(monkeypatch)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        settings.put(conn, "semantic_model", "fake:toy/main")
+        conn.commit()
+    finally:
+        connect.close(conn)
+    refused = client.post("/jobs/embed_prompts")
+    assert refused.status_code == 400, refused.text
+    assert "mutable revision 'main'" in refused.json()["detail"]
+    _fake.PINNED["main"] = "b" * 40  # /jobs/embed provisioned and pinned
+    made = client.post("/jobs/embed_prompts")
+    assert made.status_code == 201, made.text
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        payload = json.loads(
+            conn.execute("SELECT payload FROM job WHERE id = ?", (made.json()[0]["id"],)).fetchone()[0]
+        )
+        assert payload["choice"] == ["fake", "toy", "b" * 40]
+        assert payload["space"] == "semantic.fake.toy." + "b" * 40
+        assert payload["policy_hash"] == semantic.policy_hash("fake", "toy", "b" * 40)
+        spaces = conn.execute(
+            "SELECT producer_version FROM similarity_space WHERE key LIKE 'semantic.fake.%'"
+        ).fetchall()
+        assert spaces == [("b" * 40,)], "no durable identity names the pointer"
+        landed = conn.execute(
+            "SELECT count(*) FROM derived_prompt_embedding WHERE policy_hash = ?", (payload["policy_hash"],)
+        ).fetchone()[0]
+        assert landed == 9
+        assert "main" not in json.dumps(conn.execute("SELECT key, producer_version FROM similarity_space").fetchall())
+    finally:
+        connect.close(conn)
+
+
+def test_a_queued_embed_job_is_re_proven_and_never_duplicated(library, monkeypatch):
+    client, _root, _names = library
+    first = client.post("/jobs/embed_prompts").json()[0]["id"]
+    for _ in range(3):
+        assert client.post("/jobs/embed_prompts").json()[0]["id"] == first, "one live computation per (space, policy)"
+    monkeypatch.setattr(_fake, "INSTRUCTION", "a new instruction")  # the policy moved between queue and run
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        state = conn.execute("SELECT state FROM job WHERE id = ?", (first,)).fetchone()[0]
+        failed = conn.execute(
+            "SELECT count(*) FROM job_item WHERE job_id = ? AND state = 'failed'", (first,)
+        ).fetchone()
+        assert (state, failed) == ("done", (9,)), "every item refused: the job no longer meant what it meant"
+        assert conn.execute("SELECT count(*) FROM derived_prompt_embedding").fetchone() == (0,), (
+            "nothing landed under a name it was not queued under"
+        )
+        why = conn.execute("SELECT error FROM job_item WHERE job_id = ? LIMIT 1", (first,)).fetchone()[0]
+        assert "no longer means" in why
+    finally:
+        connect.close(conn)
+    again = client.post("/jobs/embed_prompts").json()[0]
+    assert again["id"] != first
+    assert again["total"] == 9, "a fresh ask under the new policy queues everything again"
+
+
+def test_a_text_a_parser_no_longer_produces_leaves_the_corpus_but_keeps_its_vector(library, monkeypatch):
+    client, _root, names = library
+    client.post("/jobs/embed_prompts")
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        mine = conn.execute(
+            "SELECT prompt_id FROM generation_prompt WHERE file_id = ? AND role = 'effective'", (names["gen_0.png"],)
+        ).fetchone()[0]
+        section_text = conn.execute("SELECT id FROM prompt WHERE text = 'weathered brass'").fetchone()[0]
+        before = conn.execute("SELECT count(*) FROM derived_prompt_embedding").fetchone()[0]
+    finally:
+        connect.close(conn)
+    everything = client.get(f"/prompts/{mine}/neighbours", params={"space": "fake", "k": 100}).json()
+    assert section_text in [r["prompt_id"] for r in everything["results"]]
+    # the parser moves on and, under the new grammar, the tagged prompt is read as one main section
+    monkeypatch.setattr(prompt_sections, "VERSION", prompt_sections.VERSION + 1)
+    monkeypatch.setattr(
+        prompt_sections, "parse", lambda text, grammar: [prompt_sections.Section(0, "main", None, text)]
+    )
+    assert client.post("/jobs/embed_prompts").json()[0]["total"] == 0, (
+        "under the new grammar the tagged prompt IS its main section, and that text already has a vector"
+    )
+    _drain(client)
+    everything = client.get(f"/prompts/{mine}/neighbours", params={"space": "fake", "k": 100}).json()
+    assert section_text not in [r["prompt_id"] for r in everything["results"]], "out of the corpus"
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        kept = conn.execute("SELECT count(*) FROM derived_prompt_embedding WHERE prompt_id = ?", (section_text,))
+        assert kept.fetchone() == (1,), "its vector stays as history"
+        assert conn.execute("SELECT count(*) FROM derived_prompt_embedding").fetchone()[0] == before
+    finally:
+        connect.close(conn)
+
+
+def test_a_space_selector_is_exact_and_ambiguity_is_refused(library):
+    client, _root, names = library
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        settings.put(conn, "semantic_model", "fake:toy/v1,fake:toy2/v1")
+        conn.commit()
+        mine = conn.execute(
+            "SELECT prompt_id FROM generation_prompt WHERE file_id = ? AND role = 'effective'", (names["gen_0.png"],)
+        ).fetchone()[0]
+    finally:
+        connect.close(conn)
+    client.post("/jobs/embed_prompts")
+    _drain(client)
+    vague = client.get(f"/prompts/{mine}/neighbours", params={"space": "fake"})
+    assert vague.status_code == 400
+    assert "names 2 configured spaces" in vague.json()["detail"]
+    exact = client.get(f"/prompts/{mine}/neighbours", params={"space": "fake:toy2@v1", "k": 2})
+    assert exact.status_code == 200, exact.text
+    assert exact.json()["space"] == "semantic.fake.toy2.v1"
+    assert client.get(f"/prompts/{mine}/neighbours", params={"space": "fake:toy", "k": 2}).status_code == 200
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        with pytest.raises(ValueError, match="names 2 configured spaces"):
+            planning.engine_for(conn, "fake", "unused")
+        assert planning.engine_for(conn, "fake:toy2", "unused").model == "toy2"
+    finally:
+        connect.close(conn)
+
+
+def test_the_migration_carries_the_unsampler_prompt(tmp_path):
+    from db import build, migrate, scan
+
+    path = tmp_path / "old.db"
+    build.build(path)
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA foreign_keys=OFF")
+    for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
+        conn.execute(f"DROP TABLE {table}")
+    conn.execute(
+        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
+        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
+        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
+        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
+        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
+        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
+        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
+    )
+    for index in (
+        "generation_workflow ON generation(workflow_id)",
+        "generation_prompt ON generation(prompt_id)",
+        "generation_negative ON generation(negative_id)",
+        "generation_seed ON generation(seed)",
+    ):
+        conn.execute(f"CREATE INDEX {index}")
+    conn.execute("PRAGMA user_version = 17")
+    conn.commit()
+    conn.close()
+    conn = connect.connect(str(path))
+    try:
+        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
+        folder = scan.mint(conn, "folder", "x")
+        conn.execute(
+            "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (folder, root_id)
+        )
+        file_id = scan.mint(conn, "file", "g.png")
+        conn.execute(
+            "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+            " VALUES(?, ?, 'g.png', 'image', 1, 0, 'abc', 0, 0)",
+            (file_id, folder),
+        )
+        ran = ingest.prompt(conn, "a tin lighthouse", NOW)
+        conn.execute(
+            "INSERT INTO generation(file_id, tool, detection, prompt_id, parser, parsed_at)"
+            " VALUES(?, 'SwarmUI', 'marker', ?, 'metaparse/1', 0)",
+            (file_id, ran),
+        )
+        conn.execute(
+            "INSERT INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'unsamplerprompt', ?)",
+            (file_id, "a man wearing a black hat"),
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    assert migrate.migrate(path) == [18]
+    conn = connect.connect(str(path))
+    try:
+        held = dict(
+            conn.execute("SELECT role, prompt_id FROM generation_prompt WHERE file_id = ?", (file_id,)).fetchall()
+        )
+        told = conn.execute("SELECT text FROM prompt WHERE id = ?", (held["unsampler"],)).fetchone()
+        assert told == ("a man wearing a black hat",)
+        assert conn.execute("SELECT count(*) FROM file_param WHERE key = 'unsamplerprompt'").fetchone() == (1,), (
+            "raw evidence stays"
+        )
     finally:
         connect.close(conn)

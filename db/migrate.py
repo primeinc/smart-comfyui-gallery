@@ -1628,17 +1628,21 @@ WHEN NEW.workflow_id IS NOT NULL BEGIN
 END"""
     )
     now = time.time()
+    # every legacy parameter that is a role today: the originals, and
+    # Swarm's unsampler prompt -- raw evidence stays in file_param
+    roles_of = {**ORIGINAL_ROLES, "unsamplerprompt": "unsampler"}
+    marks = ",".join("?" for _ in roles_of)
     written = conn.execute(
         "SELECT fp.file_id, fp.key, fp.value_text FROM file_param fp JOIN generation g ON g.file_id = fp.file_id"
-        " WHERE fp.source = 'generation' AND fp.key IN ('original_prompt', 'original_negativeprompt')"
-        " ORDER BY fp.file_id, fp.key"
+        f" WHERE fp.source = 'generation' AND fp.key IN ({marks}) ORDER BY fp.file_id, fp.key",
+        tuple(roles_of),
     ).fetchall()
     for file_id, key, text in written:
         prompt_id = intern(conn, text or "", now)
         if prompt_id is not None:
             conn.execute(
                 "INSERT OR IGNORE INTO generation_prompt(file_id, role, prompt_id) VALUES(?, ?, ?)",
-                (file_id, ORIGINAL_ROLES[key], prompt_id),
+                (file_id, roles_of[key], prompt_id),
             )
 
     conn.execute("PRAGMA legacy_alter_table=ON")

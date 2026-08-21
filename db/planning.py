@@ -280,20 +280,20 @@ def engine_for(conn, selector: str, models_dir: str):
 
     from . import retrieval
 
-    if selector not in semantic.PROVIDERS:
+    if selector.split(":", 1)[0] not in semantic.PROVIDERS:
         known = ", ".join(sorted(semantic.PROVIDERS))
         raise ValueError(f"no similarity engine named {selector!r}; one of lexical, {known}")
-    for provider, model, configured in retrieval.choices(conn):
-        if provider == selector:
-            checkpoint = semantic.pin(provider, models_dir, model, configured)
-            if not semantic.immutable(provider, checkpoint):
-                raise ValueError(
-                    f"{provider} {model} is configured at the mutable revision {configured!r} and nothing is"
-                    " provisioned locally to pin it to; run /jobs/embed first -- a plan cannot be queued"
-                    " under provenance that may move before the worker loads it"
-                )
-            return SemanticEngine(provider, model, checkpoint, models_dir)
-    raise ValueError(f"the {selector!r} provider is not among the configured semantic spaces")
+    # EXACT: a provider with two configured models is an ambiguity to
+    # refuse, never a first match to take (db/retrieval.py choice_for)
+    provider, model, configured = retrieval.choice_for(conn, selector)
+    checkpoint = semantic.pin(provider, models_dir, model, configured)
+    if not semantic.immutable(provider, checkpoint):
+        raise ValueError(
+            f"{provider} {model} is configured at the mutable revision {configured!r} and nothing is"
+            " provisioned locally to pin it to; run /jobs/embed first -- a plan cannot be queued"
+            " under provenance that may move before the worker loads it"
+        )
+    return SemanticEngine(provider, model, checkpoint, models_dir)
 
 
 def pairwise_cosine(vectors: list[list[float]]) -> list[list[float]]:
@@ -986,11 +986,12 @@ def validate_stored_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> li
     """What makes a STORED plan readable, whatever planner policy wrote
     it: its own version's frozen grammar; the snapshot it names; an
     exact partition (every member exactly once); representatives inside
-    their phase; unique ids; every reference inward; and, for a
-    sequenced plan, contiguous phases -- a structural truth every
-    producer version held. Nothing here is a policy the producer may
-    later tighten: a v1 plan planner v4 wrote stays readable after
-    planner v5 decided it would no longer write such a thing."""
+    their phase; unique ids; every reference inward. Nothing here is a
+    policy the producer may later tighten: a v1 plan planner v4 wrote
+    stays readable after planner v5 decided it would no longer write
+    such a thing -- and planner v3 wrote sequenced plans whose gap
+    members sat in a phase of their own, interleaving ordinals, so
+    contiguity is the CURRENT producer's rule, not history's."""
     bad = validate_story_plan(plan)
     if bad:
         return bad
@@ -1015,12 +1016,6 @@ def validate_stored_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> li
             for ref in phase["representative_refs"]
             if ref not in phase["member_refs"]
         )
-    if plan["subject"]["sequenced"]:
-        # the phase list IS the chronology: member ordinals must not
-        # interleave across phases
-        order = [int(ref.split("-")[1]) for phase in plan["phases"] for ref in phase["member_refs"]]
-        if order != sorted(order):
-            bad.append("a sequenced plan's phases interleave members; the phase list is not a chronology")
     dangling = unresolved(plan, snapshot)
     if dangling:
         bad.append(f"references outside the snapshot: {dangling[:5]}")
@@ -1036,6 +1031,11 @@ def validate_current_plan(plan: dict, snapshot: dict, snapshot_sha256: str) -> l
         return bad
     kinds = {claim["kind"] for claim in plan["claims"]}
     if plan["subject"]["sequenced"]:
+        # the phase list IS the chronology: member ordinals must not
+        # interleave across phases
+        order = [int(ref.split("-")[1]) for phase in plan["phases"] for ref in phase["member_refs"]]
+        if order != sorted(order):
+            bad.append("a sequenced plan's phases interleave members; the phase list is not a chronology")
         bad.extend(f"a sequenced plan states the symmetric claim {kind}" for kind in sorted(kinds & _SYMMETRIC))
     else:
         # no chronology, no direction: nothing in the plan may say that

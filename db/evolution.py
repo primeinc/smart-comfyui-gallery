@@ -55,15 +55,20 @@ def _space(conn, provider: str | None, models_dir: str) -> dict:
     from . import retrieval
 
     held = {"provider": None, "space_id": None, "space": None, "prompt_policy_hash": None, "unavailable": None}
-    try:
-        choices = retrieval.choices(conn)
-    except ValueError as refused:
-        held["unavailable"] = str(refused)
-        return held
-    chosen = next((one for one in choices if provider is None or one[0] == provider), None)
-    if chosen is None:
-        raise ValueError(f"the {provider!r} provider is not among the configured semantic spaces")
-    name, model, configured = chosen
+    if provider is not None:
+        name, model, configured = retrieval.choice_for(conn, provider)  # exact; ambiguity refused
+    else:
+        try:
+            choices = retrieval.choices(conn)
+        except ValueError as refused:
+            held["unavailable"] = str(refused)
+            return held
+        if len(choices) != 1:
+            held["unavailable"] = "several semantic spaces are configured; name one with ?space=" + ", ".join(
+                retrieval.spelled(*one) for one in choices
+            )
+            return held
+        name, model, configured = choices[0]
     checkpoint = semantic.pin(name, models_dir, model, configured)
     held["provider"] = name
     held["space"] = semantic.space(name, model, checkpoint, 1).key

@@ -237,25 +237,44 @@ def cached(conn, engine, loaded, now: float):
     return planning.CachedPromptSimilarity(loaded, lookup, store)
 
 
+# --- the current corpus ---------------------------------------------------------------
+
+#: A prompt text is IN THE CORPUS while it plays a role in some
+#: generation or is the text of a CURRENT section (read from the
+#: prompt's current text by the current parser). A text a parser once
+#: produced and no longer does keeps its stored vector as cache and
+#: history -- and leaves the corpus: nothing searches it, nothing
+#: indexes it, nothing queues work for it. One predicate, used by the
+#: job, the index and the neighbours alike. Binds: parser version.
+CORPUS = (
+    "(EXISTS (SELECT 1 FROM generation_prompt gp WHERE gp.prompt_id = p.id)"
+    " OR EXISTS (SELECT 1 FROM derived_prompt_section s JOIN prompt owner ON owner.id = s.prompt_id"
+    "   WHERE s.text_prompt_id = p.id AND s.source_text_hash = owner.text_hash AND s.parser_version = ?))"
+)
+
+
 # --- durable work -----------------------------------------------------------------------
 
-#: Every text that wants a vector: a prompt playing a role, and every
-#: section text of such a prompt under the grammars it is read with.
+#: Every corpus text without a current vector under (space, policy).
 _WANTED = (
-    "SELECT DISTINCT p.id FROM prompt p WHERE ("
-    "  EXISTS (SELECT 1 FROM generation_prompt gp WHERE gp.prompt_id = p.id)"
-    "  OR EXISTS (SELECT 1 FROM derived_prompt_section s WHERE s.text_prompt_id = p.id))"
-    " AND NOT EXISTS (SELECT 1 FROM derived_prompt_embedding e WHERE e.prompt_id = p.id"
+    "SELECT DISTINCT p.id FROM prompt p WHERE " + CORPUS + " AND NOT EXISTS ("
+    "  SELECT 1 FROM derived_prompt_embedding e WHERE e.prompt_id = p.id"
     "   AND e.space_id = ? AND e.policy_hash = ? AND e.source_text_hash = p.text_hash) ORDER BY p.id"
 )
 
 
 def submit_embed(conn, now: float, *, models_dir: str) -> list[int]:
     """One `embed_prompts` job per participating space. Sections are
-    parsed here (pure, cheap) so the items are every TEXT still without
-    a current vector under (space, policy) -- roles and section texts
-    alike. Already-current texts are not even queued; the item
-    re-checks, so a retry is idempotent."""
+    parsed here (pure, cheap) so the items are every corpus TEXT still
+    without a current vector under (space, policy). The job FREEZES
+    what it means -- the immutable checkpoint, the space key and the
+    query policy the items were chosen under -- and the worker re-proves
+    it (embed_item). A mutable checkpoint (a hub branch nothing has
+    pinned yet) is refused here, exactly as planning refuses it: run
+    /jobs/embed first, which provisions and pins. A live job for the
+    same (space, policy) is reused, never duplicated."""
+    import json
+
     from vision import semantic
 
     from . import jobs, retrieval
@@ -266,17 +285,49 @@ def submit_embed(conn, now: float, *, models_dir: str) -> list[int]:
     made = []
     for provider, model, configured in retrieval.choices(conn):
         checkpoint = semantic.pin(provider, models_dir, model, configured)
+        if not semantic.immutable(provider, checkpoint):
+            raise ValueError(
+                f"{provider} {model} is configured at the mutable revision {configured!r} and nothing is"
+                " provisioned locally to pin it to; run /jobs/embed first -- prompt vectors cannot be recorded"
+                " under provenance that may move before the worker loads it"
+            )
         policy = semantic.policy_hash(provider, model, checkpoint)
+        space = semantic.space(provider, model, checkpoint, 1).key
+        live = next(
+            (
+                int(job_id)
+                for job_id, raw in conn.execute(
+                    "SELECT id, payload FROM job WHERE kind = 'embed_prompts' AND state IN ('queued', 'running')"
+                )
+                if raw and (json.loads(raw).get("space"), json.loads(raw).get("policy_hash")) == (space, policy)
+            ),
+            None,
+        )
+        if live is not None:
+            made.append(live)
+            continue
         found = space_of(conn, provider, model, checkpoint)
-        items = [int(row[0]) for row in conn.execute(_WANTED, (found[0] if found else None, policy))]
-        payload = {"models_dir": models_dir, "choice": [provider, model, checkpoint]}
+        items = [
+            int(row[0]) for row in conn.execute(_WANTED, (prompt_sections.VERSION, found[0] if found else None, policy))
+        ]
+        payload = {
+            "models_dir": models_dir,
+            "choice": [provider, model, checkpoint],
+            "space": space,
+            "policy_hash": policy,
+        }
         made.append(jobs.submit(conn, "embed_prompts", now, payload=payload, items=items))
     return made
 
 
 def embed_item(conn, prompt_id: int, payload: dict, now: float) -> None:
-    """One text under one (space, policy). Skips when a current vector
-    exists."""
+    """One text under one (space, policy). The identity persisted is the
+    LOADED encoder's -- its pinned checkpoint, its space, the query
+    policy of that checkpoint -- and it must be the identity the job
+    was queued under, or the job is a stale ask and is refused: a
+    deploy that changed the query policy, or weights that resolved to
+    another commit, must never land vectors under the queued name.
+    Skips when a current vector exists."""
     from vision import semantic
 
     from . import derived
@@ -286,12 +337,21 @@ def embed_item(conn, prompt_id: int, payload: dict, now: float) -> None:
         raise LookupError(f"no prompt {prompt_id}")
     text, digest = row
     provider, model, checkpoint = payload["choice"]
-    policy = semantic.policy_hash(provider, model, checkpoint)
-    found = space_of(conn, provider, model, checkpoint)
+    encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
+    spec = encoder.space()
+    actual = spec.producer_version
+    policy = semantic.policy_hash(provider, model, actual)
+    queued = (payload.get("space"), payload.get("policy_hash"))
+    if queued != (spec.key, policy):
+        raise ValueError(
+            f"this prompt-embedding job no longer means what it meant when it was queued (queued {queued[0]}"
+            f" / {queued[1]}, loaded {spec.key} / {policy}); make the request again"
+        )
+    if not semantic.immutable(provider, actual):
+        raise ValueError(f"the loaded {provider} encoder names the mutable revision {actual!r}; nothing is pinned")
+    found = space_of(conn, provider, model, actual)
     if found is not None and current_vectors(conn, found[0], policy, [digest]):
         return
-    encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
-    spec = semantic.space(provider, model, checkpoint, encoder.dimensions)
     derived.record_prompt_embedding(conn, prompt_id, spec, policy, encoder.encode_query(text), digest, now)
 
 
@@ -317,12 +377,15 @@ def neighbours(
     conn, prompt_id: int, provider: str, models_dir: str, k: int, now: float, *, role: str | None = None
 ) -> dict:
     """The `k` prompt texts nearest to this one, in ONE (space, policy),
-    by that space's own cosine. The query vector is the prompt's stored
-    vector -- no model loads -- so both sides of every comparison were
-    computed by the same space and policy. `role` constrains the
-    CANDIDATES (texts playing that role in some generation) before
-    ranking, searched at full depth, so a rank-300 original is still
-    the best original. Scores are that space's and nobody else's."""
+    by that space's own cosine. `provider` is an EXACT space selector
+    (db/retrieval.py choice_for): ambiguity is refused, never resolved
+    by position. The query vector is the prompt's stored vector -- no
+    model loads -- so both sides of every comparison were computed by
+    the same space and policy. Candidates are the CURRENT corpus;
+    `role` constrains them further (texts playing that role in some
+    generation) before ranking, searched at full depth, so a rank-300
+    original is still the best original. Scores are that space's and
+    nobody else's."""
     import numpy as np
 
     from vision import semantic
@@ -331,21 +394,20 @@ def neighbours(
 
     if role is not None and role not in ROLES:
         raise ValueError(f"no prompt role named {role!r}; one of {', '.join(ROLES)}")
-    choice = next((one for one in retrieval.choices(conn) if one[0] == provider), None)
-    if choice is None:
-        raise ValueError(f"the {provider!r} provider is not among the configured semantic spaces")
-    _, model, configured = choice
+    provider, model, configured = retrieval.choice_for(conn, provider)
     checkpoint = semantic.pin(provider, models_dir, model, configured)
     policy = semantic.policy_hash(provider, model, checkpoint)
     found = space_of(conn, provider, model, checkpoint)
     if found is None:
         raise LookupError(f"no prompt embeddings recorded under {provider}; run /jobs/embed_prompts")
     sid, spec = found
+    # the CURRENT corpus only: a text no role and no current section
+    # holds keeps its vector as history and is not a candidate
     rows = conn.execute(
         "SELECT e.id, e.prompt_id, e.vector FROM derived_prompt_embedding e"
         " JOIN prompt p ON p.id = e.prompt_id AND e.source_text_hash = p.text_hash"
-        " WHERE e.space_id = ? AND e.policy_hash = ? ORDER BY e.id",
-        (sid, policy),
+        " WHERE e.space_id = ? AND e.policy_hash = ? AND " + CORPUS + " ORDER BY e.id",
+        (sid, policy, prompt_sections.VERSION),
     ).fetchall()
     own = next((row for row in rows if int(row[1]) == prompt_id), None)
     if own is None:
