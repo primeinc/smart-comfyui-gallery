@@ -371,6 +371,7 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
         "derived_file_hash",
         "derived_file_person",
         "derived_media_context",
+        "derived_media_occurrence",
         "derived_media_sample",
     }, dropped
     assert db.execute("SELECT count(*) FROM annotation_fts").fetchone()[0] == 0, (

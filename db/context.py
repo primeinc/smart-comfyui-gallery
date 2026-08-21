@@ -59,8 +59,11 @@ LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 
 #: WHICH MEANING of the ladder is current. Bump when the interpretation
 #: itself changes meaning -- v2 added the embedded generator-date rung,
-#: v3 the precision dimension and the coexistence facts.
-POLICY_VERSION = 3
+#: v3 the precision dimension and the coexistence facts, v4 the
+#: per-claim occurrence rows. Every reader binds THIS constant, never
+#: the version a database happens to remember: after an upgrade the old
+#: rows are honestly invisible until the context job re-interprets.
+POLICY_VERSION = 4
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
@@ -118,6 +121,35 @@ LEFT JOIN generation g ON g.file_id = f.id
 LEFT JOIN file_param d ON d.file_id = f.id AND d.source = 'generation' AND d.key = 'date'
 """
 
+#: Each temporal CLAIM as its own row: the capture act at capture time,
+#: the generation act at the generator's claimed time. The context above
+#: keeps the ONE primary human-timeline interpretation; these exist so a
+#: grouper reads the time of ITS OWN claim -- a photograph edited by a
+#: generator years later is 2023 in the capture story and 2026 in the
+#: generation story, never one timestamp pretending to be both acts.
+_OCCUR_CAPTURE = """
+INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
+  tz_offset_min, basis, certainty, time_precision, policy_version)
+SELECT c.file_id, 'capture', c.captured_at,
+  CASE WHEN c.tz_offset_min IS NOT NULL THEN c.captured_at - c.tz_offset_min * 60 END,
+  c.tz_offset_min, 'capture',
+  CASE WHEN c.tz_offset_min IS NOT NULL THEN 1.0 ELSE 0.8 END,
+  'second', ?
+FROM capture c
+WHERE c.captured_at IS NOT NULL
+"""
+
+_OCCUR_GENERATION = """
+INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
+  tz_offset_min, basis, certainty, time_precision, policy_version)
+SELECT d.file_id, 'generation',
+  CAST(strftime('%s', d.value_text) AS REAL), NULL, NULL, 'embedded', 0.6,
+  CASE WHEN length(trim(d.value_text)) <= 10 THEN 'day' ELSE 'second' END, ?
+FROM file_param d
+WHERE d.source = 'generation' AND d.key = 'date'
+  AND strftime('%s', d.value_text) IS NOT NULL
+"""
+
 
 def _advance(conn, *, create: bool = True) -> None:
     """Every mutation of the interpretation is a new generation --
@@ -143,11 +175,30 @@ def state(conn) -> tuple[int, int] | None:
     return (row[0], row[1]) if row else None
 
 
+def coverage(conn) -> tuple[int, int]:
+    """(present files holding a current-policy context, present files).
+    A stable interpretation is not necessarily a COMPLETE one: a paused
+    context job leaves the generation still while most of the library
+    is uninterpreted, and a hypothesis proven over that silence would
+    stay current indefinitely. Equality of these two numbers is the
+    completeness proof the event seam demands."""
+    row = conn.execute(
+        "SELECT count(mc.file_id), count(*) FROM file f"
+        " LEFT JOIN derived_media_context mc ON mc.file_id = f.id AND mc.policy_version = ?"
+        " WHERE f.missing_since IS NULL",
+        (POLICY_VERSION,),
+    ).fetchone()
+    return (row[0], row[1])
+
+
 def rebuild(conn, now: float) -> int:
     """The whole projection, replaced -- never merged, because a merge
     is where a stale interpretation survives its sources."""
     conn.execute("DELETE FROM derived_media_context")
+    conn.execute("DELETE FROM derived_media_occurrence")
     made = conn.execute(_INTERPRET, (POLICY_VERSION, now)).rowcount
+    conn.execute(_OCCUR_CAPTURE, (POLICY_VERSION,))
+    conn.execute(_OCCUR_GENERATION, (POLICY_VERSION,))
     _advance(conn)
     return made
 
@@ -156,7 +207,10 @@ def rebuild_one(conn, file_id: int, now: float) -> None:
     """One file's interpretation, refreshed -- the context job's item
     grain, so cancellation and resume land at file boundaries."""
     conn.execute("DELETE FROM derived_media_context WHERE file_id = ?", (file_id,))
+    conn.execute("DELETE FROM derived_media_occurrence WHERE file_id = ?", (file_id,))
     conn.execute(_INTERPRET + " WHERE f.id = ?", (POLICY_VERSION, now, file_id))
+    conn.execute(_OCCUR_CAPTURE + " AND c.file_id = ?", (POLICY_VERSION, file_id))
+    conn.execute(_OCCUR_GENERATION + " AND d.file_id = ?", (POLICY_VERSION, file_id))
     _advance(conn)
 
 
@@ -168,6 +222,7 @@ def stale(conn, file_id: int) -> None:
     changed outsider may belong beside an existing event's members, and
     that event's absence of it is now itself stale."""
     conn.execute("DELETE FROM derived_media_context WHERE file_id = ?", (file_id,))
+    conn.execute("DELETE FROM derived_media_occurrence WHERE file_id = ?", (file_id,))
     conn.execute(
         "DELETE FROM derived_event_run WHERE id IN ("
         " SELECT e.run_id FROM derived_event e"
@@ -196,6 +251,40 @@ class MediaContext:
     time_precision: str | None
     prompt_id: int | None
     workflow_id: int | None
+
+
+@dataclasses.dataclass(frozen=True)
+class Occurrence:
+    """One temporal claim of one KIND about one media item -- the
+    grouping input. A grouper consumes the occurrences of its OWN claim,
+    so each story is told at that claim's time."""
+
+    file_id: int
+    uuid: str  # hex; membership hashes are built over these
+    kind: str
+    local_at: float | None
+    instant_at: float | None
+    time_precision: str
+
+
+_OCCURRENCES = """
+SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision
+  FROM derived_media_occurrence o
+  JOIN file f ON f.id = o.file_id AND f.missing_since IS NULL
+  JOIN entity e ON e.id = o.file_id
+ WHERE o.kind = ? AND o.policy_version = ?
+ ORDER BY o.file_id
+"""
+
+
+def occurrences(conn, kind: str) -> list[Occurrence]:
+    """Every present file's occurrence of one claim, in stable id order
+    -- current policy only, so an upgraded ladder blinds the groupers
+    exactly as it blinds every other reader."""
+    return [
+        Occurrence(row[0], row[1].hex(), kind, row[3], row[4], row[5])
+        for row in conn.execute(_OCCURRENCES, (kind, POLICY_VERSION))
+    ]
 
 
 _GROUPING = """

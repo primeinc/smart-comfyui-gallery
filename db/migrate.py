@@ -1173,6 +1173,103 @@ def _time_gets_a_domain_and_context_gets_an_identity(conn: sqlite3.Connection) -
     conn.execute("""CREATE INDEX event_file_file ON derived_event_file(file_id)""")
 
 
+@step(11)
+def _every_claim_is_its_own_occurrence(conn: sqlite3.Connection) -> None:
+    """v11 -> v12: the schema's TIME doctrine stops claiming that local
+    wall clocks are UTC, and each temporal CLAIM becomes its own
+    `derived_media_occurrence` row so a mixed file can tell the capture
+    story at capture time and the generation story at generation time.
+
+    The doctrine lives inside CREATE TABLE entity -- the one comment
+    block SQLite keeps -- so correcting it is an entity rebuild,
+    carrying sqlite_sequence's high-water mark by hand exactly as the
+    v9 step did. All DDL is schema.sql's text VERBATIM; the drift check
+    compares sqlite_master.
+    """
+    minted = conn.execute("SELECT count(*) FROM sqlite_master WHERE name = 'sqlite_sequence'").fetchone()[0]
+    held = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = 'entity'").fetchone() if minted else None
+    old_seq = held[0] if held else 0
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE entity RENAME TO entity_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE entity (
+    -- ================= CONVENTIONS FOR THE WHOLE SCHEMA =================
+    -- Deliberately inside a CREATE statement. SQLite keeps only the comments
+    -- that sit within one; everything written above a table is discarded, so
+    -- a rule stated there is invisible to anyone reading the built database
+    -- and survives only in the source file. This is the first table, so this
+    -- is the first thing `.schema` prints.
+    --
+    -- TIME   Every *_at column is UNIX EPOCH SECONDS IN UTC, as a REAL --
+    --        EXCEPT the columns that say they hold a human WALL CLOCK:
+    --        capture.captured_at (an instant only when capture.tz_offset_min
+    --        is present) and every local_at / local_start / local_end, which
+    --        are the epoch-shaped spelling of what a clock on the wall read
+    --        and are never instants. The two kinds are never compared or
+    --        converted into each other by convention -- only by a recorded
+    --        offset on the specific row.
+    -- SIZE   Bytes.
+    -- SCORES det_score and confidence are 0..1, never percentages.
+    -- ANGLES Degrees.
+    -- BOXES  Fractions of the frame, 0..1. See `region`.
+    -- ====================================================================
+    -- AUTOINCREMENT, which on a rowid table means "never hand out an id this
+    -- table has ever used". Plain `INTEGER PRIMARY KEY` reuses the largest
+    -- free rowid, and the minter compounded it by computing `max(id) + 1`
+    -- itself: delete the newest entity and the next one created took its id
+    -- with a different uuid, so anything holding an id outside this database
+    -- -- a thumbnail cache key, an export, a bookmarked address -- silently
+    -- resolved to a different picture. SQLite keeps the maximum ever used in
+    -- `sqlite_sequence` (refs/sqlite/sqlite/src/insert.c:385-391).
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),
+    kind TEXT NOT NULL CHECK (kind IN
+           ('file','folder','person','artifact','prompt','collection','place')),
+    slug TEXT NOT NULL,
+    UNIQUE (kind, slug)
+) STRICT"""
+    )
+    conn.execute("INSERT INTO entity(id, uuid, kind, slug) SELECT id, uuid, kind, slug FROM entity_old")
+    conn.execute("DROP TABLE entity_old")
+    # the trigger died with the old table; schema.sql's text verbatim
+    conn.execute(
+        """CREATE TRIGGER entity_kind_is_permanent BEFORE UPDATE OF kind ON entity
+WHEN NEW.kind <> OLD.kind BEGIN
+  SELECT RAISE(ABORT,'an entity cannot change kind');
+END"""
+    )
+    # The rebuild reset the AUTOINCREMENT high-water mark to max(id);
+    # restore the largest id EVER issued so no dead entity's id is reused.
+    conn.execute(
+        "INSERT INTO sqlite_sequence(name, seq) SELECT 'entity', 0"
+        " WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'entity')"
+    )
+    conn.execute("UPDATE sqlite_sequence SET seq = max(seq, ?) WHERE name = 'entity'", (old_seq,))
+    conn.execute(
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at)")
+    conn.execute("CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at)")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

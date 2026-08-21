@@ -302,6 +302,7 @@ def _pre_v10_core(conn) -> None:
         "derived_event",
         "derived_event_run",
         "derived_context_state",
+        "derived_media_occurrence",
         "derived_media_context",
         "place",
     ):
@@ -883,7 +884,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)

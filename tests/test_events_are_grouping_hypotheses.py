@@ -1,17 +1,21 @@
-"""Events are grouping. Groupers consume the one interpretation.
+"""Events are grouping. Groupers consume per-claim occurrences.
 
-The Seam has two real adapters behind one interface; a session splits
-on TEMPORAL separation only -- prompt evolution is its story, never its
-boundary; time has a DOMAIN, and unlike domains are never subtracted;
-precision is orthogonal to certainty, and a claim too coarse for the
-gap never enters the arithmetic -- "insufficient temporal precision"
-is an answer. Currentness is PROVEN: every run names the context
-generation it was computed over, a changed outsider makes every
-hypothesis stale, and a race between proposal and persistence refuses
-rather than publishing a run the contexts no longer support.
+The Seam has two real adapters behind one interface; each consumes the
+occurrence rows of its OWN claim, so a mixed file tells the capture
+story at the camera's time and the generation story at the generator's
+claimed time. A session splits on TEMPORAL separation only; time has a
+DOMAIN, and unlike domains are never subtracted; precision is
+orthogonal to certainty, and a claim too coarse for the gap never
+enters the arithmetic -- "insufficient temporal precision" is an
+answer. Currentness is PROVEN and stable is not complete: a run must
+show the interpretation covers every present file, names the
+generation it read, and survives a revalidation race -- and an
+upgraded policy blinds every reader until the context job runs.
 """
 
 from __future__ import annotations
+
+import datetime
 
 import pytest
 from litestar.testing import TestClient
@@ -24,95 +28,85 @@ from sg_web.app import build_app
 NOW = 1_700_000_000.0
 HOUR = 3600.0
 MIN = 60.0
+Y2023 = 1_685_577_600.0  # 2023-06-01
+Y2026 = 1_787_308_800.0  # 2026-08-19
 
 
-def _ctx(
-    file_id,
-    *,
-    generated=False,
-    captured=False,
-    instant=None,
-    local=None,
-    precision="second",
-    prompt=None,
-    workflow=None,
-):
-    origin = "mixed" if generated and captured else "generated" if generated else "captured" if captured else "imported"
-    return context.MediaContext(
+def _spelled(moment: float) -> str:
+    """A second-resolution embedded date claim, as a generator writes it."""
+    return datetime.datetime.fromtimestamp(moment, datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _occ(file_id, *, kind="generation", instant=None, local=None, precision="second"):
+    return context.Occurrence(
         file_id=file_id,
         uuid=f"{file_id:032x}",
-        origin=origin,
-        has_capture=captured,
-        has_generation=generated,
+        kind=kind,
         local_at=local,
         instant_at=instant,
-        tz_offset_min=None,
-        time_precision=precision if (instant is not None or local is not None) else None,
-        prompt_id=prompt,
-        workflow_id=workflow,
+        time_precision=precision,
     )
 
 
-# --- the seam, unit-level: proposals from contexts alone --------------------
+# --- the seam, unit-level: proposals from occurrences alone -----------------
 
 
-def test_prompt_evolution_stays_inside_one_session():
-    """An afternoon of refining -- prompt tweaks, a new LoRA workflow,
-    parameter changes -- is ONE session whose changes are its history.
-    Splitting on prompt identity would summarize every revision as its
-    own event."""
+def test_a_sitting_is_one_session_whatever_changed_inside_it():
+    """An afternoon of refining is ONE session: the grouper cannot even
+    SEE prompts or workflows -- an occurrence is a time and a claim --
+    so splitting on prompt identity is structurally impossible, not
+    merely avoided."""
     held = [
-        _ctx(1, generated=True, instant=NOW + 0 * MIN, prompt=10, workflow=50),
-        _ctx(2, generated=True, instant=NOW + 3 * MIN, prompt=11, workflow=50),
-        _ctx(3, generated=True, instant=NOW + 7 * MIN, prompt=12, workflow=50),
-        _ctx(4, generated=True, instant=NOW + 10 * MIN, prompt=12, workflow=51),
-        _ctx(5, generated=True, instant=NOW + 13 * MIN, prompt=12, workflow=51),
+        _occ(1, instant=NOW + 0 * MIN),
+        _occ(2, instant=NOW + 3 * MIN),
+        _occ(3, instant=NOW + 7 * MIN),
+        _occ(4, instant=NOW + 10 * MIN),
+        _occ(5, instant=NOW + 13 * MIN),
     ]
     made = events.GenerationSessionGrouper().groups(held)
-    assert len(made) == 1, "prompt/workflow changes are the story INSIDE the session, never its boundary"
+    assert len(made) == 1
     assert made[0].file_ids == (1, 2, 3, 4, 5)
     assert (made[0].instant_start, made[0].instant_end) == (NOW, NOW + 13 * MIN)
 
 
 def test_sessions_split_where_the_maker_walked_away():
     held = [
-        _ctx(1, generated=True, instant=NOW),
-        _ctx(2, generated=True, instant=NOW + 5 * MIN),
-        _ctx(3, generated=True, instant=NOW + 2 * HOUR),  # the gap
-        _ctx(4, generated=True, instant=NOW + 2 * HOUR + 4 * MIN),
-        _ctx(5, generated=True, instant=NOW + 9 * HOUR),  # a singleton is not a session
+        _occ(1, instant=NOW),
+        _occ(2, instant=NOW + 5 * MIN),
+        _occ(3, instant=NOW + 2 * HOUR),  # the gap
+        _occ(4, instant=NOW + 2 * HOUR + 4 * MIN),
+        _occ(5, instant=NOW + 9 * HOUR),  # a singleton is not a session
     ]
     made = events.GenerationSessionGrouper().groups(held)
     assert [one.file_ids for one in made] == [(1, 2), (3, 4)]
 
 
 def test_a_day_resolution_claim_never_becomes_a_session_boundary():
-    """The hostile case the embedded-date fix exposed: files sharing a
-    day-resolution generation.date all land on the same synthetic
-    midnight, and grouping them by a 30-minute gap would manufacture a
-    contiguous sitting out of evidence that only names a DAY. The
-    honest answer is no session -- while the timeline day still counts
-    all three."""
+    """Files sharing a day-resolution generation.date all land on the
+    same synthetic midnight, and grouping them by a 30-minute gap would
+    manufacture a contiguous sitting out of evidence that only names a
+    DAY. The honest answer is no session -- while the timeline day
+    still counts all three."""
     held = [
-        _ctx(1, generated=True, local=NOW, precision="day"),
-        _ctx(2, generated=True, local=NOW, precision="day"),
-        _ctx(3, generated=True, local=NOW, precision="day"),
+        _occ(1, local=NOW, precision="day"),
+        _occ(2, local=NOW, precision="day"),
+        _occ(3, local=NOW, precision="day"),
     ]
     assert events.GenerationSessionGrouper().groups(held) == [], (
         "insufficient temporal precision is an answer, never a session"
     )
     fine = [
-        _ctx(1, generated=True, local=NOW, precision="second"),
-        _ctx(2, generated=True, local=NOW + 8 * MIN, precision="second"),
-        _ctx(3, generated=True, local=NOW + 19 * MIN, precision="second"),
+        _occ(1, local=NOW),
+        _occ(2, local=NOW + 8 * MIN),
+        _occ(3, local=NOW + 19 * MIN),
     ]
     assert [one.file_ids for one in events.GenerationSessionGrouper().groups(fine)] == [(1, 2, 3)], (
         "the same shape WITH minutes really is one session"
     )
     split = [
-        _ctx(1, generated=True, local=NOW, precision="second"),
-        _ctx(2, generated=True, local=NOW + 8 * MIN, precision="second"),
-        _ctx(3, generated=True, local=NOW + 5 * HOUR, precision="second"),
+        _occ(1, local=NOW),
+        _occ(2, local=NOW + 8 * MIN),
+        _occ(3, local=NOW + 5 * HOUR),
     ]
     assert [one.file_ids for one in events.GenerationSessionGrouper().groups(split)] == [(1, 2)]
 
@@ -123,14 +117,14 @@ def test_unlike_time_domains_are_never_subtracted():
     cross-domain pair that would have been 'adjacent' as bare numbers
     stays two singletons."""
     held = [
-        _ctx(1, generated=True, instant=NOW),
-        _ctx(2, generated=True, local=NOW + 5 * MIN),  # numerically adjacent, in a DIFFERENT domain
+        _occ(1, instant=NOW),
+        _occ(2, local=NOW + 5 * MIN),  # numerically adjacent, in a DIFFERENT domain
     ]
     assert events.GenerationSessionGrouper().groups(held) == [], "cross-domain adjacency is numeric coincidence"
 
     both_local = [
-        _ctx(1, generated=True, local=NOW),
-        _ctx(2, generated=True, local=NOW + 5 * MIN),
+        _occ(1, local=NOW),
+        _occ(2, local=NOW + 5 * MIN),
     ]
     made = events.GenerationSessionGrouper().groups(both_local)
     assert [one.file_ids for one in made] == [(1, 2)]
@@ -139,19 +133,27 @@ def test_unlike_time_domains_are_never_subtracted():
     )
 
 
-def test_the_two_adapters_share_the_interface_not_the_semantics():
-    """Captured media cluster over a wider gap, participation is the
-    explicit has_* fact -- and a mixed file belongs to both stories."""
-    held = [
-        _ctx(1, captured=True, instant=NOW),
-        _ctx(2, captured=True, generated=True, instant=NOW + 2 * HOUR),  # mixed: in BOTH stories
-        _ctx(3, generated=True, instant=NOW + 2 * HOUR + 5 * MIN),
-        _ctx(4, captured=True, instant=NOW + 9 * HOUR),
+def test_a_mixed_file_tells_each_story_at_its_own_time():
+    """One media identity, two historical acts: the photograph was
+    CAPTURED in 2023 and run through a generator in 2026. Each grouper
+    consumes its own claim's occurrence, so the capture story happens
+    at the camera's time and the generation story at the generator's --
+    never one timestamp impersonating both acts."""
+    captures = [
+        _occ(1, kind="capture", instant=Y2023),
+        _occ(2, kind="capture", instant=Y2023 + 9 * MIN),
     ]
-    moments = events.CaptureSessionGrouper().groups(held)
-    assert [one.file_ids for one in moments] == [(1, 2)], "the mixed file is capture-story too"
-    sessions = events.GenerationSessionGrouper().groups(held)
-    assert [one.file_ids for one in sessions] == [(2, 3)], "and generation-story too"
+    generations = [
+        _occ(1, kind="generation", local=Y2026),  # file 1 is the MIXED one
+        _occ(3, kind="generation", local=Y2026 + 6 * MIN),
+    ]
+    moments = events.CaptureSessionGrouper().groups(captures)
+    assert [one.file_ids for one in moments] == [(1, 2)]
+    assert moments[0].instant_start == Y2023, "the capture story happens at capture time"
+    sessions = events.GenerationSessionGrouper().groups(generations)
+    assert [one.file_ids for one in sessions] == [(1, 3)]
+    assert sessions[0].local_start == Y2026, "the generation story happens at the generator's claimed time"
+    assert sessions[0].instant_start is None, "an unzoned generator claim invents no instant"
 
 
 def test_groupers_consume_the_metadata_interface_not_source_tables():
@@ -159,8 +161,8 @@ def test_groupers_consume_the_metadata_interface_not_source_tables():
 
     source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "events.py").read_text(encoding="utf-8")
     for named in ("FROM file", "FROM capture", "FROM generation", "JOIN entity", "FROM entity"):
-        assert named not in source, f"a grouper read {named!r}; groupers consume MediaContext"
-    assert "context.contexts(" in source, "the grouping input is the Metadata interface"
+        assert named not in source, f"a grouper read {named!r}; groupers consume the Metadata interface"
+    assert "context.occurrences(" in source, "the grouping input is the per-claim occurrence interface"
 
 
 # --- currentness, persistence and the jobs -----------------------------------
@@ -191,12 +193,13 @@ def grouped(tmp_path):
             names = dict(conn.execute("SELECT name, id FROM file").fetchall())
             for name, file_id in names.items():
                 ingest.one(conn, file_id, root / name, NOW)
-            # The filesystem's birth times are this machine's real clock;
-            # the SOURCE CLAIMS are set deliberately so grouping is a
-            # function of the fixture: three tight, one far away.
-            for i in range(4):
-                moment = NOW + i * 3 * MIN if i < 3 else NOW + 8 * HOUR
-                conn.execute("UPDATE file SET btime = ?, mtime = ? WHERE name = ?", (moment, moment, f"gen_{i}.png"))
+            # The GENERATOR's own second-resolution claims are the source
+            # facts grouping is a function of: three tight, one far away.
+            conn.executemany(
+                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
+                " VALUES(?, 'generation', 'date', ?)",
+                [(names[f"gen_{i}.png"], _spelled(NOW + i * 3 * MIN if i < 3 else NOW + 8 * HOUR)) for i in range(4)],
+            )
             conn.commit()
         finally:
             connect.close(conn)
@@ -227,6 +230,72 @@ def test_events_refuse_to_run_before_any_interpretation_exists(grouped):
         connect.close(conn)
 
 
+def test_events_refuse_a_stable_but_incomplete_interpretation(grouped):
+    """STABLE IS NOT COMPLETE: a paused context job holds the generation
+    still while most of the library is uninterpreted, and a hypothesis
+    proven over that silence would stay current indefinitely. Grouping
+    demands coverage -- every present file, a current-policy context --
+    and refuses with nothing written until the context job finishes."""
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        held = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id").fetchall()]
+        for file_id in held[:2]:  # the job pauses after two of four items
+            context.rebuild_one(conn, file_id, NOW + 24 * HOUR)
+        conn.commit()
+        with pytest.raises(ValueError, match="incomplete"):
+            events.regroup_one(conn, events.GenerationSessionGrouper(), NOW + 25 * HOUR)
+        conn.commit()
+        assert conn.execute("SELECT count(*) FROM derived_event_run").fetchone()[0] == 0, (
+            "a refused hypothesis persists nothing"
+        )
+        for file_id in held[2:]:  # the job resumes and finishes
+            context.rebuild_one(conn, file_id, NOW + 24 * HOUR)
+        conn.commit()
+        events.regroup_one(conn, events.GenerationSessionGrouper(), NOW + 26 * HOUR)
+        conn.commit()
+        assert conn.execute("SELECT count(*) FROM derived_event_run").fetchone()[0] == 1, (
+            "the complete interpretation may publish"
+        )
+    finally:
+        connect.close(conn)
+
+
+def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypatch):
+    """The software upgrades its ladder; the database still holds
+    yesterday's interpretation. EVERY reader -- timeline shelves, the
+    facet door, the groupers -- binds the RUNNING policy, so the old
+    rows are honestly invisible everywhere at once until the context
+    job re-interprets. Serving them as current would be two definitions
+    of 'current metadata' in one library."""
+    from db import facets
+
+    grouped.post("/jobs/context")
+    grouped.post("/jobs/events")
+    _drain(grouped)
+    conn = connect.connect(grouped.app.state.db_path)
+    try:
+        day = pages.timeline_days(conn)[0][0]
+        assert pages.timeline_months(conn) != []
+        assert len(pages.timeline_events(conn)) >= 1
+        door_sql, door_value = facets.predicate(facets.facet("context.local_day", "eq", day))
+        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {door_sql}", (door_value,)).fetchone()[0]
+        assert opened >= 1, "the door answers while the interpretation is current"
+
+        monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
+        assert pages.timeline_months(conn) == [], "an upgraded build shows honest absence, not yesterday's ladder"
+        assert pages.timeline_days(conn) == []
+        assert pages.timeline_events(conn) == []
+        door_sql, door_value = facets.predicate(facets.facet("context.local_day", "eq", day))
+        assert conn.execute(f"SELECT count(*) FROM file f WHERE {door_sql}", (door_value,)).fetchone()[0] == 0, (
+            "the facet door and the timeline must agree on what 'current' means"
+        )
+        with pytest.raises(ValueError, match="older policy"):
+            events.regroup_one(conn, events.GenerationSessionGrouper(), NOW + 25 * HOUR)
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+
 def test_a_changed_outsider_makes_every_hypothesis_stale(grouped):
     """The straggler was never a member of the session -- but once its
     claims change, the session's ABSENCE of it is itself stale: nothing
@@ -246,9 +315,13 @@ def test_a_changed_outsider_makes_every_hypothesis_stale(grouped):
         first_hash, first_run = session[0]
         assert len(pages.timeline_events(conn)) >= 1, "the hypothesis is current before the change"
 
-        # The OUTSIDER's claim changes, through the writer seam.
+        # The OUTSIDER's claim changes, through the writer seam: the
+        # generator's date turns out to be nine minutes after the burst.
         outsider = conn.execute("SELECT id FROM file WHERE name = 'gen_3.png'").fetchone()[0]
-        conn.execute("UPDATE file SET btime = ?, mtime = ? WHERE id = ?", (NOW + 9 * MIN, NOW + 9 * MIN, outsider))
+        conn.execute(
+            "UPDATE file_param SET value_text = ? WHERE file_id = ? AND source = 'generation' AND key = 'date'",
+            (_spelled(NOW + 9 * MIN), outsider),
+        )
         context.stale(conn, outsider)
         conn.commit()
 
@@ -342,8 +415,8 @@ def test_the_timeline_is_a_view_with_a_door_into_the_gallery(grouped):
     body = grouped.get("/timeline", headers={"accept": "application/json"}).json()
     assert sum(row["pictures"] for row in body["months"]) == 4
     told = next(row for row in body["events"] if row["kind"] == "generation_session")
-    assert told["instant_start"] is not None, "the interval names its domain"
-    assert told["local_start"] is None, "and invents no wall clock nothing claimed"
+    assert told["local_start"] is not None, "the interval names its domain: the generator claimed a wall clock"
+    assert told["instant_start"] is None, "and invents no instant nothing claimed"
     day = body["days"][-1]
     assert day["qs"] == f"f=context.local_day%3Aeq%3A{day['day']}", "the door is the Facet Interface's own spelling"
     walked = grouped.get(f"/g?{day['qs']}")

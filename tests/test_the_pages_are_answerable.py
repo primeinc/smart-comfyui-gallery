@@ -23,7 +23,7 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, collections, ingest, lineage, naming, pages, scan
+from db import authored, collections, context, ingest, lineage, naming, pages, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -524,9 +524,9 @@ def test_the_timeline_summaries_declare_their_costs(library):
     exemption, like the front door's summary -- and the event overlay
     stops early on its own index."""
     conn = library["conn"]
-    assert_no_growing_scan(conn, pages.TIMELINE_MONTHS, (), aggregate=True, counts=True)
-    assert_no_growing_scan(conn, pages.TIMELINE_DAYS, (400,), aggregate=True, counts=True)
-    assert_no_growing_scan(conn, pages.TIMELINE_EVENTS, (200,))
+    assert_no_growing_scan(conn, pages.TIMELINE_MONTHS, (context.POLICY_VERSION,), aggregate=True, counts=True)
+    assert_no_growing_scan(conn, pages.TIMELINE_DAYS, (context.POLICY_VERSION, 400), aggregate=True, counts=True)
+    assert_no_growing_scan(conn, pages.TIMELINE_EVENTS, (context.POLICY_VERSION, 200))
 
 
 # --- lineage ---------------------------------------------------------------

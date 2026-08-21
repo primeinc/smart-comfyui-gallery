@@ -2075,4 +2075,18 @@ def test_the_build_control_counts_real_tables(db):
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
     ]
-    assert len(real) == 49, f"expected 49 real tables, found {len(real)}: {sorted(real)}"
+    assert len(real) == 50, f"expected 50 real tables, found {len(real)}: {sorted(real)}"
+
+
+def test_the_time_doctrine_never_claims_a_wall_clock_is_utc(db):
+    """The durable convention -- the comment block SQLite keeps inside
+    CREATE TABLE entity -- must name the wall-clock columns as what they
+    are. A global 'every *_at is UTC' rule with local_at in the schema
+    is exactly the innocent-looking sentence a future reader trusts
+    before spending a weekend converting Hawaii into UTC."""
+    doctrine = db.execute("SELECT sql FROM sqlite_master WHERE name = 'entity'").fetchone()[0]
+    assert "WALL CLOCK" in doctrine, "the doctrine names the second time kind"
+    assert "local_at" in doctrine, "the doctrine names the columns that carry it"
+    assert "The one exception is capture.captured_at" not in doctrine, (
+        "captured_at is not the ONE exception once local_at columns exist"
+    )

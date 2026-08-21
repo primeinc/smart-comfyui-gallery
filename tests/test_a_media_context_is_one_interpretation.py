@@ -162,6 +162,43 @@ def test_two_time_concepts_and_every_date_names_its_basis(interpreted):
         connect.close(conn)
 
 
+def test_each_claim_is_its_own_occurrence(interpreted):
+    """The context keeps ONE primary human-timeline interpretation; the
+    occurrence rows keep each CLAIM at its own time. photo_a's camera
+    outranks its decoy generator date on the primary ladder -- but the
+    generator's claim is not erased: it stands as the generation
+    occurrence, day-fine, exactly as claimed. A claim that does not
+    parse produces no occurrence at all."""
+    client, _ = interpreted
+    conn = _raw(client)
+    try:
+        held = {
+            (name, kind): (local, instant, basis, certainty, precision)
+            for name, kind, local, instant, basis, certainty, precision in conn.execute(
+                "SELECT f.name, o.kind, o.local_at, o.instant_at, o.basis, o.certainty, o.time_precision"
+                " FROM derived_media_occurrence o JOIN file f ON f.id = o.file_id"
+            )
+        }
+        local, instant, basis, certainty, precision = held[("photo_a.png", "capture")]
+        assert (basis, certainty, precision) == ("capture", 1.0, "second")
+        assert (local, instant) == (NOW + 12 * HOUR, (NOW + 12 * HOUR) - (-600 * 60))
+        local, instant, basis, certainty, precision = held[("photo_a.png", "generation")]
+        assert (basis, certainty, precision) == ("embedded", 0.6, "day"), (
+            "the decoy date the camera outranks on the primary ladder STANDS as the generation act's own claim"
+        )
+        assert (local, instant) == (1_685_577_600.0, None)
+        local, instant, basis, certainty, precision = held[("photo_b.png", "capture")]
+        assert (certainty, instant) == (0.8, None), "an unzoned capture occurrence invents no instant"
+        assert held[("gen_0.png", "generation")][4] == "day"
+        assert ("gen_1.png", "generation") not in held, "a claim that does not parse is no occurrence"
+        assert ("photo_c.png", "capture") not in held, "no claim, no occurrence -- the filesystem is not an act"
+        assert all(kind != "capture" or name.startswith("photo") for name, kind in held), (
+            "capture occurrences exist only where a camera spoke"
+        )
+    finally:
+        connect.close(conn)
+
+
 def test_rebuilding_touches_no_evidence_and_no_source_facts(interpreted):
     """The interpretation reads claims and writes understanding -- raw
     evidence and source facts are byte-identical across a rebuild, and

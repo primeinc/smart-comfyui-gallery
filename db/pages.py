@@ -33,6 +33,7 @@ table is never allowed, exemption or not.
 
 from __future__ import annotations
 
+from . import context
 from .context import HUMAN_MOMENT
 
 #: How many rows a grid asks for at once.
@@ -646,15 +647,16 @@ def ways(conn):
 
 #: The human timeline's one axis: context.HUMAN_MOMENT, the same
 #: fragment the day facet filters by, so the shelf and the door into
-#: the gallery cannot disagree. Only rows of the CURRENT interpretation
-#: policy answer -- a row an older ladder produced is not this build's
-#: understanding.
+#: the gallery cannot disagree. Only rows of the RUNNING code's
+#: interpretation policy answer -- bound at call time, never the
+#: version the database happens to remember, so an upgraded build shows
+#: honest absence until the context job re-interprets.
 TIMELINE_MONTHS = (
     "SELECT strftime('%Y-%m', " + HUMAN_MOMENT + ", 'unixepoch') AS month,"
     " count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
-    " WHERE mc.policy_version = (SELECT policy_version FROM derived_context_state)"
+    " WHERE mc.policy_version = ?"
     " GROUP BY month ORDER BY month DESC"
 )
 
@@ -665,7 +667,7 @@ TIMELINE_DAYS = (
     " count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
-    " WHERE mc.policy_version = (SELECT policy_version FROM derived_context_state)"
+    " WHERE mc.policy_version = ?"
     " GROUP BY day ORDER BY day DESC LIMIT ?"
 )
 
@@ -678,21 +680,21 @@ TIMELINE_EVENTS = (
     " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures"
     "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
     " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
-    "   AND r.context_policy_version = (SELECT policy_version FROM derived_context_state)"
+    "   AND r.context_policy_version = ?"
     " ORDER BY e.instant_start DESC LIMIT ?"
 )
 
 
 def timeline_months(conn):
-    return conn.execute(TIMELINE_MONTHS).fetchall()
+    return conn.execute(TIMELINE_MONTHS, (context.POLICY_VERSION,)).fetchall()
 
 
 def timeline_days(conn, limit: int = 400):
-    return conn.execute(TIMELINE_DAYS, (limit,)).fetchall()
+    return conn.execute(TIMELINE_DAYS, (context.POLICY_VERSION, limit)).fetchall()
 
 
 def timeline_events(conn, limit: int = 200):
-    return conn.execute(TIMELINE_EVENTS, (limit,)).fetchall()
+    return conn.execute(TIMELINE_EVENTS, (context.POLICY_VERSION, limit)).fetchall()
 
 
 # --- lineage ---------------------------------------------------------------

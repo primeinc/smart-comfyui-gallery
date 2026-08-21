@@ -13,10 +13,14 @@ CREATE TABLE entity (
     -- and survives only in the source file. This is the first table, so this
     -- is the first thing `.schema` prints.
     --
-    -- TIME   Every *_at column is UNIX EPOCH SECONDS IN UTC, as a REAL.
-    --        The one exception is capture.captured_at, which may be a wall
-    --        clock with no zone -- it says so itself, and capture.tz_offset_min
-    --        is how you tell which it is.
+    -- TIME   Every *_at column is UNIX EPOCH SECONDS IN UTC, as a REAL --
+    --        EXCEPT the columns that say they hold a human WALL CLOCK:
+    --        capture.captured_at (an instant only when capture.tz_offset_min
+    --        is present) and every local_at / local_start / local_end, which
+    --        are the epoch-shaped spelling of what a clock on the wall read
+    --        and are never instants. The two kinds are never compared or
+    --        converted into each other by convention -- only by a recorded
+    --        offset on the specific row.
     -- SIZE   Bytes.
     -- SCORES det_score and confidence are 0..1, never percentages.
     -- ANGLES Degrees.
@@ -1623,6 +1627,35 @@ CREATE INDEX media_context_local ON derived_media_context(local_at);
 CREATE INDEX media_context_place ON derived_media_context(place_id);
 CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at);
 
+-- One temporal CLAIM of one KIND about one media item. The capture
+-- occurrence and the generation occurrence of the SAME file are two
+-- different historical acts with two different times: a photograph run
+-- through a generator years later tells the capture story at capture
+-- time and the generation story at generation time. Groupers consume
+-- the occurrence of their own claim -- the context keeps the ONE
+-- primary human-timeline interpretation. Derived, rebuilt with the
+-- context, stamped with the same policy.
+CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at);
+CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at);
+
 -- One row: the interpretation's identity. `generation` advances on
 -- EVERY context add, change or delete, so anything computed over the
 -- contexts can prove it was computed over THESE contexts; the policy
@@ -1691,7 +1724,7 @@ CREATE TABLE derived_event_file (
 CREATE INDEX event_file_file ON derived_event_file(file_id);
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 11;
+PRAGMA user_version   = 12;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

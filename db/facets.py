@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import re
 
+from . import context
 from .context import HUMAN_MOMENT, ORIGINS
 
 
@@ -70,7 +71,8 @@ REGISTRY: dict[str, _Spec] = {
     "context.origin": _Spec(
         "text",
         ("eq",),
-        "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id AND mc.origin {op} ?)",
+        "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
+        " AND mc.policy_version = {policy} AND mc.origin {op} ?)",
         choices=ORIGINS,
     ),
     #: The timeline's own door into the gallery: one LOCAL calendar day,
@@ -83,6 +85,7 @@ REGISTRY: dict[str, _Spec] = {
         # composed around context.HUMAN_MOMENT -- the door and the
         # timeline shelf share one definition of the human day
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
+        " AND mc.policy_version = {policy}"
         " AND strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') {op} ?)",
     ),
 }
@@ -144,4 +147,8 @@ def predicate(held: Facet) -> tuple[str, int | str]:
     """The registered SQL for one facet -- structure from the closed
     registry, the value bound."""
     spec = REGISTRY[held.key]
-    return spec.template.format(op=_OP_SQL[held.op]), held.value
+    # {policy} is the RUNNING interpretation policy, read at call time:
+    # after a software upgrade the old rows are honestly invisible here
+    # exactly as they are on the timeline, until the context job runs.
+    # An int constant from code, never request data -- still structure.
+    return spec.template.format(op=_OP_SQL[held.op], policy=int(context.POLICY_VERSION)), held.value

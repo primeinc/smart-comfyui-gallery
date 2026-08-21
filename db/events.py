@@ -2,8 +2,8 @@
 
 A trip, a working session, a burst is a HYPOTHESIS over a set of files
 -- never a property stamped onto them. This module owns the grouping
-Seam: a Grouper consumes the Metadata package's MediaContext rows
-(never source tables -- one definition of time and origin for every
+Seam: a Grouper consumes the Metadata package's Occurrence rows
+(never source tables -- one definition of time and claim for every
 algorithm) and proposes kind/interval/ordered-membership; persistence
 turns proposals into rebuildable `derived_event_run` rows whose events
 carry a member_hash over the ordered file uuids, so a changed
@@ -16,23 +16,27 @@ subtracted from each other -- an unzoned afternoon and a UTC instant
 are not seconds apart, they are incomparable. Each persisted event
 carries the interval pair(s) of the domain(s) it actually knows.
 
-CURRENTNESS IS PROVEN, not assumed. Every run names the context
-generation and policy it was computed over; proposals are computed
-outside the writer lane, the lane is claimed, the generation is
-revalidated with one cheap read, and only then does the run become
-durable -- a commit in the handoff triggers one recompute, a second
-race refuses. A run whose generation is no longer current is a stale
-hypothesis, whoever its members are; the timeline reads only current
-runs.
+CURRENTNESS IS PROVEN, not assumed -- and STABLE IS NOT COMPLETE.
+Every run names the context generation and policy it was computed
+over, and grouping first proves the interpretation COVERS the library:
+every present file holds a current-policy context, or the hypothesis
+would be a confident statement about media nobody interpreted.
+Proposals are computed outside the writer lane, the lane is claimed,
+generation and coverage are revalidated cheaply, and only then does
+the run become durable -- a commit in the handoff triggers one
+recompute, a second race refuses. A run whose generation is no longer
+current is a stale hypothesis, whoever its members are; the timeline
+reads only current runs.
 
-Two adapters prove the Seam. GenerationSessionGrouper splits ONLY on
-temporal separation: prompt and workflow changes are the history INSIDE
-a session and become phase boundaries in a later slice (parent_id
-already waits); splitting on them would summarize every changed prompt
-as its own event. CaptureSessionGrouper clusters camera media into
-temporal moments over a wider gap. Participation is the explicit
-has_generation / has_capture fact -- a mixed file belongs to both
-stories. A calendar day is deliberately NOT a grouper.
+Two adapters prove the Seam. Each grouper names the CLAIM it consumes
+and reads that claim's own occurrence rows: a mixed file tells the
+capture story at the camera's time and the generation story at the
+generator's claimed time -- one media identity, two historical acts,
+never one timestamp impersonating both. GenerationSessionGrouper
+splits ONLY on temporal separation: prompt and workflow changes are
+the history INSIDE a session and become phase boundaries in a later
+slice (parent_id already waits). CaptureSessionGrouper clusters camera
+media over a wider gap. A calendar day is deliberately NOT a grouper.
 
 Regrouping keeps only each grouper's LATEST run: events are rebuildable
 interpretations, not history.
@@ -86,7 +90,7 @@ def _split(members: list, key, gap: float) -> list[list]:
     return made
 
 
-def _proposed_instant(kind: str, members: list[context.MediaContext]) -> GroupProposal:
+def _proposed_instant(kind: str, members: list[context.Occurrence]) -> GroupProposal:
     instants = [one.instant_at for one in members]
     locals_known = [one.local_at for one in members]
     both = all(one is not None for one in locals_known)
@@ -102,7 +106,7 @@ def _proposed_instant(kind: str, members: list[context.MediaContext]) -> GroupPr
     )
 
 
-def _proposed_local(kind: str, members: list[context.MediaContext]) -> GroupProposal:
+def _proposed_local(kind: str, members: list[context.Occurrence]) -> GroupProposal:
     walls = [one.local_at for one in members]
     return GroupProposal(
         kind=kind,
@@ -113,17 +117,13 @@ def _proposed_local(kind: str, members: list[context.MediaContext]) -> GroupProp
     )
 
 
-def _gapped(held: list[context.MediaContext], kind: str, takes_part, gap: float) -> list[GroupProposal]:
+def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[GroupProposal]:
     """The shared temporal-clustering implementation, per DOMAIN: media
     with knowable instants cluster on instants; media with only a wall
     clock cluster among themselves on wall clocks. Unlike domains are
     never subtracted from each other, a claim too coarse for the gap
     never enters the arithmetic, and a singleton is not a session."""
-    eligible = [
-        one
-        for one in held
-        if takes_part(one) and one.time_precision is not None and _GRANULE[one.time_precision] <= gap
-    ]
+    eligible = [one for one in held if _GRANULE[one.time_precision] <= gap]
     made: list[GroupProposal] = []
     instants = sorted(
         (one for one in eligible if one.instant_at is not None), key=lambda one: (one.instant_at, one.file_id)
@@ -140,29 +140,32 @@ def _gapped(held: list[context.MediaContext], kind: str, takes_part, gap: float)
 class GenerationSessionGrouper:
     """Generated media clustered into working sessions by time alone:
     the prompt evolution INSIDE the interval is the session's story,
-    never its boundary. Participation is the has_generation FACT, so a
-    photograph that was also generated belongs to this story too."""
+    never its boundary. It consumes the GENERATION occurrence -- a
+    photograph edited by a generator years after capture joins this
+    story at the generator's claimed time, never the camera's."""
 
     name = "generation_session"
-    version = "3"
+    version = "4"
+    claim = "generation"
     settings: typing.ClassVar[dict] = {"gap_minutes": 30}
 
-    def groups(self, held: list[context.MediaContext]) -> list[GroupProposal]:
-        return _gapped(held, "generation_session", lambda one: one.has_generation, self.settings["gap_minutes"] * 60.0)
+    def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
+        return _gapped(held, "generation_session", self.settings["gap_minutes"] * 60.0)
 
 
 class CaptureSessionGrouper:
     """Camera media clustered into temporal moments -- an afternoon at
     the beach, a dinner -- over a wider gap, because humans put the
-    camera down between pictures. Participation is the has_capture
-    FACT."""
+    camera down between pictures. It consumes the CAPTURE occurrence:
+    the same mixed file tells this story at the camera's time."""
 
     name = "capture_session"
-    version = "2"
+    version = "3"
+    claim = "capture"
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
-    def groups(self, held: list[context.MediaContext]) -> list[GroupProposal]:
-        return _gapped(held, "capture_session", lambda one: one.has_capture, self.settings["gap_minutes"] * 60.0)
+    def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
+        return _gapped(held, "capture_session", self.settings["gap_minutes"] * 60.0)
 
 
 #: The grouping adapters this build runs, in one place. The events job
@@ -235,9 +238,19 @@ def regroup_one(conn, grouper, now: float) -> int:
         generation, policy = held_state
         if policy != context.POLICY_VERSION:
             raise ValueError("the interpretation is from an older policy; run the context job first")
-        proposals = grouper.groups(context.contexts(conn))
+        # STABLE is not COMPLETE: a paused context job holds the
+        # generation still over a mostly-uninterpreted library, and a
+        # hypothesis proven over that silence would stay current
+        # indefinitely. Coverage is part of what the run proves.
+        have, present = context.coverage(conn)
+        if have != present:
+            raise ValueError(
+                f"the interpretation is incomplete: {have} of {present} present files"
+                " have a current context; run the context job first"
+            )
+        proposals = grouper.groups(context.occurrences(conn, grouper.claim))
         conn.execute("BEGIN IMMEDIATE")
-        if context.state(conn) == (generation, policy):
+        if context.state(conn) == (generation, policy) and context.coverage(conn) == (have, present):
             return _persist(conn, grouper, proposals, generation, policy, now)
         conn.execute("ROLLBACK")
         if last:
