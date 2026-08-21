@@ -28,7 +28,13 @@ from __future__ import annotations
 import dataclasses
 import json
 
-RULE_VERSION = 1
+#: What this build AUTHORS. Reading is wider: `_KNOWN_VERSIONS` -- a
+#: stored v1 rule keeps meaning exactly what it meant, and "versioned"
+#: means the reader dispatches on the version instead of quietly
+#: reinterpreting old rows under a new shape.
+RULE_VERSION = 2
+
+_KNOWN_VERSIONS = (1, 2)
 
 
 class BrokenCollectionRule(ValueError):
@@ -48,6 +54,9 @@ class CollectionRule:
     version: int
     folder_uuid: bytes | None
     person_uuid: bytes | None
+    #: v2: one artifact entity by uuid -- a checkpoint, LoRA or workflow
+    #: facet saved as membership. Always None in a v1 rule.
+    artifact_uuid: bytes | None
     kind: str | None
     favorite: bool | None
     rating_min: int | None
@@ -73,9 +82,15 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     # Exact-type integer checks throughout (`type(x) is int`), because
     # Python's bool IS an int and JSON true would otherwise pass as 1 --
     # the truthiness corner a "semantic gate" exists to close.
-    if type(rule.version) is not int or rule.version != RULE_VERSION:
+    if type(rule.version) is not int or rule.version not in _KNOWN_VERSIONS:
         raise refuse(f"rule version {rule.version!r} is not one this build understands")
-    for name, uuid in (("folder", rule.folder_uuid), ("person", rule.person_uuid)):
+    if rule.version == 1 and rule.artifact_uuid is not None:
+        raise refuse("a v1 rule has no artifact reference; that shape arrived in v2")
+    for name, uuid in (
+        ("folder", rule.folder_uuid),
+        ("person", rule.person_uuid),
+        ("artifact", rule.artifact_uuid),
+    ):
         if uuid is not None and (not isinstance(uuid, bytes) or len(uuid) != 16):
             raise refuse(f"the rule's {name} reference is not a 16-byte entity uuid")
     if rule.kind is not None and rule.kind not in KINDS:
@@ -104,6 +119,14 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     if not asks_authored and rule.actor_id is not None:
         raise refuse("an actor is pinned only when an authored facet needs one")
     return rule
+
+
+def _no_artifact_in_v1(where: dict):
+    """v1's shape, held exactly: an artifact key inside a v1 row is
+    corruption, never an upgrade. Returns the v1 artifact reference,
+    which is always the absence of one."""
+    if "artifact" in where:
+        raise ValueError("a v1 rule does not carry an artifact reference")
 
 
 def _stored_uuid(value, field: str) -> bytes | None:
@@ -147,6 +170,7 @@ def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -
         version=RULE_VERSION,
         folder_uuid=_entity_uuid(conn, "folder", query.folder) if query.folder else None,
         person_uuid=_entity_uuid(conn, "person", query.person) if query.person else None,
+        artifact_uuid=_entity_uuid(conn, "artifact", query.artifact) if query.artifact else None,
         kind=query.kind,
         favorite=query.favorite,
         rating_min=query.rating_min,
@@ -173,12 +197,15 @@ def save(conn, collection_id: int, rule: CollectionRule, *, source_text: str | N
     future caller remembering which constructor blessed the object."""
     _smart_only(conn, collection_id)
     rule = validate(rule, ValueError)
+    if rule.version != RULE_VERSION:
+        raise ValueError(f"this build authors v{RULE_VERSION} rules; v{rule.version} is read-only")
     told = json.dumps(
         {
             "v": rule.version,
             "where": {
                 "folder": rule.folder_uuid.hex() if rule.folder_uuid else None,
                 "person": rule.person_uuid.hex() if rule.person_uuid else None,
+                "artifact": rule.artifact_uuid.hex() if rule.artifact_uuid else None,
                 "kind": rule.kind,
                 "favorite": rule.favorite,
                 "rating_min": rule.rating_min,
@@ -211,10 +238,17 @@ def load(conn, collection_id: int) -> CollectionRule | None:
     try:
         held = json.loads(told)
         where, select = held["where"], held["select"]
+        # The reader is per-version: v1's shape has no artifact key (one
+        # appearing there is corruption, not an upgrade), v2 REQUIRES it.
+        if int(version) == 1:
+            artifact_stored = _no_artifact_in_v1(where)
+        else:
+            artifact_stored = _stored_uuid(where["artifact"], "artifact")
         made = CollectionRule(
             version=int(version),
             folder_uuid=_stored_uuid(where["folder"], "folder"),
             person_uuid=_stored_uuid(where["person"], "person"),
+            artifact_uuid=artifact_stored,
             kind=where["kind"],
             favorite=where["favorite"],
             rating_min=where["rating_min"],

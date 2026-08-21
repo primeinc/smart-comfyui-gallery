@@ -55,6 +55,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "folder": query.folder or "",
         "album": query.album or "",
         "person": query.person or "",
+        "artifact": query.artifact or "",
         "kind": query.kind or "",
         "favorite": "" if query.favorite is None else ("1" if query.favorite else "0"),
         "rating_min": query.rating_min or "",
@@ -70,6 +71,7 @@ def gallery(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -79,7 +81,9 @@ def gallery(
     page: int = 1,
 ) -> Template:
     """The gallery, whole, from nothing but the URL."""
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     return Template(template_name="gallery.html", context=_grid_context(state, query, page))
 
 
@@ -89,6 +93,7 @@ def grid_fragment(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -98,7 +103,9 @@ def grid_fragment(
     page: int = 1,
 ) -> Template:
     """One page of cells, for the running page to swap in place."""
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     return Template(template_name="_grid.html", context=_grid_context(state, query, page))
 
 
@@ -109,6 +116,7 @@ def rail_peek(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -126,7 +134,9 @@ def rail_peek(
     beside the OLD grid would present two generations as one answer --
     the response is 409 and the client redraws instead of pretending.
     """
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     conn = connect.connect(state.db_path)
     try:
         if expect is not None and resultset.currency(conn) != expect:
@@ -151,6 +161,7 @@ def locate_in_answer(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -161,7 +172,9 @@ def locate_in_answer(
     """Where one picture sits in this answer -- ordinal, page, and its
     previous/next in ANSWER order, which is what the arrows mean while
     a result set is being walked."""
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "file", slug)

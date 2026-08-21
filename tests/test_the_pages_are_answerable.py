@@ -403,27 +403,6 @@ def test_the_models_page_counts_pictures_not_mentions(library):
     assert rows == [("dreamshaper_8", rows[0][1], 7)]
 
 
-def test_a_model_page_lists_what_it_made(library):
-    """Same shape as the folder page: resolve the address, then read.
-
-    Matching the slug inside the query made the planner scan the whole of
-    `file_artifact` and filter afterwards, which on the checkpoint most of a
-    library was made with means reading most of the library. Given the id it
-    is a covering-index search, and the rows arrive in file order without a
-    sort because `file_artifact` is WITHOUT ROWID and its primary key leads
-    on file_id.
-    """
-    conn = library["conn"]
-    slug = conn.execute(
-        "SELECT e.slug FROM artifact a JOIN entity e ON e.id=a.id WHERE a.kind='checkpoint'"
-    ).fetchone()[0]
-    address = "SELECT id FROM entity WHERE kind='artifact' AND slug=?"
-    artifact_id = conn.execute(address, (slug,)).fetchone()[0]
-    assert len(pages.artifact_files(conn, artifact_id)) == 7
-    assert_no_growing_scan(conn, address, (slug,))
-    assert_no_growing_scan(conn, pages.ARTIFACT_FILES, (artifact_id, 120))
-
-
 def test_the_cross_axis_view_is_one_query(library):
     """The payoff for the join tables: where a model's output actually sits."""
     conn = library["conn"]
@@ -697,7 +676,6 @@ def test_the_entity_layer_queries_do_not_scan_the_library(library):
     grows with the library, and not a sort of one either."""
     conn = library["conn"]
     assert_no_growing_scan(conn, pages.WORKFLOWS_BY_USE, (), aggregate=True)
-    assert_no_growing_scan(conn, pages.WORKFLOW_FILES, (1, 120))
     assert_no_growing_scan(conn, pages.ALBUM_PRESENT, (library["album"],))
     assert_no_growing_scan(conn, pages.FILE_LORAS, (library["first"],))
     assert_no_growing_scan(conn, pages.DUPE_GROUPS, (120,), aggregate=True)

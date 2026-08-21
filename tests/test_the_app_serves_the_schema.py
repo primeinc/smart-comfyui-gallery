@@ -492,7 +492,10 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert models == [{"name": "dreamshaper_8", "slug": "checkpoint-dreamshaper-8", "pictures": 2}]
         shelf = client.get("/m/checkpoint-dreamshaper-8").json()
         assert (shelf["name"], shelf["kind"]) == ("dreamshaper_8", "checkpoint")
-        assert sorted(p["name"] for p in shelf["pictures"]) == ["helm_1.png", "helm_2.png"]
+        # The media answer IS the ResultSet's: same items, same count as
+        # the shelf's aggregate -- no second membership arithmetic.
+        assert sorted(p["name"] for p in shelf["gallery"]["items"]) == ["helm_1.png", "helm_2.png"]
+        assert shelf["count"] == models[0]["pictures"] == 2
 
         loras = client.get("/loras").json()
         assert loras == [{"name": "filmGrain", "slug": "lora-filmgrain", "pictures": 2}]
@@ -510,7 +513,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert [row["pictures"] for row in shelved] == [2]
         graph_page = client.get(f"/w/{shelved[0]['slug']}").json()
         assert graph_page["kind"] == "workflow"
-        assert sorted(p["name"] for p in graph_page["pictures"]) == ["helm_1.png", "helm_2.png"]
+        assert sorted(p["name"] for p in graph_page["gallery"]["items"]) == ["helm_1.png", "helm_2.png"]
 
         # A kind with rows but no shelf yet says so, on every shelf.
         conn = connect.connect(client.app.state.db_path)
@@ -591,7 +594,8 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
 def test_every_new_address_survives_a_rename(served):
     """The addressing contract on every kind the entity layer added: a
     retired slug 301s within its own prefix, and a retired slug on the
-    WRONG shelf lands home in two hops, never a loop."""
+    WRONG shelf lands home in ONE hop -- the canonical address is
+    computed once from entity, live slug and kind, never a chain."""
     from db import ingest as ingest_module
 
     client, _, _ = served
@@ -616,7 +620,9 @@ def test_every_new_address_survives_a_rename(served):
     assert (moved.status_code, moved.headers["location"]) == (301, "/l/detail-tweaker-xl")
 
     first = client.get("/m/lora-detailtweaker", follow_redirects=False)
-    assert (first.status_code, first.headers["location"]) == (301, "/m/detail-tweaker-xl")
+    assert (first.status_code, first.headers["location"]) == (301, "/l/detail-tweaker-xl"), (
+        "wrong shelf + retired slug heals in ONE 301, never a chain"
+    )
     second = client.get("/m/detail-tweaker-xl", follow_redirects=False)
     assert (second.status_code, second.headers["location"]) == (301, "/l/detail-tweaker-xl")
     assert client.get("/l/detail-tweaker-xl").json()["name"] == "detailTweaker"

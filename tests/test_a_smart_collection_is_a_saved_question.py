@@ -302,9 +302,10 @@ def test_the_persistence_interface_validates_what_it_is_handed(saved):
     conn = connect.connect(saved.app.state.db_path)
     smart = collections.collection(conn, "Handmade", 1.0, kind="smart")
     bad = collection_rules.CollectionRule(
-        version=1,
+        version=2,
         folder_uuid=None,
         person_uuid=None,
+        artifact_uuid=None,
         kind="platypus",
         favorite=None,
         rating_min=None,

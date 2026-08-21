@@ -211,15 +211,12 @@ def folder_tops(conn, root_id: int):
 
 # --- the recipe axis -------------------------------------------------------
 
-ARTIFACT_FILES = (
-    "SELECT fe.slug, f.name FROM file_artifact fa"
-    " JOIN file f ON f.id = fa.file_id AND f.missing_since IS NULL"
-    " JOIN entity fe ON fe.id = f.id WHERE fa.artifact_id = ?"
-    " ORDER BY fa.file_id LIMIT ?"
-)
-
+#: count(DISTINCT f.id): "pictures" counts pictures. file_artifact
+#: legally holds one artifact at several ordinals in one file -- a LoRA
+#: stacked twice -- and a row count would name relation instances after
+#: media. The shelf number must equal the ResultSet total.
 ARTIFACTS_BY_USE = (
-    "SELECT a.name, e.slug, count(*) AS pictures FROM artifact a"
+    "SELECT a.name, e.slug, count(DISTINCT f.id) AS pictures FROM artifact a"
     "  JOIN entity e ON e.id = a.id"
     "  JOIN file_artifact fa ON fa.artifact_id = a.id"
     "  JOIN file f ON f.id = fa.file_id AND f.missing_since IS NULL"
@@ -230,7 +227,7 @@ ARTIFACTS_BY_USE = (
 #: this by matching one filename against a delimited blob holding another and
 #: calling co-residency a match; it is a join with real counts.
 LORA_SYNERGY = (
-    "SELECT ckpt.name, e.slug, count(*) AS together FROM file_artifact fl"
+    "SELECT ckpt.name, e.slug, count(DISTINCT fl.file_id) AS together FROM file_artifact fl"
     "  JOIN file_artifact fc ON fc.file_id = fl.file_id AND fc.role = 'checkpoint'"
     "  JOIN artifact ckpt ON ckpt.id = fc.artifact_id"
     "  JOIN entity e ON e.id = ckpt.id"
@@ -251,13 +248,6 @@ WORKFLOWS_BY_USE = (
     " GROUP BY a.id ORDER BY pictures DESC, a.name"
 )
 
-WORKFLOW_FILES = (
-    "SELECT fe.slug, f.name FROM generation g"
-    "  JOIN file f ON f.id = g.file_id AND f.missing_since IS NULL"
-    "  JOIN entity fe ON fe.id = f.id WHERE g.workflow_id = ?"
-    " ORDER BY g.file_id LIMIT ?"
-)
-
 
 def artifacts_by_use(conn, kind: str):
     """The models or LoRAs index -- counted by pictures, not by mentions,
@@ -269,12 +259,13 @@ def workflows_by_use(conn):
     return conn.execute(WORKFLOWS_BY_USE).fetchall()
 
 
-def artifact_files(conn, artifact_id: int, limit: int = 120):
-    return conn.execute(ARTIFACT_FILES, (artifact_id, limit)).fetchall()
+#: The artifact's own facts -- never its media membership, which is the
+#: ResultSet's answer to artifact={slug}.
+ARTIFACT_CARD = "SELECT name, kind, architecture, content_sha256, quoted_hash, first_seen_at FROM artifact WHERE id = ?"
 
 
-def workflow_files(conn, artifact_id: int, limit: int = 120):
-    return conn.execute(WORKFLOW_FILES, (artifact_id, limit)).fetchall()
+def artifact_card(conn, artifact_id: int):
+    return conn.execute(ARTIFACT_CARD, (artifact_id,)).fetchone()
 
 
 def lora_synergy(conn, lora_id: int):

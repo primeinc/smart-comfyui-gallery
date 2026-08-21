@@ -123,6 +123,7 @@ class NewSmart:
     take: int | None = None
     folder: str | None = None
     person: str | None = None
+    artifact: str | None = None
     kind: str | None = None
     favorite: str | None = None
     rating_min: int | None = None
@@ -149,6 +150,7 @@ def make_smart(state: State, data: NewSmart) -> Response:
             data.sort,
             None,
             person=data.person,
+            artifact=data.artifact,
             favorite=data.favorite,
             rating_min=data.rating_min,
         )
@@ -236,6 +238,7 @@ def replace_rule(state: State, slug: str, data: dict) -> Response:
             data.get("sort"),
             None,
             person=data.get("person"),
+            artifact=data.get("artifact"),
             favorite=data.get("favorite"),
             rating_min=data.get("rating_min"),
         )
@@ -267,6 +270,7 @@ def convert_collection(state: State, slug: str, data: dict) -> Response:
                 data.get("sort"),
                 None,
                 person=data.get("person"),
+                artifact=data.get("artifact"),
                 favorite=data.get("favorite"),
                 rating_min=data.get("rating_min"),
             )

@@ -54,6 +54,7 @@ from db import (
     settings,
 )
 from sg_web import (
+    artifact_view,
     collection_authoring,
     collection_view,
     curating,
@@ -110,49 +111,16 @@ def front(state: State) -> list[dict]:
 
 
 # The media page lives in sg_web/media_view.py, the folder page in
-# sg_web/folder_view.py: one address each, negotiated per caller.
-
-
-#: Which shelf each addressable artifact kind lives on. Kinds outside this
-#: map have rows and identity but no page yet.
-_SHELVES = {"checkpoint": "/m", "lora": "/l", "workflow": "/w"}
+# sg_web/folder_view.py, the artifact pages in sg_web/artifact_view.py:
+# one address each, negotiated per caller. The shelf indexes below are
+# aggregates -- "which artifacts are commonly used?" -- not media
+# answers; every media answer is the ResultSet's.
 
 
 def _shelf_index(state: State, kind: str) -> list[dict]:
     conn = _connect(state.db_path)
     try:
         return _rows(pages.artifacts_by_use(conn, kind), ("name", "slug", "pictures"))
-    finally:
-        connect.close(conn)
-
-
-def _artifact_page(state: State, slug: str, shelf: str) -> dict | Redirect:
-    """One artifact, on the shelf its kind belongs to. The wrong shelf
-    301s to the right one -- an address written down keeps working, and
-    one artifact never answers at two."""
-    conn = _connect(state.db_path)
-    try:
-        artifact_id, live = _resolved(conn, "artifact", slug, shelf)
-        if live is not None:
-            return Redirect(path=f"{shelf}/{live}", status_code=301)
-        kind, name = conn.execute("SELECT kind, name FROM artifact WHERE id = ?", (artifact_id,)).fetchone()
-        home_shelf = _SHELVES.get(kind)
-        if home_shelf is None:
-            raise NotFoundException(f"a {kind} has no page yet")
-        if home_shelf != shelf:
-            return Redirect(path=f"{home_shelf}/{slug}", status_code=301)
-        held = (
-            pages.workflow_files(conn, artifact_id) if kind == "workflow" else pages.artifact_files(conn, artifact_id)
-        )
-        page = {
-            "slug": slug,
-            "name": name,
-            "kind": kind,
-            "pictures": _rows(held, ("slug", "name")),
-        }
-        if kind == "lora":
-            page["used_with"] = _rows(pages.lora_synergy(conn, artifact_id), ("name", "slug", "together"))
-        return page
     finally:
         connect.close(conn)
 
@@ -178,21 +146,6 @@ def workflows(state: State) -> list[dict]:
         return _rows(pages.workflows_by_use(conn), ("name", "slug", "pictures"))
     finally:
         connect.close(conn)
-
-
-@get("/m/{slug:str}", sync_to_thread=True)
-def model_page(state: State, slug: str) -> dict | Redirect:
-    return _artifact_page(state, slug, "/m")
-
-
-@get("/l/{slug:str}", sync_to_thread=True)
-def lora_page(state: State, slug: str) -> dict | Redirect:
-    return _artifact_page(state, slug, "/l")
-
-
-@get("/w/{slug:str}", sync_to_thread=True)
-def workflow_page(state: State, slug: str) -> dict | Redirect:
-    return _artifact_page(state, slug, "/w")
 
 
 # The album index and page live in sg_web/collection_view.py, and every
@@ -904,9 +857,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             models,
             loras,
             workflows,
-            model_page,
-            lora_page,
-            workflow_page,
+            artifact_view.model_page,
+            artifact_view.lora_page,
+            artifact_view.workflow_page,
             collection_view.albums_index,
             collection_authoring.make_album,
             collection_authoring.make_smart,

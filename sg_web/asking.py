@@ -21,6 +21,7 @@ def gallery_query(
     sort: str | None,
     size: int | None,
     person: str | None = None,
+    artifact: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
 ) -> resultset.GalleryQuery:
@@ -29,6 +30,7 @@ def gallery_query(
             folder=folder,
             album=album,
             person=person,
+            artifact=artifact,
             kind=kind,
             favorite=favorite,
             rating_min=rating_min,

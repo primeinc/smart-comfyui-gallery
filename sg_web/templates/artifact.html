@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ artifact.name }}</title>
+  <link rel="canonical" href="{{ shelf }}/{{ artifact.slug }}">
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      {% if artifact.kind == "workflow" %}
+      <a href="/workflows">workflows</a>
+      {% elif artifact.kind == "lora" %}
+      <a href="/loras">loras</a>
+      {% else %}
+      <a href="/models">models</a>
+      {% endif %}
+      <span class="crumbs-here">{{ artifact.name }}</span>
+      <span class="crumbs-where">{{ artifact.kind }} &middot; {{ artifact.count }} pictures</span>
+    </nav>
+  </header>
+  <main class="detail">
+    <section class="detail-facts">
+      <h2>what this is</h2>
+      <ul>
+        <li>kind &middot; {{ artifact.kind }}</li>
+        {% if artifact.architecture %}<li>architecture &middot; {{ artifact.architecture }}</li>{% endif %}
+        {% if artifact.content_sha256 %}<li>sha256 &middot; <code>{{ artifact.content_sha256 }}</code></li>{% endif %}
+        {% if artifact.quoted_hash %}<li>quoted hash &middot; <code>{{ artifact.quoted_hash }}</code> (claimed, never verified)</li>{% endif %}
+      </ul>
+    </section>
+    {% if artifact.used_with %}
+    <section class="detail-facts">
+      <h2>used with</h2>
+      <ul>
+        {% for held in artifact.used_with %}
+        <li><a href="/m/{{ held.slug }}">{{ held.name }}</a> &middot; {{ held.together }} together</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {% if artifact.gallery["items"] %}
+    <div class="grid">
+      {% for pic in artifact.gallery["items"] %}
+      <a class="cell" href="/i/{{ pic.slug }}?{{ artifact.gallery.qs }}" data-slug="{{ pic.slug }}">
+        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
+        <span class="cell-name">{{ pic.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <p class="pager"><a href="/g?{{ artifact.gallery.qs }}">browse all {{ artifact.gallery.total }} in the gallery</a></p>
+    {% else %}
+    <p class="empty">no pictures used this yet.</p>
+    {% endif %}
+  </main>
+</body>
+</html>

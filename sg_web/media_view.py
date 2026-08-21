@@ -137,6 +137,7 @@ def media_page(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -149,7 +150,9 @@ def media_page(
     The overlay's currency expectation arrives OUT-OF-BAND in the
     `X-SG-Expect` header -- never in the URL, which stays the canonical
     context the browser may push, share or reload."""
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "file", slug)

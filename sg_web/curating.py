@@ -139,6 +139,7 @@ def bulk_favorite(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -146,7 +147,9 @@ def bulk_favorite(
     sort: str | None = None,
     size: int | None = None,
 ) -> Response:
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     return _applied(
         state,
         query,
@@ -162,6 +165,7 @@ def bulk_rating(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -169,7 +173,9 @@ def bulk_rating(
     sort: str | None = None,
     size: int | None = None,
 ) -> Response:
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
     return _applied(
         state,
         query,
@@ -186,6 +192,7 @@ def bulk_membership(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -193,7 +200,9 @@ def bulk_membership(
     sort: str | None = None,
     size: int | None = None,
 ) -> Response:
-    query = _asked(folder, album, kind, q, sort, size, person=person, favorite=favorite, rating_min=rating_min)
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
 
     def write(conn, ids):
         found = naming.resolve(conn, "collection", collection)

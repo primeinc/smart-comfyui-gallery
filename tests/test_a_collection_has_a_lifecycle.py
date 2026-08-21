@@ -440,9 +440,10 @@ def test_a_refused_transition_leaves_the_callers_transaction_untouched(curated):
     curated.post("/albums/smart", json={"name": "Starred", "rating_min": 4})
     actor = curated.app.state.actor_id
     bad = collection_rules.CollectionRule(
-        version=1,
+        version=2,
         folder_uuid=None,
         person_uuid=None,
+        artifact_uuid=None,
         kind="platypus",
         favorite=None,
         rating_min=None,

@@ -100,6 +100,10 @@ class GalleryQuery:
     folder: str | None = None  # scope: one folder, by slug
     album: str | None = None  # scope: one album (collection), by slug
     person: str | None = None  # facet: composes with any scope, kind and phrase
+    #: One artifact entity, by slug -- checkpoint, LoRA, workflow, lens:
+    #: the artifact's OWN kind decides its canonical relation, invisible
+    #: here. Never model=/lora=/role= -- one entity, one facet.
+    artifact: str | None = None
     kind: str | None = None  # filter: one file kind
     #: Authored facets: the asking ACTOR's own judgement, composable like
     #: any predicate. The actor never rides the URL -- it binds at answer
@@ -117,6 +121,7 @@ def parse(
     folder: str | None = None,
     album: str | None = None,
     person: str | None = None,
+    artifact: str | None = None,
     kind: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
@@ -133,6 +138,7 @@ def parse(
     folder = (folder or "").strip() or None
     album = (album or "").strip() or None
     person = (person or "").strip() or None
+    artifact = (artifact or "").strip() or None
     kind = (kind or "").strip() or None
     text = (text or "").strip() or None
     if sort is None or not sort.strip():
@@ -167,6 +173,7 @@ def parse(
         folder=folder,
         album=album,
         person=person,
+        artifact=artifact,
         kind=kind,
         favorite=None if liked is None else liked == "1",
         rating_min=None if rating_min is None else int(rating_min),
@@ -273,6 +280,8 @@ def canonical(query: GalleryQuery, page: int | None = None) -> str:
         pairs.append(("album", query.album))
     if query.person:
         pairs.append(("person", query.person))
+    if query.artifact:
+        pairs.append(("artifact", query.artifact))
     if query.kind:
         pairs.append(("kind", query.kind))
     if query.favorite is not None:
@@ -307,6 +316,12 @@ class _Bound:
     collection_id: int | None
     person_id: int | None
     face_run_id: int | None
+    #: The artifact facet, bound: the stable entity id plus the
+    #: artifact's OWN kind, which privately decides whether membership
+    #: means file_artifact or generation.workflow_id. Nothing above this
+    #: module ever sees that split.
+    artifact_id: int | None
+    artifact_kind: str | None
     #: WHOSE judgement the authored facets mean. Set only when the query
     #: carries one, so questions without an authored facet stay one
     #: cached projection however many actors ask them.
@@ -330,9 +345,14 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     while wearing this one's URL."""
     from . import naming
 
-    held: dict[str, int | None] = {"folder": None, "album": None, "person": None}
+    held: dict[str, int | None] = {"folder": None, "album": None, "person": None, "artifact": None}
     live: dict[str, str] = {}
-    for field, entity_kind in (("folder", "folder"), ("album", "collection"), ("person", "person")):
+    for field, entity_kind in (
+        ("folder", "folder"),
+        ("album", "collection"),
+        ("person", "person"),
+        ("artifact", "artifact"),
+    ):
         slug = getattr(query, field)
         if slug is None:
             continue
@@ -366,6 +386,9 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
         run = row[0] if row else None
+    artifact_kind = None
+    if held["artifact"] is not None:
+        artifact_kind = conn.execute("SELECT kind FROM artifact WHERE id = ?", (held["artifact"],)).fetchone()[0]
     asks_authored = query.favorite is not None or query.rating_min is not None
     if asks_authored and actor_id is None:
         raise ValueError("an authored facet (favorite, rating) is one actor's judgement; no actor was bound")
@@ -375,6 +398,8 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
         collection_id=held["album"],
         person_id=held["person"],
         face_run_id=run,
+        artifact_id=held["artifact"],
+        artifact_kind=artifact_kind,
         actor_id=actor_id if asks_authored else None,
         rule=rule,
     )
@@ -386,8 +411,12 @@ def _bind_rule(conn, rule, spelled: str) -> _Bound:
     actor PINNED AT CREATION for its authored facets, never the viewer."""
     from .collection_rules import BrokenCollectionRule
 
-    held: dict[str, int | None] = {"folder": None, "person": None}
-    for field, uuid in (("folder", rule.folder_uuid), ("person", rule.person_uuid)):
+    held: dict[str, int | None] = {"folder": None, "person": None, "artifact": None}
+    for field, uuid in (
+        ("folder", rule.folder_uuid),
+        ("person", rule.person_uuid),
+        ("artifact", rule.artifact_uuid),
+    ):
         if uuid is None:
             continue
         row = conn.execute("SELECT id FROM entity WHERE uuid = ? AND kind = ?", (uuid, field)).fetchone()
@@ -398,6 +427,9 @@ def _bind_rule(conn, rule, spelled: str) -> _Bound:
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
         run = row[0] if row else None
+    artifact_kind = None
+    if held["artifact"] is not None:
+        artifact_kind = conn.execute("SELECT kind FROM artifact WHERE id = ?", (held["artifact"],)).fetchone()[0]
     inner = GalleryQuery(
         kind=rule.kind,
         favorite=rule.favorite,
@@ -411,6 +443,8 @@ def _bind_rule(conn, rule, spelled: str) -> _Bound:
         collection_id=None,
         person_id=held["person"],
         face_run_id=run,
+        artifact_id=held["artifact"],
+        artifact_kind=artifact_kind,
         actor_id=rule.actor_id,
     )
 
@@ -425,6 +459,7 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "folder": bound.folder_id,
             "album": bound.collection_id,
             "person": bound.person_id,
+            "artifact": bound.artifact_id,
             "run": bound.face_run_id,
             "actor": bound.actor_id,
             "favorite": query.favorite,
@@ -445,22 +480,19 @@ def _bound_fingerprint(bound: _Bound) -> str:
     return hashlib.sha256(told.encode()).hexdigest()[:16]
 
 
-def _timed_ids(conn, bound: _Bound) -> list[int]:
-    """Eligibility is an INTERSECTION of predicates, constructed -- not
-    a choice between fixed statements. `person` composes with a folder,
-    an album, a kind, and (via the allowed set) a phrase: a file
-    satisfies person=jane iff the bound primary run attributes it to
-    her, exactly what /people and the profile already mean. The walk
-    stays ordered by the file table's own time index; the whole
-    statement runs once per library change, never once per page."""
+def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
+    """The membership predicates of a bound question, constructed ONCE
+    -- eligibility is an INTERSECTION of predicates, not a choice
+    between fixed statements, and this single construction feeds BOTH
+    the ordered timed walk and semantic retrieval's allowed set. A facet
+    added here is automatically part of both; the alternative was two
+    manually-synchronized definitions of "is this question faceted?",
+    whose drift would have made a timed artifact search correct while
+    the same facet under a phrase silently ranked the whole library.
+
+    Returns (predicates, values, constrained) -- `constrained` says
+    whether anything beyond presence narrows the membership."""
     query = bound.query
-    # The ORDERING CONTRACT: (mtime, id) both in the sort's direction --
-    # the same contract file_in_folder_by_time carries, so global and
-    # folder-scoped questions tie identically. The indexes implement
-    # this spelling (file_recent is (mtime DESC, id DESC), schema v6),
-    # never the reverse: bending the tiebreak to fit an index once
-    # silently changed real answer identities and ordinals.
-    order = "ASC" if query.sort == "oldest" else "DESC"
     where = ["f.missing_since IS NULL"]
     args: list[object] = []
     if bound.folder_id is not None:
@@ -473,12 +505,23 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
         if bound.face_run_id is None:
             # The person exists; no primary clustering attributes anyone
             # anything. An honest empty, distinct from an unknown slug.
-            return []
-        where.append(
-            "EXISTS (SELECT 1 FROM derived_file_person fp"
-            " WHERE fp.file_id = f.id AND fp.person_id = ? AND fp.run_id = ?)"
-        )
-        args.extend((bound.person_id, bound.face_run_id))
+            where.append("0")
+        else:
+            where.append(
+                "EXISTS (SELECT 1 FROM derived_file_person fp"
+                " WHERE fp.file_id = f.id AND fp.person_id = ? AND fp.run_id = ?)"
+            )
+            args.extend((bound.person_id, bound.face_run_id))
+    if bound.artifact_id is not None:
+        # The artifact's canonical relation, decided by ITS kind: a
+        # workflow attaches through generation, weights and equipment
+        # through file_artifact -- role-blind, and EXISTS makes a LoRA
+        # stacked at two ordinals one media member.
+        if bound.artifact_kind == "workflow":
+            where.append("EXISTS (SELECT 1 FROM generation g WHERE g.file_id = f.id AND g.workflow_id = ?)")
+        else:
+            where.append("EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id AND fa.artifact_id = ?)")
+        args.append(bound.artifact_id)
     if query.kind is not None:
         where.append("f.kind = ?")
         args.append(query.kind)
@@ -491,6 +534,21 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     if query.rating_min is not None:
         where.append("EXISTS (SELECT 1 FROM rating r WHERE r.file_id = f.id AND r.user_id = ? AND r.rating >= ?)")
         args.extend((bound.actor_id, query.rating_min))
+    return where, args, len(where) > 1
+
+
+def _timed_ids(conn, bound: _Bound) -> list[int]:
+    """The ordered walk over `_eligibility`'s membership. The walk stays
+    on the file table's own time index; the whole statement runs once
+    per library change, never once per page."""
+    # The ORDERING CONTRACT: (mtime, id) both in the sort's direction --
+    # the same contract file_in_folder_by_time carries, so global and
+    # folder-scoped questions tie identically. The indexes implement
+    # this spelling (file_recent is (mtime DESC, id DESC), schema v6),
+    # never the reverse: bending the tiebreak to fit an index once
+    # silently changed real answer identities and ordinals.
+    order = "ASC" if bound.query.sort == "oldest" else "DESC"
+    where, args, _ = _eligibility(bound)
     sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {order}"
     return [row[0] for row in conn.execute(sql, args)]
 
@@ -538,10 +596,9 @@ def _fused_ids(
 
     query = bound.query
     allowed = None
-    faceted = (bound.folder_id, bound.collection_id, bound.person_id, query.kind, query.favorite, query.rating_min)
-    if any(x is not None for x in faceted):
-        eligible = dataclasses.replace(bound, query=dataclasses.replace(query, text=None, sort="newest"), rule=None)
-        allowed = set(_timed_ids(conn, eligible))
+    where, args, constrained = _eligibility(bound)
+    if constrained:
+        allowed = {row[0] for row in conn.execute(f"SELECT f.id FROM file f WHERE {' AND '.join(where)}", args)}
     if members is not None:
         # A smart scope's membership INTERSECTS the outer eligibility --
         # evaluated to a set precisely so a rule's person and the
