@@ -11,3 +11,4 @@ pillow-jxl-plugin  # JPEG XL decode, same rule
 av  # PyAV: FFmpeg's libraries as a wheel -- probe, decode, posters, no system binary
 rawpy  # LibRaw: the RAW family develops like any other picture
 imagehash  # perceptual identity: the same picture, whatever became of its bytes
+qwen-vl-utils  # Qwen3-VL's own media formatting: frames, pixel budgets, chat templates

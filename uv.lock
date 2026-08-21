@@ -2436,6 +2436,22 @@ wheels = [
 ]
 
 [[package]]
+name = "qwen-vl-utils"
+version = "0.0.14"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "av", version = "17.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "av", version = "18.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "packaging" },
+    { name = "pillow" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/b1/ad4fc2260a3badd278b38d642f3b987412f1f6682f0ef2b31b0572d5caa8/qwen_vl_utils-0.0.14.tar.gz", hash = "sha256:9c7cad5ae803b3a10f8bb7194deb12aeacdd032f92f4224e880c73587a7346ad", size = 8453, upload-time = "2025-09-23T09:38:57.532Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/43/80f67e0336cb2fc725f8e06f7fe35c1d0fe946f4d2b8b2175e797e07349e/qwen_vl_utils-0.0.14-py3-none-any.whl", hash = "sha256:5e28657bfd031e56bd447c5901b58ddfc3835285ed100f4c56580e0ade054e96", size = 8120, upload-time = "2025-09-23T09:38:56.297Z" },
+]
+
+[[package]]
 name = "rawpy"
 version = "0.27.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3043,6 +3059,7 @@ dependencies = [
     { name = "pillow-heif" },
     { name = "pillow-jxl-plugin" },
     { name = "pypdf" },
+    { name = "qwen-vl-utils" },
     { name = "rawpy" },
     { name = "uvicorn" },
 ]
@@ -3098,6 +3115,7 @@ requires-dist = [
     { name = "pillow-heif", specifier = ">=1.5.0" },
     { name = "pillow-jxl-plugin", specifier = ">=1.3.8" },
     { name = "pypdf", specifier = ">=6.16.1" },
+    { name = "qwen-vl-utils", specifier = ">=0.0.14" },
     { name = "rawpy", specifier = ">=0.27.0" },
     { name = "uvicorn" },
 ]
