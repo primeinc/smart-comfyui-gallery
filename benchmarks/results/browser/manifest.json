@@ -1,6 +1,6 @@
 {
- "taken_at": "2026-08-20 21:42:17",
- "commit": "9d18db0-dirty",
+ "taken_at": "2026-08-20 22:15:25",
+ "commit": "c558829-dirty",
  "evidence": [
   {
    "name": "job-live",
@@ -44,7 +44,7 @@
   {
    "name": "copy-shelf",
    "file": "copy-shelf.png",
-   "caption": "GET /dupes after the phash and dupes jobs: each group is one picture shown by its best body, counted. An empty shelf is the honest answer when the library holds no perceptual copies -- and proof the similar renders did not falsely merge.",
+   "caption": "One group opened body by body -- every name and every hamming distance served by the picture's own page -- then the radius setting turned live over its route and the dupes job rerun at each stop: what joins the shown picture a few bits out, and the radius where formerly-distinct groups start to fuse.",
    "facts": {
     "groups": 6,
     "copies_each": [
@@ -55,6 +55,115 @@
      6,
      6
     ],
+    "shown": {
+     "0947001-c5afa607-qwnImageEdit_v16Fp8Scaled.png": 0,
+     "pic0_gen2.jpg": 0,
+     "pic0_half.png": 0,
+     "pic0_original.png": 0,
+     "pic0_quarter.jpg": 0,
+     "pic0_web.webp": 0
+    },
+    "ladder": [
+     {
+      "radius": 8,
+      "groups": 6,
+      "biggest": 6,
+      "joined_shown": [],
+      "fused_groups": 0
+     },
+     {
+      "radius": 12,
+      "groups": 11,
+      "biggest": 8,
+      "joined_shown": [],
+      "fused_groups": 0
+     },
+     {
+      "radius": 16,
+      "groups": 19,
+      "biggest": 11,
+      "joined_shown": [],
+      "fused_groups": 1
+     },
+     {
+      "radius": 24,
+      "groups": 1,
+      "biggest": 196,
+      "joined_shown": [
+       "2205001-c98a8c74-qwnImageEdit_v16Fp8Scaled.png (22 bits)",
+       "2131001-d13fcca6-qwnImageEdit_v16Fp8Scaled.png (24 bits)",
+       "2142001-bc63edf8-qwnImageEdit_v16Fp8Scaled.png (24 bits)",
+       "2149001-89d292a2-qwnImageEdit_v16Fp8Scaled.png (24 bits)",
+       "1000001-ea86cdf3-qwnImageEdit_v16Fp8Scaled.png (26 bits)",
+       "1001001-ac754a8a-qwnImageEdit_v16Fp8Scaled.png (26 bits)",
+       "1004001-2072b398-qwnImageEdit_v16Fp8Scaled.png (26 bits)",
+       "2137001-9f4106c2-qwnImageEdit_v16Fp8Scaled.png (26 bits)",
+       "2153001-37f8fe79-qwnImageEdit_v16Fp8Scaled.png (26 bits)",
+       "2207001-9f9c7c4c-qwnImageEdit_v16Fp8Scaled.png (26 bits)",
+       "Selfie_10.jpg (26 bits)",
+       "0959001-17e15d9f-qwnImageEdit_v16Fp8Scaled.png (28 bits)",
+       "2132001-15e41308-qwnImageEdit_v16Fp8Scaled.png (28 bits)",
+       "2134001-13399b4f-qwnImageEdit_v16Fp8Scaled.png (28 bits)",
+       "2141001-97cc6cd7-qwnImageEdit_v16Fp8Scaled.png (28 bits)",
+       "2156001-f89e6f7c-qwnImageEdit_v16Fp8Scaled.png (28 bits)",
+       "ID_2.jpg (28 bits)",
+       "Selfie_3.jpg (28 bits)",
+       "Selfie_4.jpg (28 bits)",
+       "0951001-7ef4cf7a-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "0955001-bdebdf8f-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "0956001-22eaeed5-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2129001-9f45457b-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2133001-8be60a7d-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2136001-7c813ae1-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2139001-61065ce3-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2143001-b1268cc5-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2144001-936e8192-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2145001-372f2576-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2148001-fe47cd6d-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2154001-6a12619c-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2158001-005ba00c-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2159001-1e3588a0-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2202001-78642cb0-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2203001-a63d94e1-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "2204001-e7964a28-qwnImageEdit_v16Fp8Scaled.png (30 bits)",
+       "ID_1.jpg (30 bits)",
+       "0949001-ecb13c12-qwnImageEdit_v16Fp8Scaled.png (32 bits)",
+       "0957001-46530ec7-qwnImageEdit_v16Fp8Scaled.png (32 bits)",
+       "1002001-3f8fba6f-qwnImageEdit_v16Fp8Scaled.png (32 bits)",
+       "2147001-c4898bbb-qwnImageEdit_v16Fp8Scaled.png (32 bits)",
+       "2209001-51a5e1f0-qwnImageEdit_v16Fp8Scaled.png (32 bits)",
+       "Selfie_1.jpg (32 bits)",
+       "Selfie_2.jpg (32 bits)",
+       "Selfie_5.jpg (32 bits)",
+       "Selfie_7.jpg (32 bits)",
+       "Selfie_8.jpg (32 bits)",
+       "0950001-0c43f093-qwnImageEdit_v16Fp8Scaled.png (34 bits)",
+       "0958001-3a6e8dbb-qwnImageEdit_v16Fp8Scaled.png (34 bits)",
+       "2150001-cf1a1842-qwnImageEdit_v16Fp8Scaled.png (34 bits)",
+       "2151001-3944b575-qwnImageEdit_v16Fp8Scaled.png (34 bits)",
+       "2206001-3c9dc1e9-qwnImageEdit_v16Fp8Scaled.png (34 bits)",
+       "Selfie_11.jpg (34 bits)",
+       "Selfie_12.jpg (34 bits)",
+       "0948001-6e74b8ea-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "0952001-248ce39c-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "0954001-e6958d1d-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "1005001-92f6d34e-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2129002-e3a6c66f-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2138001-c9c6fba7-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2140001-0e64af22-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2155001-71234849-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2200001-2b735d83-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2201001-3d4d9779-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "2210001-61a6a91e-qwnImageEdit_v16Fp8Scaled.png (36 bits)",
+       "Selfie_13.jpg (38 bits)",
+       "2152001-9a563ebe-qwnImageEdit_v16Fp8Scaled.png (38 bits)",
+       "Selfie_6.jpg (38 bits)",
+       "Selfie_9.jpg (38 bits)"
+      ],
+      "fused_groups": 1
+     }
+    ],
+    "restored_groups": 6,
     "broken_tiles": 0
    }
   },

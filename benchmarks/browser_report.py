@@ -61,8 +61,9 @@ SECTIONS = (
     (
         "One picture, however many bodies",
         (
-            "Perceptual identity over the real samples: the phash and dupes jobs on the live feed,"
-            " groups served best-face-first -- and similar-but-distinct renders staying apart"
+            "Perceptual identity, testified by the app alone: one group opened body by body with"
+            " measured hamming distances, then the radius dial turned live over the settings route"
+            " -- what joins a few bits out, and where distinct pictures begin to fuse"
         ),
         ("copy-shelf",),
     ),
@@ -520,37 +521,141 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 )
                 page.close()
 
-                # --- the copy shelf, from the app's own routes ----------------
+                # --- one picture opened, and the radius dial ------------------
+                # Driven by the app alone: /dupes names the groups, /i/<slug>
+                # names each group's bodies with their measured distances, and
+                # the threshold is a live setting exercised over its own
+                # route. The driver never identifies a file itself -- what
+                # joined, what stayed out, and at which radius is testimony.
                 page = watched_page()
-                bodies = web.get("/dupes").json()
-                if bodies:
-                    tiles = "".join(
-                        f'<div style="width:132px;text-align:center;font:12.5px system-ui;color:#dfe5e1">'
-                        f'<img src="{base}/thumb/{group["slug"]}" style="width:120px;height:120px;'
-                        f'object-fit:cover;border-radius:6px;background:#222">'
-                        f'<div style="padding-top:5px">&times;{group["copies"]} bodies</div></div>'
-                        for group in bodies[:8]
+                page.evaluate(
+                    "(feed) => { window.__got = [];"
+                    " window.__ws = new WebSocket(feed);"
+                    " window.__ws.onmessage = (event) => window.__got.push(JSON.parse(event.data)); }",
+                    f"ws://127.0.0.1:{port}/ws/jobs",
+                )
+                page.wait_for_function("() => window.__ws.readyState === 1")
+
+                def regroup(radius: int) -> list[dict]:
+                    told = web.post("/settings/dupe_threshold", json={"value": str(radius)})
+                    if told.status_code >= 300:
+                        raise RuntimeError(f"dupe_threshold={radius} answered {told.status_code}: {told.text}")
+                    ran = web.post("/jobs/dupes").json()
+                    page.wait_for_function(
+                        "(id) => window.__got.some(m => m.job === id"
+                        " && ['done','failed','cancelled'].includes(m.state))",
+                        arg=ran["id"],
+                        timeout=600_000,
                     )
-                    shelf_body = (
-                        f'<div id="copies" style="display:flex;gap:14px;padding:16px;width:fit-content">{tiles}</div>'
+                    outcome = web.get(f"/jobs/{ran['id']}").json()
+                    if outcome["state"] != "done":
+                        raise RuntimeError(f"dupes at radius {radius} settled {outcome['state']}: {outcome['error']}")
+                    return web.get("/dupes").json()
+
+                def members_of(listed: list[dict]) -> dict[str, dict[str, int]]:
+                    """Every group's bodies as {name: bits}, best included at 0,
+                    from the same page route a person would read."""
+                    opened = {}
+                    for group in listed:
+                        told = web.get(f"/i/{group['slug']}").json()
+                        opened[group["slug"]] = {group["name"]: 0} | {
+                            body["name"]: body["distance"] for body in told["copies"]
+                        }
+                    return opened
+
+                groups = web.get("/dupes").json()
+                if not groups:
+                    raise RuntimeError("the manufactured copies did not group -- nothing to demonstrate")
+                baseline = members_of(groups)
+                shown_best = groups[0]["slug"]
+                shown = baseline[shown_best]
+
+                def chip(name: str, bits: int) -> str:
+                    crown = "best of the group" if bits == 0 else f"{bits} bits away"
+                    edge = "1px solid #2c6" if bits == 0 else "1px solid #333"
+                    return (
+                        f'<div style="width:150px;font:12px system-ui;color:#dfe5e1;border:{edge};'
+                        f'border-radius:8px;padding:8px;text-align:center;background:#191d20">'
+                        f'<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+                        f"{html.escape(name)}</div>"
+                        f'<div style="color:#8b968f;padding-top:3px">{crown}</div></div>'
                     )
-                else:
-                    shelf_body = (
-                        '<div id="copies" style="padding:22px;font:14px system-ui;color:#9fb0a6;width:fit-content">'
-                        "No perceptual duplicates in these samples at the configured threshold &mdash; "
-                        f"{len(slug_rows)} files, every one its own picture. The similar-style renders stayed apart."
-                        "</div>"
+
+                opened_tiles = (
+                    f'<div style="display:flex;gap:10px;align-items:flex-start">'
+                    f'<img src="{base}/thumb/{shown_best}" style="width:150px;height:150px;'
+                    f'object-fit:cover;border-radius:8px;background:#222">'
+                    f'<div style="display:flex;gap:8px;flex-wrap:wrap;max-width:560px">'
+                    f"{''.join(chip(name, bits) for name, bits in sorted(shown.items(), key=lambda p: p[1]))}"
+                    f"</div></div>"
+                )
+
+                # The dial, turned live. A body that joins the shown picture a
+                # few bits out is a copy the default radius missed (the crops
+                # land here); a radius where formerly-distinct groups fuse is
+                # the dial turned too far -- both read straight off the shelf.
+                ladder = []
+                for radius in (8, 12, 16, 24):
+                    regrouped = regroup(radius)
+                    wider = members_of(regrouped)
+                    # Follow the shown picture by MEMBERSHIP, not by its best:
+                    # a merged group crowns whichever body has the most pixels,
+                    # so tracking the old best's slug loses the group the
+                    # moment the dial makes it interesting.
+                    grew = next((body for body in wider.values() if shown.keys() & body.keys()), {})
+                    joined = sorted(
+                        [(name, bits) for name, bits in grew.items() if name not in shown],
+                        key=lambda pair: pair[1],
                     )
-                page.set_content(f'<body style="margin:0;background:#14171a">{shelf_body}')
-                broken = _all_loaded(page, "#copies") if bodies else []
+                    fused = sum(
+                        1
+                        for body in wider.values()
+                        if sum(1 for best in baseline.values() if best.keys() & body.keys()) > 1
+                    )
+                    ladder.append(
+                        {
+                            "radius": radius,
+                            "groups": len(regrouped),
+                            "biggest": max((group["copies"] for group in regrouped), default=0),
+                            "joined_shown": [f"{name} ({bits} bits)" for name, bits in joined],
+                            "fused_groups": fused,
+                        }
+                    )
+                restored = regroup(4)
+
+                cells = "".join(
+                    f'<tr><td style="padding:3px 12px 3px 0">{rung["radius"]}</td>'
+                    f'<td style="padding:3px 12px 3px 0">{rung["groups"]}</td>'
+                    f'<td style="padding:3px 12px 3px 0">{rung["biggest"]}</td>'
+                    f'<td style="padding:3px 12px 3px 0">{html.escape(", ".join(rung["joined_shown"]) or "--")}</td>'
+                    f'<td style="padding:3px 0">{rung["fused_groups"]}</td></tr>'
+                    for rung in ladder
+                )
+                page.set_content(
+                    '<body style="margin:0;background:#14171a">'
+                    '<div id="copies" style="padding:16px;width:fit-content;font:13px system-ui;color:#dfe5e1">'
+                    f'<div style="padding-bottom:6px;color:#9fb0a6">{len(groups)} groups at radius 4;'
+                    f" the biggest, opened:</div>"
+                    f"{opened_tiles}"
+                    '<table style="margin-top:14px;border-collapse:collapse;font:12.5px system-ui;color:#dfe5e1">'
+                    "<tr style='color:#8b968f;text-align:left'><th style='padding-right:12px'>radius</th>"
+                    "<th style='padding-right:12px'>groups</th><th style='padding-right:12px'>biggest</th>"
+                    "<th style='padding-right:12px'>joins the shown picture</th><th>groups fused</th></tr>"
+                    f"{cells}</table></div>"
+                )
+                broken = _all_loaded(page, "#copies")
                 keep(
                     "copy-shelf",
                     page.locator("#copies").screenshot(),
-                    "GET /dupes after the phash and dupes jobs: each group is one picture shown by its"
-                    " best body, counted. An empty shelf is the honest answer when the library holds"
-                    " no perceptual copies -- and proof the similar renders did not falsely merge.",
-                    groups=len(bodies),
-                    copies_each=[group["copies"] for group in bodies[:8]],
+                    "One group opened body by body -- every name and every hamming distance served by"
+                    " the picture's own page -- then the radius setting turned live over its route and"
+                    " the dupes job rerun at each stop: what joins the shown picture a few bits out,"
+                    " and the radius where formerly-distinct groups start to fuse.",
+                    groups=len(groups),
+                    copies_each=[group["copies"] for group in groups[:8]],
+                    shown=dict(sorted(shown.items(), key=lambda pair: pair[1])),
+                    ladder=ladder,
+                    restored_groups=len(restored),
                     broken_tiles=len(broken),
                 )
                 page.close()
