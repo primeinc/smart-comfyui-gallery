@@ -24,6 +24,7 @@ def gallery_query(
     artifact: str | None = None,
     favorite: str | None = None,
     rating_min: int | None = None,
+    facets=None,
 ) -> resultset.GalleryQuery:
     try:
         return resultset.parse(
@@ -34,6 +35,7 @@ def gallery_query(
             kind=kind,
             favorite=favorite,
             rating_min=rating_min,
+            facets=facets,
             text=q,
             sort=sort,
             size=size,

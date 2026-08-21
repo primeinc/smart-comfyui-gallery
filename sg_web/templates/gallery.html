@@ -19,6 +19,7 @@
       {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
       {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
       {% if artifact %}<input type="hidden" name="artifact" value="{{ artifact }}">{% endif %}
+      {% for one in facets %}<input type="hidden" name="f" value="{{ one }}">{% endfor %}
       <select name="kind" aria-label="kind">
         <option value="">any kind</option>
         {% for one in kinds %}

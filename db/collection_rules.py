@@ -192,6 +192,16 @@ def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -
     """
     if query.album is not None:
         raise ValueError("a rule cannot reference a collection; smart-in-smart is not a v1 question")
+    if query.facets:
+        # Fail closed, exactly like an unknown stored field: silently
+        # dropping the facets would save a smart collection whose
+        # membership differs from the answer on screen.
+        raise ValueError("metadata facets require a later rule version; this view cannot be saved whole yet")
+    if take is not None and type(take) is not int:
+        # Exact-integer BEFORE any coercion: int(True) is 1, and a
+        # boolean quietly becoming a one-item cutoff is the truthiness
+        # species this module exists to refuse.
+        raise ValueError(f"take is an exact integer, not {take!r}")
     asks_authored = query.favorite is not None or query.rating_min is not None
     sort = query.sort
     if take is None and query.text is None:
@@ -206,7 +216,7 @@ def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -
         rating_min=query.rating_min,
         text=query.text,
         sort=sort,
-        take=None if take is None else int(take),
+        take=take,
         actor_id=actor_id if asks_authored else None,
     )
     return validate(made, ValueError)

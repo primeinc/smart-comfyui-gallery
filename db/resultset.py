@@ -112,6 +112,11 @@ class GalleryQuery:
     favorite: bool | None = None  # True: favorited; False: NOT favorited
     rating_min: int | None = None  # at least this many stars from the actor, 1..5
     text: str | None = None  # the semantic phrase; implies sort=similarity
+    #: Registered metadata predicates (db/context.py owns the
+    #: vocabulary): each composes like any other facet, timed and
+    #: semantic alike. Canonically ordered, so two spellings of one
+    #: conjunction are one question.
+    facets: tuple = ()
     sort: str = "newest"
     size: int = DEFAULT_PAGE_SIZE
 
@@ -126,6 +131,7 @@ def parse(
     favorite: str | None = None,
     rating_min: int | None = None,
     text: str | None = None,
+    facets=None,
     sort: str | None = None,
     size: int | None = None,
 ) -> GalleryQuery:
@@ -169,6 +175,9 @@ def parse(
     chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
     if not 1 <= chosen <= MAX_PAGE_SIZE:
         raise ValueError(f"page size must be 1..{MAX_PAGE_SIZE}, not {chosen}")
+    from . import facets as facets_module
+
+    held = facets_module.normalized(facets)
     return GalleryQuery(
         folder=folder,
         album=album,
@@ -178,6 +187,7 @@ def parse(
         favorite=None if liked is None else liked == "1",
         rating_min=None if rating_min is None else int(rating_min),
         text=text,
+        facets=held,
         sort=sort,
         size=chosen,
     )
@@ -288,6 +298,10 @@ def canonical(query: GalleryQuery, page: int | None = None) -> str:
         pairs.append(("favorite", "1" if query.favorite else "0"))
     if query.rating_min is not None:
         pairs.append(("rating_min", str(query.rating_min)))
+    if query.facets:
+        from . import facets as facets_module
+
+        pairs.extend(("f", facets_module.spell(held)) for held in query.facets)
     if query.sort != ("similarity" if query.text else "newest"):
         pairs.append(("sort", query.sort))
     if query.size != DEFAULT_PAGE_SIZE:
@@ -465,6 +479,7 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "favorite": query.favorite,
             "rating_min": query.rating_min,
             "kind": query.kind,
+            "facets": [dataclasses.astuple(held) for held in query.facets],
             "text": query.text,
             "sort": query.sort,
             "size": query.size,
@@ -534,6 +549,13 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
     if query.rating_min is not None:
         where.append("EXISTS (SELECT 1 FROM rating r WHERE r.file_id = f.id AND r.user_id = ? AND r.rating >= ?)")
         args.extend((bound.actor_id, query.rating_min))
+    if query.facets:
+        from . import facets as facets_module
+
+        for held in query.facets:
+            sql, value = facets_module.predicate(held)
+            where.append(sql)
+            args.append(value)
     return where, args, len(where) > 1
 
 

@@ -23,6 +23,7 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.response import Template
 
 from db import connect, naming, resultset, settings
+from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 
@@ -59,6 +60,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "kind": query.kind or "",
         "favorite": "" if query.favorite is None else ("1" if query.favorite else "0"),
         "rating_min": query.rating_min or "",
+        "facets": [facets_module.spell(held) for held in query.facets],
         "qs": shape["qs"],
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
@@ -76,13 +78,24 @@ def gallery(
     favorite: str | None = None,
     rating_min: int | None = None,
     q: str | None = None,
+    f: list[str] | None = None,
     sort: str | None = None,
     size: int | None = None,
     page: int = 1,
 ) -> Template:
     """The gallery, whole, from nothing but the URL."""
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     return Template(template_name="gallery.html", context=_grid_context(state, query, page))
 
@@ -98,13 +111,24 @@ def grid_fragment(
     favorite: str | None = None,
     rating_min: int | None = None,
     q: str | None = None,
+    f: list[str] | None = None,
     sort: str | None = None,
     size: int | None = None,
     page: int = 1,
 ) -> Template:
     """One page of cells, for the running page to swap in place."""
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     return Template(template_name="_grid.html", context=_grid_context(state, query, page))
 
@@ -121,6 +145,7 @@ def rail_peek(
     favorite: str | None = None,
     rating_min: int | None = None,
     q: str | None = None,
+    f: list[str] | None = None,
     sort: str | None = None,
     size: int | None = None,
     count: int = resultset.PEEK_MOST,
@@ -135,7 +160,17 @@ def rail_peek(
     the response is 409 and the client redraws instead of pretending.
     """
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     conn = connect.connect(state.db_path)
     try:
@@ -166,6 +201,7 @@ def locate_in_answer(
     favorite: str | None = None,
     rating_min: int | None = None,
     q: str | None = None,
+    f: list[str] | None = None,
     sort: str | None = None,
     size: int | None = None,
 ) -> dict:
@@ -173,7 +209,17 @@ def locate_in_answer(
     previous/next in ANSWER order, which is what the arrows mean while
     a result set is being walked."""
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     conn = connect.connect(state.db_path)
     try:

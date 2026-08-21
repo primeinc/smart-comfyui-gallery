@@ -605,6 +605,11 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             for maker, name in (("camera", found.camera), ("lens", found.lens)):
                 if name:
                     out.artifacts.append((maker, name))
+    # The source claims about this file just changed hands: its derived
+    # interpretation is no longer knowably true (db/context.py stale).
+    from . import context as context_module
+
+    context_module.stale(conn, file_id)
     return out
 
 

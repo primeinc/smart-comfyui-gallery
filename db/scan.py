@@ -655,6 +655,11 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     #    now hashes to.
     for (folder_id, name), file_id in changed:
         found = observed[(folder_id, name)]
+        # The filesystem's time claims are moving under this file: its
+        # derived interpretation goes stale with them (db/context.py).
+        from . import context as context_module
+
+        context_module.stale(conn, file_id)
         conn.execute(
             "UPDATE file SET folder_id = ?, name = ?, size = ?, mtime = ?,"
             " btime = ?, inode = ?, content_sha256 = ?, last_seen_at = ?,"

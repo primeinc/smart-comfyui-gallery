@@ -132,6 +132,7 @@ class NewSmart:
     parent: str | None = None
     color: str | None = None
     description: str | None = None
+    f: str | None = None
 
 
 @post("/albums/smart", sync_to_thread=True)
@@ -153,6 +154,7 @@ def make_smart(state: State, data: NewSmart) -> Response:
             artifact=data.artifact,
             favorite=data.favorite,
             rating_min=data.rating_min,
+            facets=data.f,
         )
         rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.take)
         parent_id = _collection_at(conn, data.parent) if data.parent is not None else None
@@ -241,6 +243,7 @@ def replace_rule(state: State, slug: str, data: dict) -> Response:
             artifact=data.get("artifact"),
             favorite=data.get("favorite"),
             rating_min=data.get("rating_min"),
+            facets=data.get("f"),
         )
         rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.get("take"))
         spelled = canonical(query) or "the whole library"
@@ -273,6 +276,7 @@ def convert_collection(state: State, slug: str, data: dict) -> Response:
                 artifact=data.get("artifact"),
                 favorite=data.get("favorite"),
                 rating_min=data.get("rating_min"),
+                facets=data.get("f"),
             )
             rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.get("take"))
             collections.convert_to_smart(
