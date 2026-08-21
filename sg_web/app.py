@@ -39,7 +39,7 @@ from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
 from db import authored, connect, derived, detect, jobs, library, naming, oriented, pages, runner, scan, settings
-from sg_web import gallery, home, media, media_view, person_view
+from sg_web import collection_view, folder_view, gallery, home, media, media_view, person_view
 from sg_web import worker as worker_module
 
 
@@ -84,30 +84,8 @@ def front(state: State) -> list[dict]:
         connect.close(conn)
 
 
-# The picture page lives in sg_web/picture.py: one address, presented
-# as a full page, a lightbox fragment, or the PictureView itself.
-
-
-@get("/f/{slug:str}", sync_to_thread=True)
-def folder_page(state: State, slug: str) -> dict | Redirect:
-    """One folder: its files and its breadcrumb, walked by parent --
-    never by splitting a path, because a path is presentation."""
-    conn = _connect(state.db_path)
-    try:
-        folder_id, live = _resolved(conn, "folder", slug, "/f")
-        if live is not None:
-            return Redirect(path=f"/f/{live}", status_code=301)
-        crumbs = []
-        for crumb_id, crumb_name in pages.breadcrumb(conn, folder_id):
-            addressed = naming.entity_slug(conn, crumb_id)
-            crumbs.append({"name": crumb_name, "slug": addressed[1] if addressed else None})
-        return {
-            "slug": slug,
-            "breadcrumb": crumbs,
-            "files": _rows(pages.folder_files(conn, folder_id), ("slug", "name")),
-        }
-    finally:
-        connect.close(conn)
+# The media page lives in sg_web/media_view.py, the folder page in
+# sg_web/folder_view.py: one address each, negotiated per caller.
 
 
 #: Which shelf each addressable artifact kind lives on. Kinds outside this
@@ -192,13 +170,8 @@ def workflow_page(state: State, slug: str) -> dict | Redirect:
     return _artifact_page(state, slug, "/w")
 
 
-@get("/albums", sync_to_thread=True)
-def albums(state: State) -> list[dict]:
-    conn = _connect(state.db_path)
-    try:
-        return _rows(pages.albums(conn), ("name", "slug", "kind", "pictures"))
-    finally:
-        connect.close(conn)
+# The album index and page live in sg_web/collection_view.py: one
+# address per collection, negotiated per caller; the writes stay here.
 
 
 @dataclasses.dataclass
@@ -223,32 +196,6 @@ def make_album(state: State, data: NewAlbum) -> dict:
         conn.commit()
         addressed = naming.entity_slug(conn, collection_id)
         return {"name": cleaned, "slug": addressed[1] if addressed else None, "kind": data.kind}
-    finally:
-        connect.close(conn)
-
-
-@get("/t/{slug:str}", sync_to_thread=True)
-def album_page(state: State, slug: str) -> dict | Redirect:
-    conn = _connect(state.db_path)
-    try:
-        collection_id, live = _resolved(conn, "collection", slug, "/t")
-        if live is not None:
-            return Redirect(path=f"/t/{live}", status_code=301)
-        name, kind, sql_text, nl_text = conn.execute(
-            "SELECT name, kind, sql_text, nl_text FROM collection WHERE id = ?", (collection_id,)
-        ).fetchone()
-        page = {
-            "slug": slug,
-            "name": name,
-            "kind": kind,
-            "files": _rows(pages.album_files(conn, collection_id), ("slug", "name")),
-        }
-        if kind == "smart":
-            # Served as the rule it is. EVALUATING the rule is deferred
-            # work, said here rather than implied: the guards guarantee
-            # `files` cannot hold stored members to lie with meanwhile.
-            page["rule"] = {"sql": sql_text, "nl": nl_text}
-        return page
     finally:
         connect.close(conn)
 
@@ -929,16 +876,16 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             health,
             front,
             media_view.media_page,
-            folder_page,
+            folder_view.folder_page,
             models,
             loras,
             workflows,
             model_page,
             lora_page,
             workflow_page,
-            albums,
+            collection_view.albums_index,
             make_album,
-            album_page,
+            collection_view.album_page,
             album_add,
             album_remove,
             submit_ingest,

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ folder.name }}</title>
+  <link rel="canonical" href="/f/{{ folder.slug }}">
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      {% for crumb in folder.breadcrumb %}
+        {% if loop.last %}
+        <span class="crumbs-here">{{ crumb.name }}</span>
+        {% elif crumb.slug %}
+        <a href="/f/{{ crumb.slug }}">{{ crumb.name }}</a>
+        {% else %}
+        <span>{{ crumb.name }}</span>
+        {% endif %}
+      {% endfor %}
+      <span class="crumbs-where">{{ folder.count }} pictures</span>
+    </nav>
+  </header>
+  <main class="detail">
+    {% if folder.state != "present" %}
+    <p class="detail-state" data-state="{{ folder.state }}">
+      {% if folder.state == "missing" %}
+      this directory was not found where it was last seen — its address and history remain
+      {% else %}
+      this folder's drive is not reachable right now
+      {% endif %}
+    </p>
+    {% endif %}
+    {% if folder.folders %}
+    <section class="detail-facts">
+      <h2>folders inside</h2>
+      <ul>
+        {% for child in folder.folders %}
+        <li><a href="/f/{{ child.slug }}">{{ child.name }}</a> &middot; {{ child.pictures }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {% if folder.gallery["items"] %}
+    <div class="grid">
+      {% for pic in folder.gallery["items"] %}
+      <a class="cell" href="/i/{{ pic.slug }}?{{ folder.gallery.qs }}" data-slug="{{ pic.slug }}">
+        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
+        <span class="cell-name">{{ pic.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% if folder.gallery.pages > 1 %}
+    <p class="pager"><a href="/g?{{ folder.gallery.qs }}">browse all {{ folder.gallery.total }} in the gallery</a></p>
+    {% endif %}
+    {% elif folder.state == "present" and not folder.folders %}
+    <p class="empty">nothing directly in this folder.</p>
+    {% endif %}
+  </main>
+</body>
+</html>

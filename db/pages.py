@@ -156,6 +156,33 @@ def breadcrumb(conn, folder_id: int):
     return conn.execute(BREADCRUMB, (folder_id,)).fetchall()
 
 
+#: The root path rides along for the reachability probe ONLY -- it is
+#: server-side state and never part of any rendered answer; a folder's
+#: durable identity is its slug and its parent chain.
+FOLDER_CARD = (
+    "SELECT f.name, f.parent_id, f.missing_since, r.path  FROM folder f JOIN root r ON r.id = f.root_id WHERE f.id = ?"
+)
+
+FOLDER_CHILDREN = (
+    "SELECT e.slug, f.name,"
+    " (SELECT count(*) FROM file WHERE folder_id = f.id AND missing_since IS NULL) AS pictures"
+    "  FROM folder f JOIN entity e ON e.id = f.id"
+    " WHERE f.parent_id = ? AND f.missing_since IS NULL"
+    " ORDER BY f.name COLLATE NOCASE"
+)
+
+
+def folder_card(conn, folder_id: int):
+    return conn.execute(FOLDER_CARD, (folder_id,)).fetchone()
+
+
+def folder_children(conn, folder_id: int):
+    """The immediate child directories, each with its own DIRECT media
+    count -- `folder=` means the folder itself, never its subtree, so a
+    child is something to navigate into, not part of the answer."""
+    return conn.execute(FOLDER_CHILDREN, (folder_id,)).fetchall()
+
+
 # --- the recipe axis -------------------------------------------------------
 
 ARTIFACT_FILES = (
@@ -459,6 +486,31 @@ def album_files(conn, collection_id: int, limit: int = 120):
 
 def album_present(conn, collection_id: int) -> int:
     return conn.execute(ALBUM_PRESENT, (collection_id,)).fetchone()[0]
+
+
+COLLECTION_KIND = "SELECT kind FROM collection WHERE id = ?"
+
+COLLECTION_CARD = "SELECT name, kind, color, description, sql_text, nl_text, parent_id FROM collection WHERE id = ?"
+
+COLLECTION_CHILDREN = (
+    "SELECT e.slug, c.name, c.kind FROM collection c JOIN entity e ON e.id = c.id"
+    " WHERE c.parent_id = ? ORDER BY c.name COLLATE NOCASE"
+)
+
+
+def collection_kind(conn, collection_id: int) -> str:
+    """The kind alone. A collection's kind is set at creation and nothing
+    changes it, which is what lets a caller branch on it before opening
+    the snapshot the rest of the view is read under."""
+    return conn.execute(COLLECTION_KIND, (collection_id,)).fetchone()[0]
+
+
+def collection_card(conn, collection_id: int):
+    return conn.execute(COLLECTION_CARD, (collection_id,)).fetchone()
+
+
+def collection_children(conn, collection_id: int):
+    return conn.execute(COLLECTION_CHILDREN, (collection_id,)).fetchall()
 
 
 # --- what can be searched --------------------------------------------------

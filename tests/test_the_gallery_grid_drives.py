@@ -446,3 +446,68 @@ def test_a_losing_failure_lands_nowhere(driven):
         page.unroute("**/i/pic-004*")
     finally:
         page.close()
+
+
+def test_the_folder_page_walks_into_the_gallery(driven):
+    """The FolderView on screen: a bounded ResultSet preview (one page,
+    never the directory), media links that carry the folder context so
+    the arrows walk THE FOLDER, and Escape returning to the folder's
+    own results in the gallery."""
+    browser, base = driven
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/f/lib")
+        page.wait_for_selector(".grid")
+        assert page.locator(".cell").count() == 60, "the preview is one ResultSet page, not the directory"
+        first = page.locator(".cell").first
+        href = first.get_attribute("href")
+        assert href is not None
+        assert "?folder=lib" in href, "preview media links must carry the folder context"
+        first.click()
+        page.wait_for_selector(".detail")
+        assert "folder=lib" in page.url
+
+        walk = page.locator('.detail-walk a[rel="next"]')
+        onward = walk.get_attribute("href")
+        assert onward is not None
+        assert "folder=lib" in onward, "the arrows must keep walking the folder question"
+        walk.click()
+        page.wait_for_selector(".detail")
+        assert "folder=lib" in page.url
+
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        assert "folder=lib" in page.url, "Escape returns to the folder's own results, not the library"
+    finally:
+        page.close()
+
+
+def test_the_album_page_walks_into_the_gallery(driven):
+    """The CollectionView on screen: the authored membership as a
+    bounded grid whose media links carry the album context, and Escape
+    landing back on the album's results in the gallery."""
+    import httpx
+
+    browser, base = driven
+    with httpx.Client(base_url=base, timeout=5.0) as web:
+        assert web.post("/albums", json={"name": "Walk"}).json()["slug"] == "walk"
+        for slug in ("pic-000", "pic-001"):
+            assert web.post("/t/walk/add", json={"file": slug}).status_code < 300
+
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/t/walk")
+        page.wait_for_selector(".grid")
+        assert page.locator(".cell").count() == 2
+        href = page.locator(".cell").first.get_attribute("href")
+        assert href is not None
+        assert "?album=walk" in href, "preview media links must carry the album context"
+        page.click(".cell")
+        page.wait_for_selector(".detail")
+        assert "album=walk" in page.url
+
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => window.location.pathname === '/g'")
+        assert "album=walk" in page.url, "Escape returns to the album's own results, not the library"
+    finally:
+        page.close()

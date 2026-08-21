@@ -275,6 +275,15 @@ def bind(conn, query: GalleryQuery) -> _Bound:
             fresh = naming.entity_slug(conn, found[0])
             if fresh is not None:
                 live[field] = fresh[1]
+    if held["album"] is not None:
+        # A rule-defined collection has no stored members, so the EXISTS
+        # this module runs would answer ZERO ROWS -- an unevaluated rule
+        # masquerading as an empty album. Refused until a rule evaluator
+        # exists: unevaluated is not empty.
+        kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (held["album"],)).fetchone()[0]
+        if kind == "smart":
+            spelled = live.get("album", query.album)
+            raise ValueError(f"collection {spelled!r} is rule-defined; smart membership is not evaluated yet")
     run = None
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()

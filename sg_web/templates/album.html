@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ album.name }}</title>
+  <link rel="canonical" href="/t/{{ album.slug }}">
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/albums">albums</a>
+      {% if album.parent %}<a href="/t/{{ album.parent }}">&uarr; parent</a>{% endif %}
+      <span class="crumbs-here">{{ album.name }}</span>
+      <span class="crumbs-where">
+        {% if album.count is not none %}{{ album.count }} pictures{% else %}rule-defined{% endif %}
+      </span>
+    </nav>
+  </header>
+  <main class="detail">
+    {% if album.description %}
+    <p class="detail-note">{{ album.description }}</p>
+    {% endif %}
+    {% if album.collections %}
+    <section class="detail-facts">
+      <h2>collections inside</h2>
+      <ul>
+        {% for child in album.collections %}
+        <li><a href="/t/{{ child.slug }}">{{ child.name }}</a> &middot; {{ child.kind }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {% if album.gallery is none %}
+    <section class="detail-facts">
+      <h2>how membership is decided</h2>
+      {% if album.rule.nl %}<p>{{ album.rule.nl }}</p>{% endif %}
+      {% if album.rule.sql %}<pre class="detail-rule">{{ album.rule.sql }}</pre>{% endif %}
+      <p class="detail-state" data-state="unevaluated">
+        this collection is rule-defined; its membership is not evaluated yet, so there is no media answer to show
+      </p>
+    </section>
+    {% elif album.gallery["items"] %}
+    <div class="grid">
+      {% for pic in album.gallery["items"] %}
+      <a class="cell" href="/i/{{ pic.slug }}?{{ album.gallery.qs }}" data-slug="{{ pic.slug }}">
+        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
+        <span class="cell-name">{{ pic.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% if album.gallery.pages > 1 %}
+    <p class="pager"><a href="/g?{{ album.gallery.qs }}">browse all {{ album.gallery.total }} in the gallery</a></p>
+    {% endif %}
+    {% else %}
+    <p class="empty">nothing in this collection yet.</p>
+    {% endif %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Albums</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/g">gallery</a>
+      <span class="crumbs-here">Albums</span>
+      <span class="crumbs-where">{{ albums|length }} found</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if albums %}
+    <div class="album-list">
+      {% for one in albums %}
+      <a class="album-card" href="/t/{{ one.slug }}" data-album="{{ one.slug }}">
+        <span class="album-name">{{ one.name }}</span>
+        <span class="album-kind">{{ one.kind }}</span>
+        <span class="album-count">
+          {% if one.kind == "smart" %}rule-defined{% else %}{{ one.pictures }} pictures{% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">no albums yet.</p>
+    {% endif %}
+  </main>
+</body>
+</html>
