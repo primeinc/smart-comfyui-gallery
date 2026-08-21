@@ -358,6 +358,7 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     # named, not counted: a count passes just as well when a table is missed
     assert set(dropped) == {
         "derived_annotation",
+        "derived_context_state",
         "derived_dupe_group",
         "derived_embedding",
         "derived_face_cluster",

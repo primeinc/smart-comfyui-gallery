@@ -72,6 +72,13 @@ def interpreted(tmp_path):
                 " VALUES(?, ?, ?, ?, ?, ?, ?)",
                 (names["photo_a.png"], NOW + 12 * HOUR, -600, 1600, 21.27, -157.82, NOW),
             )
+            # ...and photo_a was ALSO run through a generator: coexistence
+            # is fact, and precedence must not erase either claim.
+            conn.execute(
+                "INSERT INTO generation(file_id, tool, detection, parser, parsed_at)"
+                " VALUES(?, 'test', 'marker', 'test', ?)",
+                (names["photo_a.png"], NOW),
+            )
             conn.execute(
                 "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, parsed_at) VALUES(?, ?, NULL, 100, ?)",
                 (names["photo_b.png"], NOW + 13 * HOUR, NOW),
@@ -115,31 +122,35 @@ def test_two_time_concepts_and_every_date_names_its_basis(interpreted):
             name: row
             for name, *row in conn.execute(
                 "SELECT f.name, mc.origin, mc.local_at, mc.instant_at, mc.tz_offset_min,"
-                " mc.time_basis, mc.time_certainty"
+                " mc.time_basis, mc.time_certainty, mc.time_precision, mc.has_capture, mc.has_generation"
                 " FROM derived_media_context mc JOIN file f ON f.id = mc.file_id"
             )
         }
-        origin, local, instant, offset, basis, certainty = held["photo_a.png"]
-        assert (origin, basis, certainty, offset) == ("captured", "capture", 1.0, -600)
+        origin, local, instant, offset, basis, certainty, precision, has_c, has_g = held["photo_a.png"]
+        assert (origin, has_c, has_g) == ("mixed", 1, 1), "coexisting claims erase nothing"
+        assert (basis, certainty, offset, precision) == ("capture", 1.0, -600, "second")
         assert local == NOW + 12 * HOUR, "the wall clock is the local story"
         assert instant == (NOW + 12 * HOUR) - (-600 * 60), "the offset makes the instant knowable"
 
-        origin, local, instant, offset, basis, certainty = held["photo_b.png"]
-        assert (origin, basis, certainty) == ("captured", "capture", 0.8)
+        origin, local, instant, offset, basis, certainty, precision, _c, _g = held["photo_b.png"]
+        assert (origin, basis, certainty, precision) == ("captured", "capture", 0.8, "second")
         assert local == NOW + 13 * HOUR, "the known wall clock STANDS"
         assert instant is None, "an unzoned claim has no instant -- uncertainty is explicit, never fabricated"
         assert offset is None
 
-        origin, local, instant, offset, basis, _certainty = held["photo_c.png"]
+        origin, local, instant, offset, basis, _certainty, precision, _c, _g = held["photo_c.png"]
         assert origin == "imported"
+        assert precision == "subsecond", "a distrusted filesystem time is still a FINE time"
         assert basis in ("btime", "mtime"), "the filesystem's claims are the fallback, named as themselves"
         assert local is None, "a filesystem instant has no local story to tell"
         assert instant is not None
 
-        origin, local, instant, offset, basis, certainty = held["gen_0.png"]
+        origin, local, instant, offset, basis, certainty, precision, _c, _g = held["gen_0.png"]
         assert (origin, basis, certainty) == ("generated", "embedded", 0.6), (
             "the generator's own date claim outranks every filesystem time"
         )
+        assert precision == "day", "a bare date is DAY-fine, whatever its certainty -- never minute evidence"
+
         assert local == 1_685_577_600.0, "2023-06-01 as a wall claim -- the day the media HAPPENED"
         assert (instant, offset) == (None, None), "a date without a zone has no instant"
 
@@ -194,13 +205,15 @@ def test_a_changed_source_claim_deletes_the_interpretation(interpreted):
         gen0 = conn.execute("SELECT id FROM file WHERE name = 'gen_0.png'").fetchone()[0]
         assert conn.execute("SELECT count(*) FROM derived_media_context WHERE file_id = ?", (gen0,)).fetchone()[0] == 1
         # a fake event hypothesis over the file, to watch it invalidate
+        generation_now = context.state(conn)[0]
         run = conn.execute(
-            "INSERT INTO derived_event_run(grouper, grouper_version, settings_hash, created_at)"
-            " VALUES('generation_session', '1', 'x', ?)",
-            (NOW,),
+            "INSERT INTO derived_event_run(grouper, grouper_version, settings_hash,"
+            " context_generation, context_policy_version, created_at)"
+            " VALUES('generation_session', '1', 'x', ?, ?, ?)",
+            (generation_now, context.POLICY_VERSION, NOW),
         ).lastrowid
         event = conn.execute(
-            "INSERT INTO derived_event(run_id, kind, start_at, end_at, member_hash)"
+            "INSERT INTO derived_event(run_id, kind, instant_start, instant_end, member_hash)"
             " VALUES(?, 'generation_session', ?, ?, 'h')",
             (run, NOW, NOW + 1),
         ).lastrowid
@@ -250,7 +263,9 @@ def test_the_registry_is_the_one_vocabulary(interpreted):
         sampled = resultset.page(conn, "", resultset.parse(facets=["generation.sampler:eq:Euler a"]), 1, NOW)
         assert sampled["total"] == sampled_truth
         origin = resultset.page(conn, "", resultset.parse(facets=["context.origin:eq:captured"]), 1, NOW)
-        assert origin["total"] == 2
+        assert origin["total"] == 1, "photo_a is MIXED now -- captured means captured-only"
+        mixed = resultset.page(conn, "", resultset.parse(facets=["context.origin:eq:mixed"]), 1, NOW)
+        assert [row["name"] for row in mixed["items"]] == ["photo_a.png"]
         seeded = resultset.page(
             conn, "", resultset.parse(facets=["generation.seed:eq:2", "capture.iso:lte:99"]), 1, NOW
         )

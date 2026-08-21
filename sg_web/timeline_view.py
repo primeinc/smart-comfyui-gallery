@@ -18,8 +18,17 @@ from litestar import Request, get
 from litestar.datastructures import State
 from litestar.response import Response, Template
 
-from db import connect, pages
+from db import connect, facets, pages
 from sg_web.presenting import VARIES, wants_json
+
+
+def _day_door(day: str) -> str:
+    """The day's link into the gallery, spelled by the Facet Interface
+    itself -- the timeline never invents its own spelling of a
+    question."""
+    import urllib.parse
+
+    return urllib.parse.urlencode([("f", facets.spell(facets.facet("context.local_day", "eq", day)))])
 
 
 @get("/timeline", sync_to_thread=True)
@@ -27,24 +36,32 @@ def timeline(state: State, request: Request) -> Template | Response:
     conn = connect.connect(state.db_path, read_only=True)
     try:
         months = [{"month": month, "pictures": pictures} for month, pictures in pages.timeline_months(conn)]
-        days = [
-            {"day": day, "pictures": pictures, "qs": f"f=context.local_day%3Aeq%3A{day}"}
-            for day, pictures in pages.timeline_days(conn)
-        ]
+        days = [{"day": day, "pictures": pictures, "qs": _day_door(day)} for day, pictures in pages.timeline_days(conn)]
         happenings = [
             {
                 "id": event_id,
                 "grouper": grouper,
                 "kind": kind,
-                "start_at": start_at,
-                "end_at": end_at,
+                "local_start": local_start,
+                "local_end": local_end,
+                "instant_start": instant_start,
+                "instant_end": instant_end,
                 "confidence": confidence,
                 "member_hash": member_hash,
                 "pictures": pictures,
             }
-            for event_id, grouper, kind, start_at, end_at, confidence, member_hash, pictures in (
-                pages.timeline_events(conn)
-            )
+            for (
+                event_id,
+                grouper,
+                kind,
+                local_start,
+                local_end,
+                instant_start,
+                instant_end,
+                confidence,
+                member_hash,
+                pictures,
+            ) in pages.timeline_events(conn)
         ]
     finally:
         connect.close(conn)

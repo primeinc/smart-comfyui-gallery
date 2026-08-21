@@ -35,6 +35,12 @@ def place(
         raise ValueError(f"a place kind is one of {', '.join(KINDS)}, not {kind!r}")
     if not isinstance(name, str) or not name.strip():
         raise ValueError("a place's name is a non-empty string")
+    if parent_id is not None and conn.execute("SELECT 1 FROM place WHERE id = ?", (parent_id,)).fetchone() is None:
+        # BEFORE the mint: a refusal must leave the caller's transaction
+        # exactly as it found it, or a caught failure plus a commit
+        # strands an entity with no subtype -- the lesson the collection
+        # lifecycle already paid for.
+        raise ValueError("the named parent is not a place")
     place_id = mint(conn, "place", name.strip())
     conn.execute(
         "INSERT INTO place(id, parent_id, kind, name, centroid_lat, centroid_lon,"

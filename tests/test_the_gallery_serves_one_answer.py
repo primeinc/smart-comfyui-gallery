@@ -152,7 +152,10 @@ def test_there_is_only_one_path_to_an_ordered_gallery_answer():
         if isinstance(node, ast.ImportFrom) and node.module == "db":
             spoken |= {alias.name for alias in node.names}
     assert spoken, "the sweep lost its subject: gallery.py no longer imports from db"
-    assert spoken <= {"connect", "naming", "resultset", "settings"}, (
+    # facets is vocabulary, not a query path: it parses and spells the
+    # closed registry and never touches a connection -- the route speaks
+    # it so no view invents its own spelling of a question.
+    assert spoken <= {"connect", "facets", "naming", "resultset", "settings"}, (
         f"gallery.py imported a query module: {sorted(spoken)} -- pages/retrieval/similarity/derived are the "
         "second path this guard exists to forbid"
     )

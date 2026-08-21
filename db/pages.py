@@ -33,6 +33,8 @@ table is never allowed, exemption or not.
 
 from __future__ import annotations
 
+from .context import HUMAN_MOMENT
+
 #: How many rows a grid asks for at once.
 PAGE = 60
 
@@ -642,35 +644,42 @@ def ways(conn):
 
 # --- the timeline ----------------------------------------------------------
 
-#: The human timeline's one axis, named once: the LOCAL wall clock when
-#: one was claimed, the knowable instant otherwise -- the same coalesce
-#: the day facet (db/facets.py context.local_day) filters by, so the
-#: shelf and the door into the gallery cannot disagree.
+#: The human timeline's one axis: context.HUMAN_MOMENT, the same
+#: fragment the day facet filters by, so the shelf and the door into
+#: the gallery cannot disagree. Only rows of the CURRENT interpretation
+#: policy answer -- a row an older ladder produced is not this build's
+#: understanding.
 TIMELINE_MONTHS = (
-    "SELECT strftime('%Y-%m', COALESCE(mc.local_at, mc.instant_at), 'unixepoch') AS month,"
+    "SELECT strftime('%Y-%m', " + HUMAN_MOMENT + ", 'unixepoch') AS month,"
     " count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = (SELECT policy_version FROM derived_context_state)"
     " GROUP BY month ORDER BY month DESC"
 )
 
 #: Days are PRESENTATION grouping, read straight off the contexts --
 #: deliberately never a persisted event kind.
 TIMELINE_DAYS = (
-    "SELECT strftime('%Y-%m-%d', COALESCE(mc.local_at, mc.instant_at), 'unixepoch') AS day,"
+    "SELECT strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') AS day,"
     " count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = (SELECT policy_version FROM derived_context_state)"
     " GROUP BY day ORDER BY day DESC LIMIT ?"
 )
 
-#: The latest event runs' intervals, newest first. Regrouping keeps one
-#: run per grouper, so every persisted event is current.
+#: Event runs answer only while they can PROVE they were computed over
+#: the current interpretation: generation and policy both match, or the
+#: hypothesis is stale -- whoever its members are.
 TIMELINE_EVENTS = (
-    "SELECT e.id, r.grouper, e.kind, e.start_at, e.end_at, e.confidence, e.member_hash,"
+    "SELECT e.id, r.grouper, e.kind, e.local_start, e.local_end,"
+    " e.instant_start, e.instant_end, e.confidence, e.member_hash,"
     " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures"
     "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
-    " ORDER BY e.start_at DESC LIMIT ?"
+    " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
+    "   AND r.context_policy_version = (SELECT policy_version FROM derived_context_state)"
+    " ORDER BY e.instant_start DESC LIMIT ?"
 )
 
 

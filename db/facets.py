@@ -20,7 +20,7 @@ from __future__ import annotations
 import dataclasses
 import re
 
-from .context import ORIGINS
+from .context import HUMAN_MOMENT, ORIGINS
 
 
 @dataclasses.dataclass(frozen=True)
@@ -80,8 +80,10 @@ REGISTRY: dict[str, _Spec] = {
     "context.local_day": _Spec(
         "date",
         ("eq", "gte", "lte"),
+        # composed around context.HUMAN_MOMENT -- the door and the
+        # timeline shelf share one definition of the human day
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
-        " AND strftime('%Y-%m-%d', COALESCE(mc.local_at, mc.instant_at), 'unixepoch') {op} ?)",
+        " AND strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') {op} ?)",
     ),
 }
 

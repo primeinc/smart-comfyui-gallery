@@ -911,9 +911,7 @@ END"""
     created_at   REAL NOT NULL
 ) STRICT"""
     )
-    conn.execute(
-        """CREATE INDEX place_parent ON place(parent_id)"""
-    )
+    conn.execute("""CREATE INDEX place_parent ON place(parent_id)""")
     conn.execute(
         """CREATE TRIGGER place_kind_agrees BEFORE INSERT ON place BEGIN
   SELECT RAISE(ABORT,'entity kind does not match place')
@@ -996,18 +994,10 @@ END"""
     CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
 ) STRICT"""
     )
-    conn.execute(
-        """CREATE INDEX media_context_when ON derived_media_context(instant_at)"""
-    )
-    conn.execute(
-        """CREATE INDEX media_context_local ON derived_media_context(local_at)"""
-    )
-    conn.execute(
-        """CREATE INDEX media_context_place ON derived_media_context(place_id)"""
-    )
-    conn.execute(
-        """CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at)"""
-    )
+    conn.execute("""CREATE INDEX media_context_when ON derived_media_context(instant_at)""")
+    conn.execute("""CREATE INDEX media_context_local ON derived_media_context(local_at)""")
+    conn.execute("""CREATE INDEX media_context_place ON derived_media_context(place_id)""")
+    conn.execute("""CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at)""")
     conn.execute(
         """CREATE TABLE derived_event_run (
     id              INTEGER PRIMARY KEY,
@@ -1017,9 +1007,7 @@ END"""
     created_at      REAL NOT NULL
 ) STRICT"""
     )
-    conn.execute(
-        """CREATE INDEX event_run_grouper ON derived_event_run(grouper, created_at)"""
-    )
+    conn.execute("""CREATE INDEX event_run_grouper ON derived_event_run(grouper, created_at)""")
     conn.execute(
         """CREATE TABLE derived_event (
     id          INTEGER PRIMARY KEY,
@@ -1034,18 +1022,10 @@ END"""
     CHECK (start_at <= end_at)
 ) STRICT"""
     )
-    conn.execute(
-        """CREATE INDEX event_run ON derived_event(run_id)"""
-    )
-    conn.execute(
-        """CREATE INDEX event_parent ON derived_event(parent_id)"""
-    )
-    conn.execute(
-        """CREATE INDEX event_when ON derived_event(start_at)"""
-    )
-    conn.execute(
-        """CREATE INDEX event_place ON derived_event(place_id)"""
-    )
+    conn.execute("""CREATE INDEX event_run ON derived_event(run_id)""")
+    conn.execute("""CREATE INDEX event_parent ON derived_event(parent_id)""")
+    conn.execute("""CREATE INDEX event_when ON derived_event(start_at)""")
+    conn.execute("""CREATE INDEX event_place ON derived_event(place_id)""")
     conn.execute(
         """CREATE TABLE derived_event_file (
     event_id INTEGER NOT NULL REFERENCES derived_event(id) ON DELETE CASCADE,
@@ -1055,9 +1035,143 @@ END"""
     PRIMARY KEY (event_id, file_id)
 ) STRICT, WITHOUT ROWID"""
     )
+    conn.execute("""CREATE INDEX event_file_file ON derived_event_file(file_id)""")
+
+
+@step(10)
+def _time_gets_a_domain_and_context_gets_an_identity(conn: sqlite3.Connection) -> None:
+    """v10 -> v11: truth over time. Event intervals carry their temporal
+    DOMAIN (a wall-clock pair, an instant pair, or both -- never one
+    ambiguous pair); every event run names the context generation and
+    policy it was computed over; origin is DETERMINED from coexisting
+    capture/generation facts by CHECK instead of asserted by precedence;
+    and `derived_context_state` is the interpretation's identity.
+
+    Every changed table is derived and rebuildable by contract, so the
+    step drops and recreates -- children first, because with foreign
+    keys on a child cannot even be dropped after its parent is gone.
+    The explicit context and events jobs repopulate. DDL is schema.sql's
+    text VERBATIM; the drift check compares sqlite_master.
+    """
+    for table in ("derived_event_file", "derived_event", "derived_event_run", "derived_media_context"):
+        conn.execute(f"DROP TABLE {table}")
     conn.execute(
-        """CREATE INDEX event_file_file ON derived_event_file(file_id)"""
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- Coarse claims are never promoted into fine-grained boundaries.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('day','hour','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT"""
     )
+    conn.execute("""CREATE INDEX media_context_when ON derived_media_context(instant_at)""")
+    conn.execute("""CREATE INDEX media_context_local ON derived_media_context(local_at)""")
+    conn.execute("""CREATE INDEX media_context_place ON derived_media_context(place_id)""")
+    conn.execute("""CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at)""")
+    conn.execute(
+        """CREATE TABLE derived_context_state (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    generation     INTEGER NOT NULL,
+    policy_version INTEGER NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE TABLE derived_event_run (
+    id                     INTEGER PRIMARY KEY,
+    grouper                TEXT NOT NULL,
+    grouper_version        TEXT NOT NULL,
+    settings_hash          TEXT NOT NULL,
+    context_generation     INTEGER NOT NULL,
+    context_policy_version INTEGER NOT NULL,
+    created_at             REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("""CREATE INDEX event_run_grouper ON derived_event_run(grouper, created_at)""")
+    conn.execute(
+        """CREATE TABLE derived_event (
+    id            INTEGER PRIMARY KEY,
+    run_id        INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
+    parent_id     INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
+    kind          TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session')),
+    -- The interval carries its TEMPORAL DOMAIN: a wall-clock pair, an
+    -- instant pair, or both when every member makes both knowable --
+    -- never one ambiguous pair that is secretly sometimes each. Unlike
+    -- domains are never subtracted from each other.
+    local_start   REAL,
+    local_end     REAL,
+    instant_start REAL,
+    instant_end   REAL,
+    place_id      INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    confidence    REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    member_hash   TEXT NOT NULL,
+    CHECK ((local_start IS NULL) = (local_end IS NULL)),
+    CHECK ((instant_start IS NULL) = (instant_end IS NULL)),
+    CHECK (local_start IS NULL OR local_start <= local_end),
+    CHECK (instant_start IS NULL OR instant_start <= instant_end),
+    CHECK (local_start IS NOT NULL OR instant_start IS NOT NULL)
+) STRICT"""
+    )
+    conn.execute("""CREATE INDEX event_run ON derived_event(run_id)""")
+    conn.execute("""CREATE INDEX event_parent ON derived_event(parent_id)""")
+    conn.execute("""CREATE INDEX event_when_instant ON derived_event(instant_start)""")
+    conn.execute("""CREATE INDEX event_when_local ON derived_event(local_start)""")
+    conn.execute("""CREATE INDEX event_place ON derived_event(place_id)""")
+    conn.execute(
+        """CREATE TABLE derived_event_file (
+    event_id INTEGER NOT NULL REFERENCES derived_event(id) ON DELETE CASCADE,
+    file_id  INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    ordinal  INTEGER NOT NULL,
+    score    REAL,
+    PRIMARY KEY (event_id, file_id)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("""CREATE INDEX event_file_file ON derived_event_file(file_id)""")
+
 
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.

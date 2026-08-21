@@ -1568,67 +1568,117 @@ END;
 -- table would break the drop-derived-and-reindex contract.
 CREATE TABLE derived_media_context (
     file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
     origin              TEXT NOT NULL CHECK (origin IN
-                          ('captured','generated','imported','unknown')),
+                          ('captured','generated','mixed','imported')),
     -- TWO time concepts, never one column doing both jobs: `local_at`
-    -- is what the human clock said (the wall time a camera claimed);
-    -- `instant_at` is the actual UTC instant, present ONLY when
-    -- knowable. An unzoned camera claim keeps its wall time and has no
-    -- instant -- a known human clock is never replaced by a filesystem
-    -- time just to make a column easier to sort.
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
     local_at            REAL,
     instant_at          REAL,
     tz_offset_min       INTEGER,
     time_basis          TEXT CHECK (time_basis IN
                           ('capture','embedded','btime','mtime','first_seen')),
     time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- Coarse claims are never promoted into fine-grained boundaries.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('day','hour','minute','second','subsecond')),
     gps_lat             REAL,
     gps_lon             REAL,
     place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
     location_basis      TEXT CHECK (location_basis IN
                           ('gps','sidecar','inferred','authored')),
     location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
     rebuilt_at          REAL NOT NULL,
     -- a time without a recorded basis is an unexplained date
     CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
     -- an offset explains a wall clock; without one it explains nothing
-    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
 ) STRICT;
 CREATE INDEX media_context_when ON derived_media_context(instant_at);
 CREATE INDEX media_context_local ON derived_media_context(local_at);
 CREATE INDEX media_context_place ON derived_media_context(place_id);
 CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at);
 
+-- One row: the interpretation's identity. `generation` advances on
+-- EVERY context add, change or delete, so anything computed over the
+-- contexts can prove it was computed over THESE contexts; the policy
+-- says which ladder meaning is current. Derived like its subject: drop
+-- the namespace and the first rebuild re-mints both.
+CREATE TABLE derived_context_state (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    generation     INTEGER NOT NULL,
+    policy_version INTEGER NOT NULL
+) STRICT;
+
 -- ============ events: grouping hypotheses over contexts ============
 -- A trip or a generation session is a HYPOTHESIS over a set of files,
 -- never a property stamped onto them. Runs are rebuildable; membership
--- is hashed so a changed membership is visibly a different event. A
--- calendar day is deliberately NOT an event kind -- days are
--- presentation grouping the timeline reads straight off the contexts.
+-- is hashed so a changed membership is visibly a different event; and
+-- every run names the context generation and policy it was computed
+-- over -- a run whose generation is no longer current is a stale
+-- hypothesis, whoever its members are. A calendar day is deliberately
+-- NOT an event kind: days are presentation, read off the contexts.
 CREATE TABLE derived_event_run (
-    id              INTEGER PRIMARY KEY,
-    grouper         TEXT NOT NULL,
-    grouper_version TEXT NOT NULL,
-    settings_hash   TEXT NOT NULL,
-    created_at      REAL NOT NULL
+    id                     INTEGER PRIMARY KEY,
+    grouper                TEXT NOT NULL,
+    grouper_version        TEXT NOT NULL,
+    settings_hash          TEXT NOT NULL,
+    context_generation     INTEGER NOT NULL,
+    context_policy_version INTEGER NOT NULL,
+    created_at             REAL NOT NULL
 ) STRICT;
 CREATE INDEX event_run_grouper ON derived_event_run(grouper, created_at);
 
 CREATE TABLE derived_event (
-    id          INTEGER PRIMARY KEY,
-    run_id      INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
-    parent_id   INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
-    kind        TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session')),
-    start_at    REAL NOT NULL,
-    end_at      REAL NOT NULL,
-    place_id    INTEGER REFERENCES place(id) ON DELETE SET NULL,
-    confidence  REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
-    member_hash TEXT NOT NULL,
-    CHECK (start_at <= end_at)
+    id            INTEGER PRIMARY KEY,
+    run_id        INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
+    parent_id     INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
+    kind          TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session')),
+    -- The interval carries its TEMPORAL DOMAIN: a wall-clock pair, an
+    -- instant pair, or both when every member makes both knowable --
+    -- never one ambiguous pair that is secretly sometimes each. Unlike
+    -- domains are never subtracted from each other.
+    local_start   REAL,
+    local_end     REAL,
+    instant_start REAL,
+    instant_end   REAL,
+    place_id      INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    confidence    REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    member_hash   TEXT NOT NULL,
+    CHECK ((local_start IS NULL) = (local_end IS NULL)),
+    CHECK ((instant_start IS NULL) = (instant_end IS NULL)),
+    CHECK (local_start IS NULL OR local_start <= local_end),
+    CHECK (instant_start IS NULL OR instant_start <= instant_end),
+    CHECK (local_start IS NOT NULL OR instant_start IS NOT NULL)
 ) STRICT;
 CREATE INDEX event_run ON derived_event(run_id);
 CREATE INDEX event_parent ON derived_event(parent_id);
-CREATE INDEX event_when ON derived_event(start_at);
+CREATE INDEX event_when_instant ON derived_event(instant_start);
+CREATE INDEX event_when_local ON derived_event(local_start);
 CREATE INDEX event_place ON derived_event(place_id);
 
 CREATE TABLE derived_event_file (
@@ -1641,7 +1691,7 @@ CREATE TABLE derived_event_file (
 CREATE INDEX event_file_file ON derived_event_file(file_id);
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 10;
+PRAGMA user_version   = 11;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

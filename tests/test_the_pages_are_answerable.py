@@ -41,7 +41,9 @@ A1111 = (
 #: from sqlite_master rather than listed here -- the list was nine names, and
 #: the other twenty-nine growing tables could be scanned by any page without
 #: the gate saying a word.
-STAYS_SMALL = {"root", "user", "setting", "watched_folder", "param_key", "sqlite_sequence"}
+#: derived_context_state is ONE row by CHECK (id = 1) -- the
+#: interpretation's identity, not a growing table.
+STAYS_SMALL = {"root", "user", "setting", "watched_folder", "param_key", "sqlite_sequence", "derived_context_state"}
 
 #: Words that can follow FROM or JOIN without being an alias.
 _NOT_AN_ALIAS = {
