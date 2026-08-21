@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline</title>
+  <link rel="stylesheet" href="/static/gallery.css">
+</head>
+<body>
+  <header class="bar">
+    <nav class="crumbs">
+      <a href="/g">gallery</a>
+      <span class="crumbs-here">Timeline</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if months %}
+    <ul class="album-tree">
+      {% for held in months %}
+      <li>
+        <span>{{ held.month }}</span>
+        <span class="album-count">{{ held.pictures }} pictures</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if days %}
+    <section class="detail-facts">
+      <h2>days</h2>
+      <ul>
+        {% for held in days %}
+        <li>
+          <a href="/g?{{ held.qs }}" data-timeline-day="{{ held.day }}">{{ held.day }}</a>
+          <span class="album-count">{{ held.pictures }} pictures</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {% if events %}
+    <section class="detail-facts">
+      <h2>events</h2>
+      <ul>
+        {% for held in events %}
+        <li data-event-kind="{{ held.kind }}">{{ held.kind }} &middot; {{ held.pictures }} pictures</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {% else %}
+    <p class="empty">
+      no interpreted history yet -- POST /jobs/context then /jobs/events reads the library's own claims into a timeline.
+    </p>
+    {% endif %}
+  </main>
+</body>
+</html>

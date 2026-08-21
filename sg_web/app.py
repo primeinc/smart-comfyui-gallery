@@ -65,6 +65,7 @@ from sg_web import (
     media_authored,
     media_view,
     person_view,
+    timeline_view,
 )
 from sg_web import worker as worker_module
 from sg_web.presenting import VARIES, wants_json
@@ -416,6 +417,36 @@ def dupes(state: State) -> list[dict]:
     conn = _connect(state.db_path)
     try:
         return _rows(pages.dupe_groups(conn), ("slug", "name", "copies"))
+    finally:
+        connect.close(conn)
+
+
+@post("/jobs/context", sync_to_thread=True)
+def submit_context(state: State) -> dict:
+    """Ask for every present file's media context to be rebuilt from its
+    sources' claims -- one item per file (db/runner.py submit_context).
+    Nothing expensive runs on a GET."""
+    conn = _connect(state.db_path)
+    try:
+        job_id = runner.submit_context(conn, time.time())
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
+    finally:
+        connect.close(conn)
+
+
+@post("/jobs/events", sync_to_thread=True)
+def submit_events(state: State) -> dict:
+    """Ask for the grouping hypotheses to be re-proposed over the
+    current contexts -- one item per Grouper (db/runner.py
+    submit_events)."""
+    conn = _connect(state.db_path)
+    try:
+        job_id = runner.submit_events(conn, time.time())
+        conn.commit()
+        _nudge(state)
+        return jobs.snapshot(conn, job_id)
     finally:
         connect.close(conn)
 
@@ -887,12 +918,15 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             collection_view.album_page,
             album_add,
             album_remove,
+            submit_context,
+            submit_events,
             submit_ingest,
             submit_phash,
             submit_embed,
             search,
             submit_dupes,
             dupes,
+            timeline_view.timeline,
             person_view.people_index,
             person_view.person_page,
             clusterings,

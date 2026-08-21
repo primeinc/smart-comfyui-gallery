@@ -537,7 +537,40 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:
 #: `job.kind` is CHECK-constrained (db/schema.sql:493-495) so a typo is an
 #: IntegrityError at submit, never a job that queues and waits forever.
+def submit_context(conn, now: float) -> int:
+    """Reinterpret every present file: one item per file, so
+    cancellation, resume and failures land at file boundaries
+    (db/context.py rebuild_one). The schema's job kind is 'context'."""
+    items = [row[0] for row in conn.execute("SELECT id FROM file WHERE missing_since IS NULL ORDER BY id")]
+    return jobs.submit(conn, "context", now, items=items)
+
+
+def _context_item(conn, file_id: int, payload: dict, now: float) -> None:
+    from . import context as context_module
+
+    context_module.rebuild_one(conn, file_id, now)
+
+
+def submit_events(conn, now: float) -> int:
+    """Re-propose every grouping hypothesis over the current contexts:
+    one item per Grouper adapter, so a smarter grouper failing never
+    costs the others their run. A separate job from 'context' on
+    purpose -- per-file rebuild and global regroup have different
+    invalidation and retry semantics, so they are two durable facts."""
+    from . import events as events_module
+
+    return jobs.submit(conn, "events", now, items=list(range(len(events_module.GROUPERS))))
+
+
+def _events_item(conn, index: int, payload: dict, now: float) -> None:
+    from . import events as events_module
+
+    events_module.regroup_one(conn, events_module.GROUPERS[index], now)
+
+
 HANDLERS = {
+    "context": _context_item,
+    "events": _events_item,
     "scan": _ingest_item,
     "hash": _hash_item,
     "embed": _embed_item,
