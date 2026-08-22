@@ -18,9 +18,16 @@ from __future__ import annotations
 REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # Where model weights are read from. Empty means `<home>/models`.
     "models_dir": ("", None),
-    # ONNX Runtime execution providers for the recognition session:
-    # "auto" (CUDA when the installed build offers it), "cpu", or an
-    # explicit comma list of provider names.
+    # Which face pipeline the faces job runs (vision/faces.py backend_for):
+    # "auto" is insightface's antelopev2 pack, falling back to the OpenCV
+    # YuNet+SFace stack only when the insightface runtime is absent;
+    # "insightface" and "opencv" force one. Each is its own embedding
+    # space, so switching starts a fresh space and never rewrites faces
+    # the other found.
+    "face_backend": ("auto", ("auto", "insightface", "opencv")),
+    # ONNX Runtime execution providers for the insightface recognition
+    # session: "auto" (CUDA when the installed build offers it), "cpu",
+    # or an explicit comma list of provider names. Read at job submit.
     "ort_providers": ("auto", None),
     # Whether the vendored GPU faiss build may be used at all. Consulted
     # at the first faiss import in a process; changing it applies from

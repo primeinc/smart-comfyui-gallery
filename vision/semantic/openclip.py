@@ -110,9 +110,10 @@ def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | No
     """
     import os
 
-    from huggingface_hub import try_to_load_from_cache
     from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
     from open_clip.pretrained import get_pretrained_cfg
+
+    from vision.weights import hub_cached
 
     hf_hub = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "")
     if not hf_hub:
@@ -125,8 +126,8 @@ def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | No
     else:
         names = (filename,)
     for name in names:
-        found = try_to_load_from_cache(repo, name, cache_dir=models_dir)
-        if isinstance(found, str):
+        found = hub_cached(repo, name, models_dir)  # models_dir, then the machine's shared HF cache
+        if found is not None:
             return found
     return None
 

@@ -14,16 +14,19 @@ picture -> detect + 5-point landmarks -> aligned per-face embedding -> L2 normal
         -> Chinese Whispers -> derived_face_cluster (one run per embedder, method, threshold)
 ```
 
-Two backends ship, both loading only from `models_dir`, never
-downloading (`docs/AI_MODELS.md`):
+Two backends ship; the `face_backend` setting picks one and the faces
+job provisions its weights from the registry that owns them
+(`docs/AI_MODELS.md`, `vision/weights.py`):
 
-| Backend | Detect | Embed | License |
-|---|---|---|---|
-| `InsightFaceBackend` (preferred when its pack is present) | SCRFD-10GF, multi-scale | glintr100 (ResNet100@Glint360K, 512-d) | non-commercial research (insightface) |
-| `OpenCVFaceBackend` | YuNet 2023mar, detection input capped at 1600 px | glintr100 via cv2.dnn when present, else SFace (128-d) | MIT / Apache with SFace |
+| Backend | Detect | Embed | Device | License |
+|---|---|---|---|---|
+| `InsightFaceBackend` (`auto`) | SCRFD-10GF, multi-scale, CPU | glintr100 (ResNet100@Glint360K, 512-d) on `ort_providers` -- CUDA when the build offers it | per stage, measured | non-commercial research (insightface) |
+| `OpenCVFaceBackend` (`opencv`, or `auto` without the insightface runtime) | YuNet 2023mar, detection input capped at 1600 px | glintr100 via cv2.dnn when the pack is present, else SFace (128-d) | CPU (OpenCV DNN default) | MIT / Apache with SFace |
 
 A backend whose runtime or weights are missing reports
 `BackendUnavailable`; a forced embedder whose weights are missing raises.
+Each backend is its own embedding space: switching starts a fresh space
+and never rewrites what the other found.
 
 ## Runs
 

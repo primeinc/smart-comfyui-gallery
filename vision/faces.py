@@ -9,15 +9,16 @@ attaches to a bucket of similar-looking generated faces, never a claim about
 who (if anyone real) a face resembles.
 
 `StubFaceBackend` is a TEST/DEV stub: it returns pre-programmed detections
-and does not look at pixels at all. Two real pipelines ship, chosen by the
-caller constructing one: `InsightFaceBackend` (upstream
-FaceAnalysis over the provisioned antelopev2 pack -- SCRFD detection,
-glintr100 embedding, genderage attributes; preferred by `auto`) and
+and does not look at pixels at all. Two real pipelines ship, chosen by
+`backend_for` from the `face_backend` setting: `InsightFaceBackend`
+(upstream FaceAnalysis over the antelopev2 pack -- SCRFD detection,
+glintr100 embedding, genderage attributes; what `auto` means) and
 `OpenCVFaceBackend` (YuNet detection plus ArcFace-glintr100-via-cv2.dnn
-or SFace embedding). All models load only from local files under
-`models_dir`, never downloaded here. Backends self-report
-`BackendUnavailable` instead of raising when runtime or weights are
-missing.
+or SFace embedding; `auto`'s fallback when the insightface runtime is
+absent). Weights resolve through vision/weights.py: the run's models_dir,
+then the machine's shared cache, then -- for a job, never a request --
+the registry that owns them. Backends self-report `BackendUnavailable`
+instead of raising when runtime or weights are missing.
 """
 
 from __future__ import annotations
@@ -33,6 +34,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from PIL import Image
+
+from vision import weights as weights_module
 
 _logger = logging.getLogger(__name__)
 
@@ -56,16 +59,12 @@ __all__ = [
     "InsightFaceBackend",
     "OpenCVFaceBackend",
     "StubFaceBackend",
+    "backend_for",
     "image_key",
 ]
 
-_YUNET_FILENAME = "face_detection_yunet_2023mar.onnx"  # detector ONNX, expected directly under models_dir
-_SFACE_FILENAME = "face_recognition_sface_2021dec.onnx"  # recognizer ONNX, expected directly under models_dir
-# glintr100 lives inside the provisioned antelopev2 pack (FaceAnalysis
-# layout: <models_dir>/insightface/models/antelopev2/); the cv2 arcface
-# embedder reads it from there so the weights exist exactly once.
-_INSIGHTFACE_ROOT = "insightface"  # models_dir-relative FaceAnalysis root
-_ARCFACE_FILENAME = os.path.join(_INSIGHTFACE_ROOT, "models", "antelopev2", "glintr100.onnx")
+#: The `face_backend` setting's vocabulary (db/settings.py).
+BACKEND_CHOICES = ("auto", "insightface", "opencv")
 
 # ArcFace canonical 112x112 5-landmark template
 # (insightface python-package/insightface/utils/face_align.py: arcface_dst).
@@ -196,8 +195,9 @@ def _pil_to_bgr(img: Image.Image) -> np.ndarray:
 
 
 class OpenCVFaceBackend(FaceBackend):
-    """YuNet detector + a per-face recognizer, all through OpenCV, loaded
-    only from local ONNX files under `models_dir`.
+    """YuNet detector + a per-face recognizer, all through OpenCV, over
+    the files vision/weights.py resolves (models_dir, the shared Hub
+    cache, or -- provisioning -- the opencv org's own Hub repos).
 
     Recognizers ('embedder'):
       - 'arcface' — antelopev2 glintr100 (ResNet100@Glint360K, 512-d),
@@ -219,6 +219,8 @@ class OpenCVFaceBackend(FaceBackend):
         min_face_px: int = 24,
         detect_max_side: int = 1600,
         embedder: str = "auto",
+        *,
+        provision: bool = False,
     ):
         """Load the detector and the selected recognizer. `min_det_score`
         is the minimum detector confidence for a face to be reported;
@@ -231,22 +233,27 @@ class OpenCVFaceBackend(FaceBackend):
         (measured: >=300px-face recall 55%->97%, false positives 7x down,
         detection 3.7x faster — docs/FACE_CLUSTERING.md). 0 disables the
         cap. A forced `embedder` whose weights are missing raises instead
-        of silently falling back."""
+        of silently falling back. `provision` lets a missing file be
+        fetched from its registry -- a job's right, never a request's."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise BackendUnavailable("this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF")
-        detector_path = os.path.join(models_dir, _YUNET_FILENAME)
-        recognizer_path = os.path.join(models_dir, _SFACE_FILENAME)
-        arcface_path = os.path.join(models_dir, _ARCFACE_FILENAME)
-        if not os.path.isfile(detector_path):
-            raise BackendUnavailable(f"YuNet model not found at {detector_path}")
+        try:
+            held = weights_module.opencv_weights(models_dir, provision=provision)
+        except weights_module.Unprovisioned as exc:
+            raise BackendUnavailable(str(exc)) from exc
+        except Exception as exc:  # the registry refused or the network did
+            raise BackendUnavailable(f"fetching the OpenCV face weights failed: {exc}") from exc
+        detector_path = held.yunet
+        recognizer_path = held.sface
+        arcface_path = held.arcface
         if embedder == "auto":
-            embedder = "arcface" if os.path.isfile(arcface_path) else "sface"
+            embedder = "arcface" if arcface_path is not None else "sface"
         if embedder == "arcface":
-            if not os.path.isfile(arcface_path):
-                raise BackendUnavailable(f"ArcFace model not found at {arcface_path}")
+            if arcface_path is None:
+                raise BackendUnavailable(f"ArcFace model (the {weights_module.PACK} pack) is not under {models_dir}")
         elif embedder == "sface":
-            if not os.path.isfile(recognizer_path):
-                raise BackendUnavailable(f"SFace model not found at {recognizer_path}")
+            if recognizer_path is None:
+                raise BackendUnavailable(f"SFace model is not under {models_dir} or the shared HF cache")
         else:
             raise ValueError(f"unknown face embedder: {embedder!r}")
         self._embedder = embedder
@@ -385,13 +392,17 @@ class InsightFaceBackend(FaceBackend):
         min_det_score: float = 0.5,
         min_face_px: int = 24,
         providers: str = "auto",
+        *,
+        provision: bool = False,
     ):
         """`min_det_score` re-filters detections (FaceAnalysis is prepared
         at the same threshold); `min_face_px` drops noise-floor boxes by
         native-pixel side, same junk gate as the OpenCV backend.
         `providers` is the `ort_providers` spec for the recognition
-        session (see `_ort_providers`)."""
-        self._app = get_insightface_app(models_dir, providers=providers)
+        session (see `_ort_providers`); `provision` lets a missing pack
+        be fetched by insightface itself -- a job's right, never a
+        request's."""
+        self._app = get_insightface_app(models_dir, providers=providers, provision=provision)
         self._min_det_score = min_det_score
         self._min_face_px = min_face_px
 
@@ -471,16 +482,17 @@ def _ort_providers(spec: str = "auto") -> list:
     return ["CPUExecutionProvider"]
 
 
-_insightface_apps: dict = {}  # (models_dir, providers) -> FaceAnalysis (cached; models stay loaded)
+_insightface_apps: dict = {}  # (root, providers) -> FaceAnalysis (cached; models stay loaded)
 
 
-def _prepared_recognition(models_dir: str, providers: list):
+def _prepared_recognition(root: str, providers: list):
     """The GPU recognition model, loaded and prepared, or a named refusal."""
     from insightface.model_zoo import model_zoo
 
-    rec = model_zoo.get_model(os.path.join(models_dir, _ARCFACE_FILENAME), providers=providers)
+    path = os.path.join(root, "models", weights_module.PACK, "glintr100.onnx")
+    rec = model_zoo.get_model(path, providers=providers)
     if rec is None:
-        raise BackendUnavailable(f"model_zoo could not load {_ARCFACE_FILENAME}")
+        raise BackendUnavailable(f"model_zoo could not load {path}")
     ready = getattr(rec, "prepare", None)
     if ready is None:
         raise BackendUnavailable("loaded recognition model has no prepare()")
@@ -488,21 +500,28 @@ def _prepared_recognition(models_dir: str, providers: list):
     return rec
 
 
-def get_insightface_app(models_dir: str, providers: str = "auto"):
+def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: bool = False):
     """insightface's own pipeline (FaceAnalysis, detection + recognition)
-    over the provisioned antelopev2 pack, cached per (models_dir,
-    providers). Raises `BackendUnavailable` when the package or the pack
-    is missing."""
-    cache_key = (models_dir, providers)
-    if cache_key in _insightface_apps:
-        return _insightface_apps[cache_key]
-    pack_dir = os.path.join(models_dir, _INSIGHTFACE_ROOT, "models", "antelopev2")
-    if not os.path.isdir(pack_dir):
-        raise BackendUnavailable(f"antelopev2 pack not found at {pack_dir}")
+    over the antelopev2 pack -- the run's copy, the shared ~/.insightface,
+    or (provisioning) insightface's own download into the run's copy --
+    cached per (root, providers). Raises `BackendUnavailable` when the
+    package or the pack is missing."""
     try:
         from insightface.app import FaceAnalysis
     except Exception as exc:
         raise BackendUnavailable(f"insightface unavailable: {exc}") from exc
+    try:
+        root = weights_module.insightface_root(models_dir, provision=provision)
+    except Exception as exc:  # the registry refused or the network did
+        raise BackendUnavailable(f"fetching the {weights_module.PACK} pack failed: {exc}") from exc
+    if root is None:
+        raise BackendUnavailable(
+            f"{weights_module.PACK} pack not under {models_dir}/{weights_module.INSIGHTFACE_SUBDIR}"
+            f" or {weights_module.INSIGHTFACE_HOME}; run /jobs/faces once to fetch it"
+        )
+    cache_key = (root, providers)
+    if cache_key in _insightface_apps:
+        return _insightface_apps[cache_key]
     try:
         # Every pack head loads: genderage (age/sex), 2d106det (dense
         # 106-pt 2D landmarks), 1k3d68 (3D 68-pt + pitch/yaw/roll pose,
@@ -520,16 +539,34 @@ def get_insightface_app(models_dir: str, providers: str = "auto"):
         # the installed build offers it; the ort_providers setting
         # overrides).
         app = FaceAnalysis(
-            name="antelopev2",
-            root=os.path.join(models_dir, _INSIGHTFACE_ROOT),
+            name=weights_module.PACK,
+            root=root,
             allowed_modules=["detection", "recognition", "genderage", "landmark_2d_106", "landmark_3d_68"],
             providers=["CPUExecutionProvider"],
         )
         app.prepare(ctx_id=0)  # Auto det-size: joint 128x128 + 640x640
         rec_providers = _ort_providers(providers)
         if rec_providers != ["CPUExecutionProvider"]:
-            app.models["recognition"] = _prepared_recognition(models_dir, rec_providers)
+            app.models["recognition"] = _prepared_recognition(root, rec_providers)
     except Exception as exc:
         raise BackendUnavailable(f"FaceAnalysis failed to load: {exc}") from exc
     _insightface_apps[cache_key] = app
     return app
+
+
+def backend_for(models_dir: str, *, choice: str = "auto", providers: str = "auto", provision: bool = False):
+    """The backend the `face_backend` setting names. 'insightface' and
+    'opencv' are exactly that; 'auto' is insightface, and the OpenCV
+    stack only when the insightface RUNTIME is absent -- a pack that
+    cannot be fetched is a refusal, not a silent downgrade to a different
+    embedding space."""
+    import importlib.util
+
+    if choice not in BACKEND_CHOICES:
+        raise ValueError(f"face_backend must be one of {', '.join(BACKEND_CHOICES)}, not {choice!r}")
+    if choice == "opencv":
+        return OpenCVFaceBackend(models_dir, provision=provision)
+    if choice == "auto" and importlib.util.find_spec("insightface") is None:
+        _logger.info("insightface runtime absent; face_backend auto takes the OpenCV stack")
+        return OpenCVFaceBackend(models_dir, provision=provision)
+    return InsightFaceBackend(models_dir, providers=providers, provision=provision)

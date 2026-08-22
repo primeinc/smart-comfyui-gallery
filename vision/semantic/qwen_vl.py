@@ -180,11 +180,10 @@ def _cached_snapshot(models_dir: str, model: str, checkpoint: str) -> str | None
     import json
     import pathlib
 
-    from huggingface_hub import try_to_load_from_cache
+    from vision.weights import hub_cached
 
     def cached(name: str) -> str | None:
-        found = try_to_load_from_cache(model, name, cache_dir=models_dir, revision=checkpoint)
-        return found if isinstance(found, str) else None
+        return hub_cached(model, name, models_dir, revision=checkpoint)  # models_dir, then the shared HF cache
 
     held = cached("model.safetensors")
     if held is None:

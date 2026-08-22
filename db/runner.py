@@ -66,7 +66,13 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
     `thumbs_dir` rides in the payload when thumbnail precaching is on:
     detection decodes every frame anyway, and the cache takes the decoded
     pixels on the way past instead of re-decoding later on first view.
+
+    The `face_backend` and `ort_providers` settings are read HERE, once,
+    into the payload: every item of one job runs the same pipeline on the
+    same device, whatever the settings say by the time it drains.
     """
+    from . import settings as settings_module
+
     items = [
         row[0]
         for row in conn.execute(
@@ -74,7 +80,11 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
             " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
         )
     ]
-    payload: dict = {"models_dir": models_dir}
+    payload: dict = {
+        "models_dir": models_dir,
+        "backend": settings_module.value(conn, "face_backend"),
+        "providers": settings_module.value(conn, "ort_providers"),
+    }
     if thumbs_dir is not None:
         payload["thumbs_dir"] = thumbs_dir
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
@@ -517,15 +527,18 @@ _BACKENDS: dict = {}
 
 
 def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
-    from vision.faces import OpenCVFaceBackend
+    """One file through the backend the job's payload names. The job is
+    the one place that may provision weights (docs/AI_MODELS.md)."""
+    from vision import faces as faces_module
 
     from . import detect
 
     models_dir = payload["models_dir"]
     thumbs_dir = payload.get("thumbs_dir")
-    backend = _BACKENDS.get(models_dir)
+    key = (models_dir, payload.get("backend", "auto"), payload.get("providers", "auto"))
+    backend = _BACKENDS.get(key)
     if backend is None:
-        backend = _BACKENDS[models_dir] = OpenCVFaceBackend(models_dir)
+        backend = _BACKENDS[key] = faces_module.backend_for(models_dir, choice=key[1], providers=key[2], provision=True)
     kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     path = detect.path_of(conn, file_id)
     if kind == "video":
