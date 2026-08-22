@@ -96,14 +96,16 @@ def rule_schema(ddl: str | None = None) -> list[Finding]:
             found.append(
                 Finding(at, where(name), 0, "SG701", f"{name} is not STRICT, so its column types are advisory")
             )
-    for table in policy.WITHOUT_ROWID:
-        if table in names and has_rowid(conn, table):
-            found.append(
-                Finding(at, where(table), 0, "SG702", f"{table} has a composite key and still pays for a rowid")
-            )
-    for table in policy.KEEPS_ROWID:
-        if table in names and not has_rowid(conn, table):
-            found.append(Finding(at, where(table), 0, "SG702", f"{table} holds the long tail and must keep its rowid"))
+    found.extend(
+        Finding(at, where(table), 0, "SG702", f"{table} has a composite key and still pays for a rowid")
+        for table in policy.WITHOUT_ROWID
+        if table in names and has_rowid(conn, table)
+    )
+    found.extend(
+        Finding(at, where(table), 0, "SG702", f"{table} holds the long tail and must keep its rowid")
+        for table in policy.KEEPS_ROWID
+        if table in names and not has_rowid(conn, table)
+    )
     actual: dict[tuple[str, str], str] = {}
     actions: list[tuple[str, str]] = []
     for table in sorted(names - virt):
