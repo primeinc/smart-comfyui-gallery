@@ -24,7 +24,7 @@
       <input type="checkbox" class="cell-pick" data-pick aria-label="select {{ item.name }}">
       <a class="cell" href="/i/{{ item.slug }}{% if qs %}?{{ qs }}{% endif %}"
          data-slug="{{ item.slug }}" data-ordinal="{{ item.ordinal }}">
-        <img src="/thumb/{{ item.slug }}" alt="{{ item.name }}" loading="lazy">
+        <img src="/thumb/{{ item.slug }}" alt="{{ item.name }}" loading="lazy"{% if item.said %} title="{{ item.said }}" data-said{% endif %}>
         <span class="cell-name">{{ item.name }}</span>
       </a>
     </div>

@@ -46,7 +46,7 @@ def test_folders_and_albums_carry_the_span_of_their_pictures(tmp_path):
     _plain(root / "shots" / "Screenshot 2023-06-10 at 14.23.01.png", NOW)
     _plain(root / "shots" / "deeper" / "Screenshot 2023-06-12 at 09.00.00.png", NOW)
     _plain(root / "empty" / "nothing.txt".replace(".txt", ".png"), NOW)
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         before = client.get("/folders", headers=AS_MACHINE).json()

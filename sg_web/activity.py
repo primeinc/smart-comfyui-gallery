@@ -34,6 +34,7 @@ from typing import Any
 from jinja2 import pass_context
 
 from db import connect, jobs
+from sg_web import console
 
 TERMINAL = ("done", "failed", "cancelled")
 
@@ -45,6 +46,7 @@ def _view(id_: int, kind: str, state: str, done: int, total: int | None, cancel_
     return {
         "id": id_,
         "kind": kind,
+        "what": console.describe_kind(kind),
         "state": state,
         "done": done,
         "total": total,

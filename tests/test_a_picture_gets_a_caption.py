@@ -11,12 +11,13 @@ seam and what reaches it is asserted.
 from __future__ import annotations
 
 import pathlib
+import time
 
 import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import connect, naming, runner, settings
+from db import connect, derived, naming, runner, settings
 from sg_web.app import build_app
 from sglint import policy
 from tests.staging import fresh_schema
@@ -152,14 +153,14 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
     Image.new("RGB", (20, 12), (10, 200, 40)).save(root / "green.png")
     monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: FakeCaptioner(say="a green field"))
     monkeypatch.setattr(runner, "_CAPTIONERS", {})
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         asked = client.post("/jobs/annotate", json={})
         assert asked.status_code in (200, 201, 202), asked.text
         conn = connect.connect(client.app.state.db_path)
         try:
-            while runner.run_next(conn, "test-worker", 1.0) is not None:
+            while runner.run_next(conn, "test-worker", time.time()) is not None:
                 conn.commit()
             conn.commit()
             file_id = conn.execute("SELECT id FROM file").fetchone()[0]
@@ -177,3 +178,12 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
         assert [a["text"] for a in told["said"]] == ["a green field"]
         console = client.get("/operations", headers={"accept": "text/html"}).text
         assert 'hx-post="/operations/jobs/annotate"' in console
+        # the grid says it on hover, and the machine answer carries it
+        grid = client.get("/g", headers={"accept": "text/html"}).text
+        assert 'title="a green field" data-said' in grid
+        conn = connect.connect(client.app.state.db_path, read_only=True)
+        try:
+            assert derived.said_first(conn, [file_id]) == {file_id: "a green field"}
+            assert derived.said_first(conn, []) == {}
+        finally:
+            connect.close(conn)
