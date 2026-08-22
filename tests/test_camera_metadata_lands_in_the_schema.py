@@ -134,6 +134,8 @@ def test_the_shutter_time_is_an_instant_when_the_zone_is_known(db, a_file, tmp_p
     told = when.judge_capture(
         captured_at=captured_at, subsec_ms=None, tz_offset_min=tz, maker_tz_offset_min=None, mtime=None, btime=None
     )
+    assert told is not None
+    assert told.instant_at is not None
     assert dt.datetime.fromtimestamp(told.instant_at, dt.UTC).isoformat() == ("2026-08-19T12:23:01+00:00")
     assert told.local_at == captured_at
 

@@ -88,6 +88,13 @@ def spawn_calls(tree: ast.AST) -> list[ast.Call]:
     return calls
 
 
+def spawner_name(call: ast.Call) -> str:
+    """The subprocess.<name> a spawn_calls() hit names."""
+    if not isinstance(call.func, ast.Attribute):
+        raise TypeError("not a spawn call")
+    return call.func.attr
+
+
 def keyword(call: ast.Call, name: str):
     for kw in call.keywords:
         if kw.arg == name:
@@ -127,7 +134,7 @@ def rule_spawns(
     found: list[Finding] = []
     for source in sources if sources is not None else every_source():
         for call in spawn_calls(parsed(source)):
-            attr = typing.cast(ast.Attribute, call.func).attr
+            attr = spawner_name(call)
             at = (source, call.lineno, call.col_offset)
             if source.is_relative_to(tests):
                 found.append(

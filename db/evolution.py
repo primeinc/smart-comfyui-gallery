@@ -54,7 +54,13 @@ def _space(conn, provider: str | None, models_dir: str) -> dict:
 
     from . import retrieval
 
-    held = {"provider": None, "space_id": None, "space": None, "prompt_policy_hash": None, "unavailable": None}
+    held: dict[str, str | int | None] = {
+        "provider": None,
+        "space_id": None,
+        "space": None,
+        "prompt_policy_hash": None,
+        "unavailable": None,
+    }
     if provider is not None:
         name, model, configured = retrieval.choice_for(conn, provider)  # exact; ambiguity refused
     else:
@@ -133,6 +139,20 @@ def _prompt_ids(conn, hashes: set[str]) -> dict[str, int]:
     return {
         row[0]: int(row[1])
         for row in conn.execute(f"SELECT text_hash, id FROM prompt WHERE text_hash IN ({marks})", wanted)
+    }
+
+
+def _prompt_view(frozen: dict | None, prompt_ids: dict[str, int]) -> dict | None:
+    """One role's frozen prompt as the page reads it, or None when the
+    snapshot froze none."""
+    if frozen is None:
+        return None
+    return {
+        "text": frozen["text"],
+        "hash": frozen["hash"],
+        "main": frozen["main"],
+        "main_hash": frozen["main_hash"],
+        "prompt_id": prompt_ids.get(frozen["main_hash"]),
     }
 
 
@@ -266,20 +286,7 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
                     "slug": slug,
                 },
                 "occurrence": one.get("occurrence"),
-                "prompt": {
-                    role: (
-                        None
-                        if held[role] is None
-                        else {
-                            "text": held[role]["text"],
-                            "hash": held[role]["hash"],
-                            "main": held[role]["main"],
-                            "main_hash": held[role]["main_hash"],
-                            "prompt_id": prompt_ids.get(held[role]["main_hash"]),
-                        }
-                    )
-                    for role in ("effective", "original")
-                },
+                "prompt": {role: _prompt_view(held[role], prompt_ids) for role in ("effective", "original")},
                 "generation": {key: value for key, value in facts[ref].items() if key != "lora_names"},
                 "metrics": {
                     **metric("original_effective_cosine", original, why_o, effective, why_e),

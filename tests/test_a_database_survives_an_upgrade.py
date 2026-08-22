@@ -557,6 +557,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     _pre_v10_core(conn)  # v10's change, inverted: a genuine v4 file
     _binary_sibling_indexes(conn)  # a genuine v4 file permits the twins
     root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', 0)").lastrowid
+    assert root_id is not None
     top = scan.ensure_folder(conn, root_id, None, "x")
     for name in ("Vacation", "vacation"):
         twin = scan.mint(conn, "folder", name)
@@ -1010,6 +1011,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         told = when.judge_capture(
             captured_at=captured_at, subsec_ms=None, tz_offset_min=tz, maker_tz_offset_min=None, mtime=None, btime=None
         )
+        assert told is not None
         assert told.instant_at == instant, "and the same instant as before the upgrade"
         assert iso is None
         with pytest.raises(sqlite3.IntegrityError):

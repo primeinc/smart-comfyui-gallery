@@ -107,7 +107,6 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import re
-import typing
 
 #: Seconds of slack around a finish: queue wait, encoding, disk.
 SLACK = 90.0
@@ -252,8 +251,6 @@ def judge_generation(
     swarm = (tool or "").lower().startswith("swarm")
     stamp = swarm_stamp(name) if swarm else None
     claimed = _wall(date_text) if date_text else None
-    if claimed is None and stamp is None:
-        return None
     conflicts: list[str] = []
     supports: list[str] = []
     order: int | None = None
@@ -272,8 +269,10 @@ def judge_generation(
                     f"{GENERATOR}the stamped name {_spell(at)} is not inside the embedded {claimed_precision}"
                     f" {_spell(day_start)}"
                 )
+    elif claimed is None:
+        return None
     else:
-        day_start, precision = typing.cast("tuple[float, str]", claimed)
+        day_start, precision = claimed
         if precision == "second":
             at, basis, window = day_start, "embedded", (day_start, day_start + 1.0)
         else:
@@ -439,15 +438,6 @@ def judge_file(
     smaller of mtime and btime, an instant, basis naming which."""
     stamp = name_stamp(name)
     day = folder_day(folders)
-    if stamp is None and day is None:
-        if mtime is None and btime is None:
-            return None
-        supports = (
-            ("btime_consistent",) if mtime is not None and btime is not None and abs(btime - mtime) <= 86400.0 else ()
-        )
-        if btime is not None and (mtime is None or btime < mtime):
-            return Verdict(None, btime, None, "subsecond", "btime", supports, ())
-        return Verdict(None, mtime, None, "subsecond", "mtime", supports, ())
     supports: list[str] = []
     conflicts: list[str] = []
     if stamp is not None:
@@ -458,8 +448,16 @@ def judge_file(
                 supports.append("folder_day")
             else:
                 conflicts.append(f"{FILE}the folder says {_spell(day)[:10]} but the name says {_spell(at)}")
-    else:
+    elif day is not None:
         at, precision, basis = day, "day", "folder"
+    else:
+        if mtime is None and btime is None:
+            return None
+        consistent = mtime is not None and btime is not None and abs(btime - mtime) <= 86400.0
+        agreed: tuple[str, ...] = ("btime_consistent",) if consistent else ()
+        if btime is not None and (mtime is None or btime < mtime):
+            return Verdict(None, btime, None, "subsecond", "btime", agreed, ())
+        return Verdict(None, mtime, None, "subsecond", "mtime", agreed, ())
     window = (at, at + _SPAN[precision])
     finished_at = None
     if mtime is not None:

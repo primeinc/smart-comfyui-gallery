@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import typing
 
 import pytest
 from litestar.testing import TestClient
@@ -260,7 +261,9 @@ def test_a_changed_source_claim_deletes_the_interpretation(interpreted):
         gen0 = conn.execute("SELECT id FROM file WHERE name = 'gen_0.png'").fetchone()[0]
         assert conn.execute("SELECT count(*) FROM derived_media_context WHERE file_id = ?", (gen0,)).fetchone()[0] == 1
         # a fake event hypothesis over the file, to watch it invalidate
-        generation_now = context.state(conn)[0]
+        state = context.state(conn)
+        assert state is not None
+        generation_now = state[0]
         run = conn.execute(
             "INSERT INTO derived_event_run(grouper, grouper_version, settings_hash,"
             " context_generation, context_policy_version, created_at)"
@@ -366,7 +369,7 @@ def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpret
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             witnessed["allowed"] = None if allowed is None else set(allowed)
             return {
-                "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in sorted(allowed)],
+                "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in sorted(allowed or ())],
                 "participants": ["fake"],
                 "contributors": ["fake"],
                 "missing": {},
@@ -405,8 +408,12 @@ def test_take_is_an_exact_integer_before_any_coercion(interpreted):
     client, _ = interpreted
     conn = _raw(client)
     try:
-        for hostile in (True, "5", 1.0):
+        hostiles: list[object] = [True, "5", 1.0]
+        for hostile in hostiles:
             with pytest.raises(ValueError, match="exact integer"):
-                collection_rules.from_gallery_query(conn, resultset.parse(kind="image"), actor_id=None, take=hostile)
+                # the wrong type on purpose: the rules module refuses truthiness species at the seam
+                collection_rules.from_gallery_query(
+                    conn, resultset.parse(kind="image"), actor_id=None, take=typing.cast("int", hostile)
+                )
     finally:
         connect.close(conn)

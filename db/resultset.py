@@ -388,7 +388,7 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
             # references rot is BROKEN, never empty (db/collection_rules).
             from . import collection_rules
 
-            spelled = live.get("album", query.album)
+            spelled = live.get("album") or query.album or str(held["album"])
             told = collection_rules.load(conn, held["album"])
             if told is None:
                 raise UnevaluatedCollection(
@@ -631,8 +631,19 @@ def _fused_ids(
         # An empty scope needs no encoder and has no honest
         # provenance -- nothing was asked of any space.
         return [], None
+    if query.text is None:
+        # no phrase, no semantic ordering: nothing was asked of any space
+        return [], None
     depth = len(allowed) if allowed is not None else _present(conn)
-    found = retrieval.query(conn, models_dir, query.text, max(depth, 1), now, offline=True, allowed=allowed)
+    found = retrieval.query(
+        conn,
+        models_dir,
+        query.text,
+        max(depth, 1),
+        now,
+        offline=True,
+        allowed=None if allowed is None else set(allowed),
+    )
     fused = [row["file_id"] for row in found["results"]]
     provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
     return fused, provenance

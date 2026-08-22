@@ -82,34 +82,45 @@ class _Encoder:
         return _unit(media.path)
 
 
-_fake = types.ModuleType("tests._fake_semantic")
-_fake.INSTRUCTION = "describe"
-_fake.parse = lambda reference: tuple(reference.split("/", 1))
-_fake.immutable = lambda checkpoint: True
-_fake.query_policy = lambda model, checkpoint: {
-    "provider": "fake",
-    "model": model,
-    "checkpoint": checkpoint,
-    "instruction": _fake.INSTRUCTION,
-}
-_fake.space = lambda model, checkpoint, dims: SpaceSpec(
-    key=f"semantic.fake.{model}.{checkpoint}",
-    representation="float32",
-    dimensions=int(dims),
-    metric="cosine",
-    producer=f"fake:{model}",
-    producer_version=checkpoint,
-    preprocess="fake.media",
-    preprocess_version="v1",
-)
 _ENCODERS: dict[tuple, _Encoder] = {}
 
 
-def _encoder(models_dir, model, checkpoint, *, offline=False):
-    return _ENCODERS.setdefault((model, checkpoint), _Encoder(model, checkpoint))
+class _FakeProvider(types.ModuleType):
+    """A semantic provider module, as vision/semantic looks one up."""
+
+    INSTRUCTION: str = "describe"
+
+    @staticmethod
+    def parse(reference):
+        return tuple(reference.split("/", 1))
+
+    @staticmethod
+    def immutable(checkpoint):
+        return True
+
+    def query_policy(self, model, checkpoint):
+        # the INSTRUCTION a test moves is the module's own attribute
+        return {"provider": "fake", "model": model, "checkpoint": checkpoint, "instruction": self.INSTRUCTION}
+
+    @staticmethod
+    def space(model, checkpoint, dims):
+        return SpaceSpec(
+            key=f"semantic.fake.{model}.{checkpoint}",
+            representation="float32",
+            dimensions=int(dims),
+            metric="cosine",
+            producer=f"fake:{model}",
+            producer_version=checkpoint,
+            preprocess="fake.media",
+            preprocess_version="v1",
+        )
+
+    @staticmethod
+    def encoder(models_dir, model, checkpoint, *, offline=False):
+        return _ENCODERS.setdefault((model, checkpoint), _Encoder(model, checkpoint))
 
 
-_fake.encoder = _encoder
+_fake = _FakeProvider("tests._fake_semantic")
 
 
 @pytest.fixture
@@ -438,11 +449,13 @@ def test_embedding_is_explicit_durable_and_idempotent_work(library):
 
 
 def _request(snap, engine, threshold):
+    engine_name, engine_version = engine.identity()
     return planning.request_identity(
         snap.sha256,
         "generation_history",
         planning.GenerationHistoryPlanner.version,
-        *engine.identity(),
+        engine_name,
+        engine_version,
         {"phase_threshold": threshold},
     )
 
@@ -1001,7 +1014,9 @@ def test_a_space_selector_is_exact_and_ambiguity_is_refused(library):
     try:
         with pytest.raises(ValueError, match="names 2 configured spaces"):
             planning.engine_for(conn, "fake", "unused")
-        assert planning.engine_for(conn, "fake:toy2", "unused").model == "toy2"
+        chosen = planning.engine_for(conn, "fake:toy2", "unused")
+        assert isinstance(chosen, planning.SemanticEngine)
+        assert chosen.model == "toy2"
     finally:
         connect.close(conn)
 

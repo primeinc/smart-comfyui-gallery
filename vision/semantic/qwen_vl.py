@@ -36,7 +36,10 @@ import threading
 # runs get_type_hints over the class, which evaluates the (lazily stringified)
 # ClassVar annotation in THIS module's globals -- a function-local import is
 # invisible there and the class definition dies with a NameError.
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedModel
 
 PROVIDER = "qwen"
 
@@ -246,7 +249,7 @@ def pin(models_dir: str, model: str, checkpoint: str) -> str:
     return pathlib.Path(found).name if found is not None else checkpoint
 
 
-def _for_embedding():
+def _for_embedding() -> type[PreTrainedModel]:
     """The model class, declared at call time because transformers is a
     heavyweight import this module must not force on registry probes.
 
@@ -287,6 +290,7 @@ class QwenBackend:
 
     def __init__(self, models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *, offline: bool = False):
         import torch
+        from transformers import PreTrainedModel
         from transformers.models.qwen3_vl.processing_qwen3_vl import Qwen3VLProcessor
 
         self.model_name = model
@@ -307,7 +311,10 @@ class QwenBackend:
             source, revision=checkpoint, cache_dir=models_dir, padding_side="right"
         )
         loaded.eval()
-        self.model = loaded.to(self.device)
+        # the same override `loaded.to(...)` reaches, called as the plain
+        # function it is: transformers wraps it with functools.wraps, which
+        # leaves the bound-method signature behind
+        self.model = PreTrainedModel.to(loaded, self.device)
         # Pin AFTER weights land, so the space this backend mints is keyed
         # by the immutable commit the download resolved to -- never by the
         # mutable ref the configuration spelled.
@@ -354,23 +361,28 @@ class QwenBackend:
             [conversation], image_patch_size=IMAGE_PATCH_SIZE, return_video_metadata=True, return_video_kwargs=True
         )
         if video_inputs is not None:
-            pairs = list(video_inputs)
+            # with return_video_metadata=True every entry is a (clip,
+            # metadata) pair; qwen_vl_utils' annotation describes only
+            # the default shape, so the pairs are read as what they are
+            pairs: list[Any] = list(video_inputs)
             videos = [clip for clip, _ in pairs]
             video_metadata = [meta for _, meta in pairs]
         else:
             videos, video_metadata = None, None
-        inputs = self.processor(
-            text=text,
-            images=images,
-            videos=videos,
-            video_metadata=video_metadata,
-            truncation=True,
-            max_length=MAX_LENGTH,
-            padding=True,
-            do_resize=DO_RESIZE,
-            return_tensors="pt",
-            **video_kwargs,
-        )
+        # Flat keyword arguments, the way the processor takes them: its
+        # _merge_kwargs sorts each into text/images/videos by name. The
+        # per-video values (metadata, fps) are lists, one per clip, which
+        # the typed groups spell as scalars; hence a plain mapping.
+        settings: dict[str, Any] = {
+            "video_metadata": video_metadata,
+            "truncation": True,
+            "max_length": MAX_LENGTH,
+            "padding": True,
+            "do_resize": DO_RESIZE,
+            "return_tensors": "pt",
+            **(video_kwargs or {}),
+        }
+        inputs = self.processor(text=text, images=images, videos=videos, **settings)
         inputs = {key: value.to(self.device) for key, value in inputs.items()}
         with torch.no_grad():
             hidden = self.model(**inputs).last_hidden_state

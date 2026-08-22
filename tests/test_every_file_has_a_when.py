@@ -77,9 +77,21 @@ def test_a_name_that_carries_no_stamp_says_nothing(name):
     )
 
 
+def _stamp(name: str) -> tuple[float, str]:
+    told = when.name_stamp(name)
+    assert told is not None, name
+    return told
+
+
+def _file(**claims) -> when.Verdict:
+    told = when.judge_file(**claims)
+    assert told is not None
+    return told
+
+
 def test_the_swarm_counter_after_the_t_is_order_not_milliseconds():
-    assert when.name_stamp("20260718T094712001-x.png")[1] == "second"
-    assert when.name_stamp("PXL_20260718_094712001.jpg")[1] == "subsecond", "the same digits after `_` are PXL's ms"
+    assert _stamp("20260718T094712001-x.png")[1] == "second"
+    assert _stamp("PXL_20260718_094712001.jpg")[1] == "subsecond", "the same digits after `_` are PXL's ms"
 
 
 def test_a_dated_folder_is_a_day_claim_nearest_first():
@@ -96,19 +108,19 @@ def test_a_dated_folder_is_a_day_claim_nearest_first():
 
 
 def test_with_no_claim_the_occurrence_is_the_earliest_known_existence():
-    copied = when.judge_file(name="000324.jpg", folders=["x"], mtime=NOW, btime=NOW + 30 * DAY)
+    copied = _file(name="000324.jpg", folders=["x"], mtime=NOW, btime=NOW + 30 * DAY)
     assert (copied.basis, copied.instant_at, copied.local_at, copied.precision) == ("mtime", NOW, None, "subsecond")
     assert copied.supports == (), "a copy made a month later is not consistent with anything"
-    born_first = when.judge_file(name="000324.jpg", folders=["x"], mtime=NOW + HOUR, btime=NOW)
+    born_first = _file(name="000324.jpg", folders=["x"], mtime=NOW + HOUR, btime=NOW)
     assert (born_first.basis, born_first.instant_at) == ("btime", NOW), "an edit saved later: the birth is earlier"
     assert born_first.supports == ("btime_consistent",)
-    assert when.judge_file(name="a.png", folders=[], mtime=None, btime=NOW).basis == "btime"
+    assert _file(name="a.png", folders=[], mtime=None, btime=NOW).basis == "btime"
     assert when.judge_file(name="a.png", folders=[], mtime=None, btime=None) is None
 
 
 def test_a_stamped_name_is_the_claim_and_the_filesystem_is_evidence_beside_it():
     at = JUNE_10 + 14 * HOUR + 23 * MIN + 1
-    told = when.judge_file(
+    told = _file(
         name="IMG_20230610_142301.jpg", folders=["Camera"], mtime=_instant(at + 2), btime=_instant(at + 40 * DAY)
     )
     assert (told.basis, told.local_at, told.precision, told.instant_at) == ("filename", at, "second", None)
@@ -116,24 +128,22 @@ def test_a_stamped_name_is_the_claim_and_the_filesystem_is_evidence_beside_it():
     assert told.conflicts == ()
     assert (told.quality, told.usable) == ("corroborated", True)
     assert told.finished_at == _instant(at + 2)
-    resaved = when.judge_file(name="IMG_20230610_142301.jpg", folders=[], mtime=_instant(at + 3 * DAY), btime=None)
+    resaved = _file(name="IMG_20230610_142301.jpg", folders=[], mtime=_instant(at + 3 * DAY), btime=None)
     assert resaved.conflicts[0].startswith("filesystem: mtime")
     assert "days after the claimed window" in resaved.conflicts[0]
     assert (resaved.quality, resaved.usable) == ("contested", True), "a re-save disputes; it does not demote"
-    impossible = when.judge_file(name="IMG_20230610_142301.jpg", folders=[], mtime=_instant(at - DAY), btime=None)
+    impossible = _file(name="IMG_20230610_142301.jpg", folders=[], mtime=_instant(at - DAY), btime=None)
     assert "before the claimed" in impossible.conflicts[0]
 
 
 def test_a_dated_folder_is_a_day_claim_and_agrees_or_disputes_with_the_name():
-    day = when.judge_file(
-        name="scan-012.png", folders=["archive", "2023-06-10"], mtime=_instant(JUNE_10 + 9 * HOUR), btime=None
-    )
+    day = _file(name="scan-012.png", folders=["archive", "2023-06-10"], mtime=_instant(JUNE_10 + 9 * HOUR), btime=None)
     assert (day.basis, day.local_at, day.precision) == ("folder", JUNE_10, "day")
     assert day.supports == ("mtime_consistent", "host_zone_assumed")
-    agreed = when.judge_file(name="IMG_20230610_142301.jpg", folders=["2023-06-10"], mtime=None, btime=None)
+    agreed = _file(name="IMG_20230610_142301.jpg", folders=["2023-06-10"], mtime=None, btime=None)
     assert agreed.supports == ("folder_day",)
     assert agreed.basis == "filename"
-    split = when.judge_file(name="IMG_20230610_142301.jpg", folders=["2023-06-11"], mtime=None, btime=None)
+    split = _file(name="IMG_20230610_142301.jpg", folders=["2023-06-11"], mtime=None, btime=None)
     assert split.basis == "filename", "the name is finer and stands"
     assert split.conflicts[0].startswith("file: the folder says 2023-06-11 but the name says")
     assert split.usable is True

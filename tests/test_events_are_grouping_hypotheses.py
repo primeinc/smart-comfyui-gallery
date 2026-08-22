@@ -473,7 +473,9 @@ def test_a_grouping_proof_cannot_race_a_context_mutation(grouped, monkeypatch):
         conn.commit()
         assert len(raced) == 2, "the stale proposal must be recomputed, not trusted"
         tagged = conn.execute("SELECT context_generation FROM derived_event_run WHERE id = ?", (run_id,)).fetchone()[0]
-        assert tagged == context.state(conn)[0], "the run proves the generation it was computed over"
+        state = context.state(conn)
+        assert state is not None
+        assert tagged == state[0], "the run proves the generation it was computed over"
 
         def always_racing(held):
             context._advance(conn)

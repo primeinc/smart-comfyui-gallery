@@ -342,7 +342,7 @@ def _insert_face(
 
         similarity.note(
             conn,
-            similarity.face_space(model_id, model_version, dim),
+            similarity.face_space(model_id, model_version, len(embedding) // 4),
             face_id,
             np.frombuffer(embedding, dtype=np.float32),
             now,
@@ -655,20 +655,19 @@ def cluster(
     # relabeled, never mixed.
     current = similarity.face_space_of(conn, model_id, model_version)
     rows = []
-    space = None
     if current is not None:
-        sid, space = current
         rows = conn.execute(
             "SELECT id, embedding FROM derived_face_instance WHERE space_id = ? ORDER BY id",
-            (sid,),
+            (current[0],),
         ).fetchall()
     conn.execute("DELETE FROM derived_face_cluster WHERE run_id = ?", (run_id,))
     conn.execute(
         "UPDATE derived_face_run SET faces = ?, clusters = 0 WHERE id = ?",
         (len(rows), run_id),
     )
-    if not rows:
+    if current is None or not rows:
         return []
+    space = current[1]
 
     vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
     face_ids = [int(row[0]) for row in rows]

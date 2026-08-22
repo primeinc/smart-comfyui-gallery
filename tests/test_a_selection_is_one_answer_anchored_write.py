@@ -54,7 +54,9 @@ def chosen(tmp_path):
 def _grid(client, **params) -> tuple[str, dict[str, str]]:
     """(answer, {slug: uuid}) for the current grid of this question."""
     page = client.get("/g", params=params).text
-    answer = re.search(r'data-answer="([^"]+)"', page).group(1)
+    found = re.search(r'data-answer="([^"]+)"', page)
+    assert found is not None
+    answer = found.group(1)
     shells = re.findall(
         r'data-selection-key="([0-9a-f]{32})">\s*<input[^>]*>\s*<a class="cell"[^>]*data-slug="([^"]+)"', page
     )

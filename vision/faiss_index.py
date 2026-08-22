@@ -262,6 +262,14 @@ class IndexManager:
                 index = faiss.read_index(str(index_path))
         except (RuntimeError, OSError):
             return False
+        # read_index hands back the concrete class (faiss's out-typemap
+        # downcasts every Index*); this proxy OWNS the object, and a
+        # downcast_index() on it would be a second, non-owning proxy left
+        # pointing at freed memory once this one is collected. A snapshot
+        # that is not an id-mapped index is not this manager's snapshot,
+        # whatever the sidecar says.
+        if not isinstance(index, (faiss.IndexIDMap, faiss.IndexBinaryIDMap)):
+            return False
         if int(index.ntotal) != sidecar.get("vectors"):
             return False
         space = _Space(spec, index, set(faiss.vector_to_array(index.id_map).tolist()))
@@ -496,8 +504,9 @@ class IndexManager:
         first remove_ids compaction."""
         faiss = self._faiss()
         if space.spec.representation == "binary":
-            inner = faiss.downcast_IndexBinary(space.index.index)
-            return faiss.vector_to_array(inner.xb).reshape(int(inner.ntotal), space.spec.dimensions // 8)
+            packed = faiss.downcast_IndexBinary(space.index.index)
+            # uint8 rows of d/8 bytes: the codes, in index order
+            return packed.reconstruct_n(0, int(packed.ntotal))
         inner = faiss.downcast_index(space.index.index)
         return inner.reconstruct_n(0, int(inner.ntotal))
 

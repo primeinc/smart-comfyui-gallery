@@ -220,7 +220,7 @@ def test_an_edited_rule_is_a_new_question(saved):
     )
 
 
-def _rotten(where=None, select=None, v=1) -> str:
+def _rotten(where=None, select=None, v: int | float = 1) -> str:
     import json
 
     base = {

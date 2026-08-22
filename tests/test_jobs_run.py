@@ -11,6 +11,7 @@ from __future__ import annotations
 import pathlib
 import sqlite3
 
+import numpy as np
 import pytest
 
 from db import jobs, runner, scan
@@ -615,7 +616,12 @@ def test_the_qwen_adapter_takes_the_native_door_for_video():
 
     backend = object.__new__(qwen_vl.QwenBackend)
     seen: dict = {}
-    backend._embed = lambda instruction, content: seen.update({"instruction": instruction, "content": content})
+
+    def record(instruction: str, content: dict) -> np.ndarray:
+        seen.update({"instruction": instruction, "content": content})
+        return np.zeros(1, dtype=np.float32)
+
+    backend._embed = record
 
     def never_the_frame():
         raise AssertionError("a video must go through its own path, not the poster frame")
@@ -637,7 +643,12 @@ def test_a_failed_decode_fails_the_item_and_embeds_nothing():
 
     backend = object.__new__(qwen_vl.QwenBackend)
     called: list = []
-    backend._embed = lambda instruction, content: called.append(content)
+
+    def record(instruction: str, content: dict) -> np.ndarray:
+        called.append(content)
+        return np.zeros(1, dtype=np.float32)
+
+    backend._embed = record
 
     def undecodable():
         raise ValueError("the bytes are not a picture")

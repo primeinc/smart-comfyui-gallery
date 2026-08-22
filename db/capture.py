@@ -579,10 +579,10 @@ def read_video(path) -> Capture:
                 _read_image(image, path, out)
         except (OSError, ValueError, Image.DecompressionBombError) as problem:
             out.unreadable = f"{type(problem).__name__}: {problem}"
-    try:
-        import av
-        from av.error import FFmpegError
+    import av
+    from av.error import FFmpegError
 
+    try:
         with av.open(str(path), "r", metadata_errors="replace") as container:
             meta = dict(container.metadata or {})
     except (FFmpegError, OSError, ValueError) as problem:

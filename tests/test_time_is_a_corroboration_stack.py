@@ -39,7 +39,9 @@ def _instant(wall: float) -> float:
     return naive.astimezone().timestamp()
 
 
-def _judge(**over):
+def _attempt(**over) -> when.Verdict | None:
+    """The i2i run's claims with `over` applied, judged; None when the
+    generator left no claim."""
     base = {
         "date_text": "2026-07-18",
         "name": "0947001-c5afa607-qwnImageEdit.png",
@@ -49,6 +51,18 @@ def _judge(**over):
         "generation_time": 64.33,
     }
     return when.judge_generation(**{**base, **over})
+
+
+def _judge(**over) -> when.Verdict:
+    told = _attempt(**over)
+    assert told is not None
+    return told
+
+
+def _filesystem(mtime: float | None, btime: float | None) -> when.Verdict:
+    told = when.judge_filesystem(mtime, btime)
+    assert told is not None
+    return told
 
 
 def test_the_claim_is_the_generators_minute_and_the_finish_is_evidence_beside_it():
@@ -128,8 +142,8 @@ def test_btime_is_a_constraint_and_never_an_instant():
     assert no_mtime.supports == ("embedded_day", "btime_after_generation", "host_zone_assumed")
     alone = _judge(mtime=None, btime=None)
     assert alone.supports == ("embedded_day",), "no filesystem time, no zone assumed"
-    assert when.judge_filesystem(None, _instant(NOW)).basis == "btime"
-    fallback = when.judge_filesystem(_instant(NOW), _instant(NOW + 3 * HOUR))
+    assert _filesystem(None, _instant(NOW)).basis == "btime"
+    fallback = _filesystem(_instant(NOW), _instant(NOW + 3 * HOUR))
     assert (fallback.basis, fallback.precision, fallback.supports, fallback.quality) == (
         "mtime",
         "subsecond",
@@ -145,7 +159,7 @@ def test_a_full_generator_stamp_is_its_own_finest_claim():
     assert (told.precision, told.basis) == ("second", "embedded")
     assert told.local_at == JULY_18 + 9 * HOUR + 47 * MIN + 12
     assert "mtime_finish_consistent" in told.supports, "finish minus 64 s lands within slack of the stamp"
-    assert _judge(date_text="yesterday-ish") is None, "a claim that does not parse is no claim"
+    assert _attempt(date_text="yesterday-ish") is None, "a claim that does not parse is no claim"
     assert when.swarm_minute("2547001-x.png") is None, "hour 25 is not a Swarm name"
     assert when.swarm_minute("0947001-c5afa607-m.png") == (9, 47, 1)
 
@@ -189,7 +203,7 @@ def test_a_stamped_name_is_the_generators_own_second():
     assert when.swarm_stamp("0947001-x.png") is None
     assert when.swarm_minute("20260718T094712001-x.png") is None, "the grammars never collide"
     assert when.swarm_minute("20260718_09h47m12s313ms_m.png") is None
-    assert _judge(name="0947001-x.png", date_text=None) is None, "a default name without a day is no claim"
+    assert _attempt(name="0947001-x.png", date_text=None) is None, "a default name without a day is no claim"
 
 
 def test_a_verdict_depends_on_its_file_alone():
@@ -283,7 +297,9 @@ def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_t
                 " WHERE e.kind = 'generation_session'"
             ).fetchall()
             assert sessions == [(5,)], "one session of five, at minute precision"
-            assert context.state(conn)[1] == context.POLICY_VERSION
+            state = context.state(conn)
+            assert state is not None
+            assert state[1] == context.POLICY_VERSION
             event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
             snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
             conn.commit()

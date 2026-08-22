@@ -142,7 +142,9 @@ def test_a_bin_is_a_door_that_opens_exactly_its_pictures(surfaced):
     def total(qs: str) -> int:
         opened = client.get(f"/g?{qs}")
         assert opened.status_code == 200, opened.text
-        return int(re.search(r'data-total="(\d+)"', opened.text).group(1))
+        found = re.search(r'data-total="(\d+)"', opened.text)
+        assert found is not None, "the gallery page carries its total"
+        return int(found.group(1))
 
     assert total(two["qs"]) == 2, "the bar of 2 opens a gallery of exactly those 2"
     three = next(b for b in view["bins"] if b["pictures"] == 3)

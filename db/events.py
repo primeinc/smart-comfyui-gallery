@@ -104,23 +104,23 @@ def _split(members: list, key, gap: float) -> list[list]:
 
 
 def _proposed_instant(kind: str, members: list[context.Occurrence]) -> GroupProposal:
-    instants = [one.instant_at for one in members]
-    locals_known = [one.local_at for one in members]
-    both = all(one is not None for one in locals_known)
+    instants = [moment for one in members if (moment := one.instant_at) is not None]
+    locals_known = [moment for one in members if (moment := one.local_at) is not None]
+    # the wall interval rides along only when EVERY member knows it
+    both = len(locals_known) == len(members)
     return GroupProposal(
         kind=kind,
         file_ids=tuple(one.file_id for one in members),
         uuids=tuple(one.uuid for one in members),
         instant_start=min(instants),
         instant_end=max(instants),
-        # the wall interval rides along only when EVERY member knows it
         local_start=min(locals_known) if both else None,
         local_end=max(locals_known) if both else None,
     )
 
 
 def _proposed_local(kind: str, members: list[context.Occurrence]) -> GroupProposal:
-    walls = [_moment(one) for one in members]
+    walls = [moment for one in members if (moment := _moment(one)) is not None]
     return GroupProposal(
         kind=kind,
         file_ids=tuple(one.file_id for one in members),

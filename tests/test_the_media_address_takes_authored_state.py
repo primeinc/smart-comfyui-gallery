@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 
 import pytest
 from litestar.testing import TestClient
@@ -243,14 +244,17 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
         rated = {
             row[0] for row in conn.execute("SELECT file_id FROM rating WHERE user_id = ? AND rating >= 4", (mine,))
         }
-        for spelled, expected in (
+        constrained: dict[str, Any]
+        for constrained, expected in (
             ({"favorite": "1"}, favorites),
             ({"rating_min": 4}, rated),
             ({"favorite": "1", "rating_min": 4}, favorites & rated),
         ):
             seen.clear()
-            resultset.describe(conn, "", resultset.parse(text="sunset", **spelled), 0.0, actor_id=mine)
-            assert seen["allowed"] == expected, f"{spelled} must reach retrieval as exactly its eligible set before RRF"
+            resultset.describe(conn, "", resultset.parse(text="sunset", **constrained), 0.0, actor_id=mine)
+            assert seen["allowed"] == expected, (
+                f"{constrained} must reach retrieval as exactly its eligible set before RRF"
+            )
         connect.close(conn)
 
 

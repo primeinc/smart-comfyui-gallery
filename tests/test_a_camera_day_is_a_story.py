@@ -123,7 +123,7 @@ def test_a_real_canon_body_is_read_whole():
 # --- the judge: the capture act ---------------------------------------------------------------
 
 
-def _judge(**over):
+def _judge(**over) -> when.Verdict:
     base = {
         "captured_at": FEB_10 + 8 * HOUR + 29 * MIN + 58,
         "subsec_ms": 170,
@@ -133,12 +133,15 @@ def _judge(**over):
         "btime": FEB_10 + 200 * DAY,
         "duration": None,
     }
-    return when.judge_capture(**{**base, **over})
+    told = when.judge_capture(**{**base, **over})
+    assert told is not None
+    return told
 
 
 def test_the_maker_zone_makes_the_camera_clock_an_instant_and_mtime_is_the_write():
     told = _judge()
     assert (told.precision, told.basis) == ("subsecond", "capture")
+    assert told.local_at is not None
     assert told.local_at == pytest.approx(FEB_10 + 8 * HOUR + 29 * MIN + 58.17)
     assert told.instant_at == pytest.approx(told.local_at + 5 * HOUR)
     assert told.tz_offset_min == -300

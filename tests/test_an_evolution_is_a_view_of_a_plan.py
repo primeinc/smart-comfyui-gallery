@@ -60,24 +60,43 @@ class _Encoder:
         return _unit(media.path)
 
 
-_fake = types.ModuleType("tests._fake_semantic_evolution")
-_fake.parse = lambda reference: tuple(reference.split("/", 1))
-_fake.immutable = lambda checkpoint: True
-_fake.query_policy = lambda model, checkpoint: {"provider": "fake", "model": model, "checkpoint": checkpoint}
-_fake.space = lambda model, checkpoint, dims: SpaceSpec(
-    key=f"semantic.fake.{model}.{checkpoint}",
-    representation="float32",
-    dimensions=int(dims),
-    metric="cosine",
-    producer=f"fake:{model}",
-    producer_version=checkpoint,
-    preprocess="fake.media",
-    preprocess_version="v1",
-)
 _ENCODERS: dict[tuple, _Encoder] = {}
-_fake.encoder = lambda models_dir, model, checkpoint, *, offline=False: _ENCODERS.setdefault(
-    (model, checkpoint), _Encoder(model, checkpoint)
-)
+
+
+class _FakeProvider(types.ModuleType):
+    """A semantic provider module, as vision/semantic looks one up."""
+
+    @staticmethod
+    def parse(reference):
+        return tuple(reference.split("/", 1))
+
+    @staticmethod
+    def immutable(checkpoint):
+        return True
+
+    @staticmethod
+    def query_policy(model, checkpoint):
+        return {"provider": "fake", "model": model, "checkpoint": checkpoint}
+
+    @staticmethod
+    def space(model, checkpoint, dims):
+        return SpaceSpec(
+            key=f"semantic.fake.{model}.{checkpoint}",
+            representation="float32",
+            dimensions=int(dims),
+            metric="cosine",
+            producer=f"fake:{model}",
+            producer_version=checkpoint,
+            preprocess="fake.media",
+            preprocess_version="v1",
+        )
+
+    @staticmethod
+    def encoder(models_dir, model, checkpoint, *, offline=False):
+        return _ENCODERS.setdefault((model, checkpoint), _Encoder(model, checkpoint))
+
+
+_fake = _FakeProvider("tests._fake_semantic_evolution")
 
 WRITTEN = "a __material__ lighthouse on a cliff"
 PROMPTS = [

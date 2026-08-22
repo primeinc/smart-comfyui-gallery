@@ -159,6 +159,7 @@ def test_an_invalidated_space_stops_answering_and_loses_its_snapshot(tmp_path):
     manager = IndexManager(tmp_path)
     manager.load(PHASH, [1, 2], [0, 1])
     written = manager.checkpoint(PHASH.key)
+    assert written is not None
     manager.invalidate(PHASH.key)
     with pytest.raises(KeyError):
         manager.range(PHASH.key, 4)
@@ -558,7 +559,9 @@ def test_a_crash_between_commit_and_sync_cannot_revive_an_old_embedding(db, tmp_
     from db import retrieval
 
     manager = IndexManager(tmp_path)
-    sid, full = retrieval._space_of(db, "openclip", "ViT-B-32", "test")
+    found = retrieval._space_of(db, "openclip", "ViT-B-32", "test")
+    assert found is not None
+    sid, full = found
     rows = retrieval.current_rows(db, sid)
     key = similarity.align(db, manager, full, [e for e, _ in rows], lambda w: retrieval._vectors(db, w), 1.0)
     manager.checkpoint(key)

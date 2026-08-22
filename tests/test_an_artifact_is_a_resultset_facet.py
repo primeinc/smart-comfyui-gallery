@@ -161,7 +161,7 @@ def test_a_semantic_artifact_question_constrains_before_fusion(recipes, monkeypa
 
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             witnessed["allowed"] = None if allowed is None else set(allowed)
-            held = sorted(allowed, reverse=True)  # NOT the global order: the pin below notices reordering
+            held = sorted(allowed or (), reverse=True)  # NOT the global order: the pin below notices reordering
             return {
                 "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in held],
                 "participants": ["fake"],

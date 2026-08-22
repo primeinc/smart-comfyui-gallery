@@ -96,7 +96,11 @@ def import_faiss(gpu: bool = True):
     once loaded stays loaded, so changing the setting applies from the
     next start, and that is a fact about Python, not a policy here."""
     if "faiss" in sys.modules:
-        return sys.modules["faiss"]
+        # already loaded: the import is a dictionary lookup, and it hands
+        # back the module AS the module rather than as sys.modules' Any
+        import faiss
+
+        return faiss
     use_vendor = (
         gpu
         and sys.platform == "win32"

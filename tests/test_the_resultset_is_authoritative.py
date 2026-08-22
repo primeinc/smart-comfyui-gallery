@@ -18,6 +18,7 @@ from __future__ import annotations
 import pathlib
 import sqlite3
 import time
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -137,6 +138,7 @@ def test_an_album_is_a_scope(shelves):
 
 
 def test_malformed_questions_are_refused():
+    refused: dict[str, Any]
     for refused, why in (
         ({"sort": "best"}, "sort must be"),
         ({"sort": "similarity"}, "needs a phrase"),
@@ -257,7 +259,7 @@ def test_the_scope_reaches_retrieval_as_the_allowed_set(shelves, monkeypatch):
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         seen.update({"allowed": allowed, "k": k})
-        members = sorted(allowed, reverse=True)
+        members = sorted(allowed or (), reverse=True)
         return {
             "results": [{"file_id": f, "score": 1.0, "sources": {}} for f in members],
             "participants": ["s"],

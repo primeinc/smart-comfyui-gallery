@@ -160,6 +160,7 @@ def rule_migrations(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
         if isinstance(node, ast.Assign)
         and any(isinstance(t, ast.Name) and t.id == "USER_VERSION" for t in node.targets)
         and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, int)
     )
     migrate = ast.parse((root / "db" / "migrate.py").read_text(encoding="utf-8"))
     steps = {

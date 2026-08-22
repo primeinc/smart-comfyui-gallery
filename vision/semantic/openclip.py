@@ -139,6 +139,7 @@ class ClipBackend:
     def __init__(self, models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *, offline: bool = False):
         import open_clip
         import torch
+        from torchvision.transforms import Compose
 
         self.model_name = model
         self.checkpoint = checkpoint
@@ -152,7 +153,7 @@ class ClipBackend:
                 raise LookupError(
                     f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
                 )
-            loaded, _train_tf, self.preprocess = open_clip.create_model_and_transforms(
+            loaded, _train_tf, preprocess = open_clip.create_model_and_transforms(
                 model, pretrained=checkpoint, cache_dir=models_dir
             )
         else:
@@ -165,7 +166,7 @@ class ClipBackend:
             from open_clip.pretrained import get_pretrained_cfg
 
             tag = get_pretrained_cfg(model, checkpoint) or {}
-            loaded, _train_tf, self.preprocess = open_clip.create_model_and_transforms(
+            loaded, _train_tf, preprocess = open_clip.create_model_and_transforms(
                 model,
                 pretrained=found,
                 cache_dir=models_dir,
@@ -174,6 +175,15 @@ class ClipBackend:
                 image_interpolation=tag.get("interpolation"),
                 image_resize_mode=tag.get("resize_mode"),
             )
+        # the factory returns nn.Module; the two encode_* doors live on
+        # the contrastive classes, and only those are a space here
+        if not isinstance(loaded, (open_clip.CLIP, open_clip.CustomTextCLIP, open_clip.CoCa)):
+            raise TypeError(f"{model} built {type(loaded).__name__}, which has no image/text encoders")
+        # the inference transform is one Compose; the factory's training
+        # branch can hand back timm's (train, eval, eval) triple instead
+        if not isinstance(preprocess, Compose):
+            raise TypeError(f"{model} built {type(preprocess).__name__} for preprocessing, not one transform")
+        self.preprocess = preprocess
         self.tokenizer = open_clip.get_tokenizer(model, cache_dir=models_dir)
         loaded.eval()  # models construct in train mode; see module docstring
         self.model = loaded.to(self.device)
