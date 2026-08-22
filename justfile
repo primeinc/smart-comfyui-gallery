@@ -6,9 +6,14 @@ set windows-shell := ["bash", "-cu"]
 # venv interpreter path differs by OS: Scripts/ on Windows, bin/ elsewhere
 python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
 
-# Full test suite in the dev venv
+# The fast lane: every test not marked slow, spread over the cores
 test:
-    {{ python }} -m pytest tests/ -q
+    {{ python }} -m pytest tests/ -q -m "not slow"
+
+# The slow lane: the tests marked slow (real sample libraries, real
+# timeouts) -- seconds each, run on their own
+test-slow:
+    {{ python }} -m pytest tests/ -q -m slow
 
 # Ruff over the whole tree, then this repository's own structural rules (sglint)
 lint:
@@ -19,7 +24,7 @@ lint:
 fmt-check:
     {{ python }} -m ruff format --check .
 
-# Pyright type check
+# Pyright, on request; not in the gate
 types:
     {{ python }} -m pyright
 
@@ -29,8 +34,11 @@ types:
 repo-check:
     {{ python }} -m sglint --repo
 
-# Everything: lint, format, types, repo hygiene, tests
-check: lint fmt-check types repo-check test
+# The gate: lint, format, repo hygiene, the fast tests
+check: lint fmt-check repo-check test
+
+# The gate plus the slow lane
+check-all: check test-slow
 
 # The repo-wide structural gates, on their own and in seconds: sglint's
 # rules (discovered scope: a package created tomorrow is swept the day it
