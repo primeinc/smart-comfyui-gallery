@@ -11,6 +11,7 @@ where a migration runner either holds or loses the data.
 """
 
 import pathlib
+import shutil
 import sqlite3
 
 import pytest
@@ -31,11 +32,30 @@ def steps():
     migrate.STEPS.update(original)
 
 
+_TEMPLATE: list[pathlib.Path] = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def built(tmp_path_factory):
+    """Today's build, made once; every database below starts as a copy of
+    it -- the same file build.build writes, without executing the DDL
+    on disk per test."""
+    template = tmp_path_factory.mktemp("built") / "gallery.db"
+    build.build(template)
+    _TEMPLATE.append(template)
+    yield template
+    _TEMPLATE.clear()
+
+
+def _built(path: pathlib.Path) -> None:
+    shutil.copy(_TEMPLATE[0], path)
+
+
 @pytest.fixture
 def library(tmp_path):
     """A built database with a person's work already in it."""
     path = tmp_path / "gallery.db"
-    build.build(path)
+    _built(path)
     conn = connect.connect(path)
     root = int(
         conn.execute(
@@ -459,7 +479,7 @@ def _binary_sibling_indexes(conn) -> None:
 def v1_database(tmp_path):
     """Today's build, taken back to v1 by inverting the shipped steps."""
     path = tmp_path / "gallery.db"
-    build.build(path)
+    _built(path)
     conn = sqlite3.connect(str(path), isolation_level=None)
     _pre_v10_core(conn)  # v10's change, inverted
     conn.execute("DROP TABLE derived_dupe_group")  # v3's addition; indexes go with it
@@ -552,7 +572,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     to merge; deleting one is worse. The step refuses, names both
     spellings, and leaves the file at v4 with its rows intact."""
     path = tmp_path / "gallery.db"
-    build.build(path)
+    _built(path)
     conn = sqlite3.connect(str(path), isolation_level=None)
     conn.execute("PRAGMA foreign_keys=ON")
     _pre_v10_core(conn)  # v10's change, inverted: a genuine v4 file
@@ -680,7 +700,7 @@ def a_whole_library(path, root):
         info.add_text("parameters", recipe)
         Image.new("RGB", (16, 16), (20 + i, 40, 60)).save(root / f"p{i}.png", pnginfo=info)
 
-    build.build(path)
+    _built(path)
     conn = connect.connect(path)
     root_id = library_module.add_root(conn, root, "library", NOW)
     scan.scan(conn, root_id, root, NOW)
@@ -814,7 +834,7 @@ def v3_database_with_embeddings(tmp_path):
     from vision.faiss_index import SpaceSpec
 
     path = tmp_path / "gallery.db"
-    build.build(path)
+    _built(path)
     conn = connect.connect(path)
     _pre_v10_core(conn)  # v10's change, inverted
     _pre_v7_collection(conn)  # v7's change, inverted
@@ -941,7 +961,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
     is not this schema's way. The step refuses, names the collection,
     and leaves the file at v7 with the rule intact."""
     path = tmp_path / "gallery.db"
-    build.build(path)
+    _built(path)
     conn = sqlite3.connect(str(path), isolation_level=None)
     for trigger in (
         "collection_rule_only_on_smart",
