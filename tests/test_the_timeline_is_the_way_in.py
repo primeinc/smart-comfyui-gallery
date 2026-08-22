@@ -204,3 +204,57 @@ def test_the_session_list_is_bounded_and_says_so(doors, monkeypatch):
     bare = _density(doors, bin="day")
     assert bare["sessions_sampled"] is False
     assert all(s["samples"] == [] for s in bare["sessions"]), "past the bound the cards carry no thumbnails"
+
+
+def test_a_session_says_who_is_in_it(doors):
+    """Two of a session's pictures carry Ana by the primary clustering:
+    the session card names her with a door to her page and how many of
+    its pictures are hers; a session nobody is in names nobody."""
+    import numpy as np
+
+    from db import connect, derived, naming
+
+    whole = _density(doors, bin="day")
+    assert all(s["people"] == [] for s in whole["sessions"]), "no faces recorded yet"
+    target = whole["sessions"][0]
+    conn = connect.connect(doors.app.state.db_path)
+    try:
+        members = [
+            row[0]
+            for row in conn.execute(
+                "SELECT file_id FROM derived_event_file WHERE event_id = ? ORDER BY file_id LIMIT 2", (target["id"],)
+            )
+        ]
+        assert len(members) == 2
+        rng = np.random.default_rng(5)
+        ana = rng.standard_normal(32).astype(np.float32)
+        for file_id in members:
+            derived.record_faces(
+                conn,
+                file_id,
+                "test/embedder",
+                "1",
+                "aa",
+                0.0,
+                [
+                    {
+                        "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
+                        "embedding": (ana + 0.01 * rng.standard_normal(32).astype(np.float32)).tobytes(),
+                    }
+                ],
+            )
+        [cluster_id] = derived.cluster(conn, "test/embedder", "1", 0.0, threshold=0.55)
+        run_id = derived.run_for(conn, "test/embedder", "1", "chinese-whispers", 0.55, 0.0)
+        derived.make_primary(conn, run_id)
+        person_id = naming.claim(conn, "person", "Ana")
+        conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Ana', 0)", (person_id,))
+        conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, cluster_id))
+        for file_id in members:
+            derived.attribute(conn, file_id, person_id, run_id, "test/embedder", "1")
+        conn.commit()
+    finally:
+        connect.close(conn)
+    again = _density(doors, bin="day")
+    held = next(s for s in again["sessions"] if s["id"] == target["id"])
+    assert held["people"] == [{"slug": "ana", "name": "Ana", "href": "/p/ana", "pictures": 2}]
+    assert all(s["people"] == [] for s in again["sessions"] if s["id"] != target["id"])

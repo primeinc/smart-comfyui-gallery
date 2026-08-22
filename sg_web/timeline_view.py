@@ -103,6 +103,10 @@ def _session(conn, row, *, samples: bool) -> dict:
         "planner": planner,
         "tellable": planner in planning.PLANNERS,
         "samples": pages.session_samples(conn, event_id) if samples else [],
+        "people": [
+            {"slug": slug, "name": name, "href": f"/p/{slug}", "pictures": int(count)}
+            for slug, name, count in pages.session_people(conn, event_id)
+        ],
     }
 
 

@@ -226,6 +226,21 @@
       head.className = "session-head";
       head.textContent = `${s.kind.replace("_", " ")} · ${s.pictures} pictures · ${spell(s.start, "hour", s.domain)} – ${spell(s.end, "hour", s.domain)}`;
       body.appendChild(head);
+      if (s.people && s.people.length) {
+        const who = document.createElement("div");
+        who.className = "session-people";
+        who.dataset.sessionPeople = String(s.people.length);
+        who.appendChild(document.createTextNode("with "));
+        s.people.forEach((p, i) => {
+          if (i) who.appendChild(document.createTextNode(", "));
+          const a = document.createElement("a");
+          a.href = p.href;
+          a.textContent = p.name || p.slug;
+          a.title = `${p.pictures} of these pictures`;
+          who.appendChild(a);
+        });
+        body.appendChild(who);
+      }
       const doors = document.createElement("div");
       doors.className = "session-doors";
       const open = document.createElement("a");

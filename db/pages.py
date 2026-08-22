@@ -1048,6 +1048,26 @@ def timeline_events(conn, limit: int = 200):
     return conn.execute(TIMELINE_EVENTS, (context.POLICY_VERSION, limit)).fetchall()
 
 
+#: Who is in one session, by the primary clustering: each person's
+#: address, name (NULL until named) and how many of the session's
+#: pictures hold them, most first. Bounded: a card names a few.
+SESSION_PEOPLE = (
+    "SELECT e.slug, p.name, count(DISTINCT fp.file_id) AS pictures"
+    "  FROM derived_event_file ef"
+    "  JOIN derived_file_person fp ON fp.file_id = ef.file_id"
+    "  JOIN derived_face_run r ON r.id = fp.run_id AND r.is_primary = 1"
+    "  JOIN person p ON p.id = fp.person_id JOIN entity e ON e.id = p.id"
+    " WHERE ef.event_id = ? GROUP BY p.id ORDER BY pictures DESC, e.slug LIMIT ?"
+)
+
+#: People a session card names before saying "and others".
+SESSION_PEOPLE_MOST = 4
+
+
+def session_people(conn, event_id: int, limit: int = SESSION_PEOPLE_MOST):
+    return conn.execute(SESSION_PEOPLE, (event_id, limit)).fetchall()
+
+
 # --- one picture's faces ----------------------------------------------------
 
 #: Who the primary clustering says is in one file: each person's address,
