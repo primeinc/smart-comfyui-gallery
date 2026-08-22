@@ -52,8 +52,15 @@ class Finding:
 
 
 @functools.cache
-def parsed(source: pathlib.Path) -> ast.Module:
+def _parsed_as_of(source: pathlib.Path, _stamp: tuple[int, int]) -> ast.Module:
     return ast.parse(source.read_text(encoding="utf-8"))
+
+
+def parsed(source: pathlib.Path) -> ast.Module:
+    """The file's tree, parsed once per (mtime, size): a file rewritten
+    under the linter re-parses itself and nothing else."""
+    held = source.stat()
+    return _parsed_as_of(source, (held.st_mtime_ns, held.st_size))
 
 
 @functools.cache

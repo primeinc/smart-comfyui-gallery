@@ -82,32 +82,10 @@ def test_the_producer_gate_can_see_an_unwired_table():
     assert set(rules.unwired(tables)) == set(policy.DERIVED_RESERVED)
 
 
-def test_the_adapter_rules_can_fail(tmp_path, monkeypatch):
-    """A copy of the tree with one adapter running its own statement."""
-    root = tmp_path / "repo"
-    for relative in (
-        *policy.ADAPTER_DB_VOCABULARY,
-        *policy.MUST_CALL_QUALIFIED,
-        *policy.MUST_NOT_CALL_QUALIFIED,
-        *policy.MUST_IMPORT,
-        *policy.MUST_NOT_CONTAIN,
-        *policy.MUST_CONTAIN,
-        *policy.ONE_TO_MANY_MODULES,
-        *policy.LITERAL_STATEMENTS_ONLY,
-    ):
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text((rules.REPO_ROOT / relative).read_text(encoding="utf-8"), encoding="utf-8")
-    assert rules.rule_adapters(root) == []
-    gallery = root / "sg_web" / "gallery.py"
-    gallery.write_text(
-        gallery.read_text(encoding="utf-8") + "\n\ndef _leak(conn):\n    return conn.execute('SELECT 1')\n",
-        encoding="utf-8",
-    )
-    rules.parsed.cache_clear()
-    codes = {f.code for f in rules.rule_adapters(root)}
-    assert "SG401" in codes
-    rules.parsed.cache_clear()
+def test_the_adapter_rules_can_fail(tree):
+    """The tree with one adapter running its own statement."""
+    _bend(tree / "sg_web" / "gallery.py", "\n\ndef _leak(conn):\n    return conn.execute('SELECT 1')\n")
+    assert "SG401" in {f.code for f in rules.rule_adapters(tree)}
 
 
 def test_the_surface_rule_can_fail(tmp_path):
@@ -147,7 +125,6 @@ def tree(_tree):
         else:
             bent.unlink(missing_ok=True)
     BENT.clear()
-    rules.parsed.cache_clear()
     return _tree
 
 
@@ -184,13 +161,11 @@ def _bend(path: pathlib.Path, addition: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     held = path.read_text(encoding="utf-8") if path.exists() else ""
     path.write_text(held + addition, encoding="utf-8")
-    rules.parsed.cache_clear()
 
 
 def _rewrite(path: pathlib.Path, text: str) -> None:
     BENT.append(path)
     path.write_text(text, encoding="utf-8")
-    rules.parsed.cache_clear()
 
 
 @pytest.mark.parametrize(
