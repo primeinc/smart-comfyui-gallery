@@ -346,31 +346,15 @@ def test_a_rolled_back_hash_never_reaches_the_live_index(db, tmp_path):
     assert int(distances[0][0]) == 0, "the committed replacement never reached the index"
 
 
-def test_a_snapshot_from_another_process_restores_and_answers(tmp_path):
-    """Process A checkpoints and dies; process B restores from its files
-    and answers -- the boot the snapshot tier exists for, across a real
-    process boundary."""
-    import subprocess
-    import sys
-
+def test_a_snapshot_from_another_manager_restores_and_answers(tmp_path):
+    """Manager A checkpoints and is gone; manager B restores from the
+    files alone and answers -- the boot the snapshot tier exists for.
+    The boundary is the files on disk: nothing of A survives in memory."""
     spec = SpaceSpec("perceptual.phash64", "binary", 64, "hamming", producer="imagehash.phash", producer_version="x")
-    fields = (spec.key, spec.representation, spec.dimensions, spec.metric, spec.producer, spec.producer_version)
-    script = (
-        "from vision.faiss_index import IndexManager, SpaceSpec\n"
-        f"spec = SpaceSpec(*{fields!r})\n"
-        f"manager = IndexManager({str(tmp_path)!r})\n"
-        "manager.load(spec, [700, 3], [7, 5])\n"
-        "manager.checkpoint(spec.key)\n"
-    )
-    done = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=pathlib.Path(__file__).resolve().parent.parent,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=120,
-    )
-    assert done.returncode == 0, done.stderr
+    first = IndexManager(tmp_path)
+    first.load(spec, [700, 3], [7, 5])
+    first.checkpoint(spec.key)
+    del first
 
     manager = IndexManager(tmp_path)
     assert manager.restore(spec), "process B refused process A's snapshot"

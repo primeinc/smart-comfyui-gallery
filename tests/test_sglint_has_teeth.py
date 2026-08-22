@@ -248,3 +248,59 @@ def test_the_migration_ledger_rule_reads_the_tree_and_can_fail(tmp_path):
     )
     codes = {f.code for f in schema_rules.rule_migrations(here)}
     assert codes == {"SG707", "SG708"}, codes
+
+
+def test_a_test_that_spawns_is_a_lint_error(tmp_path):
+    """A test never starts a program: the same spawn that is merely held
+    to its arguments elsewhere is SG006 under tests/."""
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    bad = tests / "test_spawny.py"
+    bad.write_text("import subprocess\nsubprocess.run(['git', 'status'], timeout=5, check=True)\n", encoding="utf-8")
+    assert [f.code for f in rules.rule_spawns([bad], tests=tests)] == ["SG006"]
+    elsewhere = tmp_path / "tool.py"
+    elsewhere.write_text(bad.read_text(encoding="utf-8"), encoding="utf-8")
+    assert rules.rule_spawns([elsewhere], tests=tests) == [], "outside tests/ the same spawn is fine"
+
+
+class _FakeGit:
+    """A git that answers from a table, so the repo rules can be bent
+    without starting a program."""
+
+    def __init__(self, answers: dict[tuple[str, ...], str], rc: dict[tuple[str, ...], int] | None = None):
+        self.answers = answers
+        self.rc = rc or {}
+
+    def __call__(self, *args, cwd=None):
+        import subprocess
+
+        return subprocess.CompletedProcess(args, self.rc.get(args, 0), self.answers.get(args, ""), "")
+
+
+def test_the_repo_rules_fire_on_a_fake_index(tmp_path):
+    from sglint import repo_rules
+
+    tracked = "\n".join(f"f{i}.py" for i in range(150)) + "\ndb/schema.sql\nrun_smartgallery.bat\n"
+    git = _FakeGit(
+        {
+            ("ls-files",): tracked,
+            ("ls-files", "-i", "-o", "--exclude-standard"): "scratch.tmp\n",
+            ("ls-files", "-i", "-c", "--exclude-standard"): "secrets.env\n",
+        },
+        rc={("check-ignore", "--no-index", "-q", "run_exhibition.sh"): 1},
+    )
+    codes = sorted(f.code for f in repo_rules.rule_index(git, tmp_path))
+    assert codes == ["SG801", "SG802", "SG803"], codes
+    eol = "\n".join(f"i/lf w/lf attr/text\tf{i}.py" for i in range(120)) + "\ni/crlf w/crlf attr/\tbad.txt\n"
+    git = _FakeGit({("ls-files", "--eol"): eol})
+    codes = sorted(f.code for f in repo_rules.rule_line_endings(git, tmp_path, checkouts=False))
+    assert codes == ["SG804", "SG805"], codes
+    (tmp_path / "pytest.ini").write_text("[pytest]\ntestpaths = tests\n", encoding="utf-8")
+    assert [f.code for f in repo_rules.rule_pytest_path(tmp_path)] == ["SG809"]
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\ndependencies = ["numpy>=2", "pillow"]\n[dependency-groups]\nai = ["torch"]\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text("numpy>=1\n", encoding="utf-8")
+    codes = sorted(f.code for f in repo_rules.rule_requirements(tmp_path))
+    assert codes == ["SG807", "SG807", "SG808"], codes

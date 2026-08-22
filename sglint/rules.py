@@ -12,7 +12,7 @@ PLW1510, a raw sqlite3.connect and a bare Image.open are TID251, a
 module-level torch is TID253 (pyproject.toml). These are the rest.
 
 Families:
-    SG0xx  programs are started safely (subprocess)
+    SG0xx  programs are started safely (subprocess); never from a test
     SG1xx  SQL is built from structure only
     SG4xx  the web adapters own no semantics
     SG5xx  templates and scripts carry no query logic
@@ -117,15 +117,22 @@ def pipes_output(call: ast.Call) -> bool:
     return any(is_pipe(keyword(call, stream)) for stream in ("stdout", "stderr"))
 
 
-def rule_spawns(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
-    """SG002-SG004 over every source, tests included: a test that spawns
-    without a timeout hangs CI exactly as a route would hang a request.
-    A shell (S602) and a missing check= (PLW1510) are Ruff's own."""
+def rule_spawns(
+    sources: typing.Iterable[pathlib.Path] | None = None, tests: pathlib.Path = REPO_ROOT / "tests"
+) -> list[Finding]:
+    """SG002-SG004 over every source; SG006 for any spawn under tests/: a
+    test never starts a program -- what needs one is a lint rule
+    (`python -m sglint --repo`) or a just recipe. A shell (S602) and a
+    missing check= (PLW1510) are Ruff's own."""
     found: list[Finding] = []
     for source in sources if sources is not None else every_source():
         for call in spawn_calls(parsed(source)):
             attr = typing.cast(ast.Attribute, call.func).attr
             at = (source, call.lineno, call.col_offset)
+            if source.is_relative_to(tests):
+                found.append(
+                    Finding(*at, "SG006", "a test starts a program; move the check to sglint --repo or a just recipe")
+                )
             if bare_command_string(call):
                 found.append(Finding(*at, "SG002", "passes a bare command string instead of a list"))
             if attr != "Popen" and keyword(call, "timeout") is None:
