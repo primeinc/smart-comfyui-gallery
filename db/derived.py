@@ -1369,6 +1369,42 @@ def said_about(conn, file_id: int, *, kind=None) -> list[dict]:
     return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
+#: The lexical channel's name in a retrieval answer's provenance.
+CAPTIONS = "captions"
+
+
+def any_annotations(conn) -> bool:
+    return conn.execute("SELECT 1 FROM derived_annotation LIMIT 1").fetchone() is not None
+
+
+def rank_by_annotation(conn, phrase: str, limit: int, allowed=None) -> list[tuple[int, float]]:
+    """Present files whose annotations mention any word of the phrase,
+    best first by bm25 -- one row per file, its best annotation. Score
+    is bm25 negated so higher is better, the way a cosine reads.
+    `allowed` discards before enumeration: the caller fuses by rank."""
+    words = phrase.split()
+    if not words:
+        return []
+    match = " OR ".join('"' + word.replace('"', '""') + '"' for word in words)
+    rows = conn.execute(
+        "SELECT a.file_id, bm25(annotation_fts) FROM annotation_fts"
+        "  JOIN derived_annotation a ON a.id = annotation_fts.rowid"
+        "  JOIN file f ON f.id = a.file_id"
+        " WHERE annotation_fts MATCH ? AND f.missing_since IS NULL"
+        " ORDER BY bm25(annotation_fts), a.file_id",
+        (match,),
+    )
+    best: dict[int, float] = {}
+    for file_id, score in rows:
+        if allowed is not None and file_id not in allowed:
+            continue
+        if file_id not in best:
+            best[file_id] = -float(score)
+        if len(best) >= limit:
+            break
+    return list(best.items())
+
+
 def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
     """Find a picture by what a model said about it."""
     quoted = '"' + text.replace('"', '""') + '"'

@@ -152,15 +152,25 @@ def query(
     confidence. One unprovisioned model degrades the answer, never
     denies it; only NOTHING to answer from raises.
 
+    Captions are one more ranking. Once the annotate job has said
+    something about any file, the phrase's words are matched against
+    every annotation (bm25) and that ranking enters the same fusion
+    under the name `captions` -- a file a model described as "a red
+    bicycle" answers "bicycle" whether or not an embedding agrees, and
+    its agreement with the spaces lifts it. A library nothing has
+    captioned lists no such participant: the channel is configured by
+    having run the job.
+
     `offline=True` (the serving default) refuses to download model
     weights on the query path; provisioning belongs to /jobs/embed.
     """
     from vision import semantic
 
-    from . import similarity
+    from . import derived, similarity
 
     manager = similarity.manager_for(conn)
     final_k = max(int(k), 1)
+    #: (ranking name, [(file_id, score)]) per ranking that enters the fusion
     per_space: list[tuple[str, list[tuple[int, float]]]] = []
     to_file: dict[int, int] = {}
     participants: list[str] = []
@@ -216,20 +226,28 @@ def query(
             # as having agreed with anything.
             missing[name] = "no current embeddings in this scope"
             continue
-        per_space.append((spec.key, ranked))
+        per_space.append((spec.key, [(to_file[embedding_id], score) for embedding_id, score in ranked]))
+
+    if derived.any_annotations(conn):
+        participants.append(derived.CAPTIONS)
+        depth = len(allowed) if allowed is not None else max(final_k * 4, 100)
+        worded = derived.rank_by_annotation(conn, phrase, depth, allowed=allowed)
+        if worded:
+            per_space.append((derived.CAPTIONS, worded))
+        else:
+            missing[derived.CAPTIONS] = "no caption mentions a word of the phrase in this scope"
 
     if not per_space and any("not provisioned" in why or "-dimensional" in why for why in missing.values()):
         # Degraded is an answer; NOTHING to answer from is a refusal that
         # must name its fix, exactly as the single-space case always did.
         raise LookupError("; ".join(f"{name}: {why}" for name, why in sorted(missing.items())))
 
-    # Fusion is over FILES: a file's agreement across spaces must
+    # Fusion is over FILES: a file's agreement across rankings must
     # accumulate, and its embedding ids differ per space by design.
-    fused = rrf([[to_file[embedding_id] for embedding_id, _ in ranked] for _, ranked in per_space])
+    fused = rrf([[file_id for file_id, _ in ranked] for _, ranked in per_space])
     told: dict[int, dict] = {}
     for space_key, ranked in per_space:
-        for position, (embedding_id, score) in enumerate(ranked):
-            file_id = to_file[embedding_id]
+        for position, (file_id, score) in enumerate(ranked):
             row = told.setdefault(file_id, {"file_id": file_id, "score": fused[file_id], "sources": {}})
             row["sources"][space_key] = {"rank": position + 1, "score": score}
     results = sorted(told.values(), key=lambda row: row["score"], reverse=True)[:final_k]

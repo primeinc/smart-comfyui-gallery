@@ -38,6 +38,8 @@ client fetches and verifies.
 The `semantic_model` setting is a comma list of
 `[provider:]<model>/<checkpoint>` entries; every entry is its own
 immutable similarity space and rankings fuse by rank (db/retrieval.py).
+Captions written by the annotate job enter that same fusion as one more
+ranking, named `captions`, matched by word.
 Changing an entry never rewrites history: old spaces keep their
 provenance, the embed job fills the new one fresh.
 
