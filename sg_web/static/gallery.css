@@ -547,6 +547,7 @@ body {
 .session-doors a { color: var(--accent); }
 .session-doors button { background: var(--ground); color: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius); padding: 2px 10px; cursor: pointer; font: inherit; font-size: .85rem; }
 .session-status { color: var(--ink-muted); }
+.session-more { color: var(--ink-muted); font-size: .85rem; padding: 4px 0; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 16px 0; }
 .chip { display: inline-flex; gap: 6px; align-items: center; padding: 2px 10px; border: 1px solid var(--accent); border-radius: 999px; color: var(--ink); font-size: .85rem; }
 .chip a { color: var(--ink-muted); text-decoration: none; }

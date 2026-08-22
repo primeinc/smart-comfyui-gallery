@@ -67,6 +67,13 @@ PLANNER_FOR = {
 
 _SPAN = {"day": 86_400, "hour": 3_600, "minute": 60}
 
+#: Sessions one answer lists, and how many of those carry thumbnails --
+#: a whole library's extent at the day zoom can touch thousands of
+#: sessions; the page lists a bounded head, says how many more there
+#: are, and the person zooms in. Never a silent cut.
+SESSIONS_MOST = 200
+SESSIONS_SAMPLED_MOST = 60
+
 
 def _coverage(conn) -> dict:
     have, present, contested = pages.timeline_coverage(conn)
@@ -126,6 +133,8 @@ def density(
                     "bins": [],
                     "spans": [],
                     "sessions": [],
+                    "sessions_total": 0,
+                    "sessions_sampled": True,
                     "coverage": coverage,
                 }
             )
@@ -136,7 +145,9 @@ def density(
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         samples = pages.timeline_samples(conn, bin_name, lo, hi, len(bins))
-        sessions = [_session(conn, row, samples=True) for row in pages.timeline_sessions(conn, lo, hi)]
+        rows = pages.timeline_sessions(conn, lo, hi)
+        listed = rows[:SESSIONS_MOST]
+        sessions = [_session(conn, row, samples=len(listed) <= SESSIONS_SAMPLED_MOST) for row in listed]
     finally:
         connect.close(conn)
     return Response(
@@ -165,6 +176,8 @@ def density(
                 for s, precision, pictures in spans
             ],
             "sessions": sessions,
+            "sessions_total": len(rows),
+            "sessions_sampled": len(listed) <= SESSIONS_SAMPLED_MOST,
         },
         headers=VARIES,
     )

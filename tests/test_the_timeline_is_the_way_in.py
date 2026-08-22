@@ -185,3 +185,22 @@ def test_every_scope_page_opens_its_pictures_in_time_order(doors):
     assert href is not None
     # `folder=` is the folder's OWN media: the scan lives one folder down
     assert _total(doors, href.group(1).replace("/g?", "").replace("&amp;", "&")) == 7
+
+
+def test_the_session_list_is_bounded_and_says_so(doors, monkeypatch):
+    """A range touching more sessions than the page lists carries a
+    bounded head and the total, never a silent cut; past a smaller bound
+    the cards drop their thumbnails and say to zoom in."""
+    from sg_web import timeline_view
+
+    whole = _density(doors, bin="day")
+    assert whole["sessions_total"] == len(whole["sessions"]) == 2
+    assert whole["sessions_sampled"] is True
+    monkeypatch.setattr(timeline_view, "SESSIONS_MOST", 1)
+    capped = _density(doors, bin="day")
+    assert (capped["sessions_total"], len(capped["sessions"])) == (2, 1)
+    monkeypatch.setattr(timeline_view, "SESSIONS_MOST", 200)
+    monkeypatch.setattr(timeline_view, "SESSIONS_SAMPLED_MOST", 1)
+    bare = _density(doors, bin="day")
+    assert bare["sessions_sampled"] is False
+    assert all(s["samples"] == [] for s in bare["sessions"]), "past the bound the cards carry no thumbnails"

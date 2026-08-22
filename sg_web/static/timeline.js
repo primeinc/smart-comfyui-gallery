@@ -191,6 +191,18 @@
 
   function sessions(view) {
     sessionsList.textContent = "";
+    if (view.sessions_total > view.sessions.length) {
+      const more = document.createElement("li");
+      more.className = "session-more";
+      more.dataset.sessionsMore = String(view.sessions_total - view.sessions.length);
+      more.textContent = `${view.sessions_total} sessions touch this range; the first ${view.sessions.length} are listed — zoom in for the rest`;
+      sessionsList.appendChild(more);
+    } else if (!view.sessions_sampled && view.sessions.length) {
+      const note = document.createElement("li");
+      note.className = "session-more";
+      note.textContent = `${view.sessions.length} sessions — too many for thumbnails; zoom in to see pictures`;
+      sessionsList.appendChild(note);
+    }
     for (const s of view.sessions) {
       const li = document.createElement("li");
       li.className = "session";
