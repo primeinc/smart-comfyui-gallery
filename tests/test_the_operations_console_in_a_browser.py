@@ -160,6 +160,25 @@ def test_a_per_item_failure_shows_its_exact_recorded_error(page, served):
         recorded = api.get(f"/operations/job/{job_id}", headers={"accept": "application/json"}).json()["failures"]
         assert len(recorded) == 1
         assert recorded[0]["error"] in shown
+        # the items tabs page the job's items into the inspector in place
+        page.click('[data-items-load="failed"]')
+        page.wait_for_selector('[data-items-slot] [data-item][data-state="failed"]', timeout=10_000)
+        assert page.locator("[data-items-slot] [data-item]").count() == 1
+        page.click('[data-items-load="done"]')
+        page.wait_for_function(
+            "() => document.querySelectorAll('[data-items-slot] [data-item][data-state=\"done\"]').length === "
+            + str(FILES - 1),
+            timeout=10_000,
+        )
+        # "every one on the tape" filters the tape to this job, in place
+        page.click(f'[data-tape-job-filter="{job_id}"]')
+        page.wait_for_function(
+            "(id) => [...document.querySelectorAll('[data-tape-rows] [data-event]')]"
+            ".every(li => li.dataset.job === String(id))",
+            arg=job_id,
+            timeout=10_000,
+        )
+        assert page.input_value("[data-tape-filter-job]") == str(job_id)
     finally:
         broken.write_bytes(broken.read_bytes()[: -len(b"tampered")])
 

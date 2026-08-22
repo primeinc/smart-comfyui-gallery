@@ -189,7 +189,13 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
     # evidence is evidence, not trusted markup).
     return Template(
         template_name="story.html",
-        context={"story": story, "members": addressed, "render_id": render_id, "plan_id": plan_id},
+        context={
+            "story": story,
+            "members": addressed,
+            "render_id": render_id,
+            "plan_id": plan_id,
+            "profiles": rendering.PROFILES,
+        },
         headers=VARIES,
     )
 

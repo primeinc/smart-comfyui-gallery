@@ -1,16 +1,23 @@
 {% extends "base.html" %}
 {% block lang %}{{ story.renderer.locale }}{% endblock %}
 {% block title %}{{ story.title }}{% endblock %}
+{% block scripts %}<script src="/static/story.js" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
       <a href="/timeline">timeline</a>
       <span class="crumbs-here">story</span>
       <a href="/stories/plans/{{ plan_id }}/evolution" data-story-evolution>evolution</a>
-      <span class="crumbs-where">{{ story.renderer.profile }} · {{ story.support.member_refs | length }} members · render #{{ render_id }}</span>
+      <span class="crumbs-where">{{ story.support.member_refs | length }} members · render #{{ render_id }}</span>
+      <span class="story-profiles" data-story-profiles>
+        {% for profile in profiles %}
+        {% if profile == story.renderer.profile %}<strong data-story-profile-here>{{ profile }}</strong>{% else %}<button type="button" class="story-profile" data-story-profile-ask="{{ profile }}">{{ profile }}</button>{% endif %}
+        {% endfor %}
+        <span class="story-status" data-story-status></span>
+      </span>
     </nav>
   </header>
-  <main class="stage" data-story-render="{{ render_id }}" data-story-profile="{{ story.renderer.profile }}">
+  <main class="stage" data-story-render="{{ render_id }}" data-story-profile="{{ story.renderer.profile }}" data-story-plan="{{ plan_id }}" data-story-locale="{{ story.renderer.locale }}">
     <article class="story">
       <h1>{{ story.title }}</h1>
       <p class="story-dek">{{ story.dek }}</p>
