@@ -197,19 +197,39 @@ def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Temp
 
 @get("/job/{job_id:int}/items", sync_to_thread=True)
 def job_items(
-    state: State, job_id: FromPath[int], state_filter: str | None = None, after: int = 0, limit: int = 200
-) -> dict:
-    """A page of one job's items by state: `?state_filter=failed&after=N`."""
+    state: State,
+    request: Request,
+    job_id: FromPath[int],
+    state_filter: str | None = None,
+    after: int = 0,
+    limit: int = 200,
+) -> Response | Template:
+    """A page of one job's items by state: `?state_filter=failed&after=N`
+    -- JSON to a machine, a fragment the inspector swaps in otherwise.
+    Paged, never folded into the detail: a 22,000-item job is read a
+    page at a time."""
     conn = connect.connect(state.db_path, read_only=True)
     try:
         try:
-            return inspecting.items(conn, job_id, state=state_filter, after=after, limit=limit)
+            told = inspecting.items(conn, job_id, state=state_filter, after=after, limit=limit)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
     finally:
         connect.close(conn)
+    if wants_json(request):
+        return Response(told, headers=VARIES)
+    return Template(
+        template_name="_operations_items.html",
+        context={
+            "items": told["items"],
+            "next_after": told["next_after"],
+            "job_id": job_id,
+            "state_filter": state_filter,
+        },
+        headers=VARIES,
+    )
 
 
 @get("/events", sync_to_thread=True)

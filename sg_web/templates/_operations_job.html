@@ -115,12 +115,17 @@
     </div>
 
     <div class="inspect-block inspect-wide" data-block="items">
-      <h3>items</h3>
-      <p class="muted small">{{ job.item_count }} items · <a href="/operations/job/{{ job.id }}/items?state_filter=pending">pending</a> · <a href="/operations/job/{{ job.id }}/items?state_filter=done">done</a> · <a href="/operations/job/{{ job.id }}/items?state_filter=failed">failed</a> — paged, never folded into this view.</p>
+      <h3>items <span class="console-hint">{{ job.item_count }} · paged, never folded into this view</span></h3>
+      <p class="items-tabs">
+        <a href="/operations/job/{{ job.id }}/items?state_filter=pending" data-items-load="pending">pending {{ job.pending_count }}</a>
+        <a href="/operations/job/{{ job.id }}/items?state_filter=done" data-items-load="done">done {{ job.succeeded_count }}</a>
+        <a href="/operations/job/{{ job.id }}/items?state_filter=failed" data-items-load="failed">failed {{ job.failed_count }}</a>
+      </p>
+      <div data-items-slot></div>
     </div>
 
     <div class="inspect-block inspect-wide" data-block="timeline">
-      <h3>timeline <span class="console-hint">{{ job.event_count }} events · the newest {{ job.recent_events | length }} here · <a href="/operations/events?job={{ job.id }}">every one</a></span></h3>
+      <h3>timeline <span class="console-hint">{{ job.event_count }} events · the newest {{ job.recent_events | length }} here · <a href="/operations/events?job={{ job.id }}" data-tape-job-filter="{{ job.id }}">every one on the tape</a></span></h3>
       <ol class="inspect-events" data-inspect-events>
         {% for e in job.recent_events %}
         <li data-event="{{ e.id }}" data-type="{{ e.type }}" data-severity="{{ e.severity }}"{% if e.condition %} data-condition="{{ e.condition }}"{% endif %}>

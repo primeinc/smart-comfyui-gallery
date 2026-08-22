@@ -452,6 +452,19 @@ def test_the_console_routes_answer_the_rows(served):
     assert len(items["items"]) == 6
     assert items["items"][0]["href"].startswith("/i/")
     assert client.get(f"/operations/job/{job_id}/items?state_filter=sideways").status_code == 400
+    fragment = client.get(
+        f"/operations/job/{job_id}/items?state_filter=pending&limit=4", headers={"accept": "text/html"}
+    )
+    assert fragment.status_code == 200
+    assert fragment.text.count("data-item=") == 4
+    assert "data-items-more" in fragment.text, "a fuller page offers the next one"
+    assert "<html" not in fragment.text
+    cursor = client.get(f"/operations/job/{job_id}/items?state_filter=pending&limit=4").json()["next_after"]
+    rest = client.get(
+        f"/operations/job/{job_id}/items?state_filter=pending&limit=4&after={cursor}", headers={"accept": "text/html"}
+    )
+    assert rest.text.count("data-item=") == 2
+    assert "data-items-more" not in rest.text
 
 
 def test_a_cancel_is_spoken_on_both_feeds_and_settles_cooperatively(served):

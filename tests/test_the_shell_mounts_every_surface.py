@@ -356,6 +356,7 @@ SURFACES = {
     "story_view.plan_evolution": ("sg_web/story_view.py", "story", None),
     "operations.operations_page": ("sg_web/operations.py", "shell nav", ("GET", "/operations", None)),
     "operations.job_inspector": ("sg_web/operations.py", "console matrix row", ("GET", "/operations/job/1", None)),
+    "operations.job_items": ("sg_web/operations.py", "inspector items tabs", ("GET", "/operations/job/1/items", None)),
     "operations.launch": ("sg_web/operations.py", "sweep buttons", ("POST", "/operations/jobs/events", None)),
     "operations.add_root": ("sg_web/operations.py", "add-root form", None),
     "operations.scan_root": (

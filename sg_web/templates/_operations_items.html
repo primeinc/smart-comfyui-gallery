@@ -1,0 +1,21 @@
+{# One page of a job's items (db/inspecting.py items), swapped into the
+   inspector's items slot. The next page is a link the same slot loads. #}
+<div class="items-page" data-items-page data-job="{{ job_id }}" data-state-filter="{{ state_filter or '' }}">
+  {% if items %}
+  <ul class="items">
+    {% for item in items %}
+    <li data-item="{{ item.id }}" data-state="{{ item.state }}"{% if item.error %} class="cond cond-item-failure" data-condition="item-failure"{% endif %}>
+      <code class="raw">{{ item.id }}</code>
+      {% if item.href %}<a href="{{ item.href }}">{{ item.name }}</a>{% elif item.name %}{{ item.name }}{% else %}<span class="muted">item {{ item.id }}</span>{% endif %}
+      <span class="items-state" data-state="{{ item.state }}">{{ item.state }}</span>
+      {% if item.error %}<code class="raw">{{ item.error }}</code>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted small">no {{ state_filter or "" }} items.</p>
+  {% endif %}
+  {% if next_after is not none %}
+  <a class="tape-btn" data-items-more href="/operations/job/{{ job_id }}/items?{% if state_filter %}state_filter={{ state_filter }}&amp;{% endif %}after={{ next_after }}">next page</a>
+  {% endif %}
+</div>

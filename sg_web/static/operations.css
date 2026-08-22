@@ -110,6 +110,14 @@
 .cond summary { cursor: pointer; }
 .traceback { margin: 8px 0 0; padding: 8px 10px; background: var(--ground); border: 1px solid var(--line); border-radius: 3px; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 
+.items-tabs { display: flex; gap: 14px; margin: 0 0 8px; font-size: 13px; }
+.items-tabs a { color: var(--accent); }
+.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; max-height: 36vh; overflow-y: auto; font-size: 12.5px; }
+.items li { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; border-bottom: 1px dotted var(--line); }
+.items li a { color: var(--accent); }
+.items-state { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .06em; }
+.items-state[data-state="failed"] { color: var(--warn); }
+.items-page + .items-page { margin-top: 4px; }
 .inspect-events { list-style: none; margin: 0; padding: 0; font-size: 12.5px; display: grid; gap: 2px; max-height: 36vh; overflow-y: auto; }
 .inspect-events li { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; border-bottom: 1px dotted var(--line); }
 .inspect-events li[data-severity="warning"] .v { color: var(--warn); }

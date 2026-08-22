@@ -270,6 +270,35 @@
     }
   }
 
+  // the inspector's own links: item pages load into the items slot; the
+  // "every one" link filters the tape to the job instead of leaving the page
+  inspectorBody.addEventListener("click", async (ev) => {
+    const load = ev.target.closest("[data-items-load], [data-items-more]");
+    if (load) {
+      ev.preventDefault();
+      const slot = q("[data-items-slot]", inspectorBody);
+      if (!slot) return;
+      const r = await fetch(load.getAttribute("href"), { headers: { accept: "text/html" } });
+      if (!r.ok) { slot.textContent = `${r.status}`; return; }
+      if (load.hasAttribute("data-items-more")) {
+        load.remove();
+        slot.insertAdjacentHTML("beforeend", await r.text());
+      } else {
+        slot.innerHTML = await r.text();
+      }
+      return;
+    }
+    const tapeFilter = ev.target.closest("[data-tape-job-filter]");
+    if (tapeFilter) {
+      ev.preventDefault();
+      const input = q("[data-tape-filter-job]");
+      input.value = tapeFilter.dataset.tapeJobFilter;
+      filter.job = input.value;
+      repaint(true);
+      scroller.scrollIntoView({ block: "start" });
+    }
+  });
+
   let inspectorTimer = null;
   async function loadInspector() {
     if (selectedJob == null) return;
