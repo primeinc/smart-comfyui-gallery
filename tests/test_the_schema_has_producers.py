@@ -1218,9 +1218,11 @@ def _write_clip(path, *, seconds: int, rate: int = 15, size=(320, 180), rotation
             container.mux(packet)
 
 
-@pytest.fixture
-def a_clip(tmp_path):
-    """Three seconds of real video, and the same shape marked to be turned."""
+@pytest.fixture(scope="module")
+def a_clip(tmp_path_factory):
+    """Three seconds of real video, and the same shape marked to be turned
+    -- encoded once; the tests only read them."""
+    tmp_path = tmp_path_factory.mktemp("clips")
     landscape, portrait = tmp_path / "clip.mp4", tmp_path / "portrait.mp4"
     _write_clip(landscape, seconds=3)
     _write_clip(portrait, seconds=3, rotation=90)

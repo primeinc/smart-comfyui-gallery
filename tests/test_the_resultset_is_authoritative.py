@@ -34,10 +34,12 @@ def _paint(root: pathlib.Path, folder: str, name: str, tint: int) -> None:
     Image.new("RGB", (16, 16), (tint % 256, 90, 120)).save(root / folder / name)
 
 
-@pytest.fixture
-def shelves(tmp_path):
+@pytest.fixture(scope="module")
+def _shelves(tmp_path_factory):
     """A library big enough to page: 23 stills over two folders plus a
-    video-suffixed file, spread over distinct mtimes."""
+    video-suffixed file, spread over distinct mtimes -- painted and
+    scanned once; each test reads a copy of the scanned database."""
+    tmp_path = tmp_path_factory.mktemp("shelves")
     root = tmp_path / "pics"
     for i in range(9):
         _paint(root, "portraits", f"p_{i:02d}.png", 10 + i)
@@ -59,7 +61,17 @@ def shelves(tmp_path):
         os.utime(root / "portraits" / tied, (NOW - 500, NOW - 500))
     scan.scan(conn, 1, root, NOW)
     conn.commit()
-    return {"conn": conn, "root": root}
+    yield {"conn": conn, "root": root}
+    conn.close()
+
+
+@pytest.fixture
+def shelves(_shelves):
+    copy = sqlite3.connect(":memory:")
+    _shelves["conn"].backup(copy)
+    copy.execute("PRAGMA foreign_keys=ON")
+    yield {"conn": copy, "root": _shelves["root"]}
+    copy.close()
 
 
 def _q(**kw):

@@ -133,6 +133,7 @@ def test_the_cost_of_a_write_does_not_grow_with_the_library(ddl, label, work):
     )
 
 
+@pytest.mark.slow
 def test_the_registry_stays_exact_at_size(ddl):
     """The counter is arithmetic now, so it is only right if it is right every
     time. A drift of one is invisible; a drift per row is the old bug."""
@@ -149,6 +150,7 @@ def test_the_registry_stays_exact_at_size(ddl):
         conn.close()
 
 
+@pytest.mark.slow
 def test_the_search_index_stays_consistent_at_size(ddl):
     """integrity-check with a non-zero rank is what actually compares the
     index against its content; count(*) on an external-content table reads
@@ -252,6 +254,7 @@ def per_row_scanning(work, ddl, n):
         ("adding one file to a library", _rescan_with_one_new_file),
     ],
 )
+@pytest.mark.slow
 def test_the_cost_of_a_scan_does_not_grow_with_the_library(ddl, label, work):
     small = per_row_scanning(work, ddl, SMALL)
     large = per_row_scanning(work, ddl, LARGE)

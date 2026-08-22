@@ -15,12 +15,12 @@ test instrument, not a backend.
 from __future__ import annotations
 
 import pathlib
-import sqlite3
 
 import numpy as np
 import pytest
 
 from db import similarity
+from tests.staging import fresh_schema
 from vision.faiss_index import IndexManager, SpaceSpec
 
 PHASH = SpaceSpec(key="perceptual.phash64", representation="binary", dimensions=64, metric="hamming")
@@ -248,10 +248,7 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 @pytest.fixture
 def db():
-    conn = sqlite3.connect(":memory:")
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return fresh_schema()
 
 
 def test_align_keeps_a_binary_space_content_exact(db, tmp_path):
