@@ -59,7 +59,7 @@ import typing
 from . import prompt_sections
 from .stories import canonical, digest
 
-FORMAT_VERSION = 4
+FORMAT_VERSION = 5
 
 #: Claim kinds that assert DIRECTION -- before/after, added/removed,
 #: from/to. They exist only in a sequenced plan, where the phase list is
@@ -859,6 +859,219 @@ class CaptureHistoryPlanner:
         }
 
 
+class FileHistoryPlanner:
+    """Phases of one file session from frozen evidence alone: what the
+    files themselves said about when they were saved -- a stamped name,
+    a dated folder, or only the filesystem -- never a camera, never a
+    prompt.
+
+    A screenshot run, a download batch, a scan folder. Chronology is
+    the file's own claim at the precision it carries, so the session is
+    sequenced whenever every member's occurrence is finer than a day.
+
+    Boundaries: nothing was saved for longer than `pause_minutes` (a
+    `pause` claim with the gap). Inside a phase: `burst` runs (three or
+    more files saved with every gap at most `burst_seconds`), the
+    `time_basis` the members' dates rest on, `disputed_time` when the
+    filesystem contradicts what a name or folder claimed, `media_mix`
+    when the phase holds more than one kind of media, and `video_clip`
+    members.
+    """
+
+    kind = "file_history"
+    version = 1
+    uses_similarity = False
+    defaults: typing.ClassVar[dict] = {"pause_minutes": 30, "burst_seconds": 5.0}
+
+    def __init__(self, similarity=None, settings: dict | None = None):
+        self.similarity = _NoSimilarity()
+        self.settings = validated_settings(settings, self.defaults)
+
+    def plan(self, snapshot: dict, snapshot_sha256: str) -> dict:
+        if snapshot.get("v") != 1:
+            raise ValueError(f"this planner reads StorySnapshot v1, not v{snapshot.get('v')!r}")
+        if snapshot["subject"]["event_kind"] != "file_session":
+            raise ValueError("FileHistoryPlanner plans file sessions only")
+        members = sorted(snapshot["members"], key=lambda one: one["ordinal"])
+        refs = [_member_ref(one["ordinal"]) for one in members]
+        pause = float(self.settings["pause_minutes"]) * 60.0
+        burst_gap = float(self.settings["burst_seconds"])
+        unsupported: list[dict] = []
+        sequenced = all((one.get("occurrence") or {}).get("precision") in _SEQUENCED for one in members) and all(
+            _moment(one) is not None for one in members
+        )
+        if not sequenced:
+            unsupported.append(
+                {
+                    "kind": "chronology",
+                    "reason": "at least one member's occurrence is day-precision or absent;"
+                    " event order is not evidence of sequence",
+                }
+            )
+
+        groups: list[list[int]] = [[0]] if members else []
+        for i in range(1, len(members)):
+            gap = (_moment(members[i]) or 0.0) - (_moment(members[i - 1]) or 0.0) if sequenced else 0.0
+            if sequenced and gap > pause:
+                groups.append([i])
+            else:
+                groups[-1].append(i)
+
+        claims: list[dict] = []
+        phases: list[dict] = []
+        for number, indexes in enumerate(groups, start=1):
+            claim_refs: list[str] = []
+            label = f"Phase {number}" if sequenced else "File session"
+            if sequenced and number > 1:
+                before, first = groups[number - 2][-1], indexes[0]
+                gap = (_moment(members[first]) or 0.0) - (_moment(members[before]) or 0.0)
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "pause",
+                        1.0,
+                        [f"{refs[before]}:occurrence", f"{refs[first]}:occurrence"],
+                        {"gap_seconds": round(gap, 3)},
+                    )
+                )
+                label += " · after a pause"
+            if sequenced:
+                run: list[int] = [indexes[0]]
+                bursts: list[list[int]] = []
+                for i in indexes[1:]:
+                    gap = (_moment(members[i]) or 0.0) - (_moment(members[run[-1]]) or 0.0)
+                    if gap <= burst_gap:
+                        run.append(i)
+                    else:
+                        if len(run) >= 3:
+                            bursts.append(run)
+                        run = [i]
+                if len(run) >= 3:
+                    bursts.append(run)
+                for run in bursts:
+                    span = (_moment(members[run[-1]]) or 0.0) - (_moment(members[run[0]]) or 0.0)
+                    claim_refs.append(
+                        _claim(
+                            claims,
+                            "burst",
+                            1.0,
+                            [f"{refs[i]}:occurrence" for i in run],
+                            {
+                                "frames": len(run),
+                                "span_seconds": round(span, 3),
+                                "frames_per_second": round((len(run) - 1) / span, 2) if span > 0 else None,
+                            },
+                        )
+                    )
+                if bursts:
+                    label += " · burst"
+            bases: dict[str, int] = {}
+            with_occurrence = [i for i in indexes if members[i].get("occurrence")]
+            for i in with_occurrence:
+                basis = members[i]["occurrence"]["basis"]
+                bases[basis] = bases.get(basis, 0) + 1
+            if bases:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "time_basis",
+                        1.0,
+                        [f"{refs[i]}:occurrence.basis" for i in with_occurrence],
+                        dict(sorted(bases.items())),
+                    )
+                )
+            disputed = [i for i in with_occurrence if members[i]["occurrence"].get("conflicts")]
+            if disputed:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "disputed_time",
+                        1.0,
+                        [f"{refs[i]}:occurrence.conflicts" for i in disputed],
+                        {"members": len(disputed)},
+                    )
+                )
+            kinds: dict[str, int] = {}
+            for i in indexes:
+                kind = members[i].get("media_kind") or "document"
+                kinds[kind] = kinds.get(kind, 0) + 1
+            if len(kinds) > 1:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "media_mix",
+                        1.0,
+                        [f"{refs[i]}:media_kind" for i in indexes],
+                        dict(sorted(kinds.items())),
+                    )
+                )
+            clips = [i for i in indexes if members[i].get("media_kind") == "video"]
+            if clips:
+                seconds = [members[i]["duration"] for i in clips if members[i].get("duration") is not None]
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "video_clip",
+                        1.0,
+                        [f"{refs[i]}:media_kind" for i in clips],
+                        {"clips": len(clips), "seconds": round(sum(seconds), 3) if seconds else None},
+                    )
+                )
+            middle = indexes[len(indexes) // 2]
+            phases.append(
+                {
+                    "id": f"phase-{number:03d}",
+                    "member_refs": [refs[i] for i in indexes],
+                    "representative_refs": [refs[middle]],
+                    "label_hint": label,
+                    "claim_refs": claim_refs,
+                }
+            )
+
+        overall: dict[str, int] = {}
+        for one in members:
+            basis = (one.get("occurrence") or {}).get("basis")
+            if basis:
+                overall[basis] = overall.get(basis, 0) + 1
+        leading = max(overall, key=lambda k: (overall[k], k)) if overall else None
+        word = _BASIS_WORDS.get(leading or "", "file")
+        return {
+            "v": FORMAT_VERSION,
+            "snapshot_sha256": snapshot_sha256,
+            "planner": {
+                "kind": self.kind,
+                "version": self.version,
+                "settings": dict(sorted(self.settings.items())),
+                "similarity": {"name": self.similarity.name, "version": self.similarity.version},
+            },
+            "subject": {
+                "kind": snapshot["subject"]["event_kind"],
+                "sequenced": sequenced,
+                "label_hint": f"{word} session · {len(members)} files · {len(phases)} "
+                + ("phases" if sequenced else "group"),
+            },
+            "phases": phases,
+            "claims": claims,
+            "unsupported": unsupported,
+        }
+
+
+#: How a session is named by the claim most of its members rest on.
+_BASIS_WORDS = {
+    "filename": "stamped-name",
+    "folder": "dated-folder",
+    "mtime": "filesystem",
+    "btime": "filesystem",
+    "embedded": "embedded-date",
+    "capture": "camera",
+}
+
+#: The time bases a file occurrence may rest on (db/schema.sql
+#: derived_media_occurrence.basis) and the media kinds a member may be.
+_BASES = frozenset({"capture", "embedded", "filename", "folder", "mtime", "btime"})
+_MEDIA_KINDS = frozenset({"image", "animated_image", "video", "audio", "document"})
+
+
 def _claim(claims: list, kind: str, confidence: float, evidence: list[str], facts: dict) -> str:
     claim_id = f"claim-{len(claims) + 1:03d}"
     claims.append(
@@ -1056,6 +1269,22 @@ STORY_PLAN_V4 = {
     },
     "subjects": STORY_PLAN_V3["subjects"] | frozenset({"capture_session"}),
 }
+#: StoryPlan v5 -- FROZEN. v4 plus the file vocabulary: the
+#: `file_history` planner over a `file_session`, whose claims are what
+#: the files said about themselves -- the basis their dates rest on, a
+#: filesystem that disputes a name, a mix of media kinds -- beside the
+#: shared pause, burst and clip claims.
+STORY_PLAN_V5 = {
+    **STORY_PLAN_V4,
+    "version": 5,
+    "planners": STORY_PLAN_V4["planners"] | frozenset({"file_history"}),
+    "claims": STORY_PLAN_V4["claims"] | frozenset({"time_basis", "disputed_time", "media_mix"}),
+    "settings": {
+        **STORY_PLAN_V4["settings"],
+        "file_history": frozenset({"pause_minutes", "burst_seconds"}),
+    },
+    "subjects": STORY_PLAN_V4["subjects"] | frozenset({"file_session"}),
+}
 _ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -1212,6 +1441,28 @@ def _facts_valid_v4(kind: str, facts) -> bool:
     return _facts_valid_v3(kind, facts)
 
 
+def _counts(facts: dict, vocabulary: frozenset[str], minimum_keys: int) -> bool:
+    return len(facts) >= minimum_keys and set(facts) <= vocabulary and all(_integer(v, 1) for v in facts.values())
+
+
+def _facts_valid_v5(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if kind == "time_basis":
+        return _counts(facts, _BASES, 1)
+    if kind == "disputed_time":
+        return set(facts) == {"members"} and _integer(facts["members"], 1)
+    if kind == "media_mix":
+        return _counts(facts, _MEDIA_KINDS, 2)
+    return _facts_valid_v4(kind, facts)
+
+
+def validate_story_plan_v5(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v5 document against the FROZEN
+    v5 vocabulary."""
+    return _validate_story_plan(plan, STORY_PLAN_V5, _facts_valid_v5)
+
+
 def validate_story_plan_v4(plan) -> list[str]:
     """The exact grammar of a StoryPlan v4 document against the FROZEN
     v4 vocabulary."""
@@ -1331,6 +1582,7 @@ _GRAMMARS = {
     2: validate_story_plan_v2,
     3: validate_story_plan_v3,
     4: validate_story_plan_v4,
+    5: validate_story_plan_v5,
 }
 
 
@@ -1448,7 +1700,11 @@ def settings_hash(settings: dict) -> str:
     return hashlib.sha256(canonical(dict(sorted(settings.items()))).encode("utf-8")).hexdigest()[:16]
 
 
-PLANNERS = {GenerationHistoryPlanner.kind: GenerationHistoryPlanner, CaptureHistoryPlanner.kind: CaptureHistoryPlanner}
+PLANNERS = {
+    GenerationHistoryPlanner.kind: GenerationHistoryPlanner,
+    CaptureHistoryPlanner.kind: CaptureHistoryPlanner,
+    FileHistoryPlanner.kind: FileHistoryPlanner,
+}
 
 
 # --- persistence and orchestration -------------------------------------------

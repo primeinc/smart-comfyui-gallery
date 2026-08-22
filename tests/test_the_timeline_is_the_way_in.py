@@ -131,8 +131,8 @@ def test_the_surface_carries_pictures_origins_and_its_coverage(doors):
     assert view["coverage"]["complete"] is True
     for s in view["sessions"]:
         assert 1 <= len(s["samples"]) <= pages.SAMPLES_PER_SESSION
-        assert s["tellable"] is False, "no planner tells a file session yet"
-        assert s["planner"] is None
+        assert s["tellable"] is True
+        assert s["planner"] == "file_history"
 
 
 def test_a_week_starts_on_a_monday(doors):

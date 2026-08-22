@@ -160,11 +160,11 @@ def test_the_golden_render_for_a_sequenced_session():
         "plan_sha256": plan_sha,
         "renderer": {
             "kind": "template",
-            "version": 3,
+            "version": 4,
             "profile": "memory",
             "locale": "en",
-            "policy": 3,
-            "reads": {"snapshot": 1, "plan": 4},
+            "policy": 4,
+            "reads": {"snapshot": 1, "plan": 5},
         },
         "title": "5 Qwen Image Edit images from July 18, 2026",
         "dek": "2 phases across 5 generated images",
@@ -385,7 +385,7 @@ def test_the_v1_grammar_is_frozen_exact_and_exception_proof(monkeypatch):
     assert rendering.validate_story_render(render) == []
     assert rendering.violations(render, plan, snapshot, snapshot_sha, plan_sha) == []
     monkeypatch.setattr(rendering, "PROFILES", profiles)
-    assert rendering.TemplateStoryRenderer().reads == {"snapshot": {1}, "plan": {2, 3, 4}}, (
+    assert rendering.TemplateStoryRenderer().reads == {"snapshot": {1}, "plan": {2, 3, 4, 5}}, (
         "plan v1 is history, not input"
     )
     assert rendering.COMPATIBILITY[("template", 1)] == {"snapshot": {1}, "plan": {1, 2}}, "v1's inputs stay frozen"
@@ -402,9 +402,9 @@ def test_the_v1_grammar_is_frozen_exact_and_exception_proof(monkeypatch):
         "no frozen compatibility" in why for why in rendering.violations(bent, plan, snapshot, snapshot_sha, plan_sha)
     )
     again = rendering.TemplateStoryRenderer("memory").render(snapshot, plan, snapshot_sha, plan_sha)
-    assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 4}
-    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[2, 3, 4\\]"):
-        rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 5}, snapshot_sha, plan_sha)
+    assert again["renderer"]["reads"] == {"snapshot": 1, "plan": 5}
+    with pytest.raises(ValueError, match="reads StorySnapshot \\[1\\] and StoryPlan \\[2, 3, 4, 5\\]"):
+        rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 6}, snapshot_sha, plan_sha)
     with pytest.raises(ValueError, match="reads StorySnapshot"):
         rendering.TemplateStoryRenderer("memory").render(snapshot, {**plan, "v": 1}, snapshot_sha, plan_sha)
     assert rendering.validate_story_render({**render, "v": 7})

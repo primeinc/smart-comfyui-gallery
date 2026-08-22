@@ -304,9 +304,10 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float, 
 # -- the live path: producers note, the runner applies after commit ---------
 
 #: Pending index mutations per connection, applied only after the commit
-#: that made their rows durable. Keyed by id(conn); every runner turn
-#: ends in exactly one of apply_pending/discard_pending, so entries do
-#: not outlive their turn.
+#: that made their rows durable. Keyed by id(conn): every runner turn
+#: ends in exactly one of apply_pending/discard_pending, and
+#: db/connect.py close() discards whatever is left, so an entry never
+#: outlives its connection -- and a recycled id never inherits one.
 _PENDING: dict[int, list] = {}
 
 

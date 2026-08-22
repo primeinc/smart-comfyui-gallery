@@ -2341,6 +2341,49 @@ def _the_operational_ledger(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX job_event_job ON job_event(job_id, id)")
 
 
+@step(24)
+def _the_file_planner(conn: sqlite3.Connection) -> None:
+    """v24 -> v25: `story_plan.planner` admits `file_history` (db/planning.py
+    FileHistoryPlanner). The CHECK is the only change; rows are kept,
+    bytes intact. DDL is schema.sql's text VERBATIM.
+    """
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE story_plan RENAME TO story_plan_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute("DROP INDEX IF EXISTS story_plan_snapshot")
+    conn.execute("DROP TRIGGER IF EXISTS story_plan_is_immutable")
+    conn.execute(
+        """CREATE TABLE story_plan (
+    id                 INTEGER PRIMARY KEY,
+    snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
+    format_version     INTEGER NOT NULL,
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history','capture_history','file_history')),
+    planner_version    INTEGER NOT NULL,
+    similarity         TEXT NOT NULL,
+    similarity_version TEXT NOT NULL,
+    settings_hash      TEXT NOT NULL,
+    -- The REQUEST's identity, known before any model work: snapshot sha,
+    -- planner kind/version, engine name/version, settings. Deterministic
+    -- planning makes request -> document one-to-one, so the same request
+    -- asked twice reuses the row -- and the queued job -- without
+    -- embedding anything again. document_sha256 stays the OUTPUT identity.
+    request_sha256     TEXT NOT NULL UNIQUE CHECK (length(request_sha256) = 64),
+    document_json      TEXT NOT NULL,
+    document_sha256    TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at         REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("INSERT INTO story_plan SELECT * FROM story_plan_old")
+    conn.execute("DROP TABLE story_plan_old")
+    conn.execute("CREATE INDEX story_plan_snapshot ON story_plan(snapshot_id, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_plan_is_immutable BEFORE UPDATE ON story_plan
+BEGIN
+  SELECT RAISE(ABORT,'a story plan is immutable; plan again under a new policy');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

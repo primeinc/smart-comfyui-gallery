@@ -26,7 +26,7 @@ SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 #: A bump is not enough on its own: db/migrate.py needs a step registered for
 #: the version being left behind, or an existing database cannot be opened.
 #: test_every_version_left_behind_has_a_step_off_it enforces that.
-USER_VERSION = 24
+USER_VERSION = 25
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.
@@ -194,6 +194,15 @@ def close(conn: sqlite3.Connection) -> None:
     (sqlite/sqlite@b09c88c14 src/pragma.c:2465-2473). Without it the planner keeps
     running on whatever statistics existed when the library was smaller.
     """
+    # Notes a producer left for the post-commit index sync die with the
+    # connection: nothing can apply them once it is closed, and the
+    # registry keys on id(conn) -- an id the allocator hands the next
+    # connection, which would inherit a stranger's notes (db/similarity.py
+    # _PENDING). The runner discards or applies before it gets here; this
+    # is the door every other path leaves by.
+    from . import similarity
+
+    similarity.discard_pending(conn)
     # A read-only or already-failing connection must still close. Losing a
     # statistics refresh is not worth raising over during shutdown.
     with contextlib.suppress(sqlite3.Error):

@@ -47,6 +47,9 @@ PROFILES: dict[str, frozenset[str]] = {
             "equipment",
             "renditions",
             "video_clip",
+            "time_basis",
+            "disputed_time",
+            "media_mix",
         }
     ),
     "technical": frozenset(
@@ -68,6 +71,9 @@ PROFILES: dict[str, frozenset[str]] = {
             "equipment",
             "renditions",
             "video_clip",
+            "time_basis",
+            "disputed_time",
+            "media_mix",
         }
     ),
     "compact": frozenset(),
@@ -96,6 +102,12 @@ class Context:
 
     def member_count(self, phase: dict) -> int:
         return len(phase["member_refs"])
+
+    @property
+    def filed(self) -> bool:
+        """A file session: nobody held a camera, so the pause and the
+        burst are spoken as saving, never as shooting."""
+        return self.plan["subject"]["kind"] == "file_session"
 
 
 def _prompt_similarity(claim: dict, phase: dict, ctx: Context) -> str:
@@ -207,7 +219,10 @@ def _prompt_rewrite(claim: dict, phase: dict, ctx: Context) -> str:
 
 
 def _pause(claim: dict, phase: dict, ctx: Context) -> str:
-    return f"The camera was down for {formatting.duration(claim['facts']['gap_seconds'])} before this phase."
+    gap = formatting.duration(claim["facts"]["gap_seconds"])
+    if ctx.filed:
+        return f"Nothing was saved for {gap} before this phase."
+    return f"The camera was down for {gap} before this phase."
 
 
 def _lens_change(claim: dict, phase: dict, ctx: Context) -> str:
@@ -221,6 +236,11 @@ def _lens_change(claim: dict, phase: dict, ctx: Context) -> str:
 
 def _burst(claim: dict, phase: dict, ctx: Context) -> str:
     facts = claim["facts"]
+    if ctx.filed:
+        told = f"{formatting.count(facts['frames'], 'file')} saved within {formatting.duration(facts['span_seconds'])}"
+        if ctx.profile == "technical" and facts["frames_per_second"] is not None:
+            told += f" ({facts['frames_per_second']:g} files per second)"
+        return told + "."
     told = f"A burst of {formatting.count(facts['frames'], 'frame')} in {formatting.duration(facts['span_seconds'])}"
     if ctx.profile == "technical" and facts["frames_per_second"] is not None:
         told += f" ({facts['frames_per_second']:g} frames per second)"
@@ -269,8 +289,51 @@ def _video_clip(claim: dict, phase: dict, ctx: Context) -> str:
     return told + "."
 
 
+_BASIS_PHRASE = {
+    "filename": "a stamp in the file name",
+    "folder": "a dated folder",
+    "mtime": "the filesystem's modified time",
+    "btime": "the filesystem's created time",
+    "embedded": "a date embedded in the file",
+    "capture": "the camera's clock",
+}
+
+
+def _time_basis(claim: dict, phase: dict, ctx: Context) -> str:
+    parts = [
+        f"{formatting.count(n, 'file')} by {_BASIS_PHRASE.get(basis, basis)}"
+        for basis, n in sorted(claim["facts"].items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    return "Dated by " + formatting.join_names(parts) + "."
+
+
+def _disputed_time(claim: dict, phase: dict, ctx: Context) -> str:
+    n = claim["facts"]["members"]
+    return f"The filesystem disputes the stated time of {formatting.count(n, 'file')} here."
+
+
+_KIND_NOUNS = {
+    "image": ("image", "images"),
+    "animated_image": ("animation", "animations"),
+    "video": ("video", "videos"),
+    "audio": ("audio file", "audio files"),
+    "document": ("document", "documents"),
+}
+
+
+def _media_mix(claim: dict, phase: dict, ctx: Context) -> str:
+    parts = [
+        formatting.count(n, *_KIND_NOUNS.get(kind, (kind, kind + "s")))
+        for kind, n in sorted(claim["facts"].items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    return "A mix of " + formatting.join_names(parts) + "."
+
+
 #: The whole vocabulary. Resolution is by this mapping and nothing else.
 REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
+    "time_basis": _time_basis,
+    "disputed_time": _disputed_time,
+    "media_mix": _media_mix,
     "pause": _pause,
     "lens_change": _lens_change,
     "burst": _burst,

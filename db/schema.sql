@@ -1923,7 +1923,7 @@ CREATE TABLE story_plan (
     id                 INTEGER PRIMARY KEY,
     snapshot_id        INTEGER NOT NULL REFERENCES story_snapshot(id) ON DELETE CASCADE,
     format_version     INTEGER NOT NULL,
-    planner            TEXT NOT NULL CHECK (planner IN ('generation_history','capture_history')),
+    planner            TEXT NOT NULL CHECK (planner IN ('generation_history','capture_history','file_history')),
     planner_version    INTEGER NOT NULL,
     similarity         TEXT NOT NULL,
     similarity_version TEXT NOT NULL,
@@ -1975,7 +1975,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 24;
+PRAGMA user_version   = 25;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

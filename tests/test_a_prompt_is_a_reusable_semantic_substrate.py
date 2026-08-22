@@ -803,7 +803,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24]
+    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25]
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1081,7 +1081,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24]
+    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25]
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1094,3 +1094,20 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         )
     finally:
         connect.close(conn)
+
+
+def test_notes_die_with_their_connection(tmp_path):
+    """A producer's index notes are keyed by id(conn). A connection
+    closed without a commit's apply or a rollback's discard left its
+    notes behind, and the next connection the allocator gave the same
+    id inherited them -- a foreign space key in another test's pending
+    list. Closing through the one door discards them."""
+    from db import build, connect, similarity
+
+    path = tmp_path / "gallery.db"
+    build.build(path)
+    conn = connect.connect(path)
+    key = id(conn)
+    similarity._PENDING.setdefault(key, []).append(("semantic.fake.toy.v1@1", 1, None))
+    connect.close(conn)
+    assert key not in similarity._PENDING, "the note outlived its connection"

@@ -95,6 +95,7 @@ COMPATIBILITY: dict[tuple[str, int], dict[str, frozenset[int]]] = {
     ("template", 1): {"snapshot": frozenset({1}), "plan": frozenset({1, 2})},
     ("template", 2): {"snapshot": frozenset({1}), "plan": frozenset({2, 3})},
     ("template", 3): {"snapshot": frozenset({1}), "plan": frozenset({2, 3, 4})},
+    ("template", 4): {"snapshot": frozenset({1}), "plan": frozenset({2, 3, 4, 5})},
 }
 
 
@@ -120,7 +121,7 @@ class TemplateStoryRenderer:
     function of its two documents and the profile."""
 
     kind = "template"
-    version = 3
+    version = 4
 
     @property
     def reads(self) -> dict[str, frozenset[int]]:
@@ -155,7 +156,22 @@ class TemplateStoryRenderer:
 
         day, one_day = _day_label(snapshot)
         captured = plan["subject"]["kind"] == "capture_session"
-        if captured:
+        filed = plan["subject"]["kind"] == "file_session"
+        if filed:
+            # a file session is counted in FILES, which is all a file
+            # session knows: no camera, no tool, only what the names,
+            # folders and filesystem said
+            what = formatting.count(total, "file")
+            title = f"{what} from {day}" if day else what
+            groups = "phases" if sequenced else "groups"
+            count_groups = formatting.count(len(plan["phases"]), groups.removesuffix("s"), groups)
+            dek = f"{count_groups} across {what}"
+            these = f"These {what}"
+            summary = f"{these} fall into {count_groups}."
+            if day:
+                when = f"on {day}" if one_day else f"over {day}"
+                summary = f"{these} were saved {when} and fall into {count_groups}."
+        elif captured:
             # a capture session is counted in ACTS: a RAW and its JPEG are
             # one photograph; the camera is named only when every member
             # agrees on it
@@ -196,6 +212,8 @@ class TemplateStoryRenderer:
                     structure = formatting.count(frames, "photograph")
                     if files != frames:
                         structure += f" ({formatting.count(files, 'file')})"
+                elif filed:
+                    structure = formatting.count(len(phase["member_refs"]), "file")
                 else:
                     structure = formatting.count(len(phase["member_refs"]), "image")
                 blocks = [

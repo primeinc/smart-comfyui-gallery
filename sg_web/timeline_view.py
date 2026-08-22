@@ -59,7 +59,11 @@ def _event_door(event_id: int) -> str:
 
 #: Which planner tells which kind of session's story; a kind with none
 #: is offered no button and told why.
-PLANNER_FOR = {"generation_session": "generation_history", "capture_session": "capture_history"}
+PLANNER_FOR = {
+    "generation_session": "generation_history",
+    "capture_session": "capture_history",
+    "file_session": "file_history",
+}
 
 _SPAN = {"day": 86_400, "hour": 3_600, "minute": 60}
 
