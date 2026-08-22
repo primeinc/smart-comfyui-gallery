@@ -657,14 +657,15 @@ def render_plan(conn, plan_id: int, renderer: TemplateStoryRenderer, now: float)
     return RenderRef(render_id, sha, False)
 
 
-def load_render_with_members(conn, render_id: int) -> tuple[dict, dict, int]:
+def load_render_with_members(conn, render_id: int) -> tuple[dict, dict, int, dict]:
     """The verified render, its plan's snapshot members by ref -- what a
-    page needs to spell a hero's FROZEN name -- and the plan's id, the
-    page's door to the evolution view. The page asks here; it never
+    page needs to spell a hero's FROZEN name -- the plan's id (the page's
+    door to the evolution view) and the frozen subject (its door back to
+    the session's window on the timeline). The page asks here; it never
     joins a table itself."""
     render, snapshot, plan_id = _load(conn, render_id)
     members = {planning._member_ref(one["ordinal"]): one for one in snapshot["members"]}
-    return render, members, plan_id
+    return render, members, plan_id, snapshot["subject"]
 
 
 def latest_render_id(conn, plan_id: int) -> int | None:

@@ -43,6 +43,7 @@ live over `/ws/jobs`. Nothing expensive runs by itself.
 /f/<slug>           a folder           /folders
 /m/<slug> /l/<slug> /w/<slug>   a model, a LoRA, a workflow
 /timeline           the library on its human axis: every month, day, bin and session a door; stories told from sessions
+/stories            every story told, newest first
 /stories/renders/N  a story: frozen evidence, a plan, words the plan supports; /stories/plans/N/evolution beside it
 /search?q=          by meaning, across the configured spaces
 /operations         the console: worker, queue, every job's row and ledger, live; roots, sweeps, settings

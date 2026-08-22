@@ -26,7 +26,8 @@
     <a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a>
     <a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a>
     <a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a>
-    <a href="/timeline"{% if here == "/timeline" or here.startswith("/stories/") %} aria-current="page"{% endif %}>timeline</a>
+    <a href="/timeline"{% if here == "/timeline" %} aria-current="page"{% endif %}>timeline</a>
+    <a href="/stories"{% if here == "/stories" or here.startswith("/stories/") %} aria-current="page"{% endif %}>stories</a>
     <a class="shell-operations" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>operations</a>
     <details class="activity" data-activity ws-connect="/ws/jobs?as=html">
       {% with jobs = activity_jobs(), oob = false %}

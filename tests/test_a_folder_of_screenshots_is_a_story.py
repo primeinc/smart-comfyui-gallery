@@ -147,6 +147,20 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     again = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     held = next(s for s in again["sessions"] if s["id"] == session["id"])
     assert held["story"] == f"/stories/renders/{made.json()['id']}"
+    # the shelf lists it, newest first, with its words and doors
+    shelf = client.get("/stories", headers={"accept": "application/json"}).json()
+    assert [s["id"] for s in shelf] == [made.json()["id"]]
+    assert shelf[0]["title"] == "5 files from June 10, 2023"
+    assert (shelf[0]["kind"], shelf[0]["profile"], shelf[0]["members"]) == ("file_session", "memory", 5)
+    page = client.get("/stories", headers={"accept": "text/html"}).text
+    assert f'data-story="{made.json()["id"]}"' in page
+    assert "5 files from June 10, 2023" in page
+    # and the story's crumb opens this session's window on the timeline
+    story_page = client.get(
+        made.json()["id"] and f"/stories/renders/{made.json()['id']}", headers={"accept": "text/html"}
+    ).text
+    assert "data-story-session" in story_page
+    assert "/timeline?bin=hour&amp;start=" in story_page
 
 
 def test_the_v5_grammar_holds_the_file_vocabulary_and_v4_refuses_it():

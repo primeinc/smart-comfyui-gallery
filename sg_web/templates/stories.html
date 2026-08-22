@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Stories{% endblock %}
+{% block scripts %}<script src="/static/timeline.js" defer></script>{% endblock %}
+{% block body %}
+  <header class="bar">
+    <nav class="crumbs">
+      <span class="crumbs-here">Stories</span>
+      <span class="crumbs-where">{{ stories | length }} told</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if stories %}
+    <ol class="stories" data-stories>
+      {% for s in stories %}
+      <li class="story-card" data-story="{{ s.id }}" data-kind="{{ s.kind }}">
+        <a class="story-title" href="{{ s.href }}">{{ s.title }}</a>
+        <span class="story-dek">{{ s.dek }}</span>
+        <span class="story-meta">{{ s.kind.replace("_", " ") }} &middot; {{ s.profile }} &middot; {{ s.members }} members &middot; told <time data-epoch="{{ s.told_at }}" data-domain="instant">{{ s.told_at }}</time> &middot; <a href="{{ s.evolution }}">evolution</a></span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty">no story told yet — open the <a href="/timeline">timeline</a>, pick a session, press <em>tell the story</em>.</p>
+    {% endif %}
+  </main>
+{% endblock %}

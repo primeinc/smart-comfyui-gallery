@@ -43,7 +43,7 @@ Every response carries `Vary: Accept, HX-Request`.
 ## Shell
 
 `base.html` renders navigation (gallery, people, albums, folders,
-timeline, operations) and mounts the activity surface through the
+timeline, stories, operations) and mounts the activity surface through the
 `activity()` Jinja global installed by `sg_web/activity.py` on the
 application's engine (`engine_callback`). Story and evolution pages
 render through `story_view._story_env` (StrictUndefined) and pass

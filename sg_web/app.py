@@ -1129,6 +1129,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             dupes,
             timeline_view.timeline,
             timeline_view.density,
+            story_view.stories_index,
             story_view.freeze_snapshot,
             story_view.snapshot_document,
             story_view.plan_snapshot,

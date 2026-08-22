@@ -505,6 +505,12 @@ body {
 .story-members img { width: 56px; height: 56px; object-fit: cover; border-radius: 3px; background: var(--ground); display: block; }
 .story-gone { color: var(--ink-muted); font-size: 12px; border: 1px dashed var(--line); border-radius: 3px; padding: 2px 6px; }
 .story-notes { color: var(--ink-muted); }
+.stories { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-width: 900px; }
+.story-card { display: grid; gap: 2px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.story-card .story-title { color: var(--ink); font-weight: 600; font-size: 16px; text-decoration: none; }
+.story-card .story-title:hover { color: var(--accent); }
+.story-meta { color: var(--ink-muted); font-size: 12.5px; }
+.story-meta a { color: var(--accent); }
 .story-profiles { display: inline-flex; gap: 8px; align-items: baseline; margin-left: auto; font-size: 13px; }
 .story-profile { background: var(--ground); color: var(--accent); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 10px; cursor: pointer; font: inherit; font-size: 13px; }
 .story-profile:hover { border-color: var(--accent); }

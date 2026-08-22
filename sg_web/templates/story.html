@@ -5,7 +5,8 @@
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/timeline">timeline</a>
+      <a href="/stories">stories</a>
+      <a href="{{ session_window or '/timeline' }}" data-story-session>{{ "this session on the timeline" if session_window else "timeline" }}</a>
       <span class="crumbs-here">story</span>
       <a href="/stories/plans/{{ plan_id }}/evolution" data-story-evolution>evolution</a>
       <span class="crumbs-where">{{ story.support.member_refs | length }} members · render #{{ render_id }}</span>

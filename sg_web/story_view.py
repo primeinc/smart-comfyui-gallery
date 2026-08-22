@@ -12,17 +12,64 @@ input. Reading a snapshot consults history only.
 from __future__ import annotations
 
 import dataclasses
+import json
 import pathlib
 import time
+import urllib.parse
 
 from litestar import Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response, Template
 
-from db import connect, evolution, naming, planning, rendering, settings, stories
+from db import connect, evolution, naming, pages, planning, rendering, settings, stories
 from sg_web import home, submitting
-from sg_web.presenting import VARIES, wants_json
+from sg_web.presenting import VARIES, presented_page, wants_json
+
+
+def _window(subject: dict) -> str | None:
+    """The timeline's hour window around the frozen session, in the
+    domain the evidence claims it in; None when the subject holds no
+    interval."""
+    when = subject.get("time") or {}
+    held = when.get("local") or when.get("instant")
+    if not held:
+        return None
+    start = int(held[0] // 3600) * 3600
+    end = int(held[-1] // 3600) * 3600 + 3600
+    return "/timeline?" + urllib.parse.urlencode({"bin": "hour", "start": start, "end": end})
+
+
+@get("/stories", sync_to_thread=True)
+def stories_index(state: State, request: Request) -> Template | Response:
+    """Every story told, newest first -- the shelf the timeline's
+    buttons fill. Each entry is its title and dek as rendered, its
+    subject kind, its profile, and doors to the render and the plan's
+    evolution."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        told = []
+        for render_id, plan_id, profile, created_at, document, planner, event_kind, snapshot_id in pages.stories(conn):
+            words = json.loads(document)
+            told.append(
+                {
+                    "id": render_id,
+                    "plan_id": plan_id,
+                    "snapshot_id": snapshot_id,
+                    "profile": profile,
+                    "planner": planner,
+                    "kind": event_kind,
+                    "told_at": created_at,
+                    "title": words.get("title", ""),
+                    "dek": words.get("dek", ""),
+                    "members": len((words.get("support") or {}).get("member_refs") or []),
+                    "href": f"/stories/renders/{render_id}",
+                    "evolution": f"/stories/plans/{plan_id}/evolution",
+                }
+            )
+    finally:
+        connect.close(conn)
+    return presented_page(request, told, page="stories.html", context={"stories": told})
 
 
 @dataclasses.dataclass
@@ -163,7 +210,7 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
     conn = connect.connect(state.db_path, read_only=True)
     try:
         try:
-            story, members, plan_id = rendering.load_render_with_members(conn, render_id)
+            story, members, plan_id, subject = rendering.load_render_with_members(conn, render_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         except ValueError as corrupt:
@@ -195,6 +242,7 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
             "render_id": render_id,
             "plan_id": plan_id,
             "profiles": rendering.PROFILES,
+            "session_window": _window(subject),
         },
         headers=VARIES,
     )
