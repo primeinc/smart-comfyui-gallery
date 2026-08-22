@@ -64,6 +64,21 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     return conn
 
 
+def settled(client: TestClient, job_id: int, timeout: float = 30.0) -> str:
+    """ONE job's terminal state, read off its row. The feed carries every
+    job's deltas, so a reader that takes the first terminal state it
+    sees may be reading somebody else's; the row cannot be mistaken."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while True:
+        state = client.get(f"/jobs/{job_id}").json()["state"]
+        if state in ("done", "failed", "cancelled"):
+            return state
+        assert time.monotonic() < deadline, f"job {job_id} still {state} after {timeout}s"
+        time.sleep(0.02)
+
+
 def _listing(root: pathlib.Path) -> dict[pathlib.Path, tuple[int, int]]:
     return {
         p.relative_to(root): (p.stat().st_size, p.stat().st_mtime_ns) for p in sorted(root.rglob("*")) if p.is_file()
@@ -167,7 +182,13 @@ def staged(
         )
         stage._rebuild = build
         client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
+        precache = client.post("/roots/1/scan").json()["precache"]
+        if worker and precache is not None:
+            # The scan queued the thumbnail job; a world snapshotted while
+            # it runs is one whose cache files are being written under
+            # the next restore's unlink, and whose feed already carries a
+            # running job nobody in the module asked for.
+            settled(client, precache)
         if setup is not None:
             setup(stage)
         stage.snapshot()

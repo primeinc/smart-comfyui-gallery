@@ -304,6 +304,22 @@ def submit_faces(state: State, data: dict) -> dict:
         connect.close(conn)
 
 
+@post("/jobs/thumbs", sync_to_thread=True)
+def submit_thumbs(state: State) -> dict | Response:
+    """Ask for every missing grid thumb and lightbox preview to be
+    rendered ahead of a view (db/runner.py submit_thumbs). 204 when the
+    cache already holds them all."""
+    conn = _connect(state.db_path)
+    try:
+        job_id = runner.submit_thumbs(conn, time.time(), thumbs_dir=str(home.thumbs_dir(pathlib.Path(state.home))))
+        if job_id is None:
+            return Response(content=None, status_code=204)
+        conn.commit()
+        return _submitted(state, conn, job_id)
+    finally:
+        connect.close(conn)
+
+
 @post("/jobs/phash", sync_to_thread=True)
 def submit_phash(state: State) -> dict:
     """Ask for every present picture's perceptual fingerprint -- the
@@ -853,6 +869,11 @@ def scan_root(state: State, root_id: int) -> dict:
             raise NotFoundException(f"no root {root_id}")
         result = scan.scan(conn, root_id, row[0], time.time())
         conn.commit()
+        cache = str(home.thumbs_dir(pathlib.Path(state.home)))
+        precache = runner.precache_after_scan(conn, time.time(), result, thumbs_dir=cache)
+        if precache is not None:
+            conn.commit()
+            _submitted(state, conn, precache)
         return {
             "root": root_id,
             "added": result.added,
@@ -861,6 +882,7 @@ def scan_root(state: State, root_id: int) -> dict:
             "ambiguous": result.ambiguous,
             "missing": result.missing,
             "hashed": result.hashed,
+            "precache": precache,
         }
     finally:
         connect.close(conn)
@@ -1027,6 +1049,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             submit_events,
             submit_ingest,
             submit_phash,
+            submit_thumbs,
             submit_embed,
             submit_embed_prompts,
             prompt_neighbours,

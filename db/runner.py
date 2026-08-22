@@ -130,6 +130,70 @@ def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
     derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
 
+def submit_thumbs(conn, now: float, *, thumbs_dir: str) -> int | None:
+    """Render the grid thumb and lightbox preview for every present
+    picture and video the cache does not hold yet, as one job.
+
+    The serving layer renders a missing variant on first request: one
+    full decode of the original per picture, nine at once under the
+    rail's popover -- 3.7s for a page of 22-megapixel PNGs. This job
+    pays that decode once, in the background, as files arrive
+    (`precache_after_scan`), so a view is a stat and a read. Rides the
+    'hash' kind with a payload the handler dispatches on, like the
+    perceptual job: it is about what a file's pixels are.
+
+    None when the cache already holds everything: an empty job on the
+    feed would announce work that does not exist.
+    """
+    import pathlib
+
+    from vision import thumbs
+
+    cache = pathlib.Path(thumbs_dir)
+    items = [
+        file_id
+        for file_id, sha in conn.execute(
+            "SELECT id, content_sha256 FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id DESC"
+        )
+        if sha is None or any(not thumbs.path_for(cache, sha, kind).exists() for kind in thumbs.EDGES)
+    ]
+    if not items:
+        return None
+    return jobs.submit(conn, "hash", now, payload={"derive": "thumbs", "thumbs_dir": thumbs_dir}, items=items)
+
+
+def precache_after_scan(conn, now: float, result, *, thumbs_dir: str) -> int | None:
+    """The walk found new bytes: queue their thumbnails, when the
+    `thumbnail_precache` setting says the cache is filled ahead of views.
+    `result` is the walk's ScanResult (db/scan.py)."""
+    from . import settings as settings_module
+
+    if not (result.added or result.replaced) or not settings_module.flag(conn, "thumbnail_precache"):
+        return None
+    return submit_thumbs(conn, now, thumbs_dir=thumbs_dir)
+
+
+def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
+    import pathlib
+
+    from vision import decode, thumbs
+
+    from . import detect, oriented, scan
+
+    cache = pathlib.Path(payload["thumbs_dir"])
+    kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+    path = detect.path_of(conn, file_id)
+    if sha is None:
+        sha = scan.sha256_of(path)
+    if all(thumbs.path_for(cache, sha, variant).exists() for variant in thumbs.EDGES):
+        return
+    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+    if frame is None:
+        raise ValueError(f"file {file_id} has no decodable frame to thumbnail")
+    thumbs.put_all(cache, sha, frame)
+
+
 def submit_embed(conn, now: float, *, models_dir: str) -> list[int]:
     """The joint image/text embedding for every present picture -- the
     representations `/search` answers from. ONE JOB PER participating
@@ -416,12 +480,14 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
 
 def _hash_item(conn, file_id: int, payload: dict, now: float) -> None:
-    """The 'hash' kind's two modes, told apart by payload: a bare job is
+    """The 'hash' kind's modes, told apart by payload: a bare job is
     the integrity sweep it always was, so jobs queued before the payload
     existed keep meaning what they meant."""
     derive = payload.get("derive")
     if derive == "perceptual":
         _perceptual_item(conn, file_id, payload, now)
+    elif derive == "thumbs":
+        _thumbs_item(conn, file_id, payload, now)
     elif derive == "groups":
         _dupe_groups_item(conn, file_id, payload, now)
     elif derive is None:

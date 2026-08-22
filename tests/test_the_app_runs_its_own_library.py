@@ -47,6 +47,17 @@ MEADOW = (
 )
 
 
+def settled(feed, job_id: int) -> str:
+    """ONE job's terminal state off the feed. The feed carries every
+    job's deltas -- a scan queues the thumbnail job ahead of whatever
+    the test asked for -- so a reader that takes the first terminal
+    state it sees is reading somebody else's."""
+    while True:
+        delta = feed.receive_json(timeout=10)
+        if delta.get("job") == job_id and delta["state"] in ("done", "failed", "cancelled"):
+            return delta["state"]
+
+
 def test_the_recipe_axis_is_produced_and_served(tmp_path):
     """Ingestion is a job the application offers, and what it reads
     becomes addressable: the model has a page counting pictures, the LoRA
@@ -75,10 +86,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
             assert feed.receive_json(timeout=10)["type"] == "snapshot"
             job = client.post("/jobs/ingest").json()
             assert (job["kind"], job["total"]) == ("scan", 2)
-            state = job["state"]
-            while state not in ("done", "failed", "cancelled"):
-                state = feed.receive_json(timeout=10)["state"]
-            assert state == "done"
+            assert settled(feed, job["id"]) == "done"
         told = client.get(f"/jobs/{job['id']}").json()
         assert (told["state"], told["failed_count"]) == ("done", 0)
 
@@ -166,9 +174,7 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
             with client.websocket_connect("/ws/jobs") as feed:
                 assert feed.receive_json(timeout=10)["type"] == "snapshot"
                 job_id = client.post("/jobs/ingest").json()["id"]
-                state = None
-                while state not in ("done", "failed", "cancelled"):
-                    state = feed.receive_json(timeout=10)["state"]
+                settled(feed, job_id)
             return client.get(f"/jobs/{job_id}").json()
 
         first = drained_ingest()
@@ -207,10 +213,7 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
             assert feed.receive_json(timeout=10)["type"] == "snapshot"
             job = client.post("/jobs/phash").json()
             assert (job["kind"], job["total"]) == ("hash", 2)
-            state = job["state"]
-            while state not in ("done", "failed", "cancelled"):
-                state = feed.receive_json(timeout=10)["state"]
-            assert state == "done"
+            assert settled(feed, job["id"]) == "done"
         told = client.get(f"/jobs/{job['id']}").json()
         assert (told["state"], told["failed_count"]) == ("done", 0)
 
@@ -226,6 +229,37 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
         assert all(set(told) == {"imagehash.phash", "imagehash.dhash"} for told in hashes.values())
         apart = dupes.hamming(hashes["castle.png"]["imagehash.phash"], hashes["castle_half.jpg"]["imagehash.phash"])
         assert apart <= 6, f"the same picture resized measured {apart} bits apart"
+
+
+def test_a_scan_queues_the_thumbnails_of_what_it_found(tmp_path):
+    """New pictures are thumbnailed by the worker the moment a walk
+    finds them, so the rail's hover never pays a first decode of the
+    original; a walk that finds nothing new, and a cache already full,
+    queue nothing."""
+    from vision import thumbs
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    scene(*CASTLE).save(root / "castle.png")
+    scene(*MEADOW).save(root / "meadow.png")
+
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            swept = client.post(f"/roots/{made['id']}/scan").json()
+            assert swept["added"] == 2
+            job = client.get(f"/jobs/{swept['precache']}").json()
+            assert (job["kind"], job["total"]) == ("hash", 2)
+            assert settled(feed, job["id"]) == "done"
+        cache = tmp_path / "run" / "thumbs"
+        conn = connect.connect(client.app.state.db_path)
+        shas = [row[0] for row in conn.execute("SELECT content_sha256 FROM file")]
+        conn.close()
+        assert len(shas) == 2
+        assert all(thumbs.path_for(cache, sha, kind).exists() for sha in shas for kind in thumbs.EDGES)
+        assert client.post(f"/roots/{made['id']}/scan").json()["precache"] is None
+        assert client.post("/jobs/thumbs").status_code == 204
 
 
 def test_copies_of_copies_collapse_into_pictures(tmp_path):
@@ -249,9 +283,7 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
             with client.websocket_connect("/ws/jobs") as feed:
                 assert feed.receive_json(timeout=10)["type"] == "snapshot"
                 job_id = client.post(route).json()["id"]
-                state = None
-                while state not in ("done", "failed", "cancelled"):
-                    state = feed.receive_json(timeout=10)["state"]
+                settled(feed, job_id)
             told = client.get(f"/jobs/{job_id}").json()
             assert (told["state"], told["failed_count"]) == ("done", 0), route
 
@@ -297,9 +329,7 @@ def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path):
             with client.websocket_connect("/ws/jobs") as feed:
                 assert feed.receive_json(timeout=10)["type"] == "snapshot"
                 job_id = client.post(route).json()["id"]
-                state = None
-                while state not in ("done", "failed", "cancelled"):
-                    state = feed.receive_json(timeout=10)["state"]
+                settled(feed, job_id)
             told = client.get(f"/jobs/{job_id}").json()
             assert (told["state"], told["failed_count"]) == ("done", 0), route
 
@@ -340,10 +370,7 @@ def test_resolution_beats_bytes_for_the_dupe_representative(tmp_path):
         def drained(route: str) -> None:
             with client.websocket_connect("/ws/jobs") as feed:
                 assert feed.receive_json(timeout=10)["type"] == "snapshot"
-                client.post(route)
-                state = None
-                while state not in ("done", "failed", "cancelled"):
-                    state = feed.receive_json(timeout=10)["state"]
+                settled(feed, client.post(route).json()["id"])
 
         drained("/jobs/phash")
         drained("/jobs/dupes")

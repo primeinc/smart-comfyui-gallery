@@ -149,6 +149,35 @@ def test_detection_caches_every_variant_as_a_byproduct(tmp_path):
     conn.close()
 
 
+def test_the_thumbs_job_fills_only_what_the_cache_lacks(tmp_path):
+    """Scanning queues the thumbnails of what it found, the job renders
+    both variants, and a cache that already holds everything queues
+    nothing -- so a new picture is cached before anyone hovers it, and a
+    rescan of a cached library costs no decode."""
+    from db import runner
+
+    def write(root):
+        target = root / "portrait.png"
+        Image.new("RGB", (900, 400), (200, 30, 30)).save(target)
+        return target
+
+    conn, _, sha, _ = _library_with(tmp_path, write)
+    cache = tmp_path / "thumbs"
+    found = scan.ScanResult(matched=0, replaced=0, added=1, ambiguous=0, missing=0, hashed=1)
+    job_id = runner.precache_after_scan(conn, 0.0, found, thumbs_dir=str(cache))
+    assert job_id is not None
+    assert runner.run_next(conn, "w1", 1.0) == {"job": job_id, "state": "done", "did": 1, "failed": 0}
+    assert Image.open(thumbs.path_for(cache, sha)).size == (512, 228)
+    assert Image.open(thumbs.path_for(cache, sha, "preview")).size == (1440, 640)
+    assert runner.submit_thumbs(conn, 2.0, thumbs_dir=str(cache)) is None, "a warm cache queued a job"
+    unchanged = scan.ScanResult(matched=1, replaced=0, added=0, ambiguous=0, missing=0, hashed=0)
+    thumbs.path_for(cache, sha).unlink()
+    assert runner.precache_after_scan(conn, 3.0, unchanged, thumbs_dir=str(cache)) is None, (
+        "a walk that found nothing new queued work"
+    )
+    conn.close()
+
+
 def test_a_video_is_represented_by_the_frame_with_its_people(tmp_path):
     """First half establishing shot, second half a person: the cadence sees
     both, and the thumbnail must be the person, not the opening frame."""

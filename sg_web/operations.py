@@ -59,6 +59,11 @@ def _dupes(state: State, conn) -> list[int]:
     return [runner.submit_dupes(conn, time.time())]
 
 
+def _thumbs(state: State, conn) -> list[int]:
+    job_id = runner.submit_thumbs(conn, time.time(), thumbs_dir=str(home.thumbs_dir(pathlib.Path(state.home))))
+    return [] if job_id is None else [job_id]
+
+
 def _embed(state: State, conn) -> list[int]:
     return runner.submit_embed(conn, time.time(), models_dir=_weights(state, conn))
 
@@ -85,13 +90,14 @@ def _events(state: State, conn) -> list[int]:
 
 
 #: What the page can start, in the order a library is usually built:
-#: find files, read them, fingerprint, group copies, embed, detect faces,
+#: find files, read them, fingerprint, thumbnail, group copies, embed, detect faces,
 #: cluster, interpret time, group events. Each launcher returns the job
 #: ids it queued -- the same db/runner.py entry points the JSON routes use.
 LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "ingest": ("read every file's metadata", _ingest),
     "verify": ("verify every file's bytes", _verify),
     "phash": ("fingerprint every picture", _phash),
+    "thumbs": ("render every missing thumbnail", _thumbs),
     "dupes": ("group perceptual copies", _dupes),
     "embed": ("embed every picture for search", _embed),
     "embed_prompts": ("embed every prompt", _embed_prompts),
@@ -189,12 +195,18 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
             raise NotFoundException(f"no root {root_id}")
         result = scan.scan(conn, root_id, row[0], time.time())
         conn.commit()
+        cache = str(home.thumbs_dir(pathlib.Path(state.home)))
+        precache = runner.precache_after_scan(conn, time.time(), result, thumbs_dir=cache)
+        if precache is not None:
+            conn.commit()
+            submitted(state, conn, precache)
         roots = _roots(conn)
     finally:
         connect.close(conn)
     notice = (
         f"scanned {row[0]}: {result.added} added, {result.matched} matched, {result.replaced} replaced,"
         f" {result.missing} missing, {result.ambiguous} ambiguous"
+        + (f"; thumbnails queued as job #{precache}" if precache is not None else "")
     )
     return Template(template_name="_operations_roots.html", context={"roots": roots, "notice": notice}, headers=VARIES)
 

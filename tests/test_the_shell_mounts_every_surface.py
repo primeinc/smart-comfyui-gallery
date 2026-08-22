@@ -29,6 +29,7 @@ from litestar.testing import TestClient
 from PIL import Image
 
 from sg_web.app import build_app
+from tests.staging import settled
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "sg_web" / "templates"
@@ -44,7 +45,11 @@ def served(tmp_path_factory):
         Image.new("RGB", (12, 12), (30 * i, 90, 120)).save(root / f"s_{i}.png")
     with TestClient(app=build_app(str(tmp / "run"))) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
-        assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 3
+        swept = client.post(f"/roots/{made['id']}/scan").json()
+        assert swept["added"] == 3
+        # The scan queued the thumbnail job; the module's tests read the
+        # feed and the cold list expecting only the jobs they start.
+        settled(client, swept["precache"])
         yield client, root
 
 

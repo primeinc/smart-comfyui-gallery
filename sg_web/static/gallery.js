@@ -131,6 +131,7 @@ ${smarts.map((held) => held.slug).join(", ")}`,
           total: +g.dataset.total,
           size: +g.dataset.size,
           currency: g.dataset.currency,
+          answer: g.dataset.answer,
           qbase: g.dataset.qbase,
         }
       : null;
@@ -144,31 +145,40 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     return Math.min(s.pages, Math.max(1, Math.round(fraction * (s.pages - 1)) + 1));
   };
 
+  // The rail hangs from the header's REAL bottom edge. The header is
+  // sticky and wraps with its controls, so a fixed offset left the top
+  // of the rail -- the newest pages -- under it, where a hover reached
+  // the header and never the rail.
+  const bar = document.querySelector("header.bar");
+  const placeRail = () => {
+    if (bar) rail.style.top = `${bar.getBoundingClientRect().bottom}px`;
+  };
+
   const placeThumb = () => {
+    placeRail();
     const s = shape();
     if (!s) return;
     const fraction = s.pages > 1 ? (s.page - 1) / (s.pages - 1) : 0;
     thumb.style.top = `${fraction * 100}%`;
   };
+  window.addEventListener("resize", placeRail);
 
-  // A preview must belong to the SAME result-set generation as the grid
-  // it floats beside: the request carries the grid's currency, the
-  // server answers 409 when the library has moved on, and the response
-  // currency is checked again in case it moved mid-flight. Either
-  // mismatch redraws the whole gallery from the URL -- two generations
-  // are never presented as one answer.
-  const peeked = new Map(); // `${currency}:${page}` -> peek JSON
+  // A preview must belong to the SAME answer as the grid it floats
+  // beside -- the answer identity, not the currency. Currency is the
+  // library's data_version, which every commit moves: a running job's
+  // bookkeeping moved it once per item, so every hover during a job
+  // was a 409 and a whole-page reload. The answer is the sha of the
+  // ordering itself; the same answer means the same ordering, and a
+  // preview of it is true. A different answer redraws the gallery from
+  // the URL -- two orderings are never presented as one.
+  const peeked = new Map(); // `${answer}:${page}` -> peek JSON
   const peek = async (page, s) => {
-    const key = `${s.currency}:${page}`;
+    const key = `${s.answer}:${page}`;
     if (!peeked.has(key)) {
-      const answer = await fetch(`/g/peek?${s.qbase}page=${page}&count=9&expect=${encodeURIComponent(s.currency)}`);
-      if (answer.status === 409) {
-        window.location.reload();
-        return null;
-      }
+      const answer = await fetch(`/g/peek?${s.qbase}page=${page}&count=9`);
       if (!answer.ok) return null;
       const told = await answer.json();
-      if (told.currency !== s.currency) {
+      if (told.answer !== s.answer) {
         window.location.reload();
         return null;
       }
@@ -177,15 +187,13 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     return peeked.get(key);
   };
 
+  // A page is asked for once the pointer RESTS on it. A sweep down the
+  // rail crosses dozens of pages; nine thumbs for each of them queued
+  // the page actually wanted behind eighty pictures nobody will see.
+  const REST_MS = 60;
   let hoverPage = null;
-  rail.addEventListener("pointermove", async (event) => {
-    const s = shape();
-    if (!s) return;
-    const page = pageAt(event.clientY, s);
-    pop.style.top = `${event.clientY - rail.getBoundingClientRect().top}px`;
-    pop.hidden = false;
-    if (page === hoverPage) return;
-    hoverPage = page;
+  let resting = 0;
+  const show = async (page, s) => {
     const told = await peek(page, s);
     if (!told || hoverPage !== page) return;
     popLabel.textContent =
@@ -199,9 +207,22 @@ ${smarts.map((held) => held.slug).join(", ")}`,
         return img;
       }),
     );
+  };
+
+  rail.addEventListener("pointermove", (event) => {
+    const s = shape();
+    if (!s) return;
+    const page = pageAt(event.clientY, s);
+    pop.style.top = `${event.clientY - rail.getBoundingClientRect().top}px`;
+    pop.hidden = false;
+    if (page === hoverPage) return;
+    hoverPage = page;
+    clearTimeout(resting);
+    resting = setTimeout(() => show(page, s), REST_MS);
   });
 
   rail.addEventListener("pointerleave", () => {
+    clearTimeout(resting);
     pop.hidden = true;
     hoverPage = null;
   });
