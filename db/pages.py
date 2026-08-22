@@ -334,6 +334,26 @@ PERSON_ACROSS_FOLDERS = (
 )
 
 
+#: When a person was seen: every CURRENT session holding one of their
+#: pictures, with how many of its members are theirs and the story told
+#: of it -- the timeline's answer for one face, newest first.
+PERSON_SESSIONS = (
+    "SELECT ev.id, ev.kind, COALESCE(ev.local_start, ev.instant_start), COALESCE(ev.local_end, ev.instant_end),"
+    " count(DISTINCT ef.file_id) AS theirs,"
+    " (SELECT count(*) FROM derived_event_file x WHERE x.event_id = ev.id) AS pictures,"
+    " (SELECT sr.id FROM story_snapshot s JOIN story_plan sp ON sp.snapshot_id = s.id"
+    "   JOIN story_render sr ON sr.plan_id = sp.id WHERE s.member_hash = ev.member_hash"
+    "   AND s.event_kind = ev.kind AND s.grouper = r.grouper ORDER BY sr.id DESC LIMIT 1)"
+    "  FROM derived_file_person fp"
+    "  JOIN derived_event_file ef ON ef.file_id = fp.file_id"
+    "  JOIN derived_event ev ON ev.id = ef.event_id"
+    "  JOIN derived_event_run r ON r.id = ev.run_id"
+    " WHERE fp.person_id = ? AND fp.run_id = ?"
+    "   AND r.context_generation = (SELECT generation FROM derived_context_state)"
+    "   AND r.context_policy_version = ?"
+    " GROUP BY ev.id ORDER BY COALESCE(ev.local_start, ev.instant_start) DESC"
+)
+
 PERSON_NAME = "SELECT name FROM person WHERE id = ?"
 
 #: How many durable naming assertions anchor this person -- the count the
@@ -459,6 +479,25 @@ def person_files(conn, person_id: int, run_id: int | None = None):
             return []
         run_id = row[0]
     return conn.execute(PERSON_FILES, (person_id, run_id)).fetchall()
+
+
+EVENT_DOMAIN = "SELECT local_start, instant_start FROM derived_event WHERE id = ?"
+
+
+def event_domain(conn, event_id: int):
+    """`(local_start, instant_start)`: which clock domain a session knows."""
+    return conn.execute(EVENT_DOMAIN, (event_id,)).fetchone()
+
+
+def person_sessions(conn, person_id: int, run_id: int | None = None):
+    """The current sessions one person appears in, for one clustering
+    run (the primary by default), newest first."""
+    if run_id is None:
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
+        if row is None:
+            return []
+        run_id = row[0]
+    return conn.execute(PERSON_SESSIONS, (person_id, run_id, context.POLICY_VERSION)).fetchall()
 
 
 def person_across_folders(conn, person_id: int, run_id: int | None = None):

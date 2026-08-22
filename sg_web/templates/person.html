@@ -25,6 +25,21 @@
         </form>
       </div>
     </section>
+    {% if person.sessions %}
+    <section class="detail-facts" data-person-sessions>
+      <h2>when they were seen</h2>
+      <ul>
+        {% for s in person.sessions %}
+        <li data-person-session="{{ s.id }}">
+          <a href="/g?{{ s.qs }}">{{ s.kind.replace("_", " ") }}</a>
+          &middot; <time data-epoch="{{ s.start }}" data-domain="{{ s.domain }}">{{ s.start }}</time>
+          &middot; {{ s.theirs }} of {{ s.pictures }} pictures
+          {% if s.story %}&middot; <a href="{{ s.story }}">story</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
     {% if person.across_folders %}
     <section class="detail-facts">
       <h2>where their pictures live</h2>

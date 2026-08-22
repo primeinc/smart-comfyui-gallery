@@ -36,6 +36,13 @@ from sg_web import home
 from sg_web.presenting import presented, presented_page, wants_json
 
 
+def _wall(conn, event_id: int) -> bool:
+    """Whether the session knows a wall clock (db/pages.py spells the
+    start in whichever domain it has; the page says which)."""
+    row = pages.event_domain(conn, event_id)
+    return bool(row and row[0] is not None)
+
+
 def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy: bool) -> dict:
     """The PersonView: everything every presentation shows, assembled
     once, inside ONE database snapshot -- a clustering or naming commit
@@ -58,6 +65,22 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
             "slug": slug,
             "name": pages.person_name(conn, person_id),
             "count": grid["total"],
+            "sessions": [
+                {
+                    "id": event_id,
+                    "kind": kind,
+                    "start": start,
+                    "end": end,
+                    "domain": "wall" if start is not None and _wall(conn, event_id) else "instant",
+                    "theirs": theirs,
+                    "pictures": pictures,
+                    "qs": resultset.canonical(
+                        resultset.parse(person=slug, facets=[f"event.id:eq:{event_id}"], sort="moment")
+                    ),
+                    "story": f"/stories/renders/{render_id}" if render_id is not None else None,
+                }
+                for event_id, kind, start, end, theirs, pictures, render_id in pages.person_sessions(conn, person_id)
+            ],
             "across_folders": [
                 {"folder": f, "folder_slug": fs, "pictures": p}
                 for f, fs, p in pages.person_across_folders(conn, person_id)

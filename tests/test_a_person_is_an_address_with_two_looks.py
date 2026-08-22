@@ -982,3 +982,30 @@ def test_an_empty_people_page_says_where_every_run_stands(faces):
     assert "run #1 (test/embedder): 3 faces in 1 groups" in page.text
     assert "sound but not adopted unasked; no run is the default" in page.text
     assert faces.get("/people").json() == [], "the machine list stays the primary run's answer"
+
+
+def test_a_person_page_says_when_they_were_seen(faces):
+    """The timeline's answer for one face: every current session holding
+    one of their pictures, newest first, each a door onto THEIR pictures
+    in it (the person scope composed with the session facet), and the
+    story told of it when one was."""
+    from tests.staging import settled
+
+    client = faces
+    assert client.get("/p/ana").json()["sessions"] == [], "no interpretation yet, no sessions"
+    assert settled(client, client.post("/jobs/context").json()["id"]) == "done"
+    assert settled(client, client.post("/jobs/events").json()["id"]) == "done"
+    told = client.get("/p/ana").json()
+    assert len(told["sessions"]) == 1, told["sessions"]
+    session = told["sessions"][0]
+    assert session["kind"] == "file_session"
+    assert (session["theirs"], session["pictures"]) == (2, 3), "two of the three files are Ana's"
+    assert "person=ana" in session["qs"]
+    assert "event.id%3Aeq%3A" in session["qs"]
+    import re
+
+    page = client.get(f"/g?{session['qs']}").text
+    assert int(re.search(r'data-total="(\d+)"', page).group(1)) == 2, "the door opens on Ana's pictures in that session"
+    html = client.get("/p/ana", headers={"accept": "text/html"}).text
+    assert "data-person-sessions" in html
+    assert f'data-person-session="{session["id"]}"' in html
