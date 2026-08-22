@@ -930,12 +930,17 @@ def test_a_replaced_file_stops_answering_by_its_old_picture(faces, monkeypatch):
 
 
 @pytest.mark.slow
-def test_search_never_downloads_a_model(faces):
+def test_search_never_downloads_a_model(faces, monkeypatch):
     """Embeddings exist but the model cache is empty: the request is
     refused with the fix named, and no acquisition begins -- weights
-    belong to /jobs/embed, not to a GET."""
+    belong to /jobs/embed, not to a GET. The cache is EMPTIED for the
+    test: the guard consults the run's models_dir and then the machine's
+    shared Hugging Face cache, and a developer's box may hold the
+    weights the test's premise denies."""
     from db import similarity
+    from vision import weights
 
+    monkeypatch.setattr(weights, "hub_cached", lambda repo, name, models_dir: None)
     client = faces
     db_path = client.app.state.db_path
     conn = connect.connect(db_path)
@@ -1009,3 +1014,33 @@ def test_a_person_page_says_when_they_were_seen(faces):
     html = client.get("/p/ana", headers={"accept": "text/html"}).text
     assert "data-person-sessions" in html
     assert f'data-person-session="{session["id"]}"' in html
+
+
+def test_search_refuses_rows_of_another_width_instead_of_crashing(faces, monkeypatch):
+    """Vectors recorded 4 wide and an encoder that answers 512 wide are
+    another build's rows: the space is reported missing with the fix,
+    never searched into an assertion. With nothing else to answer from
+    the request is a 400, not a 500."""
+    from db import similarity
+    from vision import semantic
+
+    class Wide:
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 512)
+
+        def encode_query(self, text):
+            raise AssertionError("a mismatched space must never be queried")
+
+    monkeypatch.setattr(semantic, "encoder", lambda *a, **k: Wide())
+    client = faces
+    conn = connect.connect(client.app.state.db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    derived.record_embedding(conn, files["ana_1.png"], spec, np.array([1, 0, 0, 0], dtype=np.float32), "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+    answer = client.get("/search", params={"q": "banana"})
+    assert answer.status_code == 400, answer.text
+    assert "4-dimensional" in answer.json()["detail"]
+    assert "/jobs/embed" in answer.json()["detail"]

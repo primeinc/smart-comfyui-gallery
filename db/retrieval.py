@@ -187,6 +187,17 @@ def query(
         except LookupError as unprovisioned:
             missing[name] = str(unprovisioned)
             continue
+        declared = encoder.space() if hasattr(encoder, "space") else None
+        answers = getattr(declared, "dimensions", None)
+        if answers is not None and int(answers) != int(spec.dimensions):
+            # Rows recorded under one width cannot be searched with a query
+            # of another: the index would assert, not answer. The rows are
+            # another build's; a re-embed under this encoder replaces them.
+            missing[name] = (
+                f"the recorded space is {spec.dimensions}-dimensional and this encoder answers in {answers};"
+                " its vectors were made by a different build -- run /jobs/embed to replace them"
+            )
+            continue
         ids = [embedding_id for embedding_id, _ in rows]
         to_file.update(dict(rows))
         key = similarity.align(conn, manager, spec, ids, lambda wanted: _vectors(conn, wanted), now)
@@ -207,7 +218,7 @@ def query(
             continue
         per_space.append((spec.key, ranked))
 
-    if not per_space and any("not provisioned" in why for why in missing.values()):
+    if not per_space and any("not provisioned" in why or "-dimensional" in why for why in missing.values()):
         # Degraded is an answer; NOTHING to answer from is a refusal that
         # must name its fix, exactly as the single-space case always did.
         raise LookupError("; ".join(f"{name}: {why}" for name, why in sorted(missing.items())))
