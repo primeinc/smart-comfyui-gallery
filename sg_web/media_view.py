@@ -127,7 +127,24 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
         "children": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.children(conn, file_id)],
         "when": _when(conn, file_id),
         "said": derived.said_about(conn, file_id),
+        "faces": _faces(conn, file_id),
         "context": context,
+    }
+
+
+def _faces(conn, file_id: int) -> dict:
+    """Who is in the picture, by the primary clustering, and whether any
+    detector has looked at its current bytes -- so the page can tell
+    "nobody here" from "nobody looked"."""
+    return {
+        "people": [
+            {"slug": slug, "name": name, "href": f"/p/{slug}", "faces": int(count)}
+            for slug, name, count in pages.media_people(conn, file_id)
+        ],
+        "looked": [
+            {"model_id": model_id, "model_version": version, "faces": int(faces), "at": at}
+            for model_id, version, faces, at in pages.media_face_scans(conn, file_id)
+        ],
     }
 
 

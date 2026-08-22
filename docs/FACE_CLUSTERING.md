@@ -76,6 +76,15 @@ on 12,713 SFace embeddings from 5,775 mixed real images
 A run whose top cluster holds more than half the library has chained
 (`db/derived.py CHAINED`); the run chooser refuses it.
 
+## The pass is the record
+
+`derived_face_scan` holds one row per (file, model, version): that the
+detector looked at the file's bytes (`source_sha256`) and how many
+faces it found, zero included. The faces sweep (`POST /jobs/faces`)
+queues only files no pass covers for their current bytes;
+`{"everything": true}` looks at all of them again. A picture's page
+reads the same rows to say "found nobody" rather than "nobody looked".
+
 ## Detection policy
 
 YuNet detects faces of ~10 to ~300 px. Detection input is capped at 1600

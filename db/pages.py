@@ -1048,6 +1048,35 @@ def timeline_events(conn, limit: int = 200):
     return conn.execute(TIMELINE_EVENTS, (context.POLICY_VERSION, limit)).fetchall()
 
 
+# --- one picture's faces ----------------------------------------------------
+
+#: Who the primary clustering says is in one file: each person's address,
+#: name (NULL until a human names them) and how many of the file's faces
+#: are theirs.
+MEDIA_PEOPLE = (
+    "SELECT e.slug, p.name, fp.face_count FROM derived_file_person fp"
+    "  JOIN derived_face_run r ON r.id = fp.run_id AND r.is_primary = 1"
+    "  JOIN person p ON p.id = fp.person_id JOIN entity e ON e.id = p.id"
+    " WHERE fp.file_id = ? ORDER BY fp.face_count DESC, e.slug"
+)
+
+#: Every detector's pass over this file's CURRENT bytes: who looked, when,
+#: how many faces it found. No row means nobody has looked at these bytes.
+MEDIA_FACE_SCANS = (
+    "SELECT s.model_id, s.model_version, s.faces, s.computed_at FROM derived_face_scan s"
+    "  JOIN file f ON f.id = s.file_id AND f.content_sha256 = s.source_sha256"
+    " WHERE s.file_id = ? ORDER BY s.computed_at DESC"
+)
+
+
+def media_people(conn, file_id: int):
+    return conn.execute(MEDIA_PEOPLE, (file_id,)).fetchall()
+
+
+def media_face_scans(conn, file_id: int):
+    return conn.execute(MEDIA_FACE_SCANS, (file_id,)).fetchall()
+
+
 # --- stories ---------------------------------------------------------------
 
 #: Every story told, newest first: the render with its profile, the plan

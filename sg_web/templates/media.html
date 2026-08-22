@@ -70,6 +70,19 @@
       {% else %}
       <p class="detail-note" data-when-missing>not interpreted yet — <a href="/operations">run the context job</a>.</p>
       {% endif %}
+      <h2>who is here</h2>
+      {% if item.faces.people %}
+      <ul class="detail-people" data-people>
+        {% for who in item.faces.people %}
+        <li data-person="{{ who.slug }}"><a href="{{ who.href }}">{{ who.name or who.slug }}</a>{% if who.faces > 1 %} &middot; {{ who.faces }} faces{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if item.faces.looked %}
+      <p class="detail-note" data-faces-looked>{% for pass in item.faces.looked %}{{ pass.model_id }} found {{ pass.faces }} face{{ "" if pass.faces == 1 else "s" }} <time data-epoch="{{ pass.at }}" data-domain="instant">{{ pass.at }}</time>{% if not loop.last %}; {% endif %}{% endfor %}</p>
+      {% else %}
+      <p class="detail-note" data-faces-missing>nobody has looked for faces in these bytes — <a href="/operations">run the faces job</a>.</p>
+      {% endif %}
       <h2>what a model said</h2>
       {% if item.said %}
       <ul class="detail-said" data-said>
