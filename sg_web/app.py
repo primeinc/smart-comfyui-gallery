@@ -307,14 +307,18 @@ def submit_faces(state: State, data: dict) -> dict:
 
 
 @post("/jobs/annotate", sync_to_thread=True)
-def submit_annotate(state: State, data: dict) -> dict:
-    """Ask for a caption on every picture, with the models named."""
+def submit_annotate(state: State, data: dict) -> dict | Response:
+    """Ask for a caption on every picture that lacks one from the
+    configured model -- `{"everything": true}` for all of them again.
+    204 when nothing is left to caption."""
     conn = _connect(state.db_path)
     try:
         weights = data.get("models_dir") or str(
             home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
         )
-        job_id = runner.submit_annotate(conn, time.time(), models_dir=weights)
+        job_id = runner.submit_annotate(conn, time.time(), models_dir=weights, everything=bool(data.get("everything")))
+        if job_id is None:
+            return Response(content=None, status_code=204)
         conn.commit()
         return _submitted(state, conn, job_id)
     finally:

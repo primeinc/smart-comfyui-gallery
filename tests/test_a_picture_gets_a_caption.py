@@ -62,6 +62,27 @@ def test_submit_reads_the_caption_model_setting_into_the_payload(tmp_path):
     assert [r[0] for r in conn.execute("SELECT item_id FROM job_item WHERE job_id = ?", (job_id,))] == [file_id]
 
 
+def test_submit_skips_pictures_the_model_already_captioned_for_these_bytes(tmp_path):
+    """A sweep is for what is missing: a file holding a caption from the
+    configured model for its current bytes is not an item again; new
+    bytes, another model, or `everything` put it back."""
+    conn = fresh_schema()
+    file_id = _one_picture(conn, tmp_path / "lib")
+    sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+    model = settings.value(conn, "caption_model")
+    assert runner.submit_annotate(conn, 0.0, models_dir="M") is not None
+
+    derived.annotate(conn, file_id, "caption", "a square", model, "abc", sha, 1.0)
+    assert runner.submit_annotate(conn, 2.0, models_dir="M") is None, "nothing left to caption"
+    assert runner.submit_annotate(conn, 2.0, models_dir="M", everything=True) is not None
+
+    settings.put(conn, "caption_model", "someone/other-captioner")
+    assert runner.submit_annotate(conn, 3.0, models_dir="M") is not None, "another model has not spoken"
+    settings.put(conn, "caption_model", model)
+    conn.execute("UPDATE file SET content_sha256 = 'f' * 64 WHERE id = ?", (file_id,))
+    assert runner.submit_annotate(conn, 4.0, models_dir="M") is not None, "new bytes, no caption for them"
+
+
 def test_the_job_item_provisions_captions_and_records_what_was_said(tmp_path, monkeypatch):
     conn = fresh_schema()
     file_id = _one_picture(conn, tmp_path / "lib")
@@ -156,6 +177,12 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
     with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            settings.put(conn, "caption_model", "fake/captioner")  # the model the fake answers as
+            conn.commit()
+        finally:
+            connect.close(conn)
         asked = client.post("/jobs/annotate", json={})
         assert asked.status_code in (200, 201, 202), asked.text
         conn = connect.connect(client.app.state.db_path)
@@ -178,6 +205,8 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
         assert [a["text"] for a in told["said"]] == ["a green field"]
         console = client.get("/operations", headers={"accept": "text/html"}).text
         assert 'hx-post="/operations/jobs/annotate"' in console
+        assert client.post("/jobs/annotate", json={}).status_code == 204, "everything is captioned"
+        assert client.post("/jobs/annotate", json={"everything": True}).status_code in (200, 201, 202)
         # the grid says it on hover, and the machine answer carries it
         grid = client.get("/g", headers={"accept": "text/html"}).text
         assert 'title="a green field" data-said' in grid

@@ -783,20 +783,27 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
 _CAPTIONERS: dict = {}
 
 
-def submit_annotate(conn, now: float, *, models_dir: str) -> int:
-    """A caption for every present picture and video, as one job. The
-    `caption_model` setting is read HERE, once, into the payload: every
-    item of one job runs the same model."""
+def submit_annotate(conn, now: float, *, models_dir: str, everything: bool = False) -> int | None:
+    """A caption for every present picture and video that lacks one from
+    the configured model for its CURRENT bytes, as one job -- or, with
+    `everything`, for all of them again. None when nothing is left to
+    caption. The `caption_model` setting is read HERE, once, into the
+    payload: every item of one job runs the same model."""
     from . import settings as settings_module
 
-    items = [
-        row[0]
-        for row in conn.execute(
-            "SELECT id FROM file WHERE missing_since IS NULL"
-            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+    model = settings_module.value(conn, "caption_model")
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    args: tuple = ()
+    if not everything:
+        sql += (
+            " AND NOT EXISTS (SELECT 1 FROM derived_annotation a WHERE a.file_id = f.id AND a.kind = 'caption'"
+            "   AND a.model_id = ? AND a.source_sha256 = f.content_sha256)"
         )
-    ]
-    payload = {"models_dir": models_dir, "model": settings_module.value(conn, "caption_model"), "kind": "caption"}
+        args = (model,)
+    items = [row[0] for row in conn.execute(sql + " ORDER BY f.id", args)]
+    if not items:
+        return None
+    payload = {"models_dir": models_dir, "model": model, "kind": "caption"}
     return jobs.submit(conn, "annotate", now, payload=payload, items=items)
 
 
