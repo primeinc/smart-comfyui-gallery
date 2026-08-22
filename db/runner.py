@@ -17,17 +17,107 @@ item error would turn its own defects into permanent verdicts about files.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import sqlite3
+import traceback
 
-from . import jobs
+from . import jobs, ledger
 
 _logger = logging.getLogger(__name__)
 
 #: What a handler is allowed to fail with, per item. Everything else is a
 #: defect in the handler, not a fact about the item.
 ITEM_FAILURES = (OSError, ValueError, RuntimeError, LookupError, sqlite3.Error)
+
+
+# --- the reporting seam ----------------------------------------------------
+
+
+class Report:
+    """What a handler says about the inside of one item: phases, progress,
+    observations. Knows nothing of Jinja, Litestar or a socket.
+
+    Two fates for every report. It is SPOKEN at once -- `speak` carries it
+    to whoever listens, marked `pending`, with no id, because it describes
+    work inside a transaction that may yet roll back -- so a console shows
+    "decoding frame 48 of 220" while it is true. And it is KEPT, to be
+    written to the ledger at the item boundary in the same commit as the
+    item's outcome: a phase an item failed in survives the rollback of the
+    item's writes, because the ledger rows are recorded after it. The
+    pending message is presentation; the ledger row is history; a client
+    that holds both keeps the row.
+    """
+
+    def __init__(self, job_id: int, item_id: int | None, clock, speak) -> None:
+        self.job_id = job_id
+        self.item_id = item_id
+        self._clock = clock
+        self._speak = speak
+        self.kept: list[dict] = []
+        self.phase_now: str | None = None
+
+    def _note(self, type_: str, *, phase: str | None, message: str | None, data: dict | None) -> None:
+        told = {
+            "job_id": self.job_id,
+            "at": self._clock(),
+            "type": type_,
+            "item_id": self.item_id,
+            "phase": phase,
+            "severity": "info",
+            "message": message,
+            "data": data,
+        }
+        self.kept.append(told)
+        self._speak({**told, "pending": True})
+
+    def phase(self, name: str, **data) -> None:
+        """A named stretch of work begins; the previous one, if any, ends."""
+        if self.phase_now is not None:
+            self._note("phase.finished", phase=self.phase_now, message=f"{self.phase_now} finished", data=None)
+        self.phase_now = name
+        self._note("phase.started", phase=name, message=f"{name} started", data=data or None)
+
+    def progress(self, unit: str, done: int, total: int | None = None) -> None:
+        """How far the current phase is, in its own unit."""
+        spelled = f"{done} {unit}" if total is None else f"{done} / {total} {unit}"
+        self._note(
+            "phase.progress",
+            phase=self.phase_now,
+            message=spelled,
+            data={"unit": unit, "done": done, "total": total},
+        )
+
+    def observe(self, name: str, **data) -> None:
+        """A fact the handler found on the way: faces seen, frames sampled."""
+        self._note("item.observed", phase=self.phase_now, message=name, data={"name": name, **data})
+
+    def close(self) -> None:
+        if self.phase_now is not None:
+            self._note("phase.finished", phase=self.phase_now, message=f"{self.phase_now} finished", data=None)
+            self.phase_now = None
+
+
+class _Silent(Report):
+    """The report outside any runner turn: everything said is dropped."""
+
+    def __init__(self) -> None:
+        super().__init__(0, None, lambda: 0.0, lambda told: None)
+
+    def _note(self, type_: str, *, phase, message, data) -> None:
+        return
+
+
+_REPORT: contextvars.ContextVar[Report | None] = contextvars.ContextVar("sg_report", default=None)
+
+
+def report() -> Report:
+    """The report for the item being worked on this thread. A handler
+    calls `report().phase("decoding")`; outside a turn it gets a report
+    that listens and says nothing, so handlers never branch on it."""
+    held = _REPORT.get()
+    return held if held is not None else _Silent()
 
 
 def submit_verify(conn, now: float) -> int:
@@ -244,8 +334,13 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
 
     media = semantic.MediaRef(path=str(path), kind=kind, frame=representative_frame)
     provider, model, checkpoint = payload["choice"]
+    told = report()
+    told.phase("loading-encoder", provider=provider, model=model)
     encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
-    derived.record_embedding(conn, file_id, encoder.space(), encoder.encode_media(media), sha, now)
+    told.phase("encoding", kind=kind)
+    vector = encoder.encode_media(media)
+    told.phase("recording", space=str(encoder.space()))
+    derived.record_embedding(conn, file_id, encoder.space(), vector, sha, now)
 
 
 def submit_dupes(conn, now: float) -> int:
@@ -625,8 +720,10 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
     models_dir = payload["models_dir"]
     thumbs_dir = payload.get("thumbs_dir")
     key = (models_dir, payload.get("backend", "auto"), payload.get("providers", "auto"))
+    told = report()
     backend = _BACKENDS.get(key)
     if backend is None:
+        told.phase("loading-backend", face_backend=key[1], ort_providers=key[2])
         try:
             backend = faces_module.backend_for(models_dir, choice=key[1], providers=key[2], provision=True)
         except faces_module.BackendUnavailable as why:
@@ -648,10 +745,13 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
         raise backend
     kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     path = detect.path_of(conn, file_id)
+    told.phase("detecting", kind=kind, backend=str(getattr(backend, "model_id", "")))
     if kind == "video":
         detect.harvest_video(conn, backend, file_id, path, now, thumbs_dir=thumbs_dir)
     else:
         detect.harvest(conn, backend, file_id, path, now, thumbs_dir=thumbs_dir)
+    faces = conn.execute("SELECT count(*) FROM derived_face_instance WHERE file_id = ?", (file_id,)).fetchone()[0]
+    told.observe("faces-found", count=int(faces))
 
 
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:
@@ -727,6 +827,7 @@ def run_next(
     budget: int | None = None,
     clock=None,
     on_progress=None,
+    on_event=None,
     should_stop=None,
 ) -> dict | None:
     """One worker turn: claim the next runnable job and work it.
@@ -751,19 +852,65 @@ def run_next(
     write invites the subscriber to read the row and find it behind what
     the wire just said -- caught live by a client whose snapshot read
     'running' after its socket said 'done'.
+
+    `on_event` hears the ledger (db/ledger.py): every row this turn
+    appends, spoken after the commit that made it durable and carrying
+    its id -- and, between those, each handler report marked `pending`
+    (see Report), which is presentation until the item settles.
+
+    A handler that raises anything outside ITEM_FAILURES is a DEFECT, not
+    a verdict about the item: its writes are rolled back, a
+    `worker.turn_failed` event carrying the traceback is committed so the
+    console can explain why the job sits under an expiring lease, and the
+    exception propagates to take the turn down exactly as before.
     """
     from . import similarity as similarity_module
 
     handlers = HANDLERS if handlers is None else handlers
     tick = clock if clock is not None else (lambda: now)
     tell = on_progress if on_progress is not None else (lambda delta: None)
+    tell_event = on_event if on_event is not None else (lambda event: None)
     claimed = jobs.claim(conn, owner, now, kinds=kinds, gate=gate)
     if claimed is None:
         return None
     job_id, fence = claimed
-    conn.commit()
 
-    kind, raw = conn.execute("SELECT kind, payload FROM job WHERE id = ?", (job_id,)).fetchone()
+    kind, raw, attempt, lease_until = conn.execute(
+        "SELECT kind, payload, attempt, lease_until FROM job WHERE id = ?", (job_id,)
+    ).fetchone()
+    unspoken: list[dict] = []
+
+    def note(type_: str, **kw) -> dict:
+        """One ledger row in the open transaction; spoken after commit."""
+        told = ledger.record(conn, job_id, type_, tick(), **kw)
+        unspoken.append(told)
+        return told
+
+    def committed() -> None:
+        conn.commit()
+        for told in unspoken:
+            tell_event(told)
+        unspoken.clear()
+
+    # A second attempt is a RECLAIM -- the last owner's lease lapsed --
+    # unless the ledger says the last turn paused on purpose, which is a
+    # resume under a new fence, not a recovery.
+    last = ledger.latest_for_job(conn, job_id)
+    resumed = attempt > 1 and last is not None and last["type"] == "job.paused"
+    reclaimed = attempt > 1 and not resumed
+    note(
+        "job.reclaimed" if reclaimed else "job.claimed",
+        message=(
+            f"{owner} reclaimed the job (attempt {attempt}; the last lease lapsed)"
+            if reclaimed
+            else f"{owner} resumed the job (attempt {attempt})"
+            if resumed
+            else f"{owner} took the job"
+        ),
+        severity="warning" if reclaimed else "info",
+        data={"owner": owner, "attempt": attempt, "fence": fence, "lease_until": lease_until, "resumed": resumed},
+    )
+    committed()
 
     def spoke(state: str, moved) -> None:
         # `cancel_requested` rides every delta so a subscriber that saw the
@@ -787,8 +934,10 @@ def run_next(
     spoke("running", opened)
     handler = handlers.get(kind)
     if handler is None:
-        jobs.settle(conn, job_id, fence, "failed", tick(), error=f"no handler for kind {kind!r}")
-        conn.commit()
+        why = f"no handler for kind {kind!r}"
+        jobs.settle(conn, job_id, fence, "failed", tick(), error=why)
+        note("job.failed", severity="error", message=why, data={"error": why})
+        committed()
         _logger.error("job #%d %s: failed, no handler for that kind", job_id, kind)
         spoke("failed", jobs.progress(conn, job_id))
         return {"job": job_id, "state": "failed", "did": 0}
@@ -803,17 +952,38 @@ def run_next(
             # `should_stop` is how a shutting-down worker leaves a long
             # job at an item boundary instead of holding the exit hostage.
             jobs.pause(conn, job_id, fence, tick())
-            conn.commit()
+            note(
+                "job.paused",
+                message=f"paused after {did} items; the next turn resumes it",
+                data={
+                    "did": did,
+                    "failed": failed,
+                    "why": "budget" if budget is not None and did >= budget else "stop",
+                },
+            )
+            committed()
             _logger.info(
                 "job #%d %s: paused after %d items (%d failed); the next turn resumes it", job_id, kind, did, failed
             )
             return {"job": job_id, "state": "running", "did": did, "failed": failed}
         if jobs.cancelled(conn, job_id):
             jobs.settle(conn, job_id, fence, "cancelled", tick())
-            conn.commit()
+            note(
+                "job.cancelled",
+                severity="warning",
+                message=f"stopped at the item boundary after {did} items this turn",
+                data={"did": did, "failed": failed},
+            )
+            committed()
             _logger.info("job #%d %s: cancelled after %d items (%d failed)", job_id, kind, did, failed)
             spoke("cancelled", jobs.progress(conn, job_id))
             return {"job": job_id, "state": "cancelled", "did": did, "failed": failed}
+        # The start is committed BEFORE the handler runs -- a 47-second
+        # decode is then a console row saying so, not a frozen bar.
+        note("item.started", item_id=item, message=f"item {item} started")
+        committed()
+        told = Report(job_id, item, tick, tell_event)
+        token = _REPORT.set(told)
         try:
             handler(conn, item, payload, now)
         except ITEM_FAILURES as why:
@@ -825,14 +995,53 @@ def run_next(
             # never reach a live index.
             conn.rollback()
             similarity_module.discard_pending(conn)
+            told.close()
+            _keep(conn, told, unspoken)
             moved = jobs.finish_item(conn, job_id, fence, item, error=str(why))
             failed += 1
+            note(
+                "item.failed",
+                item_id=item,
+                severity="warning",
+                message=str(why),
+                data={"error": str(why), "exception": type(why).__name__, "job_continues": True},
+            )
             _logger.warning("job #%d %s: item %r failed: %s", job_id, kind, item, why)
+        except Exception as defect:
+            conn.rollback()
+            similarity_module.discard_pending(conn)
+            told.close()
+            _keep(conn, told, unspoken)
+            lease = conn.execute("SELECT lease_until FROM job WHERE id = ?", (job_id,)).fetchone()
+            note(
+                "worker.turn_failed",
+                item_id=item,
+                severity="error",
+                message=f"{type(defect).__name__}: {defect}",
+                data={
+                    "exception": type(defect).__name__,
+                    "error": str(defect),
+                    "traceback": traceback.format_exc(),
+                    "attempt": attempt,
+                    "fence": fence,
+                    "owner": owner,
+                    "lease_until": lease[0] if lease else None,
+                    "job_continues": False,
+                    "reclaimable": True,
+                },
+            )
+            committed()
+            raise
         else:
+            told.close()
+            _keep(conn, told, unspoken)
             moved = jobs.finish_item(conn, job_id, fence, item)
+            note("item.done", item_id=item, message=f"item {item} done")
+        finally:
+            _REPORT.reset(token)
         did += 1
         jobs.heartbeat(conn, job_id, fence, tick())
-        conn.commit()
+        committed()
         # The commit succeeded, so the item's representation writes are
         # durable -- NOW they may reach the resident indexes. A crash in
         # the gap is safe: the index lags committed truth until the next
@@ -842,7 +1051,31 @@ def run_next(
         spoke("running", moved)
 
     jobs.settle(conn, job_id, fence, "done", tick())
-    conn.commit()
+    note(
+        "job.done",
+        message=f"done: {did} items this turn, {failed} failed, {tick() - started:.1f}s",
+        data={"did": did, "failed": failed, "seconds": tick() - started},
+    )
+    committed()
     _logger.info("job #%d %s: done, %d items, %d failed, %.1fs", job_id, kind, did, failed, tick() - started)
     spoke("done", jobs.progress(conn, job_id))
     return {"job": job_id, "state": "done", "did": did, "failed": failed}
+
+
+def _keep(conn, told: Report, unspoken: list[dict]) -> None:
+    """The item's kept reports become ledger rows, in the order they were
+    said, inside the transaction that settles the item."""
+    unspoken.extend(
+        ledger.record(
+            conn,
+            said["job_id"],
+            said["type"],
+            said["at"],
+            item_id=said["item_id"],
+            phase=said["phase"],
+            severity=said["severity"],
+            message=said["message"],
+            data=said["data"],
+        )
+        for said in told.kept
+    )

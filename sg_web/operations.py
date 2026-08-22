@@ -1,4 +1,5 @@
-"""The runtime's own surface: roots, sweeps, the worker, clustering.
+"""The runtime's own surface: the console, roots, sweeps, the worker,
+clustering.
 
 Everything here already exists as a machine route in sg_web/app.py --
 POST /roots, POST /roots/{id}/scan, POST /jobs/*, POST /settings/{key},
@@ -9,6 +10,12 @@ registered as one Litestar Router under /operations, so every operational
 page and form shares that prefix and whatever policy the layer grows
 (litestar-org/litestar@v2.24.0 docs/usage/routing/overview.rst "Routers";
 litestar/router.py Router.__init__ for the layered kwargs).
+
+The console is the expert depth (db/inspecting.py): the health strip,
+the job matrix, one job's inspector, the ledger as a tape. It reads the
+operations read model and the ledger, never `jobs.active` widened -- the
+shell's list stays tiny. Live delivery is /ws/events (sg_web/app.py);
+the routes here are what a cold load and a gap-fill read.
 
 Nothing operational is offered anywhere else: the gallery header asks
 questions about media, this page runs the library.
@@ -26,12 +33,12 @@ from litestar import Request, Router, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.params import FromPath, URLEncodedBody
-from litestar.response import Template
+from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
-from db import connect, derived, library, pages, prompts, runner, scan, settings
-from sg_web import home
-from sg_web.presenting import VARIES
+from db import connect, derived, inspecting, ledger, library, pages, prompts, runner, scan, settings
+from sg_web import console, home
+from sg_web.presenting import VARIES, wants_json
 from sg_web.submitting import submitted
 
 _logger = logging.getLogger(__name__)
@@ -114,7 +121,13 @@ def _roots(conn) -> list[dict]:
     return [{"id": root_id, "path": path, "online": online} for root_id, path, online in library.probe_roots(conn)]
 
 
+#: How many of the newest ledger rows the cold page carries; the tape
+#: pages earlier ones on demand and the feed appends the rest.
+TAPE_COLD = 500
+
+
 def _page_context(state: State) -> dict:
+    now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
         return {
@@ -123,6 +136,11 @@ def _page_context(state: State) -> dict:
             "clusterings": pages.clusterings(conn),
             "launchers": [{"kind": kind, "label": label} for kind, (label, _) in LAUNCHERS.items()],
             "notice": None,
+            "overview": inspecting.overview(conn, now),
+            "matrix": inspecting.matrix(conn, now),
+            "tape": [console.envelope(event) for event in ledger.latest(conn, limit=TAPE_COLD)],
+            "last_event_id": ledger.last_id(conn),
+            "now": now,
         }
     finally:
         connect.close(conn)
@@ -131,6 +149,82 @@ def _page_context(state: State) -> dict:
 @get("/", sync_to_thread=True)
 def operations_page(state: State) -> Template:
     return Template(template_name="operations.html", context=_page_context(state), headers=VARIES)
+
+
+@get("/overview", sync_to_thread=True)
+def overview(state: State) -> dict:
+    """The health strip and the matrix, from the rows: what the console
+    re-reads after a reconnect, and what a machine asks."""
+    now = time.time()
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        return {"overview": inspecting.overview(conn, now), "matrix": inspecting.matrix(conn, now)}
+    finally:
+        connect.close(conn)
+
+
+@get("/job/{job_id:int}", sync_to_thread=True)
+def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Template | Response:
+    """One job, whole (db/inspecting.py job_detail): JSON to a machine,
+    the inspector fragment to the console. Every column of the row is in
+    it; the payload is redacted at this seam."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        try:
+            told = inspecting.job_detail(conn, job_id, time.time())
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+    finally:
+        connect.close(conn)
+    told["recent_events"] = [console.envelope(event) for event in told["recent_events"]]
+    if wants_json(request):
+        return Response(told, headers=VARIES)
+    return Template(template_name="_operations_job.html", context={"job": told}, headers=VARIES)
+
+
+@get("/job/{job_id:int}/items", sync_to_thread=True)
+def job_items(
+    state: State, job_id: FromPath[int], state_filter: str | None = None, after: int = 0, limit: int = 200
+) -> dict:
+    """A page of one job's items by state: `?state_filter=failed&after=N`."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        try:
+            return inspecting.items(conn, job_id, state=state_filter, after=after, limit=limit)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+    finally:
+        connect.close(conn)
+
+
+@get("/events", sync_to_thread=True)
+def events(state: State, after: int = 0, job: int | None = None, limit: int = 500) -> dict:
+    """A page of the ledger, ascending from `after`, the whole ledger or
+    one job's: the gap-fill and the "earlier" read. Every row, never a
+    sample; `next_after` pages the rest."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        told = inspecting.events(conn, job_id=job, after=after, limit=limit)
+    finally:
+        connect.close(conn)
+    told["events"] = [console.envelope(event) for event in told["events"]]
+    return told
+
+
+@get("/events/before", sync_to_thread=True)
+def events_before(state: State, before: int = 0, job: int | None = None, limit: int = 500) -> dict:
+    """The `limit` events with id < `before`, ascending: the tape's
+    "earlier" button. Bounded; walks the index backwards and stops.
+    No `before` is nothing earlier than the beginning: an empty page."""
+    limit = max(1, min(int(limit), ledger.PAGE_MOST))
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        page = inspecting.events_before(conn, before, job_id=job, limit=limit)
+    finally:
+        connect.close(conn)
+    return {"events": [console.envelope(event) for event in page], "before": before}
 
 
 @post("/jobs/{kind:str}", sync_to_thread=True)
@@ -285,6 +379,18 @@ def failed(request: Request, exc: Exception) -> Template:
 
 router = Router(
     path="/operations",
-    route_handlers=[operations_page, launch, add_root, scan_root, change_setting, choose_primary],
+    route_handlers=[
+        operations_page,
+        overview,
+        job_inspector,
+        job_items,
+        events,
+        events_before,
+        launch,
+        add_root,
+        scan_root,
+        change_setting,
+        choose_primary,
+    ],
     exception_handlers={HTTPException: refused, Exception: failed},
 )

@@ -218,6 +218,9 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("derived_file_person", "model_id"),
         ("derived_face_run", "model_id"),
         ("job_item", "item_id"),
+        ("job_event", "id"),
+        # the unit a job's handler was given, an integer the job interprets
+        ("job_event", "item_id"),
     }
 )
 #: Composite-key tables that must be WITHOUT ROWID (sqlite.org/withoutrowid.html).

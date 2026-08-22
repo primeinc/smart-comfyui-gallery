@@ -8,13 +8,17 @@ subscriber watching the activity surface saw nothing happen when it
 pressed the button, and a worker switched off hid the job entirely until
 a reload. The delta carries the row's own state, read back after the
 commit, so the wire never says something the rows do not.
+
+The same two changes are ledger rows (db/jobs.py submit and cancel
+record them), spoken on the events channel here for the same reason
+and under the same rule: after the commit, read back, never invented.
 """
 
 from __future__ import annotations
 
 from litestar.datastructures import State
 
-from db import jobs
+from db import jobs, ledger
 
 
 def nudge(state: State) -> None:
@@ -26,9 +30,11 @@ def nudge(state: State) -> None:
         wake.set()
 
 
-def announce(state: State, conn, job_id: int) -> dict:
+def announce(state: State, conn, job_id: int, *, event_type: str | None = None) -> dict:
     """The committed job's snapshot, spoken on the feed as a delta of the
-    same shape the worker publishes. Call after `conn.commit()`."""
+    same shape the worker publishes; and, when `event_type` names the
+    ledger row this request wrote, that row spoken on the events channel.
+    Call after `conn.commit()`."""
     told = jobs.snapshot(conn, job_id)
     publish = getattr(state, "publish", None)
     if publish is not None:
@@ -42,11 +48,16 @@ def announce(state: State, conn, job_id: int) -> dict:
                 "cancel_requested": told["cancel_requested"],
             }
         )
+    publish_event = getattr(state, "publish_event", None)
+    if publish_event is not None and event_type is not None:
+        latest = ledger.latest_for_job(conn, job_id)
+        if latest is not None and latest["type"] == event_type:
+            publish_event(latest)
     return told
 
 
 def submitted(state: State, conn, job_id: int) -> dict:
     """A freshly queued job: announced, and the worker woken for it."""
-    told = announce(state, conn, job_id)
+    told = announce(state, conn, job_id, event_type="job.submitted")
     nudge(state)
     return told

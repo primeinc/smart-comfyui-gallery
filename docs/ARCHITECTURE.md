@@ -79,12 +79,47 @@ pins this.
 
 ## Operations
 
-`/operations` is a Litestar `Router`: the page, url-encoded forms for
+`/operations` is a Litestar `Router`: the console, url-encoded forms for
 roots, scan, settings and clustering choice, and one `POST
 /operations/jobs/{kind}` per sweep. Each form receives its section back
 as a fragment with a notice swapped out-of-band. The JSON routes in
 `app.py` keep serving machines unchanged. The gallery header carries no
 operational control.
+
+### The console
+
+```
+job + job_item        current truth        db/jobs.py
+job_event             historical ledger    db/ledger.py  append-only, monotonic id, never sampled
+channel "events"      transport            sg_web/app.py publish_event -> /ws/events
+```
+
+Three depths of the same rows: `jobs.active` (the shell's list),
+`jobs.snapshot` (the ordinary client), `db/inspecting.py` (the console:
+every column of the row, items paged, ledger paged, derived numbers
+that say what they derive from). Payloads are redacted by key at the
+read model.
+
+Every transition is a typed row (`db/ledger.py TYPES`, mirrored by the
+schema CHECK): submit, claim/reclaim, pause, cancel asked/cancelled,
+done/failed, item started/done/failed, handler phases and observations,
+checkpoint, worker turn crashed. `sg_web/console.py` renders every type
+to words; the contract test fails on a type without a renderer.
+
+Handlers report phases through `db/runner.py report()` -- `phase`,
+`progress`, `observe` -- a seam that knows no web. A report is spoken
+at once as a `pending` frame (no id; presentation) and written to the
+ledger at the item boundary in the commit that settles the item, so a
+failed item's phases survive its rollback.
+
+`/ws/events?after=N` subscribes first, then sends `backlog` frames from
+the rows, then `event` and `pending` frames. The client holds every
+event it is given, renders a window, and fetches `GET /operations/events`
+for any id it finds skipped. Pause and filters touch painting only.
+
+An item failure (`item.failed`, the job continues) and a worker defect
+(`worker.turn_failed`, traceback, lease lapses, reclaimable) are
+distinct conditions on every surface.
 
 ## Coverage
 

@@ -29,8 +29,11 @@
     <a href="/timeline"{% if here == "/timeline" or here.startswith("/stories/") %} aria-current="page"{% endif %}>timeline</a>
     <a class="shell-operations" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>operations</a>
     <details class="activity" data-activity ws-connect="/ws/jobs?as=html">
-      <summary>activity</summary>
-      {% with jobs = activity_jobs(), oob = false %}{% include "_activity_list.html" %}{% endwith %}
+      {% with jobs = activity_jobs(), oob = false %}
+      {% set live = jobs | rejectattr("settled") | list %}
+      <summary>activity{% if live %} · {{ live | length }} running{% endif %}</summary>
+      {% include "_activity_list.html" %}
+      {% endwith %}
     </details>
   </nav>
   {# The one place an answer to an htmx request lands when it is a

@@ -355,6 +355,7 @@ SURFACES = {
     "story_view.render_document": ("sg_web/story_view.py", "timeline session", None),
     "story_view.plan_evolution": ("sg_web/story_view.py", "story", None),
     "operations.operations_page": ("sg_web/operations.py", "shell nav", ("GET", "/operations", None)),
+    "operations.job_inspector": ("sg_web/operations.py", "console matrix row", ("GET", "/operations/job/1", None)),
     "operations.launch": ("sg_web/operations.py", "sweep buttons", ("POST", "/operations/jobs/events", None)),
     "operations.add_root": ("sg_web/operations.py", "add-root form", None),
     "operations.scan_root": (
@@ -377,6 +378,7 @@ SURFACES = {
 #: Browser-facing capabilities with no page of their own, and why.
 HEADLESS = {
     "jobs_feed": "transport: the shell's activity surface is its page",
+    "events_feed": "transport: the operations console's ledger tape is its page",
     "front": "redirects a browser to /g",
     "health": "liveness probe",
 }

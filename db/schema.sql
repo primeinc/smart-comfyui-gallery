@@ -613,6 +613,33 @@ CREATE TABLE job_item (
     PRIMARY KEY (job_id, item_id)
 ) STRICT, WITHOUT ROWID;
 
+-- ============ the operational ledger ============
+-- The job row is current truth; this is historical observation; the
+-- channel is transport. One row per operationally meaningful transition,
+-- typed, append-only. AUTOINCREMENT: the id is the ORDER a subscriber
+-- resumes from and a gap in the ids a client holds is a gap it can name,
+-- so an id is never reused. Never sampled, never compacted -- a 22,000-file
+-- sweep leaves 44,000 rows and the console pages them.
+CREATE TABLE job_event (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id   INTEGER NOT NULL REFERENCES job(id) ON DELETE CASCADE,
+    at       REAL NOT NULL,
+    -- the vocabulary db/ledger.py TYPES spells; a typo is a refused insert,
+    -- never an event no renderer knows
+    type     TEXT NOT NULL CHECK (type IN
+               ('job.submitted','job.claimed','job.reclaimed','job.paused',
+                'job.cancel_requested','job.cancelled','job.done','job.failed',
+                'item.started','item.done','item.failed','item.observed',
+                'phase.started','phase.progress','phase.finished',
+                'checkpoint.changed','worker.turn_failed')),
+    item_id  INTEGER,
+    phase    TEXT,
+    severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','warning','error')),
+    message  TEXT,
+    data     TEXT CHECK (data IS NULL OR json_valid(data))
+) STRICT;
+CREATE INDEX job_event_job ON job_event(job_id, id);
+
 -- ============ lineage: intent then realized edge ============
 CREATE TABLE derivation_intent (
     id           INTEGER PRIMARY KEY,
@@ -1948,7 +1975,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 23;
+PRAGMA user_version   = 24;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

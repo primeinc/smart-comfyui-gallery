@@ -47,6 +47,7 @@ from db import (
     derived,
     detect,
     jobs,
+    ledger,
     library,
     naming,
     oriented,
@@ -61,6 +62,7 @@ from sg_web import (
     artifact_view,
     collection_authoring,
     collection_view,
+    console,
     curating,
     folder_view,
     gallery,
@@ -739,12 +741,12 @@ def cancel_job(state: State, job_id: int) -> dict:
     still-queued job needs a claim to settle, hence the nudge."""
     conn = _connect(state.db_path)
     try:
-        jobs.cancel(conn, job_id)
+        jobs.cancel(conn, job_id, time.time())
         conn.commit()
         # The request changed the row (cancel_requested), so the request
         # speaks: a subscriber sees "cancelling" now, not at the worker's
         # next item -- which never comes while the worker is off.
-        told = _announce(state, conn, job_id)
+        told = _announce(state, conn, job_id, event_type="job.cancel_requested")
         _nudge(state)
         return told
     finally:
@@ -814,6 +816,48 @@ async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -
             await socket.send_json({"type": "snapshot", "jobs": rows})
             deliver = socket.send_text
         async with subscriber.run_in_background(deliver):
+            while (await socket.receive())["type"] != "websocket.disconnect":
+                continue
+
+
+def _backlog_of(db_path: str, after: int) -> tuple[list[dict], int]:
+    """The ledger since `after`, as envelopes, and the head id the page
+    was read at -- one read-only connection, one ordered index walk."""
+    conn = connect.connect(db_path, read_only=True)
+    try:
+        return [console.envelope(event) for event in ledger.since(conn, after)], ledger.last_id(conn)
+    finally:
+        connect.close(conn)
+
+
+@websocket("/ws/events")
+async def events_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -> None:
+    """The ledger, live: `?after=N` names the last event id the client
+    holds; everything newer is sent first as `backlog` frames read from
+    the rows, then every committed row as it is published (`event`) and
+    every handler report between commits (`pending`, no id -- see
+    db/runner.py Report).
+
+    Subscribe-then-backlog, the order /ws/jobs uses: a row committed
+    while the backlog is being read is queued behind it, never lost, and
+    a row that lands in both is the same id twice -- the client keeps
+    one. Ids are the order; a client whose ids skip knows exactly what
+    it is missing and asks GET /operations/events for it. The channel
+    stores nothing: a reconnect resumes from the rows.
+    """
+    from anyio import to_thread
+
+    raw_after = socket.query_params.get("after", "0")
+    after = int(raw_after) if str(raw_after).isdigit() else 0
+    await socket.accept()
+    async with channels.start_subscription("events") as subscriber:
+        while True:
+            page, head = await to_thread.run_sync(_backlog_of, state.db_path, after)
+            await socket.send_json({"frame": "backlog", "events": page, "after": after, "last_id": head})
+            if len(page) < ledger.PAGE_MOST:
+                break
+            after = page[-1]["id"]
+        async with subscriber.run_in_background(socket.send_text):
             while (await socket.receive())["type"] != "websocket.disconnect":
                 continue
 
@@ -959,7 +1003,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     finally:
         connect.close(opening)
 
-    channels = ChannelsPlugin(MemoryChannelsBackend(), channels=["jobs"])
+    channels = ChannelsPlugin(MemoryChannelsBackend(), channels=["jobs", "events"])
 
     @asynccontextmanager
     async def working(app: Litestar):
@@ -983,14 +1027,25 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         def publish(delta: dict) -> None:
             loop.call_soon_threadsafe(channels.publish, delta, "jobs")
 
+        def publish_event(event: dict) -> None:
+            """A ledger row (or a pending report) onto the events channel,
+            with its words and condition (sg_web/console.py) -- the
+            presentation seam, so the worker never learns the vocabulary."""
+            frame = "pending" if event.get("pending") else "event"
+            loop.call_soon_threadsafe(channels.publish, {"frame": frame, **console.envelope(event)}, "events")
+
         # Request handlers run on the thread pool too, so a job's `queued`
         # delta (sg_web/submitting.py) crosses the same bridge the worker's
         # deltas do. Set whether or not the worker thread starts: a
         # submit is an observable change in either case.
         app.state.publish = publish
+        app.state.publish_event = publish_event
 
         thread = threading.Thread(
-            target=worker_module.run, args=(str(where), publish, stop, wake), name="sg-worker", daemon=True
+            target=worker_module.run,
+            args=(str(where), publish, stop, wake, publish_event),
+            name="sg-worker",
+            daemon=True,
         )
         if worker:
             thread.start()
@@ -1080,6 +1135,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             person_view.name_person,
             cancel_job,
             jobs_feed,
+            events_feed,
             choose_primary,
             all_settings,
             change_setting,

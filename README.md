@@ -44,7 +44,7 @@ live over `/ws/jobs`. Nothing expensive runs by itself.
 /m/<slug> /l/<slug> /w/<slug>   a model, a LoRA, a workflow
 /timeline           density at the zoom's bin, every bin a door
 /search?q=          by meaning, across the configured spaces
-/operations         roots, sweeps, settings, clusterings
+/operations         the console: worker, queue, every job's row and ledger, live; roots, sweeps, settings
 ```
 
 Every address answers JSON to a machine, a fragment to htmx, and a page

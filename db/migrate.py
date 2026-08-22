@@ -2312,6 +2312,35 @@ def _iso_zero_is_absence(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM derived_context_state")
 
 
+@step(23)
+def _the_operational_ledger(conn: sqlite3.Connection) -> None:
+    """v23 -> v24: `job_event`, the append-only ledger of what happened to
+    each job (db/ledger.py). Purely additive: a new empty table. DDL is
+    schema.sql's text VERBATIM -- the drift check compares sqlite_master.
+    """
+    conn.execute(
+        """CREATE TABLE job_event (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id   INTEGER NOT NULL REFERENCES job(id) ON DELETE CASCADE,
+    at       REAL NOT NULL,
+    -- the vocabulary db/ledger.py TYPES spells; a typo is a refused insert,
+    -- never an event no renderer knows
+    type     TEXT NOT NULL CHECK (type IN
+               ('job.submitted','job.claimed','job.reclaimed','job.paused',
+                'job.cancel_requested','job.cancelled','job.done','job.failed',
+                'item.started','item.done','item.failed','item.observed',
+                'phase.started','phase.progress','phase.finished',
+                'checkpoint.changed','worker.turn_failed')),
+    item_id  INTEGER,
+    phase    TEXT,
+    severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','warning','error')),
+    message  TEXT,
+    data     TEXT CHECK (data IS NULL OR json_valid(data))
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX job_event_job ON job_event(job_id, id)")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

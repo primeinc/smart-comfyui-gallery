@@ -1,20 +1,107 @@
 {% extends "base.html" %}
 {% block title %}Operations{% endblock %}
+{% block styles %}<link rel="stylesheet" href="/static/operations.css">{% endblock %}
+{% block scripts %}<script src="/static/operations.js" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
       <span class="crumbs-here">Operations</span>
-      <span class="crumbs-where">the runtime: roots, sweeps, the worker</span>
+      <span class="crumbs-where">the runtime: what the worker is doing, and why</span>
     </nav>
   </header>
-  <main class="stage operations" data-operations>
+  <main class="stage operations" data-operations data-console data-last-event-id="{{ last_event_id }}" data-now="{{ now }}">
+    {# The console reads these once, then the feed. Rows, never a replay. #}
+    <script type="application/json" data-console-state>{{ {"overview": overview, "matrix": matrix} | tojson }}</script>
+    <script type="application/json" data-console-tape>{{ tape | tojson }}</script>
+
+    <section class="console-health" data-health aria-label="system health">
+      <div class="health-cell" data-health-transport data-transport="cold">
+        <span class="k">transport</span>
+        <span class="v"><i class="dot"></i><span data-transport-state>not connected</span></span>
+        <code class="raw">last #<span data-transport-last>{{ last_event_id }}</span> · <span data-transport-age>—</span> · <button type="button" class="tape-btn tape-btn-inline" data-transport-reconnect>reconnect</button></code>
+      </div>
+      <div class="health-cell" data-health-worker>
+        <span class="k">worker</span>
+        <span class="v" data-worker-state>{{ "enabled" if overview.worker.enabled else "disabled" }} · {{ "working" if overview.worker.working else "idle" }}</span>
+        <code class="raw" data-worker-raw>{{ overview.worker.owners | join(", ") or "no owner" }} · heartbeat {{ "%.1fs ago" | format(overview.worker.heartbeat_age) if overview.worker.heartbeat_age is not none else "none" }}</code>
+      </div>
+      <div class="health-cell" data-health-queue>
+        <span class="k">queue</span>
+        <span class="v" data-queue-state>{{ overview.queue.queued }} queued · {{ overview.queue.running }} running</span>
+        <code class="raw" data-queue-raw>oldest queued {{ "%.0fs" | format(overview.queue.oldest_queued_age) if overview.queue.oldest_queued_age is not none else "—" }} · settled 24h {{ overview.queue.settled_24h | tojson }}</code>
+      </div>
+      <div class="health-cell" data-health-ledger>
+        <span class="k">ledger</span>
+        <span class="v" data-ledger-state>{{ "{:,}".format(overview.ledger.events) }} events</span>
+        <code class="raw" data-ledger-raw>head #{{ overview.ledger.last_id }} · job_event · never sampled</code>
+      </div>
+    </section>
+
+    <section class="console-split">
+      <div class="console-matrix" data-matrix aria-label="jobs">
+        <div class="console-head"><h2>jobs</h2><span class="console-hint">active first, then the settled tail</span></div>
+        <ol class="matrix" data-matrix-rows>
+          {% for job in matrix %}
+          <li class="matrix-row" data-matrix-job="{{ job.id }}" data-state="{{ job.state }}"{% if job.derived.cancellation == "requested" %} data-cancelling{% endif %} tabindex="0" role="button">
+            <span class="matrix-id">#{{ job.id }}</span>
+            <span class="matrix-kind"><span class="v">{{ job.kind.replace("_", " ") }}</span><code class="raw">{{ job.kind }}</code></span>
+            <span class="matrix-state" data-state="{{ job.state }}">{{ "cancelling" if job.derived.cancellation == "requested" else job.state }}</span>
+            <progress class="matrix-progress"{% if job.total %} value="{{ job.done_count }}" max="{{ job.total }}"{% endif %}></progress>
+            <code class="matrix-count">{{ job.done_count }}{% if job.total is not none %}/{{ job.total }}{% endif %}{% if job.failed_count %} · {{ job.failed_count }} failed{% endif %}</code>
+            <code class="matrix-exec">a{{ job.attempt }} f{{ job.fence if job.fence is defined else "" }}{% if job.owner %} · {{ job.owner }}{% endif %}</code>
+          </li>
+          {% endfor %}
+        </ol>
+        {% if not matrix %}<p class="empty">no jobs yet. start a sweep below.</p>{% endif %}
+      </div>
+      <div class="console-inspector" data-inspector aria-live="polite">
+        <div class="console-head"><h2>inspector</h2><span class="console-hint" data-inspector-hint>select a job</span></div>
+        <div data-inspector-body><p class="empty">nothing selected.</p></div>
+      </div>
+    </section>
+
+    <section class="console-tape" data-tape aria-label="event ledger">
+      <div class="console-head tape-controls">
+        <h2>ledger</h2>
+        <button type="button" class="tape-btn" data-tape-pause aria-pressed="false">pause</button>
+        <label class="tape-toggle"><input type="checkbox" data-tape-autoscroll checked> follow</label>
+        <select data-tape-filter-type aria-label="event family">
+          <option value="">every type</option>
+          <option value="job.">job.*</option>
+          <option value="item.">item.*</option>
+          <option value="phase.">phase.*</option>
+          <option value="worker.">worker.*</option>
+          <option value="checkpoint.">checkpoint.*</option>
+        </select>
+        <select data-tape-filter-severity aria-label="severity">
+          <option value="">any severity</option>
+          <option value="warning">warning and error</option>
+          <option value="error">error only</option>
+        </select>
+        <input type="number" min="1" placeholder="job #" data-tape-filter-job aria-label="job id">
+        <button type="button" class="tape-btn" data-tape-earlier>earlier</button>
+        <span class="console-hint" data-tape-count>{{ tape | length }} shown</span>
+        <span class="console-hint" data-tape-held hidden></span>
+      </div>
+      <div class="tape-body">
+        <div class="tape-scroll" data-tape-scroll tabindex="0">
+          <div class="tape-spacer" data-tape-spacer></div>
+          <ol class="tape-rows" data-tape-rows></ol>
+        </div>
+        <aside class="tape-raw" data-tape-raw>
+          <div class="console-head"><h3>raw</h3><span class="console-hint">the row as the ledger holds it</span></div>
+          <pre data-tape-raw-body>select an event</pre>
+        </aside>
+      </div>
+    </section>
+
     <section class="operations-section" id="operations-roots" data-operations-roots>
       {% with notice = none %}{% include "_operations_roots.html" %}{% endwith %}
     </section>
 
     <section class="operations-section" data-operations-launchers>
       <h2>sweeps</h2>
-      <p class="operations-hint">every sweep is a job row the worker drains; progress shows in the activity surface on every page.</p>
+      <p class="operations-hint">every sweep is a job row the worker drains; it appears in the matrix and on the ledger the moment it is queued.</p>
       <div class="operations-launchers">
         {% for one in launchers %}
         <button type="button" data-launch="{{ one.kind }}"

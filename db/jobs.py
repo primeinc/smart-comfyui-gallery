@@ -33,6 +33,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from . import ledger
+
 #: A job whose lease has expired by this much is reclaimable. Generous: a
 #: worker paused by a slow disk must not lose its job to a false positive.
 LEASE_SECONDS = 60.0
@@ -73,6 +75,14 @@ def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=N
             "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
             [(job_id, item) for item in items],
         )
+    ledger.record(
+        conn,
+        job_id,
+        "job.submitted",
+        now,
+        message=f"{kind} queued" + (f" with {len(items)} items" if items is not None else ""),
+        data={"kind": kind, "total": len(items) if items is not None else None, "target_id": target_id},
+    )
     return job_id
 
 
@@ -220,9 +230,19 @@ def finish_item(conn, job_id: int, fence: int, item_id: int, *, error=None) -> P
     return progress(conn, job_id)
 
 
-def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None) -> None:
-    """Where to resume from, for work with no enumerable units."""
+def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None, *, at: float | None = None) -> None:
+    """Where to resume from, for work with no enumerable units. The change
+    is an event: a resume that starts from the wrong place is explained by
+    the last marker the ledger saw."""
     _held(conn, job_id, fence)
+    ledger.record(
+        conn,
+        job_id,
+        "checkpoint.changed",
+        at if at is not None else 0.0,
+        message="checkpoint moved",
+        data={"checkpoint": marker, "done": done, "fence": fence},
+    )
     if done is None:
         _wrote(
             conn.execute(
@@ -243,12 +263,23 @@ def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None) -
         )
 
 
-def cancel(conn, job_id: int) -> None:
-    """Ask a job to stop. It stops itself, at a boundary, and says so."""
-    conn.execute(
-        "UPDATE job SET cancel_requested = 1 WHERE id = ? AND state IN ('queued','running')",
+def cancel(conn, job_id: int, now: float | None = None) -> None:
+    """Ask a job to stop. It stops itself, at a boundary, and says so. The
+    ask is an event only when it changed the row: a second press on a job
+    already asked, or on one already settled, records nothing."""
+    asked = conn.execute(
+        "UPDATE job SET cancel_requested = 1 WHERE id = ? AND state IN ('queued','running') AND cancel_requested = 0",
         (job_id,),
     )
+    if asked.rowcount:
+        ledger.record(
+            conn,
+            job_id,
+            "job.cancel_requested",
+            now if now is not None else 0.0,
+            severity="warning",
+            message="cancel asked; the runner stops at the next item boundary",
+        )
 
 
 def cancelled(conn, job_id: int) -> bool:

@@ -1,0 +1,133 @@
+{# One job, whole: the inspector fragment over db/inspecting.py job_detail.
+   Every row column is shown, pretty beside raw; the payload arrived
+   redacted. Swapped into the console's inspector; never a page. #}
+{% set d = job.derived %}
+{% macro secs(v) -%}
+  {%- if v is none -%}—{%- elif v < 60 -%}{{ "%.1f" | format(v) }}s{%- elif v < 3600 -%}{{ (v // 60) | int }}m {{ "%02d" | format((v % 60) | int) }}s{%- else -%}{{ (v // 3600) | int }}h {{ "%02d" | format(((v % 3600) // 60) | int) }}m{%- endif -%}
+{%- endmacro %}
+{% macro when(v) -%}{%- if v is none -%}—{%- else -%}<time data-epoch="{{ v }}">{{ "%.3f" | format(v) }}</time>{%- endif -%}{%- endmacro %}
+<article class="inspect" data-inspect-job="{{ job.id }}" data-state="{{ job.state }}" data-last-event-id="{{ job.last_event_id }}">
+  <header class="inspect-identity">
+    <div class="inspect-title">
+      <span class="inspect-id">#{{ job.id }}</span>
+      <span class="v">{{ job.kind.replace("_", " ") }}</span>
+      <code class="raw">{{ job.kind }}</code>
+      <span class="inspect-state" data-state="{{ job.state }}">{{ job.state }}</span>
+      {% if d.cancellation == "requested" %}<span class="inspect-state" data-state="cancelling">cancel requested</span>{% endif %}
+      {% if not job.settled and d.cancellation == "not_requested" %}
+      <button type="button" class="tape-btn inspect-cancel" hx-post="/jobs/{{ job.id }}/cancel" hx-swap="none">cancel</button>
+      {% endif %}
+    </div>
+    <dl class="facts">
+      <dt>target</dt><dd>{% if job.target %}{{ job.target.kind }} <code class="raw">{{ job.target.slug }} · id {{ job.target.id }}</code>{% else %}<span class="muted">whole library</span>{% endif %}</dd>
+      <dt>payload</dt><dd><code class="raw payload">{{ job.payload | tojson if job.payload is not none else "none" }}</code></dd>
+    </dl>
+  </header>
+
+  <section class="inspect-grid">
+    <div class="inspect-block" data-block="progress">
+      <h3>progress</h3>
+      <div class="big"><span class="v">{{ "{:,}".format(job.done_count) }}{% if job.total is not none %} / {{ "{:,}".format(job.total) }}{% endif %}</span>
+        <code class="raw">{% if d.fraction is not none %}{{ "%.2f" | format(d.fraction * 100) }}%{% else %}no total{% endif %}</code></div>
+      <dl class="facts">
+        <dt>pending</dt><dd data-fact="pending">{{ job.pending_count }}</dd>
+        <dt>succeeded</dt><dd data-fact="succeeded">{{ job.succeeded_count }}</dd>
+        <dt>failed</dt><dd data-fact="failed"{% if job.failed_count %} class="warn"{% endif %}>{{ job.failed_count }}</dd>
+        <dt>rate</dt><dd>{% if d.rate %}{{ "%.1f" | format(d.rate) }} items/s <code class="raw">since started</code>{% else %}<span class="muted">not yet derivable</span>{% endif %}</dd>
+        <dt>ETA</dt><dd>{% if d.eta is not none %}{{ secs(d.eta) }} <code class="raw">pending ÷ rate</code>{% else %}<span class="muted">—</span>{% endif %}</dd>
+      </dl>
+    </div>
+
+    <div class="inspect-block" data-block="lifecycle">
+      <h3>lifecycle</h3>
+      <dl class="facts">
+        <dt>created</dt><dd>{{ when(job.created_at) }}</dd>
+        <dt>started</dt><dd>{{ when(job.started_at) }}</dd>
+        <dt>finished</dt><dd>{{ when(job.finished_at) }}</dd>
+        <dt>queue wait</dt><dd>{{ secs(d.queue_wait) }}</dd>
+        <dt>elapsed</dt><dd data-elapsed-from="{{ job.started_at or '' }}" data-elapsed-to="{{ job.finished_at or '' }}">{{ secs(d.elapsed) }}</dd>
+      </dl>
+    </div>
+
+    <div class="inspect-block" data-block="execution">
+      <h3>execution</h3>
+      <dl class="facts">
+        <dt>attempt</dt><dd><code class="raw big-raw">{{ job.attempt }}</code></dd>
+        <dt>owner</dt><dd><code class="raw big-raw">{{ job.owner or "none" }}</code></dd>
+        <dt>fence</dt><dd><code class="raw big-raw">{{ job.fence }}</code></dd>
+        <dt>heartbeat</dt><dd>{% if d.heartbeat_age is not none %}<span data-age-of="{{ job.heartbeat_at }}">{{ "%.1f" | format(d.heartbeat_age) }}s ago</span>{% else %}<span class="muted">—</span>{% endif %} <code class="raw">{{ job.heartbeat_at if job.heartbeat_at is not none else "null" }}</code></dd>
+        <dt>lease</dt><dd>{% if d.lease_remaining is not none %}<span{% if d.lease_expired %} class="warn"{% endif %} data-lease-until="{{ job.lease_until }}">{% if d.lease_expired %}expired {{ secs(-d.lease_remaining) }} ago · reclaimable{% else %}expires in {{ secs(d.lease_remaining) }}{% endif %}</span>{% else %}<span class="muted">none</span>{% endif %} <code class="raw">{{ job.lease_until if job.lease_until is not none else "null" }}</code></dd>
+      </dl>
+    </div>
+
+    <div class="inspect-block" data-block="current">
+      <h3>current</h3>
+      {% if job.current.item %}
+      <dl class="facts">
+        <dt>item</dt><dd data-current-item>{% if job.current.item.href %}<a href="{{ job.current.item.href }}">{{ job.current.item.name }}</a>{% elif job.current.item.name %}{{ job.current.item.name }}{% else %}item{% endif %} <code class="raw">item {{ job.current.item.id }} · since {{ when(job.current.since) }}</code></dd>
+        <dt>phase</dt><dd data-current-phase><span class="muted">waiting for the handler to report</span></dd>
+      </dl>
+      {% elif job.state == "running" %}
+      <p class="muted">between items.</p>
+      {% else %}
+      <p class="muted">nothing in flight.</p>
+      {% endif %}
+      {% if job.current.last_settled_phase %}
+      <p class="muted small">last settled phase: <code class="raw">{{ job.current.last_settled_phase.phase }} · {{ job.current.last_settled_phase.message }}</code></p>
+      {% endif %}
+    </div>
+
+    <div class="inspect-block" data-block="recovery">
+      <h3>recovery</h3>
+      <dl class="facts">
+        <dt>checkpoint</dt><dd><code class="raw">{{ job.checkpoint | tojson if job.checkpoint is not none else "none" }}</code></dd>
+        <dt>cancellation</dt><dd data-cancellation="{{ d.cancellation }}">{{ d.cancellation.replace("_", " ") }}</dd>
+      </dl>
+      {% if job.attempts %}
+      <ol class="attempts">
+        {% for a in job.attempts %}
+        <li data-attempt-type="{{ a.type }}"><code class="raw">{{ a.type }}</code> {{ when(a.at) }}{% if a.owner is defined %} · {{ a.owner }} · attempt {{ a.attempt }} · fence {{ a.fence }}{% endif %}{% if a.did is defined %} · after {{ a.did }} items{% endif %}</li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+    </div>
+
+    <div class="inspect-block inspect-wide" data-block="errors">
+      <h3>errors</h3>
+      {% if job.error %}
+      <p class="cond cond-job-failure" data-condition="job-failure"><b>✕ job failed</b> <code class="raw">{{ job.error }}</code></p>
+      {% endif %}
+      {% for defect in job.defects %}
+      <details class="cond cond-worker-defect" data-condition="worker-defect" data-event="{{ defect.id }}">
+        <summary><b>✕ worker turn crashed</b> on {% if defect.item and defect.item.name %}{{ defect.item.name }}{% else %}item {{ defect.item.id if defect.item else "?" }}{% endif %} · <code class="raw">{{ defect.exception }}: {{ defect.error }}</code> · attempt {{ defect.attempt }} lost · fence {{ defect.fence }} · {{ when(defect.at) }} · the job stays running until the lease lapses and is then reclaimable</summary>
+        <pre class="traceback">{{ defect.traceback }}</pre>
+      </details>
+      {% endfor %}
+      {% if job.failures %}
+      <ul class="failures" data-failures>
+        {% for f in job.failures %}
+        <li class="cond cond-item-failure" data-condition="item-failure" data-item="{{ f.id }}"><b>⚠ item failure</b> {% if f.href %}<a href="{{ f.href }}">{{ f.name }}</a>{% elif f.name %}{{ f.name }}{% else %}item {{ f.id }}{% endif %} <code class="raw">item {{ f.id }} · {{ f.error }}</code> · the job continues</li>
+        {% endfor %}
+      </ul>
+      {% if job.failed_count > job.failures | length %}<p class="muted small">{{ job.failed_count - job.failures | length }} more failed items: <a href="/operations/job/{{ job.id }}/items?state_filter=failed&after={{ job.failures[-1].id }}">next page</a></p>{% endif %}
+      {% endif %}
+      {% if not job.error and not job.defects and not job.failures %}<p class="muted">none.</p>{% endif %}
+    </div>
+
+    <div class="inspect-block inspect-wide" data-block="items">
+      <h3>items</h3>
+      <p class="muted small">{{ job.item_count }} items · <a href="/operations/job/{{ job.id }}/items?state_filter=pending">pending</a> · <a href="/operations/job/{{ job.id }}/items?state_filter=done">done</a> · <a href="/operations/job/{{ job.id }}/items?state_filter=failed">failed</a> — paged, never folded into this view.</p>
+    </div>
+
+    <div class="inspect-block inspect-wide" data-block="timeline">
+      <h3>timeline <span class="console-hint">{{ job.event_count }} events · the newest {{ job.recent_events | length }} here · <a href="/operations/events?job={{ job.id }}">every one</a></span></h3>
+      <ol class="inspect-events" data-inspect-events>
+        {% for e in job.recent_events %}
+        <li data-event="{{ e.id }}" data-type="{{ e.type }}" data-severity="{{ e.severity }}"{% if e.condition %} data-condition="{{ e.condition }}"{% endif %}>
+          <code class="raw">#{{ e.id }}</code> {{ when(e.at) }} <code class="raw">{{ e.type }}</code> <span class="v">{{ e.text }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </section>
+</article>

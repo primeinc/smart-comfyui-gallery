@@ -41,8 +41,10 @@ _logger = logging.getLogger(__name__)
 IDLE_WAIT = 1.0
 
 
-def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> None:
-    """The thread body: turns until told to stop."""
+def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, publish_event=None) -> None:
+    """The thread body: turns until told to stop. `publish` carries the
+    progress deltas; `publish_event` carries the ledger (db/ledger.py) --
+    every committed row, and the pending reports between them."""
     conn = connect.connect(db_path)
     owner = f"worker-{os.getpid()}"
     try:
@@ -72,10 +74,13 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event) -> 
                         gate=("worker", settings.REGISTRY["worker"][0]),
                         clock=time.time,
                         on_progress=publish,
+                        on_event=publish_event,
                         should_stop=stop.is_set,
                     )
                     conn.commit()
                 except Exception:
+                    # run_next already committed a `worker.turn_failed`
+                    # row with the traceback before letting this propagate.
                     conn.rollback()
                     from db import similarity
 
