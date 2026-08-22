@@ -128,8 +128,16 @@ def view(
 def _albums_listed(db_path: str) -> list[dict]:
     conn = connect.connect(db_path)
     try:
+        spans = pages.collection_spans(conn)
         return [
-            {"name": name, "slug": slug, "kind": kind, "pictures": pictures}
+            {
+                "name": name,
+                "slug": slug,
+                "kind": kind,
+                "pictures": pictures,
+                "first_seen": spans.get(slug, (None, None))[0],
+                "last_seen": spans.get(slug, (None, None))[1],
+            }
             for name, slug, kind, pictures in pages.albums(conn)
         ]
     finally:
@@ -165,10 +173,19 @@ def _albums_nested(db_path: str) -> tuple[list[dict], int]:
     try:
         rows = pages.collection_shelf(conn)
         retired = pages.archived_count(conn)
+        spans = pages.collection_spans(conn)
     finally:
         connect.close(conn)
     nodes = {
-        cid: {"slug": slug, "name": name, "kind": kind, "pictures": pictures, "collections": []}
+        cid: {
+            "slug": slug,
+            "name": name,
+            "kind": kind,
+            "pictures": pictures,
+            "first_seen": spans.get(slug, (None, None))[0],
+            "last_seen": spans.get(slug, (None, None))[1],
+            "collections": [],
+        }
         for cid, _, slug, name, kind, pictures in rows
     }
     top: list[dict] = []

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Albums{% endblock %}
-{% block scripts %}<script src="/static/collection.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/collection.js" defer></script><script src="/static/timeline.js" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
@@ -45,6 +45,7 @@
         {% else %}
         <span class="album-count">{{ node.pictures }} pictures</span>
         {% endif %}
+        {% if node.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ node.first_seen }}" data-domain="day">{{ node.first_seen }}</time>{% if node.last_seen != node.first_seen %} – <time data-epoch="{{ node.last_seen }}" data-domain="day">{{ node.last_seen }}</time>{% endif %}</span>{% endif %}
         {% if node.collections %}
         <ul>{{ loop(node.collections) }}</ul>
         {% endif %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Folders{% endblock %}
+{% block scripts %}<script src="/static/timeline.js" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
@@ -21,6 +22,7 @@
         <a class="album-card" href="/f/{{ one.slug }}" data-folder="{{ one.slug }}">
           <span class="album-name">{{ one.name }}</span>
           <span class="album-count">{{ one.below }} pictures{% if one.below != one.pictures %} &middot; {{ one.pictures }} here{% endif %}</span>
+          {% if one.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ one.first_seen }}" data-domain="day">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}" data-domain="day">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
         </a>
         {% endfor %}
       </div>

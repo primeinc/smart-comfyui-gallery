@@ -209,8 +209,14 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     assert told.headers["vary"] == "Accept, HX-Request"
     body = told.json()
     assert body == [
-        {"kind": "library", "online": True, "folders": [{"slug": "lib", "name": "lib", "pictures": 2, "below": 5}]}
-    ], "2 here, 5 in the subtree"
+        {
+            "kind": "library",
+            "online": True,
+            "folders": [
+                {"slug": "lib", "name": "lib", "pictures": 2, "below": 5, "first_seen": None, "last_seen": None}
+            ],
+        }
+    ], "2 here, 5 in the subtree; nothing interpreted, so no span"
     page = placed.get("/folders", headers=AS_BROWSER)
     assert page.status_code == 200
     assert 'data-folder="lib"' in page.text

@@ -51,16 +51,26 @@ def folders_index(state: State, request: Request) -> Template | Response:
     conn = connect.connect(state.db_path, read_only=True)
     try:
         online = {root_id: reachable for root_id, _, reachable in library.probe_roots(conn, kinds=("library", "mount"))}
-        told = [
-            {
-                "kind": kind,
-                "online": online.get(root_id, False),
-                "folders": [
-                    {"slug": s, "name": n, "pictures": p, "below": b} for s, n, p, b in pages.folder_tops(conn, root_id)
-                ],
-            }
-            for root_id, kind in pages.roots_shelf(conn)
-        ]
+        told = []
+        for root_id, kind in pages.roots_shelf(conn):
+            spans = pages.folder_top_spans(conn, root_id)
+            told.append(
+                {
+                    "kind": kind,
+                    "online": online.get(root_id, False),
+                    "folders": [
+                        {
+                            "slug": s,
+                            "name": n,
+                            "pictures": p,
+                            "below": b,
+                            "first_seen": spans.get(s, (None, None))[0],
+                            "last_seen": spans.get(s, (None, None))[1],
+                        }
+                        for s, n, p, b in pages.folder_tops(conn, root_id)
+                    ],
+                }
+            )
     finally:
         connect.close(conn)
     return presented_page(request, told, page="folders.html", context={"shelves": told})

@@ -225,8 +225,44 @@ FOLDER_TOPS = (
 )
 
 
+#: When each top folder's pictures are from, descendants included: the
+#: earliest and latest human moment over every present file below it
+#: that the context job has interpreted, keyed by the folder's slug. A
+#: folder nothing has interpreted yet has no row.
+FOLDER_TOP_SPANS = (
+    "WITH RECURSIVE sub(top, id) AS ("
+    "  SELECT f.id, f.id FROM folder f WHERE f.root_id = ? AND f.parent_id IS NULL AND f.missing_since IS NULL"
+    "  UNION ALL SELECT sub.top, c.id FROM folder c JOIN sub ON c.parent_id = sub.id WHERE c.missing_since IS NULL)"
+    " SELECT e.slug, min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"
+    "  FROM sub JOIN entity e ON e.id = sub.top"
+    "  JOIN file fi ON fi.folder_id = sub.id AND fi.missing_since IS NULL"
+    "  JOIN derived_media_context mc ON mc.file_id = fi.id AND mc.policy_version = ?"
+    " GROUP BY sub.top"
+)
+
+#: The same for every active collection over its present members.
+COLLECTION_SPANS = (
+    "SELECT e.slug, min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"
+    "  FROM collection c JOIN entity e ON e.id = c.id"
+    "  JOIN collection_file cf ON cf.collection_id = c.id"
+    "  JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    "  JOIN derived_media_context mc ON mc.file_id = f.id AND mc.policy_version = ?"
+    " WHERE c.archived_at IS NULL GROUP BY c.id"
+)
+
+
 def roots_shelf(conn):
     return conn.execute(ROOT_SHELF).fetchall()
+
+
+def folder_top_spans(conn, root_id: int) -> dict[str, tuple[float, float]]:
+    return {
+        slug: (first, last) for slug, first, last in conn.execute(FOLDER_TOP_SPANS, (root_id, context.POLICY_VERSION))
+    }
+
+
+def collection_spans(conn) -> dict[str, tuple[float, float]]:
+    return {slug: (first, last) for slug, first, last in conn.execute(COLLECTION_SPANS, (context.POLICY_VERSION,))}
 
 
 def folder_tops(conn, root_id: int):
