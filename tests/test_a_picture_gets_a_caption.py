@@ -83,6 +83,24 @@ def test_submit_skips_pictures_the_model_already_captioned_for_these_bytes(tmp_p
     assert runner.submit_annotate(conn, 4.0, models_dir="M") is not None, "new bytes, no caption for them"
 
 
+def test_a_caption_model_that_is_no_repository_is_refused_at_submit(tmp_path):
+    conn = fresh_schema()
+    _one_picture(conn, tmp_path / "lib")
+    settings.put(conn, "caption_model", "blip")
+    with pytest.raises(ValueError, match="repository id"):
+        runner.submit_annotate(conn, 0.0, models_dir="M")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        held = connect.connect(client.app.state.db_path)
+        try:
+            settings.put(held, "caption_model", "blip")
+            held.commit()
+        finally:
+            connect.close(held)
+        refused = client.post("/jobs/annotate", json={})
+        assert refused.status_code == 400, refused.text
+        assert "repository id" in refused.text
+
+
 def test_the_job_item_provisions_captions_and_records_what_was_said(tmp_path, monkeypatch):
     conn = fresh_schema()
     file_id = _one_picture(conn, tmp_path / "lib")

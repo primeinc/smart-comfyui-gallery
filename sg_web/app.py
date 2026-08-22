@@ -322,7 +322,12 @@ def submit_annotate(state: State, data: dict) -> dict | Response:
         weights = data.get("models_dir") or str(
             home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
         )
-        job_id = runner.submit_annotate(conn, time.time(), models_dir=weights, everything=bool(data.get("everything")))
+        try:
+            job_id = runner.submit_annotate(
+                conn, time.time(), models_dir=weights, everything=bool(data.get("everything"))
+            )
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
         if job_id is None:
             return Response(content=None, status_code=204)
         conn.commit()

@@ -833,6 +833,12 @@ def submit_annotate(conn, now: float, *, models_dir: str, everything: bool = Fal
     from . import settings as settings_module
 
     model = settings_module.value(conn, "caption_model")
+    if not model or "/" not in model:
+        # refused here, not queued: every item of a job under a name that
+        # is no repository would fail by the same sentence
+        raise ValueError(
+            f"caption_model must be a Hub repository id like Salesforce/blip-image-captioning-base, not {model!r}"
+        )
     sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
     args: tuple = ()
     if not everything:
