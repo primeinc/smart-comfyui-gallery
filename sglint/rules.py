@@ -419,13 +419,12 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef) and node.name == owner:
                     for fn in node.body:
-                        if isinstance(fn, ast.FunctionDef) and fn.name == method:
-                            if any(a.arg == param for a in fn.args.args + fn.args.kwonlyargs):
-                                found.append(
-                                    Finding(
-                                        root / relative, fn.lineno, fn.col_offset, "SG408", f"{dotted} takes {param!r}"
-                                    )
-                                )
+                        if not (isinstance(fn, ast.FunctionDef) and fn.name == method):
+                            continue
+                        if any(a.arg == param for a in fn.args.args + fn.args.kwonlyargs):
+                            found.append(
+                                Finding(root / relative, fn.lineno, fn.col_offset, "SG408", f"{dotted} takes {param!r}")
+                            )
     for (package, word), allowed in policy.WORD_ONLY_IN.items():
         for source in sorted((root / package).glob("*.py")):
             if source.name in allowed:
