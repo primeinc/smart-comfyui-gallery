@@ -74,6 +74,7 @@ def _coverage(conn) -> dict:
         "interpreted": have,
         "present": present,
         "contested": contested,
+        "contested_qs": _door(facets.facet("context.disputed", "eq", "1")),
         "policy_version": context.POLICY_VERSION,
         "complete": have == present,
     }

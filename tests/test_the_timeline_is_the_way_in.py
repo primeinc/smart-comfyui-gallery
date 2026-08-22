@@ -158,3 +158,16 @@ def test_a_picture_says_when_and_in_which_sessions(doors):
     html = doors.get(f"/i/{slugs[1]}", headers={"accept": "text/html"}).text
     for marker in ('data-when data-domain="wall"', "data-when-sessions", "data-when-day"):
         assert marker in html, marker
+
+
+def test_the_contested_count_is_a_door_onto_exactly_the_disputed(doors):
+    body = doors.get("/timeline", headers={"accept": "application/json"}).json()
+    coverage = body["coverage"]
+    assert "context.disputed%3Aeq%3A1" in coverage["contested_qs"]
+    assert _total(doors, coverage["contested_qs"]) == coverage["contested"]
+    undisputed = _total(doors, "f=context.disputed%3Aeq%3A0")
+    assert undisputed + coverage["contested"] == coverage["interpreted"], (
+        "every interpreted picture is one or the other"
+    )
+    page = doors.get("/g?f=context.disputed%3Aeq%3A1").text
+    assert "disputed 1" in page or coverage["contested"] == 0

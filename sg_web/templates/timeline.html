@@ -8,7 +8,7 @@
       <span class="crumbs-where" data-coverage data-complete="{{ 'yes' if coverage.complete else 'no' }}">
         {{ "{:,}".format(coverage.interpreted) }} of {{ "{:,}".format(coverage.present) }} files interpreted
         · policy v{{ coverage.policy_version }}
-        {% if coverage.contested %}· {{ "{:,}".format(coverage.contested) }} contested{% endif %}
+        {% if coverage.contested %}· <a href="/g?{{ coverage.contested_qs }}" data-timeline-contested title="pictures whose sources disagree about when">{{ "{:,}".format(coverage.contested) }} contested</a>{% endif %}
         {% if not coverage.complete %}· <a href="/operations">interpret the rest</a>{% endif %}
       </span>
     </nav>

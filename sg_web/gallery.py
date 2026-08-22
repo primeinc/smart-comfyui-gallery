@@ -84,7 +84,13 @@ def _chips(query: resultset.GalleryQuery) -> list[dict]:
 
 
 _OPS = {"eq": "", "gte": "from ", "lte": "to "}
-_KEYS = {"context.local_day": "day", "context.moment": "moment", "event.id": "session", "context.origin": "origin"}
+_KEYS = {
+    "context.local_day": "day",
+    "context.moment": "moment",
+    "event.id": "session",
+    "context.origin": "origin",
+    "context.disputed": "disputed",
+}
 
 
 def _chip_label(held) -> str:
