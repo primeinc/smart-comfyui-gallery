@@ -549,6 +549,8 @@ docstring-code-format = false
 # exclude REPLACES the defaults, so they are restated; vendor/ is the
 # prebuilt faiss GPU build.
 [tool.pyright]
+venvPath = "."
+venv = ".venv"
 include = ["db", "metaparse", "sg_web", "sglint", "story_renderers", "vision", "tests", "benchmarks"]
 exclude = ["**/node_modules", "**/__pycache__", "**/.*", "vendor"]
 enableTypeIgnoreComments = false

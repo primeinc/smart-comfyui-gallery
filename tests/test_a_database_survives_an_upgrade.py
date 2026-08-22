@@ -132,7 +132,10 @@ def rebuild_comment_table(conn):
 # --- the contract ----------------------------------------------------------
 
 
-def test_an_upgrade_keeps_everything_a_person_made(library, steps):
+def test_an_upgrade_keeps_everything_snapshots_first_and_the_snapshot_restores(library, steps):
+    """One migration, three claims: the upgrade costs the user nothing,
+    the snapshot was taken before anything changed, and restoring the
+    snapshot undoes the upgrade."""
     before = authored_state(library)
     steps[connect.USER_VERSION] = rebuild_comment_table
 
@@ -149,12 +152,6 @@ def test_an_upgrade_keeps_everything_a_person_made(library, steps):
     finally:
         conn.close()
 
-
-def test_the_snapshot_is_taken_before_anything_changes(library, steps):
-    before = authored_state(library)
-    steps[connect.USER_VERSION] = rebuild_comment_table
-    migrate.migrate(library, target=connect.USER_VERSION + 1)
-
     backup = pathlib.Path(str(library).replace(".db", f".v{connect.USER_VERSION}.backup"))
     assert backup.exists(), "no way back was left"
     assert authored_state(backup) == before
@@ -165,13 +162,6 @@ def test_the_snapshot_is_taken_before_anything_changes(library, steps):
     finally:
         kept.close()
 
-
-def test_restoring_the_snapshot_undoes_the_upgrade(library, steps):
-    before = authored_state(library)
-    steps[connect.USER_VERSION] = rebuild_comment_table
-    migrate.migrate(library, target=connect.USER_VERSION + 1)
-
-    backup = pathlib.Path(str(library).replace(".db", f".v{connect.USER_VERSION}.backup"))
     migrate.restore(backup, library)
     assert authored_state(library) == before
     conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)

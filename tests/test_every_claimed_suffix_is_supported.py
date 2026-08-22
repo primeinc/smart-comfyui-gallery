@@ -363,64 +363,54 @@ def _library_of(root):
     return conn
 
 
-def test_an_mp4_wearing_a_jpg_suffix_is_reidentified_by_its_bytes(tmp_path):
-    """The liar the sniff exists for: routed by suffix it would hit Pillow,
-    fail, and be recorded as a broken image forever."""
+def test_the_bytes_decide_what_a_file_is_whatever_its_suffix_says(tmp_path):
+    """Three liars in one library, one scan. The suffix proposes a kind;
+    the sniff re-identifies an MP4 wearing .jpg and a PNG wearing .mp4 by
+    their bytes (routed by suffix the first would hit Pillow, fail, and be
+    a broken image forever); an executable wearing .png matches no
+    signature, the decoder refuses, and the row records the refusal
+    instead of pretending."""
     root = tmp_path / "lib"
     root.mkdir()
-    path = root / "holiday.jpg"
-    WRITERS[".mp4"](path)
+    WRITERS[".mp4"](root / "holiday.jpg")
+    WRITERS[".png"](root / "clip.mp4")
+    (root / "totally-a-picture.png").write_bytes(b"MZ" + bytes(range(256)) * 4)
 
     conn = _library_of(root)
-    file_id, scanned = conn.execute("SELECT id, kind FROM file").fetchone()
-    assert scanned == "image", "the suffix proposes"
-    ingest.one(conn, file_id, path, 0.0)
-    kind, duration = conn.execute("SELECT kind, duration FROM file WHERE id = ?", (file_id,)).fetchone()
+    rows = {name: (file_id, kind) for file_id, name, kind in conn.execute("SELECT id, name, kind FROM file")}
+    assert {name: kind for name, (_, kind) in rows.items()} == {
+        "holiday.jpg": "image",
+        "clip.mp4": "video",
+        "totally-a-picture.png": "image",
+    }, "the suffix proposes"
+
+    movie, _ = rows["holiday.jpg"]
+    ingest.one(conn, movie, root / "holiday.jpg", 0.0)
+    kind, duration = conn.execute("SELECT kind, duration FROM file WHERE id = ?", (movie,)).fetchone()
     assert kind == "video", "the bytes decide"
     assert duration is not None
     assert duration > 0
     fields = dict(
         conn.execute(
             "SELECT key, value_text FROM file_param WHERE file_id = ? AND source = 'container'",
-            (file_id,),
+            (movie,),
         )
     )
     assert fields["SniffedFormat"] == "mp4"
     assert fields["SuffixClaimed"] == "image"
-    conn.close()
 
-
-def test_a_png_wearing_an_mp4_suffix_is_reidentified_by_its_bytes(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
-    path = root / "clip.mp4"
-    WRITERS[".png"](path)
-
-    conn = _library_of(root)
-    file_id, scanned = conn.execute("SELECT id, kind FROM file").fetchone()
-    assert scanned == "video"
-    ingest.one(conn, file_id, path, 0.0)
-    assert conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0] == "image"
-    picture = oriented.for_model(conn, file_id, path)
+    still, _ = rows["clip.mp4"]
+    ingest.one(conn, still, root / "clip.mp4", 0.0)
+    assert conn.execute("SELECT kind FROM file WHERE id = ?", (still,)).fetchone()[0] == "image"
+    picture = oriented.for_model(conn, still, root / "clip.mp4")
     assert picture.size == SIZE
-    conn.close()
 
-
-def test_bytes_that_are_no_media_are_said_to_be_no_media(tmp_path):
-    """An executable wearing .png: the sniff has no opinion, the decoder
-    refuses, and the row records the refusal instead of pretending."""
-    root = tmp_path / "lib"
-    root.mkdir()
-    path = root / "totally-a-picture.png"
-    path.write_bytes(b"MZ" + bytes(range(256)) * 4)
-
-    conn = _library_of(root)
-    file_id = conn.execute("SELECT id FROM file").fetchone()[0]
-    result = ingest.one(conn, file_id, path, 0.0)
+    bald, _ = rows["totally-a-picture.png"]
+    result = ingest.one(conn, bald, root / "totally-a-picture.png", 0.0)
     assert result.unreadable, "a lie this bald must be recorded, not absorbed"
     sniffed = conn.execute(
         "SELECT count(*) FROM file_param WHERE file_id = ? AND key = 'SniffedFormat'",
-        (file_id,),
+        (bald,),
     ).fetchone()[0]
     assert sniffed == 0, "no signature matched, so no format may be claimed"
     conn.close()
