@@ -363,81 +363,91 @@ def _library_of(root):
     return conn
 
 
-def test_the_bytes_decide_what_a_file_is_whatever_its_suffix_says(tmp_path):
-    """Three liars in one library, one scan. The suffix proposes a kind;
-    the sniff re-identifies an MP4 wearing .jpg and a PNG wearing .mp4 by
-    their bytes (routed by suffix the first would hit Pillow, fail, and be
-    a broken image forever); an executable wearing .png matches no
-    signature, the decoder refuses, and the row records the refusal
-    instead of pretending."""
+def _scanned_liar(tmp_path, name: str, write) -> tuple:
+    """One file whose suffix lies about its bytes, scanned: (conn, id, path)."""
     root = tmp_path / "lib"
     root.mkdir()
-    WRITERS[".mp4"](root / "holiday.jpg")
-    WRITERS[".png"](root / "clip.mp4")
-    (root / "totally-a-picture.png").write_bytes(b"MZ" + bytes(range(256)) * 4)
-
+    path = root / name
+    write(path)
     conn = _library_of(root)
-    rows = {name: (file_id, kind) for file_id, name, kind in conn.execute("SELECT id, name, kind FROM file")}
-    assert {name: kind for name, (_, kind) in rows.items()} == {
-        "holiday.jpg": "image",
-        "clip.mp4": "video",
-        "totally-a-picture.png": "image",
-    }, "the suffix proposes"
+    file_id = conn.execute("SELECT id FROM file").fetchone()[0]
+    return conn, file_id, path
 
-    movie, _ = rows["holiday.jpg"]
-    ingest.one(conn, movie, root / "holiday.jpg", 0.0)
-    kind, duration = conn.execute("SELECT kind, duration FROM file WHERE id = ?", (movie,)).fetchone()
+
+def test_an_mp4_wearing_a_jpg_suffix_is_reidentified_by_its_bytes(tmp_path):
+    """The liar the sniff exists for: routed by suffix it would hit Pillow,
+    fail, and be recorded as a broken image forever."""
+    conn, file_id, path = _scanned_liar(tmp_path, "holiday.jpg", WRITERS[".mp4"])
+    assert conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0] == "image", (
+        "the suffix proposes"
+    )
+
+    ingest.one(conn, file_id, path, 0.0)
+
+    kind, duration = conn.execute("SELECT kind, duration FROM file WHERE id = ?", (file_id,)).fetchone()
     assert kind == "video", "the bytes decide"
     assert duration is not None
     assert duration > 0
     fields = dict(
         conn.execute(
             "SELECT key, value_text FROM file_param WHERE file_id = ? AND source = 'container'",
-            (movie,),
+            (file_id,),
         )
     )
     assert fields["SniffedFormat"] == "mp4"
     assert fields["SuffixClaimed"] == "image"
+    conn.close()
 
-    still, _ = rows["clip.mp4"]
-    ingest.one(conn, still, root / "clip.mp4", 0.0)
-    assert conn.execute("SELECT kind FROM file WHERE id = ?", (still,)).fetchone()[0] == "image"
-    picture = oriented.for_model(conn, still, root / "clip.mp4")
+
+def test_a_png_wearing_an_mp4_suffix_is_reidentified_by_its_bytes(tmp_path):
+    conn, file_id, path = _scanned_liar(tmp_path, "clip.mp4", WRITERS[".png"])
+    assert conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0] == "video", (
+        "the suffix proposes"
+    )
+
+    ingest.one(conn, file_id, path, 0.0)
+
+    assert conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0] == "image"
+    picture = oriented.for_model(conn, file_id, path)
     assert picture.size == SIZE
+    conn.close()
 
-    bald, _ = rows["totally-a-picture.png"]
-    result = ingest.one(conn, bald, root / "totally-a-picture.png", 0.0)
+
+def test_bytes_that_are_no_media_are_said_to_be_no_media(tmp_path):
+    """An executable wearing .png: the sniff has no opinion, the decoder
+    refuses, and the row records the refusal instead of pretending."""
+    conn, file_id, path = _scanned_liar(
+        tmp_path, "totally-a-picture.png", lambda p: p.write_bytes(b"MZ" + bytes(range(256)) * 4)
+    )
+
+    result = ingest.one(conn, file_id, path, 0.0)
+
     assert result.unreadable, "a lie this bald must be recorded, not absorbed"
     sniffed = conn.execute(
         "SELECT count(*) FROM file_param WHERE file_id = ? AND key = 'SniffedFormat'",
-        (bald,),
+        (file_id,),
     ).fetchone()[0]
     assert sniffed == 0, "no signature matched, so no format may be claimed"
     conn.close()
 
 
-def test_dimensions_answers_from_headers_for_every_kind(tmp_path):
-    """The decoder door's geometry probe: stills through the registered
-    openers, video through the container's stream entry -- never a frame
-    decoded, never bare Image.open, so the answer does not depend on
-    which code ran first in the process. Unreadable bytes answer None,
-    ranking last wherever geometry decides."""
-    import av
-    import numpy as np
+def _png_96x64(path):
     from PIL import Image
 
-    from vision import decode
+    Image.new("RGB", (96, 64), (10, 120, 30)).save(path)
 
-    still = tmp_path / "still.png"
-    Image.new("RGB", (96, 64), (10, 120, 30)).save(still)
-    assert decode.dimensions(still, "image") == (96, 64)
 
-    webp = tmp_path / "still.webp"
-    Image.new("RGB", (48, 32), (10, 120, 30)).save(webp, quality=75)
-    assert decode.dimensions(webp, "image") == (48, 32)
+def _webp_48x32(path):
+    from PIL import Image
 
-    clip = tmp_path / "clip.mp4"
-    with av.open(str(clip), "w") as container:
+    Image.new("RGB", (48, 32), (10, 120, 30)).save(path, quality=75)
+
+
+def _mp4_320x180(path):
+    import av
+    import numpy as np
+
+    with av.open(str(path), "w") as container:
         stream = container.add_stream("h264", rate=5)
         stream.width, stream.height = 320, 180
         stream.pix_fmt = "yuv420p"
@@ -447,10 +457,35 @@ def test_dimensions_answers_from_headers_for_every_kind(tmp_path):
                 container.mux(packet)
         for packet in stream.encode():
             container.mux(packet)
-    assert decode.dimensions(clip, "video") == (320, 180)
 
-    broken = tmp_path / "broken.png"
-    broken.write_bytes(b"not a picture at all")
-    assert decode.dimensions(broken, "image") is None
-    assert decode.dimensions(broken, "video") is None
-    assert decode.dimensions(tmp_path / "absent.png", "image") is None
+
+def _not_a_picture(path):
+    path.write_bytes(b"not a picture at all")
+
+
+def _absent(path):
+    assert not path.exists()
+
+
+#: id -> (file name, writer, kind asked, geometry answered)
+_GEOMETRY = {
+    "png": ("still.png", _png_96x64, "image", (96, 64)),
+    "webp": ("still.webp", _webp_48x32, "image", (48, 32)),
+    "mp4": ("clip.mp4", _mp4_320x180, "video", (320, 180)),
+    "broken-as-image": ("broken.png", _not_a_picture, "image", None),
+    "broken-as-video": ("broken.png", _not_a_picture, "video", None),
+    "absent": ("absent.png", _absent, "image", None),
+}
+
+
+@pytest.mark.parametrize(("name", "write", "kind", "geometry"), list(_GEOMETRY.values()), ids=list(_GEOMETRY))
+def test_dimensions_answers_from_headers(tmp_path, name, write, kind, geometry):
+    """The decoder door's geometry probe: stills through the registered
+    openers, video through the container's stream entry -- never a frame
+    decoded, never bare Image.open, so the answer does not depend on
+    which code ran first in the process. Unreadable bytes answer None,
+    ranking last wherever geometry decides."""
+    path = tmp_path / name
+    write(path)
+
+    assert decode.dimensions(path, kind) == geometry

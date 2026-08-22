@@ -132,56 +132,84 @@ def rebuild_comment_table(conn):
 # --- the contract ----------------------------------------------------------
 
 
-def test_an_upgrade_keeps_everything_snapshots_first_and_the_snapshot_restores(library, steps):
-    """One migration, three claims: the upgrade costs the user nothing,
-    the snapshot was taken before anything changed, and restoring the
-    snapshot undoes the upgrade."""
+def _backup_of(library: pathlib.Path) -> pathlib.Path:
+    return pathlib.Path(str(library).replace(".db", f".v{connect.USER_VERSION}.backup"))
+
+
+def _user_version(path) -> int:
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _columns_of(path, table: str) -> list[str]:
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+    finally:
+        conn.close()
+
+
+def test_an_upgrade_keeps_everything_a_person_made(library, steps):
     before = authored_state(library)
     steps[connect.USER_VERSION] = rebuild_comment_table
 
     applied = migrate.migrate(library, target=connect.USER_VERSION + 1)
 
     assert applied == [connect.USER_VERSION + 1]
-    after = authored_state(library)
-    assert after == before, "the upgrade cost the user something"
-    conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)
-    try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION + 1
-        # the rebuild really happened, so this is not passing by doing nothing
-        assert "pinned" in [r[1] for r in conn.execute("PRAGMA table_info(comment)")]
-    finally:
-        conn.close()
+    assert authored_state(library) == before, "the upgrade cost the user something"
+    assert _user_version(library) == connect.USER_VERSION + 1
+    # the rebuild really happened, so this is not passing by doing nothing
+    assert "pinned" in _columns_of(library, "comment")
 
-    backup = pathlib.Path(str(library).replace(".db", f".v{connect.USER_VERSION}.backup"))
+
+def test_the_snapshot_is_taken_before_anything_changes(library, steps):
+    before = authored_state(library)
+    steps[connect.USER_VERSION] = rebuild_comment_table
+
+    migrate.migrate(library, target=connect.USER_VERSION + 1)
+
+    backup = _backup_of(library)
     assert backup.exists(), "no way back was left"
     assert authored_state(backup) == before
-    kept = sqlite3.connect(f"file:{backup}?mode=ro", uri=True)
-    try:
-        assert kept.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
-        assert "pinned" not in [r[1] for r in kept.execute("PRAGMA table_info(comment)")]
-    finally:
-        kept.close()
+    assert _user_version(backup) == connect.USER_VERSION
+    assert "pinned" not in _columns_of(backup, "comment")
 
-    migrate.restore(backup, library)
+
+def test_restoring_the_snapshot_undoes_the_upgrade(library, steps):
+    before = authored_state(library)
+    steps[connect.USER_VERSION] = rebuild_comment_table
+    migrate.migrate(library, target=connect.USER_VERSION + 1)
+    assert "pinned" in _columns_of(library, "comment")
+
+    migrate.restore(_backup_of(library), library)
+
     assert authored_state(library) == before
-    conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)
-    try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
-    finally:
-        conn.close()
+    assert _user_version(library) == connect.USER_VERSION
+    assert "pinned" not in _columns_of(library, "comment")
 
 
-def test_a_downgrade_is_refused_by_name(library, steps):
-    """A newer file opened by an older build. Guessing at it is how a
-    database gets truncated to the columns this build happens to know."""
+@pytest.fixture
+def newer_library(library):
+    """A file stamped five versions ahead of this build."""
     conn = sqlite3.connect(str(library), isolation_level=None)
     conn.execute(f"PRAGMA user_version = {connect.USER_VERSION + 5}")
     conn.close()
+    return library
 
+
+def test_a_downgrade_is_refused_by_name(newer_library, steps):
+    """A newer file opened by an older build. Guessing at it is how a
+    database gets truncated to the columns this build happens to know."""
     with pytest.raises(migrate.Downgrade, match="no down step"):
-        migrate.migrate(library)
+        migrate.migrate(newer_library)
+
+
+def test_pending_refuses_a_downgrade_too(newer_library, steps):
     with pytest.raises(migrate.Downgrade):
-        migrate.pending(library)
+        migrate.pending(newer_library)
 
 
 def test_a_missing_step_stops_before_touching_the_file(library, steps):
@@ -259,11 +287,13 @@ def test_each_step_commits_on_its_own(library, steps):
         conn.close()
 
 
-def test_migrating_a_current_database_does_nothing(library, steps):
+def test_a_current_database_has_nothing_pending(library, steps):
     assert migrate.pending(library) == []
+
+
+def test_migrating_a_current_database_does_nothing(library, steps):
     assert migrate.migrate(library) == []
-    backup = pathlib.Path(str(library).replace(".db", f".v{connect.USER_VERSION}.backup"))
-    assert not backup.exists(), "a no-op upgrade left a snapshot behind"
+    assert not _backup_of(library).exists(), "a no-op upgrade left a snapshot behind"
 
 
 def test_something_that_is_not_ours_is_not_migrated(tmp_path, steps):

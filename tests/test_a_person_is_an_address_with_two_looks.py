@@ -14,66 +14,14 @@ import pathlib
 
 import numpy as np
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
-from db import authored, collections, connect, derived, library, naming, scan
-from sg_web.app import build_app
+from db import authored, collections, connect, derived, naming
 from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
 AS_OVERLAY = {"hx-request": "true"}
-
-
-def _clustered_library(tmp: pathlib.Path) -> tuple:
-    """Real files, fake-but-consistent face embeddings, one clustered
-    person named Ana -- the served-fixture recipe, on disk."""
-    root = tmp / "lib"
-    root.mkdir()
-    for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
-        Image.new("RGB", (16, 16), (200, 90, 40)).save(root / name)
-
-    burrow = tmp / "run"
-    burrow.mkdir()
-    db_path = burrow / "gallery.db"
-    conn = connect.connect(db_path)
-    conn.executescript(connect.schema_sql())
-    root_id = library.add_root(conn, str(root), "library", 0.0)
-    scan.scan(conn, root_id, str(root), 0.0)
-
-    files = {name: file_id for file_id, name in conn.execute("SELECT id, name FROM file")}
-    rng = np.random.default_rng(5)
-    ana = rng.standard_normal(32).astype(np.float32)
-    for name, vector in (("ana_1.png", ana), ("ana_2.png", ana), ("ben_1.png", -ana)):
-        derived.record_faces(
-            conn,
-            files[name],
-            "test/embedder",
-            "1",
-            "aa",
-            0.0,
-            [
-                {
-                    "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
-                    "embedding": (vector + 0.01 * rng.standard_normal(32).astype(np.float32)).tobytes(),
-                }
-            ],
-        )
-    made = derived.cluster(conn, "test/embedder", "1", 0.0, threshold=0.55)
-    assert len(made) == 1, "ana's pair must cluster; ben stays a singleton"
-    run_id = derived.run_for(conn, "test/embedder", "1", "chinese-whispers", 0.55, 0.0)
-    derived.make_primary(conn, run_id)
-    person_id = naming.claim(conn, "person", "Ana")
-    conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Ana', 0)", (person_id,))
-    # The cluster carries the person, as the clustering job leaves it --
-    # naming writes its durable assertions FROM this attachment.
-    conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, made[0]))
-    for name in ("ana_1.png", "ana_2.png"):
-        derived.attribute(conn, files[name], person_id, run_id, "test/embedder", "1")
-    conn.commit()
-    conn.close()
-    return burrow, root
 
 
 def _library(root: pathlib.Path) -> None:
@@ -144,6 +92,77 @@ def faces(_stage):
     return _stage.client
 
 
+def _second_space(client, names, *, seed: int, box: float) -> None:
+    """Faces for `names` in a second embedding space, one tight group."""
+    conn = connect.connect(client.app.state.db_path)
+    rng = np.random.default_rng(seed)
+    one = rng.standard_normal(16).astype(np.float32)
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    for name in names:
+        derived.record_faces(
+            conn,
+            files[name],
+            "other/embedder",
+            "1",
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, box, box, 0.2, 0.2),
+                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
+                }
+            ],
+        )
+    conn.commit()
+    conn.close()
+
+
+@pytest.fixture
+def minted(faces) -> dict:
+    """The cluster job run once through the application: the unnamed,
+    addressable person it minted for ana's pair."""
+    _drained_cluster_job(faces)
+    people = faces.get("/people").json()
+    assert len(people) == 1, people
+    return people[0]
+
+
+@pytest.fixture
+def named_placeholder(minted, faces) -> str:
+    """The minted person named Ana Torres; the value is the retired slug."""
+    told = faces.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"})
+    assert told.status_code < 300, told.text
+    return minted["slug"]
+
+
+@pytest.fixture
+def second_space_placeholder(faces) -> str:
+    """Ana's pair embedded in a second space and the job run over both:
+    the slug of the unnamed person the NON-primary run's group carries."""
+    _second_space(faces, ("ana_1.png", "ana_2.png"), seed=9, box=0.6)
+    _drained_cluster_job(faces)
+    conn = connect.connect(faces.app.state.db_path)
+    minted = conn.execute(
+        "SELECT e.slug FROM derived_face_cluster c JOIN derived_face_run r ON r.id = c.run_id"
+        " JOIN person p ON p.id = c.person_id JOIN entity e ON e.id = p.id"
+        " WHERE r.is_primary = 0 AND p.name IS NULL"
+    ).fetchone()
+    conn.close()
+    assert minted is not None, "the second space's group has no addressable person"
+    return minted[0]
+
+
+@pytest.fixture
+def renamed_ana(faces) -> None:
+    """Ana renamed through the Module: the slug `ana` is retired."""
+    conn = connect.connect(faces.app.state.db_path)
+    found = naming.resolve(conn, "person", "ana")
+    assert found is not None
+    naming.rename(conn, found[0], "Ana Torres", 5.0)
+    conn.commit()
+    connect.close(conn)
+
+
 def test_the_person_address_has_three_faces_and_declares_vary(faces):
     told = faces.get("/p/ana", headers=AS_MACHINE)
     page = faces.get("/p/ana", headers=AS_BROWSER)
@@ -190,7 +209,7 @@ def test_naming_still_mints_the_new_address(faces):
     assert '<link rel="canonical" href="/p/ana-torres">' in faces.get("/p/ana-torres", headers=AS_BROWSER).text
 
 
-def test_a_commit_mid_assembly_cannot_mix_person_generations(tmp_path, monkeypatch):
+def test_a_commit_mid_assembly_cannot_mix_person_generations(faces, monkeypatch):
     """The MediaView invariant, held here too: a naming commit landing
     between person_files and the remaining reads must not hand back
     pictures from one generation under the name of another. The writer
@@ -198,155 +217,191 @@ def test_a_commit_mid_assembly_cannot_mix_person_generations(tmp_path, monkeypat
     wholly before, and the next request wholly after."""
     from db import pages
 
-    burrow, _ = _clustered_library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        real = pages.person_files
+    client = faces
+    real = pages.person_files
 
-        def files_then_commit(conn, person_id, run_id=None):
-            rows = real(conn, person_id, run_id)
-            writer = connect.connect(client.app.state.db_path)
-            writer.execute("UPDATE person SET name = 'Renamed Mid-Read' WHERE id = ?", (person_id,))
-            writer.commit()
-            connect.close(writer)
-            return rows
+    def files_then_commit(conn, person_id, run_id=None):
+        rows = real(conn, person_id, run_id)
+        writer = connect.connect(client.app.state.db_path)
+        writer.execute("UPDATE person SET name = 'Renamed Mid-Read' WHERE id = ?", (person_id,))
+        writer.commit()
+        connect.close(writer)
+        return rows
 
-        monkeypatch.setattr(pages, "person_files", files_then_commit)
-        raced = client.get("/p/ana").json()
-        assert raced["name"] == "Ana", (
-            "the name read a newer generation than the pictures: one response mixed two library states"
-        )
-        monkeypatch.setattr(pages, "person_files", real)
-        assert client.get("/p/ana").json()["name"] == "Renamed Mid-Read", (
-            "the NEXT response must see the commit; the snapshot is per-request, not a cache"
-        )
+    monkeypatch.setattr(pages, "person_files", files_then_commit)
+    raced = client.get("/p/ana").json()
+    assert raced["name"] == "Ana", (
+        "the name read a newer generation than the pictures: one response mixed two library states"
+    )
+    monkeypatch.setattr(pages, "person_files", real)
+    assert client.get("/p/ana").json()["name"] == "Renamed Mid-Read", (
+        "the NEXT response must see the commit; the snapshot is per-request, not a cache"
+    )
 
 
-def test_a_person_is_a_resultset_scope(tmp_path):
-    """The bridge WI-38 exists for: person membership is the primary
-    run's attribution, ordered and paged like every other scope, and
-    the profile's grid is ONE ResultSet page whose links carry the
-    person context so the arrows walk the person."""
+# --- a person is a ResultSet scope (WI-38) ----------------------------------
+
+
+def test_person_membership_is_the_primary_runs_attribution(faces):
     from db import resultset
 
-    burrow, _ = _clustered_library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        db_path = client.app.state.db_path
-        conn = connect.connect(db_path)
+    conn = connect.connect(faces.app.state.db_path)
+    try:
         told = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
-        assert told["total"] == 2, "membership is the attribution, not the library"
+    finally:
+        connect.close(conn)
+    assert told["total"] == 2, "membership is the attribution, not the library"
+
+
+def test_an_unknown_person_is_a_lookup_error(faces):
+    from db import resultset
+
+    conn = connect.connect(faces.app.state.db_path)
+    try:
         with pytest.raises(LookupError):
             resultset.describe(conn, "", resultset.parse(person="nobody"), 0.0)
+    finally:
+        connect.close(conn)
 
-        # Person is a COMPOSABLE membership facet, not a third exclusive
-        # scope: eligibility is an intersection of predicates.
-        both = resultset.describe(conn, "", resultset.parse(person="ana", folder="lib"), 0.0)
-        assert both["total"] == 2, "person AND folder is an intersection"
-        narrowed = resultset.describe(conn, "", resultset.parse(person="ana", kind="video"), 0.0)
-        assert narrowed["total"] == 0, "person AND kind is an intersection"
 
+@pytest.mark.parametrize(
+    ("facet", "total"),
+    [({"folder": "lib"}, 2), ({"kind": "video"}, 0)],
+    ids=["folder", "kind"],
+)
+def test_the_person_facet_composes_as_an_intersection(faces, facet, total):
+    """Person is a COMPOSABLE membership facet, not a third exclusive
+    scope: eligibility is an intersection of predicates."""
+    from db import resultset
+
+    conn = connect.connect(faces.app.state.db_path)
+    try:
+        told = resultset.describe(conn, "", resultset.parse(person="ana", **facet), 0.0)
+    finally:
+        connect.close(conn)
+    assert told["total"] == total
+
+
+def test_the_person_facet_intersects_an_album(faces):
+    from db import resultset
+
+    conn = connect.connect(faces.app.state.db_path)
+    try:
         mixed = collections.collection(conn, "Mixed", 0.0)
         for name in ("ana_1.png", "ben_1.png"):
             file_id = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()[0]
             collections.set_membership(conn, mixed, file_id, True, 0.0)
         conn.commit()
+
         crossed = resultset.describe(conn, "", resultset.parse(person="ana", album="mixed"), 0.0)
-        assert crossed["total"] == 1, "person AND album keeps only the attributed member of the album"
+    finally:
         connect.close(conn)
-
-        # /g serves the person scope like any other question.
-        grid = client.get("/g/grid", params={"person": "ana"}).text
-        assert grid.count('data-slug="ana-') == 2
-        assert "ben-1" not in grid
-
-        # The profile's own grid is the ResultSet page, links in context.
-        page = client.get("/p/ana", headers=AS_BROWSER).text
-        assert page.count("?person=ana") >= 2, "profile media links must carry the person context"
-        body = client.get("/p/ana").json()
-        assert body["gallery"]["total"] == 2
-        assert body["gallery"]["qs"] == "person=ana"
-        assert [row["slug"] for row in body["gallery"]["items"]] == [
-            row["slug"]
-            for row in resultset.page(connect.connect(db_path), "", resultset.parse(person="ana"), 1, 0.0)["items"]
-        ]
-
-        # The item address under the person context walks the person.
-        first = body["gallery"]["items"][0]["slug"]
-        second = body["gallery"]["items"][1]["slug"]
-        walked = client.get(f"/i/{first}", params={"person": "ana"}).json()
-        assert walked["context"]["total"] == 2
-        assert walked["next"] == second
-        assert walked["previous"] is None
-        assert walked["context"]["return_url"] == "/g?person=ana"
-        outside = client.get("/i/ben-1", params={"person": "ana"}).json()
-        assert outside["context"]["in_answer"] is False
+    assert crossed["total"] == 1, "person AND album keeps only the attributed member of the album"
 
 
-def test_a_person_phrase_constrains_each_space_before_fusion(tmp_path, monkeypatch):
+def test_the_grid_serves_the_person_scope(faces):
+    grid = faces.get("/g/grid", params={"person": "ana"}).text
+
+    assert grid.count('data-slug="ana-') == 2
+    assert "ben-1" not in grid
+
+
+def test_the_profile_grid_is_the_resultset_page_in_context(faces):
+    from db import resultset
+
+    page = faces.get("/p/ana", headers=AS_BROWSER).text
+    body = faces.get("/p/ana").json()
+
+    assert page.count("?person=ana") >= 2, "profile media links must carry the person context"
+    assert body["gallery"]["total"] == 2
+    assert body["gallery"]["qs"] == "person=ana"
+    conn = connect.connect(faces.app.state.db_path)
+    try:
+        expected = resultset.page(conn, "", resultset.parse(person="ana"), 1, 0.0)["items"]
+    finally:
+        connect.close(conn)
+    assert [row["slug"] for row in body["gallery"]["items"]] == [row["slug"] for row in expected]
+
+
+def test_an_item_under_the_person_context_walks_the_person(faces):
+    items = faces.get("/p/ana").json()["gallery"]["items"]
+    first, second = items[0]["slug"], items[1]["slug"]
+
+    walked = faces.get(f"/i/{first}", params={"person": "ana"}).json()
+
+    assert walked["context"]["total"] == 2
+    assert walked["next"] == second
+    assert walked["previous"] is None
+    assert walked["context"]["return_url"] == "/g?person=ana"
+
+
+def test_an_item_outside_the_person_answer_says_so(faces):
+    outside = faces.get("/i/ben-1", params={"person": "ana"}).json()
+
+    assert outside["context"]["in_answer"] is False
+
+
+def test_a_person_phrase_constrains_each_space_before_fusion(faces, monkeypatch):
     """person + q composes through the SAME constrained-RRF door every
     scope uses: the person's membership reaches retrieval as the
     allowed set, applied per space before the fusion."""
     from db import resultset, retrieval
 
-    burrow, _ = _clustered_library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        conn = connect.connect(client.app.state.db_path)
-        anas = {
-            row[0]
-            for row in conn.execute(
-                "SELECT fp.file_id FROM derived_file_person fp JOIN person p ON p.id = fp.person_id"
-            )
-        }
-        seen: dict = {}
+    conn = connect.connect(faces.app.state.db_path)
+    anas = {
+        row[0]
+        for row in conn.execute("SELECT fp.file_id FROM derived_file_person fp JOIN person p ON p.id = fp.person_id")
+    }
+    seen: dict = {}
 
-        def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
-            seen.update({"allowed": allowed, "k": k})
-            return {"results": [], "participants": [], "contributors": [], "missing": {}}
+    def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        seen.update({"allowed": allowed, "k": k})
+        return {"results": [], "participants": [], "contributors": [], "missing": {}}
 
-        monkeypatch.setattr(retrieval, "query", fused)
+    monkeypatch.setattr(retrieval, "query", fused)
+    try:
         resultset.describe(conn, "", resultset.parse(person="ana", text="beach"), 0.0)
-        assert seen["allowed"] == anas, "the person facet must constrain retrieval before RRF"
-        assert seen["k"] == len(anas)
+    finally:
         connect.close(conn)
+    assert seen["allowed"] == anas, "the person facet must constrain retrieval before RRF"
+    assert seen["k"] == len(anas)
 
 
-def test_a_renamed_person_is_one_cached_question_and_context_heals(tmp_path):
-    """Slugs are presentation; the projection keys on the bound entity.
-    Both spellings of a renamed person are ONE question, and every
-    answer re-spells the context with the LIVE slug so stale bookmarks
-    heal as they are navigated."""
-    from db import naming, resultset
+def test_two_spellings_of_a_renamed_person_are_one_question(renamed_ana, faces):
+    """Slugs are presentation; the projection keys on the bound entity."""
+    from db import resultset
 
-    burrow, _ = _clustered_library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        conn = connect.connect(client.app.state.db_path)
-        found = naming.resolve(conn, "person", "ana")
-        assert found is not None
-        naming.rename(conn, found[0], "Ana Torres", 5.0)
-        conn.commit()
-
+    conn = connect.connect(faces.app.state.db_path)
+    try:
         old_spelling = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
         new_spelling = resultset.describe(conn, "", resultset.parse(person="ana-torres"), 0.0)
-        assert old_spelling["total"] == new_spelling["total"] == 2
-        assert old_spelling["fingerprint"] == new_spelling["fingerprint"], (
-            "two spellings of one person forked the projection cache"
-        )
-        assert old_spelling["qs"] == "person=ana-torres", "the answer re-spells the context live"
+    finally:
         connect.close(conn)
 
-        walked = client.get("/i/ana-1", params={"person": "ana"}).json()
-        assert walked["context"]["qs"] == "person=ana-torres"
-        assert walked["context"]["return_url"] == "/g?person=ana-torres"
+    assert old_spelling["total"] == new_spelling["total"] == 2
+    assert old_spelling["fingerprint"] == new_spelling["fingerprint"], (
+        "two spellings of one person forked the projection cache"
+    )
+    assert old_spelling["qs"] == "person=ana-torres", "the answer re-spells the context live"
 
 
-def test_switching_the_primary_run_is_a_different_question(tmp_path):
+def test_the_item_context_heals_to_the_live_slug(renamed_ana, faces):
+    """A stale bookmark heals as it is navigated: every answer re-spells
+    the context with the LIVE slug."""
+    walked = faces.get("/i/ana-1", params={"person": "ana"}).json()
+
+    assert walked["context"]["qs"] == "person=ana-torres"
+    assert walked["context"]["return_url"] == "/g?person=ana-torres"
+
+
+def test_switching_the_primary_run_is_a_different_question(faces):
     """Person membership means THE PRIMARY run's attribution; promoting
     another run changes both the answer and its identity -- never a
     silently reused projection."""
-    from db import derived, resultset
+    from db import resultset
 
-    burrow, _ = _clustered_library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        conn = connect.connect(client.app.state.db_path)
+    conn = connect.connect(faces.app.state.db_path)
+    try:
         before = resultset.describe(conn, "", resultset.parse(person="ana"), 0.0)
         assert before["total"] == 2
 
@@ -355,33 +410,33 @@ def test_switching_the_primary_run_is_a_different_question(tmp_path):
         conn.commit()
 
         after = resultset.describe(conn, "", resultset.parse(person="ana"), 1.0)
-        assert after["total"] == 0, "the new primary attributes ana nothing; the membership must say so"
-        assert after["fingerprint"] != before["fingerprint"], "the bound run is part of the question"
+    finally:
         connect.close(conn)
+    assert after["total"] == 0, "the new primary attributes ana nothing; the membership must say so"
+    assert after["fingerprint"] != before["fingerprint"], "the bound run is part of the question"
 
 
-def test_the_browser_path_never_enumerates_the_whole_collection(tmp_path, monkeypatch):
+def test_the_browser_path_never_enumerates_the_whole_collection(faces, monkeypatch):
     """The bounded profile must be bounded on the SERVER, not only in
     the DOM: the unbounded legacy list is the JSON Adapter's cost, and
-    the HTML and drawer paths never pay it."""
+    the HTML and drawer paths never pay it -- the JSON call is the
+    control that the counter sees the enumeration at all."""
     from db import pages
 
-    burrow, _ = _clustered_library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        walked: list[int] = []
-        real = pages.person_files
+    walked: list[int] = []
+    real = pages.person_files
 
-        def counted(conn, person_id, run_id=None):
-            walked.append(person_id)
-            return real(conn, person_id, run_id)
+    def counted(conn, person_id, run_id=None):
+        walked.append(person_id)
+        return real(conn, person_id, run_id)
 
-        monkeypatch.setattr(pages, "person_files", counted)
-        assert client.get("/p/ana", headers=AS_BROWSER).status_code == 200
-        assert client.get("/p/ana", headers=AS_OVERLAY).status_code == 200
-        assert walked == [], "a rendered profile enumerated the person's whole photographic existence"
-        body = client.get("/p/ana").json()
-        assert len(walked) == 1, "the machine Adapter still carries the legacy list"
-        assert sorted(p["name"] for p in body["pictures"]) == ["ana_1.png", "ana_2.png"]
+    monkeypatch.setattr(pages, "person_files", counted)
+    assert faces.get("/p/ana", headers=AS_BROWSER).status_code == 200
+    assert faces.get("/p/ana", headers=AS_OVERLAY).status_code == 200
+    assert walked == [], "a rendered profile enumerated the person's whole photographic existence"
+    body = faces.get("/p/ana").json()
+    assert len(walked) == 1, "the machine Adapter still carries the legacy list"
+    assert sorted(p["name"] for p in body["pictures"]) == ["ana_1.png", "ana_2.png"]
 
 
 # --- the application over the clustered library ------------------------------------------
@@ -432,21 +487,20 @@ def test_job_progress_is_pushed_over_the_socket_not_polled(faces):
 
     snapshot = client.get(f"/jobs/{job_id}").json()
     assert (snapshot["state"], snapshot["done_count"], snapshot["failed_count"]) == ("done", 3, 0)
-    assert client.get("/jobs/999").status_code == 404
 
 
-def test_the_cluster_job_mints_replaces_its_placeholders_and_keeps_a_name(faces):
-    """One sequence over one world, three claims in the order they happen.
+def test_an_unknown_job_is_404(faces):
+    assert faces.get("/jobs/999").status_code == 404
 
-    The People page's data is produced BY the application: the cluster
-    job groups the embedded faces and mints an addressable person for
-    every unnamed group. Running it again leaves one person per group,
-    not one per run -- a placeholder whose group dissolved is deleted
-    with its address. Naming one is a POST that retires the old address
-    with a 301 and writes the assertion record, and a re-cluster
-    re-applies the name from that record: a name is a human's word, and
-    the application never loses one it accepted. Nothing here reaches
-    into the database."""
+
+# --- the cluster job and naming, through the application only ---------------
+
+
+def test_the_cluster_job_mints_a_person_for_an_unnamed_group(faces):
+    """The one end-to-end run: the People page's data is produced BY the
+    application. The cluster job groups the embedded faces and mints an
+    addressable person for every unnamed group; the singleton stays a
+    face. Nothing here reaches into the database."""
     client = faces
     with client.websocket_connect("/ws/jobs") as feed:
         assert feed.receive_json(timeout=10)["type"] == "snapshot"
@@ -464,100 +518,122 @@ def test_the_cluster_job_mints_replaces_its_placeholders_and_keeps_a_name(faces)
     assert minted["slug"].startswith("person-"), "an unnamed person is still addressable"
     assert minted["pictures"] == 2
 
-    # a second run replaces its placeholder instead of adding one
-    _drained_cluster_job(client)
-    people = client.get("/people").json()
-    assert len(people) == 1, f"a second run must replace its placeholders, not add more: {people}"
-    minted = people[0]
 
-    named = client.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"}).json()
-    assert named == {"slug": "ana-torres", "name": "Ana Torres", "asserted": 2}
-    assert client.get("/people").json()[0]["name"] == "Ana Torres"
-    moved = client.get(f"/p/{minted['slug']}", follow_redirects=False)
+def test_a_second_run_replaces_its_placeholder_instead_of_adding_one(minted, faces):
+    """One person per group, not one per run: a placeholder whose group
+    dissolved is deleted with its address."""
+    _drained_cluster_job(faces)
+
+    people = faces.get("/people").json()
+    assert len(people) == 1, f"a second run must replace its placeholders, not add more: {people}"
+
+
+def test_naming_a_placeholder_answers_the_new_address(minted, faces):
+    named = faces.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"})
+
+    assert named.status_code < 300, named.text
+    assert named.json() == {"slug": "ana-torres", "name": "Ana Torres", "asserted": 2}
+    assert faces.get("/people").json()[0]["name"] == "Ana Torres"
+
+
+def test_naming_retires_the_old_address_with_a_301(named_placeholder, faces):
+    moved = faces.get(f"/p/{named_placeholder}", follow_redirects=False)
+
     assert moved.status_code == 301
     assert moved.headers["location"] == "/p/ana-torres"
-    assert client.post("/p/ana-torres/name", json={"name": "   "}).status_code == 400
-    assert client.post("/p/nobody/name", json={"name": "X"}).status_code == 404
-    assert client.post("/p/ana-torres/name").status_code == 400
 
-    # the application's own re-cluster keeps the name it accepted
-    _drained_cluster_job(client)
-    people = client.get("/people").json()
+
+@pytest.mark.parametrize("blank", ["", "   "], ids=["empty", "spaces"])
+def test_renaming_refuses_a_blank_name(faces, blank):
+    assert faces.post("/p/ana/name", json={"name": blank}).status_code == 400
+
+
+def test_renaming_an_unknown_person_is_404(faces):
+    assert faces.post("/p/nobody/name", json={"name": "X"}).status_code == 404
+
+
+def test_renaming_requires_a_body(faces):
+    assert faces.post("/p/ana/name").status_code == 400
+
+
+def test_a_human_name_survives_the_apps_own_recluster(named_placeholder, faces):
+    """TEMPORAL SCENARIO: naming writes the assertion record, and a
+    re-cluster re-applies the name from that record. A name is a human's
+    word; the application never loses one it accepted."""
+    _drained_cluster_job(faces)
+
+    people = faces.get("/people").json()
     assert people == [{"name": "Ana Torres", "slug": "ana-torres", "pictures": 2}], (
         f"the application's own re-cluster lost the name the application accepted: {people}"
     )
-    assert len(client.get("/p/ana-torres").json()["pictures"]) == 2
+    assert len(faces.get("/p/ana-torres").json()["pictures"]) == 2
 
 
-def test_a_name_in_a_second_embedding_space_is_kept_not_lost(faces):
-    """The cluster job mints addressable people for EVERY embedding
-    space's run, but only one run is primary. Naming a person the primary
-    pages do not show must still write the record that keeps the name --
-    the application never accepts a name it cannot keep -- and a name it
-    genuinely cannot keep is refused, not swallowed."""
-    client = faces
-    db_path = client.app.state.db_path
-    conn = connect.connect(db_path)
-    rng = np.random.default_rng(9)
-    one = rng.standard_normal(16).astype(np.float32)
-    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
-    for name in ("ana_1.png", "ana_2.png"):
-        derived.record_faces(
-            conn,
-            files[name],
-            "other/embedder",
-            "1",
-            "aa",
-            0.0,
-            [
-                {
-                    "region": derived.region(conn, 0.6, 0.6, 0.2, 0.2),
-                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
-                }
-            ],
-        )
-    conn.commit()
-    conn.close()
+# --- a second embedding space ----------------------------------------------
 
-    with client.websocket_connect("/ws/jobs") as feed:
+
+def test_the_cluster_job_runs_every_embedding_space(faces):
+    """The job mints addressable people for EVERY space's run, though
+    only one run is primary."""
+    _second_space(faces, ("ana_1.png", "ana_2.png"), seed=9, box=0.6)
+
+    with faces.websocket_connect("/ws/jobs") as feed:
         assert feed.receive_json(timeout=10)["type"] == "snapshot"
-        job = client.post("/jobs/cluster").json()
-        assert job["total"] == 2, "two embedding spaces, two items"
+        job = faces.post("/jobs/cluster").json()
         state = job["state"]
         while state not in ("done", "failed", "cancelled"):
             state = feed.receive_json(timeout=10)["state"]
-        assert state == "done"
 
-    conn = connect.connect(db_path)
-    minted = conn.execute(
-        "SELECT e.slug FROM derived_face_cluster c JOIN derived_face_run r ON r.id = c.run_id"
-        " JOIN person p ON p.id = c.person_id JOIN entity e ON e.id = p.id"
-        " WHERE r.is_primary = 0 AND p.name IS NULL"
-    ).fetchone()
-    conn.close()
-    assert minted is not None, "the second space's group has no addressable person"
+    assert job["total"] == 2, "two embedding spaces, two items"
+    assert state == "done"
+    conn = connect.connect(faces.app.state.db_path)
+    try:
+        minted = conn.execute(
+            "SELECT count(*) FROM derived_face_cluster c JOIN derived_face_run r ON r.id = c.run_id"
+            " JOIN person p ON p.id = c.person_id WHERE r.is_primary = 0 AND p.name IS NULL"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert minted == 1, "the second space's group has no addressable person"
 
-    answered = client.post(f"/p/{minted[0]}/name", json={"name": "Beata"})
+
+def test_naming_a_person_the_primary_pages_do_not_show_is_written_down(second_space_placeholder, faces):
+    """The application never accepts a name it cannot keep: the record
+    that keeps it is written even for a non-primary run's person."""
+    answered = faces.post(f"/p/{second_space_placeholder}/name", json={"name": "Beata"})
+
     assert answered.status_code < 300, answered.text
     assert answered.json()["asserted"] == 2, "an accepted name must be written down"
 
-    _drained_cluster_job(client)
-    conn = connect.connect(db_path)
-    still = conn.execute(
-        "SELECT count(*) FROM derived_face_cluster c JOIN person p ON p.id = c.person_id WHERE p.name = 'Beata'"
-    ).fetchone()[0]
-    conn.close()
-    assert still == 1, "the app's own recluster lost a name it accepted"
-    assert client.get("/p/beata").status_code == 200
 
-    # And the refusal: a person who owns no cluster and no assertion has
-    # nothing a name could be kept by.
-    conn = connect.connect(db_path)
+def test_a_name_in_a_second_space_survives_a_recluster(second_space_placeholder, faces):
+    """TEMPORAL SCENARIO: a name on a non-primary run's person is
+    re-applied by the application's own re-cluster."""
+    assert faces.post(f"/p/{second_space_placeholder}/name", json={"name": "Beata"}).status_code < 300
+
+    _drained_cluster_job(faces)
+
+    conn = connect.connect(faces.app.state.db_path)
+    try:
+        still = conn.execute(
+            "SELECT count(*) FROM derived_face_cluster c JOIN person p ON p.id = c.person_id WHERE p.name = 'Beata'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert still == 1, "the app's own recluster lost a name it accepted"
+    assert faces.get("/p/beata").status_code == 200
+
+
+def test_a_name_nothing_can_keep_is_refused(faces):
+    """A person who owns no cluster and no assertion has nothing a name
+    could be kept by: refused, not swallowed."""
+    conn = connect.connect(faces.app.state.db_path)
     loner = naming.claim(conn, "person", "Loner")
     conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Loner', 0)", (loner,))
     conn.commit()
     conn.close()
-    assert client.post("/p/loner/name", json={"name": "Loner R"}).status_code == 400
+
+    assert faces.post("/p/loner/name", json={"name": "Loner R"}).status_code == 400
 
 
 def test_renaming_asserts_only_what_the_human_addressed(faces):
@@ -568,28 +644,11 @@ def test_renaming_asserts_only_what_the_human_addressed(faces):
     against -- a feedback loop wearing a person's name."""
     client = faces
     db_path = client.app.state.db_path
-    conn = connect.connect(db_path)
-    rng = np.random.default_rng(11)
-    one = rng.standard_normal(16).astype(np.float32)
-    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
     # In THIS space ben clusters with the anas, same box coordinates --
     # the run disagreement the multi-run design exists to hold.
-    for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
-        derived.record_faces(
-            conn,
-            files[name],
-            "other/embedder",
-            "1",
-            "aa",
-            0.0,
-            [
-                {
-                    "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
-                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
-                }
-            ],
-        )
-    conn.commit()
+    _second_space(client, ("ana_1.png", "ana_2.png", "ben_1.png"), seed=11, box=0.1)
+    conn = connect.connect(db_path)
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
     conn.close()
 
     _drained_cluster_job(client)
@@ -657,51 +716,75 @@ def test_choose_primary_is_an_action_the_application_offers(faces):
     assert client.get("/clusterings").json()[0]["id"] == chosen["primary_run"]
 
 
-def test_every_new_address_survives_a_rename(faces):
-    """The addressing contract on every kind the entity layer added: a
-    retired slug 301s within its own prefix, and a retired slug on the
-    WRONG shelf lands home in ONE hop -- the canonical address is
-    computed once from entity, live slug and kind, never a chain."""
+@pytest.fixture
+def renamed_everything(faces) -> None:
+    """A file, a folder, an artifact and a collection, each renamed
+    through the Module so its first slug is retired."""
     from db import ingest as ingest_module
 
-    client = faces
-    db_path = client.app.state.db_path
-    conn = connect.connect(db_path)
-    found = naming.resolve(conn, "file", "ana-1")
-    assert found is not None
-    naming.rename(conn, found[0], "ana prime", 5.0)
-    found = naming.resolve(conn, "folder", "lib")
-    assert found is not None
-    naming.rename(conn, found[0], "library prime", 5.0)
+    assert faces.post("/albums", json={"name": "Trip"}).json()["slug"] == "trip"
+    conn = connect.connect(faces.app.state.db_path)
+    for kind, slug, new_name in (("file", "ana-1", "ana prime"), ("folder", "lib", "library prime")):
+        found = naming.resolve(conn, kind, slug)
+        assert found is not None
+        naming.rename(conn, found[0], new_name, 5.0)
     lora_id = ingest_module.artifact(conn, "lora", "detailTweaker", 5.0)
     naming.rename(conn, lora_id, "detail tweaker xl", 5.0)
-    conn.commit()
-    conn.close()
-
-    moved = client.get("/i/ana-1", follow_redirects=False)
-    assert (moved.status_code, moved.headers["location"]) == (301, "/i/ana-prime")
-    moved = client.get("/f/lib", follow_redirects=False)
-    assert (moved.status_code, moved.headers["location"]) == (301, "/f/library-prime")
-    moved = client.get("/l/lora-detailtweaker", follow_redirects=False)
-    assert (moved.status_code, moved.headers["location"]) == (301, "/l/detail-tweaker-xl")
-
-    first = client.get("/m/lora-detailtweaker", follow_redirects=False)
-    assert (first.status_code, first.headers["location"]) == (301, "/l/detail-tweaker-xl"), (
-        "wrong shelf + retired slug heals in ONE 301, never a chain"
-    )
-    second = client.get("/m/detail-tweaker-xl", follow_redirects=False)
-    assert (second.status_code, second.headers["location"]) == (301, "/l/detail-tweaker-xl")
-    assert client.get("/l/detail-tweaker-xl").json()["name"] == "detailTweaker"
-
-    assert client.post("/albums", json={"name": "Trip"}).json()["slug"] == "trip"
-    conn = connect.connect(db_path)
     found = naming.resolve(conn, "collection", "trip")
     assert found is not None
     naming.rename(conn, found[0], "Trip 2026", 6.0)
     conn.commit()
     conn.close()
-    moved = client.get("/t/trip", follow_redirects=False)
-    assert (moved.status_code, moved.headers["location"]) == (301, "/t/trip-2026")
+
+
+@pytest.mark.parametrize(
+    ("retired", "live"),
+    [
+        ("/i/ana-1", "/i/ana-prime"),
+        ("/f/lib", "/f/library-prime"),
+        ("/l/lora-detailtweaker", "/l/detail-tweaker-xl"),
+        ("/t/trip", "/t/trip-2026"),
+    ],
+    ids=["file", "folder", "artifact", "collection"],
+)
+def test_a_retired_slug_301s_within_its_own_prefix(renamed_everything, faces, retired, live):
+    """The addressing contract on every kind the entity layer added."""
+    moved = faces.get(retired, follow_redirects=False)
+
+    assert (moved.status_code, moved.headers["location"]) == (301, live)
+
+
+@pytest.mark.parametrize("wrong_shelf", ["/m/lora-detailtweaker", "/m/detail-tweaker-xl"], ids=["retired", "live"])
+def test_a_wrong_shelf_heals_in_one_hop(renamed_everything, faces, wrong_shelf):
+    """The canonical address is computed once from entity, live slug and
+    kind -- never a chain of 301s."""
+    moved = faces.get(wrong_shelf, follow_redirects=False)
+
+    assert (moved.status_code, moved.headers["location"]) == (301, "/l/detail-tweaker-xl")
+
+
+def test_the_live_address_answers_the_renamed_entity(renamed_everything, faces):
+    assert faces.get("/l/detail-tweaker-xl").json()["name"] == "detailTweaker"
+
+
+_ANA = np.array([1, 0, 0, 0], dtype=np.float32)
+_BEN = np.array([0, 1, 0, 0], dtype=np.float32)
+
+
+def _embedded_in_the_default_space(client) -> None:
+    """Image vectors for the three files in the default semantic space:
+    ana_1 is ana, ana_2 is nearly ana, ben_1 is ben."""
+    from db import similarity
+
+    conn = connect.connect(client.app.state.db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    derived.record_embedding(conn, files["ana_1.png"], spec, _ANA, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], spec, _ANA * 0.9 + _BEN * 0.1, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], spec, _BEN, "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
 
 
 def test_search_answers_by_meaning_from_the_joint_space(faces, monkeypatch):
@@ -710,30 +793,18 @@ def test_search_answers_by_meaning_from_the_joint_space(faces, monkeypatch):
     scores -- no tags or captions anywhere in the loop. The encoder is
     faked; what is under test is the whole path from setting to space to
     resident index to ranked answer."""
-    from db import similarity
     from vision import semantic
 
-    client = faces
-    db_path = client.app.state.db_path
-    conn = connect.connect(db_path)
-    conn.execute("UPDATE file SET content_sha256 = 'aa'")
-    files = dict(conn.execute("SELECT name, id FROM file"))
-    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
-    ana = np.array([1, 0, 0, 0], dtype=np.float32)
-    ben = np.array([0, 1, 0, 0], dtype=np.float32)
-    derived.record_embedding(conn, files["ana_1.png"], spec, ana, "aa", 0.0)
-    derived.record_embedding(conn, files["ana_2.png"], spec, ana * 0.9 + ben * 0.1, "aa", 0.0)
-    derived.record_embedding(conn, files["ben_1.png"], spec, ben, "aa", 0.0)
-    conn.commit()
-    connect.close(conn)
+    _embedded_in_the_default_space(faces)
 
     class FakeText:
         def encode_query(self, phrase):
             assert phrase == "a woman smiling"
-            return ana
+            return _ANA
 
     monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
-    answer = client.get("/search", params={"q": "a woman smiling", "k": 3})
+    answer = faces.get("/search", params={"q": "a woman smiling", "k": 3})
+
     assert answer.status_code == 200
     body = answer.json()
     assert body["participants"] == ["semantic.openclip.ViT-B-32.laion2b_s34b_b79k"]
@@ -747,14 +818,17 @@ def test_search_answers_by_meaning_from_the_joint_space(faces, monkeypatch):
     ranks = [row["sources"]["semantic.openclip.ViT-B-32.laion2b_s34b_b79k"]["rank"] for row in told]
     assert ranks == sorted(ranks)
 
-    # a bad model setting is a refused request, never a 500
-    conn = connect.connect(db_path)
+
+def test_a_bad_model_setting_is_a_refused_search_never_a_500(faces):
     from db import settings as settings_module
 
+    _embedded_in_the_default_space(faces)
+    conn = connect.connect(faces.app.state.db_path)
     settings_module.put(conn, "semantic_model", "broken")
     conn.commit()
     connect.close(conn)
-    assert client.get("/search", params={"q": "x"}).status_code == 400
+
+    assert faces.get("/search", params={"q": "x"}).status_code == 400
 
 
 def test_search_fuses_two_spaces_by_rank_never_by_raw_score(faces, monkeypatch):
