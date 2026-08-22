@@ -58,8 +58,10 @@ import sqlite3
 import threading
 
 #: The orders a query may ask for. "similarity" requires a phrase; the
-#: time sorts follow the file table's own indexes.
-SORTS = ("newest", "oldest", "similarity")
+#: time sorts follow the file table's own indexes; the moment sorts
+#: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
+#: timeline door opened -- with uninterpreted files last, never dropped.
+SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity")
 
 #: The file kinds a query may filter to -- the vocabulary of file.kind.
 KINDS = ("image", "animated_image", "video", "audio", "document")
@@ -569,8 +571,23 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     # this spelling (file_recent is (mtime DESC, id DESC), schema v6),
     # never the reverse: bending the tiebreak to fit an index once
     # silently changed real answer identities and ordinals.
-    order = "ASC" if bound.query.sort == "oldest" else "DESC"
     where, args, _ = _eligibility(bound)
+    if bound.query.sort in ("moment", "moment-newest"):
+        # The human moment, not the filesystem's: what a timeline door
+        # means by "this day" is the order its pictures come back in.
+        # LEFT JOIN keeps membership identical to the other sorts; a
+        # file with no interpretation sorts last and says so by position.
+        from .context import HUMAN_MOMENT, POLICY_VERSION
+
+        order = "ASC" if bound.query.sort == "moment" else "DESC"
+        sql = (
+            f"SELECT f.id FROM file f LEFT JOIN derived_media_context mc"
+            f" ON mc.file_id = f.id AND mc.policy_version = {int(POLICY_VERSION)}"
+            f" WHERE {' AND '.join(where)}"
+            f" ORDER BY {HUMAN_MOMENT} IS NULL, {HUMAN_MOMENT} {order}, f.id {order}"
+        )
+        return [row[0] for row in conn.execute(sql, args)]
+    order = "ASC" if bound.query.sort == "oldest" else "DESC"
     sql = f"SELECT f.id FROM file f WHERE {' AND '.join(where)} ORDER BY f.mtime {order}, f.id {order}"
     return [row[0] for row in conn.execute(sql, args)]
 

@@ -44,6 +44,13 @@
     <button type="button" class="ask-save" data-replace-smart
             title="make this view an existing smart collection's new rule">replace a rule</button>
   </header>
+  {% if chips %}
+  <div class="chips" data-chips>
+    {% for chip in chips %}
+    <span class="chip" data-chip="{{ chip.spelled }}">{{ chip.label }} <a href="/g{% if chip.remove_qs %}?{{ chip.remove_qs }}{% endif %}" aria-label="remove {{ chip.label }}" data-chip-remove>&times;</a></span>
+    {% endfor %}
+  </div>
+  {% endif %}
   <main class="stage">
     <div id="gallery-swap">
       {% include "_grid.html" %}

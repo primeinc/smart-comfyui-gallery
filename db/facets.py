@@ -97,6 +97,17 @@ REGISTRY: dict[str, _Spec] = {
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND " + HUMAN_MOMENT + " {op} ?)",
     ),
+    #: A session's door: the members of one CURRENT event -- a run proven
+    #: over this interpretation, so a stale hypothesis answers nothing.
+    #: The timeline links here instead of growing a membership engine.
+    "event.id": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM derived_event_file ef JOIN derived_event ev ON ev.id = ef.event_id"
+        " JOIN derived_event_run r ON r.id = ev.run_id WHERE ef.file_id = f.id AND ef.event_id {op} ?"
+        " AND r.context_generation = (SELECT generation FROM derived_context_state)"
+        " AND r.context_policy_version = {policy})",
+    ),
 }
 
 _INT = re.compile(r"-?\d+")

@@ -61,10 +61,34 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "favorite": "" if query.favorite is None else ("1" if query.favorite else "0"),
         "rating_min": query.rating_min or "",
         "facets": [facets_module.spell(held) for held in query.facets],
+        "chips": _chips(query),
         "qs": shape["qs"],
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
     }
+
+
+def _chips(query: resultset.GalleryQuery) -> list[dict]:
+    """Every facet the question carries, as a chip with the question
+    that remains when it is removed -- spelled by the ResultSet, so the
+    chip's link is the same canonical state the URL holds."""
+    import dataclasses
+
+    made = []
+    for held in query.facets:
+        rest = dataclasses.replace(query, facets=tuple(one for one in query.facets if one != held))
+        made.append(
+            {"spelled": facets_module.spell(held), "label": _chip_label(held), "remove_qs": resultset.canonical(rest)}
+        )
+    return made
+
+
+_OPS = {"eq": "", "gte": "from ", "lte": "to "}
+_KEYS = {"context.local_day": "day", "context.moment": "moment", "event.id": "session", "context.origin": "origin"}
+
+
+def _chip_label(held) -> str:
+    return f"{_KEYS.get(held.key, held.key)} {_OPS.get(held.op, held.op)}{held.value}"
 
 
 @get("/g", sync_to_thread=True)

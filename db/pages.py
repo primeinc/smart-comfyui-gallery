@@ -718,15 +718,77 @@ TIMELINE_EVENTS = (
 #: the bins they cover -- shown at the width the signal has. Each bin also says
 #: how many of its pictures spoke on the wall clock and how many only
 #: as instants -- the two domains the axis coalesces for the door.
+#: Bins are anchored: `CAST((m - anchor) / w) * w + anchor`, so a week
+#: starts on a Monday (the epoch's day 0 is a Thursday; 345,600s later
+#: is Monday 1970-01-05) and every other bin starts where the epoch
+#: does. Each bin also says how many of its pictures were captured,
+#: generated, both, or merely imported.
 TIMELINE_DENSITY = (
-    "SELECT CAST(" + HUMAN_MOMENT + " / ? AS INTEGER) * ? AS bin, count(*) AS pictures,"
-    " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant"
+    "SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, count(*) AS pictures,"
+    " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant,"
+    " sum(mc.origin = 'captured') AS captured, sum(mc.origin = 'generated') AS generated,"
+    " sum(mc.origin = 'mixed') AS mixed, sum(mc.origin = 'imported') AS imported"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     " WHERE mc.policy_version = ?"
     "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
     "   AND mc.time_precision IN (SELECT value FROM json_each(?))"
     " GROUP BY bin ORDER BY bin"
+)
+
+#: The first few pictures of each bin, in moment order -- the strip of
+#: thumbnails under the bars. Window-numbered so one statement serves
+#: every bin; asked only when the page draws few enough bins to show
+#: them (db/pages.py timeline_samples).
+TIMELINE_BIN_SAMPLES = (
+    "SELECT bin, slug FROM ("
+    "  SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, e.slug,"
+    "   row_number() OVER (PARTITION BY CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER)"
+    "     ORDER BY " + HUMAN_MOMENT + ", mc.file_id) AS rn"
+    "    FROM derived_media_context mc"
+    "    JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    "    JOIN entity e ON e.id = mc.file_id"
+    "   WHERE mc.policy_version = ?"
+    "     AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+    "     AND mc.time_precision IN (SELECT value FROM json_each(?)))"
+    " WHERE rn <= ? ORDER BY bin, rn"
+)
+
+#: A session's first members, by the grouper's own ordinal.
+SESSION_SAMPLES = (
+    "SELECT ef.event_id, e.slug FROM derived_event_file ef JOIN entity e ON e.id = ef.file_id"
+    " WHERE ef.event_id = ? AND ef.ordinal < ? ORDER BY ef.ordinal"
+)
+
+#: How much of the library the timeline can show, and how much of that
+#: the sources disputed -- the honesty line above the surface.
+TIMELINE_COVERAGE = (
+    "SELECT count(mc.file_id), count(*), sum(mc.time_conflicts IS NOT NULL) FROM file f"
+    " LEFT JOIN derived_media_context mc ON mc.file_id = f.id AND mc.policy_version = ?"
+    " WHERE f.missing_since IS NULL"
+)
+
+#: One picture's place on the human timeline, with its evidence: the
+#: media page's "when" block reads this and nothing else.
+MEDIA_WHEN = (
+    "SELECT local_at, instant_at, tz_offset_min, time_basis, time_certainty, time_supports,"
+    " time_conflicts, time_precision, origin, " + HUMAN_MOMENT + " AS moment,"
+    " strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') AS local_day"
+    "  FROM derived_media_context mc WHERE mc.file_id = ? AND mc.policy_version = ?"
+)
+
+#: The CURRENT sessions one picture belongs to, each with its story
+#: render when one was told of exactly that subject.
+MEDIA_SESSIONS = (
+    "SELECT ev.id, ev.kind, COALESCE(ev.local_start, ev.instant_start), COALESCE(ev.local_end, ev.instant_end),"
+    " (SELECT count(*) FROM derived_event_file x WHERE x.event_id = ev.id),"
+    " (SELECT sr.id FROM story_snapshot s JOIN story_plan sp ON sp.snapshot_id = s.id"
+    "   JOIN story_render sr ON sr.plan_id = sp.id WHERE s.member_hash = ev.member_hash"
+    "   AND s.event_kind = ev.kind AND s.grouper = r.grouper ORDER BY sr.id DESC LIMIT 1)"
+    "  FROM derived_event_file ef JOIN derived_event ev ON ev.id = ef.event_id"
+    "  JOIN derived_event_run r ON r.id = ev.run_id"
+    " WHERE ef.file_id = ? AND r.context_generation = (SELECT generation FROM derived_context_state)"
+    "   AND r.context_policy_version = ? ORDER BY ev.id"
 )
 
 #: The claims too coarse for the bin, as spans: each precision's
@@ -775,6 +837,13 @@ TIMELINE_SESSIONS = (
 
 #: Bin widths a zoom may ask for, by name. Anything else is refused.
 BINS = {"week": 604_800, "day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
+#: Where each bin's grid starts: Monday for the week, the epoch otherwise.
+MONDAY = 345_600
+_ANCHOR = {"week": MONDAY}
+#: Bins few enough to carry a thumbnail strip.
+SAMPLED_BINS_MOST = 120
+SAMPLES_PER_BIN = 3
+SAMPLES_PER_SESSION = 6
 #: Which precisions are fine enough for each bin: a claim enters a bin
 #: only when its own granule fits inside it.
 _FINE_ENOUGH = {
@@ -806,9 +875,51 @@ def timeline_density(conn, bin_name: str, lo: float, hi: float):
     if (hi - lo) / width > MAX_BINS:
         raise ValueError(f"{int((hi - lo) / width)} bins of a {bin_name} is more than {MAX_BINS}; narrow the range")
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
-    bins = conn.execute(TIMELINE_DENSITY, (width, width, context.POLICY_VERSION, lo, hi, fine)).fetchall()
+    anchor = _ANCHOR.get(bin_name, 0)
+    bins = conn.execute(
+        TIMELINE_DENSITY, (anchor, width, width, anchor, context.POLICY_VERSION, lo, hi, fine)
+    ).fetchall()
     spans = conn.execute(TIMELINE_SPANS, (context.POLICY_VERSION, lo, hi, fine)).fetchall()
     return width, bins, spans
+
+
+def timeline_samples(conn, bin_name: str, lo: float, hi: float, bins: int) -> dict[int, list[str]]:
+    """`{bin: [slug, ...]}` -- the first SAMPLES_PER_BIN pictures of each
+    bin, when the answer carries SAMPLED_BINS_MOST bins or fewer; an
+    empty map otherwise, and the page says so rather than drawing a
+    strip of 4,000 thumbnails."""
+    import json as _json
+
+    if bins > SAMPLED_BINS_MOST:
+        return {}
+    width = BINS[bin_name]
+    anchor = _ANCHOR.get(bin_name, 0)
+    fine = _json.dumps(_FINE_ENOUGH[bin_name])
+    held: dict[int, list[str]] = {}
+    for at, slug in conn.execute(
+        TIMELINE_BIN_SAMPLES,
+        (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, SAMPLES_PER_BIN),
+    ):
+        held.setdefault(int(at), []).append(slug)
+    return held
+
+
+def session_samples(conn, event_id: int) -> list[str]:
+    return [row[1] for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))]
+
+
+def timeline_coverage(conn) -> tuple[int, int, int]:
+    """(interpreted present files, present files, contested contexts)."""
+    row = conn.execute(TIMELINE_COVERAGE, (context.POLICY_VERSION,)).fetchone()
+    return (int(row[0] or 0), int(row[1] or 0), int(row[2] or 0))
+
+
+def media_when(conn, file_id: int):
+    return conn.execute(MEDIA_WHEN, (file_id, context.POLICY_VERSION)).fetchone()
+
+
+def media_sessions(conn, file_id: int):
+    return conn.execute(MEDIA_SESSIONS, (file_id, context.POLICY_VERSION)).fetchall()
 
 
 def timeline_sessions(conn, lo: float, hi: float):

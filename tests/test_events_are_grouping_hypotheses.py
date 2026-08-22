@@ -515,7 +515,9 @@ def test_the_timeline_is_a_view_with_a_door_into_the_gallery(grouped):
     assert told["local_start"] is not None, "the interval names its domain: the generator claimed a wall clock"
     assert told["instant_start"] is None, "and invents no instant nothing claimed"
     day = body["days"][-1]
-    assert day["qs"] == f"f=context.local_day%3Aeq%3A{day['day']}", "the door is the Facet Interface's own spelling"
+    assert day["qs"] == f"f=context.local_day%3Aeq%3A{day['day']}&sort=moment", (
+        "the door is the Facet Interface's own spelling, ordered by the moment it opened on"
+    )
     walked = grouped.get(f"/g?{day['qs']}")
     assert walked.status_code == 200
     assert f'data-total="{day["pictures"]}"' in walked.text, "the day door answers exactly the day's media"

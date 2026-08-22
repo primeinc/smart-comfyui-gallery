@@ -5,6 +5,12 @@
   <header class="bar">
     <nav class="crumbs">
       <span class="crumbs-here">Timeline</span>
+      <span class="crumbs-where" data-coverage data-complete="{{ 'yes' if coverage.complete else 'no' }}">
+        {{ "{:,}".format(coverage.interpreted) }} of {{ "{:,}".format(coverage.present) }} files interpreted
+        · policy v{{ coverage.policy_version }}
+        {% if coverage.contested %}· {{ "{:,}".format(coverage.contested) }} contested{% endif %}
+        {% if not coverage.complete %}· <a href="/operations">interpret the rest</a>{% endif %}
+      </span>
     </nav>
   </header>
   <main class="stage">
@@ -15,18 +21,22 @@
         <nav class="surface-zoom" data-zoom></nav>
         <span class="surface-legend"><i class="wall"></i> wall clock <i class="instant"></i> instant only <i class="span"></i> coarser claim</span>
       </div>
-      <svg class="surface-strip" data-strip viewBox="0 0 1000 140" preserveAspectRatio="none"></svg>
-      <ol class="surface-sessions" data-sessions></ol>
+      <svg class="surface-strip" data-strip viewBox="0 0 1000 140" preserveAspectRatio="none" role="list" aria-label="pictures per bin"></svg>
+      <div class="surface-samples" data-samples></div>
       <p class="surface-note" data-note></p>
+      <ol class="surface-sessions" data-sessions></ol>
     </section>
-    <ul class="album-tree">
-      {% for held in months %}
-      <li>
-        <span>{{ held.month }}</span>
-        <span class="album-count">{{ held.pictures }} pictures</span>
-      </li>
-      {% endfor %}
-    </ul>
+    <section class="detail-facts">
+      <h2>months</h2>
+      <ul class="album-tree">
+        {% for held in months %}
+        <li>
+          <a href="/g?{{ held.qs }}" data-timeline-month="{{ held.month }}">{{ held.month }}</a>
+          <span class="album-count">{{ held.pictures }} pictures</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
     {% if days %}
     <section class="detail-facts">
       <h2>days</h2>
@@ -45,7 +55,10 @@
       <h2>events</h2>
       <ul>
         {% for held in events %}
-        <li data-event-kind="{{ held.kind }}">{{ held.kind }} &middot; {{ held.pictures }} pictures</li>
+        <li data-event-kind="{{ held.kind }}">
+          <a href="/g?{{ held.qs }}" data-timeline-event="{{ held.id }}">{{ held.kind.replace("_", " ") }}</a>
+          <span class="album-count">{{ held.pictures }} pictures · <time data-epoch="{{ held.start }}" data-domain="{{ held.domain }}">{{ held.start }}</time></span>
+        </li>
         {% endfor %}
       </ul>
     </section>

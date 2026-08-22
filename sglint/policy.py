@@ -50,6 +50,11 @@ SQL_STRUCTURE: dict[str, str] = {
     # db/jobs.py: the one module-literal column list the active and recent
     # reads share, so both rows carry the same shape
     "_LISTED": "identifier",
+    # db/resultset.py moment sort: the human timeline's one axis
+    # (db/context.py HUMAN_MOMENT, a module literal) and the running
+    # interpretation policy, an int constant from code, never request data
+    "HUMAN_MOMENT": "clause",
+    "int(POLICY_VERSION)": "identifier",
 }
 
 # --- SG4xx: the web adapters own no semantics ------------------------------------------------

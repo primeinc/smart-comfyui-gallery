@@ -210,7 +210,7 @@ def test_the_surface_queries_declare_their_costs(surfaced):
         assert_no_growing_scan(
             conn,
             pages.TIMELINE_DENSITY,
-            (3600, 3600, context.POLICY_VERSION, 0.0, NOW * 2, '["second","subsecond"]'),
+            (0, 3600, 3600, 0, context.POLICY_VERSION, 0.0, NOW * 2, '["second","subsecond"]'),
             aggregate=True,
             counts=True,
         )

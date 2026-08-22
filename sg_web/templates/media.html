@@ -51,6 +51,25 @@
         {% if item.loras %}<dt>loras</dt><dd>{{ item.loras|join(", ") }}</dd>{% endif %}
       </dl>
       {% if item.prompt %}<p class="detail-prompt">{{ item.prompt }}</p>{% endif %}
+      <h2>when</h2>
+      {% if item.when %}
+      <dl data-when data-domain="{{ item.when.domain }}">
+        <dt>moment</dt><dd><time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time> <span class="when-evidence">{{ item.when.precision }} precision · {{ item.when.domain }} clock{% if item.when.tz_offset_min is not none %} · zone {{ item.when.tz_offset_min }} min{% endif %}</span></dd>
+        <dt>basis</dt><dd>{{ item.when.basis }} <span class="when-evidence">certainty {{ item.when.certainty }}{% if item.when.supports %} · supported by {{ item.when.supports | join(", ") }}{% endif %}</span></dd>
+        {% if item.when.conflicts %}<dt>disputed</dt><dd class="warn" data-when-conflicts>{{ item.when.conflicts | join("; ") }}</dd>{% endif %}
+        <dt>origin</dt><dd>{{ item.when.origin }}</dd>
+        <dt>doors</dt><dd><a href="/g?{{ item.when.day_qs }}" data-when-day>{{ item.when.local_day }}</a> · <a href="{{ item.when.timeline }}" data-when-timeline>on the timeline</a></dd>
+      </dl>
+      {% if item.when.sessions %}
+      <ul class="when-sessions" data-when-sessions>
+        {% for s in item.when.sessions %}
+        <li><a href="/g?{{ s.qs }}" data-when-session="{{ s.id }}">{{ s.kind.replace("_", " ") }}</a> · {{ s.pictures }} pictures{% if s.story %} · <a href="{{ s.story }}">story</a>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% else %}
+      <p class="detail-note" data-when-missing>not interpreted yet — <a href="/operations">run the context job</a>.</p>
+      {% endif %}
       {% if item.copies %}
       <h2>other bodies of this picture</h2>
       <ul>

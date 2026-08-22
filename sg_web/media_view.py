@@ -125,7 +125,60 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
         "next": found["next"] if found else None,
         "parents": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.parents(conn, file_id)],
         "children": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.children(conn, file_id)],
+        "when": _when(conn, file_id),
         "context": context,
+    }
+
+
+def _when(conn, file_id: int) -> dict | None:
+    """The picture's place on the human timeline, with the evidence
+    behind it (db/pages.py MEDIA_WHEN), and the current sessions it
+    belongs to -- each a door to the timeline, the day, the session's
+    pictures and its story. None while the file is uninterpreted."""
+    import json
+    import urllib.parse
+
+    from db import facets
+
+    row = pages.media_when(conn, file_id)
+    if row is None:
+        return None
+    local_at, instant_at, tz, basis, certainty, supports, conflicts, precision, origin, moment, local_day = row
+    day_qs = urllib.parse.urlencode(
+        [("f", facets.spell(facets.facet("context.local_day", "eq", local_day))), ("sort", "moment")]
+    )
+    return {
+        "moment": moment,
+        "local_at": local_at,
+        "instant_at": instant_at,
+        "tz_offset_min": tz,
+        "domain": "wall" if local_at is not None else "instant",
+        "precision": precision,
+        "basis": basis,
+        "certainty": certainty,
+        "supports": json.loads(supports) if supports else [],
+        "conflicts": json.loads(conflicts) if conflicts else [],
+        "origin": origin,
+        "local_day": local_day,
+        "day_qs": day_qs,
+        "timeline": "/timeline?"
+        + urllib.parse.urlencode(
+            {"bin": "hour", "start": int(moment // 86400) * 86400, "end": int(moment // 86400) * 86400 + 86400}
+        ),
+        "sessions": [
+            {
+                "id": event_id,
+                "kind": kind,
+                "start": start,
+                "end": end,
+                "pictures": pictures,
+                "qs": urllib.parse.urlencode(
+                    [("f", facets.spell(facets.facet("event.id", "eq", str(event_id)))), ("sort", "moment")]
+                ),
+                "story": f"/stories/renders/{render_id}" if render_id is not None else None,
+            }
+            for event_id, kind, start, end, pictures, render_id in pages.media_sessions(conn, file_id)
+        ],
     }
 
 
