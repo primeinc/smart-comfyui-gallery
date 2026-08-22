@@ -477,8 +477,7 @@ class IndexManager:
             if device is not None:
                 from faiss.contrib.exhaustive_search import range_search_gpu
 
-                faiss = self._faiss()
-                inner = faiss.downcast_index(space.index.index)
+                inner = space.index.index
                 with self._gpu_lock:
                     # `inner` as the CPU fallback rather than None: contrib
                     # runs a CPU range pass for queries whose k-th neighbour
@@ -502,12 +501,11 @@ class IndexManager:
         """The stored rows in index order, read back from the index itself
         -- the index IS the store, a parallel copy would drift on the
         first remove_ids compaction."""
-        faiss = self._faiss()
         if space.spec.representation == "binary":
-            packed = faiss.downcast_IndexBinary(space.index.index)
+            packed = space.index.index
             # uint8 rows of d/8 bytes: the codes, in index order
             return packed.reconstruct_n(0, int(packed.ntotal))
-        inner = faiss.downcast_index(space.index.index)
+        inner = space.index.index
         return inner.reconstruct_n(0, int(inner.ntotal))
 
     def _device_for(self, space: _Space):
@@ -532,7 +530,7 @@ class IndexManager:
                     resources.setDefaultNullStreamAllDevices()
                     resources.setTempMemory(64 * 1024 * 1024)
                     self._resources = resources
-                inner = faiss.downcast_index(space.index.index)
+                inner = space.index.index
                 space.gpu_clone = faiss.index_cpu_to_gpu(self._resources, 0, inner)
         except FALLIBLE:
             return None
