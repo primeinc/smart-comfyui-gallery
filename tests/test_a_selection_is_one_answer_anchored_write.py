@@ -14,21 +14,20 @@ answer identity exactly as single writes do.
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import sqlite3
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import authored, collections, connect, resultset
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 AS_MACHINE = {"accept": "application/json"}
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
+def _library(root: pathlib.Path) -> None:
     (root / "side").mkdir(parents=True)
     stamped = 1_700_000_000
     for i in range(5):
@@ -38,17 +37,23 @@ def _library(tmp) -> tuple:
     other = root / "side" / "aside_0.png"
     Image.new("RGB", (12, 12), (200, 90, 40)).save(other)
     os.utime(other, (stamped + 900, stamped + 900))
-    return tmp / "run", root
+
+
+def _prepare(stage: Stage) -> None:
+    client = stage.client
+    client.post("/albums", json={"name": "Keep"})
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_selection_is_one_answer_anchored_write", _library, _prepare) as stage:
+        yield stage
 
 
 @pytest.fixture
-def chosen(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        client.post("/albums", json={"name": "Keep"})
-        yield client
+def chosen(_stage):
+    _stage.restore()
+    return _stage.client
 
 
 def _grid(client, **params) -> tuple[str, dict[str, str]]:

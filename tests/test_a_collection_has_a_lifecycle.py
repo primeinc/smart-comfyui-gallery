@@ -15,41 +15,45 @@ different entity is the lie the whole addressing doctrine forbids.
 from __future__ import annotations
 
 import os
+import pathlib
 import sqlite3
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import collection_rules, collections, connect, resultset
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     stamped = 1_700_000_000
     for i in range(6):
         path = root / f"pic_{i}.png"
         Image.new("RGB", (12, 12), (40 + i * 30, 120, 90)).save(path)
         os.utime(path, (stamped + i * 60, stamped + i * 60))
-    return tmp / "run", root
+
+
+def _prepare(stage: Stage) -> None:
+    client = stage.client
+    for slug, stars in (("pic-1", 4), ("pic-3", 5), ("pic-4", 2)):
+        client.post(f"/i/{slug}/rating", json={"value": stars})
+    for slug in ("pic-1", "pic-2"):
+        client.post(f"/i/{slug}/favorite", json={"value": True})
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_collection_has_a_lifecycle", _library, _prepare) as stage:
+        yield stage
 
 
 @pytest.fixture
-def curated(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        for slug, stars in (("pic-1", 4), ("pic-3", 5), ("pic-4", 2)):
-            client.post(f"/i/{slug}/rating", json={"value": stars})
-        for slug in ("pic-1", "pic-2"):
-            client.post(f"/i/{slug}/favorite", json={"value": True})
-        yield client
+def curated(_stage):
+    _stage.restore()
+    return _stage.client
 
 
 def _view(client, slug: str) -> dict:

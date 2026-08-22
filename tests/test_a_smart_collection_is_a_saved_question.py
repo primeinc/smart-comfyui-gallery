@@ -10,40 +10,44 @@ and unavailable are never presented as an empty collection.
 from __future__ import annotations
 
 import os
+import pathlib
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import authored, collection_rules, collections, connect, naming, resultset
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     stamped = 1_700_000_000
     for i in range(6):
         path = root / f"pic_{i}.png"
         Image.new("RGB", (12, 12), (40 + i * 30, 90, 140)).save(path)
         os.utime(path, (stamped + i * 60, stamped + i * 60))
-    return tmp / "run", root
+
+
+def _prepare(stage: Stage) -> None:
+    client = stage.client
+    for slug, stars in (("pic-1", 4), ("pic-3", 5), ("pic-4", 2)):
+        client.post(f"/i/{slug}/rating", json={"value": stars})
+    for slug in ("pic-1", "pic-2"):
+        client.post(f"/i/{slug}/favorite", json={"value": True})
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_smart_collection_is_a_saved_question", _library, _prepare) as stage:
+        yield stage
 
 
 @pytest.fixture
-def saved(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        for slug, stars in (("pic-1", 4), ("pic-3", 5), ("pic-4", 2)):
-            client.post(f"/i/{slug}/rating", json={"value": stars})
-        for slug in ("pic-1", "pic-2"):
-            client.post(f"/i/{slug}/favorite", json={"value": True})
-        yield client
+def saved(_stage):
+    _stage.restore()
+    return _stage.client
 
 
 def _slugs(client, **params) -> list[str]:

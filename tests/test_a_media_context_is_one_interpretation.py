@@ -14,27 +14,25 @@ and a faceted view refuses to save until a rule version can carry it.
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import sqlite3
 import typing
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, connect, context, ingest, resultset
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 HOUR = 3600.0
 
 
-def _library(tmp) -> tuple:
+def _library(root: pathlib.Path) -> None:
     """Four generated stills and three plain files that will carry
     camera claims (with offset, without offset, and none at all)."""
-    root = tmp / "lib"
-    root.mkdir()
     for i in range(4):
         info = PngInfo()
         info.add_text(
@@ -58,7 +56,6 @@ def _library(tmp) -> tuple:
         path = root / name
         Image.new("RGB", (12, 12), (200, 90, 140)).save(path)
         os.utime(path, (at, at))
-    return tmp / "run", root
 
 
 def _instant(wall: float) -> float:
@@ -69,54 +66,60 @@ def _instant(wall: float) -> float:
     return naive.astimezone().timestamp()
 
 
+def _prepare(stage: Stage) -> None:
+    client, root = stage.client, stage.root
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            if name.startswith("gen_"):
+                ingest.one(conn, file_id, root / name, NOW)
+        # Camera CLAIMS, as source facts: a wall clock with its
+        # offset (a knowable instant), a wall clock without one
+        # (honest uncertainty), and no claim at all.
+        conn.execute(
+            "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, gps_lat, gps_lon, parsed_at)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?)",
+            (names["photo_a.png"], NOW + 12 * HOUR, -600, 1600, 21.27, -157.82, NOW),
+        )
+        # ...and photo_a was ALSO run through a generator: coexistence
+        # is fact, and precedence must not erase either claim.
+        conn.execute(
+            "INSERT INTO generation(file_id, tool, detection, parser, parsed_at)"
+            " VALUES(?, 'test', 'marker', 'test', ?)",
+            (names["photo_a.png"], NOW),
+        )
+        conn.execute(
+            "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, parsed_at) VALUES(?, ?, NULL, 100, ?)",
+            (names["photo_b.png"], NOW + 13 * HOUR, NOW),
+        )
+        # The GENERATOR's embedded claims: a real date on gen_0 (and a
+        # decoy on photo_a, which the camera outranks), garbage on
+        # gen_1 -- a claim that does not parse is no claim.
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'date', ?)",
+            [
+                (names["gen_0.png"], "2023-06-01"),
+                (names["gen_1.png"], "last tuesday"),
+                (names["photo_a.png"], "2023-06-01"),
+            ],
+        )
+        context.rebuild(conn, NOW + 24 * HOUR)
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_media_context_is_one_interpretation", _library, _prepare) as stage:
+        yield stage
+
+
 @pytest.fixture
-def interpreted(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                if name.startswith("gen_"):
-                    ingest.one(conn, file_id, root / name, NOW)
-            # Camera CLAIMS, as source facts: a wall clock with its
-            # offset (a knowable instant), a wall clock without one
-            # (honest uncertainty), and no claim at all.
-            conn.execute(
-                "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, gps_lat, gps_lon, parsed_at)"
-                " VALUES(?, ?, ?, ?, ?, ?, ?)",
-                (names["photo_a.png"], NOW + 12 * HOUR, -600, 1600, 21.27, -157.82, NOW),
-            )
-            # ...and photo_a was ALSO run through a generator: coexistence
-            # is fact, and precedence must not erase either claim.
-            conn.execute(
-                "INSERT INTO generation(file_id, tool, detection, parser, parsed_at)"
-                " VALUES(?, 'test', 'marker', 'test', ?)",
-                (names["photo_a.png"], NOW),
-            )
-            conn.execute(
-                "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, parsed_at) VALUES(?, ?, NULL, 100, ?)",
-                (names["photo_b.png"], NOW + 13 * HOUR, NOW),
-            )
-            # The GENERATOR's embedded claims: a real date on gen_0 (and a
-            # decoy on photo_a, which the camera outranks), garbage on
-            # gen_1 -- a claim that does not parse is no claim.
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
-                " VALUES(?, 'generation', 'date', ?)",
-                [
-                    (names["gen_0.png"], "2023-06-01"),
-                    (names["gen_1.png"], "last tuesday"),
-                    (names["photo_a.png"], "2023-06-01"),
-                ],
-            )
-            context.rebuild(conn, NOW + 24 * HOUR)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        yield client, root
+def interpreted(_stage):
+    _stage.restore()
+    return _stage.client, _stage.root
 
 
 def _raw(client) -> sqlite3.Connection:

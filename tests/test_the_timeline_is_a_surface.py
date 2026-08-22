@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import datetime
 import os
+import pathlib
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, context, ingest, pages, runner, stories
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 HOUR = 3600.0
@@ -53,14 +53,11 @@ def _plain(path, at: float) -> None:
     os.utime(path, (at, at))
 
 
-@pytest.fixture
-def surfaced(tmp_path):
+def _library(root: pathlib.Path) -> None:
     """Eight files: five screenshots named to the second across one
     afternoon (three inside 14:00-14:15, two at 16:30), one scan in a
     dated folder (a day claim), two claimless downloads an hour apart
     (instants)."""
-    root = tmp_path / "lib"
-    root.mkdir()
     for i, minute in enumerate((0, 5, 12, 150, 152)):
         h, m = divmod(minute, 60)
         _plain(
@@ -69,22 +66,34 @@ def surfaced(tmp_path):
     _plain(root / "2023-06-10" / "scan-001.png", _instant(JUNE_10 + 9 * HOUR))
     _plain(root / "download-a.png", NOW)
     _plain(root / "download-b.png", NOW + HOUR)
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            chains = context._folder_names(conn)
-            for name, file_id, folder_id in conn.execute("SELECT f.name, f.id, f.folder_id FROM file f").fetchall():
-                sub = root.joinpath(*chains[folder_id][1:]) if len(chains[folder_id]) > 1 else root
-                ingest.one(conn, file_id, sub / name, NOW)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        yield client
+
+
+def _interpreted(stage: Stage) -> None:
+    client, root = stage.client, stage.root
+    conn = stage.conn()
+    try:
+        chains = context._folder_names(conn)
+        for name, file_id, folder_id in conn.execute("SELECT f.name, f.id, f.folder_id FROM file f").fetchall():
+            sub = root.joinpath(*chains[folder_id][1:]) if len(chains[folder_id]) > 1 else root
+            ingest.one(conn, file_id, sub / name, NOW)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "timeline", _library, _interpreted) as stage:
+        yield stage
+
+
+@pytest.fixture
+def surfaced(_stage):
+    _stage.restore()
+    return _stage.client
 
 
 def test_density_counts_each_bin_from_the_one_interpretation_and_spans_the_coarse(surfaced):

@@ -13,23 +13,21 @@ answer -- never today's helper mechanics.
 from __future__ import annotations
 
 import os
+import pathlib
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, collections, connect, ingest, naming, resultset
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 
 
-def _library(tmp) -> tuple:
+def _library(root: pathlib.Path) -> None:
     """Six recipe-carrying stills: four on checkpoint alpha (two with the
     filmGrain LoRA), two on beta."""
-    root = tmp / "lib"
-    root.mkdir()
     for i in range(6):
         model = "alpha" if i < 4 else "beta"
         lora = "<lora:filmGrain:0.4> " if i in (0, 1) else ""
@@ -43,43 +41,49 @@ def _library(tmp) -> tuple:
         path = root / f"pic_{i}.png"
         Image.new("RGB", (12, 12), (30 + i * 30, 80, 120)).save(path, pnginfo=info)
         os.utime(path, (NOW + i * 60, NOW + i * 60))
-    return tmp / "run", root
+
+
+def _prepare(stage: Stage) -> None:
+    client, root = stage.client, stage.root
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        for file_id, name in conn.execute("SELECT id, name FROM file ORDER BY id").fetchall():
+            ingest.one(conn, file_id, root / name, NOW)
+        # A workflow artifact, attached the way workflows attach:
+        # through generation, never file_artifact.
+        flow = ingest.artifact(conn, "workflow", "tinUpscale", NOW)
+        conn.execute(
+            "UPDATE generation SET workflow_id = ? WHERE file_id IN"
+            " (SELECT id FROM file WHERE name IN ('pic_2.png', 'pic_3.png'))",
+            (flow,),
+        )
+        # The same LoRA stacked TWICE in one file: a second ordinal,
+        # exactly what the schema permits and counts must not double.
+        lora_id = conn.execute("SELECT id FROM artifact WHERE kind = 'lora'").fetchone()[0]
+        first = conn.execute(
+            "SELECT file_id FROM file_artifact WHERE role = 'lora' ORDER BY file_id LIMIT 1"
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO file_artifact(file_id, ordinal, artifact_id, role) VALUES(?, 1, ?, 'lora')",
+            (first, lora_id),
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    for slug, stars in (("pic-1", 5), ("pic-3", 4), ("pic-4", 2)):
+        client.post(f"/i/{slug}/rating", json={"value": stars})
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_an_artifact_is_a_resultset_facet", _library, _prepare) as stage:
+        yield stage
 
 
 @pytest.fixture
-def recipes(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            for file_id, name in conn.execute("SELECT id, name FROM file ORDER BY id").fetchall():
-                ingest.one(conn, file_id, root / name, NOW)
-            # A workflow artifact, attached the way workflows attach:
-            # through generation, never file_artifact.
-            flow = ingest.artifact(conn, "workflow", "tinUpscale", NOW)
-            conn.execute(
-                "UPDATE generation SET workflow_id = ? WHERE file_id IN"
-                " (SELECT id FROM file WHERE name IN ('pic_2.png', 'pic_3.png'))",
-                (flow,),
-            )
-            # The same LoRA stacked TWICE in one file: a second ordinal,
-            # exactly what the schema permits and counts must not double.
-            lora_id = conn.execute("SELECT id FROM artifact WHERE kind = 'lora'").fetchone()[0]
-            first = conn.execute(
-                "SELECT file_id FROM file_artifact WHERE role = 'lora' ORDER BY file_id LIMIT 1"
-            ).fetchone()[0]
-            conn.execute(
-                "INSERT INTO file_artifact(file_id, ordinal, artifact_id, role) VALUES(?, 1, ?, 'lora')",
-                (first, lora_id),
-            )
-            conn.commit()
-        finally:
-            connect.close(conn)
-        for slug, stars in (("pic-1", 5), ("pic-3", 4), ("pic-4", 2)):
-            client.post(f"/i/{slug}/rating", json={"value": stars})
-        yield client
+def recipes(_stage):
+    _stage.restore()
+    return _stage.client
 
 
 def _asked(client, **params) -> dict:

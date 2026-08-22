@@ -19,12 +19,11 @@ import datetime
 import pathlib
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, events, ingest, pages, runner
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 HOUR = 3600.0
@@ -169,9 +168,7 @@ def test_groupers_consume_the_metadata_interface_not_source_tables():
 # --- currentness, persistence and the jobs -----------------------------------
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     for i in range(4):
         info = PngInfo()
         info.add_text(
@@ -180,31 +177,35 @@ def _library(tmp) -> tuple:
             f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: {i}, Size: 512x512, Model: alpha",
         )
         Image.new("RGB", (12, 12), (40 + i * 30, 90, 140)).save(root / f"gen_{i}.png", pnginfo=info)
-    return tmp / "run", root
+
+
+def _claims(stage: Stage) -> None:
+    conn = stage.conn()
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            ingest.one(conn, file_id, stage.root / name, NOW)
+        # The GENERATOR's own second-resolution claims are the source
+        # facts grouping is a function of: three tight, one far away.
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'date', ?)",
+            [(names[f"gen_{i}.png"], _spelled(NOW + i * 3 * MIN if i < 3 else NOW + 8 * HOUR)) for i in range(4)],
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _grouped(tmp_path_factory):
+    with staged(tmp_path_factory, "events", _library, _claims) as stage:
+        yield stage
 
 
 @pytest.fixture
-def grouped(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                ingest.one(conn, file_id, root / name, NOW)
-            # The GENERATOR's own second-resolution claims are the source
-            # facts grouping is a function of: three tight, one far away.
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
-                " VALUES(?, 'generation', 'date', ?)",
-                [(names[f"gen_{i}.png"], _spelled(NOW + i * 3 * MIN if i < 3 else NOW + 8 * HOUR)) for i in range(4)],
-            )
-            conn.commit()
-        finally:
-            connect.close(conn)
-        yield client
+def grouped(_grouped):
+    _grouped.restore()
+    return _grouped.client
 
 
 def _drain(client) -> None:

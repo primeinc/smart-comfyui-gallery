@@ -13,17 +13,17 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import pathlib
 import sys
 import types
 
 import numpy as np
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, evolution, ingest, planning, prompts, resultset, runner, settings, stories
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
 
@@ -136,52 +136,64 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
-@pytest.fixture
-def planned(tmp_path, monkeypatch):
+def _library(root: pathlib.Path) -> None:
     """Three Swarm stills in one sequenced session (two lighthouses, then
-    a helmet with a LoRA), embedded, frozen and planned."""
-    sys.modules["tests._fake_semantic_evolution"] = _fake
-    monkeypatch.setitem(semantic.PROVIDERS, "fake", "tests._fake_semantic_evolution")
-    _ENCODERS.clear()
-    root = tmp_path / "lib"
-    root.mkdir()
+    a helmet with a LoRA)."""
     _swarm(root / "gen_0.png", PROMPTS[0], original=WRITTEN, seed=1)
     _swarm(root / "gen_1.png", PROMPTS[1], original=WRITTEN, seed=2)
     _swarm(root / "gen_2.png", PROMPTS[2], seed=3, lora="detail")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
-                " VALUES(?, 'generation', 'date', ?)",
-                [(names[f"gen_{i}.png"], _spelled(NOW + i * 4 * MIN)) for i in range(3)],
-            )
-            settings.put(conn, "semantic_model", "fake:toy/v1")
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/embed")
-        client.post("/jobs/embed_prompts")
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
-            snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
-            planner = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity())
-            made = planning.plan_snapshot(conn, snap.id, planner, NOW + 31 * HOUR)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        _ENCODERS[("toy", "v1")].calls.clear()
-        yield client, root, names, snap, made
+
+
+def _planned(stage: Stage) -> None:
+    """Embedded, frozen and planned -- once."""
+    client, root = stage.client, stage.root
+    conn = stage.conn()
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'date', ?)",
+            [(names[f"gen_{i}.png"], _spelled(NOW + i * 4 * MIN)) for i in range(3)],
+        )
+        settings.put(conn, "semantic_model", "fake:toy/v1")
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/embed")
+    client.post("/jobs/embed_prompts")
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+    conn = stage.conn()
+    try:
+        event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
+        snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
+        planner = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity())
+        made = planning.plan_snapshot(conn, snap.id, planner, NOW + 31 * HOUR)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    stage.held.update(names=names, snap=snap, made=made)
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    sys.modules["tests._fake_semantic_evolution"] = _fake
+    with pytest.MonkeyPatch.context() as held:
+        held.setitem(semantic.PROVIDERS, "fake", "tests._fake_semantic_evolution")
+        _ENCODERS.clear()
+        with staged(tmp_path_factory, "evolution", _library, _planned) as stage:
+            yield stage
     _ENCODERS.clear()
+
+
+@pytest.fixture
+def planned(_stage, monkeypatch):
+    monkeypatch.setitem(semantic.PROVIDERS, "fake", "tests._fake_semantic_evolution")
+    _stage.restore()
+    _ENCODERS[("toy", "v1")].calls.clear()
+    return _stage.client, _stage.root, _stage.held["names"], _stage.held["snap"], _stage.held["made"]
 
 
 def test_the_view_is_the_plans_structure_measured_without_writing_or_loading(planned):

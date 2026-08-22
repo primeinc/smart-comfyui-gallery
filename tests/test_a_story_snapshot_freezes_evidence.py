@@ -15,15 +15,15 @@ from __future__ import annotations
 
 import datetime
 import os
+import pathlib
 import sqlite3
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, events, ingest, runner, scan, stories
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 HOUR = 3600.0
@@ -34,9 +34,7 @@ def _spelled(moment: float) -> str:
     return datetime.datetime.fromtimestamp(moment, datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     for i in range(3):
         info = PngInfo()
         info.add_text(
@@ -45,7 +43,6 @@ def _library(tmp) -> tuple:
             f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: {100 + i}, Size: 512x512, Model: alpha",
         )
         Image.new("RGB", (12, 12), (40 + i * 30, 90, 140)).save(root / f"gen_{i}.png", pnginfo=info)
-    return tmp / "run", root
 
 
 def _drain(client) -> None:
@@ -58,33 +55,40 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
-@pytest.fixture
-def storied(tmp_path):
+def _prepare(stage: Stage) -> None:
     """Three generated stills forming ONE current generation session,
     with the generator's own parameter bag present to be frozen."""
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', ?, ?)",
-                [
-                    *[(names[f"gen_{i}.png"], "date", _spelled(NOW + i * 4 * MIN)) for i in range(3)],
-                    *[(names[f"gen_{i}.png"], "original_prompt", "a __material__ lighthouse") for i in range(3)],
-                ],
-            )
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        yield client, root
+    client, root = stage.client, stage.root
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', ?, ?)",
+            [
+                *[(names[f"gen_{i}.png"], "date", _spelled(NOW + i * 4 * MIN)) for i in range(3)],
+                *[(names[f"gen_{i}.png"], "original_prompt", "a __material__ lighthouse") for i in range(3)],
+            ],
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_story_snapshot_freezes_evidence", _library, _prepare) as stage:
+        yield stage
+
+
+@pytest.fixture
+def storied(_stage):
+    _stage.restore()
+    return _stage.client, _stage.root
 
 
 def _event(conn) -> int:

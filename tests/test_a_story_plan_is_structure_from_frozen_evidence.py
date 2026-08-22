@@ -22,16 +22,16 @@ import copy
 import datetime
 import json
 import math
+import pathlib
 import sqlite3
 import typing
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, ingest, planning, runner, stories
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 HOUR = 3600.0
@@ -662,9 +662,7 @@ def test_the_planner_owns_no_connection_no_sql_and_no_model():
 # --- persistence, the service and the job, against a real frozen snapshot ----
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     for i, text in enumerate(LIGHTHOUSE[:3]):
         info = PngInfo()
         info.add_text(
@@ -673,7 +671,6 @@ def _library(tmp) -> tuple:
             f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: {100 + i}, Size: 512x512, Model: alpha",
         )
         Image.new("RGB", (12, 12), (40 + i * 30, 90, 140)).save(root / f"gen_{i}.png", pnginfo=info)
-    return tmp / "run", root
 
 
 def _drain(client) -> None:
@@ -686,36 +683,43 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+def _prepare(stage: Stage) -> None:
+    client, root = stage.client, stage.root
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'date', ?)",
+            [(names[f"gen_{i}.png"], _spelled(NOW + i * 4 * MIN)) for i in range(3)],
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
+        made = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    stage.held["made"] = made
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_story_plan_is_structure_from_frozen_evidence", _library, _prepare) as stage:
+        yield stage
+
+
 @pytest.fixture
-def frozen(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
-                " VALUES(?, 'generation', 'date', ?)",
-                [(names[f"gen_{i}.png"], _spelled(NOW + i * 4 * MIN)) for i in range(3)],
-            )
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
-            made = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        yield client, made
+def frozen(_stage):
+    _stage.restore()
+    return _stage.client, _stage.held["made"]
 
 
 def test_a_persisted_plan_is_immune_to_everything_that_happens_after_the_snapshot(frozen):

@@ -67,9 +67,41 @@ _NOT_AN_ALIAS = {
 }
 
 
+@pytest.fixture(scope="module")
+def _master(tmp_path_factory):
+    """A small library built the way the application builds one -- once.
+    Tests read a per-test copy (`library`), restored through the backup
+    API in milliseconds; a test that touched the media on disk leaves a
+    world that cannot be restored, and the next one rebuilds it."""
+    held: dict = {}
+
+    def build() -> None:
+        held.update(_build(tmp_path_factory.mktemp("pages")))
+        held["listing"] = _listing(held["root"])
+
+    build()
+    held["rebuild"] = build
+    yield held
+    held["conn"].close()
+
+
+def _listing(root: pathlib.Path) -> dict:
+    return {p.relative_to(root): (p.stat().st_size, p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
+
+
 @pytest.fixture
-def library(tmp_path):
-    """A small library built the way the application builds one."""
+def library(_master):
+    if _listing(_master["root"]) != _master["listing"]:
+        _master["conn"].close()
+        _master["rebuild"]()
+    copy = sqlite3.connect(":memory:")
+    _master["conn"].backup(copy)
+    copy.execute("PRAGMA foreign_keys=ON")
+    yield {**{k: v for k, v in _master.items() if k not in ("conn", "listing", "rebuild")}, "conn": copy}
+    copy.close()
+
+
+def _build(tmp_path: pathlib.Path) -> dict:
     root = tmp_path / "pics"
     (root / "portraits").mkdir(parents=True)
     (root / "landscape").mkdir()

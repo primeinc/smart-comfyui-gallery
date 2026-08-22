@@ -19,13 +19,13 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import pathlib
 import sqlite3
 import sys
 import types
 
 import numpy as np
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
@@ -42,7 +42,7 @@ from db import (
     similarity,
     stories,
 )
-from sg_web.app import build_app
+from tests.staging import Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
 
@@ -163,14 +163,11 @@ def _swarm(path, prompt, *, original=None, negative="blur", seed=1):
     Image.new("RGB", (12, 12), (40 + seed * 20, 90, 140)).save(path, pnginfo=info)
 
 
-def _library(tmp):
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     for i, text in enumerate(RAN[:2]):
         _swarm(root / f"gen_{i}.png", text, original=WRITTEN, seed=i + 1)
     _swarm(root / "gen_2.png", TAGGED, original=WRITTEN, seed=3)
     _swarm(root / "plain.png", "a plain lighthouse", negative="", seed=9)  # no original, no negative
-    return tmp / "run", root
 
 
 def _drain(client) -> None:
@@ -183,27 +180,34 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+def _prepare(stage: Stage) -> None:
+    client, root = stage.client, stage.root
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'date', ?)",
+            [(file_id, _spelled(NOW + i * 4 * MIN)) for i, file_id in enumerate(names.values())],
+        )
+        settings.put(conn, "semantic_model", "fake:toy/v1")
+        conn.commit()
+    finally:
+        connect.close(conn)
+    stage.held["names"] = names
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_prompt_is_a_reusable_semantic_substrate", _library, _prepare) as stage:
+        yield stage
+
+
 @pytest.fixture
-def library(tmp_path, fake_provider):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
-                " VALUES(?, 'generation', 'date', ?)",
-                [(file_id, _spelled(NOW + i * 4 * MIN)) for i, file_id in enumerate(names.values())],
-            )
-            settings.put(conn, "semantic_model", "fake:toy/v1")
-            conn.commit()
-        finally:
-            connect.close(conn)
-        yield client, root, names
+def library(_stage, fake_provider):
+    _stage.restore()
+    return _stage.client, _stage.root, _stage.held["names"]
 
 
 def _roles(conn, file_id):

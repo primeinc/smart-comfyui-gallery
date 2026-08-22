@@ -19,18 +19,18 @@ from __future__ import annotations
 import copy
 import datetime
 import json
+import pathlib
 import sqlite3
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 import story_renderers
 from db import connect, ingest, planning, rendering, runner, stories
-from sg_web.app import build_app
 from story_renderers import claims as wording
 from story_renderers import formatting
+from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
 HOUR = 3600.0
@@ -559,9 +559,7 @@ def test_identities_same_request_one_document_policy_coexists(monkeypatch):
 # --- persistence and the page, against a real frozen world ------------------
 
 
-def _library(tmp) -> tuple:
-    root = tmp / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     # the hero is the phase's medoid (ties to the earliest), so the
     # escaping probe rides the FIRST name; NTFS forbids < >, & and ' probe
     names = ["gen_0 & 'friends'.png", "gen_1.png", "gen_2.png"]
@@ -573,7 +571,6 @@ def _library(tmp) -> tuple:
             f"Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: {100 + i}, Size: 512x512, Model: alpha",
         )
         Image.new("RGB", (12, 12), (40 + i * 30, 90, 140)).save(root / name, pnginfo=info)
-    return tmp / "run", root
 
 
 def _drain(client) -> None:
@@ -586,38 +583,46 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+def _prepare(stage: Stage) -> None:
+    client, root = stage.client, stage.root
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        names = dict(conn.execute("SELECT name, id FROM file").fetchall())
+        for name, file_id in names.items():
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.executemany(
+            "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text) VALUES(?, 'generation', 'date', ?)",
+            [(file_id, _spelled(NOW + i * 4 * MIN)) for i, file_id in enumerate(names.values())],
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
+        snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
+        planner = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity())
+        made = planning.plan_snapshot(conn, snap.id, planner, NOW + 31 * HOUR)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    stage.held["snap"] = snap
+    stage.held["made"] = made
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_story_render_words_only_what_the_plan_claims", _library, _prepare) as stage:
+        yield stage
+
+
 @pytest.fixture
-def planned(tmp_path):
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            names = dict(conn.execute("SELECT name, id FROM file").fetchall())
-            for name, file_id in names.items():
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.executemany(
-                "INSERT OR REPLACE INTO file_param(file_id, source, key, value_text)"
-                " VALUES(?, 'generation', 'date', ?)",
-                [(file_id, _spelled(NOW + i * 4 * MIN)) for i, file_id in enumerate(names.values())],
-            )
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
-            snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
-            planner = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity())
-            made = planning.plan_snapshot(conn, snap.id, planner, NOW + 31 * HOUR)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        yield client, snap, made
+def planned(_stage):
+    _stage.restore()
+    return _stage.client, _stage.held["snap"], _stage.held["made"]
 
 
 def test_a_persisted_render_is_immutable_reused_and_reverified(planned):

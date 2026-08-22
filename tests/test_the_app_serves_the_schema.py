@@ -10,31 +10,25 @@ the schema was not an application schema.
 
 from __future__ import annotations
 
+import pathlib
+
 import numpy as np
 import pytest
 from litestar.testing import TestClient
 
 from db import authored, collection_rules, collections, connect, derived, library, naming, scan
 from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 
-@pytest.fixture
-def served(tmp_path):
-    """A real library on disk, clustered, behind a running application."""
-    root = tmp_path / "lib"
-    root.mkdir()
+def _library(root: pathlib.Path) -> None:
     for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
         (root / name).write_bytes(b"\x89PNG-of-" + name.encode())
 
-    burrow = tmp_path / "run"
-    burrow.mkdir()
-    db_path = burrow / "gallery.db"
-    conn = connect.connect(db_path)
-    conn.executescript(connect.schema_sql())
-    conn.execute("PRAGMA foreign_keys=ON")
-    root_id = library.add_root(conn, str(root), "library", 0.0)
-    scan.scan(conn, root_id, str(root), 0.0)
 
+def _clustered(stage: Stage) -> None:
+    """Faces recorded and clustered, Ana named -- once per module."""
+    conn = stage.conn()
     files = {name: file_id for file_id, name in conn.execute("SELECT id, name FROM file")}
     rng = np.random.default_rng(5)
     ana = rng.standard_normal(32).astype(np.float32)
@@ -64,10 +58,21 @@ def served(tmp_path):
     for name in ("ana_1.png", "ana_2.png"):
         derived.attribute(conn, files[name], person_id, run_id, "test/embedder", "1")
     conn.commit()
-    conn.close()
+    connect.close(conn)
+    stage.held["person"] = person_id
 
-    with TestClient(app=build_app(str(burrow))) as client:
-        yield client, person_id, root
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "served", _library, _clustered, worker=True) as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_stage):
+    """A real library on disk, clustered, behind a running application."""
+    _stage.restore()
+    return _stage.client, _stage.held["person"], _stage.root
 
 
 def test_the_people_page_counts_pictures_not_detections(served):

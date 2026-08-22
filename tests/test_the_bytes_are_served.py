@@ -8,6 +8,8 @@ avatar is the face their cluster actually points at.
 
 from __future__ import annotations
 
+import pathlib
+
 import numpy as np
 import pytest
 from litestar.testing import TestClient
@@ -15,6 +17,7 @@ from PIL import Image
 
 from db import connect, derived, ingest, library, naming, scan
 from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 
 def _library(tmp_path, write_media):
@@ -49,33 +52,48 @@ def _slug_of(conn, name: str) -> str:
     ]
 
 
-@pytest.fixture
-def served(tmp_path):
-    def write(root):
-        Image.new("RGB", (900, 400), (200, 30, 30)).save(root / "wide.png")
-        turned = Image.new("RGB", (600, 400), (30, 30, 200))
-        tag = Image.Exif()
-        tag[274] = 6  # stored on its side; upright is 400x600
-        turned.save(root / "turned.jpg", exif=tag)
-        (root / "voice.wav").write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
-        import av
+def _media(root: pathlib.Path) -> None:
+    Image.new("RGB", (900, 400), (200, 30, 30)).save(root / "wide.png")
+    turned = Image.new("RGB", (600, 400), (30, 30, 200))
+    tag = Image.Exif()
+    tag[274] = 6  # stored on its side; upright is 400x600
+    turned.save(root / "turned.jpg", exif=tag)
+    (root / "voice.wav").write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+    import av
 
-        with av.open(str(root / "clip.mp4"), "w") as container:
-            stream = container.add_stream("h264", rate=5)
-            stream.width, stream.height = 320, 180
-            stream.pix_fmt = "yuv420p"
-            for _ in range(10):
-                frame = av.VideoFrame.from_ndarray(np.full((180, 320, 3), (0, 0, 255), dtype=np.uint8), format="rgb24")
-                for packet in stream.encode(frame):
-                    container.mux(packet)
-            for packet in stream.encode():
+    with av.open(str(root / "clip.mp4"), "w") as container:
+        stream = container.add_stream("h264", rate=5)
+        stream.width, stream.height = 320, 180
+        stream.pix_fmt = "yuv420p"
+        for _ in range(10):
+            frame = av.VideoFrame.from_ndarray(np.full((180, 320, 3), (0, 0, 255), dtype=np.uint8), format="rgb24")
+            for packet in stream.encode(frame):
                 container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
 
-    conn, burrow, root = _library(tmp_path, write)
-    slugs = {name: _slug_of(conn, name) for (name,) in conn.execute("SELECT name FROM file")}
-    conn.close()
-    with TestClient(app=build_app(str(burrow))) as client:
-        yield client, slugs, root
+
+def _ingested(stage: Stage) -> None:
+    conn = stage.conn()
+    try:
+        for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():
+            ingest.one(conn, file_id, stage.root / name, 0.0)
+        conn.commit()
+        stage.held["slugs"] = {name: _slug_of(conn, name) for (name,) in conn.execute("SELECT name FROM file")}
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "bytes", _media, _ingested, worker=True) as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_stage):
+    _stage.restore()
+    return _stage.client, _stage.held["slugs"], _stage.root
 
 
 def test_originals_are_served_with_the_type_their_bytes_say(served):
