@@ -1328,6 +1328,22 @@ CREATE TABLE derived_face_membership (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX derived_face_membership_face ON derived_face_membership(face_id);
 
+-- One detector's pass over one file's current bytes: that detection
+-- HAPPENED, and found `faces` of them -- zero included. The instance
+-- rows cannot say that (no faces, no rows), and a sweep that cannot
+-- tell "never looked" from "looked, found nobody" re-looks at every
+-- face-free picture forever. Keyed per model so two backends' passes
+-- coexist; the sweep asks whether ANY pass covers the current bytes.
+CREATE TABLE derived_face_scan (
+    file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    model_id      TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    faces         INTEGER NOT NULL CHECK (faces >= 0),
+    computed_at   REAL NOT NULL,
+    PRIMARY KEY (file_id, model_id, model_version)
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE derived_face_instance (
     -- AUTOINCREMENT for the same reason as `entity`: these ids feed the
     -- resident face index (vision/faiss_index.py), and index alignment
@@ -1975,7 +1991,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 25;
+PRAGMA user_version   = 26;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

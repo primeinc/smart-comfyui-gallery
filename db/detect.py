@@ -102,7 +102,7 @@ def harvest(
             record["sex"] = str(traits["sex"])
         faces.append(record)
 
-    return derived.record_faces(
+    written = derived.record_faces(
         conn,
         file_id,
         backend.model_id,
@@ -112,6 +112,10 @@ def harvest(
         faces,
         sample_id=sample_id,
     )
+    if sample_id is None:
+        # a whole still was looked at; a video's frames are summed by harvest_video
+        derived.record_face_scan(conn, file_id, backend.model_id, backend.model_version, sha, now, len(written))
+    return written
 
 
 #: How many extra moments a face-free video is granted beyond its cadence.
@@ -188,12 +192,20 @@ def harvest_video(
         budget -= len(fresh)
         looked = sorted(set(looked) | {offset for _, offset in fresh})
 
+    sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+    if sha is None:
+        # no frame reached harvest (nothing decodable): hash here so the
+        # pass is still recorded against the bytes it looked at
+        from . import scan
+
+        sha = scan.sha256_of(path)
+        conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
+    derived.record_face_scan(conn, file_id, backend.model_id, backend.model_version, sha, now, found)
     if thumbs_dir is not None and poster is not None:
         import pathlib
 
         from vision import thumbs
 
-        sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
         thumbs.put_all(pathlib.Path(thumbs_dir), sha, poster[1])
     return {"moments": len(looked), "faces": found}
 

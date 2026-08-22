@@ -203,6 +203,8 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("user", "id"),
         ("job", "id"),
         ("derived_media_sample", "id"),
+        ("derived_face_scan", "model_id"),  # a backend's name, the same text derived_face_instance carries
+        ("derived_face_scan", "model_version"),
         ("comment", "id"),
         ("feedback", "id"),
         ("derivation_intent", "id"),

@@ -291,15 +291,21 @@ def submit_verify(state: State) -> dict:
 
 
 @post("/jobs/faces", sync_to_thread=True)
-def submit_faces(state: State, data: dict) -> dict:
-    """Ask for face detection over the library, with the models named."""
+def submit_faces(state: State, data: dict) -> dict | Response:
+    """Ask for face detection over every picture no detector has looked
+    at for its current bytes -- `{"everything": true}` for all of them
+    again -- with the models named. 204 when nothing is left."""
     conn = _connect(state.db_path)
     try:
         weights = data.get("models_dir") or str(
             home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
         )
         cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
-        job_id = runner.submit_faces(conn, time.time(), models_dir=weights, thumbs_dir=cache)
+        job_id = runner.submit_faces(
+            conn, time.time(), models_dir=weights, thumbs_dir=cache, everything=bool(data.get("everything"))
+        )
+        if job_id is None:
+            return Response(content=None, status_code=204)
         conn.commit()
         return _submitted(state, conn, job_id)
     finally:

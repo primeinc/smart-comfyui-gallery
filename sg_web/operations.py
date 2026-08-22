@@ -82,7 +82,8 @@ def _embed_prompts(state: State, conn) -> list[int]:
 
 def _faces(state: State, conn) -> list[int]:
     cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
-    return [runner.submit_faces(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache)]
+    job_id = runner.submit_faces(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache)
+    return [] if job_id is None else [job_id]
 
 
 def _annotate(state: State, conn) -> list[int]:
@@ -115,7 +116,7 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "dupes": ("group perceptual copies", _dupes),
     "embed": ("embed every picture not yet embedded", _embed),
     "embed_prompts": ("embed every prompt", _embed_prompts),
-    "faces": ("detect faces", _faces),
+    "faces": ("detect faces in every picture not yet looked at", _faces),
     "cluster": ("cluster faces into people", _cluster),
     "annotate": ("caption every picture not yet captioned", _annotate),
     "context": ("interpret every file not yet interpreted", _context),

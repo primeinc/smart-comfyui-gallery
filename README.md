@@ -32,12 +32,13 @@ First library:
    **context** then **events** (the timeline and stories).
 
 Every sweep is a job row; the activity surface on every page shows it
-live over `/ws/jobs`. Nothing expensive runs by itself. The phash, embed,
+live over `/ws/jobs`. Nothing expensive runs by itself. The phash, faces, embed,
 annotate and context sweeps queue only what is still missing -- a
-picture already fingerprinted, embedded, captioned or interpreted for
-its current bytes is not an item again -- and answer 204 when nothing
-is left; `?everything=true` on the route (or `{"everything": true}` in
-the annotate body) redoes all of it.
+picture already fingerprinted, looked at for faces, embedded, captioned
+or interpreted for its current bytes is not an item again -- and answer
+204 when nothing is left; `?everything=true` on the route (or
+`{"everything": true}` in the faces and annotate bodies) redoes all of
+it.
 
 ## Addresses
 

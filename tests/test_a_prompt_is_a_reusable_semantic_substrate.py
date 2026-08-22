@@ -757,6 +757,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
     conn.execute("DROP TABLE generation_prompt")
     conn.execute("DROP TABLE generation")
     conn.execute("DROP TABLE job_event")  # v24's addition
+    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     conn.execute(
         "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
         " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
@@ -803,7 +804,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25]
+    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25, 26]
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1036,6 +1037,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
     for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
         conn.execute(f"DROP TABLE {table}")
     conn.execute("DROP TABLE job_event")  # v24's addition
+    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     conn.execute(
         "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
         " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
@@ -1081,7 +1083,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25]
+    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25, 26]
     conn = connect.connect(str(path))
     try:
         held = dict(

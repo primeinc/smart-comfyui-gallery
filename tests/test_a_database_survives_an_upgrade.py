@@ -503,6 +503,7 @@ def v1_database(tmp_path):
     conn = sqlite3.connect(str(path), isolation_level=None)
     _pre_v10_core(conn)  # v10's change, inverted
     conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
+    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     conn.execute("DROP TABLE derived_dupe_group")  # v3's addition; indexes go with it
     for trigger in (
         "collection_file_not_into_smart",
@@ -859,6 +860,7 @@ def v3_database_with_embeddings(tmp_path):
     conn = connect.connect(path)
     _pre_v10_core(conn)  # v10's change, inverted
     conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
+    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted: a real v3 file
     root = int(
@@ -949,7 +951,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+    assert migrate.migrate(path) == list(range(4, 27))
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -1046,7 +1048,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [21, 22, 23, 24, 25]
+    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26]
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()

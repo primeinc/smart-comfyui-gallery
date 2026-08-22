@@ -436,6 +436,19 @@ def _reclaim_regions(conn, region_ids) -> None:
         )
 
 
+def record_face_scan(conn, file_id: int, model_id: str, model_version: str, sha: str, now: float, faces: int) -> None:
+    """That this detector looked at this file's current bytes and found
+    `faces` -- zero included. The faces sweep reads it to leave looked-at
+    files alone (db/runner.py submit_faces)."""
+    conn.execute(
+        "INSERT INTO derived_face_scan(file_id, model_id, model_version, source_sha256, faces, computed_at)"
+        " VALUES(?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(file_id, model_id, model_version) DO UPDATE SET source_sha256 = excluded.source_sha256,"
+        " faces = excluded.faces, computed_at = excluded.computed_at",
+        tuple(plain(v) for v in (file_id, model_id, model_version, sha, int(faces), now)),
+    )
+
+
 def record_faces(
     conn,
     file_id: int,

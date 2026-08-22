@@ -360,6 +360,27 @@ def test_the_job_item_asks_for_the_payloads_backend_with_provisioning(tmp_path, 
     assert conn.execute("SELECT count(*) FROM derived_face_instance").fetchone()[0] == 1
 
 
+def test_the_faces_sweep_leaves_looked_at_pictures_alone(tmp_path, monkeypatch):
+    """A picture a detector looked at for its current bytes -- faces or
+    none -- is not an item again; new bytes put it back; `everything`
+    puts every picture back. The pass itself is the record, not the
+    faces: a face-free picture is looked at once."""
+    conn = fresh_schema()
+    file_id = _one_picture(conn, tmp_path / "lib")
+    monkeypatch.setattr(faces, "backend_for", lambda *a, **k: StubFaceBackend(lambda img: []))
+    monkeypatch.setattr(runner, "_BACKENDS", {})
+    assert runner.submit_faces(conn, 0.0, models_dir="M") is not None
+
+    runner._face_item(conn, file_id, {"models_dir": "M", "backend": "opencv", "providers": "cpu"}, 1.0)
+    scans = conn.execute("SELECT model_id, faces FROM derived_face_scan WHERE file_id = ?", (file_id,)).fetchall()
+    assert scans == [("stub-face", 0)]
+    assert runner.submit_faces(conn, 2.0, models_dir="M") is None, "looked at, found nobody, recorded"
+    assert runner.submit_faces(conn, 2.0, models_dir="M", everything=True) is not None
+
+    conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("e" * 64, file_id))
+    assert runner.submit_faces(conn, 3.0, models_dir="M") is not None, "new bytes were never looked at"
+
+
 def test_one_backend_per_payload_is_held_across_items(tmp_path, monkeypatch):
     conn = fresh_schema()
     file_id = _one_picture(conn, tmp_path / "lib")

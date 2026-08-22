@@ -282,6 +282,7 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
         "derived_face_cluster",
         "derived_face_instance",
         "derived_face_membership",
+        "derived_face_scan",
         "derived_face_run",
         "derived_event",
         "derived_event_file",

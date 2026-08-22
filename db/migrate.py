@@ -2384,6 +2384,26 @@ END"""
     )
 
 
+@step(25)
+def _face_scans(conn: sqlite3.Connection) -> None:
+    """v25 -> v26: `derived_face_scan`, the record that a detector's pass
+    over a file's current bytes happened and found N faces (db/detect.py).
+    DDL is schema.sql's text VERBATIM. Existing libraries start with no
+    rows: the next faces sweep looks at everything once and records it.
+    """
+    conn.execute(
+        """CREATE TABLE derived_face_scan (
+    file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    model_id      TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    faces         INTEGER NOT NULL CHECK (faces >= 0),
+    computed_at   REAL NOT NULL,
+    PRIMARY KEY (file_id, model_id, model_version)
+) STRICT, WITHOUT ROWID"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

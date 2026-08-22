@@ -152,8 +152,14 @@ def _verify_item(conn, file_id: int, payload: dict, now: float) -> None:
         raise ValueError(f"bytes changed behind the library's back: recorded {stored[0][:12]}, found {actual[:12]}")
 
 
-def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None) -> int:
-    """Face detection over every present picture and video, as one job.
+def submit_faces(
+    conn, now: float, *, models_dir: str, thumbs_dir: str | None = None, everything: bool = False
+) -> int | None:
+    """Face detection over every present picture and video no detector
+    has looked at for its current bytes (derived_face_scan), as one job
+    -- or, with `everything`, over all of them again; None when nothing
+    is left. ANY backend's pass counts: switching backends and wanting
+    the other's answer everywhere is `everything`, said so.
 
     A face on a video is a face on a sampled frame; the handler routes by
     the file kind, and the schema already keys every face to the moment it
@@ -169,13 +175,15 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
     """
     from . import settings as settings_module
 
-    items = [
-        row[0]
-        for row in conn.execute(
-            "SELECT id FROM file WHERE missing_since IS NULL"
-            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    if not everything:
+        sql += (
+            " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
+            "   AND s.source_sha256 = f.content_sha256)"
         )
-    ]
+    items = [row[0] for row in conn.execute(sql + " ORDER BY f.id")]
+    if not items:
+        return None
     payload: dict = {
         "models_dir": models_dir,
         "backend": settings_module.value(conn, "face_backend"),
