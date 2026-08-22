@@ -1051,12 +1051,13 @@ def timeline_events(conn, limit: int = 200):
 # --- stories ---------------------------------------------------------------
 
 #: Every story told, newest first: the render with its profile, the plan
-#: it words and the frozen subject it was told of. The render's own
-#: document carries the title and dek; the page reads those two fields
-#: and nothing else of it. Walks story_render backwards by id and stops.
+#: it words and the frozen snapshot it was told of. The render's own
+#: document carries the title, dek and hero refs; the snapshot's carries
+#: the members those refs name. Walks story_render backwards by id and
+#: stops.
 STORIES = (
     "SELECT sr.id, sr.plan_id, sr.profile, sr.created_at, sr.document_json,"
-    " sp.planner, s.event_kind, s.id"
+    " sp.planner, s.event_kind, s.id, s.document_json"
     "  FROM story_render sr JOIN story_plan sp ON sp.id = sr.plan_id"
     "  JOIN story_snapshot s ON s.id = sp.snapshot_id"
     " ORDER BY sr.id DESC LIMIT ?"

@@ -506,7 +506,10 @@ body {
 .story-gone { color: var(--ink-muted); font-size: 12px; border: 1px dashed var(--line); border-radius: 3px; padding: 2px 6px; }
 .story-notes { color: var(--ink-muted); }
 .stories { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-width: 900px; }
-.story-card { display: grid; gap: 2px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.story-card { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.story-strip { display: flex; gap: 4px; min-width: 64px; }
+.story-strip img, .story-strip .story-gone { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: var(--line); display: block; }
+.story-words { display: grid; gap: 2px; min-width: 0; }
 .story-card .story-title { color: var(--ink); font-weight: 600; font-size: 16px; text-decoration: none; }
 .story-card .story-title:hover { color: var(--accent); }
 .story-meta { color: var(--ink-muted); font-size: 12.5px; }

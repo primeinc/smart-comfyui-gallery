@@ -40,16 +40,42 @@ def _window(subject: dict) -> str | None:
     return "/timeline?" + urllib.parse.urlencode({"bin": "hour", "start": start, "end": end})
 
 
+#: Hero pictures a shelf card shows for one story, in section order.
+SHELF_HEROES = 3
+
+
+def _heroes(conn, words: dict, frozen: dict) -> list[dict]:
+    """The first few heroes the render names, addressed the way the
+    story page addresses them: the FROZEN name, and a thumbnail only
+    while the file is still in the library."""
+    members = {planning._member_ref(one["ordinal"]): one for one in frozen.get("members") or []}
+    refs: list[str] = []
+    for section in words.get("sections") or []:
+        for ref in section.get("hero_refs") or []:
+            if ref not in refs:
+                refs.append(ref)
+    heroes = []
+    for ref in refs[:SHELF_HEROES]:
+        member = members.get(ref)
+        if member is None:
+            continue
+        held = naming.by_uuid(conn, member["file_uuid"])
+        slug = held[1] if held and held[0] == "file" else None
+        heroes.append({"name": member["name"], "thumbnail": f"/thumb/{slug}" if slug else None})
+    return heroes
+
+
 @get("/stories", sync_to_thread=True)
 def stories_index(state: State, request: Request) -> Template | Response:
     """Every story told, newest first -- the shelf the timeline's
     buttons fill. Each entry is its title and dek as rendered, its
-    subject kind, its profile, and doors to the render and the plan's
-    evolution."""
+    heroes, its subject kind, its profile, and doors to the render and
+    the plan's evolution."""
     conn = connect.connect(state.db_path, read_only=True)
     try:
         told = []
-        for render_id, plan_id, profile, created_at, document, planner, event_kind, snapshot_id in pages.stories(conn):
+        for row in pages.stories(conn):
+            render_id, plan_id, profile, created_at, document, planner, event_kind, snapshot_id, frozen = row
             words = json.loads(document)
             told.append(
                 {
@@ -63,6 +89,7 @@ def stories_index(state: State, request: Request) -> Template | Response:
                     "title": words.get("title", ""),
                     "dek": words.get("dek", ""),
                     "members": len((words.get("support") or {}).get("member_refs") or []),
+                    "heroes": _heroes(conn, words, json.loads(frozen)),
                     "href": f"/stories/renders/{render_id}",
                     "evolution": f"/stories/plans/{plan_id}/evolution",
                 }

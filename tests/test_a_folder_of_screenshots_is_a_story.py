@@ -152,8 +152,12 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert [s["id"] for s in shelf] == [made.json()["id"]]
     assert shelf[0]["title"] == "5 files from June 10, 2023"
     assert (shelf[0]["kind"], shelf[0]["profile"], shelf[0]["members"]) == ("file_session", "memory", 5)
+    assert shelf[0]["heroes"], "the shelf shows the story's heroes"
+    assert all(h["thumbnail"].startswith("/thumb/") for h in shelf[0]["heroes"])
     page = client.get("/stories", headers={"accept": "text/html"}).text
     assert f'data-story="{made.json()["id"]}"' in page
+    assert f'data-story-heroes="{len(shelf[0]["heroes"])}"' in page
+    assert f'<img src="{shelf[0]["heroes"][0]["thumbnail"]}"' in page
     assert "5 files from June 10, 2023" in page
     # and the story's crumb opens this session's window on the timeline
     story_page = client.get(
