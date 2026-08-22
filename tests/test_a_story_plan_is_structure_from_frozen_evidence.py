@@ -682,7 +682,7 @@ def _library(root: pathlib.Path) -> None:
     # the hero is the phase's medoid (ties to the earliest), so the
     # escaping probe rides the FIRST name; NTFS forbids < >, & and ' probe
     names = ["gen_0 & 'friends'.png", "gen_1.png", "gen_2.png"]
-    for i, (text, name) in enumerate(zip(LIGHTHOUSE, names, strict=True)):
+    for i, (text, name) in enumerate(zip(LIGHTHOUSE[:3], names, strict=True)):
         info = PngInfo()
         info.add_text(
             "parameters",

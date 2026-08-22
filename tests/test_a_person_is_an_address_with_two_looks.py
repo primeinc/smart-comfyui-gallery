@@ -110,6 +110,9 @@ def _clustered(stage: Stage) -> None:
 
     person_id = naming.claim(conn, "person", "Ana")
     conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Ana', 0)", (person_id,))
+    # The cluster carries the person, as the clustering job leaves it --
+    # naming writes its durable assertions FROM this attachment.
+    conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, made[0]))
     for name in ("ana_1.png", "ana_2.png"):
         derived.attribute(conn, files[name], person_id, run_id, "test/embedder", "1")
     conn.commit()
@@ -547,9 +550,14 @@ def test_a_name_in_a_second_embedding_space_is_kept_not_lost(faces):
     assert still == 1, "the app's own recluster lost a name it accepted"
     assert client.get("/p/beata").status_code == 200
 
-    # And the refusal: the fixture's hand-attributed person owns no
-    # cluster and no assertion, so their name has nothing to be kept by.
-    assert client.post("/p/ana/name", json={"name": "Ana R"}).status_code == 400
+    # And the refusal: a person who owns no cluster and no assertion has
+    # nothing a name could be kept by.
+    conn = connect.connect(db_path)
+    loner = naming.claim(conn, "person", "Loner")
+    conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Loner', 0)", (loner,))
+    conn.commit()
+    conn.close()
+    assert client.post("/p/loner/name", json={"name": "Loner R"}).status_code == 400
 
 
 def test_renaming_asserts_only_what_the_human_addressed(faces):
