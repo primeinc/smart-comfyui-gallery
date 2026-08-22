@@ -69,6 +69,22 @@ def _state_of(frame: str) -> str:
 # --- the shell ---------------------------------------------------------------
 
 
+def test_the_front_door_is_the_gallery(served):
+    """A browser at `/` lands in the gallery; a machine gets the compact
+    library summary with a newest strip. The building entrance stopped
+    pointing at JSON."""
+    client, _ = served
+    landed = client.get("/", headers={"accept": "text/html,application/xhtml+xml"}, follow_redirects=False)
+    assert (landed.status_code, landed.headers["location"]) == (302, "/g")
+
+    front = client.get("/").json()
+    assert front["files"] == 3
+    for fact in ("folders", "people", "collections", "artifacts"):
+        assert isinstance(front[fact], int), f"the summary counts {fact}"
+    assert {row["name"] for row in front["newest"]} == {"s_0.png", "s_1.png", "s_2.png"}
+    assert all(row["slug"] for row in front["newest"])
+
+
 def test_every_page_template_extends_the_shell():
     """Structural: a full page is a child of base.html, never its own
     document. Fragments (underscore-prefixed) are mounted, never served

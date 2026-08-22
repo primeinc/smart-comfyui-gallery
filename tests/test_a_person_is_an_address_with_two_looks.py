@@ -17,8 +17,9 @@ import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
-from db import collections, connect, derived, library, naming, scan
+from db import authored, collections, connect, derived, library, naming, scan
 from sg_web.app import build_app
+from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
@@ -75,11 +76,69 @@ def _clustered_library(tmp: pathlib.Path) -> tuple:
     return burrow, root
 
 
+def _library(root: pathlib.Path) -> None:
+    for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
+        (root / name).write_bytes(b"\x89PNG-of-" + name.encode())
+
+
+def _clustered(stage: Stage) -> None:
+    """Faces recorded and clustered, Ana named -- once per module."""
+    conn = stage.conn()
+    files = {name: file_id for file_id, name in conn.execute("SELECT id, name FROM file")}
+    rng = np.random.default_rng(5)
+    ana = rng.standard_normal(32).astype(np.float32)
+    ben = -ana
+    for name, vector in (("ana_1.png", ana), ("ana_2.png", ana), ("ben_1.png", ben)):
+        derived.record_faces(
+            conn,
+            files[name],
+            "test/embedder",
+            "1",
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
+                    "embedding": (vector + 0.01 * rng.standard_normal(32).astype(np.float32)).tobytes(),
+                }
+            ],
+        )
+    made = derived.cluster(conn, "test/embedder", "1", 0.0, threshold=0.55)
+    assert len(made) == 1  # ana's pair; ben is a singleton and stays a face
+    run_id = derived.run_for(conn, "test/embedder", "1", "chinese-whispers", 0.55, 0.0)
+    derived.make_primary(conn, run_id)
+
+    person_id = naming.claim(conn, "person", "Ana")
+    conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Ana', 0)", (person_id,))
+    for name in ("ana_1.png", "ana_2.png"):
+        derived.attribute(conn, files[name], person_id, run_id, "test/embedder", "1")
+    conn.commit()
+    connect.close(conn)
+    stage.held["person"] = person_id
+
+
+def _drained_cluster_job(client) -> None:
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job_id = client.post("/jobs/cluster").json()["id"]
+        state = None
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+    assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
+
+
 @pytest.fixture(scope="module")
-def faces(tmp_path_factory):
-    burrow, _ = _clustered_library(tmp_path_factory.mktemp("person"))
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        yield client
+def _stage(tmp_path_factory):
+    """The clustered library behind the running application, with its
+    worker: the cluster and verify jobs below run through it."""
+    with staged(tmp_path_factory, "person", _library, _clustered, worker=True) as stage:
+        yield stage
+
+
+@pytest.fixture
+def faces(_stage):
+    _stage.restore()
+    return _stage.client
 
 
 def test_the_person_address_has_three_faces_and_declares_vary(faces):
@@ -320,3 +379,514 @@ def test_the_browser_path_never_enumerates_the_whole_collection(tmp_path, monkey
         body = client.get("/p/ana").json()
         assert len(walked) == 1, "the machine Adapter still carries the legacy list"
         assert sorted(p["name"] for p in body["pictures"]) == ["ana_1.png", "ana_2.png"]
+
+
+# --- the application over the clustered library ------------------------------------------
+
+
+def test_a_person_is_addressed_by_slug_and_shows_the_cross_axis_view(faces):
+    client = faces
+    answer = client.get("/p/ana")
+    assert answer.status_code == 200
+    page = answer.json()
+    assert page["name"] == "Ana"
+    assert sorted(p["name"] for p in page["pictures"]) == ["ana_1.png", "ana_2.png"]
+    assert page["across_folders"][0]["pictures"] == 2
+
+
+def test_clusterings_are_public_and_the_primary_is_marked(faces):
+    client = faces
+    runs = client.get("/clusterings").json()
+    assert len(runs) == 1
+    assert runs[0]["is_primary"] == 1
+    assert runs[0]["method"] == "chinese-whispers"
+
+
+def test_job_progress_is_pushed_over_the_socket_not_polled(faces):
+    """Submit a sweep and watch it happen: the socket sends the persisted
+    snapshot first, then a delta per observable change, ending in the
+    terminal state -- and the row agrees with everything it said."""
+    client = faces
+    with client.websocket_connect("/ws/jobs") as feed:
+        first = feed.receive_json(timeout=10)
+        assert first["type"] == "snapshot"
+        assert first["jobs"] == []
+
+        submitted = client.post("/jobs/verify").json()
+        assert (submitted["state"], submitted["total"]) == ("queued", 3)
+        job_id = submitted["id"]
+
+        seen, state = [], None
+        while state not in ("done", "failed", "cancelled"):
+            delta = feed.receive_json(timeout=10)
+            assert delta["job"] == job_id
+            assert delta["total"] == 3
+            seen.append(delta["done"])
+            state = delta["state"]
+        assert state == "done"
+        assert seen == sorted(seen), "progress went backwards on the wire"
+        assert seen[-1] == 3
+
+    snapshot = client.get(f"/jobs/{job_id}").json()
+    assert (snapshot["state"], snapshot["done_count"], snapshot["failed_count"]) == ("done", 3, 0)
+    assert client.get("/jobs/999").status_code == 404
+
+
+def test_clustering_people_is_a_job_the_application_offers(faces):
+    """The People page's data is produced BY the application: the cluster
+    job groups the embedded faces, mints an addressable person for every
+    unnamed group, and naming one is a POST that retires the old address
+    with a 301. Nothing here reaches into the database."""
+    client = faces
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job = client.post("/jobs/cluster").json()
+        assert (job["kind"], job["total"]) == ("cluster_faces", 1)
+        state = job["state"]
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+        assert state == "done"
+
+    people = client.get("/people").json()
+    assert len(people) == 1, "one group of two faces; the singleton stays a face"
+    minted = people[0]
+    assert minted["name"] == "(unnamed)"
+    assert minted["slug"].startswith("person-"), "an unnamed person is still addressable"
+    assert minted["pictures"] == 2
+
+    named = client.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"}).json()
+    assert named == {"slug": "ana-torres", "name": "Ana Torres", "asserted": 2}
+    assert client.get("/people").json()[0]["name"] == "Ana Torres"
+    moved = client.get(f"/p/{minted['slug']}", follow_redirects=False)
+    assert moved.status_code == 301
+    assert moved.headers["location"] == "/p/ana-torres"
+    assert client.post("/p/ana-torres/name", json={"name": "   "}).status_code == 400
+    assert client.post("/p/nobody/name", json={"name": "X"}).status_code == 404
+    assert client.post("/p/ana-torres/name").status_code == 400
+
+
+def test_a_name_survives_the_apps_own_recluster(faces):
+    """Naming through the application is durable AGAINST the application:
+    the naming writes the assertion record, and a re-cluster re-applies
+    the name from that record -- never loses it with a dissolved cluster."""
+    client = faces
+
+    def drained_cluster_job():
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            job_id = client.post("/jobs/cluster").json()["id"]
+            state = None
+            while state not in ("done", "failed", "cancelled"):
+                state = feed.receive_json(timeout=10)["state"]
+        assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
+
+    drained_cluster_job()
+    minted = client.get("/people").json()[0]
+    assert client.post(f"/p/{minted['slug']}/name", json={"name": "Ana Torres"}).json()["slug"] == "ana-torres"
+
+    drained_cluster_job()
+    people = client.get("/people").json()
+    assert people == [{"name": "Ana Torres", "slug": "ana-torres", "pictures": 2}], (
+        f"the application's own re-cluster lost the name the application accepted: {people}"
+    )
+    assert len(client.get("/p/ana-torres").json()["pictures"]) == 2
+
+
+def test_a_recluster_replaces_its_own_placeholders(faces):
+    """Running the job twice leaves one person per group, not one per run:
+    a placeholder whose group dissolved is deleted with its address, while
+    a NAMED person keeps their entity -- a name is a human's word."""
+    client = faces
+    for _ in range(2):
+        with client.websocket_connect("/ws/jobs") as feed:
+            assert feed.receive_json(timeout=10)["type"] == "snapshot"
+            job_id = client.post("/jobs/cluster").json()["id"]
+            state = None
+            while state not in ("done", "failed", "cancelled"):
+                state = feed.receive_json(timeout=10)["state"]
+        assert client.get(f"/jobs/{job_id}").json()["state"] == "done"
+    people = client.get("/people").json()
+    assert len(people) == 1, f"a second run must replace its placeholders, not add more: {people}"
+
+
+def test_a_name_in_a_second_embedding_space_is_kept_not_lost(faces):
+    """The cluster job mints addressable people for EVERY embedding
+    space's run, but only one run is primary. Naming a person the primary
+    pages do not show must still write the record that keeps the name --
+    the application never accepts a name it cannot keep -- and a name it
+    genuinely cannot keep is refused, not swallowed."""
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    rng = np.random.default_rng(9)
+    one = rng.standard_normal(16).astype(np.float32)
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    for name in ("ana_1.png", "ana_2.png"):
+        derived.record_faces(
+            conn,
+            files[name],
+            "other/embedder",
+            "1",
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, 0.6, 0.6, 0.2, 0.2),
+                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
+                }
+            ],
+        )
+    conn.commit()
+    conn.close()
+
+    with client.websocket_connect("/ws/jobs") as feed:
+        assert feed.receive_json(timeout=10)["type"] == "snapshot"
+        job = client.post("/jobs/cluster").json()
+        assert job["total"] == 2, "two embedding spaces, two items"
+        state = job["state"]
+        while state not in ("done", "failed", "cancelled"):
+            state = feed.receive_json(timeout=10)["state"]
+        assert state == "done"
+
+    conn = connect.connect(db_path)
+    minted = conn.execute(
+        "SELECT e.slug FROM derived_face_cluster c JOIN derived_face_run r ON r.id = c.run_id"
+        " JOIN person p ON p.id = c.person_id JOIN entity e ON e.id = p.id"
+        " WHERE r.is_primary = 0 AND p.name IS NULL"
+    ).fetchone()
+    conn.close()
+    assert minted is not None, "the second space's group has no addressable person"
+
+    answered = client.post(f"/p/{minted[0]}/name", json={"name": "Beata"})
+    assert answered.status_code < 300, answered.text
+    assert answered.json()["asserted"] == 2, "an accepted name must be written down"
+
+    _drained_cluster_job(client)
+    conn = connect.connect(db_path)
+    still = conn.execute(
+        "SELECT count(*) FROM derived_face_cluster c JOIN person p ON p.id = c.person_id WHERE p.name = 'Beata'"
+    ).fetchone()[0]
+    conn.close()
+    assert still == 1, "the app's own recluster lost a name it accepted"
+    assert client.get("/p/beata").status_code == 200
+
+    # And the refusal: the fixture's hand-attributed person owns no
+    # cluster and no assertion, so their name has nothing to be kept by.
+    assert client.post("/p/ana/name", json={"name": "Ana R"}).status_code == 400
+
+
+def test_renaming_asserts_only_what_the_human_addressed(faces):
+    """Durability may READ every run; authorship is WRITTEN only for the
+    cluster the human actually addressed, and a system write never
+    overwrites a row a human signed. Otherwise a rename launders model
+    inference into the authored ground truth the run rankings judge
+    against -- a feedback loop wearing a person's name."""
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    rng = np.random.default_rng(11)
+    one = rng.standard_normal(16).astype(np.float32)
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    # In THIS space ben clusters with the anas, same box coordinates --
+    # the run disagreement the multi-run design exists to hold.
+    for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
+        derived.record_faces(
+            conn,
+            files[name],
+            "other/embedder",
+            "1",
+            "aa",
+            0.0,
+            [
+                {
+                    "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
+                    "embedding": (one + 0.01 * rng.standard_normal(16).astype(np.float32)).tobytes(),
+                }
+            ],
+        )
+    conn.commit()
+    conn.close()
+
+    _drained_cluster_job(client)
+    named = client.get("/people").json()[0]
+    assert client.post(f"/p/{named['slug']}/name", json={"name": "Ana Torres"}).status_code < 300
+    _drained_cluster_job(client)  # the seed spreads her onto the other run's 3-file cluster
+
+    conn = connect.connect(db_path)
+    user_id = authored.add_user(conn, "will", "hash", "ADMIN", 2.0)
+    their_box = derived.region(conn, 0.05, 0.05, 0.3, 0.3)
+    resolved = naming.resolve(conn, "person", "ana-torres")
+    assert resolved is not None
+    person_id = resolved[0]
+    authored.assert_person(conn, person_id, files["ana_1.png"], user_id, 2.0, region_id=their_box)
+    conn.commit()
+    conn.close()
+
+    assert client.post("/p/ana-torres/name", json={"name": "Ana T"}).status_code < 300
+
+    conn = connect.connect(db_path)
+    asserted = {
+        row[0]
+        for row in conn.execute(
+            "SELECT f.name FROM person_assertion pa JOIN file f ON f.id = pa.file_id WHERE pa.person_id = ?",
+            (person_id,),
+        )
+    }
+    kept = conn.execute(
+        "SELECT user_id, region_id FROM person_assertion WHERE person_id = ? AND file_id = ?",
+        (person_id, files["ana_1.png"]),
+    ).fetchone()
+    conn.close()
+    assert asserted == {"ana_1.png", "ana_2.png"}, f"a rename asserted files only a model inferred: {asserted}"
+    assert kept == (user_id, their_box), "a system write overwrote a human-authored assertion"
+
+
+def test_feedback_on_a_placeholder_outlives_the_recluster(faces):
+    """The pruning spares a person a feedback verdict points at: the
+    judgement is authored, and it must keep its subject."""
+    client = faces
+    _drained_cluster_job(client)
+    minted_slug = client.get("/people").json()[0]["slug"]
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    resolved = naming.resolve(conn, "person", minted_slug)
+    assert resolved is not None
+    person_id = resolved[0]
+    authored.feedback(conn, "person", "wrong", 1.0, person_id=person_id)
+    conn.commit()
+    conn.close()
+
+    _drained_cluster_job(client)
+    conn = connect.connect(db_path)
+    survived = conn.execute("SELECT count(*) FROM person WHERE id = ?", (person_id,)).fetchone()[0]
+    judged = conn.execute("SELECT person_id FROM feedback").fetchone()[0]
+    conn.close()
+    assert survived == 1, "the pruning deleted a person a human's verdict points at"
+    assert judged == person_id, "the verdict lost its subject"
+
+
+def test_choose_primary_is_an_action_the_application_offers(faces):
+    client = faces
+    chosen = client.post("/clusterings/choose").json()
+    assert chosen["primary_run"] is not None
+    assert client.get("/clusterings").json()[0]["id"] == chosen["primary_run"]
+
+
+def test_every_new_address_survives_a_rename(faces):
+    """The addressing contract on every kind the entity layer added: a
+    retired slug 301s within its own prefix, and a retired slug on the
+    WRONG shelf lands home in ONE hop -- the canonical address is
+    computed once from entity, live slug and kind, never a chain."""
+    from db import ingest as ingest_module
+
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    found = naming.resolve(conn, "file", "ana-1")
+    assert found is not None
+    naming.rename(conn, found[0], "ana prime", 5.0)
+    found = naming.resolve(conn, "folder", "lib")
+    assert found is not None
+    naming.rename(conn, found[0], "library prime", 5.0)
+    lora_id = ingest_module.artifact(conn, "lora", "detailTweaker", 5.0)
+    naming.rename(conn, lora_id, "detail tweaker xl", 5.0)
+    conn.commit()
+    conn.close()
+
+    moved = client.get("/i/ana-1", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/i/ana-prime")
+    moved = client.get("/f/lib", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/f/library-prime")
+    moved = client.get("/l/lora-detailtweaker", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/l/detail-tweaker-xl")
+
+    first = client.get("/m/lora-detailtweaker", follow_redirects=False)
+    assert (first.status_code, first.headers["location"]) == (301, "/l/detail-tweaker-xl"), (
+        "wrong shelf + retired slug heals in ONE 301, never a chain"
+    )
+    second = client.get("/m/detail-tweaker-xl", follow_redirects=False)
+    assert (second.status_code, second.headers["location"]) == (301, "/l/detail-tweaker-xl")
+    assert client.get("/l/detail-tweaker-xl").json()["name"] == "detailTweaker"
+
+    assert client.post("/albums", json={"name": "Trip"}).json()["slug"] == "trip"
+    conn = connect.connect(db_path)
+    found = naming.resolve(conn, "collection", "trip")
+    assert found is not None
+    naming.rename(conn, found[0], "Trip 2026", 6.0)
+    conn.commit()
+    conn.close()
+    moved = client.get("/t/trip", follow_redirects=False)
+    assert (moved.status_code, moved.headers["location"]) == (301, "/t/trip-2026")
+
+
+def test_search_answers_by_meaning_from_the_joint_space(faces, monkeypatch):
+    """The CLIP trick over HTTP: stored image vectors and a typed phrase
+    meet in one space, and /search returns the nearest pictures with
+    scores -- no tags or captions anywhere in the loop. The encoder is
+    faked; what is under test is the whole path from setting to space to
+    resident index to ranked answer."""
+    from db import similarity
+    from vision import semantic
+
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    ana = np.array([1, 0, 0, 0], dtype=np.float32)
+    ben = np.array([0, 1, 0, 0], dtype=np.float32)
+    derived.record_embedding(conn, files["ana_1.png"], spec, ana, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], spec, ana * 0.9 + ben * 0.1, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], spec, ben, "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+
+    class FakeText:
+        def encode_query(self, phrase):
+            assert phrase == "a woman smiling"
+            return ana
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
+    answer = client.get("/search", params={"q": "a woman smiling", "k": 3})
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["participants"] == ["semantic.openclip.ViT-B-32.laion2b_s34b_b79k"]
+    assert body["contributors"] == body["participants"]
+    assert body["missing"] == {}
+    told = body["results"]
+    assert [row["name"] for row in told][:2] == ["ana_1.png", "ana_2.png"]
+    assert told[0]["score"] > told[1]["score"] > told[-1]["score"]
+    assert all(set(row) == {"slug", "name", "score", "sources"} for row in told)
+    assert all("semantic.openclip.ViT-B-32.laion2b_s34b_b79k" in row["sources"] for row in told)
+    ranks = [row["sources"]["semantic.openclip.ViT-B-32.laion2b_s34b_b79k"]["rank"] for row in told]
+    assert ranks == sorted(ranks)
+
+    # a bad model setting is a refused request, never a 500
+    conn = connect.connect(db_path)
+    from db import settings as settings_module
+
+    settings_module.put(conn, "semantic_model", "broken")
+    conn.commit()
+    connect.close(conn)
+    assert client.get("/search", params={"q": "x"}).status_code == 400
+
+
+def test_search_fuses_two_spaces_by_rank_never_by_raw_score(faces, monkeypatch):
+    """Two participating spaces with WILDLY different score scales: the
+    fused order can only come from ranks. The file both models agree on
+    outranks each model's private favourite, and per-space provenance
+    survives into the response."""
+    from db import similarity
+    from vision import semantic
+
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    from db import settings as settings_module
+
+    settings_module.put(conn, "semantic_model", "ViT-B-32/one,ViT-B-32/two")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    one = similarity.semantic_space("ViT-B-32", "one", 4)
+    two = similarity.semantic_space("ViT-B-32", "two", 4)
+    agreed = np.array([1, 0, 0, 0], dtype=np.float32)
+    private = np.array([0, 1, 0, 0], dtype=np.float32)
+    away = np.array([0, 0, 1, 0], dtype=np.float32)
+    # space one loves ana_1 then ana_2; space two loves ana_1 then ben_1.
+    derived.record_embedding(conn, files["ana_1.png"], one, agreed, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], one, agreed * 0.8 + private * 0.2, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], one, away, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_1.png"], two, agreed, "aa", 0.0)
+    derived.record_embedding(conn, files["ana_2.png"], two, away, "aa", 0.0)
+    derived.record_embedding(conn, files["ben_1.png"], two, agreed * 0.8 + private * 0.2, "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+
+    class PerSpace:
+        """Each space's query lands at a different cosine LEVEL: space one
+        answers near 1.0, space two near 0.35 -- raw magnitudes that mean
+        nothing across spaces, which is why only ranks may fuse."""
+
+        def __init__(self, checkpoint):
+            self.query = {
+                "one": agreed,
+                "two": (0.35 * agreed + 0.9 * np.array([0, 0, 0, 1], dtype=np.float32)),
+            }[checkpoint]
+
+        def encode_query(self, phrase):
+            return self.query
+
+    monkeypatch.setattr(semantic, "encoder", lambda _provider, _dir, _model, checkpoint, **kw: PerSpace(checkpoint))
+    body = client.get("/search", params={"q": "the agreed picture", "k": 3}).json()
+    assert body["contributors"] == [
+        "semantic.openclip.ViT-B-32.one",
+        "semantic.openclip.ViT-B-32.two",
+    ], "both configured spaces must be said to have answered"
+    told = body["results"]
+    assert told[0]["name"] == "ana_1.png", "the file both spaces agree on must fuse to the top"
+    assert set(told[0]["sources"]) == {
+        "semantic.openclip.ViT-B-32.one",
+        "semantic.openclip.ViT-B-32.two",
+    }
+    raw_one = told[0]["sources"]["semantic.openclip.ViT-B-32.one"]["score"]
+    raw_two = told[0]["sources"]["semantic.openclip.ViT-B-32.two"]["score"]
+    assert raw_one > 0.9, "space one answers near the top of its own scale"
+    assert raw_two < 0.5, "space two answers far down its own -- the scales are incomparable"
+    assert told[0]["sources"]["semantic.openclip.ViT-B-32.one"]["rank"] == 1
+    assert told[0]["sources"]["semantic.openclip.ViT-B-32.two"]["rank"] == 1
+
+
+def test_a_replaced_file_stops_answering_by_its_old_picture(faces, monkeypatch):
+    """The scanner keeps a file's identity through an in-place byte
+    replacement; its old embedding must NOT keep retrieving it until the
+    re-embed happens -- the stale row is excluded the moment the bytes
+    changed, not whenever the embed job gets around to it."""
+    from db import similarity
+    from vision import semantic
+
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    ana = np.array([1, 0, 0, 0], dtype=np.float32)
+    derived.record_embedding(conn, files["ana_1.png"], spec, ana, "aa", 0.0)
+    # the bytes change behind the embedding's back
+    conn.execute("UPDATE file SET content_sha256 = 'REPLACED' WHERE id = ?", (files["ana_1.png"],))
+    conn.commit()
+    connect.close(conn)
+
+    class FakeText:
+        def encode_query(self, phrase):
+            return ana
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: FakeText())
+    body = client.get("/search", params={"q": "x", "k": 3}).json()
+    assert body["results"] == [], "a known-stale representation answered for the replaced bytes"
+    assert "semantic.openclip.ViT-B-32.laion2b_s34b_b79k" in body["missing"], (
+        "a space that could not answer must be named, not silently absent"
+    )
+
+
+@pytest.mark.slow
+def test_search_never_downloads_a_model(faces):
+    """Embeddings exist but the model cache is empty: the request is
+    refused with the fix named, and no acquisition begins -- weights
+    belong to /jobs/embed, not to a GET."""
+    from db import similarity
+
+    client = faces
+    db_path = client.app.state.db_path
+    conn = connect.connect(db_path)
+    conn.execute("UPDATE file SET content_sha256 = 'aa'")
+    files = dict(conn.execute("SELECT name, id FROM file"))
+    spec = similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+    derived.record_embedding(conn, files["ana_1.png"], spec, np.array([1, 0, 0, 0], dtype=np.float32), "aa", 0.0)
+    conn.commit()
+    connect.close(conn)
+
+    answer = client.get("/search", params={"q": "banana"})
+    assert answer.status_code == 400
+    assert "provisioned" in answer.json()["detail"]
