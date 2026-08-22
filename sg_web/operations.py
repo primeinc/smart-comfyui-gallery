@@ -177,6 +177,19 @@ def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Temp
     finally:
         connect.close(conn)
     told["recent_events"] = [console.envelope(event) for event in told["recent_events"]]
+    # the phase inside the running item lives in process memory until the
+    # item settles (sg_web/app.py live_reports); the row cannot hold it yet
+    live = getattr(state, "live_reports", {}).get(job_id)
+    if live is not None and told["state"] == "running":
+        told["current"]["phase"] = {
+            "phase": live.get("phase"),
+            "type": live["type"],
+            "message": live.get("message"),
+            "text": live["text"],
+            "at": live["at"],
+            "data": live.get("data"),
+            "live": True,
+        }
     if wants_json(request):
         return Response(told, headers=VARIES)
     return Template(template_name="_operations_job.html", context={"job": told}, headers=VARIES)

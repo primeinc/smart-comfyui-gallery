@@ -478,6 +478,58 @@ def test_a_cancel_is_spoken_on_both_feeds_and_settles_cooperatively(served):
     assert detail["derived"]["cancellation"] == "cancelled"
 
 
+def test_the_phase_inside_a_running_item_survives_a_reconnect(served):
+    """A handler's report lands in the ledger only when its item settles;
+    between, the inspector answers it from the process's live memory, so
+    a console that reconnects mid-item sees the phase instead of
+    "waiting". A committed row that settles the item clears it."""
+    client = served
+    job_id = client.post("/jobs/verify").json()["id"]
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        # claim THIS job so it is running; other queued jobs may precede it
+        while jobs.snapshot(conn, job_id)["state"] != "running":
+            assert jobs.claim(conn, "w-live", NOW) is not None
+        conn.commit()
+    finally:
+        connect.close(conn)
+    publish_event = client.app.state.publish_event
+    publish_event(
+        {
+            "pending": True,
+            "job_id": job_id,
+            "at": NOW + 1,
+            "type": "phase.progress",
+            "item_id": 3,
+            "phase": "decoding",
+            "severity": "info",
+            "message": "48 / 220 frames",
+            "data": {"unit": "frames", "done": 48, "total": 220},
+        }
+    )
+    told = client.get(f"/operations/job/{job_id}", headers={"accept": "application/json"}).json()
+    assert told["current"]["phase"]["phase"] == "decoding"
+    assert told["current"]["phase"]["live"] is True
+    assert "48 / 220 frames" in told["current"]["phase"]["text"]
+    page = client.get(f"/operations/job/{job_id}", headers={"accept": "text/html"}).text
+    assert "data-current-phase data-live" in page
+    assert "decoding" in page
+    publish_event(
+        {
+            "id": 10**9,
+            "job_id": job_id,
+            "at": NOW + 2,
+            "type": "item.done",
+            "item_id": 3,
+            "severity": "info",
+            "message": "item 3 done",
+            "data": None,
+        }
+    )
+    told = client.get(f"/operations/job/{job_id}", headers={"accept": "application/json"}).json()
+    assert told["current"]["phase"] is None, "a settled item clears its live report"
+
+
 def test_the_shell_counts_what_is_running(served):
     client = served
     job_id = client.post("/jobs/verify").json()["id"]

@@ -1027,12 +1027,27 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         def publish(delta: dict) -> None:
             loop.call_soon_threadsafe(channels.publish, delta, "jobs")
 
+        # The latest report INSIDE the item each job is working on -- what
+        # the ledger cannot hold yet (db/runner.py Report: it lands at the
+        # item boundary). Process memory, never storage: a restart loses
+        # it exactly as it loses the item. A reconnecting console reads it
+        # through the inspector instead of waiting for the next report.
+        live_reports: dict[int, dict] = {}
+        app.state.live_reports = live_reports
+
         def publish_event(event: dict) -> None:
             """A ledger row (or a pending report) onto the events channel,
             with its words and condition (sg_web/console.py) -- the
             presentation seam, so the worker never learns the vocabulary."""
-            frame = "pending" if event.get("pending") else "event"
-            loop.call_soon_threadsafe(channels.publish, {"frame": frame, **console.envelope(event)}, "events")
+            told = console.envelope(event)
+            if event.get("pending"):
+                live_reports[int(event["job_id"])] = told
+                frame = "pending"
+            else:
+                frame = "event"
+                if not console.inside_item(event["type"]):
+                    live_reports.pop(int(event["job_id"]), None)
+            loop.call_soon_threadsafe(channels.publish, {"frame": frame, **told}, "events")
 
         # Request handlers run on the thread pool too, so a job's `queued`
         # delta (sg_web/submitting.py) crosses the same bridge the worker's

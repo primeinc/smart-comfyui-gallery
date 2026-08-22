@@ -301,8 +301,10 @@
     const slot = q("[data-current-phase]", inspectorBody);
     if (!slot) return;
     const p = selectedJob != null ? pendingByJob.get(selectedJob) : null;
+    // the server already filled the slot from its live memory on a cold
+    // load or a reconnect; only a fresher report replaces it
+    if (!p) return;
     slot.textContent = "";
-    if (!p) { slot.appendChild(el("span", { class: "muted" }, "waiting for the handler to report")); return; }
     slot.appendChild(el("span", { class: "v" }, p.phase || p.message || p.type));
     slot.appendChild(document.createTextNode(" "));
     slot.appendChild(el("code", { class: "raw" }, `${p.type} · ${p.message || ""} · live, not yet in the ledger`));

@@ -62,10 +62,10 @@
 
     <div class="inspect-block" data-block="current">
       <h3>current</h3>
-      {% if job.current.item %}
+      {% if job.current.item or job.current.phase %}
       <dl class="facts">
-        <dt>item</dt><dd data-current-item>{% if job.current.item.href %}<a href="{{ job.current.item.href }}">{{ job.current.item.name }}</a>{% elif job.current.item.name %}{{ job.current.item.name }}{% else %}item{% endif %} <code class="raw">item {{ job.current.item.id }} · since {{ when(job.current.since) }}</code></dd>
-        <dt>phase</dt><dd data-current-phase><span class="muted">waiting for the handler to report</span></dd>
+        {% if job.current.item %}<dt>item</dt><dd data-current-item>{% if job.current.item.href %}<a href="{{ job.current.item.href }}">{{ job.current.item.name }}</a>{% elif job.current.item.name %}{{ job.current.item.name }}{% else %}item{% endif %} <code class="raw">item {{ job.current.item.id }} · since {{ when(job.current.since) }}</code></dd>{% endif %}
+        <dt>phase</dt><dd data-current-phase{% if job.current.phase %} data-live{% endif %}>{% if job.current.phase %}<span class="v">{{ job.current.phase.phase or job.current.phase.message or job.current.phase.type }}</span> <code class="raw">{{ job.current.phase.type }} · {{ job.current.phase.message or "" }} · live, not yet in the ledger</code>{% else %}<span class="muted">waiting for the handler to report</span>{% endif %}</dd>
       </dl>
       {% elif job.state == "running" %}
       <p class="muted">between items.</p>

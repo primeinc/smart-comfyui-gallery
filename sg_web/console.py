@@ -167,6 +167,15 @@ CONDITIONS: dict[str, str] = {
 }
 
 
+#: The kinds a handler reports from INSIDE an item: a committed row of
+#: any other kind settles the item, and the live report with it.
+INSIDE_ITEM = frozenset({"phase.started", "phase.progress", "phase.finished", "item.observed"})
+
+
+def inside_item(type_: str) -> bool:
+    return type_ in INSIDE_ITEM
+
+
 def describe(event: Mapping) -> str:
     """The words for one event. An unknown type is a defect in this
     module, not a quiet blank -- it raises."""

@@ -141,6 +141,10 @@ def test_a_per_item_failure_shows_its_exact_recorded_error(page, served):
     broken.write_bytes(broken.read_bytes() + b"tampered")
     try:
         job_id = api.post("/jobs/verify").json()["id"]
+        # the tape paints a window; every item reports phases now, so the
+        # failure sits above the painted tail -- filter to warnings (a
+        # presentation filter: nothing held is touched) to bring it in view
+        page.select_option("[data-tape-filter-severity]", "warning")
         failed_row = page.wait_for_selector(
             f'[data-tape-rows] [data-event][data-type="item.failed"][data-job="{job_id}"]', timeout=30_000
         )
