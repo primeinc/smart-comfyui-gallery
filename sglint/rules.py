@@ -7,11 +7,13 @@ a rule that understood nothing would report a clean tree, so
 tests/test_sglint_has_teeth.py feeds each rule the shape it exists to
 catch.
 
+What Ruff can say, Ruff says: shell=True is S602, a missing check= is
+PLW1510, a raw sqlite3.connect and a bare Image.open are TID251, a
+module-level torch is TID253 (pyproject.toml). These are the rest.
+
 Families:
     SG0xx  programs are started safely (subprocess)
     SG1xx  SQL is built from structure only
-    SG2xx  the database is opened in one place
-    SG3xx  the heavy layer stays lazy
     SG4xx  the web adapters own no semantics
     SG5xx  templates and scripts carry no query logic
     SG6xx  every derived table has a producer something calls
@@ -93,11 +95,6 @@ def keyword(call: ast.Call, name: str):
     return None
 
 
-def through_a_shell(call: ast.Call) -> bool:
-    shell = keyword(call, "shell")
-    return shell is not None and getattr(shell, "value", True) is not False
-
-
 def bare_command_string(call: ast.Call) -> bool:
     return bool(call.args) and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str)
 
@@ -121,23 +118,20 @@ def pipes_output(call: ast.Call) -> bool:
 
 
 def rule_spawns(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
-    """SG001-SG005 over every source, tests included: a test that spawns
-    without a timeout hangs CI exactly as a route would hang a request."""
+    """SG002-SG004 over every source, tests included: a test that spawns
+    without a timeout hangs CI exactly as a route would hang a request.
+    A shell (S602) and a missing check= (PLW1510) are Ruff's own."""
     found: list[Finding] = []
     for source in sources if sources is not None else every_source():
         for call in spawn_calls(parsed(source)):
             attr = typing.cast(ast.Attribute, call.func).attr
             at = (source, call.lineno, call.col_offset)
-            if through_a_shell(call):
-                found.append(Finding(*at, "SG001", "starts a program through a shell; pass a list of arguments"))
             if bare_command_string(call):
                 found.append(Finding(*at, "SG002", "passes a bare command string instead of a list"))
             if attr != "Popen" and keyword(call, "timeout") is None:
                 found.append(Finding(*at, "SG003", "starts a program with no timeout"))
             if pipes_output(call):
                 found.append(Finding(*at, "SG004", "hands a child a pipe nobody drains; sink to a file instead"))
-            if attr == "run" and keyword(call, "check") is None:
-                found.append(Finding(*at, "SG005", "runs a program without saying check="))
     return found
 
 
@@ -201,87 +195,6 @@ def rule_sql_structure(sources: typing.Iterable[pathlib.Path] | None = None) -> 
     return found
 
 
-# --- SG2xx: the database is opened in one place ----------------------------------------------
-
-
-def raw_connects(tree: ast.AST) -> list[ast.Call]:
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "connect"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "sqlite3"
-    ]
-
-
-def new_pairing_sources() -> list[pathlib.Path]:
-    return [s for s in shipped() if s.relative_to(REPO_ROOT).parts[0] in policy.NEW_PAIRING]
-
-
-def rule_one_connect(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
-    """SG201: a consumer opens the database without db/connect.py's settings."""
-    found: list[Finding] = []
-    for source in sources if sources is not None else new_pairing_sources():
-        if source.name in policy.RAW_CONNECT_DECIDED:
-            continue
-        found.extend(
-            Finding(
-                source,
-                call.lineno,
-                call.col_offset,
-                "SG201",
-                "sqlite3.connect outside db/connect.py: foreign keys, the writer lane, busy_timeout and WAL"
-                " are per-connection and silently absent here",
-            )
-            for call in raw_connects(parsed(source))
-        )
-    return found
-
-
-# --- SG3xx: the heavy layer stays lazy ------------------------------------------------------
-
-
-def import_time_modules(tree: ast.Module) -> dict[str, tuple[int, int]]:
-    """{module: (line, col)} for imports that run when the file is read."""
-    found: dict[str, tuple[int, int]] = {}
-    stack: list[ast.AST] = list(tree.body)
-    while stack:
-        node = stack.pop()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
-        if isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and not node.level:
-            names = [node.module or ""]
-        else:
-            stack.extend(ast.iter_child_nodes(node))
-            continue
-        for dotted in names:
-            found.setdefault(dotted.split(".")[0], (node.lineno, node.col_offset))
-    return found
-
-
-def rule_lazy_heavy(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
-    """SG301: a heavy or optional package imported while the module is read."""
-    found: list[Finding] = []
-    for source in sources if sources is not None else shipped():
-        for module, (line, col) in import_time_modules(parsed(source)).items():
-            if module in policy.HEAVY_IMPORTS:
-                found.append(
-                    Finding(
-                        source,
-                        line,
-                        col,
-                        "SG301",
-                        f"{module} ({policy.HEAVY_IMPORTS[module]}) imported while the module is read; every start"
-                        " pays for it -- move the import inside the function that needs it",
-                    )
-                )
-    return found
-
-
 # --- SG4xx: the web adapters own no semantics ------------------------------------------------
 
 
@@ -319,7 +232,9 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     module; SG403 it stopped delegating; SG404 a one-item adapter no
     longer shares the _many implementation; SG405 a non-literal statement
     where only literals may run; SG406 a forbidden word, or a required
-    word missing."""
+    word missing; SG407 a word before a marker or after the docstring;
+    SG408 a parameter a signature may not take; SG410 a forbidden
+    pattern in a package; SG411 the page queries no longer ship here."""
     found: list[Finding] = []
     for relative, vocabulary in policy.ADAPTER_DB_VOCABULARY.items():
         path = root / relative
@@ -425,14 +340,6 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
                             found.append(
                                 Finding(root / relative, fn.lineno, fn.col_offset, "SG408", f"{dotted} takes {param!r}")
                             )
-    for (package, word), allowed in policy.WORD_ONLY_IN.items():
-        for source in sorted((root / package).glob("*.py")):
-            if source.name in allowed:
-                continue
-            held = source.read_text(encoding="utf-8")
-            if word in held:
-                line = held[: held.index(word)].count("\n") + 1
-                found.append(Finding(source, line, 0, "SG409", f"{word!r} belongs only in {sorted(allowed)}"))
     for package, patterns in policy.PACKAGE_FORBIDDEN_PATTERNS.items():
         for source in sorted((root / package).rglob("*.py")):
             held = source.read_text(encoding="utf-8")
@@ -561,8 +468,6 @@ def rule_producers(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
 RULES = (
     rule_spawns,
     rule_sql_structure,
-    rule_one_connect,
-    rule_lazy_heavy,
     rule_adapters,
     rule_surfaces,
     rule_producers,

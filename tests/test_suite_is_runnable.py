@@ -32,6 +32,11 @@ from __future__ import annotations
 import pathlib
 import sys
 
+import pytest
+
+#: Repository hygiene, not gallery behaviour: `just repo-check` runs these.
+pytestmark = pytest.mark.repo
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 

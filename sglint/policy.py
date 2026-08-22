@@ -49,28 +49,6 @@ SQL_STRUCTURE: dict[str, str] = {
     "name": "identifier",
 }
 
-# --- SG2xx: the database is opened in one place ----------------------------------------------
-
-#: Files that hold raw sqlite3.connect calls by decision.
-RAW_CONNECT_DECIDED = frozenset({"connect.py", "migrate.py", "build.py"})
-
-# --- SG3xx: the heavy layer stays lazy --------------------------------------------------------
-
-#: Slow to import, or belonging to a dependency group the core install
-#: does not carry. Reaching one at import time is the defect.
-HEAVY_IMPORTS: dict[str, str] = {
-    "torch": "the one that cost 2.67s",
-    "transformers": "pulls torch",
-    "open_clip": "pulls torch",
-    "faiss": "optional, and the vendored build probes CUDA on import",
-    "insightface": "optional, pulls onnxruntime",
-    "onnxruntime": "optional",
-    "mobile_sam": "optional, pulls torch",
-    "huggingface_hub": "optional -- and its absence stopped the container",
-    "llama_cpp": "optional",
-    "sentence_transformers": "pulls torch",
-}
-
 # --- SG4xx: the web adapters own no semantics ------------------------------------------------
 
 #: Methods that run a statement against a connection.
@@ -167,11 +145,6 @@ MUST_NOT_CONTAIN_AFTER_DOCSTRING: dict[str, tuple[str, ...]] = {
 #: A function (class.method) whose signature must not carry a parameter.
 NO_PARAMETER_NAMED: dict[str, tuple[tuple[str, str], ...]] = {
     "db/rendering.py": (("TemplateStoryRenderer.render", "conn"),),
-}
-#: A word allowed only in named files of a package: pixels are opened
-#: behind db/oriented.py (capture.py reads metadata, never pixels).
-WORD_ONLY_IN: dict[tuple[str, str], frozenset[str]] = {
-    ("db", "Image.open("): frozenset({"oriented.py", "capture.py"}),
 }
 #: Regexes no file of a package may match.
 PACKAGE_FORBIDDEN_PATTERNS: dict[str, tuple[tuple[str, str], ...]] = {

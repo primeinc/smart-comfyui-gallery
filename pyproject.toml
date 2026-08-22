@@ -287,14 +287,14 @@ preview = false
 #                                 fire; one that asserts nothing is worse
 #                                 than an absent one.
 #
-# Five selected rules are inert for the opposite reason -- they need a
+# Three selected rules are inert for the opposite reason -- they need a
 # companion setting this file deliberately does not supply, so they are
 # recorded here rather than left to look enforced: W505 (needs
-# lint.pycodestyle.max-doc-length), TID251 and TID253 (need
-# flake8-tidy-imports banned-api / banned-module-level-imports), ICN002 and
-# ICN003 (need flake8-import-conventions banned-aliases / banned-from).
-# Their families are selected for their live members -- W291/W293, TID252,
-# ICN001 -- and each of those does fire.
+# lint.pycodestyle.max-doc-length), ICN002 and ICN003 (need
+# flake8-import-conventions banned-aliases / banned-from). Their families
+# are selected for their live members -- W291/W293, ICN001 -- and each of
+# those does fire. TID251 and TID253 are live: banned-api and
+# banned-module-level-imports below.
 #
 # On formatter conflicts: no warning path is reachable under these
 # settings, which is what was measured, and is a narrower claim than "no
@@ -393,10 +393,10 @@ ignore = [
     # literal. Bandit calls B603 an audit check; there is no edit that
     # clears it.
     #
-    # Replaced by sglint (SG001-SG005), which holds
-    # what actually matters and S603 cannot see: never a shell, always an
-    # argument list, always a timeout, always an explicit check=. S602,
-    # S604, S605 and S609 -- the shell rules -- stay selected.
+    # Replaced by sglint (SG002-SG004), which holds what actually matters
+    # and S603 cannot see: always an argument list, always a timeout, never
+    # an undrained pipe. S602 (shell=True) and PLW1510 (an explicit check=)
+    # are Ruff's own and stay selected.
     "S603",
 
     # S608 hardcoded-sql-expression.
@@ -448,7 +448,29 @@ ignore = [
     "PLC0415",
 ]
 
+[tool.ruff.lint.flake8-tidy-imports]
+# TID253: slow to import, or belonging to a dependency group the core
+# install does not carry. Reaching one while a module is read is the
+# defect (torch cost 2.67s per start; huggingface_hub's absence stopped the
+# container). Inside a function is the fix, and PLC0415 tolerates these.
+banned-module-level-imports = [
+    "torch",
+    "transformers",
+    "open_clip",
+    "faiss",
+    "insightface",
+    "onnxruntime",
+    "mobile_sam",
+    "huggingface_hub",
+    "llama_cpp",
+    "sentence_transformers",
+]
+
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
+# The one door to the database: foreign keys, the IMMEDIATE writer lane,
+# busy_timeout, WAL and the cache are per-connection and silently absent
+# on a raw connect. Three files hold raw connects by decision (below).
+"sqlite3.connect".msg = "open the database through db.connect.connect(); a raw connect runs with the schema's foreign keys inert"
 # The decoder door, enforced: bare Image.open skips the HEIC/JXL plugin
 # registration and cannot read RAW or video at all, so it answers only
 # for ordinary stills -- and only when some earlier call happened to
@@ -467,6 +489,14 @@ ignore = [
 # TID251 (the Image.open ban): the door itself, and the readers whose
 # callers guarantee registration. tests/ and benchmarks/ construct their
 # own fixtures and open them back; they are not shipped decode paths.
+# TID251 (the sqlite3.connect ban): connect.py IS the one place;
+# migrate.py holds read-only probes and migration targets with deliberate
+# isolation choices the live settings would fight; build.py is an
+# in-memory scratch build for drift checking -- no gallery file is opened.
+"db/connect.py" = ["TID251"]
+"db/migrate.py" = ["TID251"]
+"db/build.py" = ["TID251"]
+"sglint/schema_rules.py" = ["TID251"]  # the schema contract builds the DDL in memory, as build.py does
 "vision/decode.py" = ["TID251"]
 "db/capture.py" = ["TID251"]  # EXIF reader; ingest registers decoders first
 "metaparse/containers.py" = ["TID251"]  # container reader; same caller contract

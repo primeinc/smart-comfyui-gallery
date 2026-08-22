@@ -33,7 +33,6 @@ def test_the_spawn_sweep_reaches_the_tree_and_catches_each_shape():
     )
     calls = rules.spawn_calls(bad)
     assert len(calls) == 4
-    assert rules.through_a_shell(calls[0])
     assert isinstance(calls[0].args[0], ast.BinOp)
     assert rules.keyword(calls[1], "timeout") is None
     assert rules.keyword(calls[1], "check") is None
@@ -46,12 +45,9 @@ def test_the_spawn_rule_reports_in_linter_shape(tmp_path):
     bad = tmp_path / "spawner.py"
     bad.write_text("import subprocess\nsubprocess.run('x', shell=True)\n", encoding="utf-8")
     codes = sorted(f.code for f in rules.rule_spawns([bad]))
-    assert codes == ["SG001", "SG002", "SG003", "SG005"]
-    assert (
-        rules.rule_spawns([bad])[0]
-        .spelled()
-        .endswith("SG001 starts a program through a shell; pass a list of arguments")
-    )
+    assert codes == ["SG002", "SG003"], "shell=True and check= are Ruff's own (S602, PLW1510)"
+    spelled = rules.rule_spawns([bad])[0].spelled()
+    assert spelled.endswith("SG002 passes a bare command string instead of a list")
 
 
 def test_the_sql_sweep_reaches_the_tree_and_the_list_is_exact():
@@ -74,32 +70,6 @@ def test_a_value_written_into_a_statement_would_be_caught(tmp_path):
     bad = tmp_path / "smuggle.py"
     bad.write_text("q = f\"SELECT id FROM files WHERE name = '{user_input}'\"\n", encoding="utf-8")
     assert [f.code for f in rules.rule_sql_structure([bad])] == ["SG101"]
-
-
-def test_the_connect_sweep_sees_the_decided_files_and_flags_a_stray(tmp_path):
-    decided = [s for s in rules.new_pairing_sources() if s.name in policy.RAW_CONNECT_DECIDED]
-    assert len(decided) == len(policy.RAW_CONNECT_DECIDED), decided
-    assert any(rules.raw_connects(rules.parsed(s)) for s in decided)
-    stray = tmp_path / "stray.py"
-    stray.write_text("import sqlite3\nc = sqlite3.connect('x.db')\n", encoding="utf-8")
-    assert [f.code for f in rules.rule_one_connect([stray])] == ["SG201"]
-
-
-def test_the_import_sweep_reads_the_tree_and_an_eager_heavy_import_would_be_caught(tmp_path):
-    seen: dict[str, tuple[int, int]] = {}
-    for source in rules.shipped():
-        seen.update(rules.import_time_modules(rules.parsed(source)))
-    assert "litestar" in seen
-    assert "sqlite3" in seen
-    assert len(seen) > 20
-    eager = rules.import_time_modules(ast.parse("import os\nimport torch\n"))
-    lazy = rules.import_time_modules(ast.parse("import os\n\n\ndef go():\n    import torch\n    return torch\n"))
-    assert "torch" in eager
-    assert "torch" not in lazy, "an import inside a function is the fix, not the defect"
-    assert "os" in lazy
-    bad = tmp_path / "eager.py"
-    bad.write_text("import torch\n", encoding="utf-8")
-    assert [f.code for f in rules.rule_lazy_heavy([bad])] == ["SG301"]
 
 
 def test_the_producer_gate_can_see_an_unwired_table():
@@ -173,7 +143,7 @@ def _copy_of_tree(tmp_path):
         target = here / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text((rules.REPO_ROOT / relative).read_text(encoding="utf-8"), encoding="utf-8")
-    for package in {p for p, _ in policy.WORD_ONLY_IN} | set(policy.PACKAGE_FORBIDDEN_PATTERNS):
+    for package in policy.PACKAGE_FORBIDDEN_PATTERNS:
         for source in (rules.REPO_ROOT / package).glob("*.py"):
             target = here / package / source.name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +166,6 @@ def _bend(path: pathlib.Path, addition: str) -> None:
         ("story_renderers/formatting.py", "\nPOLICY_VERSION = 9\n", "SG406"),
         ("sg_web/templates/story.html", "\n{{ x|safe }}\n", "SG406"),
         ("story_renderers/claims.py", "\nPOLICY_VERSION = 9\n", "SG407"),
-        ("db/oriented_sibling.py", "from PIL import Image\nImage.open('x')\n", "SG409"),
         ("db/param_writer.py", "Q = 'INSERT OR REPLACE INTO file_param(a) VALUES(1)'\n", "SG410"),
     ],
 )

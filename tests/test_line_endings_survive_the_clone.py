@@ -23,7 +23,9 @@ import subprocess
 
 import pytest
 
-pytestmark = pytest.mark.spawns  # every check here runs another program
+#: every check here runs another program; repository hygiene, not gallery
+#: behaviour -- `just repo-check` runs these
+pytestmark = [pytest.mark.spawns, pytest.mark.repo]
 
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 

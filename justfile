@@ -23,16 +23,22 @@ fmt-check:
 types:
     {{ python }} -m pyright
 
-# Everything: lint, format, types, tests
-check: lint fmt-check types test
+# Repository hygiene: the git index, line endings, the generated
+# requirements file, the documented test command -- not gallery
+# behaviour. Two of them spawn git, so the spawn gate is opened here.
+repo-check:
+    RUN_TOOL_TESTS=1 {{ python }} -m pytest -q -p no:xdist -m repo -o addopts="" tests/
+
+# Everything: lint, format, types, repo hygiene, tests
+check: lint fmt-check types repo-check test
 
 # The repo-wide structural gates, on their own and in seconds: sglint's
 # rules (discovered scope: a package created tomorrow is swept the day it
 # is born) and the tooling checks. `just test` runs the tests too.
 [doc('Structural gates alone: subprocess safety, SQL hygiene, lazy imports, tracked files, runnability')]
-audit:
+audit: repo-check
     {{ python }} -m sglint
-    {{ python }} -m pytest -q         tests/test_suite_is_runnable.py         tests/test_tracked_files.py         tests/test_line_endings_survive_the_clone.py         tests/test_requirements_sync.py         tests/test_sglint_has_teeth.py
+    {{ python }} -m pytest -q tests/test_sglint_has_teeth.py
 
 # The application, served. Flags pass through: `just serve --port 9000`,
 # `just serve --home D:/runs/two` -- everything else is a settings row

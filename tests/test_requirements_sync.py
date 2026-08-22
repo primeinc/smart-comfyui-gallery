@@ -13,8 +13,12 @@ from __future__ import annotations
 import os
 import tomllib
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+
+#: Repository hygiene, not gallery behaviour: `just repo-check` runs these.
+pytestmark = pytest.mark.repo
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
