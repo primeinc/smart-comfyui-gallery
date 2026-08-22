@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from db import connect, planning, rendering, stories
+from db import connect, derived, naming, planning, rendering, stories
 from tests.staging import staged
 from tests.test_the_timeline_is_a_surface import HOUR, NOW, _drain, _interpreted, _library
 
@@ -157,6 +157,22 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     page = client.get("/stories", headers={"accept": "text/html"}).text
     assert f'data-story="{made.json()["id"]}"' in page
     assert f'data-story-heroes="{len(shelf[0]["heroes"])}"' in page
+    # a hero's caption, once a model has said one, is shown beside the
+    # frozen name -- live, by address, labelled as today's
+    story_page = client.get(f"/stories/renders/{made.json()['id']}", headers={"accept": "text/html"}).text
+    assert "data-story-hero-said" not in story_page, "nothing captioned yet"
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        hero_slug = shelf[0]["heroes"][0]["thumbnail"].rsplit("/", 1)[1]
+        hero_id = naming.resolve(conn, "file", hero_slug)[0]
+        sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (hero_id,)).fetchone()[0]
+        derived.annotate(conn, hero_id, "caption", "a window full of icons", "m", "1", sha, NOW)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    story_page = client.get(f"/stories/renders/{made.json()['id']}", headers={"accept": "text/html"}).text
+    assert "a window full of icons" in story_page
+    assert story_page.count("data-story-hero-said") >= 1
     assert f'<img src="{shelf[0]["heroes"][0]["thumbnail"]}"' in page
     assert "5 files from June 10, 2023" in page
     # and the story's crumb opens this session's window on the timeline

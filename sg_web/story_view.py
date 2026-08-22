@@ -22,7 +22,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response, Template
 
-from db import connect, evolution, naming, pages, planning, rendering, settings, stories
+from db import connect, derived, evolution, naming, pages, planning, rendering, settings, stories
 from sg_web import home, submitting
 from sg_web.presenting import VARIES, presented_page, wants_json
 
@@ -245,6 +245,7 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
         if wants_json(request):
             return Response(story, headers=VARIES)
         addressed = {}
+        ids: dict[str, int] = {}
         for ref, member in members.items():
             held = naming.by_uuid(conn, member["file_uuid"])
             slug = held[1] if held and held[0] == "file" else None
@@ -254,7 +255,17 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
                 "page": f"/i/{slug}" if slug else None,
                 "thumbnail": f"/thumb/{slug}" if slug else None,
                 "kind": member.get("media_kind"),
+                "said": None,
             }
+            found = naming.resolve(conn, "file", slug) if slug else None
+            if found is not None:
+                ids[ref] = found[0]
+        # What a model says about a hero TODAY -- live, by address, never
+        # part of the frozen story: the evidence the snapshot froze is the
+        # story's; this is a courtesy line the page labels as its own.
+        said = derived.said_first(conn, ids.values())
+        for ref, file_id in ids.items():
+            addressed[ref]["said"] = said.get(file_id)
     finally:
         connect.close(conn)
     # Rendered by the application's one engine (sg_web/app.py

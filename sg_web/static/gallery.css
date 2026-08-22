@@ -510,6 +510,7 @@ body {
 .story-strip { display: flex; gap: 4px; min-width: 64px; }
 .story-strip img, .story-strip .story-gone { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: var(--line); display: block; }
 .story-words { display: grid; gap: 2px; min-width: 0; }
+.story-hero-said { display: block; color: var(--ink-muted); font-size: .8rem; font-style: italic; }
 .story-card .story-title { color: var(--ink); font-weight: 600; font-size: 16px; text-decoration: none; }
 .story-card .story-title:hover { color: var(--accent); }
 .story-meta { color: var(--ink-muted); font-size: 12.5px; }

@@ -136,6 +136,20 @@ every claim kind through a closed registry; a render cites what
 supports it and `violations()` proves the chain on every read. The
 timeline offers the whole chain behind one button per session.
 
+## Captions
+
+The `annotate` job (`db/runner.py submit_annotate`, `POST /jobs/annotate`)
+runs the BLIP checkpoint the `caption_model` setting names
+(`vision/captions.py`) over every present picture and video's poster
+frame and writes `derived_annotation` rows through `derived.annotate`:
+one caption per model per file, the same model replacing its own, two
+models kept side by side. `annotation_fts` indexes the text; retrieval
+fuses a bm25 ranking named `captions` with the semantic spaces once any
+caption exists (`derived.rank_by_annotation`). Surfaces: the media page
+and lightbox say what was said and by which model; the grid says it on
+hover; a story page shows a hero's current caption beside the frozen
+name, labelled as today's and never part of the snapshot.
+
 ## Coverage
 
 `tests/test_the_shell_mounts_every_surface.py::SURFACES` names every

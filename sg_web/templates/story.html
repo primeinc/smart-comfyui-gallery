@@ -30,7 +30,7 @@
         <ul class="story-heroes">
           {% for ref in section.hero_refs %}
           <li data-story-hero="{{ ref }}">
-            {% if members[ref].page %}<a href="{{ members[ref].page }}"><img src="{{ members[ref].thumbnail }}" alt="{{ members[ref].name }}" loading="lazy"><span>{{ members[ref].name }}</span></a>{% else %}<span class="story-gone" title="no longer in the library">{{ members[ref].name }}</span>{% endif %}
+            {% if members[ref].page %}<a href="{{ members[ref].page }}"><img src="{{ members[ref].thumbnail }}" alt="{{ members[ref].name }}" loading="lazy"><span>{{ members[ref].name }}</span></a>{% if members[ref].said %}<q class="story-hero-said" data-story-hero-said title="what a model says about it today; not part of the story's evidence">{{ members[ref].said }}</q>{% endif %}{% else %}<span class="story-gone" title="no longer in the library">{{ members[ref].name }}</span>{% endif %}
           </li>
           {% endfor %}
         </ul>
