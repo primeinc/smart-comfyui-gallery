@@ -949,3 +949,20 @@ def test_search_never_downloads_a_model(faces):
     answer = client.get("/search", params={"q": "banana"})
     assert answer.status_code == 400
     assert "provisioned" in answer.json()["detail"]
+
+
+def test_the_cluster_job_says_what_it_grouped(faces, caplog):
+    """One line per space on the console: run, threshold, faces, groups,
+    how many groups a human's word named and how many were minted."""
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="db.runner"):
+        _drained_cluster_job(faces)
+
+    said = [r.getMessage() for r in caplog.records if r.name == "db.runner" and r.getMessage().startswith("cluster ")]
+    assert said == [
+        (
+            "cluster test/embedder 1: run #1 (primary), threshold 0.55, 3 faces -> 1 groups"
+            " (0 named by a human, 1 minted unnamed)"
+        )
+    ]

@@ -683,3 +683,31 @@ def test_the_real_qwen_weights_answer_by_meaning():
     match = float(np.dot(vector, encoder.encode_query("a bright yellow circle on a red background")))
     off = float(np.dot(vector, encoder.encode_query("a spreadsheet of quarterly financial figures")))
     assert match > off + 0.2, f"the joint space lost its meaning: match={match:.3f} off={off:.3f}"
+
+
+# --- the runner says what it did ---------------------------------------------
+
+
+def test_a_turn_logs_the_claim_and_the_settlement(db, caplog):
+    import logging
+
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3])
+
+    with caplog.at_level(logging.INFO, logger="db.runner"):
+        runner.run_next(db, "w1", 1.0, handlers={"embed": Counter()}, clock=lambda: 2.5)
+
+    said = [record.getMessage() for record in caplog.records if record.name == "db.runner"]
+    assert said[0] == f"job #{job_id} embed: claimed, 3 of 3 items pending"
+    assert said[-1] == f"job #{job_id} embed: done, 3 items, 0 failed, 0.0s"
+
+
+def test_a_failed_item_is_a_warning_naming_the_item_and_the_reason(db, caplog):
+    import logging
+
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3])
+
+    with caplog.at_level(logging.INFO, logger="db.runner"):
+        runner.run_next(db, "w1", 1.0, handlers={"embed": Counter(fails_on=2)})
+
+    warned = [r for r in caplog.records if r.name == "db.runner" and r.levelno == logging.WARNING]
+    assert [r.getMessage() for r in warned] == [f"job #{job_id} embed: item 2 failed: item 2 is broken"]

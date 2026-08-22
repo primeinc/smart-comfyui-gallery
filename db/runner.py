@@ -18,9 +18,12 @@ item error would turn its own defects into permanent verdicts about files.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 
 from . import jobs
+
+_logger = logging.getLogger(__name__)
 
 #: What a handler is allowed to fail with, per item. Everything else is a
 #: defect in the handler, not a fact about the item.
@@ -496,10 +499,26 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     run_id = derived.run_for(conn, model_id, model_version, derived.DEFAULT_METHOD, pinned, now)
     conn.execute("DELETE FROM derived_file_person WHERE run_id = ?", (run_id,))
     derived.seed_clusters_from_assertions(conn, run_id)
-    for (cluster_id,) in conn.execute(
+    unnamed = conn.execute(
         "SELECT id FROM derived_face_cluster WHERE run_id = ? AND person_id IS NULL ORDER BY id",
         (run_id,),
-    ).fetchall():
+    ).fetchall()
+    faces, clusters, primary = conn.execute(
+        "SELECT faces, clusters, is_primary FROM derived_face_run WHERE id = ?", (run_id,)
+    ).fetchone()
+    _logger.info(
+        "cluster %s %s: run #%d%s, threshold %.2f, %d faces -> %d groups (%d named by a human, %d minted unnamed)",
+        model_id,
+        model_version,
+        run_id,
+        " (primary)" if primary else "",
+        pinned,
+        faces,
+        clusters,
+        clusters - len(unnamed),
+        len(unnamed),
+    )
+    for (cluster_id,) in unnamed:
         person_id = naming.claim(conn, "person", "")
         conn.execute("INSERT INTO person(id, name, created_at) VALUES(?, NULL, ?)", (person_id, now))
         conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, cluster_id))
@@ -539,6 +558,14 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
     backend = _BACKENDS.get(key)
     if backend is None:
         backend = _BACKENDS[key] = faces_module.backend_for(models_dir, choice=key[1], providers=key[2], provision=True)
+        _logger.info(
+            "faces: backend %s %s (face_backend=%s, ort_providers=%s, models_dir=%s)",
+            backend.model_id,
+            backend.model_version,
+            key[1],
+            key[2],
+            models_dir,
+        )
     kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     path = detect.path_of(conn, file_id)
     if kind == "video":
@@ -673,11 +700,16 @@ def run_next(
             }
         )
 
-    spoke("running", jobs.progress(conn, job_id))
+    opened = jobs.progress(conn, job_id)
+    started = tick()
+    total, done = opened.total or 0, opened.done or 0
+    _logger.info("job #%d %s: claimed, %d of %d items pending", job_id, kind, total - done, total)
+    spoke("running", opened)
     handler = handlers.get(kind)
     if handler is None:
         jobs.settle(conn, job_id, fence, "failed", tick(), error=f"no handler for kind {kind!r}")
         conn.commit()
+        _logger.error("job #%d %s: failed, no handler for that kind", job_id, kind)
         spoke("failed", jobs.progress(conn, job_id))
         return {"job": job_id, "state": "failed", "did": 0}
     payload = json.loads(raw) if raw else {}
@@ -692,10 +724,14 @@ def run_next(
             # job at an item boundary instead of holding the exit hostage.
             jobs.pause(conn, job_id, fence, tick())
             conn.commit()
+            _logger.info(
+                "job #%d %s: paused after %d items (%d failed); the next turn resumes it", job_id, kind, did, failed
+            )
             return {"job": job_id, "state": "running", "did": did, "failed": failed}
         if jobs.cancelled(conn, job_id):
             jobs.settle(conn, job_id, fence, "cancelled", tick())
             conn.commit()
+            _logger.info("job #%d %s: cancelled after %d items (%d failed)", job_id, kind, did, failed)
             spoke("cancelled", jobs.progress(conn, job_id))
             return {"job": job_id, "state": "cancelled", "did": did, "failed": failed}
         try:
@@ -711,6 +747,7 @@ def run_next(
             similarity_module.discard_pending(conn)
             moved = jobs.finish_item(conn, job_id, fence, item, error=str(why))
             failed += 1
+            _logger.warning("job #%d %s: item %r failed: %s", job_id, kind, item, why)
         else:
             moved = jobs.finish_item(conn, job_id, fence, item)
         did += 1
@@ -726,5 +763,6 @@ def run_next(
 
     jobs.settle(conn, job_id, fence, "done", tick())
     conn.commit()
+    _logger.info("job #%d %s: done, %d items, %d failed, %.1fs", job_id, kind, did, failed, tick() - started)
     spoke("done", jobs.progress(conn, job_id))
     return {"job": job_id, "state": "done", "did": did, "failed": failed}
