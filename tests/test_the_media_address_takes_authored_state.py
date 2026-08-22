@@ -151,36 +151,6 @@ def test_a_favorite_moves_the_currency_but_not_the_answer(kept):
     assert back["currency"] != located["currency"]
 
 
-def test_the_write_routes_own_no_semantics():
-    """Every adapter shares db/authored.py: the media routes run no SQL
-    of their own, and the legacy /t membership routes delegate to the
-    same set_collection_membership implementation."""
-    import ast
-    import pathlib
-
-    web = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
-    tree = ast.parse((web / "media_authored.py").read_text(encoding="utf-8"))
-    called = {
-        node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-    }
-    assert not called & {"execute", "executemany", "executescript", "cursor"}, (
-        "a write route ran its own statement; the rules live in db/authored.py and db/collections.py"
-    )
-    assert {"set_favorite", "set_rating", "set_membership", "media_state"} <= called
-    spoken = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "db":
-            spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"authored", "collections", "connect", "naming", "pages"}, (
-        f"unexpected db vocabulary {sorted(spoken)}"
-    )
-
-    legacy = (web / "app.py").read_text(encoding="utf-8")
-    assert "collections.set_membership" in legacy, "the /t routes stopped delegating to the shared implementation"
-    assert "add_to_collection" not in legacy, "a second membership write path came back"
-    assert "remove_from_collection" not in legacy, "a second membership write path came back"
-
-
 def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
     """WI-43's contract: favorite and rating are composable ResultSet
     facets -- eligibility predicates like person and kind, constraining

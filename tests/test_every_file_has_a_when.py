@@ -245,6 +245,7 @@ def test_claimless_files_get_a_file_occurrence_and_form_file_sessions(tmp_path):
 
 
 @pytest.mark.skipif(not SWARM_MIXED.exists(), reason="the swarm-mixed sample library is not on this machine")
+@pytest.mark.slow
 def test_the_swarm_sidecar_family_gets_its_when_from_the_name(tmp_path):
     """The mp4, the swarmpreview.jpg/webp beside each Swarm clip carry
     no metadata of their own; their names carry the clip's stamp to the

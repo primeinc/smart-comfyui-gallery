@@ -77,6 +77,7 @@ dev = [
     "tifffile>=2025.5.10",
     "psd-tools>=1.18.0",
     "playwright>=1.62.0",
+    "pytest-xdist>=3.8.0",
 ]
 [tool.uv]
 # Application, not a distributable package: uv manages the environment but
@@ -392,7 +393,7 @@ ignore = [
     # literal. Bandit calls B603 an audit check; there is no edit that
     # clears it.
     #
-    # Replaced by tests/test_programs_are_started_safely.py, which holds
+    # Replaced by sglint (SG001-SG005), which holds
     # what actually matters and S603 cannot see: never a shell, always an
     # argument list, always a timeout, always an explicit check=. S602,
     # S604, S605 and S609 -- the shell rules -- stay selected.
@@ -414,7 +415,7 @@ ignore = [
     # module constants would silence it permanently -- including for a
     # value spliced in years from now.
     #
-    # Replaced by tests/test_sql_is_built_from_structure_only.py, which
+    # Replaced by sglint (SG101), which
     # knows the names. Every interpolation slot in every SQL string in
     # the shipped source must be one that file has agreed carries
     # structure, and the list has to stay exactly the set that is reached
@@ -440,7 +441,7 @@ ignore = [
     # top-level import turns into an ImportError.
     #
     # Replaced by two checks that hold the property the rule is a proxy
-    # for: tests/test_the_heavy_layer_stays_lazy.py (none of those
+    # for: sglint (SG301) (none of those
     # packages is reached while a module is read) and the import-time
     # requirements check in tests/test_docker_image_contents.py (nothing
     # reached at import time is missing from the core install).

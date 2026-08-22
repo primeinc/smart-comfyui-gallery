@@ -98,6 +98,7 @@ def test_the_reader_keeps_the_subsecond_and_the_body(tmp_path):
 
 
 @pytest.mark.skipif(not RAW.exists(), reason="the RAW sample library is not on this machine")
+@pytest.mark.slow
 def test_a_real_canon_body_is_read_whole():
     """5D Mark III files: the CR2 through Pillow's TIFF path, the JPEG,
     and the MOV through its CNDA thumbnail -- subsecond, serial, and the
@@ -439,6 +440,7 @@ def test_the_v3_grammar_stays_frozen_and_v4_rejects_bent_capture_facts():
 
 
 @pytest.mark.skipif(not RAW.exists(), reason="the RAW sample library is not on this machine")
+@pytest.mark.slow
 def test_a_real_canon_day_becomes_acts_sessions_and_a_story(tmp_path):
     """2013-02-10: 356 files from one 5D Mark III -- CR2+JPG pairs and
     one MOV. Every pair is one act; the MOV is an act with the still's

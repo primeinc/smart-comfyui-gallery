@@ -1182,6 +1182,7 @@ def test_a_replaced_file_stops_answering_by_its_old_picture(served, monkeypatch)
     )
 
 
+@pytest.mark.slow
 def test_search_never_downloads_a_model(served):
     """Embeddings exist but the model cache is empty: the request is
     refused with the fix named, and no acquisition begins -- weights

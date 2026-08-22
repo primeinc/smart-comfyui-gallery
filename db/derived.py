@@ -214,7 +214,7 @@ def stale(conn, table: str) -> list[int]:
     The table name is checked against the database rather than interpolated
     on trust. It is the one place in this package where a caller's string
     reaches the parser unbound, and the rest of the repo already refuses that
-    shape -- see tests/test_sql_is_built_from_structure_only.py.
+    shape -- see sglint (SG101).
     """
     known = {
         row[0]

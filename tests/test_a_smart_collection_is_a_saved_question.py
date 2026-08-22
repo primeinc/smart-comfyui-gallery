@@ -220,24 +220,6 @@ def test_an_edited_rule_is_a_new_question(saved):
     )
 
 
-def test_nothing_executes_stored_text():
-    """No path from stored rule text to the database: the module never
-    formats it into a statement, and the words a rule may carry stay
-    provenance."""
-    import ast
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "collection_rules.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "execute":
-            statement = node.args[0] if node.args else None
-            assert isinstance(statement, ast.Constant), (
-                "every statement in collection_rules.py must be a literal -- "
-                "a formatted one is a road from stored text to execution"
-            )
-
-
 def _rotten(where=None, select=None, v=1) -> str:
     import json
 

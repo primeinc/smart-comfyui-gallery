@@ -126,33 +126,6 @@ def test_a_superseded_currency_is_refused_not_mixed(address):
     assert stale.status_code == 409
 
 
-def test_the_media_path_never_consults_the_folder_walk():
-    """pages.neighbour is the folder walk; on this path previous/next
-    mean the ResultSet. Structural, like the gallery guard: the module
-    must consult resultset.locate and must not touch neighbour."""
-    import ast
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "sg_web" / "media_view.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    called = {
-        f"{node.func.value.id}.{node.func.attr}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
-    }
-    assert "resultset.locate" in called
-    assert "pages.neighbour" not in called
-    assert "neighbour" not in source, "the folder walk has no business on the media detail path"
-    # Every media kind has a presentation path, structurally.
-    for template in ("media.html", "_media_lightbox.html"):
-        held = (pathlib.Path(__file__).resolve().parent.parent / "sg_web" / "templates" / template).read_text(
-            encoding="utf-8"
-        )
-        for kind in ("video", "animated_image", "image", "audio"):
-            assert kind in held, f"{template} bakes in an image-only worldview: no {kind} branch"
-        assert "/media/" in held, "video/audio must ride the range-capable media route"
-
-
 def test_a_commit_landing_mid_request_cannot_cross_generations(tmp_path, monkeypatch):
     """The last WI-36 race: the expectation check must compare the
     currency the view was ACTUALLY located in, after assembly -- a

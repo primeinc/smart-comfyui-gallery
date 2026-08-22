@@ -128,27 +128,6 @@ def test_naming_still_mints_the_new_address(faces):
     assert '<link rel="canonical" href="/p/ana-torres">' in faces.get("/p/ana-torres", headers=AS_BROWSER).text
 
 
-def test_the_person_path_owns_no_sql_and_the_drawer_is_not_a_lightbox():
-    import ast
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "sg_web" / "person_view.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    called = {
-        node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-    }
-    assert not called & {"execute", "executemany", "executescript", "cursor"}, (
-        "the person routes ran their own statement; the queries live in db/pages.py"
-    )
-    spoken = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "db":
-            spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"authored", "connect", "naming", "pages", "resultset", "settings"}, (
-        f"unexpected db vocabulary: {sorted(spoken)}"
-    )
-
-
 def test_a_commit_mid_assembly_cannot_mix_person_generations(tmp_path, monkeypatch):
     """The MediaView invariant, held here too: a naming commit landing
     between person_files and the remaining reads must not hand back

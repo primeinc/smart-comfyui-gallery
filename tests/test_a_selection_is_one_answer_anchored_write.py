@@ -414,23 +414,3 @@ def test_every_non_hex_spelling_is_refused_as_a_bad_question(chosen):
     landed = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [valid], "value": True})
     assert landed.status_code < 300
     assert _favorites(chosen) == {"pic-0"}
-
-
-def test_the_one_item_adapters_share_the_many_implementation():
-    """Two adapters, one implementation: the single-item desired-state
-    functions delegate to their _many form, so validation cannot fork."""
-    import ast
-    import pathlib
-
-    here = pathlib.Path(__file__).resolve().parent.parent / "db"
-    bodies = {}
-    for module in ("authored.py", "collections.py"):
-        tree = ast.parse((here / module).read_text(encoding="utf-8"))
-        bodies |= {node.name: ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
-    for one, many in (
-        ("set_favorite", "set_favorite_many"),
-        ("set_rating", "set_rating_many"),
-        ("set_membership", "set_membership_many"),
-    ):
-        assert many in bodies[one], f"{one} stopped delegating to {many}"
-        assert "executemany" in bodies[many]

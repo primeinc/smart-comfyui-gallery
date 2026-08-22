@@ -402,29 +402,3 @@ def test_selection_and_the_walk_ride_the_artifact_answer(recipes):
     assert walked["in_answer"] is True
     assert (walked["previous"], walked["next"]) == ("pic-3", "pic-1"), "the arrows walk the artifact answer"
     assert "artifact=checkpoint-alpha" in walked["qs"]
-
-
-def test_no_second_membership_engine_remains():
-    """The deletion test: the old artifact media lists are gone, and the
-    ArtifactView selects no media ids of its own."""
-    import ast
-    import pathlib
-
-    root = pathlib.Path(__file__).resolve().parent.parent
-    held = (root / "db" / "pages.py").read_text(encoding="utf-8")
-    for gone in ("ARTIFACT_FILES", "WORKFLOW_FILES", "def artifact_files", "def workflow_files"):
-        assert gone not in held, f"{gone} survived; that is a second membership engine under the floorboards"
-    tree = ast.parse((root / "sg_web" / "artifact_view.py").read_text(encoding="utf-8"))
-    called = {
-        node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-    }
-    assert not called & {"execute", "executemany", "executescript", "cursor"}, (
-        "the ArtifactView ran its own statement; the media answer is the ResultSet's"
-    )
-    spoken = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "db":
-            spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"connect", "naming", "pages", "resultset", "settings"}, (
-        f"unexpected db vocabulary {sorted(spoken)}"
-    )

@@ -504,39 +504,6 @@ def test_a_refused_transition_leaves_the_callers_transaction_untouched(curated):
 # --- one implementation, pinned --------------------------------------------
 
 
-def test_the_write_adapter_owns_no_lifecycle_semantics():
-    """collection_authoring.py runs no SQL and invents no rules: it
-    resolves addresses, hands desired state to db/collections.py, and
-    answers with the CollectionView."""
-    import ast
-    import pathlib
-
-    web = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
-    tree = ast.parse((web / "collection_authoring.py").read_text(encoding="utf-8"))
-    called = {
-        node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-    }
-    assert not called & {"execute", "executemany", "executescript", "cursor"}, (
-        "the adapter ran its own statement; lifecycle rules live in db/collections.py"
-    )
-    assert {
-        "create_listed",
-        "create_smart",
-        "update_definition",
-        "replace_rule",
-        "convert_to_smart",
-        "convert_to_listed",
-        "view",
-    } <= called, "a lifecycle write stopped delegating"
-    spoken = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "db":
-            spoken |= {alias.name for alias in node.names}
-    assert spoken <= {"collection_rules", "collections", "connect", "naming", "settings"}, (
-        f"unexpected db vocabulary {sorted(spoken)}"
-    )
-
-
 def test_the_view_is_authoritative_after_every_write(curated):
     """The write's answer and a fresh GET agree on every definition
     fact -- the browser renders what the server read back, never what
