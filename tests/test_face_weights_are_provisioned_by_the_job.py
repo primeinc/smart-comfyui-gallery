@@ -389,3 +389,13 @@ def test_the_face_backend_setting_is_a_row_with_a_closed_vocabulary():
     with pytest.raises(ValueError, match="face_backend"):
         settings.put(conn, "face_backend", "dlib")
     conn.close()
+
+
+# --- what the pack says, in the schema's words ----------------------------------
+
+
+@pytest.mark.parametrize(("code", "word"), [("M", "male"), ("F", "female"), (None, "unknown"), ("X", "unknown")])
+def test_insightfaces_sex_letter_becomes_the_schemas_word(code, word):
+    """Face.sex is 'M' or 'F'; derived_face_instance.sex is CHECKed to
+    male/female/unknown -- the mismatch failed 74 of 80 real pictures."""
+    assert faces.sex_word(code) == word

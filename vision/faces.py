@@ -372,6 +372,16 @@ class OpenCVFaceBackend(FaceBackend):
         return detections
 
 
+#: insightface's genderage head answers a letter (Face.sex: 'M' / 'F',
+#: insightface/app/common.py); the schema stores the word
+#: (db/schema.sql derived_face_instance.sex CHECK).
+_SEX_WORDS = {"M": "male", "F": "female"}
+
+
+def sex_word(code) -> str:
+    return _SEX_WORDS.get(code, "unknown")
+
+
 class InsightFaceBackend(FaceBackend):
     """insightface's own pipeline (FaceAnalysis over the provisioned
     antelopev2 pack): SCRFD-10GF joint 128+640 detection, upstream
@@ -432,7 +442,7 @@ class InsightFaceBackend(FaceBackend):
             attributes: dict = {}
             if face.gender is not None and face.age is not None:
                 attributes["age"] = int(face.age)
-                attributes["sex"] = face.sex
+                attributes["sex"] = sex_word(face.sex)
             lmk106 = face.get("landmark_2d_106")
             if lmk106 is not None:
                 attributes["landmark_2d_106"] = [
