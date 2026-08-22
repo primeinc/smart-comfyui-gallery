@@ -1,15 +1,9 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Timeline</title>
-  <link rel="stylesheet" href="/static/gallery.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Timeline{% endblock %}
+{% block scripts %}<script src="/static/timeline.js" defer></script>{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/g">gallery</a>
       <span class="crumbs-here">Timeline</span>
     </nav>
   </header>
@@ -58,10 +52,8 @@
     {% endif %}
     {% else %}
     <p class="empty">
-      no interpreted history yet -- POST /jobs/context then /jobs/events reads the library's own claims into a timeline.
+      no interpreted history yet — <a href="/operations">interpret the library</a> (context, then events) to build one.
     </p>
     {% endif %}
   </main>
-  <script src="/static/timeline.js"></script>
-</body>
-</html>
+{% endblock %}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="{% block lang %}en{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SmartGallery{% endblock %}</title>
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="/static/gallery.css">
+  {% block styles %}{% endblock %}
+  <script src="/static/htmx-2.0.7.min.js" defer></script>
+  <script src="/static/htmx-ext-ws-2.0.3.js" defer></script>
+  {% block scripts %}{% endblock %}
+</head>
+<body hx-ext="ws">
+  {# The shell: every product area reachable from every page. Operations
+     is the one door into the runtime; media browsing never mixes with it. #}
+  {% set here = request.url.path if request is defined else "" %}
+  <nav class="shell" aria-label="primary">
+    <a class="shell-brand" href="/g">SmartGallery</a>
+    <a href="/g"{% if here == "/g" or here.startswith("/i/") %} aria-current="page"{% endif %}>gallery</a>
+    <a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a>
+    <a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a>
+    <a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a>
+    <a href="/timeline"{% if here == "/timeline" or here.startswith("/stories/") %} aria-current="page"{% endif %}>timeline</a>
+    <a class="shell-operations" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>operations</a>
+    {% with jobs = activity_jobs() %}{% include "_activity.html" %}{% endwith %}
+  </nav>
+  {% block body %}{% endblock %}
+</body>
+</html>

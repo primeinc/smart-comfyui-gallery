@@ -1,0 +1,9 @@
+<li id="job-{{ job.id }}" class="job" data-job="{{ job.id }}" data-state="{{ job.state }}"{% if oob is defined and oob %} hx-swap-oob="true"{% endif %}>
+  <span class="job-kind">{{ job.kind.replace("_", " ") }}</span>
+  <span class="job-state">{{ job.state }}</span>
+  <progress class="job-progress"{% if job.total %} value="{{ job.done }}" max="{{ job.total }}"{% endif %}></progress>
+  <span class="job-count">{{ job.done }}{% if job.total is not none %} / {{ job.total }}{% endif %}</span>
+  {% if job.state in ("queued", "running") %}
+  <button type="button" class="job-cancel" hx-post="/jobs/{{ job.id }}/cancel" hx-swap="none" title="cancel">&times;</button>
+  {% endif %}
+</li>

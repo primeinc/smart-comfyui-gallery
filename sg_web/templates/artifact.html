@@ -1,13 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ artifact.name }}</title>
-  <link rel="canonical" href="{{ shelf }}/{{ artifact.slug }}">
-  <link rel="stylesheet" href="/static/gallery.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}{{ artifact.name }}{% endblock %}
+{% block head %}<link rel="canonical" href="{{ shelf }}/{{ artifact.slug }}">{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
       {% if artifact.kind == "workflow" %}
@@ -55,5 +49,4 @@
     <p class="empty">no pictures used this yet.</p>
     {% endif %}
   </main>
-</body>
-</html>
+{% endblock %}

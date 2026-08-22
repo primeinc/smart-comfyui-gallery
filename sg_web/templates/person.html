@@ -1,15 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ person.name or "(unnamed)" }}</title>
-  <link rel="canonical" href="/p/{{ person.slug }}">
-  <link rel="stylesheet" href="/static/gallery.css">
+{% extends "base.html" %}
+{% block title %}{{ person.name or "(unnamed)" }}{% endblock %}
+{% block head %}<link rel="canonical" href="/p/{{ person.slug }}">{% endblock %}
+{% block scripts %}
   <script src="/static/media.js" defer></script>
   <script src="/static/people.js" defer></script>
-</head>
-<body>
+{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
       <a href="/people" data-return>&larr; people</a>
@@ -53,5 +49,4 @@
     {% endif %}
     {% endif %}
   </main>
-</body>
-</html>
+{% endblock %}

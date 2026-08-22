@@ -1,17 +1,10 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ view.plan.label }}</title>
-  <link rel="stylesheet" href="/static/gallery.css">
-  <link rel="stylesheet" href="/static/evolution.css">
-  <script src="/static/evolution.js" defer></script>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}{{ view.plan.label }}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="/static/evolution.css">{% endblock %}
+{% block scripts %}<script src="/static/evolution.js" defer></script>{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/g">gallery</a>
       <a href="/timeline">timeline</a>
       <a href="/stories/plans/{{ plan_id }}">plan</a>
       <span class="crumbs-here">evolution</span>
@@ -40,5 +33,4 @@
       <section class="evolution-inspector" data-inspector></section>
     </div>
   </main>
-</body>
-</html>
+{% endblock %}

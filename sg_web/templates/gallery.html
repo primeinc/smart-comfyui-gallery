@@ -1,17 +1,12 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Gallery</title>
-  <link rel="stylesheet" href="/static/gallery.css">
-  <script src="/static/htmx-2.0.7.min.js" defer></script>
+{% extends "base.html" %}
+{% block title %}Gallery{% endblock %}
+{% block scripts %}
   <script src="/static/overlay.js" defer></script>
   <script src="/static/gallery.js" defer></script>
   <script src="/static/authored.js" defer></script>
   <script src="/static/selection.js" defer></script>
-</head>
-<body>
+{% endblock %}
+{% block body %}
   <header class="bar">
     <form class="ask" method="get" action="/g" data-ask>
       <input type="search" name="q" value="{{ q }}" placeholder="search by what it looks like" aria-label="search">
@@ -82,5 +77,4 @@
     <button type="button" data-curate-clear>clear selection</button>
   </div>
   <div class="lightbox-root" data-lightbox-root hidden></div>
-</body>
-</html>
+{% endblock %}

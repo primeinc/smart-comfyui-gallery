@@ -1,15 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ item.name }}</title>
-  <link rel="canonical" href="/i/{{ item.slug }}">
-  <link rel="stylesheet" href="/static/gallery.css">
+{% extends "base.html" %}
+{% block title %}{{ item.name }}{% endblock %}
+{% block head %}<link rel="canonical" href="/i/{{ item.slug }}">{% endblock %}
+{% block scripts %}
   <script src="/static/media.js" defer></script>
   <script src="/static/authored.js" defer></script>
-</head>
-<body>
+{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
       <a href="{{ item.context.return_url }}" data-return>&larr; results</a>
@@ -80,5 +76,4 @@
       {% endif %}
     </section>
   </main>
-</body>
-</html>
+{% endblock %}

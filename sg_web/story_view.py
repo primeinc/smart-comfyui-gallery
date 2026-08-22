@@ -115,11 +115,9 @@ def plan_snapshot(state: State, data: PlanRequest) -> Response:
 
 def _nudge(state: State) -> None:
     """Wake the worker if this process runs one (sg_web/app.py)."""
-    from sg_web import app as web
+    from sg_web import submitting
 
-    nudge = getattr(web, "_nudge", None)
-    if nudge is not None:
-        nudge(state)
+    submitting.nudge(state)
 
 
 @get("/stories/plans/{plan_id:int}", sync_to_thread=True)
@@ -179,11 +177,18 @@ def _story_env():
 
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-    return Environment(
+    from sg_web import activity
+
+    env = Environment(
         loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
         undefined=StrictUndefined,
         autoescape=True,
     )
+    # The pages extend the shell (templates/base.html), which mounts the
+    # activity surface through the same global the application engine
+    # carries; the render calls pass `request` so the shell can read it.
+    env.globals["activity_jobs"] = activity.active_jobs
+    return env
 
 
 @get("/stories/renders/{render_id:int}", sync_to_thread=True)
@@ -208,7 +213,9 @@ def render_document(state: State, render_id: int, request: Request) -> Response:
                 heroes[ref] = {"name": members[ref]["name"], "slug": held[1] if held and held[0] == "file" else None}
     finally:
         connect.close(conn)
-    page = _story_env().get_template("story.html").render(story=story, heroes=heroes, render_id=render_id)
+    page = (
+        _story_env().get_template("story.html").render(story=story, heroes=heroes, render_id=render_id, request=request)
+    )
     return Response(page, media_type="text/html", headers=VARIES)
 
 
@@ -235,7 +242,7 @@ def plan_evolution(state: State, plan_id: int, request: Request, space: str | No
     _addressed(view)
     if wants_json(request):
         return Response(view, headers=VARIES)
-    page = _story_env().get_template("evolution.html").render(view=view, plan_id=plan_id)
+    page = _story_env().get_template("evolution.html").render(view=view, plan_id=plan_id, request=request)
     return Response(page, media_type="text/html", headers=VARIES)
 
 

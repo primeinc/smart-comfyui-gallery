@@ -1,0 +1,9 @@
+{# The activity surface: persisted job rows on cold load, then deltas
+   over /ws/jobs?as=html as <li id="job-N"> out-of-band swaps. The rows
+   are the truth (db/jobs.py); this list only shows them. #}
+<details class="activity" data-activity ws-connect="/ws/jobs?as=html" open>
+  <summary>activity <span class="activity-count" data-activity-count></span></summary>
+  <ul id="activity-jobs" class="activity-jobs" data-activity-jobs>
+    {% for job in jobs %}{% include "_job.html" %}{% endfor %}
+  </ul>
+</details>

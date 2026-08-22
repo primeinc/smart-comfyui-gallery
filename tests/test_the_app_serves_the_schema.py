@@ -172,6 +172,10 @@ def test_the_worker_obeys_its_setting_changed_over_http(served):
     with client.websocket_connect("/ws/jobs") as feed:
         assert feed.receive_json(timeout=10)["type"] == "snapshot"
         job_id = client.post("/jobs/verify").json()["id"]
+        # The submit announces its committed row (sg_web/submitting.py);
+        # after that, a worker that is off says nothing at all.
+        born = feed.receive_json(timeout=10)
+        assert (born["job"], born["state"]) == (job_id, "queued")
 
         import queue
 

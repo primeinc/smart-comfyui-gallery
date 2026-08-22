@@ -213,3 +213,41 @@ def test_job_progress_streams_into_a_browser_websocket(gallery):
         assert done_counts == sorted(done_counts), "progress went backwards in the browser"
     finally:
         page.close()
+
+
+def test_the_activity_surface_shows_a_sweep_started_from_operations(gallery):
+    """WI-51's proof on screen: no `new WebSocket()` injected anywhere.
+    A person opens /operations, presses a sweep button, and the shell's
+    own activity surface -- the htmx ws extension swapping the server's
+    fragments -- shows the job appear as queued and run through to done,
+    with progress that never goes backwards. The same surface is mounted
+    on the gallery, so a reload elsewhere shows the persisted row too."""
+    browser, base = gallery
+    page = browser.new_page()
+    try:
+        page.goto(f"{base}/operations")
+        page.wait_for_selector("[data-operations]")
+        # the feed is connected before anything is pressed
+        page.wait_for_function("() => document.querySelector('[data-activity-jobs]') !== null")
+        page.click('[data-launch="verify"]')
+        page.wait_for_selector("[data-operations-notice] [data-notice]")
+        notice = page.text_content("[data-operations-notice] [data-notice]")
+        assert notice is not None
+        assert "queued #" in notice
+        job_id = int(notice.rsplit("#", 1)[1].split(",")[0].strip())
+
+        page.wait_for_selector(f'[data-activity-jobs] [data-job="{job_id}"]')
+        page.wait_for_function(
+            "(id) => { const li = document.querySelector(`[data-job='${id}']`);"
+            " return li && ['done','failed','cancelled'].includes(li.dataset.state); }",
+            arg=job_id,
+            timeout=30_000,
+        )
+        assert page.get_attribute(f'[data-job="{job_id}"]', "data-state") == "done"
+        count = page.text_content(f'[data-job="{job_id}"] .job-count')
+        assert count is not None
+        assert count.strip().startswith("3 / 3")
+        # a terminal job has no cancel; a live one would
+        assert page.locator(f'[data-job="{job_id}"] .job-cancel').count() == 0
+    finally:
+        page.close()
