@@ -7,6 +7,7 @@
     <nav class="crumbs">
       <a href="/timeline">timeline</a>
       <a href="/stories/plans/{{ plan_id }}">plan</a>
+      {% if view.doors.story %}<a href="{{ view.doors.story }}" data-evolution-story>story</a>{% endif %}
       <span class="crumbs-here">evolution</span>
     </nav>
   </header>

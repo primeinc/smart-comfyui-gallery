@@ -113,7 +113,10 @@ def validated_settings(settings: dict | None, defaults: dict) -> dict:
     domain -- not a bool, not a string. An unknown key would ride the
     identity while meaning nothing; a string would compare as a string.
     The same exact-shape doctrine CollectionRule paid for."""
-    held = dict(defaults)
+    # defaults are spelled as floats exactly as a given value is: `30`
+    # and `30.0` are one setting, and a request hashed under one must
+    # find the plan its job persisted under the other
+    held = {key: float(value) for key, value in defaults.items()}
     if settings is None:
         return held
     if not isinstance(settings, dict):
@@ -1809,6 +1812,19 @@ class PlanRequest:
     job_id: int | None
 
 
+def _engine_identity(maker, engine) -> tuple[str, str]:
+    """The similarity identity a request is hashed under: the engine's
+    for a planner that compares prompts, the planner's own fixed
+    `none` otherwise -- the SAME identity plan_snapshot persists under.
+    Hashing a no-similarity request with the engine the caller happened
+    to name made every such request miss its own plan and queue the
+    job again, forever."""
+    if maker.uses_similarity:
+        return engine.identity()
+    held = _NoSimilarity()
+    return held.name, held.version
+
+
 def request_plan(conn, snapshot_id: int, planner_kind: str, engine, settings: dict | None, now: float) -> PlanRequest:
     """The planning service: validate the request, compute its identity
     WITHOUT loading weights, reuse a finished plan or a live job for the
@@ -1821,7 +1837,7 @@ def request_plan(conn, snapshot_id: int, planner_kind: str, engine, settings: di
         raise ValueError(f"no planner named {planner_kind!r}; one of {', '.join(sorted(PLANNERS))}")
     exact = validated_settings(settings, maker.defaults)
     snapshot_sha = _verified_snapshot(conn, snapshot_id)[1]
-    engine_name, engine_version = engine.identity()
+    engine_name, engine_version = _engine_identity(maker, engine)
     request = request_identity(snapshot_sha, maker.kind, maker.version, engine_name, engine_version, exact)
     # ONE writer lane for look-then-enqueue: two requests that both saw
     # "no plan, no job" would otherwise each queue the same model work.
@@ -1860,7 +1876,7 @@ def plan_item(conn, _item: int, payload: dict, now: float) -> None:
     engine = LexicalEngine() if selector == LexicalEngine.selector else SemanticEngine(**engine_payload)
     maker = PLANNERS[payload["planner"]]
     snapshot_sha = _verified_snapshot(conn, int(payload["snapshot_id"]))[1]
-    engine_name, engine_version = engine.identity()
+    engine_name, engine_version = _engine_identity(maker, engine)
     current = request_identity(
         snapshot_sha, maker.kind, maker.version, engine_name, engine_version, dict(payload["settings"])
     )

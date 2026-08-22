@@ -212,9 +212,11 @@ def plan_evolution(state: State, plan_id: int, request: Request, space: str | No
             raise ClientException(str(corrupt), status_code=409) from corrupt
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
+        render_id = rendering.latest_render_id(conn, plan_id)
     finally:
         connect.close(conn)
     _addressed(view)
+    view["doors"]["story"] = f"/stories/renders/{render_id}" if render_id is not None else None
     if wants_json(request):
         return Response(view, headers=VARIES)
     return Template(template_name="evolution.html", context={"view": view, "plan_id": plan_id}, headers=VARIES)

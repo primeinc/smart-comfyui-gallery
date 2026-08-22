@@ -136,6 +136,28 @@
     zoomNav.appendChild(here);
   }
 
+  function settled(jobId) {
+    // the job feed: a snapshot, then every committed delta; resolve on
+    // the job's terminal state, or on a snapshot that already holds it
+    return new Promise((resolve, reject) => {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const socket = new WebSocket(`${proto}://${location.host}/ws/jobs`);
+      const terminal = new Set(["done", "failed", "cancelled"]);
+      const finish = (state) => { socket.close(); resolve(state); };
+      socket.onmessage = (msg) => {
+        const frame = JSON.parse(msg.data);
+        if (frame.type === "snapshot") {
+          const held = frame.jobs.find((j) => j.id === jobId);
+          if (held && terminal.has(held.state)) finish(held.state);
+          if (!held) fetch(`/jobs/${jobId}`, { headers: { accept: "application/json" } }).then((r) => r.json()).then((j) => { if (terminal.has(j.state)) finish(j.state); });
+          return;
+        }
+        if (frame.job === jobId && terminal.has(frame.state)) finish(frame.state);
+      };
+      socket.onerror = () => reject(new Error("the job feed closed"));
+    });
+  }
+
   async function tell(s, status) {
     // freeze -> plan -> render, each a story route; a refusal is shown verbatim
     const post = async (where, body) => {
@@ -148,10 +170,15 @@
       status.textContent = "freezing…";
       const snap = await post("/stories/snapshots", { event_id: s.id });
       status.textContent = "planning…";
-      const plan = await post("/stories/plans", { snapshot_id: snap.told.id, planner: s.planner });
+      let plan = await post("/stories/plans", { snapshot_id: snap.told.id, planner: s.planner });
       if (plan.status === 202) {
-        status.textContent = `planning queued as job #${plan.told.job.id}; the story appears here when it is told`;
-        return;
+        // durable work: the job feed says when it settles (no polling),
+        // then the same request answers 200 with the plan it made
+        status.textContent = `planning as job #${plan.told.job.id}…`;
+        const state = await settled(plan.told.job.id);
+        if (state !== "done") throw new Error(`the planning job ${state}; see /operations`);
+        plan = await post("/stories/plans", { snapshot_id: snap.told.id, planner: s.planner });
+        if (plan.status !== 200) throw new Error("the plan job settled but no plan answers; see /operations");
       }
       status.textContent = "rendering…";
       const made = await post("/stories/renders", { plan_id: plan.told.plan_id });

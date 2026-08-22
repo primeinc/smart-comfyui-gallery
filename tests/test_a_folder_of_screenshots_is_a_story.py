@@ -136,6 +136,9 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
         assert (planner, similarity) == ("file_history", "none")
     finally:
         connect.close(conn)
+    again = client.post("/stories/plans", json={"snapshot_id": frozen.json()["id"], "planner": "file_history"})
+    assert again.status_code == 200, "the same request finds the plan its job made; it never queues again"
+    assert again.json()["plan_id"] == plan_id
     made = client.post("/stories/renders", json={"plan_id": plan_id})
     assert made.status_code == 201, made.text
     page = client.get(f"/stories/renders/{made.json()['id']}", headers={"accept": "text/html"})
@@ -212,3 +215,16 @@ def test_the_v5_grammar_holds_the_file_vocabulary_and_v4_refuses_it():
     }
     assert planning.validate_story_plan(capture) == [], "v4's plans read under v5"
     assert planning.validate_story_plan({**capture, "v": 4}) == [], "and still under v4"
+
+
+def test_default_settings_spell_like_given_ones():
+    """A request without settings and a request naming the defaults are
+    one request: the identity is hashed from canonical JSON, where 30
+    and 30.0 differ -- the first file story ever asked for queued its
+    plan job again on every click because of exactly that."""
+    defaults = planning.FileHistoryPlanner.defaults
+    assert planning.validated_settings(None, defaults) == planning.validated_settings(dict(defaults), defaults)
+    assert planning.canonical(planning.validated_settings(None, defaults)) == planning.canonical(
+        planning.validated_settings({"pause_minutes": 30, "burst_seconds": 5}, defaults)
+    )
+    assert all(isinstance(v, float) for v in planning.validated_settings(None, defaults).values())

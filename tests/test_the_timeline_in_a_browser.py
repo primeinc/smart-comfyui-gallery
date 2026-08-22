@@ -107,4 +107,16 @@ def test_the_url_owns_the_zoom_and_the_surface_carries_pictures(served):
         total = page.get_attribute("[data-grid]", "data-total")
         assert total is not None
         assert int(total) == FILES
+        # tell the story: freeze, plan (a job the real worker drains), render, read
+        page.goto(base + "/timeline")
+        page.wait_for_selector("[data-sessions] .session [data-session-tell]", timeout=10_000)
+        page.click("[data-sessions] .session [data-session-tell]")
+        page.wait_for_url("**/stories/renders/*", timeout=60_000)
+        page.wait_for_selector(".story-heroes img", timeout=10_000)
+        assert page.locator(".story-members img").count() >= FILES
+        page.click("[data-story-evolution]")
+        page.wait_for_url("**/evolution", timeout=10_000)
+        page.wait_for_selector("[data-evolution-story]", timeout=10_000)
+        page.goto(base + "/timeline")
+        page.wait_for_selector("[data-sessions] .session [data-session-story]", timeout=10_000)
         browser.close()

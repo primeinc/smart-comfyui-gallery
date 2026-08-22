@@ -667,6 +667,12 @@ def load_render_with_members(conn, render_id: int) -> tuple[dict, dict, int]:
     return render, members, plan_id
 
 
+def latest_render_id(conn, plan_id: int) -> int | None:
+    """The newest render told of one plan, or None while none has been."""
+    row = conn.execute("SELECT id FROM story_render WHERE plan_id = ? ORDER BY id DESC LIMIT 1", (plan_id,)).fetchone()
+    return int(row[0]) if row else None
+
+
 def load_render(conn, render_id: int) -> dict:
     """The stored render, RE-VERIFIED on read: it must hash to its stored
     identity and still pass every violation check against its

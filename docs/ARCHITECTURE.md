@@ -121,6 +121,21 @@ An item failure (`item.failed`, the job continues) and a worker defect
 (`worker.turn_failed`, traceback, lease lapses, reclaimable) are
 distinct conditions on every surface.
 
+## Stories
+
+```
+derived_event  --freeze-->  story_snapshot  --plan-->  story_plan  --render-->  story_render
+                            db/stories.py              db/planning.py          db/rendering.py
+```
+
+One planner per session kind -- `generation_history`, `capture_history`,
+`file_history` -- each reading only the evidence its kind carries; the
+plan grammar is versioned and frozen (`STORY_PLAN_V1..V5`), a stored
+document is judged by its own version forever. `story_renderers` words
+every claim kind through a closed registry; a render cites what
+supports it and `violations()` proves the chain on every read. The
+timeline offers the whole chain behind one button per session.
+
 ## Coverage
 
 `tests/test_the_shell_mounts_every_surface.py::SURFACES` names every
