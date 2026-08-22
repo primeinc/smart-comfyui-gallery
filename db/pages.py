@@ -424,6 +424,23 @@ def clusterings(conn):
     return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
+def standings(conn) -> list[dict]:
+    """Every run with where it stands against the People page -- the
+    default, or the sentence saying why not (db/derived.py standing)."""
+    from . import derived
+
+    return [
+        {
+            "id": run["id"],
+            "model_id": run["model_id"],
+            "faces": run["faces"],
+            "clusters": run["clusters"],
+            "standing": derived.standing(conn, run["id"], run["model_id"], run["threshold"]),
+        }
+        for run in clusterings(conn)
+    ]
+
+
 def disagreements(conn, left: int, right: int):
     """The pictures two runs describe differently."""
     return conn.execute(RUNS_DISAGREE, (left, right, left, right)).fetchall()

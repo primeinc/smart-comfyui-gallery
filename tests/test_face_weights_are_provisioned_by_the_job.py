@@ -260,24 +260,52 @@ def test_insightface_carries_the_providers_setting(recorded_backends):
     assert recorded_backends["opencv"] == []
 
 
-def test_auto_is_insightface_when_its_runtime_is_installed(recorded_backends, monkeypatch):
-    import importlib.util
-
-    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
-
+def test_auto_is_insightface_when_its_runtime_imports(recorded_backends):
+    """This venv's insightface is the real one: the import succeeds."""
     faces.backend_for("M", choice="auto", providers="auto")
 
     assert recorded_backends["insightface"] == [("M", {"providers": "auto", "provision": False})]
 
 
-def test_auto_takes_the_opencv_stack_only_without_the_insightface_runtime(recorded_backends, monkeypatch):
-    import importlib.util
+def test_auto_takes_the_opencv_stack_only_when_insightface_does_not_import(recorded_backends, monkeypatch, caplog):
+    import logging
+    import sys
 
-    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setitem(sys.modules, "insightface", None)  # `import insightface` now raises ImportError
 
-    faces.backend_for("M", choice="auto")
+    with caplog.at_level(logging.WARNING, logger="vision.faces"):
+        faces.backend_for("M", choice="auto")
 
     assert recorded_backends == {"opencv": [("M", {"provision": False})], "insightface": []}
+    assert any("insightface does not import" in r.getMessage() for r in caplog.records)
+
+
+def test_an_unavailable_backend_fails_every_item_by_name_once(tmp_path, monkeypatch, caplog):
+    """No backend is an item failure the job row shows, not a dead worker
+    turn retried forever -- and the refusal is held so the second item
+    does not attempt the download again."""
+    import logging
+
+    conn = fresh_schema()
+    file_id = _one_picture(conn, tmp_path / "lib")
+    attempts: list = []
+
+    def refuses(models_dir, **kw):
+        attempts.append(kw)
+        raise faces.BackendUnavailable("the pack could not be fetched")
+
+    monkeypatch.setattr(faces, "backend_for", refuses)
+    monkeypatch.setattr(runner, "_BACKENDS", {})
+    payload = {"models_dir": "M", "backend": "insightface", "providers": "auto"}
+
+    with caplog.at_level(logging.ERROR, logger="db.runner"):
+        for _ in range(2):
+            with pytest.raises(LookupError, match="could not be fetched"):
+                runner._face_item(conn, file_id, payload, 0.0)
+
+    assert len(attempts) == 1
+    assert [r.getMessage() for r in caplog.records] == ["faces: no backend for face_backend=insightface"]
+    assert "the pack could not be fetched" in caplog.text, "the refusal rides the record as its traceback"
 
 
 def test_an_unknown_backend_is_refused_by_name(recorded_backends):

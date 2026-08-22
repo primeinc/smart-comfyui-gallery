@@ -961,8 +961,24 @@ def test_the_cluster_job_says_what_it_grouped(faces, caplog):
 
     said = [r.getMessage() for r in caplog.records if r.name == "db.runner" and r.getMessage().startswith("cluster ")]
     assert said == [
-        (
-            "cluster test/embedder 1: run #1 (primary), threshold 0.55, 3 faces -> 1 groups"
-            " (0 named by a human, 1 minted unnamed)"
-        )
+        "cluster test/embedder 1: run #1, threshold 0.55, 3 faces -> 1 groups (0 named by a human, 1 minted unnamed)",
+        "cluster test/embedder 1: run #1 is the People page's default",
     ]
+
+
+def test_an_empty_people_page_says_where_every_run_stands(faces):
+    """A run that exists but is not the default is named with its
+    standing -- never "nobody clustered yet" over a library that did."""
+    conn = connect.connect(faces.app.state.db_path)
+    conn.execute("UPDATE derived_face_run SET is_primary = 0")
+    conn.commit()
+    connect.close(conn)
+
+    page = faces.get("/people", headers=AS_BROWSER)
+
+    assert page.status_code == 200
+    assert "nobody clustered yet" not in page.text
+    assert 'data-run="1"' in page.text
+    assert "run #1 (test/embedder): 3 faces in 1 groups" in page.text
+    assert "sound but not adopted unasked; no run is the default" in page.text
+    assert faces.get("/people").json() == [], "the machine list stays the primary run's answer"

@@ -476,3 +476,37 @@ def test_a_deleted_face_id_is_never_handed_out_again(db):
     db.execute("DELETE FROM derived_face_instance WHERE id = ?", (second,))
     third = face()
     assert third > second, "a deleted face id came back wearing a different embedding"
+
+
+# --- why a run is or is not the default, in words ------------------------------
+
+
+def _reading(**facts) -> dict:
+    base = {"faces": 100, "clusters": 10, "largest_share": 0.1, "alone_share": 0.2, "silhouette": 0.5}
+    return {**base, **facts}
+
+
+@pytest.mark.parametrize(
+    ("reading", "names"),
+    [
+        (_reading(clusters=0), "grouped nothing"),
+        (_reading(largest_share=0.96), "chained"),
+        (_reading(alone_share=0.99), "alone"),
+        (_reading(silhouette=0.02), "not apart"),
+    ],
+    ids=["nothing", "chained", "alone", "silhouette"],
+)
+def test_a_disqualified_run_is_told_why(reading, names):
+    why = derived.disqualification(reading)
+
+    assert why is not None
+    assert names in why
+
+
+@pytest.mark.parametrize(
+    "reading",
+    [_reading(), _reading(faces=3, clusters=1, largest_share=0.9, silhouette=0.0)],
+    ids=["sound", "too-small-to-judge"],
+)
+def test_a_sound_run_has_no_disqualification(reading):
+    assert derived.disqualification(reading) is None

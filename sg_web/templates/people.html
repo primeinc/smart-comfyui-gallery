@@ -22,6 +22,14 @@
       </a>
       {% endfor %}
     </div>
+    {% elif runs %}
+    <p class="empty">clustered, but no run is the People page's default:</p>
+    <ul class="empty" data-clusterings-standing>
+      {% for run in runs %}
+      <li data-run="{{ run.id }}">run #{{ run.id }} ({{ run.model_id }}): {{ run.faces }} faces in {{ run.clusters }} groups — {{ run.standing }}</li>
+      {% endfor %}
+    </ul>
+    <p class="empty">a sounder run comes from a better embedder: set <code>face_backend</code> on <a href="/operations">operations</a>, run face detection, then clustering.</p>
     {% else %}
     <p class="empty">nobody clustered yet — <a href="/operations">run face detection, then clustering</a>.</p>
     {% endif %}

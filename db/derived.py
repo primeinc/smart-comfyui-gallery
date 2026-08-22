@@ -762,17 +762,47 @@ GOOD_ENOUGH = 0.10
 JUDGEABLE = 20
 
 
+def disqualification(reading: dict) -> str | None:
+    """Why a run's shape bars it from becoming the default unasked, in
+    words a person can act on -- or None when nothing does."""
+    if reading["clusters"] == 0:
+        return "it grouped nothing"
+    if reading["faces"] < JUDGEABLE:
+        return None
+    if reading["largest_share"] > CHAINED:
+        return (
+            f"it chained: one group holds {reading['largest_share']:.0%} of every face"
+            f" (more than {CHAINED:.0%}), which is not a person"
+        )
+    if reading["alone_share"] > ALL_ALONE:
+        return f"{reading['alone_share']:.0%} of faces are alone (more than {ALL_ALONE:.0%}); it grouped nothing much"
+    if reading["clusters"] > 1 and reading["silhouette"] < GOOD_ENOUGH:
+        return (
+            f"its groups are not apart: silhouette {reading['silhouette']:.2f} is under {GOOD_ENOUGH:.2f},"
+            " a face sits about as close to somebody else's group as to its own"
+        )
+    return None
+
+
 def _disqualified(reading: dict) -> bool:
     """Whether a run's shape bars it from becoming the default unasked."""
-    if reading["clusters"] == 0:
-        return True
-    if reading["faces"] < JUDGEABLE:
-        return False
-    return (
-        reading["largest_share"] > CHAINED
-        or reading["alone_share"] > ALL_ALONE
-        or (reading["clusters"] > 1 and reading["silhouette"] < GOOD_ENOUGH)
-    )
+    return disqualification(reading) is not None
+
+
+def standing(conn, run_id: int, model_id: str, threshold) -> str:
+    """One sentence on where a run stands with the People page: the
+    default, or why not -- the verdict `_adopt_if_better` reaches in
+    silence, said out loud for the log and the page."""
+    if conn.execute("SELECT is_primary FROM derived_face_run WHERE id = ?", (run_id,)).fetchone()[0]:
+        return "the People page's default"
+    why = disqualification(health(conn, run_id))
+    if why is None and threshold is not None and abs(float(threshold) - threshold_for(model_id)) > 1e-9:
+        why = f"threshold {float(threshold):.2f} is not this embedder's measured {threshold_for(model_id):.2f}"
+    chosen = primary_run(conn)
+    held = f"the default is run #{chosen}" if chosen is not None else "no run is the default, so /people is empty"
+    if why is None:
+        return f"sound but not adopted unasked; {held} -- POST /clusterings/choose to choose"
+    return f"not adopted: {why}; {held}"
 
 
 def health(conn, run_id: int) -> dict:

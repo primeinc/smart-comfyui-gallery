@@ -83,9 +83,13 @@ def people_index(state: State, request: Request) -> Template | Response:
         told = [
             {"name": name, "slug": slug, "pictures": pictures} for name, slug, pictures in pages.people_by_most(conn)
         ]
+        # An empty page says WHY: runs that exist but are not the default
+        # each carry their standing, so "nobody clustered yet" is only
+        # said when nothing ran.
+        runs = pages.standings(conn) if not told else []
     finally:
         connect.close(conn)
-    return presented_page(request, told, page="people.html", context={"people": told})
+    return presented_page(request, told, page="people.html", context={"people": told, "runs": runs})
 
 
 @get("/p/{slug:str}", sync_to_thread=True)

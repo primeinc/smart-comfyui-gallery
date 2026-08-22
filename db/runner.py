@@ -503,20 +503,24 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
         "SELECT id FROM derived_face_cluster WHERE run_id = ? AND person_id IS NULL ORDER BY id",
         (run_id,),
     ).fetchall()
-    faces, clusters, primary = conn.execute(
-        "SELECT faces, clusters, is_primary FROM derived_face_run WHERE id = ?", (run_id,)
-    ).fetchone()
+    faces, clusters = conn.execute("SELECT faces, clusters FROM derived_face_run WHERE id = ?", (run_id,)).fetchone()
     _logger.info(
-        "cluster %s %s: run #%d%s, threshold %.2f, %d faces -> %d groups (%d named by a human, %d minted unnamed)",
+        "cluster %s %s: run #%d, threshold %.2f, %d faces -> %d groups (%d named by a human, %d minted unnamed)",
         model_id,
         model_version,
         run_id,
-        " (primary)" if primary else "",
         pinned,
         faces,
         clusters,
         clusters - len(unnamed),
         len(unnamed),
+    )
+    _logger.info(
+        "cluster %s %s: run #%d is %s",
+        model_id,
+        model_version,
+        run_id,
+        derived.standing(conn, run_id, model_id, pinned),
     )
     for (cluster_id,) in unnamed:
         person_id = naming.claim(conn, "person", "")
@@ -557,7 +561,15 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
     key = (models_dir, payload.get("backend", "auto"), payload.get("providers", "auto"))
     backend = _BACKENDS.get(key)
     if backend is None:
-        backend = _BACKENDS[key] = faces_module.backend_for(models_dir, choice=key[1], providers=key[2], provision=True)
+        try:
+            backend = faces_module.backend_for(models_dir, choice=key[1], providers=key[2], provision=True)
+        except faces_module.BackendUnavailable as why:
+            # Held, so every item of this job fails by the same name at
+            # once instead of re-attempting a download per picture.
+            _BACKENDS[key] = why
+            _logger.exception("faces: no backend for face_backend=%s", key[1])
+            raise
+        _BACKENDS[key] = backend
         _logger.info(
             "faces: backend %s %s (face_backend=%s, ort_providers=%s, models_dir=%s)",
             backend.model_id,
@@ -566,6 +578,8 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
             key[2],
             models_dir,
         )
+    if isinstance(backend, faces_module.BackendUnavailable):
+        raise backend
     kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     path = detect.path_of(conn, file_id)
     if kind == "video":

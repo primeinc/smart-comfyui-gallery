@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sys
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
@@ -40,8 +41,10 @@ from vision import weights as weights_module
 _logger = logging.getLogger(__name__)
 
 
-class BackendUnavailable(Exception):
-    """A real backend's runtime or weights are not present locally."""
+class BackendUnavailable(LookupError):
+    """A real backend's runtime or weights are not present locally. A
+    LookupError, so the job runner records it on the item by name
+    (db/runner.py ITEM_FAILURES) instead of dying and retrying forever."""
 
 
 # insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate()
@@ -560,13 +563,20 @@ def backend_for(models_dir: str, *, choice: str = "auto", providers: str = "auto
     stack only when the insightface RUNTIME is absent -- a pack that
     cannot be fetched is a refusal, not a silent downgrade to a different
     embedding space."""
-    import importlib.util
-
     if choice not in BACKEND_CHOICES:
         raise ValueError(f"face_backend must be one of {', '.join(BACKEND_CHOICES)}, not {choice!r}")
     if choice == "opencv":
         return OpenCVFaceBackend(models_dir, provision=provision)
-    if choice == "auto" and importlib.util.find_spec("insightface") is None:
-        _logger.info("insightface runtime absent; face_backend auto takes the OpenCV stack")
-        return OpenCVFaceBackend(models_dir, provision=provision)
+    if choice == "auto":
+        try:
+            import insightface.app as _runtime  # the import itself, not find_spec: a broken install is absent too
+        except (ImportError, OSError) as why:  # OSError: a native dependency (onnxruntime's DLLs) failed to load
+            _logger.warning(
+                "face_backend=auto: insightface does not import in this interpreter (%s: %s),"
+                " so the OpenCV stack runs instead -- CPU, SFace unless the antelopev2 pack is present",
+                sys.executable,
+                why,
+            )
+            return OpenCVFaceBackend(models_dir, provision=provision)
+        del _runtime
     return InsightFaceBackend(models_dir, providers=providers, provision=provision)
