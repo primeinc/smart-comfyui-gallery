@@ -155,6 +155,8 @@ def test_a_picture_says_when_and_in_which_sessions(doors):
     assert when["timeline"].startswith("/timeline?bin=hour&start=")
     assert [s["kind"] for s in when["sessions"]] == ["file_session"]
     assert _total(doors, when["sessions"][0]["qs"]) == 5
+    fragment = doors.get(f"/i/{slugs[1]}", headers={"hx-request": "true"}).text
+    assert 'data-lightbox-day href="/g?f=context.local_day%3Aeq%3A2023-06-10' in fragment, "the lightbox opens the day"
     html = doors.get(f"/i/{slugs[1]}", headers={"accept": "text/html"}).text
     for marker in ('data-when data-domain="wall"', "data-when-sessions", "data-when-day"):
         assert marker in html, marker

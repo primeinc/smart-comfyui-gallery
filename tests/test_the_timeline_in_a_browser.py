@@ -114,6 +114,10 @@ def test_the_url_owns_the_zoom_and_the_surface_carries_pictures(served):
         page.wait_for_url("**/stories/renders/*", timeout=60_000)
         page.wait_for_selector(".story-heroes img", timeout=10_000)
         assert page.locator(".story-members img").count() >= FILES
+        first = page.url
+        page.click('[data-story-profile-ask="technical"]')
+        page.wait_for_function("(was) => location.href !== was", arg=first, timeout=20_000)
+        page.wait_for_selector('[data-story-profile="technical"]', timeout=10_000)
         page.click("[data-story-evolution]")
         page.wait_for_url("**/evolution", timeout=10_000)
         page.wait_for_selector("[data-evolution-story]", timeout=10_000)
