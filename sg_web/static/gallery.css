@@ -251,6 +251,7 @@ body {
 .detail-facts dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; }
 .detail-facts dt { color: var(--ink-muted); }
 .detail-facts dd { margin: 0; }
+.detail-facts ul a, .detail-facts li a { color: var(--accent); }
 .detail-prompt { color: var(--ink); background: var(--panel); padding: 10px 12px; border-radius: var(--radius); }
 .detail-params { border-collapse: collapse; width: 100%; font-size: 13px; }
 .detail-params td { border-top: 1px solid var(--line); padding: 4px 10px 4px 0; vertical-align: top; }

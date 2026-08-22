@@ -15,7 +15,7 @@
     <script type="application/json" data-evolution-view>{{ view | tojson }}</script>
     <h1>{{ view.plan.label }}</h1>
     <p class="evolution-provenance">
-      <span>{{ view.snapshot.members }} images</span>
+      <span>{{ view.snapshot.members }} {{ {"capture_session": "photographs", "file_session": "files"}.get(view.snapshot.subject, "images") }}</span>
       <span>&middot; {{ view.phases | length }} {{ 'phases' if view.plan.sequenced else 'prompt families' }}</span>
       {% if view.semantic.space %}<span>&middot; space {{ view.semantic.space }}</span>{% endif %}
       {% if view.semantic.unavailable %}<span class="degraded" title="{{ view.semantic.unavailable }}">&middot; no vectors: {{ view.semantic.unavailable }}</span>{% endif %}

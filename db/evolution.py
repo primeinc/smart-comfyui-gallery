@@ -355,6 +355,7 @@ def load(conn, plan_id: int, *, provider: str | None = None, models_dir: str = "
             "sha256": plan["snapshot_sha256"],
             "time": snapshot["subject"]["time"],
             "members": len(members),
+            "subject": snapshot["subject"]["event_kind"],
         },
         "semantic": semantic,
         "phases": phases,

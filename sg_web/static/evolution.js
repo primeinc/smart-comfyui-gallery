@@ -49,13 +49,18 @@
     return out.join(" ");
   }
 
+  const noun = { capture_session: "photographs", file_session: "files" }[view.snapshot.subject] || "images";
+
   // --- presentations -----------------------------------------------------
   function sequence() {
     const strip = view.phases
       .map((p) => `<div class="phase" data-phase="${p.id}"><h3>${esc(p.label)}</h3><div class="members">${p.member_refs.map((r) => thumb(members.get(r))).join("")}</div></div>`)
       .join("");
+    // a file or capture session carries no prompt and no generator
+    // parameters: only the rows its evidence can fill are drawn
+    const generated = view.snapshot.subject === "generation_session";
     const rows = [
-      ["prompt vs previous", (t) => t.prompt_cosine, (t) => t.prompt_cosine_unavailable],
+      ...(generated ? [["prompt vs previous", (t) => t.prompt_cosine, (t) => t.prompt_cosine_unavailable]] : []),
       ["image vs previous", (t) => t.visual_cosine, (t) => t.visual_cosine_unavailable],
     ];
     const head = `<tr><th></th>${view.members.map((m) => `<th>${esc(m.ref.replace("member-", ""))}</th>`).join("")}</tr>`;
@@ -71,7 +76,7 @@
         return `<tr><th>${label}</th>${cells.join("")}</tr>`;
       })
       .join("");
-    const facts = ["model", "loras", "sampler", "seed"]
+    const facts = (generated ? ["model", "loras", "sampler", "seed"] : [])
       .map((key) => `<tr><th>${key}</th>${view.members.map((m) => { const v = m.generation[key]; const t = transitionTo.get(m.ref); const cls = t && t.phase_boundary ? "boundary" : ""; return `<td class="${cls}">${esc(Array.isArray(v) ? v.join(", ") : v ?? "—")}</td>`; }).join("")}</tr>`)
       .join("");
     main.innerHTML = `<div class="filmstrip">${strip}</div><div class="tracks"><table>${head}${body}${facts}</table></div>`;
@@ -105,7 +110,7 @@
   }
 
   function lineage() {
-    if (!view.lineage.length) { main.innerHTML = `<p class="empty">no derivation edges among these images</p>`; return; }
+    if (!view.lineage.length) { main.innerHTML = `<p class="empty">no derivation edges among these ${noun}</p>`; return; }
     const children = new Map();
     view.lineage.forEach((e) => { if (!children.has(e.parent)) children.set(e.parent, []); children.get(e.parent).push(e); });
     const isChild = new Set(view.lineage.map((e) => e.child));
