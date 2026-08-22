@@ -86,6 +86,27 @@ as a fragment with a notice swapped out-of-band. The JSON routes in
 `app.py` keep serving machines unchanged. The gallery header carries no
 operational control.
 
+### Sweeps
+
+A sweep is `POST /jobs/<kind>` or its console button; every sweep is a
+job row. The phash, faces, embed, annotate and context sweeps queue
+only what is missing and answer 204 (the console: "nothing to do") when
+nothing is; `everything` redoes all of it. Each reads its own record of
+having been done against the file's CURRENT bytes:
+
+```
+phash     derived_file_hash     space = current PHASH space, source_sha256
+faces     derived_face_scan     any model's pass, source_sha256
+embed     derived_embedding     space = the checkpoint the cache pins, source_sha256
+annotate  derived_annotation    kind caption, model = caption_model, source_sha256
+context   derived_media_context policy_version = context.POLICY_VERSION
+```
+
+Ingest and verify read every present file by design: there is no
+record of a read that would make skipping honest. A scan or ingest that
+changes a source claim stales the interpretation (db/context.py
+`stale`), which is what puts a file back into the context sweep.
+
 ### The console
 
 ```
@@ -120,6 +141,22 @@ for any id it finds skipped. Pause and filters touch painting only.
 An item failure (`item.failed`, the job continues) and a worker defect
 (`worker.turn_failed`, traceback, lease lapses, reclaimable) are
 distinct conditions on every surface.
+
+## Timeline
+
+`/timeline` draws the library over the human moment
+(`context.HUMAN_MOMENT`: the wall clock where one is claimed, the
+instant otherwise) at a zoom the URL owns (`bin`, `start`, `end`):
+pictures per bin split by clock domain and origin, claims too coarse
+for the bin as spans, thumbnails per bin while the bins are few, and
+the sessions touching the range (`db/pages.py TIMELINE_*`,
+`SESSION_*`). Every bin, span and session is a door into the gallery
+through the facets (`context.local_day`, `context.moment`,
+`context.origin`, `context.disputed`, `event.id`) ordered by `moment`.
+A session card names who is in it (primary clustering), carries a
+bounded strip of its pictures, and offers the story chain behind one
+button. The people, folders and albums shelves carry the span of their
+pictures' moments so the same axis reads across the product.
 
 ## Stories
 
