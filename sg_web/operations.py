@@ -59,7 +59,8 @@ def _verify(state: State, conn) -> list[int]:
 
 
 def _phash(state: State, conn) -> list[int]:
-    return [runner.submit_phash(conn, time.time())]
+    job_id = runner.submit_phash(conn, time.time())
+    return [] if job_id is None else [job_id]
 
 
 def _dupes(state: State, conn) -> list[int]:
@@ -109,7 +110,7 @@ def _events(state: State, conn) -> list[int]:
 LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "ingest": ("read every file's metadata", _ingest),
     "verify": ("verify every file's bytes", _verify),
-    "phash": ("fingerprint every picture", _phash),
+    "phash": ("fingerprint every picture not yet fingerprinted", _phash),
     "thumbs": ("render every missing thumbnail", _thumbs),
     "dupes": ("group perceptual copies", _dupes),
     "embed": ("embed every picture not yet embedded", _embed),

@@ -342,12 +342,16 @@ def submit_thumbs(state: State) -> dict | Response:
 
 
 @post("/jobs/phash", sync_to_thread=True)
-def submit_phash(state: State) -> dict:
-    """Ask for every present picture's perceptual fingerprint -- the
-    identity that survives copies of copies (db/runner.py submit_phash)."""
+def submit_phash(state: State, everything: bool = False) -> dict | Response:
+    """Ask for the perceptual fingerprint of every present picture still
+    without one -- `?everything=true` for all of them again -- the
+    identity that survives copies of copies (db/runner.py submit_phash).
+    204 when every picture is fingerprinted."""
     conn = _connect(state.db_path)
     try:
-        job_id = runner.submit_phash(conn, time.time())
+        job_id = runner.submit_phash(conn, time.time(), everything=everything)
+        if job_id is None:
+            return Response(content=None, status_code=204)
         conn.commit()
         return _submitted(state, conn, job_id)
     finally:

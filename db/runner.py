@@ -186,24 +186,36 @@ def submit_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None = 
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
 
 
-def submit_phash(conn, now: float) -> int:
-    """Perceptual hashes for every present picture, as one job.
+def submit_phash(conn, now: float, *, everything: bool = False) -> int | None:
+    """Perceptual hashes for every present picture still without one
+    taken from its current bytes under the current phash space -- or,
+    with `everything`, for all of them again -- as one job; None when
+    nothing is left.
 
     The backfill for a library that never ran detection -- and for every
     video even when it did: detection records hashes as a byproduct only
     for whole still frames (a video's frames are samples, and a sample
     hash is not a file hash), so videos are fingerprinted here or not at
-    all. Rides the schema's 'hash' kind with a payload the handler
-    dispatches on: both jobs are about what a file's content IS, one
-    verifying bytes, one fingerprinting pixels.
+    all. A row recorded against the same bytes counts even when no value
+    came of it: that outcome was recorded on purpose. Rides the schema's
+    'hash' kind with a payload the handler dispatches on: both jobs are
+    about what a file's content IS, one verifying bytes, one
+    fingerprinting pixels.
     """
-    items = [
-        row[0]
-        for row in conn.execute(
-            "SELECT id FROM file WHERE missing_since IS NULL"
-            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+    from . import similarity
+
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    args: tuple = ()
+    found = None if everything else similarity._current_space_of(conn, similarity.PHASH)
+    if found is not None:
+        sql += (
+            " AND NOT EXISTS (SELECT 1 FROM derived_file_hash h WHERE h.file_id = f.id AND h.space_id = ?"
+            "   AND h.source_sha256 = f.content_sha256)"
         )
-    ]
+        args = (found[0],)
+    items = [row[0] for row in conn.execute(sql + " ORDER BY f.id", args)]
+    if not items:
+        return None
     return jobs.submit(conn, "hash", now, payload={"derive": "perceptual"}, items=items)
 
 
