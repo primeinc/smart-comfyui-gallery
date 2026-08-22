@@ -554,32 +554,6 @@ def test_identities_same_request_one_document_policy_coexists(monkeypatch):
     monkeypatch.setattr(story_renderers, "POLICY_VERSION", 3)
     assert rendering.TemplateStoryRenderer("memory").policy == 3
     assert _rendered()[-1]["renderer"]["policy"] == 3
-    source = (__import__("pathlib").Path(formatting.__file__)).read_text(encoding="utf-8")
-    assert "POLICY_VERSION" not in source, "formatting carries no version of its own; the package token is it"
-    assert (
-        "POLICY_VERSION"
-        not in (__import__("pathlib").Path(wording.__file__)).read_text(encoding="utf-8").split('"""', 2)[2]
-    ), "claims carries no version of its own; the package token is it"
-
-
-def test_the_renderer_owns_no_connection_no_model_and_jinja_lays_out_only():
-    import inspect
-    import pathlib
-
-    here = pathlib.Path(__file__).resolve().parent.parent
-    source = (here / "db" / "rendering.py").read_text(encoding="utf-8")
-    head = source.split("# --- persistence", 1)[0]
-    for banned in ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"):
-        assert banned not in head, f"the narrator reached for the database: {banned!r}"
-    for banned in ("import openai", "anthropic", "import requests", "import httpx", "torch", "jinja"):
-        assert banned not in source
-    assert "conn" not in inspect.signature(rendering.TemplateStoryRenderer.render).parameters
-    adapters = (here / "story_renderers" / "claims.py").read_text(encoding="utf-8")
-    for banned in ("execute(", "sqlite3", "jinja", "import db"):
-        assert banned not in adapters
-    page = (here / "sg_web" / "templates" / "story.html").read_text(encoding="utf-8")
-    for banned in ("|safe", "{% set", "cosine", "similarity", "claim.kind", "execute"):
-        assert banned not in page, f"the template reasons: {banned!r}"
 
 
 # --- persistence and the page, against a real frozen world ------------------

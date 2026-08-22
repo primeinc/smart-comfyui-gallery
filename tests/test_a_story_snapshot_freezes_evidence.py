@@ -369,20 +369,3 @@ def test_the_http_adapters_freeze_and_read_only(storied):
         assert conn.execute("SELECT count(*) FROM story_snapshot").fetchone()[0] == 1
     finally:
         connect.close(conn)
-
-
-def test_the_story_seam_owns_no_model_and_no_live_reads_downstream():
-    """Structural pins: the snapshot module never imports a model or a
-    network, never UPDATEs its table, and the web adapter never touches
-    a source table -- everything downstream gets the frozen document."""
-    import pathlib
-
-    here = pathlib.Path(__file__).resolve().parent.parent
-    module = (here / "db" / "stories.py").read_text(encoding="utf-8")
-    for banned in ("UPDATE story_snapshot", "import requests", "import httpx", "import openai", "anthropic"):
-        assert banned not in module
-    view = (here / "sg_web" / "story_view.py").read_text(encoding="utf-8")
-    for banned in ("FROM ", "JOIN ", "execute(", "derived_", "import time\n\nfrom litestar"):
-        if banned == "import time\n\nfrom litestar":
-            continue
-        assert banned not in view, f"the adapter reached around the seam: {banned!r}"

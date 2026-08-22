@@ -183,18 +183,6 @@ def virtual_table_names(conn):
     }
 
 
-def test_every_table_is_strict(db):
-    virt = virtual_table_names(db)
-    loose = [
-        name
-        for name, sql in db.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )
-        if name not in virt and "STRICT" not in (sql or "").upper()
-    ]
-    assert loose == [], f"tables without STRICT, so column types are advisory: {loose}"
-
-
 def has_rowid(conn, table):
     """Behavioural, not textual. Matching the phrase in `sql` was matching it
     inside a comment -- file_param says "deliberately NOT WITHOUT ROWID" and
@@ -205,115 +193,6 @@ def has_rowid(conn, table):
         return False
     else:
         return True
-
-
-def test_join_tables_carry_no_rowid(db):
-    """sqlite.org/withoutrowid.html names composite PKs with small rows as the
-    case this optimization exists for. A rowid on these is pure overhead."""
-    want = ["file_artifact", "derived_file_person", "collection_file", "rating", "favorite"]
-    still = [t for t in want if has_rowid(db, t)]
-    assert still == [], f"composite-PK tables still paying for a rowid: {still}"
-
-
-def test_the_long_tail_keeps_its_rowid(db):
-    """The counterpart, and the reason the check above must be behavioural:
-    file_param absorbs values that run to multiple KB, which is precisely what
-    the optimization is not for. It must NOT be in the list above."""
-    assert has_rowid(db, "file_param"), "file_param is WITHOUT ROWID, but it holds the long tail's multi-KB values"
-
-
-def test_no_foreign_key_points_at_a_missing_table(db):
-    names = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    broken = [
-        f"{t} -> {row[2]}"
-        for t in sorted(names - virtual_table_names(db))
-        for row in db.execute(f"PRAGMA foreign_key_list({t})")
-        if row[2] not in names
-    ]
-    assert broken == [], f"foreign keys naming tables that do not exist: {broken}"
-
-
-def test_every_reference_column_is_constrained(db):
-    unconstrained = unconstrained_reference_columns(db)
-    assert unconstrained == [], (
-        "these columns name a row in another table but declare no foreign key: "
-        f"{unconstrained}.\nAdd REFERENCES with an explicit ON DELETE, or add the "
-        "column to _NOT_A_REFERENCE in this file with the reason."
-    )
-
-
-def test_the_load_bearing_references_point_where_they_claim(db):
-    """A declared foreign key is not enough; it has to name the right table.
-
-    The sweep above proves a reference exists. This proves it goes somewhere
-    sensible, for the relations the product's correctness rests on.
-    """
-    expected = {
-        ("file", "folder_id"): "folder",
-        ("file", "id"): "entity",
-        ("folder", "parent_id"): "folder",
-        ("folder", "root_id"): "root",
-        ("derived_file_person", "person_id"): "person",
-        ("derived_file_person", "file_id"): "file",
-        ("file_artifact", "artifact_id"): "artifact",
-        ("collection_file", "collection_id"): "collection",
-        ("capture", "file_id"): "file",
-        ("file_param", "file_id"): "file",
-        ("file_relation", "related_id"): "file",
-        ("slug_history", "entity_id"): "entity",
-        ("derivation_intent", "parent_id"): "file",
-        ("file_derivation", "child_id"): "file",
-        ("generation", "workflow_id"): "artifact",
-        ("generation_prompt", "prompt_id"): "prompt",
-        ("generation_prompt", "file_id"): "generation",
-        ("collection", "parent_id"): "collection",
-        ("derived_face_instance", "sample_id"): "derived_media_sample",
-        ("derived_face_cluster", "person_id"): "person",
-        ("job", "target_id"): "entity",
-    }
-    actual = {
-        (table, row[3]): row[2]
-        for table in (
-            {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")} - virtual_table_names(db)
-        )
-        for row in db.execute(f"PRAGMA foreign_key_list({table})")
-    }
-    wrong = {k: (v, actual.get(k)) for k, v in expected.items() if actual.get(k) != v}
-    assert wrong == {}, f"references pointing at the wrong table (expected, actual): {wrong}"
-
-
-def test_the_target_check_can_actually_fail(ddl):
-    """Control: repoint one reference at a real but wrong table."""
-    broken = sqlite3.connect(":memory:")
-    broken.executescript(
-        ddl.replace(
-            "person_id     INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE",
-            "person_id     INTEGER NOT NULL REFERENCES artifact(id) ON DELETE CASCADE",
-        )
-    )
-    actual = {
-        (t, row[3]): row[2]
-        for t in {r[0] for r in broken.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        for row in broken.execute(f"PRAGMA foreign_key_list({t})")
-    }
-    # the control must exercise the gate, not merely prove the edit landed
-    assert actual.get(("derived_file_person", "person_id")) != "person", "control failed: the repoint did not take"
-
-
-def test_the_reference_sweep_can_actually_fail(ddl):
-    """Control for the sweep above. Remove one foreign key; it must be seen.
-
-    Without this, a sweep that silently matched nothing would pass forever --
-    the same fault the old route-classification test was written to catch.
-    """
-    broken = sqlite3.connect(":memory:")
-    broken.executescript(
-        ddl.replace(
-            "person_id     INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE",
-            "person_id     INTEGER NOT NULL",
-        )
-    )
-    assert "derived_file_person.person_id" in unconstrained_reference_columns(broken)
 
 
 # ----------------------------------------------------------------- folders
@@ -1452,33 +1331,6 @@ def test_the_database_states_its_version(db):
     assert db.execute("PRAGMA application_id").fetchone()[0] == APPLICATION_ID
 
 
-def test_every_version_left_behind_has_a_step_off_it():
-    """A bump with no step is a database this build cannot open.
-
-    The registry is keyed on where a step starts, so every version from the
-    first to the one before current needs one. At v1 this passes with nothing
-    registered, and it fails the moment USER_VERSION moves without a step.
-    """
-    from db.connect import USER_VERSION
-    from db.migrate import STEPS
-
-    missing = [v for v in range(1, USER_VERSION) if v not in STEPS]
-    assert not missing, (
-        f"USER_VERSION is {USER_VERSION} but no migration leaves v{missing}. "
-        f"A database at that version cannot be opened or upgraded."
-    )
-
-    # The control. At v1 the loop above is `range(1, 1)` -- it asserts over an
-    # empty list and cannot fail, which is exactly the state that would let a
-    # bump ship with no step and nothing say a word. This asks the same
-    # question of the version after this one and requires the answer to be no.
-    ahead = [v for v in range(1, USER_VERSION + 1) if v not in STEPS]
-    assert ahead, (
-        f"a step off v{USER_VERSION} is already registered, so this check has "
-        f"nothing left to catch -- did USER_VERSION forget to move with it?"
-    )
-
-
 def test_the_front_page_query_uses_an_index(db):
     """'Newest first' is the default view of a gallery. Without an index every
     page load sorts the whole table in a temp B-tree."""
@@ -1490,17 +1342,6 @@ def test_the_front_page_query_uses_an_index(db):
     )
     assert "TEMP B-TREE" not in plan.upper(), f"front page still sorts the whole table: {plan}"
     assert "file_recent" in plan, plan
-
-
-def test_every_foreign_key_states_its_delete_action(db):
-    """A census, because the delete-action split drifted mid-review with nothing
-    noticing. The point is not the totals; it is that none is unspecified."""
-    virt = virtual_table_names(db)
-    names = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")} - virt
-    actions = [row[6] for t in names for row in db.execute(f"PRAGMA foreign_key_list({t})")]
-    assert actions, "no foreign keys found; the sweep is broken"
-    unspecified = sorted({a for a in actions if a not in ("CASCADE", "SET NULL", "RESTRICT")})
-    assert unspecified == [], f"foreign keys with no stated delete action: {unspecified}"
 
 
 def test_every_closed_vocabulary_rejects_a_stranger(db):

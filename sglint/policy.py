@@ -130,7 +130,58 @@ MUST_NOT_CONTAIN: dict[str, tuple[str, ...]] = {
     "sg_web/media_view.py": ("neighbour",),
     "db/pages.py": ("ARTIFACT_FILES", "WORKFLOW_FILES", "def artifact_files", "def workflow_files"),
     "sg_web/app.py": ("add_to_collection", "remove_from_collection"),
+    # the Explorer page neither reaches nor reasons; the view module
+    # neither writes, loads a model, nor owns a URL
+    "sg_web/static/evolution.js": ("fetch(", "XMLHttpRequest", "localStorage", "cosine ="),
+    "db/evolution.py": (
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "encoder(",
+        "encode_query",
+        "manager_for",
+        "generation_prompt",
+        "/thumb/",
+        "/search",
+    ),
+    # the story seam: no model, no network, no rewriting a frozen row;
+    # the adapter never reaches around it to a source table
+    "db/stories.py": ("UPDATE story_snapshot", "import requests", "import httpx", "import openai", "anthropic"),
+    "sg_web/story_view.py": ("FROM ", "JOIN ", "execute(", "derived_"),
+    # the narrator owns no model and lays out nothing; the package token
+    # is the one render policy
+    "db/rendering.py": ("import openai", "anthropic", "import requests", "import httpx", "torch", "jinja"),
+    "story_renderers/claims.py": ("execute(", "sqlite3", "jinja", "import db"),
+    "story_renderers/formatting.py": ("POLICY_VERSION",),
+    "sg_web/templates/story.html": ("|safe", "{% set", "cosine", "similarity", "claim.kind", "execute"),
 }
+#: Words a file must not contain BEFORE a marker: the narrator (everything
+#: above its persistence section) never touches a connection.
+MUST_NOT_CONTAIN_BEFORE: dict[str, tuple[str, tuple[str, ...]]] = {
+    "db/rendering.py": ("# --- persistence", ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)")),
+}
+#: Words a file must not contain AFTER its module docstring.
+MUST_NOT_CONTAIN_AFTER_DOCSTRING: dict[str, tuple[str, ...]] = {
+    "story_renderers/claims.py": ("POLICY_VERSION",),
+}
+#: A function (class.method) whose signature must not carry a parameter.
+NO_PARAMETER_NAMED: dict[str, tuple[tuple[str, str], ...]] = {
+    "db/rendering.py": (("TemplateStoryRenderer.render", "conn"),),
+}
+#: A word allowed only in named files of a package: pixels are opened
+#: behind db/oriented.py (capture.py reads metadata, never pixels).
+WORD_ONLY_IN: dict[tuple[str, str], frozenset[str]] = {
+    ("db", "Image.open("): frozenset({"oriented.py", "capture.py"}),
+}
+#: Regexes no file of a package may match.
+PACKAGE_FORBIDDEN_PATTERNS: dict[str, tuple[tuple[str, str], ...]] = {
+    # REPLACE fires no DELETE trigger: it strands an FTS entry and inflates
+    # param_key. Use ON CONFLICT(file_id, source, key) DO UPDATE.
+    "db": ((r"INSERT\s+OR\s+REPLACE\s+INTO\s+file_param", "INSERT OR REPLACE INTO file_param strands an FTS entry"),),
+}
+#: db/pages.py ships the page queries as module constants: at least this
+#: many uppercase SELECT constants, or a page restated its query elsewhere.
+PAGE_QUERIES_MINIMUM: int = 12
 #: Words a source file must contain.
 MUST_CONTAIN: dict[str, tuple[str, ...]] = {
     "sg_web/app.py": ("collections.set_membership",),
@@ -164,3 +215,60 @@ DERIVED_RESERVED: dict[str, str] = {
     "derived_annotation": "writer ['annotate'] called by nothing outside db/derived.py",
 }
 DERIVED_PRODUCER_PACKAGES: tuple[str, ...] = ("db", "vision", "sg_web")
+
+# --- SG7xx: the schema contract ---------------------------------------------------------------
+
+#: Columns ending in _id that are deliberately not references to another row.
+NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("entity", "id"),
+        ("root", "id"),
+        ("user", "id"),
+        ("job", "id"),
+        ("derived_media_sample", "id"),
+        ("comment", "id"),
+        ("feedback", "id"),
+        ("derivation_intent", "id"),
+        ("file_derivation", "id"),
+        ("derived_face_cluster", "id"),
+        ("derived_face_instance", "id"),
+        ("derived_annotation", "id"),
+        ("region", "id"),
+        # backend identity strings ("insightface", "qwen-vl"), not rows
+        ("derived_embedding", "model_id"),
+        ("derived_face_cluster", "model_id"),
+        ("derived_face_instance", "model_id"),
+        ("derived_annotation", "model_id"),
+        ("derived_file_person", "model_id"),
+        ("derived_face_run", "model_id"),
+        ("job_item", "item_id"),
+    }
+)
+#: Composite-key tables that must be WITHOUT ROWID (sqlite.org/withoutrowid.html).
+WITHOUT_ROWID: tuple[str, ...] = ("file_artifact", "derived_file_person", "collection_file", "rating", "favorite")
+#: The long tail keeps its rowid: multi-KB values are what the optimization is not for.
+KEEPS_ROWID: tuple[str, ...] = ("file_param",)
+#: References the product's correctness rests on, and where each must point.
+LOAD_BEARING_REFERENCES: dict[tuple[str, str], str] = {
+    ("file", "folder_id"): "folder",
+    ("file", "id"): "entity",
+    ("folder", "parent_id"): "folder",
+    ("folder", "root_id"): "root",
+    ("derived_file_person", "person_id"): "person",
+    ("derived_file_person", "file_id"): "file",
+    ("file_artifact", "artifact_id"): "artifact",
+    ("collection_file", "collection_id"): "collection",
+    ("capture", "file_id"): "file",
+    ("file_param", "file_id"): "file",
+    ("file_relation", "related_id"): "file",
+    ("slug_history", "entity_id"): "entity",
+    ("derivation_intent", "parent_id"): "file",
+    ("file_derivation", "child_id"): "file",
+    ("generation", "workflow_id"): "artifact",
+    ("generation_prompt", "prompt_id"): "prompt",
+    ("generation_prompt", "file_id"): "generation",
+    ("collection", "parent_id"): "collection",
+    ("derived_face_instance", "sample_id"): "derived_media_sample",
+    ("derived_face_cluster", "person_id"): "person",
+    ("job", "target_id"): "entity",
+}

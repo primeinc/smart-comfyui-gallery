@@ -159,19 +159,6 @@ def test_every_stored_orientation_comes_back_upright():
         assert recovered.tobytes() == frame.tobytes(), orientation
 
 
-def test_no_pixel_reader_in_db_opens_files_behind_oriented():
-    """The rule is structural: model-facing code cannot forget the turn if it
-    cannot open pixels. `capture` reads only metadata and never pixels."""
-    allowed = {"oriented.py", "capture.py"}
-    package = pathlib.Path(__file__).resolve().parent.parent / "db"
-    offenders = [
-        source.name
-        for source in sorted(package.glob("*.py"))
-        if source.name not in allowed and "Image.open(" in source.read_text(encoding="utf-8")
-    ]
-    assert offenders == []
-
-
 def test_faces_below_the_floor_are_recorded_nowhere(db, tmp_path):
     (file_id,) = library(db, 1)
     path = tmp_path / "plain.png"

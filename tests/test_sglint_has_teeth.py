@@ -13,6 +13,8 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
+
 from sglint import policy, rules
 
 
@@ -145,3 +147,135 @@ def test_the_surface_rule_can_fail(tmp_path):
     (root / "sg_web" / "static" / "bad.js").write_text("fetch('/search?q=')", encoding="utf-8")
     assert [f.code for f in rules.rule_surfaces(root)] == ["SG501"]
     assert rules.rule_surfaces(pathlib.Path(rules.REPO_ROOT)) == []
+
+
+# --- the second batch: source-text pins and the schema contract ---------------------------
+
+
+def _copy_of_tree(tmp_path):
+    """The files the text rules read, copied so one can be bent."""
+    here = tmp_path / "repo"
+    wanted = {
+        *policy.ADAPTER_DB_VOCABULARY,
+        *policy.MUST_CALL_QUALIFIED,
+        *policy.MUST_NOT_CALL_QUALIFIED,
+        *policy.MUST_IMPORT,
+        *policy.MUST_NOT_CONTAIN,
+        *policy.MUST_CONTAIN,
+        *policy.MUST_NOT_CONTAIN_BEFORE,
+        *policy.MUST_NOT_CONTAIN_AFTER_DOCSTRING,
+        *policy.NO_PARAMETER_NAMED,
+        *policy.ONE_TO_MANY_MODULES,
+        *policy.LITERAL_STATEMENTS_ONLY,
+        "db/pages.py",
+    }
+    for relative in wanted:
+        target = here / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((rules.REPO_ROOT / relative).read_text(encoding="utf-8"), encoding="utf-8")
+    for package in {p for p, _ in policy.WORD_ONLY_IN} | set(policy.PACKAGE_FORBIDDEN_PATTERNS):
+        for source in (rules.REPO_ROOT / package).glob("*.py"):
+            target = here / package / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    return here
+
+
+def _bend(path: pathlib.Path, addition: str) -> None:
+    path.write_text(path.read_text(encoding="utf-8") + addition, encoding="utf-8")
+    rules.parsed.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("relative", "addition", "code"),
+    [
+        ("sg_web/static/evolution.js", "\nfetch('/x');\n", "SG406"),
+        ("db/evolution.py", "\n# generation_prompt\n", "SG406"),
+        ("db/stories.py", "\n# UPDATE story_snapshot\n", "SG406"),
+        ("sg_web/story_view.py", "\n# derived_\n", "SG406"),
+        ("story_renderers/formatting.py", "\nPOLICY_VERSION = 9\n", "SG406"),
+        ("sg_web/templates/story.html", "\n{{ x|safe }}\n", "SG406"),
+        ("story_renderers/claims.py", "\nPOLICY_VERSION = 9\n", "SG407"),
+        ("db/oriented_sibling.py", "from PIL import Image\nImage.open('x')\n", "SG409"),
+        ("db/param_writer.py", "Q = 'INSERT OR REPLACE INTO file_param(a) VALUES(1)'\n", "SG410"),
+    ],
+)
+def test_each_text_pin_fires_on_the_shape_it_exists_for(tmp_path, relative, addition, code):
+    here = _copy_of_tree(tmp_path)
+    assert rules.rule_adapters(here) == [], "the copy starts clean"
+    target = here / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.write_text("", encoding="utf-8")
+    _bend(target, addition)
+    codes = {f.code for f in rules.rule_adapters(here)}
+    rules.parsed.cache_clear()
+    assert code in codes, codes
+
+
+def test_the_narrator_pins_fire_before_the_marker_and_on_the_signature(tmp_path):
+    here = _copy_of_tree(tmp_path)
+    rendering = here / "db" / "rendering.py"
+    head, tail = rendering.read_text(encoding="utf-8").split("# --- persistence", 1)
+    rendering.write_text(head + "\n_x = 'FROM '\n# --- persistence" + tail, encoding="utf-8")
+    rules.parsed.cache_clear()
+    assert "SG407" in {f.code for f in rules.rule_adapters(here)}
+    rendering.write_text(
+        (rules.REPO_ROOT / "db" / "rendering.py")
+        .read_text(encoding="utf-8")
+        .replace(
+            "    def render(self, snapshot: dict, plan: dict,", "    def render(self, conn, snapshot: dict, plan: dict,"
+        ),
+        encoding="utf-8",
+    )
+    rules.parsed.cache_clear()
+    assert "SG408" in {f.code for f in rules.rule_adapters(here)}
+    rules.parsed.cache_clear()
+
+
+def test_a_page_query_restated_elsewhere_is_seen(tmp_path):
+    here = _copy_of_tree(tmp_path)
+    pages = here / "db" / "pages.py"
+    pages.write_text('NEWEST = "SELECT id FROM file"\nONE = "SELECT 1"\n', encoding="utf-8")
+    rules.parsed.cache_clear()
+    assert "SG411" in {f.code for f in rules.rule_adapters(here)}
+    rules.parsed.cache_clear()
+
+
+def test_the_schema_contract_holds_and_each_rule_can_fail():
+    from sglint import schema_rules
+
+    ddl = schema_rules.SCHEMA.read_text(encoding="utf-8")
+    assert schema_rules.rule_schema(ddl) == []
+    person = "person_id     INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE"
+    assert ddl.count(person) == 1, "the control's handle moved"
+    assert {f.code for f in schema_rules.rule_schema(ddl.replace(person, "person_id     INTEGER NOT NULL"))} >= {
+        "SG704",
+        "SG705",
+    }, "a removed foreign key is seen, and the load-bearing reference it carried"
+    repointed = ddl.replace(person, person.replace("person(id)", "artifact(id)"))
+    assert "SG705" in {f.code for f in schema_rules.rule_schema(repointed)}
+    assert "SG703" in {
+        f.code for f in schema_rules.rule_schema(ddl.replace(person, person.replace("person(id)", "nobody(id)")))
+    }
+    loose = ddl.replace("CREATE TABLE rating (", "CREATE TABLE rating_loose (a INTEGER);\nCREATE TABLE rating (", 1)
+    assert "SG701" in {f.code for f in schema_rules.rule_schema(loose)}
+    no_action = ddl.replace(person, person.replace(" ON DELETE CASCADE", ""), 1)
+    assert "SG706" in {f.code for f in schema_rules.rule_schema(no_action)}
+    assert schema_rules.has_rowid(schema_rules.built(ddl), "file_param"), "the long tail keeps its rowid"
+
+
+def test_the_migration_ledger_rule_reads_the_tree_and_can_fail(tmp_path):
+    from sglint import schema_rules
+
+    assert schema_rules.rule_migrations() == []
+    here = tmp_path / "repo"
+    (here / "db").mkdir(parents=True)
+    (here / "db" / "connect.py").write_text("USER_VERSION = 3\n", encoding="utf-8")
+    (here / "db" / "migrate.py").write_text(
+        "def step(n):\n    return lambda f: f\n\n\n"
+        "@step(1)\ndef a(conn):\n    pass\n\n\n@step(3)\ndef c(conn):\n    pass\n",
+        encoding="utf-8",
+    )
+    codes = {f.code for f in schema_rules.rule_migrations(here)}
+    assert codes == {"SG707", "SG708"}, codes

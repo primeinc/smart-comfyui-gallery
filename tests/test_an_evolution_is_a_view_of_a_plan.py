@@ -253,15 +253,6 @@ def test_the_page_draws_the_view_and_only_the_view(planned):
     assert 'data-tab="sequence"' in html
     assert 'data-tab="drift"' in html
     assert "<script" in html
-    import pathlib
-
-    here = pathlib.Path(__file__).resolve().parent.parent
-    js = (here / "sg_web" / "static" / "evolution.js").read_text(encoding="utf-8")
-    for banned in ("fetch(", "XMLHttpRequest", "localStorage", "cosine ="):
-        assert banned not in js, f"the page reaches or reasons: {banned!r}"
-    source = (here / "db" / "evolution.py").read_text(encoding="utf-8")
-    for banned in ("INSERT", "UPDATE", "DELETE", "encoder(", "encode_query", "manager_for", "generation_prompt"):
-        assert banned not in source, f"the view module {banned!r}s"
 
 
 def _synthetic(n: int, precision: str) -> tuple[dict, str]:
@@ -541,11 +532,7 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     """`db/evolution.py` owns no URL: members carry slug and the session
     its local day; the web Adapter turns those into thumbnail, page
     and doors."""
-    import inspect
-
     client, _root, _names, _snap, made = planned
-    assert "/thumb/" not in inspect.getsource(evolution)
-    assert "/search" not in inspect.getsource(evolution)
     conn = connect.connect(client.app.state.db_path)
     try:
         raw = evolution.load(conn, made.id, models_dir="unused")

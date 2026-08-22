@@ -15,6 +15,7 @@ Families:
     SG4xx  the web adapters own no semantics
     SG5xx  templates and scripts carry no query logic
     SG6xx  every derived table has a producer something calls
+    SG7xx  the schema contract (sglint/schema_rules.py)
 """
 
 from __future__ import annotations
@@ -397,6 +398,67 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
         found.extend(
             Finding(root / relative, 1, 0, "SG406", f"no longer carries {word!r}") for word in words if word not in held
         )
+    for relative, (marker, words) in policy.MUST_NOT_CONTAIN_BEFORE.items():
+        held = (root / relative).read_text(encoding="utf-8")
+        head = held.split(marker, 1)[0]
+        for word in words:
+            if word in head:
+                line = head[: head.index(word)].count("\n") + 1
+                found.append(Finding(root / relative, line, 0, "SG407", f"carries {word!r} before {marker!r}"))
+    for relative, words in policy.MUST_NOT_CONTAIN_AFTER_DOCSTRING.items():
+        held = (root / relative).read_text(encoding="utf-8")
+        body = held.split('"""', 2)[2] if held.count('"""') >= 2 else held
+        for word in words:
+            if word in body:
+                line = held[: len(held) - len(body) + body.index(word)].count("\n") + 1
+                found.append(Finding(root / relative, line, 0, "SG407", f"carries {word!r} outside its docstring"))
+    for relative, pairs in policy.NO_PARAMETER_NAMED.items():
+        tree = parsed(root / relative)
+        for dotted, param in pairs:
+            owner, method = dotted.split(".")
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name == owner:
+                    for fn in node.body:
+                        if isinstance(fn, ast.FunctionDef) and fn.name == method:
+                            if any(a.arg == param for a in fn.args.args + fn.args.kwonlyargs):
+                                found.append(
+                                    Finding(
+                                        root / relative, fn.lineno, fn.col_offset, "SG408", f"{dotted} takes {param!r}"
+                                    )
+                                )
+    for (package, word), allowed in policy.WORD_ONLY_IN.items():
+        for source in sorted((root / package).glob("*.py")):
+            if source.name in allowed:
+                continue
+            held = source.read_text(encoding="utf-8")
+            if word in held:
+                line = held[: held.index(word)].count("\n") + 1
+                found.append(Finding(source, line, 0, "SG409", f"{word!r} belongs only in {sorted(allowed)}"))
+    for package, patterns in policy.PACKAGE_FORBIDDEN_PATTERNS.items():
+        for source in sorted((root / package).rglob("*.py")):
+            held = source.read_text(encoding="utf-8")
+            for pattern, why in patterns:
+                for match in re.finditer(pattern, held, re.IGNORECASE):
+                    line = held[: match.start()].count("\n") + 1
+                    found.append(Finding(source, line, 0, "SG410", why))
+    pages = parsed(root / "db" / "pages.py")
+    shipped_queries = [
+        node
+        for node in pages.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id.isupper() for t in node.targets)
+        and "SELECT" in ast.unparse(node.value)
+    ]
+    if len(shipped_queries) < policy.PAGE_QUERIES_MINIMUM:
+        found.append(
+            Finding(
+                root / "db" / "pages.py",
+                1,
+                0,
+                "SG411",
+                f"only {len(shipped_queries)} page queries ship here; a page restated its query elsewhere",
+            )
+        )
     return found
 
 
@@ -509,7 +571,9 @@ RULES = (
 
 
 def run() -> list[Finding]:
+    from . import schema_rules
+
     found: list[Finding] = []
-    for rule in RULES:
+    for rule in (*RULES, schema_rules.rule_schema, schema_rules.rule_migrations):
         found.extend(rule())
     return sorted(found, key=lambda f: (str(f.path), f.line, f.col, f.code))

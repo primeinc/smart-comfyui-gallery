@@ -202,26 +202,6 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
     assert offenders == [], f"this page reads or sorts the whole library: {offenders}"
 
 
-def test_every_page_query_ships_in_db_pages():
-    """The queries below are `db.pages`, not restatements of it.
-
-    They used to be written out here, which proves nothing: an algorithm
-    defined inside its own tests tests only itself, the tests pass whatever
-    the application does, and whoever writes the application writes a second
-    implementation with nothing binding it to this one. `db/scan.py` opens
-    with that argument and puts the matcher in the package for it; the pages
-    were the same shape and the argument had not been applied to them.
-
-    So this sweeps the module and requires every query it ships to survive
-    the plan check -- which is what makes the check mean anything, since the
-    plan being asserted is now the plan the application runs.
-    """
-    shipped = [
-        name for name, value in vars(pages).items() if name.isupper() and isinstance(value, str) and "SELECT" in value
-    ]
-    assert len(shipped) >= 12, f"only {len(shipped)} page queries ship: {shipped}"
-
-
 # --- the front page --------------------------------------------------------
 
 
