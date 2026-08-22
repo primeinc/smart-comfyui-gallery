@@ -460,8 +460,9 @@ class Occurrence:
     #: the file's name, for a grouper to rank renditions of one act
     name: str = ""
     #: the claim refined by an estimate that lands inside it (a
-    #: generation's finish-implied second inside its claimed minute);
-    #: a grouper ORDERS by it and still clusters by the claim
+    #: generation's finish-implied second inside its claimed minute):
+    #: the finest consistent reading, and what a grouper sequences,
+    #: gaps and bounds by
     refined_at: float | None = None
 
 

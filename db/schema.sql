@@ -1695,7 +1695,11 @@ CREATE TABLE derived_media_context (
     -- How FINE the claim is -- orthogonal to certainty: a day-resolution
     -- generator date can be almost certainly the right DAY while saying
     -- nothing about minutes, and a distrusted btime is subsecond-fine.
-    -- Coarse claims are never promoted into fine-grained boundaries.
+    -- A coarse claim is REFINED by every consistent signal the file
+    -- carries (the finish-implied second inside a claimed minute, the
+    -- write inside a claimed day) and the refinement is the moment
+    -- shown: a signal not exposed is wasted. Only an estimate that
+    -- contradicts its claim is held back, as a named conflict.
     time_precision      TEXT CHECK (time_precision IN
                           ('day','hour','minute','second','subsecond')),
     gps_lat             REAL,

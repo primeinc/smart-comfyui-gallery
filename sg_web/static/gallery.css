@@ -484,3 +484,21 @@ body {
   border-radius: var(--radius);
   padding: 4px 6px;
 }
+
+/* the timeline surface */
+.surface { margin-bottom: 16px; }
+.surface-head { display: flex; align-items: baseline; gap: 14px; }
+.surface-head h2 { margin: 0; font-size: 1rem; }
+.surface-zoom a { color: inherit; }
+.surface-legend { margin-left: auto; font-size: .8rem; color: var(--muted, #888); }
+.surface-legend i { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 8px; vertical-align: middle; }
+.surface-legend .wall, .surface-strip .wall { background: #6cf; fill: #6cf; }
+.surface-legend .instant, .surface-strip .instant { background: #fc6; fill: #fc6; }
+.surface-legend .span, .surface-strip .span { background: #8a8; fill: #8a8; opacity: .6; }
+.surface-strip { width: 100%; height: 140px; background: #1a1a1a; border: 1px solid var(--line); border-radius: 6px; }
+.surface-strip .bin { cursor: pointer; }
+.surface-strip .bin:hover rect { opacity: .8; }
+.surface-strip .axis { fill: var(--muted, #888); font-size: 11px; }
+.surface-sessions { list-style: none; padding: 0; margin: 8px 0 0; font-size: .85rem; }
+.surface-sessions li { padding: 2px 0; }
+.surface-note { color: var(--muted, #888); font-size: .8rem; margin: 4px 0 0; }

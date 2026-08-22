@@ -88,6 +88,15 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy}"
         " AND strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') {op} ?)",
     ),
+    #: The surface's door: a bin of the human moment, as epoch seconds
+    #: on the SAME axis the density is counted on -- so a bar of 14
+    #: pictures opens a gallery of exactly those 14.
+    "context.moment": _Spec(
+        "int",
+        ("gte", "lte"),
+        "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
+        " AND mc.policy_version = {policy} AND " + HUMAN_MOMENT + " {op} ?)",
+    ),
 }
 
 _INT = re.compile(r"-?\d+")

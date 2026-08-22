@@ -22,14 +22,18 @@ so every filesystem support or conflict carries the assumption
 a claim is fit for chronology -- only the generator's own claims
 disagreeing with each other does (`usable`).
 
-Two times come out, kept apart. The CLAIMED occurrence (`local_at`,
-`precision`) is what the generator itself said -- the stamp, the
-request minute, or the day -- and is what groupers sequence by, with
-`source_order` (SwarmUI's request counter) breaking ties inside the
-minute. The ESTIMATE (`estimated_at`, `finished_at`) is what the
-filesystem adds: mtime is the finish, `mtime - generation_time` is the
-request to the second -- an inference consistent with the claim, shown
-with its own basis and never written over the claim.
+Two times come out, kept apart and then COMBINED. The CLAIMED
+occurrence (`local_at`, `precision`) is what the generator itself said
+-- the stamp, the request minute, or the day. The ESTIMATE
+(`estimated_at`, `finished_at`) is what the filesystem adds: mtime is
+the finish, `mtime - generation_time` is the request to the second.
+When the estimate lands inside the claim it REFINES it (`refined_at`):
+that second is the moment the timeline shows and the grouper sequences
+by, with `source_order` (SwarmUI's request counter) breaking what is
+still tied. The claim stays as the frozen bound and the estimate keeps
+its own basis; an estimate outside the claim is a named conflict and
+the claim stands alone. A derived second is a signal; a signal not
+exposed is wasted.
 
 Sources, for a generated file:
 
@@ -67,8 +71,9 @@ Rules, all evaluated, none short-circuits:
     inside the claimed window is `mtime_finish_consistent` and becomes
     `estimated_at`; without one, an mtime inside the window is
     `mtime_consistent`. Outside: a conflict that says how far off, and
-    an mtime BEFORE the request is the loud case. The claim is never
-    replaced.
+    an mtime BEFORE the request is the loud case. Inside, the estimate
+    refines the claim (`refined_at`); the claim itself is kept as the
+    bound it is.
  3. btime at or after the occurrence satisfies `btime_after_generation`;
     before it -- bytes born before they were generated -- conflicts.
     btime never supplies an instant while any claim exists.
@@ -139,8 +144,9 @@ class Verdict:
     conflicts: tuple[str, ...]
     #: the filesystem's finish instant, when consistent with the claim
     finished_at: float | None = None
-    #: the request to the second, inferred as finish - generation time,
-    #: a wall-clock reading beside the claim -- never in its place
+    #: the request to the second, inferred as finish - generation time:
+    #: a wall-clock reading that refines the claim when it lands inside
+    #: it (`refined_at`) and disputes it when it does not
     estimated_at: float | None = None
     #: the generator's own order inside the claimed bucket (SwarmUI's
     #: request counter): ordering evidence, never seconds

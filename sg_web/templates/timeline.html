@@ -15,6 +15,16 @@
   </header>
   <main class="stage">
     {% if months %}
+    <section class="surface" data-surface>
+      <div class="surface-head">
+        <h2>surface</h2>
+        <nav class="surface-zoom" data-zoom></nav>
+        <span class="surface-legend"><i class="wall"></i> wall clock <i class="instant"></i> instant only <i class="span"></i> coarser claim</span>
+      </div>
+      <svg class="surface-strip" data-strip viewBox="0 0 1000 140" preserveAspectRatio="none"></svg>
+      <ol class="surface-sessions" data-sessions></ol>
+      <p class="surface-note" data-note></p>
+    </section>
     <ul class="album-tree">
       {% for held in months %}
       <li>
@@ -52,5 +62,6 @@
     </p>
     {% endif %}
   </main>
+  <script src="/static/timeline.js"></script>
 </body>
 </html>

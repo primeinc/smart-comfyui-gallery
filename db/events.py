@@ -53,12 +53,23 @@ from vision.decode import RAW_SUFFIXES
 
 from . import context
 
-#: How coarse each precision is, in seconds. A member may enter gap
-#: arithmetic only when its granule fits inside the gap: a
-#: day-resolution date subtracted from anything yields
-#: confident-looking nonsense, and 'insufficient temporal precision'
-#: is an answer, never a defect.
+#: How coarse each precision is, in seconds. A member enters gap
+#: arithmetic at the finest CONSISTENT reading it has: its refined
+#: moment (the estimate inside its claim) when one exists, else its
+#: claim -- and only when that granule fits inside the gap. A bare
+#: day-fine date with nothing to refine it cannot be minutes from
+#: anything; 'insufficient temporal precision' is then the answer.
 _GRANULE = {"day": 86_400.0, "hour": 3_600.0, "minute": 60.0, "second": 1.0, "subsecond": 0.001}
+
+
+def _moment(one: context.Occurrence) -> float | None:
+    """The finest consistent wall-clock reading: refined when the
+    estimate lands inside the claim, the claim otherwise."""
+    return one.refined_at if one.refined_at is not None else one.local_at
+
+
+def _granule(one: context.Occurrence) -> float:
+    return 1.0 if one.refined_at is not None else _GRANULE[one.time_precision]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -109,7 +120,7 @@ def _proposed_instant(kind: str, members: list[context.Occurrence]) -> GroupProp
 
 
 def _proposed_local(kind: str, members: list[context.Occurrence]) -> GroupProposal:
-    walls = [one.local_at for one in members]
+    walls = [_moment(one) for one in members]
     return GroupProposal(
         kind=kind,
         file_ids=tuple(one.file_id for one in members),
@@ -155,7 +166,7 @@ def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[Group
     -- two renditions of one shutter press are one act, not two."""
     # a claim the generator disputes with itself is recorded, not
     # sequenced: the judge said it is unfit for chronology
-    eligible = [one for one in held if _GRANULE[one.time_precision] <= gap and one.usable]
+    eligible = [one for one in held if _granule(one) <= gap and one.usable]
     made: list[GroupProposal] = []
 
     def order(one):
@@ -169,20 +180,16 @@ def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[Group
     made.extend(
         _proposed_instant(kind, _flat(members)) for members in _split(instants, lambda act: act[0].instant_at, gap)
     )
-    # inside one claimed minute the refined second (when the estimate
-    # lands inside the claim) orders first, then the generator's own
-    # counter; file ids only break what both left tied. Clustering and
-    # the interval stay on the claim.
+    # on the wall clock every act is placed at its finest consistent
+    # reading -- the refined second inside a claimed minute when the
+    # finish implies one -- then the generator's own counter; file ids
+    # only break what both left tied. Gaps and intervals use the same
+    # reading: the signal is there, so it is used.
     walls = sorted(
         (act for act in acts if act[0].instant_at is None and act[0].local_at is not None),
-        key=lambda act: (
-            act[0].local_at,
-            act[0].refined_at if act[0].refined_at is not None else act[0].local_at,
-            order(act[0]),
-            act[0].file_id,
-        ),
+        key=lambda act: (_moment(act[0]), order(act[0]), act[0].file_id),
     )
-    made.extend(_proposed_local(kind, _flat(members)) for members in _split(walls, lambda act: act[0].local_at, gap))
+    made.extend(_proposed_local(kind, _flat(members)) for members in _split(walls, lambda act: _moment(act[0]), gap))
     return made
 
 

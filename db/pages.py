@@ -685,6 +685,104 @@ TIMELINE_EVENTS = (
 )
 
 
+#: The surface: pictures per bin of the human moment, ONE statement
+#: for any zoom. Only rows FINE enough for the bin are counted in it
+#: (a day-fine claim does not fall into an hour); the coarse rest are
+#: returned as spans by TIMELINE_SPANS so the page draws them across
+#: the bins they cover -- shown at the width the signal has. Each bin also says
+#: how many of its pictures spoke on the wall clock and how many only
+#: as instants -- the two domains the axis coalesces for the door.
+TIMELINE_DENSITY = (
+    "SELECT CAST(" + HUMAN_MOMENT + " / ? AS INTEGER) * ? AS bin, count(*) AS pictures,"
+    " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ?"
+    "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+    "   AND mc.time_precision IN (SELECT value FROM json_each(?))"
+    " GROUP BY bin ORDER BY bin"
+)
+
+#: The claims too coarse for the bin, as spans: each precision's
+#: window start and width, with how many pictures claim it.
+TIMELINE_SPANS = (
+    "SELECT " + HUMAN_MOMENT + " AS start, mc.time_precision, count(*) AS pictures"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ?"
+    "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+    "   AND mc.time_precision NOT IN (SELECT value FROM json_each(?))"
+    " GROUP BY start, mc.time_precision ORDER BY start"
+)
+
+#: The extent of the interpreted library on the human axis.
+TIMELINE_EXTENT = (
+    "SELECT min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + "), count(*)"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ?"
+)
+
+#: Sessions whose interval touches a range, in THEIR domain (the wall
+#: pair when the session knows it, the instant pair otherwise -- the
+#: same coalesce as the axis), with the latest story told of exactly
+#: this membership, when one exists.
+TIMELINE_SESSIONS = (
+    "SELECT e.id, e.kind, e.local_start, e.local_end, e.instant_start, e.instant_end,"
+    " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures,"
+    " (SELECT s.id FROM story_snapshot s WHERE s.member_hash = e.member_hash ORDER BY s.id DESC LIMIT 1),"
+    " (SELECT sr.id FROM story_snapshot s JOIN story_plan sp ON sp.snapshot_id = s.id"
+    "   JOIN story_render sr ON sr.plan_id = sp.id WHERE s.member_hash = e.member_hash"
+    "   ORDER BY sr.id DESC LIMIT 1)"
+    "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
+    " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
+    "   AND r.context_policy_version = ?"
+    "   AND COALESCE(e.local_start, e.instant_start) < ?"
+    "   AND COALESCE(e.local_end, e.instant_end) >= ?"
+    " ORDER BY COALESCE(e.local_start, e.instant_start)"
+)
+
+#: Bin widths a zoom may ask for, by name. Anything else is refused.
+BINS = {"day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
+#: Which precisions are fine enough for each bin: a claim enters a bin
+#: only when its own granule fits inside it.
+_FINE_ENOUGH = {
+    "day": ["day", "hour", "minute", "second", "subsecond"],
+    "hour": ["hour", "minute", "second", "subsecond"],
+    "quarter": ["minute", "second", "subsecond"],
+    "minute": ["minute", "second", "subsecond"],
+}
+#: The most bins one answer carries. Wider asks are refused with the
+#: remedy, never served as a 30,000-bar page.
+MAX_BINS = 4_000
+
+
+def timeline_extent(conn):
+    return conn.execute(TIMELINE_EXTENT, (context.POLICY_VERSION,)).fetchone()
+
+
+def timeline_density(conn, bin_name: str, lo: float, hi: float):
+    """Bins of `bin_name` over [lo, hi) plus the spans too coarse for
+    them. Refuses an unknown bin or an ask wider than MAX_BINS."""
+    import json as _json
+
+    if bin_name not in BINS:
+        raise ValueError(f"no bin named {bin_name!r}; one of {', '.join(BINS)}")
+    width = BINS[bin_name]
+    if hi <= lo:
+        raise ValueError("the range is empty")
+    if (hi - lo) / width > MAX_BINS:
+        raise ValueError(f"{int((hi - lo) / width)} bins of a {bin_name} is more than {MAX_BINS}; narrow the range")
+    fine = _json.dumps(_FINE_ENOUGH[bin_name])
+    bins = conn.execute(TIMELINE_DENSITY, (width, width, context.POLICY_VERSION, lo, hi, fine)).fetchall()
+    spans = conn.execute(TIMELINE_SPANS, (context.POLICY_VERSION, lo, hi, fine)).fetchall()
+    return width, bins, spans
+
+
+def timeline_sessions(conn, lo: float, hi: float):
+    return conn.execute(TIMELINE_SESSIONS, (context.POLICY_VERSION, hi, lo)).fetchall()
+
+
 def timeline_months(conn):
     return conn.execute(TIMELINE_MONTHS, (context.POLICY_VERSION,)).fetchall()
 
