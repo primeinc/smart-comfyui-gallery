@@ -171,3 +171,15 @@ def test_the_contested_count_is_a_door_onto_exactly_the_disputed(doors):
     )
     page = doors.get("/g?f=context.disputed%3Aeq%3A1").text
     assert "disputed 1" in page or coverage["contested"] == 0
+
+
+def test_every_scope_page_opens_its_pictures_in_time_order(doors):
+    """A folder, an album, a person: each page is a scope the gallery
+    answers, and each offers that scope in the order the timeline
+    speaks -- sort=moment on the same canonical question."""
+    page = doors.get("/f/lib", headers={"accept": "text/html"}).text
+    assert "data-in-time-order" in page
+    href = re.search(r'href="(/g\?[^"]*sort=moment)" data-in-time-order', page)
+    assert href is not None
+    # `folder=` is the folder's OWN media: the scan lives one folder down
+    assert _total(doors, href.group(1).replace("/g?", "").replace("&amp;", "&")) == 7

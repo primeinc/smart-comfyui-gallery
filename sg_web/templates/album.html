@@ -93,8 +93,8 @@
       </a>
       {% endfor %}
     </div>
-    {% if album.gallery.pages > 1 %}
-    <p class="pager"><a href="/g?{{ album.gallery.qs }}">browse all {{ album.gallery.total }} in the gallery</a></p>
+    {% if album.gallery.total %}
+    <p class="pager"><a href="/g?{{ album.gallery.qs }}">browse all {{ album.gallery.total }} in the gallery</a> &middot; <a href="/g?{{ album.gallery.qs }}&amp;sort=moment" data-in-time-order>in time order</a></p>
     {% endif %}
     {% else %}
     <p class="empty">nothing in this collection yet.</p>

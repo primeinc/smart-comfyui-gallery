@@ -45,8 +45,8 @@
       </a>
       {% endfor %}
     </div>
-    {% if folder.gallery.pages > 1 %}
-    <p class="pager"><a href="/g?{{ folder.gallery.qs }}">browse all {{ folder.gallery.total }} in the gallery</a></p>
+    {% if folder.gallery.total %}
+    <p class="pager"><a href="/g?{{ folder.gallery.qs }}">browse all {{ folder.gallery.total }} in the gallery</a> &middot; <a href="/g?{{ folder.gallery.qs }}&amp;sort=moment" data-in-time-order>in time order</a></p>
     {% endif %}
     {% elif folder.state == "present" and not folder.folders %}
     <p class="empty">nothing directly in this folder.</p>

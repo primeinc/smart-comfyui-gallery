@@ -59,8 +59,8 @@
       </a>
       {% endfor %}
     </div>
-    {% if person.gallery.pages > 1 %}
-    <p class="pager"><a href="/g?{{ person.gallery.qs }}">browse all {{ person.gallery.total }} in the gallery</a></p>
+    {% if person.gallery.total %}
+    <p class="pager"><a href="/g?{{ person.gallery.qs }}">browse all {{ person.gallery.total }} in the gallery</a> &middot; <a href="/g?{{ person.gallery.qs }}&amp;sort=moment" data-in-time-order>in time order</a></p>
     {% endif %}
     {% endif %}
   </main>
