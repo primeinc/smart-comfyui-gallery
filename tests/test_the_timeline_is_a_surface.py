@@ -260,3 +260,32 @@ def test_the_groupers_carry_the_refined_time_rule_in_their_versions():
         events.CaptureSessionGrouper.version,
         events.FileSessionGrouper.version,
     ) == ("5", "5", "2")
+
+
+def test_a_library_wider_than_the_day_cap_answers_at_the_week(surfaced):
+    """Thirteen years is more day bins than the page draws; the week
+    bin is the coarse level that still fits, and a day-fine claim fits
+    a week exactly as it fits a day."""
+    client = surfaced
+    week = client.get(
+        "/timeline/density",
+        params={"bin": "week", "start": JUNE_10 - 3 * DAY, "end": JUNE_10 + 4 * DAY},
+        headers={"accept": "application/json"},
+    ).json()
+    assert week["bin_seconds"] == 604_800
+    assert sum(b["pictures"] for b in week["bins"]) == 6, "five screenshots and the day-fine scan"
+    assert week["spans"] == []
+    far = client.get(
+        "/timeline/density",
+        params={"bin": "day", "start": 0, "end": 5000 * DAY},
+        headers={"accept": "application/json"},
+    )
+    assert far.status_code == 400
+    assert (
+        client.get(
+            "/timeline/density",
+            params={"bin": "week", "start": 0, "end": 5000 * DAY},
+            headers={"accept": "application/json"},
+        ).status_code
+        == 200
+    )

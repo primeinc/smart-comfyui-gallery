@@ -757,10 +757,11 @@ TIMELINE_SESSIONS = (
 )
 
 #: Bin widths a zoom may ask for, by name. Anything else is refused.
-BINS = {"day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
+BINS = {"week": 604_800, "day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
 #: Which precisions are fine enough for each bin: a claim enters a bin
 #: only when its own granule fits inside it.
 _FINE_ENOUGH = {
+    "week": ["day", "hour", "minute", "second", "subsecond"],
     "day": ["day", "hour", "minute", "second", "subsecond"],
     "hour": ["hour", "minute", "second", "subsecond"],
     "quarter": ["minute", "second", "subsecond"],

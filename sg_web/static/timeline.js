@@ -12,7 +12,7 @@
   const zoomNav = surface.querySelector("[data-zoom]");
   const sessionsList = surface.querySelector("[data-sessions]");
   const note = surface.querySelector("[data-note]");
-  const ORDER = ["day", "hour", "quarter", "minute"];
+  const ORDER = ["week", "day", "hour", "quarter", "minute"];
   const W = 1000;
   const H = 140;
   const BAR_H = 100;
@@ -22,7 +22,7 @@
     const d = new Date(epoch * 1000);
     const pad = (n) => String(n).padStart(2, "0");
     const day = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-    if (bin === "day") return day;
+    if (bin === "day" || bin === "week") return day;
     return `${day} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
 
@@ -126,6 +126,11 @@
         note.textContent = `${fine} pictures placed at ${bin} resolution` + (coarse ? `; ${coarse} claim only a coarser window, drawn as spans` : "");
       })
       .catch((why) => {
+        // a library too wide for day bins opens at the week; the user zooms in
+        if (bin === "day" && start == null) {
+          show("week");
+          return;
+        }
         note.textContent = why.message;
       });
   }
