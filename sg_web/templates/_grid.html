@@ -7,6 +7,11 @@
          data-currency="{{ currency }}"
          data-answer="{{ answer }}"
          data-qbase="{{ qs }}{% if qs %}&amp;{% endif %}">
+  {% if answered_by %}
+  <p class="answered" data-answered="{{ answered_by | join(' ') }}">
+    ranked by {% for one in answered_by %}<span class="answered-by">{{ one }}</span>{% if not loop.last %}, {% endif %}{% endfor %}, fused by rank
+  </p>
+  {% endif %}
   {% if missing_spaces %}
   <p class="degraded" data-degraded>
     degraded answer &mdash; not every configured model contributed:
