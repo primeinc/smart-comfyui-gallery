@@ -544,28 +544,13 @@ skip-magic-trailing-comma = false
 # (options.rs:4104), which the line above turns off.
 docstring-code-format = false
 
-# Resolve imports against ./.venv. Without this pyright falls back to the
-# default shell interpreter (import-resolution.md:41) and reports every
-# third-party import as unresolved -- numpy, PIL, torch, transformers,
-# huggingface_hub -- which buries the real diagnostics in noise.
+# Interpreter and Python version come from `uv run` (import-resolution.md:41,
+# configuration.md:35); venvPath in a config file is documented as less
+# robust and not for shared configs (configuration.md:27). Specifying
+# exclude REPLACES the defaults, so they are restated; vendor/ is the
+# prebuilt faiss GPU build.
 [tool.pyright]
-venvPath = "."
-venv = ".venv"
-pythonVersion = "3.13"
-typeCheckingMode = "standard"
-# Every package that ships, every test, every benchmark. Named so a new
-# top-level directory is a decision here, not a silent gap.
 include = ["db", "metaparse", "sg_web", "sglint", "story_renderers", "vision", "tests", "benchmarks"]
-# Specifying exclude REPLACES pyright's defaults, so they are restated
-# (configuration.md: **/node_modules, **/__pycache__, **/.*). vendor/ is
-# the prebuilt faiss GPU build -- third-party sources whose diagnostics
-# are not ours to fix.
-exclude = [
-    "**/node_modules",
-    "**/__pycache__",
-    "**/.*",
-    "vendor",
-]
-# An error is narrowed or the code is wrong; it is never waved through.
+exclude = ["**/node_modules", "**/__pycache__", "**/.*", "vendor"]
 enableTypeIgnoreComments = false
 reportUnnecessaryCast = "error"
