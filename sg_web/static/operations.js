@@ -234,8 +234,8 @@
   }
 
   function paintHealth(o) {
-    q("[data-worker-state]").textContent = `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"}`;
-    q("[data-worker-raw]").textContent = `${o.worker.owners.length ? o.worker.owners.join(", ") : "no owner"} · heartbeat ${o.worker.heartbeat_age != null ? o.worker.heartbeat_age.toFixed(1) + "s ago" : "none"}`;
+    q("[data-worker-state]").textContent = `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`;
+    q("[data-worker-raw]").textContent = `${o.worker.thread || "no thread"} · ${o.worker.owners.length ? o.worker.owners.join(", ") : "no owner"} · heartbeat ${o.worker.heartbeat_age != null ? o.worker.heartbeat_age.toFixed(1) + "s ago" : "none"}`;
     q("[data-queue-state]").textContent = `${o.queue.queued} queued · ${o.queue.running} running`;
     q("[data-queue-raw]").textContent = `oldest queued ${o.queue.oldest_queued_age != null ? Math.round(o.queue.oldest_queued_age) + "s" : "—"} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`;
     q("[data-ledger-state]").textContent = `${o.ledger.events.toLocaleString()} events`;
@@ -258,6 +258,10 @@
       li.appendChild(bar);
       li.appendChild(el("code", { class: "matrix-count" }, `${j.done_count}${j.total != null ? "/" + j.total : ""}${j.failed_count ? " · " + j.failed_count + " failed" : ""}`));
       li.appendChild(el("code", { class: "matrix-exec" }, `a${j.attempt} f${j.fence ?? ""}${j.owner ? " · " + j.owner : ""}`));
+      const live = pendingByJob.get(j.id) || j.live;
+      if (live && j.state === "running") {
+        li.appendChild(el("span", { class: "matrix-live", "data-matrix-live": "" }, `${live.phase || live.type}${live.item_id != null ? " · item " + live.item_id : ""}`));
+      }
       matrixRows.appendChild(li);
     }
     wireMatrix();
@@ -362,6 +366,12 @@
       if (frame.frame === "pending") {
         pendingByJob.set(frame.job_id, frame);
         if (frame.job_id === selectedJob) paintPending();
+        const row = matrixRows.querySelector(`[data-matrix-job="${frame.job_id}"]`);
+        if (row) {
+          let slot = row.querySelector("[data-matrix-live]");
+          if (!slot) { slot = el("span", { class: "matrix-live", "data-matrix-live": "" }); row.appendChild(slot); }
+          slot.textContent = `${frame.phase || frame.type}${frame.item_id != null ? " · item " + frame.item_id : ""}`;
+        }
         return;
       }
       if (frame.frame === "event") {

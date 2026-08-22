@@ -522,6 +522,11 @@ def test_the_phase_inside_a_running_item_survives_a_reconnect(served):
     )
     told = client.get(f"/operations/job/{job_id}", headers={"accept": "application/json"}).json()
     assert told["current"]["phase"]["phase"] == "decoding"
+    matrix = client.get("/operations/overview").json()
+    row = next(j for j in matrix["matrix"] if j["id"] == job_id)
+    assert row["live"]["phase"] == "decoding", "the matrix row says what its job is inside"
+    assert matrix["overview"]["worker"]["thread_alive"] is False, "this app was built without a worker thread"
+    assert "data-matrix-live" in client.get("/operations", headers={"accept": "text/html"}).text
     assert told["current"]["phase"]["live"] is True
     assert "48 / 220 frames" in told["current"]["phase"]["text"]
     page = client.get(f"/operations/job/{job_id}", headers={"accept": "text/html"}).text

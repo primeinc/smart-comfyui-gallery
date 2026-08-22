@@ -1062,6 +1062,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             name="sg-worker",
             daemon=True,
         )
+        app.state.worker_thread = thread
         if worker:
             thread.start()
         try:

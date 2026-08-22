@@ -22,8 +22,8 @@
       </div>
       <div class="health-cell" data-health-worker>
         <span class="k">worker</span>
-        <span class="v" data-worker-state>{{ "enabled" if overview.worker.enabled else "disabled" }} · {{ "working" if overview.worker.working else "idle" }}</span>
-        <code class="raw" data-worker-raw>{{ overview.worker.owners | join(", ") or "no owner" }} · heartbeat {{ "%.1fs ago" | format(overview.worker.heartbeat_age) if overview.worker.heartbeat_age is not none else "none" }}</code>
+        <span class="v" data-worker-state>{{ "enabled" if overview.worker.enabled else "disabled" }} · {{ "working" if overview.worker.working else "idle" }} · thread {{ "alive" if overview.worker.thread_alive else "not running" }}</span>
+        <code class="raw" data-worker-raw>{{ overview.worker.thread or "no thread" }} · {{ overview.worker.owners | join(", ") or "no owner" }} · heartbeat {{ "%.1fs ago" | format(overview.worker.heartbeat_age) if overview.worker.heartbeat_age is not none else "none" }}</code>
       </div>
       <div class="health-cell" data-health-queue>
         <span class="k">queue</span>
@@ -49,6 +49,7 @@
             <progress class="matrix-progress"{% if job.total %} value="{{ job.done_count }}" max="{{ job.total }}"{% endif %}></progress>
             <code class="matrix-count">{{ job.done_count }}{% if job.total is not none %}/{{ job.total }}{% endif %}{% if job.failed_count %} · {{ job.failed_count }} failed{% endif %}</code>
             <code class="matrix-exec">a{{ job.attempt }} f{{ job.fence if job.fence is defined else "" }}{% if job.owner %} · {{ job.owner }}{% endif %}</code>
+            {% if job.live %}<span class="matrix-live" data-matrix-live>{{ job.live.phase or job.live.type }}{% if job.live.item_id is not none %} · item {{ job.live.item_id }}{% endif %}</span>{% endif %}
           </li>
           {% endfor %}
         </ol>

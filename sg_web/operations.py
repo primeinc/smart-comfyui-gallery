@@ -130,7 +130,7 @@ def _page_context(state: State) -> dict:
     now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        return {
+        told = {
             "roots": _roots(conn),
             "settings": settings.snapshot(conn),
             "clusterings": pages.clusterings(conn),
@@ -142,6 +142,8 @@ def _page_context(state: State) -> dict:
             "last_event_id": ledger.last_id(conn),
             "now": now,
         }
+        _with_live(state, told)
+        return told
     finally:
         connect.close(conn)
 
@@ -158,9 +160,28 @@ def overview(state: State) -> dict:
     now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        return {"overview": inspecting.overview(conn, now), "matrix": inspecting.matrix(conn, now)}
+        told = {"overview": inspecting.overview(conn, now), "matrix": inspecting.matrix(conn, now)}
     finally:
         connect.close(conn)
+    _with_live(state, told)
+    return told
+
+
+def _with_live(state: State, told: dict) -> None:
+    """What only the running process knows, beside the rows: whether
+    its worker thread is alive, and the latest report inside each
+    running job's item (sg_web/app.py live_reports)."""
+    thread = getattr(state, "worker_thread", None)
+    told["overview"]["worker"]["thread_alive"] = bool(thread is not None and thread.is_alive())
+    told["overview"]["worker"]["thread"] = getattr(thread, "name", None)
+    live = getattr(state, "live_reports", {})
+    for job in told["matrix"]:
+        held = live.get(job["id"]) if job["state"] == "running" else None
+        job["live"] = (
+            {"phase": held.get("phase"), "type": held["type"], "text": held["text"], "item_id": held.get("item_id")}
+            if held
+            else None
+        )
 
 
 @get("/job/{job_id:int}", sync_to_thread=True)
