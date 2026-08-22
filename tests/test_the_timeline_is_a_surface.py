@@ -221,3 +221,42 @@ def test_the_page_mounts_the_surface_beside_the_shelves(surfaced):
     assert "data-surface" in page.text
     assert "/static/timeline.js" in page.text
     assert "data-timeline-day" in page.text, "the day shelves stay: the coarse level, still doors"
+
+
+def test_a_story_belongs_to_its_subject_never_to_a_membership_checksum(surfaced):
+    """Two snapshots with the same ordered membership but different
+    subjects (a capture session and a generation session over the same
+    mixed files share a member_hash): the session's story door is the
+    one told of ITS kind and grouper, never the other's."""
+    client = surfaced
+    whole = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
+    held = next(s for s in whole["sessions"] if s["domain"] == "wall")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        member_hash = conn.execute("SELECT member_hash FROM derived_event WHERE id = ?", (held["id"],)).fetchone()[0]
+        conn.execute(
+            "INSERT INTO story_snapshot(format_version, source_kind, event_kind, grouper, context_generation,"
+            " context_policy_version, member_hash, document_json, document_sha256, created_at)"
+            " VALUES(1, 'event', 'generation_session', 'generation_session', 1, 1, ?, '{}', ?, 0)",
+            (member_hash, "e" * 64),
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    again = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
+    assert next(s for s in again["sessions"] if s["id"] == held["id"])["snapshot_id"] is None, (
+        "a generation story is not this file session's story"
+    )
+
+
+def test_the_groupers_carry_the_refined_time_rule_in_their_versions():
+    """The gap rule moved to the refined second (WI-58); a run under
+    the old rule and a run under this one must never share a producer
+    identity."""
+    from db import events
+
+    assert (
+        events.GenerationSessionGrouper.version,
+        events.CaptureSessionGrouper.version,
+        events.FileSessionGrouper.version,
+    ) == ("5", "5", "2")

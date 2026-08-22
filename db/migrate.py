@@ -1966,6 +1966,14 @@ def _a_camera_has_a_finer_clock_and_one_act_has_renditions(conn: sqlite3.Connect
         " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, parsed_at FROM capture_v20"
     )
     conn.execute("DROP TABLE capture_v20")
+    # Under v20 a row WITH an offset stored the INSTANT (the reader folded
+    # the zone in); from v21 `captured_at` is always the camera's wall
+    # clock with the zone beside it. The instant plus the offset is that
+    # wall clock. Rows without an offset were already wall clocks.
+    conn.execute(
+        "UPDATE capture SET captured_at = captured_at + tz_offset_min * 60"
+        " WHERE tz_offset_min IS NOT NULL AND captured_at IS NOT NULL"
+    )
     conn.execute("CREATE INDEX capture_when ON capture(captured_at)")
     conn.execute("CREATE INDEX capture_where ON capture(gps_lat, gps_lon) WHERE gps_lat IS NOT NULL")
     conn.execute("CREATE INDEX capture_body ON capture(body_serial) WHERE body_serial IS NOT NULL")
@@ -2250,6 +2258,58 @@ BEGIN
   SELECT RAISE(ABORT,'a story snapshot is immutable; freeze a new one');
 END"""
     )
+
+
+@step(22)
+def _iso_zero_is_absence(conn: sqlite3.Connection) -> None:
+    """v22 -> v23: `capture.iso` refuses 0 by CHECK (a clip's thumbnail
+    writes ISO 0 for "not recorded"; stored as a sensitivity it anchored
+    exposure ranges at zero). Existing zeros become NULL. The camera facts
+    changed meaning, so the derived interpretation is dropped and rebuilt
+    by the context and events jobs. DDL is schema.sql's text VERBATIM.
+    """
+    conn.execute("ALTER TABLE capture RENAME TO capture_v22")
+    for index in ("capture_when", "capture_where", "capture_body"):
+        conn.execute(f"DROP INDEX IF EXISTS {index}")
+    conn.execute(
+        """CREATE TABLE capture (
+    file_id       INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    captured_at   REAL,          -- EXIF DateTimeOriginal; NOT file mtime
+    tz_offset_min INTEGER,       -- OffsetTimeOriginal, so "the viewer's day" is answerable
+    -- 0 is "not recorded" (a clip's thumbnail writes it), never a sensitivity
+    iso           INTEGER CHECK (iso IS NULL OR iso > 0),
+    f_number      REAL,
+    exposure_time REAL,          -- seconds
+    focal_length  REAL,          -- mm
+    focal_35mm    REAL,
+    orientation   INTEGER,
+    gps_lat       REAL,
+    gps_lon       REAL,
+    gps_alt       REAL,
+    -- the camera's finer clock and its own identity: SubSecTimeOriginal as
+    -- milliseconds, BodySerialNumber, and the clock's zone from the maker
+    -- note when OffsetTimeOriginal is absent (Canon TimeInfo)
+    subsec_ms           INTEGER CHECK (subsec_ms IS NULL OR subsec_ms BETWEEN 0 AND 999),
+    body_serial         TEXT,
+    maker_tz_offset_min INTEGER,
+    parsed_at     REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, f_number, exposure_time, focal_length,"
+        " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, subsec_ms, body_serial, maker_tz_offset_min, parsed_at)"
+        " SELECT file_id, captured_at, tz_offset_min, NULLIF(iso, 0), f_number, exposure_time, focal_length,"
+        " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, subsec_ms, body_serial, maker_tz_offset_min, parsed_at"
+        " FROM capture_v22"
+    )
+    conn.execute("DROP TABLE capture_v22")
+    conn.execute("CREATE INDEX capture_when ON capture(captured_at)")
+    conn.execute("CREATE INDEX capture_where ON capture(gps_lat, gps_lon) WHERE gps_lat IS NOT NULL")
+    conn.execute("CREATE INDEX capture_body ON capture(body_serial) WHERE body_serial IS NOT NULL")
+    for table in ("derived_event_file", "derived_event", "derived_event_run", "derived_media_occurrence"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.execute("DELETE FROM derived_media_context")
+    conn.execute("DELETE FROM derived_context_state")
 
 
 def optimize(conn: sqlite3.Connection) -> None:

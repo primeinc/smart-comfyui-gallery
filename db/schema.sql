@@ -715,7 +715,8 @@ CREATE TABLE capture (
     file_id       INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
     captured_at   REAL,          -- EXIF DateTimeOriginal; NOT file mtime
     tz_offset_min INTEGER,       -- OffsetTimeOriginal, so "the viewer's day" is answerable
-    iso           INTEGER,
+    -- 0 is "not recorded" (a clip's thumbnail writes it), never a sensitivity
+    iso           INTEGER CHECK (iso IS NULL OR iso > 0),
     f_number      REAL,
     exposure_time REAL,          -- seconds
     focal_length  REAL,          -- mm
@@ -1947,7 +1948,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 22;
+PRAGMA user_version   = 23;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

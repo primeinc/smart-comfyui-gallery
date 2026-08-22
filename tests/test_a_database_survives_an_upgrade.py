@@ -905,7 +905,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+    assert migrate.migrate(path) == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -964,3 +964,55 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
         assert conn.execute("SELECT count(*) FROM collection_rule").fetchone()[0] == 1, "the rule is the human's"
     finally:
         conn.close()
+
+
+def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp_path):
+    """Under v20 a capture row WITH an offset stored the instant (the
+    reader folded the zone in); from v21 `captured_at` is the camera's
+    wall clock with the zone beside it. A library upgraded without
+    re-ingesting must read the same wall clock and the same instant as
+    before -- not the zone applied twice -- and ISO 0 is refused by v23's
+    CHECK (the fixture is built from the current DDL, so a legacy zero
+    cannot be planted here; the step's NULLIF is its repair)."""
+    import datetime as dt
+
+    from db import scan, when
+
+    path, _files, _spec, _sid = v3_database_with_embeddings(tmp_path)
+    migrate.migrate(path, target=20)
+    conn = connect.connect(path)
+    try:
+        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/z', 'library', 0)").lastrowid
+        folder = scan.mint(conn, "folder", "z")
+        conn.execute(
+            "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'z', 0)", (folder, root_id)
+        )
+        file_id = scan.mint(conn, "file", "zoned.jpg")
+        conn.execute(
+            "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+            " VALUES(?, ?, 'zoned.jpg', 'image', 1, 0, 'zz', 0, 0)",
+            (file_id, folder),
+        )
+        # 2026-08-19 14:23:01 at +02:00, stored the v20 way: the INSTANT 12:23:01Z
+        instant = dt.datetime(2026, 8, 19, 12, 23, 1, tzinfo=dt.UTC).timestamp()
+        conn.execute(
+            "INSERT INTO capture(file_id, captured_at, tz_offset_min, iso, parsed_at) VALUES(?, ?, 120, NULL, 0)",
+            (file_id, instant),
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    assert migrate.migrate(path) == [21, 22, 23]
+    conn = connect.connect(path)
+    try:
+        captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
+        assert dt.datetime.fromtimestamp(captured_at, dt.UTC).strftime("%H:%M:%S") == "14:23:01", "the wall clock"
+        told = when.judge_capture(
+            captured_at=captured_at, subsec_ms=None, tz_offset_min=tz, maker_tz_offset_min=None, mtime=None, btime=None
+        )
+        assert told.instant_at == instant, "and the same instant as before the upgrade"
+        assert iso is None
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE capture SET iso = 0")
+    finally:
+        connect.close(conn)

@@ -201,7 +201,9 @@ class GenerationSessionGrouper:
     story at the generator's claimed time, never the camera's."""
 
     name = "generation_session"
-    version = "4"
+    #: v5: gaps and bounds on the refined second inside a claimed minute
+    #: (db/events.py _moment); v4 gapped on the claim alone
+    version = "5"
     claim = "generation"
     settings: typing.ClassVar[dict] = {"gap_minutes": 30}
 
@@ -216,7 +218,8 @@ class CaptureSessionGrouper:
     the same mixed file tells this story at the camera's time."""
 
     name = "capture_session"
-    version = "4"
+    #: v5: the same refined-time gap rule as every wall-clock grouper
+    version = "5"
     claim = "capture"
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
@@ -234,7 +237,8 @@ class FileSessionGrouper:
     keeps the filesystem as evidence beside it."""
 
     name = "file_session"
-    version = "1"
+    #: v2: the same refined-time gap rule as every wall-clock grouper
+    version = "2"
     claim = "file"
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
