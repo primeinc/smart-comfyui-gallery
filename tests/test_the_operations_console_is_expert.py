@@ -554,3 +554,43 @@ def test_the_shell_counts_what_is_running(served):
     page = client.get("/g", headers={"accept": "text/html"}).text
     assert re.search(r"activity · \d+ running", page), "the shell summary names the live count"
     assert _turn(client, job_id)["state"] == "done"
+
+
+def _schema_job_kinds() -> set[str]:
+    table = SCHEMA.read_text(encoding="utf-8").split("CREATE TABLE job (", 1)[1]
+    check = re.search(r"kind\s+TEXT NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", table)
+    assert check is not None
+    return set(re.findall(r"'([a-z_]+)'", check.group(1)))
+
+
+def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
+    """The console shows what a job does AND the schema's name for it.
+    A kind the schema admits but the console cannot word is a row that
+    reads as its identifier -- the contract holds the two vocabularies
+    equal, and the hash kind's modes are told apart by the payload."""
+    assert set(console.KINDS) == _schema_job_kinds()
+    assert console.describe_kind("hash") == "verify every file's bytes"
+    assert console.describe_kind("hash", "groups") == "group perceptual copies"
+    assert console.describe_kind("annotate") == "caption every picture"
+    root = tmp_path / "lib"
+    root.mkdir()
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "one.png")
+    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        fingerprint = client.post("/operations/jobs/phash").text
+        dupes = client.post("/operations/jobs/dupes").text
+        assert "queued #" in fingerprint
+        assert "queued #" in dupes
+        matrix = client.get("/operations/overview").json()["matrix"]
+        told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
+        assert told[("hash", "perceptual")] == "fingerprint every picture"
+        assert told[("hash", "groups")] == "group perceptual copies"
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert "fingerprint every picture" in page
+        assert '<code class="raw">hash</code>' in page
+        one = next(row["id"] for row in matrix if row.get("derive") == "perceptual")
+        detail = client.get(f"/operations/job/{one}", headers={"accept": "application/json"}).json()
+        assert detail["what"] == "fingerprint every picture"
+        inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
+        assert "fingerprint every picture" in inspector

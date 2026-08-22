@@ -10,7 +10,7 @@
   <header class="inspect-identity">
     <div class="inspect-title">
       <span class="inspect-id">#{{ job.id }}</span>
-      <span class="v">{{ job.kind.replace("_", " ") }}</span>
+      <span class="v">{{ job.what }}</span>
       <code class="raw">{{ job.kind }}</code>
       <span class="inspect-state" data-state="{{ job.state }}">{{ job.state }}</span>
       {% if d.cancellation == "requested" %}<span class="inspect-state" data-state="cancelling">cancel requested</span>{% endif %}

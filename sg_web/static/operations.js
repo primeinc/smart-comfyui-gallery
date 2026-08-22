@@ -249,7 +249,7 @@
       const li = el("li", { class: "matrix-row", "data-matrix-job": j.id, "data-state": j.state, "data-cancelling": cancelling || null, tabindex: "0", role: "button", "aria-current": selectedJob === j.id ? "true" : null });
       li.appendChild(el("span", { class: "matrix-id" }, `#${j.id}`));
       const kind = el("span", { class: "matrix-kind" });
-      kind.appendChild(el("span", { class: "v" }, j.kind.replace(/_/g, " ")));
+      kind.appendChild(el("span", { class: "v" }, j.what || j.kind.replace(/_/g, " ")));
       kind.appendChild(el("code", { class: "raw" }, j.kind));
       li.appendChild(kind);
       li.appendChild(el("span", { class: "matrix-state", "data-state": j.state }, cancelling ? "cancelling" : j.state));

@@ -176,6 +176,41 @@ def inside_item(type_: str) -> bool:
     return type_ in INSIDE_ITEM
 
 
+#: What each schema job kind does, in words, shown beside the raw kind
+#: (db/schema.sql job.kind CHECK; the contract test holds the two equal).
+KINDS: dict[str, str] = {
+    "scan": "read every file's metadata",
+    "hash": "verify every file's bytes",
+    "embed": "embed every picture for search",
+    "detect_faces": "detect faces",
+    "cluster_faces": "cluster faces into people",
+    "sample_frames": "sample frames from every video",
+    "annotate": "caption every picture",
+    "remix": "remix pictures",
+    "zip": "pack files for download",
+    "context": "interpret every file's time and place",
+    "events": "propose events",
+    "story_plan": "plan a story",
+    "embed_prompts": "embed every prompt",
+}
+
+#: The 'hash' kind's modes, told apart by the payload's `derive`
+#: (db/runner.py _hash_item).
+HASH_MODES: dict[str | None, str] = {
+    None: KINDS["hash"],
+    "perceptual": "fingerprint every picture",
+    "thumbs": "render every missing thumbnail",
+    "groups": "group perceptual copies",
+}
+
+
+def describe_kind(kind: str, derive: str | None = None) -> str:
+    """The human line for a job: its kind's words, or its hash mode's."""
+    if kind == "hash":
+        return HASH_MODES.get(derive, f"hash, mode {derive}")
+    return KINDS.get(kind, kind.replace("_", " "))
+
+
 def describe(event: Mapping) -> str:
     """The words for one event. An unknown type is a defect in this
     module, not a quiet blank -- it raises."""

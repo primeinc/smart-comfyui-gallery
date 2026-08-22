@@ -27,8 +27,9 @@ First library:
 1. Open `/operations`, add a root, press **Scan**.
 2. Press the sweeps you want: **ingest** (metadata), **hash** /
    **dupes**, **faces** then **cluster**, **embed** (semantic search,
-   downloads weights once), **context** then **events** (the timeline
-   and stories).
+   downloads weights once), **annotate** (a caption per picture,
+   searchable and shown on its page; downloads weights once),
+   **context** then **events** (the timeline and stories).
 
 Every sweep is a job row; the activity surface on every page shows it
 live over `/ws/jobs`. Nothing expensive runs by itself.

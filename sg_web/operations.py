@@ -181,6 +181,7 @@ def _with_live(state: State, told: dict) -> None:
     told["overview"]["worker"]["thread"] = getattr(thread, "name", None)
     live = getattr(state, "live_reports", {})
     for job in told["matrix"]:
+        job["what"] = console.describe_kind(job["kind"], job.get("derive"))
         held = live.get(job["id"]) if job["state"] == "running" else None
         job["live"] = (
             {"phase": held.get("phase"), "type": held["type"], "text": held["text"], "item_id": held.get("item_id")}
@@ -203,6 +204,7 @@ def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Temp
     finally:
         connect.close(conn)
     told["recent_events"] = [console.envelope(event) for event in told["recent_events"]]
+    told["what"] = console.describe_kind(told["kind"], (told.get("payload") or {}).get("derive"))
     # the phase inside the running item lives in process memory until the
     # item settles (sg_web/app.py live_reports); the row cannot hold it yet
     live = getattr(state, "live_reports", {}).get(job_id)
