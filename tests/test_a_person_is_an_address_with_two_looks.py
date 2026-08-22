@@ -78,7 +78,7 @@ def _clustered_library(tmp: pathlib.Path) -> tuple:
 
 def _library(root: pathlib.Path) -> None:
     for name in ("ana_1.png", "ana_2.png", "ben_1.png"):
-        (root / name).write_bytes(b"\x89PNG-of-" + name.encode())
+        Image.new("RGB", (16, 16), (200, 90, 40)).save(root / name)
 
 
 def _clustered(stage: Stage) -> None:
