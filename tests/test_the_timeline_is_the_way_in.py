@@ -64,7 +64,7 @@ def test_a_stale_event_opens_nothing(doors):
     whole = _density(doors, bin="day")
     held = next(s for s in whole["sessions"] if s["domain"] == "wall")
     assert _total(doors, held["qs"]) == held["pictures"]
-    doors.post("/jobs/context")  # re-interpreting advances the generation; runs are stale until regrouped
+    doors.post("/jobs/context", params={"everything": "true"})  # re-interpreting advances the generation
     from tests.test_the_timeline_is_a_surface import _drain
 
     _drain(doors)

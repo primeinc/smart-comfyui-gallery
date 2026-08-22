@@ -32,7 +32,12 @@ First library:
    **context** then **events** (the timeline and stories).
 
 Every sweep is a job row; the activity surface on every page shows it
-live over `/ws/jobs`. Nothing expensive runs by itself.
+live over `/ws/jobs`. Nothing expensive runs by itself. The embed,
+annotate and context sweeps queue only what is still missing -- a
+picture already embedded, captioned or interpreted for its current
+bytes is not an item again -- and answer 204 when nothing is left;
+`?everything=true` on the route (or `{"everything": true}` in the
+annotate body) redoes all of it.
 
 ## Addresses
 

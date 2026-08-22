@@ -41,6 +41,43 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+def test_the_context_sweep_is_for_what_is_missing(tmp_path, monkeypatch):
+    """Interpreted files are not items again; a staled file is; a policy
+    bump puts every file back; `everything` does too."""
+    from db import context
+
+    root = tmp_path / "lib"
+    _plain(root / "a.png", NOW)
+    _plain(root / "b.png", NOW)
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/jobs/ingest")
+        first = client.post("/jobs/context")
+        assert first.status_code == 201, first.text
+        _drain(client)
+        assert client.post("/jobs/context").status_code == 204, "every file is interpreted"
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            b = conn.execute("SELECT id FROM file WHERE name = 'b.png'").fetchone()[0]
+            context.stale(conn, b)
+            conn.commit()
+            staled = runner.submit_context(conn, NOW)
+            assert [r[0] for r in conn.execute("SELECT item_id FROM job_item WHERE job_id = ?", (staled,))] == [b]
+            conn.commit()
+        finally:
+            connect.close(conn)
+        _drain(client)
+
+        monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
+        bumped = client.post("/jobs/context")
+        assert bumped.status_code == 201, "an older policy's rows are not current"
+        assert bumped.json()["total"] == 2
+        monkeypatch.undo()
+        assert client.post("/jobs/context", params={"everything": "true"}).json()["total"] == 2
+
+
 def test_folders_and_albums_carry_the_span_of_their_pictures(tmp_path):
     root = tmp_path / "lib"
     _plain(root / "shots" / "Screenshot 2023-06-10 at 14.23.01.png", NOW)

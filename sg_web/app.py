@@ -498,13 +498,16 @@ def dupes(state: State) -> list[dict]:
 
 
 @post("/jobs/context", sync_to_thread=True)
-def submit_context(state: State) -> dict:
-    """Ask for every present file's media context to be rebuilt from its
-    sources' claims -- one item per file (db/runner.py submit_context).
-    Nothing expensive runs on a GET."""
+def submit_context(state: State, everything: bool = False) -> dict | Response:
+    """Ask for every present file still without a current interpretation
+    to get one from its sources' claims -- `?everything=true` for all of
+    them again -- one item per file (db/runner.py submit_context). 204
+    when every file is interpreted. Nothing expensive runs on a GET."""
     conn = _connect(state.db_path)
     try:
-        job_id = runner.submit_context(conn, time.time())
+        job_id = runner.submit_context(conn, time.time(), everything=everything)
+        if job_id is None:
+            return Response(content=None, status_code=204)
         conn.commit()
         return _submitted(state, conn, job_id)
     finally:

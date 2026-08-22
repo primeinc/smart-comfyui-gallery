@@ -94,7 +94,8 @@ def _cluster(state: State, conn) -> list[int]:
 
 
 def _context(state: State, conn) -> list[int]:
-    return [runner.submit_context(conn, time.time())]
+    job_id = runner.submit_context(conn, time.time())
+    return [] if job_id is None else [job_id]
 
 
 def _events(state: State, conn) -> list[int]:
@@ -116,7 +117,7 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "faces": ("detect faces", _faces),
     "cluster": ("cluster faces into people", _cluster),
     "annotate": ("caption every picture not yet captioned", _annotate),
-    "context": ("interpret every file's time and place", _context),
+    "context": ("interpret every file not yet interpreted", _context),
     "events": ("propose events", _events),
 }
 

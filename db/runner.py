@@ -877,11 +877,23 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:
 #: `job.kind` is CHECK-constrained (db/schema.sql:493-495) so a typo is an
 #: IntegrityError at submit, never a job that queues and waits forever.
-def submit_context(conn, now: float) -> int:
-    """Reinterpret every present file: one item per file, so
+def submit_context(conn, now: float, *, everything: bool = False) -> int | None:
+    """Interpret every present file whose interpretation is missing --
+    never made, staled by a source change (db/context.py stale), or made
+    under an older policy -- or, with `everything`, every present file
+    again. None when nothing is left. One item per file, so
     cancellation, resume and failures land at file boundaries
     (db/context.py rebuild_one). The schema's job kind is 'context'."""
-    items = [row[0] for row in conn.execute("SELECT id FROM file WHERE missing_since IS NULL ORDER BY id")]
+    from . import context as context_module
+
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL"
+    args: tuple = ()
+    if not everything:
+        sql += " AND NOT EXISTS (SELECT 1 FROM derived_media_context c WHERE c.file_id = f.id AND c.policy_version = ?)"
+        args = (context_module.POLICY_VERSION,)
+    items = [row[0] for row in conn.execute(sql + " ORDER BY f.id", args)]
+    if not items:
+        return None
     return jobs.submit(conn, "context", now, items=items)
 
 
