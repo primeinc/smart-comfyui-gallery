@@ -103,8 +103,17 @@ def people_index(state: State, request: Request) -> Template | Response:
     historical JSON list for everything else."""
     conn = connect.connect(state.db_path)
     try:
+        spans = pages.people_spans(conn)
+        ids = {slug: person_id for person_id, slug in pages.people_ids(conn)}
         told = [
-            {"name": name, "slug": slug, "pictures": pictures} for name, slug, pictures in pages.people_by_most(conn)
+            {
+                "name": name,
+                "slug": slug,
+                "pictures": pictures,
+                "first_seen": spans.get(ids.get(slug, -1), (None, None))[0],
+                "last_seen": spans.get(ids.get(slug, -1), (None, None))[1],
+            }
+            for name, slug, pictures in pages.people_by_most(conn)
         ]
         # An empty page says WHY: runs that exist but are not the default
         # each carry their standing, so "nobody clustered yet" is only

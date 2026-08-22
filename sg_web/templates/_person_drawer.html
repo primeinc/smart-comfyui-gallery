@@ -14,6 +14,14 @@
            aria-label="name" required>
     <button type="submit">name</button>
   </form>
+  {% if person.sessions %}
+  <ul class="drawer-sessions" data-drawer-sessions>
+    {% for s in person.sessions[:3] %}
+    <li><a href="/g?{{ s.qs }}">{{ s.kind.replace("_", " ") }}</a> · <time data-epoch="{{ s.start }}" data-domain="{{ s.domain }}">{{ s.start }}</time> · {{ s.theirs }} of {{ s.pictures }}</li>
+    {% endfor %}
+    {% if person.sessions | length > 3 %}<li><a href="/p/{{ person.slug }}">all {{ person.sessions | length }} sessions</a></li>{% endif %}
+  </ul>
+  {% endif %}
   <div class="drawer-strip">
     {% for pic in person.gallery["items"][:9] %}
     <a href="/i/{{ pic.slug }}?{{ person.gallery.qs }}"><img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy"></a>

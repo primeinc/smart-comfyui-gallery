@@ -286,6 +286,9 @@ body {
 .person-face-big { width: 120px; height: 120px; }
 .person-name { font-weight: 600; }
 .person-count { color: var(--ink-muted); font-size: 13px; }
+.person-seen { color: var(--ink-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.drawer-sessions { list-style: none; margin: 0; padding: 0; font-size: 13px; display: grid; gap: 2px; }
+.drawer-sessions a { color: var(--accent); }
 
 .person-hero { display: flex; gap: 18px; align-items: center; }
 .person-hero h1 { margin: 0 0 8px; }

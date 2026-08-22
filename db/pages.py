@@ -334,6 +334,18 @@ PERSON_ACROSS_FOLDERS = (
 )
 
 
+#: When each person was first and last seen, on the human timeline,
+#: for one clustering run: the People index's answer beside the count.
+#: An aggregate over the run's attributions -- the index page's own
+#: summary, like the shelves.
+PEOPLE_SPANS = (
+    "SELECT fp.person_id, min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"
+    "  FROM derived_file_person fp"
+    "  JOIN derived_media_context mc ON mc.file_id = fp.file_id AND mc.policy_version = ?"
+    "  JOIN file f ON f.id = fp.file_id AND f.missing_since IS NULL"
+    " WHERE fp.run_id = ? GROUP BY fp.person_id"
+)
+
 #: When a person was seen: every CURRENT session holding one of their
 #: pictures, with how many of its members are theirs and the story told
 #: of it -- the timeline's answer for one face, newest first.
@@ -487,6 +499,29 @@ EVENT_DOMAIN = "SELECT local_start, instant_start FROM derived_event WHERE id = 
 def event_domain(conn, event_id: int):
     """`(local_start, instant_start)`: which clock domain a session knows."""
     return conn.execute(EVENT_DOMAIN, (event_id,)).fetchone()
+
+
+PEOPLE_IDS = "SELECT p.id, e.slug FROM person p JOIN entity e ON e.id = p.id"
+
+
+def people_ids(conn):
+    """Every person's id beside their live slug -- the join the index
+    page needs to lay a span next to a card."""
+    return conn.execute(PEOPLE_IDS).fetchall()
+
+
+def people_spans(conn, run_id: int | None = None) -> dict[int, tuple[float, float]]:
+    """`{person_id: (first, last)}` on the human timeline for one run
+    (the primary by default); a person with no interpreted picture is
+    absent, and the page says nothing rather than a guess."""
+    if run_id is None:
+        row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
+        if row is None:
+            return {}
+        run_id = row[0]
+    return {
+        int(pid): (first, last) for pid, first, last in conn.execute(PEOPLE_SPANS, (context.POLICY_VERSION, run_id))
+    }
 
 
 def person_sessions(conn, person_id: int, run_id: int | None = None):

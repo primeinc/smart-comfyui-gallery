@@ -19,6 +19,7 @@
         <img class="person-face" src="/avatar/{{ one.slug }}" alt="" loading="lazy">
         <span class="person-name">{{ one.name }}</span>
         <span class="person-count">{{ one.pictures }} pictures</span>
+        {% if one.last_seen is not none %}<span class="person-seen" data-person-seen><time data-epoch="{{ one.first_seen }}">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
       </a>
       {% endfor %}
     </div>

@@ -1058,3 +1058,25 @@ def test_the_gallery_chips_the_person_scope_too(faces):
     removes = dict(re.findall(r'data-chip="([^"]+)">[^<]*<a href="([^"]+)"', page))
     assert removes["person=ana"] == "/g?kind=image"
     assert removes["kind=image"] == "/g?person=ana"
+
+
+def test_the_people_index_says_when_each_was_seen(faces):
+    """Beside the count, the span of a person's pictures on the human
+    timeline -- absent, not guessed, until the library is interpreted;
+    and the drawer lists their sessions."""
+    from tests.staging import settled
+
+    client = faces
+    before = client.get("/people").json()
+    assert before[0]["first_seen"] is None
+    assert before[0]["last_seen"] is None
+    assert settled(client, client.post("/jobs/context").json()["id"]) == "done"
+    assert settled(client, client.post("/jobs/events").json()["id"]) == "done"
+    after = client.get("/people").json()
+    ana = next(p for p in after if p["slug"] == "ana")
+    assert ana["first_seen"] is not None
+    assert ana["first_seen"] <= ana["last_seen"]
+    page = client.get("/people", headers={"accept": "text/html"}).text
+    assert "data-person-seen" in page
+    drawer = client.get("/p/ana", headers={"hx-request": "true"}).text
+    assert "data-drawer-sessions" in drawer

@@ -5,6 +5,16 @@
 // a collection, not a piece of media, so there are no arrows: the
 // drawer shows who they are and hands off to the full profile.
 (() => {
+  // days on the cards and in the drawer, spelled for the reader
+  const pad = (n) => String(n).padStart(2, "0");
+  const spellDays = (root) => {
+    for (const node of root.querySelectorAll("time[data-epoch]")) {
+      const d = new Date(Number(node.dataset.epoch) * 1000);
+      node.textContent = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    }
+  };
+  spellDays(document);
+  new MutationObserver(() => spellDays(document)).observe(document.body, { childList: true, subtree: true });
   "use strict";
 
   // Renaming is the People page's primary action, on the drawer and the
