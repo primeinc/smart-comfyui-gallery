@@ -169,11 +169,18 @@ def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[Group
     made.extend(
         _proposed_instant(kind, _flat(members)) for members in _split(instants, lambda act: act[0].instant_at, gap)
     )
-    # inside one claimed minute the generator's own counter orders the
-    # members; file ids only break what the generator left tied
+    # inside one claimed minute the refined second (when the estimate
+    # lands inside the claim) orders first, then the generator's own
+    # counter; file ids only break what both left tied. Clustering and
+    # the interval stay on the claim.
     walls = sorted(
         (act for act in acts if act[0].instant_at is None and act[0].local_at is not None),
-        key=lambda act: (act[0].local_at, order(act[0]), act[0].file_id),
+        key=lambda act: (
+            act[0].local_at,
+            act[0].refined_at if act[0].refined_at is not None else act[0].local_at,
+            order(act[0]),
+            act[0].file_id,
+        ),
     )
     made.extend(_proposed_local(kind, _flat(members)) for members in _split(walls, lambda act: act[0].local_at, gap))
     return made

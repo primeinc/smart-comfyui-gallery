@@ -271,6 +271,13 @@ def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_t
             agreed = '["embedded_day", "mtime_finish_consistent", "btime_after_generation", "host_zone_assumed"]'
             assert [r[:5] for r in rows] == [("filename", "minute", agreed, None, 0.9)] * 5
             assert all(abs(r[5] - 0.7) < 0.01 for r in rows), "each request estimated 0.7 s into its minute"
+            timeline = conn.execute(
+                "SELECT mc.time_precision, mc.local_at - o.local_at, mc.time_supports FROM derived_media_context mc"
+                " JOIN derived_media_occurrence o ON o.file_id = mc.file_id AND o.kind = 'generation'"
+            ).fetchall()
+            assert all(
+                p == "second" and abs(d - 0.7) < 0.01 and '"estimate_inside_claim"' in s for p, d, s in timeline
+            ), "the human timeline reads the refined second; the occurrence keeps the minute claim"
             sessions = conn.execute(
                 "SELECT (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) FROM derived_event e"
                 " WHERE e.kind = 'generation_session'"

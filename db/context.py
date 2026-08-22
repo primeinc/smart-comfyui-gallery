@@ -62,11 +62,12 @@ LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 #: itself changes meaning -- v2 added the embedded generator-date rung,
 #: v3 the precision dimension and the coexistence facts, v4 the
 #: per-claim occurrence rows, v5 the generation judge, v6 the capture
-#: judge and the act key, v7 the file's own claims as an occurrence.
-#: Every reader binds THIS constant, never the version a database
-#: happens to remember: after an upgrade the old rows are honestly
-#: invisible until the context job re-interprets.
-POLICY_VERSION = 7
+#: judge and the act key, v7 the file's own claims as an occurrence,
+#: v8 the human timeline at the refined second when the estimate lands
+#: inside the claimed minute. Every reader binds THIS constant, never
+#: the version a database happens to remember: after an upgrade the old
+#: rows are honestly invisible until the context job re-interprets.
+POLICY_VERSION = 8
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
@@ -245,15 +246,20 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
                 capture.precision,
             )
         elif generation is not None:
+            # the human timeline takes the finest CONSISTENT reading: the
+            # second the finish implies, when it sits inside the claimed
+            # minute -- said so in the supports; the occurrence row keeps
+            # the claim itself, with the estimate beside it
+            refined = generation.refined_at
             time = (
-                generation.local_at,
+                refined if refined is not None else generation.local_at,
                 generation.instant_at,
                 generation.tz_offset_min,
                 generation.basis,
                 generation.certainty,
-                _json(generation.supports),
+                _json((*generation.supports, "estimate_inside_claim") if refined is not None else generation.supports),
                 _json(generation.conflicts),
-                generation.precision,
+                "second" if refined is not None else generation.precision,
             )
         else:
             own = when.judge_file(name=name, folders=folders.get(folder, []), mtime=mtime, btime=btime)
@@ -453,17 +459,28 @@ class Occurrence:
     act_key: str | None = None
     #: the file's name, for a grouper to rank renditions of one act
     name: str = ""
+    #: the claim refined by an estimate that lands inside it (a
+    #: generation's finish-implied second inside its claimed minute);
+    #: a grouper ORDERS by it and still clusters by the claim
+    refined_at: float | None = None
 
 
 _OCCURRENCES = """
 SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision, o.source_order, o.conflicts,
-       o.act_key, f.name
+       o.act_key, f.name, o.estimated_at
   FROM derived_media_occurrence o
   JOIN file f ON f.id = o.file_id AND f.missing_since IS NULL
   JOIN entity e ON e.id = o.file_id
  WHERE o.kind = ? AND o.policy_version = ?
  ORDER BY o.file_id
 """
+
+
+def _refined(local_at, precision, estimated_at) -> float | None:
+    span = {"day": 86400.0, "hour": 3600.0, "minute": 60.0}.get(precision)
+    if span is None or local_at is None or estimated_at is None:
+        return None
+    return estimated_at if local_at <= estimated_at < local_at + span else None
 
 
 def occurrences(conn, kind: str) -> list[Occurrence]:
@@ -486,6 +503,7 @@ def occurrences(conn, kind: str) -> list[Occurrence]:
             not any(one.startswith(when.GENERATOR) for one in (json.loads(row[7]) if row[7] else [])),
             row[8],
             row[9],
+            _refined(row[3], row[5], row[10]),
         )
         for row in conn.execute(_OCCURRENCES, (kind, POLICY_VERSION))
     ]

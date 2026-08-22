@@ -157,6 +157,22 @@ class Verdict:
         return CERTAINTY[self.quality]
 
     @property
+    def refined_at(self) -> float | None:
+        """The claim, REFINED: the estimate (finish minus generation
+        time, or a finer sibling reading) when it lands inside the
+        claimed window. A minute-fine claim with a second-fine estimate
+        inside it is not replaced -- the minute still contains the
+        second -- but a consumer that wants the finest consistent
+        reading takes this. None when there is no estimate or it lies
+        outside the claim (then it is a conflict, already named)."""
+        if self.estimated_at is None or self.local_at is None:
+            return None
+        span = {"day": 86400.0, "hour": 3600.0, "minute": 60.0}.get(self.precision)
+        if span is None:
+            return None
+        return self.estimated_at if self.local_at <= self.estimated_at < self.local_at + span else None
+
+    @property
     def usable(self) -> bool:
         """Fit for chronology: the generator does not disagree with
         itself. A filesystem conflict is recorded but, read through the
