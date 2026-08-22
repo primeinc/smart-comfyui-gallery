@@ -24,6 +24,7 @@ def test_the_tree_is_clean_under_the_rules():
     assert found == [], "\n".join(f.spelled() for f in found)
 
 
+@pytest.mark.slow
 def test_the_spawn_sweep_reaches_the_tree_and_catches_each_shape():
     total = sum(len(rules.spawn_calls(rules.parsed(s))) for s in rules.every_source())
     assert total >= 2, f"only {total} subprocess calls found; the sweep is not reaching them"
