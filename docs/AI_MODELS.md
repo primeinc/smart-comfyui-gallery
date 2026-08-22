@@ -27,6 +27,7 @@ own layout, `<models_dir>/insightface/models/antelopev2/`.
 | Semantic search (default space) | OpenCLIP `ViT-B-32` / `laion2b_s34b_b79k` | MIT (code); weights LAION | Hugging Face Hub via open_clip | `POST /jobs/embed` |
 | Semantic search (optional space) | `Qwen/Qwen3-VL-Embedding-2B` (2048-d, video-native) | Apache-2.0 | Hugging Face Hub | `POST /jobs/embed` with a `qwen:` entry in `semantic_model` |
 | Face detection + embedding | insightface `antelopev2` pack: SCRFD-10GF + glintr100 (512-d) + genderage | **Non-commercial research** (insightface model zoo) | `insightface.utils.ensure_available`, insightface's release | `POST /jobs/faces` (`face_backend` auto/insightface) |
+| Captions | BLIP `Salesforce/blip-image-captioning-base` (the `caption_model` setting) | BSD-3 | Hugging Face Hub | `POST /jobs/annotate` |
 | Face, permissive stack | YuNet 2023mar + SFace 2021dec via OpenCV | Apache-2.0 | Hub repos `opencv/face_detection_yunet`, `opencv/face_recognition_sface` | `POST /jobs/faces` (`face_backend` opencv, or auto without the insightface runtime) |
 
 No URL and no checksum lives in this repository: each registry's own
@@ -42,8 +43,8 @@ provenance, the embed job fills the new one fresh.
 
 ## Doctrine
 
-- **Jobs provision, serving refuses.** The embed and faces jobs may
-  download (`provision=True`); a GET never does. An unprovisioned model
+- **Jobs provision, serving refuses.** The embed, faces and annotate
+  jobs may download (`provision=True`); a GET never does. An unprovisioned model
   on the query path is a 400 naming the job, structurally -- the
   serving code path only ever hands local file paths to the loaders.
 - **Runtimes install, weights arrive.** Nothing installs packages at

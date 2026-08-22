@@ -262,7 +262,7 @@ def test_operations_is_one_router_over_the_runtime(served):
     assert page.status_code == 200, page.text[:300]
     assert "data-operations-roots" in page.text
     assert str(root) in page.text
-    for kind in ("ingest", "verify", "phash", "faces", "cluster", "context", "events"):
+    for kind in ("ingest", "verify", "phash", "faces", "cluster", "annotate", "context", "events"):
         assert f'hx-post="/operations/jobs/{kind}"' in page.text, kind
     assert 'data-setting="worker"' in page.text
 

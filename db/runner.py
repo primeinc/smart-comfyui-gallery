@@ -778,6 +778,74 @@ def _face_item(conn, file_id: int, payload: dict, now: float) -> None:
     told.observe("faces-found", count=int(faces))
 
 
+#: (models_dir, caption_model) -> the loaded captioner, or the LookupError
+#: that refused it, held across items the way _BACKENDS holds face backends.
+_CAPTIONERS: dict = {}
+
+
+def submit_annotate(conn, now: float, *, models_dir: str) -> int:
+    """A caption for every present picture and video, as one job. The
+    `caption_model` setting is read HERE, once, into the payload: every
+    item of one job runs the same model."""
+    from . import settings as settings_module
+
+    items = [
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
+        )
+    ]
+    payload = {"models_dir": models_dir, "model": settings_module.value(conn, "caption_model"), "kind": "caption"}
+    return jobs.submit(conn, "annotate", now, payload=payload, items=items)
+
+
+def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
+    """One file through the captioner the payload names; a video is
+    captioned by its poster frame, the same frame search embeds. The
+    job is the one place that may provision weights (docs/AI_MODELS.md)."""
+    from vision import captions as captions_module
+    from vision import decode
+
+    from . import derived, detect, oriented, scan
+
+    key = (payload["models_dir"], payload["model"])
+    told = report()
+    captioner = _CAPTIONERS.get(key)
+    if captioner is None:
+        told.phase("loading-captioner", model=key[1])
+        try:
+            captioner = captions_module.captioner_for(key[0], key[1], provision=True)
+        except LookupError as why:
+            # Held, so every item of this job fails by the same name at
+            # once instead of re-attempting a download per picture.
+            _CAPTIONERS[key] = why
+            _logger.exception("annotate: no captioner for caption_model=%s", key[1])
+            raise
+        _CAPTIONERS[key] = captioner
+        _logger.info("annotate: captioner %s %s (models_dir=%s)", captioner.model_id, captioner.model_version, key[0])
+    if isinstance(captioner, LookupError):
+        raise captioner
+    kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+    path = detect.path_of(conn, file_id)
+    if sha is None:
+        sha = scan.sha256_of(path)
+        conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
+    told.phase("decoding", kind=kind)
+    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+    if frame is None:
+        raise ValueError(f"file {file_id} has no decodable frame to caption")
+    told.phase("captioning", model=captioner.model_id)
+    text = captioner.describe(frame).strip()
+    if not text:
+        raise ValueError(f"{captioner.model_id} said nothing about file {file_id}")
+    told.phase("recording")
+    derived.annotate(
+        conn, file_id, payload.get("kind", "caption"), text, captioner.model_id, captioner.model_version, sha, now
+    )
+    told.observe("caption", words=len(text.split()))
+
+
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:
 #: `job.kind` is CHECK-constrained (db/schema.sql:493-495) so a typo is an
 #: IntegrityError at submit, never a job that queues and waits forever.
@@ -842,6 +910,7 @@ HANDLERS = {
     "embed": _embed_item,
     "detect_faces": _face_item,
     "cluster_faces": _cluster_item,
+    "annotate": _annotate_item,
 }
 
 

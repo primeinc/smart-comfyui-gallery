@@ -188,7 +188,7 @@ def test_the_wildcard_machine_caller_keeps_its_json(faces):
     assert told.json() == faces.get("/p/ana", headers=AS_MACHINE).json()
     index = faces.get("/people")
     assert index.headers["content-type"].startswith("application/json")
-    assert index.json() == [{"name": "Ana", "slug": "ana", "pictures": 2}]
+    assert index.json() == [{"name": "Ana", "slug": "ana", "pictures": 2, "first_seen": None, "last_seen": None}]
 
 
 def test_the_people_index_renders_for_a_browser(faces):
@@ -563,9 +563,9 @@ def test_a_human_name_survives_the_apps_own_recluster(named_placeholder, faces):
     _drained_cluster_job(faces)
 
     people = faces.get("/people").json()
-    assert people == [{"name": "Ana Torres", "slug": "ana-torres", "pictures": 2}], (
-        f"the application's own re-cluster lost the name the application accepted: {people}"
-    )
+    assert people == [
+        {"name": "Ana Torres", "slug": "ana-torres", "pictures": 2, "first_seen": None, "last_seen": None}
+    ], f"the application's own re-cluster lost the name the application accepted: {people}"
     assert len(faces.get("/p/ana-torres").json()["pictures"]) == 2
 
 

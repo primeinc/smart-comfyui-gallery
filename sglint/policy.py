@@ -190,11 +190,7 @@ SURFACE_MINIMUM: int = 9
 
 #: Derived tables whose writer is declared reserved: the job that writes
 #: them does not exist yet. Each line is a decision on the record.
-DERIVED_RESERVED: dict[str, str] = {
-    # Captions, OCR, tags -- the 'annotate' job kind exists in the schema
-    # CHECK; the job that writes these rows does not exist yet.
-    "derived_annotation": "writer ['annotate'] called by nothing outside db/derived.py",
-}
+DERIVED_RESERVED: dict[str, str] = {}
 DERIVED_PRODUCER_PACKAGES: tuple[str, ...] = ("db", "vision", "sg_web")
 
 # --- SG7xx: the schema contract ---------------------------------------------------------------

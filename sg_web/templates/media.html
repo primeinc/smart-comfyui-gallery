@@ -70,6 +70,16 @@
       {% else %}
       <p class="detail-note" data-when-missing>not interpreted yet — <a href="/operations">run the context job</a>.</p>
       {% endif %}
+      <h2>what a model said</h2>
+      {% if item.said %}
+      <ul class="detail-said" data-said>
+        {% for a in item.said %}
+        <li data-said-kind="{{ a.kind }}">{{ a.text }} <span class="when-evidence">{{ a.kind }} &middot; {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} &middot; confidence {{ a.confidence }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="detail-note" data-said-missing>no caption yet — <a href="/operations">run the annotate job</a>.</p>
+      {% endif %}
       {% if item.copies %}
       <h2>other bodies of this picture</h2>
       <ul>

@@ -84,6 +84,10 @@ def _faces(state: State, conn) -> list[int]:
     return [runner.submit_faces(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache)]
 
 
+def _annotate(state: State, conn) -> list[int]:
+    return [runner.submit_annotate(conn, time.time(), models_dir=_weights(state, conn))]
+
+
 def _cluster(state: State, conn) -> list[int]:
     return [runner.submit_cluster(conn, time.time())]
 
@@ -110,6 +114,7 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "embed_prompts": ("embed every prompt", _embed_prompts),
     "faces": ("detect faces", _faces),
     "cluster": ("cluster faces into people", _cluster),
+    "annotate": ("caption every picture", _annotate),
     "context": ("interpret every file's time and place", _context),
     "events": ("propose events", _events),
 }

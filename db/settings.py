@@ -29,6 +29,10 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # session: "auto" (CUDA when the installed build offers it), "cpu",
     # or an explicit comma list of provider names. Read at job submit.
     "ort_providers": ("auto", None),
+    # The BLIP captioning checkpoint the annotate job runs, as a Hugging
+    # Face repository id (vision/captions.py). Read at job submit; each
+    # model's captions are kept beside the others', never merged.
+    "caption_model": ("Salesforce/blip-image-captioning-base", None),
     # Whether the vendored GPU faiss build may be used at all. Consulted
     # at the first faiss import in a process; changing it applies from
     # the next start.

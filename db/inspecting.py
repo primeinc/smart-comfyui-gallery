@@ -30,7 +30,7 @@ from . import jobs, ledger, settings
 
 #: Job kinds whose item ids are file ids, so an item can be named and
 #: linked. `hash` with derive=groups runs one item that is not a file.
-_FILE_ITEM_KINDS = frozenset({"scan", "hash", "embed", "detect_faces", "context"})
+_FILE_ITEM_KINDS = frozenset({"scan", "hash", "embed", "detect_faces", "context", "annotate"})
 
 #: The payload keys a launcher writes, as the console labels them.
 TERMINAL = ("done", "failed", "cancelled")

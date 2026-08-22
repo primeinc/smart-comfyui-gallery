@@ -44,7 +44,7 @@ from litestar.datastructures import State
 from litestar.exceptions import HTTPException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import authored, connect, naming, pages, resultset, settings
+from db import authored, connect, derived, naming, pages, resultset, settings
 from db.resultset import canonical
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
@@ -126,6 +126,7 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
         "parents": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.parents(conn, file_id)],
         "children": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.children(conn, file_id)],
         "when": _when(conn, file_id),
+        "said": derived.said_about(conn, file_id),
         "context": context,
     }
 

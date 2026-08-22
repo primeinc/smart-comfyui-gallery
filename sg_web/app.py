@@ -306,6 +306,21 @@ def submit_faces(state: State, data: dict) -> dict:
         connect.close(conn)
 
 
+@post("/jobs/annotate", sync_to_thread=True)
+def submit_annotate(state: State, data: dict) -> dict:
+    """Ask for a caption on every picture, with the models named."""
+    conn = _connect(state.db_path)
+    try:
+        weights = data.get("models_dir") or str(
+            home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
+        )
+        job_id = runner.submit_annotate(conn, time.time(), models_dir=weights)
+        conn.commit()
+        return _submitted(state, conn, job_id)
+    finally:
+        connect.close(conn)
+
+
 @post("/jobs/thumbs", sync_to_thread=True)
 def submit_thumbs(state: State) -> dict | Response:
     """Ask for every missing grid thumb and lightbox preview to be
@@ -1148,6 +1163,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             job_snapshot,
             submit_verify,
             submit_faces,
+            submit_annotate,
             submit_cluster,
             person_view.name_person,
             cancel_job,
