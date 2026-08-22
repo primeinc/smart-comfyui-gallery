@@ -34,11 +34,11 @@ types:
 repo-check:
     {{ python }} -m sglint --repo
 
-# The gate: lint, format, repo hygiene, the fast tests
-check: lint fmt-check repo-check test
+# The gate: lint, format, repo hygiene. No tests -- `just test` is its own step
+check: lint fmt-check repo-check
 
-# The gate plus the slow lane
-check-all: check test-slow
+# The gate plus both test lanes
+check-all: check test test-slow
 
 # The repo-wide structural gates, on their own and in seconds: sglint's
 # rules (discovered scope: a package created tomorrow is swept the day it

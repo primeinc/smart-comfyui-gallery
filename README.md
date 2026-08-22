@@ -62,9 +62,10 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 ## Develop
 
 ```
-just check          ruff, sglint, format, repo hygiene, the fast tests
+just check          ruff, sglint, format, repo hygiene -- no tests
+just test           the fast tests
 just test-slow      the tests marked slow (real libraries, real timeouts)
-just check-all      both
+just check-all      the gate plus both test lanes
 just types          pyright, on request
 just serve          the app
 ```
