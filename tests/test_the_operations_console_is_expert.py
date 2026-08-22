@@ -229,6 +229,23 @@ def test_a_checkpoint_move_is_an_event(db):
     assert json.loads(row[0]) == {"checkpoint": {"page": 3}, "done": 30, "fence": fence}
 
 
+def test_every_shipped_handler_reports_from_inside_its_item():
+    """Contract 5: a long handler that says nothing between item.started
+    and item.done is a frozen bar. Every handler the runner ships reaches
+    the reporting seam; a new kind that does not fails here."""
+    import inspect as inspecting_source
+
+    silent = [
+        kind
+        for kind, handler in runner.HANDLERS.items()
+        if kind != "hash" and "report()" not in inspecting_source.getsource(handler)
+    ]
+    assert silent == [], f"these handlers never report a phase: {silent}"
+    # the hash kind dispatches to four modes; each of those reports too
+    for mode in (runner._verify_item, runner._perceptual_item, runner._thumbs_item, runner._dupe_groups_item):
+        assert "report()" in inspecting_source.getsource(mode), mode.__name__
+
+
 # --- the read model exposes what the row knows -------------------------------
 
 
@@ -388,7 +405,10 @@ def test_the_feed_sends_the_backlog_then_live_rows_with_contiguous_ids(served):
         live = []
         while not any(e["type"] == "job.done" and e["job_id"] == job_id for e in live):
             frame = feed.receive_json(timeout=10)
-            assert frame["frame"] == "event"
+            assert frame["frame"] in ("event", "pending")
+            if frame["frame"] == "pending":
+                assert "id" not in frame, "a pending report carries no id"
+                continue
             live.append(frame)
         ids = held + [e["id"] for e in live]
         assert ids == list(range(ids[0], ids[0] + len(ids))), "the ids skipped or repeated"

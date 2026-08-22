@@ -139,11 +139,14 @@ def submit_verify(conn, now: float) -> int:
 def _verify_item(conn, file_id: int, payload: dict, now: float) -> None:
     from . import detect, scan
 
+    told = report()
+    told.phase("reading-recorded-hash")
     stored = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     if stored is None:
         raise LookupError(f"file {file_id} left the library mid-job")
     if stored[0] is None:
         raise LookupError(f"file {file_id} has no recorded hash to verify against")
+    told.phase("hashing-bytes")
     actual = scan.sha256_of(detect.path_of(conn, file_id))
     if actual != stored[0]:
         raise ValueError(f"bytes changed behind the library's back: recorded {stored[0][:12]}, found {actual[:12]}")
@@ -209,14 +212,19 @@ def _perceptual_item(conn, file_id: int, payload: dict, now: float) -> None:
 
     from . import derived, detect, oriented, scan
 
+    told = report()
     kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     path = detect.path_of(conn, file_id)
+    told.phase("decoding", kind=kind)
     frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
     if frame is None:
         raise ValueError(f"file {file_id} has no decodable frame to fingerprint")
     if sha is None:
+        told.phase("hashing-bytes")
         sha = scan.sha256_of(path)
+    told.phase("fingerprinting")
     phash64, dhash64 = dupes.perceptual(frame)
+    told.phase("recording")
     derived.record_hash(conn, file_id, sha, now, phash64=phash64, dhash64=dhash64)
 
 
@@ -271,16 +279,21 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
 
     from . import detect, oriented, scan
 
+    told = report()
     cache = pathlib.Path(payload["thumbs_dir"])
     kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     path = detect.path_of(conn, file_id)
     if sha is None:
+        told.phase("hashing-bytes")
         sha = scan.sha256_of(path)
     if all(thumbs.path_for(cache, sha, variant).exists() for variant in thumbs.EDGES):
+        told.observe("already-cached")
         return
+    told.phase("decoding", kind=kind)
     frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
     if frame is None:
         raise ValueError(f"file {file_id} has no decodable frame to thumbnail")
+    told.phase("rendering-thumbnails", variants=len(thumbs.EDGES))
     thumbs.put_all(cache, sha, frame)
 
 
@@ -488,8 +501,10 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         found = decode.dimensions(detect.path_of(conn, file_id), row[5])
         return found[0] * found[1] if found is not None else 0
 
+    told = report()
     threshold = int(payload["threshold"])
     verify = payload.get("dhash_verify")
+    told.phase("reading-fingerprints", threshold=threshold, dhash_verify=verify)
     rows = conn.execute(
         "SELECT h.file_id, h.value, f.width, f.height, f.size, f.kind FROM derived_file_hash h"
         " JOIN file f ON f.id = h.file_id AND f.missing_since IS NULL"
@@ -501,11 +516,14 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         return
 
     by_id = {row[0]: row for row in rows}
+    told.phase("aligning-space", fingerprints=len(rows))
     manager = similarity.manager_for(conn)
     key = similarity.align(
         conn, manager, similarity.PHASH, sorted(by_id), lambda wanted: [by_id[v][1] for v in wanted], now
     )
+    told.phase("cutting-pair-graph")
     twins_a, twins_b, _distances = similarity.pair_graph(manager, key, threshold)
+    told.observe("candidate-pairs", count=len(twins_a))
 
     structure: dict[int, int] = {}
     if verify is not None:
@@ -539,6 +557,7 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     grouped: dict[int, list[int]] = {}
     for file_id in by_id:
         grouped.setdefault(find(file_id), []).append(file_id)
+    told.phase("writing-groups", candidates=sum(1 for m in grouped.values() if len(m) >= 2))
     for members in grouped.values():
         if len(members) < 2:
             continue
@@ -606,6 +625,7 @@ def submit_ingest(conn, now: float) -> int:
 def _ingest_item(conn, file_id: int, payload: dict, now: float) -> None:
     from . import detect, ingest
 
+    report().phase("reading-metadata")
     out = ingest.one(conn, file_id, detect.path_of(conn, file_id), now)
     if out.unreadable is not None:
         # Ingest retracts what it wrote last time BEFORE it re-reads, in
@@ -651,13 +671,16 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     """
     from . import derived, naming
 
+    told = report()
     model_id, model_version = payload["spaces"][index]
     # Method and threshold pinned once and passed to BOTH calls: recomputing
     # the run identity from separately-spelled defaults is how a drift makes
     # the DELETE below clear a different run's attributions.
     pinned = derived.threshold_for(model_id)
+    told.phase("clustering", model_id=model_id, model_version=model_version, threshold=pinned)
     derived.cluster(conn, model_id, model_version, now, method=derived.DEFAULT_METHOD, threshold=pinned)
     run_id = derived.run_for(conn, model_id, model_version, derived.DEFAULT_METHOD, pinned, now)
+    told.phase("naming-groups", run_id=run_id)
     conn.execute("DELETE FROM derived_file_person WHERE run_id = ?", (run_id,))
     derived.seed_clusters_from_assertions(conn, run_id)
     unnamed = conn.execute(
@@ -665,6 +688,7 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
         (run_id,),
     ).fetchall()
     faces, clusters = conn.execute("SELECT faces, clusters FROM derived_face_run WHERE id = ?", (run_id,)).fetchone()
+    told.observe("clusters", faces=faces, clusters=clusters, named=clusters - len(unnamed), unnamed=len(unnamed))
     _logger.info(
         "cluster %s %s: run #%d, threshold %.2f, %d faces -> %d groups (%d named by a human, %d minted unnamed)",
         model_id,
@@ -768,6 +792,7 @@ def submit_context(conn, now: float) -> int:
 def _context_item(conn, file_id: int, payload: dict, now: float) -> None:
     from . import context as context_module
 
+    report().phase("interpreting")
     context_module.rebuild_one(conn, file_id, now)
 
 
@@ -785,7 +810,9 @@ def submit_events(conn, now: float) -> int:
 def _events_item(conn, index: int, payload: dict, now: float) -> None:
     from . import events as events_module
 
-    events_module.regroup_one(conn, events_module.GROUPERS[index], now)
+    grouper = events_module.GROUPERS[index]
+    report().phase("regrouping", grouper=grouper.name, version=grouper.version)
+    events_module.regroup_one(conn, grouper, now)
 
 
 def _story_plan_item(conn, item: int, payload: dict, now: float) -> None:
@@ -793,6 +820,7 @@ def _story_plan_item(conn, item: int, payload: dict, now: float) -> None:
     off the request thread (db/planning.py plan_item)."""
     from . import planning
 
+    report().phase("planning", planner=payload.get("planner"), similarity=payload.get("similarity"))
     planning.plan_item(conn, item, payload, now)
 
 
@@ -800,6 +828,7 @@ def _embed_prompts_item(conn, prompt_id: int, payload: dict, now: float) -> None
     """One prompt's vector under one text space (db/prompts.py)."""
     from . import prompts
 
+    report().phase("embedding-prompt")
     prompts.embed_item(conn, prompt_id, payload, now)
 
 
