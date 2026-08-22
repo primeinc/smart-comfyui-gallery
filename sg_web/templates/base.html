@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SmartGallery{% endblock %}</title>
   {# Error responses are swapped, into the shell's notice, and still
-     counted as errors (bigskysoftware/htmx@v2.0.7 www/content/docs.md
-     "Configuring Response Handling"): a refused form shows its reason
+     counted as errors (bigskysoftware/htmx@v2.0.7 www/content/docs.md:940-960
+     `htmx.config.responseHandling`): a refused form shows its reason
      where the person is looking instead of vanishing into the console. #}
   <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true,"target":"#shell-notice"},{"code":"...","swap":true}]}'>
   {% block head %}{% endblock %}

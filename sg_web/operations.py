@@ -247,9 +247,10 @@ def refused(request: Request, exc: HTTPException) -> Template:
     #shell-notice by the shell's response-handling config
     (templates/base.html), so the reason lands on screen instead of in
     the console. The status is the exception's -- a 400 stays a 400
-    (litestar-org/litestar@v2.24.0 docs/usage/exceptions.rst "Exception
-    handling layers": a Router-level handler overrides the app's JSON one
-    for this layer only)."""
+    (litestar-org/litestar@v2.24.0 litestar/router.py:96,135
+    `exception_handlers`; docs/usage/exceptions.rst:95
+    per_exception_handlers.py: a Router-level handler overrides the
+    app's JSON one for this layer only)."""
     return Template(
         template_name="_operations_notice.html",
         context={"error": exc.detail, "notice": None},

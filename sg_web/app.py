@@ -781,8 +781,9 @@ async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -
                 defect in the fragment, not in the feed: it is logged
                 whole, the socket is closed 1011 so the extension
                 reconnects and re-reads the rows (bigskysoftware/
-                htmx-extensions@1358232 src/ws/ws.js onclose: 1011 retries),
-                and the error propagates -- never a silent dead task."""
+                htmx-extensions@1358232 src/ws/ws.js:256 -- close codes
+                1006/1011/1012/1013 retry), and the error propagates --
+                never a silent dead task."""
                 try:
                     frame = activity.render_delta(engine, json.loads(raw), seen)
                 except Exception:
@@ -884,11 +885,13 @@ def _template_engine() -> JinjaTemplateEngine:
     supply explodes at render, instead of printing an empty string and
     shipping "You introduced ." to a screen. Autoescape: every value a
     template prints is evidence (file names, prompt text), never trusted
-    markup. Litestar's engine wraps the environment and registers its own
-    callables on it (litestar-org/litestar@v2.24.0 litestar/plugins/
-    jinja.py:37-60, `from_environment`); the activity Module adds its
-    global here, before any template loads (pallets/jinja@3.1.6
-    docs/api.rst "The Global Namespace").
+    markup. Litestar's engine wraps the environment
+    (litestar-org/litestar@v2.24.0 litestar/plugins/jinja.py:106-115
+    `from_environment` -> `cls(directory=None, engine_instance=...)`);
+    passed as `TemplateConfig(instance=...)` the callback path is skipped
+    (litestar/template/config.py:58-61 `engine_instance`), so the activity
+    Module's global is registered here, before any template loads
+    (pallets/jinja@3.1.6 docs/api.rst "The Global Namespace").
     """
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
