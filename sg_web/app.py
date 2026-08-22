@@ -355,11 +355,13 @@ def submit_phash(state: State) -> dict:
 
 
 @post("/jobs/embed", sync_to_thread=True)
-def submit_embed(state: State) -> list[dict]:
-    """Ask for the joint image/text embedding of every present picture --
-    the representation /search answers from (db/runner.py submit_embed).
-    One job per participating space, so one model's failure never costs
-    another's progress; the response carries one snapshot per job. The
+def submit_embed(state: State, everything: bool = False) -> list[dict]:
+    """Ask for the joint image/text embedding of every present picture
+    still without a current vector -- `?everything=true` for all of them
+    again -- the representation /search answers from (db/runner.py
+    submit_embed). One job per participating space, so one model's
+    failure never costs another's progress; the response carries one
+    snapshot per job and is empty when every space is current. The
     first run downloads the model weights into the run's models
     directory; a bad `semantic_model` setting is refused here, not
     queued."""
@@ -367,7 +369,7 @@ def submit_embed(state: State) -> list[dict]:
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            job_ids = runner.submit_embed(conn, time.time(), models_dir=weights)
+            job_ids = runner.submit_embed(conn, time.time(), models_dir=weights, everything=everything)
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()

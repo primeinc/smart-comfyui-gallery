@@ -297,28 +297,49 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
     thumbs.put_all(cache, sha, frame)
 
 
-def submit_embed(conn, now: float, *, models_dir: str) -> list[int]:
-    """The joint image/text embedding for every present picture -- the
-    representations `/search` answers from. ONE JOB PER participating
-    space: each provider's items commit in their own transactions, so a
-    model that fails to load or encode costs its own space's progress
-    and nobody else's. A bad `semantic_model` setting is refused here,
-    not queued.
+def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False) -> list[int]:
+    """The joint image/text embedding for every present picture still
+    without a CURRENT vector in a space -- or, with `everything`, for
+    all of them again. ONE JOB PER participating space: each provider's
+    items commit in their own transactions, so a model that fails to
+    load or encode costs its own space's progress and nobody else's; a
+    space with nothing left to embed gets no job. A bad `semantic_model`
+    setting is refused here, not queued.
+
+    Current means what retrieval means by it (db/retrieval.py
+    current_rows): a vector computed from the file's present bytes. A
+    space nothing has minted yet -- weights never loaded -- has every
+    picture as an item; the space it resolves to is looked up at the
+    checkpoint the shared cache pins today, the way retrieval looks it
+    up.
     """
+    from vision import semantic
+
     from . import retrieval
 
-    told = retrieval.choices(conn)
-    items = [
-        row[0]
-        for row in conn.execute(
-            "SELECT id FROM file WHERE missing_since IS NULL"
-            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id"
-        )
-    ]
-    return [
-        jobs.submit(conn, "embed", now, payload={"models_dir": models_dir, "choice": list(choice)}, items=list(items))
-        for choice in told
-    ]
+    present = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    made = []
+    for provider, model, configured in retrieval.choices(conn):
+        found = None
+        if not everything:
+            checkpoint = semantic.pin(provider, models_dir, model, configured)
+            found = retrieval._space_of(conn, provider, model, checkpoint)
+        if found is None:
+            items = [row[0] for row in conn.execute(present + " ORDER BY f.id")]
+        else:
+            items = [
+                row[0]
+                for row in conn.execute(
+                    present + " AND NOT EXISTS (SELECT 1 FROM derived_embedding e WHERE e.file_id = f.id"
+                    "   AND e.space_id = ? AND e.source_sha256 = f.content_sha256) ORDER BY f.id",
+                    (found[0],),
+                )
+            ]
+        if not items:
+            continue
+        payload = {"models_dir": models_dir, "choice": [provider, model, configured]}
+        made.append(jobs.submit(conn, "embed", now, payload=payload, items=items))
+    return made
 
 
 def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:

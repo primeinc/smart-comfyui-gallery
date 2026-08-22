@@ -111,7 +111,7 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "phash": ("fingerprint every picture", _phash),
     "thumbs": ("render every missing thumbnail", _thumbs),
     "dupes": ("group perceptual copies", _dupes),
-    "embed": ("embed every picture for search", _embed),
+    "embed": ("embed every picture not yet embedded", _embed),
     "embed_prompts": ("embed every prompt", _embed_prompts),
     "faces": ("detect faces", _faces),
     "cluster": ("cluster faces into people", _cluster),

@@ -433,6 +433,38 @@ def test_the_embed_job_fills_the_joint_space_with_provenance(db, tmp_path, monke
     assert preprocess == "open_clip.transforms"
 
 
+def test_the_embed_sweep_queues_only_pictures_without_a_current_vector(db, tmp_path, monkeypatch):
+    """A second sweep over an embedded library has nothing to do and
+    queues no job; new bytes put a picture back; `everything` puts them
+    all back. What counts as current is retrieval's own definition."""
+    import numpy as np
+
+    from db import similarity
+    from vision import semantic
+
+    class Fake:
+        dimensions = 8
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 8)
+
+        def encode_media(self, media):
+            v = np.random.default_rng(3).normal(size=8).astype(np.float32)
+            return v / np.linalg.norm(v)
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Fake())
+    files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 0})
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 2, "failed": 0}
+
+    assert runner.submit_embed(db, 2.0, models_dir=str(tmp_path)) == [], "every picture is current"
+    db.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("e" * 64, files["b.png"]))
+    [again] = runner.submit_embed(db, 3.0, models_dir=str(tmp_path))
+    assert [r[0] for r in db.execute("SELECT item_id FROM job_item WHERE job_id = ?", (again,))] == [files["b.png"]]
+    [whole] = runner.submit_embed(db, 4.0, models_dir=str(tmp_path), everything=True)
+    assert db.execute("SELECT count(*) FROM job_item WHERE job_id = ?", (whole,)).fetchone()[0] == 2
+
+
 def test_a_bad_semantic_model_setting_is_refused_at_submit(db):
     from db import settings
 
