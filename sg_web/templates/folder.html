@@ -37,7 +37,7 @@
       <h2>folders inside</h2>
       <ul>
         {% for child in folder.folders %}
-        <li><a href="/f/{{ child.slug }}">{{ child.name }}</a> &middot; {{ child.pictures }}</li>
+        <li><a href="/f/{{ child.slug }}">{{ child.name }}</a> &middot; {{ child.below }}{% if child.below != child.pictures %} ({{ child.pictures }} here){% endif %}</li>
         {% endfor %}
       </ul>
     </section>

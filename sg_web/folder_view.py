@@ -55,7 +55,9 @@ def folders_index(state: State, request: Request) -> Template | Response:
             {
                 "kind": kind,
                 "online": online.get(root_id, False),
-                "folders": [{"slug": s, "name": n, "pictures": p} for s, n, p in pages.folder_tops(conn, root_id)],
+                "folders": [
+                    {"slug": s, "name": n, "pictures": p, "below": b} for s, n, p, b in pages.folder_tops(conn, root_id)
+                ],
             }
             for root_id, kind in pages.roots_shelf(conn)
         ]
@@ -95,7 +97,10 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
             "name": name,
             "state": state,
             "breadcrumb": crumbs,
-            "folders": [{"slug": s, "name": n, "pictures": p} for s, n, p in pages.folder_children(conn, folder_id)],
+            "folders": [
+                {"slug": s, "name": n, "pictures": p, "below": b}
+                for s, n, p, b in pages.folder_children(conn, folder_id)
+            ],
             "count": grid["total"],
             "gallery": {
                 "items": grid["items"],

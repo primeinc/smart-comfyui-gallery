@@ -181,9 +181,15 @@ FOLDER_CARD = (
     "SELECT f.name, f.parent_id, f.missing_since, r.path  FROM folder f JOIN root r ON r.id = f.root_id WHERE f.id = ?"
 )
 
+#: Two counts per folder, both shown: `pictures` is the folder's OWN
+#: media (what `folder=` answers), `below` the whole subtree's -- a
+#: library whose media all live two folders down is not "0 pictures".
 FOLDER_CHILDREN = (
     "SELECT e.slug, f.name,"
-    " (SELECT count(*) FROM file WHERE folder_id = f.id AND missing_since IS NULL) AS pictures"
+    " (SELECT count(*) FROM file WHERE folder_id = f.id AND missing_since IS NULL) AS pictures,"
+    " (WITH RECURSIVE sub(id) AS (SELECT f.id UNION ALL SELECT c.id FROM folder c JOIN sub ON c.parent_id = sub.id"
+    "   WHERE c.missing_since IS NULL)"
+    "  SELECT count(*) FROM file WHERE folder_id IN (SELECT id FROM sub) AND missing_since IS NULL) AS below"
     "  FROM folder f JOIN entity e ON e.id = f.id"
     " WHERE f.parent_id = ? AND f.missing_since IS NULL"
     " ORDER BY f.name COLLATE NOCASE"
@@ -209,7 +215,10 @@ ROOT_SHELF = "SELECT id, kind FROM root WHERE kind IN ('library', 'mount') ORDER
 
 FOLDER_TOPS = (
     "SELECT e.slug, f.name,"
-    " (SELECT count(*) FROM file WHERE folder_id = f.id AND missing_since IS NULL) AS pictures"
+    " (SELECT count(*) FROM file WHERE folder_id = f.id AND missing_since IS NULL) AS pictures,"
+    " (WITH RECURSIVE sub(id) AS (SELECT f.id UNION ALL SELECT c.id FROM folder c JOIN sub ON c.parent_id = sub.id"
+    "   WHERE c.missing_since IS NULL)"
+    "  SELECT count(*) FROM file WHERE folder_id IN (SELECT id FROM sub) AND missing_since IS NULL) AS below"
     "  FROM folder f JOIN entity e ON e.id = f.id"
     " WHERE f.root_id = ? AND f.parent_id IS NULL AND f.missing_since IS NULL"
     " ORDER BY f.name COLLATE NOCASE"
@@ -726,13 +735,18 @@ TIMELINE_EXTENT = (
 #: Sessions whose interval touches a range, in THEIR domain (the wall
 #: pair when the session knows it, the instant pair otherwise -- the
 #: same coalesce as the axis), with the latest story told of exactly
-#: this membership, when one exists.
+#: this SUBJECT, when one exists: the same event kind, the same grouper,
+#: the same ordered membership. `member_hash` alone is a checksum of
+#: the files -- a capture session and a generation session over the
+#: same mixed files share it -- never an identity on its own.
 TIMELINE_SESSIONS = (
     "SELECT e.id, e.kind, e.local_start, e.local_end, e.instant_start, e.instant_end,"
     " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures,"
-    " (SELECT s.id FROM story_snapshot s WHERE s.member_hash = e.member_hash ORDER BY s.id DESC LIMIT 1),"
+    " (SELECT s.id FROM story_snapshot s WHERE s.member_hash = e.member_hash"
+    "   AND s.event_kind = e.kind AND s.grouper = r.grouper ORDER BY s.id DESC LIMIT 1),"
     " (SELECT sr.id FROM story_snapshot s JOIN story_plan sp ON sp.snapshot_id = s.id"
     "   JOIN story_render sr ON sr.plan_id = sp.id WHERE s.member_hash = e.member_hash"
+    "   AND s.event_kind = e.kind AND s.grouper = r.grouper"
     "   ORDER BY sr.id DESC LIMIT 1)"
     "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
     " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"

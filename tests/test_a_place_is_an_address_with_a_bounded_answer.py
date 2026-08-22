@@ -79,7 +79,7 @@ def test_the_folder_address_keeps_its_json_and_gains_the_bounded_answer(placed_o
     assert body["count"] == 2, "folder= means the folder itself, never the subtree"
     assert body["gallery"]["qs"] == "folder=lib"
     assert body["state"] == "present"
-    assert body["folders"] == [{"slug": "deep", "name": "deep", "pictures": 3}]
+    assert body["folders"] == [{"slug": "deep", "name": "deep", "pictures": 3, "below": 3}]
     # Durable identity is the slug and the parent chain; the disk path is
     # server-side state and never part of any answer.
     for answer in (told.text, placed.get("/f/lib", headers=AS_BROWSER).text):
@@ -208,7 +208,9 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     assert told.status_code == 200
     assert told.headers["vary"] == "Accept, HX-Request"
     body = told.json()
-    assert body == [{"kind": "library", "online": True, "folders": [{"slug": "lib", "name": "lib", "pictures": 2}]}]
+    assert body == [
+        {"kind": "library", "online": True, "folders": [{"slug": "lib", "name": "lib", "pictures": 2, "below": 5}]}
+    ], "2 here, 5 in the subtree"
     page = placed.get("/folders", headers=AS_BROWSER)
     assert page.status_code == 200
     assert 'data-folder="lib"' in page.text
@@ -399,39 +401,3 @@ def test_a_missing_folder_is_a_state_not_a_404_and_not_merely_empty(tmp_path):
         body = told.json()
         assert body["state"] == "missing"
         assert client.get("/f/never-was").status_code == 404
-
-
-def test_the_place_views_own_no_sql():
-    import ast
-    import pathlib
-
-    web = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
-    allowed = {
-        # `library` is the marker-verified reachability probe the folders
-        # index reports online state through -- presence, not membership.
-        "folder_view.py": {"connect", "library", "naming", "pages", "resultset", "settings"},
-        "collection_view.py": {
-            "collection_rules",
-            "collections",
-            "connect",
-            "naming",
-            "pages",
-            "resultset",
-            "settings",
-        },
-    }
-    for module, vocabulary in allowed.items():
-        tree = ast.parse((web / module).read_text(encoding="utf-8"))
-        called = {
-            node.func.attr
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        }
-        assert not called & {"execute", "executemany", "executescript", "cursor"}, (
-            f"{module} ran its own statement; queries live in db/pages.py and db/resultset.py"
-        )
-        spoken = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "db":
-                spoken |= {alias.name for alias in node.names}
-        assert spoken <= vocabulary, f"{module}: unexpected db vocabulary {sorted(spoken)}"

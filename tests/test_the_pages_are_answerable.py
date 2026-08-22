@@ -177,6 +177,10 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
     # `USING INDEX` alone is not the excuse it was being used as: a covering
     # index made `SELECT f.id FROM file f` read as acceptable.
     stops_early = re.search(r"\bLIMIT\b", sql, re.IGNORECASE) is not None
+    # A recursive CTE walks the rows it recurses over -- a folder's
+    # subtree, never the library -- and the planner spells that walk as a
+    # scan of the CTE's own name and a "CONSTANT ROW" seed.
+    walks = set(re.findall(r"WITH RECURSIVE ([A-Za-z_][A-Za-z0-9_]*)", sql, re.IGNORECASE))
     offenders = []
     for step in plan(conn, sql, args):
         if "TEMP B-TREE" in step.upper():
@@ -185,6 +189,8 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
             continue
         match = re.match(r"SCAN ([A-Za-z_][A-Za-z0-9_]*)", step)
         if not match:
+            continue
+        if match.group(1) == "CONSTANT" or match.group(1) in walks:
             continue
         if counts:
             continue
@@ -774,7 +780,7 @@ def test_the_place_pages_ask_answerable_questions(library):
 
     name, parent_id, missing, _root_path = pages.folder_card(conn, portraits)
     assert (name, parent_id, missing) == ("portraits", top, None)
-    assert [(n, p) for _, n, p in pages.folder_children(conn, top)] == [("landscape", 5), ("portraits", 7)]
+    assert [(n, p, b) for _, n, p, b in pages.folder_children(conn, top)] == [("landscape", 5, 5), ("portraits", 7, 7)]
     assert_no_growing_scan(conn, pages.FOLDER_CARD, (portraits,))
     assert_no_growing_scan(conn, pages.FOLDER_CHILDREN, (top,))
 
@@ -797,7 +803,9 @@ def test_the_navigation_indexes_ask_answerable_questions(library):
     root_id = shelves[0][0]
     # 0 DIRECT files: the fixture's twelve live in subfolders, and the
     # shelf count keeps folder='s direct-only meaning.
-    assert [(n, p) for _, n, p in pages.folder_tops(conn, root_id)] == [("pics", 0)]
+    assert [(n, p, b) for _, n, p, b in pages.folder_tops(conn, root_id)] == [("pics", 0, 12)], (
+        "a top folder whose media live below it is not 0 pictures: 0 here, 12 in the subtree"
+    )
     assert_no_growing_scan(conn, pages.ROOT_SHELF)
     assert_no_growing_scan(conn, pages.FOLDER_TOPS, (root_id,))
 

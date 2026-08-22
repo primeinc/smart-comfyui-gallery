@@ -27,7 +27,7 @@
         {% for one in shelf.folders %}
         <a class="album-card" href="/f/{{ one.slug }}" data-folder="{{ one.slug }}">
           <span class="album-name">{{ one.name }}</span>
-          <span class="album-count">{{ one.pictures }} pictures</span>
+          <span class="album-count">{{ one.below }} pictures{% if one.below != one.pictures %} &middot; {{ one.pictures }} here{% endif %}</span>
         </a>
         {% endfor %}
       </div>
