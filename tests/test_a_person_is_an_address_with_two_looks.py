@@ -1044,3 +1044,17 @@ def test_search_refuses_rows_of_another_width_instead_of_crashing(faces, monkeyp
     assert answer.status_code == 400, answer.text
     assert "4-dimensional" in answer.json()["detail"]
     assert "/jobs/embed" in answer.json()["detail"]
+
+
+def test_the_gallery_chips_the_person_scope_too(faces):
+    """A scope carried as its own parameter is as much a part of the
+    question as a facet: the results page names it and lets it go."""
+    page = faces.get("/g?person=ana&kind=image", headers={"accept": "text/html"}).text
+    assert 'data-chip="person=ana"' in page
+    assert "person ana" in page
+    assert 'data-chip="kind=image"' in page
+    import re
+
+    removes = dict(re.findall(r'data-chip="([^"]+)">[^<]*<a href="([^"]+)"', page))
+    assert removes["person=ana"] == "/g?kind=image"
+    assert removes["kind=image"] == "/g?person=ana"

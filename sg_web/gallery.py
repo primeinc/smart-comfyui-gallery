@@ -75,12 +75,37 @@ def _chips(query: resultset.GalleryQuery) -> list[dict]:
     import dataclasses
 
     made = []
+    # the scopes and filters the URL carries as their own parameters, each
+    # a chip whose removal is the question without it
+    for field, label in _SCOPES:
+        value = getattr(query, field)
+        if value is None:
+            continue
+        rest = dataclasses.replace(query, **{field: None})
+        if field == "rating_min":
+            spelled = f"{label} {value}+"
+        elif field == "favorite":
+            spelled = "favorites" if value else "not favorited"
+        else:
+            spelled = f"{label} {value}"
+        made.append({"spelled": f"{field}={value}", "label": spelled, "remove_qs": resultset.canonical(rest)})
     for held in query.facets:
         rest = dataclasses.replace(query, facets=tuple(one for one in query.facets if one != held))
         made.append(
             {"spelled": facets_module.spell(held), "label": _chip_label(held), "remove_qs": resultset.canonical(rest)}
         )
     return made
+
+
+_SCOPES = (
+    ("folder", "folder"),
+    ("album", "album"),
+    ("person", "person"),
+    ("artifact", "artifact"),
+    ("kind", "kind"),
+    ("favorite", "favorite"),
+    ("rating_min", "rated"),
+)
 
 
 _OPS = {"eq": "", "gte": "from ", "lte": "to "}
