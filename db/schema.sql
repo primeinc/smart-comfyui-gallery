@@ -1242,7 +1242,7 @@ END;
 -- the other. There is no settled answer to compare against either -- this
 -- repo's own measurements put ArcFace at 0.48 and SFace at 0.55, and being
 -- wrong by a tenth puts 96% of a library into a single person
--- (docs/FACE_CLUSTERING.md:128-133). Comparing runs is the normal activity.
+-- (docs/FACE_CLUSTERING.md, Chaining). Comparing runs is the normal activity.
 --
 -- Several runs are live at once. `primary_run` says which one the People
 -- page shows when nobody asked for a particular one; the rest are there to

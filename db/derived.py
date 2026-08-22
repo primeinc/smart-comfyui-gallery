@@ -567,7 +567,7 @@ DEFAULT_METHOD = "chinese-whispers"
 
 #: Cosine similarity at which two vectors are taken to be the same face, per
 #: embedding space. The spaces are not comparable and a single number for all
-#: of them is wrong for all but one: docs/FACE_CLUSTERING.md:63-65 gives the
+#: of them is wrong for all but one: docs/FACE_CLUSTERING.md, Thresholds, gives the
 #: shipped per-pipeline defaults, measured on labelled data.
 #:
 #: Getting this wrong is not a small error. At 0.363 -- SFace's
@@ -735,7 +735,7 @@ def cluster(
 #: chained: it is not a person, it is everybody who resembles somebody who
 #: resembles somebody. The repo's own measurements show the shape -- at a
 #: threshold a tenth too loose the top cluster held 96% of the library
-#: (docs/FACE_CLUSTERING.md:128-133).
+#: (docs/FACE_CLUSTERING.md, Chaining).
 CHAINED = 0.5
 
 #: And the other end: a run where nearly everything is alone has not grouped

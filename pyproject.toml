@@ -24,7 +24,7 @@ dependencies = [
     # without one it downgrades /ws/jobs to a silent 404 at the server.
     "websockets",
     "Pillow",
-    "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; deployed YuNet 2023mar is static-shape (docs/AUDIT_FACE_INGESTION_2026-08-15.md finding 3)
+    "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; the shipped YuNet 2023mar is static-shape
     "numpy",
     # XMP is parsed out of image files the gallery did not write; expat
     # expands entities, so a crafted file can exhaust memory during a scan.
