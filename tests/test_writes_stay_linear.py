@@ -123,6 +123,7 @@ def _upsert_params(conn, n, sample):
         ("deleting a file", _delete_files),
     ],
 )
+@pytest.mark.slow
 def test_the_cost_of_a_write_does_not_grow_with_the_library(ddl, label, work):
     ratio, small, large = growth(work, ddl)
     assert ratio < TOLERANCE, (

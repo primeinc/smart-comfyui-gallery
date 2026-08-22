@@ -345,6 +345,7 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
             connect.close(conn)
 
 
+@pytest.mark.slow
 def test_a_capture_plan_is_durable_work_without_loading_any_weights(tmp_path):
     root = tmp_path / "lib"
     root.mkdir()

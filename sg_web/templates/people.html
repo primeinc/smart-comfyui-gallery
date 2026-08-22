@@ -1,17 +1,12 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>People</title>
-  <link rel="stylesheet" href="/static/gallery.css">
+{% extends "base.html" %}
+{% block title %}People{% endblock %}
+{% block scripts %}
   <script src="/static/overlay.js" defer></script>
   <script src="/static/people.js" defer></script>
-</head>
-<body>
+{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/g">gallery</a>
       <span class="crumbs-here">People</span>
       <span class="crumbs-where">{{ people|length }} found</span>
     </nav>
@@ -28,9 +23,8 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="empty">nobody clustered yet — run face detection, then clustering.</p>
+    <p class="empty">nobody clustered yet — <a href="/operations">run face detection, then clustering</a>.</p>
     {% endif %}
   </main>
   <div class="drawer-root" data-drawer-root hidden></div>
-</body>
-</html>
+{% endblock %}

@@ -1,0 +1,6 @@
+{# The activity list: active jobs then the settled tail (sg_web/activity.py
+   rows). With `oob` it is the out-of-band replacement /ws/jobs?as=html
+   sends first; without, the shell's cold render of the same rows. #}
+<ul id="activity-jobs" class="activity-jobs" data-activity-jobs{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for job in jobs %}{% include "_job.html" %}{% endfor %}
+</ul>

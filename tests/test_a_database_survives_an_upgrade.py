@@ -490,6 +490,7 @@ def a_file_row(conn):
     return file_id
 
 
+@pytest.mark.slow
 def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     """The real STEPS, executed: every other test here swaps in synthetic
     steps to prove the runner, which left the one migration that actually

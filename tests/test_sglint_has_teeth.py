@@ -18,6 +18,7 @@ import pytest
 from sglint import policy, rules
 
 
+@pytest.mark.slow
 def test_the_tree_is_clean_under_the_rules():
     found = rules.run()
     assert found == [], "\n".join(f.spelled() for f in found)

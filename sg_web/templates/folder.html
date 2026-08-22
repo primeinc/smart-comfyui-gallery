@@ -1,13 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ folder.name }}</title>
-  <link rel="canonical" href="/f/{{ folder.slug }}">
-  <link rel="stylesheet" href="/static/gallery.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}{{ folder.name }}{% endblock %}
+{% block head %}<link rel="canonical" href="/f/{{ folder.slug }}">{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
       {% for crumb in folder.breadcrumb %}
@@ -58,5 +52,4 @@
     <p class="empty">nothing directly in this folder.</p>
     {% endif %}
   </main>
-</body>
-</html>
+{% endblock %}

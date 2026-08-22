@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="{% block lang %}en{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SmartGallery{% endblock %}</title>
+  {# Error responses are swapped, into the shell's notice, and still
+     counted as errors (bigskysoftware/htmx@v2.0.7 www/content/docs.md:940-960
+     `htmx.config.responseHandling`): a refused form shows its reason
+     where the person is looking instead of vanishing into the console. #}
+  <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true,"target":"#shell-notice"},{"code":"...","swap":true}]}'>
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="/static/gallery.css">
+  {% block styles %}{% endblock %}
+  <script src="/static/htmx-2.0.7.min.js" defer></script>
+  <script src="/static/htmx-ext-ws-2.0.3.js" defer></script>
+  {% block scripts %}{% endblock %}
+</head>
+<body hx-ext="ws">
+  {# The shell: every product area reachable from every page. Operations
+     is the one door into the runtime; media browsing never mixes with it. #}
+  {% set here = request.url.path if request is defined else "" %}
+  <nav class="shell" aria-label="primary">
+    <a class="shell-brand" href="/g">SmartGallery</a>
+    <a href="/g"{% if here == "/g" or here.startswith("/i/") %} aria-current="page"{% endif %}>gallery</a>
+    <a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a>
+    <a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a>
+    <a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a>
+    <a href="/timeline"{% if here == "/timeline" or here.startswith("/stories/") %} aria-current="page"{% endif %}>timeline</a>
+    <a class="shell-operations" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>operations</a>
+    <details class="activity" data-activity ws-connect="/ws/jobs?as=html">
+      <summary>activity</summary>
+      {% with jobs = activity_jobs(), oob = false %}{% include "_activity_list.html" %}{% endwith %}
+    </details>
+  </nav>
+  {# The one place an answer to an htmx request lands when it is a
+     notice rather than a swap: refusals, and operations' receipts. #}
+  <p id="shell-notice" class="shell-notice" data-shell-notice aria-live="polite"></p>
+  {% block body %}{% endblock %}
+</body>
+</html>

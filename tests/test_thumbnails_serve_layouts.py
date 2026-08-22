@@ -196,6 +196,7 @@ def test_a_face_free_cadence_is_refined_until_the_face_is_found(tmp_path):
     conn.close()
 
 
+@pytest.mark.slow
 def test_refinement_is_bounded_and_converges(tmp_path):
     """A genuinely face-free video stops being probed: the bisect rows stay
     within the budget, and running the job again adds nothing."""

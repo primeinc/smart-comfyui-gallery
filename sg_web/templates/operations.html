@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Operations{% endblock %}
+{% block body %}
+  <header class="bar">
+    <nav class="crumbs">
+      <span class="crumbs-here">Operations</span>
+      <span class="crumbs-where">the runtime: roots, sweeps, the worker</span>
+    </nav>
+  </header>
+  <main class="stage operations" data-operations>
+    <section class="operations-section" id="operations-roots" data-operations-roots>
+      {% with notice = none %}{% include "_operations_roots.html" %}{% endwith %}
+    </section>
+
+    <section class="operations-section" data-operations-launchers>
+      <h2>sweeps</h2>
+      <p class="operations-hint">every sweep is a job row the worker drains; progress shows in the activity surface on every page.</p>
+      <div class="operations-launchers">
+        {% for one in launchers %}
+        <button type="button" data-launch="{{ one.kind }}"
+                hx-post="/operations/jobs/{{ one.kind }}" hx-target="#shell-notice" hx-swap="innerHTML">{{ one.label }}</button>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="operations-section" id="operations-settings" data-operations-settings>
+      {% with notice = none %}{% include "_operations_settings.html" %}{% endwith %}
+    </section>
+
+    <section class="operations-section" id="operations-clusterings" data-operations-clusterings>
+      {% with notice = none %}{% include "_operations_clusterings.html" %}{% endwith %}
+    </section>
+  </main>
+{% endblock %}

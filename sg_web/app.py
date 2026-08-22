@@ -20,6 +20,8 @@ connections refuse cross-thread use, and the pool gives no thread pinning.
 from __future__ import annotations
 
 import dataclasses
+import json
+import logging
 import os
 import pathlib
 import sqlite3
@@ -55,6 +57,7 @@ from db import (
     settings,
 )
 from sg_web import (
+    activity,
     artifact_view,
     collection_authoring,
     collection_view,
@@ -65,12 +68,18 @@ from sg_web import (
     media,
     media_authored,
     media_view,
+    operations,
     person_view,
     story_view,
     timeline_view,
 )
 from sg_web import worker as worker_module
 from sg_web.presenting import VARIES, wants_json
+from sg_web.submitting import announce as _announce
+from sg_web.submitting import nudge as _nudge
+from sg_web.submitting import submitted as _submitted
+
+_logger = logging.getLogger(__name__)
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -267,14 +276,6 @@ def job_snapshot(state: State, job_id: int) -> dict:
         connect.close(conn)
 
 
-def _nudge(state: State) -> None:
-    """Tell the worker there is work, so pickup is immediate rather than
-    on its idle cadence."""
-    wake = getattr(state, "worker_wake", None)
-    if wake is not None:
-        wake.set()
-
-
 @post("/jobs/verify", sync_to_thread=True)
 def submit_verify(state: State) -> dict:
     """Ask for an integrity sweep. The row queues it; the worker drains it."""
@@ -282,8 +283,7 @@ def submit_verify(state: State) -> dict:
     try:
         job_id = runner.submit_verify(conn, time.time())
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -299,8 +299,7 @@ def submit_faces(state: State, data: dict) -> dict:
         cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
         job_id = runner.submit_faces(conn, time.time(), models_dir=weights, thumbs_dir=cache)
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -313,8 +312,7 @@ def submit_phash(state: State) -> dict:
     try:
         job_id = runner.submit_phash(conn, time.time())
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -336,8 +334,7 @@ def submit_embed(state: State) -> list[dict]:
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        _nudge(state)
-        return [jobs.snapshot(conn, job_id) for job_id in job_ids]
+        return [_submitted(state, conn, job_id) for job_id in job_ids]
     finally:
         connect.close(conn)
 
@@ -356,8 +353,7 @@ def submit_embed_prompts(state: State) -> list[dict]:
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        _nudge(state)
-        return [jobs.snapshot(conn, job_id) for job_id in job_ids]
+        return [_submitted(state, conn, job_id) for job_id in job_ids]
     finally:
         connect.close(conn)
 
@@ -446,8 +442,7 @@ def submit_dupes(state: State) -> dict:
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -472,8 +467,7 @@ def submit_context(state: State) -> dict:
     try:
         job_id = runner.submit_context(conn, time.time())
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -487,8 +481,7 @@ def submit_events(state: State) -> dict:
     try:
         job_id = runner.submit_events(conn, time.time())
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -501,8 +494,7 @@ def submit_ingest(state: State) -> dict:
     try:
         job_id = runner.submit_ingest(conn, time.time())
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -519,8 +511,7 @@ def submit_cluster(state: State) -> dict:
     try:
         job_id = runner.submit_cluster(conn, time.time())
         conn.commit()
-        _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return _submitted(state, conn, job_id)
     finally:
         connect.close(conn)
 
@@ -734,8 +725,12 @@ def cancel_job(state: State, job_id: int) -> dict:
     try:
         jobs.cancel(conn, job_id)
         conn.commit()
+        # The request changed the row (cancel_requested), so the request
+        # speaks: a subscriber sees "cancelling" now, not at the worker's
+        # next item -- which never comes while the worker is off.
+        told = _announce(state, conn, job_id)
         _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return told
     finally:
         connect.close(conn)
 
@@ -760,14 +755,49 @@ async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -
     read crosses to a thread (anyio.to_thread.run_sync, agronholm/anyio
     src/anyio/to_thread.py:27-52) because sqlite blocks and this handler
     shares the event loop with every open socket.
+
+    Two representations of the same feed, chosen by `?as=`: JSON (the
+    machine default, snapshot then raw deltas) and `html` -- the list and
+    each delta rendered as out-of-band fragments (sg_web/activity.py) for
+    the shell's activity surface, which the htmx ws extension swaps in by
+    id. The query string is the only negotiation a browser WebSocket can
+    carry: the extension opens `new WebSocket(url, [])` with no headers
+    (bigskysoftware/htmx-extensions@1358232 src/ws/ws.js createWebSocket).
+    Same subscribe-then-snapshot order either way.
     """
     from anyio import to_thread
 
+    as_html = socket.query_params.get("as") == "html"
     await socket.accept()
     async with channels.start_subscription("jobs") as subscriber:
-        rows = await to_thread.run_sync(_active_jobs_of, state.db_path)
-        await socket.send_json({"type": "snapshot", "jobs": rows})
-        async with subscriber.run_in_background(socket.send_text):
+        if as_html:
+            engine = socket.app.template_engine
+            listed = await to_thread.run_sync(activity.rows, state.db_path)
+            seen = {int(row["id"]) for row in listed if not row["settled"]}
+            await socket.send_text(activity.render_list(engine, listed))
+
+            async def relay(raw: bytes) -> None:
+                """One delta rendered and sent. A render that fails is a
+                defect in the fragment, not in the feed: it is logged
+                whole, the socket is closed 1011 so the extension
+                reconnects and re-reads the rows (bigskysoftware/
+                htmx-extensions@1358232 src/ws/ws.js:256 -- close codes
+                1006/1011/1012/1013 retry), and the error propagates --
+                never a silent dead task."""
+                try:
+                    frame = activity.render_delta(engine, json.loads(raw), seen)
+                except Exception:
+                    _logger.exception("activity fragment failed to render for delta %r", raw)
+                    await socket.close(code=1011, reason="activity render failed")
+                    raise
+                await socket.send_text(frame)
+
+            deliver = relay
+        else:
+            rows = await to_thread.run_sync(_active_jobs_of, state.db_path)
+            await socket.send_json({"type": "snapshot", "jobs": rows})
+            deliver = socket.send_text
+        async with subscriber.run_in_background(deliver):
             while (await socket.receive())["type"] != "websocket.disconnect":
                 continue
 
@@ -848,6 +878,33 @@ def choose_primary(state: State) -> dict:
         connect.close(conn)
 
 
+def _template_engine() -> JinjaTemplateEngine:
+    """The ONE Jinja environment every page renders with.
+
+    StrictUndefined: a template that names a field the view did not
+    supply explodes at render, instead of printing an empty string and
+    shipping "You introduced ." to a screen. Autoescape: every value a
+    template prints is evidence (file names, prompt text), never trusted
+    markup. Litestar's engine wraps the environment
+    (litestar-org/litestar@v2.24.0 litestar/plugins/jinja.py:106-115
+    `from_environment` -> `cls(directory=None, engine_instance=...)`);
+    passed as `TemplateConfig(instance=...)` the callback path is skipped
+    (litestar/template/config.py:58-61 `engine_instance`), so the activity
+    Module's global is registered here, before any template loads
+    (pallets/jinja@3.1.6 docs/api.rst "The Global Namespace").
+    """
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+    environment = Environment(
+        loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
+        undefined=StrictUndefined,
+        autoescape=True,
+    )
+    engine = JinjaTemplateEngine.from_environment(environment)
+    activity.register(engine)
+    return engine
+
+
 def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     """The application, bound to one home directory (sg_web/home.py).
 
@@ -903,6 +960,12 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
 
         def publish(delta: dict) -> None:
             loop.call_soon_threadsafe(channels.publish, delta, "jobs")
+
+        # Request handlers run on the thread pool too, so a job's `queued`
+        # delta (sg_web/submitting.py) crosses the same bridge the worker's
+        # deltas do. Set whether or not the worker thread starts: a
+        # submit is an observable change in either case.
+        app.state.publish = publish
 
         thread = threading.Thread(
             target=worker_module.run, args=(str(where), publish, stop, wake), name="sg-worker", daemon=True
@@ -1008,6 +1071,11 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             curating.bulk_favorite,
             curating.bulk_rating,
             curating.bulk_membership,
+            # The runtime's own surface, under one Router seam (litestar-org/
+            # litestar@v2.24.0 docs/usage/routing/overview.rst "Routers"):
+            # every operational page and form shares the /operations prefix
+            # and whatever policy that layer grows later.
+            operations.router,
             create_static_files_router(
                 # Absolute on purpose: the docs interpret relative
                 # directories against the process working directory
@@ -1018,10 +1086,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             ),
         ],
         plugins=[channels, _WorkerPlugin()],
-        template_config=TemplateConfig(
-            directory=pathlib.Path(__file__).resolve().parent / "templates",
-            engine=JinjaTemplateEngine,
-        ),
+        template_config=TemplateConfig(instance=_template_engine()),
     )
     app.state.home = str(base)
     app.state.db_path = str(where)

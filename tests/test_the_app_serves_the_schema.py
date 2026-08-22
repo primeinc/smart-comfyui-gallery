@@ -158,6 +158,7 @@ def test_verification_catches_tampered_bytes_while_you_watch(served):
     assert (snapshot["done_count"], snapshot["failed_count"]) == (3, 1)
 
 
+@pytest.mark.slow
 def test_the_worker_obeys_its_setting_changed_over_http(served):
     """Turning the worker off is a settings row, effective live: jobs
     queue and wait, cancellation is honoured the moment it returns.
@@ -172,6 +173,10 @@ def test_the_worker_obeys_its_setting_changed_over_http(served):
     with client.websocket_connect("/ws/jobs") as feed:
         assert feed.receive_json(timeout=10)["type"] == "snapshot"
         job_id = client.post("/jobs/verify").json()["id"]
+        # The submit announces its committed row (sg_web/submitting.py);
+        # after that, a worker that is off says nothing at all.
+        born = feed.receive_json(timeout=10)
+        assert (born["job"], born["state"]) == (job_id, "queued")
 
         import queue
 
@@ -952,6 +957,7 @@ def test_a_bodyless_or_pathless_root_request_is_a_400_not_a_500(tmp_path):
         assert client.post("/roots").status_code == 400
 
 
+@pytest.mark.slow
 def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, caplog):
     """Lifespan managers exit in reverse, so the worker must be REGISTERED
     after the channel: stopped and joined while the channel it publishes

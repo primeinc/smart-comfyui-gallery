@@ -1,14 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ album.name }}</title>
-  <link rel="canonical" href="/t/{{ album.slug }}">
-  <link rel="stylesheet" href="/static/gallery.css">
-  <script src="/static/collection.js" defer></script>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}{{ album.name }}{% endblock %}
+{% block head %}<link rel="canonical" href="/t/{{ album.slug }}">{% endblock %}
+{% block scripts %}<script src="/static/collection.js" defer></script>{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
       <a href="/albums">albums</a>
@@ -41,7 +35,7 @@
         <label>parent
           <select name="parent">
             <option value="" {% if not album.parent %}selected{% endif %}>(top)</option>
-            {% for offered in album.parents or [] %}
+            {% for offered in album.get("parents") or [] %}
             <option value="{{ offered.slug }}" {% if offered.slug == album.parent %}selected{% endif %}>
               {{ offered.name }}{% if offered.archived %} (archived, current){% endif %}
             </option>
@@ -106,5 +100,4 @@
     <p class="empty">nothing in this collection yet.</p>
     {% endif %}
   </main>
-</body>
-</html>
+{% endblock %}

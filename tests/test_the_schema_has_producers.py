@@ -147,6 +147,7 @@ def test_a_smart_collection_refuses_stored_members(db, a_library):
     db.execute("UPDATE collection SET kind = 'smart' WHERE id = ?", (album,))
 
 
+@pytest.mark.slow
 def test_perceptual_hashes_come_from_pixels_not_literals(db, a_library, tmp_path):
     """The runtime producer for derived_file_hash, fed real pixels.
 
@@ -857,6 +858,7 @@ def test_an_evicted_worker_cannot_still_write(db, a_library):
     assert jobs.progress(db, job_id).done == 1
 
 
+@pytest.mark.slow
 def test_two_workers_racing_for_one_job_cannot_both_get_it(tmp_path):
     """The claim is a single write, and this is why.
 

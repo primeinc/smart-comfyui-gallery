@@ -188,6 +188,7 @@ def _plain(path, at: float) -> None:
     os.utime(path, (at, at))
 
 
+@pytest.mark.slow
 def test_claimless_files_get_a_file_occurrence_and_form_file_sessions(tmp_path):
     """Three screenshots named to the second inside one afternoon, a
     scan in a dated folder, two downloads with nothing but mtime, one

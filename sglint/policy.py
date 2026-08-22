@@ -47,6 +47,9 @@ SQL_STRUCTURE: dict[str, str] = {
     "table": "identifier",
     "column": "identifier",
     "name": "identifier",
+    # db/jobs.py: the one module-literal column list the active and recent
+    # reads share, so both rows carry the same shape
+    "_LISTED": "identifier",
 }
 
 # --- SG4xx: the web adapters own no semantics ------------------------------------------------

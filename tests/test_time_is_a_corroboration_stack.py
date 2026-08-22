@@ -252,6 +252,7 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+@pytest.mark.slow
 def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_the_second(tmp_path):
     """Five Swarm stills named 0947001.., finishing 65 s apart, whose
     metadata says only the DAY: the occurrences are minute-fine claims

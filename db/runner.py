@@ -646,7 +646,19 @@ def run_next(
     kind, raw = conn.execute("SELECT kind, payload FROM job WHERE id = ?", (job_id,)).fetchone()
 
     def spoke(state: str, moved) -> None:
-        tell({"job": job_id, "kind": kind, "state": state, "done": moved.done, "total": moved.total})
+        # `cancel_requested` rides every delta so a subscriber that saw the
+        # cancel asked for keeps seeing it asked for until the job settles;
+        # the row is read, never remembered.
+        tell(
+            {
+                "job": job_id,
+                "kind": kind,
+                "state": state,
+                "done": moved.done,
+                "total": moved.total,
+                "cancel_requested": 1 if jobs.cancelled(conn, job_id) else 0,
+            }
+        )
 
     spoke("running", jobs.progress(conn, job_id))
     handler = handlers.get(kind)

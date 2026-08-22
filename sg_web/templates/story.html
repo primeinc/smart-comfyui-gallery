@@ -1,15 +1,9 @@
-<!doctype html>
-<html lang="{{ story.renderer.locale }}">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ story.title }}</title>
-  <link rel="stylesheet" href="/static/gallery.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block lang %}{{ story.renderer.locale }}{% endblock %}
+{% block title %}{{ story.title }}{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/g">gallery</a>
       <a href="/timeline">timeline</a>
       <span class="crumbs-here">story</span>
     </nav>
@@ -43,5 +37,4 @@
       {% endif %}
     </article>
   </main>
-</body>
-</html>
+{% endblock %}

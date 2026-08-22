@@ -1,16 +1,9 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Albums</title>
-  <link rel="stylesheet" href="/static/gallery.css">
-  <script src="/static/collection.js" defer></script>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Albums{% endblock %}
+{% block scripts %}<script src="/static/collection.js" defer></script>{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/g">gallery</a>
       <span class="crumbs-here">Albums{% if showing_archived %} &middot; archived{% endif %}</span>
     </nav>
   </header>
@@ -66,5 +59,4 @@
     {% endif %}
     {% endif %}
   </main>
-</body>
-</html>
+{% endblock %}

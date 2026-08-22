@@ -1,15 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Folders</title>
-  <link rel="stylesheet" href="/static/gallery.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Folders{% endblock %}
+{% block body %}
   <header class="bar">
     <nav class="crumbs">
-      <a href="/g">gallery</a>
       <span class="crumbs-here">Folders</span>
       <span class="crumbs-where">{{ shelves|length }} librar{{ "y" if shelves|length == 1 else "ies" }}</span>
     </nav>
@@ -37,8 +30,7 @@
     </section>
     {% endfor %}
     {% else %}
-    <p class="empty">no media directories registered yet.</p>
+    <p class="empty">no media directories registered yet — <a href="/operations">add one</a>.</p>
     {% endif %}
   </main>
-</body>
-</html>
+{% endblock %}

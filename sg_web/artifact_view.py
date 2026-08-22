@@ -27,7 +27,7 @@ from litestar.response import Redirect, Response, Template
 
 from db import connect, naming, pages, resultset, settings
 from sg_web import home
-from sg_web.presenting import VARIES, wants_json
+from sg_web.presenting import presented_page
 
 #: Which shelf each addressable artifact kind lives on. Kinds outside
 #: this map have rows and identity but no page yet.
@@ -91,9 +91,7 @@ def _artifact_page(state: State, request: Request, slug: str, shelf: str) -> Tem
         told = view(conn, weights, artifact_id, slug, time.time())
     finally:
         connect.close(conn)
-    if wants_json(request):
-        return Response(told, headers=VARIES)
-    return Template(template_name="artifact.html", context={"artifact": told, "shelf": shelf}, headers=VARIES)
+    return presented_page(request, told, page="artifact.html", context={"artifact": told, "shelf": shelf})
 
 
 @get("/m/{slug:str}", sync_to_thread=True)

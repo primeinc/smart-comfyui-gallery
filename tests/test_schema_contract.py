@@ -1404,6 +1404,7 @@ def test_the_built_database_matches_the_ddl(tmp_path):
     assert drift(DEFAULT) == []
 
 
+@pytest.mark.slow
 def test_the_drift_check_can_actually_fail(tmp_path):
     """Control: a database built from a mutated DDL must be reported as drifted."""
     import sqlite3 as _s
@@ -1419,6 +1420,7 @@ def test_the_drift_check_can_actually_fail(tmp_path):
     assert drift(path) != [], "the drift check cannot see a missing index"
 
 
+@pytest.mark.slow
 def test_the_drift_check_sees_inside_string_literals(tmp_path):
     """Control for the comparator's literal-awareness: a trigger message
     whose spacing changed is a different message and must read as drift,
@@ -1472,6 +1474,7 @@ def test_the_squeeze_keeps_comment_ends_and_quoted_names():
     assert _squeezed('CREATE TABLE "a  b" (x)') != _squeezed('CREATE TABLE "a b" (x)')
 
 
+@pytest.mark.slow
 def test_the_drift_check_sees_a_wrong_stamp(tmp_path):
     """Control for the half it could not see. `objects()` reads sqlite_master
     only, so a file carrying the wrong version -- the case the stamps exist

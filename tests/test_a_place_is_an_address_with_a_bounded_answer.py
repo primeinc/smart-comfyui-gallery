@@ -306,6 +306,7 @@ def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch
         assert re.search(nested, after, re.DOTALL), "the NEXT response must see the commit"
 
 
+@pytest.mark.slow
 def test_a_browsing_get_records_nothing_and_the_operational_one_commits(tmp_path):
     """/folders observes; /roots records. After the disk changes, the
     browsing GET must answer with fresh reachability while writing

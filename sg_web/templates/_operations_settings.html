@@ -1,0 +1,23 @@
+<h2>settings</h2>
+{% if notice %}<p id="shell-notice" class="shell-notice" data-shell-notice hx-swap-oob="true"><span data-notice>{{ notice }}</span></p>{% endif %}
+<ul class="operations-settings">
+  {% for row in settings %}
+  <li data-setting="{{ row.key }}">
+    <form class="operations-form" hx-post="/operations/settings/{{ row.key }}" hx-target="#operations-settings" hx-swap="innerHTML">
+      <label>{{ row.key }}
+        {% if row.choices %}
+        <select name="value" aria-label="{{ row.key }}">
+          {% for choice in row.choices %}
+          <option value="{{ choice }}"{% if choice == row.value %} selected{% endif %}>{{ choice }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input name="value" value="{{ row.value }}" aria-label="{{ row.key }}">
+        {% endif %}
+      </label>
+      <button type="submit">set</button>
+      {% if row.value != row.default %}<span class="operations-default">default {{ row.default or "(empty)" }}</span>{% endif %}
+    </form>
+  </li>
+  {% endfor %}
+</ul>

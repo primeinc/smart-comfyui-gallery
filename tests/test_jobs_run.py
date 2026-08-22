@@ -306,6 +306,7 @@ def _two_files(db, tmp_path) -> list[int]:
     return [row[0] for row in db.execute("SELECT id FROM file ORDER BY id")]
 
 
+@pytest.mark.slow
 def test_dhash_vetoes_a_phash_pair_whose_structure_disagrees(db, tmp_path):
     """The second opinion: pHash proposes (global composition), dHash
     verifies (local gradient structure). Identical pHash with wildly

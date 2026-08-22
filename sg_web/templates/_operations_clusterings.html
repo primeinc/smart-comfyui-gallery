@@ -1,0 +1,16 @@
+<h2>clusterings</h2>
+{% if notice %}<p id="shell-notice" class="shell-notice" data-shell-notice hx-swap-oob="true"><span data-notice>{{ notice }}</span></p>{% endif %}
+{% if clusterings %}
+<ul class="operations-clusterings">
+  {% for run in clusterings %}
+  <li data-run="{{ run.id }}"{% if run.is_primary %} data-primary{% endif %}>
+    <span>{{ run.model_id }} {{ run.model_version }} &middot; {{ run.method }} @ {{ run.threshold }}</span>
+    {% if run.is_primary %}<span class="operations-primary">primary</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">no clustering run yet.</p>
+{% endif %}
+<button type="button" data-choose-primary
+        hx-post="/operations/clusterings/choose" hx-target="#operations-clusterings" hx-swap="innerHTML">re-rank and choose the primary run</button>
