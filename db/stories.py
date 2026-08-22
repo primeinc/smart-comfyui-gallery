@@ -394,7 +394,7 @@ class _Subject:
     confidence: float | None
 
 
-_CLAIM_OF = {"generation_session": "generation", "capture_session": "capture"}
+_CLAIM_OF = {"generation_session": "generation", "capture_session": "capture", "file_session": "file"}
 
 
 def _current_subject(conn, event_id: int) -> _Subject:

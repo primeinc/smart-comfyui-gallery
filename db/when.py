@@ -72,8 +72,20 @@ Rules, all evaluated, none short-circuits:
  3. btime at or after the occurrence satisfies `btime_after_generation`;
     before it -- bytes born before they were generated -- conflicts.
     btime never supplies an instant while any claim exists.
- 4. No generator claim: the filesystem's own instants, mtime first, as
-    the context's fallback only -- never an occurrence.
+ 4. No generator or camera claim: the FILE's own claims (judge_file).
+    A stamped NAME is a wall-clock claim at the precision it carries
+    (the grammars below: `IMG_20230610_142301`, `PXL_..._142301123`,
+    `2013-02-10 14.23.01`, `Screenshot 2024-01-02 at 10.11.12`,
+    `20260821_17h30m02s313ms_`, `20260718T094712`, `IMG-20230101-WA0001`
+    (day), an epoch in seconds or milliseconds); a dated FOLDER
+    (`2013-02-10`, `20130210`, or `2013/02/10` as a chain) is a day
+    claim; mtime and btime support or dispute those exactly as they do
+    a generator's. With no claim at all, the occurrence is the EARLIEST
+    the bytes are known to exist -- the smaller of mtime and btime, an
+    instant with no local story -- because a copy is born later than
+    its content and an edit is saved later than its capture, so the
+    earlier of the two is the tighter bound. Nothing is discarded:
+    every signal is a support, a conflict, or the claim.
 
 Quality: contested when anything conflicts; corroborated when nothing
 conflicts and at least one support was found; claimed otherwise.
@@ -293,6 +305,166 @@ def judge_generation(
 
 #: A capture conflict between the camera's own zone claims.
 CAMERA = "camera: "
+#: A conflict between the file's own claims (its name and its folder).
+FILE = "file: "
+
+#: Stamped names, most specific first. Each grammar yields Y M D and,
+#: when it carries them, h m s and ms. Searched anywhere in the name:
+#: `IMG_`, `PXL_`, `Screenshot ` and `VID-` prefixes all precede the
+#: digits. Ranges are checked afterwards, so a thirteen-digit epoch
+#: does not read as the year 1686.
+_NAME_STAMPS = (
+    # 20230610_142301, 20230610T142301, 20260821_17h30m02s313ms, PXL_20230610_142301123
+    re.compile(
+        r"(?<!\d)(?P<Y>\d{4})(?P<M>\d{2})(?P<D>\d{2})(?P<sep>[_T-]?)(?P<h>\d{2})h?(?P<m>\d{2})m?(?P<s>\d{2})s?"
+        r"(?:[._](?P<ms>\d{3})(?:ms)?|(?P<glued>\d{3})(?:ms)?)?(?!\d)"
+    ),
+    # 2013-02-10 14.23.01, 2024-01-02 at 10.11.12, 2023-06-10T14:23:01, signal-2023-06-10-142301
+    re.compile(
+        r"(?<!\d)(?P<Y>\d{4})-(?P<M>\d{2})-(?P<D>\d{2})[ _T-](?:at[ _])?"
+        r"(?P<h>\d{2})[.:-]?(?P<m>\d{2})[.:-]?(?P<s>\d{2})(?!\d)"
+    ),
+    # 2013-02-10, 2013_02_10, IMG-20230101-WA0001
+    re.compile(r"(?<!\d)(?P<Y>\d{4})[-_.]?(?P<M>\d{2})[-_.]?(?P<D>\d{2})(?!\d)"),
+)
+#: An epoch in the name: milliseconds (13 digits, 2011-2033) or seconds
+#: (10 digits, 2001-2033). A counter of ten digits would read as one
+#: too -- the range check is the only guard, so these come last.
+_NAME_EPOCH_MS = re.compile(r"(?<!\d)(?P<v>1[3-9]\d{11})(?!\d)")
+_NAME_EPOCH_S = re.compile(r"(?<!\d)(?P<v>1\d{9})(?!\d)")
+#: A dated folder: 2013-02-10, 2013_02_10, 2013.02.10, 20130210.
+_FOLDER_DAY = re.compile(r"^(\d{4})[-_.]?(\d{2})[-_.]?(\d{2})$")
+_YEARS = range(1990, 2101)
+
+
+def _day_of(y: int, mo: int, d: int) -> float | None:
+    if y not in _YEARS:
+        return None
+    try:
+        return datetime.datetime(y, mo, d, tzinfo=datetime.UTC).timestamp()
+    except ValueError:
+        return None
+
+
+def name_stamp(name: str) -> tuple[float, str] | None:
+    """(wall-clock epoch, precision) from a stamped file name, or None.
+    The finest grammar that matches and passes its range checks wins."""
+    for pattern in _NAME_STAMPS:
+        for match in pattern.finditer(name):
+            held = match.groupdict()
+            day = _day_of(int(held["Y"]), int(held["M"]), int(held["D"]))
+            if day is None:
+                continue
+            if held.get("h") is None:
+                return day, "day"
+            h, m, s = int(held["h"]), int(held["m"]), int(held["s"])
+            if h > 23 or m > 59 or s > 60:
+                continue
+            at = day + h * 3600.0 + m * 60.0 + s
+            ms = held.get("ms")
+            if ms is None and held.get("glued") is not None and held.get("sep") == "_":
+                # PXL_20230610_142301123 and 17h30m02s313ms carry milliseconds
+                # glued to the seconds; 20260718T094712001 carries SwarmUI's
+                # request counter there, which is order, never time
+                ms = held["glued"]
+            if ms is not None:
+                return at + int(ms) / 1000.0, "subsecond"
+            return at, "second"
+    match = _NAME_EPOCH_MS.search(name)
+    if match:
+        return int(match.group("v")) / 1000.0, "subsecond"
+    match = _NAME_EPOCH_S.search(name)
+    if match:
+        return float(match.group("v")), "second"
+    return None
+
+
+def folder_day(folders: list[str]) -> float | None:
+    """The day a folder names, nearest folder first: `2013-02-10` in any
+    spelling, or a `2013/02/10` chain (year, month, day as successive
+    folders). None when no folder names one."""
+    for i in range(len(folders) - 1, -1, -1):
+        match = _FOLDER_DAY.match(folders[i])
+        if match:
+            day = _day_of(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            if day is not None:
+                return day
+        if i >= 2 and all(f.isdigit() for f in folders[i - 2 : i + 1]):
+            y, mo, d = folders[i - 2], folders[i - 1], folders[i]
+            if len(y) == 4 and len(mo) in (1, 2) and len(d) in (1, 2):
+                day = _day_of(int(y), int(mo), int(d))
+                if day is not None:
+                    return day
+    return None
+
+
+_SPAN = {"day": 86400.0, "hour": 3600.0, "minute": 60.0, "second": 1.0, "subsecond": 0.001}
+
+
+def judge_file(
+    *,
+    name: str,
+    folders: list[str],
+    mtime: float | None,
+    btime: float | None,
+) -> Verdict | None:
+    """Rule 4: the file's own claims. A stamped name is the claim at its
+    own precision; else a dated folder is a day claim; mtime and btime
+    then support or dispute it through the host's zone. A folder day
+    that does not contain a stamped name's day is a `file: ` conflict
+    between the file's own claims (the name, being finer, stands). With
+    no claim the occurrence is the earliest known existence: the
+    smaller of mtime and btime, an instant, basis naming which."""
+    stamp = name_stamp(name)
+    day = folder_day(folders)
+    if stamp is None and day is None:
+        if mtime is None and btime is None:
+            return None
+        supports = (
+            ("btime_consistent",) if mtime is not None and btime is not None and abs(btime - mtime) <= 86400.0 else ()
+        )
+        if btime is not None and (mtime is None or btime < mtime):
+            return Verdict(None, btime, None, "subsecond", "btime", supports, ())
+        return Verdict(None, mtime, None, "subsecond", "mtime", supports, ())
+    supports: list[str] = []
+    conflicts: list[str] = []
+    if stamp is not None:
+        at, precision = stamp
+        basis = "filename"
+        if day is not None:
+            if day <= at < day + 86400.0:
+                supports.append("folder_day")
+            else:
+                conflicts.append(f"{FILE}the folder says {_spell(day)[:10]} but the name says {_spell(at)}")
+    else:
+        at, precision, basis = day, "day", "folder"
+    window = (at, at + _SPAN[precision])
+    finished_at = None
+    if mtime is not None:
+        wrote = _wall_of(mtime)
+        if window[0] - 2.0 <= wrote < window[1] + SLACK:
+            supports.append("mtime_consistent")
+            finished_at = mtime
+        elif wrote < window[0]:
+            conflicts.append(
+                f"{FILESYSTEM}mtime {_spell(wrote)} is {_hours(window[0] - wrote)} before the claimed"
+                f" {_spell(window[0])}"
+            )
+        else:
+            conflicts.append(
+                f"{FILESYSTEM}mtime {_spell(wrote)} is {_hours(wrote - window[1])} after the claimed window"
+            )
+    if btime is not None:
+        born = _wall_of(btime)
+        if born >= at - 1.0:
+            supports.append("btime_after_claim")
+        else:
+            conflicts.append(
+                f"{FILESYSTEM}btime {_spell(born)} is before the claimed {_spell(at)}: bytes born before named"
+            )
+    if mtime is not None or btime is not None:
+        supports.append("host_zone_assumed")
+    return Verdict(at, None, None, precision, basis, tuple(supports), tuple(conflicts), finished_at, None, None)
 
 
 def judge_capture(

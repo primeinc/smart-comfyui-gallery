@@ -2055,6 +2055,199 @@ END"""
     )
 
 
+@step(21)
+def _every_file_has_a_when(conn: sqlite3.Connection) -> None:
+    """v21 -> v22: the occurrence admits the FILE's own claim (kind
+    `file`, bases `folder`, `mtime`, `btime`), the context admits the
+    `folder` basis, and events admit `file_session`. All derived:
+    dropped and recreated, rebuilt by the context and events jobs. DDL
+    is schema.sql's text VERBATIM.
+    """
+    for table in ("derived_event_file", "derived_event", "derived_event_run"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.execute("DROP TABLE derived_event_file")
+    conn.execute("DROP TABLE derived_event")
+    conn.execute("DROP TABLE derived_media_occurrence")
+    conn.execute("DROP TABLE derived_media_context")
+    for statement in (
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','filename','folder','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- Coarse claims are never promoted into fine-grained boundaries.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('day','hour','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT""",
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation','file')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN
+                     ('capture','embedded','filename','folder','mtime','btime')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID""",
+        """CREATE TABLE derived_event (
+    id            INTEGER PRIMARY KEY,
+    run_id        INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
+    parent_id     INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
+    kind          TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session','file_session')),
+    -- The interval carries its TEMPORAL DOMAIN: a wall-clock pair, an
+    -- instant pair, or both when every member makes both knowable --
+    -- never one ambiguous pair that is secretly sometimes each. Unlike
+    -- domains are never subtracted from each other.
+    local_start   REAL,
+    local_end     REAL,
+    instant_start REAL,
+    instant_end   REAL,
+    place_id      INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    confidence    REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    member_hash   TEXT NOT NULL,
+    CHECK ((local_start IS NULL) = (local_end IS NULL)),
+    CHECK ((instant_start IS NULL) = (instant_end IS NULL)),
+    CHECK (local_start IS NULL OR local_start <= local_end),
+    CHECK (instant_start IS NULL OR instant_start <= instant_end),
+    CHECK (local_start IS NOT NULL OR instant_start IS NOT NULL)
+) STRICT""",
+        """CREATE TABLE derived_event_file (
+    event_id INTEGER NOT NULL REFERENCES derived_event(id) ON DELETE CASCADE,
+    file_id  INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    ordinal  INTEGER NOT NULL,
+    score    REAL,
+    PRIMARY KEY (event_id, file_id)
+) STRICT, WITHOUT ROWID""",
+    ):
+        conn.execute(statement)
+    for statement in (
+        "CREATE INDEX media_context_when ON derived_media_context(instant_at)",
+        "CREATE INDEX media_context_local ON derived_media_context(local_at)",
+        "CREATE INDEX media_context_place ON derived_media_context(place_id)",
+        "CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_at)",
+        "CREATE INDEX media_occurrence_kind_instant ON derived_media_occurrence(kind, instant_at)",
+        "CREATE INDEX media_occurrence_kind_local ON derived_media_occurrence(kind, local_at)",
+        "CREATE INDEX media_occurrence_act ON derived_media_occurrence(kind, act_key) WHERE act_key IS NOT NULL",
+        "CREATE INDEX event_run ON derived_event(run_id)",
+        "CREATE INDEX event_parent ON derived_event(parent_id)",
+        "CREATE INDEX event_when_instant ON derived_event(instant_start)",
+        "CREATE INDEX event_when_local ON derived_event(local_start)",
+        "CREATE INDEX event_place ON derived_event(place_id)",
+        "CREATE INDEX event_file_file ON derived_event_file(file_id)",
+    ):
+        conn.execute(statement)
+    conn.execute("DELETE FROM derived_context_state")
+    # story_snapshot admits a file session; rows are kept, bytes intact
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE story_snapshot RENAME TO story_snapshot_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute("DROP INDEX IF EXISTS story_snapshot_member")
+    conn.execute("DROP TRIGGER IF EXISTS story_snapshot_is_immutable")
+    conn.execute(
+        """CREATE TABLE story_snapshot (
+    id                     INTEGER PRIMARY KEY,
+    format_version         INTEGER NOT NULL,
+    source_kind            TEXT NOT NULL CHECK (source_kind = 'event'),
+    event_kind             TEXT NOT NULL CHECK (event_kind IN
+                             ('generation_session','capture_session','file_session')),
+    grouper                TEXT NOT NULL,
+    context_generation     INTEGER NOT NULL,
+    context_policy_version INTEGER NOT NULL,
+    member_hash            TEXT NOT NULL,
+    document_json          TEXT NOT NULL,
+    document_sha256        TEXT NOT NULL UNIQUE CHECK (length(document_sha256) = 64),
+    created_at             REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("INSERT INTO story_snapshot SELECT * FROM story_snapshot_old")
+    conn.execute("DROP TABLE story_snapshot_old")
+    conn.execute("CREATE INDEX story_snapshot_member ON story_snapshot(member_hash, created_at)")
+    conn.execute(
+        """CREATE TRIGGER story_snapshot_is_immutable BEFORE UPDATE ON story_snapshot
+BEGIN
+  SELECT RAISE(ABORT,'a story snapshot is immutable; freeze a new one');
+END"""
+    )
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

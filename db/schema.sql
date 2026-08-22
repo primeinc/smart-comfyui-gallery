@@ -1688,7 +1688,7 @@ CREATE TABLE derived_media_context (
     -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
     -- claimed .6, contested .4), not a probability.
     time_basis          TEXT CHECK (time_basis IN
-                          ('capture','embedded','filename','btime','mtime','first_seen')),
+                          ('capture','embedded','filename','folder','btime','mtime','first_seen')),
     time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
     time_supports       TEXT,
     time_conflicts      TEXT,
@@ -1737,7 +1737,7 @@ CREATE INDEX media_context_origin_when ON derived_media_context(origin, instant_
 -- context, stamped with the same policy.
 CREATE TABLE derived_media_occurrence (
     file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
-    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation')),
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation','file')),
     -- the same two-domain doctrine as the context: a wall clock when
     -- claimed, an instant only when knowable, never fused
     local_at       REAL,
@@ -1746,7 +1746,8 @@ CREATE TABLE derived_media_occurrence (
     -- the CLAIM's source, the sources that supported it and the ones
     -- that conflicted, named (db/when.py). `certainty` is an ordinal's
     -- fixed spelling (corroborated .9, claimed .6, contested .4).
-    basis          TEXT NOT NULL CHECK (basis IN ('capture','embedded','filename')),
+    basis          TEXT NOT NULL CHECK (basis IN
+                     ('capture','embedded','filename','folder','mtime','btime')),
     certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
     supports       TEXT,
     conflicts      TEXT,
@@ -1810,7 +1811,7 @@ CREATE TABLE derived_event (
     id            INTEGER PRIMARY KEY,
     run_id        INTEGER NOT NULL REFERENCES derived_event_run(id) ON DELETE CASCADE,
     parent_id     INTEGER REFERENCES derived_event(id) ON DELETE CASCADE,
-    kind          TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session')),
+    kind          TEXT NOT NULL CHECK (kind IN ('generation_session','capture_session','file_session')),
     -- The interval carries its TEMPORAL DOMAIN: a wall-clock pair, an
     -- instant pair, or both when every member makes both knowable --
     -- never one ambiguous pair that is secretly sometimes each. Unlike
@@ -1861,7 +1862,8 @@ CREATE TABLE story_snapshot (
     id                     INTEGER PRIMARY KEY,
     format_version         INTEGER NOT NULL,
     source_kind            TEXT NOT NULL CHECK (source_kind = 'event'),
-    event_kind             TEXT NOT NULL CHECK (event_kind IN ('generation_session','capture_session')),
+    event_kind             TEXT NOT NULL CHECK (event_kind IN
+                             ('generation_session','capture_session','file_session')),
     grouper                TEXT NOT NULL,
     context_generation     INTEGER NOT NULL,
     context_policy_version INTEGER NOT NULL,
@@ -1941,7 +1943,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 21;
+PRAGMA user_version   = 22;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

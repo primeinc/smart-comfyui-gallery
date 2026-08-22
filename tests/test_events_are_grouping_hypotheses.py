@@ -225,7 +225,7 @@ def test_events_refuse_to_run_before_any_interpretation_exists(grouped):
     conn = connect.connect(grouped.app.state.db_path)
     try:
         settled = grouped.get(f"/jobs/{told['id']}").json()
-        assert (settled["state"], settled["failed_count"]) == ("done", 2)
+        assert (settled["state"], settled["failed_count"]) == ("done", 3)
         assert conn.execute("SELECT count(*) FROM derived_event_run").fetchone()[0] == 0
     finally:
         connect.close(conn)

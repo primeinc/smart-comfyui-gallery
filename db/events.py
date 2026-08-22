@@ -210,10 +210,28 @@ class CaptureSessionGrouper:
         return _gapped(held, "capture_session", self.settings["gap_minutes"] * 60.0)
 
 
+class FileSessionGrouper:
+    """Media with neither a camera's nor a generator's claim -- a
+    screenshot, a download, a scan -- clustered by the FILE's own claim
+    (db/when.py judge_file): a stamped name or a dated folder on the
+    wall clock, else the earliest the bytes are known to exist on the
+    instant axis. Other implementations fall back to "file modified"
+    alone; this one takes whatever the file itself says first and
+    keeps the filesystem as evidence beside it."""
+
+    name = "file_session"
+    version = "1"
+    claim = "file"
+    settings: typing.ClassVar[dict] = {"gap_minutes": 180}
+
+    def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
+        return _gapped(held, "file_session", self.settings["gap_minutes"] * 60.0)
+
+
 #: The grouping adapters this build runs, in one place. The events job
 #: is one item per entry, so a smarter grouper failing never costs the
 #: others their run.
-GROUPERS = (GenerationSessionGrouper(), CaptureSessionGrouper())
+GROUPERS = (GenerationSessionGrouper(), CaptureSessionGrouper(), FileSessionGrouper())
 
 
 def settings_hash(grouper) -> str:

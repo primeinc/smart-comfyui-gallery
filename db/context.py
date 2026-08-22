@@ -55,17 +55,18 @@ from __future__ import annotations
 import dataclasses
 
 ORIGINS = ("captured", "generated", "mixed", "imported")
-TIME_BASES = ("capture", "embedded", "filename", "btime", "mtime", "first_seen")
+TIME_BASES = ("capture", "embedded", "filename", "folder", "btime", "mtime", "first_seen")
 LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 
 #: WHICH MEANING of the ladder is current. Bump when the interpretation
 #: itself changes meaning -- v2 added the embedded generator-date rung,
 #: v3 the precision dimension and the coexistence facts, v4 the
 #: per-claim occurrence rows, v5 the generation judge, v6 the capture
-#: judge and the act key. Every reader binds THIS constant, never
-#: the version a database happens to remember: after an upgrade the old
-#: rows are honestly invisible until the context job re-interprets.
-POLICY_VERSION = 6
+#: judge and the act key, v7 the file's own claims as an occurrence.
+#: Every reader binds THIS constant, never the version a database
+#: happens to remember: after an upgrade the old rows are honestly
+#: invisible until the context job re-interprets.
+POLICY_VERSION = 7
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
@@ -109,6 +110,13 @@ INSERT INTO derived_media_context(file_id, has_capture, has_generation, origin,
   time_conflicts, time_precision, gps_lat, gps_lon, place_id, location_basis,
   location_certainty, policy_version, rebuilt_at)
 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+"""
+
+_OCCUR_FILE = """
+INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
+  tz_offset_min, basis, certainty, supports, conflicts, finished_at,
+  time_precision, policy_version)
+VALUES(?, 'file', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _OCCUR_GENERATION = """
@@ -155,6 +163,27 @@ def act_key(body_serial: str | None, local_at: float, name: str) -> str:
     return hashlib.sha256(spelled.encode()).hexdigest()[:16]
 
 
+def _folder_names(conn) -> dict[int, list[str]]:
+    """Every folder's name chain, root first -- the folders are few
+    beside the files, so one read serves the whole interpretation."""
+    rows = conn.execute("SELECT id, parent_id, name FROM folder").fetchall()
+    parent = {row[0]: row[1] for row in rows}
+    name = {row[0]: row[2] for row in rows}
+    held: dict[int, list[str]] = {}
+
+    def chain(folder_id: int) -> list[str]:
+        if folder_id in held:
+            return held[folder_id]
+        above = parent.get(folder_id)
+        made = [*chain(above), name[folder_id]] if above is not None and above in name else [name.get(folder_id, "")]
+        held[folder_id] = made
+        return made
+
+    for folder_id in name:
+        chain(folder_id)
+    return held
+
+
 def _interpret(conn, now: float, file_id: int | None = None) -> int:
     """The primary interpretation and the occurrences for every file (or
     one): the camera's act as the judge settles it from DateTimeOriginal,
@@ -168,13 +197,14 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
 
     where = " WHERE f.id = ?" if file_id is not None else ""
     rows = conn.execute(_SOURCES + where, (file_id,) if file_id is not None else ()).fetchall()
+    folders = _folder_names(conn)
     made = 0
     for (
         fid,
         name,
         mtime,
         btime,
-        _folder,
+        folder,
         captured_at,
         tz,
         lat,
@@ -226,19 +256,19 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
                 generation.precision,
             )
         else:
-            fallback = when.judge_filesystem(mtime, btime)
+            own = when.judge_file(name=name, folders=folders.get(folder, []), mtime=mtime, btime=btime)
             time = (
                 (
+                    own.local_at,
+                    own.instant_at,
                     None,
-                    fallback.instant_at,
-                    None,
-                    fallback.basis,
-                    fallback.certainty,
-                    _json(fallback.supports),
-                    None,
-                    fallback.precision,
+                    own.basis,
+                    own.certainty,
+                    _json(own.supports),
+                    _json(own.conflicts),
+                    own.precision,
                 )
-                if fallback
+                if own
                 else (None, None, None, None, None, None, None, None)
             )
         conn.execute(
@@ -258,6 +288,24 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
             ),
         )
         made += 1
+        if capture is None and generation is None:
+            own = when.judge_file(name=name, folders=folders.get(folder, []), mtime=mtime, btime=btime)
+            if own is not None:
+                conn.execute(
+                    _OCCUR_FILE,
+                    (
+                        fid,
+                        own.local_at,
+                        own.instant_at,
+                        own.basis,
+                        own.certainty,
+                        _json(own.supports),
+                        _json(own.conflicts),
+                        own.finished_at,
+                        own.precision,
+                        POLICY_VERSION,
+                    ),
+                )
         if capture is not None:
             conn.execute(
                 _OCCUR_CAPTURE,

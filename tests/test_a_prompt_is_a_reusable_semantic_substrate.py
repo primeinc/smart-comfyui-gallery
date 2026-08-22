@@ -785,7 +785,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21]
+    assert migrate.migrate(path) == [18, 19, 20, 21, 22]
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1060,7 +1060,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21]
+    assert migrate.migrate(path) == [18, 19, 20, 21, 22]
     conn = connect.connect(str(path))
     try:
         held = dict(
