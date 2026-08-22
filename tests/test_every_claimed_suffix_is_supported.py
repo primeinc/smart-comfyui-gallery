@@ -22,16 +22,12 @@ itself is LibRaw's, whose camera coverage is its own tested claim
 
 from __future__ import annotations
 
-import pathlib
-import sqlite3
-
 import pytest
 
 from db import ingest, library, oriented, scan
 from db import sample as sample_module
+from tests.staging import fresh_schema
 from vision import decode
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 SIZE = (64, 48)
 
@@ -234,6 +230,20 @@ WRITERS = {
     ".pdf": _pdf,
 }
 
+#: One suffix per writer configuration -- the decoder families. These run
+#: in the fast lane; the aliases that share a writer (.jpeg/.jpe/.jfif
+#: for JPEG, .m2ts/.mts/.m2t for MPEG-TS, ...) are the same bytes through
+#: the same door and run in the slow lane, where the whole claim is proven.
+FAMILIES = {
+    ".png", ".jpg", ".webp", ".bmp", ".tif", ".avif", ".jxl", ".heic", ".heics", ".jp2", ".j2k",
+    ".mpo", ".psd", ".gif", ".apng", ".dng",
+    ".mp4", ".mov", ".mkv", ".webm", ".avi", ".mpg", ".m2v", ".mjpeg", ".ogv", ".vob", ".ts",
+    ".3gp", ".wmv", ".flv", ".mxf", ".rm",
+    ".wav", ".mp3", ".mp2", ".flac", ".m4a", ".ogg", ".opus", ".mka", ".weba", ".caf", ".au",
+    ".aac", ".wma", ".aiff",
+    ".pdf",
+}  # fmt: skip
+
 #: Elementary streams: raw codec data with no container clock around it.
 #: They decode and poster like any video; a duration is not theirs to state.
 ELEMENTARY = {".m2v", ".mjpeg", ".mjpg"}
@@ -261,13 +271,15 @@ def test_every_raw_suffix_routes_through_libraw():
         assert suffix in decode.RAW_SUFFIXES, suffix
 
 
-@pytest.fixture(scope="module")
-def ddl():
-    return SCHEMA.read_text(encoding="utf-8")
+def test_every_family_is_one_of_the_writers():
+    assert set(WRITERS) >= FAMILIES, sorted(FAMILIES - set(WRITERS))
 
 
-@pytest.mark.parametrize("suffix", sorted(WRITERS))
-def test_the_whole_pipeline_answers_for(suffix, ddl, tmp_path):
+@pytest.mark.parametrize(
+    "suffix",
+    [suffix if suffix in FAMILIES else pytest.param(suffix, marks=pytest.mark.slow) for suffix in sorted(WRITERS)],
+)
+def test_the_whole_pipeline_answers_for(suffix, tmp_path):
     kind = scan.KIND_BY_SUFFIX[suffix]
     root = tmp_path / "lib"
     root.mkdir()
@@ -275,9 +287,7 @@ def test_the_whole_pipeline_answers_for(suffix, ddl, tmp_path):
     WRITERS[suffix](path)
     assert path.stat().st_size > 0, f"the {suffix} writer produced nothing"
 
-    conn = sqlite3.connect(":memory:")
-    conn.executescript(ddl)
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = fresh_schema()
     root_id = library.add_root(conn, str(root), "library", 0.0)
     scan.scan(conn, root_id, str(root), 0.0)
 
@@ -346,16 +356,14 @@ def test_a_dng_develops_through_the_libraw_door(tmp_path):
     assert picture.mode == "RGB", "LibRaw demosaics a CFA into color"
 
 
-def _library_of(ddl, root):
-    conn = sqlite3.connect(":memory:")
-    conn.executescript(ddl)
-    conn.execute("PRAGMA foreign_keys=ON")
+def _library_of(root):
+    conn = fresh_schema()
     root_id = library.add_root(conn, str(root), "library", 0.0)
     scan.scan(conn, root_id, str(root), 0.0)
     return conn
 
 
-def test_an_mp4_wearing_a_jpg_suffix_is_reidentified_by_its_bytes(ddl, tmp_path):
+def test_an_mp4_wearing_a_jpg_suffix_is_reidentified_by_its_bytes(tmp_path):
     """The liar the sniff exists for: routed by suffix it would hit Pillow,
     fail, and be recorded as a broken image forever."""
     root = tmp_path / "lib"
@@ -363,7 +371,7 @@ def test_an_mp4_wearing_a_jpg_suffix_is_reidentified_by_its_bytes(ddl, tmp_path)
     path = root / "holiday.jpg"
     WRITERS[".mp4"](path)
 
-    conn = _library_of(ddl, root)
+    conn = _library_of(root)
     file_id, scanned = conn.execute("SELECT id, kind FROM file").fetchone()
     assert scanned == "image", "the suffix proposes"
     ingest.one(conn, file_id, path, 0.0)
@@ -382,13 +390,13 @@ def test_an_mp4_wearing_a_jpg_suffix_is_reidentified_by_its_bytes(ddl, tmp_path)
     conn.close()
 
 
-def test_a_png_wearing_an_mp4_suffix_is_reidentified_by_its_bytes(ddl, tmp_path):
+def test_a_png_wearing_an_mp4_suffix_is_reidentified_by_its_bytes(tmp_path):
     root = tmp_path / "lib"
     root.mkdir()
     path = root / "clip.mp4"
     WRITERS[".png"](path)
 
-    conn = _library_of(ddl, root)
+    conn = _library_of(root)
     file_id, scanned = conn.execute("SELECT id, kind FROM file").fetchone()
     assert scanned == "video"
     ingest.one(conn, file_id, path, 0.0)
@@ -398,7 +406,7 @@ def test_a_png_wearing_an_mp4_suffix_is_reidentified_by_its_bytes(ddl, tmp_path)
     conn.close()
 
 
-def test_bytes_that_are_no_media_are_said_to_be_no_media(ddl, tmp_path):
+def test_bytes_that_are_no_media_are_said_to_be_no_media(tmp_path):
     """An executable wearing .png: the sniff has no opinion, the decoder
     refuses, and the row records the refusal instead of pretending."""
     root = tmp_path / "lib"
@@ -406,7 +414,7 @@ def test_bytes_that_are_no_media_are_said_to_be_no_media(ddl, tmp_path):
     path = root / "totally-a-picture.png"
     path.write_bytes(b"MZ" + bytes(range(256)) * 4)
 
-    conn = _library_of(ddl, root)
+    conn = _library_of(root)
     file_id = conn.execute("SELECT id FROM file").fetchone()[0]
     result = ingest.one(conn, file_id, path, 0.0)
     assert result.unreadable, "a lie this bald must be recorded, not absorbed"
