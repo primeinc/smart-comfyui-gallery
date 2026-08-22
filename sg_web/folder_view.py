@@ -33,7 +33,7 @@ from litestar.response import Redirect, Response, Template
 
 from db import connect, library, naming, pages, resultset, settings
 from sg_web import home
-from sg_web.presenting import VARIES, wants_json
+from sg_web.presenting import presented_page, wants_json
 
 
 @get("/folders", sync_to_thread=True)
@@ -61,10 +61,7 @@ def folders_index(state: State, request: Request) -> Template | Response:
         ]
     finally:
         connect.close(conn)
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
-        return Template(template_name="folders.html", context={"shelves": told}, headers=VARIES)
-    return Response(told, headers=VARIES)
+    return presented_page(request, told, page="folders.html", context={"shelves": told})
 
 
 def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy: bool) -> dict:
@@ -127,6 +124,4 @@ def folder_page(state: State, request: Request, slug: str) -> Template | Respons
         told = view(conn, weights, folder_id, slug, time.time(), legacy=wants_json(request))
     finally:
         connect.close(conn)
-    if wants_json(request):
-        return Response(told, headers=VARIES)
-    return Template(template_name="folder.html", context={"folder": told}, headers=VARIES)
+    return presented_page(request, told, page="folder.html", context={"folder": told})

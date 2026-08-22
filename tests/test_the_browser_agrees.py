@@ -13,6 +13,8 @@ compositor drew.
 
 from __future__ import annotations
 
+import os
+import pathlib
 import socket
 import subprocess
 import sys
@@ -230,13 +232,36 @@ def test_the_activity_surface_shows_a_sweep_started_from_operations(gallery):
         # the feed is connected before anything is pressed
         page.wait_for_function("() => document.querySelector('[data-activity-jobs]') !== null")
         page.click('[data-launch="verify"]')
-        page.wait_for_selector("[data-operations-notice] [data-notice]")
-        notice = page.text_content("[data-operations-notice] [data-notice]")
+        page.wait_for_selector("[data-shell-notice] [data-notice]")
+        notice = page.text_content("[data-shell-notice] [data-notice]")
         assert notice is not None
         assert "queued #" in notice
         job_id = int(notice.rsplit("#", 1)[1].split(",")[0].strip())
+        # a refusal lands in the same notice, as an error, with no reload
+        page.evaluate(
+            "() => htmx.ajax('POST', '/operations/roots', {target: '#operations-roots', values: {path: ' '}})"
+        )
+        page.wait_for_selector("[data-shell-notice] [data-error]")
+        refused = page.text_content("[data-shell-notice] [data-error]")
+        assert refused is not None
+        assert "needs a path" in refused, refused
 
-        page.wait_for_selector(f'[data-activity-jobs] [data-job="{job_id}"]')
+        page.wait_for_selector(f'[data-activity-jobs] [data-job="{job_id}"]', state="attached")
+        # the surface is a dropdown that opens inside the viewport, not a
+        # list painted off the right edge of the shell
+        page.click("[data-activity] summary")
+        page.wait_for_selector(f'[data-activity-jobs] [data-job="{job_id}"]', state="visible")
+        box = page.locator("[data-activity-jobs]").bounding_box()
+        size = page.viewport_size
+        assert box is not None
+        assert size is not None
+        assert box["x"] >= 0, box
+        assert box["y"] >= 0, box
+        assert box["x"] + box["width"] <= size["width"], (box, size)
+        assert box["width"] >= 200, box
+        shot = os.environ.get("SG_SCREENSHOT_DIR")
+        if shot:
+            page.screenshot(path=str(pathlib.Path(shot) / "activity-open.png"), full_page=False)
         page.wait_for_function(
             "(id) => { const li = document.querySelector(`[data-job='${id}']`);"
             " return li && ['done','failed','cancelled'].includes(li.dataset.state); }",

@@ -8,10 +8,8 @@
     </nav>
   </header>
   <main class="stage operations" data-operations>
-    <p id="operations-notice" class="operations-notice" data-operations-notice aria-live="polite">{% include "_operations_notice.html" %}</p>
-
     <section class="operations-section" id="operations-roots" data-operations-roots>
-      {% include "_operations_roots.html" %}
+      {% with notice = none %}{% include "_operations_roots.html" %}{% endwith %}
     </section>
 
     <section class="operations-section" data-operations-launchers>
@@ -20,17 +18,17 @@
       <div class="operations-launchers">
         {% for one in launchers %}
         <button type="button" data-launch="{{ one.kind }}"
-                hx-post="/operations/jobs/{{ one.kind }}" hx-target="#operations-notice" hx-swap="innerHTML">{{ one.label }}</button>
+                hx-post="/operations/jobs/{{ one.kind }}" hx-target="#shell-notice" hx-swap="innerHTML">{{ one.label }}</button>
         {% endfor %}
       </div>
     </section>
 
     <section class="operations-section" id="operations-settings" data-operations-settings>
-      {% include "_operations_settings.html" %}
+      {% with notice = none %}{% include "_operations_settings.html" %}{% endwith %}
     </section>
 
     <section class="operations-section" id="operations-clusterings" data-operations-clusterings>
-      {% include "_operations_clusterings.html" %}
+      {% with notice = none %}{% include "_operations_clusterings.html" %}{% endwith %}
     </section>
   </main>
 {% endblock %}

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import pathlib
 import sqlite3
@@ -74,8 +75,11 @@ from sg_web import (
 )
 from sg_web import worker as worker_module
 from sg_web.presenting import VARIES, wants_json
+from sg_web.submitting import announce as _announce
 from sg_web.submitting import nudge as _nudge
 from sg_web.submitting import submitted as _submitted
+
+_logger = logging.getLogger(__name__)
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -721,8 +725,12 @@ def cancel_job(state: State, job_id: int) -> dict:
     try:
         jobs.cancel(conn, job_id)
         conn.commit()
+        # The request changed the row (cancel_requested), so the request
+        # speaks: a subscriber sees "cancelling" now, not at the worker's
+        # next item -- which never comes while the worker is off.
+        told = _announce(state, conn, job_id)
         _nudge(state)
-        return jobs.snapshot(conn, job_id)
+        return told
     finally:
         connect.close(conn)
 
@@ -762,17 +770,30 @@ async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -
     as_html = socket.query_params.get("as") == "html"
     await socket.accept()
     async with channels.start_subscription("jobs") as subscriber:
-        rows = await to_thread.run_sync(_active_jobs_of, state.db_path)
         if as_html:
             engine = socket.app.template_engine
-            seen = {int(row["id"]) for row in rows}
-            await socket.send_text(activity.render_list(engine, [activity.row_view(row) for row in rows]))
+            listed = await to_thread.run_sync(activity.rows, state.db_path)
+            seen = {int(row["id"]) for row in listed if not row["settled"]}
+            await socket.send_text(activity.render_list(engine, listed))
 
-            async def relay(raw: bytes | str) -> None:
-                await socket.send_text(activity.render_delta(engine, json.loads(raw), seen))
+            async def relay(raw: bytes) -> None:
+                """One delta rendered and sent. A render that fails is a
+                defect in the fragment, not in the feed: it is logged
+                whole, the socket is closed 1011 so the extension
+                reconnects and re-reads the rows (bigskysoftware/
+                htmx-extensions@1358232 src/ws/ws.js onclose: 1011 retries),
+                and the error propagates -- never a silent dead task."""
+                try:
+                    frame = activity.render_delta(engine, json.loads(raw), seen)
+                except Exception:
+                    _logger.exception("activity fragment failed to render for delta %r", raw)
+                    await socket.close(code=1011, reason="activity render failed")
+                    raise
+                await socket.send_text(frame)
 
             deliver = relay
         else:
+            rows = await to_thread.run_sync(_active_jobs_of, state.db_path)
             await socket.send_json({"type": "snapshot", "jobs": rows})
             deliver = socket.send_text
         async with subscriber.run_in_background(deliver):
@@ -854,6 +875,31 @@ def choose_primary(state: State) -> dict:
         return {"primary_run": chosen}
     finally:
         connect.close(conn)
+
+
+def _template_engine() -> JinjaTemplateEngine:
+    """The ONE Jinja environment every page renders with.
+
+    StrictUndefined: a template that names a field the view did not
+    supply explodes at render, instead of printing an empty string and
+    shipping "You introduced ." to a screen. Autoescape: every value a
+    template prints is evidence (file names, prompt text), never trusted
+    markup. Litestar's engine wraps the environment and registers its own
+    callables on it (litestar-org/litestar@v2.24.0 litestar/plugins/
+    jinja.py:37-60, `from_environment`); the activity Module adds its
+    global here, before any template loads (pallets/jinja@3.1.6
+    docs/api.rst "The Global Namespace").
+    """
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+    environment = Environment(
+        loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
+        undefined=StrictUndefined,
+        autoescape=True,
+    )
+    engine = JinjaTemplateEngine.from_environment(environment)
+    activity.register(engine)
+    return engine
 
 
 def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
@@ -1037,14 +1083,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             ),
         ],
         plugins=[channels, _WorkerPlugin()],
-        template_config=TemplateConfig(
-            directory=pathlib.Path(__file__).resolve().parent / "templates",
-            engine=JinjaTemplateEngine,
-            # The shell's `{{ activity() }}` (templates/base.html): the
-            # activity Module installs itself on the one Jinja environment
-            # (litestar-org/litestar@v2.24.0 litestar/template/config.py:46-51).
-            engine_callback=activity.register,
-        ),
+        template_config=TemplateConfig(instance=_template_engine()),
     )
     app.state.home = str(base)
     app.state.db_path = str(where)

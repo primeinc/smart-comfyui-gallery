@@ -33,7 +33,7 @@ from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, naming, pages, resultset, settings
 from sg_web import home
-from sg_web.presenting import VARIES, presented, wants_json
+from sg_web.presenting import presented, presented_page, wants_json
 
 
 def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy: bool) -> dict:
@@ -85,10 +85,7 @@ def people_index(state: State, request: Request) -> Template | Response:
         ]
     finally:
         connect.close(conn)
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
-        return Template(template_name="people.html", context={"people": told}, headers=VARIES)
-    return Response(told, headers=VARIES)
+    return presented_page(request, told, page="people.html", context={"people": told})
 
 
 @get("/p/{slug:str}", sync_to_thread=True)

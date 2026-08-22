@@ -17,20 +17,24 @@ questions about media, this page runs the library.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import pathlib
 import time
 from collections.abc import Callable
 
-from litestar import Router, get, post
+from litestar import Request, Router, get, post
 from litestar.datastructures import State
-from litestar.exceptions import ClientException, NotFoundException
+from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.params import FromPath, URLEncodedBody
 from litestar.response import Template
+from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
 from db import connect, derived, library, pages, prompts, runner, scan, settings
 from sg_web import home
 from sg_web.presenting import VARIES
 from sg_web.submitting import submitted
+
+_logger = logging.getLogger(__name__)
 
 Launcher = Callable[[State, object], list[int]]
 
@@ -144,7 +148,7 @@ def launch(state: State, kind: FromPath[str]) -> Template:
         connect.close(conn)
     queued = ", ".join(f"#{job['id']}" for job in told)
     notice = f"{label}: queued {queued}" if told else f"{label}: nothing to do"
-    return Template(template_name="_operations_notice.html", context={"notice": notice}, headers=VARIES)
+    return Template(template_name="_operations_notice.html", context={"notice": notice, "error": None}, headers=VARIES)
 
 
 @dataclasses.dataclass
@@ -237,7 +241,37 @@ def choose_primary(state: State) -> Template:
     )
 
 
+def refused(request: Request, exc: HTTPException) -> Template:
+    """A refusal, rendered where the person is looking: the shell notice,
+    carrying the refusal's own status. htmx swaps 4xx/5xx into
+    #shell-notice by the shell's response-handling config
+    (templates/base.html), so the reason lands on screen instead of in
+    the console. The status is the exception's -- a 400 stays a 400
+    (litestar-org/litestar@v2.24.0 docs/usage/exceptions.rst "Exception
+    handling layers": a Router-level handler overrides the app's JSON one
+    for this layer only)."""
+    return Template(
+        template_name="_operations_notice.html",
+        context={"error": exc.detail, "notice": None},
+        status_code=exc.status_code,
+        headers=VARIES,
+    )
+
+
+def failed(request: Request, exc: Exception) -> Template:
+    """An unexpected error on an operations form: logged whole, shown as
+    the 500 it is, never swallowed into a blank notice."""
+    _logger.error("operations request %s %s failed", request.method, request.url.path, exc_info=exc)
+    return Template(
+        template_name="_operations_notice.html",
+        context={"error": f"internal error: {exc}", "notice": None},
+        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+        headers=VARIES,
+    )
+
+
 router = Router(
     path="/operations",
     route_handlers=[operations_page, launch, add_root, scan_root, change_setting, choose_primary],
+    exception_handlers={HTTPException: refused, Exception: failed},
 )

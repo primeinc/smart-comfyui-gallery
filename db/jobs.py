@@ -315,10 +315,27 @@ def snapshot(conn, job_id: int) -> dict:
     return told
 
 
+#: What a live list shows of a job, active or settled: one column list so
+#: `active` and `recent` rows are the same shape to a renderer.
+_LISTED = "id, kind, state, cancel_requested, total, done_count, created_at, finished_at"
+
+
 def active(conn) -> list[dict]:
+    """Every job still owed work, oldest first: what a subscriber is sent
+    before any delta, and what a page renders from cold."""
+    cursor = conn.execute(f"SELECT {_LISTED} FROM job WHERE state IN ('queued','running') ORDER BY created_at")
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+def recent(conn, limit: int = 12) -> list[dict]:
+    """The last `limit` settled jobs, newest first -- so a page opened
+    after a sweep finished shows the same rows a page that watched it
+    does. Walks the primary key backwards and stops at `limit`: no sort
+    of the table, however long the history grows."""
     cursor = conn.execute(
-        "SELECT id, kind, state, total, done_count, created_at FROM job"
-        " WHERE state IN ('queued','running') ORDER BY created_at"
+        f"SELECT {_LISTED} FROM job WHERE state IN ('done','failed','cancelled') ORDER BY id DESC LIMIT ?",
+        (limit,),
     )
     columns = [c[0] for c in cursor.description]
     return [dict(zip(columns, row, strict=True)) for row in cursor]

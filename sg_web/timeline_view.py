@@ -21,7 +21,7 @@ from litestar.params import Parameter
 from litestar.response import Response, Template
 
 from db import connect, facets, pages
-from sg_web.presenting import VARIES, wants_json
+from sg_web.presenting import VARIES, presented_page
 
 
 def _day_door(day: str) -> str:
@@ -154,6 +154,4 @@ def timeline(state: State, request: Request) -> Template | Response:
     finally:
         connect.close(conn)
     told = {"months": months, "days": days, "events": happenings}
-    if wants_json(request):
-        return Response(told, headers=VARIES)
-    return Template(template_name="timeline.html", context=told, headers=VARIES)
+    return presented_page(request, told, page="timeline.html")

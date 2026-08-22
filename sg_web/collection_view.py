@@ -42,7 +42,7 @@ from litestar.response import Redirect, Response, Template
 
 from db import collection_rules, collections, connect, naming, pages, resultset, settings
 from sg_web import home
-from sg_web.presenting import VARIES, wants_json
+from sg_web.presenting import presented_page, wants_json
 
 
 def view(
@@ -200,31 +200,29 @@ async def albums_index(
     thread because this coroutine shares the event loop."""
     from anyio import to_thread
 
-    accept = request.headers.get("accept", "")
-    as_browser = "text/html" in accept and "application/json" not in accept
     if shown == "archived":
         held = await to_thread.run_sync(_albums_archived, state.db_path)
-        if as_browser:
-            return Template(
-                template_name="albums.html",
-                context={"albums": [], "archived": held, "archived_count": len(held), "showing_archived": True},
-                headers=VARIES,
-            )
-        return Response(held, headers=VARIES)
-    if as_browser:
-        # The browser gets the hierarchy as authored; the flat list
-        # stays the machines' historical shape.
-        tree, retired = await to_thread.run_sync(_albums_nested, state.db_path)
-        return Template(
-            template_name="albums.html",
-            context={"albums": tree, "archived": [], "archived_count": retired, "showing_archived": False},
-            headers=VARIES,
+        return presented_page(
+            request,
+            held,
+            page="albums.html",
+            context={"albums": [], "archived": held, "archived_count": len(held), "showing_archived": True},
         )
-    told = await to_thread.run_sync(_albums_listed, state.db_path)
-    return Response(told, headers=VARIES)
+    if wants_json(request):
+        return presented_page(request, await to_thread.run_sync(_albums_listed, state.db_path), page="albums.html")
+    # The browser gets the hierarchy as authored; the flat list stays the
+    # machines' historical shape -- assembled only for the one who asked.
+    tree, retired = await to_thread.run_sync(_albums_nested, state.db_path)
+    return presented_page(
+        request,
+        tree,
+        page="albums.html",
+        context={"albums": tree, "archived": [], "archived_count": retired, "showing_archived": False},
+    )
 
 
-def _album_page(state: State, slug: str, json_wanted: bool) -> Template | Response | Redirect:
+def _album_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+    json_wanted = wants_json(request)
     conn = connect.connect(state.db_path)
     try:
         found = naming.resolve(conn, "collection", slug)
@@ -239,9 +237,7 @@ def _album_page(state: State, slug: str, json_wanted: bool) -> Template | Respon
         told = view(conn, weights, collection_id, slug, time.time(), legacy=json_wanted, manage=not json_wanted)
     finally:
         connect.close(conn)
-    if json_wanted:
-        return Response(told, headers=VARIES)
-    return Template(template_name="album.html", context={"album": told}, headers=VARIES)
+    return presented_page(request, told, page="album.html", context={"album": told})
 
 
 @get("/t/{slug:str}")
@@ -258,4 +254,4 @@ async def album_page(state: State, request: Request, slug: str) -> Template | Re
     sqlite read crosses to a thread."""
     from anyio import to_thread
 
-    return await to_thread.run_sync(_album_page, state, slug, wants_json(request))
+    return await to_thread.run_sync(_album_page, state, request, slug)

@@ -1,1 +1,3 @@
-{% if notice %}<span data-notice>{{ notice }}</span>{% endif %}
+{# Operations' answer to a form, as the shell notice's inner content: a
+   receipt, or the refusal's reason with the status it came with. #}
+{% if error is defined and error %}<span data-notice data-error>{{ error }}</span>{% elif notice is defined and notice %}<span data-notice>{{ notice }}</span>{% endif %}

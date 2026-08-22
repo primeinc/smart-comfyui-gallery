@@ -523,7 +523,6 @@ body {
 .activity { position: relative; }
 .activity summary { cursor: pointer; color: var(--ink-muted); list-style: none; }
 .activity summary::-webkit-details-marker { display: none; }
-.activity-count:empty { display: none; }
 .activity-jobs {
   position: absolute;
   right: 0;
@@ -574,13 +573,17 @@ body {
 }
 .job-cancel:hover { color: var(--danger); border-color: var(--danger); }
 
+/* --- the shell notice: where a refusal or a receipt lands ------------ */
+
+.shell-notice { margin: 0; padding: 0 16px; min-height: 1.5em; color: var(--accent); }
+.shell-notice:empty { display: none; }
+.shell-notice [data-error] { color: var(--danger); }
+
 /* --- operations: the runtime's own page ------------------------------ */
 
 .operations { display: grid; gap: 24px; max-width: 900px; }
 .operations-section h2 { margin: 0 0 8px; font-size: 15px; color: var(--ink-muted); }
 .operations-hint { color: var(--ink-muted); font-size: 13px; margin: 0 0 10px; }
-.operations-notice { min-height: 1.5em; margin: 0; color: var(--accent); }
-.operations-notice:empty { display: none; }
 .operations-roots, .operations-settings, .operations-clusterings { list-style: none; margin: 0 0 12px; padding: 0; }
 .operations-roots li, .operations-settings li, .operations-clusterings li {
   display: flex;

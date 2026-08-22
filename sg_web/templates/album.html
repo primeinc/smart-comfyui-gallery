@@ -35,7 +35,7 @@
         <label>parent
           <select name="parent">
             <option value="" {% if not album.parent %}selected{% endif %}>(top)</option>
-            {% for offered in album.parents or [] %}
+            {% for offered in album.get("parents") or [] %}
             <option value="{{ offered.slug }}" {% if offered.slug == album.parent %}selected{% endif %}>
               {{ offered.name }}{% if offered.archived %} (archived, current){% endif %}
             </option>
