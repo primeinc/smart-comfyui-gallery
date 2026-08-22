@@ -485,6 +485,23 @@ body {
   padding: 4px 6px;
 }
 
+/* the story page: frozen words beside the pictures they are about */
+.story { max-width: 900px; margin: 0 auto; display: grid; gap: 14px; }
+.story h1 { margin: 0; font-size: 26px; }
+.story-dek { margin: 0; color: var(--ink-muted); }
+.story-summary { margin: 0 0 8px; font-size: 17px; }
+.story-section { padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: grid; gap: 8px; }
+.story-section h2 { margin: 0; font-size: 16px; }
+.story-section p { margin: 0; }
+.story-heroes { list-style: none; margin: 0; padding: 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.story-heroes a { display: grid; gap: 4px; color: var(--accent); text-decoration: none; font-size: 12px; max-width: 240px; }
+.story-heroes img { width: 240px; height: 180px; object-fit: cover; border-radius: var(--radius); background: var(--ground); }
+.story-heroes span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-members { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; flex-wrap: wrap; }
+.story-members img { width: 56px; height: 56px; object-fit: cover; border-radius: 3px; background: var(--ground); display: block; }
+.story-gone { color: var(--ink-muted); font-size: 12px; border: 1px dashed var(--line); border-radius: 3px; padding: 2px 6px; }
+.story-notes { color: var(--ink-muted); }
+
 /* the timeline surface */
 .surface { margin-bottom: 16px; }
 .surface-head { display: flex; align-items: baseline; gap: 14px; }

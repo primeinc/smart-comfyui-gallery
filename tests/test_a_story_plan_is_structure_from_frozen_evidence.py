@@ -1346,7 +1346,10 @@ def test_the_page_lays_out_the_verified_render_and_escapes_evidence(planned):
             assert block["text"] in html, "the page drops nothing the JSON says"
     assert "gen_0 & 'friends'.png" not in html, "frozen evidence is text, never markup"
     assert "gen_0 &amp; &#39;friends&#39;.png" in html
-    assert html.count('href="/m/') >= 1, "a hero links through address resolution"
+    assert html.count('href="/i/') >= len(story["sections"]), "a hero links to its picture through address resolution"
+    assert html.count('src="/thumb/') >= len(story["support"]["member_refs"]), "every member is shown, not only named"
+    assert "data-story-evolution" in html
+    assert "/evolution" in html
     assert client.get("/stories/renders/424242").status_code == 404
     conn = connect.connect(client.app.state.db_path)
     try:

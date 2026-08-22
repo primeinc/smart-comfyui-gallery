@@ -157,22 +157,30 @@ def render_plan(state: State, data: RenderRequest) -> Response:
 def render_document(state: State, render_id: int, request: Request) -> Response | Template:
     """The verified render, as JSON or laid out as HTML by Accept. The
     page interprets no claim, joins no table, calls no model: every
-    hero is the FROZEN name, linked only through address resolution."""
+    hero and every member is the FROZEN name, linked to its picture only
+    through address resolution -- a member whose file has since left the
+    library keeps its name and loses its link."""
     conn = connect.connect(state.db_path, read_only=True)
     try:
         try:
-            story, members = rendering.load_render_with_members(conn, render_id)
+            story, members, plan_id = rendering.load_render_with_members(conn, render_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         except ValueError as corrupt:
             raise ClientException(str(corrupt), status_code=409) from corrupt
         if wants_json(request):
             return Response(story, headers=VARIES)
-        heroes = {}
-        for section in story["sections"]:
-            for ref in section["hero_refs"]:
-                held = naming.by_uuid(conn, members[ref]["file_uuid"])
-                heroes[ref] = {"name": members[ref]["name"], "slug": held[1] if held and held[0] == "file" else None}
+        addressed = {}
+        for ref, member in members.items():
+            held = naming.by_uuid(conn, member["file_uuid"])
+            slug = held[1] if held and held[0] == "file" else None
+            addressed[ref] = {
+                "name": member["name"],
+                "slug": slug,
+                "page": f"/i/{slug}" if slug else None,
+                "thumbnail": f"/thumb/{slug}" if slug else None,
+                "kind": member.get("media_kind"),
+            }
     finally:
         connect.close(conn)
     # Rendered by the application's one engine (sg_web/app.py
@@ -180,7 +188,9 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
     # instead of rendering "You introduced ."; autoescape, because frozen
     # evidence is evidence, not trusted markup).
     return Template(
-        template_name="story.html", context={"story": story, "heroes": heroes, "render_id": render_id}, headers=VARIES
+        template_name="story.html",
+        context={"story": story, "members": addressed, "render_id": render_id, "plan_id": plan_id},
+        headers=VARIES,
     )
 
 

@@ -657,13 +657,14 @@ def render_plan(conn, plan_id: int, renderer: TemplateStoryRenderer, now: float)
     return RenderRef(render_id, sha, False)
 
 
-def load_render_with_members(conn, render_id: int) -> tuple[dict, dict]:
-    """The verified render and its plan's snapshot members by ref --
-    what a page needs to spell a hero's FROZEN name. The page asks here;
-    it never joins a table itself."""
-    render, snapshot = _load(conn, render_id)
+def load_render_with_members(conn, render_id: int) -> tuple[dict, dict, int]:
+    """The verified render, its plan's snapshot members by ref -- what a
+    page needs to spell a hero's FROZEN name -- and the plan's id, the
+    page's door to the evolution view. The page asks here; it never
+    joins a table itself."""
+    render, snapshot, plan_id = _load(conn, render_id)
     members = {planning._member_ref(one["ordinal"]): one for one in snapshot["members"]}
-    return render, members
+    return render, members, plan_id
 
 
 def load_render(conn, render_id: int) -> dict:
@@ -673,7 +674,7 @@ def load_render(conn, render_id: int) -> dict:
     return _load(conn, render_id)[0]
 
 
-def _load(conn, render_id: int) -> tuple[dict, dict]:
+def _load(conn, render_id: int) -> tuple[dict, dict, int]:
     row = conn.execute(
         "SELECT plan_id, document_json, document_sha256 FROM story_render WHERE id = ?", (render_id,)
     ).fetchone()
@@ -686,4 +687,4 @@ def _load(conn, render_id: int) -> tuple[dict, dict]:
     wrong = violations(render, plan, snapshot, snapshot_sha, plan_sha)
     if wrong:
         raise stories.Corrupt(f"story render {render_id} is no longer valid against its plan: {wrong}")
-    return render, snapshot
+    return render, snapshot, int(row[0])
