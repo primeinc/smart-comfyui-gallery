@@ -123,8 +123,34 @@ def test_the_surface_rule_can_fail(tmp_path):
 # --- the second batch: source-text pins and the schema contract ---------------------------
 
 
+BENT: list[pathlib.Path] = []
+
+
+@pytest.fixture(scope="module")
+def _tree(tmp_path_factory):
+    """The files the text rules read, copied once so one can be bent."""
+    here = _copy_of_tree(tmp_path_factory.mktemp("pins"))
+    assert rules.rule_adapters(here) == [], "the copy starts clean"
+    return here
+
+
+@pytest.fixture
+def tree(_tree):
+    """The copy with every bend of the previous test undone -- the bent
+    files alone are rewritten from the repository, not the whole tree."""
+    for bent in BENT:
+        relative = bent.relative_to(_tree)
+        source = rules.REPO_ROOT / relative
+        if source.exists():
+            bent.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            bent.unlink(missing_ok=True)
+    BENT.clear()
+    rules.parsed.cache_clear()
+    return _tree
+
+
 def _copy_of_tree(tmp_path):
-    """The files the text rules read, copied so one can be bent."""
     here = tmp_path / "repo"
     wanted = {
         *policy.ADAPTER_DB_VOCABULARY,
@@ -153,7 +179,16 @@ def _copy_of_tree(tmp_path):
 
 
 def _bend(path: pathlib.Path, addition: str) -> None:
-    path.write_text(path.read_text(encoding="utf-8") + addition, encoding="utf-8")
+    BENT.append(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    held = path.read_text(encoding="utf-8") if path.exists() else ""
+    path.write_text(held + addition, encoding="utf-8")
+    rules.parsed.cache_clear()
+
+
+def _rewrite(path: pathlib.Path, text: str) -> None:
+    BENT.append(path)
+    path.write_text(text, encoding="utf-8")
     rules.parsed.cache_clear()
 
 
@@ -170,46 +205,31 @@ def _bend(path: pathlib.Path, addition: str) -> None:
         ("db/param_writer.py", "Q = 'INSERT OR REPLACE INTO file_param(a) VALUES(1)'\n", "SG410"),
     ],
 )
-def test_each_text_pin_fires_on_the_shape_it_exists_for(tmp_path, relative, addition, code):
-    here = _copy_of_tree(tmp_path)
-    assert rules.rule_adapters(here) == [], "the copy starts clean"
-    target = here / relative
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if not target.exists():
-        target.write_text("", encoding="utf-8")
-    _bend(target, addition)
-    codes = {f.code for f in rules.rule_adapters(here)}
-    rules.parsed.cache_clear()
+def test_each_text_pin_fires_on_the_shape_it_exists_for(tree, relative, addition, code):
+    _bend(tree / relative, addition)
+    codes = {f.code for f in rules.rule_adapters(tree)}
     assert code in codes, codes
 
 
-def test_the_narrator_pins_fire_before_the_marker_and_on_the_signature(tmp_path):
-    here = _copy_of_tree(tmp_path)
-    rendering = here / "db" / "rendering.py"
+def test_the_narrator_pins_fire_before_the_marker_and_on_the_signature(tree):
+    rendering = tree / "db" / "rendering.py"
     head, tail = rendering.read_text(encoding="utf-8").split("# --- persistence", 1)
-    rendering.write_text(head + "\n_x = 'FROM '\n# --- persistence" + tail, encoding="utf-8")
-    rules.parsed.cache_clear()
-    assert "SG407" in {f.code for f in rules.rule_adapters(here)}
-    rendering.write_text(
+    _rewrite(rendering, head + "\n_x = 'FROM '\n# --- persistence" + tail)
+    assert "SG407" in {f.code for f in rules.rule_adapters(tree)}
+    _rewrite(
+        rendering,
         (rules.REPO_ROOT / "db" / "rendering.py")
         .read_text(encoding="utf-8")
         .replace(
             "    def render(self, snapshot: dict, plan: dict,", "    def render(self, conn, snapshot: dict, plan: dict,"
         ),
-        encoding="utf-8",
     )
-    rules.parsed.cache_clear()
-    assert "SG408" in {f.code for f in rules.rule_adapters(here)}
-    rules.parsed.cache_clear()
+    assert "SG408" in {f.code for f in rules.rule_adapters(tree)}
 
 
-def test_a_page_query_restated_elsewhere_is_seen(tmp_path):
-    here = _copy_of_tree(tmp_path)
-    pages = here / "db" / "pages.py"
-    pages.write_text('NEWEST = "SELECT id FROM file"\nONE = "SELECT 1"\n', encoding="utf-8")
-    rules.parsed.cache_clear()
-    assert "SG411" in {f.code for f in rules.rule_adapters(here)}
-    rules.parsed.cache_clear()
+def test_a_page_query_restated_elsewhere_is_seen(tree):
+    _rewrite(tree / "db" / "pages.py", 'NEWEST = "SELECT id FROM file"\nONE = "SELECT 1"\n')
+    assert "SG411" in {f.code for f in rules.rule_adapters(tree)}
 
 
 def test_the_schema_contract_holds_and_each_rule_can_fail():

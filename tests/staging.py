@@ -41,6 +41,28 @@ from litestar.testing import TestClient
 from db import connect
 from sg_web.app import build_app
 
+SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
+_MASTERS: dict[str, sqlite3.Connection] = {}
+
+
+def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
+    """An in-memory database holding the schema, foreign keys on.
+
+    executescript of the DDL is 11 ms; a backup from a master built once
+    per process is 0.5 ms (measured), and ~250 tests start from exactly
+    this. A custom `ddl` (the contract's mutation sweep) gets its own
+    master, keyed on the text."""
+    text = SCHEMA.read_text(encoding="utf-8") if ddl is None else ddl
+    master = _MASTERS.get(text)
+    if master is None:
+        master = sqlite3.connect(":memory:")
+        master.executescript(text)
+        _MASTERS[text] = master
+    conn = sqlite3.connect(":memory:")
+    master.backup(conn)
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
 
 def _listing(root: pathlib.Path) -> dict[pathlib.Path, tuple[int, int]]:
     return {

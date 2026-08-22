@@ -26,6 +26,7 @@ import sqlite3
 import pytest
 
 from db.scan import Outcome, resolve_scan
+from tests.staging import fresh_schema
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
@@ -86,10 +87,7 @@ def ddl():
 
 @pytest.fixture
 def db(ddl):
-    conn = sqlite3.connect(":memory:")
-    conn.executescript(ddl)
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return fresh_schema(ddl)
 
 
 def entity(conn, eid, kind, slug):

@@ -17,6 +17,7 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import authored, collections, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
 from db import similarity as similarity_module
+from tests.staging import fresh_schema
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -24,9 +25,7 @@ NOW = 1_700_000_000.0
 
 @pytest.fixture
 def db():
-    conn = sqlite3.connect(":memory:")
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = fresh_schema()
     yield conn
     conn.close()
 

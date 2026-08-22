@@ -19,6 +19,7 @@ from PIL import ExifTags, Image
 from PIL.TiffImagePlugin import IFDRational
 
 from db import capture, scan
+from tests.staging import fresh_schema
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -26,9 +27,7 @@ NOW = 1_700_000_000.0
 
 @pytest.fixture
 def db():
-    conn = sqlite3.connect(":memory:")
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = fresh_schema()
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
     conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,X'00000000000000000000000000000001','folder','lib')")
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'lib',0)")
