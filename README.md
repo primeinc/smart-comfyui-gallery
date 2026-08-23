@@ -27,7 +27,7 @@ First library:
 1. Open `/operations`, add a root, press **Scan**.
 2. Press the sweeps you want: **ingest** (metadata), **hash** /
    **dupes**, **faces** then **cluster**, **embed** (semantic search,
-   downloads weights once), **annotate** (a caption per picture,
+   downloads weights once), **annotate** (a caption per picture and per sampled moment of a video,
    searchable and shown on its page; downloads weights once),
    **context** then **events** (the timeline and stories).
 
@@ -66,7 +66,7 @@ Rows in the `setting` table, changed over `POST /settings/<key>` while
 the app runs; the vocabulary is `db/settings.py REGISTRY`
 (`models_dir`, `semantic_model`, `worker`, `faiss_gpu`,
 `dupe_threshold`, `dupe_dhash_verify`, `thumbnail_precache`,
-`ort_providers`). No environment variables.
+`ort_providers`, `caption_model`). No environment variables.
 
 ## Develop
 
