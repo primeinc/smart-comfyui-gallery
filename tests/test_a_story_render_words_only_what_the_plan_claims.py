@@ -163,7 +163,7 @@ def test_the_golden_render_for_a_sequenced_session():
             "version": 6,
             "profile": "memory",
             "locale": "en",
-            "policy": 6,
+            "policy": 7,
             "reads": {"snapshot": 1, "plan": 7},
         },
         "title": "5 Qwen Image Edit images from July 18, 2026",

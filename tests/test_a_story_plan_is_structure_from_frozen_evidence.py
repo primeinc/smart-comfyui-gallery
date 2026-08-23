@@ -1735,7 +1735,13 @@ def test_a_placed_member_makes_the_story_say_where():
     from db import rendering
 
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:3])]
-    lisbon = {"uuid": "a" * 32, "chain": [{"uuid": "a" * 32, "kind": "city", "name": "Lisbon"}]}
+    lisbon = {
+        "uuid": "a" * 32,
+        "chain": [
+            {"uuid": "a" * 32, "kind": "city", "name": "Lisbon"},
+            {"uuid": "b" * 32, "kind": "country", "name": "Portugal"},
+        ],
+    }
     members[0]["place"] = lisbon
     members[2]["place"] = lisbon
     document, sha = _snapshot(members)
@@ -1749,5 +1755,5 @@ def test_a_placed_member_makes_the_story_say_where():
     told = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
     assert rendering.violations(told, plan, document, sha, planning.identity(plan)[1]) == []
     words = " ".join(block["text"] for section in told["sections"] for block in section["blocks"])
-    assert "In Lisbon, by a person's word, for 2 files here." in words
+    assert "In Lisbon (Portugal), by a person's word, for 2 files here." in words, "the frozen chain is spelled"
     assert planning.validate_story_plan({**plan, "v": 6}), "v6 does not know `located`"

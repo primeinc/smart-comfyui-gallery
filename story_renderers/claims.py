@@ -360,12 +360,21 @@ def _seen(claim: dict, phase: dict, ctx: Context) -> str:
 
 def _located(claim: dict, phase: dict, ctx: Context) -> str:
     """Where the members happened, from the places they froze: one
-    place, or several named."""
-    places = claim["facts"]["places"]
+    place, or several named. The frozen chain above a place -- "Lisbon,
+    Portugal" -- is spelled from the snapshot's members, never from the
+    live library, so the words match what the evidence held."""
+    members = {_member_ref(one["ordinal"]): one for one in ctx.snapshot["members"]}
+    above: dict[str, list[str]] = {}
+    for ref in claim["evidence_refs"]:
+        member = members.get(ref.split(":", 1)[0]) or {}
+        chain = [one["name"] for one in ((member.get("place") or {}).get("chain") or [])]
+        if chain:
+            above.setdefault(chain[0], chain[1:])
+    spelled = [name + (f" ({', '.join(above[name])})" if above.get(name) else "") for name in claim["facts"]["places"]]
     n = claim["facts"]["members"]
-    if len(places) == 1:
-        return f"In {places[0]}, by a person's word, for {formatting.count(n, 'file')} here."
-    return f"In {formatting.join_names(places)}, by a person's word, across {formatting.count(n, 'file')} here."
+    if len(spelled) == 1:
+        return f"In {spelled[0]}, by a person's word, for {formatting.count(n, 'file')} here."
+    return f"In {formatting.join_names(spelled)}, by a person's word, across {formatting.count(n, 'file')} here."
 
 
 #: The whole vocabulary. Resolution is by this mapping and nothing else.
