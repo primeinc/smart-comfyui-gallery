@@ -310,7 +310,8 @@ def test_the_whole_pipeline_answers_for(suffix, tmp_path):
         # viewpoints, not motion, which is why ingest consults the decoder
         # only inside the possibly-animated set.
         if suffix in ingest._POSSIBLY_ANIMATED:
-            moving = decode.is_animated(decode.open_still(path))
+            with decode.open_still(path) as opened:
+                moving = decode.is_animated(opened)
             assert stored_kind == ("animated_image" if moving else "image"), (
                 f"{suffix}: decoded is_animated={moving} but the row says {stored_kind}"
             )
@@ -351,9 +352,9 @@ def test_a_dng_develops_through_the_libraw_door(tmp_path):
     routed by suffix, demosaicked by LibRaw into a color picture."""
     path = tmp_path / "shot.dng"
     _dng(path)
-    picture = decode.open_still(path)
-    assert picture.size == SIZE
-    assert picture.mode == "RGB", "LibRaw demosaics a CFA into color"
+    with decode.open_still(path) as picture:
+        assert picture.size == SIZE
+        assert picture.mode == "RGB", "LibRaw demosaics a CFA into color"
 
 
 def _library_of(root):

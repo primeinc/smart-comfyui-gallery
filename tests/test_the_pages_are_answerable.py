@@ -24,6 +24,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import authored, collections, context, ingest, lineage, naming, pages, scan
+from tests import staging
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -77,6 +78,7 @@ def _master(tmp_path_factory):
 
     def build() -> None:
         held.update(_build(tmp_path_factory.mktemp("pages")))
+        staging.keep(held["conn"])  # a rebuild happens inside a test; the master outlives it
         held["listing"] = _listing(held["root"])
 
     build()

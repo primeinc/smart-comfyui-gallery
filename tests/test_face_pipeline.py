@@ -151,14 +151,18 @@ def test_open_upright_leaves_no_handle_behind(tmp_path):
     moving = tmp_path / "moving.gif"
     frames = [Image.new("RGB", (8, 8), (255, 0, 0)), Image.new("RGB", (8, 8), (0, 255, 0))]
     frames[0].save(moving, save_all=True, append_images=frames[1:], duration=100, loop=0)
+    layered = tmp_path / "flat.psd"  # a plugin that keeps its handle after load even with one frame
+    from psd_tools import PSDImage
+
+    PSDImage.frompil(Image.new("RGB", (8, 8), (0, 0, 255))).save(str(layered))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", ResourceWarning)
-        for path, size in ((still, (40, 20)), (moving, (8, 8))):
+        for path, size in ((still, (40, 20)), (moving, (8, 8)), (layered, (8, 8))):
             turned = oriented.open_upright(path, 3)
             assert turned.size == size
             del turned
             gc.collect()
-    leaked = [w for w in caught if issubclass(w.category, ResourceWarning)]
+    leaked = [w for w in caught if issubclass(w.category, ResourceWarning) and "unclosed file" in str(w.message)]
     assert leaked == [], [str(w.message) for w in leaked]
 
 

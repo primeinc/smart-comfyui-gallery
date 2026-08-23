@@ -80,6 +80,13 @@ def rule_schema(ddl: str | None = None) -> list[Finding]:
     stated delete action."""
     text = ddl if ddl is not None else SCHEMA.read_text(encoding="utf-8")
     conn = built(text)
+    try:
+        return _rule_schema(conn, text)
+    finally:
+        conn.close()
+
+
+def _rule_schema(conn: sqlite3.Connection, text: str) -> list[Finding]:
     found: list[Finding] = []
     at = SCHEMA
 
