@@ -132,7 +132,11 @@ ADAPTER_MUST_CALL: dict[str, frozenset[str]] = {
             "replace_rule",
             "convert_to_smart",
             "convert_to_listed",
-            "view",
+            # The after-state a write hands back. It used to be `view` --
+            # the whole management document, assembled and thrown away --
+            # and it is now the address and the revision, still built by
+            # the module that owns the collection's representations.
+            "write_answer",
         }
     ),
     "sg_web/media_authored.py": frozenset({"set_favorite", "set_rating", "set_membership", "set_place", "media_state"}),
@@ -298,12 +302,6 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/artifact_view.py:models_index",
         "sg_web/artifact_view.py:workflow_page",
         "sg_web/artifact_view.py:workflows_index",
-        "sg_web/collection_authoring.py:convert_collection",
-        "sg_web/collection_authoring.py:edit_definition",
-        "sg_web/collection_authoring.py:make_album",
-        "sg_web/collection_authoring.py:make_smart",
-        "sg_web/collection_authoring.py:replace_rule",
-        "sg_web/collection_view.py:album_page",
         "sg_web/curating.py:bulk_favorite",
         "sg_web/curating.py:bulk_membership",
         "sg_web/curating.py:bulk_place",

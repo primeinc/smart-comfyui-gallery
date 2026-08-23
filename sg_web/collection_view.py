@@ -31,10 +31,11 @@ among the nodes. `?state=archived` is the management shelf.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 import time
 import urllib.parse
-from typing import Annotated
+from typing import Annotated, Literal
 
 from litestar import MediaType, Request, get
 from litestar.datastructures import State
@@ -44,29 +45,235 @@ from litestar.params import FromPath, QueryParameter
 from litestar.response import Redirect, Response, Template
 
 from db import collection_rules, collections, connect, facets, naming, pages, resultset, settings
-from sg_web import home
+from sg_web import gallery, home, media_view
 from sg_web.presenting import presented_page, wants_json
 from sg_web.wire import Wire
 
 
-def view(
-    conn, models_dir: str, collection_id: int, slug: str, now: float, *, legacy: bool, manage: bool = False
-) -> dict:
-    """The CollectionView, assembled inside ONE database snapshot. The
-    ResultSet page is the FIRST read inside it -- its currency read
+class RuleView(Wire):
+    """What was written down about a rule, kept as provenance whether or
+    not it ever ran (db/collection_rules.py provenance). Both halves are
+    nullable columns: a rule minted from a question carries no prose, and
+    preserved prose carries no typed rule."""
+
+    sql: str | None
+    nl: str | None
+
+
+class ChildCollection(Wire):
+    """One level down the authored hierarchy."""
+
+    slug: str
+    name: str
+    kind: collections.CollectionKind
+    pictures: int
+
+
+class FiledPicture(Wire):
+    """A member as the legacy machine adapter names it."""
+
+    slug: str
+    name: str
+
+
+class PlaceInCollection(Wire):
+    """Where this collection's pictures happened, with the question that
+    narrows the collection to that place."""
+
+    id: int
+    slug: str
+    name: str
+    kind: media_view.PlaceKind
+    pictures: int
+    qs: str
+
+
+class GalleryPage(Wire):
+    """One ResultSet page of the collection's membership."""
+
+    items: list[gallery.ResultItem]
+    total: int
+    pages: int
+    qs: str
+
+
+class _Collection(Wire):
+    """What every collection says about itself, whatever its kind and
+    whatever its rule did. Never served: the five documents below are the
+    shapes that cross."""
+
+    slug: str
+    name: str
+    color: str | None
+    description: str | None
+    parent: str | None
+    archived: bool
+    definition_rev: int
+    updated_at: float
+    updated_by: str | None
+    collections: list[ChildCollection]
+    #: the legacy adapter's flat member list, present whether or not a
+    #: rule ever ran -- these are the rows FILED in the collection
+    files: list[FiledPicture]
+
+
+class _Answered(_Collection):
+    """A membership that produced an answer, so there are facts about it."""
+
+    count: int
+    first_seen: float | None
+    last_seen: float | None
+    timeline: str
+    places: list[PlaceInCollection]
+    gallery: GalleryPage
+
+
+class _Unanswered(_Collection):
+    """A rule that produced no answer.
+
+    `count` and `gallery` are null rather than absent: a client asking how
+    many members there are gets an answer, and the answer is "no number",
+    not a missing key. The span, the timeline link and the places describe
+    an answer, and there is none, so the variants below do not declare
+    them at all -- reaching for `timeline` on a broken rule is a type
+    error in the browser rather than undefined at runtime.
+    """
+
+    count: None = None
+    gallery: None = None
+
+
+class ListedCollection(_Answered):
+    """An album or a flag: members are filed by hand, so the membership
+    always evaluates and there is no rule to have a state."""
+
+    kind: Literal["album", "flag"]
+
+
+class SmartEvaluated(_Answered):
+    """A typed rule that ran: a listed collection plus the rule and its
+    condition, and nothing to explain."""
+
+    kind: Literal["smart"]
+    state: Literal["evaluated"]
+    rule: RuleView | None
+
+
+class SmartUnevaluated(_Unanswered):
+    """Preserved prose, or nothing -- never run, so nothing to explain."""
+
+    kind: Literal["smart"]
+    state: Literal["unevaluated"]
+    rule: RuleView | None
+
+
+class SmartBroken(_Unanswered):
+    """A rule naming an entity that is gone. It says which."""
+
+    kind: Literal["smart"]
+    state: Literal["broken"]
+    rule: RuleView | None
+    reason: str
+
+
+class SmartUnavailable(_Unanswered):
+    """A semantic rule nothing can answer right now. It says why."""
+
+    kind: Literal["smart"]
+    state: Literal["unavailable"]
+    rule: RuleView | None
+    reason: str
+
+
+#: One collection at its address.
+#:
+#: A plain union, not `Field(discriminator=...)`: litestar builds a union's
+#: schema itself and never asks pydantic for it
+#: (litestar/_openapi/schema_generation/schema.py for_union_field), so the
+#: OpenAPI `discriminator` object would be dropped and the annotation would
+#: only be lying about what the document says. It is not needed anyway --
+#: every variant states `kind`, and the smart four state `state`, as
+#: single-valued enums, which is what the browser narrows on.
+CollectionDocument = ListedCollection | SmartEvaluated | SmartUnevaluated | SmartBroken | SmartUnavailable
+
+
+class CollectionWriteAnswer(Wire):
+    """What a lifecycle write answers.
+
+    The address to go to and the definition's next concurrency token, and
+    that is the whole contract. Writes used to answer with the management
+    view -- a ResultSet page, the spans, the places and every legal parent
+    move, assembled and thrown away, because the browser reads `slug` out
+    of it and nothing else.
+    """
+
+    slug: str
+    definition_rev: int
+
+
+@dataclasses.dataclass(frozen=True)
+class Answer:
+    """The facts a membership that evaluated has.
+
+    Internal, and not the `_Answered` wire base: that one carries every
+    common field too, and building it here would mean assembling the whole
+    document twice -- once to hold, once to splat into the variant.
+    """
+
+    count: int
+    first_seen: float | None
+    last_seen: float | None
+    timeline: str
+    places: list[PlaceInCollection]
+    gallery: GalleryPage
+
+
+@dataclasses.dataclass(frozen=True)
+class Facts:
+    """Everything one snapshot read about a collection.
+
+    Internal, and deliberately not a Wire: it is the union of what the two
+    audiences need and neither is told all of it. `files` and `parents`
+    each cost a statement, so the caller says which it wants rather than
+    paying for both.
+    """
+
+    slug: str
+    name: str
+    kind: str
+    color: str | None
+    description: str | None
+    parent: str | None
+    archived: bool
+    definition_rev: int
+    updated_at: float
+    updated_by: str | None
+    children: list[ChildCollection]
+    rule: RuleView | None
+    state: str
+    reason: str | None
+    answer: Answer | None
+    files: list[FiledPicture]
+    parents: list[dict]
+
+
+def facts(conn, models_dir: str, collection_id: int, slug: str, now: float, *, files: bool, parents: bool) -> Facts:
+    """Read one collection inside ONE database snapshot.
+
+    The ResultSet page is the FIRST read inside it -- its currency read
     precedes the snapshot pin -- and a rule-defined collection is the
-    ResultSet's own typed refusal, decided under the same snapshot the
-    card is then read from: a kind converted mid-request answers wholly
-    as one generation, never a static header over a smart body. (An
-    empty collection CAN legally convert; the schema only refuses
-    converting one that holds filed members.)
+    ResultSet's own typed refusal, decided under the same snapshot the card
+    is then read from: a kind converted mid-request answers wholly as one
+    generation, never a static header over a smart body. (An empty
+    collection CAN legally convert; the schema only refuses converting one
+    that holds filed members.)
 
-    `manage` adds the parent picker's choices -- every active collection
-    this one may legally move under -- so the browser never offers a
-    move the database will refuse.
-
-    The unbounded legacy `files` list is the machine Adapter's shape
-    only, exactly as on the person and folder addresses."""
+    `parents` reads the parent picker's choices -- every active collection
+    this one may legally move under -- so the browser never offers a move
+    the database will refuse. `files` reads the legacy adapter's flat
+    member list, the machine document's shape only, exactly as on the
+    person and folder addresses.
+    """
     with resultset.snapshot(conn):
         grid = None
         rule_state, reason = "evaluated", None
@@ -86,62 +293,203 @@ def view(
             addressed = naming.entity_slug(conn, parent_id)
             if addressed is not None:
                 parent = addressed[1]
-        told = {
-            "slug": slug,
-            "name": name,
-            "kind": kind,
-            "color": color,
-            "description": description,
-            "parent": parent,
-            "archived": archived_at is not None,
-            "definition_rev": definition_rev,
-            "updated_at": updated_at,
-            "updated_by": updated_by,
-            "collections": [
-                {"slug": s, "name": n, "kind": k, "pictures": p}
-                for _, s, n, k, p in pages.collection_children(conn, collection_id)
-            ],
-        }
+        rule = None
         if kind == "smart":
             held = collection_rules.provenance(conn, collection_id)
-            told["rule"] = None if held is None else {"sql": held["sql"], "nl": held["nl"]}
-            told["state"] = rule_state
-            if reason is not None:
-                told["reason"] = reason
-        if grid is None:
-            told["count"] = None
-            told["gallery"] = None
-        else:
-            told["count"] = grid["total"]
-            told["first_seen"], told["last_seen"] = pages.collection_spans(conn).get(slug, (None, None))
-            told["timeline"] = "/timeline?" + urllib.parse.urlencode([("album", slug)])
-            told["places"] = [
-                {
-                    "id": place_id,
-                    "slug": place_slug,
-                    "name": name,
-                    "kind": kind,
-                    "pictures": int(pictures),
-                    "qs": urllib.parse.urlencode(
-                        [("album", slug), ("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]
-                    ),
-                }
-                for place_id, place_slug, name, kind, pictures in pages.collection_places(conn, collection_id)
-            ]
-            told["gallery"] = {
-                "items": grid["items"],
-                "total": grid["total"],
-                "pages": grid["pages"],
-                "qs": grid["qs"],
-            }
-        if manage:
+            rule = None if held is None else RuleView(sql=held["sql"], nl=held["nl"])
+        filed = [FiledPicture(slug=s, name=n) for s, n in pages.album_files(conn, collection_id)] if files else []
+        children = [
+            ChildCollection(slug=s, name=n, kind=k, pictures=p)
+            for _, s, n, k, p in pages.collection_children(conn, collection_id)
+        ]
+        answer = None
+        if grid is not None:
+            first_seen, last_seen = pages.collection_spans(conn).get(slug, (None, None))
+            answer = Answer(
+                count=grid["total"],
+                first_seen=first_seen,
+                last_seen=last_seen,
+                timeline="/timeline?" + urllib.parse.urlencode([("album", slug)]),
+                places=[
+                    PlaceInCollection(
+                        id=place_id,
+                        slug=place_slug,
+                        name=place_name,
+                        kind=place_kind,
+                        pictures=int(pictures),
+                        qs=urllib.parse.urlencode(
+                            [("album", slug), ("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]
+                        ),
+                    )
+                    for place_id, place_slug, place_name, place_kind, pictures in pages.collection_places(
+                        conn, collection_id
+                    )
+                ],
+                gallery=GalleryPage(
+                    items=gallery.result_items(grid["items"]),
+                    total=grid["total"],
+                    pages=grid["pages"],
+                    qs=grid["qs"],
+                ),
+            )
+        offered: list[dict] = []
+        if parents:
             allowed = collections.eligible_parents(conn, collection_id)
-            told["parents"] = [
+            offered = [
                 {"slug": s, "name": n, "archived": bool(a)} for s, n, a in pages.collections_named(conn, allowed)
             ]
-        if legacy:
-            told["files"] = [{"slug": s, "name": n} for s, n in pages.album_files(conn, collection_id)]
-        return told
+        return Facts(
+            slug=slug,
+            name=name,
+            kind=kind,
+            color=color,
+            description=description,
+            parent=parent,
+            archived=archived_at is not None,
+            definition_rev=definition_rev,
+            updated_at=updated_at,
+            updated_by=updated_by,
+            children=children,
+            rule=rule,
+            state=rule_state,
+            reason=reason,
+            answer=answer,
+            files=filed,
+            parents=offered,
+        )
+
+
+def document(held: Facts) -> CollectionDocument:
+    """What a machine is told: the variant its kind and its rule's state
+    make it, carrying no field that variant cannot have.
+
+    Every field is named at every variant. A dict splatted into these
+    constructors would read shorter and check nothing -- neither pyright
+    nor ty can follow a heterogeneous mapping into a typed signature, and
+    this function's whole job is to be the place where the facts become a
+    contract.
+    """
+    answer = held.answer
+    if answer is not None and held.kind == "smart":
+        return SmartEvaluated(
+            kind="smart",
+            state="evaluated",
+            rule=held.rule,
+            slug=held.slug,
+            name=held.name,
+            color=held.color,
+            description=held.description,
+            parent=held.parent,
+            archived=held.archived,
+            definition_rev=held.definition_rev,
+            updated_at=held.updated_at,
+            updated_by=held.updated_by,
+            collections=held.children,
+            files=held.files,
+            count=answer.count,
+            first_seen=answer.first_seen,
+            last_seen=answer.last_seen,
+            timeline=answer.timeline,
+            places=answer.places,
+            gallery=answer.gallery,
+        )
+    if answer is not None:
+        return ListedCollection(
+            kind="flag" if held.kind == "flag" else "album",
+            slug=held.slug,
+            name=held.name,
+            color=held.color,
+            description=held.description,
+            parent=held.parent,
+            archived=held.archived,
+            definition_rev=held.definition_rev,
+            updated_at=held.updated_at,
+            updated_by=held.updated_by,
+            collections=held.children,
+            files=held.files,
+            count=answer.count,
+            first_seen=answer.first_seen,
+            last_seen=answer.last_seen,
+            timeline=answer.timeline,
+            places=answer.places,
+            gallery=answer.gallery,
+        )
+    if held.state == "broken":
+        return SmartBroken(
+            kind="smart",
+            state="broken",
+            rule=held.rule,
+            reason=held.reason or "",
+            slug=held.slug,
+            name=held.name,
+            color=held.color,
+            description=held.description,
+            parent=held.parent,
+            archived=held.archived,
+            definition_rev=held.definition_rev,
+            updated_at=held.updated_at,
+            updated_by=held.updated_by,
+            collections=held.children,
+            files=held.files,
+        )
+    if held.state == "unavailable":
+        return SmartUnavailable(
+            kind="smart",
+            state="unavailable",
+            rule=held.rule,
+            reason=held.reason or "",
+            slug=held.slug,
+            name=held.name,
+            color=held.color,
+            description=held.description,
+            parent=held.parent,
+            archived=held.archived,
+            definition_rev=held.definition_rev,
+            updated_at=held.updated_at,
+            updated_by=held.updated_by,
+            collections=held.children,
+            files=held.files,
+        )
+    return SmartUnevaluated(
+        kind="smart",
+        state="unevaluated",
+        rule=held.rule,
+        slug=held.slug,
+        name=held.name,
+        color=held.color,
+        description=held.description,
+        parent=held.parent,
+        archived=held.archived,
+        definition_rev=held.definition_rev,
+        updated_at=held.updated_at,
+        updated_by=held.updated_by,
+        collections=held.children,
+        files=held.files,
+    )
+
+
+def write_answer(conn, collection_id: int) -> CollectionWriteAnswer:
+    """What a lifecycle write hands back, read after the commit.
+
+    Here rather than in the authoring adapter because this module owns the
+    collection's representations, and all three of them: an adapter that
+    assembled one itself would be reading db.pages to do it.
+    """
+    live = naming.entity_slug(conn, collection_id)
+    definition_rev = pages.collection_card(conn, collection_id)[6]
+    return CollectionWriteAnswer(slug=live[1] if live else "", definition_rev=definition_rev)
+
+
+def context(held: Facts) -> dict:
+    """What album.html is given.
+
+    The document a machine gets, plus the parent picker's choices -- the
+    one audience whose shape is not a wire contract, because a template
+    reads what it reads and no client is typed against it.
+    """
+    told = document(held).model_dump(mode="json")
+    told["parents"] = held.parents
+    return told
 
 
 class CollectionListed(Wire):
@@ -308,14 +656,38 @@ def _album_page(state: State, request: Request, slug: str) -> Template | Respons
             if live is not None:
                 return Redirect(path=f"/t/{live[1]}", status_code=301)
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        told = view(conn, weights, collection_id, slug, time.time(), legacy=json_wanted, manage=not json_wanted)
+        # Each audience pays for what it reads and nothing else: the
+        # machine document carries the filed members, the page carries the
+        # moves the database would allow.
+        held = facts(
+            conn,
+            weights,
+            collection_id,
+            slug,
+            time.time(),
+            files=json_wanted,
+            parents=not json_wanted,
+        )
+        told = document(held) if json_wanted else context(held)
     finally:
         connect.close(conn)
     return presented_page(request, told, page="album.html", context={"album": told})
 
 
-@get("/t/{slug:str}")
-async def album_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
+@get(
+    "/t/{slug:str}",
+    responses={
+        200: ResponseSpec(
+            data_container=CollectionDocument,
+            description="The collection: a listed one, or a smart one in the state its rule reached",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+)
+async def album_page(
+    state: State, request: Request, slug: FromPath[str]
+) -> Template | Response[CollectionDocument] | Redirect:
     """One collection at its address, presented for whoever is asking. A
     retired slug redirects to the live one. The definition's concurrency
     token is `definition_rev` in the body -- deliberately NOT an ETag:

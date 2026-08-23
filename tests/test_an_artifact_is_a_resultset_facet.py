@@ -222,7 +222,8 @@ def test_an_unknown_artifact_refuses_loudly(recipes):
 def test_a_saved_artifact_view_is_a_rule_by_uuid(recipes):
     made = recipes.post("/albums/smart", json={"name": "Grainy", "artifact": "lora-filmgrain"})
     assert made.status_code == 201, made.text
-    assert [row["slug"] for row in made.json()["gallery"]["items"]] == ["pic-1", "pic-0"]
+    saved = recipes.get(f"/t/{made.json()['slug']}", headers={"accept": "application/json"}).json()
+    assert [row["slug"] for row in saved["gallery"]["items"]] == ["pic-1", "pic-0"]
 
     conn = connect.connect(recipes.app.state.db_path)
     try:
@@ -382,7 +383,8 @@ def test_a_healed_question_saves_the_same_identity(recipes):
     replaced = recipes.put("/t/grainy/rule", json={"artifact": "lora-filmgrain", "rating_min": 4, "expected_rev": 1})
     assert replaced.status_code == 200, replaced.text
     assert stored() == lora_uuid.hex(), "replacing through the retired spelling forgot the healing"
-    assert [row["slug"] for row in replaced.json()["gallery"]["items"]] == ["pic-1"]
+    after = recipes.get("/t/grainy", headers={"accept": "application/json"}).json()
+    assert [row["slug"] for row in after["gallery"]["items"]] == ["pic-1"]
 
 
 # --- reuse, not implementation ----------------------------------------------

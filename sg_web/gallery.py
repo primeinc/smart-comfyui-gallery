@@ -269,7 +269,7 @@ def rail_peek(
             last_ordinal=told["last_ordinal"],
             currency=told["currency"],
             answer=told["answer"],
-            items=_result_items(told["items"]),
+            items=result_items(told["items"]),
         )
     finally:
         connect.close(conn)
@@ -296,7 +296,7 @@ class ResultItem(Wire):
     ordinal: int
 
 
-def _result_items(rows: list[dict]) -> list[ResultItem]:
+def result_items(rows: list[dict]) -> list[ResultItem]:
     return [
         ResultItem(
             id=row["id"],

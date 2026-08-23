@@ -1586,6 +1586,14 @@ export interface components {
             items: string[];
             value?: number | null;
         };
+        /** ChildCollection */
+        ChildCollection: {
+            slug: string;
+            name: string;
+            /** @enum {string} */
+            kind: "album" | "flag" | "smart";
+            pictures: number;
+        };
         /** CollectionChoice */
         CollectionChoice: {
             slug: string;
@@ -1606,6 +1614,11 @@ export interface components {
         CollectionSummary: {
             slug: string;
             name: string;
+        };
+        /** CollectionWriteAnswer */
+        CollectionWriteAnswer: {
+            slug: string;
+            definition_rev: number;
         };
         /** DesiredFlag */
         DesiredFlag: {
@@ -1635,9 +1648,21 @@ export interface components {
             /** @default false */
             everything: boolean;
         };
+        /** FiledPicture */
+        FiledPicture: {
+            slug: string;
+            name: string;
+        };
         /** FreezeRequest */
         FreezeRequest: {
             event_id: number;
+        };
+        /** GalleryPage */
+        GalleryPage: {
+            items: components["schemas"]["ResultItem"][];
+            total: number;
+            pages: number;
+            qs: string;
         };
         /** JobListed */
         JobListed: {
@@ -1670,6 +1695,28 @@ export interface components {
             error: string | null;
             started_at: number | null;
             failed_count: number;
+        };
+        /** ListedCollection */
+        ListedCollection: {
+            slug: string;
+            name: string;
+            color: string | null;
+            description: string | null;
+            parent: string | null;
+            archived: boolean;
+            definition_rev: number;
+            updated_at: number;
+            updated_by: string | null;
+            collections: components["schemas"]["ChildCollection"][];
+            files: components["schemas"]["FiledPicture"][];
+            count: number;
+            first_seen: number | null;
+            last_seen: number | null;
+            timeline: string;
+            places: components["schemas"]["PlaceInCollection"][];
+            gallery: components["schemas"]["GalleryPage"];
+            /** @enum {string} */
+            kind: "album" | "flag";
         };
         /** Located */
         Located: {
@@ -1747,6 +1794,16 @@ export interface components {
             slug: string | null;
             where: components["schemas"]["Where"] | null;
         };
+        /** PlaceInCollection */
+        PlaceInCollection: {
+            id: number;
+            slug: string;
+            name: string;
+            /** @enum {string} */
+            kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
+            pictures: number;
+            qs: string;
+        };
         /** PlanRequest */
         PlanRequest: {
             snapshot_id: number;
@@ -1788,6 +1845,11 @@ export interface components {
             /** @default library */
             kind: string;
         };
+        /** RuleView */
+        RuleView: {
+            sql: string | null;
+            nl: string | null;
+        };
         /** SettingChange */
         SettingChange: {
             value: string | number | boolean;
@@ -1795,6 +1857,96 @@ export interface components {
         /** SettingForm */
         SettingForm: {
             value: string;
+        };
+        /** SmartBroken */
+        SmartBroken: {
+            slug: string;
+            name: string;
+            color: string | null;
+            description: string | null;
+            parent: string | null;
+            archived: boolean;
+            definition_rev: number;
+            updated_at: number;
+            updated_by: string | null;
+            collections: components["schemas"]["ChildCollection"][];
+            files: components["schemas"]["FiledPicture"][];
+            count?: null;
+            gallery?: null;
+            /** @constant */
+            kind: "smart";
+            /** @constant */
+            state: "broken";
+            rule: components["schemas"]["RuleView"] | null;
+            reason: string;
+        };
+        /** SmartEvaluated */
+        SmartEvaluated: {
+            slug: string;
+            name: string;
+            color: string | null;
+            description: string | null;
+            parent: string | null;
+            archived: boolean;
+            definition_rev: number;
+            updated_at: number;
+            updated_by: string | null;
+            collections: components["schemas"]["ChildCollection"][];
+            files: components["schemas"]["FiledPicture"][];
+            count: number;
+            first_seen: number | null;
+            last_seen: number | null;
+            timeline: string;
+            places: components["schemas"]["PlaceInCollection"][];
+            gallery: components["schemas"]["GalleryPage"];
+            /** @constant */
+            kind: "smart";
+            /** @constant */
+            state: "evaluated";
+            rule: components["schemas"]["RuleView"] | null;
+        };
+        /** SmartUnavailable */
+        SmartUnavailable: {
+            slug: string;
+            name: string;
+            color: string | null;
+            description: string | null;
+            parent: string | null;
+            archived: boolean;
+            definition_rev: number;
+            updated_at: number;
+            updated_by: string | null;
+            collections: components["schemas"]["ChildCollection"][];
+            files: components["schemas"]["FiledPicture"][];
+            count?: null;
+            gallery?: null;
+            /** @constant */
+            kind: "smart";
+            /** @constant */
+            state: "unavailable";
+            rule: components["schemas"]["RuleView"] | null;
+            reason: string;
+        };
+        /** SmartUnevaluated */
+        SmartUnevaluated: {
+            slug: string;
+            name: string;
+            color: string | null;
+            description: string | null;
+            parent: string | null;
+            archived: boolean;
+            definition_rev: number;
+            updated_at: number;
+            updated_by: string | null;
+            collections: components["schemas"]["ChildCollection"][];
+            files: components["schemas"]["FiledPicture"][];
+            count?: null;
+            gallery?: null;
+            /** @constant */
+            kind: "smart";
+            /** @constant */
+            state: "unevaluated";
+            rule: components["schemas"]["RuleView"] | null;
         };
         /** Where */
         Where: {
@@ -2392,7 +2544,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["CollectionWriteAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -2431,7 +2583,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["CollectionWriteAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -2462,13 +2614,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description The collection: a listed one, or a smart one in the state its rule reached */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ListedCollection"] | components["schemas"]["SmartEvaluated"] | components["schemas"]["SmartUnevaluated"] | components["schemas"]["SmartBroken"] | components["schemas"]["SmartUnavailable"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -2509,7 +2661,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["CollectionWriteAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -2550,7 +2702,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["CollectionWriteAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -2591,7 +2743,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["CollectionWriteAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

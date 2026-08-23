@@ -1152,7 +1152,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/CollectionWriteAnswer"
                                 }
                             }
                         }
@@ -1220,7 +1220,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/CollectionWriteAnswer"
                                 }
                             }
                         }
@@ -1284,11 +1284,28 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "The collection: a listed one, or a smart one in the state its rule reached",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "oneOf": [
+                                        {
+                                            "$ref": "#/components/schemas/ListedCollection"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/SmartEvaluated"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/SmartUnevaluated"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/SmartBroken"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/SmartUnavailable"
+                                        }
+                                    ]
+                                }
                             }
                         }
                     },
@@ -1364,7 +1381,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/CollectionWriteAnswer"
                                 }
                             }
                         }
@@ -1443,7 +1460,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/CollectionWriteAnswer"
                                 }
                             }
                         }
@@ -1522,7 +1539,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/CollectionWriteAnswer"
                                 }
                             }
                         }
@@ -8832,6 +8849,36 @@
                 ],
                 "title": "BulkRating"
             },
+            "ChildCollection": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "album",
+                            "flag",
+                            "smart"
+                        ]
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "pictures",
+                    "slug"
+                ],
+                "title": "ChildCollection"
+            },
             "CollectionChoice": {
                 "properties": {
                     "slug": {
@@ -8918,6 +8965,23 @@
                     "slug"
                 ],
                 "title": "CollectionSummary"
+            },
+            "CollectionWriteAnswer": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "definition_rev": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "definition_rev",
+                    "slug"
+                ],
+                "title": "CollectionWriteAnswer"
             },
             "DesiredFlag": {
                 "properties": {
@@ -9018,6 +9082,23 @@
                 "required": [],
                 "title": "Everything"
             },
+            "FiledPicture": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "slug"
+                ],
+                "title": "FiledPicture"
+            },
             "FreezeRequest": {
                 "properties": {
                     "event_id": {
@@ -9030,6 +9111,34 @@
                     "event_id"
                 ],
                 "title": "FreezeRequest"
+            },
+            "GalleryPage": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/ResultItem"
+                        },
+                        "type": "array"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "pages": {
+                        "type": "integer"
+                    },
+                    "qs": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "items",
+                    "pages",
+                    "qs",
+                    "total"
+                ],
+                "title": "GalleryPage"
             },
             "JobListed": {
                 "properties": {
@@ -9236,6 +9345,142 @@
                     "total"
                 ],
                 "title": "JobSnapshot"
+            },
+            "ListedCollection": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "color": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "description": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "parent": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "archived": {
+                        "type": "boolean"
+                    },
+                    "definition_rev": {
+                        "type": "integer"
+                    },
+                    "updated_at": {
+                        "type": "number"
+                    },
+                    "updated_by": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/ChildCollection"
+                        },
+                        "type": "array"
+                    },
+                    "files": {
+                        "items": {
+                            "$ref": "#/components/schemas/FiledPicture"
+                        },
+                        "type": "array"
+                    },
+                    "count": {
+                        "type": "integer"
+                    },
+                    "first_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "timeline": {
+                        "type": "string"
+                    },
+                    "places": {
+                        "items": {
+                            "$ref": "#/components/schemas/PlaceInCollection"
+                        },
+                        "type": "array"
+                    },
+                    "gallery": {
+                        "$ref": "#/components/schemas/GalleryPage"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "album",
+                            "flag"
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "archived",
+                    "collections",
+                    "color",
+                    "count",
+                    "definition_rev",
+                    "description",
+                    "files",
+                    "first_seen",
+                    "gallery",
+                    "kind",
+                    "last_seen",
+                    "name",
+                    "parent",
+                    "places",
+                    "slug",
+                    "timeline",
+                    "updated_at",
+                    "updated_by"
+                ],
+                "title": "ListedCollection"
             },
             "Located": {
                 "properties": {
@@ -9621,6 +9866,49 @@
                 ],
                 "title": "PlaceAnswer"
             },
+            "PlaceInCollection": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ]
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "qs": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "pictures",
+                    "qs",
+                    "slug"
+                ],
+                "title": "PlaceInCollection"
+            },
             "PlanRequest": {
                 "properties": {
                     "snapshot_id": {
@@ -9744,6 +10032,37 @@
                 ],
                 "title": "RootForm"
             },
+            "RuleView": {
+                "properties": {
+                    "sql": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "nl": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "nl",
+                    "sql"
+                ],
+                "title": "RuleView"
+            },
             "SettingChange": {
                 "properties": {
                     "value": {
@@ -9781,6 +10100,505 @@
                     "value"
                 ],
                 "title": "SettingForm"
+            },
+            "SmartBroken": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "color": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "description": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "parent": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "archived": {
+                        "type": "boolean"
+                    },
+                    "definition_rev": {
+                        "type": "integer"
+                    },
+                    "updated_at": {
+                        "type": "number"
+                    },
+                    "updated_by": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/ChildCollection"
+                        },
+                        "type": "array"
+                    },
+                    "files": {
+                        "items": {
+                            "$ref": "#/components/schemas/FiledPicture"
+                        },
+                        "type": "array"
+                    },
+                    "count": {
+                        "type": "null"
+                    },
+                    "gallery": {
+                        "type": "null"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "const": "smart"
+                    },
+                    "state": {
+                        "type": "string",
+                        "const": "broken"
+                    },
+                    "rule": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/RuleView"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "reason": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "archived",
+                    "collections",
+                    "color",
+                    "definition_rev",
+                    "description",
+                    "files",
+                    "kind",
+                    "name",
+                    "parent",
+                    "reason",
+                    "rule",
+                    "slug",
+                    "state",
+                    "updated_at",
+                    "updated_by"
+                ],
+                "title": "SmartBroken"
+            },
+            "SmartEvaluated": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "color": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "description": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "parent": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "archived": {
+                        "type": "boolean"
+                    },
+                    "definition_rev": {
+                        "type": "integer"
+                    },
+                    "updated_at": {
+                        "type": "number"
+                    },
+                    "updated_by": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/ChildCollection"
+                        },
+                        "type": "array"
+                    },
+                    "files": {
+                        "items": {
+                            "$ref": "#/components/schemas/FiledPicture"
+                        },
+                        "type": "array"
+                    },
+                    "count": {
+                        "type": "integer"
+                    },
+                    "first_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "timeline": {
+                        "type": "string"
+                    },
+                    "places": {
+                        "items": {
+                            "$ref": "#/components/schemas/PlaceInCollection"
+                        },
+                        "type": "array"
+                    },
+                    "gallery": {
+                        "$ref": "#/components/schemas/GalleryPage"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "const": "smart"
+                    },
+                    "state": {
+                        "type": "string",
+                        "const": "evaluated"
+                    },
+                    "rule": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/RuleView"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "archived",
+                    "collections",
+                    "color",
+                    "count",
+                    "definition_rev",
+                    "description",
+                    "files",
+                    "first_seen",
+                    "gallery",
+                    "kind",
+                    "last_seen",
+                    "name",
+                    "parent",
+                    "places",
+                    "rule",
+                    "slug",
+                    "state",
+                    "timeline",
+                    "updated_at",
+                    "updated_by"
+                ],
+                "title": "SmartEvaluated"
+            },
+            "SmartUnavailable": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "color": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "description": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "parent": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "archived": {
+                        "type": "boolean"
+                    },
+                    "definition_rev": {
+                        "type": "integer"
+                    },
+                    "updated_at": {
+                        "type": "number"
+                    },
+                    "updated_by": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/ChildCollection"
+                        },
+                        "type": "array"
+                    },
+                    "files": {
+                        "items": {
+                            "$ref": "#/components/schemas/FiledPicture"
+                        },
+                        "type": "array"
+                    },
+                    "count": {
+                        "type": "null"
+                    },
+                    "gallery": {
+                        "type": "null"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "const": "smart"
+                    },
+                    "state": {
+                        "type": "string",
+                        "const": "unavailable"
+                    },
+                    "rule": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/RuleView"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "reason": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "archived",
+                    "collections",
+                    "color",
+                    "definition_rev",
+                    "description",
+                    "files",
+                    "kind",
+                    "name",
+                    "parent",
+                    "reason",
+                    "rule",
+                    "slug",
+                    "state",
+                    "updated_at",
+                    "updated_by"
+                ],
+                "title": "SmartUnavailable"
+            },
+            "SmartUnevaluated": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "color": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "description": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "parent": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "archived": {
+                        "type": "boolean"
+                    },
+                    "definition_rev": {
+                        "type": "integer"
+                    },
+                    "updated_at": {
+                        "type": "number"
+                    },
+                    "updated_by": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/ChildCollection"
+                        },
+                        "type": "array"
+                    },
+                    "files": {
+                        "items": {
+                            "$ref": "#/components/schemas/FiledPicture"
+                        },
+                        "type": "array"
+                    },
+                    "count": {
+                        "type": "null"
+                    },
+                    "gallery": {
+                        "type": "null"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "const": "smart"
+                    },
+                    "state": {
+                        "type": "string",
+                        "const": "unevaluated"
+                    },
+                    "rule": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/RuleView"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "archived",
+                    "collections",
+                    "color",
+                    "definition_rev",
+                    "description",
+                    "files",
+                    "kind",
+                    "name",
+                    "parent",
+                    "rule",
+                    "slug",
+                    "state",
+                    "updated_at",
+                    "updated_by"
+                ],
+                "title": "SmartUnevaluated"
             },
             "Where": {
                 "properties": {

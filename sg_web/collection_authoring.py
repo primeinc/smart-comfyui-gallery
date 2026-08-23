@@ -1,28 +1,23 @@
 """One write adapter for the collection lifecycle.
 
 Every route here parses an address and a body, hands the desired state
-to db/collections.py, commits exactly once, and answers with the
-authoritative CollectionView -- the browser never invents the resulting
-state, it renders what the server read back after the commit. Rules
-come from the same GalleryQuery-shaped inputs the gallery itself takes;
+to db/collections.py, commits exactly once, and answers where the facts
+landed: the slug and the definition's next revision. Rules come from the
+same GalleryQuery-shaped inputs the gallery itself takes;
 db/collection_rules.py owns every conversion and the browser never
 constructs rule JSON.
 
 Definition writes name the revision they edited: `expected_rev` in the
-body, always -- deliberately not If-Match, because the page's ETag
-could only honestly validate the whole representation (which changes
-with membership) while the thing being claimed is the definition
-revision, and a header token would also arrive unbound to the target
-in the URL. A stale revision is a 409 with zero mutation -- the editor
-re-reads and decides again. The PATCH body is read as a plain mapping
-on purpose:
-absent means unchanged and null means clear, a distinction a typed
-default would flatten (db/collections.py UNSET).
+body, always -- deliberately not If-Match, because the page's ETag could
+only honestly validate the whole representation (which changes with
+membership) while the thing being claimed is the definition revision,
+and a header token would also arrive unbound to the target in the URL.
+A stale revision is a 409 with zero mutation -- the editor re-reads and
+decides again.
 """
 
 from __future__ import annotations
 
-import pathlib
 import time
 
 from litestar import patch, post, put
@@ -31,9 +26,9 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.params import FromPath
 from litestar.response import Response
 
-from db import collection_rules, collections, connect, naming, settings
+from db import collection_rules, collections, connect, naming
 from db.resultset import canonical
-from sg_web import collection_view, home
+from sg_web import collection_view
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES
 from sg_web.wire import Wire
@@ -58,10 +53,15 @@ def _revision_named(data: dict):
     raise ClientException("a definition write names the revision it edited: expected_rev")
 
 
-def _written(state: State, work) -> Response:
-    """Refusal mapping, one commit, and the authoritative after-state:
-    every lifecycle write answers with the same CollectionView a GET
-    serves, ETag included."""
+def _written(state: State, work) -> Response[collection_view.CollectionWriteAnswer]:
+    """Refusal mapping, one commit, and the small answer a write owes.
+
+    Where to go and the definition's next concurrency token. It used to
+    answer with the whole management view -- the ResultSet page evaluated,
+    the spans, the places and every legal parent move -- which meant every
+    rename re-ran the collection's rule to build a body the browser reads
+    one field out of.
+    """
     conn = connect.connect(state.db_path)
     try:
         try:
@@ -73,12 +73,7 @@ def _written(state: State, work) -> Response:
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        live = naming.entity_slug(conn, collection_id)
-        told = collection_view.view(
-            conn, weights, collection_id, live[1] if live else "", time.time(), legacy=False, manage=True
-        )
-        return Response(told, headers=VARIES)
+        return Response(collection_view.write_answer(conn, collection_id), headers=VARIES)
     finally:
         connect.close(conn)
 
@@ -95,7 +90,7 @@ class NewCollection(Wire):
 
 
 @post("/albums", sync_to_thread=True)
-def make_album(state: State, data: NewCollection) -> Response:
+def make_album(state: State, data: NewCollection) -> Response[collection_view.CollectionWriteAnswer]:
     def work(conn):
         parent_id = _collection_at(conn, data.parent) if data.parent is not None else None
         return collections.create_listed(
@@ -137,7 +132,7 @@ class NewSmart(Wire):
 
 
 @post("/albums/smart", sync_to_thread=True)
-def make_smart(state: State, data: NewSmart) -> Response:
+def make_smart(state: State, data: NewSmart) -> Response[collection_view.CollectionWriteAnswer]:
     """Save the current view as a smart collection: one entity, one
     typed rule, one commit -- when the rule refuses, no collection
     remains. The rule pins the creating actor for its authored facets
@@ -180,7 +175,9 @@ def make_smart(state: State, data: NewSmart) -> Response:
 _PATCHABLE = {"name", "color", "description", "parent", "archived", "expected_rev"}
 
 
-def _edit_definition(state: State, expected_rev, slug: str, data: dict) -> Response:
+def _edit_definition(
+    state: State, expected_rev, slug: str, data: dict
+) -> Response[collection_view.CollectionWriteAnswer]:
     def work(conn):
         strange = set(data) - _PATCHABLE
         if strange:
@@ -209,7 +206,9 @@ def _edit_definition(state: State, expected_rev, slug: str, data: dict) -> Respo
 
 
 @patch("/t/{slug:str}")
-async def edit_definition(state: State, slug: FromPath[str], data: dict) -> Response:
+async def edit_definition(
+    state: State, slug: FromPath[str], data: dict
+) -> Response[collection_view.CollectionWriteAnswer]:
     """The whole definition edit as one desired-state patch under one
     revision claim. Kind is deliberately not patchable -- changing how
     membership is decided is a transition, not a field.
@@ -224,7 +223,7 @@ async def edit_definition(state: State, slug: FromPath[str], data: dict) -> Resp
 
 
 @put("/t/{slug:str}/rule", sync_to_thread=True)
-def replace_rule(state: State, slug: FromPath[str], data: dict) -> Response:
+def replace_rule(state: State, slug: FromPath[str], data: dict) -> Response[collection_view.CollectionWriteAnswer]:
     """This exact rule is now the collection's meaning: whole desired
     state, never predicate edits, under the same revision claim as any
     definition write. The body carries the same GalleryQuery-shaped
@@ -255,7 +254,9 @@ def replace_rule(state: State, slug: FromPath[str], data: dict) -> Response:
 
 
 @post("/t/{slug:str}/convert", sync_to_thread=True)
-def convert_collection(state: State, slug: FromPath[str], data: dict) -> Response:
+def convert_collection(
+    state: State, slug: FromPath[str], data: dict
+) -> Response[collection_view.CollectionWriteAnswer]:
     """An explicit definition-mode transition. album<->flag moves
     freely; becoming smart requires an empty membership and a valid rule
     in this same operation; leaving smart requires the rule's discard

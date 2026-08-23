@@ -325,18 +325,19 @@ def _carries(held: ast.expr, name: str) -> bool:
 
 
 def _closed_here(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Whether the function closes a connection at all -- by connect.close,
-    by contextlib.closing, or by a with-block over the open itself."""
+    """Whether the function closes a connection.
+
+    `connect.close(...)`, `conn.close()`, or a `with closing(...)`. NOT any
+    with-block: the first draft took every `with <call>:` as proof, which
+    meant one `with resultset.snapshot(conn):` excused everything the
+    function opened -- and `facts()` in sg_web/collection_view.py has
+    exactly that shape.
+    """
     for node in ast.walk(fn):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in ("close", "closing")
-        ):
-            return True
-        if isinstance(node, ast.With | ast.AsyncWith) and any(
-            isinstance(item.context_expr, ast.Call) for item in node.items
-        ):
+        if not isinstance(node, ast.Call):
+            continue
+        named = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+        if named in ("close", "closing"):
             return True
     return False
 
@@ -703,17 +704,40 @@ def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
     as the broken half.
     """
     bases: dict[str, set[str]] = {}
+    #: `X = A | B | C` at module level, by the names it joins.
+    aliases: dict[str, set[str]] = {}
     for source in sources:
         for node in ast.walk(source.tree):
             if isinstance(node, ast.ClassDef):
                 bases[node.name] = {base.id for base in node.bases if isinstance(base, ast.Name)}
+            elif isinstance(node, ast.Assign) and isinstance(node.value, ast.BinOp):
+                joined = _union_members(node.value)
+                if joined:
+                    for one in node.targets:
+                        if isinstance(one, ast.Name):
+                            aliases[one.id] = joined
     named = {"Wire"}
     growing = True
     while growing:
         found = {name for name, held in bases.items() if held & named}
+        # An alias every member of which is a contract is one too: it is
+        # how a discriminated document is spelled, and a rule that could
+        # not read it would send every route serving one to the ledger.
+        found |= {name for name, held in aliases.items() if held and held <= (named | found)}
         growing = not found <= named
         named |= found
     return named - {"Wire"}
+
+
+def _union_members(node: ast.expr) -> set[str]:
+    """The names a `A | B | C` expression joins, or nothing if any arm is
+    not a bare name."""
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        left, right = _union_members(node.left), _union_members(node.right)
+        return left | right if left and right else set()
+    return set()
 
 
 def _annotation_name(node: ast.expr | None) -> str | None:
@@ -809,6 +833,10 @@ def _precise(node: ast.expr, contracts: set[str]) -> bool:
         return True
     if isinstance(node, ast.Name):
         return node.id in contracts or node.id in _PRIMITIVE
+    if isinstance(node, ast.Attribute):
+        # `collection_view.CollectionWriteAnswer`: a contract another
+        # module owns is the same contract.
+        return node.attr in contracts
     if isinstance(node, ast.Subscript):
         held = _annotation_name(node.value)
         if held in ("Response", "list", "Sequence"):
