@@ -14,6 +14,9 @@
     </nav>
   </header>
   <main class="stage">
+    {% if scope %}
+    <p class="places-line" data-timeline-scope="{{ scope_qs }}">scoped to {% for one in scope %}<code>{{ one.spelled }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/timeline">the whole library</a></p>
+    {% endif %}
     {% if months %}
     <section class="surface" data-surface>
       <div class="surface-head">

@@ -179,6 +179,25 @@ def spell(held: Facet) -> str:
     return f"{held.key}:{held.op}:{held.value}"
 
 
+#: No facets: no conjunct, no values -- what every scoped reader takes
+#: by default.
+UNSCOPED: tuple[str, list] = ("", [])
+
+
+def conjunction(held) -> tuple[str, list]:
+    """Every facet as one SQL conjunct over the ResultSet's file alias
+    `f`, values bound: `(" AND p1 AND p2", [v1, v2])`, UNSCOPED when
+    there are none. What the timeline appends to its own statements so
+    a scoped surface counts exactly what the gallery's door would open."""
+    parts: list[str] = []
+    values: list = []
+    for one in held:
+        sql, value = predicate(one)
+        parts.append(sql)
+        values.append(value)
+    return ("".join(" AND " + part for part in parts), values)
+
+
 def predicate(held: Facet) -> tuple[str, int | str]:
     """The registered SQL for one facet -- structure from the closed
     registry, the value bound."""

@@ -259,3 +259,40 @@ def test_a_session_says_who_is_in_it(doors):
     held = next(s for s in again["sessions"] if s["id"] == target["id"])
     assert held["people"] == [{"slug": "ana", "name": "Ana", "href": "/p/ana", "pictures": 2}]
     assert all(s["people"] == [] for s in again["sessions"] if s["id"] != target["id"])
+
+
+def test_the_surface_can_be_scoped_by_the_gallerys_facets(doors):
+    """`/timeline?f=place.id:eq:N` draws only the pictures in that place:
+    the bins, the samples, the sessions and the page's shelves count the
+    scope, and every door carries it, so what is drawn is what opens.
+    A session is a door, not a scope; a bad facet is refused."""
+    from db import authored, connect, context, places
+
+    whole = _density(doors, bin="day")
+    all_pictures = sum(b["pictures"] for b in whole["bins"])
+    conn = connect.connect(doors.app.state.db_path)
+    try:
+        lisbon = places.named(conn, "Lisbon", "city", 1.0)
+        ids = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id LIMIT 2")]
+        for file_id in ids:
+            authored.set_place(conn, file_id, doors.app.state.actor_id, lisbon, 1.0)
+            context.rebuild_one(conn, file_id, 1.0)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    spelled = f"place.id:eq:{lisbon}"
+    scoped = _density(doors, bin="day", f=spelled)
+    assert sum(b["pictures"] for b in scoped["bins"]) == 2 < all_pictures
+    assert scoped["scope"] == [{"spelled": spelled, "key": "place.id", "value": lisbon}]
+    assert all("place.id%3Aeq%3A" in b["qs"] for b in scoped["bins"]), "every door carries the scope"
+    assert all("place.id%3Aeq%3A" in s["qs"] for s in scoped["sessions"])
+    for s in scoped["sessions"]:
+        assert _total(doors, s["qs"]) >= 1, "a scoped session's door opens its in-scope members"
+    assert len(scoped["sessions"]) <= len(whole["sessions"])
+    page = doors.get("/timeline", params={"f": spelled}, headers={"accept": "text/html"}).text
+    assert "data-timeline-scope" in page
+    shelf = doors.get("/timeline", params={"f": spelled}, headers={"accept": "application/json"}).json()
+    assert sum(m["pictures"] for m in shelf["months"]) == 2
+    assert all("place.id%3Aeq%3A" in d["qs"] for d in shelf["days"])
+    assert doors.get("/timeline/density", params={"bin": "day", "f": "event.id:eq:1"}).status_code == 400
+    assert doors.get("/timeline/density", params={"bin": "day", "f": "vibe:eq:1"}).status_code == 400

@@ -833,37 +833,50 @@ def ways(conn):
 #: interpretation policy answer -- bound at call time, never the
 #: version the database happens to remember, so an upgraded build shows
 #: honest absence until the context job re-interprets.
-TIMELINE_MONTHS = (
+#: Every timeline statement is HEAD + scope + TAIL: the scope is the
+#: gallery's facet conjunction over the file alias `f` (db/facets.py
+#: conjunction), empty by default, so a scoped timeline counts exactly
+#: what the door it offers would open.
+_TIMELINE_MONTHS_HEAD = (
     "SELECT strftime('%Y-%m', " + HUMAN_MOMENT + ", 'unixepoch') AS month,"
     " count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     " WHERE mc.policy_version = ?"
-    " GROUP BY month ORDER BY month DESC"
 )
+_TIMELINE_MONTHS_TAIL = " GROUP BY month ORDER BY month DESC"
+TIMELINE_MONTHS = _TIMELINE_MONTHS_HEAD + _TIMELINE_MONTHS_TAIL
 
 #: Days are PRESENTATION grouping, read straight off the contexts --
 #: deliberately never a persisted event kind.
-TIMELINE_DAYS = (
+_TIMELINE_DAYS_HEAD = (
     "SELECT strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') AS day,"
     " count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     " WHERE mc.policy_version = ?"
-    " GROUP BY day ORDER BY day DESC LIMIT ?"
 )
+_TIMELINE_DAYS_TAIL = " GROUP BY day ORDER BY day DESC LIMIT ?"
+TIMELINE_DAYS = _TIMELINE_DAYS_HEAD + _TIMELINE_DAYS_TAIL
 
 #: Event runs answer only while they can PROVE they were computed over
 #: the current interpretation: generation and policy both match, or the
 #: hypothesis is stale -- whoever its members are.
-TIMELINE_EVENTS = (
+_TIMELINE_EVENTS_HEAD = (
     "SELECT e.id, r.grouper, e.kind, e.local_start, e.local_end,"
     " e.instant_start, e.instant_end, e.confidence, e.member_hash,"
     " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures"
     "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
     " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
     "   AND r.context_policy_version = ?"
-    " ORDER BY e.instant_start DESC LIMIT ?"
+)
+_TIMELINE_EVENTS_TAIL = " ORDER BY e.instant_start DESC LIMIT ?"
+TIMELINE_EVENTS = _TIMELINE_EVENTS_HEAD + _TIMELINE_EVENTS_TAIL
+#: A session is in scope when one of its members is: the scope's
+#: conjunct, over that member as `f`.
+_SESSION_MEMBER_IN_SCOPE = (
+    " AND EXISTS (SELECT 1 FROM derived_event_file ef JOIN file f ON f.id = ef.file_id WHERE ef.event_id = e.id",
+    ")",
 )
 
 
@@ -879,7 +892,7 @@ TIMELINE_EVENTS = (
 #: is Monday 1970-01-05) and every other bin starts where the epoch
 #: does. Each bin also says how many of its pictures were captured,
 #: generated, both, or merely imported.
-TIMELINE_DENSITY = (
+_TIMELINE_DENSITY_HEAD = (
     "SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, count(*) AS pictures,"
     " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant,"
     " sum(mc.origin = 'captured') AS captured, sum(mc.origin = 'generated') AS generated,"
@@ -889,14 +902,15 @@ TIMELINE_DENSITY = (
     " WHERE mc.policy_version = ?"
     "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
     "   AND mc.time_precision IN (SELECT value FROM json_each(?))"
-    " GROUP BY bin ORDER BY bin"
 )
+_TIMELINE_DENSITY_TAIL = " GROUP BY bin ORDER BY bin"
+TIMELINE_DENSITY = _TIMELINE_DENSITY_HEAD + _TIMELINE_DENSITY_TAIL
 
 #: The first few pictures of each bin, in moment order -- the strip of
 #: thumbnails under the bars. Window-numbered so one statement serves
 #: every bin; asked only when the page draws few enough bins to show
 #: them (db/pages.py timeline_samples).
-TIMELINE_BIN_SAMPLES = (
+_TIMELINE_BIN_SAMPLES_HEAD = (
     "SELECT bin, slug FROM ("
     "  SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, e.slug,"
     "   row_number() OVER (PARTITION BY CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER)"
@@ -906,9 +920,10 @@ TIMELINE_BIN_SAMPLES = (
     "    JOIN entity e ON e.id = mc.file_id"
     "   WHERE mc.policy_version = ?"
     "     AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
-    "     AND mc.time_precision IN (SELECT value FROM json_each(?)))"
-    " WHERE rn <= ? ORDER BY bin, rn"
+    "     AND mc.time_precision IN (SELECT value FROM json_each(?))"
 )
+_TIMELINE_BIN_SAMPLES_TAIL = ") WHERE rn <= ? ORDER BY bin, rn"
+TIMELINE_BIN_SAMPLES = _TIMELINE_BIN_SAMPLES_HEAD + _TIMELINE_BIN_SAMPLES_TAIL
 
 #: A session's first members, by the grouper's own ordinal.
 SESSION_SAMPLES = (
@@ -949,15 +964,16 @@ MEDIA_SESSIONS = (
 
 #: The claims too coarse for the bin, as spans: each precision's
 #: window start and width, with how many pictures claim it.
-TIMELINE_SPANS = (
+_TIMELINE_SPANS_HEAD = (
     "SELECT " + HUMAN_MOMENT + " AS start, mc.time_precision, count(*) AS pictures"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     " WHERE mc.policy_version = ?"
     "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
     "   AND mc.time_precision NOT IN (SELECT value FROM json_each(?))"
-    " GROUP BY start, mc.time_precision ORDER BY start"
 )
+_TIMELINE_SPANS_TAIL = " GROUP BY start, mc.time_precision ORDER BY start"
+TIMELINE_SPANS = _TIMELINE_SPANS_HEAD + _TIMELINE_SPANS_TAIL
 
 #: The extent of the interpreted library on the human axis.
 TIMELINE_EXTENT = (
@@ -974,7 +990,7 @@ TIMELINE_EXTENT = (
 #: the same ordered membership. `member_hash` alone is a checksum of
 #: the files -- a capture session and a generation session over the
 #: same mixed files share it -- never an identity on its own.
-TIMELINE_SESSIONS = (
+_TIMELINE_SESSIONS_HEAD = (
     "SELECT e.id, e.kind, e.local_start, e.local_end, e.instant_start, e.instant_end,"
     " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures,"
     " (SELECT s.id FROM story_snapshot s WHERE s.member_hash = e.member_hash"
@@ -990,8 +1006,9 @@ TIMELINE_SESSIONS = (
     "   AND r.context_policy_version = ?"
     "   AND COALESCE(e.local_start, e.instant_start) < ?"
     "   AND COALESCE(e.local_end, e.instant_end) >= ?"
-    " ORDER BY COALESCE(e.local_start, e.instant_start)"
 )
+_TIMELINE_SESSIONS_TAIL = " ORDER BY COALESCE(e.local_start, e.instant_start)"
+TIMELINE_SESSIONS = _TIMELINE_SESSIONS_HEAD + _TIMELINE_SESSIONS_TAIL
 
 #: Bin widths a zoom may ask for, by name. Anything else is refused.
 BINS = {"week": 604_800, "day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
@@ -1016,11 +1033,17 @@ _FINE_ENOUGH = {
 MAX_BINS = 4_000
 
 
-def timeline_extent(conn):
-    return conn.execute(TIMELINE_EXTENT, (context.POLICY_VERSION,)).fetchone()
+def _members_in(scope: tuple[str, list]) -> str:
+    """A session filter from a file scope: the scope's conjunct wrapped
+    so it asks of the session's members; nothing when unscoped."""
+    return (_SESSION_MEMBER_IN_SCOPE[0] + scope[0] + _SESSION_MEMBER_IN_SCOPE[1]) if scope[0] else ""
 
 
-def timeline_density(conn, bin_name: str, lo: float, hi: float):
+def timeline_extent(conn, scope: tuple[str, list] = ("", [])):
+    return conn.execute(TIMELINE_EXTENT + scope[0], (context.POLICY_VERSION, *scope[1])).fetchone()
+
+
+def timeline_density(conn, bin_name: str, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
     """Bins of `bin_name` over [lo, hi) plus the spans too coarse for
     them. Refuses an unknown bin or an ask wider than MAX_BINS."""
     import json as _json
@@ -1035,13 +1058,18 @@ def timeline_density(conn, bin_name: str, lo: float, hi: float):
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
     anchor = _ANCHOR.get(bin_name, 0)
     bins = conn.execute(
-        TIMELINE_DENSITY, (anchor, width, width, anchor, context.POLICY_VERSION, lo, hi, fine)
+        _TIMELINE_DENSITY_HEAD + scope[0] + _TIMELINE_DENSITY_TAIL,
+        (anchor, width, width, anchor, context.POLICY_VERSION, lo, hi, fine, *scope[1]),
     ).fetchall()
-    spans = conn.execute(TIMELINE_SPANS, (context.POLICY_VERSION, lo, hi, fine)).fetchall()
+    spans = conn.execute(
+        _TIMELINE_SPANS_HEAD + scope[0] + _TIMELINE_SPANS_TAIL, (context.POLICY_VERSION, lo, hi, fine, *scope[1])
+    ).fetchall()
     return width, bins, spans
 
 
-def timeline_samples(conn, bin_name: str, lo: float, hi: float, bins: int) -> dict[int, list[str]]:
+def timeline_samples(
+    conn, bin_name: str, lo: float, hi: float, bins: int, scope: tuple[str, list] = ("", [])
+) -> dict[int, list[str]]:
     """`{bin: [slug, ...]}` -- the first SAMPLES_PER_BIN pictures of each
     bin, when the answer carries SAMPLED_BINS_MOST bins or fewer; an
     empty map otherwise, and the page says so rather than drawing a
@@ -1055,8 +1083,8 @@ def timeline_samples(conn, bin_name: str, lo: float, hi: float, bins: int) -> di
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
     held: dict[int, list[str]] = {}
     for at, slug in conn.execute(
-        TIMELINE_BIN_SAMPLES,
-        (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, SAMPLES_PER_BIN),
+        _TIMELINE_BIN_SAMPLES_HEAD + scope[0] + _TIMELINE_BIN_SAMPLES_TAIL,
+        (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, *scope[1], SAMPLES_PER_BIN),
     ):
         held.setdefault(int(at), []).append(slug)
     return held
@@ -1080,20 +1108,30 @@ def media_sessions(conn, file_id: int):
     return conn.execute(MEDIA_SESSIONS, (file_id, context.POLICY_VERSION)).fetchall()
 
 
-def timeline_sessions(conn, lo: float, hi: float):
-    return conn.execute(TIMELINE_SESSIONS, (context.POLICY_VERSION, hi, lo)).fetchall()
+def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
+    return conn.execute(
+        _TIMELINE_SESSIONS_HEAD + _members_in(scope) + _TIMELINE_SESSIONS_TAIL,
+        (context.POLICY_VERSION, hi, lo, *scope[1]),
+    ).fetchall()
 
 
-def timeline_months(conn):
-    return conn.execute(TIMELINE_MONTHS, (context.POLICY_VERSION,)).fetchall()
+def timeline_months(conn, scope: tuple[str, list] = ("", [])):
+    return conn.execute(
+        _TIMELINE_MONTHS_HEAD + scope[0] + _TIMELINE_MONTHS_TAIL, (context.POLICY_VERSION, *scope[1])
+    ).fetchall()
 
 
-def timeline_days(conn, limit: int = 400):
-    return conn.execute(TIMELINE_DAYS, (context.POLICY_VERSION, limit)).fetchall()
+def timeline_days(conn, limit: int = 400, scope: tuple[str, list] = ("", [])):
+    return conn.execute(
+        _TIMELINE_DAYS_HEAD + scope[0] + _TIMELINE_DAYS_TAIL, (context.POLICY_VERSION, *scope[1], limit)
+    ).fetchall()
 
 
-def timeline_events(conn, limit: int = 200):
-    return conn.execute(TIMELINE_EVENTS, (context.POLICY_VERSION, limit)).fetchall()
+def timeline_events(conn, limit: int = 200, scope: tuple[str, list] = ("", [])):
+    return conn.execute(
+        _TIMELINE_EVENTS_HEAD + _members_in(scope) + _TIMELINE_EVENTS_TAIL,
+        (context.POLICY_VERSION, *scope[1], limit),
+    ).fetchall()
 
 
 #: Who is in one session, by the primary clustering: each person's

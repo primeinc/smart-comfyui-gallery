@@ -38,8 +38,16 @@
   const note = surface.querySelector("[data-note]");
   let current = null;
 
+  // the surface's scope -- the gallery's facets in the URL -- rides every
+  // ask and every zoom, so what is drawn is what the doors open
+  const scope = new URLSearchParams(location.search).getAll("f");
+  const withScope = (qs) => {
+    for (const one of scope) qs.append("f", one);
+    return qs;
+  };
+
   function load(bin, start, end) {
-    const qs = new URLSearchParams({ bin });
+    const qs = withScope(new URLSearchParams({ bin }));
     if (start != null) qs.set("start", String(start));
     if (end != null) qs.set("end", String(end));
     return fetch(`/timeline/density?${qs}`, { headers: { accept: "application/json" } }).then((r) => {
@@ -125,7 +133,7 @@
     zoomNav.textContent = "";
     stack.forEach((held) => {
       const a = document.createElement("a");
-      a.href = `/timeline?${new URLSearchParams({ bin: held.bin, start: held.start, end: held.end })}`;
+      a.href = `/timeline?${withScope(new URLSearchParams({ bin: held.bin, start: held.start, end: held.end }))}`;
       a.textContent = held.bin;
       a.addEventListener("click", (e) => { e.preventDefault(); go(held.bin, held.start, held.end, true); });
       zoomNav.appendChild(a);
@@ -323,7 +331,7 @@
   }
 
   function go(bin, start, end, push) {
-    const qs = new URLSearchParams({ bin });
+    const qs = withScope(new URLSearchParams({ bin }));
     if (start != null) qs.set("start", String(start));
     if (end != null) qs.set("end", String(end));
     const url = `/timeline?${qs}`;
