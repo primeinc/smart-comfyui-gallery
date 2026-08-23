@@ -12,6 +12,9 @@
     ranked by {% for one in answered_by %}<span class="answered-by">{{ one }}</span>{% if not loop.last %}, {% endif %}{% endfor %}, fused by rank
   </p>
   {% endif %}
+  {% if captions_unmatched %}
+  <p class="answered" data-captions-unmatched>{{ captions_unmatched }}</p>
+  {% endif %}
   {% if missing_spaces %}
   <p class="degraded" data-degraded>
     degraded answer &mdash; not every configured model contributed:

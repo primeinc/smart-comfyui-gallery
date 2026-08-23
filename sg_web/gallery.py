@@ -42,6 +42,9 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
+    # a caption that mentions no word of the phrase is the ordinary
+    # outcome of a word match (retrieval's `unmatched`), said quietly
+    unmatched = (provenance.get("unmatched") or {}).get("captions")
     return {
         "items": shape["items"],
         "page": shape["page"],
@@ -52,6 +55,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "currency": shape["currency"],
         "answer": shape["answer"],
         "missing_spaces": provenance.get("missing") or {},
+        "captions_unmatched": unmatched,
         "answered_by": provenance.get("contributors") or [],
         "q": query.text or "",
         "folder": query.folder or "",

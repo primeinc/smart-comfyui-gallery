@@ -479,6 +479,7 @@ def search(state: State, q: str, k: int = 60) -> dict:
             "participants": found["participants"],
             "contributors": found["contributors"],
             "missing": found["missing"],
+            "unmatched": found["unmatched"],
         }
     finally:
         connect.close(conn)

@@ -145,7 +145,8 @@ def query(
 
     The answer says who was asked and who answered. `participants` is
     every configured space; `contributors` the ones whose ranking
-    entered the fusion; `missing` maps the rest to why -- because a
+    entered the fusion; `missing` maps the rest to why; `unmatched` the
+    rankings that answered "nothing matches" (captions) -- because a
     result fused from one space when three are configured is a
     different claim than one all three agreed on, and a page that
     cannot tell them apart flattens the difference into false
@@ -175,6 +176,10 @@ def query(
     to_file: dict[int, int] = {}
     participants: list[str] = []
     missing: dict[str, str] = {}
+    #: rankings that were asked and answered "nothing here" -- a word
+    #: match with no matching word is the ordinary outcome, not a space
+    #: that could not answer, and the page must not call it degraded
+    unmatched: dict[str, str] = {}
     for provider, model, configured in choices(conn):
         # A mutable checkpoint (a Hugging Face branch) resolves to the
         # cached immutable commit BEFORE anything is keyed by it: the
@@ -235,7 +240,7 @@ def query(
         if worded:
             per_space.append((derived.CAPTIONS, worded))
         else:
-            missing[derived.CAPTIONS] = "no caption mentions a word of the phrase in this scope"
+            unmatched[derived.CAPTIONS] = "no caption mentions a word of the phrase in this scope"
 
     if not per_space and any("not provisioned" in why or "-dimensional" in why for why in missing.values()):
         # Degraded is an answer; NOTHING to answer from is a refusal that
@@ -256,6 +261,7 @@ def query(
         "participants": participants,
         "contributors": [space_key for space_key, _ in per_space],
         "missing": missing,
+        "unmatched": unmatched,
     }
 
 

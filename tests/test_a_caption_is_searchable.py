@@ -84,7 +84,7 @@ def test_a_caption_lifts_the_file_it_describes(tmp_path, asks):
     assert found["results"][0]["sources"]["captions"]["rank"] == 1
 
 
-def test_a_phrase_no_caption_mentions_is_missing_not_a_contributor(tmp_path, asks):
+def test_a_phrase_no_caption_mentions_is_unmatched_not_a_contributor(tmp_path, asks):
     conn, ids, clip = _shelf(tmp_path, {"a": 0.9, "b": 0.8})
     sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (ids["b"],)).fetchone()[0]
     derived.annotate(conn, ids["b"], "caption", "a red bicycle", "m", "1", sha, NOW)
@@ -93,11 +93,12 @@ def test_a_phrase_no_caption_mentions_is_missing_not_a_contributor(tmp_path, ask
 
     assert found["participants"] == [clip, "captions"]
     assert found["contributors"] == [clip]
-    assert found["missing"] == {"captions": "no caption mentions a word of the phrase in this scope"}
+    assert found["missing"] == {}, "a word match that matched nothing is not a space that could not answer"
+    assert found["unmatched"] == {"captions": "no caption mentions a word of the phrase in this scope"}
     # and a scope the captioned file sits outside of is the same verdict
     scoped = retrieval.query(conn, str(tmp_path), "bicycle", 3, NOW, allowed={ids["a"]})
     assert scoped["contributors"] == [clip]
-    assert "captions" in scoped["missing"]
+    assert "captions" in scoped["unmatched"]
     assert [row["file_id"] for row in scoped["results"]] == [ids["a"]]
 
 

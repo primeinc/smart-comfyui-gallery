@@ -664,6 +664,7 @@ def _fused_ids(
     )
     fused = [row["file_id"] for row in found["results"]]
     provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
+    provenance["unmatched"] = found.get("unmatched") or {}
     return fused, provenance
 
 
