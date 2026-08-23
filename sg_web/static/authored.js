@@ -13,8 +13,6 @@
 // next arrow does not 409 over an unchanged answer; different answer or
 // no longer in it -> the mounted walk is really stale, redraw whole.
 (() => {
-  "use strict";
-
   const strip = (node) => node.closest("[data-authored]");
 
   const draw = (root, authored) => {

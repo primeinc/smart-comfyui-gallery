@@ -832,6 +832,9 @@ def _surface(
                 width_asked = hi - lo
                 hi = min(whole_hi, last + 1.0)
                 lo = max(whole_lo, hi - width_asked)
+                # the width survives the library's start: a window carried
+                # onto the first picture is still as wide as the hand drew it
+                hi = min(whole_hi, lo + width_asked)
     bin_name = bin_name or _bin_for(hi - lo)
     try:
         width, bins, spans = pages.timeline_density(conn, bin_name, lo, hi, scope)

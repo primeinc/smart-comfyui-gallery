@@ -90,9 +90,12 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
     page.mouse.down()
     page.mouse.move(box["x"] + box["width"] * 0.5, y, steps=8)
     page.mouse.up()
-    page.wait_for_function("() => new URLSearchParams(location.search).has('start')", timeout=10_000)
+    # the release's own move has landed: nothing is dragging, nothing is loading
     page.wait_for_function(
-        "(was) => document.querySelector('[data-surface]').dataset.windowEnd !== was", arg=str(end), timeout=10_000
+        "() => !document.querySelector('[data-overview]').hasAttribute('data-dragging')"
+        " && !document.getElementById('timeline-swap').hasAttribute('data-loading')"
+        " && new URLSearchParams(location.search).has('start')",
+        timeout=10_000,
     )
     moved_start, moved_end = _window(page)
     whole = whole_end - extent["start"]

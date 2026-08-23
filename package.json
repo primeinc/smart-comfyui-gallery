@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "scripts": {
+    "lint": "biome lint . --error-on-warnings",
+    "format-check": "biome format .",
+    "format": "biome format . --write",
+    "check": "biome ci . --error-on-warnings",
+    "fix": "biome check . --write"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.9"
+  }
+}

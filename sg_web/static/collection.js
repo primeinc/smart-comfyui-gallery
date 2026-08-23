@@ -9,8 +9,6 @@
 // means CLEAR (sent as null); a fact the form does not carry is simply
 // absent and stays unchanged.
 (() => {
-  "use strict";
-
   const root = document.querySelector("[data-collection]");
 
   const told = async (method, path, body) => {

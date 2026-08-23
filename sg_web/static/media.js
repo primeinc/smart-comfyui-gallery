@@ -2,7 +2,6 @@
 // history, so Escape goes to the computed return-to-results URL -- never
 // a blind history.back() that could leave the site entirely.
 (() => {
-  "use strict";
   // the "when" block speaks its clock domain
   const pad = (n) => String(n).padStart(2, "0");
   for (const node of document.querySelectorAll("time[data-epoch]")) {

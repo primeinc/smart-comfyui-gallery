@@ -16,8 +16,6 @@
 // an unchanged after-answer adopts the new currency and KEEPS the
 // selection for the next operation; a changed one clears and redraws.
 (() => {
-  "use strict";
-
   const state = { answer: null, selected: new Set() };
 
   const grid = () => document.querySelector("[data-grid]");

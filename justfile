@@ -18,14 +18,18 @@ test:
 test-slow:
     {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile
 
-# Ruff over the whole tree, then this repository's own structural rules (sglint)
+# Ruff over the Python, Biome over the browser source (biome.json: the
+# first-party JS and CSS, never the vendored htmx), then this repository's
+# own structural rules (sglint)
 lint:
     {{ python }} -m ruff check .
+    npm run --silent lint
     {{ python }} -m sglint
 
-# Ruff format in report-only mode; never rewrites
+# Ruff and Biome format in report-only mode; never rewrites
 fmt-check:
     {{ python }} -m ruff format --check .
+    npm run --silent format-check
 
 # Pyright: cross-module type inference, the half ruff cannot do; part of the gate
 types:

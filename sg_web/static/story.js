@@ -2,7 +2,6 @@
 // /stories/renders -- content-addressed, so asking twice is one row --
 // and the page moves to the render it names.
 (() => {
-  "use strict";
   const main = document.querySelector("[data-story-render]");
   if (!main) return;
   const status = document.querySelector("[data-story-status]");
@@ -16,7 +15,10 @@
         body: JSON.stringify({ plan_id: Number(main.dataset.storyPlan), profile, locale: main.dataset.storyLocale }),
       });
       const told = await r.json().catch(() => ({}));
-      if (!r.ok) { status.textContent = told.detail || r.statusText; return; }
+      if (!r.ok) {
+        status.textContent = told.detail || r.statusText;
+        return;
+      }
       window.location.href = `/stories/renders/${told.id}`;
     });
   }

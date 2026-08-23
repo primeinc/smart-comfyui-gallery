@@ -1,43 +1,185 @@
-.evolution { padding-right: 16px; }
-.evolution-provenance { color: var(--muted, #888); font-size: .9rem; margin: 0 0 10px; }
-.evolution-provenance .degraded { color: #c77; }
-.evolution-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-.evolution-tabs button { background: transparent; border: 1px solid var(--line, #444); color: inherit; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
-.evolution-tabs button.on { background: var(--line, #444); }
-.evolution-main { min-height: 240px; margin-bottom: 12px; overflow-x: auto; }
-.evolution-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.evolution-selected img { max-width: 100%; max-height: 50vh; }
-.evolution-selected pre, .evolution-inspector pre { white-space: pre-wrap; font-size: .85rem; }
-.evolution-diff ins { background: rgba(80, 180, 80, .3); text-decoration: none; }
-.evolution-diff del { background: rgba(200, 80, 80, .3); }
-.filmstrip { display: flex; gap: 14px; align-items: flex-start; }
-.filmstrip .phase { border: 1px solid var(--line, #444); border-radius: 6px; padding: 6px; }
-.filmstrip .phase h3 { margin: 0 0 6px; font-size: .85rem; font-weight: normal; color: var(--muted, #888); }
-.filmstrip .members { display: flex; gap: 4px; }
-.filmstrip .member { width: 72px; height: 72px; object-fit: cover; cursor: pointer; border: 2px solid transparent; border-radius: 3px; background: #222; }
-.filmstrip .member.on { border-color: #fc6; }
-.filmstrip .member.pair { border-color: #6cf; }
-.tracks { margin-top: 10px; }
-.tracks table { border-collapse: collapse; font-size: .8rem; }
-.tracks td, .tracks th { padding: 2px 6px; text-align: center; white-space: nowrap; }
-.tracks th { text-align: left; color: var(--muted, #888); font-weight: normal; }
-.tracks td.boundary { border-left: 2px solid #fc6; }
-.tracks td.unavailable { color: var(--muted, #888); }
-.drift svg { background: #1a1a1a; border-radius: 6px; }
-.drift circle { cursor: pointer; }
-.drift circle.on { stroke: #fc6; stroke-width: 3; }
-.families .family { margin-bottom: 14px; }
-.families .family h3 { margin: 0 0 4px; font-size: .95rem; }
-.families .claims { color: var(--muted, #888); font-size: .8rem; margin: 0 0 6px; }
-.families .members { display: flex; flex-wrap: wrap; gap: 4px; }
-.families .member.hero { outline: 2px solid #6c6; }
-.lineage ul { list-style: none; padding-left: 14px; }
-.lineage .kind { color: var(--muted, #888); font-size: .8rem; }
-.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.compare img { max-width: 100%; max-height: 40vh; }
-.metrics dt { color: var(--muted, #888); font-size: .8rem; }
-.metrics dd { margin: 0 0 6px; }
-.links a { margin-right: 10px; }
-.chip { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: .75rem; border: 1px solid #666; }
-.chip-inferred { border-color: #6cf; color: #6cf; }
-.chip-conflict { border-color: #c77; color: #c77; }
+.evolution {
+  padding-right: 16px;
+}
+.evolution-provenance {
+  color: var(--muted, #888);
+  font-size: 0.9rem;
+  margin: 0 0 10px;
+}
+.evolution-provenance .degraded {
+  color: #c77;
+}
+.evolution-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.evolution-tabs button {
+  background: transparent;
+  border: 1px solid var(--line, #444);
+  color: inherit;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.evolution-tabs button.on {
+  background: var(--line, #444);
+}
+.evolution-main {
+  min-height: 240px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+.evolution-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.evolution-selected img {
+  max-width: 100%;
+  max-height: 50vh;
+}
+.evolution-selected pre,
+.evolution-inspector pre {
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+}
+.evolution-diff ins {
+  background: rgba(80, 180, 80, 0.3);
+  text-decoration: none;
+}
+.evolution-diff del {
+  background: rgba(200, 80, 80, 0.3);
+}
+.filmstrip {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.filmstrip .phase {
+  border: 1px solid var(--line, #444);
+  border-radius: 6px;
+  padding: 6px;
+}
+.filmstrip .phase h3 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--muted, #888);
+}
+.filmstrip .members {
+  display: flex;
+  gap: 4px;
+}
+.filmstrip .member {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 3px;
+  background: #222;
+}
+.filmstrip .member.on {
+  border-color: #fc6;
+}
+.filmstrip .member.pair {
+  border-color: #6cf;
+}
+.tracks {
+  margin-top: 10px;
+}
+.tracks table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.tracks td,
+.tracks th {
+  padding: 2px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+.tracks th {
+  text-align: left;
+  color: var(--muted, #888);
+  font-weight: normal;
+}
+.tracks td.boundary {
+  border-left: 2px solid #fc6;
+}
+.tracks td.unavailable {
+  color: var(--muted, #888);
+}
+.drift svg {
+  background: #1a1a1a;
+  border-radius: 6px;
+}
+.drift circle {
+  cursor: pointer;
+}
+.drift circle.on {
+  stroke: #fc6;
+  stroke-width: 3;
+}
+.families .family {
+  margin-bottom: 14px;
+}
+.families .family h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+.families .claims {
+  color: var(--muted, #888);
+  font-size: 0.8rem;
+  margin: 0 0 6px;
+}
+.families .members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.families .member.hero {
+  outline: 2px solid #6c6;
+}
+.lineage ul {
+  list-style: none;
+  padding-left: 14px;
+}
+.lineage .kind {
+  color: var(--muted, #888);
+  font-size: 0.8rem;
+}
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.compare img {
+  max-width: 100%;
+  max-height: 40vh;
+}
+.metrics dt {
+  color: var(--muted, #888);
+  font-size: 0.8rem;
+}
+.metrics dd {
+  margin: 0 0 6px;
+}
+.links a {
+  margin-right: 10px;
+}
+.chip {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  border: 1px solid #666;
+}
+.chip-inferred {
+  border-color: #6cf;
+  color: #6cf;
+}
+.chip-conflict {
+  border-color: #c77;
+  color: #c77;
+}

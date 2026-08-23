@@ -107,3 +107,6 @@ db/*.db
 db/*.db-wal
 db/*.db-shm
 db/*.backup
+
+# npm: biome lives in node_modules; package-lock.json is committed
+node_modules/

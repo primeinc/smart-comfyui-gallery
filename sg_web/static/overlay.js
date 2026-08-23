@@ -27,15 +27,13 @@
 // beyond this (media's arrows, person's rename) is its own file's
 // business.
 (() => {
-  "use strict";
-
   window.sgPlainClick = (event, link) =>
     event.button === 0 &&
     !event.metaKey &&
     !event.ctrlKey &&
     !event.shiftKey &&
     !event.altKey &&
-    (!link || link.target !== "_blank");
+    link?.target !== "_blank";
 
   window.sgAddressableOverlay = (spec) => {
     const root = document.querySelector(spec.root);
@@ -110,7 +108,7 @@
           // fragment that proves one, or the whole page. A fragment with
           // no data-currency at all is a template regression, not a pass.
           const got = /data-currency="([^"]*)"/.exec(fragment);
-          if (!got || !got[1] || got[1] !== expected) {
+          if (!got?.[1] || got[1] !== expected) {
             window.location.assign(href);
             return;
           }
@@ -132,7 +130,7 @@
       root.hidden = true;
       root.replaceChildren();
       underlay(false);
-      if (opener && opener.isConnected) opener.focus();
+      if (opener?.isConnected) opener.focus();
       opener = null;
     };
 

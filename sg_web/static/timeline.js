@@ -7,8 +7,6 @@
 // that work without this file. The story button drives the story
 // routes and waits on the job feed.
 (() => {
-  "use strict";
-
   const swap = document.getElementById("timeline-swap");
   if (!swap) return;
   const NARROWEST = 3600;
@@ -37,24 +35,44 @@
     return `/timeline?${qs}`;
   };
 
+  // the newest move is the only one that lands; while it is in flight the
+  // swap root says so (data-loading), and says nothing once it has landed
+  // -- what a hand, a stylesheet or a test waits on
+  let drag = null; // the brush in hand: {overview, box, held, mode, at, last}
   let generation = 0;
+  const settled = (mine) => {
+    if (mine === generation) delete swap.dataset.loading;
+  };
   async function move(url, push) {
     const mine = ++generation;
+    swap.dataset.loading = "";
     const answer = await fetch(url, { headers: { "hx-request": "true", accept: "text/html" } });
     if (mine !== generation) return; // a newer move superseded this one
     if (!answer.ok) {
       const why = await answer.json().catch(() => ({}));
       const note = swap.querySelector("[data-note]");
       if (note) note.textContent = why.detail || answer.statusText;
+      settled(mine);
       return;
     }
+    const body = await answer.text();
+    if (mine !== generation) return; // superseded while the body was arriving
     const held = swap.querySelector("[data-strip]");
     if (held) held.dataset.settling = "";
-    swap.innerHTML = await answer.text();
+    swap.innerHTML = body;
+    // the rule under a hand is never swapped out from under it: while a
+    // drag holds the overview, the fresh surface takes the held node in
+    // place of its own, so capture, geometry and the release all speak
+    // of one element; the release's own move replaces everything
+    if (drag?.overview) {
+      const fresh = swap.querySelector("[data-overview]");
+      if (fresh && fresh !== drag.overview) fresh.replaceWith(drag.overview);
+    }
     thin();
     if (push === true) history.pushState({ url }, "", url);
     else if (push === false) history.replaceState({ url }, "", url);
     // push === null: a refresh of the same window; the URL already says it
+    settled(mine);
   }
 
   // the pictures on the axis sit at their moment and never wrap: when
@@ -66,7 +84,10 @@
     let edge = -Infinity;
     for (const a of row.querySelectorAll(".surface-sample")) {
       const left = (parseFloat(a.style.left) / 100) * width;
-      if (left < edge) { a.hidden = true; continue; }
+      if (left < edge) {
+        a.hidden = true;
+        continue;
+      }
       a.hidden = false;
       edge = left + 42;
     }
@@ -82,7 +103,10 @@
   const live = (start, end, snap = false) => {
     const now = performance.now();
     clearTimeout(liveTimer);
-    const run = () => { liveAt = performance.now(); move(urlFor(Math.round(start), Math.round(end), snap), false); };
+    const run = () => {
+      liveAt = performance.now();
+      move(urlFor(Math.round(start), Math.round(end), snap), false);
+    };
     if (now - liveAt >= LIVE_MS) run();
     else liveTimer = setTimeout(run, LIVE_MS - (now - liveAt));
   };
@@ -97,7 +121,10 @@
       socket.onmessage = (msg) => {
         const frame = JSON.parse(msg.data);
         if (frame.type === "snapshot") return;
-        if (["done", "failed", "cancelled"].includes(frame.state) && ["context", "events", "ingest", "scan", "faces", "cluster", "story_plan"].includes(frame.kind)) {
+        if (
+          ["done", "failed", "cancelled"].includes(frame.state) &&
+          ["context", "events", "ingest", "scan", "faces", "cluster", "story_plan"].includes(frame.kind)
+        ) {
           move(location.pathname + location.search, null);
         }
       };
@@ -107,7 +134,7 @@
   })();
 
   window.addEventListener("popstate", (e) => {
-    const url = (e.state && e.state.url) || location.pathname + location.search;
+    const url = e.state?.url || location.pathname + location.search;
     move(url, false);
   });
 
@@ -166,10 +193,17 @@
     overview.querySelector('[data-brush-edge="end"]').setAttribute("x", x1 - 3);
   };
 
-  let drag = null; // {overview, held, mode, at}
+  // the hand's place on the rule: inside the box, the pointer; outside
+  // it, the last place it was inside -- letting go past the edge keeps
+  // the last valid edge, it does not fling the window to the end
+  const inside = (box, event) => event.clientX >= box.left && event.clientX <= box.right;
+  const handAt = (event) => {
+    if (inside(drag.box, event)) drag.last = event.clientX;
+    return { clientX: drag.last ?? event.clientX };
+  };
   const dragged = (event) => {
     const { held, mode, at } = drag;
-    const x = overviewX(drag.box, event);
+    const x = overviewX(drag.box, handAt(event));
     const dt = ot(held, x) - ot(held, at);
     // a window is never narrower than an hour, or than the library itself
     const narrowest = Math.min(NARROWEST, held.extentEnd - held.extentStart);
@@ -207,7 +241,7 @@
     if (Math.abs(x - x0) <= grip) mode = "start";
     else if (Math.abs(x - x1) <= grip) mode = "end";
     else if (x > x0 && x < x1) mode = "move";
-    drag = { overview, box, held, mode, at: x };
+    drag = { overview, box, held, mode, at: x, last: event.clientX };
     overview.setPointerCapture(event.pointerId);
     overview.dataset.dragging = mode;
     event.preventDefault();
@@ -215,8 +249,7 @@
   swap.addEventListener("pointermove", (event) => {
     if (!drag) return;
     const { start, end } = dragged(event);
-    const shown = drag.overview.isConnected ? drag.overview : swap.querySelector("[data-overview]");
-    if (shown) placeBrush(shown, drag.held, start, end);
+    placeBrush(drag.overview, drag.held, start, end);
     live(start, end, true);
   });
   const release = (event) => {
@@ -229,16 +262,14 @@
     // the URL says the window the page actually shows
     move(urlFor(Math.round(start), Math.round(end), true), true).then(() => {
       const held = read();
-      if (held) history.replaceState({ url: urlFor(Math.round(held.start), Math.round(held.end)) }, "", urlFor(Math.round(held.start), Math.round(held.end)));
+      if (held)
+        history.replaceState(
+          { url: urlFor(Math.round(held.start), Math.round(held.end)) },
+          "",
+          urlFor(Math.round(held.start), Math.round(held.end)),
+        );
     });
   };
-  // the brush swaps the surface under the pointer: keep dragging the new one
-  swap.addEventListener("pointermove", (event) => {
-    if (drag && !drag.overview.isConnected) {
-      const overview = swap.querySelector("[data-overview]");
-      if (overview) { drag.overview = overview; overview.setPointerCapture(event.pointerId); }
-    }
-  }, true);
 
   // the axis pans under the hand: a drag moves the window, a click is a
   // click (a bar is a link) -- the hand decides by moving
@@ -249,12 +280,24 @@
     if (!axis || !held || event.button !== 0) return;
     // the axis is swapped under the hand while it moves: its width is
     // read once here, never from an element that may since be detached
-    pan = { axis, px: axis.getBoundingClientRect().width || 1, x: event.clientX, start: held.start, end: held.end, moved: false, held };
+    pan = {
+      axis,
+      px: axis.getBoundingClientRect().width || 1,
+      x: event.clientX,
+      start: held.start,
+      end: held.end,
+      moved: false,
+      held,
+    };
   });
   swap.addEventListener("pointermove", (event) => {
     if (!pan) return;
     if (!pan.moved && Math.abs(event.clientX - pan.x) < 4) return;
-    if (!pan.moved) { pan.moved = true; pan.axis.dataset.dragging = ""; pan.axis.setPointerCapture(event.pointerId); }
+    if (!pan.moved) {
+      pan.moved = true;
+      pan.axis.dataset.dragging = "";
+      pan.axis.setPointerCapture(event.pointerId);
+    }
     const width = pan.end - pan.start;
     const dt = ((pan.x - event.clientX) / pan.px) * width;
     let end = pull(pan.held, pan.end + dt);
@@ -262,10 +305,17 @@
     live(end - width, end, true);
   });
   let panned = false; // the click that ends a drag is not a click
-  swap.addEventListener("click", (e) => {
-    if (panned && e.target.closest("[data-strip]")) { e.preventDefault(); e.stopImmediatePropagation(); }
-    panned = false;
-  }, true);
+  swap.addEventListener(
+    "click",
+    (e) => {
+      if (panned && e.target.closest("[data-strip]")) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      panned = false;
+    },
+    true,
+  );
   const unpan = () => {
     if (!pan) return;
     const was = pan;
@@ -282,31 +332,38 @@
 
   // ctrl+wheel over the axis or the rule zooms around the cursor; shift+wheel
   // pans; a plain wheel is the page's, so the river below stays reachable
-  swap.addEventListener("wheel", (e) => {
-    const stage = e.target.closest("[data-strip], [data-overview]");
-    const held = read();
-    if (!stage || !held || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
-    e.preventDefault();
-    const width = held.end - held.start;
-    const box = stage.getBoundingClientRect();
-    const at = held.start + ((e.clientX - box.left) / box.width) * width;
-    let start;
-    let end;
-    if (e.shiftKey) {
-      const step = (e.deltaY > 0 ? 1 : -1) * width / 5;
-      start = held.start + step;
-      end = held.end + step;
-    } else {
-      const factor = e.deltaY > 0 ? 1.25 : 0.8;
-      start = at - (at - held.start) * factor;
-      end = at + (held.end - at) * factor;
-    }
-    const narrowest = Math.min(NARROWEST, held.extentEnd - held.extentStart);
-    if (end - start < narrowest) { start = at - narrowest / 2; end = at + narrowest / 2; }
-    start = Math.max(held.extentStart, start);
-    end = Math.min(held.extentEnd, Math.max(end, start + narrowest));
-    live(start, end);
-  }, { passive: false });
+  swap.addEventListener(
+    "wheel",
+    (e) => {
+      const stage = e.target.closest("[data-strip], [data-overview]");
+      const held = read();
+      if (!stage || !held || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+      e.preventDefault();
+      const width = held.end - held.start;
+      const box = stage.getBoundingClientRect();
+      const at = held.start + ((e.clientX - box.left) / box.width) * width;
+      let start;
+      let end;
+      if (e.shiftKey) {
+        const step = ((e.deltaY > 0 ? 1 : -1) * width) / 5;
+        start = held.start + step;
+        end = held.end + step;
+      } else {
+        const factor = e.deltaY > 0 ? 1.25 : 0.8;
+        start = at - (at - held.start) * factor;
+        end = at + (held.end - at) * factor;
+      }
+      const narrowest = Math.min(NARROWEST, held.extentEnd - held.extentStart);
+      if (end - start < narrowest) {
+        start = at - narrowest / 2;
+        end = at + narrowest / 2;
+      }
+      start = Math.max(held.extentStart, start);
+      end = Math.min(held.extentEnd, Math.max(end, start + narrowest));
+      live(start, end);
+    },
+    { passive: false },
+  );
   // the release is heard on the window: the live swap may have detached
   // the element holding the capture, and an event on a detached element
   // never reaches the stage
@@ -319,11 +376,17 @@
     if (!held) return;
     const width = held.end - held.start;
     const step = width / 4;
-    const go = (s, t) => { e.preventDefault(); move(urlFor(Math.round(s), Math.round(t)), true); };
-    if (e.key === "ArrowLeft") go(Math.max(held.extentStart, held.start - step), Math.max(held.extentStart + width, held.end - step));
-    if (e.key === "ArrowRight") go(Math.min(held.extentEnd - width, held.start + step), Math.min(held.extentEnd, held.end + step));
+    const go = (s, t) => {
+      e.preventDefault();
+      move(urlFor(Math.round(s), Math.round(t)), true);
+    };
+    if (e.key === "ArrowLeft")
+      go(Math.max(held.extentStart, held.start - step), Math.max(held.extentStart + width, held.end - step));
+    if (e.key === "ArrowRight")
+      go(Math.min(held.extentEnd - width, held.start + step), Math.min(held.extentEnd, held.end + step));
     if (e.key === "+" || e.key === "=") go(held.start + width / 4, held.end - width / 4);
-    if (e.key === "-") go(Math.max(held.extentStart, held.start - width / 2), Math.min(held.extentEnd, held.end + width / 2));
+    if (e.key === "-")
+      go(Math.max(held.extentStart, held.start - width / 2), Math.min(held.extentEnd, held.end + width / 2));
   });
 
   // --- the scrubber ----------------------------------------------------------
@@ -349,7 +412,10 @@
       if (!(Number(other.dataset.pictures) > 0)) continue;
       const box = other.getBoundingClientRect();
       const d = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
-      if (d < nearest) { nearest = d; best = other; }
+      if (d < nearest) {
+        nearest = d;
+        best = other;
+      }
     }
     return best;
   };
@@ -371,22 +437,33 @@
       const n = Math.min(400, cols * rows);
       strip.dataset.filled = String(n);
       const qs = scopeOf();
-      qs.set("start", seg.dataset.at); qs.set("end", seg.dataset.end); qs.set("n", String(n));
+      qs.set("start", seg.dataset.at);
+      qs.set("end", seg.dataset.end);
+      qs.set("n", String(n));
       fetch(`/timeline/spread?${qs}`, { headers: { accept: "application/json" } })
         .then((r) => (r.ok ? r.json() : { pictures: [] }))
         .then((told) => {
           if (!strip.isConnected) return;
-          strip.replaceChildren(...told.pictures.map((p) => {
-            const img = document.createElement("img");
-            img.src = `/thumb/${p.slug}`; img.alt = ""; img.loading = "lazy"; img.draggable = false; img.dataset.moment = String(p.moment);
-            return img;
-          }));
+          strip.replaceChildren(
+            ...told.pictures.map((p) => {
+              const img = document.createElement("img");
+              img.src = `/thumb/${p.slug}`;
+              img.alt = "";
+              img.loading = "lazy";
+              img.draggable = false;
+              img.dataset.moment = String(p.moment);
+              return img;
+            }),
+          );
         });
     }
   };
   fillSegments();
   new MutationObserver(fillSegments).observe(swap, { childList: true });
-  window.addEventListener("resize", () => { for (const s of swap.querySelectorAll("[data-segment-strip]")) delete s.dataset.filled; fillSegments(); });
+  window.addEventListener("resize", () => {
+    for (const s of swap.querySelectorAll("[data-segment-strip]")) delete s.dataset.filled;
+    fillSegments();
+  });
 
   // The hand a fraction of the way down a segment points at a picture by
   // RANK -- the k-th of its n in moment order, newest at the top -- never
@@ -403,7 +480,9 @@
   const nth = (seg, y) => {
     const mine = ++asking;
     const qs = scopeOf();
-    qs.set("start", seg.dataset.at); qs.set("end", seg.dataset.end); qs.set("k", String(rankAt(seg, y)));
+    qs.set("start", seg.dataset.at);
+    qs.set("end", seg.dataset.end);
+    qs.set("k", String(rankAt(seg, y)));
     return fetch(`/timeline/nth?${qs}`, { headers: { accept: "application/json" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((told) => (mine === asking ? told : null));
@@ -412,28 +491,38 @@
     const card = swap.querySelector("[data-scrubber-peek]");
     if (!card) return;
     for (const was of swap.querySelectorAll(".segment-strip img.under")) was.classList.remove("under");
-    if (!seg) { card.hidden = true; return; }
+    if (!seg) {
+      card.hidden = true;
+      return;
+    }
     const rail = swap.querySelector("[data-scrubber]").getBoundingClientRect();
     card.hidden = false;
     card.style.top = `${Math.min(rail.height - 60, Math.max(40, y - rail.top))}px`;
     const n = Number(seg.dataset.pictures);
     const img = card.querySelector("img");
     if (!n) {
-      img.removeAttribute("src"); img.hidden = true;
+      img.removeAttribute("src");
+      img.hidden = true;
       card.querySelector(".scrubber-peek-label").textContent = seg.dataset.label;
       card.querySelector(".scrubber-peek-count").textContent = "nothing";
       return;
     }
     nth(seg, y).then((told) => {
       if (!told) return;
-      img.src = `/thumb/${told.slug}`; img.hidden = false;
+      img.src = `/thumb/${told.slug}`;
+      img.hidden = false;
       card.querySelector(".scrubber-peek-label").textContent = told.spelled;
-      card.querySelector(".scrubber-peek-count").textContent = `${(told.k + 1).toLocaleString()} of ${told.of.toLocaleString()}`;
+      card.querySelector(".scrubber-peek-count").textContent =
+        `${(told.k + 1).toLocaleString()} of ${told.of.toLocaleString()}`;
       // the mosaic tile nearest that moment lights up
-      let best = null, nearest = Infinity;
+      let best = null,
+        nearest = Infinity;
       for (const tile of seg.querySelectorAll(".segment-strip img[data-moment]")) {
         const d = Math.abs(Number(tile.dataset.moment) - told.moment);
-        if (d < nearest) { nearest = d; best = tile; }
+        if (d < nearest) {
+          nearest = d;
+          best = tile;
+        }
       }
       if (best) best.classList.add("under");
     });
@@ -441,10 +530,17 @@
 
   let scrub = null; // {held, rail, pointer, x, y, moved}
   let scrubbed = false; // the click that ends a drag is not a click
-  swap.addEventListener("click", (e) => {
-    if (scrubbed && e.target.closest("[data-scrubber]")) { e.preventDefault(); e.stopImmediatePropagation(); }
-    scrubbed = false;
-  }, true);
+  swap.addEventListener(
+    "click",
+    (e) => {
+      if (scrubbed && e.target.closest("[data-scrubber]")) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      scrubbed = false;
+    },
+    true,
+  );
   swap.addEventListener("pointerdown", (event) => {
     const rail = event.target.closest("[data-scrubber]");
     const held = read();
@@ -463,7 +559,10 @@
     if (!scrub.moved) {
       scrub.moved = true;
       const held = scrub.rail.isConnected ? scrub.rail : swap.querySelector("[data-scrubber]");
-      if (held) { held.setPointerCapture(scrub.pointer); held.dataset.dragging = ""; }
+      if (held) {
+        held.setPointerCapture(scrub.pointer);
+        held.dataset.dragging = "";
+      }
     }
     if (!seg) return;
     const width = scrub.held.end - scrub.held.start;
@@ -475,8 +574,13 @@
     };
     // the window's newest edge lands on the picture the hand points at,
     // by rank within the segment; an empty segment hands on to the nearest
-    if (target !== seg) { land(Number(target.dataset.end) - 1); return; }
-    nth(seg, event.clientY).then((told) => { if (told && scrub) land(told.moment + 1); });
+    if (target !== seg) {
+      land(Number(target.dataset.end) - 1);
+      return;
+    }
+    nth(seg, event.clientY).then((told) => {
+      if (told && scrub) land(told.moment + 1);
+    });
   });
   const unscrub = () => {
     if (!scrub) return;
@@ -491,38 +595,70 @@
   };
   window.addEventListener("pointerup", unscrub);
   window.addEventListener("pointercancel", unscrub);
-  swap.addEventListener("pointerleave", (e) => { if (!scrub && e.target.closest && e.target.closest("[data-scrubber]")) peek(null); }, true);
+  swap.addEventListener(
+    "pointerleave",
+    (e) => {
+      if (!scrub && e.target.closest && e.target.closest("[data-scrubber]")) peek(null);
+    },
+    true,
+  );
 
   // --- the size of the pictures ----------------------------------------------
   // ctrl+wheel or a pinch over the days resizes the rows, and the size is
   // the viewer's from then on; a plain wheel is the page's
   const ROW = { least: 120, most: 520, fallback: 200, key: "timeline.row" };
   const rowOf = () => {
-    try { return Number(localStorage.getItem(ROW.key)) || ROW.fallback; } catch { return ROW.fallback; }
+    try {
+      return Number(localStorage.getItem(ROW.key)) || ROW.fallback;
+    } catch {
+      return ROW.fallback;
+    }
   };
   const sizeRows = (px) => {
     const row = Math.min(ROW.most, Math.max(ROW.least, Math.round(px)));
     const s = surface();
     if (s) s.style.setProperty("--row", `${row}px`);
-    try { localStorage.setItem(ROW.key, String(row)); } catch { /* a private window keeps no size */ }
+    try {
+      localStorage.setItem(ROW.key, String(row));
+    } catch {
+      /* a private window keeps no size */
+    }
   };
-  const sized = () => { const s = surface(); if (s) s.style.setProperty("--row", `${rowOf()}px`); };
+  const sized = () => {
+    const s = surface();
+    if (s) s.style.setProperty("--row", `${rowOf()}px`);
+  };
   sized();
   new MutationObserver(sized).observe(swap, { childList: true });
-  swap.addEventListener("wheel", (e) => {
-    if (!(e.ctrlKey || e.metaKey) || !e.target.closest("[data-sessions]")) return;
-    e.preventDefault();
-    sizeRows(rowOf() * (e.deltaY > 0 ? 0.9 : 1.1));
-  }, { passive: false });
+  swap.addEventListener(
+    "wheel",
+    (e) => {
+      if (!(e.ctrlKey || e.metaKey) || !e.target.closest("[data-sessions]")) return;
+      e.preventDefault();
+      sizeRows(rowOf() * (e.deltaY > 0 ? 0.9 : 1.1));
+    },
+    { passive: false },
+  );
   let pinch = null; // {distance, row}
   const apart = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-  swap.addEventListener("touchstart", (e) => {
-    if (e.touches.length === 2 && e.target.closest("[data-sessions]")) pinch = { distance: apart(e.touches), row: rowOf() };
-  }, { passive: true });
-  swap.addEventListener("touchmove", (e) => {
-    if (!pinch || e.touches.length !== 2) return;
-    e.preventDefault();
-    sizeRows(pinch.row * (apart(e.touches) / pinch.distance));
-  }, { passive: false });
-  swap.addEventListener("touchend", () => { pinch = null; });
+  swap.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length === 2 && e.target.closest("[data-sessions]"))
+        pinch = { distance: apart(e.touches), row: rowOf() };
+    },
+    { passive: true },
+  );
+  swap.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      sizeRows(pinch.row * (apart(e.touches) / pinch.distance));
+    },
+    { passive: false },
+  );
+  swap.addEventListener("touchend", () => {
+    pinch = null;
+  });
 })();

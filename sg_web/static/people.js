@@ -18,7 +18,6 @@
   };
   spellDays(document);
   new MutationObserver(() => spellDays(document)).observe(document.body, { childList: true, subtree: true });
-  "use strict";
 
   // Renaming is the People page's primary action, on the drawer and the
   // full page alike: POST the name, then go live at the new address.

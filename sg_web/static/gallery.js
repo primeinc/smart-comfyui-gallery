@@ -3,8 +3,6 @@
 // page numbers and renders what it is told. Hooks are semantic data
 // attributes, never style classes.
 (() => {
-  "use strict";
-
   // The form must ask a question the server can answer: a phrase orders
   // by similarity (the seam refuses the contradiction), and empty fields
   // have no place in a canonical URL.
@@ -205,8 +203,7 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     const told = await peek(page, s);
     if (!told || hoverPage !== page) return;
     popLabel.textContent =
-      `page ${told.page} of ${told.pages} · ${told.first_ordinal}–${told.last_ordinal}` +
-      ` of ${told.total}`;
+      `page ${told.page} of ${told.pages} · ${told.first_ordinal}–${told.last_ordinal}` + ` of ${told.total}`;
     popGrid.replaceChildren(
       ...told.items.map((item) => {
         const img = new Image();
@@ -271,7 +268,7 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     pathPrefix: "/i/",
     generation: () => {
       const shown = document.querySelector("[data-lightbox]");
-      if (shown && shown.dataset.currency) return shown.dataset.currency;
+      if (shown?.dataset.currency) return shown.dataset.currency;
       const s = shape();
       return s ? s.currency : "";
     },
@@ -284,7 +281,7 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     recover: async () => {
       const shown = document.querySelector("[data-lightbox]");
       const g = grid();
-      const mounted = (shown && shown.dataset.answer) || (g && g.dataset.answer) || "";
+      const mounted = shown?.dataset.answer || g?.dataset.answer || "";
       const slug = shown ? shown.dataset.slug : null;
       if (!mounted || !slug) return false;
       const asked = await fetch(`/g/locate/${slug}${window.location.search}`);

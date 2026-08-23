@@ -13,7 +13,11 @@
   const transitionTo = new Map(view.transitions.map((t) => [t.to, t]));
   const state = { tab: view.plan.sequenced ? "sequence" : "families", selected: null, pair: null };
 
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const esc = (s) =>
+    String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
   const pct = (v) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
   const thumb = (m, cls = "member") =>
     m.media.thumbnail
@@ -26,23 +30,38 @@
     const o = m.occurrence;
     if (!o || o.local_at === null || o.local_at === undefined) return "";
     let told = ` · ${esc(o.precision)} ${clock(o.local_at)} (${esc(o.basis)})`;
-    if (o.estimated_at !== null && o.estimated_at !== undefined) told += ` <span class="chip chip-inferred" title="finish ${clock(new Date(o.finished_at * 1000).getTime() / 1000 + new Date().getTimezoneOffset() * -60)} minus generation time">≈ ${clock(o.estimated_at)} inferred</span>`;
-    if (o.conflicts && o.conflicts.length) told += ` <span class="chip chip-conflict" title="${esc(o.conflicts.join("; "))}">contested</span>`;
+    if (o.estimated_at !== null && o.estimated_at !== undefined)
+      told += ` <span class="chip chip-inferred" title="finish ${clock(new Date(o.finished_at * 1000).getTime() / 1000 + new Date().getTimezoneOffset() * -60)} minus generation time">≈ ${clock(o.estimated_at)} inferred</span>`;
+    if (o.conflicts?.length)
+      told += ` <span class="chip chip-conflict" title="${esc(o.conflicts.join("; "))}">contested</span>`;
     return told;
   };
 
   // --- token diff: longest common subsequence over whitespace tokens ----
   function diffTokens(a, b) {
-    const x = a ? a.split(/\s+/) : [], y = b ? b.split(/\s+/) : [];
-    const n = x.length, m = y.length;
+    const x = a ? a.split(/\s+/) : [],
+      y = b ? b.split(/\s+/) : [];
+    const n = x.length,
+      m = y.length;
     const L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
     const out = [];
-    let i = 0, j = 0;
+    let i = 0,
+      j = 0;
     while (i < n && j < m) {
-      if (x[i] === y[j]) { out.push(esc(x[i])); i++; j++; }
-      else if (L[i + 1][j] >= L[i][j + 1]) { out.push(`<del>${esc(x[i])}</del>`); i++; }
-      else { out.push(`<ins>${esc(y[j])}</ins>`); j++; }
+      if (x[i] === y[j]) {
+        out.push(esc(x[i]));
+        i++;
+        j++;
+      } else if (L[i + 1][j] >= L[i][j + 1]) {
+        out.push(`<del>${esc(x[i])}</del>`);
+        i++;
+      } else {
+        out.push(`<ins>${esc(y[j])}</ins>`);
+        j++;
+      }
     }
     while (i < n) out.push(`<del>${esc(x[i++])}</del>`);
     while (j < m) out.push(`<ins>${esc(y[j++])}</ins>`);
@@ -54,7 +73,10 @@
   // --- presentations -----------------------------------------------------
   function sequence() {
     const strip = view.phases
-      .map((p) => `<div class="phase" data-phase="${p.id}"><h3>${esc(p.label)}</h3><div class="members">${p.member_refs.map((r) => thumb(members.get(r))).join("")}</div></div>`)
+      .map(
+        (p) =>
+          `<div class="phase" data-phase="${p.id}"><h3>${esc(p.label)}</h3><div class="members">${p.member_refs.map((r) => thumb(members.get(r))).join("")}</div></div>`,
+      )
       .join("");
     // a file or capture session carries no prompt and no generator
     // parameters: only the rows its evidence can fill are drawn
@@ -77,13 +99,25 @@
       })
       .join("");
     const facts = (generated ? ["model", "loras", "sampler", "seed"] : [])
-      .map((key) => `<tr><th>${key}</th>${view.members.map((m) => { const v = m.generation[key]; const t = transitionTo.get(m.ref); const cls = t && t.phase_boundary ? "boundary" : ""; return `<td class="${cls}">${esc(Array.isArray(v) ? v.join(", ") : v ?? "—")}</td>`; }).join("")}</tr>`)
+      .map(
+        (key) =>
+          `<tr><th>${key}</th>${view.members
+            .map((m) => {
+              const v = m.generation[key];
+              const t = transitionTo.get(m.ref);
+              const cls = t?.phase_boundary ? "boundary" : "";
+              return `<td class="${cls}">${esc(Array.isArray(v) ? v.join(", ") : (v ?? "—"))}</td>`;
+            })
+            .join("")}</tr>`,
+      )
       .join("");
     main.innerHTML = `<div class="filmstrip">${strip}</div><div class="tracks"><table>${head}${body}${facts}</table></div>`;
   }
 
   function drift() {
-    const W = 420, H = 320, pad = 36;
+    const W = 420,
+      H = 320,
+      pad = 36;
     const dots = view.transitions
       .filter((t) => t.prompt_cosine !== null && t.visual_cosine !== null)
       .map((t) => {
@@ -92,7 +126,9 @@
         return `<circle data-pair="${t.from}|${t.to}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${t.phase_boundary ? "#fc6" : "#6cf"}"><title>${t.from} → ${t.to}: prompt ${pct(t.prompt_cosine)}, image ${pct(t.visual_cosine)}</title></circle>`;
       })
       .join("");
-    const missing = view.transitions.length - view.transitions.filter((t) => t.prompt_cosine !== null && t.visual_cosine !== null).length;
+    const missing =
+      view.transitions.length -
+      view.transitions.filter((t) => t.prompt_cosine !== null && t.visual_cosine !== null).length;
     main.innerHTML = `<div class="drift"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
       <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#555"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#555"/>
       <text x="${W / 2}" y="${H - 8}" fill="#aaa" font-size="11" text-anchor="middle">prompt change from previous →</text>
@@ -103,21 +139,33 @@
 
   function families() {
     main.innerHTML = `<div class="families">${view.phases
-      .map((p) => `<div class="family" data-phase="${p.id}"><h3>${esc(p.label)} <small>· ${p.member_refs.length}</small></h3>
+      .map(
+        (
+          p,
+        ) => `<div class="family" data-phase="${p.id}"><h3>${esc(p.label)} <small>· ${p.member_refs.length}</small></h3>
         <p class="claims">${p.claims.map((c) => esc(c.kind)).join(" · ") || "no claims"}</p>
-        <div class="members">${p.member_refs.map((r) => thumb(members.get(r), p.representative_refs.includes(r) ? "member hero" : "member")).join("")}</div></div>`)
+        <div class="members">${p.member_refs.map((r) => thumb(members.get(r), p.representative_refs.includes(r) ? "member hero" : "member")).join("")}</div></div>`,
+      )
       .join("")}</div>`;
   }
 
   function lineage() {
-    if (!view.lineage.length) { main.innerHTML = `<p class="empty">no derivation edges among these ${noun}</p>`; return; }
+    if (!view.lineage.length) {
+      main.innerHTML = `<p class="empty">no derivation edges among these ${noun}</p>`;
+      return;
+    }
     const children = new Map();
-    view.lineage.forEach((e) => { if (!children.has(e.parent)) children.set(e.parent, []); children.get(e.parent).push(e); });
+    view.lineage.forEach((e) => {
+      if (!children.has(e.parent)) children.set(e.parent, []);
+      children.get(e.parent).push(e);
+    });
     const isChild = new Set(view.lineage.map((e) => e.child));
     const roots = [...new Set(view.lineage.map((e) => e.parent))].filter((p) => !isChild.has(p));
     const node = (ref, kind) => {
       const m = members.get(ref);
-      const label = m ? thumb(m) + ` ${esc(ref)}` : `<span class="kind">outside the session</span> ${esc(ref.slice(0, 8))}`;
+      const label = m
+        ? `${thumb(m)} ${esc(ref)}`
+        : `<span class="kind">outside the session</span> ${esc(ref.slice(0, 8))}`;
       const kids = (children.get(ref) || []).map((e) => node(e.child, e.kind)).join("");
       return `<li>${label}${kind ? ` <span class="kind">${esc(kind)}</span>` : ""}${kids ? `<ul>${kids}</ul>` : ""}</li>`;
     };
@@ -126,12 +174,21 @@
 
   function compare() {
     const [a, b] = state.pair || [];
-    if (!a || !b) { main.innerHTML = `<p class="empty">select two images (click one, then shift-click another)</p>`; return; }
-    const A = members.get(a), B = members.get(b);
+    if (!a || !b) {
+      main.innerHTML = `<p class="empty">select two images (click one, then shift-click another)</p>`;
+      return;
+    }
+    const A = members.get(a),
+      B = members.get(b);
     const t = view.transitions.find((x) => (x.from === a && x.to === b) || (x.from === b && x.to === a));
     const edge = view.lineage.find((e) => (e.parent === a && e.child === b) || (e.parent === b && e.child === a));
     const rows = ["model", "loras", "sampler", "steps", "cfg", "seed", "scheduler", "width", "height"]
-      .map((k) => { const va = A.generation[k], vb = B.generation[k]; const same = JSON.stringify(va) === JSON.stringify(vb); return `<tr><th>${k}</th><td>${same ? "same" : `${esc(Array.isArray(va) ? va.join(", ") : va ?? "—")} → ${esc(Array.isArray(vb) ? vb.join(", ") : vb ?? "—")}`}</td></tr>`; })
+      .map((k) => {
+        const va = A.generation[k],
+          vb = B.generation[k];
+        const same = JSON.stringify(va) === JSON.stringify(vb);
+        return `<tr><th>${k}</th><td>${same ? "same" : `${esc(Array.isArray(va) ? va.join(", ") : (va ?? "—"))} → ${esc(Array.isArray(vb) ? vb.join(", ") : (vb ?? "—"))}`}</td></tr>`;
+      })
       .join("");
     main.innerHTML = `<div class="compare"><div>${thumb(A, "big")}<p>${esc(A.ref)} · ${esc(A.media.name)}</p></div><div>${thumb(B, "big")}<p>${esc(B.ref)} · ${esc(B.media.name)}</p></div>
       <div class="metrics" style="grid-column: 1 / -1"><dl>
@@ -145,12 +202,20 @@
   // --- panels ------------------------------------------------------------
   function selected() {
     const m = members.get(state.selected);
-    if (!m) { selectedPane.innerHTML = `<p class="empty">select an image</p>`; return; }
-    const eff = m.prompt.effective, org = m.prompt.original;
+    if (!m) {
+      selectedPane.innerHTML = `<p class="empty">select an image</p>`;
+      return;
+    }
+    const eff = m.prompt.effective,
+      org = m.prompt.original;
     const links = [];
     if (m.media.page) links.push(`<a href="${esc(m.media.page)}">open image</a>`);
-    if (eff && view.links.search) links.push(`<a href="${esc(view.links.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
-    if (eff && eff.prompt_id !== null && view.semantic.provider) links.push(`<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`);
+    if (eff && view.links.search)
+      links.push(`<a href="${esc(view.links.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
+    if (eff && eff.prompt_id !== null && view.semantic.provider)
+      links.push(
+        `<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`,
+      );
     if (view.links.gallery_day) links.push(`<a href="${esc(view.links.gallery_day)}">this day in the gallery</a>`);
     selectedPane.innerHTML = `${m.media.thumbnail ? `<img src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}">` : ""}
       <h2>${esc(m.ref)} · ${esc(m.media.name)}</h2>
@@ -162,42 +227,69 @@
 
   function inspect() {
     const m = members.get(state.selected);
-    if (!m) { inspector.innerHTML = ""; return; }
+    if (!m) {
+      inspector.innerHTML = "";
+      return;
+    }
     const t = transitionTo.get(m.ref);
-    const metric = (label, v, why) => `<dt>${label}</dt><dd title="${esc(why || "")}">${pct(v)}${v === null ? ` <small>${esc(why || "")}</small>` : ""}</dd>`;
+    const metric = (label, v, why) =>
+      `<dt>${label}</dt><dd title="${esc(why || "")}">${pct(v)}${v === null ? ` <small>${esc(why || "")}</small>` : ""}</dd>`;
     let html = `<dl class="metrics">${metric("written → ran", m.metrics.original_effective_cosine, m.metrics.original_effective_cosine_unavailable)}${metric("prompt ↔ image", m.metrics.text_image_cosine, m.metrics.text_image_cosine_unavailable)}</dl>`;
     if (t) {
-      const changes = Object.entries(t.changes).filter(([, v]) => !(Array.isArray(v) && !v.length)).map(([k, v]) => `<tr><th>${k}</th><td>${Array.isArray(v) ? esc(v.join(", ")) : `${esc(v.from ?? "—")} → ${esc(v.to ?? "—")}`}</td></tr>`).join("");
+      const changes = Object.entries(t.changes)
+        .filter(([, v]) => !(Array.isArray(v) && !v.length))
+        .map(
+          ([k, v]) =>
+            `<tr><th>${k}</th><td>${Array.isArray(v) ? esc(v.join(", ")) : `${esc(v.from ?? "—")} → ${esc(v.to ?? "—")}`}</td></tr>`,
+        )
+        .join("");
       html += `<h3>from ${esc(t.from)}${t.phase_boundary ? " · phase boundary" : ""}</h3><dl class="metrics">${metric("prompt similarity", t.prompt_cosine, t.prompt_cosine_unavailable)}${metric("visual similarity", t.visual_cosine, t.visual_cosine_unavailable)}</dl><table class="tracks">${changes || "<tr><td>nothing else changed</td></tr>"}</table>`;
     } else if (!view.plan.sequenced) {
       html += `<p class="evolution-provenance">no transitions: the evidence does not establish an order</p>`;
     }
     const edges = view.lineage.filter((e) => e.parent === m.ref || e.child === m.ref);
-    if (edges.length) html += `<h3>lineage</h3><ul class="lineage">${edges.map((e) => `<li>${esc(e.parent)} → ${esc(e.child)} <span class="kind">${esc(e.kind)}</span></li>`).join("")}</ul>`;
+    if (edges.length)
+      html += `<h3>lineage</h3><ul class="lineage">${edges.map((e) => `<li>${esc(e.parent)} → ${esc(e.child)} <span class="kind">${esc(e.kind)}</span></li>`).join("")}</ul>`;
     inspector.innerHTML = html;
   }
 
   function draw() {
     ({ sequence, drift, families, lineage, compare })[state.tab]();
-    root.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === state.tab));
-    root.querySelectorAll("[data-ref]").forEach((el) => {
+    for (const b of root.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === state.tab);
+    for (const el of root.querySelectorAll("[data-ref]")) {
       el.classList.toggle("on", el.dataset.ref === state.selected);
-      el.classList.toggle("pair", !!state.pair && state.pair.includes(el.dataset.ref) && el.dataset.ref !== state.selected);
-    });
-    root.querySelectorAll("[data-pair]").forEach((el) => el.classList.toggle("on", !!state.pair && el.dataset.pair === state.pair.join("|")));
+      el.classList.toggle(
+        "pair",
+        !!state.pair && state.pair.includes(el.dataset.ref) && el.dataset.ref !== state.selected,
+      );
+    }
+    for (const el of root.querySelectorAll("[data-pair]")) {
+      el.classList.toggle("on", !!state.pair && el.dataset.pair === state.pair.join("|"));
+    }
     selected();
     inspect();
   }
 
   root.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-tab]");
-    if (tab) { state.tab = tab.dataset.tab; draw(); return; }
+    if (tab) {
+      state.tab = tab.dataset.tab;
+      draw();
+      return;
+    }
     const dot = event.target.closest("[data-pair]");
-    if (dot) { state.pair = dot.dataset.pair.split("|"); state.selected = state.pair[1]; draw(); return; }
+    if (dot) {
+      state.pair = dot.dataset.pair.split("|");
+      state.selected = state.pair[1];
+      draw();
+      return;
+    }
     const el = event.target.closest("[data-ref]");
     if (!el) return;
-    if (event.shiftKey && state.selected && state.selected !== el.dataset.ref) { state.pair = [state.selected, el.dataset.ref]; state.tab = "compare"; }
-    else state.selected = el.dataset.ref;
+    if (event.shiftKey && state.selected && state.selected !== el.dataset.ref) {
+      state.pair = [state.selected, el.dataset.ref];
+      state.tab = "compare";
+    } else state.selected = el.dataset.ref;
     draw();
   });
   draw();

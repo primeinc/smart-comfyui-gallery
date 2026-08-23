@@ -4,7 +4,7 @@
 // renders only the rows in view. Pausing pauses the painting; filtering
 // hides rows; neither touches what is held. Ids are the order: a skipped
 // id is a named gap, fetched from /operations/events, never papered over.
-(function () {
+(() => {
   const root = document.querySelector("[data-console]");
   if (!root) return;
   const ROW_H = 24;
@@ -112,7 +112,7 @@
     const skipped = gaps();
     heldEl.hidden = skipped.length === 0;
     if (skipped.length) heldEl.textContent = `${skipped.length} gap(s) in the held ids — click a dashed row to fetch`;
-    countEl.textContent = `${view.length} of ${held.length} shown` + (paused ? ` · paused, ${heldWhilePaused} new held` : "");
+    countEl.textContent = `${view.length} of ${held.length} shown${paused ? ` · paused, ${heldWhilePaused} new held` : ""}`;
     root.dataset.held = String(held.length);
     root.dataset.lastEventId = String(lastId);
     root.dataset.gaps = String(skipped.length);
@@ -153,7 +153,11 @@
       const e = held[view[i]];
       const previous = i > 0 ? held[view[i - 1]] : null;
       if (previous && !filter.type && !filter.severity && !filter.job && e.id !== previous.id + 1) {
-        const gap = el("li", { class: "tape-gap", role: "button", tabindex: "0" }, `── ${e.id - previous.id - 1} event(s) not held between #${previous.id} and #${e.id} — fetch ──`);
+        const gap = el(
+          "li",
+          { class: "tape-gap", role: "button", tabindex: "0" },
+          `── ${e.id - previous.id - 1} event(s) not held between #${previous.id} and #${e.id} — fetch ──`,
+        );
         gap.addEventListener("click", () => fill(previous.id, e.id));
         rows.appendChild(gap);
       }
@@ -171,21 +175,40 @@
   function select(e) {
     selectedEvent = e.id;
     rawBody.textContent = JSON.stringify(e, null, 2);
-    for (const li of rows.children) li.setAttribute("aria-selected", li.dataset.event === String(e.id) ? "true" : "false");
+    for (const li of rows.children)
+      li.setAttribute("aria-selected", li.dataset.event === String(e.id) ? "true" : "false");
   }
 
-  scroller.addEventListener("scroll", () => { if (!paused) paint(); });
-  window.addEventListener("resize", () => { if (!paused) paint(); });
+  scroller.addEventListener("scroll", () => {
+    if (!paused) paint();
+  });
+  window.addEventListener("resize", () => {
+    if (!paused) paint();
+  });
 
   pauseBtn.addEventListener("click", () => {
     paused = !paused;
     pauseBtn.setAttribute("aria-pressed", String(paused));
     pauseBtn.textContent = paused ? "resume" : "pause";
-    if (!paused) { heldWhilePaused = 0; repaint(true); } else { rebuildView(); }
+    if (!paused) {
+      heldWhilePaused = 0;
+      repaint(true);
+    } else {
+      rebuildView();
+    }
   });
-  q("[data-tape-filter-type]").addEventListener("change", (ev) => { filter.type = ev.target.value; repaint(true); });
-  q("[data-tape-filter-severity]").addEventListener("change", (ev) => { filter.severity = ev.target.value; repaint(true); });
-  q("[data-tape-filter-job]").addEventListener("input", (ev) => { filter.job = ev.target.value.trim(); repaint(true); });
+  q("[data-tape-filter-type]").addEventListener("change", (ev) => {
+    filter.type = ev.target.value;
+    repaint(true);
+  });
+  q("[data-tape-filter-severity]").addEventListener("change", (ev) => {
+    filter.severity = ev.target.value;
+    repaint(true);
+  });
+  q("[data-tape-filter-job]").addEventListener("input", (ev) => {
+    filter.job = ev.target.value.trim();
+    repaint(true);
+  });
   q("[data-tape-earlier]").addEventListener("click", earlier);
 
   // --- fetching what the rows hold ----------------------------------------
@@ -193,7 +216,9 @@
     // every id in (after, before): pages until caught up, never samples
     let cursor = after;
     while (cursor < before - 1) {
-      const r = await fetch(`/operations/events?after=${cursor}&limit=2000`, { headers: { accept: "application/json" } });
+      const r = await fetch(`/operations/events?after=${cursor}&limit=2000`, {
+        headers: { accept: "application/json" },
+      });
       if (!r.ok) return;
       const told = await r.json();
       let advanced = false;
@@ -209,8 +234,10 @@
   }
 
   async function earlier() {
-    if (!isFinite(firstId)) return;
-    const r = await fetch(`/operations/events/before?before=${firstId}&limit=500`, { headers: { accept: "application/json" } });
+    if (!Number.isFinite(firstId)) return;
+    const r = await fetch(`/operations/events/before?before=${firstId}&limit=500`, {
+      headers: { accept: "application/json" },
+    });
     if (!r.ok) return;
     const told = await r.json();
     const keep = scroller.scrollHeight - scroller.scrollTop;
@@ -234,10 +261,13 @@
   }
 
   function paintHealth(o) {
-    q("[data-worker-state]").textContent = `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`;
-    q("[data-worker-raw]").textContent = `${o.worker.thread || "no thread"} · ${o.worker.owners.length ? o.worker.owners.join(", ") : "no owner"} · heartbeat ${o.worker.heartbeat_age != null ? o.worker.heartbeat_age.toFixed(1) + "s ago" : "none"}`;
+    q("[data-worker-state]").textContent =
+      `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`;
+    q("[data-worker-raw]").textContent =
+      `${o.worker.thread || "no thread"} · ${o.worker.owners.length ? o.worker.owners.join(", ") : "no owner"} · heartbeat ${o.worker.heartbeat_age != null ? `${o.worker.heartbeat_age.toFixed(1)}s ago` : "none"}`;
     q("[data-queue-state]").textContent = `${o.queue.queued} queued · ${o.queue.running} running`;
-    q("[data-queue-raw]").textContent = `oldest queued ${o.queue.oldest_queued_age != null ? Math.round(o.queue.oldest_queued_age) + "s" : "—"} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`;
+    q("[data-queue-raw]").textContent =
+      `oldest queued ${o.queue.oldest_queued_age != null ? `${Math.round(o.queue.oldest_queued_age)}s` : "—"} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`;
     q("[data-ledger-state]").textContent = `${o.ledger.events.toLocaleString()} events`;
     q("[data-ledger-raw]").textContent = `head #${o.ledger.last_id} · job_event · never sampled`;
     if (o.coverage) {
@@ -254,7 +284,15 @@
     matrixRows.textContent = "";
     for (const j of jobs) {
       const cancelling = j.derived.cancellation === "requested";
-      const li = el("li", { class: "matrix-row", "data-matrix-job": j.id, "data-state": j.state, "data-cancelling": cancelling || null, tabindex: "0", role: "button", "aria-current": selectedJob === j.id ? "true" : null });
+      const li = el("li", {
+        class: "matrix-row",
+        "data-matrix-job": j.id,
+        "data-state": j.state,
+        "data-cancelling": cancelling || null,
+        tabindex: "0",
+        role: "button",
+        "aria-current": selectedJob === j.id ? "true" : null,
+      });
       li.appendChild(el("span", { class: "matrix-id" }, `#${j.id}`));
       const kind = el("span", { class: "matrix-kind" });
       kind.appendChild(el("span", { class: "v" }, j.what || j.kind.replace(/_/g, " ")));
@@ -262,13 +300,30 @@
       li.appendChild(kind);
       li.appendChild(el("span", { class: "matrix-state", "data-state": j.state }, cancelling ? "cancelling" : j.state));
       const bar = el("progress", { class: "matrix-progress" });
-      if (j.total) { bar.value = j.done_count; bar.max = j.total; }
+      if (j.total) {
+        bar.value = j.done_count;
+        bar.max = j.total;
+      }
       li.appendChild(bar);
-      li.appendChild(el("code", { class: "matrix-count" }, `${j.done_count}${j.total != null ? "/" + j.total : ""}${j.failed_count ? " · " + j.failed_count + " failed" : ""}`));
-      li.appendChild(el("code", { class: "matrix-exec" }, `a${j.attempt} f${j.fence ?? ""}${j.owner ? " · " + j.owner : ""}`));
+      li.appendChild(
+        el(
+          "code",
+          { class: "matrix-count" },
+          `${j.done_count}${j.total != null ? `/${j.total}` : ""}${j.failed_count ? ` · ${j.failed_count} failed` : ""}`,
+        ),
+      );
+      li.appendChild(
+        el("code", { class: "matrix-exec" }, `a${j.attempt} f${j.fence ?? ""}${j.owner ? ` · ${j.owner}` : ""}`),
+      );
       const live = pendingByJob.get(j.id) || j.live;
       if (live && j.state === "running") {
-        li.appendChild(el("span", { class: "matrix-live", "data-matrix-live": "" }, `${live.phase || live.type}${live.item_id != null ? " · item " + live.item_id : ""}`));
+        li.appendChild(
+          el(
+            "span",
+            { class: "matrix-live", "data-matrix-live": "" },
+            `${live.phase || live.type}${live.item_id != null ? ` · item ${live.item_id}` : ""}`,
+          ),
+        );
       }
       matrixRows.appendChild(li);
     }
@@ -278,7 +333,12 @@
   function wireMatrix() {
     for (const li of matrixRows.querySelectorAll("[data-matrix-job]")) {
       li.onclick = () => choose(Number(li.dataset.matrixJob));
-      li.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); choose(Number(li.dataset.matrixJob)); } };
+      li.onkeydown = (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          choose(Number(li.dataset.matrixJob));
+        }
+      };
     }
   }
 
@@ -291,7 +351,10 @@
       const slot = q("[data-items-slot]", inspectorBody);
       if (!slot) return;
       const r = await fetch(load.getAttribute("href"), { headers: { accept: "text/html" } });
-      if (!r.ok) { slot.textContent = `${r.status}`; return; }
+      if (!r.ok) {
+        slot.textContent = `${r.status}`;
+        return;
+      }
       if (load.hasAttribute("data-items-more")) {
         load.remove();
         slot.insertAdjacentHTML("beforeend", await r.text());
@@ -315,7 +378,11 @@
   async function loadInspector() {
     if (selectedJob == null) return;
     const r = await fetch(`/operations/job/${selectedJob}`, { headers: { accept: "text/html" } });
-    if (!r.ok) { inspectorBody.innerHTML = ""; inspectorBody.appendChild(el("p", { class: "empty" }, `job ${selectedJob}: ${r.status}`)); return; }
+    if (!r.ok) {
+      inspectorBody.innerHTML = "";
+      inspectorBody.appendChild(el("p", { class: "empty" }, `job ${selectedJob}: ${r.status}`));
+      return;
+    }
     inspectorBody.innerHTML = await r.text();
     if (window.htmx) window.htmx.process(inspectorBody);
     for (const node of inspectorBody.querySelectorAll("time[data-epoch]")) {
@@ -329,7 +396,10 @@
   }
   function refreshInspectorSoon() {
     if (inspectorTimer) return;
-    inspectorTimer = setTimeout(() => { inspectorTimer = null; loadInspector(); }, 350);
+    inspectorTimer = setTimeout(() => {
+      inspectorTimer = null;
+      loadInspector();
+    }, 350);
   }
   function choose(jobId) {
     selectedJob = jobId;
@@ -360,7 +430,11 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     socket = new WebSocket(`${proto}://${location.host}/ws/events?after=${lastId}`);
     setTransport(retry ? "reconnecting" : "connecting", retry ? `reconnecting (${retry})` : "connecting");
-    socket.onopen = () => { retry = 0; setTransport("connected", "connected"); refreshOverviewSoon(); };
+    socket.onopen = () => {
+      retry = 0;
+      setTransport("connected", "connected");
+      refreshOverviewSoon();
+    };
     socket.onmessage = (msg) => {
       const frame = JSON.parse(msg.data);
       lastFrameAt = Date.now();
@@ -377,8 +451,11 @@
         const row = matrixRows.querySelector(`[data-matrix-job="${frame.job_id}"]`);
         if (row) {
           let slot = row.querySelector("[data-matrix-live]");
-          if (!slot) { slot = el("span", { class: "matrix-live", "data-matrix-live": "" }); row.appendChild(slot); }
-          slot.textContent = `${frame.phase || frame.type}${frame.item_id != null ? " · item " + frame.item_id : ""}`;
+          if (!slot) {
+            slot = el("span", { class: "matrix-live", "data-matrix-live": "" });
+            row.appendChild(slot);
+          }
+          slot.textContent = `${frame.phase || frame.type}${frame.item_id != null ? ` · item ${frame.item_id}` : ""}`;
         }
         return;
       }
@@ -410,9 +487,11 @@
 
   setInterval(() => {
     transportLast.textContent = String(lastId);
-    transportAge.textContent = lastFrameAt ? `${((Date.now() - lastFrameAt) / 1000).toFixed(1)}s since last frame` : "no frame yet";
+    transportAge.textContent = lastFrameAt
+      ? `${((Date.now() - lastFrameAt) / 1000).toFixed(1)}s since last frame`
+      : "no frame yet";
     for (const node of inspectorBody.querySelectorAll("[data-age-of]")) {
-      node.textContent = `${((Date.now() / 1000) - Number(node.dataset.ageOf)).toFixed(1)}s ago`;
+      node.textContent = `${(Date.now() / 1000 - Number(node.dataset.ageOf)).toFixed(1)}s ago`;
     }
     for (const node of inspectorBody.querySelectorAll("[data-lease-until]")) {
       const left = Number(node.dataset.leaseUntil) - Date.now() / 1000;
